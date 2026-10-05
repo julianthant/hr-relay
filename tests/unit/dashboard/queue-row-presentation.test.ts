@@ -4,9 +4,9 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it } from "vitest";
 import { QueueSurfaceWireSchema, type QueueSurfaceWire } from "../../../src/domain/dashboard/projection.js";
-import { QueueRow } from "../../../src/dashboard/surfaces/queue.js";
-import { StatusBadge } from "../../../src/dashboard/surfaces/status.js";
-import { orderMembers, type MemberSurfaceWire } from "../../../src/dashboard/surfaces/queue-model.js";
+import { QueueRow } from "../../../src/dashboard/surfaces/queue/queue.js";
+import { StatusBadge } from "../../../src/dashboard/surfaces/shared/status/status.js";
+import { orderMembers, type MemberSurfaceWire } from "../../../src/dashboard/surfaces/queue/queue-model.js";
 import { FIXTURE_DAY_WIRE } from "../../parity/helpers/fixture-queue.js";
 import { FIXTURE_NOW } from "../../parity/helpers/fixture-identity.js";
 

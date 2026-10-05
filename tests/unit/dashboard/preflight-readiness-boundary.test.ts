@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
-import { createPreflightReadinessResource, preflightReadinessResource } from "../../../src/dashboard/client/preflight-state.js";
+import { createPreflightReadinessResource, preflightReadinessResource } from "../../../src/dashboard/client/queries/preflight-state.js";
 import { buildPreflightReport, requiredPreflightChecks } from "../../../src/domain/preflight.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import type { PreflightReadinessWire } from "../../../src/domain/preflight-contract.js";

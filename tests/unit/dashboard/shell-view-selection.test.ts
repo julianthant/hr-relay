@@ -14,8 +14,8 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { activeTakeover, shellViewOf, type ActiveTakeover } from "../../../src/dashboard/app/url-state.js";
-import { SHELL_VIEWS, type ShellViewSelection } from "../../../src/dashboard/surfaces/top-bar-model.js";
+import { activeTakeover, shellViewOf, type ActiveTakeover } from "../../../src/dashboard/app/navigation/url-state.js";
+import { SHELL_VIEWS, type ShellViewSelection } from "../../../src/dashboard/surfaces/shell/top-bar-model.js";
 
 const BASE = { start: false } as const;
 

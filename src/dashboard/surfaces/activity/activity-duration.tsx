@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Skeleton } from '../../ds/ui.js';
-import { SkeletonText } from '../loading.js';
+import { SkeletonText } from '../shared/loading/loading.js';
 import { activityDuration, type ActivitySummary } from './activity-view-model.js';
 import { workflowDurationChart } from './activity-duration-model.js';
 import './activity-duration.css';

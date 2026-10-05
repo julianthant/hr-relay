@@ -3,7 +3,7 @@ import { SavedArchiveReportWireSchema } from "../../../src/domain/dashboard/arch
 import { expect, it, vi } from "vitest";
 import { H_REPORT } from "../../parity/helpers/fixture-archive-report.js";
 import { archiveCsvFields, archiveFieldRows } from "../../../src/domain/dashboard/archive-export.js";
-import { archiveExportBlob, assertArchiveExportSize, readWorkflowExport } from "../../../src/dashboard/surfaces/archive-export-model.js";
+import { archiveExportBlob, assertArchiveExportSize, readWorkflowExport } from "../../../src/dashboard/surfaces/archive/archive-export-model.js";
 import type { SavedArchiveQuery } from "../../../src/domain/dashboard/archive.js";
 import { RunIdSchema } from "../../../src/domain/ids.js";
 

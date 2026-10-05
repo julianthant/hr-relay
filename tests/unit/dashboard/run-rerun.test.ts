@@ -1,4 +1,4 @@
-import { buildWorkflowCatalog } from "../../../src/dashboard/surfaces/workflow-catalog-model.js";
+import { buildWorkflowCatalog } from "../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 // @vitest-environment jsdom
 import { requireLifecycleApplied } from "../../../src/core/run-record-service.js";
 import assert from "node:assert/strict";
@@ -7,9 +7,9 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it } from "vitest";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { ToastProvider } from "../../../src/dashboard/ds/ui.js";
-import { RunLaunchHost } from "../../../src/dashboard/app/run-launch.js";
-import { defaultRerunSteps } from "../../../src/dashboard/surfaces/run-start-rerun-model.js";
-import { useRunLaunch } from "../../../src/dashboard/app/run-launch-model.js";
+import { RunLaunchHost } from "../../../src/dashboard/surfaces/run-start/run-launch.js";
+import { defaultRerunSteps } from "../../../src/dashboard/surfaces/run-start/run-start-rerun-model.js";
+import { useRunLaunch } from "../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { deriveIdempotencyKeyDigest } from "../../../src/domain/write-safety.js";
 import { PositiveIntSchema } from "../../../src/domain/ids.js";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";

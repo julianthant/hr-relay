@@ -17,7 +17,7 @@ import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import {
   ARCHIVED_NOT_RUN_NOTE,
   archivedOmittedStepsNote,
-} from "../../../src/dashboard/surfaces/archive-model.js";
+} from "../../../src/dashboard/surfaces/archive/archive-model.js";
 import {
   claimEventOf,
   instantOffsetOf,

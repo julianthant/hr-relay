@@ -3,9 +3,9 @@ import { describe, it } from "vitest";
 import { SettingsProviderKeysWireSchema } from "../../../src/domain/dashboard/settings-editor.js";
 import { PROVIDER_KEYS_SCHEMA_HASH } from "../../../src/domain/config/provider-keys.js";
 import { fixtureSettingsDocument } from "../../parity/helpers/fixture-settings.js";
-import { buildSettingsNav } from "../../../src/dashboard/surfaces/settings-model.js";
-import { searchSettings, settingsSearchIndex } from "../../../src/dashboard/surfaces/settings-search-model.js";
-import { parseRoute, routeToSearch, routeWithoutTakeovers } from "../../../src/dashboard/app/url-state.js";
+import { buildSettingsNav } from "../../../src/dashboard/surfaces/settings/settings-model.js";
+import { searchSettings, settingsSearchIndex } from "../../../src/dashboard/surfaces/settings/navigation/settings-search-model.js";
+import { parseRoute, routeToSearch, routeWithoutTakeovers } from "../../../src/dashboard/app/navigation/url-state.js";
 
 const document = fixtureSettingsDocument();
 const groups = buildSettingsNav([], document);

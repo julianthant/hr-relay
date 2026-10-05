@@ -1,9 +1,9 @@
-import type { WorkflowCatalogEntry } from "../workflow-catalog-model.js";
-import { mockWorkflow, type MockWorkflowId } from "../workflow-mock-catalog.js";
-import { initialMockDraft, type MockRun } from "../workflow-mock-model.js";
-import { mockFieldValue, mockStepNode } from "../workflow-result-model.js";
-import { mockOperations, mockOperationValue } from "../workflow-operation-model.js";
-import { workflowPreviewGraph, type PreviewNode } from "../workflow-preview-contracts.js";
+import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
+import { mockWorkflow, type MockWorkflowId } from "../workflows/mocks/workflow-mock-catalog.js";
+import { initialMockDraft, type MockRun } from "../workflows/mocks/workflow-mock-model.js";
+import { mockFieldValue, mockStepNode } from "../workflows/mocks/workflow-result-model.js";
+import { mockOperations, mockOperationValue } from "../workflows/mocks/workflow-operation-model.js";
+import { workflowPreviewGraph, type PreviewNode } from "../workflows/mocks/workflow-preview-contracts.js";
 import type { FieldSource, FlowField, FlowPart, FlowStep } from "./explorer-flow-model.js";
 import type { MockFlow } from "./explorer-mock-fixtures.js";
 

@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { WorkflowMockReview } from "../../../src/dashboard/surfaces/workflow-review.js";
-import { MOCK_WORKFLOWS } from "../../../src/dashboard/surfaces/workflow-mock-catalog.js";
-import { approveMockRun, initialMockDraft, mockRunLog, mockRunsForDraft, seedMockRuns } from "../../../src/dashboard/surfaces/workflow-mock-model.js";
-import { addMockReviewRecord, discardMockReview, editReviewRecord, reviewCanApprove, reviewRecords, reviewValue, updateMockReview, reviewIsReadOnly, restoreMockReview } from "../../../src/dashboard/surfaces/workflow-review-model.js";
+import { WorkflowMockReview } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-review.js";
+import { MOCK_WORKFLOWS } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.js";
+import { approveMockRun, initialMockDraft, mockRunLog, mockRunsForDraft, seedMockRuns } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
+import { addMockReviewRecord, discardMockReview, editReviewRecord, reviewCanApprove, reviewRecords, reviewValue, updateMockReview, reviewIsReadOnly, restoreMockReview } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-review-model.js";
 import { buildWorkflowMock, initialWorkflowChoices, updateWorkflowChoice, workflowChoices, workflowContractSource } from "../../../src/dashboard/surfaces/explorer/explorer-workflow-model.js";
-import { buildWorkflowCatalog } from "../../../src/dashboard/surfaces/workflow-catalog-model.js";
+import { buildWorkflowCatalog } from "../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 import { allFields } from "../../../src/dashboard/surfaces/explorer/explorer-flow-model.js";
-import { workflowPreviewGraph } from "../../../src/dashboard/surfaces/workflow-preview-contracts.js";
+import { workflowPreviewGraph } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-preview-contracts.js";
 
 const preparation = (id: "emergency-contact" | "onbase" | "oath-upload") => mockRunsForDraft(id, { ...initialMockDraft(id), files: [{ name: "fictional.pdf", size: 1024, digest: "fixture" }] }, 1);
 describe("complete workflow presentation mocks", () => {

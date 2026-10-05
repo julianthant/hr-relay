@@ -1,10 +1,10 @@
-import { buildWorkflowCatalog } from "../../../src/dashboard/surfaces/workflow-catalog-model.js";
+import { buildWorkflowCatalog } from "../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterAll, afterEach, beforeAll, describe, it } from "vitest";
-import { WorkflowExplorer } from "../../../src/dashboard/surfaces/explorer.js";
+import { WorkflowExplorer } from "../../../src/dashboard/surfaces/explorer/explorer.js";
 import { allFields } from "../../../src/dashboard/surfaces/explorer/explorer-flow-model.js";
 import { buildEmergencyContactMock, buildOnboardingMock, DEFAULT_MOCK_SCENARIO, EXPLORER_MOCK_WORKFLOWS, mockFieldSource, updateMockScenario } from "../../../src/dashboard/surfaces/explorer/explorer-mock-fixtures.js";
 

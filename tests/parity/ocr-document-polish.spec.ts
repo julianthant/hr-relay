@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { OCR_DOCUMENT_FIXTURES } from "../../src/dashboard/surfaces/workflow-document-model.js";
+import { OCR_DOCUMENT_FIXTURES } from "../../src/dashboard/surfaces/workflows/mocks/workflow-document-model.js";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "./helpers/fixture-bff.js";

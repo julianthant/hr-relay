@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { MOCK_WORKFLOWS, MOCK_ONBASE_TYPES, mockWorkflow } from "../../../src/dashboard/surfaces/workflow-mock-catalog.js";
-import { approveMockRun, initialMockDraft, mockConfirmationFacts, mockDraftError, mockInputEntries, mockLaunchCount, mockNeedsReview, mockOathDuplicate, mockPipeline, mockQueueCounts, mockQueueView, mockRunLog, mockRunPipeline, mockRunsForDraft, mockSelectableSteps, mockStepState, seedMockRuns, type MockDraft } from "../../../src/dashboard/surfaces/workflow-mock-model.js";
-import { reviewRecords } from "../../../src/dashboard/surfaces/workflow-review-model.js";
-import { reviewSourcePages } from "../../../src/dashboard/surfaces/workflow-review-source-model.js";
+import { MOCK_WORKFLOWS, MOCK_ONBASE_TYPES, mockWorkflow } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.js";
+import { approveMockRun, initialMockDraft, mockConfirmationFacts, mockDraftError, mockInputEntries, mockLaunchCount, mockNeedsReview, mockOathDuplicate, mockPipeline, mockQueueCounts, mockQueueView, mockRunLog, mockRunPipeline, mockRunsForDraft, mockSelectableSteps, mockStepState, seedMockRuns, type MockDraft } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
+import { reviewRecords } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-review-model.js";
+import { reviewSourcePages } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-review-source-model.js";
 
 const file = { name: "packet.pdf", size: 100, digest: "copied-pdf-digest" };
 const draft = (id: string, changes: Partial<MockDraft> = {}): MockDraft => ({ ...initialMockDraft(id), text: mockWorkflow(id).example, files: [file], ...changes });

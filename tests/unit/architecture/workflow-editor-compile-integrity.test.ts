@@ -46,8 +46,8 @@ import { workflowSourcePath } from "../../../src/domain/workflow/source-layout.j
 const PROJECTION_FILE = "src/server/dashboard/queries/explorer.ts";
 const WIRE_FILE = "src/domain/dashboard/explorer.ts";
 const SURFACE_FILES = [
-  "src/dashboard/surfaces/explorer.tsx",
-  "src/dashboard/surfaces/ui-catalog.tsx",
+  "src/dashboard/surfaces/explorer/explorer.tsx",
+  "src/dashboard/surfaces/settings/catalog/ui-catalog.tsx",
 ];
 
 function read(path: string): string {
@@ -296,11 +296,11 @@ export function explorerSafeEditClientMethodViolations(source: string): string[]
 
 describe("the explorer surface keeps Phase A reads separate from the Phase B safe subset", () => {
   it("keeps the UI catalog structurally read-only", () => {
-    assert.deepEqual(mutationAffordanceViolations(read("src/dashboard/surfaces/ui-catalog.tsx")), []);
+    assert.deepEqual(mutationAffordanceViolations(read("src/dashboard/surfaces/settings/catalog/ui-catalog.tsx")), []);
   });
 
   it("reaches the server from Explorer only through the typed safe-edit clients", () => {
-    const source = read("src/dashboard/surfaces/explorer.tsx");
+    const source = read("src/dashboard/surfaces/explorer/explorer.tsx");
     assert.deepEqual(mutationAffordanceViolations(source), ["calls the command client"]);
     assert.deepEqual(explorerSafeCommandViolations(source), []);
     assert.deepEqual(explorerSafeEditClientMethodViolations(source), []);
@@ -311,7 +311,7 @@ describe("the explorer surface keeps Phase A reads separate from the Phase B saf
   });
 
   it("the safe-command arm fails when a second command or another family/type is introduced", () => {
-    const source = read("src/dashboard/surfaces/explorer.tsx");
+    const source = read("src/dashboard/surfaces/explorer/explorer.tsx");
     assert.deepEqual(
       explorerSafeCommandViolations(source.replace(
         'family: "explorer" as const',
@@ -333,7 +333,7 @@ describe("the explorer surface keeps Phase A reads separate from the Phase B saf
   });
 
   it("the typed safe-edit client allowlist rejects an unrelated DashboardClient method", () => {
-    const source = read("src/dashboard/surfaces/explorer.tsx");
+    const source = read("src/dashboard/surfaces/explorer/explorer.tsx");
     assert.deepEqual(
       explorerSafeEditClientMethodViolations(`${source}\nvoid client.requestFailureAdvisory(runId);`),
       ["calls DashboardClient.requestFailureAdvisory outside the Explorer safe-edit allowlist"],

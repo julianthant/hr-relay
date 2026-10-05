@@ -15,9 +15,9 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it } from "vitest";
 import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../../src/domain/trust/evidence.js";
-import { ReceiptEvidenceBody } from "../../../src/dashboard/surfaces/trust.js";
-import { writeProofAbsence } from "../../../src/dashboard/surfaces/trust-model.js";
-import { shortHash } from "../../../src/dashboard/surfaces/format.js";
+import { ReceiptEvidenceBody } from "../../../src/dashboard/surfaces/shared/run-evidence/trust.js";
+import { writeProofAbsence } from "../../../src/dashboard/surfaces/shared/run-evidence/trust-model.js";
+import { shortHash } from "../../../src/dashboard/surfaces/shared/status/format.js";
 
 const AT = "2026-08-14T17:08:54.867Z";
 const KEY_DIGEST = "d".repeat(64);

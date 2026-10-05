@@ -21,7 +21,7 @@
 
 @import "@heroui/styles";
 @import "tailwindcss";
-@import "../ds/dashboard-theme.css";
+@import "../ds/theme/dashboard-theme.css";
 @import "@heroui/styles";
 
 @custom-variant dark (&:is(.dark *));

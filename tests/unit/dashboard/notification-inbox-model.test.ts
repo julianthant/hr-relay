@@ -6,7 +6,7 @@ import {
   NOTIFICATION_FILTERS,
   notificationInboxView,
   type NotificationRowWire,
-} from "../../../src/dashboard/surfaces/top-bar-model.js";
+} from "../../../src/dashboard/surfaces/shell/top-bar-model.js";
 
 const PINNED = NotificationWireSchema.parse({
   kind: "backfill-gap",
@@ -62,7 +62,7 @@ it("counts unread snoozed rows independently and uses the actual channel", () =>
   assert.equal(notificationInboxView([row], "snoozed").shown.length, 1);
 });
 
-import { navigateNotification } from "../../../src/dashboard/state/notification-navigation.js";
+import { navigateNotification } from "../../../src/dashboard/surfaces/notifications/notification-navigation.js";
 import { NotificationTargetSchema } from "../../../src/domain/notifications.js";
 it("keeps the inbox open when dirty Settings cancels and revalidates after acceptance", async () => {
   const target = NotificationTargetSchema.parse({ kind: "run", runId: "22222222-2222-4222-8222-222222222222", day: "2026-07-03" });

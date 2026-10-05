@@ -22,9 +22,9 @@ import { describe, expect, it } from "vitest";
 import {
   DETAIL_SHAPE_BESIDE_PX,
   DETAIL_THREE_COLUMN_PX,
-} from "../../../src/dashboard/surfaces/layout-metrics.js";
+} from "../../../src/dashboard/surfaces/queue/layout-metrics.js";
 
-const SOURCE = resolve(import.meta.dirname, "../../../src/dashboard/surfaces/log-panel.tsx");
+const SOURCE = resolve(import.meta.dirname, "../../../src/dashboard/surfaces/run-detail/log-panel.tsx");
 
 /**
  * The file's CODE, with comments removed. The prose in this file quotes the

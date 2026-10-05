@@ -23,7 +23,7 @@ import {
   planRunDetailFollow,
   RUN_DETAIL_FOLLOW_SETTLE_MS,
   type RunDetailFollowState,
-} from "../../../src/dashboard/state/use-run-detail.js";
+} from "../../../src/dashboard/surfaces/run-detail/use-run-detail.js";
 
 const RUN = "e1b8ae3e-0000-4000-8000-000000000001";
 const OTHER_RUN = "21ed4aa0-0000-4000-8000-000000000002";

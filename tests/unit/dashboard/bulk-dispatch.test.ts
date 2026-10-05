@@ -23,7 +23,7 @@ import {
   planBulkVerb,
   planBulkVerbs,
   type BulkCandidateRow,
-} from "../../../src/dashboard/app/bulk-dispatch.js";
+} from "../../../src/dashboard/app/commands/bulk-dispatch.js";
 import { BulkRunCommandResponseSchema } from "../../../src/domain/commands.js";
 import type { ActionDescriptorWire } from "../../../src/domain/dashboard/actions.js";
 

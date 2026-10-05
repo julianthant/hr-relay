@@ -3,8 +3,8 @@ import { readSettings } from "../../../src/server/settings-runtime.js";
 import assert from "node:assert/strict";
 import { act } from "react";
 import { afterEach, describe, it, vi } from "vitest";
-import { draftError, settingsLeaves } from "../../../src/dashboard/surfaces/settings-draft-model.js";
-import { modelRaw, modelRows, reorderModelRows } from "../../../src/dashboard/surfaces/settings-ranked-models.js";
+import { draftError, settingsLeaves } from "../../../src/dashboard/surfaces/settings/editor/settings-draft-model.js";
+import { modelRaw, modelRows, reorderModelRows } from "../../../src/dashboard/surfaces/settings/providers/settings-ranked-models.js";
 import { mountSettingsHarness, syntheticSettingsAuthority } from "./helpers/settings-harness.js";
 import { fixtureSettingsDocument } from "../../parity/helpers/fixture-settings.js";
 

@@ -359,7 +359,7 @@ describe("dashboard wire boundary (ref frontend-backend-integration §8)", () =>
     // and the barrel it draws every primitive from.
     expect(closure).toContain("src/dashboard/kit/kit-page.tsx");
     expect(closure).toContain("src/dashboard/ds/ui.tsx");
-    expect(closure).toContain("src/dashboard/ds/primitives-status.tsx");
+    expect(closure).toContain("src/dashboard/ds/primitives/primitives-status.tsx");
     const violations = [...closure]
       .filter((file) => forbidden.some((root) => file.startsWith(root)))
       .sort();

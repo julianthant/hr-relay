@@ -17,11 +17,11 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it } from "vitest";
 import { QueueSurfaceWireSchema } from "../../../src/domain/dashboard/projection.js";
-import { QueueRow } from "../../../src/dashboard/surfaces/queue.js";
+import { QueueRow } from "../../../src/dashboard/surfaces/queue/queue.js";
 import {
   queueGateAge,
   queueRowAccessibleName,
-} from "../../../src/dashboard/surfaces/queue-model.js";
+} from "../../../src/dashboard/surfaces/queue/queue-model.js";
 
 const HASH_A = "a".repeat(64);
 const HASH_B = "b".repeat(64);

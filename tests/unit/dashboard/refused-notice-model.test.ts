@@ -19,7 +19,7 @@ import {
   REFUSED_NOTICE_TITLE,
   refusedNoticeCopy,
   type RefusedCeremony,
-} from "../../../src/dashboard/surfaces/refused-notice-model.js";
+} from "../../../src/dashboard/surfaces/shared/actions/refused-notice-model.js";
 
 const CEREMONIES: readonly RefusedCeremony[] = ["parked-write", "identity-gate"];
 

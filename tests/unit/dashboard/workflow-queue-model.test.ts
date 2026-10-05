@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { QueueSurfaceWireSchema } from "../../../src/domain/dashboard/projection.js";
-import { approveMockRun, mockQueueCounts, mockQueueView, mockRunLog, seedMockRuns } from "../../../src/dashboard/surfaces/workflow-mock-model.js";
-import { mockQueueId, mockQueueSurface, mockQueueSurfaces } from "../../../src/dashboard/surfaces/workflow-queue-model.js";
-import { discardMockReview } from "../../../src/dashboard/surfaces/workflow-review-model.js";
+import { approveMockRun, mockQueueCounts, mockQueueView, mockRunLog, seedMockRuns } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
+import { mockQueueId, mockQueueSurface, mockQueueSurfaces } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-queue-model.js";
+import { discardMockReview } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-review-model.js";
 
 const day = "2026-08-03";
 describe("canonical workflow mock queue presentations", () => {

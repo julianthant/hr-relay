@@ -1,19 +1,19 @@
-import { buildWorkflowCatalog } from "../../../src/dashboard/surfaces/workflow-catalog-model.js";
+import { buildWorkflowCatalog } from "../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it } from "vitest";
 import { ActivityVolumeSchema } from "../../../src/domain/dashboard/activity-volume.js";
-import { ActivityReport } from "../../../src/dashboard/surfaces/activity.js";
+import { ActivityReport } from "../../../src/dashboard/surfaces/activity/activity.js";
 import { ACTIVITY_SAMPLE_RANGE, activitySample } from "../../../src/dashboard/surfaces/activity/activity-fixture.js";
 import { activityCompletionRate, activityDuration, activityFailureRate } from "../../../src/dashboard/surfaces/activity/activity-view-model.js";
-import { WorkflowExplorer } from "../../../src/dashboard/surfaces/explorer.js";
-import { LogSample } from "../../../src/dashboard/surfaces/logs/log-sample.js";
-import { separationLogs } from "../../../src/dashboard/surfaces/logs/log-fixture.js";
-import { visualLogSteps } from "../../../src/dashboard/surfaces/log-feed-model.js";
-import { selectedLogPresentation, selectedLogSample } from "../../../src/dashboard/surfaces/logs/log-selection-model.js";
-import { continuedLookupTimeline } from "../../../src/dashboard/surfaces/logs/log-selected-fixture.js";
+import { WorkflowExplorer } from "../../../src/dashboard/surfaces/explorer/explorer.js";
+import { LogSample } from "../../../src/dashboard/surfaces/run-detail/logs/log-sample.js";
+import { separationLogs } from "../../../src/dashboard/surfaces/run-detail/logs/log-fixture.js";
+import { visualLogSteps } from "../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
+import { selectedLogPresentation, selectedLogSample } from "../../../src/dashboard/surfaces/run-detail/logs/log-selection-model.js";
+import { continuedLookupTimeline } from "../../../src/dashboard/surfaces/run-detail/logs/log-selected-fixture.js";
 import { FIXTURE_DAY_WIRE, FIXTURE_IDS } from "../../parity/helpers/fixture-queue.js";
 
 const noop = () => {};

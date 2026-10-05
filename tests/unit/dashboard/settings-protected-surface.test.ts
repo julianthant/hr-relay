@@ -169,8 +169,8 @@ describe("independent protected Settings surface", () => {
 
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { SettingsSaveFeedback } from "../../../src/dashboard/surfaces/settings-feedback.js";
-import type { SettingsSaveState } from "../../../src/dashboard/surfaces/settings-attempt-model.js";
+import { SettingsSaveFeedback } from "../../../src/dashboard/surfaces/settings/editor/settings-feedback.js";
+import type { SettingsSaveState } from "../../../src/dashboard/surfaces/settings/editor/settings-attempt-model.js";
 it.each([
   [{ state: "conflict", message: "Current revision changed" }, "Credentials changed", false],
   [{ state: "unconfirmed", message: "Readback unavailable" }, "Credentials write unconfirmed", true],

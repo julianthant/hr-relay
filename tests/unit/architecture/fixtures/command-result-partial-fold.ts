@@ -14,7 +14,7 @@
  * It is checked in so the call-site walker is executed against a real
  * violation the import-only walker passed.
  */
-import { settleCommandResult } from "../../../../src/dashboard/app/command-result.js";
+import { settleCommandResult } from "../../../../src/dashboard/app/commands/command-result.js";
 import type { CommandResult } from "../../../../src/domain/commands.js";
 
 interface CommandClient {

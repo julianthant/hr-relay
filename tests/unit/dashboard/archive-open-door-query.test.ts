@@ -35,7 +35,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "vitest";
 
-const ARCHIVE_SURFACE = fileURLToPath(new URL("../../../src/dashboard/surfaces/archive.tsx", import.meta.url));
+const ARCHIVE_SURFACE = fileURLToPath(new URL("../../../src/dashboard/surfaces/archive/archive.tsx", import.meta.url));
 
 /**
  * Reads the `onOpenArchive` assignment site itself. The single-expression

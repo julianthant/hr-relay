@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { MOCK_WORKFLOWS, mockWorkflow, type MockWorkflowId } from "../../../src/dashboard/surfaces/workflow-mock-catalog.js";
-import { approveMockRun, initialMockDraft, mockRunLog, mockRunPipeline, mockRunsForDraft, mockWorkflowCounts, seedMockRuns, type MockDraft, type MockRun } from "../../../src/dashboard/surfaces/workflow-mock-model.js";
-import { mockOperationValue, mockOperations } from "../../../src/dashboard/surfaces/workflow-operation-model.js";
-import { discardMockReview, editReviewRecord, reviewRecords, updateMockReview } from "../../../src/dashboard/surfaces/workflow-review-model.js";
-import { activeCount, workflowStatusCounts } from "../../../src/dashboard/surfaces/shell-model.js";
+import { MOCK_WORKFLOWS, mockWorkflow, type MockWorkflowId } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.js";
+import { approveMockRun, initialMockDraft, mockRunLog, mockRunPipeline, mockRunsForDraft, mockWorkflowCounts, seedMockRuns, type MockDraft, type MockRun } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
+import { mockOperationValue, mockOperations } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-operation-model.js";
+import { discardMockReview, editReviewRecord, reviewRecords, updateMockReview } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-review-model.js";
+import { activeCount, workflowStatusCounts } from "../../../src/dashboard/surfaces/shell/shell-model.js";
 import { buildWorkflowMock, initialWorkflowChoices, updateWorkflowChoice, workflowContractSource } from "../../../src/dashboard/surfaces/explorer/explorer-workflow-model.js";
 import { allFields } from "../../../src/dashboard/surfaces/explorer/explorer-flow-model.js";
 

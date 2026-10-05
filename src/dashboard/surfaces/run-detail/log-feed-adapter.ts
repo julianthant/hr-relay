@@ -1,11 +1,11 @@
 import type { LogRowWire } from "../../../domain/dashboard/run-detail.js";
 import type { RunOperationStructureWire } from "../../../domain/dashboard/operation-structure.js";
-import type { LogEntry, LogField, LogScreenshot, LogStep } from "../log-feed-model.js";
+import type { LogEntry, LogField, LogScreenshot, LogStep } from "./logs/log-feed-model.js";
 import type { OperationActionObservationWire } from "../../../domain/dashboard/operation-structure.js";
-import { fmtActionClock } from "../format.js";
-import { SYSTEM_HOST_PRESENTATION } from "../settings-hosts-model.js";
-import { contiguousOperationRows, observedOperationOutcome, operationAction, operationObservationParent, operationValueText } from "../operation-structure-model.js";
-import { exactOperationCaptures, type RunCaptureItem } from "../run-captures-model.js";
+import { fmtActionClock } from "../shared/status/format.js";
+import { SYSTEM_HOST_PRESENTATION } from "../settings/general/settings-hosts-model.js";
+import { contiguousOperationRows, observedOperationOutcome, operationAction, operationObservationParent, operationValueText } from "../explorer/operation-structure-model.js";
+import { exactOperationCaptures, type RunCaptureItem } from "./run-captures-model.js";
 import { groupLogRows, logPillsOf } from "./logs-model.js";
 
 export type RetainedLogStep = Readonly<{ step: LogStep; lastLogId: string }>;

@@ -1,16 +1,16 @@
 // @vitest-environment jsdom
 import { BrowserSessionIdSchema } from "../../../src/domain/ids.js";
-import { workerTimelineView, type WorkerCardWire } from "../../../src/dashboard/surfaces/session-panel-model.js";
+import { workerTimelineView, type WorkerCardWire } from "../../../src/dashboard/surfaces/sessions/session-panel-model.js";
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, it } from "vitest";
-import { SessionPanel } from "../../../src/dashboard/surfaces/session-panel.js";
-import { parseWorkflows } from "../../../src/dashboard/surfaces/shell-model.js";
+import { SessionPanel } from "../../../src/dashboard/surfaces/sessions/session-panel.js";
+import { parseWorkflows } from "../../../src/dashboard/surfaces/shell/shell-model.js";
 import { DashboardDayWireSchema, WorkerCardWireSchema } from "../../../src/domain/dashboard/projection.js";
-import { createWorkerCommandDispatch } from "../../../src/dashboard/app/worker-command-dispatch.js";
+import { createWorkerCommandDispatch } from "../../../src/dashboard/app/commands/worker-command-dispatch.js";
 import { WorkerBrowserCommandRequestSchema, CommandResultSchema } from "../../../src/domain/commands.js";
-import { browserHealthLabel, retainedControlMessage, workerControlRefusal } from "../../../src/dashboard/app/session-control-model.js";
+import { browserHealthLabel, retainedControlMessage, workerControlRefusal } from "../../../src/dashboard/surfaces/sessions/session-control-model.js";
 import { FIXTURE_BOOTSTRAP, FIXTURE_DAY_WIRE, FIXTURE_NOW } from "../../parity/helpers/fixture-day.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);

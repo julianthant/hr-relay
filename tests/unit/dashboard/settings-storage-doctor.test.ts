@@ -5,8 +5,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it } from "vitest";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
-import { PreflightActionsProvider } from "../../../src/dashboard/state/preflight-actions.js";
-import { SettingsPage } from "../../../src/dashboard/surfaces/settings.js";
+import { PreflightActionsProvider } from "../../../src/dashboard/surfaces/settings/preflight/preflight-actions.js";
+import { SettingsPage } from "../../../src/dashboard/surfaces/settings/settings.js";
 import {
   SettingsSectionPrimitiveSchema,
   StorageHealthSummaryWireSchema,
@@ -15,7 +15,7 @@ import {
   StorageDoctorWireSchema,
   type StorageDoctorWire,
 } from "../../../src/domain/dashboard/storage.js";
-import { DEFAULT_CATALOG_VIEW } from "../../../src/dashboard/surfaces/row-catalog-model.js";
+import { DEFAULT_CATALOG_VIEW } from "../../../src/dashboard/surfaces/settings/catalog/row-catalog-model.js";
 
 class MeasurementFreeResizeObserver {
   observe(): void {}

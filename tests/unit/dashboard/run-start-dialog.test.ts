@@ -1,4 +1,4 @@
-import { buildWorkflowCatalog } from "../../../src/dashboard/surfaces/workflow-catalog-model.js";
+import { buildWorkflowCatalog } from "../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 // @vitest-environment jsdom
 /**
  * THE RUN MODAL, PRESSED — the half of D272 items 8 and 9 that no fold can hold.
@@ -44,9 +44,9 @@ import {
   type StartPlanWire as StartPlanResponse,
 } from "../../../src/domain/dashboard/start-plan.js";
 import { CommandResultSchema, type CommandResult } from "../../../src/domain/commands.js";
-import { parseWorkflows } from "../../../src/dashboard/surfaces/shell-model.js";
-import { RunStartDialog, type RunStartWorkflow } from "../../../src/dashboard/surfaces/run-start.js";
-import { START_DOOR_ABSENCE } from "../../../src/dashboard/surfaces/run-start-model.js";
+import { parseWorkflows } from "../../../src/dashboard/surfaces/shell/shell-model.js";
+import { RunStartDialog, type RunStartWorkflow } from "../../../src/dashboard/surfaces/run-start/run-start.js";
+import { START_DOOR_ABSENCE } from "../../../src/dashboard/surfaces/run-start/run-start-model.js";
 import { FIXTURE_BOOTSTRAP, FIXTURE_START_PICKER_BOOTSTRAP } from "../../parity/helpers/fixture-day.js";
 
 /**

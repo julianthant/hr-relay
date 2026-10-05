@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { buildExplorerPreview, previewFieldSource } from "../../../src/dashboard/surfaces/explorer/explorer-fixture.js";
 import { DEFAULT_SCENARIO, allFields, commentTemplate, blockedAfter } from "../../../src/dashboard/surfaces/explorer/explorer-flow-model.js";
-import { parseRoute, routeToSearch, routeWithoutTakeovers } from "../../../src/dashboard/app/url-state.js";
+import { parseRoute, routeToSearch, routeWithoutTakeovers } from "../../../src/dashboard/app/navigation/url-state.js";
 import { cn } from "../../../src/dashboard/lib/utils.js";
 
 describe("approved Explorer presentation", () => {

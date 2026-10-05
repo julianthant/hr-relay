@@ -10,10 +10,10 @@ import { createPreflightHarness } from "../../fixtures/preflight-seams.js";
 import { FIXTURE_EDITABLE_SETTINGS } from "../../parity/helpers/fixture-settings.js";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
-import { PreflightActionsProvider } from "../../../src/dashboard/state/preflight-actions.js";
-import { projectPreflight, useSettingsPreflight } from "../../../src/dashboard/surfaces/settings-preflight-model.js";
-import { preflightVerdict } from "../../../src/dashboard/surfaces/preflight-popover-model.js";
-import { PreflightReportContent } from "../../../src/dashboard/surfaces/settings-preflight.js";
+import { PreflightActionsProvider } from "../../../src/dashboard/surfaces/settings/preflight/preflight-actions.js";
+import { projectPreflight, useSettingsPreflight } from "../../../src/dashboard/surfaces/settings/preflight/settings-preflight-model.js";
+import { preflightVerdict } from "../../../src/dashboard/surfaces/shell/preflight-popover-model.js";
+import { PreflightReportContent } from "../../../src/dashboard/surfaces/settings/preflight/settings-preflight.js";
 
 Reflect.set(globalThis,"IS_REACT_ACT_ENVIRONMENT",true);
 const now = new Date("2026-09-19T12:00:00.000Z");

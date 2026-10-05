@@ -29,7 +29,7 @@ import {
 } from "../../../src/domain/dashboard/explorer.js";
 import { buildWorkflowExplorer } from "../../../src/server/dashboard/queries/explorer.js";
 import { explorerQueryDeps } from "../../fixtures/explorer-seams.js";
-import { ExplorerPresentationFields, NodeDetail } from "../../../src/dashboard/surfaces/explorer.js";
+import { ExplorerPresentationFields, NodeDetail } from "../../../src/dashboard/surfaces/explorer/explorer.js";
 
 const CLOCK = manualClock(new Date("2026-08-09T12:00:00.000Z"));
 

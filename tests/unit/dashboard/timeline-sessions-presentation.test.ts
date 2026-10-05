@@ -1,14 +1,14 @@
-import { buildWorkflowCatalog } from "../../../src/dashboard/surfaces/workflow-catalog-model.js";
+import { buildWorkflowCatalog } from "../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 const catalog = buildWorkflowCatalog([]);
 import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it } from "vitest";
-import { SessionPanel } from "../../../src/dashboard/surfaces/session-panel.js";
+import { SessionPanel } from "../../../src/dashboard/surfaces/sessions/session-panel.js";
 import { previewSessionAdd, previewSessionControl, sessionsSample } from "../../../src/dashboard/surfaces/sessions/sessions-fixture.js";
 import { sessionTimelineSummary, sessionTallies } from "../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
-import { decisionScenarios, previewScenarios, separationLogs } from "../../../src/dashboard/surfaces/logs/log-fixture.js";
-import { visualLogSteps } from "../../../src/dashboard/surfaces/log-feed-model.js";
+import { decisionScenarios, previewScenarios, separationLogs } from "../../../src/dashboard/surfaces/run-detail/logs/log-fixture.js";
+import { visualLogSteps } from "../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
 
 describe("frontend timeline and sessions", () => {
   it("every available timeline jump targets a displayed confirmed-action step", () => {

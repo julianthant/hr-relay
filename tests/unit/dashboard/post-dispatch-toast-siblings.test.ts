@@ -25,7 +25,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "vitest";
-import { commandFailureToast } from "../../../src/dashboard/app/command-result.js";
+import { commandFailureToast } from "../../../src/dashboard/app/commands/command-result.js";
 
 const DASHBOARD_APP = new URL("../../../src/dashboard/app/dashboard-app.tsx", import.meta.url);
 

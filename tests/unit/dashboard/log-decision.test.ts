@@ -3,10 +3,10 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it } from "vitest";
-import { LogDecisionBlock } from "../../../src/dashboard/surfaces/log-decision.js";
-import { decisionActionResult, decisionAnswerValid } from "../../../src/dashboard/surfaces/log-decision-model.js";
-import { logDecisionExamples } from "../../../src/dashboard/surfaces/logs/log-decision-fixture.js";
-import { filterLogSteps, logPlainText, logRowCount, type LogEntry, type LogStep } from "../../../src/dashboard/surfaces/log-feed-model.js";
+import { LogDecisionBlock } from "../../../src/dashboard/surfaces/run-detail/logs/log-decision.js";
+import { decisionActionResult, decisionAnswerValid } from "../../../src/dashboard/surfaces/run-detail/logs/log-decision-model.js";
+import { logDecisionExamples } from "../../../src/dashboard/surfaces/run-detail/logs/log-decision-fixture.js";
+import { filterLogSteps, logPlainText, logRowCount, type LogEntry, type LogStep } from "../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 let root: Root | undefined;

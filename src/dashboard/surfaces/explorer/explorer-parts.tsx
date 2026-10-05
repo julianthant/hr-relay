@@ -35,7 +35,7 @@ export function ExplorerParts(props: PartProps) {
     if (part.kind === "form") {
       const id = `${step.number}-${part.id}`;
       return <section key={key} className="my-3 overflow-hidden rounded-lg border border-ui-stroke bg-ui-table">
-        <details className="group" data-disclosure={id} open={open[id] ?? true} onToggle={(event) => onToggle(id, event.currentTarget.open)}>
+        <details className="group" data-disclosure={id} open={open[id] ?? true} onToggle={(event) => { if (event.currentTarget.open !== (open[id] ?? true)) onToggle(id, event.currentTarget.open); }}>
           <summary className={`group flex min-h-11 cursor-pointer list-none items-center gap-2.5 px-4 py-2.5 text-control [&::-webkit-details-marker]:hidden ${dsFocus}`}>
             <PanelsTopLeft aria-hidden className="size-4 shrink-0 text-ui-muted" /><strong className="font-semibold">{part.title}</strong>
             <span className="ml-auto text-caption text-ui-muted">{part.mode}</span><ChevronDown aria-hidden className="ml-2 size-3.5 shrink-0 text-ui-muted group-open:rotate-180" />
@@ -47,7 +47,7 @@ export function ExplorerParts(props: PartProps) {
     }
     if (part.kind === "detail") {
       const id = `${step.number}-${part.id}`;
-      return <details key={key} data-disclosure={id} open={open[id] ?? false} onToggle={(event) => onToggle(id, event.currentTarget.open)} className="group border-t border-ui-stroke">
+      return <details key={key} data-disclosure={id} open={open[id] ?? false} onToggle={(event) => { if (event.currentTarget.open !== (open[id] ?? false)) onToggle(id, event.currentTarget.open); }} className="group border-t border-ui-stroke">
         <summary className={`group flex cursor-pointer list-none items-center px-4 py-2 text-caption text-ui-secondary [&::-webkit-details-marker]:hidden ${dsFocus}`}>{part.title}<ChevronDown aria-hidden className="ml-auto size-3.5 group-open:rotate-180" /></summary>
         <ExplorerParts {...props} parts={part.parts} />
       </details>;

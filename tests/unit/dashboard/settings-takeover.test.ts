@@ -43,18 +43,18 @@ import {
   StorageHealthSummaryWireSchema,
 } from "../../../src/domain/dashboard/bootstrap.js";
 import { WorkerCardWireSchema } from "../../../src/domain/dashboard/projection.js";
-import { SessionPanel } from "../../../src/dashboard/surfaces/shell.js";
-import { SettingsPage } from "../../../src/dashboard/surfaces/settings.js";
+import { SessionPanel } from "../../../src/dashboard/surfaces/shell/shell.js";
+import { SettingsPage } from "../../../src/dashboard/surfaces/settings/settings.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
-import { appVersionTag, fmtAppVersion } from "../../../src/dashboard/surfaces/format.js";
+import { appVersionTag, fmtAppVersion } from "../../../src/dashboard/surfaces/shared/status/format.js";
 import {
   activeTakeover,
   parseRoute,
   routeAdvancesHistory,
   routeToSearch,
   type AppRouteState,
-} from "../../../src/dashboard/app/url-state.js";
+} from "../../../src/dashboard/app/navigation/url-state.js";
 import {
   DASHBOARD_MAIN_REGION_ID,
   SETTINGS_GEAR_ID,
@@ -64,8 +64,8 @@ import {
   resolveSettingsSection,
   settingsCloseFocusTargetId,
   type SettingsSection,
-} from "../../../src/dashboard/surfaces/settings-model.js";
-import { DEFAULT_CATALOG_VIEW } from "../../../src/dashboard/surfaces/row-catalog-model.js";
+} from "../../../src/dashboard/surfaces/settings/settings-model.js";
+import { DEFAULT_CATALOG_VIEW } from "../../../src/dashboard/surfaces/settings/catalog/row-catalog-model.js";
 
 /** Parsed, so a case cannot express a section the bootstrap would refuse. */
 function section(id: string, label: string): SettingsSection {

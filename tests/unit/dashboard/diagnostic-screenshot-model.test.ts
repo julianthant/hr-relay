@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { diagnosticScreenshots, initialScreenshotState, reduceScreenshot, screenshotDownloadAllowed, screenshotFilename, screenshotResourceKey, watchScreenshotRecheck } from "../../../src/dashboard/surfaces/diagnostic-screenshot-model.js";
-import type { DiagnosticScreenshotLoadFailure } from "../../../src/dashboard/surfaces/trust-model.js";
+import { diagnosticScreenshots, initialScreenshotState, reduceScreenshot, screenshotDownloadAllowed, screenshotFilename, screenshotResourceKey, watchScreenshotRecheck } from "../../../src/dashboard/surfaces/shared/run-evidence/diagnostic-screenshot-model.js";
+import type { DiagnosticScreenshotLoadFailure } from "../../../src/dashboard/surfaces/shared/run-evidence/trust-model.js";
 import { FIXTURE_DIAGNOSTIC_BUNDLE } from "../../parity/helpers/fixture-day.js";
 import { ArtifactIdSchema, DiagnosticBundleIdSchema, FingerprintSchema } from "../../../src/domain/ids.js";
 import { createDashboardClient, DashboardClientError } from "../../../src/dashboard/client/index.js";

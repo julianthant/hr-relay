@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { act, createElement, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { it, vi } from "vitest";
-import { OverlayLayerPresence, ToastProvider, useToasts } from "../../../src/dashboard/ds/primitives-overlay.js";
+import { OverlayLayerPresence, ToastProvider, useToasts } from "../../../src/dashboard/ds/primitives/primitives-overlay.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 class MeasurementFreeResizeObserver { observe(): void {} unobserve(): void {} disconnect(): void {} }

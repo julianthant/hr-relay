@@ -24,8 +24,8 @@ import { afterEach, describe, it } from "vitest";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { ToastProvider } from "../../../src/dashboard/ds/ui.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
-import { ArchiveWorkspace } from "../../../src/dashboard/surfaces/archive.js";
-import { archivedDeleteConfirm, type ArchiveView } from "../../../src/dashboard/surfaces/archive-model.js";
+import { ArchiveWorkspace } from "../../../src/dashboard/surfaces/archive/archive.js";
+import { archivedDeleteConfirm, type ArchiveView } from "../../../src/dashboard/surfaces/archive/archive-model.js";
 import {
   SavedArchiveDetailWireSchema,
   SavedArchiveIndexWireSchema,

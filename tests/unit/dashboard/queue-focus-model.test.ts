@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
-import { applyQueuePreviewAction, queuePreviewCounts, seedQueuePreview } from '../../../src/dashboard/surfaces/queue-preview-model.js';
+import { applyQueuePreviewAction, queuePreviewCounts, seedQueuePreview } from '../../../src/dashboard/surfaces/queue/queue-preview-model.js';
 import { FIXTURE_DAY_WIRE } from '../../parity/helpers/fixture-queue.js';
 import { FIXTURE_NOW } from '../../parity/helpers/fixture-identity.js';
 

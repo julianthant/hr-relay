@@ -17,7 +17,7 @@ import {
   timelineAxisTotals,
   timelineHasOrphanGate,
   timelineSegmentUnmeasured,
-} from "../../../src/dashboard/surfaces/log-panel-model.js";
+} from "../../../src/dashboard/surfaces/run-detail/log-panel-model.js";
 
 const GATE_ID = "e1b8ae3e-0000-4000-8000-0000000000a1";
 const OPENED_AT = "2026-08-25T12:00:00.000Z";

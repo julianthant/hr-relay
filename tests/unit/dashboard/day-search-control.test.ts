@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it, vi } from "vitest";
-import { RailSearch } from "../../../src/dashboard/surfaces/navbar/navbar-view.js";
-import { NAVBAR_SAMPLE } from "../../../src/dashboard/surfaces/navbar/navbar-fixture.js";
-import type { NavbarSearchResult } from "../../../src/dashboard/surfaces/navbar/navbar-view-model.js";
+import { RailSearch } from "../../../src/dashboard/surfaces/shell/search/navbar-view.js";
+import { NAVBAR_SAMPLE } from "../../../src/dashboard/surfaces/shell/search/navbar-fixture.js";
+import type { NavbarSearchResult } from "../../../src/dashboard/surfaces/shell/search/navbar-view-model.js";
 
 class MeasurementFreeResizeObserver { observe(): void {} unobserve(): void {} disconnect(): void {} }
 Reflect.set(globalThis, "ResizeObserver", MeasurementFreeResizeObserver);
@@ -16,12 +16,12 @@ let host: HTMLDivElement | undefined;
 afterEach(async () => { if (root) await act(async () => root?.unmount()); host?.remove(); root = undefined; host = undefined; vi.unstubAllGlobals(); });
 const settle = async () => { await act(async () => { await new Promise(resolve => setTimeout(resolve, 25)); }); };
 const button = (label: string) => { const target = [...document.querySelectorAll<HTMLButtonElement>("button")].find(item => item.getAttribute("aria-label") === label); assert.ok(target, label); return target; };
-async function mount() {
+async function mount(refuse = false) {
   const fetch = vi.fn(() => { throw new Error("unexpected-search-transport"); });
   vi.stubGlobal("fetch", fetch);
   const picks: NavbarSearchResult[] = [];
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
-  await act(async () => root?.render(createElement(RailSearch, { data: NAVBAR_SAMPLE, onResult: result => picks.push(result) })));
+  await act(async () => root?.render(createElement(RailSearch, { data: NAVBAR_SAMPLE, onResult: (result, opened, refused) => { picks.push(result); if (refuse) refused("The selected run is unavailable."); else opened(); } })));
   return { fetch, picks };
 }
 async function query(value: string) {
@@ -53,8 +53,20 @@ describe("canonical local search control", () => {
     const selectedId = input.getAttribute("aria-activedescendant"); assert.ok(selectedId);
     const selected = document.getElementById(selectedId); assert.ok(selected); assert.equal(document.activeElement, input);
     assert.match(selected.textContent ?? "", /Jordan Lee/);
-    await act(async () => selected.click()); assert.equal(picks[0].id, "sample-jordan"); assert.match(document.body.textContent ?? "", /Run navigation is not connected yet/); assert.equal(fetch.mock.calls.length, 0);
+    await act(async () => selected.click()); assert.equal(picks[0].id, "sample-jordan"); assert.equal(document.querySelector('[role="dialog"]'), null); assert.equal(fetch.mock.calls.length, 0);
 
+  });
+  it("retains the search and explains a refused destination without a request", async () => {
+    const { picks, fetch } = await mount(true);
+    await act(async () => button("Search runs").click()); await settle();
+    await query("Jordan");
+    const item = document.querySelector<HTMLElement>("[cmdk-item]"); assert.ok(item);
+    await act(async () => item.click());
+    assert.equal(picks[0].id, "sample-jordan");
+    assert.ok(document.querySelector('[role="dialog"]'));
+    assert.match(document.body.textContent ?? "", /The selected run is unavailable/);
+    assert.equal(document.querySelector<HTMLInputElement>("input[cmdk-input]")?.value, "Jordan");
+    assert.equal(fetch.mock.calls.length, 0);
   });
   it("closes and reopens without export or backend command controls", async () => {
     const { fetch } = await mount(); await act(async () => button("Search runs").click()); await settle(); await query("Jordan");

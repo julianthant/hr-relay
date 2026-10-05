@@ -11,10 +11,10 @@ import {
 import { StorageHealthSummaryWireSchema } from "../../../src/domain/dashboard/bootstrap.js";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
-import { SettingsPage } from "../../../src/dashboard/surfaces/settings.js";
-import { DEFAULT_CATALOG_VIEW } from "../../../src/dashboard/surfaces/row-catalog-model.js";
+import { SettingsPage } from "../../../src/dashboard/surfaces/settings/settings.js";
+import { DEFAULT_CATALOG_VIEW } from "../../../src/dashboard/surfaces/settings/catalog/row-catalog-model.js";
 import { PROVIDER_KEYS_SCHEMA_HASH } from "../../../src/domain/config/provider-keys.js";
-import { settingInput } from "../../../src/dashboard/surfaces/settings-draft-model.js";
+import { settingInput } from "../../../src/dashboard/surfaces/settings/editor/settings-draft-model.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 

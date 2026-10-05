@@ -1,4 +1,4 @@
-import { tabsFor, defaultTabFor } from "../../../src/dashboard/surfaces/log-panel-model.js";
+import { tabsFor, defaultTabFor } from "../../../src/dashboard/surfaces/run-detail/log-panel-model.js";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { LogRowWireSchema, NotePageSchema } from "../../../src/domain/dashboard/run-detail.js";
@@ -9,7 +9,7 @@ import {
   logPillsOf,
   logRowsOf,
   rowMatchesLogQuery,
-} from "../../../src/dashboard/surfaces/log-panel-model.js";
+} from "../../../src/dashboard/surfaces/run-detail/log-panel-model.js";
 
 const RUN = "e1b8ae3e-0000-4000-8000-000000000001";
 const TRACE = "pl-100000-e1b8";

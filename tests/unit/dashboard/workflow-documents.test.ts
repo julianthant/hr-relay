@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { OCR_DOCUMENT_FIXTURES, documentSourcePages, mockDocumentFixture } from "../../../src/dashboard/surfaces/workflow-document-model.js";
-import { approveMockRun, mockDeletionIds, mockRetrySource, mockRunsForDraft, seedMockRuns } from "../../../src/dashboard/surfaces/workflow-mock-model.js";
-import { editReviewRecord, reviewRecords, updateMockReview } from "../../../src/dashboard/surfaces/workflow-review-model.js";
-import { WorkflowMockReview } from "../../../src/dashboard/surfaces/workflow-review.js";
-import { mockQueueSurface } from "../../../src/dashboard/surfaces/workflow-queue-model.js";
-import { runDisplayId } from "../../../src/dashboard/surfaces/run-display-model.js";
+import { OCR_DOCUMENT_FIXTURES, documentSourcePages, mockDocumentFixture } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-document-model.js";
+import { approveMockRun, mockDeletionIds, mockRetrySource, mockRunsForDraft, seedMockRuns } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
+import { editReviewRecord, reviewRecords, updateMockReview } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-review-model.js";
+import { WorkflowMockReview } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-review.js";
+import { mockQueueSurface } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-queue-model.js";
+import { runDisplayId } from "../../../src/dashboard/surfaces/shared/status/run-display-model.js";
 
 describe("document-complete OCR previews", () => {
   it("covers the five OCR documents and excludes the non-OCR sick-hours checklist", () => {

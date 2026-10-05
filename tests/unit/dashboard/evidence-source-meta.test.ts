@@ -26,9 +26,9 @@ import {
   evidenceSourceMeta,
   inputHashFooter,
   type EvidenceSourceWire,
-} from "../../../src/dashboard/surfaces/trust-model.js";
+} from "../../../src/dashboard/surfaces/shared/run-evidence/trust-model.js";
 import { EvidenceFactSchema } from "../../../src/domain/trust/evidence.js";
-import { fmtClock } from "../../../src/dashboard/surfaces/format.js";
+import { fmtClock } from "../../../src/dashboard/surfaces/shared/status/format.js";
 
 const FINGERPRINT = FingerprintSchema.parse("3f9a1c2d".repeat(8));
 const OBSERVED_AT = IsoInstantSchema.parse("2026-08-21T21:03:12.000Z");

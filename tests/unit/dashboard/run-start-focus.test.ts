@@ -8,7 +8,7 @@ import { RUN_START_DOOR_ID } from "../../../src/dashboard/app/dashboard-app-mode
 import { createDashboardClient, type DashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { createFixtureBff } from "../../parity/helpers/fixture-bff.js";
-import { resetSpreadsheetMocks } from "../../../src/dashboard/surfaces/spreadsheet-mock-model.js";
+import { resetSpreadsheetMocks } from "../../../src/dashboard/surfaces/spreadsheets/spreadsheet-mock-model.js";
 import { FIXTURE_DAY_WIRE } from "../../parity/helpers/fixture-queue.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);

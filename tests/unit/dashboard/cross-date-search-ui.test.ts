@@ -6,7 +6,7 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { routeForCrossDateSearchResult, routeToSearch } from "../../../src/dashboard/app/url-state.js";
+import { routeForCrossDateSearchResult, routeToSearch } from "../../../src/dashboard/app/navigation/url-state.js";
 import { DashboardClientError } from "../../../src/dashboard/client/errors.js";
 import {
   CrossDateSearchPageSchema,
@@ -16,7 +16,7 @@ import {
 import {
   appendCorpusSearchPage,
   corpusSearchFailure,
-} from "../../../src/dashboard/surfaces/day-search-model.js";
+} from "../../../src/dashboard/surfaces/shell/day-search-model.js";
 
 const RAW_RUN_ID = "3b8f0a1e-2c4d-4e6f-8a9b-0c1d2e3f4a5b";
 

@@ -1,5 +1,5 @@
 import type { ActivityVolume } from "../../../domain/dashboard/activity-volume.js";
-import type { ActivityDateRange } from "../activity-model.js";
+import type { ActivityDateRange } from "./activity-model.js";
 
 export interface ActivityWorkflow {
   readonly id: string;

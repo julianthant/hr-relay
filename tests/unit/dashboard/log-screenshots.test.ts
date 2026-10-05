@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it, vi } from "vitest";
-import { LogScreenshots } from "../../../src/dashboard/surfaces/log-screenshots.js";
-import type { LogScreenshot } from "../../../src/dashboard/surfaces/log-feed-model.js";
+import { LogScreenshots } from "../../../src/dashboard/surfaces/run-detail/logs/log-screenshots.js";
+import type { LogScreenshot } from "../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 Reflect.set(HTMLElement.prototype, "scrollTo", () => {});

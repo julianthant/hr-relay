@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../parity/helpers/fixture-start.js";
-import { parseWorkflows } from "../../../src/dashboard/surfaces/shell-model.js";
-import { launchWorkflows } from "../../../src/dashboard/app/run-launch-model.js";
-import { buildWorkflowCatalog } from "../../../src/dashboard/surfaces/workflow-catalog-model.js";
-import { runPickerGroups } from "../../../src/dashboard/surfaces/run-start-picker-model.js";
-import type { RunStartWorkflow } from "../../../src/dashboard/surfaces/run-start.js";
+import { parseWorkflows } from "../../../src/dashboard/surfaces/shell/shell-model.js";
+import { launchWorkflows } from "../../../src/dashboard/surfaces/run-start/run-launch-model.js";
+import { buildWorkflowCatalog } from "../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
+import { runPickerGroups } from "../../../src/dashboard/surfaces/run-start/run-start-picker-model.js";
+import type { RunStartWorkflow } from "../../../src/dashboard/surfaces/run-start/run-start.js";
 
 const served = launchWorkflows(parseWorkflows(FIXTURE_START_PICKER_BOOTSTRAP.workflows));
 const catalog = buildWorkflowCatalog(served);

@@ -5,7 +5,7 @@ import {
   buildActivityVolumeBoundarySkeleton,
   type ActivityVolume,
 } from "../../../src/domain/dashboard/activity-volume.js";
-import { createActivityVolumeChartModel } from "../../../src/dashboard/surfaces/activity-chart-model.js";
+import { createActivityVolumeChartModel } from "../../../src/dashboard/surfaces/activity/activity-chart-model.js";
 
 function volumeForRange(
   from: string,

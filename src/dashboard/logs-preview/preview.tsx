@@ -2,8 +2,8 @@ import { useState } from "react";
 import { Moon, Sun } from "lucide-react";
 import { Button, IconButton, useDemoTheme } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
-import { LogFeed } from "../surfaces/log-feed.js";
-import { previewScenarios } from "../surfaces/logs/log-fixture.js";
+import { LogFeed } from "../surfaces/run-detail/logs/log-feed.js";
+import { previewScenarios } from "../surfaces/run-detail/logs/log-fixture.js";
 
 export function LogsPreview() {
   const [scenarioId, setScenarioId] = useState<string>("separation");

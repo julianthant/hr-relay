@@ -9,7 +9,7 @@ import { Hono } from "hono";
 import {
   ContextRail,
   type ContextSections,
-} from "../../../src/dashboard/surfaces/context-rail.js";
+} from "../../../src/dashboard/surfaces/run-detail/context-rail.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { ToastProvider } from "../../../src/dashboard/ds/ui.js";
 import {

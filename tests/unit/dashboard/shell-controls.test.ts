@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, it } from "vitest";
-import { useGlobalKeys, type GlobalKeyBindings } from "../../../src/dashboard/app/global-keys.js";
+import { useGlobalKeys, type GlobalKeyBindings } from "../../../src/dashboard/app/navigation/global-keys.js";
 Reflect.set(globalThis,"IS_REACT_ACT_ENVIRONMENT",true);
 let root: Root | undefined;
 afterEach(async () => {await act(async () => root?.unmount());document.body.innerHTML="";});

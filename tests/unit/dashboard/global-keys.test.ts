@@ -27,12 +27,12 @@ import {
 } from "../../../src/domain/separations/identity-evidence.js";
 import type { IdentityEvidencePacket } from "../../../src/domain/separations/identity-evidence.js";
 import { deriveJobRowFromCells } from "../../../src/stores/ucpath/driver/person-org-operation.js";
-import { attentionRunIds } from "../../../src/dashboard/surfaces/queue-model.js";
-import { nextAttention, stepSelection } from "../../../src/dashboard/app/global-keys.js";
+import { attentionRunIds } from "../../../src/dashboard/surfaces/queue/queue-model.js";
+import { nextAttention, stepSelection } from "../../../src/dashboard/app/navigation/global-keys.js";
 import {
   composeCommandRequest,
   type CommandAction,
-} from "../../../src/dashboard/app/command-dispatch.js";
+} from "../../../src/dashboard/app/commands/command-dispatch.js";
 import { noSeparationWritePlan } from "../../../src/domain/separations/write-plan.js";
 
 const HASH_A = "a".repeat(64);

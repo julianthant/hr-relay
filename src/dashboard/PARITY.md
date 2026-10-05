@@ -223,8 +223,8 @@ carries the citation in code.
 
 | Deviation | Where | Why it stays | Rejected |
 |---|---|---|---|
-| **The Data section's `aria-label` is its VISIBLE label** (ledger 2 C16) | `surfaces/context-rail.tsx` | The demo's region says `Data` under a visible `Extracted fields` — a mismatch it inherited when its own visible label changed and its region name did not. Porting it would put two names on one region and undo the one-expression rule this bundle ratified for WCAG 2.5.3 (`intake.tsx`'s review checkbox). `DATA_SECTION_LABEL` feeds both halves so they cannot drift | A — port `aria-label="Data"` verbatim |
-| **The unattributed ledger group takes no `Well` and no band** (ledger 2 C51/C54) | `surfaces/context-rail.tsx` | The demo has no counterpart because it always knows the step. The chrome ENCODES the step, so a group that has none has nothing to encode and an empty band would be D252's made-up heading in a quieter form. Its rows keep the dividers, which separate values rather than name a producer | B — give it a band with an invented or blank heading |
+| **The Data section's `aria-label` is its VISIBLE label** (ledger 2 C16) | `surfaces/run-detail/context-rail.tsx` | The demo's region says `Data` under a visible `Extracted fields` — a mismatch it inherited when its own visible label changed and its region name did not. Porting it would put two names on one region and undo the one-expression rule this bundle ratified for WCAG 2.5.3 (`intake.tsx`'s review checkbox). `DATA_SECTION_LABEL` feeds both halves so they cannot drift | A — port `aria-label="Data"` verbatim |
+| **The unattributed ledger group takes no `Well` and no band** (ledger 2 C51/C54) | `surfaces/run-detail/context-rail.tsx` | The demo has no counterpart because it always knows the step. The chrome ENCODES the step, so a group that has none has nothing to encode and an empty band would be D252's made-up heading in a quieter form. Its rows keep the dividers, which separate values rather than name a producer | B — give it a band with an invented or blank heading |
 
 Seven more are ruled by **D275 items 2 and 8** and **D276 items 1–3** (unit V1, the Track F
 vocabulary sweep; ledger 3 rows IN7, EX26, EX55, EX172, VB34/VB36, VB50). Same rule: each site
@@ -232,12 +232,12 @@ carries the citation in code.
 
 | Deviation | Where | Why it stays | Rejected |
 |---|---|---|---|
-| **The intake workspace dismisses from its HEADER, and the word is `Close`** (ledger 3 IN7) | `surfaces/intake.tsx` | The demo's `Cancel` is a DIALOG footer button and D173 reshaped this surface into a workspace, which has no dialog footer. `Cancel` would also misname it: by the time the header is on screen the upload has created a durable session with an artifact behind it, so the control closes the workspace and cancels nothing. D298 removed the `Another file` reset beside it: it reset to the upload page, and there is no upload page | A — port `Cancel` into a footer this surface does not have |
-| **The workflow list `Panel` takes an `aria-label`** (ledger 3 EX26) | `surfaces/explorer.tsx` | Two `Panel` landmarks sit side by side here, and a landmark with no name is one an assistive reader cannot tell from the other. The demo's list is a bare `div`, so it never had two landmarks to distinguish | B — drop the name for exactness |
-| **The connector prints `no edge between them`** (ledger 3 EX55) | `surfaces/explorer.tsx` | `dependsOn` is a real declaration a descriptor may omit, so the demo's unconditional `always` would tell the operator that the next node WAITS for this one when nothing says it does — on the surface whose whole subject is what waits for what | B — print `always` on both arms |
-| **The unknown-workflow empty state offers a door** (ledger 3 EX172) | `surfaces/explorer.tsx` | The arm is reached by a deep link naming a workflow the registry no longer serves; without it the operator's only exit from a stale bookmark is the URL bar. It names the workflow it opens, and is suppressed when the registry is empty | B — remove it; C — offer a generic "open a workflow" |
-| **The bump record's fields are capped and counted** (ledger 3 VB34/VB36) | `surfaces/archive.tsx` | The caps ARE `VersionBumpChangeRecordSchema`'s own (`.max(200)` / `.max(1000)`), so the durable store will refuse a longer record. Meeting a limit as a refusal after the press is what this dialog's "there is no force arm" argument is against | B — uncap for exactness and refuse after the press |
-| **The bump refusal enters through the shared transition** (ledger 3 VB50) | `surfaces/archive.tsx` | D275 item 2's own convention. The demo's refusal is fixture-authored and never arrives from a dispatch, so it has no counterpart; this one is the answer to a click and reads as a page change without it | B — render it with no transition |
+| **The intake workspace dismisses from its HEADER, and the word is `Close`** (ledger 3 IN7) | `surfaces/intake/intake.tsx` | The demo's `Cancel` is a DIALOG footer button and D173 reshaped this surface into a workspace, which has no dialog footer. `Cancel` would also misname it: by the time the header is on screen the upload has created a durable session with an artifact behind it, so the control closes the workspace and cancels nothing. D298 removed the `Another file` reset beside it: it reset to the upload page, and there is no upload page | A — port `Cancel` into a footer this surface does not have |
+| **The workflow list `Panel` takes an `aria-label`** (ledger 3 EX26) | `surfaces/explorer/explorer.tsx` | Two `Panel` landmarks sit side by side here, and a landmark with no name is one an assistive reader cannot tell from the other. The demo's list is a bare `div`, so it never had two landmarks to distinguish | B — drop the name for exactness |
+| **The connector prints `no edge between them`** (ledger 3 EX55) | `surfaces/explorer/explorer.tsx` | `dependsOn` is a real declaration a descriptor may omit, so the demo's unconditional `always` would tell the operator that the next node WAITS for this one when nothing says it does — on the surface whose whole subject is what waits for what | B — print `always` on both arms |
+| **The unknown-workflow empty state offers a door** (ledger 3 EX172) | `surfaces/explorer/explorer.tsx` | The arm is reached by a deep link naming a workflow the registry no longer serves; without it the operator's only exit from a stale bookmark is the URL bar. It names the workflow it opens, and is suppressed when the registry is empty | B — remove it; C — offer a generic "open a workflow" |
+| **The bump record's fields are capped and counted** (ledger 3 VB34/VB36) | `surfaces/archive/archive.tsx` | The caps ARE `VersionBumpChangeRecordSchema`'s own (`.max(200)` / `.max(1000)`), so the durable store will refuse a longer record. Meeting a limit as a refusal after the press is what this dialog's "there is no force arm" argument is against | B — uncap for exactness and refuse after the press |
+| **The bump refusal enters through the shared transition** (ledger 3 VB50) | `surfaces/archive/archive.tsx` | D275 item 2's own convention. The demo's refusal is fixture-authored and never arrives from a dispatch, so it has no counterpart; this one is the answer to a click and reads as a page change without it | B — render it with no transition |
 
 The import button is gone (D296), which is what "neither is permanent" meant. The Escape-clear
 is deliberately NOT a `shortcuts-model.ts` entry — the legend's own *When they fire* rules say an
@@ -438,3 +438,20 @@ The 2026-10-05 OnBase document-type amendment uses one dropdown for Oath, I-9 Se
 I-9 Section 2 and Emergency Contact. The unavailable-types disclosure is removed. Selection
 continues through Confirm, OCR, approved person logs and Rerun, with single-section I-9 sources.
 Focused evidence is `onbase-document-types-20261005`; runtime document admission is unchanged.
+
+
+## Frontend organization and navigation amendment (2026-10-05)
+
+Feature components, models, styles and producers share cohesive directories. Navigation and commands
+have separate app groups; client facades and the DS public barrel remain stable. Recursive refresh/memo
+guards cover nested directories without dropping membership. The dashboard README owns the folder map.
+The single history owner accepts bounded view coordinates and batches one gesture into one entry.
+Typed searches replace the entry. Meaningful mock views, launcher/import/review stages, filters and
+source/disclosure navigation restore through Back/Forward; private drafts and files remain in memory.
+Unknown destinations are explicit. Explorer initialization adds no history entries, Settings restores
+reading positions, exact run search recognizes displayed aliases and notification evidence wraps.
+
+The ten-example proposal webpage is separate from the application and introduces no product features.
+Evidence is retained under `frontend-audit-20261005`. Desktop Settings/workflow and functional checks,
+focused tests, lint and build do not replace full frozen-reference/coverage/phase-exit acceptance.
+Inherited broad test and type-contract failures remain explicit; no references were refrozen.

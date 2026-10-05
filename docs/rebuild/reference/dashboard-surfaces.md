@@ -174,7 +174,7 @@ Activity export remains a visible placeholder. A separately scoped backend produ
 authoritative projections and feed these same components while preserving approved layouts and
 interactions. Activity query/export authority and Logs failure/resolve wiring remain deferred. Migrate
 old connected-UI tests intentionally; synthetic samples are never live authority. The reusable palette
-and type scale are in the [Dashboard theme guide](../../../src/dashboard/ds/DASHBOARD-THEME.md).
+and type scale are in the [Dashboard theme guide](../../../src/dashboard/ds/theme/DASHBOARD-THEME.md).
 
 Sessions cards place the workflow/subject header first, the systems grid next, and the current action
 with its node timeline after that; elapsed time and controls finish the card. The grid has at most two
@@ -193,9 +193,10 @@ UI. The former connected SessionPanel and timeline renderer are retired. Backend
 authority remains a separate wiring task.
 
 `WorkspaceRail` supplies local `NavbarData` to the icon-triggered search dialog and local
-`NotificationsState` to the inline `NotificationsView`. Search and notification examples use local
-fixtures; their navigation placeholders invoke no API, command, browser permission or OS delivery
-path. The shared DatePicker above Logs retains the route-owned date, limits and Today action.
+`NotificationsState` to the inline `NotificationsView`. Search and notification examples derive from current queue and local preview records; selecting
+a result opens its exact run or OCR Records destination through the shared history owner. Refused
+destinations retain the query and an explicit message. Delivery and read receipts remain session-local;
+these interactions invoke no HR command or OS delivery path. The shared DatePicker above Logs retains the route-owned date, limits and Today action.
 
 The notification rail keeps a compact header and filter row fixed while its single list scrolls.
 History-gap pins are absent from both the list and unread count; the normal fixture has three unread
@@ -203,9 +204,9 @@ updates. Read state is independent of pending run actions. Removing a filtered r
 the active filter. Escape closes the notification view and focuses the bell, including after Read all
 becomes disabled. Empty, loading, unavailable and toast examples remain distinct. Snooze remains retired.
 The shared
-semantic palette is authored in `src/dashboard/ds/dashboard-theme.css`; DS, body, Settings and shadcn
-neutral aliases resolve through `src/dashboard/ds/tokens.css`. Current values and presentation seams
-are in the [Dashboard theme guide](../../../src/dashboard/ds/DASHBOARD-THEME.md).
+semantic palette is authored in `src/dashboard/ds/theme/dashboard-theme.css`; DS, body, Settings and shadcn
+neutral aliases resolve through `src/dashboard/ds/theme/tokens.css`. Current values and presentation seams
+are in the [Dashboard theme guide](../../../src/dashboard/ds/theme/DASHBOARD-THEME.md).
 
 The approved mixed queue presentation retains the existing system title font and monospaced gray
 footer band, with 14px top padding. Regular rows have no leading status or information icon. Bulk
@@ -223,6 +224,32 @@ distinct state. Workflow-batch items render separately even when the served sess
 no grouping control or grouping command is offered. Logical retry identity remains item-scoped, and
 keyboard traversal follows the visible status bands. Bands retain uppercase labels, circular counts and
 horizontal rules. This presentation changes neither served status/actions nor backend publication.
+
+
+The 2026-10-05 frontend organization and navigation amendment groups components, pure models,
+feature styles and producers under cohesive `surfaces/` directories. `app/navigation/` is the single
+history owner; `app/commands/`, client query/command/subscription implementations and DS
+primitives/theme are separate groups. Public client facades and `ds/ui.tsx` remain stable.
+Component-only export and memo-prop guards recurse through nested features and retain explicit
+membership checks. The dashboard README owns the folder map and change-placement guidance.
+
+A bounded schema-validated `view` query contains page and view coordinates: workflow/run selection,
+queue filters/sort/disclosures, launcher stages, notification views, worker selection, spreadsheet
+viewer/import stages, OCR source pages, Explorer disclosures/field sources and version-review stages. Same-event
+updates create one native history entry; typed search replaces it. Existing Settings draft guards
+and native cursor restoration remain the only navigation authority. Private values, files, OCR
+corrections, credentials, command outcomes and read receipts remain outside URLs. Drafts survive
+history in the running page; reload does not manufacture missing session data. Transient menus,
+focus, validation and zoom stay local. Unknown destinations and source addresses are explicit.
+Explorer initial/restored details events do not create history entries. Settings retains each
+section's reading position during navigation. Run search indexes exact current queue/preview IDs
+and their displayed aliases; cross-day service search remains unwired. Notification evidence wraps.
+
+The separate proposal showcase contains the six audit additions and four further examples in
+context; it changes no product authority. Current review, scripts and browser evidence are retained
+under `frontend-audit-20261005`, with the updated operator report at
+`frontend-audit-20261004/dashboard-review.md`. Focused checks do not claim the inherited broad test
+failures, type diagnostics or Phase 3.1.19 frozen-reference/exit obligations have passed.
 
 
 **What this doc is.** The contract for everything the operator SEES and for every mechanism that
@@ -1631,10 +1658,10 @@ same way still fails.
 - [x] D67/D95/D283/D351/D352 — twelve closed target families over 40 actions, one idempotent actor-stamped envelope, one exhaustive dispatcher, one durable command journal (`src/domain/commands.ts`, `src/core/command-kernel.ts`)
 - [x] the Phase-1 arm partition is checked against the D95 registry in BOTH directions at module load — an action neither list carries, or both, throws before any command can dispatch (`command-kernel.ts`)
 - [x] D233/D234 — CAS on every run verb, `bump` included; `hide`/`unhide` are retired from the whole stack
-- [x] D253 — `CommandResultSchema` has three arms and TWO are refusals; every dashboard module settles through the one exhaustive fold (`src/dashboard/app/command-result.ts`, guarded by `command-result-exhaustive`)
+- [x] D253 — `CommandResultSchema` has three arms and TWO are refusals; every dashboard module settles through the one exhaustive fold (`src/dashboard/app/commands/command-result.ts`, guarded by `command-result-exhaustive`)
 - [x] D109 — a descriptor-driven start consumes a server-issued `start_plan`, revalidated and consumed in the same transaction that creates the runs
 - [!] `supersede-active` is implemented in the kernel, unanticipated by the planner, and reported to the operator as unimplemented — three sites, two answers (below)
-> 2026-08-20 | docs-dash-surfaces 5.1b | verified against src/domain/commands.ts, src/domain/dashboard/actions.ts, src/core/{command-kernel,run-fan-out}.ts, src/services/start/plan.ts and src/dashboard/app/command-result.ts; left: the `supersede-active` split, filed rather than fixed here
+> 2026-08-20 | docs-dash-surfaces 5.1b | verified against src/domain/commands.ts, src/domain/dashboard/actions.ts, src/core/{command-kernel,run-fan-out}.ts, src/services/start/plan.ts and src/dashboard/app/commands/command-result.ts; left: the `supersede-active` split, filed rather than fixed here
 <!-- /roadmap-status -->
 
 The dashboard, CLI, recovery code, workflow editor, notification inbox, gate resolvers and capture
@@ -1732,7 +1759,7 @@ section read *"`run`'s `edit-checkpoint` arm plus the `intake`, `settings`, `ver
 treats a CAS conflict as success — which is exactly what the Context rail's Data save and the
 notification bell did, closing the editor and reporting a correction *saved* that the kernel had
 refused. Every module under `src/dashboard/**` therefore settles through ONE exhaustive fold,
-`settleCommandResult` (`src/dashboard/app/command-result.ts`), whose `switch` over the discriminant
+`settleCommandResult` (`src/dashboard/app/commands/command-result.ts`), whose `switch` over the discriminant
 makes a fourth arm a compile error; `command-result-exhaustive` refuses any dashboard module that
 names one refusal arm without the other. The two refusals stay distinguishable in the SENTENCE,
 because the operator does different things about them: a conflict names the server's version and
@@ -2092,7 +2119,7 @@ byte verification every manifest received when it was written — while the doct
 [--json]`, exit 0 only when authority and span/authority reconciliation are healthy AND a verified current backup exists)
 re-verifies backup BYTES on demand; an unparseable manifest reads `missing` on the summary (its
 closed enum's fail-safe arm) and `invalid`, named, on the doctor. Settings itself
-(`src/dashboard/surfaces/settings.tsx`, the top-bar gear with an attention dot) renders the
+(`src/dashboard/surfaces/settings/settings.tsx`, the top-bar gear with an attention dot) renders the
 sections the SERVER serves (`settingsSections`, today exactly `storage`) — §5's mandate "expose
 age/health in Settings" remains read-only. DCC1 activated the backend `apply-settings` authority
 and DCC3 landed its bounded resolver-owned editing controls; `{#def-settings}` keeps the broader
@@ -5330,7 +5357,7 @@ endpoint, the action-descriptor rule (§8.5) and the parity references.
 - [ ] D9's `rejected` containment arm is not on the wire; `ContainmentSchema` serves `root | member | linked` and the row model's `rejected` arm is not on it
 - [ ] D13's `Re-upload` is not in `ActionCommandKeySchema`; the failure summary half is built and served
 - [ ] every group-row fact (D5 collapse, D11's well, D14's group-of-one, `memberPreview`, the rollup) is drawn from fixtures — no `operation` run has ever been minted (§9.10)
-> 2026-08-20 | docs-dash-surfaces 5.1c | verified against src/domain/dashboard/projection.ts, src/server/dashboard/projectors/{queue-row-actions,run-subject-title}.ts, src/domain/dashboard/actions.ts, src/dashboard/surfaces/{queue,queue-toolbar,queue-model,run-identity-model}*, src/dashboard/ds/tokens.css; left: the group shape's producer and D16's operator call
+> 2026-08-20 | docs-dash-surfaces 5.1c | verified against src/domain/dashboard/projection.ts, src/server/dashboard/projectors/{queue-row-actions,run-subject-title}.ts, src/domain/dashboard/actions.ts, src/dashboard/surfaces/{queue,queue-toolbar,queue-model,run-identity-model}*, src/dashboard/ds/theme/tokens.css; left: the group shape's producer and D16's operator call
 <!-- /roadmap-status -->
 
 ### 9.3 Run detail — open and follow a run
@@ -5681,7 +5708,7 @@ follow key on the day wire and the parity references.
 - [ ] `context-evidence` is fetched whenever advertised and handed to nothing; no consumer exists
 - [ ] no parity reference photographs the categorical strip — the run-detail fixture serves no `steps`
 - [ ] D17's per-member receipt table: `receipt.tsx` renders no member rollup
-> 2026-08-20 | docs-dash-surfaces 5.1c | verified against src/server/dashboard/queries/run-detail.ts, src/domain/dashboard/run-detail.ts, src/base/workflow.ts, src/dashboard/surfaces/{log-panel,log-panel-model,receipt}*, src/dashboard/state/use-run-detail.ts; left: four declared-unservable sections and the categorical strip's missing reference
+> 2026-08-20 | docs-dash-surfaces 5.1c | verified against src/server/dashboard/queries/run-detail.ts, src/domain/dashboard/run-detail.ts, src/base/workflow.ts, src/dashboard/surfaces/{log-panel,log-panel-model,receipt}*, src/dashboard/surfaces/run-detail/use-run-detail.ts; left: four declared-unservable sections and the categorical strip's missing reference
 <!-- /roadmap-status -->
 
 #### 9.3.1 The Context rail — Data, Edit Data, provenance
@@ -5970,7 +5997,7 @@ contract is that a read surface must not wear an editor's affordances.
 **They are TAKEOVERS, and precedence is resolved in ONE place.** Each replaces the main region
 rather than dimming it, for §9.7.1's reason — a half-visible queue behind a reference view is the
 modal it deliberately is not. A link may carry any combination of keys, so `activeTakeover`
-(`src/dashboard/app/url-state.ts:129-142`) states the winner rather than leaving it to whichever
+(`src/dashboard/app/navigation/url-state.ts:129-142`) states the winner rather than leaving it to whichever
 JSX branch is tested first: **`intake` → `archive` → `activity` → `explore` → `catalog`**. The
 operator's in-progress WORK outranks the two places they navigate to and stay, and those outrank the
 two things they look UP; the workflow-scoped reference outranks the system-scoped one. Writing any
@@ -5995,7 +6022,7 @@ parity references for all three.
 - [~] D186 — D283/DCC close only the Explorer's strict existing-workflow label/icon/category subset; broader authoring/policy work remains deferred with its named trigger (`{#def-explorer-edit}`, §9.5.3)
 - [ ] D189/D294 — the production BFF serves no frontend bytes, so `dashboard:prod` cannot serve the ordinary built local dashboard (`{#def-byte-path}`)
 - [ ] the per-archived-run storage delta is unmeasured: no production database has archived a run (§9.5.1)
-> 2026-08-21 | docs-dash-surfaces 5.1d | verified against src/dashboard/surfaces/{archive,activity,explorer,ui-catalog,intake,settings,top-bar}*, src/dashboard/phone/**, src/dashboard/app/url-state.ts, src/server/dashboard/queries/{archive,explorer,storage}.ts, src/services/archive/archive-service.ts; left: the two deferrals and three named deviations above
+> 2026-08-21 | docs-dash-surfaces 5.1d | verified against src/dashboard/surfaces/{archive,activity,explorer,ui-catalog,intake,settings,top-bar}*, src/dashboard/phone/**, src/dashboard/app/navigation/url-state.ts, src/server/dashboard/queries/{archive,explorer,storage}.ts, src/services/archive/archive-service.ts; left: the two deferrals and three named deviations above
 <!-- /roadmap-status -->
 
 #### 9.5.1 The Archive — a record that needs no old code to read (D80)
@@ -6965,7 +6992,7 @@ phone selects the light theme and spends no new colour. The palette budget, the 
 the tailwind ratchet are unchanged, and no operator surface moves. **Two vocabularies, one fact:**
 the attribute VALUE is `light` — stamped on both `<html>` and `<body>` of `capture.html:2, 22`, with
 `<meta name="color-scheme" content="light">` beside it — and `Paper Ink` is that palette's product
-NAME (`DEMO_THEME_LABEL`, `src/dashboard/ds/theme.ts:45-48`, and the word the parity references
+NAME (`DEMO_THEME_LABEL`, `src/dashboard/ds/theme/theme.ts:45-48`, and the word the parity references
 carry). A reader who greps for `paper-ink` in the phone entry finds nothing and should not conclude
 the theme is unset.
 
@@ -7966,7 +7993,7 @@ read contract and §7 the parity lane.
 - [x] D195 — the panel region is a grid, so the no-run-open case cannot leave ~950px of empty black
 - [!] the drawn word for `waiting` is `Review`; D12/D18/D22/D23 all say `Waiting on you` — reconcile under `{#separations-compiled-acceptance}` before freeze
 - [ ] re-calibration on the SSE `health` heartbeat, deferred with its trigger named (D189's exposed path)
-> 2026-08-20 | docs-dash-surfaces 5.1c | verified against src/dashboard/surfaces/{shell,shell-model,workflow-category,status}*, src/dashboard/ds/{primitives-status.tsx,tokens.css}, src/dashboard/state/served-clock.ts, src/dashboard/app/{dashboard-app,global-keys}*, src/dashboard/surfaces/layout-metrics.ts; left: the heartbeat instant and one vocabulary call
+> 2026-08-20 | docs-dash-surfaces 5.1c | verified against src/dashboard/surfaces/{shell,shell-model,workflow-category,status}*, src/dashboard/ds/{primitives-status.tsx,tokens.css}, src/dashboard/state/served-clock.ts, src/dashboard/app/{dashboard-app,global-keys}*, src/dashboard/surfaces/queue/layout-metrics.ts; left: the heartbeat instant and one vocabulary call
 <!-- /roadmap-status -->
 
 ### 9.10 The delegation and row model (row-model D5–D24)
@@ -8148,7 +8175,7 @@ dropped, and this table is how a citation to the old flat list resolves.
 - [ ] D9's `rejected` containment arm is not on the wire (`ContainmentSchema` serves `root | member | linked`)
 - [ ] D13's `Re-upload` verb, and the OCR/packet surfaces D7/D8/D10/D17 describe (§9.3)
 - [!] D16's "no confirmation dialog" against the built confirm-first dialog — reconcile before `{#separations-compiled-acceptance}` closes
-> 2026-08-21 | docs-dash-surfaces 5.1c | verified against src/core/command-kernel.ts (`shape: "single"` at every enqueue), src/domain/dashboard/projection.ts (`ContainmentSchema`), src/dashboard/surfaces/{queue,queue-model}*, src/dashboard/ds/tokens.css; left: the producer for every group-shaped fact in this section
+> 2026-08-21 | docs-dash-surfaces 5.1c | verified against src/core/command-kernel.ts (`shape: "single"` at every enqueue), src/domain/dashboard/projection.ts (`ContainmentSchema`), src/dashboard/surfaces/{queue,queue-model}*, src/dashboard/ds/theme/tokens.css; left: the producer for every group-shaped fact in this section
 
 ## Run completion storage
 

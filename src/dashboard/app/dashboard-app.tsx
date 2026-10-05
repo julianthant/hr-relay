@@ -1,12 +1,16 @@
-import { buildWorkflowCatalog, servedLaunchWorkflows } from "../surfaces/workflow-catalog-model.js";
-import { DashboardSkeleton, QueueSkeleton, RunPanelSkeleton } from "../surfaces/loading.js";
-import { SettingsSectionSkeleton } from "../surfaces/settings-loading.js";
+import { runDisplayId } from "../surfaces/shared/status/run-display-model.js";
+import type { NavbarSearchResult } from "../surfaces/shell/search/navbar-view-model.js";
+import { ViewNavigationProvider } from "./navigation/view-navigation.js";
+import { useViewState, type RouteSetter } from "./navigation/view-route-model.js";
+import { buildWorkflowCatalog, servedLaunchWorkflows } from "../surfaces/workflows/workflow-catalog-model.js";
+import { DashboardSkeleton, QueueSkeleton, RunPanelSkeleton } from "../surfaces/shared/loading/loading.js";
+import { SettingsSectionSkeleton } from "../surfaces/settings/settings-loading.js";
 import { RerunValuesRequestSchema } from "../../domain/dashboard/rerun-values.js";
-import { routeWithoutTakeovers } from "./url-state.js";
-import { PreflightActionsProvider } from "../state/preflight-actions.js";
-import { resolveDateSelection, routeForStartedRun } from "./date-state-model.js";
-import { RunLaunchHost } from "./run-launch.js";
-import { launchWorkflows, useRunLaunch } from "./run-launch-model.js";
+import { routeWithoutTakeovers } from "./navigation/url-state.js";
+import { PreflightActionsProvider } from "../surfaces/settings/preflight/preflight-actions.js";
+import { resolveDateSelection, routeForStartedRun } from "./navigation/date-state-model.js";
+import { RunLaunchHost } from "../surfaces/run-start/run-launch.js";
+import { launchWorkflows, useRunLaunch } from "../surfaces/run-start/run-launch-model.js";
 import { PanelRight } from "lucide-react";
 import { useCallback,useEffect,useMemo,useRef,useState,type CSSProperties,type ReactNode } from "react";
 import { WorkflowBatchCommandRequestSchema } from "../../domain/commands.js";
@@ -24,19 +28,19 @@ import {
 commandResultFeedEntry,
 toastAppliedCommandResult,
 type CommandResultFeedEntry,
-} from "../surfaces/actions-model.js";
+} from "../surfaces/shared/actions/actions-model.js";
 import {
 CommandResultFeed,
 ConfirmCommandDialog,
 type ActionTarget,
 type PendingCommand,
-} from "../surfaces/actions.js";
-import { CommandRecovery, type CommandRecoveryEntry } from "../surfaces/command-recovery.js";
-import { serverLocalDay } from "../surfaces/date-navigation-model.js";
-import { fmtClock } from "../surfaces/format.js";
-import { type PanelTab } from "../surfaces/log-panel-model.js";
-import { LogSample } from "../surfaces/logs/log-sample.js";
-import type { QueueBatch } from "../surfaces/queue-model.js";
+} from "../surfaces/shared/actions/actions.js";
+import { CommandRecovery, type CommandRecoveryEntry } from "../surfaces/shared/actions/command-recovery.js";
+import { serverLocalDay } from "../surfaces/shell/date-navigation-model.js";
+import { fmtClock } from "../surfaces/shared/status/format.js";
+import { type PanelTab } from "../surfaces/run-detail/log-panel-model.js";
+import { LogSample } from "../surfaces/run-detail/logs/log-sample.js";
+import type { QueueBatch } from "../surfaces/queue/queue-model.js";
 import {
   attentionRunIds,
   filterQueueSurfaces,
@@ -44,33 +48,33 @@ import {
 visibleRunIds,
 type QueueSortKey,
 type QueueSurfaceWire,
-} from "../surfaces/queue-model.js";
+} from "../surfaces/queue/queue-model.js";
 import {
 ConfirmBulkCommandDialog,
 BulkCommandFeedback,
 type PendingBulkCommand,
-} from "../surfaces/queue-toolbar.js";
-import { FocusQueueHeader, FocusQueueToolbar } from '../surfaces/queue-focus.js';
-import { queuePreviewCounts, useQueuePreview, type QueueMockAction } from '../surfaces/queue-preview-model.js';
-import { QueuePanel,type QueueFilterScope,type QueueHandlers,type QueueViewState } from "../surfaces/queue.js";
-import { RenameRunDialog,type PendingRename } from "../surfaces/run-identity.js";
-import { RunStartButton } from "../surfaces/run-start.js";
-import { SessionPanel } from "../surfaces/session-panel.js";
+} from "../surfaces/queue/queue-toolbar.js";
+import { FocusQueueHeader, FocusQueueToolbar } from '../surfaces/queue/queue-focus.js';
+import { queuePreviewCounts, useQueuePreview, type QueueMockAction } from '../surfaces/queue/queue-preview-model.js';
+import { QueuePanel,type QueueFilterScope,type QueueHandlers,type QueueViewState } from "../surfaces/queue/queue.js";
+import { RenameRunDialog,type PendingRename } from "../surfaces/run-detail/identity/run-identity.js";
+import { RunStartButton } from "../surfaces/run-start/run-start.js";
+import { SessionPanel } from "../surfaces/sessions/session-panel.js";
 import {
 DASHBOARD_MAIN_REGION_ID, buildSettingsNav, resolveSettingsSection
-} from "../surfaces/settings-model.js";
-import {parseWorkflows,useSelectedWorkflow,type StatusBucket } from "../surfaces/shell-model.js";
-import { WorkflowMockLog, WorkflowMockQueue } from "../surfaces/workflow-mock-queue.js";
-import { mockWorkflow, type MockWorkflowId } from "../surfaces/workflow-mock-catalog.js";
-import { approveMockRun, mockQueueCounts, mockWorkflowCounts, mockQueueView, mockRetrySource, mockRunsForDraft, seedMockRuns, type MockDraft, type MockRun } from "../surfaces/workflow-mock-model.js";
-import { mockQueueId } from "../surfaces/workflow-queue-model.js";
-import { archiveQueuePreview, archiveWorkflowTree } from "../surfaces/queue-archive-model.js";
-import type { MockArchiveRun } from "../surfaces/archive-mock-model.js";
-import { discardMockReview, restoreMockReview, updateMockReview } from "../surfaces/workflow-review-model.js";
-import "../surfaces/permanent-shell.css";
-import { PROPOSED_STATUS,dsStatusOf } from "../surfaces/status-model.js";
-import { StorageBanner } from "../surfaces/storage-settings.js";
-import { WorkspaceRail } from "../surfaces/workspace-rail.js";
+} from "../surfaces/settings/settings-model.js";
+import {parseWorkflows,useSelectedWorkflow,type StatusBucket } from "../surfaces/shell/shell-model.js";
+import { WorkflowMockLog, WorkflowMockQueue } from "../surfaces/workflows/mocks/workflow-mock-queue.js";
+import { MOCK_WORKFLOWS, mockWorkflow, type MockWorkflowId } from "../surfaces/workflows/mocks/workflow-mock-catalog.js";
+import { approveMockRun, mockRunStatus, mockQueueCounts, mockWorkflowCounts, mockQueueView, mockRetrySource, mockRunsForDraft, seedMockRuns, type MockDraft, type MockRun } from "../surfaces/workflows/mocks/workflow-mock-model.js";
+import { mockQueueId, mockRunDisplayId } from "../surfaces/workflows/mocks/workflow-queue-model.js";
+import { archiveQueuePreview, archiveWorkflowTree } from "../surfaces/queue/queue-archive-model.js";
+import type { MockArchiveRun } from "../surfaces/archive/archive-mock-model.js";
+import { discardMockReview, restoreMockReview, updateMockReview } from "../surfaces/workflows/mocks/workflow-review-model.js";
+import "../surfaces/shell/permanent-shell.css";
+import { PROPOSED_STATUS,dsStatusOf } from "../surfaces/shared/status/status-model.js";
+import { StorageBanner } from "../surfaces/settings/storage/storage-settings.js";
+import { WorkspaceRail } from "../surfaces/shell/workspace-rail.js";
 import { notificationDestinationRefusal, notificationPreviewState } from "../surfaces/notifications/notifications-preview-model.js";
 import type { NotificationDestination } from "../surfaces/notifications/notifications-view-model.js";
 import {
@@ -78,27 +82,27 @@ bulkSubjectsOf,
 composeBulkRunCommand,
 type BulkBatchOutcome,
 type BulkVerbPlan,
-} from "./bulk-dispatch.js";
+} from "./commands/bulk-dispatch.js";
 import {
 composeCommandRequest,
 type CommandAction,
-} from "./command-dispatch.js";
-import { commandFailureToast,settleCommandResult } from "./command-result.js";
+} from "./commands/command-dispatch.js";
+import { commandFailureToast,settleCommandResult } from "./commands/command-result.js";
 import {
 RUN_START_DOOR_ID
 } from "./dashboard-app-model.js";
 import { DashboardTakeovers } from "./dashboard-takeovers.js";
-import { useGlobalKeys } from "./global-keys.js";
-import { useDashboardNavigation } from "./navigation-model.js";
-import type { NativeRouteHistory,PopstateRouteHandler } from "./route-history-model.js";
-import { useRoute } from "./route-history-model.js";
-import { SHELL_PANEL_TABS } from "./shell-selection-model.js";
-import { useTakeoverCloseFocus } from "./takeover-focus-model.js";
+import { useGlobalKeys } from "./navigation/global-keys.js";
+import { useDashboardNavigation } from "./navigation/navigation-model.js";
+import type { NativeRouteHistory,PopstateRouteHandler } from "./navigation/route-history-model.js";
+import { useRoute } from "./navigation/route-history-model.js";
+import { SHELL_PANEL_TABS } from "./navigation/shell-selection-model.js";
+import { useTakeoverCloseFocus } from "./navigation/takeover-focus-model.js";
 import {
 activeTakeover,
 routeForCrossDateSearchResult,
 type AppRouteState
-} from "./url-state.js";
+} from "./navigation/url-state.js";
 
 
 const NO_LOG_TABS: readonly PanelTab[] = Object.freeze([]);
@@ -119,12 +123,15 @@ export function DashboardApp() {
   const onPopstate = useRef<PopstateRouteHandler | undefined>(undefined);
   const [route, setRoute, nativeHistory] = useRoute(onPopstate);
   const { theme, toggleTheme } = useDemoTheme();
-  const [filter, setFilter] = useState<readonly StatusBucket[]>(["all"]);
-  const [openWells, setOpenWells] = useState<ReadonlySet<string>>(() => new Set());
+  const filter = useMemo(() => (route.view?.queueFilter ?? ["all"]) as readonly StatusBucket[], [route.view?.queueFilter]);
+  const setFilter = useCallback((next: readonly StatusBucket[]) => setRoute(current => ({ ...current, view: { ...current.view, queueFilter: [...next] } })), [setRoute]);
+  const openWells = useMemo(() => new Set(route.view?.queueOpen ?? []), [route.view?.queueOpen]);
+  const setOpenWells = useCallback((next: ReadonlySet<string>) => setRoute(current => ({ ...current, view: { ...current.view, queueOpen: [...next] } })), [setRoute]);
   const tab = SHELL_PANEL_TABS.find(candidate => candidate === route.section);
   const setTab = useCallback((next: PanelTab | undefined) => setRoute({ ...route, section: next }), [route, setRoute]);
   /** the toolbar's ordering control and its select mode — client UI state, D18 */
-  const [sort, setSort] = useState<QueueSortKey>("attention");
+  const sort = route.view?.queueSort ?? "attention";
+  const setSort = useCallback((next: QueueSortKey) => setRoute(current => ({ ...current, view: { ...current.view, queueSort: next } })), [setRoute]);
   const [selectMode, setSelectMode] = useState(false);
   const [bulkIds, setBulkIds] = useState<ReadonlySet<string>>(() => new Set());
 
@@ -159,10 +166,10 @@ export function DashboardApp() {
     >
     <TooltipProvider delayDuration={200}>
     <ToastProvider>
-      {boot === undefined ? (
+      {route.viewInvalid ? <EmptyState title="Invalid navigation link" description="The view parameters are invalid. Open the dashboard to recover." action={<Button onClick={() => setRoute({ start: false })}>Open dashboard</Button>} /> : boot === undefined ? (
         <BootGate bootstrap={bootstrap} />
       ) : (
-        <LoadedApp
+        <ViewNavigationProvider route={route} setRoute={setRoute}><LoadedApp
           boot={boot}
           route={route}
           setRoute={setRoute}
@@ -182,7 +189,7 @@ export function DashboardApp() {
           onSelectMode={setSelectMode}
           bulkIds={bulkIds}
           onBulkIds={setBulkIds}
-        />
+        /></ViewNavigationProvider>
       )}
     </ToastProvider>
     </TooltipProvider>
@@ -229,7 +236,7 @@ function BootGate({ bootstrap }: { bootstrap: ReturnType<typeof useBootstrap> })
 interface LoadedAppProps {
   boot: FrontendBootstrapWire;
   route: AppRouteState;
-  setRoute: (next: AppRouteState) => void;
+  setRoute: RouteSetter;
   onPopstateRef: { current: PopstateRouteHandler | undefined };
   nativeHistory: NativeRouteHistory;
   theme: ReturnType<typeof useDemoTheme>["theme"];
@@ -302,24 +309,29 @@ function LoadedApp({
   const { selectedWorkflowId: chosenWorkflowId, setSelectedWorkflowId: setActiveWorkflowId } = useSelectedWorkflow(workflows);
   const previewQueue = useQueuePreview(dayWire?.queueSurfaces, day);
   const selectedRow = previewQueue.rows.find(row => String(row.runId) === route.run);
-  const activeWorkflowId = selectedRow?.workflowId ?? chosenWorkflowId;
+  const activeWorkflowId = selectedRow?.workflowId ?? route.view?.workflow ?? chosenWorkflowId;
   const launch = useRunLaunch(route.start, DASHBOARD_MAIN_REGION_ID);
-  const [railPreview, setRailPreview] = useState<string | null>(null);
+  const [railPreview, setRailPreview] = useViewState("preview", null);
   const [mockRuns, setMockRuns] = useState<readonly MockRun[]>(seedMockRuns);
   const [archiveReports, setArchiveReports] = useState<readonly MockArchiveRun[]>([]);
-  const [mockLaunch, setMockLaunch] = useState<{ workflowId: MockWorkflowId; source?: MockRun } | null>(null);
+  const launchWorkflow = route.view?.launchWorkflow;
+  const launchSource = route.view?.launchSource;
+  const mockLaunch = useMemo(() => route.start && launchWorkflow && MOCK_WORKFLOWS.some(flow => flow.id === launchWorkflow) ? { workflowId: mockWorkflow(launchWorkflow).id,
+    source: launchSource ? mockRuns.find(run => run.id === launchSource) : undefined } : null, [route.start, launchWorkflow, launchSource, mockRuns]);
+  const setMockLaunch = useCallback((next: { workflowId: MockWorkflowId; source?: MockRun } | null) => setRoute(current => ({ ...current, start: next !== null,
+    view: { ...current.view, launchWorkflow: next?.workflowId, launchSource: next?.source?.id, launchStage: next ? next.source ? "Steps" : "Input" : undefined, launchCustomize: next ? false : undefined } })), [setRoute]);
   const rememberLauncher = launch.rememberLauncher;
   const openMockLaunch = useCallback((next: { workflowId: MockWorkflowId; source?: MockRun }) => {
     rememberLauncher(); setMockLaunch(next);
-  }, [rememberLauncher]);
-  const [railRun, setRailRun] = useState<string>();
-  const [railReviewId, setRailReviewId] = useState<string>();
+  }, [rememberLauncher, setMockLaunch]);
+  const [railRun, setRailRun] = useViewState("mockRun", undefined);
+  const [railReviewId, setRailReviewId] = useViewState("records", undefined);
   const [mockNotificationTimes, setMockNotificationTimes] = useState<Readonly<Record<string, string>>>({});
   const servedOpenStart = launch.openStart;
   const openStart = useCallback(() => {
     if (railPreview && mockWorkflow(railPreview).runnable) openMockLaunch({ workflowId: mockWorkflow(railPreview).id });
-    else servedOpenStart();
-  }, [railPreview, servedOpenStart, openMockLaunch]);
+    else { setRoute(current => ({ ...current, view: { ...current.view, launchServed: activeWorkflowId, launchWorkflow: undefined, launchSource: undefined, launchStage: "Input", launchCustomize: false } })); servedOpenStart(); }
+  }, [railPreview, servedOpenStart, openMockLaunch, activeWorkflowId, setRoute]);
   const openRerun = launch.openRerun;
   /**
    * The command waiting on the operator's confirmation. A descriptor that
@@ -453,8 +465,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
   const selectWorkflow = useCallback((next: string): void => {
     if (next === activeWorkflowId) return;
     setActiveWorkflowId(next);
-    setRoute({ ...route, run: undefined, section: undefined });
-  }, [activeWorkflowId, route, setRoute, setActiveWorkflowId]);
+    setRoute(current => ({ ...current, run: undefined, section: undefined, view: { ...current.view, workflow: next } }));
+  }, [activeWorkflowId, setRoute, setActiveWorkflowId]);
 
   const selectRun = useCallback(
     (runId: string) => {
@@ -974,7 +986,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
    * value is the page's first section; every other takeover key clears for the
    * same reason each Settings destination clears them.
    */
-  const [sessionsOpen, setSessionsOpen] = useState(false);
+  const [sessionsOpen, setSessionsOpen] = useViewState("sessions", false);
   const openSettings = useCallback((): void => {
     setRoute({
       ...route,
@@ -1000,29 +1012,34 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
   const settingsResolution = resolveSettingsSection(buildSettingsNav(settingsSections), route.settings ?? "");
   const pageName = takeover === "settings" ? settingsResolution.state === "open" ? settingsResolution.entry.label : "Settings"
     : takeover === "archive" ? "Archive" : takeover === "activity" ? "Activity" : takeover === "explore" ? "Explorer"
-    : takeover === "intake" ? "Edit Data" : route.start ? "Run" : railPreview ? mockWorkflow(railPreview).label
+    : takeover === "intake" ? "Edit Data" : route.start ? route.view?.launchSource || route.view?.launchRerun ? "Rerun" : "Run" : railPreview ? MOCK_WORKFLOWS.find(flow => flow.id === railPreview)?.label ?? "Unavailable workflow"
     : workflows.find(workflow => workflow.id === activeWorkflowId)?.label ?? "Dashboard";
   useEffect(() => { document.title = `${pageName} — HR GPT`; }, [pageName]);
-  const previewFlow = railPreview ? mockWorkflow(railPreview) : undefined;
+  const previewFlow = railPreview ? MOCK_WORKFLOWS.find(flow => flow.id === railPreview) : undefined;
   const railRows = useMemo(() => mockRuns.filter(run => run.workflowId === railPreview), [mockRuns, railPreview]);
   const previewCounts = useMemo(() => mockWorkflowCounts(mockRuns), [mockRuns]);
   const railQueueRows = useMemo(() => mockQueueView(railRows, filter, sort), [railRows, filter, sort]);
   const railRow = railRows.find(run => run.id === railRun);
   const setLaunchOpen = launch.setOpen;
-  const closeMockLaunch = useCallback(() => setMockLaunch(null), []);
+  const closeMockLaunch = useCallback(() => setMockLaunch(null), [setMockLaunch]);
   const submitMock = useCallback((id: MockWorkflowId, draft: MockDraft, sourceId?: string) => {
     const created = mockRunsForDraft(id, draft, mockRuns.length, sourceId);
     setMockRuns(previous => [...created, ...previous]);
     setMockNotificationTimes(previous => ({ ...previous, ...Object.fromEntries(created.map(run => [run.id, servedNowRef.current])) }));
-    setRailPreview(id); setRailRun(created[0]?.id); setMockLaunch(null);
+    setRoute(current => ({ ...current, start: false, view: { ...current.view, preview: id, mockRun: created[0]?.id, launchWorkflow: undefined, launchSource: undefined, launchStage: undefined } }));
     setLaunchOpen(false);
-  }, [mockRuns.length, setLaunchOpen]);
-  const onRailSelect = useCallback((id: string) => { setRailPreview(null); selectWorkflow(id); }, [selectWorkflow]);
+  }, [mockRuns.length, setLaunchOpen, setRoute]);
+  const onRailSelect = useCallback((id: string) => { setRailPreview(null); selectWorkflow(id); }, [selectWorkflow, setRailPreview]);
   const onRailPreview = useCallback((id: string) => {
-    setRailPreview(id);
     const runs = mockRuns.filter(run => run.workflowId === id);
-    setRailRun((runs.find(run => run.id === `mock:${id}:sample`) ?? runs.find(run => !run.parentId) ?? runs[0])?.id);
-  }, [mockRuns]);
+    setRoute(current => ({ ...current, view: { ...current.view, preview: id, mockRun: (runs.find(run => run.id === `mock:${id}:sample`) ?? runs.find(run => !run.parentId) ?? runs[0])?.id, records: undefined } }));
+  }, [mockRuns, setRoute]);
+  const searchData = useMemo(() => ({ today, counts: {}, results: [
+    ...previewQueue.rows.map(row => ({ id: String(row.runId), publicId: runDisplayId(row.runId, row.traceId), subject: row.title, workflow: workflowLabelOf(row.workflowId), day, state: row.status,
+      destination: { kind: "run" as const, runId: String(row.runId), day } })),
+    ...mockRuns.map(run => ({ id: run.id, publicId: mockRunDisplayId(run), subject: run.title, workflow: mockWorkflow(run.workflowId).label, day, state: mockRunStatus(run),
+      destination: { kind: "preview-run" as const, runId: run.id, day, records: run.workflowId === "ocr" && !run.approved } })),
+  ] }), [today, day, previewQueue.rows, workflowLabelOf, mockRuns]);
   const notificationScenario = new URLSearchParams(window.location.search).get("notificationsPreview") ?? "normal";
   const notificationMinute = Math.floor(Date.parse(nowIso) / 60000);
   const notifications = useMemo(() => notificationPreviewState(notificationScenario, {
@@ -1043,16 +1060,16 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
       setLaunchOpen(false);
       exitQueueSelection();
       onFilter(["all"]);
-      if (destination.kind === "archive") { setRailPreview(null); setRoute({ ...next, archive: "" }); }
+      if (destination.kind === "archive") { setRailPreview(null); setRoute(current => ({ ...next, archive: "", view: { ...current.view, preview: null, notifications: false } })); }
       else if (destination.kind === "run") {
         const row = context.rows.find(item => item.runId === destination.runId)!;
         setRailPreview(null); setActiveWorkflowId(row.workflowId);
-        setRoute({ ...next, day: destination.day, run: destination.runId, section: "logs" });
+        setRoute(current => ({ ...next, day: destination.day, run: destination.runId, section: "logs", view: { ...current.view, preview: null, workflow: row.workflowId, notifications: false } }));
       } else {
         const run = context.runs.find(item => item.id === destination.runId)!;
         setRailPreview(run.workflowId); setRailRun(run.id);
         if (destination.records) setRailReviewId(run.id);
-        setRoute({ ...next, day: destination.day });
+        setRoute(current => ({ ...next, day: destination.day, view: { ...current.view, preview: run.workflowId, mockRun: run.id, records: destination.records ? run.id : undefined, notifications: false } }));
       }
       opened();
       requestAnimationFrame(() => {
@@ -1068,8 +1085,20 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
         target?.focus({ preventScroll: true });
       });
     });
-  }, [leaveSettings, route, setRoute, setLaunchOpen, exitQueueSelection, onFilter, setActiveWorkflowId]);
+  }, [leaveSettings, route, setRoute, setLaunchOpen, exitQueueSelection, onFilter, setActiveWorkflowId, setMockLaunch, setRailPreview, setRailReviewId, setRailRun]);
 
+  const onSearch = useCallback((result: NavbarSearchResult, opened: () => void, refused: (message: string) => void) => {
+    if (!result.destination) { refused("This run is unavailable. Refresh search and try again."); return; }
+    openNotification(result.destination, opened, refused);
+  }, [openNotification]);
+
+
+  const destinationError = railPreview && !previewFlow ? "This workflow is not registered."
+    : route.start && route.view?.launchWorkflow && !mockLaunch ? "This launch workflow is not registered."
+    : route.start && route.view?.launchSource && !mockLaunch?.source ? "The source run is no longer available."
+    : route.start && route.view?.launchServed && !startWorkflows.some(flow => flow.workflowId === route.view?.launchServed) ? "This launch workflow is not served."
+    : railRun && !mockRuns.some(run => run.id === railRun) ? "This preview run is no longer available." : undefined;
+  if (destinationError) return <EmptyState title="Destination unavailable" description={destinationError} action={<Button onClick={() => setRoute({ start: false })}>Open dashboard</Button>} />;
 
   return (
     // NOT the theme root any more (D272 item 2): the app root moved above both
@@ -1094,7 +1123,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
       }} className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[1000] focus:rounded-lg focus:bg-ui-panel focus:px-4 focus:py-2 focus:text-ui-primary focus:outline-2 focus:outline-ui-info">Skip to content</a>
       <div className="dashboard-workspace relative flex min-h-0 min-w-0 flex-1 flex-col">
       <WorkspaceRail workflows={workflowCatalog} counts={dayWire?.workflowCounts} previewCounts={previewCounts} active={activeWorkflowId} preview={railPreview}
-        onSelect={onRailSelect} onPreview={onRailPreview} settingsOpen={settingsOpen} notifications={notifications} onOpenNotification={openNotification} />
+        onSelect={onRailSelect} onPreview={onRailPreview} settingsOpen={settingsOpen} notifications={notifications} onOpenNotification={openNotification} searchData={searchData} onSearch={onSearch} />
 
       <main
         id={DASHBOARD_MAIN_REGION_ID}
@@ -1247,7 +1276,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
             {previewFlow && railRow && dateSelection.state === "valid" ? <WorkflowMockLog key={railRow.id} run={railRow} runs={mockRuns} onRerun={() => openMockLaunch({ workflowId: railRow.workflowId, source: railRow })} onApprove={() => { setMockRuns(previous => approveMockRun(previous, railRow.id)); setMockNotificationTimes(previous => ({ ...previous, [railRow.id]: nowIso })); }}
               reviewOpen={railReviewId === railRow.id} onReviewOpenChange={open => setRailReviewId(open ? railRow.id : undefined)}
               onChange={records => setMockRuns(previous => updateMockReview(previous, railRow.id, records))} onDiscard={() => { setMockRuns(previous => discardMockReview(previous, railRow.id)); setMockNotificationTimes(previous => ({ ...previous, [railRow.id]: nowIso })); }} onRestore={() => { setMockRuns(previous => restoreMockReview(previous, railRow.id)); setMockNotificationTimes(previous => ({ ...previous, [railRow.id]: nowIso })); }}
-              onSelect={id => { const next = mockRuns.find(run => run.id === id); if (!next) throw new Error(`MOCK_LINKED_RUN_MISSING: ${id}`); setRailPreview(next.workflowId); setRailRun(next.id); }} /> : !previewFlow && route.run !== undefined && selectedRow !== undefined && dateSelection.state === "valid" ? (
+              onSelect={id => { const next = mockRuns.find(run => run.id === id); if (!next) throw new Error(`MOCK_LINKED_RUN_MISSING: ${id}`); setRoute(current => ({ ...current, view: { ...current.view, preview: next.workflowId, mockRun: next.id, records: undefined } })); }} /> : !previewFlow && route.run !== undefined && selectedRow !== undefined && dateSelection.state === "valid" ? (
               <LogSample key={route.run} selection={{ row: selectedRow, workflowLabel: workflowLabelOf(selectedRow.workflowId) }} />
             ) : dateError === undefined && dayResource.state !== "failed" && dayWire === undefined && route.run !== undefined ? <RunPanelSkeleton /> : (
               <Panel className="min-h-0"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]"><EmptyState

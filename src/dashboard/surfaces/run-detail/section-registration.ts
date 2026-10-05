@@ -1,6 +1,6 @@
 import type { RunDetailSectionResponse, RunDetailSectionName, PanelSections } from "./sections.js";
 import type { RunDetailWire } from "../../../domain/dashboard/run-detail.js";
-import type { PanelTab } from "../log-panel-model.js";
+import type { PanelTab } from "./log-panel-model.js";
 
 /** The run's advertised sections and current panel state determine lazy reads. */
 export function sectionsWanted(detail: RunDetailWire, tab: PanelTab): string[] {

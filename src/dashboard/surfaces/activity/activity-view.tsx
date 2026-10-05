@@ -3,7 +3,7 @@ import { type ReactNode } from "react";
 import { BarChart3 } from "lucide-react";
 import { Select, PageHeading } from "../../ds/ui.js";
 import { ActivitySkeleton } from "./activity-loading.js";
-import { ACTIVITY_DATE_PRESETS, type ActivityDatePreset, type ActivityDateRange } from "../activity-model.js";
+import { ACTIVITY_DATE_PRESETS, type ActivityDatePreset, type ActivityDateRange } from "./activity-model.js";
 import { ActivityRange } from "./activity-range.js";
 import { ActivityVolume } from "./activity-volume.js";
 import { activityCompletionRate, activityDuration, activityFailureRate, type ActivitySummary, type ActivityViewState } from "./activity-view-model.js";

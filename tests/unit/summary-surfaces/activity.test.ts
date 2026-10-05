@@ -10,7 +10,7 @@ import {
   type ActivityReportWire,
 } from "../../../src/domain/dashboard/activity.js";
 import { buildActivityVolumeBoundarySkeleton } from "../../../src/domain/dashboard/activity-volume.js";
-import { ActivityBody, ActivityReport } from "../../../src/dashboard/surfaces/activity.js";
+import { ActivityBody, ActivityReport } from "../../../src/dashboard/surfaces/activity/activity.js";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
@@ -26,7 +26,7 @@ import {
   parseActivityRange,
   resolveActivityWho,
   type QueueRowIdentity,
-} from "../../../src/dashboard/surfaces/activity-model.js";
+} from "../../../src/dashboard/surfaces/activity/activity-model.js";
 
 const RUN_A = "11111111-1111-4111-8111-111111111111";
 const RUN_B = "22222222-2222-4222-8222-222222222222";

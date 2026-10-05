@@ -12,7 +12,7 @@ import {
   applyActivityRangeDraft,
   buildActivityRangeModel,
   parseActivityRange,
-} from "../../../src/dashboard/surfaces/activity-model.js";
+} from "../../../src/dashboard/surfaces/activity/activity-model.js";
 
 function subtractDays(day: string, count: number): string {
   const date = new Date(`${day}T00:00:00.000Z`);

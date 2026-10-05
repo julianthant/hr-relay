@@ -19,8 +19,8 @@ import { GateDecisionWireSchema } from "../../../src/domain/dashboard/run-detail
 import { QueueSurfaceWireSchema } from "../../../src/domain/dashboard/projection.js";
 import { InlineDecision } from "../../../src/dashboard/surfaces/run-detail/gate-park.js";
 import { RunLivenessDot } from "../../../src/dashboard/surfaces/run-detail/logs.js";
-import { ContextRail } from "../../../src/dashboard/surfaces/context-rail.js";
-import { RunProvenanceBar } from "../../../src/dashboard/surfaces/run-identity.js";
+import { ContextRail } from "../../../src/dashboard/surfaces/run-detail/context-rail.js";
+import { RunProvenanceBar } from "../../../src/dashboard/surfaces/run-detail/identity/run-identity.js";
 
 const RUN_ID = "e1b8ae3e-0000-4000-8000-000000000001";
 const GATE_ID = "e1b8ae3e-0000-4000-8000-0000000000a1";

@@ -18,7 +18,7 @@ import { FingerprintSchema } from "../../../src/domain/ids.js";
 import type { ExplorerWorkflowWire } from "../../../src/domain/dashboard/explorer.js";
 import { buildWorkflowExplorer } from "../../../src/server/dashboard/queries/explorer.js";
 import { explorerQueryDeps } from "../../fixtures/explorer-seams.js";
-import { NodeDetail } from "../../../src/dashboard/surfaces/explorer.js";
+import { NodeDetail } from "../../../src/dashboard/surfaces/explorer/explorer.js";
 
 const CLOCK = manualClock(new Date("2026-08-09T12:00:00.000Z"));
 const HASH = FingerprintSchema.parse("b".repeat(64));

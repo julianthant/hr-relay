@@ -6,8 +6,8 @@ import { afterEach, describe, it } from "vitest";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { ToastProvider } from "../../../src/dashboard/ds/ui.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
-import { SavedArchiveWorkspace } from "../../../src/dashboard/surfaces/archive-report.js";
-import { savedDateFilterSummary } from "../../../src/dashboard/surfaces/archive-report-model.js";
+import { SavedArchiveWorkspace } from "../../../src/dashboard/surfaces/archive/archive-report.js";
+import { savedDateFilterSummary } from "../../../src/dashboard/surfaces/archive/archive-report-model.js";
 import {
   SavedArchiveDetailWireSchema,
   SavedArchiveIndexWireSchema,

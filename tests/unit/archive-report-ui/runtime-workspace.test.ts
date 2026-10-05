@@ -2,10 +2,10 @@
 import { act, createElement, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
-import type { ArchiveBrowseState } from "../../../src/dashboard/app/archive-route-model.js";
+import type { ArchiveBrowseState } from "../../../src/dashboard/app/navigation/archive-route-model.js";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
-import { RuntimeArchiveWorkspace } from "../../../src/dashboard/surfaces/archive-runtime.js";
-import * as archiveExportModel from "../../../src/dashboard/surfaces/archive-export-model.js";
+import { RuntimeArchiveWorkspace } from "../../../src/dashboard/surfaces/archive/archive-runtime.js";
+import * as archiveExportModel from "../../../src/dashboard/surfaces/archive/archive-export-model.js";
 import type { SavedArchiveDetailWire, SavedArchiveGroupsWire, SavedArchiveIndexWire, SavedArchiveQuery, SavedRuntimeVersionIndexWire } from "../../../src/domain/dashboard/archive.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { SavedArchiveReportWireSchema, SavedRuntimeVersionIndexWireSchema } from "../../../src/domain/dashboard/archive.js";

@@ -1,10 +1,10 @@
 import { Tabs } from "@heroui/react/tabs";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "../../ds/dropdown-menu.js";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "../../ds/primitives/dropdown-menu.js";
 import { CheckCheck, CircleAlert, Mail, ListFilter } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { Button, Skeleton, dsFocus, useToasts } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
-import { LoadingRegion, SkeletonText } from "../loading.js";
+import { LoadingRegion, SkeletonText } from "../shared/loading/loading.js";
 import { notificationView, type NotificationCategory, type NotificationControl, type NotificationFilter, type NotificationItem, type NotificationsState } from "./notifications-view-model.js";
 
 const iconButton = cn("inline-flex size-7 shrink-0 items-center justify-center rounded-lg text-ui-secondary hover:bg-ui-hover hover:text-ui-primary", dsFocus);
@@ -23,9 +23,9 @@ function NotificationRow({ item, onControl, onOpen }: { item: NotificationItem; 
   const urgent = item.tone === "danger" || item.tone === "warning";
   return <li className="notification-row group rounded-lg px-3 py-3 hover:bg-ui-hover focus-within:bg-ui-hover">
     <div className="flex items-start gap-2"><span aria-hidden className={cn("mt-1.5 size-1.5 shrink-0 rounded-full", item.tone === "danger" ? "bg-ui-danger" : item.tone === "warning" ? "bg-ui-warning" : !item.read ? "bg-ui-info" : "bg-ui-stroke")} />
-      <div className="min-w-0 flex-1"><button type="button" className={cn("block min-h-6 w-full truncate text-left text-body text-ui-primary", dsFocus)} onClick={() => onOpen(item)}>{item.subject}</button>
+      <div className="min-w-0 flex-1"><button type="button" className={cn("block min-h-6 w-full break-words text-left text-body text-ui-primary", dsFocus)} onClick={() => onOpen(item)}>{item.subject}</button>
         <p className={cn("mb-0 mt-1 text-caption", urgent ? item.tone === "danger" ? "text-ui-danger" : "text-ui-warning" : "text-ui-secondary")}>{item.title}</p>
-        <p className="mb-0 mt-1 line-clamp-2 text-caption text-ui-muted">{item.detail}</p>
+        <p className="mb-0 mt-1 break-words text-caption text-ui-muted">{item.detail}</p>
         <div className="mt-2 flex items-center gap-2 text-caption text-ui-muted"><span className="truncate">{item.workflow}</span>{item.age && <><span aria-hidden>·</span><span className="shrink-0">{item.age}</span></>}</div>
       </div><button type="button" aria-label={`${item.read ? "Mark unread" : "Mark read"}: ${item.title}`} title={item.read ? "Mark unread" : "Mark read"} className={iconButton} onClick={() => onControl(item.id, item.read ? "unread" : "read")}>{item.read ? <Mail aria-hidden className="size-3.5" /> : <CheckCheck aria-hidden className="size-3.5" />}</button>
     </div>

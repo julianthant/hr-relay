@@ -2,11 +2,11 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../parity/helpers/fixture-start.js";
-import { launchWorkflows } from "../../../src/dashboard/app/run-launch-model.js";
-import { parseWorkflows } from "../../../src/dashboard/surfaces/shell-model.js";
-import { buildWorkflowCatalog, servedLaunchWorkflows } from "../../../src/dashboard/surfaces/workflow-catalog-model.js";
-import { WorkflowRail } from "../../../src/dashboard/surfaces/workflow-rail.js";
-import { RunWorkflowPicker } from "../../../src/dashboard/surfaces/run-start-picker.js";
+import { launchWorkflows } from "../../../src/dashboard/surfaces/run-start/run-launch-model.js";
+import { parseWorkflows } from "../../../src/dashboard/surfaces/shell/shell-model.js";
+import { buildWorkflowCatalog, servedLaunchWorkflows } from "../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
+import { WorkflowRail } from "../../../src/dashboard/surfaces/shell/workflow-rail.js";
+import { RunWorkflowPicker } from "../../../src/dashboard/surfaces/run-start/run-start-picker.js";
 import { explorerWorkflowOptions } from "../../../src/dashboard/surfaces/explorer/explorer-workflow-model.js";
 import { previewSessionAdd } from "../../../src/dashboard/surfaces/sessions/sessions-fixture.js";
 

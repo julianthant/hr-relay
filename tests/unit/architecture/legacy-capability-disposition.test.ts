@@ -445,7 +445,7 @@ describe("D58 legacy capability disposition", () => {
       const drifted = fixtureInventory((draft) => {
         entryOf(draft, "legacy-dashboard-queue-panel").verificationEvidence = [
           "legacy-source-present:src/dashboard/components/queue-panel-v2",
-          "src/dashboard/surfaces/queue.tsx",
+          "src/dashboard/surfaces/queue/queue.tsx",
         ];
       });
       assert.ok(

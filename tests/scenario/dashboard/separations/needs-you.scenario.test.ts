@@ -12,7 +12,7 @@ import { afterEach, describe, it } from "vitest";
 import { localDatePart } from "../../../../src/domain/clock.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/domain/ids.js";
 import { createGateParkNotifier } from "../../../../src/services/notifications/gate-park.js";
-import { EMPTY_IDENTITY_GATE_DRAFT, identityCeremonyFor, identityGateAnswer } from "../../../../src/dashboard/app/identity-ceremony.js";
+import { EMPTY_IDENTITY_GATE_DRAFT, identityCeremonyFor, identityGateAnswer } from "../../../../src/dashboard/surfaces/run-detail/identity/identity-ceremony.js";
 import { buildRunSection } from "../../../../src/server/dashboard/queries/run-detail.js";
 import { readGateParks } from "../../../../src/server/dashboard/compose.js";
 import {

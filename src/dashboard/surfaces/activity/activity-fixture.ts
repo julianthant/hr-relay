@@ -1,5 +1,5 @@
 import { ActivityVolumeSchema, buildActivityVolumeBoundarySkeleton } from "../../../domain/dashboard/activity-volume.js";
-import type { ActivityDateRange } from "../activity-model.js";
+import type { ActivityDateRange } from "./activity-model.js";
 import type { ActivityViewState } from "./activity-view-model.js";
 
 export const ACTIVITY_SAMPLE_TODAY = "2026-09-26";

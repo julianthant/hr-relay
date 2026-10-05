@@ -6,11 +6,11 @@ import { it } from "vitest";
 import type { RunDetailWire } from "../../../src/domain/dashboard/run-detail.js";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
-import { RunCaptures } from "../../../src/dashboard/surfaces/run-captures.js";
+import { RunCaptures } from "../../../src/dashboard/surfaces/run-detail/run-captures.js";
 import {
   runCaptureFrame,
   useRunCaptures,
-} from "../../../src/dashboard/surfaces/run-captures-model.js";
+} from "../../../src/dashboard/surfaces/run-detail/run-captures-model.js";
 import { CAPTURE_RUN_A, CAPTURE_RUN_B, CAPTURE_BASE_URL, captureData, captureDetail } from "./fixtures/run-captures-app-fixture.js";
 
 it("frames only literal failure origins", () => {

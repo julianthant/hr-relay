@@ -22,8 +22,8 @@ import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it } from "vitest";
-import { settleCommandResult } from "../../../src/dashboard/app/command-result.js";
-import { BumpAppliedBanner } from "../../../src/dashboard/surfaces/archive.js";
+import { settleCommandResult } from "../../../src/dashboard/app/commands/command-result.js";
+import { BumpAppliedBanner } from "../../../src/dashboard/surfaces/archive/archive.js";
 import { CommandResultSchema, type CommandResult } from "../../../src/domain/commands.js";
 
 const noop = (): void => undefined;

@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { it, vi } from "vitest";
-import { NavbarCalendar } from "../../../src/dashboard/surfaces/navbar/navbar-view.js";
-import { NAVBAR_SAMPLE } from "../../../src/dashboard/surfaces/navbar/navbar-fixture.js";
+import { NavbarCalendar } from "../../../src/dashboard/surfaces/shell/search/navbar-view.js";
+import { NAVBAR_SAMPLE } from "../../../src/dashboard/surfaces/shell/search/navbar-fixture.js";
 
 class MeasurementFreeResizeObserver { observe(): void {} unobserve(): void {} disconnect(): void {} }
 Reflect.set(globalThis, "ResizeObserver", MeasurementFreeResizeObserver);

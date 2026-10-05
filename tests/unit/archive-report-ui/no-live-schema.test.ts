@@ -2,9 +2,9 @@
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, it } from "vitest";
-import { SavedArchiveReport } from "../../../src/dashboard/surfaces/archive-report.js";
+import { SavedArchiveReport } from "../../../src/dashboard/surfaces/archive/archive-report.js";
 import { H_REPORT } from "../../parity/helpers/fixture-archive-report.js";
-import { savedFilterQuery } from "../../../src/dashboard/surfaces/archive-report-model.js";
+import { savedFilterQuery } from "../../../src/dashboard/surfaces/archive/archive-report-model.js";
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 let dispose: (() => Promise<void>) | undefined;
 afterEach(async () => { await dispose?.(); dispose = undefined; document.body.replaceChildren(); });

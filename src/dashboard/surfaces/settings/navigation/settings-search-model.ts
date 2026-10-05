@@ -1,0 +1,74 @@
+import type { EditableSettingsWire } from "../../../../domain/dashboard/settings-editor.js";
+import { resolveSettingsSection, type SettingsNavEntry, type SettingsNavGroup } from "../settings-model.js";
+import { settingNote, settingTitle } from "../settings-presentation.js";
+import { routePresentation } from "../routes/settings-routes-model.js";
+import { providerFieldPresentation, providerName } from "../editor/ui-settings-records-labels.js";
+import { SECRET_FAMILY_SPECS } from "../../../../domain/config/provider-family-specs.js";
+
+export interface SettingsSearchResult {
+  readonly id: string;
+  readonly entry: SettingsNavEntry;
+  readonly label: string;
+  readonly context: string;
+  readonly target?: string;
+  readonly terms: string;
+}
+
+/** Search presentation metadata only; values, credentials and paths on disk never enter the index. */
+export function settingsSearchIndex(groups: readonly SettingsNavGroup[], document?: EditableSettingsWire, runtimePaths = false): readonly SettingsSearchResult[] {
+  const results: SettingsSearchResult[] = [];
+  const add = (section: string, label: string, target: string | undefined, description = "", context?: string) => {
+    const resolution = resolveSettingsSection(groups, section);
+    if (resolution.state !== "open") return;
+    const entry = resolution.entry;
+    results.push({ id: `${entry.id}:${target ?? "page"}`, entry, label, target,
+      context: context ?? entry.label, terms: `${label} ${entry.label} ${description} ${context ?? ""}`.toLocaleLowerCase() });
+  };
+  for (const group of groups) for (const entry of group.entries) add(entry.id, entry.label, undefined, group.heading, group.heading);
+  add("general", "Dark theme", "appearance.theme", "Appearance dashboard color light dark");
+  if (runtimePaths && document !== undefined) {
+    add("paths", "Runtime state folder", "paths.stateRoot", "Persistent settings and run data");
+    add("paths", "Artifact folder", "paths.artifactRoot", "Run evidence and generated artifacts");
+  }
+  if (document === undefined) return results;
+  add("general", "Browser viewport", "display.viewport", "Display width height");
+  for (const section of document.sections) for (const leaf of section.leaves) {
+    // The folded General page renders these controls, not the retired operator-label field.
+    if (leaf.path === "actor.label") continue;
+    if (section.id === "routes") {
+      const presentation = routePresentation(leaf);
+      add("routes", presentation.name, leaf.path, presentation.description);
+      if (leaf.control.input === "object") for (const field of leaf.control.fields) {
+        const detail = presentation.fields[field.name];
+        add("routes", `${presentation.name} · ${detail.name}`, `${leaf.path}.${field.name}`, detail.description);
+      }
+    } else if (section.id === "providers") {
+      const name = providerName(leaf.path.split(".")[1] ?? "");
+      add("providers", `${name} ${leaf.input === "models" ? "model priority" : "budget"}`, leaf.path);
+      if (leaf.control.input === "object") for (const field of leaf.control.fields) {
+        add("providers", `${name} · ${providerFieldPresentation(field.name).label}`, `${leaf.path}.${field.name}`);
+      }
+    } else {
+      const label = leaf.path.startsWith("display.") ? `Browser viewport ${settingTitle(leaf).toLocaleLowerCase()}` : settingTitle(leaf);
+      add(section.id, label, leaf.path, settingNote(leaf));
+    }
+  }
+  for (const row of document.protectedSettings.rows) {
+    const routes = row.name === "sharepointOnboardingRosterUrl";
+    add(routes ? "routes" : "credentials", row.name === "ucpathUserId" ? "UCPath username" : row.label, `protected.${row.name}`, row.purpose);
+  }
+  if (document.providerKeys.state !== "unknown") for (const family of SECRET_FAMILY_SPECS) {
+    add("credentials", `${providerName(family.name)} API keys`, `provider-keys.${family.name}`, "Provider credentials");
+  }
+  return results;
+}
+
+export function searchSettings(index: readonly SettingsSearchResult[], query: string): readonly SettingsSearchResult[] {
+  const term = query.trim().toLocaleLowerCase();
+  if (!term) return [];
+  const words = term.split(/\s+/u);
+  return index.filter(result => words.every(word => result.terms.includes(word))).sort((a, b) => {
+    const rank = (result: SettingsSearchResult) => result.label.toLocaleLowerCase() === term ? 0 : result.label.toLocaleLowerCase().startsWith(term) ? 1 : 2;
+    return rank(a) - rank(b);
+  });
+}

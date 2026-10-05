@@ -64,9 +64,9 @@ import {
   restoreDashboardTakeoverFocus,
 } from "../../../src/dashboard/app/dashboard-app-model.js";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
-import { TakeoverFrame } from "../../../src/dashboard/ds/primitives-layout.js";
+import { TakeoverFrame } from "../../../src/dashboard/ds/primitives/primitives-layout.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
-import { IntakeWorkspace } from "../../../src/dashboard/surfaces/intake.js";
+import { IntakeWorkspace } from "../../../src/dashboard/surfaces/intake/intake.js";
 
 class MeasurementFreeResizeObserver {
   observe(): void {}

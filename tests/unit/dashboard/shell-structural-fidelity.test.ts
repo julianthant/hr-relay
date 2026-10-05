@@ -14,9 +14,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "vitest";
 
-const SHELL = readFileSync(new URL("../../../src/dashboard/surfaces/shell.tsx", import.meta.url), "utf8");
+const SHELL = readFileSync(new URL("../../../src/dashboard/surfaces/shell/shell.tsx", import.meta.url), "utf8");
 const APP = readFileSync(new URL("../../../src/dashboard/app/dashboard-app.tsx", import.meta.url), "utf8");
-const OVERLAY = readFileSync(new URL("../../../src/dashboard/ds/primitives-overlay.tsx", import.meta.url), "utf8");
+const OVERLAY = readFileSync(new URL("../../../src/dashboard/ds/primitives/primitives-overlay.tsx", import.meta.url), "utf8");
 
 function sourceSlice(source: string, start: string, end: string, label: string): string {
   const from = source.indexOf(start);

@@ -16,8 +16,8 @@ import { UiCatalogEntrySchema, type UiCatalogEntry } from "../../../src/domain/u
 import { buildSafeUiCatalog } from "../../../src/stores/ucpath/driver/catalog.js";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
-import { UiCatalogSection } from "../../../src/dashboard/surfaces/ui-catalog.js";
-import { foldCatalogRail, siblingsOnScreen } from "../../../src/dashboard/surfaces/ui-catalog-model.js";
+import { UiCatalogSection } from "../../../src/dashboard/surfaces/settings/catalog/ui-catalog.js";
+import { foldCatalogRail, siblingsOnScreen } from "../../../src/dashboard/surfaces/settings/catalog/ui-catalog-model.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 

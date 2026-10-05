@@ -22,11 +22,11 @@ import {
   windowArchiveTable,
   type ArchiveSection,
   type ArchiveTableItem,
-} from "../../../src/dashboard/surfaces/archive-model.js";
+} from "../../../src/dashboard/surfaces/archive/archive-model.js";
 import { FIXTURE_ARCHIVE_INDEX } from "../../parity/helpers/fixture-archive.js";
 
 const TOKENS = readFileSync(
-  fileURLToPath(new URL("../../../src/dashboard/ds/tokens.css", import.meta.url)),
+  fileURLToPath(new URL("../../../src/dashboard/ds/theme/tokens.css", import.meta.url)),
   "utf8",
 );
 

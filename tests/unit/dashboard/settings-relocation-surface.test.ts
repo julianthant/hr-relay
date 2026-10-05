@@ -5,12 +5,12 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it } from "vitest";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
-import { StorageRelocationRows } from "../../../src/dashboard/surfaces/settings-relocation.js";
-import { SettingsPage } from "../../../src/dashboard/surfaces/settings.js";
-import { DEFAULT_CATALOG_VIEW } from "../../../src/dashboard/surfaces/row-catalog-model.js";
+import { StorageRelocationRows } from "../../../src/dashboard/surfaces/settings/general/settings-relocation.js";
+import { SettingsPage } from "../../../src/dashboard/surfaces/settings/settings.js";
+import { DEFAULT_CATALOG_VIEW } from "../../../src/dashboard/surfaces/settings/catalog/row-catalog-model.js";
 import { FIXTURE_EDITABLE_SETTINGS } from "../../parity/helpers/fixture-settings.js";
 import { StorageHealthSummaryWireSchema } from "../../../src/domain/dashboard/bootstrap.js";
-import { useStorageRelocation, cancelRelocationCommand, desiredRelocationPair, planRelocationCommand } from "../../../src/dashboard/surfaces/settings-relocation-model.js";
+import { useStorageRelocation, cancelRelocationCommand, desiredRelocationPair, planRelocationCommand } from "../../../src/dashboard/surfaces/settings/general/settings-relocation-model.js";
 import { StorageRelocationCommandRequestSchema, StorageRelocationPlanViewSchema, type StorageRelocationPlanView } from "../../../src/domain/commands.js";
 import { SettingsCommandRequestSchema } from "../../../src/domain/commands.js";
 

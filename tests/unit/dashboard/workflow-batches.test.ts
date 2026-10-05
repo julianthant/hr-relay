@@ -4,8 +4,8 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it } from "vitest";
 import { QueueSurfaceWireSchema, type QueueSurfaceWire } from "../../../src/domain/dashboard/projection.js";
-import { QueuePanel, type QueueHandlers } from "../../../src/dashboard/surfaces/queue.js";
-import { queueBatches, visibleRunIds } from "../../../src/dashboard/surfaces/queue-model.js";
+import { QueuePanel, type QueueHandlers } from "../../../src/dashboard/surfaces/queue/queue.js";
+import { queueBatches, visibleRunIds } from "../../../src/dashboard/surfaces/queue/queue-model.js";
 import { FIXTURE_DAY, FIXTURE_NOW, uuidOf } from "../../parity/helpers/fixture-identity.js";
 import { FIXTURE_DAY_WIRE } from "../../parity/helpers/fixture-queue.js";
 

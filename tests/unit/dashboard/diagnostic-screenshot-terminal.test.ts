@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { it, vi } from "vitest";
-import { DiagnosticScreenshotGallery } from "../../../src/dashboard/surfaces/diagnostic-screenshot.js";
+import { DiagnosticScreenshotGallery } from "../../../src/dashboard/surfaces/shared/run-evidence/diagnostic-screenshot.js";
 import type { DiagnosticBundleWire } from "../../../src/domain/dashboard/diagnostic-bundle.js";
 import { FIXTURE_DIAGNOSTIC_BUNDLE } from "../../parity/helpers/fixture-day.js";
 

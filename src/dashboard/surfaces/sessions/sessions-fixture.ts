@@ -1,4 +1,4 @@
-import type { WorkflowCatalogEntry } from "../workflow-catalog-model.js";
+import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
 import type { SessionControl, SessionNode, SessionWorker, SessionsViewState } from "./sessions-view-model.js";
 import { buildExplorerPreview } from "../explorer/explorer-fixture.js";
 

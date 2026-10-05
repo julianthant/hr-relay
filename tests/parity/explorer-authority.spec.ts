@@ -9,7 +9,7 @@ import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { assertShellGeometry } from "./helpers/geometry.js";
 import { CommandRequestSchema } from "../../src/domain/commands.js";
 import type { ExplorerWorkflowWire } from "../../src/domain/dashboard/explorer.js";
-import { explorerGraphTotals } from "../../src/dashboard/surfaces/explorer-model.js";
+import { explorerGraphTotals } from "../../src/dashboard/surfaces/explorer/explorer-model.js";
 import { EXPLORER_TIMELINE_BROWSER_WIRE, EXPLORER_TIMELINE_PARENT_ID } from "../fixtures/explorer-timeline-wire.js";
 
 type Server = Awaited<ReturnType<typeof startExplorerAuthorityServer>>;

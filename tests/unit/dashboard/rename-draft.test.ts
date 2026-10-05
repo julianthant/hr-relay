@@ -11,7 +11,7 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { renameAnswer, renameDraftProblem } from "../../../src/dashboard/app/rename-draft.js";
+import { renameAnswer, renameDraftProblem } from "../../../src/dashboard/surfaces/run-detail/identity/rename-draft.js";
 import { RunDisplayNameSchema } from "../../../src/domain/commands.js";
 
 describe("the rename draft rule", () => {

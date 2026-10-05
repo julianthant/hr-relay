@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, it } from "vitest";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
-import { SpreadsheetIntake } from "../../../src/dashboard/surfaces/intake-upload.js";
+import { SpreadsheetIntake } from "../../../src/dashboard/surfaces/intake/intake-upload.js";
 import { FIXTURE_INTAKE_MAPPING } from "../../parity/helpers/fixture-intake.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);

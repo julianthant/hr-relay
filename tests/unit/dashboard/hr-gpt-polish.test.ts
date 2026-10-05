@@ -1,15 +1,15 @@
 import { FIXTURE_DAY_WIRE } from "../../parity/helpers/fixture-queue.js";
-import { queueDisplayGroups, visibleRunIds } from "../../../src/dashboard/surfaces/queue-model.js";
+import { queueDisplayGroups, visibleRunIds } from "../../../src/dashboard/surfaces/queue/queue-model.js";
 import { SettingsSectionPrimitiveSchema } from "../../../src/domain/dashboard/bootstrap.js";
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
 import Excel from 'exceljs';
-import { DEFAULT_SHORTCUT_PREFERENCES, shortcutActionForEvent, shortcutChord, validateShortcutPreferences } from '../../../src/dashboard/surfaces/keyboard-preferences-model.js';
+import { DEFAULT_SHORTCUT_PREFERENCES, shortcutActionForEvent, shortcutChord, validateShortcutPreferences } from '../../../src/dashboard/surfaces/settings/navigation/keyboard-preferences-model.js';
 import { successfulRunSeconds } from '../../../src/dashboard/surfaces/activity/activity-duration-model.js';
 import { activitySample, ACTIVITY_SAMPLE_RANGE } from '../../../src/dashboard/surfaces/activity/activity-fixture.js';
-import { toggleQueueFilter } from '../../../src/dashboard/surfaces/queue-filter-model.js';
-import { cellText, editSpreadsheetCell, importSpreadsheet, newEditableWorkbook, sortSpreadsheet, spreadsheetColor, spreadsheetCsv, spreadsheetXlsx } from '../../../src/dashboard/surfaces/spreadsheet-editor-model.js';
-import { buildSettingsNav, resolveSettingsSection } from '../../../src/dashboard/surfaces/settings-model.js';
+import { toggleQueueFilter } from '../../../src/dashboard/surfaces/queue/queue-filter-model.js';
+import { cellText, editSpreadsheetCell, importSpreadsheet, newEditableWorkbook, sortSpreadsheet, spreadsheetColor, spreadsheetCsv, spreadsheetXlsx } from '../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
+import { buildSettingsNav, resolveSettingsSection } from '../../../src/dashboard/surfaces/settings/settings-model.js';
 import { SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID } from '../../../src/domain/dashboard/settings.js';
 
 function bytes(value: Uint8Array): ArrayBuffer { return value.slice().buffer; }

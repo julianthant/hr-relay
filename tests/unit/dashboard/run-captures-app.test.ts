@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { act } from "react";
 import { afterEach, describe, it, vi } from "vitest";
 import { RunEvidenceReceiptSchema } from "../../../src/domain/trust/evidence.js";
-import { RUN_DETAIL_FOLLOW_SETTLE_MS } from "../../../src/dashboard/state/use-run-detail.js";
+import { RUN_DETAIL_FOLLOW_SETTLE_MS } from "../../../src/dashboard/surfaces/run-detail/use-run-detail.js";
 import {
   CAPTURE_RUN_A, CAPTURE_RUN_B, CAPTURE_ARTIFACT_A, CAPTURE_ARTIFACT_B, CAPTURE_BUNDLE_A, CAPTURE_BUNDLE_B,
   captureButton, captureData, captureDayRevision, captureDetail, captureDialog, captureImage, deferredResponse, mountCaptureApp, pressCaptureControl, signalImageLoad,

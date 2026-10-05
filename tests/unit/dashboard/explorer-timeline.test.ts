@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import type { ExplorerNodeWire, ExplorerWorkflowWire } from "../../../src/domain/dashboard/explorer.js";
-import { explorerTimelineContainment, explorerTimelineOrder, explorerTimelinePath } from "../../../src/dashboard/surfaces/explorer-model.js";
+import { explorerTimelineContainment, explorerTimelineOrder, explorerTimelinePath } from "../../../src/dashboard/surfaces/explorer/explorer-model.js";
 import { FIXTURE_EXPLORER_WIRE } from "../../parity/helpers/fixture-explorer.js";
 
 const template = FIXTURE_EXPLORER_WIRE.workflows[0];

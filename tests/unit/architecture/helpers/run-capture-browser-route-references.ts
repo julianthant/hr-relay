@@ -68,7 +68,7 @@ export async function runCaptureBrowserRouteReferences(input: RunCaptureBrowserP
       assert.equal(raw, `${CAPTURE_BASE_URL}/artifacts/v1/${artifactId}`,
         "Run capture native sink must name its exact canonical generic artifact URL");
       assert.ok(typeof raw === "string");
-      return { file: "src/dashboard/surfaces/run-captures.tsx", path: new URL(raw).pathname };
+      return { file: "src/dashboard/surfaces/run-detail/run-captures.tsx", path: new URL(raw).pathname };
     });
   } catch (error) { failures.push(error); }
   finally {

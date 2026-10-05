@@ -4,8 +4,8 @@ import { FIXTURE_DAY, FIXTURE_NOW } from "../../parity/helpers/fixture-identity.
 import { QueueSurfaceWireSchema } from "../../../src/domain/dashboard/projection.js";
 import { notificationDestinationRefusal, notificationPreviewState } from "../../../src/dashboard/surfaces/notifications/notifications-preview-model.js";
 import { applyNotificationReads, notificationView } from "../../../src/dashboard/surfaces/notifications/notifications-view-model.js";
-import { approveMockRun, initialMockDraft, mockRunsForDraft, seedMockRuns } from "../../../src/dashboard/surfaces/workflow-mock-model.js";
-import { discardMockReview } from "../../../src/dashboard/surfaces/workflow-review-model.js";
+import { approveMockRun, initialMockDraft, mockRunsForDraft, seedMockRuns } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
+import { discardMockReview } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-review-model.js";
 
 const input = { day: FIXTURE_DAY, nowIso: FIXTURE_NOW, rows: FIXTURE_DAY_WIRE.queueSurfaces, runs: seedMockRuns(), workflowLabel: () => "Person Lookup" };
 function ready(state = notificationPreviewState("normal", input)) {

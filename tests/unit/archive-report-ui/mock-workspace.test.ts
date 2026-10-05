@@ -2,13 +2,13 @@
 import { act, createElement, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';
-import type { ArchiveBrowseState } from '../../../src/dashboard/app/archive-route-model.js';
+import type { ArchiveBrowseState } from '../../../src/dashboard/app/navigation/archive-route-model.js';
 import { DateInput, ToastProvider } from '../../../src/dashboard/ds/ui.js';
-import { MockArchiveWorkspace } from '../../../src/dashboard/surfaces/archive-mock.js';
-import { MOCK_ARCHIVE_RUNS, MOCK_ARCHIVE_WORKFLOWS, type MockArchiveFolder, type MockArchiveRun } from '../../../src/dashboard/surfaces/archive-mock-model.js';
-import { buildWorkflowCatalog } from '../../../src/dashboard/surfaces/workflow-catalog-model.js';
-import { mockArchiveLogs } from '../../../src/dashboard/surfaces/archive-mock-logs-model.js';
-import { filterLogSteps, logPlainText } from '../../../src/dashboard/surfaces/log-feed-model.js';
+import { MockArchiveWorkspace } from '../../../src/dashboard/surfaces/archive/archive-mock.js';
+import { MOCK_ARCHIVE_RUNS, MOCK_ARCHIVE_WORKFLOWS, type MockArchiveFolder, type MockArchiveRun } from '../../../src/dashboard/surfaces/archive/archive-mock-model.js';
+import { buildWorkflowCatalog } from '../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js';
+import { mockArchiveLogs } from '../../../src/dashboard/surfaces/archive/archive-mock-logs-model.js';
+import { filterLogSteps, logPlainText } from '../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js';
 
 class MeasurementFreeResizeObserver { observe(): void {} unobserve(): void {} disconnect(): void {} }
 Reflect.set(globalThis, 'ResizeObserver', MeasurementFreeResizeObserver);

@@ -13,7 +13,7 @@ import {
   archiveSummaryValue,
   mergeArchiveSummaryColumns,
   groupArchiveVersions,
-} from "../../../src/dashboard/surfaces/archive-runtime-model.js";
+} from "../../../src/dashboard/surfaces/archive/archive-runtime-model.js";
 import { H_REPORT } from "../../parity/helpers/fixture-archive-report.js";
 
 function required<T>(value: T | undefined): T {

@@ -1,7 +1,7 @@
 import { FIXTURE_EDITABLE_SETTINGS } from "../../parity/helpers/fixture-settings.js";
 import { fixturePreflightReport } from "../../parity/helpers/fixture-preflight-routes.js";
 import { DEFAULT_DASHBOARD_PROFILE } from "../../parity/helpers/fixture-profile.js";
-import { PreflightActionsProvider } from "../../../src/dashboard/state/preflight-actions.js";
+import { PreflightActionsProvider } from "../../../src/dashboard/surfaces/settings/preflight/preflight-actions.js";
 // @vitest-environment jsdom
 /**
  * D274 item 6 (ledger 3 SE40–SE42) — the Workflow capabilities Settings section, as an
@@ -38,9 +38,9 @@ import {
 } from "../../../src/domain/dashboard/bootstrap.js";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
-import { SettingsPage } from "../../../src/dashboard/surfaces/settings.js";
-import { buildSettingsNav } from "../../../src/dashboard/surfaces/settings-model.js";
-import { DEFAULT_CATALOG_VIEW } from "../../../src/dashboard/surfaces/row-catalog-model.js";
+import { SettingsPage } from "../../../src/dashboard/surfaces/settings/settings.js";
+import { buildSettingsNav } from "../../../src/dashboard/surfaces/settings/settings-model.js";
+import { DEFAULT_CATALOG_VIEW } from "../../../src/dashboard/surfaces/settings/catalog/row-catalog-model.js";
 
 class MeasurementFreeResizeObserver {
   observe(): void {}

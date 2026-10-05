@@ -1,7 +1,7 @@
 import { useId, useLayoutEffect, useRef, useState } from "react";
 import type { ActivityVolume as Volume } from "../../../domain/dashboard/activity-volume.js";
 import { dsFocus } from "../../ds/ui.js";
-import { createActivityVolumeChartModel } from "../activity-chart-model.js";
+import { createActivityVolumeChartModel } from "./activity-chart-model.js";
 
 export function ActivityVolume({ volume }: { volume?: Volume }) {
   const plot = useRef<HTMLDivElement>(null);

@@ -17,7 +17,7 @@
  * `body`: `restoreDashboardTakeoverFocus` would silently fall through to the
  * main region and drop the operator out of the toolbar entirely.
  */
-import { SETTINGS_GEAR_ID } from "../surfaces/settings-model.js";
+import { SETTINGS_GEAR_ID } from "../surfaces/settings/settings-model.js";
 
 export const RUN_START_DOOR_ID = "dashboard-run-start-door";
 

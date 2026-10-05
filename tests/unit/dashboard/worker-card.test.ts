@@ -24,7 +24,7 @@ import {
   canStopWorker,
   workerDirectiveNote,
   workerElapsedSeconds,
-} from "../../../src/dashboard/surfaces/shell-model.js";
+} from "../../../src/dashboard/surfaces/shell/shell-model.js";
 
 const STARTED = "2026-08-20T16:00:00.000Z";
 const SESSION = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";

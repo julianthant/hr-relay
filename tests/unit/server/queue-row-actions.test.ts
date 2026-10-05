@@ -14,7 +14,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { z } from "zod";
 import { PHASE1_ACTIVE_COMMAND_ARMS } from "../../../src/core/command-kernel.js";
-import { composeCommandRequest } from "../../../src/dashboard/app/command-dispatch.js";
+import { composeCommandRequest } from "../../../src/dashboard/app/commands/command-dispatch.js";
 import {
   ActionCommandKeySchema,
   ActionDescriptorWireSchema,

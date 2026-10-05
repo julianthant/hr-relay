@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { DayCountWireSchema } from "../../../src/domain/dashboard/projection.js";
-import { buildCalendarMonth, calendarTabStop, moveCalendarFocus, serverLocalDay, shiftMonth } from "../../../src/dashboard/surfaces/date-navigation-model.js";
-import { resolveDateSelection, routeForDay, routeForStartedRun } from "../../../src/dashboard/app/date-state-model.js";
-import { parseRoute, routeAdvancesHistory, routeToSearch } from "../../../src/dashboard/app/url-state.js";
+import { buildCalendarMonth, calendarTabStop, moveCalendarFocus, serverLocalDay, shiftMonth } from "../../../src/dashboard/surfaces/shell/date-navigation-model.js";
+import { resolveDateSelection, routeForDay, routeForStartedRun } from "../../../src/dashboard/app/navigation/date-state-model.js";
+import { parseRoute, routeAdvancesHistory, routeToSearch } from "../../../src/dashboard/app/navigation/url-state.js";
 import { deriveServedNow } from "../../../src/dashboard/state/served-clock.js";
 
 it("preserves raw invalid identities, refuses future links and accepts leap/empty historical dates", () => {

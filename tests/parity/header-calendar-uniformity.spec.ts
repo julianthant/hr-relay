@@ -3,7 +3,7 @@ import { expect, test, type Locator } from '@playwright/test';
 import { ensureParityBundle, PARITY_DIST_DIR } from './helpers/bundle.js';
 import { startFixtureServer } from './helpers/fixture-bff.js';
 import { installTheme, PARITY_THEMES } from './helpers/capture.js';
-import { ArchiveBrowseStateSchema } from '../../src/dashboard/app/archive-route-model.js';
+import { ArchiveBrowseStateSchema } from '../../src/dashboard/app/navigation/archive-route-model.js';
 
 async function calendarStyle(picker: Locator) {
   return picker.locator('.ds-calendar').evaluate(el => {

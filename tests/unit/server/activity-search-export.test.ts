@@ -27,11 +27,11 @@ import { createCrossDateSearchService } from "../../../src/server/dashboard/quer
 import { createOperatorXlsxExportService } from "../../../src/server/dashboard/exports/operator-xlsx-export-service.js";
 import { exportSearchMetadata } from "../../../src/server/dashboard/exports/search-metadata-export.js";
 import { spreadsheetCsvRow } from "../../../src/server/dashboard/exports/spreadsheet-csv.js";
-import { createActivityQueries } from "../../../src/dashboard/client/activity-queries.js";
+import { createActivityQueries } from "../../../src/dashboard/client/queries/activity-queries.js";
 import { createDashboardTransport } from "../../../src/dashboard/client/transport.js";
-import { verifySelectionDownload } from "../../../src/dashboard/client/selection-download.js";
+import { verifySelectionDownload } from "../../../src/dashboard/client/queries/selection-download.js";
 import { DashboardClientError } from "../../../src/dashboard/client/errors.js";
-import { activityPresetRange, type ActivityRangePreset } from "../../../src/dashboard/surfaces/activity-model.js";
+import { activityPresetRange, type ActivityRangePreset } from "../../../src/dashboard/surfaces/activity/activity-model.js";
 import { runRecordOf } from "./helpers/dashboard-harness.js";
 
 const cleanup:(()=>void)[]=[];

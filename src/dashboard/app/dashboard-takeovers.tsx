@@ -1,29 +1,29 @@
-import type { WorkflowCatalogEntry } from "../surfaces/workflow-catalog-model.js";
+import type { WorkflowCatalogEntry } from "../surfaces/workflows/workflow-catalog-model.js";
 import type { ComponentProps,ReactNode } from "react";
 import {
 type FrontendBootstrapWire
 } from "../../domain/dashboard/bootstrap.js";
-import { ActivityReport } from "../surfaces/activity.js";
-import { ARCHIVE_INDEX } from "../surfaces/archive-model.js";
-import { MockArchiveWorkspace as ArchiveWorkspace } from "../surfaces/archive-mock.js";
-import type { MockArchiveRun } from "../surfaces/archive-mock-model.js";
-import { WorkflowExplorer } from "../surfaces/explorer.js";
-import { IntakeWorkspace } from "../surfaces/intake.js";
-import { DEFAULT_CATALOG_VIEW } from "../surfaces/row-catalog-model.js";
-import { AppearanceSettings } from "../surfaces/appearance-settings.js";
+import { ActivityReport } from "../surfaces/activity/activity.js";
+import { ARCHIVE_INDEX } from "../surfaces/archive/archive-model.js";
+import { MockArchiveWorkspace as ArchiveWorkspace } from "../surfaces/archive/archive-mock.js";
+import type { MockArchiveRun } from "../surfaces/archive/archive-mock-model.js";
+import { WorkflowExplorer } from "../surfaces/explorer/explorer.js";
+import { IntakeWorkspace } from "../surfaces/intake/intake.js";
+import { DEFAULT_CATALOG_VIEW } from "../surfaces/settings/catalog/row-catalog-model.js";
+import { AppearanceSettings } from "../surfaces/settings/general/appearance-settings.js";
 import type { DemoTheme } from "../ds/ui.js";
-import { SettingsPage } from "../surfaces/settings.js";
+import { SettingsPage } from "../surfaces/settings/settings.js";
 import {
 RUN_START_DOOR_ID,
 type DashboardTakeoverCloseFocusTargetId
 } from "./dashboard-app-model.js";
-import { SETTINGS_GEAR_ID } from "../surfaces/settings-model.js";
-import type { SettingsExitGuard } from "./navigation-model.js";
+import { SETTINGS_GEAR_ID } from "../surfaces/settings/settings-model.js";
+import type { SettingsExitGuard } from "./navigation/navigation-model.js";
 import {
 activeTakeover,
 routeWithoutTakeovers,
 type AppRouteState
-} from "./url-state.js";
+} from "./navigation/url-state.js";
 export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSections,workflowLabels,workflowCatalog,activeWorkflowId,
  workflowLabelOf,supportsDryRun,closeTakeoverTo,onSettingsExitGuardChange,theme,onToggleTheme,archiveReports,children}: {
  takeover: ReturnType<typeof activeTakeover>; route: AppRouteState; setRoute: (next: AppRouteState, mode?: "push" | "replace") => void;

@@ -5,8 +5,8 @@ import { SettingsCommandRequestSchema } from "../../../src/domain/commands.js";
 import { mergeSettingsPatch, SettingsPatchSchema } from "../../../src/domain/config/settings.js";
 import { fixtureSettingsDocument } from "../../parity/helpers/fixture-settings.js";
 import { EditableSettingsWireSchema } from "../../../src/domain/dashboard/settings-editor.js";
-import { draftError, patchFromSettingsDraft, settingInput, settingsLeaves } from "../../../src/dashboard/surfaces/settings-draft-model.js";
-import { differingSettingsValues, groupDeploymentFacts, groupSettingsLeaves, settingsFactLabel } from "../../../src/dashboard/surfaces/ui-settings-records-labels.js";
+import { draftError, patchFromSettingsDraft, settingInput, settingsLeaves } from "../../../src/dashboard/surfaces/settings/editor/settings-draft-model.js";
+import { differingSettingsValues, groupDeploymentFacts, groupSettingsLeaves, settingsFactLabel } from "../../../src/dashboard/surfaces/settings/editor/ui-settings-records-labels.js";
 import { mountSettingsHarness, settingsAction, syntheticSettingsAuthority } from "./helpers/settings-harness.js";
 
 const cleanups: (() => void)[] = [];

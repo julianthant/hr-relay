@@ -4,7 +4,7 @@ import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "./helpers/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { FIXTURE_IDS } from "./helpers/fixture-queue.js";
-import { mockQueueId } from "../../src/dashboard/surfaces/workflow-queue-model.js";
+import { mockQueueId } from "../../src/dashboard/surfaces/workflows/mocks/workflow-queue-model.js";
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   test(`notification destinations, approval and new run updates @ ${theme.attribute}-${width}`, async ({ page }, info) => {

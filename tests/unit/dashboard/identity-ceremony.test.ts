@@ -1,4 +1,4 @@
-import { identityComparisonRows } from "../../../src/dashboard/surfaces/identity-approve-model.js";
+import { identityComparisonRows } from "../../../src/dashboard/surfaces/run-detail/identity/identity-approve-model.js";
 /**
  * THE THREE IDENTITY-APPROVAL CEREMONIES (ref write-safety §14.6 risk 1, D226).
  *
@@ -28,7 +28,7 @@ import { deriveJobRowFromCells } from "../../../src/stores/ucpath/driver/person-
 import {
   composeCommandRequest,
   type CommandAction,
-} from "../../../src/dashboard/app/command-dispatch.js";
+} from "../../../src/dashboard/app/commands/command-dispatch.js";
 import {
   EMPTY_IDENTITY_GATE_DRAFT,
   identityCeremonyFor,
@@ -36,7 +36,7 @@ import {
   identityGateAnswer,
   optionFor,
   type IdentityGateDetail,
-} from "../../../src/dashboard/app/identity-ceremony.js";
+} from "../../../src/dashboard/surfaces/run-detail/identity/identity-ceremony.js";
 
 const NOW = "2026-08-14T17:00:00.000Z";
 /** The EID the document carries and the run checked. */

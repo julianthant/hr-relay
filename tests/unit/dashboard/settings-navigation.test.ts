@@ -7,9 +7,9 @@ import { fixtureSettingsDocument } from "../../parity/helpers/fixture-settings.j
 import { SettingsSectionPrimitiveSchema, StorageHealthSummaryWireSchema } from "../../../src/domain/dashboard/bootstrap.js";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
-import { buildSettingsNav, resolveSettingsSection } from "../../../src/dashboard/surfaces/settings-model.js";
-import { SettingsPage } from "../../../src/dashboard/surfaces/settings.js";
-import { DEFAULT_CATALOG_VIEW } from "../../../src/dashboard/surfaces/row-catalog-model.js";
+import { buildSettingsNav, resolveSettingsSection } from "../../../src/dashboard/surfaces/settings/settings-model.js";
+import { SettingsPage } from "../../../src/dashboard/surfaces/settings/settings.js";
+import { DEFAULT_CATALOG_VIEW } from "../../../src/dashboard/surfaces/settings/catalog/row-catalog-model.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 class MeasurementFreeResizeObserver {

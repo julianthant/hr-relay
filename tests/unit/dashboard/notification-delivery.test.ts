@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createNotificationDelivery, type NotificationDeliveryPlatform } from "../../../src/dashboard/state/notification-delivery.js";
+import { createNotificationDelivery, type NotificationDeliveryPlatform } from "../../../src/dashboard/surfaces/notifications/notification-delivery.js";
 import { NotificationWireSchema } from "../../../src/domain/dashboard/projection.js";
 const row = (publication = "a", changes = {}) => NotificationWireSchema.parse({ kind: "notification", notificationId: "11111111-1111-4111-8111-111111111111", actorId: "local-operator", channel: "ping", count: "abcdef0".indexOf(publication) + 1, publicationId: publication.repeat(64), trigger: "failed", readState: "unread", severity: "error", title: "private text must not reach OS", state: "unread", occurredAt: "2026-09-14T17:00:00.000Z", revision: 1, ...changes });
 function platform() {

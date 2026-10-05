@@ -20,12 +20,12 @@ import {
   explorerGraphTotals,
   nodeBindings,
   writeSystems,
-} from "../../../src/dashboard/surfaces/explorer-model.js";
+} from "../../../src/dashboard/surfaces/explorer/explorer-model.js";
 import {
   activeTakeover,
   parseRoute,
   routeToSearch,
-} from "../../../src/dashboard/app/url-state.js";
+} from "../../../src/dashboard/app/navigation/url-state.js";
 import { matchesUiCatalogQuery } from "../../../src/domain/dashboard/explorer.js";
 import type { ExplorerWorkflowWire } from "../../../src/domain/dashboard/explorer.js";
 import type { UiCatalogEntry } from "../../../src/domain/ui/contracts.js";

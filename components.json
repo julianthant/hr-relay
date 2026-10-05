@@ -14,8 +14,8 @@
   "aliases": {
     "components": "@/surfaces",
     "utils": "@/lib/utils",
-    "ui": "@/ds",
+    "ui": "@/ds/primitives",
     "lib": "@/lib",
-    "hooks": "@/ds/hooks"
+    "hooks": "@/ds/primitives/hooks"
   }
 }

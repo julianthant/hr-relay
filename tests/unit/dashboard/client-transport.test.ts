@@ -19,7 +19,7 @@ import {
 // whole reconnect classification is written against those three answers.
 import { createDashboardTransport } from "../../../src/dashboard/client/transport.js";
 import { DashboardDayWireSchema, type DashboardDayWire } from "../../../src/domain/dashboard/projection.js";
-import type { DashboardDayPatch } from "../../../src/dashboard/client/day-state.js";
+import type { DashboardDayPatch } from "../../../src/dashboard/client/queries/day-state.js";
 
 const DAY = "2026-08-03";
 const HASH_D = "d".repeat(64);

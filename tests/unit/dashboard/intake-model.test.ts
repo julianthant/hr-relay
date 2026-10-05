@@ -49,7 +49,7 @@ import {
   sourceLabel,
   startRunsLabel,
   suggestionProposalText,
-} from "../../../src/dashboard/surfaces/intake-model.js";
+} from "../../../src/dashboard/surfaces/intake/intake-model.js";
 
 describe("IN95 / IN99–IN122 — rejection review uses the demo's one vocabulary and one eligibility door", () => {
   it("pins every visible label in the table, editors, review acknowledgement and Well summaries", () => {

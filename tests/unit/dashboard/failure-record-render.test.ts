@@ -12,11 +12,11 @@ import {
   type FailureDetailWire,
 } from "../../../src/domain/dashboard/run-detail.js";
 import { wireResourceSchema } from "../../../src/domain/dashboard/primitives.js";
-import { FailureDetailBody } from "../../../src/dashboard/surfaces/trust.js";
-import { InlineFailureRecord } from "../../../src/dashboard/surfaces/run-detail/receipt-failure.js";
+import { FailureDetailBody } from "../../../src/dashboard/surfaces/shared/run-evidence/trust.js";
+import { InlineFailureRecord } from "../../../src/dashboard/surfaces/run-detail/failure/receipt-failure.js";
 import { LogsTab } from "../../../src/dashboard/surfaces/run-detail/logs.js";
 import { CAPTURE_BUNDLE_A, CAPTURE_BUNDLE_B, captureDetail, captureImage } from "./fixtures/run-captures-app-fixture.js";
-import { ArchivedFailureCard } from "../../../src/dashboard/surfaces/archive.js";
+import { ArchivedFailureCard } from "../../../src/dashboard/surfaces/archive/archive.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 
@@ -106,7 +106,7 @@ function renderBody(detail: FailureDetailWire): string {
   declares the `jsdom` environment, where `import.meta.url` is an http URL and
   `fileURLToPath` refuses it. `readFileSync` fails loud if the root ever moves.
 */
-const TOKENS_CSS = readFileSync(resolve(process.cwd(), "src/dashboard/ds/tokens.css"), "utf8");
+const TOKENS_CSS = readFileSync(resolve(process.cwd(), "src/dashboard/ds/theme/tokens.css"), "utf8");
 
 /**
  * The two themes that carry real colour values.

@@ -18,7 +18,7 @@ import {
   writeProofAbsence,
   writeProofConfirmation,
   writeProofReadBack,
-} from "../../../src/dashboard/surfaces/trust-model.js";
+} from "../../../src/dashboard/surfaces/shared/run-evidence/trust-model.js";
 
 type Receipt = ReturnType<typeof RunEvidenceReceiptSchema.parse>;
 type ActionKind = Receipt["actions"][number]["kind"];

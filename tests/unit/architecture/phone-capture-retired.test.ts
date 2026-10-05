@@ -85,7 +85,7 @@ function writeFixture(root: string, path: string, content: string): void {
 describe("D294 phone capture retirement", () => {
   it("keeps mobile document capture absent while diagnostic and Archive captures remain", () => {
     assert.deepEqual(phoneCaptureRetirementViolations(REPO_ROOT), []);
-    assert.ok(existsSync(join(REPO_ROOT, "src/dashboard/surfaces/run-captures.tsx")));
+    assert.ok(existsSync(join(REPO_ROOT, "src/dashboard/surfaces/run-detail/run-captures.tsx")));
     assert.ok(existsSync(join(REPO_ROOT, "src/server/dashboard/queries/archive.ts")));
   });
 

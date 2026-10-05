@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { archiveQueuePreview, archiveWorkflowTree } from "../../../src/dashboard/surfaces/queue-archive-model.js";
-import { mockArchiveExport, mockArchiveFilter, mockArchiveScope, mockArchiveWorkflows } from "../../../src/dashboard/surfaces/archive-mock-model.js";
-import { mockArchiveLogs } from "../../../src/dashboard/surfaces/archive-mock-logs-model.js";
-import { seedQueuePreview } from "../../../src/dashboard/surfaces/queue-preview-model.js";
-import { seedMockRuns } from "../../../src/dashboard/surfaces/workflow-mock-model.js";
-import { reviewRecords, updateMockReview } from "../../../src/dashboard/surfaces/workflow-review-model.js";
+import { archiveQueuePreview, archiveWorkflowTree } from "../../../src/dashboard/surfaces/queue/queue-archive-model.js";
+import { mockArchiveExport, mockArchiveFilter, mockArchiveScope, mockArchiveWorkflows } from "../../../src/dashboard/surfaces/archive/archive-mock-model.js";
+import { mockArchiveLogs } from "../../../src/dashboard/surfaces/archive/archive-mock-logs-model.js";
+import { seedQueuePreview } from "../../../src/dashboard/surfaces/queue/queue-preview-model.js";
+import { seedMockRuns } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
+import { reviewRecords, updateMockReview } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-review-model.js";
 import { FIXTURE_DAY, FIXTURE_NOW } from "../../parity/helpers/fixture-identity.js";
 import { FIXTURE_DAY_WIRE } from "../../parity/helpers/fixture-queue.js";
 

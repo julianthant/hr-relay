@@ -9,7 +9,7 @@ import {
   freshnessNoteOf,
   groupEntriesByStep,
   type ContextDataEntry,
-} from "../../../src/dashboard/surfaces/context-rail-model.js";
+} from "../../../src/dashboard/surfaces/run-detail/context-rail-model.js";
 
 /**
  * D252 — the ledger's two levels and its reuse bound, as pure folds.

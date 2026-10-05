@@ -29,7 +29,7 @@ import {
   rowInfoFacts,
   type OperationSurfaceWire,
   type QueueSurfaceWire,
-} from "../../../src/dashboard/surfaces/queue-model.js";
+} from "../../../src/dashboard/surfaces/queue/queue-model.js";
 
 const [base] = FIXTURE_DAY_WIRE.queueSurfaces;
 if (base === undefined) throw new Error("the parity day fixture must serve at least one queue surface");

@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, expect, it, vi } from "vitest";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
-import { SavedArchiveReport } from "../../../src/dashboard/surfaces/archive-report.js";
+import { SavedArchiveReport } from "../../../src/dashboard/surfaces/archive/archive-report.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { SavedArchiveReportWireSchema } from "../../../src/domain/dashboard/archive.js";
 import { H_REPORT } from "../../parity/helpers/fixture-archive-report.js";

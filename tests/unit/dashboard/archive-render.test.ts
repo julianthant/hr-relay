@@ -41,8 +41,8 @@ import {
   ArchiveTable,
   ArchivedRunDetail,
   CaptureViewerDialog,
-} from "../../../src/dashboard/surfaces/archive.js";
-import type { ArchiveSection } from "../../../src/dashboard/surfaces/archive-model.js";
+} from "../../../src/dashboard/surfaces/archive/archive.js";
+import type { ArchiveSection } from "../../../src/dashboard/surfaces/archive/archive-model.js";
 import { FIXTURE_ARCHIVE_INDEX } from "../../parity/helpers/fixture-archive.js";
 import { FIXTURE_ARCHIVE_EVIDENCE_RUN } from "../../parity/helpers/fixture-archive-evidence.js";
 import { ToastProvider } from "../../../src/dashboard/ds/ui.js";
@@ -797,7 +797,7 @@ describe("the archived capture viewer's read-time resource state", () => {
   }
 });
 
-import { SavedArchiveWorkspace } from "../../../src/dashboard/surfaces/archive-report.js";
+import { SavedArchiveWorkspace } from "../../../src/dashboard/surfaces/archive/archive-report.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { FIXTURE_SAVED_REPORT, FIXTURE_SAVED_VERSIONS } from "../../parity/helpers/fixture-archive.js";
@@ -841,7 +841,7 @@ it("keeps generic loading, empty, deleted and failed responses distinct, and dis
 });
 
 // H: filtering retains indexed fields, never reconstructs an old page locally.
-import { savedFilterQuery } from "../../../src/dashboard/surfaces/archive-report-model.js";
+import { savedFilterQuery } from "../../../src/dashboard/surfaces/archive/archive-report-model.js";
 it("retains exact title/version/outcome filters while replacing workflow and dropping pagination", () => {
   const query = savedFilterQuery({ limit: 50, title: "Exact retained title", descriptorVersion: "7", outcome: "interrupted", after: { runId: RunIdSchema.parse("00000000-0000-4000-8000-000000000081"), completedAt: "2026-08-01T12:00:00.000Z" } }, "workflow", "removed-workflow");
   assert.deepEqual(query, { limit: 50, title: "Exact retained title", descriptorVersion: "7", outcome: "interrupted", workflow: "removed-workflow" });

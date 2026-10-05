@@ -24,9 +24,9 @@ import {
   RunIdSchema,
 } from "../../../src/domain/ids.js";
 import { RunEvidenceReceiptSchema } from "../../../src/domain/trust/evidence.js";
-import { CONFIDENCE_COPY, receiptConfidenceChip, receiptIdentityItems } from "../../../src/dashboard/surfaces/receipt-model.js";
-import { fmtClock } from "../../../src/dashboard/surfaces/format.js";
-import { ReceiptView } from "../../../src/dashboard/surfaces/receipt.js";
+import { CONFIDENCE_COPY, receiptConfidenceChip, receiptIdentityItems } from "../../../src/dashboard/surfaces/run-detail/failure/receipt-model.js";
+import { fmtClock } from "../../../src/dashboard/surfaces/shared/status/format.js";
+import { ReceiptView } from "../../../src/dashboard/surfaces/run-detail/failure/receipt.js";
 
 const RECEIPT_ID = EvidenceReceiptIdSchema.parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
 const RUN_ID = RunIdSchema.parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");

@@ -27,7 +27,7 @@ import { cpus, totalmem } from "node:os";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { applyDashboardDayPatch } from "../../src/dashboard/client/day-state.js";
+import { applyDashboardDayPatch } from "../../src/dashboard/client/queries/day-state.js";
 import {
   DashboardDayWireSchema,
   type DashboardDayWire,

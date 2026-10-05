@@ -28,10 +28,10 @@ import { composeSettings } from "../../../../src/server/dashboard/compose/settin
 import { buildSettingsEditor } from "../../../../src/server/dashboard/queries/settings-editor.js";
 import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
-import { useEditableSettings } from "../../../../src/dashboard/surfaces/settings-editor-model.js";
-import { EditableSettingsSection } from "../../../../src/dashboard/surfaces/settings-editor.js";
-import { SettingsAuthoritySection } from "../../../../src/dashboard/surfaces/settings-authorities.js";
-import { RoutesSection } from "../../../../src/dashboard/surfaces/settings-routes.js";
+import { useEditableSettings } from "../../../../src/dashboard/surfaces/settings/editor/settings-editor-model.js";
+import { EditableSettingsSection } from "../../../../src/dashboard/surfaces/settings/editor/settings-editor.js";
+import { SettingsAuthoritySection } from "../../../../src/dashboard/surfaces/settings/editor/settings-authorities.js";
+import { RoutesSection } from "../../../../src/dashboard/surfaces/settings/routes/settings-routes.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 export function syntheticSettingsAuthority(options: { providerFile?: string; parentSlots?: NodeJS.ProcessEnv; providerHooks?: ProviderKeyStoreHooks; configuredModels?: readonly string[] } = {}) {

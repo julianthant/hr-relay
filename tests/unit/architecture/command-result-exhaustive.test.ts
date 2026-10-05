@@ -62,7 +62,7 @@ const FIXTURE_PARTIAL_FOLD = "tests/unit/architecture/fixtures/command-result-pa
  * that names an arm does.
  */
 const EXEMPT = new Set([
-  "src/dashboard/app/command-result.ts",
+  "src/dashboard/app/commands/command-result.ts",
   "src/dashboard/client/commands.ts",
 ]);
 
@@ -74,7 +74,7 @@ const EXEMPT = new Set([
  */
 const FORWARDING_LAYERS = new Set([
   "src/dashboard/client/index.ts",
-  "src/dashboard/app/run-launch-model.ts",
+  "src/dashboard/surfaces/run-start/run-launch-model.ts",
 ]);
 
 function sourceFiles(root: string): readonly string[] {
@@ -284,7 +284,7 @@ describe("command-result-exhaustive (D253)", () => {
   });
 
   it("the fold's own module is the only place the arms are enumerated for a verdict", () => {
-    const fold = readFileSync(join(REPO_ROOT, "src/dashboard/app/command-result.ts"), "utf8");
+    const fold = readFileSync(join(REPO_ROOT, "src/dashboard/app/commands/command-result.ts"), "utf8");
     for (const arm of ["applied", "already-applied", "conflict", "rejected"]) {
       expect(fold, `settleCommandResult must handle ${arm}`).toContain(`case "${arm}"`);
     }

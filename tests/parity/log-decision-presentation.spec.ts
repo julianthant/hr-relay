@@ -1,7 +1,7 @@
 import { chooseSelect } from "./helpers/select-choice.js";
 import { createHash } from "node:crypto";
 import { expect, test } from "@playwright/test";
-import { logDecisionExamples } from "../../src/dashboard/surfaces/logs/log-decision-fixture.js";
+import { logDecisionExamples } from "../../src/dashboard/surfaces/run-detail/logs/log-decision-fixture.js";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "./helpers/fixture-bff.js";

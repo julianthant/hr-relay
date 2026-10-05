@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { MOCK_ARCHIVE_RUNS, MOCK_ARCHIVE_WORKFLOWS, mockArchiveDateBoundary, mockArchiveExport, mockArchiveFilter, mockArchiveScope, mockArchiveSearch, mockArchiveSearchHref } from '../../../src/dashboard/surfaces/archive-mock-model.js';
-import { ArchiveBrowseStateSchema } from '../../../src/dashboard/app/archive-route-model.js';
-import { mockArchiveLogs } from '../../../src/dashboard/surfaces/archive-mock-logs-model.js';
-import { logPlainText } from '../../../src/dashboard/surfaces/log-feed-model.js';
+import { MOCK_ARCHIVE_RUNS, MOCK_ARCHIVE_WORKFLOWS, mockArchiveDateBoundary, mockArchiveExport, mockArchiveFilter, mockArchiveScope, mockArchiveSearch, mockArchiveSearchHref } from '../../../src/dashboard/surfaces/archive/archive-mock-model.js';
+import { ArchiveBrowseStateSchema } from '../../../src/dashboard/app/navigation/archive-route-model.js';
+import { mockArchiveLogs } from '../../../src/dashboard/surfaces/archive/archive-mock-logs-model.js';
+import { logPlainText } from '../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js';
 
 describe('local Archive mock', () => {
  it('uses distinct fictional identities, several versions and all sample outcomes', () => {

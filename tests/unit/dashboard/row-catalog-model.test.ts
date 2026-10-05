@@ -9,7 +9,7 @@ import { describe, it } from "vitest";
 import { ContainmentSchema } from "../../../src/domain/dashboard/projection.js";
 import { PanelKindSchema, RunDetailSectionSchema } from "../../../src/domain/dashboard/primitives.js";
 import { RunDetailWireSchema, sectionsForPanelKind } from "../../../src/domain/dashboard/run-detail.js";
-import { PANEL_TAB_LABEL, TAB_ORDER } from "../../../src/dashboard/surfaces/log-panel-model.js";
+import { PANEL_TAB_LABEL, TAB_ORDER } from "../../../src/dashboard/surfaces/run-detail/log-panel-model.js";
 import {
   DEFAULT_CATALOG_VIEW,
   ROLLUP_COUNTS,
@@ -19,7 +19,7 @@ import {
   panelKindSpecs,
   parseCatalogView,
   rowSurfaceSpecs,
-} from "../../../src/dashboard/surfaces/row-catalog-model.js";
+} from "../../../src/dashboard/surfaces/settings/catalog/row-catalog-model.js";
 
 const RUN = "e1b8ae3e-0000-4000-8000-000000000001";
 const AT = "2026-08-25T12:00:00.000Z";

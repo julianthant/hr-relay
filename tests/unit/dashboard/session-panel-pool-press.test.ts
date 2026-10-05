@@ -38,8 +38,8 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it } from "vitest";
 import { DashboardDayWireSchema, type DashboardDayWire } from "../../../src/domain/dashboard/projection.js";
-import { parseWorkflows, type WorkerCardWire } from "../../../src/dashboard/surfaces/shell-model.js";
-import { SessionPanel } from "../../../src/dashboard/surfaces/shell.js";
+import { parseWorkflows, type WorkerCardWire } from "../../../src/dashboard/surfaces/shell/shell-model.js";
+import { SessionPanel } from "../../../src/dashboard/surfaces/shell/shell.js";
 import { FIXTURE_BOOTSTRAP, FIXTURE_DAY_WIRE, FIXTURE_NOW } from "../../parity/helpers/fixture-day.js";
 
 /**
@@ -177,11 +177,11 @@ async function mountPanel(): Promise<MountedPanel> {
       nowIso: FIXTURE_NOW,
       connection: { state: "live" },
       appVersion: "0.1.0",
-      onPlanWorkerCount: async (plan) => {
+      onPlanWorkerCount: async (plan: PlanDispatch) => {
         plans.push(plan);
         return { kind: "applied", requestId: "plan-1", replayed: false };
       },
-      onSpawnWorker: async (member) => {
+      onSpawnWorker: async (member: SpawnDispatch) => {
         spawns.push(member);
         return { kind: "applied", requestId: "spawn-1", replayed: false };
       },

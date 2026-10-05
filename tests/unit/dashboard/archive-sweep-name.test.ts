@@ -16,14 +16,14 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it } from "vitest";
 import { ArchiveEntryWireSchema } from "../../../src/domain/dashboard/archive.js";
-import { ArchiveTable } from "../../../src/dashboard/surfaces/archive.js";
+import { ArchiveTable } from "../../../src/dashboard/surfaces/archive/archive.js";
 import {
   archiveIdentityKey,
   archiveSweepFacts,
   archiveSweepName,
   archiveWorkflowCodes,
   type ArchiveSection,
-} from "../../../src/dashboard/surfaces/archive-model.js";
+} from "../../../src/dashboard/surfaces/archive/archive-model.js";
 import { FIXTURE_ARCHIVE_INDEX } from "../../parity/helpers/fixture-archive.js";
 
 const SWEEP = FIXTURE_ARCHIVE_INDEX.sweeps[0];

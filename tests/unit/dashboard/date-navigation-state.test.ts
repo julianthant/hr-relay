@@ -7,10 +7,10 @@ import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientError } from "../../../src/dashboard/client/errors.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { useDashboardDay, type DashboardDayState } from "../../../src/dashboard/state/use-dashboard-day.js";
-import { useCalendar } from "../../../src/dashboard/state/use-calendar.js";
+import { useCalendar } from "../../../src/dashboard/surfaces/shell/use-calendar.js";
 import { useServedNow } from "../../../src/dashboard/state/served-clock.js";
-import { resolveDateSelection } from "../../../src/dashboard/app/date-state-model.js";
-import { serverLocalDay } from "../../../src/dashboard/surfaces/date-navigation-model.js";
+import { resolveDateSelection } from "../../../src/dashboard/app/navigation/date-state-model.js";
+import { serverLocalDay } from "../../../src/dashboard/surfaces/shell/date-navigation-model.js";
 import { CalendarWireSchema, type CalendarWire } from "../../../src/domain/dashboard/calendar.js";
 import { DashboardDayWireSchema } from "../../../src/domain/dashboard/projection.js";
 import type { AsyncResource } from "../../../src/dashboard/state/async-resource.js";
@@ -89,7 +89,7 @@ it("visibility refresh advances only live Today using the one monotonic calibrat
 });
 
 it("the HTTP client rejects a schema-valid calendar for a different request", async () => {
-  const { createShellQueries } = await import("../../../src/dashboard/client/shell-queries.js");
+  const { createShellQueries } = await import("../../../src/dashboard/client/queries/shell-queries.js");
   let result = calendar("2026-08-03");
   const client = createShellQueries({ requestJson: async () => result } as unknown as import("../../../src/dashboard/client/transport.js").DashboardTransport);
   assert.equal((await client.calendar({ month: "2026-08", day: "2026-08-03" })).day, "2026-08-03");

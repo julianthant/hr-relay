@@ -21,14 +21,14 @@
  */
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
-import { composeCommandRequest } from "../../../../src/dashboard/app/command-dispatch.js";
+import { composeCommandRequest } from "../../../../src/dashboard/app/commands/command-dispatch.js";
 import {
   EMPTY_IDENTITY_GATE_DRAFT,
   identityCeremonyFor,
   identityDraftProblem,
   identityGateAnswer,
   type IdentityGateDetail,
-} from "../../../../src/dashboard/app/identity-ceremony.js";
+} from "../../../../src/dashboard/surfaces/run-detail/identity/identity-ceremony.js";
 import { FingerprintSchema } from "../../../../src/domain/ids.js";
 import { buildRunSection } from "../../../../src/server/dashboard/queries/run-detail.js";
 import {

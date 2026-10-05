@@ -11,7 +11,7 @@ import {
 } from "../../../src/domain/dashboard/run-detail.js";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
-import { usePanelSections } from "../../../src/dashboard/app/use-panel-sections.js";
+import { usePanelSections } from "../../../src/dashboard/surfaces/run-detail/use-panel-sections.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 

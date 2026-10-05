@@ -5,8 +5,8 @@ import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "./helpers/fixture-bff.js";
 import { fixtureSettingsDocument } from "./helpers/fixture-settings.js";
-import { buildSettingsNav } from "../../src/dashboard/surfaces/settings-model.js";
-import { settingsSearchIndex } from "../../src/dashboard/surfaces/settings-search-model.js";
+import { buildSettingsNav } from "../../src/dashboard/surfaces/settings/settings-model.js";
+import { settingsSearchIndex } from "../../src/dashboard/surfaces/settings/navigation/settings-search-model.js";
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   test(`Settings search navigates and centers real controls @ ${theme.attribute}-${width}`, async ({ page }, info) => {

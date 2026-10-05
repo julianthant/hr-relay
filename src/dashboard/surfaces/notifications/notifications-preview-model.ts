@@ -1,8 +1,8 @@
 import type { QueueSurfaceWire } from "../../../domain/dashboard/projection.js";
-import { mockNeedsReview, mockWaitsForOcr, mockRunStatus, type MockRun } from "../workflow-mock-model.js";
-import { mockWorkflow } from "../workflow-mock-catalog.js";
-import { mockQueueSurfaces } from "../workflow-queue-model.js";
-import { reviewRecords } from "../workflow-review-model.js";
+import { mockNeedsReview, mockWaitsForOcr, mockRunStatus, type MockRun } from "../workflows/mocks/workflow-mock-model.js";
+import { mockWorkflow } from "../workflows/mocks/workflow-mock-catalog.js";
+import { mockQueueSurfaces } from "../workflows/mocks/workflow-queue-model.js";
+import { reviewRecords } from "../workflows/mocks/workflow-review-model.js";
 import { notificationsSample } from "./notifications-fixture.js";
 import type { NotificationDestination, NotificationItem, NotificationsState } from "./notifications-view-model.js";
 

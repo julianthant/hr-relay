@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it } from "vitest";
 import { WorkflowExplorerWireSchema } from "../../../src/domain/dashboard/explorer.js";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
-import { WorkflowExplorer } from "../../../src/dashboard/surfaces/explorer.js";
+import { WorkflowExplorer } from "../../../src/dashboard/surfaces/explorer/explorer.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { FIXTURE_BOOTSTRAP } from "../../parity/helpers/fixture-day.js";
 import { EXPLORER_MULTI_TARGET_WIRE, EXPLORER_TIMELINE_PARENT_ID, EXPLORER_TIMELINE_WIRE } from "../../fixtures/explorer-timeline-wire.js";

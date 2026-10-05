@@ -635,8 +635,8 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
       assert.equal(result.observation.state, "observed", result.problems.join("\n"));
       if (result.observation.state !== "observed") throw new Error("Run capture observation refused");
       assert.deepEqual(result.observation.references, [
-        { file: "src/dashboard/surfaces/run-captures.tsx", path: `/artifacts/v1/${artifactId}` },
-        { file: "src/dashboard/surfaces/run-captures.tsx", path: `/artifacts/v1/${artifactId}` },
+        { file: "src/dashboard/surfaces/run-detail/run-captures.tsx", path: `/artifacts/v1/${artifactId}` },
+        { file: "src/dashboard/surfaces/run-detail/run-captures.tsx", path: `/artifacts/v1/${artifactId}` },
       ]);
       assert.deepEqual(result.problems, [ARCHIVE_ORPHAN]);
     },
@@ -765,8 +765,8 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
     assert.equal(result.observation.state, "observed", result.problems.join("\n"));
     if (result.observation.state !== "observed") throw new Error("the second Archive pair was refused");
     assert.deepEqual(result.observation.references, [
-      { file: "src/dashboard/surfaces/archive.tsx", path: "/artifacts/v1/archive/00000000-0000-4000-8000-00000000a001/00000000-0000-4000-8000-00000000a002" },
-      { file: "src/dashboard/surfaces/archive.tsx", path: "/artifacts/v1/archive/00000000-0000-4000-8000-00000000a001/00000000-0000-4000-8000-00000000a002" },
+      { file: "src/dashboard/surfaces/archive/archive.tsx", path: "/artifacts/v1/archive/00000000-0000-4000-8000-00000000a001/00000000-0000-4000-8000-00000000a002" },
+      { file: "src/dashboard/surfaces/archive/archive.tsx", path: "/artifacts/v1/archive/00000000-0000-4000-8000-00000000a001/00000000-0000-4000-8000-00000000a002" },
     ]);
     assert.deepEqual(result.problems, [GENERIC_ORPHAN]);
   });

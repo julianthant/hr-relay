@@ -9,7 +9,7 @@ import {
   checkedByYouCount,
   toggleCheckedByYou,
   type MemberSurfaceWire,
-} from "../../../src/dashboard/surfaces/queue-model.js";
+} from "../../../src/dashboard/surfaces/queue/queue-model.js";
 
 const members = FIXTURE_DAY_WIRE.queueSurfaces.filter(
   (surface): surface is MemberSurfaceWire => surface.surfaceKind === "member",

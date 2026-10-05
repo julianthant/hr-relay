@@ -1,8 +1,8 @@
 import { Skeleton } from "../../ds/ui.js";
-import { LoadingRegion, SkeletonText } from "../loading.js";
+import { LoadingRegion, SkeletonText } from "../shared/loading/loading.js";
 import { buildActivityVolumeBoundarySkeleton } from "../../../domain/dashboard/activity-volume.js";
-import { activityVolumeTitle } from "../activity-chart-model.js";
-import type { ActivityDateRange } from "../activity-model.js";
+import { activityVolumeTitle } from "./activity-chart-model.js";
+import type { ActivityDateRange } from "./activity-model.js";
 import { ActivityDurationsSkeleton } from "./activity-duration.js";
 
 function TableSkeleton({ title, columns = 2, rows = 2, notes = false }: { title: string; columns?: number; rows?: number; notes?: boolean }) {

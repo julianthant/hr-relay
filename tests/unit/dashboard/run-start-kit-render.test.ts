@@ -27,9 +27,9 @@ import {
   LockedFact,
   PlanPreview,
   StartChoiceControl,
-} from "../../../src/dashboard/surfaces/run-start-kit.js";
-import { ENQUEUE_POLICY_REASON } from "../../../src/dashboard/surfaces/run-start-model.js";
-import { fmtClock } from "../../../src/dashboard/surfaces/format.js";
+} from "../../../src/dashboard/surfaces/run-start/run-start-kit.js";
+import { ENQUEUE_POLICY_REASON } from "../../../src/dashboard/surfaces/run-start/run-start-model.js";
+import { fmtClock } from "../../../src/dashboard/surfaces/shared/status/format.js";
 import { CommandResultSchema, type CommandResult } from "../../../src/domain/commands.js";
 import { StartPlanWireSchema as StartPlanResponseSchema, type StartPlanWire as StartPlanResponse } from "../../../src/domain/dashboard/start-plan.js";
 

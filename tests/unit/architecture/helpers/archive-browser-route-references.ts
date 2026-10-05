@@ -12,7 +12,7 @@ import {
 } from "../../../../src/domain/dashboard/archive.js";
 import { createDashboardQueries } from "../../../../src/dashboard/client/queries.js";
 import { createDashboardTransport } from "../../../../src/dashboard/client/transport.js";
-import { ArchivedRunDetail } from "../../../../src/dashboard/surfaces/archive.js";
+import { ArchivedRunDetail } from "../../../../src/dashboard/surfaces/archive/archive.js";
 import { ToastProvider } from "../../../../src/dashboard/ds/ui.js";
 import type { ClientRouteReference } from "./wire-connectivity.js";
 
@@ -135,7 +135,7 @@ export async function archiveBrowserRouteReferences(input: ArchiveBrowserProbe):
       ArchivedCaptureResourceWireSchema.parse({ runId, artifactId, resource: { state: "available", downloadUrl: path } });
       assert.equal(path, retainedUrl, "Archive native sink differs from the returned retained URL");
       assert.ok(typeof path === "string");
-      return { file: "src/dashboard/surfaces/archive.tsx", path };
+      return { file: "src/dashboard/surfaces/archive/archive.tsx", path };
     });
   } catch (error) {
     failures.push(error);
@@ -157,7 +157,7 @@ export async function archiveBrowserRouteReferences(input: ArchiveBrowserProbe):
   return references;
 }
 
-import { SavedArchiveReport } from "../../../../src/dashboard/surfaces/archive-report.js";
+import { SavedArchiveReport } from "../../../../src/dashboard/surfaces/archive/archive-report.js";
 import { SavedArchiveFileWireSchema } from "../../../../src/domain/dashboard/archive.js";
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
 import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
@@ -183,7 +183,7 @@ export async function savedArchiveBrowserRouteReferences(beforeObservation?: (ho
     SavedArchiveFileWireSchema.parse({ runId: report.runId, digest, resource: { state: "available", downloadUrl: path } });
     assert.equal(path, resource.resource.downloadUrl);
     assert.equal(typeof path, "string");
-    return [{ file: "src/dashboard/surfaces/archive-report.tsx", path: String(path) }];
+    return [{ file: "src/dashboard/surfaces/archive/archive-report.tsx", path: String(path) }];
   } finally {
     restore?.(); await act(async () => root.unmount()); host.remove();
     assert.deepEqual([...document.body.childNodes], previous);

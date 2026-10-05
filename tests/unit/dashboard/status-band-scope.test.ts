@@ -24,7 +24,7 @@ import {
   statusPillOrder,
   totalCount,
   workflowStatusCounts,
-} from "../../../src/dashboard/surfaces/shell-model.js";
+} from "../../../src/dashboard/surfaces/shell/shell-model.js";
 
 /**
  * Two workflows on one day, with deliberately different shapes — PARSED through

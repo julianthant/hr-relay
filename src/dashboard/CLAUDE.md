@@ -16,7 +16,7 @@ surface/decision and read matching entries. Requested lessons go there.
 - `app/`: shell, route state, keys, dispatch. `surfaces/`: operator surfaces and their models.
   `ds/`: tokens/primitives and the one `ui.tsx` barrel. `client/`: BFF transport and wire.
   `state/`: resource hooks. `lib/`: framework-free helpers. `kit/`: specimen page.
-- `surfaces/*.tsx` and `app/*.tsx` export components only; hooks, folds, object constants, and
+- `surfaces/**/*.tsx` and `app/**/*.tsx` export components only; hooks, folds, object constants, and
   vocabulary belong in sibling `*-model.ts` files. Type-only exports and private helpers are fine.
   The DS barrel is the deliberate exception. See the Fast Refresh architecture guard and
   `docs/rebuild/reference/frontend-backend-integration.md` §8 item 14.

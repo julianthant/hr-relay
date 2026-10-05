@@ -1,11 +1,12 @@
-import { SETTINGS_GEAR_ID } from "../settings-model.js";
+import { useViewState } from "../../app/navigation/view-route-model.js";
+import { SETTINGS_GEAR_ID } from "../settings/settings-model.js";
 import { useId, useRef, useState } from "react";
 import { Settings, ChevronDown, ChevronUp, Minus, Monitor, Pause, Play, Plus, RotateCw, Square, Trash2, UsersRound } from "lucide-react";
 import { ActionBarRow, Button, Dialog, DialogBody, DialogContent, DialogFooter, DialogTrigger, Field, Input, Select, Skeleton } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { SESSION_STATE_LABELS, sessionStateColor, sessionTallies, type SessionControl, type SessionWorker, type SessionsViewState } from "./sessions-view-model.js";
 import { SessionTimeline } from "./session-timeline.js";
-import { LoadingRegion, SkeletonText } from "../loading.js";
+import { LoadingRegion, SkeletonText } from "../shared/loading/loading.js";
 
 function SessionsSkeleton() {
   return <LoadingRegion label="Loading sessions" className="flex gap-3 overflow-hidden">{[0, 1, 2].map(index => <div key={index} aria-hidden className="flex w-80 shrink-0 flex-col rounded-lg border border-ui-stroke bg-ui-panel p-3">
@@ -41,8 +42,8 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
 }) {
   const contentId = useId();
   const toggleRef = useRef<HTMLButtonElement>(null);
-  const [addOpen, setAddOpen] = useState(false);
-  const [workflow, setWorkflow] = useState(workflows[0]?.id ?? "");
+  const [addOpen, setAddOpen] = useViewState("addWorkers", false);
+  const [workflow, setWorkflow] = useViewState("workerWorkflow", workflows[0]?.id ?? "");
   const [count, setCount] = useState("1");
   const validCount = Number.isSafeInteger(Number(count)) && Number(count) >= 1;
   const selectedWorkflow = workflows.find(item => item.id === workflow) ?? workflows[0];

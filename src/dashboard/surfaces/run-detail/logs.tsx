@@ -1,5 +1,5 @@
 import { cn } from "../../lib/utils.js";
-import type { QueueSurfaceWire } from "../run-identity.js";
+import type { QueueSurfaceWire } from "./identity/run-identity.js";
 
 export function RunLivenessDot({ status }: { status: QueueSurfaceWire["status"] }) {
   const live = status === "running";

@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { WorkflowMockReview } from "../../../src/dashboard/surfaces/workflow-review.js";
-import { mockOperationValue } from "../../../src/dashboard/surfaces/workflow-operation-model.js";
-import { approveMockRun, initialMockDraft, mockRunLog, mockRunsForDraft } from "../../../src/dashboard/surfaces/workflow-mock-model.js";
-import { editReviewRecord, reviewRecords, reviewValue, seedReviewRecords, updateMockReview } from "../../../src/dashboard/surfaces/workflow-review-model.js";
-import { reviewFieldBlocks, reviewFieldGroups, reviewSourcePages } from "../../../src/dashboard/surfaces/workflow-review-source-model.js";
-import { OCR_DOCUMENT_FIXTURES } from "../../../src/dashboard/surfaces/workflow-document-model.js";
+import { WorkflowMockReview } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-review.js";
+import { mockOperationValue } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-operation-model.js";
+import { approveMockRun, initialMockDraft, mockRunLog, mockRunsForDraft } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
+import { editReviewRecord, reviewRecords, reviewValue, seedReviewRecords, updateMockReview } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-review-model.js";
+import { reviewFieldBlocks, reviewFieldGroups, reviewSourcePages } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-review-source-model.js";
+import { OCR_DOCUMENT_FIXTURES } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-document-model.js";
 
 const preparation = () => mockRunsForDraft("emergency-contact", { ...initialMockDraft("emergency-contact"), files: [{ name: "contact.pdf", size: 1024, digest: "fixture" }] }, 1);
 describe("OCR source comparison and corrected handoff", () => {

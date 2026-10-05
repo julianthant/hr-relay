@@ -29,7 +29,7 @@ import {
   proofFieldHint,
   proofFieldLabel,
   proofFieldProblem,
-} from "../../../src/dashboard/app/proof-form.js";
+} from "../../../src/dashboard/surfaces/run-detail/resolution/proof-form.js";
 import { ProofContractWireSchema, type ProofFieldWire } from "../../../src/domain/dashboard/run-detail.js";
 
 interface RegisteredCommit {

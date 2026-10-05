@@ -64,9 +64,9 @@ the macOS system UI font (San Francisco) through the dashboard sans token.
 -->
 
 **Shared dashboard palette (2026-10-01).** The semantic palette and Tailwind mappings live in
-`ds/dashboard-theme.css`. `ds/tokens.css` maps DS, content-body, Settings and shadcn neutral aliases to
+`ds/theme/dashboard-theme.css`. `ds/theme/tokens.css` maps DS, content-body, Settings and shadcn neutral aliases to
 that palette across the dashboard. `.ui-theme-scope` groups presentation utilities; it no longer gates
-the palette. See [DASHBOARD-THEME.md](ds/DASHBOARD-THEME.md) for current values and seams.
+the palette. See [DASHBOARD-THEME.md](ds/theme/DASHBOARD-THEME.md) for current values and seams.
 
 # Rebuild demo — design brief
 
@@ -161,9 +161,9 @@ import { Panel, PanelHeader, Button, StatusPill, dsText } from "../demo-ui";
   *in the primitive*, so every surface inherits it. Never fork one locally.
 - **Align peer controls.** Buttons, pickers and inputs sharing a control row use the same height.
 - **Never write a literal value** for colour, size, radius, shadow or duration.
-  Shared semantic palette values belong in `ds/dashboard-theme.css`; DS tokens
-  and component geometry belong in `ds/tokens.css`. See
-  [DASHBOARD-THEME.md](ds/DASHBOARD-THEME.md) for palette roles and aliases.
+  Shared semantic palette values belong in `ds/theme/dashboard-theme.css`; DS tokens
+  and component geometry belong in `ds/theme/tokens.css`. See
+  [DASHBOARD-THEME.md](ds/theme/DASHBOARD-THEME.md) for palette roles and aliases.
 - The specimen page `DemoUiKit.tsx` shows every primitive in every state. Skim
   it before choosing a component.
 
@@ -189,8 +189,8 @@ are demonstrated together in the Forms section of the current kit page.
 
 ## Tokens — what to reach for
 
-Shared semantic colors and Tailwind mappings live in `ds/dashboard-theme.css`;
-DS component tokens are CSS custom properties in `ds/tokens.css`. `ds/tokens.ts`
+Shared semantic colors and Tailwind mappings live in `ds/theme/dashboard-theme.css`;
+DS component tokens are CSS custom properties in `ds/theme/tokens.css`. `ds/theme/tokens.ts`
 exports the class names you type. Use `bg-[var(--ds-…)]` / `text-[color:var(--ds-…)]` /
 `border-[color:var(--ds-…)]` when you need one directly.
 
@@ -290,8 +290,8 @@ the outlined toolbar peers — the loudness belongs to the fill, not to a hue.
 Two compositions of one product, selected by a `data-demo-theme` attribute:
 **`dark` — Graphite Warm** (warm near-black, depth from surface + hairline) and
 **`light` — Paper Ink** (tinted page, white cards, depth from a shadow). The
-shared semantic palette is authored in `ds/dashboard-theme.css`; DS component
-tokens remain in `ds/tokens.css`. Neither theme is a lightening of the other,
+shared semantic palette is authored in `ds/theme/dashboard-theme.css`; DS component
+tokens remain in `ds/theme/tokens.css`. Neither theme is a lightening of the other,
 and four of the five hues are re-picked between them.
 
 `useDemoTheme()` (exported from `demo-ui`) owns the selection, persists it, and
@@ -549,7 +549,7 @@ register*, or *this just became your problem* — nothing moves for delight.
 
 ### The token set — five classes, and there is no sixth
 
-`ds/tokens.ts` exports the names; `ds/tokens.css` owns the values. **Never type
+`ds/theme/tokens.ts` exports the names; `ds/theme/tokens.css` owns the values. **Never type
 a duration or an easing.** Every one of these is a TRANSITION, never a
 key-frame, and that is what makes the language *interruptible*: a transition
 re-targets from wherever it currently is the moment its end value changes, so
@@ -752,15 +752,15 @@ its cards inert and disables their controls. Closing the overlay restores intera
 
 | File | What it is |
 |---|---|
-| `ds/tokens.css` | every value in the system — the only place a literal may live |
-| `ds/tokens.ts` | the class names builders type (`dsText`, `dsLayer`, `dsFocus`, …) |
-| `ds/theme.ts` | `useDemoTheme()` — the dark/light pair and where it is stamped |
-| `ds/primitives-core.tsx` | Button, IconButton, Badge, CountBadge, Chip, Kbd, Spinner, Skeleton, Separator |
-| `ds/primitives-status.tsx` | the eight statuses + StatusPill / StatusDot / StatusIcon |
-| `ds/primitives-layout.tsx` | Panel, Card, **CardBody `grow`**, **CardBase**, **CompareGrid / CompareCard**, Banner, **Refusal**, **MetaLine**, **BulletList**, **ChipRow**, EmptyState, Tabs, Well, FloatingSurface |
-| `ds/primitives-form.tsx` | Field, Input, Textarea, Select, Checkbox, RadioGroup, Switch, SearchInput, **ValueField**, **LockedValue** |
-| `ds/primitives-overlay.tsx` | Dialog, Drawer, **Popover**, **ContextMenu** (+ `openContextMenuFor`), Tooltip, Toast |
-| `ds/primitives-data.tsx` | Table, ProgressBar, TimelineSteps, KeyValueList |
+| `ds/theme/tokens.css` | every value in the system — the only place a literal may live |
+| `ds/theme/tokens.ts` | the class names builders type (`dsText`, `dsLayer`, `dsFocus`, …) |
+| `ds/theme/theme.ts` | `useDemoTheme()` — the dark/light pair and where it is stamped |
+| `ds/primitives/primitives-core.tsx` | Button, IconButton, Badge, CountBadge, Chip, Kbd, Spinner, Skeleton, Separator |
+| `ds/primitives/primitives-status.tsx` | the eight statuses + StatusPill / StatusDot / StatusIcon |
+| `ds/primitives/primitives-layout.tsx` | Panel, Card, **CardBody `grow`**, **CardBase**, **CompareGrid / CompareCard**, Banner, **Refusal**, **MetaLine**, **BulletList**, **ChipRow**, EmptyState, Tabs, Well, FloatingSurface |
+| `ds/primitives/primitives-form.tsx` | Field, Input, Textarea, Select, Checkbox, RadioGroup, Switch, SearchInput, **ValueField**, **LockedValue** |
+| `ds/primitives/primitives-overlay.tsx` | Dialog, Drawer, **Popover**, **ContextMenu** (+ `openContextMenuFor`), Tooltip, Toast |
+| `ds/primitives/primitives-data.tsx` | Table, ProgressBar, TimelineSteps, KeyValueList |
 | `demo-ui.tsx` | **the barrel — import from here** |
 | `DemoUiKit.tsx` | the specimen page: every primitive, every state |
 | `kit.html` + `kit-entry.tsx` | standalone mount for the specimen page |

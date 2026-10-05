@@ -35,7 +35,7 @@ import {
   composePlanWorkerCountCommand,
   composeSpawnWorkerCommand,
   composeStopWorkerCommand,
-} from "../../../src/dashboard/app/command-dispatch.js";
+} from "../../../src/dashboard/app/commands/command-dispatch.js";
 import {
   SESSION_POOL_MAX_WORKERS,
   buildSessionPoolGroups,
@@ -45,8 +45,8 @@ import {
   poolSlotIsUnmet,
   type SessionPoolGroup,
   type WorkerCardWire,
-} from "../../../src/dashboard/surfaces/shell-model.js";
-import { PoolOutcomeNotice, UnmetMemberRow } from "../../../src/dashboard/surfaces/shell.js";
+} from "../../../src/dashboard/surfaces/shell/shell-model.js";
+import { PoolOutcomeNotice, UnmetMemberRow } from "../../../src/dashboard/surfaces/shell/shell.js";
 import { FIXTURE_DAY_WIRE } from "../../parity/helpers/fixture-day.js";
 
 const ACTOR = { actorId: "local-operator", source: "session-panel" } as const;

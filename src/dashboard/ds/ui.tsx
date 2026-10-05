@@ -22,9 +22,9 @@
  *      missing label is a broken build, not a polish item.
  */
 
-import "./tokens.css";
+import "./theme/tokens.css";
 
-export { Collapsible, CollapsibleTrigger, CollapsibleContent } from "./shadcn-collapsible.js";
+export { Collapsible, CollapsibleTrigger, CollapsibleContent } from "./primitives/shadcn-collapsible.js";
 
 export {
   dsText,
@@ -48,10 +48,10 @@ export {
   dsGap,
   dsPad,
   dsIcon,
-} from "./tokens.js";
+} from "./theme/tokens.js";
 
-export { useDemoTheme, DEMO_THEME_ATTR, DEMO_THEME_LABEL } from "./theme.js";
-export type { DemoTheme } from "./theme.js";
+export { useDemoTheme, DEMO_THEME_ATTR, DEMO_THEME_LABEL } from "./theme/theme.js";
+export type { DemoTheme } from "./theme/theme.js";
 
 export {
   Button,
@@ -66,7 +66,7 @@ export {
   Skeleton,
   Separator,
   VisuallyHidden,
-} from "./primitives-core.js";
+} from "./primitives/primitives-core.js";
 export type {
   DsButtonProps,
   DsButtonLinkProps,
@@ -74,7 +74,7 @@ export type {
   DsIconButtonProps,
   DsBadgeProps,
   DsChipProps,
-} from "./primitives-core.js";
+} from "./primitives/primitives-core.js";
 
 export {
   DS_STATUS,
@@ -85,13 +85,13 @@ export {
   StatusPill,
   StatusDot,
   StatusIcon,
-} from "./primitives-status.js";
+} from "./primitives/primitives-status.js";
 export type {
   DsStatus,
   DsStatusSpec,
   DsStatusTier,
   DsStatusPillSize,
-} from "./primitives-status.js";
+} from "./primitives/primitives-status.js";
 
 export {
   ActionBar,
@@ -161,8 +161,8 @@ export {
    * does not already give a `data-state` to.
    */
   useDsEnterTransition,
-} from "./primitives-layout.js";
-export type { DsBannerTone } from "./primitives-layout.js";
+} from "./primitives/primitives-layout.js";
+export type { DsBannerTone } from "./primitives/primitives-layout.js";
 
 export {
   Field,
@@ -192,12 +192,12 @@ export {
    * refuses a file by name.
    */
   Dropzone,
-} from "./primitives-form.js";
-export type { UnitFieldProps, SecretFieldProps } from "./primitives-form.js";
+} from "./primitives/primitives-form.js";
+export type { UnitFieldProps, SecretFieldProps } from "./primitives/primitives-form.js";
 
-export { Calendar, DateInput, DateInput as DatePicker, DateRangeInput, RangeCalendar } from "./primitives-date.js";
-export { ChoicePicker, SegmentedChoice } from "./primitives-choice.js";
-export { ToggleGroup, ToggleGroupItem } from "./base-toggle-group.js";
+export { Calendar, DateInput, DateInput as DatePicker, DateRangeInput, RangeCalendar } from "./primitives/primitives-date.js";
+export { ChoicePicker, SegmentedChoice } from "./primitives/primitives-choice.js";
+export { ToggleGroup, ToggleGroupItem } from "./primitives/base-toggle-group.js";
 
 export {
   Dialog,
@@ -234,7 +234,7 @@ export {
   useToasts,
   useDsModalPresence,
   useDsModalOpen,
-} from "./primitives-overlay.js";
+} from "./primitives/primitives-overlay.js";
 export type {
   DsDialogSize,
   DsDrawerSide,
@@ -242,7 +242,7 @@ export type {
   DsPopoverWidth,
   DsToast,
   DsToastTone,
-} from "./primitives-overlay.js";
+} from "./primitives/primitives-overlay.js";
 
 export {
   Table,
@@ -255,5 +255,5 @@ export {
   TimelineSteps,
   KeyValueList,
   RankedList,
-} from "./primitives-data.js";
-export type { DsRankedItem, DsSortDirection, DsStep, DsStepState } from "./primitives-data.js";
+} from "./primitives/primitives-data.js";
+export type { DsRankedItem, DsSortDirection, DsStep, DsStepState } from "./primitives/primitives-data.js";

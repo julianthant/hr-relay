@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { RunSessionRecordSchema } from "../../../src/domain/run/session.js";
-import { applyDashboardDayPatch } from "../../../src/dashboard/client/day-state.js";
+import { applyDashboardDayPatch } from "../../../src/dashboard/client/queries/day-state.js";
 import { makeWorld, queuedEventOf, runRecordOf, taskEventsOf, uuidOf as runUuidOf, instantOffsetOf, DAY as PROJECTION_DAY } from "../server/helpers/dashboard-harness.js";
-import { queueBatches } from "../../../src/dashboard/surfaces/queue-model.js";
+import { queueBatches } from "../../../src/dashboard/surfaces/queue/queue-model.js";
 
 
 describe("batch presentation publication", () => {

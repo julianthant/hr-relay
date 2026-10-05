@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it } from "vitest";
 import { DashboardClientError } from "../../../src/dashboard/client/errors.js";
 import { observeAsyncResource, observeResource, type AsyncResource } from "../../../src/dashboard/state/async-resource.js";
-import { useSavedResource, type SavedResource } from "../../../src/dashboard/surfaces/archive-report-model.js";
+import { useSavedResource, type SavedResource } from "../../../src/dashboard/surfaces/archive/archive-report-model.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 

@@ -20,7 +20,7 @@ import { FingerprintSchema } from "../../../src/domain/ids.js";
 import { ExplorerScenarioWireSchema, type ExplorerScenarioWire } from "../../../src/domain/dashboard/explorer.js";
 import { buildWorkflowExplorer } from "../../../src/server/dashboard/queries/explorer.js";
 import { explorerQueryDeps } from "../../fixtures/explorer-seams.js";
-import { groupScenariosByPrefix } from "../../../src/dashboard/surfaces/explorer-model.js";
+import { groupScenariosByPrefix } from "../../../src/dashboard/surfaces/explorer/explorer-model.js";
 
 const CLOCK = manualClock(new Date("2026-08-09T12:00:00.000Z"));
 

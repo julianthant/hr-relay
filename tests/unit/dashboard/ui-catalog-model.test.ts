@@ -18,7 +18,7 @@ import {
   resolveCatalogSelection,
   siblingsOnScreen,
   stepCatalogSelection,
-} from "../../../src/dashboard/surfaces/ui-catalog-model.js";
+} from "../../../src/dashboard/surfaces/settings/catalog/ui-catalog-model.js";
 
 const ENTRIES: readonly UiCatalogEntry[] = buildSafeUiCatalog().entries.map((entry) => UiCatalogEntrySchema.parse(entry));
 

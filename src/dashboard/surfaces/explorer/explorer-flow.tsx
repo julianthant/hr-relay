@@ -1,7 +1,8 @@
+import { useViewState } from "../../app/navigation/view-route-model.js";
 import { useLayoutEffect, useRef, useState } from "react";
 import { ArrowUpRight, CheckCheck, Cpu, Monitor, X } from "lucide-react";
 import { Button, dsElev, IconButton, PageHeading, Select } from "../../ds/ui.js";
-import { DEFAULT_COMMENTS, type CommentChoices, type FlowField, type FlowStep, type FieldSource, type PreviewScenario } from "./explorer-flow-model.js";
+import { allFields, DEFAULT_COMMENTS, type CommentChoices, type FlowField, type FlowStep, type FieldSource, type PreviewScenario } from "./explorer-flow-model.js";
 import { ExplorerParts } from "./explorer-parts.js";
 import { ExplorerSource } from "./explorer-source.js";
 
@@ -28,8 +29,12 @@ export function ExplorerTimeline(props: ExplorerTimelineProps) {
 
 function ExplorerWorkflowTimeline({ steps, scenario, onScenario, sourceFor, completion, stopAfter, onMockChoice }: ExplorerTimelineProps) {
   const [comments, setComments] = useState<CommentChoices>(DEFAULT_COMMENTS);
-  const [open, setOpen] = useState<Readonly<Record<string, boolean>>>({});
-  const [source, setSource] = useState<{ field: FlowField; step: FlowStep; form?: string }>();
+  const [open, setOpen] = useViewState("explorerOpen", {});
+  const [sourceAddress, setSourceAddress] = useViewState("explorerSource", undefined);
+  const sourceStep = steps.find(step => step.number === sourceAddress?.step);
+  const sourceField = sourceStep && allFields(sourceStep.parts).find(field => field.id === sourceAddress?.field);
+  const source = sourceStep && sourceField ? { field: sourceField, step: sourceStep, form: sourceAddress?.form } : undefined;
+  const setSource = (next: { field: FlowField; step: FlowStep; form?: string } | undefined) => setSourceAddress(next ? { field: next.field.id, step: next.step.number, form: next.form } : undefined);
   const [selected, setSelected] = useState<string>();
   const [pendingFocus, setPendingFocus] = useState<string>();
   const origin = useRef<HTMLButtonElement | null>(null);
@@ -75,6 +80,7 @@ function ExplorerWorkflowTimeline({ steps, scenario, onScenario, sourceFor, comp
     onMockChoice(id, value); setSource(undefined); setSelected(undefined); setPendingFocus(undefined); focusRequest.current = undefined;
   };
   return <>
+    {sourceAddress && !source && <div role="alert" className="mb-3 rounded-lg border border-ui-stroke p-3 text-body"><p className="m-0">This field source is unavailable for the selected workflow.</p><Button size="sm" onClick={() => setSource(undefined)}>Dismiss unavailable source</Button></div>}
     <div className="min-w-0" onKeyDown={(event) => { if (event.key === "Escape" && selected) { event.stopPropagation(); returnToField(); } }}>
       <ol aria-label="Workflow steps" className="relative pl-10 before:absolute before:bottom-5 before:left-3.5 before:top-3 before:w-px before:bg-ui-stroke">
         {steps.map((step) => {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { captureGeometry } from "../../../src/dashboard/surfaces/log-screenshots-model.js";
+import { captureGeometry } from "../../../src/dashboard/surfaces/run-detail/logs/log-screenshots-model.js";
 
 describe("screenshot workspace sizing", () => {
   it("fits a tall complete form and rotates its scrollable canvas without cropping", () => {

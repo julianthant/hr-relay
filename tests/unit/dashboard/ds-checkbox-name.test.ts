@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it } from "vitest";
-import { Checkbox } from "../../../src/dashboard/ds/primitives-form.js";
+import { Checkbox } from "../../../src/dashboard/ds/primitives/primitives-form.js";
 
 /** The id `aria-labelledby` points at, and the text of the element carrying that id. */
 function nameOf(html: string): { labelledBy: string; namedBy: string } {

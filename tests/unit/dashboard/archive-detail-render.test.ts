@@ -21,11 +21,11 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it } from "vitest";
 import { ToastProvider } from "../../../src/dashboard/ds/ui.js";
 import { NoteWireSchema } from "../../../src/domain/dashboard/run-detail.js";
-import { ArchivedRunDetail, FrozenLogLine } from "../../../src/dashboard/surfaces/archive.js";
+import { ArchivedRunDetail, FrozenLogLine } from "../../../src/dashboard/surfaces/archive/archive.js";
 import {
   ARCHIVED_NOT_RUN_NOTE,
   archivedNotRunNote,
-} from "../../../src/dashboard/surfaces/archive-model.js";
+} from "../../../src/dashboard/surfaces/archive/archive-model.js";
 import {
   ArchivedRunDetailWireSchema,
   type ArchivedRunDetailWire,
@@ -221,7 +221,7 @@ describe("the frozen log line (AR163)", () => {
   });
 });
 
-import { SavedArchiveReport } from "../../../src/dashboard/surfaces/archive-report.js";
+import { SavedArchiveReport } from "../../../src/dashboard/surfaces/archive/archive-report.js";
 import { FIXTURE_SAVED_REPORT } from "../../parity/helpers/fixture-archive.js";
 it("renders every generic section without a current workflow and exposes no relaunch control", () => {
   const html = renderToStaticMarkup(createElement(SavedArchiveReport, { report: { ...FIXTURE_SAVED_REPORT, files: [] } }));

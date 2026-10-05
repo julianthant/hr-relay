@@ -1,8 +1,8 @@
 /** The persistent feed accepts only settlements the D253 fold classified as refusals. */
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { commandResultFeedEntry, toastAppliedCommandResult } from "../../../src/dashboard/surfaces/actions-model.js";
-import { settleCommandResult } from "../../../src/dashboard/app/command-result.js";
+import { commandResultFeedEntry, toastAppliedCommandResult } from "../../../src/dashboard/surfaces/shared/actions/actions-model.js";
+import { settleCommandResult } from "../../../src/dashboard/app/commands/command-result.js";
 import { CommandResultSchema } from "../../../src/domain/commands.js";
 
 const COMMAND_ID = "1a000000-0000-4000-8000-000000000001";

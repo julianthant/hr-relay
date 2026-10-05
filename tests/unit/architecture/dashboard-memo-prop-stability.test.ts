@@ -37,9 +37,9 @@
  */
 import { describe, expect, it } from "vitest";
 import ts from "typescript";
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { REPO_ROOT } from "./helpers/guard-files.js";
+import { readFileSync } from "node:fs";
+import { join, relative } from "node:path";
+import { REPO_ROOT, walkFiles } from "./helpers/guard-files.js";
 
 const APP_ROOT = "src/dashboard/app";
 const FIXTURE_ROOT = "tests/unit/architecture/fixtures";
@@ -131,9 +131,7 @@ export function memoPropStabilityViolations(fileName: string, text: string): str
 }
 
 function appFiles(): string[] {
-  return readdirSync(join(REPO_ROOT, APP_ROOT))
-    .filter((file) => file.endsWith(".tsx"))
-    .map((file) => join(APP_ROOT, file));
+  return walkFiles(join(REPO_ROOT, APP_ROOT), { extensions: [".tsx"] }).map((file) => relative(REPO_ROOT, file));
 }
 
 describe("dashboard memo prop stability (Track D D4, ref frontend-backend-integration §7.4)", () => {
@@ -149,7 +147,7 @@ describe("dashboard memo prop stability (Track D D4, ref frontend-backend-integr
   it("the three panels really are `memo`'d, so this guard is not protecting nothing", () => {
     for (const element of MEMOIZED_ELEMENTS) {
       const source = readFileSync(
-        join(REPO_ROOT, "src/dashboard/surfaces", `${element === "QueuePanel" ? "queue" : element === "WorkspaceRail" ? "workspace-rail" : "log-panel"}.tsx`),
+        join(REPO_ROOT, "src/dashboard/surfaces", element === "QueuePanel" ? "queue/queue.tsx" : element === "WorkspaceRail" ? "shell/workspace-rail.tsx" : "run-detail/log-panel.tsx"),
         "utf8",
       );
       expect(source).toContain(`export const ${element} = memo(function ${element}(`);

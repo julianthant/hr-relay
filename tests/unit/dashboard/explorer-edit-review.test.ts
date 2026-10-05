@@ -13,7 +13,7 @@ import {
   matchesExplorerAppliedReadback,
   matchesExplorerApplyAcknowledgement,
   matchesExplorerCommandResultId,
-} from "../../../src/dashboard/surfaces/explorer-model.js";
+} from "../../../src/dashboard/surfaces/explorer/explorer-model.js";
 import { ExplorerProposedWorkflowOverrideSchema, ExplorerWorkflowWireSchema } from "../../../src/domain/dashboard/explorer.js";
 import { CommandResultSchema } from "../../../src/domain/commands.js";
 import { manualClock } from "../../../src/domain/clock.js";

@@ -16,8 +16,8 @@ import { manualClock } from "../../../src/domain/clock.js";
 import { FingerprintSchema } from "../../../src/domain/ids.js";
 import { buildWorkflowExplorer } from "../../../src/server/dashboard/queries/explorer.js";
 import { createExplorerEditService, buildExplorerCompileAttestation } from "../../../src/server/dashboard/commands/explorer-edit-service.js";
-import { ExplorerEditDialog, WorkflowExplorer } from "../../../src/dashboard/surfaces/explorer.js";
-import { explorerPresentationChange, explorerPresentationDraft } from "../../../src/dashboard/surfaces/explorer-model.js";
+import { ExplorerEditDialog, WorkflowExplorer } from "../../../src/dashboard/surfaces/explorer/explorer.js";
+import { explorerPresentationChange, explorerPresentationDraft } from "../../../src/dashboard/surfaces/explorer/explorer-model.js";
 import { FIXTURE_BOOTSTRAP } from "../../parity/helpers/fixture-day.js";
 import { explorerQueryDeps } from "../../fixtures/explorer-seams.js";
 

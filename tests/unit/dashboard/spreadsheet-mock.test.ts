@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
-import { registeredSpreadsheetWorkbook, registerLocalSpreadsheet, retainSpreadsheetCopy, addMockSpreadsheetType, initialSpreadsheetSheets, NOT_MAPPED, registerMockSpreadsheet, resetSpreadsheetMocks, searchMockSpreadsheet, spreadsheetMappingErrors, WORKBOOK_ONLY, type SpreadsheetType } from "../../../src/dashboard/surfaces/spreadsheet-mock-model.js";
-import { ROSTER_FIELDS } from "../../../src/dashboard/surfaces/spreadsheet-mock-data.js";
-import { newEditableWorkbook, editSpreadsheetCell } from "../../../src/dashboard/surfaces/spreadsheet-editor-model.js";
+import { registeredSpreadsheetWorkbook, registerLocalSpreadsheet, retainSpreadsheetCopy, addMockSpreadsheetType, initialSpreadsheetSheets, NOT_MAPPED, registerMockSpreadsheet, resetSpreadsheetMocks, searchMockSpreadsheet, spreadsheetMappingErrors, WORKBOOK_ONLY, type SpreadsheetType } from "../../../src/dashboard/surfaces/spreadsheets/spreadsheet-mock-model.js";
+import { ROSTER_FIELDS } from "../../../src/dashboard/surfaces/spreadsheets/spreadsheet-mock-data.js";
+import { newEditableWorkbook, editSpreadsheetCell } from "../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js";
 const roster: SpreadsheetType = { id: "roster", name: "Roster", fields: ROSTER_FIELDS };
 const file = () => registerMockSpreadsheet({ name: "Fictional roster.xlsx", typeId: "roster", sheets: initialSpreadsheetSheets(roster) });
 afterEach(resetSpreadsheetMocks);

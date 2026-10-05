@@ -19,7 +19,7 @@ import {
   FAILURE_WRITE_STATE,
   failureFingerprintHistory,
   failurePermanence,
-} from "../../../src/dashboard/surfaces/trust-model.js";
+} from "../../../src/dashboard/surfaces/shared/run-evidence/trust-model.js";
 
 describe("FAILURE_WRITE_STATE — the write-state sentence and its tone (E8/E9)", () => {
   it("covers every arm the wire can serve, in both directions", () => {
@@ -116,7 +116,7 @@ describe("failureFingerprintHistory — the fingerprint's history (E30)", () => 
   });
 });
 
-import { acceptFailureResolutionReadback } from "../../../src/dashboard/surfaces/trust-model.js";
+import { acceptFailureResolutionReadback } from "../../../src/dashboard/surfaces/shared/run-evidence/trust-model.js";
 import { FIXTURE_IDS, FIXTURE_SECTIONS } from "../../parity/helpers/fixture-day.js";
 it("accepts only the exact selected failure and nested annotation identity", () => {
   const section = FIXTURE_SECTIONS[FIXTURE_IDS.failedRun]?.failure;
