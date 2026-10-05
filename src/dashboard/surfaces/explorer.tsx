@@ -2,23 +2,28 @@ import { useMemo, useState } from "react";
 import { ExplorerTimeline } from "./explorer/explorer-flow.js";
 import { buildExplorerPreview, previewFieldSource } from "./explorer/explorer-fixture.js";
 import { blockedAfter, DEFAULT_SCENARIO, type PreviewScenario } from "./explorer/explorer-flow-model.js";
-import { buildEmergencyContactMock, buildOnboardingMock, DEFAULT_MOCK_SCENARIO, EXPLORER_MOCK_WORKFLOWS, mockFieldSource, updateMockScenario, type MockWorkflowId } from "./explorer/explorer-mock-fixtures.js";
+import { buildEmergencyContactMock, buildOnboardingMock, DEFAULT_MOCK_SCENARIO, mockFieldSource, updateMockScenario } from "./explorer/explorer-mock-fixtures.js";
+import { buildWorkflowMock, COMPLETE_EXPLORER_WORKFLOWS, initialWorkflowChoices, updateWorkflowChoice, workflowContractSource } from "./explorer/explorer-workflow-model.js";
+import { mockWorkflow, type MockWorkflowId } from "./workflow-mock-catalog.js";
 
 /** Local presentation producer; the registered-definition UI has been retired. */
 export function WorkflowExplorer() {
-  const [workflowId, setWorkflowId] = useState<MockWorkflowId>("fixture-separations");
+  const [workflowId, setWorkflowId] = useState("fixture-separations");
+  const id = mockWorkflow(workflowId.replace(/^fixture-/u, "")).id;
   const [scenario, setScenario] = useState<PreviewScenario>(DEFAULT_SCENARIO);
   const [mockScenario, setMockScenario] = useState(DEFAULT_MOCK_SCENARIO);
-  const workflow = EXPLORER_MOCK_WORKFLOWS.find((item) => item.id === workflowId)!;
+  const [choices, setChoices] = useState(initialWorkflowChoices(mockWorkflow("fixture-separations".replace(/^fixture-/u, "")).id));
+  const workflow = COMPLETE_EXPLORER_WORKFLOWS.find((item) => item.id === workflowId)!;
   const flow = useMemo(() => workflowId === "fixture-onboarding" ? buildOnboardingMock(mockScenario) : workflowId === "fixture-emergency-contact" ? buildEmergencyContactMock(mockScenario) : {
     steps: buildExplorerPreview(scenario), summary: "Kuali request → UCPath termination → Kuali completion", completion: "Separation filed and Kuali document verified",
     path: { step: 17, control: "preview-pending" }, stopAfter: blockedAfter(scenario),
   }, [workflowId, mockScenario, scenario]);
-  return <ExplorerTimeline workflowId={workflowId} workflows={EXPLORER_MOCK_WORKFLOWS} onWorkflow={(id) => {
-    const next = EXPLORER_MOCK_WORKFLOWS.find((item) => item.id === id);
-    if (!next) throw new Error(`explorer-mock-workflow-unknown: ${id}`);
-    setWorkflowId(next.id); setScenario(DEFAULT_SCENARIO); setMockScenario(DEFAULT_MOCK_SCENARIO);
-  }} title={workflow.title} {...flow} scenario={scenario} onScenario={setScenario}
-    onMockChoice={(id, value) => setMockScenario((current) => updateMockScenario(current, id, value))}
-    sourceFor={(field, step) => workflowId === "fixture-separations" ? previewFieldSource(field.source ?? "", step, scenario) : mockFieldSource(field.source ?? "")} />;
+  const activeFlow = ["fixture-separations", "fixture-onboarding", "fixture-emergency-contact"].includes(workflowId) ? flow : buildWorkflowMock(id, choices);
+  return <ExplorerTimeline workflowId={workflowId} workflows={COMPLETE_EXPLORER_WORKFLOWS} onWorkflow={(nextId) => {
+    const next = COMPLETE_EXPLORER_WORKFLOWS.find((item) => item.id === nextId);
+    if (!next) throw new Error(`explorer-mock-workflow-unknown: ${nextId}`);
+    setWorkflowId(next.id); setScenario(DEFAULT_SCENARIO); setMockScenario(DEFAULT_MOCK_SCENARIO); setChoices(initialWorkflowChoices(next.id.replace(/^fixture-/u, "") as MockWorkflowId));
+  }} title={workflow.title} {...activeFlow} scenario={scenario} onScenario={setScenario}
+    onMockChoice={(key, value) => key.startsWith("workflow:") ? setChoices(current => updateWorkflowChoice(id, current, key.slice(9), value)) : setMockScenario(current => updateMockScenario(current, key, value))}
+    sourceFor={(field, step) => workflowId === "fixture-separations" ? previewFieldSource(field.source ?? "", step, scenario) : workflowId === "fixture-onboarding" || workflowId === "fixture-emergency-contact" ? mockFieldSource(field.source ?? "") : workflowContractSource(id, choices, field, step)} />;
 }

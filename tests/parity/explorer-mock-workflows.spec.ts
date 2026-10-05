@@ -21,7 +21,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const surface = page.getByRole("region", { name: "Workflow explorer preview", exact: true });
       const workflows = surface.getByRole("combobox", { name: "Explorer workflow", exact: true });
       await workflows.click();
-      await expect(page.locator('[data-slot="select-content"][data-open]').getByRole("option")).toHaveText(["Separations", "Onboarding", "Emergency Contact"]);
+      await expect(page.locator('[data-slot="select-content"][data-open]').getByRole("option")).toHaveText(["Separations", "Onboarding", "Emergency Contact", "Person Lookup", "I-9 Lookup", "Work-Study", "Kronos Pay Rule", "OCR", "Oath Signature", "Oath Upload", "OnBase", "I-9 Check", "CRM Doc Download", "SharePoint Download", "Old Kronos Reports"]);
       await page.keyboard.press("Escape");
       await workflows.focus();
       await chooseSelect(workflows, "fixture-onboarding");
@@ -105,7 +105,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(workflows).toHaveAttribute("data-value", "fixture-separations");
       await expect(surface.getByRole("textbox", { name: "Find workflow" })).toHaveCount(0);
       await workflows.click();
-      await expect(page.locator('[data-slot="select-content"][data-open]').getByRole("option")).toHaveCount(3);
+      await expect(page.locator('[data-slot="select-content"][data-open]').getByRole("option")).toHaveCount(15);
       await page.keyboard.press("Escape");
       expect(requests).toEqual([]);
     } finally { await server.close(); }

@@ -61,6 +61,7 @@ import { WorkflowMockLog, WorkflowMockQueue } from "../surfaces/workflow-mock-qu
 import { mockWorkflow, type MockWorkflowId } from "../surfaces/workflow-mock-catalog.js";
 import { approveMockRun, mockQueueCounts, mockQueueView, mockRunsForDraft, seedMockRuns, type MockDraft, type MockRun } from "../surfaces/workflow-mock-model.js";
 import { WorkflowMockRunDialog } from "../surfaces/workflow-mock-run.js";
+import { discardMockReview, updateMockReview } from "../surfaces/workflow-review-model.js";
 import "../surfaces/permanent-shell.css";
 import { PROPOSED_STATUS,dsStatusOf } from "../surfaces/status-model.js";
 import { StorageBanner } from "../surfaces/storage-settings.js";
@@ -1140,7 +1141,9 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
                 <div role="group" aria-label="Log date controls" className="dashboard-log-date"><DatePicker label="Dashboard date" hideLabel triggerLabel="Choose date" required value={day} max={today}
                   onChange={next => { if (next !== "") setRoute({ ...route, day: next, run: undefined }); }} className="w-44" footer={choose => <Button size="sm" variant="ghost" onClick={() => choose(today)}>Today</Button>} /></div>
                 </section>
-            {previewFlow && railRow ? <WorkflowMockLog key={railRow.id} run={railRow} onRerun={() => setMockLaunch({ workflowId: railRow.workflowId, source: railRow })} onApprove={() => setMockRuns(previous => approveMockRun(previous, railRow.id))} /> : !previewFlow && route.run !== undefined && selectedRow !== undefined && dateSelection.state === "valid" ? (
+            {previewFlow && railRow ? <WorkflowMockLog key={railRow.id} run={railRow} runs={mockRuns} onRerun={() => setMockLaunch({ workflowId: railRow.workflowId, source: railRow })} onApprove={() => setMockRuns(previous => approveMockRun(previous, railRow.id))}
+              onChange={records => setMockRuns(previous => updateMockReview(previous, railRow.id, records))} onDiscard={() => setMockRuns(previous => discardMockReview(previous, railRow.id))}
+              onSelect={id => { const next = mockRuns.find(run => run.id === id); if (!next) throw new Error(`MOCK_LINKED_RUN_MISSING: ${id}`); setRailPreview(next.workflowId); setRailRun(next.id); }} /> : !previewFlow && route.run !== undefined && selectedRow !== undefined && dateSelection.state === "valid" ? (
               <LogSample key={route.run} selection={{ row: selectedRow, workflowLabel: workflowLabelOf(selectedRow.workflowId) }} />
             ) : (
               <Panel className="min-h-0"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]"><EmptyState

@@ -36,7 +36,7 @@ const contracts: Record<MockWorkflowId, Contract> = {
     step("extraction", "Read entry sheet", "CRM", "Read identity, position, wage, address and effective date from the UCPath entry sheet."),
     step("pdf-download", "Download onboarding documents", "CRM", "Download the record's onboarding PDFs."), step("ucpath-auth", "Sign in to UCPath", "UCPath", "Open UCPath."),
     step("person-search", "Match existing person", "UCPath", "Check whether the person already exists before choosing the hire transaction."),
-    step("i9-creation", "Create I-9 profile", "I-9 Complete", "Create an I-9 profile for a new hire; rehires skip this step."),
+    step("i9-creation", "Create I-9 profile", "I-9 Complete", "Create an I-9 profile for a new hire; rehires and dry runs skip this step.", true),
     step("transaction", "Submit hire", "UCPath", "New hire uses UC_FULL_HIRE; rehire uses UC_CONC_HIRE on the matched Employee ID.", true),
   ], result: [["Email", "jordan.lee@example.com"], ["Position number", "DEMO-POS-001"], ["Wage", "$17.75 per hour"], ["Effective date", "08/03/2026"]] },
   "i9-lookup": { methods: ["delegated"], inputLabel: "Person", placeholder: "Lee, Jordan", example: "Lee, Jordan", dryRun: false, roster: false, steps: [
@@ -50,7 +50,7 @@ const contracts: Record<MockWorkflowId, Contract> = {
     step("determine-action", "Determine pay-rule change", undefined, "Use union code and election status to decide the CT/OT change."),
     step("kronos-auth", "Sign in to New Kronos", "New Kronos", "Open the People timekeeper workspace."),
     step("update-pay-rule", "Update pay rule", "New Kronos", "Apply the elected pay rule effective 07/01/2026.", true),
-  ], result: [["Employee ID", "10000001"], ["Union code", "SX"], ["Current pay rule", "CT"], ["New pay rule", "OT"], ["Effective date", "07/01/2026"]] },
+  ], result: [["Employee ID", "10000001"], ["Union code", "SX"], ["Current pay rule", "DEMO-CT-BASE"], ["New pay rule", "DEMO-OT-BASE"], ["Old code", "CT"], ["New code", "OT"], ["Effective date", "07/01/2026"]] },
   ocr: { methods: ["pdf"], inputLabel: "PDFs", placeholder: "", example: "scan.pdf", dryRun: false, roster: true, steps: [], result: [["Records", "1"], ["Employee", "Jordan Lee"], ["Employee ID", "10000001"]] },
   "oath-signature": { methods: ["typed", "pdf"], inputLabel: "Employee IDs", placeholder: "10000001, 10000002", example: "10000001", dryRun: true, roster: true, steps: [
     step("crm-verify", "Verify onboarding and oath date", "CRM", "Verify the employee's CRM onboarding record and the date to sign."),
@@ -74,7 +74,7 @@ const contracts: Record<MockWorkflowId, Contract> = {
   ], result: [["Employee", "Jordan Lee"], ["UCPath ID", "10000001"], ["Document type", "X_HR_Emergency Contact"], ["Source page", "1"]] },
   "i9-check": { methods: ["pdf"], inputLabel: "PDFs", placeholder: "", example: "i9-packet.pdf", dryRun: false, roster: false, steps: [
     step("person-match", "Match person in UCPath", "UCPath", "Use the paired Section 1/2 identity to search UCPath."),
-    step("person-lookup", "Read employment dates", "UCPath", "Read the employment and separation dates; no UCPath transaction is submitted."),
+    step("employment-dates", "Read employment dates", "UCPath", "Read the employment and separation dates; no UCPath transaction is submitted."),
     step("roster-match", "Append retention tracker row", undefined, "Match the configured Action History roster by Employee ID and append a retention-tracker row. A rerun appends again."),
   ], result: [["Employee", "Jordan Lee"], ["Employee ID", "10000001"], ["PPS ID", "DEMO-PPS-001"], ["Section 1 present", "Yes"], ["Section 2 present", "Yes"], ["Found in UCPath?", "Yes"]] },
   "crm-doc-download": { methods: ["typed"], inputLabel: "Employee IDs or emails", placeholder: "10000001, jordan.lee@example.com", example: "10000001", dryRun: false, roster: false, steps: [

@@ -92,7 +92,7 @@ describe("frontend-only Explorer mock workflows", () => {
     const workflowSelect = document.querySelector('[aria-label="Explorer workflow"]');
     assert.ok(workflowSelect instanceof HTMLButtonElement);
     await act(async () => workflowSelect.click());
-    assert.deepEqual([...document.querySelectorAll('[role="option"]')].map(option => option.textContent), ["Separations", "Onboarding", "Emergency Contact"]);
+    assert.deepEqual([...document.querySelectorAll('[role="option"]')].map(option => option.textContent), ["Separations", "Onboarding", "Emergency Contact", "Person Lookup", "I-9 Lookup", "Work-Study", "Kronos Pay Rule", "OCR", "Oath Signature", "Oath Upload", "OnBase", "I-9 Check", "CRM Doc Download", "SharePoint Download", "Old Kronos Reports"]);
     await act(async () => document.querySelector<HTMLElement>('[role="option"][data-value="fixture-separations"]')?.click());
     assert.equal(document.querySelector('aside[aria-label="Workflow browser"]'), null);
     for (const name of ["Expand all", "Collapse all", "Version registry", "Show action legend"]) {
@@ -109,7 +109,7 @@ describe("frontend-only Explorer mock workflows", () => {
     assert.equal(document.querySelectorAll("li[data-step-number]").length, 22);
     assert.ok(document.querySelector('[aria-label="Read result preview"]'));
   });
-  it("holds onboarding writes, supports concurrent hire, and stops its rehearsal at the I-9 boundary", async () => {
+  it("holds onboarding writes, supports concurrent hire, and stages I-9 and Smart HR without filing during rehearsal", async () => {
     await render(); await chooseWorkflow("fixture-onboarding");
     await choose("Person search result", "review"); assert.equal(hidden(7), true);
     await choose("Person search result", "rejected"); assert.equal(hidden(10), true);
@@ -118,7 +118,7 @@ describe("frontend-only Explorer mock workflows", () => {
     await choose("Person search result", "matched"); assert.equal(hidden(11), false);
     assert.match(document.getElementById("explorer-step-7")?.textContent ?? "", /Skip I-9 creation/);
     assert.match(document.getElementById("explorer-step-8")?.textContent ?? "", /UC_CONC_HIRE/);
-    await choose("Hire rehearsal", "dry"); assert.equal(hidden(7), true); assert.equal(hidden(10), true);
+    await choose("Hire rehearsal", "dry"); assert.equal(hidden(7), false); assert.equal(hidden(8), false); assert.equal(hidden(10), true);
     await choose("Hire type", "new"); await choose("Person search result", "none"); await choose("Hire rehearsal", "write");
     await choose("I-9 profile", "present");
     assert.match(document.getElementById("explorer-step-7")?.textContent ?? "", /reuse the existing profile ID/);

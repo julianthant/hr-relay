@@ -22,7 +22,7 @@ describe("legacy workflow previews", () => {
     ["oath-upload", ["wait-approval", "wait-signatures", "servicenow-auth", "open-hr-form", "fill-form", "submit"]],
     ["emergency-contact", ["navigation", "fill-form", "save"]],
     ["onbase", ["authenticate", "prepare-import", "fill-keywords", "import"]],
-    ["i9-check", ["person-match", "person-lookup", "roster-match"]],
+    ["i9-check", ["person-match", "employment-dates", "roster-match"]],
     ["crm-doc-download", ["search-record", "download", "archive"]],
     ["sharepoint-download", ["navigate", "download"]],
     ["old-kronos-reports", ["searching", "extracting", "downloading"]],
@@ -102,7 +102,8 @@ describe("legacy workflow previews", () => {
     expect(mockQueueView([done, waiting], ["all"], "oldest")).toEqual([waiting, done]);
   });
   it("seeds each workflow with its own fictional input and log graph", () => {
-    const runs = seedMockRuns(); expect(runs).toHaveLength(15);
+    const runs = seedMockRuns(); expect(runs.filter(run => !run.parentId)).toHaveLength(15);
+    expect(runs.filter(run => run.parentId && run.workflowId === "i9-check")).toHaveLength(1);
     for (const run of runs) {
       expect(run.title).toContain(mockWorkflow(run.workflowId).label);
       const { steps } = mockRunLog(run);

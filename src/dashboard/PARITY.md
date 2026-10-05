@@ -136,6 +136,16 @@ use file-content hashes, and reruns preserve source histories. Field copy uses E
 Kuali ID, with no trailing composition summary. Focused tests inspect all workflows in both themes
 at 1024 and 1440 pixels, retaining screenshots and checking that local previews send no writes.
 
+The workflow-component amendment keeps the same palette and primitives while adding Results,
+Records and Linked runs. Record edits preserve source transcriptions; manually changed IDs carry
+an explicit unverified-identity warning. Approval creates independent per-person rows, discard
+starts none, and I-9 Check fans out automatically. Standalone OCR remains inspection only.
+Explorer now lists all 15 workflows; its conditional controls cover delegated lookup, no-profile
+and unavailable I-9, oath dependencies and upload-only, OnBase identity failure, no-change pay
+rules, all five OCR forms, CRM attachment absence and empty/mismatched Time Detail PDFs.
+Source graphs are copied with pinned provenance and corrected against kernel implementations.
+Onboarding rehearsals stage I-9 and Smart HR forms without saves or submission.
+
 Focused model, launch regression, dark/light 1024/1440 interaction, accessibility, lint and build
 checks cover this integration. Existing frozen visual references and backend command acceptance
 remain unchanged; their broad acceptance and deliberate refreeze stay with 3.1.19.

@@ -13,7 +13,7 @@ const PATHS = {
   "fixture-documents": [["attached", "Documents attached"], ["none", "No attachments"]],
   "fixture-person": [["none", "No person found"], ["matched", "One confirmed person"], ["review", "Identity review required"], ["rejected", "Identity rejected"]],
   "fixture-i9": [["absent", "Create a profile"], ["present", "Profile already exists"]],
-  "fixture-hire-posture": [["write", "Illustrate filing"], ["dry", "Dry run · stop before I-9"]],
+  "fixture-hire-posture": [["write", "Illustrate filing"], ["dry", "Dry run · stage without saving"]],
   "fixture-contact-review": [["approved", "Contacts approved"], ["pending", "Waiting for review"], ["rejected", "Review rejected"]],
   "fixture-contact-identity": [["verified", "Employee ID verified"], ["mismatch", "Employee ID mismatch"]],
   "fixture-existing-contact": [["none", "No matching contact"], ["exact", "Exact-name duplicate"], ["fuzzy", "Fuzzy-name duplicate"]],
@@ -60,9 +60,9 @@ export function buildOnboardingMock(scenario: MockScenario): MockFlow {
           : rehire ? "Carry the confirmed employee ID into the concurrent hire." : "No existing person found. Continue with the new hire.";
   return {
     summary: "CRM record → I-9 profile → UCPath hire",
-    completion: dry && !held ? "Dry-run path ends before I-9 creation and UCPath filing" : rehire ? "Concurrent-hire receipt readback illustrated" : "New-hire receipt readback illustrated",
+    completion: dry && !held ? "Dry-run path stages I-9 and Smart HR forms without saving or submitting" : rehire ? "Concurrent-hire receipt readback illustrated" : "New-hire receipt readback illustrated",
     path: { step: 6, control: "preview-fixture-person" },
-    stopAfter: held || dry ? 6 : undefined,
+    stopAfter: held ? 6 : dry ? 9 : undefined,
     steps: [
       step(1, "Open browser sessions", undefined, { kind: "sessions", systems: rehire ? ["CRM", "UCPath"] : ["CRM", "UCPath", "I-9"] }),
       step(2, "Choose the hire type", "You", choice("fixture-hire-mode", "Hire type", scenario)),
@@ -77,12 +77,12 @@ export function buildOnboardingMock(scenario: MockScenario): MockFlow {
       step(5, "Search for the person", "UCPath", form("person-search", "Search / Match", "Fill form", rows("fill", [["name", "Legal name", "CRM record", "hire-name"], ["identity", "Date of birth · identity data", "Protected CRM fields", "hire-identity"]])),
         action("Click Search", "click"), form("person-results", "Matching people", "Read only", rows("read", [["people", "Employee IDs · names", "Observed search results"]]))),
       step(6, "Resolve the hire identity", "You", choice("fixture-person", "Person search result", scenario), held ? stop(personResult) : action(personResult),
-        choice("fixture-hire-posture", "Hire rehearsal", scenario), ...(dry && !held ? [stop("Dry-run boundary · stop before I-9 creation and Smart HR")] : [])),
+        choice("fixture-hire-posture", "Hire rehearsal", scenario), ...(dry && !held ? [note("Dry run stages the I-9 and Smart HR forms; saving and submission stay disabled.")] : [])),
       step(7, "Resolve the I-9 profile", "I-9", ...(rehire ? [action("Concurrent hire uses the existing person. Skip I-9 creation", "rejoin")] : [
         choice("fixture-i9", "I-9 profile", scenario), action("Search the portal for the hire’s existing profile", "read"),
         ...(scenario["fixture-i9"] === "present" ? [action("Read and reuse the existing profile ID", "rejoin")] : [
           form("i9-profile", "I-9 profile", "Fill form", rows("fill", [["name", "Legal name", "CRM record", "hire-name"], ["email", "Email", "CRM record", "hire-email"]])),
-          action("Create the I-9 profile", "click"), action("Read the profile ID back from the portal"),
+          ...(dry ? [action("Fill the I-9 profile without Save & Continue, then abandon the form", "rejoin"), note("Carry an explicitly synthetic profile ID into the staged Smart HR form.")] : [action("Create the I-9 profile", "click"), action("Read the profile ID back from the portal")]),
         ]),
       ])),
       step(8, "Stage the Smart HR hire", "UCPath", form("hire-template", "Smart HR · Template", "Fill form", rows("fill", [
@@ -95,7 +95,7 @@ export function buildOnboardingMock(scenario: MockScenario): MockFlow {
         ...(rehire ? [action("Verify the resolved employee name and acknowledge only the expected existing-person dialog")] : [
           form("personal", "Smart HR · Personal Data", "Fill form", rows("fill", [
             ["name", "Legal name", "CRM record", "hire-name"], ["identity", "Date of birth · identity data", "Protected CRM fields", "hire-identity"],
-            ["address", "Address · phone · email", "CRM record", "hire-address"], ["profile", "I-9 profile ID", "Verified portal profile", "hire-profile"],
+            ["address", "Address · phone · email", "CRM record", "hire-address"], ["profile", "I-9 profile ID", dry ? "Synthetic dry-run placeholder · no profile created" : "Verified portal profile", "hire-profile"],
           ])),
         ]),
         form("job", "Smart HR · Job Data", "Fill form", rows("fill", [

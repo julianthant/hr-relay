@@ -33,7 +33,7 @@ export type FlowPart =
 export interface FlowStep {
   readonly number: number;
   readonly title: string;
-  readonly system?: "Kuali" | "Kronos" | "UCPath" | "Local" | "You" | "CRM" | "I-9" | "OCR";
+  readonly system?: "Kuali" | "Kronos" | "UCPath" | "Local" | "You" | "CRM" | "I-9" | "OCR" | "OnBase" | "ServiceNow" | "SharePoint";
   readonly parts: readonly FlowPart[];
 }
 export interface FieldSource {

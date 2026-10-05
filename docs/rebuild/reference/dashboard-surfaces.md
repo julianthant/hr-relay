@@ -7388,6 +7388,18 @@ unchanged when a rerun is added. Work-Study and Old Kronos Reports use their ker
 the old dashboard had no public typed Run registration for either. Labels use Employee IDs and
 Kuali ID, and the workflow rail omits the trailing composition summary. The source digest inventory
 and focused verification are retained in `workflow-mocks-20261004` under the evidence root.
+The workflow-component amendment extends these local producers with contract-specific read/fill
+results, PDF record review, manual identity provenance, selected-person fan-out, discard and linked
+run navigation. Preparation rows own review and rollup; person rows own their kernel steps. Full
+Oath Upload links to separate Oath Signature rows; I-9 Check creates person rows automatically.
+Standalone OCR and I-9 reports remain read only. Source transcriptions and all identities are
+fictional; uploading a PDF does not invoke OCR or contact an external system in these previews.
+Explorer includes all 15 rail workflows with field provenance and conditional paths. The copied
+legacy demo graphs correct Work-Study pool F/reason JRL and comments, configured SharePoint
+navigation/download, and Old Kronos Time Detail validation against the pinned kernel modules.
+Onboarding dry runs stage and abandon the I-9 form, then stage Smart HR without submitting.
+The source digest inventory and verification are retained in `workflow-components-20261004`.
+
 Scenario selectors belong outside the product screens, in `review.html`.
 Its controls select Logs, Activity and notification scenarios without changing runtime authority.
 
