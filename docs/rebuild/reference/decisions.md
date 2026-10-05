@@ -294,6 +294,12 @@ empty states stay distinct. Shared DS Skeletons respect reduced motion and loadi
 announcements. Synchronous previews add no artificial delay. D347's dashboard-surfaces owner records
 the contract and `page-skeletons-20261005` evidence.
 
+The queue-footer amendment centers provenance and 24px action targets and enables Archive in local
+workflow/OCR row menus. Archive retains the current source status, inputs, corrected records and
+linked subtree without approval or a fabricated completion date. Session-local snapshots join the
+existing Archive folders, details, Logs and exports; served command authority remains unchanged.
+D347's dashboard-surfaces owner records the contract and `queue-footer-archive-20261005` evidence.
+
 The controls amendment extends Settings search cues through full-width row card padding. Shared tabs begin at the rail's left edge and slide one underline over 220ms for pointer selection, snapping for keyboard and reduced motion. Spreadsheet toolbar/footer controls share the body height and omit explanatory notes. Archive folder counts sit beside search; Activity calendars align right without visible Start/End prefixes. Exact-control focus, date semantics, editing and export behavior remain unchanged. D347's dashboard-surfaces owner records the presentation contract.
 
 Settings search lists matching pages and actual controls using their shared presentation labels and parent-page context. Search fields retain 12px corners, use a quiet neutral focus border without a bright halo, and show a small clear icon only when nonempty. Field results carry `settingsTarget` under Settings, open containing disclosures, center the control and briefly highlight it; reduced motion uses immediate scrolling and a temporary static cue. The metadata index excludes values and secrets, preserves draft/exit authority, supports repeat selection and reload/history, and states unavailable targets.

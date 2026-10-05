@@ -63,6 +63,8 @@ import { WorkflowMockLog, WorkflowMockQueue } from "../surfaces/workflow-mock-qu
 import { mockWorkflow, type MockWorkflowId } from "../surfaces/workflow-mock-catalog.js";
 import { approveMockRun, mockQueueCounts, mockWorkflowCounts, mockQueueView, mockRetrySource, mockRunsForDraft, seedMockRuns, type MockDraft, type MockRun } from "../surfaces/workflow-mock-model.js";
 import { mockQueueId } from "../surfaces/workflow-queue-model.js";
+import { archiveQueuePreview, archiveWorkflowTree } from "../surfaces/queue-archive-model.js";
+import type { MockArchiveRun } from "../surfaces/archive-mock-model.js";
 import { discardMockReview, restoreMockReview, updateMockReview } from "../surfaces/workflow-review-model.js";
 import "../surfaces/permanent-shell.css";
 import { PROPOSED_STATUS,dsStatusOf } from "../surfaces/status-model.js";
@@ -302,6 +304,7 @@ function LoadedApp({
   const launch = useRunLaunch(route.start, DASHBOARD_MAIN_REGION_ID);
   const [railPreview, setRailPreview] = useState<string | null>(null);
   const [mockRuns, setMockRuns] = useState<readonly MockRun[]>(seedMockRuns);
+  const [archiveReports, setArchiveReports] = useState<readonly MockArchiveRun[]>([]);
   const [mockLaunch, setMockLaunch] = useState<{ workflowId: MockWorkflowId; source?: MockRun } | null>(null);
   const rememberLauncher = launch.rememberLauncher;
   const openMockLaunch = useCallback((next: { workflowId: MockWorkflowId; source?: MockRun }) => {
@@ -843,7 +846,11 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
     if (ids.length === 0) return;
     selectionOrigin.current = ids[0] ?? null;
     let retriedIds: readonly string[];
-    try { retriedIds = previewQueue.apply(action, ids, nowIso); }
+    try {
+      const result = previewQueue.apply(action, ids, nowIso);
+      retriedIds = result.createdIds;
+      if (result.archived.length) setArchiveReports(previous => [...previous, ...result.archived.map(record => archiveQueuePreview(record, workflowLabelOf(record.row.workflowId), nowIso))]);
+    }
     catch (caught) {
       toast({ tone: 'danger', title: 'Mock action unavailable', description: caught instanceof Error ? caught.message : String(caught) });
       return;
@@ -852,7 +859,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
     exitQueueSelection();
     toast({ tone: 'success', title: `${ids.length} ${ids.length === 1 ? 'run' : 'runs'} ${action === 'retry' ? 'queued' : action === 'archive' ? 'archived' : 'deleted'}`, description: action === 'retry' ? 'Original settings retained.' : undefined });
     if (route.run !== undefined && ids.includes(route.run)) setRoute({ ...route, run: action === 'retry' ? retriedIds[0] : undefined });
-  }, [previewQueue, nowIso, exitQueueSelection, toast, route, setRoute]);
+  }, [previewQueue, nowIso, exitQueueSelection, toast, route, setRoute, workflowLabelOf]);
 
   const runPreviewAction = useCallback((action: QueueMockAction, ids: readonly string[]) => {
     if (action === "delete") setPendingDelete(ids); else applyPreviewAction(action, ids);
@@ -1140,6 +1147,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
             takeover is the modal it deliberately is not.
           */}
           <DashboardTakeovers takeover={takeover} route={route} setRoute={setRoute} boot={boot}
+            archiveReports={archiveReports}
             settingsSections={settingsSections} workflowLabels={workflowLabels} activeWorkflowId={activeWorkflowId}
             workflowLabelOf={workflowLabelOf} supportsDryRun={startWorkflow?.inputRun.state === "present" && startWorkflow.inputRun.surface.supportsDryRun === true}
             closeTakeoverTo={closeTakeoverTo}
@@ -1191,6 +1199,13 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
               {previewFlow && dateSelection.state === "valid" ? <WorkflowMockQueue label={previewFlow.label} runs={railQueueRows} allRuns={mockRuns} selected={railRun} onSelect={setRailRun}
                 onRetry={id => { const source = mockRetrySource(mockRuns, id); openMockLaunch({ workflowId: source.workflowId, source }); }}
                 onDelete={ids => { setMockRuns(previous => previous.filter(run => !ids.includes(run.id))); if (railRun && ids.includes(railRun)) { setRailRun(undefined); setRailReviewId(undefined); } }}
+                onArchive={id => {
+                  const archived = archiveWorkflowTree(mockRuns, id, day, nowIso);
+                  setArchiveReports(previous => [...previous, ...archived.reports]);
+                  setMockRuns(previous => previous.filter(run => !archived.ids.includes(run.id)));
+                  if (railRun && archived.ids.includes(railRun)) { setRailRun(undefined); setRailReviewId(undefined); }
+                  toast({ tone: "success", title: `${archived.ids.length} ${archived.ids.length === 1 ? "run" : "runs"} archived` });
+                }}
                 day={day} nowIso={nowIso} sort={sort} filter={queueFilterScope} /> : dayWire === undefined || workflows.length === 0 || !workflows.some(workflow => workflow.id === activeWorkflowId) ? (
                 dateError === undefined && dayResource.state !== "failed" && dayWire === undefined ? <QueueSkeleton label={workflows.find(workflow => workflow.id === activeWorkflowId)?.label} /> : <Panel className="min-h-0"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]">
                   <EmptyState title={dateError !== undefined ? "Choose a valid date" : dayResource.state === "failed" ? "Could not load queue" : dayWire === undefined ? "Loading queue" : workflows.length === 0 ? "No workflows available" : "Workflow unavailable"}

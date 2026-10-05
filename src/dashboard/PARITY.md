@@ -367,3 +367,14 @@ Focused geometry and interaction checks include dark/light at 1024 and 1440 pixe
 pairs, initial bootstrap, queue errors, intake and OCR image loading/failure. Evidence is retained
 under `page-skeletons-20261005`. Existing frozen references remain unchanged. Full repository gates
 and the inherited concrete-workflow-ID guard conflict remain with 3.1.19.
+
+## Queue footer and local archive actions
+
+Provenance and shared 24px action targets center vertically in each footer, including wrapped metadata.
+Workflow/OCR context menus include Archive beside Retry and Delete. Local snapshots retain current
+status, inputs/settings, corrected records and linked identities; workflow Logs remain read-only in
+Archive. Archiving delegated OCR removes and retains its parent/dependent subtree together without
+approving it. Pending runs remain not completed. Snapshots join the existing Archive folders, details
+and exports until reload. Descriptor-authored served commands retain their authority. Evidence under
+`queue-footer-archive-20261005` covers dark/light at 1024 and 1440 pixels, wrapping, keyboard focus,
+OCR edit retention, linked removal and zero write requests. Frozen references remain unchanged.

@@ -7424,6 +7424,16 @@ distinct. The shared DS Skeleton uses a quiet pulse, disabled for reduced motion
 announce one status while decorative placeholders remain hidden from assistive technology. Synchronous
 local previews do not add artificial delays. Focused evidence is retained in `page-skeletons-20261005`;
 full repository and frozen-reference gates remain with 3.1.19.
+Queue row footers center the provenance block and action targets vertically, including wrapped
+metadata. Retry and Delete keep their shared 24px targets. Archive is available in the row context
+menu, including local workflow and OCR queues. Local Archive captures the source snapshot without
+changing its status or approving records; unfinished runs remain not completed. Workflow snapshots
+retain corrected fields, record selection, original inputs/settings, linked identities and their
+current Logs. Archiving delegated OCR removes and retains its parent and dependent subtree together.
+Queue previews retain their source row, pipeline and original preview settings. These snapshots appear
+in the existing Archive folders, details, Logs and exports for the current browser session; reload
+restores seeded mocks. Served runtime commands remain descriptor-authoritative. Focus returns to a
+remaining queue row or its heading. Focused evidence belongs to `queue-footer-archive-20261005`.
 Settings search arrival cues extend across a full-width row's card padding, with the card clipping its
 corners. Focus and centering remain on the exact requested control. Shared underline tabs begin at the
 left edge of their rail and use one interruptible 220ms transform transition between pointer-selected

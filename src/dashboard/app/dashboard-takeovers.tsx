@@ -5,6 +5,7 @@ type FrontendBootstrapWire
 import { ActivityReport } from "../surfaces/activity.js";
 import { ARCHIVE_INDEX } from "../surfaces/archive-model.js";
 import { MockArchiveWorkspace as ArchiveWorkspace } from "../surfaces/archive-mock.js";
+import type { MockArchiveRun } from "../surfaces/archive-mock-model.js";
 import { WorkflowExplorer } from "../surfaces/explorer.js";
 import { IntakeWorkspace } from "../surfaces/intake.js";
 import { DEFAULT_CATALOG_VIEW } from "../surfaces/row-catalog-model.js";
@@ -23,17 +24,19 @@ routeWithoutTakeovers,
 type AppRouteState
 } from "./url-state.js";
 export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSections,workflowLabels,activeWorkflowId,
- workflowLabelOf,supportsDryRun,closeTakeoverTo,onSettingsExitGuardChange,theme,onToggleTheme,children}: {
+ workflowLabelOf,supportsDryRun,closeTakeoverTo,onSettingsExitGuardChange,theme,onToggleTheme,archiveReports,children}: {
  takeover: ReturnType<typeof activeTakeover>; route: AppRouteState; setRoute: (next: AppRouteState, mode?: "push" | "replace") => void;
  boot: FrontendBootstrapWire; settingsSections: ComponentProps<typeof SettingsPage>["sections"];
  workflowLabels: ReadonlyMap<string,string>; activeWorkflowId: string; workflowLabelOf: (id: string) => string;
  supportsDryRun: boolean;
+ archiveReports?: readonly MockArchiveRun[];
  closeTakeoverTo: (target: DashboardTakeoverCloseFocusTargetId,next: AppRouteState) => void;
  onSettingsExitGuardChange: (guard: SettingsExitGuard | undefined) => void; theme: DemoTheme; onToggleTheme: () => void; children: ReactNode;
 }) {
  const dataSection = takeover === "settings" ? route.settings
    : takeover === "explore" ? "explorer" : takeover === "archive" || takeover === "activity" ? takeover : undefined;
  const dataContent = dataSection === "archive" ? <ArchiveWorkspace
+   additionalReports={archiveReports}
    selection={route.archive ?? ARCHIVE_INDEX} view={route.archiveView ?? "runs"}
    folder={route.archiveDashboard === undefined || route.archiveWorkflow === undefined
      ? null : { dashboardKey: route.archiveDashboard, workflow: route.archiveWorkflow }}

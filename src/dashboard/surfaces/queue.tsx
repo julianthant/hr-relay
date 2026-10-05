@@ -399,7 +399,7 @@ const SUBLINE_TONE: Record<ProposedStatus, string> = {
  * The row's FOOTER — the run's provenance line and its controls.
  *
  * The meta zone is one wrapping provenance line, and
- * the controls are a sibling pinned top-right. When a run carries a trace, a
+ * the controls are a sibling centered at the right. When a run carries a trace, a
  * subtitle and an elapsed, all three stay readable — the demo's production
  * predecessor packed them onto one line and `truncate`d whatever lost, which at
  * a 400px queue rendered a trace id cut to a single character.
@@ -434,9 +434,10 @@ function RowFooterLine({
     ? undefined : runTiming(surface, nowIso, isTerminalQueueStatus);
   return (
     <div
+      data-queue-row-footer
       className={cn(
         // THE recessed plane: a fill, no line.
-        "flex items-start gap-[var(--ds-space-base)] border-t px-[var(--ds-space-cozy)] py-[var(--ds-space-tight)]",
+        "flex items-center gap-[var(--ds-space-base)] border-t px-[var(--ds-space-cozy)] py-[var(--ds-space-tight)]",
         dsBorder.subtle,
         "bg-[var(--ds-recess-bg)]",
       )}
@@ -470,7 +471,7 @@ function RowFooterLine({
       {/* The frequent commands, inline. The full set is one right-click away —
           there is no `⋯`, because a button whose only job is to admit there are
           more buttons is a slot spent on every row in the queue. */}
-      <div className="flex shrink-0 items-center gap-[var(--ds-space-hair)] pt-[var(--ds-space-hair)]">
+      <div className="flex shrink-0 items-center gap-[var(--ds-space-hair)]">
         <FooterActions
           actions={actions}
           target={{ runId: surface.runId, expectedVersion: surface.rowRevision }}

@@ -4,6 +4,8 @@ import { logSampleCapture } from './logs/log-selected-fixture.js';
 import type { LogTimelineStage } from './logs/log-timeline-model.js';
 
 export function mockArchiveLogs(run: MockArchiveRun): { steps: readonly LogStep[]; timeline: readonly LogTimelineStage[] } {
+ if (run.savedLogs) return run.savedLogs;
+ if (run.completed === undefined) throw new Error('ARCHIVE_SNAPSHOT_LOGS_MISSING');
  const durations = run.steps.map(step => step.status === 'notStarted' ? 0 : Number.parseInt(step.duration, 10));
  let cursor = Date.parse(run.completed) - durations.reduce((total, seconds) => total + seconds, 0) * 1000;
  const time = (value: number) => new Date(value).toISOString().slice(11, 19);

@@ -18,10 +18,10 @@ import { WorkflowMockReview } from "./workflow-review.js";
 import { documentSourcePages } from "./workflow-document-model.js";
 import { mockDeletionIds } from "./workflow-mock-model.js";
 
-export function WorkflowMockQueue({ label, runs, allRuns, selected, onSelect, onRetry, onDelete, day, nowIso, sort, filter }: {
+export function WorkflowMockQueue({ label, runs, allRuns, selected, onSelect, onRetry, onDelete, onArchive, day, nowIso, sort, filter }: {
   label: string; runs: readonly MockRun[]; selected?: string; onSelect: (id: string) => void;
   day: string; nowIso: string; sort: QueueSortKey; filter?: QueueFilterScope;
-  allRuns: readonly MockRun[]; onRetry: (id: string) => void; onDelete: (ids: readonly string[]) => void;
+  allRuns: readonly MockRun[]; onRetry: (id: string) => void; onDelete: (ids: readonly string[]) => void; onArchive: (id: string) => void;
 }) {
   const [pendingDelete, setPendingDelete] = useState<MockRun>();
   const queueRoot = useRef<HTMLDivElement>(null);
@@ -29,27 +29,30 @@ export function WorkflowMockQueue({ label, runs, allRuns, selected, onSelect, on
   const deleteLauncher = useRef<HTMLElement | null>(null);
   const surfaces = useMemo(() => mockQueueSurfaces(runs, day), [runs, day]);
   const ids = useMemo(() => new Map(runs.map(run => [mockQueueId(run.id), run.id])), [runs]);
+  const focusRemainingRow = () => {
+    const target = queueRoot.current?.querySelector<HTMLElement>("[data-demo-row-id]") ?? queueRoot.current?.querySelector<HTMLElement>("h2");
+    if (target) { if (!target.hasAttribute("tabindex")) target.tabIndex = -1; target.focus(); }
+  };
   return <div ref={queueRoot} className="flex min-h-0 min-w-0 flex-1 flex-col [&>section]:flex-1"><QueuePanel surfaces={surfaces} panelLabel={label} day={day} sort={sort} filter={filter}
     state={{ selectedRunId: selected ? mockQueueId(selected) : undefined, openWells: new Set(), panelWorkflowId: runs[0]?.workflowId, nowIso }}
     handlers={{ onSelect: id => {
       const target = ids.get(id);
       if (!target) throw new Error(`MOCK_QUEUE_RUN_UNKNOWN: ${id}`);
       onSelect(target);
-    }, previewArchive: false, onPreviewAction: (action, targets) => {
+    }, onPreviewAction: (action, targets) => {
       const id = ids.get(targets[0]);
       const run = allRuns.find(item => item.id === id);
       if (!run) throw new Error("MOCK_QUEUE_ACTION_TARGET_MISSING");
       if (action === "retry") onRetry(run.id);
       else if (action === "delete") { deleteLauncher.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setPendingDelete(run); }
-      else throw new Error("MOCK_QUEUE_ARCHIVE_UNAVAILABLE");
+      else { onArchive(run.id); requestAnimationFrame(focusRemainingRow); }
     } }} workflowLabelOf={id => mockWorkflow(id).label} />
     <Dialog open={!!pendingDelete} onOpenChange={open => { if (!open) setPendingDelete(undefined); }}>
       <DialogContent title={`Delete ${pendingDelete?.subject ?? "run"}?`} size="sm" onCloseAutoFocus={event => {
         event.preventDefault();
         if (!deleted.current) { deleteLauncher.current?.focus(); return; }
         deleted.current = false;
-        const target = queueRoot.current?.querySelector<HTMLElement>("[data-demo-row-id]") ?? queueRoot.current?.querySelector<HTMLElement>("h2");
-        if (target) { if (!target.hasAttribute("tabindex")) target.tabIndex = -1; target.focus(); }
+        focusRemainingRow();
       }}>
         <DialogBody>{pendingDelete && <p className="m-0 text-body text-ui-secondary">Remove this run and {mockDeletionIds(allRuns, pendingDelete.id).length - 1} linked runs from the queue.</p>}</DialogBody>
         <DialogFooter><Button onClick={() => setPendingDelete(undefined)}>Cancel</Button><Button variant="danger" onClick={() => { if (!pendingDelete) return; deleted.current = true; onDelete(mockDeletionIds(allRuns, pendingDelete.id)); setPendingDelete(undefined); }}>Delete</Button></DialogFooter>

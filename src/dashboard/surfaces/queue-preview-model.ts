@@ -10,8 +10,8 @@ export interface QueueMockSettings {
   readonly input: string;
   readonly dryRun: boolean;
   readonly priority: QueueSurfaceWire['priority'];
-  readonly browserMode: 'headed';
-  readonly captureScreenshots: true;
+  readonly browserMode: 'headed' | 'headless';
+  readonly captureScreenshots: boolean;
   readonly instances: QueueSurfaceWire['resolvedInstances'];
   readonly stepSelection: readonly string[];
 }
@@ -96,7 +96,10 @@ export function useQueuePreview(rows: readonly QueueSurfaceWire[] | undefined, d
     apply: (action: QueueMockAction, ids: readonly string[], now: string) => {
       const next = applyQueuePreviewAction(value, action, ids, now, () => crypto.randomUUID());
       setDraft({ day, source: rows, value: next });
-      return next.records.filter(record => !value.records.some(previous => previous.row.runId === record.row.runId)).map(record => record.row.runId);
+      return {
+        createdIds: next.records.filter(record => !value.records.some(previous => previous.row.runId === record.row.runId)).map(record => record.row.runId),
+        archived: next.archived.slice(value.archived.length),
+      };
     },
   };
 }
