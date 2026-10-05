@@ -412,6 +412,14 @@ place of returned-check counts, retaining historical-result warnings and current
 Focused desktop dark/light checks are retained in `workflow-duration-20261005`; frozen references
 and full exit gates remain owned by 3.1.19.
 
+Preflight refresh retains its summary, check rows, timestamp and workflow disclosure nodes while
+both the command and authoritative readback are pending. Run preflight keeps its label and action
+geometry, with disabled/busy semantics and progress inside Status. Fresh refreshes add no historical
+banner; existing historical warnings remain mounted. Failed readback retains explicitly previous
+evidence. Focused dark/light geometry checks at 1024×720 and 1440×900, including missing credentials
+and expired evidence, are retained in `preflight-refresh-20261005`. Full frozen-reference and repository
+gates remain with 3.1.19; these focused checks do not refreeze references.
+
 The 2026-10-05 confirmation simplification removes the redundant Workflow plan disclosure from
 all local Run/Rerun forms. Summary facts, omissions, optional-step selection and log outcomes remain.
 Focused evidence is `remove-workflow-plan-20261005`; frozen references and full gates remain at 3.1.19.

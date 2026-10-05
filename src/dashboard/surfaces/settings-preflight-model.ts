@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { systemClock } from "../../domain/clock.js";
 import type { PreflightReadinessWire } from "../../domain/preflight-contract.js";
+import type { PreflightReadinessState } from "../client/preflight-state.js";
 import { usePreflightReadiness } from "../state/preflight-readiness.js";
 import { usePreflightScope } from "../state/preflight-client.js";
 import type { EditableSettingsState } from "./settings-editor-model.js";
@@ -10,7 +11,8 @@ type Report = Extract<PreflightReadinessWire, { state: "present" }>["report"];
 export type PreflightRerunState =
   | { readonly state: "idle" | "running" }
   | { readonly state: "completed"; readonly checks: readonly PreflightCheckWire[]; readonly report: Report }
-  | { readonly state: "historical"; readonly checks: readonly PreflightCheckWire[]; readonly report: Report; readonly message: string; readonly checking?: boolean }
+  | { readonly state: "historical"; readonly checks: readonly PreflightCheckWire[]; readonly report: Report; readonly message: string }
+  | { readonly state: "refreshing"; readonly checks: readonly PreflightCheckWire[]; readonly report: Report; readonly previousMessage?: string }
   | { readonly state: "refused"; readonly message: string };
 
 function checksFrom(report: Report): readonly PreflightCheckWire[] {
@@ -21,13 +23,14 @@ function checksFrom(report: Report): readonly PreflightCheckWire[] {
   }));
 }
 
-export function projectPreflight(state: PreflightReadinessWire | { state: "idle" } | { state: "running"; lastCompleted?: Report }, nowMs: number): PreflightRerunState {
+export function projectPreflight(state: PreflightReadinessState, nowMs: number): PreflightRerunState {
   if (state.state === "idle") return { state: state.state };
   if (state.state === "running") {
     const report = state.lastCompleted;
-    return report === undefined || report.results.length === 0 || Date.parse(report.checkedAt) > nowMs
-      ? { state: "running" }
-      : { state: "historical", message: "Checking current readiness…", report, checks: checksFrom(report), checking: true };
+    if (report === undefined || report.results.length === 0 || Date.parse(report.checkedAt) > nowMs) return { state: "running" };
+    const previous = projectPreflight(state.previous ?? { state: "present", report }, nowMs);
+    return { state: "refreshing", report, checks: checksFrom(report),
+      ...(previous.state === "historical" ? { previousMessage: previous.message } : {}) };
   }
   if (state.state === "unavailable") {
     const report = state.lastCompleted;

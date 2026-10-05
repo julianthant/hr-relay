@@ -3,21 +3,23 @@ import type { PreflightReadinessWire, PreflightSelection } from "../../domain/pr
 import type { PreflightQueries } from "./preflight-queries.js";
 
 type Report = Extract<PreflightReadinessWire, { state: "present" }>["report"];
-type State = PreflightReadinessWire | Readonly<{ state: "idle" }> | Readonly<{ state: "running"; lastCompleted?: Report }>;
+export type PreflightReadinessState = PreflightReadinessWire | Readonly<{ state: "idle" }>
+  | Readonly<{ state: "running"; lastCompleted?: Report; previous?: PreflightReadinessWire }>;
 export type PreflightReadinessIdentity = Readonly<{
   configFingerprint: string; descriptorFingerprint: string; selection?: PreflightSelection;
   /** Settings/protected revision and runtime status invalidate still-pending observations. */
   settingsRevision?: string;
 }>;
 export function createPreflightReadinessResource(client: PreflightQueries, identity: PreflightReadinessIdentity) {
-  let state: State = { state: "idle" };
+  let state: PreflightReadinessState = { state: "idle" };
   let lastCompleted: Report | undefined;
   let epoch = 0;
   const listeners = new Set<() => void>();
-  const publish = (next: State): void => { state = next; for (const listener of listeners) listener(); };
+  const publish = (next: PreflightReadinessState): void => { state = next; for (const listener of listeners) listener(); };
   const observe = async (read: () => Promise<PreflightReadinessWire>): Promise<void> => {
     const started = ++epoch;
-    publish({ state: "running", ...(lastCompleted === undefined ? {} : { lastCompleted }) });
+    const previous = state.state === "running" ? state.previous : state.state === "idle" ? undefined : state;
+    publish({ state: "running", ...(lastCompleted === undefined ? {} : { lastCompleted }), ...(previous === undefined ? {} : { previous }) });
     try {
       const result = await read();
       if (started !== epoch) return;
@@ -32,7 +34,7 @@ export function createPreflightReadinessResource(client: PreflightQueries, ident
     }
   };
   return Object.freeze({
-    snapshot: (): State => state,
+    snapshot: (): PreflightReadinessState => state,
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     invalidate() { epoch += 1; publish({ state: "unavailable", reason: "Runtime state changed; re-check readiness.", ...(lastCompleted === undefined ? {} : { lastCompleted }) }); },
     read: () => observe(() => client.readPreflight(identity.selection)),

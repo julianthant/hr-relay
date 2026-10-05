@@ -8,9 +8,10 @@ import { PreflightReportContent } from "./settings-preflight.js";
 export function PreflightPopover(_props: { checks?: readonly PreflightCheckWire[]; onRerun?: () => void }) {
   const doctor = useDoctorPreflight();
   const verdict = doctor.preflight.state === "completed" ? preflightVerdict(doctor.preflight.checks) : "unavailable";
+  const busy = doctor.preflight.state === "running" || doctor.preflight.state === "refreshing";
   return <Popover onOpenChange={open => { if (open) void doctor.refresh(); }}>
     <PopoverTrigger asChild>
-      <IconButton size="sm" label={`Preflight: ${doctor.preflight.state === "running" ? "running" : verdict}`}
+      <IconButton size="sm" label={`Preflight: ${busy ? "running" : verdict}`}
         icon={<Stethoscope aria-hidden className={dsIcon.md} />}
         className={cn(verdict === "fail" && "text-[color:var(--ds-danger)]", verdict === "warning" && "text-[color:var(--ds-status-waiting-fg)]")} />
     </PopoverTrigger>

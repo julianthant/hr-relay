@@ -7417,6 +7417,14 @@ description and standalone Checked timestamp are retired.
 Loading labels, refused scopes and explicit previous-result warnings preserve the served readiness
 and freshness distinctions. Compact Preflight dialogs retain their report timestamps. Focused evidence
 is retained in `preflight-summary-card-20261005`.
+The Preflight refresh amendment labels the action Run preflight throughout Settings and the compact
+dialog. A pending refresh retains the mounted report, timestamp, check rows and workflow disclosure
+state through both the command and authoritative readback. Progress replaces the readiness label
+inside the existing Status card; it does not add a previous-result banner or replace the page with
+skeletons. Existing historical warnings remain in place while refreshing. Pending evidence never
+claims current readiness, and failed readback retains explicitly historical evidence. Focused evidence
+is retained in `preflight-refresh-20261005`; freshness, identity isolation and command authority remain
+unchanged. Full frozen-reference and repository gates remain with 3.1.19.
 Loading placeholders follow each mounted page's existing geometry. General, Paths, Performance,
 Routes, provider budgets and Credentials retain their headings, group order, row spacing and control
 widths. Activity keeps its metric cards, tables and chart frame; the UI catalog retains its two-column

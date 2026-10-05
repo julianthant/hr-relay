@@ -309,6 +309,10 @@ Preflight's first card follows the compact storage Status section with readiness
 Last checked with the served report's local date and time on the right. The returned-check count,
 repeated description and standalone Checked timestamp are retired. Explicit historical/unavailable
 states and compact-dialog timestamps retain their served meanings; report freshness and rerun authority are unchanged.
+The Preflight refresh amendment uses Run preflight and retains the report layout through command
+and readback. Progress appears inside the existing Status card; historical warnings persist and
+pending/failed evidence never claims current readiness. D347's dashboard-surfaces owner records the
+contract and `preflight-refresh-20261005` evidence.
 
 The Activity duration amendment replaces Time saved, editable manual baselines and estimated savings
 with a horizontal average-duration chart. It uses measured successful runs only, a shared zero origin,
