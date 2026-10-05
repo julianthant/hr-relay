@@ -127,12 +127,14 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect(served.state).toBe("present");
       if (served.state !== "present") throw new Error("PREFLIGHT_RERUN_REPORT_MISSING");
       expect(served.report.checkedAt).toBe(server.now);
-      await expect(surface.locator("time")).toHaveCount(0);
+      await expect(summary.locator("time")).toHaveAttribute("dateTime", served.report.checkedAt);
       await expect(surface.locator(".diagnostic-status")).toHaveCount(0);
       await expect(surface.getByRole("heading", { name: "Status", exact: true })).toBeVisible();
       const copy = summary.locator(".ds-result-row-copy"), count = summary.locator(".ds-result-row-side");
       await expect(copy.locator(".ds-field-description")).toHaveCount(0);
-      await expect(count).toHaveText(`${served.report.results.length} returned checks`);
+      await expect(count).toContainText("Last checked");
+      await expect(count.locator("time")).toHaveText(/^[A-Z][a-z]{2}, [A-Z][a-z]{2} \d{1,2} \d{1,2}:\d{2} [AP]M$/u);
+      await expect(summary).not.toContainText("returned checks");
       const copyBounds = (await copy.boundingBox())!, countBounds = (await count.boundingBox())!;
       expect(countBounds.x).toBeGreaterThan(copyBounds.x + copyBounds.width);
       expect(Math.abs(countBounds.y + countBounds.height / 2 - copyBounds.y - copyBounds.height / 2)).toBeLessThanOrEqual(2);

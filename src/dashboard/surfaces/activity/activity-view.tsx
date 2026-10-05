@@ -1,4 +1,4 @@
-import { ActivityEffort } from "./activity-effort.js";
+import { ActivityDurations } from "./activity-duration.js";
 import { type ReactNode } from "react";
 import { BarChart3 } from "lucide-react";
 import { Select, PageHeading } from "../../ds/ui.js";
@@ -80,7 +80,7 @@ export function ActivityView({ data, range, rangeRevision = 0, period, onPreset,
     <div className="activity-header-filters"><div className="activity-period-controls"><Select aria-label="Report period" variant="toolbar" value={period} onChange={event => onPreset(event.target.value as ActivityDatePreset)}>{ACTIVITY_DATE_PRESETS.map(preset => <option key={preset.value} value={preset.value}>{preset.label}</option>)}</Select><ActivityRange key={rangeRevision} range={range} onApply={onRange} onEdit={() => onPreset('custom')} /></div></div>
     {notice && <p role="status" className="m-0 text-body text-ui-secondary">{notice}</p>}
     <div className="min-w-0" aria-busy={data.state === "loading" || undefined}>
-      {data.state === "loaded" ? <><Metrics report={data.report} /><div className="mt-6 flex min-w-0 flex-col gap-6"><Outcomes report={data.report} /><ActivityEffort report={data.report} /><ActivityVolume volume={data.report.volume} /><Transactions report={data.report} /><Coverage report={data.report} /><Performance report={data.report} /></div></> : data.state === "loading" ? <ActivitySkeleton range={range} /> : <div role="alert" className="flex min-h-72 flex-col items-center justify-center text-center"><BarChart3 aria-hidden className="mb-4 size-6 text-ui-muted" /><h2 className="m-0 text-section">Activity unavailable</h2><p className="mb-0 mt-2 max-w-md text-body text-ui-secondary">{data.reason}</p></div>}
+      {data.state === "loaded" ? <><Metrics report={data.report} /><div className="mt-6 flex min-w-0 flex-col gap-6"><Outcomes report={data.report} /><ActivityDurations report={data.report} /><ActivityVolume volume={data.report.volume} /><Transactions report={data.report} /><Coverage report={data.report} /><Performance report={data.report} /></div></> : data.state === "loading" ? <ActivitySkeleton range={range} /> : <div role="alert" className="flex min-h-72 flex-col items-center justify-center text-center"><BarChart3 aria-hidden className="mb-4 size-6 text-ui-muted" /><h2 className="m-0 text-section">Activity unavailable</h2><p className="mb-0 mt-2 max-w-md text-body text-ui-secondary">{data.reason}</p></div>}
     </div>
   </section>;
 }

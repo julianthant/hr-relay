@@ -60,8 +60,8 @@ Dashboard page and section headings use a shared 4px title-to-description gap. S
 leave 12px before their card or table; page headings leave 16px before the next content block.
 Workflow readiness keeps its title and subheading close and leaves 12px before operation cards.
 Section descriptions use the shared BodySection primitive; separate section spacing remains intact.
-Time saved uses Activity's table typography, spacing and alternating rows, with compact minute inputs
-and coverage, manual/assisted totals and estimated savings in its footer.
+Average workflow time uses horizontal bars on a shared zero-based elapsed scale, exact durations and
+measured/completed-run coverage. Manual baselines and estimated savings are retired.
 Routes shows each system and its URL count above one shared form card containing all its URL rows.
 Labels and descriptions remain at the left, URL inputs at the right, with inset dividers between rows.
 All system cards remain expanded without disclosure controls or individual URL cards. Required URL
@@ -107,8 +107,8 @@ Doctor authority remains unchanged. Focused verification for the 2026-10-05 amen
 `storage-health-polish-20261005`, with restored headings verified in `storage-section-headings-20261005`;
 frozen parity stays at 3.1.19.
 Preflight's first card matches the compact storage summary under Status, with readiness on the left
-and the returned-check count on the right. The repeated summary description and standalone Checked
-timestamp are removed. Loading, unavailable and previous-result states retain their labels and
+and Last checked with the served report date and local time on the right. The returned-check count,
+repeated summary description and standalone Checked timestamp are removed. Loading, unavailable and previous-result states retain their labels and
 warnings; compact Preflight dialogs retain timestamps. Evidence: `preflight-summary-card-20261005`.
 The Run picker reuses permanent-rail category icons, order, row geometry and text alignment. It
 filters direct-launch eligibility from served typed-input capability or an explicit preview `runnable`
@@ -252,9 +252,9 @@ The 2026-10-04 permanent-shell revision makes Workflow and Settings navigation 2
 Settings entry keeps its full-height rail and Navbar opaque and stationary while only content fades. The workflow scrollbar and visible search shortcut hint are hidden, retaining scrolling and the `/` binding. Shared Select items use padded SelectGroup composition; menu surfaces and items retain measured insets. Escape closes an inner Base UI popup before its enclosing dialog or drawer. Queue filters use Base UI ToggleGroup. Log title bars and comparison headers have distinct opaque fills; selected-run status badges match their queue rows. Focused checks cover control placement, keyboard navigation, narrow filter fit, dropdown padding, status treatments and Settings entry frames.
 
 The 2026-10-04 Activity measurement amendment uses successful-run duration totals and measured/unmeasured
-counts per workflow. Only manual minutes are editable; negative savings remain visible as a time increase.
-Focused checks cover unavailable timing, partial timing coverage, zero-duration successes and invalid
-manual values. Settings page headings use h1; title actions share one row, icon and search-clear targets
+counts per workflow. The 2026-10-05 revision replaces manual baselines and savings with average-duration
+bars, exact elapsed times and sample coverage. Focused checks cover unavailable timing, partial coverage,
+zero-duration successes, invalid timing inputs and matching loading geometry. Settings page headings use h1; title actions share one row, icon and search-clear targets
 meet the 24px desktop minimum, browser titles follow the active route, and Skip to content bypasses navigation.
 The audit evidence is retained under `hr-automation-rebuild-evidence/frontend-audit-20261004/`.
 
@@ -400,3 +400,13 @@ Served declarations and refusals win by ID; preview IDs remain outside runtime c
 
 Focused verification is retained under `workflow-catalog-20261005`. Full repository and frozen
 reference exit gates remain assigned to Phase 3.1.19; this amendment does not refreeze references.
+
+## Workflow duration and Preflight timestamp amendment (2026-10-05)
+
+Activity replaces Time saved with Average workflow time: horizontal bars ranked by average duration,
+a shared zero-based time axis, exact values and measured/completed-run counts. Only timed successful
+runs contribute; untimed and empty periods remain explicit. Chart loading preserves its columns,
+rows and axis geometry. Preflight's compact Status card uses the served Last checked date/time in
+place of returned-check counts, retaining historical-result warnings and current readiness authority.
+Focused desktop dark/light checks are retained in `workflow-duration-20261005`; frozen references
+and full exit gates remain owned by 3.1.19.

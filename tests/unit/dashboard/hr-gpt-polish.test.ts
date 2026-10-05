@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
 import Excel from 'exceljs';
 import { DEFAULT_SHORTCUT_PREFERENCES, shortcutActionForEvent, shortcutChord, validateShortcutPreferences } from '../../../src/dashboard/surfaces/keyboard-preferences-model.js';
-import { estimatedSavedMinutes, successfulRunMinutes } from '../../../src/dashboard/surfaces/activity/activity-effort-model.js';
+import { successfulRunSeconds } from '../../../src/dashboard/surfaces/activity/activity-duration-model.js';
 import { activitySample, ACTIVITY_SAMPLE_RANGE } from '../../../src/dashboard/surfaces/activity/activity-fixture.js';
 import { toggleQueueFilter } from '../../../src/dashboard/surfaces/queue-filter-model.js';
 import { cellText, editSpreadsheetCell, importSpreadsheet, newEditableWorkbook, sortSpreadsheet, spreadsheetColor, spreadsheetCsv, spreadsheetXlsx } from '../../../src/dashboard/surfaces/spreadsheet-editor-model.js';
@@ -22,19 +22,14 @@ describe('HR GPT presentation models', () => {
     assert.deepEqual(toggleQueueFilter(['running'], 'running'), ['all']);
     assert.deepEqual(toggleQueueFilter(['failed', 'running'], 'all'), ['all']);
   });
-  it('compares manual time with measured successful durations without extrapolating missing runs', () => {
+  it('averages measured successful durations without extrapolating missing runs', () => {
     const timing = { totalSeconds: 1680, measured: 14, unmeasured: 3 };
-    assert.equal(successfulRunMinutes(timing), 2);
-    assert.equal(estimatedSavedMinutes('12', timing), 140);
-    assert.equal(estimatedSavedMinutes('1', timing), -14);
-    assert.equal(estimatedSavedMinutes('0', timing), -28);
-    assert.equal(estimatedSavedMinutes('12', { totalSeconds: 0, measured: 1, unmeasured: 0 }), 12);
-    for (const baseline of ['', ' ', '-1', 'NaN', 'Infinity']) assert.equal(estimatedSavedMinutes(baseline, timing), null);
+    assert.equal(successfulRunSeconds(timing), 120);
+    assert.equal(successfulRunSeconds({ totalSeconds: 0, measured: 1, unmeasured: 0 }), 0);
     for (const missing of [{ totalSeconds: null, measured: 0, unmeasured: 3 }, { totalSeconds: 0, measured: 0, unmeasured: 0 },
-      { ...timing, totalSeconds: -1 }, { ...timing, totalSeconds: Infinity }, { ...timing, measured: 1.5 }, { ...timing, unmeasured: -1 }]) {
-      assert.equal(successfulRunMinutes(missing), null);
-      assert.equal(estimatedSavedMinutes('12', missing), null);
-    }
+      { totalSeconds: null, measured: 14, unmeasured: 3 }]) assert.equal(successfulRunSeconds(missing), null);
+    for (const invalid of [{ ...timing, totalSeconds: -1 }, { ...timing, totalSeconds: Infinity },
+      { ...timing, measured: 1.5 }, { ...timing, unmeasured: -1 }]) assert.throws(() => successfulRunSeconds(invalid), /ACTIVITY_TIMING_INVALID/u);
   });
   it('supplies per-workflow timings for successes only, preserving unavailable measurements', () => {
     const full = activitySample(ACTIVITY_SAMPLE_RANGE, 'normal');

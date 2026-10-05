@@ -3,6 +3,7 @@ import { LoadingRegion, SkeletonText } from "../loading.js";
 import { buildActivityVolumeBoundarySkeleton } from "../../../domain/dashboard/activity-volume.js";
 import { activityVolumeTitle } from "../activity-chart-model.js";
 import type { ActivityDateRange } from "../activity-model.js";
+import { ActivityDurationsSkeleton } from "./activity-duration.js";
 
 function TableSkeleton({ title, columns = 2, rows = 2, notes = false }: { title: string; columns?: number; rows?: number; notes?: boolean }) {
   return <section><h2 className="mb-3 mt-0 text-section">{title}</h2><div className="overflow-hidden rounded-[var(--ds-radius-body-group)] border border-ui-stroke bg-ui-panel">
@@ -21,7 +22,7 @@ export function ActivitySkeleton({ range }: { range: ActivityDateRange }) {
     </div>)}</div>
     <div className="mt-6 flex min-w-0 flex-col gap-6">
       <TableSkeleton title="Workflow outcomes" columns={5} />
-      <section><h2 className="mb-3 mt-0 text-section">Time saved</h2><div className="activity-effort-table"><table aria-hidden><colgroup><col className="activity-effort-workflow" /><col /><col /><col className="activity-effort-savings" /></colgroup><thead><tr>{[0, 1, 2, 3].map(cell => <td key={cell}><SkeletonText className="w-3/4" /></td>)}</tr></thead><tbody>{[0, 1].map(row => <tr key={row}>{[0, 1, 2, 3].map(cell => <td key={cell}><SkeletonText className="w-3/4" /><div className="mt-1 text-caption"><SkeletonText className="w-4/5" /></div></td>)}</tr>)}</tbody><tfoot><tr>{[0, 1, 2, 3].map(cell => <td key={cell}><SkeletonText className="w-3/4" /><div className="mt-1 text-caption"><SkeletonText className="w-4/5" /></div></td>)}</tr></tfoot></table></div></section>
+      <ActivityDurationsSkeleton />
       <section><h2 className="mb-3 mt-0 text-section">{activityVolumeTitle(volume.granularity)}</h2><div className="rounded-lg border border-ui-stroke bg-ui-panel px-3 pb-3 pt-4"><Skeleton className="aspect-[25/8] max-h-56 min-h-40 w-full rounded-sm" /></div></section>
       <TableSkeleton title="Confirmed transactions" notes />
       <TableSkeleton title="Evidence coverage" />

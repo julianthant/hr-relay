@@ -11,6 +11,7 @@ import type { PreflightCheckWire } from "./preflight-popover-model.js";
 import type { EditableSettingsWire } from "../../domain/dashboard/settings-editor.js";
 import "./diagnostic-presentation.css";
 import { LoadingRegion, SettingsRowsSkeleton, SkeletonText } from "./loading.js";
+import { fmtClock, fmtInstantDay } from "./format.js";
 
 const CHECK_COPY: Record<string, { name: string; description: string }> = {
   "runtime.compatibility": { name: "Runtime compatibility", description: "Checks Node.js and installed dependencies for this release." },
@@ -148,7 +149,7 @@ function SettingsPreflightReport({ preflight, onRerun, protectedSettings, workfl
         {historical ? "Previous check" : displayed === undefined ? preflight.state === "running" ? "Checking readiness" : "Loading readiness"
           : attentionCount === 0 ? "Ready to run" : `${attentionCount} ${attentionCount === 1 ? "check needs" : "checks need"} attention`}
       </span>}
-        value={<span className="diagnostic-summary-meta">{displayed === undefined ? "No current result" : `${displayed.checks.length} returned checks`}</span>} />
+        value={<span className="diagnostic-summary-meta">Last checked <time dateTime={displayed.report.checkedAt}>{fmtInstantDay(displayed.report.checkedAt)} {fmtClock(displayed.report.checkedAt)}</time></span>} />
     </FormGroup>)}
     </BodySection>
     {displayed !== undefined && <>

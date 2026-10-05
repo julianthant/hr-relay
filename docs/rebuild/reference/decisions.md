@@ -301,9 +301,15 @@ Doctor and recovery authority are unchanged. D347's dashboard-surfaces owner rec
 and focused evidence.
 
 Preflight's first card follows the compact storage Status section with readiness on the left and
-the returned-check count on the right. Its repeated description and standalone Checked timestamp
-are retired. Explicit historical/unavailable states and compact-dialog timestamps retain their
-served meanings; report freshness and rerun authority are unchanged.
+Last checked with the served report's local date and time on the right. The returned-check count,
+repeated description and standalone Checked timestamp are retired. Explicit historical/unavailable
+states and compact-dialog timestamps retain their served meanings; report freshness and rerun authority are unchanged.
+
+The Activity duration amendment replaces Time saved, editable manual baselines and estimated savings
+with a horizontal average-duration chart. It uses measured successful runs only, a shared zero origin,
+exact durations and timing coverage. Untimed, measured-zero and empty states stay distinct; loading
+matches the chart geometry. Live timing remains unwired. D347's dashboard-surfaces owner records the
+contract and `workflow-duration-20261005` evidence.
 
 The page-loading amendment replaces generic loading blocks with placeholders using each page's
 headings, groups, cards, table columns, control widths and fixed action layout. OCR images retain
