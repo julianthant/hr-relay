@@ -5,6 +5,7 @@
 .diagnostics-page.ds-body-stack > * + * {
   margin-top: var(--ds-space-body-section-gap);
 }
+.diagnostics-page.ds-body-stack > .ds-page-heading + * { margin-top: var(--ds-space-page-heading-content); }
 
 .diagnostics-page .diagnostic-status { margin-bottom: 0; }
 
@@ -32,13 +33,6 @@
   color: var(--ds-fg-muted);
   font-size: var(--ds-text-body-description);
   font-weight: 400;
-}
-
-.diagnostic-section-description {
-  margin: calc(-1 * var(--ds-space-tight)) 0 var(--ds-space-cozy);
-  color: var(--ds-fg-secondary);
-  font-size: var(--ds-text-body-description);
-  line-height: var(--ds-lh-body-description);
 }
 
 .diagnostic-check-entry + .diagnostic-check-entry {

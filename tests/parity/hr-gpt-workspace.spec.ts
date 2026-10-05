@@ -146,7 +146,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await choosePage('Storage checks');
       const storage = settings.getByRole('region', { name: 'Storage checks', exact: true });
       const gaps = await storage.evaluate(node => Array.from(node.children).slice(1).map(child => getComputedStyle(child).marginTop));
-      expect(new Set(gaps).size).toBe(1);
+      expect(gaps[0]).toBe('16px');
+      expect(new Set(gaps.slice(1)).size).toBe(1);
+      expect(gaps[1]).toBe('32.4px');
       const summaryFont = await settings.getByText('Detailed checks not run', { exact: true }).evaluate(node => getComputedStyle(node).fontSize);
       for (const value of await settings.getByText('Not checked', { exact: true }).all()) expect(await value.evaluate(node => getComputedStyle(node).fontSize)).toBe(summaryFont);
       await choosePage('Preflight'); await expect(settings.getByRole('heading', { name: 'Preflight', exact: true })).toBeVisible(); await expect(settings.getByRole('heading', { name: 'Workflow capabilities', exact: true })).toHaveCount(0);

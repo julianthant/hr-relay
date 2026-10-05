@@ -53,8 +53,7 @@ function CheckRow({ name, description, result }: { name: string; description: st
 }
 
 function CheckGroup({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) {
-  return <BodySection title={title}>
-    <p className="diagnostic-section-description">{subtitle}</p>
+  return <BodySection title={title} description={subtitle}>
     <FormGroup label={title}><div role="list">{children}</div></FormGroup>
   </BodySection>;
 }

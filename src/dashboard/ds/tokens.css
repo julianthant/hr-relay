@@ -453,6 +453,9 @@
   --ds-space-loose: 16px;
   --ds-space-section: 24px;
   --ds-space-page: 32px;
+  --ds-space-heading-description: 4px;
+  --ds-space-heading-content: 12px;
+  --ds-space-page-heading-content: 16px;
   --ds-w-body-content: 828px;
   --ds-w-body-performance: 1090px;
   --ds-w-body-control-standard: 237px;
@@ -1434,7 +1437,7 @@ body[data-demo-theme="light"] {
   font-weight: 600;
 }
 
-.ds-page-heading--title-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; row-gap: var(--ds-space-body-caption-gap); }
+.ds-page-heading--title-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; row-gap: var(--ds-space-heading-description); }
 .ds-page-heading--title-actions .ds-page-heading-copy { display: contents; }
 .ds-page-heading--title-actions .ds-page-heading-title { grid-column: 1; grid-row: 1; }
 .ds-page-heading--title-actions .ds-page-heading-description { grid-column: 1; grid-row: 2; margin-top: 0; }
@@ -1457,12 +1460,12 @@ body[data-demo-theme="light"] {
 
 .ds-page-heading-description {
   max-width: 65ch;
-  margin: var(--ds-space-tight) 0 0;
+  margin: var(--ds-space-heading-description) 0 0;
   color: var(--ds-fg-secondary);
 }
 
 .ds-body-scope .ds-page-heading-description {
-  margin-top: var(--ds-space-body-caption-gap);
+  margin-top: var(--ds-space-heading-description);
   font-size: var(--ds-text-body-caption);
   line-height: var(--ds-lh-body-caption);
 }
@@ -1478,10 +1481,18 @@ body[data-demo-theme="light"] {
 }
 
 .ds-body-section-heading {
-  margin: 0 0 var(--ds-space-body-section-heading-gap);
+  margin: 0 0 var(--ds-space-heading-content);
   font-size: var(--ds-text-body-section);
   line-height: var(--ds-lh-body-section);
   font-weight: 550;
+}
+
+.ds-body-section-heading:has(+ .ds-body-section-description) { margin-bottom: var(--ds-space-heading-description); }
+.ds-body-section-description {
+  margin: 0 0 var(--ds-space-heading-content);
+  color: var(--ds-fg-secondary);
+  font-size: var(--ds-text-body-description);
+  line-height: var(--ds-lh-body-description);
 }
 
 .ds-body-scope .ds-form-group {

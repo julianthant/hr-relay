@@ -178,11 +178,13 @@ export function FormGroup({
 /** A titled section for shared body pages, with consistent heading and group rhythm. */
 export function BodySection({
   title,
+  description,
   as: Heading = "h2",
   className,
   children,
 }: {
   title: ReactNode;
+  description?: ReactNode;
   as?: "h2" | "h3";
   className?: string;
   children: ReactNode;
@@ -190,6 +192,7 @@ export function BodySection({
   return (
     <section className={cn("ds-body-section", className)}>
       <Heading className="ds-body-section-heading">{title}</Heading>
+      {description && <p className="ds-body-section-description">{description}</p>}
       {children}
     </section>
   );

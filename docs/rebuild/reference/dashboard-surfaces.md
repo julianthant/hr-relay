@@ -7437,8 +7437,11 @@ background. The toggle hover fill fades smoothly at that boundary and uses the s
 with reduced-motion support. Settings replaces the dashboard with a 264px reference sidebar, Settings heading, search
 and grouped navigation. The header/search/Personal gaps are each 16px. It contains no run-search or
 notification button. Path Change buttons use the shared ordinary button radius. Storage summary and
-row status values use the same description font size and weight. Storage heading, summary and diagnostic
-groups use the same section gap.
+row status values use the same description font size and weight. Dashboard page and section headings
+place their descriptions 4px below the title. Described sections leave 12px before their card or table;
+page headings leave 16px before the next content block. `BodySection` owns section descriptions without
+surface-specific negative margins. Workflow readiness uses the same tight title-to-subheading relation
+and 12px before its operations cards. Separate diagnostic groups retain their existing section gap.
 
 Routes uses a plain system heading and URL count above one shared form card per system. All URL rows
 remain visible, with labels and descriptions at the left, URL controls at the right and inset dividers

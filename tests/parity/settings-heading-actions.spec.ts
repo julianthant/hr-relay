@@ -7,8 +7,8 @@ import { startSetupPreflightServer } from "./helpers/fixture-setup-preflight.js"
 
 async function assertHeadingActions(surface: Locator): Promise<void> {
   const heading = surface.locator(".ds-page-heading").first();
-  const copy = (await heading.locator(":scope > div").first().boundingBox())!;
-  const actions = (await heading.locator(":scope > div").last().boundingBox())!;
+  const copy = (await heading.locator(".ds-page-heading-title").boundingBox())!;
+  const actions = (await heading.locator(".ds-page-heading-actions").boundingBox())!;
   const bounds = (await surface.boundingBox())!;
   expect(actions.x).toBeGreaterThan(copy.x + copy.width);
   expect(Math.abs(actions.y + actions.height / 2 - copy.y - copy.height / 2)).toBeLessThanOrEqual(2);
@@ -26,7 +26,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.goto(`${server.baseUrl}/?settings=storage`);
       const surface = page.getByRole("region", { name: "Storage checks", exact: true });
       const run = surface.getByRole("button", { name: "Run the read-only storage doctor", exact: true });
-      await expect(surface).toContainText("No completed checks in this server session");
+      await expect(surface.getByRole("group", { name: "Data store summary", exact: true })).toContainText("Detailed checks not run");
+      await expect(surface.getByRole("group", { name: "Data store and recovery", exact: true })).toContainText("Not checked");
       await expect(run).toBeEnabled();
       await assertHeadingActions(surface);
       let release: (() => void) | undefined;

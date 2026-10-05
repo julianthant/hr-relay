@@ -218,7 +218,7 @@
   border-radius: 0;
   background: transparent;
 }
-.settings-editor, .routes-page { display: flex; min-width: 0; flex-direction: column; gap: var(--ds-space-page); }
+.settings-editor, .routes-page { display: flex; min-width: 0; flex-direction: column; gap: var(--ds-space-page-heading-content); }
 .settings-group-heading {
   display: flex;
   align-items: center;
@@ -484,7 +484,7 @@
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: var(--ds-space-body-section-gap);
+  gap: var(--ds-space-page-heading-content);
 }
 .settings-compact-form {
   display: flex;

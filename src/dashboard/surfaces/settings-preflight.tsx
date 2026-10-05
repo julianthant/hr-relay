@@ -102,8 +102,7 @@ function SettingsPreflightCheck({ check, protectedSettings }: { check: Preflight
 }
 
 function SettingsPreflightGroup({ title, subtitle, checks, protectedSettings, children }: { title: string; subtitle?: string; checks: readonly PreflightCheckWire[]; children?: ReactNode; protectedSettings?: EditableSettingsWire["protectedSettings"] }) {
-  return <BodySection title={title}>
-    {subtitle && <p className="diagnostic-section-description">{subtitle}</p>}
+  return <BodySection title={title} description={subtitle}>
     {children ? <div role="group" aria-label={title} className="preflight-readiness-content">
       {checks.length > 0 && <div className="workflow-readiness-requirements"><h3 className="workflow-readiness-subheading">Requirements</h3><FormGroup label="Workflow requirements"><div role="list">
         {checks.map(check => <SettingsPreflightCheck key={check.id} check={check} protectedSettings={protectedSettings} />)}

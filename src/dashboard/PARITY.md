@@ -52,6 +52,10 @@ Either endpoint opens the centered shared range picker, and the second date comm
 Archive and Search retain open-ended field entry.
 The 2026-10-04 operator revision makes Spreadsheet Settings use the shared Settings heading, ordinary
 buttons with 14px icons and underline tabs, retaining the existing theme and blue spreadsheet accent.
+Dashboard page and section headings use a shared 4px title-to-description gap. Section descriptions
+leave 12px before their card or table; page headings leave 16px before the next content block.
+Workflow readiness keeps its title and subheading close and leaves 12px before operation cards.
+Section descriptions use the shared BodySection primitive; separate section spacing remains intact.
 Time saved uses Activity's table typography, spacing and alternating rows, with compact minute inputs
 and coverage, manual/assisted totals and estimated savings in its footer.
 Routes shows each system and its URL count above one shared form card containing all its URL rows.

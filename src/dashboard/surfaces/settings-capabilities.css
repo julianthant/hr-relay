@@ -1,4 +1,4 @@
-.workflow-operations-list { display: flex; min-width: 0; flex-direction: column; gap: 8px; }
+.workflow-operations-list { display: flex; min-width: 0; flex-direction: column; gap: var(--ds-space-heading-content); }
 .workflow-operations-heading { display: flex; align-items: center; gap: 4px; color: var(--ui-secondary); }
 .workflow-operations-heading h3 { margin: 0; font-size: var(--ds-text-body-description); line-height: var(--ds-lh-body-description); font-weight: 500; }
 .workflow-operations-card { overflow: hidden; border: 1px solid var(--ui-stroke); border-radius: var(--ds-radius-body-group); background: var(--ui-panel); }
@@ -24,5 +24,6 @@
 .workflow-operations-boundary > span { color: var(--ui-primary); font-weight: 500; }
 .workflow-operations-boundary p { margin: 4px 0 0; color: var(--ui-secondary); overflow-wrap: anywhere; }
 .preflight-readiness-content { display: flex; min-width: 0; flex-direction: column; gap: 16px; }
-.workflow-readiness-requirements { display: flex; min-width: 0; flex-direction: column; gap: 8px; }
+.workflow-readiness-requirements { display: flex; min-width: 0; flex-direction: column; gap: var(--ds-space-heading-content); }
+.ds-body-section:has(> .preflight-readiness-content) > .ds-body-section-heading { margin-bottom: var(--ds-space-heading-description); }
 .workflow-readiness-subheading { margin: 0; color: var(--ui-secondary); font-size: var(--ds-text-body-description); line-height: var(--ds-lh-body-description); font-weight: 500; }
