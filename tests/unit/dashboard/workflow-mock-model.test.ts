@@ -106,9 +106,9 @@ describe("legacy workflow previews", () => {
   });
   it("seeds each workflow with its own fictional input and log graph", () => {
     const runs = seedMockRuns(); expect(runs.filter(run => !run.parentId)).toHaveLength(13);
-    expect(runs).toHaveLength(20);
+    expect(runs).toHaveLength(19);
     expect(runs.find(run => run.workflowId === "i9-lookup")!.parentId).toBe("mock:onbase:sample:ocr");
-    expect(runs.filter(run => run.parentId && run.workflowId === "ocr")).toHaveLength(6);
+    expect(runs.filter(run => run.parentId && run.workflowId === "ocr")).toHaveLength(5);
     expect(runs.filter(run => run.records !== undefined).every(run => run.workflowId === "ocr")).toBe(true);
     for (const run of runs) {
       expect(run.title).toBe(run.subject);

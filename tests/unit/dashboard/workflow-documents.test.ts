@@ -9,15 +9,17 @@ import { mockQueueSurface } from "../../../src/dashboard/surfaces/workflow-queue
 import { runDisplayId } from "../../../src/dashboard/surfaces/run-display-model.js";
 
 describe("document-complete OCR previews", () => {
-  it("covers the exact six supplied PDFs and their page and record counts", () => {
+  it("covers the five OCR documents and excludes the non-OCR sick-hours checklist", () => {
     expect(OCR_DOCUMENT_FIXTURES.map(doc => [doc.name, doc.pages.length, doc.records.length])).toEqual([
       ["single-oath.pdf", 1, 1], ["multiple-oath.pdf", 4, 4], ["emergency-contacts.pdf", 3, 3],
-      ["i9.pdf", 4, 2], ["detect-test.pdf", 7, 7], ["sick-hours.pdf", 3, 1],
+      ["i9.pdf", 4, 2], ["detect-test.pdf", 7, 4],
     ]);
     const ocr = seedMockRuns().filter(run => run.workflowId === "ocr");
     expect(ocr.map(run => run.subject).sort()).toEqual(OCR_DOCUMENT_FIXTURES.map(doc => doc.name).sort());
     expect(ocr.every(run => run.parentId && run.targetWorkflowId)).toBe(true);
-    expect(ocr.reduce((count, run) => count + reviewRecords(run).length, 0)).toBe(18);
+    expect(ocr.reduce((count, run) => count + reviewRecords(run).length, 0)).toBe(14);
+    const separation = seedMockRuns().find(run => run.workflowId === "separations")!;
+    expect(separation.ocrRunId).toBeUndefined();
   });
   it("renders every document response field, including blank, boolean and unresolved values", () => {
     for (const run of seedMockRuns().filter(run => run.workflowId === "ocr")) for (const record of reviewRecords(run)) {
@@ -25,13 +27,15 @@ describe("document-complete OCR previews", () => {
       for (const field of record.fields) expect(markup).toContain(field.label.replaceAll("&", "&amp;"));
       expect(record.fields.some(field => field.value === "")).toBe(true);
     }
-    const mixed = seedMockRuns().find(run => run.subject === "detect-test.pdf" && run.workflowId === "ocr")!;
-    expect(reviewRecords(mixed).map(record => record.kind)).toEqual(["contact", "contact", "oath", "contact", "oath", "contact", "oath"]);
-    expect(reviewRecords(mixed)[1]).toMatchObject({ match: "unresolved", selected: false });
+    const contact = seedMockRuns().find(run => run.subject === "detect-test.pdf" && run.workflowId === "ocr")!;
+    expect(contact.draft.formType).toBe("emergency-contact");
+    expect(reviewRecords(contact).map(record => [record.kind, record.page])).toEqual([["contact", 1], ["contact", 2], ["contact", 4], ["contact", 6]]);
+    expect(reviewRecords(contact)[1]).toMatchObject({ match: "unresolved", selected: false });
   });
   it("retains the original image URLs and reverse-order I-9 page pairing across corrections", () => {
     const run = seedMockRuns().find(run => run.subject === "i9.pdf" && run.workflowId === "ocr")!;
     expect(reviewRecords(run).map(record => documentSourcePages(run.draft, record)!.map(page => page.page))).toEqual([[2, 1], [4, 3]]);
+    expect(documentSourcePages(run.draft, reviewRecords(run)[0])!.map(page => page.label)).toEqual(["Section 1 · Page 2", "Section 2 · Page 1"]);
     const original = reviewRecords(run)[0], pages = documentSourcePages(run.draft, original);
     const edited = editReviewRecord(original, "firstName", "Corrected");
     expect(documentSourcePages(run.draft, edited)).toEqual(pages);
@@ -39,21 +43,23 @@ describe("document-complete OCR previews", () => {
     expect(mockDocumentFixture({ files: [{ ...run.draft.files[0], digest: "user-upload" }] })).toBeUndefined();
     expect(() => documentSourcePages(run.draft, { ...original, page: 90 })).toThrow("MOCK_DOCUMENT_PAGE_MISSING");
   });
-  it("copies all corrected mixed-form fields to the appropriate preview and preserves the source history", () => {
+  it("copies all corrected contact fields to the contact preview and preserves the source history", () => {
     const runs = seedMockRuns(), run = runs.find(run => run.subject === "detect-test.pdf" && run.workflowId === "ocr")!;
     const records = reviewRecords(run).map(record => ({ ...editReviewRecord(record, "employeeId", "0012345"), selected: true }));
     const updated = updateMockReview(runs, run.id, records), approved = approveMockRun(updated, run.id);
     const children = approved.filter(child => child.ocrRunId === run.id && child.role === "person");
-    expect(children).toHaveLength(7);
-    expect(children.map(child => child.workflowId)).toEqual(["emergency-contact", "emergency-contact", "oath-signature", "emergency-contact", "oath-signature", "emergency-contact", "oath-signature"]);
+    expect(children).toHaveLength(4);
+    expect(children.map(child => child.workflowId)).toEqual(Array(4).fill("emergency-contact"));
     children.forEach((child, index) => { expect(child.inputRecord).toEqual(records[index]); expect(child.inputRecord).not.toBe(records[index]); });
     expect(reviewRecords(run)[1].match).toBe("unresolved");
   });
   it("retries a delegated document with its original schema and deletes a complete local tree", () => {
-    const runs = seedMockRuns(), parent = runs.find(run => run.workflowId === "separations")!;
+    const runs = seedMockRuns(), parent = runs.find(run => run.workflowId === "oath-signature")!;
     const retried = mockRunsForDraft(parent.workflowId, parent.draft, 100, parent.id);
-    expect(retried).toHaveLength(2); expect(retried[1].subject).toBe("sick-hours.pdf");
-    expect(reviewRecords(retried[1])[0].kind).toBe("separation");
+    expect(retried).toHaveLength(2); expect(retried[1].subject).toBe("single-oath.pdf");
+    expect(reviewRecords(retried[1])[0].kind).toBe("oath");
+    const separation = runs.find(run => run.workflowId === "separations")!;
+    expect(mockRunsForDraft(separation.workflowId, separation.draft, 101, separation.id)).toHaveLength(1);
     const ocr = runs.find(run => run.workflowId === "ocr" && run.parentId === parent.id)!;
     const approved = approveMockRun(runs, ocr.id), ids = mockDeletionIds(approved, ocr.id);
     expect(ids).toContain(parent.id); expect(ids).toContain(ocr.id); expect(ids).toHaveLength(3);

@@ -13,7 +13,6 @@ const pageImages: Readonly<Record<string, readonly string[]>> = {
   "emergency-contacts.pdf": [new URL("../assets/ocr/emergency-contacts-1.webp", import.meta.url).href, new URL("../assets/ocr/emergency-contacts-2.webp", import.meta.url).href, new URL("../assets/ocr/emergency-contacts-3.webp", import.meta.url).href],
   "i9.pdf": [new URL("../assets/ocr/i9-1.webp", import.meta.url).href, new URL("../assets/ocr/i9-2.webp", import.meta.url).href, new URL("../assets/ocr/i9-3.webp", import.meta.url).href, new URL("../assets/ocr/i9-4.webp", import.meta.url).href],
   "detect-test.pdf": [new URL("../assets/ocr/detect-test-1.webp", import.meta.url).href, new URL("../assets/ocr/detect-test-2.webp", import.meta.url).href, new URL("../assets/ocr/detect-test-3.webp", import.meta.url).href, new URL("../assets/ocr/detect-test-4.webp", import.meta.url).href, new URL("../assets/ocr/detect-test-5.webp", import.meta.url).href, new URL("../assets/ocr/detect-test-6.webp", import.meta.url).href, new URL("../assets/ocr/detect-test-7.webp", import.meta.url).href],
-  "sick-hours.pdf": [new URL("../assets/ocr/sick-hours-1.webp", import.meta.url).href, new URL("../assets/ocr/sick-hours-2.webp", import.meta.url).href, new URL("../assets/ocr/sick-hours-3.webp", import.meta.url).href],
 };
 
 export function mockDocumentFixture(draft: Pick<MockDraft, "files">): DocumentFixture | undefined {
@@ -28,9 +27,9 @@ export function documentSourcePages(draft: Pick<MockDraft, "files">, record: Rev
   const fixture = mockDocumentFixture(draft);
   if (!fixture) return undefined;
   const pages = record.kind === "i9" ? [record.page, Number(record.fields.find(field => field.key === "section2")?.value)] : record.kind === "separation" ? [1, 2, 3] : [record.page];
-  return pages.map(page => {
+  return pages.map((page, index) => {
     const imageUrl = pageImages[fixture.name]?.[page - 1];
     if (!imageUrl) throw new Error("MOCK_DOCUMENT_PAGE_MISSING");
-    return { page, imageUrl };
+    return { page, imageUrl, ...(record.kind === "i9" ? { label: `Section ${index + 1} · Page ${page}` } : {}) };
   });
 }

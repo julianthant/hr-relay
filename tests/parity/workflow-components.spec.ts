@@ -58,21 +58,20 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(logs.getByRole("navigation", { name: "Run timeline", exact: true })).toHaveCount(0);
       await expect(logs.getByRole("searchbox", { name: "Search logs", exact: true })).toHaveCount(0);
       await expect(logs.getByRole("button", { name: /^Records \d+$/u })).toHaveAttribute("aria-pressed", "true");
-      const source = drawer.getByRole("region", { name: "Source PDF", exact: true });
-      const sourceBox = (await source.boundingBox())!, recordBox = (await record.boundingBox())!;
-      expect(sourceBox.x + sourceBox.width).toBeLessThanOrEqual(recordBox.x);
+      const source = record.getByRole("region", { name: "Source PDF", exact: true });
+      const sourceBox = (await source.boundingBox())!, fieldsBox = (await record.locator("[data-review-fields]").boundingBox())!;
+      expect(sourceBox.x + sourceBox.width).toBeLessThanOrEqual(fieldsBox.x);
       const pageImage = source.getByRole("img");
       await expect.poll(() => pageImage.evaluate(image => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
       const sourceUrl = await pageImage.getAttribute("src"), fitWidth = (await pageImage.boundingBox())!.width;
       await source.getByRole("button", { name: "Zoom in", exact: true }).click();
       expect((await pageImage.boundingBox())!.width).toBeGreaterThan(fitWidth);
+      await expect(source.getByRole("toolbar", { name: "PDF controls", exact: true })).toBeInViewport();
       await source.getByRole("button", { name: "Fit page", exact: true }).click();
       expect((await pageImage.boundingBox())!.width).toBe(fitWidth);
       for (const id of ["person-2", "person-3"]) {
-        await chooseSelect(drawer.getByRole("combobox", { name: "Record", exact: true }), id);
-        await drawer.getByRole("checkbox", { name: /^Include /u }).click();
+        await drawer.getByRole("region", { name: `Record ${id}`, exact: true }).getByRole("checkbox", { name: /^Include /u }).click();
       }
-      await chooseSelect(drawer.getByRole("combobox", { name: "Record", exact: true }), "person-1");
       await record.getByRole("textbox", { name: "Employee ID", exact: true }).fill("x");
       await expect(drawer.getByRole("button", { name: "Approve records", exact: true })).toBeDisabled();
       await record.getByRole("textbox", { name: "Employee ID", exact: true }).fill("10000009");
@@ -119,9 +118,12 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await logs.getByRole("button", { name: "Open OCR", exact: true }).click();
       await logs.getByRole("button", { name: /^Records \d+$/u }).click();
       await expect(drawer).toContainText("Section 2 page");
-      await chooseSelect(drawer.getByRole("combobox", { name: "Source page", exact: true }), "1");
-      await expect(drawer.getByRole("img")).toHaveAccessibleName("Source page 1 of i9.pdf");
-      await expect(drawer.getByRole("img")).toHaveAttribute("src", /i9-1.*\.webp$/u);
+      const i9 = drawer.getByRole("region", { name: "Record person-1", exact: true });
+      await expect(i9.getByRole("combobox", { name: "Source page", exact: true })).toContainText("Section 1 · Page 2");
+      await chooseSelect(i9.getByRole("combobox", { name: "Source page", exact: true }), "1");
+      await expect(i9.getByRole("img")).toHaveAccessibleName("Source page 1 of i9.pdf");
+      await expect(i9.getByRole("combobox", { name: "Source page", exact: true })).toContainText("Section 2 · Page 1");
+      await expect(i9.getByRole("img")).toHaveAttribute("src", /i9-1.*\.webp$/u);
       await expect(drawer.getByRole("button", { name: "Approve records", exact: true })).toBeEnabled();
       await expect(drawer).not.toContainText("Fictional extracted records");
       await info.attach(`report-I-9-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
@@ -145,8 +147,9 @@ for (const theme of PARITY_THEMES) test(`delegated OCR form workspaces @ ${theme
       await logs.getByRole("button", { name: /^Records \d+$/u }).click();
       const drawer = logs.getByRole("region", { name: "OCR records", exact: true });
       await expect(drawer).toContainText(field);
-      await expect(drawer.getByRole("textbox", { name: "Employee ID", exact: true })).toBeVisible();
-      await drawer.getByRole("textbox", { name: "First name", exact: true }).fill("Taylor");
+      const record = drawer.getByRole("region", { name: "Record person-1", exact: true });
+      await expect(record.getByRole("textbox", { name: "Employee ID", exact: true })).toBeVisible();
+      await record.getByRole("textbox", { name: "First name", exact: true }).fill("Taylor");
       await expect(drawer.getByRole("heading", { name: "Taylor Lee", exact: true })).toBeVisible();
       await expect(drawer.getByRole("button", { name: "Approve records", exact: true })).toBeEnabled();
       await info.attach(`ocr-${label}-${theme.attribute}.png`, { body: await page.screenshot(), contentType: "image/png" });
@@ -178,14 +181,12 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const drawer = logs.getByRole("region", { name: "OCR records", exact: true });
       const first = drawer.getByRole("region", { name: "Record person-1", exact: true });
       for (const id of ["person-2", "person-3"]) {
-        await chooseSelect(drawer.getByRole("combobox", { name: "Record", exact: true }), id);
-        await drawer.getByRole("checkbox", { name: /^Include /u }).click();
+        await drawer.getByRole("region", { name: `Record ${id}`, exact: true }).getByRole("checkbox", { name: /^Include /u }).click();
       }
-      await chooseSelect(drawer.getByRole("combobox", { name: "Record", exact: true }), "person-1");
       await drawer.getByRole("checkbox", { name: "Include Jordan Lee", exact: true }).click();
       await expect(drawer.getByRole("button", { name: "Approve records", exact: true })).toBeDisabled();
       await drawer.getByRole("button", { name: "Add record", exact: true }).click();
-      await expect(first).toHaveCount(0);
+      await expect(first).toHaveCount(1);
       const added = drawer.getByRole("region", { name: "Record manual-4", exact: true });
       await expect(added.getByRole("textbox", { name: "Employee ID", exact: true })).toBeFocused();
       await added.getByRole("textbox", { name: "Employee ID", exact: true }).fill("0012345");
@@ -193,10 +194,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await added.getByRole("textbox", { name: "Last name", exact: true }).fill("Chen");
       await drawer.getByRole("checkbox", { name: "Include Taylor Chen", exact: true }).click();
       await added.getByRole("textbox", { name: "Contact name", exact: true }).fill("Sam Chen");
-      const selector = drawer.getByRole("combobox", { name: "Record", exact: true });
-      await chooseSelect(selector, "person-1");
+      await expect(drawer.getByRole("combobox", { name: "Record", exact: true })).toHaveCount(0);
       await expect(first.getByRole("textbox", { name: "Contact name", exact: true })).toHaveValue("Alex Lee");
-      await chooseSelect(selector, "manual-4");
       await expect(added.getByRole("textbox", { name: "Contact name", exact: true })).toHaveValue("Sam Chen");
       await expect(added.getByRole("textbox", { name: "Employee ID", exact: true })).toHaveValue("0012345");
       await info.attach(`focused-records-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });

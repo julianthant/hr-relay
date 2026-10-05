@@ -1,6 +1,6 @@
 import type { ReviewField, ReviewRecord } from "./workflow-review-model.js";
 
-export type ReviewSourcePage = Readonly<{ page: number; imageUrl: string }>;
+export type ReviewSourcePage = Readonly<{ page: number; imageUrl: string; label?: string }>;
 
 export function reviewFieldGroups(record: ReviewRecord): readonly { title: string; fields: readonly ReviewField[] }[] {
   const groups = new Map<string, ReviewField[]>();
@@ -37,6 +37,6 @@ export function reviewSourcePages(record: ReviewRecord): readonly ReviewSourcePa
     }).join("");
     const height = Math.max(792, y + 55);
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="612" height="${height}" viewBox="0 0 612 ${height}"><rect width="612" height="${height}" fill="white"/><g fill="black" font-family="Arial, sans-serif"><text x="306" y="44" text-anchor="middle" font-size="12">UNIVERSITY OF CALIFORNIA, SAN DIEGO</text><text x="306" y="76" text-anchor="middle" font-size="21" font-weight="bold">${escapeXml(title)}</text><path d="M32 96h548" stroke="black"/>${content}<text x="580" y="${height - 24}" text-anchor="end" font-size="10">Page ${page}</text></g></svg>`;
-    return { page, imageUrl: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}` };
+    return { page, imageUrl: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`, ...(record.kind === "i9" ? { label: `Section ${index + 1} · Page ${page}` } : {}) };
   });
 }
