@@ -19,6 +19,7 @@ import {
   forcedStepOmissions,
   initialStepOmissionDraft,
   inputRunDelimiterHint,
+  inputRunFieldLabel,
   omittedStepViews,
   runControlGroups,
   startRequestFingerprint,
@@ -39,6 +40,13 @@ describe("the descriptor version in Run Modal facts (C96)", () => {
 });
 
 describe("compact input guidance follows the declared parser", () => {
+  it("capitalizes Employee IDs and uses Kuali ID without changing parsing", () => {
+    for (const [pattern, expected] of [["eid", "Employee IDs"], ["document-number", "Kuali ID"]] as const) {
+      const parser = { rules: [{ when: { kind: "pattern" as const, pattern }, emit: "value" }], split: { kind: "whole-text" as const } };
+      assert.equal(inputRunFieldLabel(parser), expected);
+    }
+  });
+
   it("names only the accepted separators", () => {
     const rules = [{ when: { kind: "otherwise" as const }, emit: "eid" }];
     assert.equal(inputRunDelimiterHint({ rules, split: { kind: "whole-text" } }), "Enter one value.");

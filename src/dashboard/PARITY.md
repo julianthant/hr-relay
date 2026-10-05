@@ -125,6 +125,17 @@ Local queue counts differ deliberately from served day/rail counts after a mock 
 served footer commands and recovery outcomes retain their wiring. Run input adopts the approved
 Parsed input layout without the Examples strip, preserving descriptor validation, parsing and launch contracts.
 
+The workflow-mock amendment covers all 15 permanent rail contracts with copied legacy inputs,
+workflow-specific queues and logs, and local Run/Rerun in the approved compact frame. Existing
+served launches retain their transport and recovery. Unserved picker entries hand off to local
+previews; their IDs never enter start plans. Delegated I-9 Lookup, SharePoint's configured roster,
+OnBase's combined PDFs and sole wired document type, standalone OCR inspection, I-9 retention
+append behavior and full/upload-only oath paths remain distinct. PDF preparations wait for review
+before downstream work; full oath approval creates independent signature rows. Duplicate checks
+use file-content hashes, and reruns preserve source histories. Field copy uses Employee IDs and
+Kuali ID, with no trailing composition summary. Focused tests inspect all workflows in both themes
+at 1024 and 1440 pixels, retaining screenshots and checking that local previews send no writes.
+
 Focused model, launch regression, dark/light 1024/1440 interaction, accessibility, lint and build
 checks cover this integration. Existing frozen visual references and backend command acceptance
 remain unchanged; their broad acceptance and deliberate refreeze stay with 3.1.19.

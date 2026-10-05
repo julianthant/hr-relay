@@ -32,7 +32,7 @@ for (const theme of PARITY_THEMES) test(`Setup repair and launch share admission
     expect(server.requests.some(request => request.path === "/api/v1/preflight/rerun" && request.status === 200)).toBe(true);
     await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, start: true });
     const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
-    await dialog.getByRole("textbox", { name: /employee IDs/u }).fill("10873698");
+    await dialog.getByRole("textbox", { name: /Employee IDs/u }).fill("10873698");
     await dialog.getByRole("button", { name: "Continue", exact: true }).click();
     // Person Lookup has no transaction; its ordinary queued run has no dry-run variant.
     await expect(dialog.getByRole("checkbox", { name: "Dry run", exact: true })).toHaveCount(0);

@@ -22,7 +22,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const start = page.getByRole("button", { name: "Start a run", exact: true });
       await start.click();
       const run = page.getByRole("dialog", { name: "Start a run", exact: true });
-      const input = run.getByRole("textbox", { name: "employee IDs", exact: true });
+      const input = run.getByRole("textbox", { name: "Employee IDs", exact: true });
       await expect(input).toBeFocused();
       await expect(run).toHaveCSS("opacity", "1");
       const bounds = (await run.boundingBox())!;

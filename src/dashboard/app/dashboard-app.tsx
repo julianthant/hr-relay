@@ -57,8 +57,10 @@ import {
 DASHBOARD_MAIN_REGION_ID
 } from "../surfaces/settings-model.js";
 import {parseWorkflows,useSelectedWorkflow,type StatusBucket } from "../surfaces/shell-model.js";
-import { WorkflowMockQueue } from "../surfaces/workflow-mock-queue.js";
-import { WORKFLOW_RAIL_PREVIEWS } from "../surfaces/workflow-rail-model.js";
+import { WorkflowMockLog, WorkflowMockQueue } from "../surfaces/workflow-mock-queue.js";
+import { mockWorkflow, type MockWorkflowId } from "../surfaces/workflow-mock-catalog.js";
+import { approveMockRun, mockQueueCounts, mockQueueView, mockRunsForDraft, seedMockRuns, type MockDraft, type MockRun } from "../surfaces/workflow-mock-model.js";
+import { WorkflowMockRunDialog } from "../surfaces/workflow-mock-run.js";
 import "../surfaces/permanent-shell.css";
 import { PROPOSED_STATUS,dsStatusOf } from "../surfaces/status-model.js";
 import { StorageBanner } from "../surfaces/storage-settings.js";
@@ -288,7 +290,15 @@ function LoadedApp({
   const selectedRow = previewQueue.rows.find(row => String(row.runId) === route.run);
   const activeWorkflowId = selectedRow?.workflowId ?? chosenWorkflowId;
   const launch = useRunLaunch(route.start, DASHBOARD_MAIN_REGION_ID);
-  const openStart = launch.openStart;
+  const [railPreview, setRailPreview] = useState<string | null>(null);
+  const [mockRuns, setMockRuns] = useState<readonly MockRun[]>(seedMockRuns);
+  const [mockLaunch, setMockLaunch] = useState<{ workflowId: MockWorkflowId; source?: MockRun } | null>(null);
+  const [railRun, setRailRun] = useState<string>();
+  const servedOpenStart = launch.openStart;
+  const openStart = useCallback(() => {
+    if (railPreview) setMockLaunch({ workflowId: mockWorkflow(railPreview).id });
+    else servedOpenStart();
+  }, [railPreview, servedOpenStart]);
   const openRerun = launch.openRerun;
   /**
    * The command waiting on the operator's confirmation. A descriptor that
@@ -962,12 +972,16 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
   ), [filter, scopedStatusCounts, onFilter]);
 
   const settingsOpen = ["settings", "archive", "activity", "explore"].includes(takeover);
-  const [railPreview, setRailPreview] = useState<string | null>(null);
-  const previewFlow = WORKFLOW_RAIL_PREVIEWS.find(flow => flow.id === railPreview);
-  const [railRun, setRailRun] = useState<string>();
-  const railRow = previewQueue.rows.find(row => row.runId === railRun);
+  const previewFlow = railPreview ? mockWorkflow(railPreview) : undefined;
+  const railRows = mockRuns.filter(run => run.workflowId === railPreview);
+  const railRow = railRows.find(run => run.id === railRun);
+  const submitMock = (id: MockWorkflowId, draft: MockDraft, sourceId?: string) => {
+    const created = mockRunsForDraft(id, draft, mockRuns.length, sourceId);
+    setMockRuns(previous => [...created, ...previous]);
+    setRailPreview(id); setRailRun(created[0]?.id); setMockLaunch(null);
+  };
   const onRailSelect = useCallback((id: string) => { setRailPreview(null); selectWorkflow(id); }, [selectWorkflow]);
-  const onRailPreview = useCallback((id: string) => { setRailPreview(id); setRailRun(undefined); }, []);
+  const onRailPreview = useCallback((id: string) => { setRailPreview(id); setRailRun(`mock:${id}:sample`); }, []);
 
 
   return (
@@ -1090,7 +1104,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
             <div className="relative min-h-0 min-w-0 flex-1">
             <div className="dashboard-panel-columns">
               <div className="dashboard-queue-column">
-              {previewFlow ? <WorkflowMockQueue label={previewFlow.label} rows={surfaces} selected={railRun} onSelect={setRailRun} /> : dayWire === undefined || workflows.length === 0 || !workflows.some(workflow => workflow.id === activeWorkflowId) ? (
+              {previewFlow ? <WorkflowMockQueue label={previewFlow.label} runs={mockQueueView(railRows, filter, sort)} selected={railRun} onSelect={setRailRun} /> : dayWire === undefined || workflows.length === 0 || !workflows.some(workflow => workflow.id === activeWorkflowId) ? (
                 <Panel className="min-h-0"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]">
                   <EmptyState title={dateError !== undefined ? "Choose a valid date" : dayResource.state === "failed" ? "Could not load queue" : dayWire === undefined ? "Loading queue" : workflows.length === 0 ? "No workflows available" : "Workflow unavailable"}
                     description={dateError ?? (dayResource.state === "failed" ? dayResource.error.message : dayWire === undefined ? `Waiting for the queue for ${day}.` : workflows.length === 0 ? "This server serves no workflows. Check Settings for availability." : `Workflow ${activeWorkflowId} is not served by this build. Choose an available workflow.`)} />
@@ -1116,7 +1130,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
             sort={sort}
             onSort={onSort}
             active={filter}
-            counts={scopedStatusCounts}
+            counts={previewFlow ? mockQueueCounts(railRows) : scopedStatusCounts}
             onFilter={onFilter}
             leading={null}
             runStart={
@@ -1126,7 +1140,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
                 <div role="group" aria-label="Log date controls" className="dashboard-log-date"><DatePicker label="Dashboard date" hideLabel triggerLabel="Choose date" required value={day} max={today}
                   onChange={next => { if (next !== "") setRoute({ ...route, day: next, run: undefined }); }} className="w-44" footer={choose => <Button size="sm" variant="ghost" onClick={() => choose(today)}>Today</Button>} /></div>
                 </section>
-            {previewFlow && railRow ? <LogSample key={`${previewFlow.id}:${railRow.runId}`} selection={{ row: railRow, workflowLabel: previewFlow.label }} /> : !previewFlow && route.run !== undefined && selectedRow !== undefined && dateSelection.state === "valid" ? (
+            {previewFlow && railRow ? <WorkflowMockLog key={railRow.id} run={railRow} onRerun={() => setMockLaunch({ workflowId: railRow.workflowId, source: railRow })} onApprove={() => setMockRuns(previous => approveMockRun(previous, railRow.id))} /> : !previewFlow && route.run !== undefined && selectedRow !== undefined && dateSelection.state === "valid" ? (
               <LogSample key={route.run} selection={{ row: selectedRow, workflowLabel: workflowLabelOf(selectedRow.workflowId) }} />
             ) : (
               <Panel className="min-h-0"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]"><EmptyState
@@ -1159,9 +1173,12 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
           <DialogFooter><Button variant="secondary" onClick={() => setPendingDelete(null)}>Keep run</Button><Button variant="danger" onClick={() => { if (pendingDelete) applyPreviewAction("delete", pendingDelete); setPendingDelete(null); }}>Delete run</Button></DialogFooter>
         </DialogContent>
       </Dialog>
+      {mockLaunch && <WorkflowMockRunDialog key={`${mockLaunch.workflowId}:${mockLaunch.source?.id ?? "start"}`} workflowId={mockLaunch.workflowId} source={mockLaunch.source} runs={mockRuns}
+        onClose={() => setMockLaunch(null)} onPick={workflowId => setMockLaunch({ workflowId })} onSubmit={submitMock} />}
       <RunLaunchHost
         controller={launch}
         workflows={startWorkflows}
+        onPickPreview={workflowId => { launch.setOpen(false); setMockLaunch({ workflowId: mockWorkflow(workflowId).id }); }}
         panelWorkflowId={activeWorkflowId}
         actorId={boot.actor.id}
         onApplied={(workflowId) => {

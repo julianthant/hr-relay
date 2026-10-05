@@ -1,4 +1,5 @@
 import "./launch-presentation.css";
+import { MOCK_WORKFLOWS } from "./workflow-mock-catalog.js";
 import type { RerunValuesSnapshot } from "../../domain/dashboard/rerun-values.js";
 import type { RerunWarningWire } from "../../domain/dashboard/rerun-warning.js";
 import { canonicalJsonStringify, JsonValueSchema } from "../../domain/canonical-json.js";
@@ -74,6 +75,7 @@ import {
   forcedStepOmissions,
   initialStepOmissionDraft,
   inputRunDelimiterHint,
+  inputRunFieldLabel,
   omittedStepViews,
   startRequestFingerprint,
   toggleStepSelection,
@@ -416,7 +418,9 @@ function WorkflowPicker({
   workflows,
   value,
   onChange,
+  onPickPreview,
 }: {
+  onPickPreview?: (id: string) => void;
   workflows: readonly RunStartWorkflow[];
   value: string;
   onChange: (next: string) => void;
@@ -427,6 +431,7 @@ function WorkflowPicker({
   const entries = useMemo(() => groups.flatMap(group => group.entries).sort((left, right) => workflows.findIndex(entry => entry.workflowId === left.entry.workflowId) - workflows.findIndex(entry => entry.workflowId === right.entry.workflowId)), [groups, workflows]);
   const blocked = useMemo(() => workflows.filter((workflow) => !isStartable(workflow)), [workflows]);
   const blockedGroups = useMemo(() => pickerGroups(blocked), [blocked]);
+  const previews = onPickPreview ? MOCK_WORKFLOWS.filter(flow => !workflows.some(served => served.workflowId === flow.id) && flow.label.toLowerCase().includes(query.toLowerCase())) : [];
 
   return (
     <div className="launch-workflow-rail flex shrink-0 flex-col border-r border-ui-stroke">
@@ -443,14 +448,14 @@ function WorkflowPicker({
 
       <nav aria-label="Workflow" className="min-h-0 flex-1 overflow-y-auto px-3 py-1">
         <SectionLabel className="mb-[15px] block">Workflows</SectionLabel>
-        {groups.length === 0 ? (
+        {groups.length === 0 && previews.length === 0 ? (
           <p className={cn(dsText.meta, dsFg.muted)}>No workflow matches “{query}”.</p>
         ) : (
           <PickerEntries nodes={entries} row={node => <PickerRow node={node} value={value} onChange={onChange} />} />
         )}
+        {onPickPreview && previews.map(flow => <BareButton key={flow.id} className={cn("flex w-full items-center rounded-md text-left text-ui-secondary", dsFocus)} onClick={() => onPickPreview(flow.id)}>{flow.label}</BareButton>)}
       </nav>
 
-      {workflows.find(entry => entry.workflowId === value)?.summary && <div className="mx-3 mb-[18px] border-t border-ui-stroke px-1 pt-[14px] text-caption text-ui-secondary"><p className="line-clamp-2" title={workflows.find(entry => entry.workflowId === value)?.summary}>{workflows.find(entry => entry.workflowId === value)?.summary}</p></div>}
       {/* Not offered, and it says WHY. A workflow that simply vanishes from a
           picker teaches the operator the list is arbitrary.
 
@@ -564,7 +569,7 @@ function TypedInput({
       <Field
         // D250 — both halves are DERIVED from the parser spec, so the box cannot
         // describe a rule it does not apply.
-        label={inputRunValueNoun(surface.parser)}
+        label={inputRunFieldLabel(surface.parser)}
         description={inputRunDelimiterHint(surface.parser)}
         error={preview.problem}
       >
@@ -576,7 +581,7 @@ function TypedInput({
           autoFocus
           rows={4}
           value={text}
-          placeholder={surface.placeholder}
+          placeholder={inputRunFieldLabel(surface.parser) === "Kuali ID" ? surface.placeholder.replaceAll("Kuali document numbers", "Kuali IDs") : surface.placeholder}
           onChange={(event) => onText(event.target.value)}
         />
       </Field>
@@ -652,6 +657,7 @@ export function RunStartDialog({
   onApplied,
   onCloseAutoFocus,
   rerunSource,
+  onPickPreview,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -672,6 +678,7 @@ export function RunStartDialog({
   onOpenIntake: (workflowId: string, intakeSessionId: string) => void;
   onCloseAutoFocus?: (event: Event) => void;
   rerunSource?: RerunLaunchSource;
+  onPickPreview?: (id: string) => void;
 }) {
   const client = useDashboardClient();
   const launchService = useMemo(() => createRunLaunchService(client, actorId), [client, actorId]);
@@ -1187,7 +1194,7 @@ export function RunStartDialog({
         className="launch-design launch-dialog"
       >
         <div className="flex min-h-0 flex-1">
-          {!isRerun ? <WorkflowPicker workflows={workflows} value={workflowId} onChange={selectWorkflow} /> : <aside aria-label="Source run" className="launch-workflow-rail flex min-h-0 shrink-0 flex-col border-r border-ui-stroke p-3 pt-[18px]">
+          {!isRerun ? <WorkflowPicker workflows={workflows} value={workflowId} onChange={selectWorkflow} onPickPreview={onPickPreview} /> : <aside aria-label="Source run" className="launch-workflow-rail flex min-h-0 shrink-0 flex-col border-r border-ui-stroke p-3 pt-[18px]">
             <SectionLabel>Source run</SectionLabel>{rerunSource?.label && <h3 className="mt-4 text-heading font-semibold">{rerunSource.label}</h3>}
             {snapshot !== null && <><p className="mt-[6px] break-all font-mono text-caption text-ui-secondary">{rerunSource?.traceId ?? snapshot.source.runId}</p>
               <dl className="mt-[18px] space-y-[14px] text-caption"><div><dt className="text-ui-muted">Workflow</dt><dd className="mt-1">{workflow?.label} · {versionTag(snapshot.source.descriptorVersion)}</dd></div><div><dt className="text-ui-muted">Outcome</dt><dd className={cn("mt-1", snapshot.source.outcome === "done" ? "text-ui-positive" : snapshot.source.outcome === "failed" ? "text-ui-danger" : "text-ui-secondary")}>{snapshot.source.outcome === "done" ? "Completed" : snapshot.source.outcome === "failed" ? `Failed${snapshot.steps.some(step => step.state === "failed") ? ` at ${stepLabel(snapshot.steps.find(step => step.state === "failed")!.key)}` : ""}` : "Interrupted"}</dd></div><div><dt className="text-ui-muted">Progress</dt><dd className="mt-1">{snapshot.steps.filter(step => step.state === "completed").length} / {snapshot.steps.length} steps completed</dd></div></dl></>}
@@ -1229,7 +1236,7 @@ export function RunStartDialog({
               <h3 className="text-heading font-semibold">{currentStage === "Options" ? "Run options" : currentStage === "Steps" ? isRerun ? "Choose what to run again" : "Workflow steps" : currentStage === "Values" ? "Values for the new run" : currentStage === "Confirm" ? "Review the plan" : workflow === undefined ? "No workflow" : "Run input"}</h3>
               {currentStage === "Steps" && workflow && <span className="text-caption text-ui-muted">{selectedStepKeys.length} / {workflow.steps.length} included</span>}
               </div>
-              {currentStage === "Input" && inputRun.state === "present" && <p className="text-body text-ui-secondary">Enter {inputRunValueNoun(inputRun.surface.parser)}. Each entry starts one run.</p>}
+              {currentStage === "Input" && inputRun.state === "present" && <p className="text-body text-ui-secondary">Enter {inputRunFieldLabel(inputRun.surface.parser) === "Kuali ID" ? "Kuali IDs" : inputRunValueNoun(inputRun.surface.parser)}. Each entry starts one run.</p>}
               {currentStage === "Options" && <p className="text-body text-ui-secondary">Set how this work enters the queue.</p>}
               {currentStage === "Steps" && <p className="text-body text-ui-secondary">{isRerun ? "Select steps for the new run. Statuses show the source outcome." : multiSubject && steps.some(step => step.control.state === "omittable") ? multiSubjectOmissionReason : "Required steps stay included. Optional steps may be omitted."}</p>}
               {currentStage === "Values" && <p className="text-body text-ui-secondary">Review the input and values this rerun will use.</p>}
@@ -1475,6 +1482,7 @@ export function RunStartSurfaces({
   onOpenIntake,
   onCloseAutoFocus,
   rerunSource,
+  onPickPreview,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -1485,6 +1493,7 @@ export function RunStartSurfaces({
   onOpenIntake: (workflowId: string, intakeSessionId: string) => void;
   onCloseAutoFocus?: (event: Event) => void;
   rerunSource?: RerunLaunchSource;
+  onPickPreview?: (id: string) => void;
 }) {
   return (
     <RunStartDialog
@@ -1497,6 +1506,7 @@ export function RunStartSurfaces({
       onOpenIntake={onOpenIntake}
       onCloseAutoFocus={onCloseAutoFocus}
       rerunSource={rerunSource}
+      onPickPreview={onPickPreview}
     />
   );
 }

@@ -83,11 +83,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(run.getByText('Examples', { exact: true })).toHaveCount(0);
       await expect(run.getByRole('button', { name: 'One EID', exact: true })).toHaveCount(0);
       await expect(run.getByRole('button', { name: 'An EID and a name', exact: true })).toHaveCount(0);
-      await run.getByRole('textbox', { name: 'employee IDs', exact: true }).fill('10873698; Fictional, Morgan');
+      await run.getByRole('textbox', { name: 'Employee IDs', exact: true }).fill('10873698; Fictional, Morgan');
       const parsed = run.getByRole('region', { name: 'Parsed input', exact: true });
       await expect(parsed).toContainText('2 runs');
       await expect(parsed.getByRole('listitem')).toHaveCount(2);
-      await run.getByRole('button', { name: 'Next', exact: true }).click();
+      await run.getByRole('button', { name: 'Continue', exact: true }).click();
       await expect(run.getByRole('heading', { name: 'Run options', exact: true })).toBeVisible();
       const workbook = run.getByRole('button', { name: 'None Workbook · Optional', exact: true });
       await workbook.focus();

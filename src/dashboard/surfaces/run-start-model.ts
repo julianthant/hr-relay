@@ -15,7 +15,12 @@ import {
   type StepOmissionField,
   type StepOmissionForm,
 } from "../../domain/workflow/step-omission.js";
-import type { InputParserSpec } from "../../domain/workflow/ingress.js";
+import { inputRunValueNoun, type InputParserSpec } from "../../domain/workflow/ingress.js";
+
+export function inputRunFieldLabel(parser: InputParserSpec): string {
+  const noun = inputRunValueNoun(parser);
+  return noun === "Kuali document numbers" ? "Kuali ID" : noun.charAt(0).toUpperCase() + noun.slice(1);
+}
 
 export function inputRunDelimiterHint(parser: InputParserSpec): string {
   if (parser.split.kind === "whole-text") return "Enter one value.";

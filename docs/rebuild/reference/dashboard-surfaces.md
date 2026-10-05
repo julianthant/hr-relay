@@ -7373,7 +7373,22 @@ remain 8px; workflow names align with category text by reserving the 14px catego
 Workflow rows have no
 leading icons or Preview badges; active/all metadata disappears at the narrow supported desktop width.
 Layout-preview workflows never enter the served launch catalog or persisted workflow preference.
-Scenario selectors and technical mock labels belong outside the product screens, in `review.html`.
+The 2026-10-04 workflow-mock amendment copies contracts for all 15 rail workflows from
+`legacy:hr-automation@9bb973672666b9267569a22d3fa0af722e4c5e87`. Unserved workflows have local
+queues, logs and Run/Rerun previews in the approved compact frame; served launches retain their
+existing descriptor, command and recovery authority. The served picker hands off preview choices
+without placing their IDs in a start-plan request. Preview queues and results identify fictional work.
+Typed inputs, PDF preparation, form types, roster selection, dry-run terminals and kernel step order
+follow the copied sources. I-9 Lookup remains delegated; SharePoint offers the configured Onboarding
+Roster; OnBase combines PDFs and admits only Emergency Contact. Full Oath Upload waits for review
+and independent Oath Signature runs before its ServiceNow ticket; upload-only skips both. Standalone
+OCR exposes inspection without downstream approval. I-9 Check uses configured Action History and
+appends again on rerun. Local PDF duplicate checks compare content hashes. Source histories remain
+unchanged when a rerun is added. Work-Study and Old Kronos Reports use their kernel input schemas;
+the old dashboard had no public typed Run registration for either. Labels use Employee IDs and
+Kuali ID, and the workflow rail omits the trailing composition summary. The source digest inventory
+and focused verification are retained in `workflow-mocks-20261004` under the evidence root.
+Scenario selectors belong outside the product screens, in `review.html`.
 Its controls select Logs, Activity and notification scenarios without changing runtime authority.
 
 The queue occupies its full rounded bordered left container, with a 30% track and 244px minimum.
