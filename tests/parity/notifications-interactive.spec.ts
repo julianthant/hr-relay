@@ -75,7 +75,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const launcher = page.getByRole("dialog", { name: "Start a run", exact: true });
       await launcher.getByRole("navigation", { name: "Workflow", exact: true }).getByRole("button", { name: "Onboarding", exact: true }).click();
       await launcher.getByRole("textbox", { name: "Emails", exact: true }).fill("notification.hire@example.com");
-      await launcher.getByRole("button", { name: "Continue", exact: true }).click(); await launcher.getByRole("button", { name: "Continue", exact: true }).click();
+      await launcher.getByRole("button", { name: "Continue", exact: true }).click(); await launcher.getByRole("button", { name: "Preview plan", exact: true }).click();
       await launcher.getByRole("button", { name: "Start preview", exact: true }).click();
       await expect(bell).toHaveAccessibleName("Notifications, 1 unread"); await bell.click();
       const created = inbox.locator(".notification-row").filter({ hasText: "notification.hire@example.com" });

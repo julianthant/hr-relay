@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 import { MOCK_WORKFLOWS } from "../../src/dashboard/surfaces/workflow-mock-catalog.js";
 import { seedMockRuns } from "../../src/dashboard/surfaces/workflow-mock-model.js";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
@@ -9,7 +9,12 @@ import { FIXTURE_START_PICKER_BOOTSTRAP, FIXTURE_START_PICKER_DAY_WIRE, FIXTURE_
 
 const mockProfile = { bootstrap: { ...FIXTURE_START_PICKER_BOOTSTRAP, workflows: FIXTURE_START_PICKER_BOOTSTRAP.workflows.filter((flow: unknown) => (flow as { id: string }).id === "separations") }, day: FIXTURE_START_PICKER_DAY_WIRE, descriptorHash: FIXTURE_START_PICKER_DESCRIPTOR_HASH };
 const pdf = { name: "fictional-packet.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF") };
-for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
+async function advance(dialog: Locator) {
+  const preview = dialog.getByRole("button", { name: "Preview plan", exact: true });
+  await (await preview.count() ? preview : dialog.getByRole("button", { name: "Continue", exact: true })).click();
+}
+
+for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) {
   test(`all workflow previews, Run and Rerun @ ${theme.attribute}-${width}`, async ({ page }, info) => {
     ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, profile: mockProfile });
@@ -42,7 +47,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         if (flow.id === "separations") {
           await expect(dialog).toContainText("New work · Separations");
           await dialog.getByRole("textbox", { name: "Kuali ID", exact: true }).fill(flow.example);
-          await dialog.getByRole("button", { name: "Continue", exact: true }).click();
+          await advance(dialog);
           await expect(dialog.getByRole("region", { name: "Options", exact: true })).toBeVisible();
           await expect(dialog.getByRole("button", { name: "Start preview", exact: true })).toHaveCount(0);
           await page.keyboard.press("Escape");
@@ -62,11 +67,37 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         }
         await expect(dialog.getByRole("button", { name: "Continue", exact: true })).toBeEnabled();
         await info.attach(`input-${flow.id}-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
-        await dialog.getByRole("button", { name: "Continue", exact: true }).click();
+        await advance(dialog);
         await expect(dialog.getByRole("region", { name: "Options", exact: true })).toBeVisible();
         await expect(dialog.getByRole("checkbox", { name: "Dry run", exact: true })).toHaveCount(flow.dryRun ? 1 : 0);
-        await dialog.getByRole("button", { name: "Continue", exact: true }).click();
+        const flags = dialog.locator(".launch-flags"), controls = dialog.locator(".launch-options-grid");
+        expect((await flags.boundingBox())!.y).toBeLessThan((await controls.boundingBox())!.y);
+        await expect(dialog.getByRole("checkbox", { name: "Capture screenshots", exact: true })).toBeChecked();
+        await dialog.getByRole("radio", { name: "Bulk", exact: true }).press("Space");
+        await dialog.getByRole("radio", { name: "Headless", exact: true }).press("Space");
+        await dialog.getByRole("checkbox", { name: "Capture screenshots", exact: true }).uncheck();
+        await dialog.getByRole("checkbox", { name: "Customize steps", exact: true }).check();
+        await info.attach(`options-${flow.id}-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+        await advance(dialog);
+        const stepRegion = dialog.getByRole("region", { name: "Steps", exact: true });
+        await expect(stepRegion.getByRole("checkbox")).toHaveCount(flow.steps.length);
+        await expect(dialog).toContainText(`${flow.steps.length} / ${flow.steps.length} included`);
+        await expect(stepRegion.locator("li").first()).toHaveCSS("min-height", "58px");
+        await stepRegion.getByRole("checkbox", { name: flow.steps[0].label, exact: true }).uncheck();
+        await info.attach(`steps-${flow.id}-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+        await advance(dialog);
         await expect(dialog.getByRole("region", { name: "Confirm", exact: true })).toBeVisible();
+        const confirmation = dialog.getByRole("region", { name: "Confirm", exact: true });
+        await expect(confirmation.getByRole("heading", { name: "1 run ready to queue", exact: true })).toBeVisible();
+        const summaryGap = await confirmation.evaluate(el => getComputedStyle(el).getPropertyValue("--ds-space-cozy").trim());
+        await expect(confirmation).toHaveCSS("gap", summaryGap);
+        await expect(confirmation).toContainText("Bulk");
+        await expect(confirmation).toContainText("Headless · screenshots off");
+        await expect(confirmation).toContainText(`Omitted: ${flow.steps[0].label}`);
+        await expect(confirmation.locator("dl")).toHaveCSS("font-family", /-apple-system/);
+        await expect(confirmation.locator("details")).not.toHaveAttribute("open");
+        expect((await dialog.locator(":scope > footer").boundingBox())!.height).toBe(57);
+        await info.attach(`confirm-${flow.id}-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
         await dialog.getByRole("button", { name: "Start preview", exact: true }).click();
         await expect(dialog).toHaveCount(0);
         const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
@@ -76,10 +107,15 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         const rerun = page.getByRole("dialog", { name: "Rerun", exact: true });
         await expect(rerun.getByRole("list", { name: "Run configuration path" }).getByRole("listitem")).toHaveText([/^1\s*Steps$/u, /^2\s*Values$/u, /^3\s*Options$/u, /^4\s*Confirm$/u]);
         await expect(rerun.getByRole("complementary", { name: "Source run", exact: true })).toContainText(flow.label);
-        await rerun.getByRole("button", { name: "Continue", exact: true }).click();
+        await expect(rerun.getByRole("checkbox", { name: flow.steps[0].label, exact: true })).not.toBeChecked();
+        await expect(rerun.locator(".launch-step-status")).toHaveCount(flow.steps.length);
+        await advance(rerun);
         await expect(rerun.getByRole("region", { name: "Values", exact: true })).toBeVisible();
-        await rerun.getByRole("button", { name: "Continue", exact: true }).click();
-        await rerun.getByRole("button", { name: "Continue", exact: true }).click();
+        await advance(rerun);
+        await expect(rerun.getByRole("radio", { name: "Bulk", exact: true })).toBeChecked();
+        await expect(rerun.getByRole("radio", { name: "Headless", exact: true })).toBeChecked();
+        await expect(rerun.getByRole("checkbox", { name: "Capture screenshots", exact: true })).not.toBeChecked();
+        await advance(rerun);
         await rerun.getByRole("button", { name: "Create rerun", exact: true }).click();
         await expect(rerun).toHaveCount(0);
         await logs.getByRole("button", { name: /^Linked runs \(\d+\)$/u }).click();
@@ -101,10 +137,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await upload.getByRole("radio", { name: "Upload-only", exact: true }).press("Space");
       await expect(upload.getByRole("button", { name: /Roster$/u })).toHaveCount(0);
       await upload.locator('input[type="file"]').setInputFiles(pdf);
-      await upload.getByRole("button", { name: "Continue", exact: true }).click();
+      await advance(upload);
       await expect(upload.getByRole("button", { name: /Workers$/u })).toHaveCount(0);
       await expect(upload.getByRole("spinbutton", { name: "Workers", exact: true })).toHaveCount(0);
-      await upload.getByRole("button", { name: "Continue", exact: true }).click();
+      await advance(upload);
+      await upload.locator("summary").filter({ hasText: "Workflow plan" }).click();
       await expect(upload.getByRole("list", { name: "Workflow plan", exact: true })).not.toContainText("Wait for all signatures");
       await info.attach(`upload-only-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
       await page.keyboard.press("Escape");
@@ -129,7 +166,7 @@ for (const theme of PARITY_THEMES) test(`workflow mode controls @ ${theme.attrib
     await dialog.getByRole("radio", { name: "PDFs", exact: true }).press("Space");
     await dialog.locator('input[type="file"]').setInputFiles(pdf);
     await expect(dialog.getByRole("button", { name: "Existing Onboarding Roster Roster", exact: true })).toBeVisible();
-    await dialog.getByRole("button", { name: "Continue", exact: true }).click();
+    await advance(dialog);
     await expect(dialog.getByRole("button", { name: "Auto Workers", exact: true })).toBeVisible();
     await expect(dialog.getByRole("checkbox", { name: "Dry run", exact: true })).not.toBeChecked();
     await page.keyboard.press("Escape");
@@ -141,20 +178,28 @@ for (const theme of PARITY_THEMES) test(`workflow mode controls @ ${theme.attrib
     await expect(dialog.getByRole("button", { name: "Continue", exact: true })).toBeDisabled();
     await expect(dialog.getByRole("checkbox", { name: "CRM check", exact: true })).not.toBeChecked();
     await match.fill("Lee, Jordan, 01/01/2000, x");
-    await dialog.getByRole("button", { name: "Continue", exact: true }).click();
-    await dialog.getByRole("button", { name: "Continue", exact: true }).click();
+    await advance(dialog);
+    await advance(dialog);
+    await dialog.locator("summary").filter({ hasText: "Workflow plan" }).click();
     await expect(dialog.getByRole("list", { name: "Workflow plan", exact: true })).toContainText("Read employment status · skipped");
     await page.keyboard.press("Escape");
     await rail.getByRole("button", { name: "Onboarding", exact: true }).click();
     await page.getByRole("button", { name: "Start a run", exact: true }).click();
     await dialog.getByRole("textbox", { name: "Emails", exact: true }).fill("jordan.lee@example.com");
-    await dialog.getByRole("button", { name: "Continue", exact: true }).click();
+    await advance(dialog);
     await dialog.getByRole("radio", { name: "Rehire", exact: true }).press("Space");
-    await dialog.getByRole("checkbox", { name: "Choose steps", exact: true }).click();
-    await dialog.getByRole("button", { name: "Continue", exact: true }).click();
+    await dialog.getByRole("checkbox", { name: "Customize steps", exact: true }).click();
+    await advance(dialog);
     await expect(dialog.getByRole("region", { name: "Steps", exact: true })).toBeVisible();
-    await dialog.getByRole("button", { name: "Continue", exact: true }).click();
+    const stepChecks = dialog.getByRole("region", { name: "Steps", exact: true }).getByRole("checkbox");
+    for (const checkbox of await stepChecks.all()) await checkbox.uncheck();
+    await expect(dialog.getByRole("button", { name: "Preview plan", exact: true })).toBeDisabled();
+    await dialog.getByRole("button", { name: "2 Options", exact: true }).click();
+    await dialog.getByRole("checkbox", { name: "Customize steps", exact: true }).uncheck();
+    await advance(dialog);
+    await expect(dialog).toContainText("8 / 8 included");
     await expect(dialog).toContainText("Rehire · UC_CONC_HIRE");
+    await dialog.locator("summary").filter({ hasText: "Workflow plan" }).click();
     await expect(dialog.getByRole("list", { name: "Workflow plan", exact: true })).toContainText("Create I-9 profile · skipped");
     await page.keyboard.press("Escape");
     await rail.getByRole("button", { name: "Person Lookup", exact: true }).click();

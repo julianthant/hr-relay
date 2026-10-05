@@ -7456,6 +7456,21 @@ navigation and omission folds avoid unrelated work. Choosing a served entry alwa
 served planner and command door. Preview submission closes the same launcher and updates only the
 local queue. Rerun source binding, request invalidation, recovery and focus return remain authoritative.
 
+The 2026-10-05 mock launch layout amendment shares Options, step-list and confirmation components
+with the served Person Lookup and Separations forms. Options places Customize steps, supported Dry run
+and Capture screenshots first, followed by workflow-specific fields and paired Priority/Browser mode
+controls. Bulk is the operator label for the local background queue setting; its stored meaning is
+unchanged. Workers, hire type, oath modes, rosters and date inputs retain their workflow contracts.
+Upload-only customization excludes OCR/signature waits. Turning customization off restores the full
+current-mode step selection; an empty selected set cannot advance. Steps retain system labels,
+included counts and source outcomes on rerun. Confirm uses the served summary-card and aligned
+definition-list geometry, plus a compact local Workflow plan disclosure for conditional/skipped steps.
+Run counts describe root runs, including combined OnBase documents, without counting OCR children.
+The shared footer retains separate provenance and action groups with matching icons and Preview plan
+navigation. All 15 rail contracts are inspected; OCR and I-9 Lookup remain delegation-only. Focused
+evidence belongs to `mock-run-layout-20261005`. Served planning, omissions, recovery and commands are
+unchanged; local preview submission remains browser-only.
+
 The workflow-component amendment extends these local producers with contract-specific read/fill
 results, OCR record review, manual identity provenance, selected-person fan-out, discard and linked
 run navigation. PDF parent rows delegate to a separate OCR row, which owns records and approval;

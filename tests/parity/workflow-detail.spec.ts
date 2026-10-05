@@ -42,7 +42,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await launcher.getByRole("textbox", { name: "Emails", exact: true }).fill("jordan.lee@example.com");
       await launcher.getByRole("button", { name: "Continue", exact: true }).click();
       await launcher.getByRole("radio", { name: "Rehire", exact: true }).press("Space");
-      await launcher.getByRole("button", { name: "Continue", exact: true }).click();
+      await launcher.getByRole("button", { name: "Preview plan", exact: true }).click();
       await launcher.getByRole("button", { name: "Start preview", exact: true }).click();
       const concurrent = logs.getByRole("navigation", { name: "Run timeline", exact: true }).getByRole("button", { name: /^Submit hire · Skipped/u });
       await concurrent.hover();

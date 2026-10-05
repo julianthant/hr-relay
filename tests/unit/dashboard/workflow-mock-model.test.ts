@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MOCK_WORKFLOWS, mockWorkflow } from "../../../src/dashboard/surfaces/workflow-mock-catalog.js";
-import { approveMockRun, initialMockDraft, mockDraftError, mockInputEntries, mockNeedsReview, mockOathDuplicate, mockPipeline, mockQueueCounts, mockQueueView, mockRunLog, mockRunPipeline, mockRunsForDraft, mockStepState, seedMockRuns, type MockDraft } from "../../../src/dashboard/surfaces/workflow-mock-model.js";
+import { approveMockRun, initialMockDraft, mockConfirmationFacts, mockDraftError, mockInputEntries, mockLaunchCount, mockNeedsReview, mockOathDuplicate, mockPipeline, mockQueueCounts, mockQueueView, mockRunLog, mockRunPipeline, mockRunsForDraft, mockSelectableSteps, mockStepState, seedMockRuns, type MockDraft } from "../../../src/dashboard/surfaces/workflow-mock-model.js";
 
 const file = { name: "packet.pdf", size: 100, digest: "copied-pdf-digest" };
 const draft = (id: string, changes: Partial<MockDraft> = {}): MockDraft => ({ ...initialMockDraft(id), text: mockWorkflow(id).example, files: [file], ...changes });
@@ -42,6 +42,30 @@ describe("legacy workflow previews", () => {
     const combined = mockRunsForDraft("onbase", draft("onbase", { files: [file, { ...file, name: "second.pdf" }] }), 1);
     expect(combined).toHaveLength(2); expect(combined[0].draft.files).toHaveLength(2);
     expect(mockDraftError("onbase", draft("onbase", { documentType: "Benefits" }))).toMatch(/Only Emergency Contact/);
+  });
+  it("counts the root runs shown in confirmation without counting delegated children", () => {
+    expect(mockLaunchCount("oath-signature", draft("oath-signature", { text: "10000001, 10000002" }))).toBe(2);
+    const files = [file, { ...file, name: "second.pdf", digest: "second" }];
+    expect(mockLaunchCount("emergency-contact", draft("emergency-contact", { files }))).toBe(2);
+    expect(mockLaunchCount("onbase", draft("onbase", { files }))).toBe(1);
+    expect(mockLaunchCount("sharepoint-download", draft("sharepoint-download"))).toBe(1);
+    expect(mockLaunchCount("onbase", draft("onbase", { files: [] }))).toBe(0);
+  });
+  it("shows only the current processing mode's customizable steps", () => {
+    const upload = draft("oath-upload", { uploadMode: "upload-only" });
+    expect(mockSelectableSteps("oath-upload", upload).map(step => step.key)).toEqual(["servicenow-auth", "open-hr-form", "fill-form", "submit"]);
+    const facts = mockConfirmationFacts("oath-upload", upload);
+    expect(facts.find(row => row.key === "Steps")?.value).toBe("4 / 4 included");
+    expect(facts.some(row => row.key === "Roster" || row.key === "Workers")).toBe(false);
+  });
+  it("confirms edited execution settings and omitted steps in operator language", () => {
+    const options = draft("onboarding", { priority: "background", browser: "headless", captures: false, workers: 3, hireType: "rehire", selectedSteps: ["transaction"] });
+    const facts = Object.fromEntries(mockConfirmationFacts("onboarding", options).map(row => [row.key, row.value]));
+    expect(facts.Queue).toBe("Bulk");
+    expect(facts.Browser).toBe("Headless · screenshots off");
+    expect(facts.Workers).toBe("3");
+    expect(facts["Hire type"]).toBe("Rehire · UC_CONC_HIRE");
+    expect(facts.Steps).toBe("1 / 8 included · Omitted: Sign in to CRM, Find onboarding record, Read entry sheet, Download onboarding documents, Sign in to UCPath, Match existing person, Create I-9 profile");
   });
   it("keeps upload-only out of OCR and signature waits", () => {
     const keys = mockPipeline("oath-upload", draft("oath-upload", { uploadMode: "upload-only" })).map(step => step.key);

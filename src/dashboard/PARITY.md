@@ -171,6 +171,15 @@ use file-content hashes, and reruns preserve source histories. Field copy uses E
 Kuali ID, with no trailing composition summary. Focused tests inspect all workflows in both themes
 at 1024 and 1440 pixels, retaining screenshots and checking that local previews send no writes.
 
+The 2026-10-05 mock launch layout amendment shares the served Person Lookup/Separations Options,
+step-list and confirmation shells. Flags precede workflow-specific settings and paired execution
+controls; labels, step counts, summary-card geometry and footer action groups match. Local root-run
+counts exclude delegated children, and upload-only step membership excludes OCR/signature waits.
+The full conditional plan remains available in a compact disclosure. Focused evidence inspects every
+rail contract, Run/Rerun and mode branches in both themes at 1024, 1440 and 1920 pixels, with no local
+preview writes. Evidence: `mock-run-layout-20261005`. Frozen-reference and full repository acceptance
+remain with 3.1.19; served authority is unchanged.
+
 The workflow-component amendment keeps the same palette and primitives while adding workflow
 results, record review and linked-run navigation. Record edits preserve source transcriptions; manually changed IDs carry
 an explicit unverified-identity warning. Approval creates independent per-person rows, discard

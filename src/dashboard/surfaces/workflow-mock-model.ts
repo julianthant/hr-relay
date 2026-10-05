@@ -271,24 +271,33 @@ export function mockWorkflowCounts(runs: readonly MockRun[]): readonly WorkflowC
   });
 }
 
+export function mockLaunchCount(id: MockWorkflowId, draft: MockDraft): number {
+  return draft.method === "typed" ? mockInputEntries(id, draft).length : draft.method === "roster" ? 1 : id === "onbase" ? Number(draft.files.length > 0) : draft.files.length;
+}
+
+export function mockSelectableSteps(id: MockWorkflowId, draft: MockDraft): readonly MockStep[] {
+  const keys = new Set(mockWorkflow(id).steps.map(step => step.key));
+  return mockPipeline(id, draft).filter(step => keys.has(step.key));
+}
+
 export function mockConfirmationFacts(id: MockWorkflowId, draft: MockDraft): readonly { key: string; value: string }[] {
-  const flow = mockWorkflow(id);
-  const pdf = draft.method === "pdf";
+  const flow = mockWorkflow(id), pdf = draft.method === "pdf";
   const uploadOnly = id === "oath-upload" && draft.uploadMode === "upload-only";
-  const count = draft.method === "typed" ? mockInputEntries(id, draft).length : draft.method === "roster" ? 1 : id === "onbase" ? Number(draft.files.length > 0) : draft.files.length;
+  const steps = mockSelectableSteps(id, draft), omitted = steps.filter(step => !draft.selectedSteps.includes(step.key));
   return [
     { key: "Workflow", value: flow.label },
     { key: "Input", value: draft.method === "typed" ? draft.text : draft.method === "roster" ? "Onboarding Roster" : draft.files.map(file => file.name).join(", ") },
-    { key: "Starts", value: `${count} ${pdf && !uploadOnly ? "preparation" : "run"}${count === 1 ? "" : "s"}` },
-    { key: "Priority", value: draft.priority }, { key: "Browser", value: draft.browser === "headed" ? "Visible" : "Headless" },
-    { key: "Captures", value: draft.captures ? "On" : "Off" },
+    { key: "Steps", value: `${steps.length - omitted.length} / ${steps.length} included${omitted.length ? ` · Omitted: ${omitted.map(step => step.label).join(", ")}` : ""}` },
+    { key: "Queue", value: draft.priority === "interactive" ? "Interactive" : "Bulk" },
+    { key: "Browser", value: `${draft.browser === "headed" ? "Headed" : "Headless"} · screenshots ${draft.captures ? "on" : "off"}` },
     ...(flow.dryRun ? [{ key: "Dry run", value: draft.dryRun ? "On" : "Off" }] : []),
     ...(id === "onboarding" ? [{ key: "Hire type", value: draft.hireType === "rehire" ? "Rehire · UC_CONC_HIRE" : "New hire · UC_FULL_HIRE" }] : []),
     ...(id === "person-lookup" ? [{ key: "Lookup mode", value: draft.lookupMode }, { key: "CRM check", value: draft.crmCheck ? "On" : "Off" }] : []),
     ...(id === "oath-upload" ? [{ key: "Processing mode", value: uploadOnly ? "Upload-only" : "Full process" }] : []),
     ...(id === "ocr" ? [{ key: "Form type", value: draft.formType }] : []),
     ...(pdf && flow.roster && !uploadOnly ? [{ key: "Roster", value: draft.roster === "download" ? "Download Onboarding Roster" : "Existing Onboarding Roster" }] : []),
-    ...((pdf && !uploadOnly) || draft.method === "typed" ? [{ key: "Workers", value: String(draft.workers) }] : []),
+    ...(id === "onbase" ? [{ key: "Document type", value: "X_HR_Emergency Contact" }] : []),
+    ...((pdf && !uploadOnly) || draft.method === "typed" ? [{ key: "Workers", value: draft.workers === "auto" ? "Auto" : String(draft.workers) }] : []),
     ...(id === "work-study" ? [{ key: "Effective date", value: usDate(draft.effectiveDate) }] : []),
     ...(id === "old-kronos-reports" ? [{ key: "Report dates", value: `${usDate(draft.startDate)} – ${usDate(draft.endDate)}` }] : []),
   ];

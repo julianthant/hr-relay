@@ -272,6 +272,15 @@ The workflow-mock amendment copies all 15 legacy rail contracts at `9bb973672666
 
 The Run picker uses the permanent rail's grouped navigation and only runnable entries. Served eligibility comes from declared typed-input capability; previews have an explicit `runnable` flag. I-9 Lookup remains delegated-only, and the operator excludes OCR from direct launch despite its legacy standalone prep entry. Both retain their panels and Explorer records. Workflow choices and preview control edits stay inside the launcher; the dialog, navigation, search and scroll persist. Served choices retain planner/command authority, and source-bound Rerun, recovery and focus return remain unchanged.
 
+The 2026-10-05 mock launch layout amendment reuses the served Person Lookup/Separations Options,
+step-list and confirmation components across the local workflows. Flags lead, workflow-specific fields
+retain their contracts, and Priority/Browser mode share the same geometry and labels. Step selection
+respects upload-only membership, resets when customization is disabled and blocks an empty selection.
+Confirm shows root-run counts, edited settings and omissions in the shared summary card and facts
+layout; conditional steps remain in a compact plan disclosure. Footer provenance and action groups
+match served launches. Local previews remain browser-only, with OCR/I-9 Lookup delegation-only.
+D347's dashboard-surfaces owner records the contract and `mock-run-layout-20261005` evidence.
+
 Settings header actions center vertically on the title and any description; title-only headings keep actions inline. The healthy storage card places its report timestamp on the right, with availability on the left. Missing detailed reports and degraded-storage freshness remain explicit.
 
 The 2026-10-05 storage amendment keeps the existing card-row layout with 13 checks visible, with

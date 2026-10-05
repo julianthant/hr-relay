@@ -1,6 +1,7 @@
 import "./launch-presentation.css";
 import { mockWorkflow, type MockWorkflowId } from "./workflow-mock-catalog.js";
 import { WorkflowMockRunForm } from "./workflow-mock-run.js";
+import { RunConfirmLayout, RunOptionsLayout, RunStepsList } from "./run-launch-layout.js";
 import type { MockDraft, MockRun } from "./workflow-mock-model.js";
 import { RunWorkflowPicker } from "./run-start-picker.js";
 import type { RerunValuesSnapshot } from "../../domain/dashboard/rerun-values.js";
@@ -30,7 +31,6 @@ import {
   MetaLine,
   SectionLabel,
   ChoicePicker,
-  SegmentedChoice,
   Textarea,
   Well,
   dsFg,
@@ -1102,30 +1102,24 @@ export function RunStartDialog({
               )}
 
               {currentStage === "Options" && (
-                <section aria-label="Options" className="launch-options flex flex-col">
-                  <div className="launch-flags">
+                <RunOptionsLayout priority={priority} onPriorityChange={setPriority} browserMode={browserMode} onBrowserModeChange={setBrowserMode}
+                  flags={<>
                     {!isRerun && <Checkbox checked={customizeSteps} onCheckedChange={next => changeCustomizeSteps(next === true)} label="Customize steps" description="Choose optional steps." />}
                     {supportsDryRun && <Checkbox checked={dryRun} onCheckedChange={next => setDryRunRequested(next === true)} label="Dry run" description="Stop before submission." />}
                     <Checkbox checked={captureBrowserScreenshots} onCheckedChange={next => setCaptureBrowserScreenshots(next === true)} label="Capture screenshots" description="Keep browser captures." />
-                  </div>
+                  </>}
+                  fixedFacts={workflow && <><LockedFact label="Active policy" value={ENQUEUE_POLICY_MEANING[workflow.enqueue]} reason={ENQUEUE_POLICY_REASON} /><LockedFact label="Workflow version" value={versionTag(workflow.version)} reason="Fixed by the selected workflow." /></>}>
                   <div>
                     <ChoicePicker label="Workbook · Optional" value={workbookId} onChange={setWorkbookId} options={[{ value: "", label: "None" }, ...spreadsheetMocks.files.map(file => ({ value: file.id, label: file.name, description: "Mock spreadsheet" }))]} />
                     <p className="mt-[5px] text-caption text-ui-muted">Choose an already imported workbook for reference or results.</p>
                   </div>
-                  <div className="launch-options-grid">
-                    <div><SegmentedChoice label="Priority" value={priority} onChange={setPriority} options={[{ value: "interactive", label: "Interactive" }, { value: "bulk", label: "Bulk" }]} /><p className="mt-[5px] text-caption text-ui-muted">Bulk work yields to interactive runs.</p></div>
-                    <div><SegmentedChoice label="Browser mode" value={browserMode} onChange={setBrowserMode} options={[{ value: "headed", label: "Headed" }, { value: "headless", label: "Headless" }]} /><p className="mt-[5px] text-caption text-ui-muted">{browserMode === "headed" ? "Open visible browser windows." : "Run browsers in the background."}</p></div>
-                  </div>
-                  <div className="launch-fixed-facts">
-                    {workflow && <><LockedFact label="Active policy" value={ENQUEUE_POLICY_MEANING[workflow.enqueue]} reason={ENQUEUE_POLICY_REASON} /><LockedFact label="Workflow version" value={versionTag(workflow.version)} reason="Fixed by the selected workflow." /></>}
-                  </div>
-                </section>
+                </RunOptionsLayout>
               )}
 
               {currentStage === "Steps" && workflow !== undefined && (
                 <section aria-labelledby="run-start-steps" className="flex flex-col gap-[var(--ds-space-cozy)]">
                   <h4 id="run-start-steps" className="sr-only">Steps</h4>
-                  <ul className="overflow-hidden rounded-[var(--ds-radius-lg)] border border-[color:var(--ds-border)] divide-y divide-[color:var(--ds-border)]">
+                  <RunStepsList>
                     {workflow.steps.map((step) => {
                       const selected = selectedStepKeys.includes(step.key);
                       const control = step.control;
@@ -1163,18 +1157,14 @@ export function RunStartDialog({
                         </li>
                       );
                     })}
-                  </ul>
+                  </RunStepsList>
                 </section>
               )}
 
               {currentStage === "Confirm" && plan !== null && (
-                <section aria-labelledby="run-start-confirm" className="flex flex-col gap-[var(--ds-space-cozy)]">
-                  <div className="rounded-[7px] border border-ui-stroke bg-ui-table p-[14px]">
-                    <div className="flex items-center justify-between gap-3"><h4 id="run-start-confirm" className="text-body font-semibold">{plan.planned.length} {plan.planned.length === 1 ? "run" : "runs"} ready to queue</h4><RunFlagChips dryRun={plan.dryRun} priority={plan.priority} /></div>
-                    <p className="mt-[6px] text-body text-ui-secondary">{isRerun ? "A new run linked to the source." : "One run for each accepted entry."}</p>
-                  </div>
-                  <dl className="grid grid-cols-[110px_minmax(0,1fr)] gap-x-5 gap-y-[11px] text-body">
-                    {[
+                <RunConfirmLayout count={plan.planned.length} flags={<RunFlagChips dryRun={plan.dryRun} priority={plan.priority} />}
+                  description={isRerun ? "A new run linked to the source." : "One run for each accepted entry."}
+                  facts={[
                       { key: "Workflow", value: `${workflow?.label ?? plan.workflowId} · ${versionTag(plan.expectedVersion)}` },
                       { key: "Input", value: inputSummary || Object.values(valueDrafts).map(draft => draft.text).filter(Boolean).join(", ") },
                       ...(isRerun && snapshot ? [{ key: "Source", value: rerunSource?.traceId ?? snapshot.source.runId }] : []),
@@ -1184,8 +1174,7 @@ export function RunStartDialog({
                       { key: "Queue", value: plan.priority === "interactive" ? "Interactive" : "Bulk" },
                       { key: "Browser", value: `${browserMode === "headed" ? "Headed" : "Headless"} · screenshots ${captureBrowserScreenshots ? "on" : "off"}` },
                       { key: "Dry run", value: plan.dryRun ? "On" : "Off" },
-                    ].map(({ key, value }) => <div key={key} className="contents"><dt className="text-ui-muted">{key}</dt><dd className={cn("min-w-0 break-words", (key === "Input" || key === "Source") && "font-mono")}>{value}</dd></div>)}
-                  </dl>
+                  ]}>
                   {omissionMismatch && (
                     <Banner tone="danger" title="This plan does not describe the steps you omitted">
                       {`You omitted ${sentOmittedSteps.length === 0 ? "no steps" : sentOmittedSteps.join(", ")}; the plan came back omitting `
@@ -1194,7 +1183,7 @@ export function RunStartDialog({
                     </Banner>
                   )}
                   <PlanRefusals refused={plan.refused} />
-                </section>
+                </RunConfirmLayout>
               )}
             </div>
           </DialogBody>
