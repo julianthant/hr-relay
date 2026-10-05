@@ -7479,7 +7479,15 @@ local shortcut preferences remain readable; their old number-mode field has no e
 remain locally persisted and drive run search and queue shortcuts.
 All dashboard search fields use the UI catalog's 12px corners through the shared search-radius token.
 Settings navigation, Keyboard, Archive and the compact Run workflow filter have no local radius
-override. Their sizes, theme colors, search behavior and Run/Rerun flow remain unchanged.
+override. Their sizes, theme colors and Run/Rerun flow remain unchanged.
+Search fields have a quiet neutral focus border instead of a bright halo, and a 14px clear icon in a
+24px control appears only while the field contains text. Settings sidebar search lists matching pages
+and individual controls with their parent page. The index uses served catalog metadata and existing
+presentation labels, never current values or secrets. Selecting a field carries its exact
+`settingsTarget` beside `settings`, opens any containing disclosure, centers it in the content pane,
+and shows a 1.4-second fading arrival cue. Reduced motion uses immediate scrolling and a temporary
+static cue. Repeated selection, reload and history retain the target; unavailable targets are stated.
+Local search results remain available after navigation, and Settings draft/exit authority is unchanged.
 
 Archive version groups show report counts instead of archived dates. Folder and report views use the same
 breadcrumb → focused heading/actions → controls/table structure as the spreadsheet viewer. They omit the

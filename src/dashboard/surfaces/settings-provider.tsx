@@ -1,7 +1,7 @@
 import { Form } from "@heroui/react";
 import { useReducer, useRef } from "react";
 import type { EditableSettingsLeafWire } from "../../domain/dashboard/settings-editor.js";
-import { Banner, BodySection, Button, Disclosure, Field, FormGroup, Input, PageHeading, RankedList, Spinner, dsText } from "../ds/ui.js";
+import { Banner, BodySection, Button, Field, FormGroup, Input, PageHeading, RankedList, Spinner, dsText } from "../ds/ui.js";
 import { formatSetting, settingInput } from "./settings-draft-model.js";
 import type { useEditableSettings } from "./settings-editor-model.js";
 import { SettingsSaveFeedback } from "./settings-feedback.js";
@@ -9,6 +9,8 @@ import { modelRaw, modelRows, reorderModelRows, type ProviderModelRow } from "./
 import { providerFieldPresentation, providerName } from "./ui-settings-records-labels.js";
 import { SettingsRowActions } from "./ui-settings-records-row-actions.js";
 import "./settings-provider.css";
+
+import { SettingsSearchDisclosure } from "./settings-search-disclosure.js";
 
 type Editor = ReturnType<typeof useEditableSettings>;
 
@@ -39,12 +41,12 @@ function BudgetEditor({ editor, leaf, description, first }: { editor: Editor; le
   const raw = operation?.kind === "set" ? operation.raw : settingInput(leaf, operation?.kind === "clear" ? leaf.defaultValue ?? "" : leaf.effectiveValue);
   if (typeof raw === "string" || leaf.control.input !== "object") throw new Error(`settings-provider-budget-invalid:${leaf.path}`);
   const name = providerName(leaf.path.split(".")[1] ?? "");
-  return <Disclosure variant="body" summary={name} description={description} defaultOpen={first}
+  return <SettingsSearchDisclosure paths={[leaf.path]} variant="body" summary={name} description={description} defaultOpen={first}
     className="settings-provider-disclosure" contentClassName="settings-provider-budget-content">
     <div data-settings-path={leaf.path} className="settings-provider-budget">
       <div className="settings-provider-grid">{leaf.control.fields.map(field => {
         const presented = providerFieldPresentation(field.name);
-        return <Field key={field.name} label={presented.label} description={presented.unit} required={field.required} disabled={editor.locked}>
+        return <Field data-settings-path={`${leaf.path}.${field.name}`} key={field.name} label={presented.label} description={presented.unit} required={field.required} disabled={editor.locked}>
           <Input type="number" min={field.minimum} step={1} aria-label={`${name}: ${presented.label}`} value={raw[field.name] ?? ""}
             aria-invalid={editor.errors[leaf.path] !== undefined || undefined} disabled={editor.locked}
             onChange={event => editor.update(leaf.path, { ...raw, [field.name]: event.target.value })} />
@@ -55,7 +57,7 @@ function BudgetEditor({ editor, leaf, description, first }: { editor: Editor; le
       {editor.save.state === "conflict" && operation !== undefined && <p className={dsText.meta}>Current value: {formatSetting(leaf.effectiveValue)}</p>}
       {leaf.hazard !== undefined && <p className={dsText.meta}>{leaf.hazard}</p>}
     </div>
-  </Disclosure>;
+  </SettingsSearchDisclosure>;
 }
 
 function ModelEditor({ editor, leaf, first }: { editor: Editor; leaf: EditableSettingsLeafWire; first: boolean }) {
@@ -74,7 +76,7 @@ function ModelEditor({ editor, leaf, first }: { editor: Editor; leaf: EditableSe
     refresh();
     editor.update(leaf.path, nextRaw);
   };
-  return <Disclosure variant="body" summary={name} meta={`${rows.length} ${rows.length === 1 ? "model" : "models"}`} defaultOpen={first}
+  return <SettingsSearchDisclosure paths={[leaf.path]} variant="body" summary={name} meta={`${rows.length} ${rows.length === 1 ? "model" : "models"}`} defaultOpen={first}
     className="settings-provider-disclosure" contentClassName="settings-provider-model-content">
     <div data-settings-path={leaf.path} className="settings-provider-models">
       <RankedList label={`${name} model priority`} disabled={editor.locked} items={rows.map((row, index) => ({
@@ -85,7 +87,7 @@ function ModelEditor({ editor, leaf, first }: { editor: Editor; leaf: EditableSe
       {editor.save.state === "conflict" && operation !== undefined && <p className={dsText.meta}>Current value: {formatSetting(leaf.effectiveValue)}</p>}
       {leaf.hazard !== undefined && <p className={dsText.meta}>{leaf.hazard}</p>}
     </div>
-  </Disclosure>;
+  </SettingsSearchDisclosure>;
 }
 
 export function ProviderSettingsSection({ editor }: { editor: Editor }) {

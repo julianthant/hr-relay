@@ -14,13 +14,14 @@ import {
   useRef,
   useState,
   type DOMAttributes,
+  type HTMLAttributes,
   type InputHTMLAttributes,
   type ReactNode,
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
 } from "react";
 import * as CheckboxPrimitive from "@radix-ui/react-checkbox";
-import { Check, Eye, EyeOff, Lock, Minus, Pencil, Trash2, TriangleAlert, Upload } from "lucide-react";
+import { Check, Eye, EyeOff, Lock, Minus, Pencil, Trash2, TriangleAlert, Upload, X } from "lucide-react";
 import { cn } from "../lib/utils.js";
 import { Select as BaseSelect, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectItem } from "./base-select.js";
 import { Button, IconButton } from "./primitives-core.js";
@@ -84,6 +85,7 @@ export function Field({
   orientation = "vertical",
   controlWidth = "standard",
   children,
+  ...props
 }: {
   label: ReactNode;
   description?: ReactNode;
@@ -99,7 +101,7 @@ export function Field({
   /** Preferred control column for horizontal body rows; ignored outside DsBodyScope. */
   controlWidth?: "standard" | "medium" | "wide";
   children: ReactNode;
-}) {
+} & Omit<HTMLAttributes<HTMLDivElement>, "children">) {
   const base = useId();
   const inputId = `${base}-control`;
   const descriptionId = description ? `${base}-description` : undefined;
@@ -151,6 +153,7 @@ export function Field({
     >
       {orientation === "horizontal" ? (
         <div
+          {...props}
           data-control-width={controlWidth}
           className={cn("ds-body-row ds-field-layout-horizontal min-w-0", className)}
         >
@@ -168,7 +171,7 @@ export function Field({
           <div className="ds-field-control-slot">{children}</div>
         </div>
       ) : (
-        <div className={cn("flex min-w-0 flex-col gap-[var(--ds-space-tight)]", className)}>
+        <div {...props} className={cn("flex min-w-0 flex-col gap-[var(--ds-space-tight)]", className)}>
           <div className="flex items-baseline gap-[var(--ds-space-base)]">
             {fieldLabel}
             {hint && (
@@ -568,7 +571,7 @@ export const SearchInput = forwardRef<
         {...field}
         {...props}
       />
-      {onClear && <HeroSearchField.ClearButton aria-label="Clear search" className="min-h-6 min-w-6" />}
+      <HeroSearchField.ClearButton aria-label="Clear search" className="ds-search-clear"><X aria-hidden /></HeroSearchField.ClearButton>
       {!value && shortcut && <span className="ds-search-shortcut">{shortcut}</span>}
       </HeroSearchField.Group>
     </HeroSearchField>

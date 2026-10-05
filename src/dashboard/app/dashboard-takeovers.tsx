@@ -51,6 +51,7 @@ export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSection
               sections={settingsSections}
               workflowLabels={workflowLabels}
               section={route.settings ?? dataSection ?? ""}
+              searchTarget={route.settingsTarget}
               dataContent={dataContent}
               catalogQuery={route.catalog ?? ""}
               catalogView={route.catalogView ?? DEFAULT_CATALOG_VIEW}
@@ -59,7 +60,7 @@ export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSection
               actorId={boot.actor.id}
               descriptorFingerprint={boot.descriptorHash}
               preflight={boot.preflight ?? []}
-              onSection={next => setRoute({ ...routeWithoutTakeovers(route), settings: next,
+              onSection={(next, settingsTarget) => setRoute({ ...routeWithoutTakeovers(route), settings: next, settingsTarget,
                 ...(next === "archive" ? { archive: ARCHIVE_INDEX } : next === "activity" ? { activity: "" } : next === "explorer" ? { explore: activeWorkflowId } : {}) })}
               onClose={() => closeTakeoverTo(SETTINGS_GEAR_ID, routeWithoutTakeovers(route))}
               onExitGuardChange={onSettingsExitGuardChange}

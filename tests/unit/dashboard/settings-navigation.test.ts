@@ -126,4 +126,19 @@ describe("canonical Settings navigation", () => {
     assert.ok([...page.querySelectorAll("button")].some(button => button.textContent?.includes("Try again")));
     assert.ok(!page.textContent?.includes("Reading settings authorities"), page.textContent ?? "");
   });
+
+  it("reports unavailable field search when the catalog read fails instead of claiming no matches", async () => {
+    const page = await mountFailedRead("keyboard");
+    const search = page.querySelector<HTMLInputElement>('input[aria-label="Search settings"]');
+    assert.ok(search);
+    await act(async () => {
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      if (setter === undefined) throw new Error("input setter unavailable");
+      Reflect.apply(setter, search, ["backoff"]);
+      search.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    assert.ok(page.textContent?.includes("Settings fields unavailable"));
+    assert.ok(!page.textContent?.includes("No settings found"));
+  });
 });

@@ -1,6 +1,6 @@
 import { Form } from "@heroui/react";
 import type { EditableSettingsLeafWire, EditorValue } from "../../domain/dashboard/settings-editor.js";
-import { Banner, BodySection, Button, Disclosure, Field, FormGroup, PageHeading, Spinner, UnitField, dsText } from "../ds/ui.js";
+import { Banner, BodySection, Button, Field, FormGroup, PageHeading, Spinner, UnitField, dsText } from "../ds/ui.js";
 import { formatSetting, settingInput } from "./settings-draft-model.js";
 import type { useEditableSettings } from "./settings-editor-model.js";
 import { SettingsSaveFeedback } from "./settings-feedback.js";
@@ -9,6 +9,8 @@ import { settingNote, settingTitle } from "./settings-presentation.js";
 import { timeoutReadableValue, timeoutSetting } from "./settings-timeouts-model.js";
 import { SettingsValueControl } from "./settings-controls.js";
 import { SettingsRowActions } from "./ui-settings-records-row-actions.js";
+
+import { SettingsSearchDisclosure } from "./settings-search-disclosure.js";
 
 type Editor = ReturnType<typeof useEditableSettings>;
 
@@ -68,11 +70,11 @@ export function PerformanceSettingsSection({ editor }: { editor: Editor }) {
           {group.leaves.map(leaf => <PerformanceRow key={leaf.path} editor={editor} leaf={leaf} />)}
         </FormGroup></BodySection>)}
         {additional.length > 0 && <BodySection title="Additional limits"><FormGroup label="Additional limits">
-          {additional.map(group => <Disclosure key={group.title} variant="body" summary={group.title} description={ADDITIONAL_DESCRIPTIONS[group.title]}
+          {additional.map(group => <SettingsSearchDisclosure paths={group.leaves.map(leaf => leaf.path)} key={group.title} variant="body" summary={group.title} description={ADDITIONAL_DESCRIPTIONS[group.title]}
             defaultOpen={group.leaves.some(leaf => editor.errors[leaf.path] !== undefined || (editor.save.state === "conflict" && editor.draft[leaf.path] !== undefined))}
             className="settings-performance-disclosure" contentClassName="settings-performance-disclosure-content">
             {group.leaves.map(leaf => <PerformanceRow key={leaf.path} editor={editor} leaf={leaf} />)}
-          </Disclosure>)}
+          </SettingsSearchDisclosure>)}
         </FormGroup></BodySection>}
       </div>
     </Form>

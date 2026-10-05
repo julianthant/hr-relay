@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { Banner, BodySection, Button, Dialog, DialogContent, DialogFooter, Field, FormGroup, Input, PageHeading, SearchInput, Spinner, dsText } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import type { useEditableSettings } from "./settings-editor-model.js";
@@ -7,8 +7,12 @@ import { SettingsSaveFeedback } from "./settings-feedback.js";
 import { routePresentation } from "./settings-routes-model.js";
 import { ProtectedSettingField } from "./settings-protected-field.js";
 
+import { SettingsSearchTargetContext } from "./settings-search-target-model.js";
+
 export function RoutesSection({ editor }: { editor: ReturnType<typeof useEditableSettings> }) {
   const [query, setQuery] = useState("");
+  const { target, visit } = useContext(SettingsSearchTargetContext);
+  useEffect(() => { if (target !== undefined) setQuery(""); }, [target, visit]);
   const [removal, setRemoval] = useState<{ hasSaved: boolean; label: string } | null>(null);
   const removeTrigger = useRef<HTMLElement | null>(null);
   if (editor.editor.state === "loading") return <Spinner label="Reading routes" />;
@@ -38,7 +42,7 @@ export function RoutesSection({ editor }: { editor: ReturnType<typeof useEditabl
               {leaf.control.fields.map(field => {
                 const detail = presentation.fields[field.name];
                 if (detail === undefined) throw new Error("routes-section-field-missing");
-                return <Field key={field.name} orientation="horizontal" controlWidth="wide" label={detail.name} description={detail.description} required className="routes-page-field">
+                return <Field data-settings-path={`${leaf.path}.${field.name}`} key={field.name} orientation="horizontal" controlWidth="wide" label={detail.name} description={detail.description} required className="routes-page-field">
                   <Input type="url" required spellCheck={false} value={raw[field.name] ?? ""} disabled={editor.locked}
                     aria-invalid={editor.errors[leaf.path] !== undefined || undefined}
                     onChange={event => editor.update(leaf.path, { ...raw, [field.name]: event.target.value })} />

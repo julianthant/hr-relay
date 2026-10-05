@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { Plus, Server } from "lucide-react";
 import { Form } from "@heroui/react";
-import { BodySection, Badge, Banner, Button, Dialog, DialogContent, DialogFooter, Disclosure, Field, FormGroup, PageHeading, Panel, PanelBody, PanelHeader, ResultRow, SecretField, Spinner, dsIcon, dsText } from "../ds/ui.js";
+import { BodySection, Badge, Banner, Button, Dialog, DialogContent, DialogFooter, Field, FormGroup, PageHeading, Panel, PanelBody, PanelHeader, ResultRow, SecretField, Spinner, dsIcon, dsText } from "../ds/ui.js";
 import { SECRET_FAMILY_SPECS } from "../../domain/config/provider-family-specs.js";
 import { ProviderKeySlotSchema } from "../../domain/config/provider-keys.js";
 import { cn } from "../lib/utils.js";
@@ -10,6 +10,8 @@ import { SettingsSaveFeedback } from "./settings-feedback.js";
 import { ProtectedSettingField } from "./settings-protected-field.js";
 import { formatSetting } from "./settings-draft-model.js";
 import { groupDeploymentFacts, providerName, settingsFactLabel } from "./ui-settings-records-labels.js";
+
+import { SettingsSearchDisclosure } from "./settings-search-disclosure.js";
 
 type Editor = ReturnType<typeof useEditableSettings>;
 type Slot = (typeof ProviderKeySlotSchema.options)[number];
@@ -76,9 +78,9 @@ function CredentialsSection({ editor }: { editor: Editor }) {
           const slots = ProviderKeySlotSchema.options.filter(slot => slot === family.envPrefix || slot.startsWith(family.envPrefix) && /^\d+$/u.test(slot.slice(family.envPrefix.length)));
           const visible = slots.filter(slot => rawSaved[slot] !== undefined || active[slot] !== undefined || parent.has(slot) || provider.draft[slot] !== undefined);
           const savedCount = slots.filter(slot => rawSaved[slot] !== undefined).length;
-          return <Disclosure key={family.name} summary={providerName(family.name)} description={`Keys used for ${providerName(family.name)} requests.`}
+          return <SettingsSearchDisclosure paths={[`provider-keys.${family.name}`]} key={family.name} summary={providerName(family.name)} description={`Keys used for ${providerName(family.name)} requests.`}
             meta={<Badge tone="neutral">{`${String(savedCount)} ${savedCount === 1 ? "saved key" : "saved keys"}`}</Badge>} variant="body" defaultOpen={index === 0}
-            contentClassName="settings-provider-disclosure-content">
+            contentClassName="settings-provider-disclosure-content"><div data-settings-path={`provider-keys.${family.name}`}>
             {visible.map(slot => {
               const position = slot === family.envPrefix ? 1 : Number(slot.slice(family.envPrefix.length));
               const operation = provider.draft[slot];
@@ -103,7 +105,7 @@ function CredentialsSection({ editor }: { editor: Editor }) {
               icon={<Plus aria-hidden className={dsIcon.sm} />}
               disabled={providerLocked || slots.every(slot => rawSaved[slot] !== undefined || provider.draft[slot] !== undefined)}
               onClick={() => provider.add(family.envPrefix)}>Add key</Button></div>
-          </Disclosure>;
+          </div></SettingsSearchDisclosure>;
         })}
       </FormGroup>}
       {providerAvailable && (keys.restartRequired || keys.parentSlotNames.length > 0) && <p className={cn(dsText.meta, "settings-provider-note")}>

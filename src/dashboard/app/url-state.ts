@@ -111,6 +111,7 @@ export interface AppRouteState {
    * the whole difference between "a place" and "a layer".
    */
   readonly settings?: string;
+  readonly settingsTarget?: string;
 }
 
 /** Preserve the raw date identity so the date boundary can explain and recover invalid links. */
@@ -146,6 +147,7 @@ export function parseRoute(search: string): AppRouteState {
     archiveBrowseInvalid?: boolean;
     activity?: string;
     settings?: string;
+    settingsTarget?: string;
   } = { start: params.get("start") === "1" };
   if (day !== null) route.day = day;
   if (run !== null && run.length > 0) route.run = run;
@@ -188,7 +190,11 @@ export function parseRoute(search: string): AppRouteState {
   // first section), so presence is what opens the takeover. A section id this
   // build does not render is NOT dropped here — the page says the name it was
   // given rather than silently landing somewhere else.
-  if (settings !== null) route.settings = settings;
+  if (settings !== null) {
+    route.settings = settings;
+    const target = params.get("settingsTarget");
+    if (target !== null && target.length > 0 && target.length <= 200) route.settingsTarget = target;
+  }
   return route;
 }
 
@@ -221,7 +227,10 @@ export function routeToSearch(route: AppRouteState): string {
     }
   }
   if (route.activity !== undefined) params.set("activity", route.activity);
-  if (route.settings !== undefined) params.set("settings", route.settings);
+  if (route.settings !== undefined) {
+    params.set("settings", route.settings);
+    if (route.settingsTarget !== undefined) params.set("settingsTarget", route.settingsTarget);
+  }
   const query = params.toString();
   return query.length === 0 ? "" : `?${query}`;
 }
@@ -251,7 +260,7 @@ export function routeForCrossDateSearchResult(
     archiveDashboard: undefined,
     archiveWorkflow: undefined, archiveBrowse: undefined, archiveBrowseInvalid: undefined,
     activity: undefined,
-    settings: undefined,
+    settings: undefined, settingsTarget: undefined,
   };
 }
 
@@ -339,5 +348,5 @@ export function shellViewOf(takeover: ActiveTakeover): ShellViewSelection {
 export function routeWithoutTakeovers(route: AppRouteState): AppRouteState {
   return { ...route, intake: undefined, explore: undefined, archive: undefined, archiveView: undefined,
     archiveDashboard: undefined, archiveWorkflow: undefined, archiveBrowse: undefined, archiveBrowseInvalid: undefined,
-    activity: undefined, settings: undefined, catalog: undefined, catalogView: undefined };
+    activity: undefined, settings: undefined, settingsTarget: undefined, catalog: undefined, catalogView: undefined };
 }

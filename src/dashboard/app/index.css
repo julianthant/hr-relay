@@ -424,7 +424,8 @@
 .settings-provider-disclosure-content {
   border-top: var(--ds-border-w) solid var(--ds-border-subtle);
 }
-.settings-provider-disclosure-content > .ds-body-row + .ds-body-row {
+.settings-provider-disclosure-content > .ds-body-row + .ds-body-row,
+.settings-provider-disclosure-content > [data-settings-path] > .ds-body-row + .ds-body-row {
   border-top: var(--ds-border-w) solid var(--ds-border-subtle);
 }
 .settings-credentials-page .settings-provider-add {

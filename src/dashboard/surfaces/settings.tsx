@@ -4,7 +4,7 @@ import { SpreadsheetsSettings } from "./spreadsheets.js";
 import { EditableSettingsSectionIdSchema } from "../../domain/dashboard/settings-editor.js";
 import { SettingsAuthoritySection } from "./settings-authorities.js";
 import { Activity, Archive, BookMarked, Workflow, CircleAlert, ClipboardCheck, Database, FolderOpen, Gauge, Keyboard as KeyboardIcon, Link2, Monitor, Settings as SettingsIcon, SlidersHorizontal, Table2, ArrowLeft } from "lucide-react";
-import { useCallback,useEffect,useRef,useState,type ReactNode } from "react";
+import { useCallback,useEffect,useMemo,useRef,useState,type ReactNode } from "react";
 import type { FrontendBootstrapWire } from "../../domain/dashboard/bootstrap.js";
 import {
 SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID
@@ -22,6 +22,8 @@ import { SETTINGS_DATA_SECTION_IDS,SETTINGS_GEAR_ID,SETTINGS_KEYBOARD_SECTION_ID
 import { storageNeedsAttention,type StorageHealthSummary } from "./storage-settings-model.js";
 import { StorageSection } from "./storage-settings.js";
 import { UiCatalogSection } from "./ui-catalog.js";
+import { searchSettings, settingsSearchIndex, type SettingsSearchResult } from "./settings-search-model.js";
+import { SettingsSearchTargetContext, useSettingsSearchArrival } from "./settings-search-target-model.js";
 
 
 export type { SettingsSection,StorageHealthSummary };
@@ -106,6 +108,20 @@ function SectionButton({
   );
 }
 
+function SearchResultLink({ result, active, onSelect }: { result: SettingsSearchResult; active: boolean; onSelect: () => void }) {
+  const Icon = NAV_ICON[result.entry.icon];
+  const params = new URLSearchParams({ settings: result.entry.id });
+  if (result.target !== undefined) params.set("settingsTarget", result.target);
+  return <a href={`?${params.toString()}`} aria-current={active ? "location" : undefined}
+    className={cn("settings-search-result", dsFocus, active && "settings-search-result-active")}
+    onClick={event => {
+      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      event.preventDefault(); onSelect();
+    }}>
+    <Icon aria-hidden className={dsIcon.md} /><span><span>{result.label}</span><small>{result.context}</small></span>
+  </a>;
+}
+
 
 /**
  * The gear. A plain button now rather than a `DialogTrigger`: what it opens is
@@ -170,6 +186,7 @@ export function SettingsPage({
   sections,
   workflowLabels,
   section,
+  searchTarget,
   dataContent,
   appearance,
   catalogQuery,
@@ -192,6 +209,7 @@ export function SettingsPage({
   workflowLabels: ReadonlyMap<string, string>;
   /** the open section id — `""` is the page's own default, from `?settings=` */
   section: string;
+  searchTarget?: string;
   dataContent?: ReactNode;
   appearance?: ReactNode;
   /**
@@ -208,7 +226,7 @@ export function SettingsPage({
   actorId: string;
   descriptorFingerprint: string;
   preflight: NonNullable<FrontendBootstrapWire["preflight"]>;
-  onSection: (next: string) => void;
+  onSection: (next: string, target?: string) => void;
   /** Lets the shell route every Settings-unmounting control through this draft owner. */
   onClose: () => void;
   onExitGuardChange?: (guard: ((proceed: () => void) => void) | undefined) => void;
@@ -218,14 +236,25 @@ export function SettingsPage({
   const editor = useEditableSettings({ actorId, descriptorFingerprint });
   const [pendingExit, setPendingExit] = useState<(() => void) | undefined>(undefined);
   const exitFocusTarget = useRef<HTMLElement | null>(null);
-  const groups = buildSettingsNav(sections, editor.editor.state === "loaded" ? editor.editor.document : undefined);
+  const settingsDocument = editor.editor.state === "loaded" ? editor.editor.document : undefined;
+  const groups = useMemo(() => buildSettingsNav(sections, settingsDocument), [sections, settingsDocument]);
   const resolution = resolveSettingsSection(groups, section);
   const activeId = resolution.state === "open" ? resolution.entry.id : undefined;
   const isDataSection = activeId !== undefined && SETTINGS_DATA_SECTION_IDS.has(activeId);
   if (isDataSection && dataContent === undefined) throw new Error("SETTINGS_DATA_CONTENT_UNAVAILABLE");
   const [navQuery, setNavQuery] = useState("");
+  const [searchVisit, setSearchVisit] = useState(0);
+  const navSearch = useRef<HTMLInputElement>(null);
+  const searchResults = useRef<HTMLDivElement>(null);
+  const index = useMemo(() => settingsSearchIndex(groups, settingsDocument, editor.relocationEditor.read.state === "available"), [groups, settingsDocument, editor.relocationEditor.read.state]);
+  const results = useMemo(() => searchSettings(index, navQuery), [index, navQuery]);
+  const selectedResult = index.find(result => result.target === searchTarget && result.entry.id === activeId);
+  const target = selectedResult?.target;
+  const pathTargetLoading = activeId === "paths" && (searchTarget === "paths.stateRoot" || searchTarget === "paths.artifactRoot") && editor.relocationEditor.read.state === "loading";
+  const searchContext = useMemo(() => ({ target, visit: searchVisit }), [target, searchVisit]);
   const content = useRef<HTMLDivElement>(null);
-  useEffect(() => { if (content.current) content.current.scrollTop = 0; }, [activeId]);
+  useEffect(() => { if (content.current && searchTarget === undefined) content.current.scrollTop = 0; }, [activeId, searchTarget, searchVisit]);
+  useSettingsSearchArrival(content, target, searchVisit, activeId, selectedResult?.label);
   const settingsEntries = groups.find(group => group.id === "personal")?.entries ?? [];
   const activeSettingsEditorSection = activeId !== undefined && settingsEntries.some(entry => entry.id === activeId);
   const totalDirty = (workbookDraft.dirty ? 1 : 0) + editor.dirtyCount + editor.protectedEditor.dirtyCount + editor.providerEditor.dirtyCount + editor.relocationEditor.dirtyCount;
@@ -275,16 +304,31 @@ export function SettingsPage({
     <TakeoverFrame label="Settings" direction="row" animateFrame={false} className="settings-takeover">
       <nav aria-label="Settings sections" className="settings-panel-nav rail-scroll">
         <header className="settings-nav-header"><h2>Settings</h2><IconButton label="Back to dashboard" size="sm" icon={<ArrowLeft className={dsIcon.md} />} onClick={() => requestExit(onClose)} /></header>
-        <SearchInput aria-label="Search settings" placeholder="Search" value={navQuery} onChange={event => setNavQuery(event.target.value)} className="settings-nav-search" />
-        {groups.map(group => {
-          const entries = group.entries.filter(entry => `${entry.label} ${group.heading}`.toLowerCase().includes(navQuery.trim().toLowerCase()));
-          return entries.length > 0 && <div key={group.id} className="settings-nav-group"><span>{group.heading}</span>{entries.map(entry => <SectionButton key={entry.id} entry={entry} active={entry.id === activeId} onClick={() => onSection(entry.id)} />)}</div>;
-        })}
-        {navQuery.trim() && !groups.some(group => group.entries.some(entry => `${entry.label} ${group.heading}`.toLowerCase().includes(navQuery.trim().toLowerCase()))) && <p className="text-caption text-ui-muted px-3">No settings found</p>}
+        <SearchInput ref={navSearch} aria-label="Search settings" placeholder="Search" value={navQuery} onChange={event => setNavQuery(event.target.value)} onClear={() => setNavQuery("")} className="settings-nav-search"
+          aria-controls={navQuery.trim() ? "settings-search-results" : undefined}
+          onKeyDown={event => {
+            if (event.nativeEvent.isComposing) return;
+            if (event.key === "ArrowDown" && results.length > 0) { event.preventDefault(); searchResults.current?.querySelector<HTMLElement>("a")?.focus(); }
+            if (event.key === "Enter" && results[0]) { event.preventDefault(); setSearchVisit(visit => visit + 1); onSection(results[0].entry.id, results[0].target); }
+          }} />
+        {navQuery.trim() ? <div id="settings-search-results" ref={searchResults} className="settings-search-results" onKeyDown={event => {
+          if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+          const links = [...(searchResults.current?.querySelectorAll<HTMLElement>("a") ?? [])];
+          const current = links.indexOf(document.activeElement as HTMLElement);
+          if (current < 0) return;
+          event.preventDefault();
+          if (event.key === "ArrowUp" && current === 0) navSearch.current?.focus();
+          else links[Math.min(links.length - 1, current + (event.key === "ArrowDown" ? 1 : -1))]?.focus();
+        }}>
+          {results.length > 0 && <span className="sr-only" role="status">{plural(results.length, "setting")} found</span>}
+          {results.map(result => <SearchResultLink key={result.id} result={result} active={result.entry.id === activeId && result.target === searchTarget} onSelect={() => { setSearchVisit(visit => visit + 1); onSection(result.entry.id, result.target); }} />)}
+          {results.length === 0 && <p role="status" className="text-caption text-ui-muted px-3">{editor.editor.state === "loading" || editor.relocationEditor.read.state === "loading" ? "Reading settings…" : editor.editor.state === "failed" ? "Settings fields unavailable" : "No settings found"}</p>}
+        </div> : groups.map(group => <div key={group.id} className="settings-nav-group"><span>{group.heading}</span>{group.entries.map(entry => <SectionButton key={entry.id} entry={entry} active={entry.id === activeId} onClick={() => onSection(entry.id)} />)}</div>)}
       </nav>
 
-      <div id="dashboard-settings-content" tabIndex={-1} ref={content} className={cn("settings-content flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto px-[var(--ds-space-section)] py-[var(--ds-space-page)]", dsSurface.bodyPage)}>
-        <DsBodyScope className={cn("settings-tab-body flex flex-col gap-[var(--ds-space-page)]")}>
+      <div id="dashboard-settings-content" data-settings-target={target} tabIndex={-1} ref={content} className={cn("settings-content flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto px-[var(--ds-space-section)] py-[var(--ds-space-page)]", dsSurface.bodyPage)}>
+        <SettingsSearchTargetContext.Provider value={searchContext}><DsBodyScope className={cn("settings-tab-body flex flex-col gap-[var(--ds-space-page)]")}>
+        {searchTarget !== undefined && settingsDocument !== undefined && target === undefined && !pathTargetLoading && <Banner tone="warning" title="Setting unavailable">This setting is unavailable on the selected page.</Banner>}
         {editor.editor.state === "failed" && !activeSettingsEditorSection
           && !isDataSection
           && activeId !== "spreadsheets"
@@ -345,7 +389,7 @@ export function SettingsPage({
             </span>
           </section>
         )}
-        </DsBodyScope>
+        </DsBodyScope></SettingsSearchTargetContext.Provider>
       </div>
       <Dialog open={pendingExit !== undefined} onOpenChange={(open) => { if (!open) setPendingExit(undefined); }}>
         <DialogContent

@@ -101,7 +101,12 @@ right filters/count, 12px table gap and matching cell/header spacing. The Archiv
 workflow and outcome filters share one horizontal row at both supported desktop widths. Title-row action alignment is
 independent of descriptions. Archive omits Export workflow and places folder report counts in the
 toolbar; saved-run export and date filters retain their behavior. Wide tables scroll within the frame.
-Search sizes, theme and behavior remain unchanged. The centered Navbar field opens a centered search modal on click,
+Search sizes and theme remain unchanged. Search fields use a neutral focus border without a bright
+halo and a small clear icon only when nonempty. Settings search indexes page and field labels with
+parent-page context, without searching values or secrets. A selected field opens its page and any
+containing disclosure, centers within the scroll pane, and receives a brief fading cue; reduced motion
+uses immediate scrolling and a temporary static cue. The exact target survives reload/history in
+`settingsTarget`; repeated selection works and unavailable targets are explicit. Draft guards remain intact. The centered Navbar field opens a centered search modal on click,
 Enter/Space or `/`, with keyboard Command results, clear control and focus restoration. Status/export/
 choice menus use shadcn Base UI DropdownMenu; value controls use Base UI Select. RRSS HR and the date count are removed. The editable date and calendar sit above Logs, separate from Navbar history controls. The active Settings
 gear returns to Dashboard through the draft guard. Settings navigation has tighter 32px rows, 10px

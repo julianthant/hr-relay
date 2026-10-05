@@ -25,7 +25,7 @@ export function ProtectedSettingField({ editor, name, description, controlWidth 
   const canRemove = stored !== undefined || operation?.kind === "set";
   const visible = name === "ucpathUserId" || name === "timekeeperName";
   const label = name === "ucpathUserId" ? "UCPath username" : row.label;
-  return <Field label={label} description={description} error={credentials.errors[name]}
+  return <Field data-settings-path={`protected.${name}`} label={label} description={description} error={credentials.errors[name]}
     orientation="horizontal" controlWidth={controlWidth} className={className}
     disabled={disabled}>
     {visible ? <div className="ds-secret-field">

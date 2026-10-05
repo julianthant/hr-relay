@@ -2,6 +2,7 @@ import * as React from "react"
 import { Command as CommandPrimitive } from "cmdk"
 import { cn } from "../lib/utils.js"
 import { SearchField } from "@heroui/react"
+import { X } from "lucide-react"
 
 function Command({
   className,
@@ -32,7 +33,7 @@ function CommandInput({
       <SearchField.Group>
         <SearchField.SearchIcon />
         <CommandPrimitive.Input asChild {...props}><SearchField.Input aria-expanded={props['aria-expanded']} {...('aria-activedescendant' in props ? { 'aria-activedescendant': props['aria-activedescendant'] } : {})} /></CommandPrimitive.Input>
-        {onClear && <SearchField.ClearButton aria-label="Clear search" className="min-h-6 min-w-6" />}
+        <SearchField.ClearButton aria-label="Clear search" className="ds-search-clear"><X aria-hidden /></SearchField.ClearButton>
         {!props.value && shortcut && <span className="ds-search-shortcut">{shortcut}</span>}
       </SearchField.Group>
     </SearchField>
