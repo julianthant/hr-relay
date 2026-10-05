@@ -12,7 +12,7 @@ function NotificationRow({ item, onControl, onOpen }: { item: NotificationItem; 
   const urgent = item.tone === "danger" || item.tone === "warning";
   return <li className="notification-row group rounded-lg px-3 py-3 hover:bg-ui-hover focus-within:bg-ui-hover">
     <div className="flex items-start gap-2"><span aria-hidden className={cn("mt-1.5 size-1.5 shrink-0 rounded-full", item.tone === "danger" ? "bg-ui-danger" : item.tone === "warning" ? "bg-ui-warning" : !item.read ? "bg-ui-info" : "bg-ui-stroke")} />
-      <div className="min-w-0 flex-1"><button type="button" className={cn("block w-full truncate text-left text-body text-ui-primary", dsFocus)} onClick={() => onOpen(item)}>{item.subject}</button>
+      <div className="min-w-0 flex-1"><button type="button" className={cn("block min-h-6 w-full truncate text-left text-body text-ui-primary", dsFocus)} onClick={() => onOpen(item)}>{item.subject}</button>
         <p className={cn("mb-0 mt-1 text-caption", urgent ? item.tone === "danger" ? "text-ui-danger" : "text-ui-warning" : "text-ui-secondary")}>{item.title}</p>
         <p className="mb-0 mt-1 line-clamp-2 text-caption text-ui-muted">{item.detail}</p>
         <div className="mt-2 flex items-center gap-2 text-caption text-ui-muted"><span className="truncate">{item.workflow}</span><span aria-hidden>·</span><span className="shrink-0">{item.age}</span></div>
@@ -38,7 +38,7 @@ export function NotificationsView({ state, filter, onFilter, onControl, onOpen, 
   const unread = state.state === "ready" ? state.items.filter(item => !item.read) : [];
   return <section ref={surface} role="region" aria-label="Notifications" className="notification-rail ui-theme-scope flex min-h-0 flex-1 flex-col overflow-hidden font-ui text-ui-primary">
     <div className="flex items-center justify-between gap-2 px-4 pb-3"><span className="text-caption text-ui-muted">Notifications{view.unread !== undefined && ` · ${view.unread} unread`}</span>
-      <button type="button" disabled={!unread.length} className={cn("text-caption text-ui-secondary hover:text-ui-primary disabled:opacity-40", dsFocus)} onClick={() => unread.forEach(item => control(item.id, "read"))}>Read all</button>
+      <button type="button" disabled={!unread.length} className={cn("min-h-6 text-caption text-ui-secondary hover:text-ui-primary disabled:opacity-40", dsFocus)} onClick={() => unread.forEach(item => control(item.id, "read"))}>Read all</button>
     </div>
     <Tabs selectedKey={filter === "unread" ? "unread" : "all"} onSelectionChange={key => onFilter(key as NotificationFilter)} variant="secondary" className="notification-tabs">
       <div className="notification-filter-bar">

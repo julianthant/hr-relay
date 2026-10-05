@@ -127,7 +127,7 @@ function SettingsPreflightReport({ preflight, onRerun, protectedSettings, workfl
   const runtimeChecks = displayed?.checks.filter(check => check.id !== "fiscal.current" && !check.id.startsWith("secrets.")) ?? [];
   const attentionCount = displayed?.checks.filter(check => check.verdict !== "pass").length ?? 0;
   return <section className="diagnostics-page ds-body-stack settings-preflight" aria-label="Preflight" aria-live="polite">
-    <PageHeading as="h2" title="Preflight" description="Readiness for the dashboard and its workflows." className="settings-heading-actions" actions={<>
+    <PageHeading title="Preflight" description="Readiness for the dashboard and its workflows." className="settings-heading-actions" actions={<>
         <label className="sr-only" htmlFor="settings-preflight-scope">Check readiness for</label>
         <Select id="settings-preflight-scope" className="diagnostic-scope-select" value={scope.selected} onChange={event => scope.select(event.target.value)}
           aria-invalid={scope.state === "unavailable" || undefined}>

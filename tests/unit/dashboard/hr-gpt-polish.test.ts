@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
 import Excel from 'exceljs';
 import { DEFAULT_SHORTCUT_PREFERENCES, shortcutActionForEvent, shortcutChord, validateShortcutPreferences } from '../../../src/dashboard/surfaces/keyboard-preferences-model.js';
-import { estimatedSavedMinutes } from '../../../src/dashboard/surfaces/activity/activity-effort-model.js';
+import { estimatedSavedMinutes, successfulRunMinutes } from '../../../src/dashboard/surfaces/activity/activity-effort-model.js';
+import { activitySample, ACTIVITY_SAMPLE_RANGE } from '../../../src/dashboard/surfaces/activity/activity-fixture.js';
 import { toggleQueueFilter } from '../../../src/dashboard/surfaces/queue-filter-model.js';
 import { cellText, editSpreadsheetCell, importSpreadsheet, newEditableWorkbook, sortSpreadsheet, spreadsheetColor, spreadsheetCsv, spreadsheetXlsx } from '../../../src/dashboard/surfaces/spreadsheet-editor-model.js';
 import { buildSettingsNav, resolveSettingsSection } from '../../../src/dashboard/surfaces/settings-model.js';
@@ -21,10 +22,30 @@ describe('HR GPT presentation models', () => {
     assert.deepEqual(toggleQueueFilter(['running'], 'running'), ['all']);
     assert.deepEqual(toggleQueueFilter(['failed', 'running'], 'all'), ['all']);
   });
-  it('estimates only from explicit manual and assisted baselines', () => {
-    assert.equal(estimatedSavedMinutes(14, { manual: '12', assisted: '2' }), 140);
-    assert.equal(estimatedSavedMinutes(0, { manual: '12', assisted: '2' }), 0);
-    for (const baseline of [{ manual: '', assisted: '2' }, { manual: '12', assisted: '' }, { manual: '1', assisted: '2' }, { manual: '-1', assisted: '0' }, { manual: 'NaN', assisted: '0' }]) assert.equal(estimatedSavedMinutes(14, baseline), null);
+  it('compares manual time with measured successful durations without extrapolating missing runs', () => {
+    const timing = { totalSeconds: 1680, measured: 14, unmeasured: 3 };
+    assert.equal(successfulRunMinutes(timing), 2);
+    assert.equal(estimatedSavedMinutes('12', timing), 140);
+    assert.equal(estimatedSavedMinutes('1', timing), -14);
+    assert.equal(estimatedSavedMinutes('0', timing), -28);
+    assert.equal(estimatedSavedMinutes('12', { totalSeconds: 0, measured: 1, unmeasured: 0 }), 12);
+    for (const baseline of ['', ' ', '-1', 'NaN', 'Infinity']) assert.equal(estimatedSavedMinutes(baseline, timing), null);
+    for (const missing of [{ totalSeconds: null, measured: 0, unmeasured: 3 }, { totalSeconds: 0, measured: 0, unmeasured: 0 },
+      { ...timing, totalSeconds: -1 }, { ...timing, totalSeconds: Infinity }, { ...timing, measured: 1.5 }, { ...timing, unmeasured: -1 }]) {
+      assert.equal(successfulRunMinutes(missing), null);
+      assert.equal(estimatedSavedMinutes('12', missing), null);
+    }
+  });
+  it('supplies per-workflow timings for successes only, preserving unavailable measurements', () => {
+    const full = activitySample(ACTIVITY_SAMPLE_RANGE, 'normal');
+    assert.equal(full.state, 'loaded'); if (full.state !== 'loaded') return;
+    assert.deepEqual(full.report.workflows[0].successfulTiming, { totalSeconds: 3303, measured: 24, unmeasured: 0 });
+    assert.deepEqual(full.report.workflows[1].successfulTiming, { totalSeconds: 1340, measured: 10, unmeasured: 4 });
+    const partial = activitySample(ACTIVITY_SAMPLE_RANGE, 'incomplete');
+    assert.equal(partial.state, 'loaded'); if (partial.state !== 'loaded') return;
+    assert.deepEqual(partial.report.workflows[0].successfulTiming, { totalSeconds: null, measured: 0, unmeasured: 24 });
+    const empty = activitySample(ACTIVITY_SAMPLE_RANGE, 'empty');
+    assert.equal(empty.state, 'loaded'); if (empty.state === 'loaded') assert.equal(empty.report.workflows.length, 0);
   });
   it('groups only Attention mode and shares flat sorting with keyboard navigation', () => {
     const rows = FIXTURE_DAY_WIRE.queueSurfaces.filter(row => row.surfaceKind !== 'member');

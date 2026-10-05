@@ -238,9 +238,7 @@ const iconButtonVariants = cva(
         ),
       },
       size: {
-        // 20px — the chip height. For a control that sits ON a chip line and
-        // must not grow it; anywhere else, start at `sm`.
-        xs: "size-[var(--ds-h-xs)]",
+        xs: "size-6",
         sm: "size-[var(--ds-h-sm)]",
         md: "size-[var(--ds-h-md)]",
         lg: "size-[var(--ds-h-lg)]",
@@ -488,7 +486,7 @@ export function Chip({
         variant="ghost"
         className={cn(
           shell,
-          "cursor-pointer",
+          "min-h-6 cursor-pointer",
           dsFocus,
           dsMotion.fast,
           "hover:bg-[var(--ds-surface-3)]",

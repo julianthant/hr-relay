@@ -32,7 +32,7 @@ function CommandInput({
       <SearchField.Group>
         <SearchField.SearchIcon />
         <CommandPrimitive.Input asChild {...props}><SearchField.Input aria-expanded={props['aria-expanded']} {...('aria-activedescendant' in props ? { 'aria-activedescendant': props['aria-activedescendant'] } : {})} /></CommandPrimitive.Input>
-        {onClear && <SearchField.ClearButton aria-label="Clear search" />}
+        {onClear && <SearchField.ClearButton aria-label="Clear search" className="min-h-6 min-w-6" />}
         {!props.value && shortcut && <span className="ds-search-shortcut">{shortcut}</span>}
       </SearchField.Group>
     </SearchField>

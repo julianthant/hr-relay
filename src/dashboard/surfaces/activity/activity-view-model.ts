@@ -9,6 +9,13 @@ export interface ActivityWorkflow {
   readonly outstanding: number;
   readonly failed: number;
   readonly total: number;
+  readonly successfulTiming: SuccessfulRunTiming;
+}
+
+export interface SuccessfulRunTiming {
+  readonly totalSeconds: number | null;
+  readonly measured: number;
+  readonly unmeasured: number;
 }
 
 export interface ActivitySummary {

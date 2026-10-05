@@ -10,6 +10,6 @@ import { cn } from "../lib/utils.js";
 export const ShadcnButton = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLButtonElement> & { asChild?: boolean }>(
   function ShadcnButton({ asChild = false, className, type = "button", ...props }, ref) {
     const Component = asChild ? Slot : "button";
-    return <Component ref={ref} type={asChild ? undefined : type} data-slot="button" className={cn(className)} {...props} />;
+    return <Component ref={ref} type={asChild ? undefined : type} data-slot="button" className={cn("min-h-6 min-w-6", className)} {...props} />;
   },
 );

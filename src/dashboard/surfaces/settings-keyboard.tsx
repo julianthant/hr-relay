@@ -20,7 +20,7 @@ export function KeyboardSection() {
     catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); }
   };
   return <section className="settings-reference-page settings-shortcuts">
-    <PageHeading as="h2" title="Keyboard shortcuts" />
+    <PageHeading title="Keyboard shortcuts" />
     <SearchInput aria-label="Search shortcuts" placeholder="Search shortcuts" value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} />
     <div className="shortcut-reference-card" aria-label="Keyboard bindings">
       {actions.map(action => <div className="shortcut-reference-row" key={action.id}><div className="shortcut-reference-copy"><p>{action.title}</p><span>{action.description}</span></div>

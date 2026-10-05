@@ -51,7 +51,11 @@ export function activitySample(range: ActivityDateRange, scenario: ActivitySampl
       { id: "sample-person-lookup", label: "Person lookup", version: "2.0" },
     ].flatMap(workflow => {
       const group = rows.filter(row => row.workflow === workflow.id);
+      const successful = group.filter(row => row.status === "completed");
+      const timings = scenario === "incomplete" ? [] : successful.flatMap(row => row.duration === null ? [] : [row.duration]);
       return group.length ? [{ ...workflow, total: group.length, completed: group.filter(row => row.status === "completed").length,
+        successfulTiming: { totalSeconds: timings.length ? timings.reduce((total, seconds) => total + seconds, 0) : successful.length ? null : 0,
+          measured: timings.length, unmeasured: successful.length - timings.length },
         failed: group.filter(row => row.status === "failed").length, outstanding: group.filter(row => row.status === "running" || row.status === "waiting").length }] : [];
     }),
     transactions: [

@@ -283,7 +283,7 @@ export function SettingsPage({
         {navQuery.trim() && !groups.some(group => group.entries.some(entry => `${entry.label} ${group.heading}`.toLowerCase().includes(navQuery.trim().toLowerCase()))) && <p className="text-caption text-ui-muted px-3">No settings found</p>}
       </nav>
 
-      <div ref={content} className={cn("settings-content flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto px-[var(--ds-space-section)] py-[var(--ds-space-page)]", dsSurface.bodyPage)}>
+      <div id="dashboard-settings-content" tabIndex={-1} ref={content} className={cn("settings-content flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto px-[var(--ds-space-section)] py-[var(--ds-space-page)]", dsSurface.bodyPage)}>
         <DsBodyScope className={cn("settings-tab-body flex flex-col gap-[var(--ds-space-page)]")}>
         {editor.editor.state === "failed" && !activeSettingsEditorSection
           && !isDataSection

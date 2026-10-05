@@ -159,7 +159,7 @@ export function StorageSection({ storage }: { storage: StorageHealthSummary }) {
     );
   };
   return <section className="diagnostics-page ds-body-stack" aria-label="Storage checks">
-    <PageHeading as="h2" title="Storage checks" description="Data store health, diagnostics, and recovery." className="settings-heading-actions" actions={
+    <PageHeading title="Storage checks" description="Data store health, diagnostics, and recovery." className="settings-heading-actions" actions={
       <Button onClick={runDoctor} disabled={doctor.state === "running" || doctor.state === "reading"} aria-label="Run the read-only storage doctor">
         {doctor.state === "running" ? "Running checks…" : doctor.state === "reading" ? "Loading last check…" : report === undefined ? "Run storage checks" : "Run checks again"}
       </Button>

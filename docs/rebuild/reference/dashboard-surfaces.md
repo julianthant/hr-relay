@@ -7476,10 +7476,16 @@ route state and date boundaries. The unmounted runtime export implementation rem
 Activity dates stay visible for every period, with the same typography and control exterior as the
 period control. Presets synchronize both dates; manual endpoint edits select Custom, including incomplete
 drafts that retain the applied report range. Time saved matches Activity's table typography, spacing and
-alternating rows. Compact minute inputs sit beside per-workflow savings; the table footer shows covered
-runs and workflows, manual versus assisted totals, the estimated total and percentage saved.
-Missing or invalid baselines remain unestimated;
-invalid values are announced and excluded rather than becoming plausible savings.
+alternating rows. Only manual minutes are editable. HR GPT min/run is the arithmetic mean of elapsed
+durations for successful runs in the selected period. Per-workflow successful timing totals and measured/
+unmeasured counts are explicit producer inputs; failed and unfinished runs never enter this average.
+Savings compare the manual baseline with the total elapsed minutes for the same measured successful
+population, without extrapolating to untimed runs. The footer shows covered successful runs and workflows,
+manual versus automatic totals and the estimated difference. Longer automatic durations show a time
+increase; they are not invalid baselines. Missing timing stays Unavailable. Negative/nonfinite manual
+values are announced and excluded. The two explanatory paragraphs are retired by the 2026-10-04
+operator amendment. Elapsed time is not labelled hands-on time; live timing and durable manual-baseline
+storage remain wiring obligations.
 
 Local queue selection mode and Select menu items are retired. Archive applies
 immediately; Delete asks first and cancellation retains its served confirmation. Member check marks

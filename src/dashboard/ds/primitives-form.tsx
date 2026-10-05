@@ -568,7 +568,7 @@ export const SearchInput = forwardRef<
         {...field}
         {...props}
       />
-      {onClear && <HeroSearchField.ClearButton aria-label="Clear search" />}
+      {onClear && <HeroSearchField.ClearButton aria-label="Clear search" className="min-h-6 min-w-6" />}
       {!value && shortcut && <span className="ds-search-shortcut">{shortcut}</span>}
       </HeroSearchField.Group>
     </HeroSearchField>

@@ -284,7 +284,7 @@ export function UiCatalogSection({
 
   return (
     <div className="settings-reference-page settings-reference-catalog">
-      <PageHeading as="h2" title="UI catalog" description="Reference material for workflow pages and controls." />
+      <PageHeading title="UI catalog" description="Reference material for workflow pages and controls." />
       <Tabs value={view} onValueChange={(next) => {
         const parsed = parseCatalogView(next);
         if (parsed === undefined) throw new Error(`catalog tab ${next} is not a catalog view`);

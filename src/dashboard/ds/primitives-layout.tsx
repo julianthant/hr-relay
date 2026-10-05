@@ -112,7 +112,7 @@ export function PageHeading({
   title,
   description,
   actions,
-  actionAlignment = "content",
+  actionAlignment = "title",
   as: Heading = "h1",
   className,
 }: {

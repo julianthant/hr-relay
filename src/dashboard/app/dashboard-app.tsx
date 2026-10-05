@@ -5,7 +5,7 @@ import { resolveDateSelection, routeForStartedRun } from "./date-state-model.js"
 import { RunLaunchHost } from "./run-launch.js";
 import { launchWorkflows, useRunLaunch } from "./run-launch-model.js";
 import { PanelRight } from "lucide-react";
-import { useCallback,useMemo,useRef,useState,type CSSProperties,type ReactNode } from "react";
+import { useCallback,useEffect,useMemo,useRef,useState,type CSSProperties,type ReactNode } from "react";
 import { WorkflowBatchCommandRequestSchema } from "../../domain/commands.js";
 import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
 import {
@@ -54,7 +54,7 @@ import { RenameRunDialog,type PendingRename } from "../surfaces/run-identity.js"
 import { RunStartButton } from "../surfaces/run-start.js";
 import { SessionPanel } from "../surfaces/session-panel.js";
 import {
-DASHBOARD_MAIN_REGION_ID
+DASHBOARD_MAIN_REGION_ID, buildSettingsNav, resolveSettingsSection
 } from "../surfaces/settings-model.js";
 import {parseWorkflows,useSelectedWorkflow,type StatusBucket } from "../surfaces/shell-model.js";
 import { WorkflowMockLog, WorkflowMockQueue } from "../surfaces/workflow-mock-queue.js";
@@ -973,6 +973,12 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
   ), [filter, scopedStatusCounts, onFilter]);
 
   const settingsOpen = ["settings", "archive", "activity", "explore"].includes(takeover);
+  const settingsResolution = resolveSettingsSection(buildSettingsNav(settingsSections), route.settings ?? "");
+  const pageName = takeover === "settings" ? settingsResolution.state === "open" ? settingsResolution.entry.label : "Settings"
+    : takeover === "archive" ? "Archive" : takeover === "activity" ? "Activity" : takeover === "explore" ? "Explorer"
+    : takeover === "intake" ? "Edit Data" : route.start ? "Run" : railPreview ? mockWorkflow(railPreview).label
+    : workflows.find(workflow => workflow.id === activeWorkflowId)?.label ?? "Dashboard";
+  useEffect(() => { document.title = `${pageName} — HR GPT`; }, [pageName]);
   const previewFlow = railPreview ? mockWorkflow(railPreview) : undefined;
   const railRows = mockRuns.filter(run => run.workflowId === railPreview);
   const railRow = railRows.find(run => run.id === railRun);
@@ -1000,6 +1006,12 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
       className="dashboard-shell relative flex min-h-0 min-w-0 flex-1 flex-col"
       data-settings-takeover={["settings", "archive", "activity", "explore"].includes(takeover)}
     >
+      <a href={takeover === "settings" ? "#dashboard-settings-content" : `#${DASHBOARD_MAIN_REGION_ID}`} onClick={event => {
+        event.preventDefault();
+        const target = document.getElementById(takeover === "settings" ? "dashboard-settings-content" : DASHBOARD_MAIN_REGION_ID);
+        if (!target) throw new Error("DASHBOARD_SKIP_TARGET_UNAVAILABLE");
+        target.focus({ preventScroll: true });
+      }} className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[1000] focus:rounded-lg focus:bg-ui-panel focus:px-4 focus:py-2 focus:text-ui-primary focus:outline-2 focus:outline-ui-info">Skip to content</a>
       <div className="dashboard-workspace relative flex min-h-0 min-w-0 flex-1 flex-col">
       <WorkspaceRail workflows={workflows} counts={dayWire?.workflowCounts} active={activeWorkflowId} preview={railPreview}
         onSelect={onRailSelect} onPreview={onRailPreview} settingsOpen={settingsOpen} />
