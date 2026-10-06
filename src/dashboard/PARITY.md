@@ -489,3 +489,17 @@ frame. Predicate, workflow, page and run coordinates restore through reload and 
 changes clear the drilldown in one history entry; Back restores both. Empty, unavailable and missing
 timing remain explicit, and mock scenario selection survives navigation. Backend reporting remains
 unwired. Evidence is `headers-activity-20261005`; full frozen phase-exit gates remain deferred.
+
+## Shared page breadcrumbs amendment (2026-10-05)
+
+The operator chose breadcrumbs as the consistent page-return design. `PageBreadcrumbs` in the
+public design-system barrel replaces Analytics Back links, consolidates Archive and spreadsheet
+trails, and replaces the Settings rail's Back arrow with Dashboard → Settings. Child-page trails
+precede their heading. Available parents are keyboard controls with the existing target/focus floor;
+the current page is passive `aria-current="page"` text. Context-only Archive version labels remain
+noninteractive. Long labels wrap without document overflow.
+Parent navigation uses the existing route callbacks. Exact Analytics metric/workflow/page, Archive
+folder/search, native history, draft-exit confirmations and opener focus are preserved. Wizard Back
+controls navigate steps; modal dismissal is separate from page hierarchy. Runtime transport remains
+unwired. Evidence is `breadcrumbs-20261005`. Workspace test locators follow the new Settings control;
+frozen references are not changed and full phase-exit gates remain deferred.

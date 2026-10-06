@@ -7822,12 +7822,25 @@ untimed successes are excluded from that list and remain included in the complet
 a row opens its exact logs with the same compact header. Report and row facts share one local producer
 and one presentation seam; backend aggregation and transport remain unwired.
 Metric, workflow, page and run coordinates belong to the existing bounded history owner. Reload,
-Back/Forward and Back to runs preserve exact selection/page. Changing the period clears the drilldown
+Back/Forward and breadcrumb parents preserve exact selection/page. Changing the period clears the drilldown
 atomically; Back restores the previous range and selection. Empty lists, unknown destinations and
 missing measurements remain explicit. Review fixtures retain their selected scenario across history
 and reload. The amendment adds no processing/wait breakdown, extra summary cards or automatic approval.
 Evidence is retained in `headers-activity-20261005`; frozen parity and full phase-exit gates remain
 with 3.1.19.
+
+The subsequent 2026-10-05 navigation amendment standardizes page hierarchy on the shared
+`PageBreadcrumbs` component from the public design-system barrel. Analytics, Archive and spreadsheet
+children place the trail before the page heading. The Settings rail uses Dashboard → Settings instead
+of a separate Back arrow. Available parents are keyboard-reachable controls; the current destination
+is passive text with `aria-current="page"`. Archive version labels without a separate destination remain
+context, rather than inventing a route. Long labels wrap within the available width. Standalone page
+Back controls are removed; wizard Back controls remain step navigation, and modal dismissal remains
+separate from page hierarchy. Parent controls invoke the existing route owners, preserving exact
+Analytics metric/workflow/page selection, Archive folder/search scope and native Back/Forward history.
+Settings and spreadsheet draft-exit guards and focus return retain their existing authority.
+Backend contracts and transport are unchanged. Evidence is retained in `breadcrumbs-20261005`;
+frozen visual/a11y references and full phase-exit gates remain with 3.1.19.
 
 Local queue selection mode and Select menu items are retired. Archive applies
 immediately; Delete asks first and cancellation retains its served confirmation. Member check marks

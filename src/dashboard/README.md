@@ -52,6 +52,11 @@ modal/wizard steps and disclosure coordinates. The provider delegates every writ
 same history owner. Same-event updates are combined into one history entry. Typing search
 terms replaces the current entry; changing a page, selection or stage pushes an entry.
 
+Use `PageBreadcrumbs` from `ds/ui.tsx` for page hierarchy. Place child-page trails before the
+heading; pass the existing route callback for each available parent. The last item is passive
+current-page text. Settings uses Dashboard → Settings in the rail. Keep wizard Back controls
+for steps and modal dismissal for closing layers; do not add a second page-return button.
+
 Private form values, PDF bytes, OCR edits, credentials, pending commands and read receipts
 are not serialized into URLs. Mock drafts survive history within the running page;
 reloading does not manufacture a private draft or a created run. Transient menus, hover,
