@@ -455,3 +455,21 @@ The ten-example proposal webpage is separate from the application and introduces
 Evidence is retained under `frontend-audit-20261005`. Desktop Settings/workflow and functional checks,
 focused tests, lint and build do not replace full frozen-reference/coverage/phase-exit acceptance.
 Inherited broad test and type-contract failures remain explicit; no references were refrozen.
+
+## Frontend reliability amendment (2026-10-05)
+
+The operator authorized six frontend audit priorities. Spreadsheets keeps its approved frame while
+adding Undo/Redo and column paging; at most 50 data rows and 20 columns mount. Import/export runs in
+workers within existing size limits. History preserves typed values and supported fills, remains
+workbook-scoped and local to the mounted editor, and respects unrelated text-input Undo.
+Real uploads require a per-sheet column review before registration. Selected columns receive editable
+labels; excluded columns and sheets are removed from the registered copy. Import review uses bounded
+20-column pages and native history coordinates while pending files and choices stay in memory.
+Worker mocks display pending, confirmed, refused and uncertain outcomes; recovery checks the original
+command and duplicate activation is blocked. Settings keeps save feedback visible, with restart-required
+derived from readback. Activity timing uses unique completed root runs and explicit timing coverage.
+Queue grouping is memoized across clock ticks. Current token references, command guards, provider
+field inventory and attempt-menu focus checks follow the current source/markup without dropping
+assertions. Backend wiring, richer headers and Activity drilldowns are outside this batch. Focused
+evidence belongs to `frontend-reliability-20261005`; inherited broad contract failures and full frozen
+phase-exit gates remain explicit. No references were refrozen.

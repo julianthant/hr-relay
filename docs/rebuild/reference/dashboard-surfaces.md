@@ -7774,6 +7774,39 @@ remains a wiring obligation. The Preflight summary shows Last checked followed b
 local date and time, including retained previous results. Readiness freshness and rerun authority are
 unchanged. Focused evidence for these amendments is retained in `workflow-duration-20261005`.
 
+The 2026-10-05 frontend reliability amendment implements the operator's six audit priorities only
+in browser code and fictional producers. Spreadsheet parsing and export run in disposable workers;
+the existing 20 MB and 100,000-cell limits remain. The viewer mounts at most 50 data rows and 20
+columns, with full-sheet search and native-history column paging. Indexed rows avoid repeated position
+scans; queue grouping is memoized independently of clock ticks. This does not claim a queue DOM bound
+or a complete memory profile.
+Before registration, real CSV/XLSX uploads open a per-sheet column review with at most 20 column
+controls mounted. The operator selects columns and edits labels; blank or duplicate selected labels
+and an entirely empty selection block confirmation. Confirmation physically projects every retained
+row onto those columns and omits sheets with no selected columns. Excluded data is absent from the
+registered copy and exports, while selected types and fills remain intact. Closing and reopening
+retains the pending review; cancellation creates no library entry. Sheet/page/view coordinates use
+the existing history owner, while pending files, labels and choices stay in Settings memory.
+Workbook-scoped Undo/Redo retains up to 50 immutable versions, preserving supported value types,
+fills, row identities and other sheets. Cell typing coalesces per focus session; sorting, visibility
+and structural edits are reversible. A new edit clears Redo. Export establishes the clean-copy
+reference only for a complete copy. Unrelated text inputs retain native text Undo. History remains
+local to the mounted editor; private values and history do not enter URLs or browser storage.
+Worker controls use a replaceable frontend command port with pending, confirmed, refused and
+uncertain outcomes. Only a matching confirmed command changes the fictional worker state. Duplicate
+activation is blocked; uncertain recovery checks the original command identity without resubmission.
+Normal, refused and uncertain fixtures exercise this lifecycle without worker-service transport.
+Settings keeps Saving, Saved, refusal and uncertainty feedback visible until a subsequent edit or
+outcome changes it. Restart-required is shown only when the readback distinguishes saved and active
+revisions; existing exact-attempt recovery is unchanged.
+Successful timing is computed from unique completed root-run records, excluding delegated children,
+failed and unfinished runs. Missing measurements and measured zero remain distinct; measured plus
+unmeasured coverage must equal the completed-run count. No server aggregate or backend authority is
+changed. Current presentation tests repair moved-path and selector contracts without dropping their
+data, identity, focus or privacy assertions. Inherited obsolete contracts and full phase-exit gates
+remain explicit. Evidence is retained in `frontend-reliability-20261005`; richer run headers and
+Activity drilldowns remain proposals outside this batch.
+
 Local queue selection mode and Select menu items are retired. Archive applies
 immediately; Delete asks first and cancellation retains its served confirmation. Member check marks
 are retired; the final log step has no divider. Command toasts show subject and clock without the local
