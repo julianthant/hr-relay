@@ -540,7 +540,7 @@ full diagnostic failures and the frozen visual/coverage/phase-exit gates remain 
 
 ## Frontend polish amendment (2026-10-05)
 
-The operator restored Back to dashboard in the Settings rail; its guarded exit and focus return
+The operator restored the Settings heading on the left and a separate back-arrow button on the right of the rail; its guarded exit and focus return
 remain intact. Child pages keep shared breadcrumbs. Archived reports replace the section sidebar
 with the existing underline tabs for Workflow details, Logs, Saved settings and Retained files.
 Both mounted mock reports and retained runtime reports use the same presentation. Section changes
@@ -555,8 +555,9 @@ column visibility, export and draft-exit confirmations remain functional.
 
 Run headings omit workflow, short ID, attempt and elapsed metadata. The subject, status and
 contextual evidence shortcut remain. Review decision headings use the body-sized semibold card
-title token. Rerun replaces the tall Source rail with a compact summary above its stages, freeing
-the form's full width. PDF inputs show selected retained files, an explicit Choose PDFs action
+title token. The final operator amendment removes Source presentation entirely from rerun while
+preserving the full-width form and original-source lineage. Preview stage routing remains owned by
+the local form, including when switching from served rerun or restoring a direct URL. PDF inputs show selected retained files, an explicit Choose PDFs action
 and individual remove controls; roster selection follows below. Reading locks and PDF validation
-remain visible. Evidence is `frontend-polish-20261005`; backend wiring and frozen phase-exit
+remain visible. Evidence is `frontend-polish-20261005` and `frontend-final-20261005`; backend wiring and frozen phase-exit
 gates remain deferred.

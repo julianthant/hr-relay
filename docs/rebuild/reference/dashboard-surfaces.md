@@ -7885,7 +7885,8 @@ changing default search consumers. Backend reporting is unchanged. Evidence is
 `analytics-filter-20261005`; frozen phase-exit gates remain deferred to 3.1.19.
 
 
-The 2026-10-05 frontend-polish amendment restores the guarded Settings Back to dashboard control
+The 2026-10-05 frontend-polish amendment restores the Settings rail heading on the left and a separate
+small back-arrow button on the right, with Back to dashboard as the button's accessible name,
 while retaining child-page breadcrumbs. Archive report sections use the existing underline tabs
 instead of a sidebar, including retained runtime reports. Section changes push discrete entries
 through the existing route owner; reload and Back/Forward restore each tab. Exact logs and retained
@@ -7896,10 +7897,12 @@ Add column. One footer reports row/column ranges and the focused cell, with pagi
 Search, cell edits, history, visibility, export and unsaved-copy exits retain their behavior.
 Run headers omit workflow, short ID, attempt and elapsed metadata but keep subject, status and the
 navigation-only evidence action. Review decision headings use the standard body-sized card title.
-Rerun uses a compact Source summary above the stages rather than a tall rail. PDF input groups show
+The final operator amendment removes Source presentation from rerun while preserving its full-width
+form and original-source lineage. Local preview forms own their routed stages; the served launcher
+must not reconcile or invalidate a preview's Steps, Values or Confirm stage. PDF input groups show
 retained selections, Choose PDFs and per-file removal; roster selection follows below. PDF magic
 validation, asynchronous reading locks and source history remain intact. Backend contracts are
-unchanged. Evidence is `frontend-polish-20261005`; frozen phase-exit gates remain with 3.1.19.
+unchanged. Evidence is `frontend-polish-20261005` and `frontend-final-20261005`; frozen phase-exit gates remain with 3.1.19.
 
 Local queue selection mode and Select menu items are retired. Archive applies
 immediately; Delete asks first and cancellation retains its served confirmation. Member check marks
