@@ -104,6 +104,17 @@
     "Candidate gates on codex/repository-cleanup: 4884 unit tests passed (232 files), 166 architecture tests passed (31 files), typecheck:all passed, build:dashboard passed, lint passed, legacy test lint ratchet passed (0 new/replaced fingerprints, 1 baseline diagnostic removed).",
     "Independent reviewer sup_review PASS verdict on candidate dc468393."
    ]
+  },
+  {
+   "id": "separation-empty-timecard-2026-10-06",
+   "closedAt": "2026-10-06",
+   "evidence": [
+    "Legacy focused separation suite: 180/180 passed; typecheck and source lint passed; legacy-test-lint-ratchet reports zero new/replaced fingerprints.",
+    "Legacy full unit suite: 4884 passed, 10 failed; four architecture failures reproduce on unchanged parent; six failures concern missing unrelated roster fixtures/environment. Serial lane: 20/20 passed.",
+    "Live New Kronos May 1–October 12 scans verified exact EIDs and 165 dates per employee: 4753 last physical work May 27; 4755 June 8; no sick/holiday extension.",
+    "Rebuild read-only review: src/workflows/separations/kronos-timecard/workflow.ts separates no-punches from failures and does not submit terminations. No rebuild runtime change or fix port is claimed.",
+    "D150 retirement is unchanged; read-only search of rebuild src/tests/scripts found no legacy-change-accounting reader. Archival accounting follows the operator-provided legacy standing instruction without reactivating retired guards."
+   ]
   }
  ],
  "commits": [
@@ -2732,6 +2743,64 @@
      "impactRationale": "test(ucpath): remove redundant non-null assertion in selector capture helper",
      "rebuildRecheckIds": [
       "repository-cleanup-gates-2026-09-10"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "5c627a44d4ab5e21eb2065ff307128533862cb39",
+   "parentCommit": "066d3509a6a18a065cceae69051d45bb02158316",
+   "changes": [
+    {
+     "path": "src/workflows/separations/CLAUDE.md",
+     "changeKind": "modified",
+     "beforeSha256": "f73ffdf800707a7c50192697ca61651237a02c2f763800fba9e93289ba126673",
+     "afterSha256": "3909155b8ebf51768a5cbfd966872e47629fcade9f248c4b259fc4eaf81be116",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Separation workflow aborts when a found timecard lacks a physical punch or its required read fails, before receipt reuse, submission, date writeback or finalization. Tests and module instructions bind this contract.",
+     "rebuildRecheckIds": [
+      "separation-empty-timecard-2026-10-06"
+     ]
+    },
+    {
+     "path": "src/workflows/separations/steps/kronos-search.ts",
+     "changeKind": "modified",
+     "beforeSha256": "977d9316f6a0f4425aafe2615db10cf4cc425d1f008a194190d07e5eb745b54c",
+     "afterSha256": "3c7507d8bd1936a7e14f4ce297980e62590e322eda47fd78ad48392e72443467",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Separation workflow aborts when a found timecard lacks a physical punch or its required read fails, before receipt reuse, submission, date writeback or finalization. Tests and module instructions bind this contract.",
+     "rebuildRecheckIds": [
+      "separation-empty-timecard-2026-10-06"
+     ]
+    },
+    {
+     "path": "src/workflows/separations/workflow.ts",
+     "changeKind": "modified",
+     "beforeSha256": "f83d3277356f9b9dad62617bf7d7c6cb32296926fcb28b562ac83b5345b8df8a",
+     "afterSha256": "477c9408dd62304ad4f85fccab3308d2a6c3cd57fc6e1e30200dafad75d358f2",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Separation workflow aborts when a found timecard lacks a physical punch or its required read fails, before receipt reuse, submission, date writeback or finalization. Tests and module instructions bind this contract.",
+     "rebuildRecheckIds": [
+      "separation-empty-timecard-2026-10-06"
+     ]
+    },
+    {
+     "path": "tests/unit/workflows/separations/dry-run.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "1316990d3ee53e6eec845833fe835b7fe64bee7cfdf8e64b8980fd357d6e9135",
+     "afterSha256": "2657bc5822fa9d3f2d5dd6b02a39e890d5e8429a75d771bc54ac44aa02053908",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Separation workflow aborts when a found timecard lacks a physical punch or its required read fails, before receipt reuse, submission, date writeback or finalization. Tests and module instructions bind this contract.",
+     "rebuildRecheckIds": [
+      "separation-empty-timecard-2026-10-06"
      ]
     }
    ]
