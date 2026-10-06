@@ -64,8 +64,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       }
       await expect(editor).not.toContainText("Exports include");
       await expect(editor).not.toContainText("Click a column letter");
-      await expect(editor.getByRole("button", { name: "Previous spreadsheet page" })).toBeDisabled();
-      await expect(editor.getByRole("button", { name: "Next spreadsheet page" })).toBeDisabled();
+      await expect(editor.getByRole("button", { name: "Previous spreadsheet page" })).toHaveCount(0);
+      await expect(editor.getByRole("button", { name: "Next spreadsheet page" })).toHaveCount(0);
       await editor.getByRole("button", { name: /^Columns/u }).click();
       const visible = page.getByRole("menu").filter({ has: page.getByRole("menuitemcheckbox").first() });
       await expect(visible).toBeVisible();
@@ -74,9 +74,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await firstColumn.click(); await expect(firstColumn).toHaveAttribute("aria-checked", "true");
       await page.keyboard.press("Escape");
       const originalRows = await editor.locator(".spreadsheet-grid tbody tr").count();
-      await editor.getByRole("button", { name: "Add row", exact: true }).click();
+      await editor.getByRole("button", { name: "Insert", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Add row", exact: true }).click();
       await expect(editor.locator(".spreadsheet-grid tbody tr")).toHaveCount(originalRows + 1);
-      await editor.getByRole("button", { name: "Add column", exact: true }).click();
+      await editor.getByRole("button", { name: "Insert", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Add column", exact: true }).click();
       const add = page.getByRole("dialog", { name: "Add column", exact: true });
       await add.getByRole("textbox", { name: "Column title" }).fill("Review note");
       await add.getByRole("button", { name: "Add column", exact: true }).click();

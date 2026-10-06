@@ -128,7 +128,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(settings.locator('.shortcut-reference-row').filter({ hasText: 'Start a run' }).locator('kbd')).toHaveText('q');
       await settings.getByRole('button', { name: 'Edit Run actions shortcut 1', exact: true }).click(); await edit.getByRole('textbox', { name: 'Shortcut keys', exact: true }).press('q'); await edit.getByRole('button', { name: 'Save shortcut', exact: true }).click(); await expect(edit).toContainText('already assigned'); await edit.getByRole('button', { name: 'Cancel', exact: true }).click();
       await info.attach(`shortcuts-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: 'image/png' });
-      await settings.getByRole('navigation', { name: 'Settings breadcrumbs', exact: true }).getByRole('button', { name: 'Dashboard', exact: true }).click(); await page.getByRole('button', { name: 'Start a run', exact: true }).focus(); await page.keyboard.press('q');
+      await settings.getByRole('button', { name: 'Back to dashboard', exact: true }).click(); await page.getByRole('button', { name: 'Start a run', exact: true }).focus(); await page.keyboard.press('q');
       await expect(page.getByRole('dialog', { name: 'Start a run', exact: true })).toBeVisible(); await page.keyboard.press('Escape');
       const beforeNumberKeys = page.url();
       await page.keyboard.press('Control+2'); await page.keyboard.press('Meta+2');
@@ -245,9 +245,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await settings.getByRole('button', { name: 'Sort column A', exact: true }).click(); await expect(settings.getByRole('textbox', { name: 'A2', exact: true })).toHaveValue('Alex');
       await expect(settings.getByRole('textbox', { name: 'A2', exact: true }).locator('..')).toHaveCSS('background-color', 'rgb(198, 224, 180)');
       await settings.getByRole('textbox', { name: 'A2', exact: true }).fill('Alex edited');
-      await settings.getByRole('button', { name: 'Add column', exact: true }).click(); const add = page.getByRole('dialog', { name: 'Add column', exact: true }); await add.getByRole('textbox', { name: 'Column title', exact: true }).fill('Notes'); await add.getByRole('button', { name: 'Add column', exact: true }).click();
-      await settings.getByRole('button', { name: 'Add row', exact: true }).click(); await settings.getByRole('textbox', { name: 'A4', exact: true }).fill('New person');
-      await settings.getByRole('button', { name: 'Columns 4/4', exact: true }).click(); await page.getByRole('menuitemcheckbox', { name: 'C · Department', exact: true }).click(); await page.keyboard.press('Escape'); await expect(settings.getByRole('textbox', { name: 'C2', exact: true })).toHaveCount(0);
+      await settings.getByRole('button', { name: 'Insert', exact: true }).click(); await page.getByRole('menuitem', { name: 'Add column', exact: true }).click(); const add = page.getByRole('dialog', { name: 'Add column', exact: true }); await add.getByRole('textbox', { name: 'Column title', exact: true }).fill('Notes'); await add.getByRole('button', { name: 'Add column', exact: true }).click();
+      await settings.getByRole('button', { name: 'Insert', exact: true }).click(); await page.getByRole('menuitem', { name: 'Add row', exact: true }).click(); await settings.getByRole('textbox', { name: 'A4', exact: true }).fill('New person');
+      await settings.getByRole('button', { name: 'Columns', exact: true }).click(); await page.getByRole('menuitemcheckbox', { name: 'C · Department', exact: true }).click(); await page.keyboard.press('Escape'); await expect(settings.getByRole('textbox', { name: 'C2', exact: true })).toHaveCount(0);
       await choosePage('General'); await choosePage('Spreadsheets'); await expect(settings.getByRole('textbox', { name: 'A2', exact: true })).toHaveValue('Alex edited');
       await info.attach(`workbook-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: 'image/png' });
       for (const format of ['xlsx', 'csv'] as const) {
@@ -257,7 +257,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         else { expect(data.toString()).toContain('Name,ID,Notes'); expect(data.toString()).toContain('Alex edited,00001,'); expect(data.toString()).toContain('New person,,'); }
       }
       await expect(settings.getByText(/1 sheet · Edited copy/)).toBeVisible();
-      await settings.getByRole('button', { name: 'Columns 3/4', exact: true }).click(); await page.getByRole('menuitemcheckbox', { name: 'C · Department', exact: true }).click(); await page.keyboard.press('Escape');
+      await settings.getByRole('button', { name: 'Columns', exact: true }).click(); await page.getByRole('menuitemcheckbox', { name: 'C · Department', exact: true }).click(); await page.keyboard.press('Escape');
       await settings.getByRole('button', { name: 'Export copy', exact: true }).click(); const fullDownload = page.waitForEvent('download'); await page.getByRole('menuitem', { name: 'Excel workbook (.xlsx)', exact: true }).click(); await fullDownload;
       await settings.getByRole('navigation', { name: 'Breadcrumb', exact: true }).getByRole('button', { name: 'Spreadsheets', exact: true }).click();
       await expect(library).toBeVisible(); await expect(library.getByRole('button', { name: 'People.xlsx', exact: true })).toBeFocused(); await library.getByRole('button', { name: 'People.xlsx', exact: true }).click();
@@ -266,7 +266,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await settings.getByRole('navigation', { name: 'Breadcrumb', exact: true }).getByRole('button', { name: 'Spreadsheets', exact: true }).click();
       await expect(page.getByRole('dialog', { name: 'Close edited spreadsheet?', exact: true })).toBeVisible();
       await page.getByRole('button', { name: 'Keep editing', exact: true }).click();
-      await settings.getByRole('navigation', { name: 'Settings breadcrumbs', exact: true }).getByRole('button', { name: 'Dashboard', exact: true }).click(); await expect(page.getByRole('dialog', { name: 'Discard unsaved settings?', exact: true })).toBeVisible(); await page.getByRole('button', { name: 'Keep editing', exact: true }).click(); await expect(settings.getByRole('textbox', { name: 'A2', exact: true })).toHaveValue('Still editing');
+      await settings.getByRole('button', { name: 'Back to dashboard', exact: true }).click(); await expect(page.getByRole('dialog', { name: 'Discard unsaved settings?', exact: true })).toBeVisible(); await page.getByRole('button', { name: 'Keep editing', exact: true }).click(); await expect(settings.getByRole('textbox', { name: 'A2', exact: true })).toHaveValue('Still editing');
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width); expect(errors).toEqual([]); expect(writes).toEqual(['/api/v1/preflight/rerun']);
     } finally { await server.close(); }
   });

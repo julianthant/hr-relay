@@ -85,7 +85,7 @@ export function MockArchiveWorkspace({ catalog, selection, view, folder, browse,
   <div className="mock-archive-canvas">
     {invalid ? <ArchiveResourceState kind="error" title="This browsing state is unavailable" message="Choose a fresh scope to continue." action={<Button variant="secondary" onClick={() => onBrowse({ filters: {} }, 'replace')}>Reset browsing</Button>} />
      : unavailable ? <ArchiveResourceState kind="error" title="This saved report is unavailable" message="Choose a workflow to browse its saved reports." action={<Button variant="secondary" onClick={recover}>View version history</Button>} />
-     : report ? <MockArchiveReport actions={actions} run={report} section={browsing.section ?? 0} onSection={section => onBrowse({ ...browsing, section }, 'replace')} onHistory={recover} onBack={() => folder ? onSelection('') : onFolder({ dashboardKey: report.dashboard, workflow: report.workflow })} />
+     : report ? <MockArchiveReport actions={actions} run={report} section={browsing.section ?? 0} onSection={section => onBrowse({ ...browsing, section })} onHistory={recover} onBack={() => folder ? onSelection('') : onFolder({ dashboardKey: report.dashboard, workflow: report.workflow })} />
      : folder === null ? <>
       {searching ? searchResults : <MockVersionFolders rows={rows} onFolder={onFolder} />}
      </> : <>

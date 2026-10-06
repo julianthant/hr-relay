@@ -47,7 +47,7 @@ describe('compact run headers', () => {
       assert.doesNotMatch(unrelated, /aria-label="Run context"/);
       window.history.replaceState(null, '', '/?logPreview=selected');
       const selected = renderToStaticMarkup(createElement(LogSample, { selection: { row, workflowLabel: 'Person lookup' } }));
-      assert.match(selected, /aria-label="Run context"/); assert.match(selected, /Person lookup/);
+      assert.doesNotMatch(selected, /aria-label="Run context"/); assert.match(selected, /aria-label="Selected run logs"/);
     } finally { window.history.replaceState(null, '', locationBefore); }
   });
   it('clears a log search and focuses the decision without executing it', async () => {
@@ -69,7 +69,9 @@ describe('compact run headers', () => {
       const review = [...host.querySelectorAll('button')].find(button => button.textContent === 'Review'); assert(review);
       await act(async () => { review.click(); await new Promise(resolve => setTimeout(resolve, 40)); });
       assert.equal(document.activeElement?.textContent, 'Employee match'); assert.equal(scroll.mock.calls.length, 1); assert.equal(decision.mock.calls.length, 0);
-      const context = host.querySelector('[aria-label="Run context"]'); assert(context); assert.equal(context.children.length, 4);
+      assert.equal(host.querySelector('[aria-label="Run context"]'), null);
+      assert.equal(host.querySelector('h2')?.textContent, 'Jordan');
+      assert.doesNotMatch(host.querySelector('header')?.textContent ?? '', /PL00000001|Attempt #|Elapsed/);
       await act(async () => root.render(createElement(LogPanel, { title: 'Jordan', steps, timeline: [], content: createElement('div', null, 'Editable records'),
         status: createElement('span', { 'data-review-badge': true }, 'Review'),
         context: { workflow: 'OCR', displayId: 'OCR00000001', attempt: 1, reviewPending: true } })));

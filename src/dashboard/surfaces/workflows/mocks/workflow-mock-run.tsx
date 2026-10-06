@@ -1,13 +1,14 @@
 import { useViewState } from "../../../app/navigation/view-route-model.js";
 import { useState } from "react";
 import { Check, ArrowLeft, ArrowRight, Play } from "lucide-react";
-import { BareButton, Banner, Button, Checkbox, ChoicePicker, DateInput, DialogBody, DialogFooter, Field, Input, Badge, MetaLine, SectionLabel, SegmentedChoice, Textarea } from "../../../ds/ui.js";
+import { BareButton, Banner, Button, Checkbox, ChoicePicker, DateInput, DialogBody, DialogFooter, Field, Input, Badge, MetaLine, SegmentedChoice, Textarea } from "../../../ds/ui.js";
 import { MOCK_FORM_TYPES, MOCK_ONBASE_TYPES, mockWorkflow, type MockWorkflowId } from "./workflow-mock-catalog.js";
 import { initialMockDraft, mockConfirmationFacts, mockDraftError, mockInputEntries, mockLaunchCount, mockSelectableSteps, mockOathDuplicate, mockRunStatus, mockStepState, type MockDraft, type MockFile, type MockRun } from "./workflow-mock-model.js";
 import "../../run-start/launch-presentation.css";
 import { cn } from "../../../lib/utils.js";
-import { RunConfirmLayout, RunOptionsLayout, RunStepsList } from "../../run-start/run-launch-layout.js";
+import { RunConfirmLayout, RunOptionsLayout, RunSourceSummary, RunStepsList } from "../../run-start/run-launch-layout.js";
 import { RunFlagChips } from "../../run-start/run-start-kit.js";
+import { WorkflowPdfInput } from "./workflow-pdf-input.js";
 
 export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmit, initialDraft, onDraftChange }: {
   initialDraft?: MockDraft; onDraftChange?: (draft: MockDraft) => void;
@@ -30,11 +31,11 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
   const steps = mockSelectableSteps(workflowId, draft);
   const included = steps.filter(step => draft.selectedSteps.includes(step.key)).length;
   const patch = (next: Partial<MockDraft>) => { const value = { ...draft, ...next }; setDraft(value); onDraftChange?.(value); };
-  const chooseFiles = async (files: FileList | null) => {
+  const chooseFiles = async (files: readonly File[]) => {
     setReading(true); setFileError(undefined);
     try {
       const selected: MockFile[] = [];
-      for (const file of Array.from(files ?? [])) {
+      for (const file of files) {
         const bytes = await file.arrayBuffer();
         if (!/\.pdf$/iu.test(file.name) || new TextDecoder().decode(bytes.slice(0, 5)) !== "%PDF-") throw new Error("Choose valid PDF files.");
         const hash = await crypto.subtle.digest("SHA-256", bytes);
@@ -45,10 +46,9 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
     finally { setReading(false); }
   };
   return <>
-      {source ? <aside aria-label="Source run" className="launch-workflow-rail flex shrink-0 flex-col border-r border-ui-stroke p-3 pt-[18px]">
-        <SectionLabel>Source</SectionLabel><p className="mt-3 text-body font-semibold">{flow.label}</p><p className="mt-1 break-words text-caption text-ui-secondary">{source.subject}</p><p className="mt-3 text-caption text-ui-muted">{mockRunStatus(source)}</p><p className="mt-auto text-caption text-ui-muted">Creates a new run with its own history.</p>
-      </aside> : null}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col"><ol aria-label="Run configuration path" className="launch-stagebar m-0 list-none">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      {source && <RunSourceSummary title={source.subject} facts={[{ label: "Workflow", value: flow.label }, { label: "Status", value: mockRunStatus(source) }]} />}
+      <ol aria-label="Run configuration path" className="launch-stagebar m-0 list-none">
         {stages.map((name, position) => <li key={name} aria-current={name === stage ? "step" : undefined}><BareButton aria-label={`${position + 1} ${name}`} onClick={() => setStage(name)} disabled={position > index}>
           <span aria-hidden className="launch-stage-marker" data-current={name === stage || undefined} data-completed={position < index || undefined}>{position < index ? <Check className="size-3" aria-hidden /> : position + 1}</span><span className={cn("text-body", name === stage ? "font-semibold" : "text-ui-secondary")}>{name}</span></BareButton></li>)}
       </ol><DialogBody className="launch-content @container">
@@ -67,12 +67,8 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
             {typedEntries.length > 0 && <ul aria-label="Parsed inputs" className="launch-parsed-input m-0 flex list-none flex-col gap-1 p-0">{typedEntries.map((entry, number) => <li key={number} className="flex items-center gap-2 rounded-md border border-ui-stroke px-2 text-body"><span className="text-ui-muted">{number + 1}</span><span className="truncate">{entry}</span></li>)}</ul>}
           </>}
           {pdf && <>
-            <div className="grid grid-cols-2 items-start gap-3">
-              <Field label="PDFs"><Input type="file" multiple accept="application/pdf,.pdf" onChange={event => { void chooseFiles(event.target.files); }} /></Field>
-              {flow.roster && !uploadOnly && <ChoicePicker label="Roster" value={draft.roster} options={[{ value: "existing", label: "Existing Onboarding Roster" }, { value: "download", label: "Download Onboarding Roster" }]} onChange={roster => { if (roster === "existing" || roster === "download") patch({ roster }); }} />}
-            </div>
-            {reading && <p role="status">Reading PDFs…</p>}
-            {draft.files.length > 0 && <ul className="m-0 list-none p-0 text-body">{draft.files.map((file, number) => <li key={number} className="flex items-center justify-between border-b border-ui-stroke py-2"><span className="truncate">{file.name}</span><span className="text-caption text-ui-muted">{Math.ceil(file.size / 1024)} KB</span></li>)}</ul>}
+            <WorkflowPdfInput files={draft.files} busy={reading} onChoose={files => { void chooseFiles(files); }} onRemove={index => { patch({ files: draft.files.filter((_, number) => number !== index) }); setFileError(undefined); }} />
+            {flow.roster && !uploadOnly && <ChoicePicker label="Roster" value={draft.roster} options={[{ value: "existing", label: "Existing Onboarding Roster" }, { value: "download", label: "Download Onboarding Roster" }]} onChange={roster => { if (roster === "existing" || roster === "download") patch({ roster }); }} />}
             {workflowId === "onbase" && <><ChoicePicker label="Document type" value={draft.documentType} options={MOCK_ONBASE_TYPES} onChange={documentType => patch({ documentType })} /><p className="text-caption text-ui-secondary">Selected PDFs merge into one document. Approved pages import separately for each person.</p></>}
             {workflowId === "ocr" && <ChoicePicker label="Form type" value={draft.formType} options={MOCK_FORM_TYPES} onChange={formType => patch({ formType })} />}
           </>}

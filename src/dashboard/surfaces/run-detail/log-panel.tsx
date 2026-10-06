@@ -18,10 +18,6 @@ export const LogPanel = memo(function LogPanel({ title, steps, timeline, status,
     <div className="flex min-h-6 min-w-0 flex-wrap items-center gap-3"><h2 className="m-0 min-w-0 text-heading text-balance">{title}</h2>{context?.reviewPending && action?.label === 'Review' && jump ? undefined : status}
       <span className="ml-auto flex flex-wrap items-center gap-2">{action && jump && <Button size="sm" onClick={() => jump(action.stepId)}>{action.label}</Button>}{toolbar}</span>
     </div>
-    {context && <div aria-label="Run context" className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-caption text-ui-muted">
-      <span>{context.workflow}</span><span className="tabular-nums">{context.displayId}</span><span className="tabular-nums">Attempt #{context.attempt}</span>
-      {context.timing && <span className="tabular-nums" title={context.timing.title}>Elapsed {context.timing.text}</span>}
-    </div>}
   </header>;
   return <section aria-label="Selected run logs" className="ui-theme-scope flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-ui-stroke bg-ui-panel font-ui text-ui-primary [--ds-control-bg:var(--ui-table)] [--ds-control-fg:var(--ui-primary)] [--ds-control-bg-hover:var(--ui-hover)] [--ds-border-strong:var(--ui-stroke-control)] [--ds-focus-ring:var(--ui-info)]">
     {content ? <>{header()}{navigation}{content}</> : <LogFeed steps={steps} initialStepId={initialStepId} onDecision={onDecision}

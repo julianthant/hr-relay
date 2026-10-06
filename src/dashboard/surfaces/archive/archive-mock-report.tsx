@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, type ReactNode } from 'react';
 import { Download, FileText } from 'lucide-react';
-import { Badge, Button, PageBreadcrumbs, PageHeading, StatusPill, dsIcon, useToasts } from '../../ds/ui.js';
+import { Badge, Button, PageBreadcrumbs, PageHeading, StatusPill, Tab, TabList, TabPanel, Tabs, dsIcon, useToasts } from '../../ds/ui.js';
 import { ArchiveFieldGroup, ArchiveFieldRows, ArchiveResourceState } from './archive-visual.js';
 import { MOCK_ARCHIVE_REPORT_SECTIONS, mockArchiveDate, type MockArchiveRun } from './archive-mock-model.js';
 import { mockArchiveLogs } from './archive-mock-logs-model.js';
@@ -32,11 +32,10 @@ export function MockArchiveReport({ run, section, onSection, onHistory, onBack, 
    <PageBreadcrumbs label="Archive breadcrumbs" items={[{ label: 'Archive', onClick: onHistory }, { label: run.dashboard === 'unrecorded' ? 'Version not recorded' : `Dashboard ${run.dashboard}` }, { label: run.workflowLabel, onClick: onBack }, { label: `Run ${run.number}` }]} />
    <PageHeading title={run.title} description={`${run.workflowLabel} · Run ${run.number}`} actionAlignment="title" actions={actions} />
   </div>
-  <div className="mock-archive-report-layout">
-   <nav aria-label="Saved report sections" className="mock-archive-report-nav">{MOCK_ARCHIVE_REPORT_SECTIONS.map(({ id, label }) => <Button key={id} variant="ghost" className="mock-archive-section-button" aria-current={activeSection === id ? 'page' : undefined} onClick={() => onSection(id)}>{label}{id === 4 && <span className="ml-auto text-caption tabular-nums text-[color:var(--ds-fg-muted)]">{run.files.length}</span>}</Button>)}</nav>
-   <div className="min-w-0">
+  <Tabs value={String(activeSection)} onValueChange={value => onSection(Number(value))} className="mock-archive-report-layout">
+   <TabList label="Saved report sections" className="flex-wrap">{MOCK_ARCHIVE_REPORT_SECTIONS.map(({ id, label }) => <Tab key={id} value={String(id)} count={id === 4 ? run.files.length : undefined}>{label}</Tab>)}</TabList>
+   <TabPanel value={String(activeSection)} className="min-w-0 overflow-visible">
     {!currentSection ? <ArchiveResourceState kind="error" title="This report section is unavailable" action={<Button variant="secondary" onClick={() => onSection(0)}>View workflow details</Button>} /> : <>
-     {activeSection !== 2 && <h2 className="mb-[16px] text-heading font-semibold">{currentSection.label}</h2>}
      {activeSection === 0 && <div className="space-y-[16px]">
       <ArchiveFieldGroup title="Run summary" className="mock-archive-run-summary"><ArchiveFieldRows rows={[
        ...pairs([['Workflow', run.workflowLabel], ['Run number', String(run.number)], ['Dashboard version', run.dashboard === 'unrecorded' ? 'Not recorded' : run.dashboard], ['Workflow version', run.workflowVersion], ['Completed', run.completed ? mockArchiveDate(run.completed) : 'Not completed'], ['Total elapsed', run.elapsed], ['Archived', mockArchiveDate(run.archived)]]),
@@ -54,7 +53,7 @@ export function MockArchiveReport({ run, section, onSection, onHistory, onBack, 
       <details className="mt-[12px] text-body"><summary className="ds-focus w-fit cursor-pointer text-[color:var(--ds-fg-secondary)]">Preview file</summary><pre className="mock-archive-file-preview">{file.content}</pre></details>
      </section>)}</ArchiveFieldGroup>}
     </>}
-   </div>
-  </div>
+   </TabPanel>
+  </Tabs>
  </article>;
 }

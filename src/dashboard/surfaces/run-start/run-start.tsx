@@ -3,7 +3,7 @@ import { servedLaunchWorkflows, type WorkflowCatalogEntry } from "../workflows/w
 import "./launch-presentation.css";
 import { mockWorkflow, type MockWorkflowId } from "../workflows/mocks/workflow-mock-catalog.js";
 import { WorkflowMockRunForm } from "../workflows/mocks/workflow-mock-run.js";
-import { RunConfirmLayout, RunOptionsLayout, RunStepsList } from "./run-launch-layout.js";
+import { RunConfirmLayout, RunOptionsLayout, RunSourceSummary, RunStepsList } from "./run-launch-layout.js";
 import type { MockDraft, MockRun } from "../workflows/mocks/workflow-mock-model.js";
 import { RunWorkflowPicker } from "./run-start-picker.js";
 import type { RerunValuesSnapshot } from "../../../domain/dashboard/rerun-values.js";
@@ -31,7 +31,6 @@ import {
   Input,
   KeyValueList,
   MetaLine,
-  SectionLabel,
   ChoicePicker,
   Textarea,
   Well,
@@ -993,17 +992,17 @@ export function RunStartDialog({
         size="xl"
         title={previewSelection?.source || isRerun ? "Rerun" : "Start a run"}
         description={previewFlow ? `${previewFlow.label} · Workflow preview` : isRerun ? [workflow?.label, rerunSource?.label].filter(Boolean).join(" · ") : workflow ? `New work · ${workflow.label}` : "Choose a workflow to begin"}
-        className="launch-design launch-dialog"
+        className={cn("launch-design launch-dialog", (previewSelection?.source || isRerun) && "launch-rerun")}
       >
-          {previewSelection?.source ? null : !isRerun ? picker : <aside aria-label="Source run" className="launch-workflow-rail flex min-h-0 shrink-0 flex-col border-r border-ui-stroke p-3 pt-[18px]">
-            <SectionLabel>Source run</SectionLabel>{rerunSource?.label && <h3 className="mt-4 text-heading font-semibold">{rerunSource.label}</h3>}
-            {snapshot !== null && <><p className="mt-[6px] break-all font-mono text-caption text-ui-secondary">{rerunSource?.traceId ?? snapshot.source.runId}</p>
-              <dl className="mt-[18px] space-y-[14px] text-caption"><div><dt className="text-ui-muted">Workflow</dt><dd className="mt-1">{workflow?.label} · {versionTag(snapshot.source.descriptorVersion)}</dd></div><div><dt className="text-ui-muted">Outcome</dt><dd className={cn("mt-1", snapshot.source.outcome === "done" ? "text-ui-positive" : snapshot.source.outcome === "failed" ? "text-ui-danger" : "text-ui-secondary")}>{snapshot.source.outcome === "done" ? "Completed" : snapshot.source.outcome === "failed" ? `Failed${snapshot.steps.some(step => step.state === "failed") ? ` at ${stepLabel(snapshot.steps.find(step => step.state === "failed")!.key)}` : ""}` : "Interrupted"}</dd></div><div><dt className="text-ui-muted">Progress</dt><dd className="mt-1">{snapshot.steps.filter(step => step.state === "completed").length} / {snapshot.steps.length} steps completed</dd></div></dl></>}
-            <p className="mt-auto border-t border-ui-stroke pt-[14px] text-caption text-ui-muted">This creates a new run. The source keeps its original history.</p>
-          </aside>}
+          {!previewSelection?.source && !isRerun && picker}
 
           {previewSelection && onSubmitPreview && previewRuns ? <WorkflowMockRunForm key={`${previewSelection.workflowId}:${previewSelection.source?.id ?? "start"}`} workflowId={previewSelection.workflowId} source={previewSelection.source} runs={previewRuns} initialDraft={previewDrafts.current.get(`${previewSelection.workflowId}:${previewSelection.source?.id ?? "start"}`)} onDraftChange={draft => previewDrafts.current.set(`${previewSelection.workflowId}:${previewSelection.source?.id ?? "start"}`, draft)} onClose={() => closeAndReset(false)} onSubmit={onSubmitPreview} /> : <>
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            {isRerun && <RunSourceSummary title={rerunSource?.label ?? "Selected run"} facts={snapshot === null ? [] : [
+              { label: "Workflow", value: `${workflow?.label ?? snapshot.source.workflow} · ${versionTag(snapshot.source.descriptorVersion)}` },
+              { label: "Outcome", value: snapshot.source.outcome === "done" ? "Completed" : snapshot.source.outcome === "failed" ? `Failed${snapshot.steps.some(step => step.state === "failed") ? ` at ${stepLabel(snapshot.steps.find(step => step.state === "failed")!.key)}` : ""}` : "Interrupted" },
+              { label: "Progress", value: `${snapshot.steps.filter(step => step.state === "completed").length} / ${snapshot.steps.length} steps completed` },
+            ]} />}
             <ol aria-label="Run configuration path" className="launch-stagebar">
               {launchStages.map((stage, index) => {
                 const activeIndex = launchStages.findIndex(entry => entry.label === (currentStage === "Warning" ? "Steps" : currentStage));

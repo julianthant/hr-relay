@@ -30,6 +30,9 @@
 .launch-design .launch-workflow-rail {
   @apply w-[190px] bg-ui-table;
 }
+.launch-design .launch-source-summary {
+  @apply flex shrink-0 flex-wrap items-start justify-between gap-x-6 gap-y-3 border-b border-ui-stroke bg-ui-table px-5 py-3;
+}
 .launch-design .launch-stagebar {
   @apply flex shrink-0 items-center gap-1 border-b border-ui-stroke px-[18px] py-3;
 }
@@ -200,6 +203,7 @@
 .launch-dialog .launch-picker .workflow-rail button { @apply h-8 rounded-[10px] font-normal; }
 
 .launch-dialog { display: grid; grid-template-columns: 190px minmax(0, 1fr); grid-template-rows: 73px minmax(0, 1fr) 57px; }
+.launch-dialog.launch-rerun { grid-template-columns: minmax(0, 1fr); }
 .launch-dialog > header, .launch-dialog > footer { grid-column: 1 / -1; }
 
 .launch-dialog .launch-picker { background: var(--ds-surface-1); }

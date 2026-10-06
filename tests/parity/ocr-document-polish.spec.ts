@@ -103,9 +103,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.getByRole("button", { name: "Start a run", exact: true }).click();
       const launcher = page.getByRole("dialog", { name: "Start a run", exact: true });
       await launcher.getByRole("navigation", { name: "Workflow", exact: true }).getByRole("button", { name: "Oath Upload", exact: true }).click();
-      const pdf = launcher.getByLabel("PDFs", { exact: true }), roster = launcher.getByRole("button", { name: "Existing Onboarding Roster Roster", exact: true });
+      const pdf = launcher.getByRole("region", { name: "PDF documents", exact: true }), roster = launcher.getByRole("button", { name: "Existing Onboarding Roster Roster", exact: true });
       const pdfBox = (await pdf.boundingBox())!, rosterBox = (await roster.boundingBox())!;
-      expect(Math.abs(pdfBox.y - rosterBox.y)).toBeLessThan(2); expect(pdfBox.x + pdfBox.width).toBeLessThan(rosterBox.x);
+      expect(rosterBox.y).toBeGreaterThanOrEqual(pdfBox.y + pdfBox.height);
+      expect(Math.abs(pdfBox.x - rosterBox.x)).toBeLessThan(2);
+      await expect(pdf.getByRole("button", { name: "Choose PDFs", exact: true })).toBeVisible();
       await expect(launcher).not.toContainText("The ticket waits for all signers");
       await expect(launcher).toHaveCSS("opacity", "1");
       await info.attach(`run-pdf-inputs-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });

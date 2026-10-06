@@ -2,6 +2,14 @@ import type { ReactNode } from "react";
 import { SegmentedChoice } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 
+export function RunSourceSummary({ title, facts }: { title: string; facts: readonly { label: string; value: ReactNode }[] }) {
+  return <aside aria-label="Source run" className="launch-source-summary">
+    <div className="min-w-0"><p className="m-0 text-caption text-ui-muted">Source run</p><p className="mt-1 break-words text-body font-semibold">{title}</p></div>
+    <dl className="m-0 flex flex-wrap gap-x-6 gap-y-2">{facts.map(fact => <div key={fact.label}><dt className="text-caption text-ui-muted">{fact.label}</dt><dd className="m-0 mt-1 text-body">{fact.value}</dd></div>)}</dl>
+    <p className="sr-only">Creates a new run. The source keeps its original history.</p>
+  </aside>;
+}
+
 export function RunOptionsLayout({ flags, children, priority, onPriorityChange, browserMode, onBrowserModeChange, fixedFacts }: {
   flags: ReactNode; children?: ReactNode; priority: "interactive" | "bulk";
   onPriorityChange: (value: "interactive" | "bulk") => void;

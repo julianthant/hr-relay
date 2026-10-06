@@ -4,7 +4,7 @@ import type { SavedArchiveDeletionStatusWire,SavedArchiveIndexWire,SavedArchiveQ
 import { formatRuntimeVersion } from "../../../domain/archive/runtime-version.js";
 import { ArchiveReportCellSchema, type ArchiveReportCell } from "../../../domain/archive/report.js";
 import { settleCommandResult } from "../../app/commands/command-result.js";
-import { Badge,Button,ButtonLink,DateRangeInput,Dialog,DialogBody,DialogContent,DialogFooter,DialogTrigger,Disclosure,dsIcon,dsText,Input,PageHeader,Panel,PanelBody,PanelHeader,Select,Table,TBody,TD,TH,THead,TR,Textarea } from "../../ds/ui.js";
+import { Badge,Button,ButtonLink,DateRangeInput,Dialog,DialogBody,DialogContent,DialogFooter,DialogTrigger,Disclosure,dsIcon,dsText,Input,PageHeader,Panel,PanelBody,PanelHeader,Select,Tab,TabList,TabPanel,Tabs,Table,TBody,TD,TH,THead,TR,Textarea } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { useArchiveClient as useDashboardClient } from "./archive-client.js";
 import { archiveFileRelationships,archiveWorkflowGroups,readableArchiveLabel,savedCommandEnvelope,savedDateFilterSummary,savedDownload,savedFilterQuery,savedOutcomeLabel,savedPlanRequest,useSavedResource,visibleArchiveSections } from "./archive-report-model.js";
@@ -14,19 +14,8 @@ export function SavedArchiveReport({ report, deletion, section, onSection }: { r
   const sectionItems = visibleArchiveSections(report);
   const defaultSection = sectionItems[0]?.key ?? report.sections.length + 1;
   const [active, setActive] = useState(() => ({ runId: report.runId, section: defaultSection }));
-  const sectionNavRef = useRef<HTMLElement>(null);
   const requestedSection = section ?? (active.runId === report.runId ? active.section : defaultSection);
   const activeSection = sectionItems.some(item => item.key === requestedSection) ? requestedSection : defaultSection;
-  useEffect(() => {
-    const nav = sectionNavRef.current;
-    if (nav === null || nav.scrollHeight <= nav.clientHeight) return;
-    const selected = nav.querySelector<HTMLElement>('[aria-current="page"]');
-    if (selected === null) return;
-    const bounds = nav.getBoundingClientRect();
-    const item = selected.getBoundingClientRect();
-    if (item.top < bounds.top) nav.scrollTop += item.top - bounds.top;
-    else if (item.bottom > bounds.bottom) nav.scrollTop += item.bottom - bounds.bottom;
-  }, [activeSection, report.runId]);
   const selectedItem = sectionItems.find(item => item.key === activeSection);
   const dashboardVersion = report.runtimeVersion === undefined ? "Not recorded" : formatRuntimeVersion(report.runtimeVersion.dashboard);
   const workflowVersion = report.runtimeVersion === undefined ? "Not recorded" : formatRuntimeVersion(report.runtimeVersion.workflow);
@@ -40,9 +29,9 @@ export function SavedArchiveReport({ report, deletion, section, onSection }: { r
       <div><dt>Outcome</dt><dd className="m-0 text-[color:var(--ds-fg)]">{savedOutcomeLabel(report.outcome)}</dd></div>
       <div><dt>Retained files</dt><dd className="m-0 text-[color:var(--ds-fg)]">{report.files.length}</dd></div>
     </dl>
-    <div className="grid min-w-0 grid-cols-[160px_minmax(0,1fr)] items-start gap-[20px] min-[1200px]:grid-cols-[180px_minmax(0,1fr)] min-[1200px]:gap-[24px]">
-      <nav ref={sectionNavRef} aria-label="Run sections" className="sticky top-[16px] flex max-h-[max(160px,calc(100vh-180px))] min-w-0 flex-col gap-[var(--ds-space-tight)] overflow-y-auto border-r border-[color:var(--ds-border)] pr-[var(--ds-space-cozy)] [&>button]:shrink-0">{sectionItems.map(item => <Button key={item.key} variant={activeSection === item.key ? "secondary" : "ghost"} aria-label={item.label} aria-current={activeSection === item.key ? "page" : undefined} className={cn("min-h-[var(--ds-h-bar)] w-full min-w-0 justify-start whitespace-normal break-words border-0 px-[var(--ds-space-cozy)] py-[var(--ds-space-snug)] text-left [overflow-wrap:anywhere]")} onClick={() => { if (onSection === undefined) setActive({ runId: report.runId, section: item.key }); else onSection(item.key); }}>{item.label}{item.key === report.sections.length + 1 && <span aria-hidden className="ml-auto tabular-nums">{report.files.length}</span>}</Button>)}</nav>
-      <div className="flex min-w-0 flex-col gap-[16px]"><h2 className="m-0 text-section">{selectedItem?.label}</h2>
+    <Tabs value={String(activeSection)} onValueChange={value => { if (onSection === undefined) setActive({ runId: report.runId, section: Number(value) }); else onSection(Number(value)); }} className="gap-5">
+      <TabList label="Run sections" className="flex-wrap">{sectionItems.map(item => <Tab key={item.key} value={String(item.key)} count={item.kind === "files" ? report.files.length : undefined}>{item.label}</Tab>)}</TabList>
+      <TabPanel value={String(activeSection)} className="flex min-w-0 flex-col gap-4 overflow-visible">
 
     {selectedItem?.kind === "facts" && <div className="flex flex-col gap-[20px]">{archiveWorkflowGroups(report).filter(group => group.kind !== "files" && group.kind !== "logs").map(group => <section key={group.key} className="flex flex-col gap-[10px]"><h3 className="m-0 text-heading">{group.label}</h3>
     {group?.kind === "summary" && <ArchiveFieldGroup title="Run summary" showHeading={false}><ArchiveFieldRows rows={group.values?.map(cell => ({ label: cell.label,
@@ -61,8 +50,8 @@ export function SavedArchiveReport({ report, deletion, section, onSection }: { r
     {selectedItem?.kind === "files" && <ArchiveFieldGroup title="Retained files" ariaLabel="Retained attachments" showHeading={false}>
       {report.files.length === 0 ? <p className="m-[var(--ds-space-cozy)]">No attachment was retained with this report.</p> : <>{report.files.map(file => <SavedAttachment key={`${report.runId}:${file.digest}`} runId={report.runId} file={file} relationships={archiveFileRelationships(report, file.digest)} />)}</>}
     </ArchiveFieldGroup>}
-      </div>
-    </div>
+      </TabPanel>
+    </Tabs>
     {deletion}
   </article>;
 }

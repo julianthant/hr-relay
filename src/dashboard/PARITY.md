@@ -477,7 +477,8 @@ phase-exit gates remain explicit. No references were refrozen.
 ## Compact run headers and Analytics amendment (2026-10-05)
 
 The operator approved restrained richer headers and exact-run drilldowns. The subject remains the
-primary heading. A quiet second line shows workflow, short run ID, attempt and retained elapsed time.
+primary heading. The later frontend-polish amendment removes the workflow, short ID, attempt and
+elapsed context line from the header.
 One contextual Review, Resolve or View failure control jumps to existing log evidence and clears log
 search; it never executes a decision. The Review badge beside the subject is omitted when the header
 has a Review button. Records bodies retain their status and existing controls.
@@ -494,8 +495,8 @@ unwired. Evidence is `headers-activity-20261005`; full frozen phase-exit gates r
 
 The operator chose breadcrumbs as the consistent page-return design. `PageBreadcrumbs` in the
 public design-system barrel replaces Analytics Back links, consolidates Archive and spreadsheet
-trails, and replaces the Settings rail's Back arrow with Dashboard → Settings. Child-page trails
-precede their heading. Available parents are keyboard controls with the existing target/focus floor;
+trails. The later frontend-polish amendment restores the Settings rail's guarded Back to dashboard
+button. Child-page trails precede their heading. Available parents are keyboard controls with the existing target/focus floor;
 the current page is passive `aria-current="page"` text. Context-only Archive version labels remain
 noninteractive. Long labels wrap without document overflow.
 Parent navigation uses the existing route callbacks. Exact Analytics metric/workflow/page, Archive
@@ -536,3 +537,26 @@ focus; memory is not bounded. The isolated production fixture measures rendering
 and cleanup. Current mounted producers and retained runtime consumers are distinguished in ref
 frontend-backend-integration §5. `frontend-readiness-20261005` owns the focused evidence; inherited
 full diagnostic failures and the frozen visual/coverage/phase-exit gates remain explicit.
+
+## Frontend polish amendment (2026-10-05)
+
+The operator restored Back to dashboard in the Settings rail; its guarded exit and focus return
+remain intact. Child pages keep shared breadcrumbs. Archived reports replace the section sidebar
+with the existing underline tabs for Workflow details, Logs, Saved settings and Retained files.
+Both mounted mock reports and retained runtime reports use the same presentation. Section changes
+push discrete entries through the existing route owner; reload and native Back/Forward restore
+each tab.
+
+The spreadsheet viewer separates workbook actions from sheet controls. Export stays beside the
+title; column mapping lives in Workbook actions. A single sheet toolbar groups Sheet/Columns and
+Insert/Undo/Redo. Insert names Add row and Add column. One footer reports rows, columns and the
+focused cell, with paging controls only when more than one page exists. Editing history, search,
+column visibility, export and draft-exit confirmations remain functional.
+
+Run headings omit workflow, short ID, attempt and elapsed metadata. The subject, status and
+contextual evidence shortcut remain. Review decision headings use the body-sized semibold card
+title token. Rerun replaces the tall Source rail with a compact summary above its stages, freeing
+the form's full width. PDF inputs show selected retained files, an explicit Choose PDFs action
+and individual remove controls; roster selection follows below. Reading locks and PDF validation
+remain visible. Evidence is `frontend-polish-20261005`; backend wiring and frozen phase-exit
+gates remain deferred.

@@ -199,7 +199,7 @@ describe('Activity drilldown records and navigation', () => {
       assert.equal(host.querySelectorAll('tbody tr').length, 20);
       await click('button[aria-label^="Open logs for"]');
       assert(host.querySelector('section[aria-label="Selected run logs"]'));
-      assert.match(host.textContent ?? '', /Attempt #1/);
+      assert.doesNotMatch(host.querySelector('section[aria-label="Selected run logs"] header')?.textContent ?? '', /Attempt #|Elapsed/);
       const breadcrumbs = () => host.querySelector('nav[aria-label="Analytics breadcrumbs"]');
       assert.equal(breadcrumbs()?.querySelector('[aria-current="page"]')?.textContent, host.querySelector('section[aria-label="Selected run logs"] h2')?.textContent);
       const back = [...breadcrumbs()!.querySelectorAll('button')].find(button => button.textContent === 'Completed runs'); assert(back);

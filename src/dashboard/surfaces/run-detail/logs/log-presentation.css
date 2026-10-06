@@ -55,7 +55,7 @@
 .log-capture-open:focus-visible, .log-capture-tab:focus-visible, .log-image-viewport:focus-visible { outline: 2px solid var(--ui-info); outline-offset: -2px; }
 .log-decision { overflow: hidden; border: 1px solid var(--ui-stroke); border-radius: 8px; background: var(--ui-panel); }
 .log-decision-header { display: flex; min-height: 53px; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 18px; border-bottom: 1px solid var(--ui-stroke); background: var(--ui-table); }
-.log-decision-header h4 { margin: 0; font-size: 14px; line-height: 21px; font-weight: 600; }
+.log-decision-header h4 { margin: 0; font-size: var(--text-body); line-height: var(--text-body--line-height); font-weight: 600; }
 .log-decision-badge { display: inline-flex; align-items: center; gap: 5px; border: 1px solid color-mix(in srgb, currentColor 30%, transparent); border-radius: 5px; padding: 3px 7px; font-size: 11px; font-weight: 600; background: color-mix(in srgb, currentColor 9%, transparent); white-space: nowrap; }
 .log-decision-body { padding: 16px 18px; font-size: 12px; line-height: 20px; background: var(--ui-table); }
 .log-decision-body > p { margin: 0; }

@@ -42,12 +42,9 @@
 .mock-archive-run-title { font-size: var(--text-body); line-height: var(--text-body--line-height); display: block; max-width: 240px; height: auto; min-height: 24px; padding: 0; color: var(--ds-fg); font-weight: 600; text-align: left; white-space: normal; }
 .mock-archive-run-title:hover { color: var(--ds-accent); background: transparent; }
 .mock-archive-run-number { font-size: var(--text-caption); line-height: var(--text-caption--line-height); display: block; color: var(--ds-fg-muted); font-variant-numeric: tabular-nums; }
-.mock-archive-report-layout { display: grid; grid-template-columns: 180px minmax(0,1fr); align-items: start; gap: 28px; margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--ds-border); }
+.mock-archive-report-layout { gap: 20px; margin-top: 24px; }
 .mock-archive-log-panel { display: flex; min-width: 0; height: clamp(320px, calc(100dvh - 360px), 720px); }
 .mock-archive-log-panel > section { flex: 1; }
-.mock-archive-report-nav { position: sticky; top: 0; display: flex; flex-direction: column; gap: 5px; }
-.mock-archive-section-button { width: 100%; height: 36px; justify-content: flex-start; padding: 0 12px; color: var(--ds-fg-secondary); font-size: 13px; font-weight: 400; }
-.mock-archive-section-button[aria-current] { background: var(--ds-surface-2); color: var(--ds-fg); font-weight: 600; }
 .mock-archive-report-note { display: flex; align-items: center; gap: 16px; padding: 16px; border: 1px solid var(--ds-border); border-radius: var(--ds-radius-md); background: var(--ds-surface-1); }
 .mock-archive-report-note > p { color: var(--ds-fg-secondary); font-size: 13px; line-height: 1.6; }
 .mock-archive-file { padding: 16px; border-bottom: 1px solid var(--ds-border); }

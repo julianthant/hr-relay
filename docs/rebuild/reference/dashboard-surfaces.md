@@ -7828,9 +7828,8 @@ reload semantics. Evidence is retained in `frontend-readiness-20261005`. Inherit
 failures and frozen phase-exit verification remain explicit obligations.
 
 The subsequent 2026-10-05 run-header/Analytics amendment implements the operator-approved compact
-proposal. Subject headings retain their prominence; one quiet context line adds workflow, the existing
-short run ID, attempt and retained elapsed time. Queued runs omit timing; missing finished timing is
-explicit. A single contextual Review, Resolve or View failure action navigates to a visible unresolved
+proposal. Subject headings retain their prominence. The later frontend-polish amendment removes the
+workflow, short run ID, attempt and elapsed context line from the header. A single contextual Review, Resolve or View failure action navigates to a visible unresolved
 decision or failure, clearing log search and focusing its heading. It performs no decision or command.
 The adjacent Review status badge is omitted only when that Review action is present; Records bodies
 retain their status and tools.
@@ -7851,11 +7850,11 @@ with 3.1.19.
 
 The subsequent 2026-10-05 navigation amendment standardizes page hierarchy on the shared
 `PageBreadcrumbs` component from the public design-system barrel. Analytics, Archive and spreadsheet
-children place the trail before the page heading. The Settings rail uses Dashboard → Settings instead
-of a separate Back arrow. Available parents are keyboard-reachable controls; the current destination
+children place the trail before the page heading. The later frontend-polish amendment restores the
+Settings rail's guarded Back to dashboard button. Available parents are keyboard-reachable controls; the current destination
 is passive text with `aria-current="page"`. Archive version labels without a separate destination remain
 context, rather than inventing a route. Long labels wrap within the available width. Standalone page
-Back controls are removed; wizard Back controls remain step navigation, and modal dismissal remains
+Back controls are omitted from child pages; wizard Back controls remain step navigation, and modal dismissal remains
 separate from page hierarchy. Parent controls invoke the existing route owners, preserving exact
 Analytics metric/workflow/page selection, Archive folder/search scope and native Back/Forward history.
 Settings and spreadsheet draft-exit guards and focus return retain their existing authority.
@@ -7884,6 +7883,23 @@ current history entry; picker and clear actions retain discrete navigation. Prev
 resolve to the picker selection. The shared toolbar search variant matches Select height without
 changing default search consumers. Backend reporting is unchanged. Evidence is
 `analytics-filter-20261005`; frozen phase-exit gates remain deferred to 3.1.19.
+
+
+The 2026-10-05 frontend-polish amendment restores the guarded Settings Back to dashboard control
+while retaining child-page breadcrumbs. Archive report sections use the existing underline tabs
+instead of a sidebar, including retained runtime reports. Section changes push discrete entries
+through the existing route owner; reload and Back/Forward restore each tab. Exact logs and retained
+files keep their resource owners.
+The spreadsheet viewer puts Export beside its heading and column mapping inside Workbook actions.
+A single toolbar groups Sheet/Columns and Insert/Undo/Redo; Insert explicitly offers Add row and
+Add column. One footer reports row/column ranges and the focused cell, with paging only when needed.
+Search, cell edits, history, visibility, export and unsaved-copy exits retain their behavior.
+Run headers omit workflow, short ID, attempt and elapsed metadata but keep subject, status and the
+navigation-only evidence action. Review decision headings use the standard body-sized card title.
+Rerun uses a compact Source summary above the stages rather than a tall rail. PDF input groups show
+retained selections, Choose PDFs and per-file removal; roster selection follows below. PDF magic
+validation, asynchronous reading locks and source history remain intact. Backend contracts are
+unchanged. Evidence is `frontend-polish-20261005`; frozen phase-exit gates remain with 3.1.19.
 
 Local queue selection mode and Select menu items are retired. Archive applies
 immediately; Delete asks first and cancellation retains its served confirmation. Member check marks
