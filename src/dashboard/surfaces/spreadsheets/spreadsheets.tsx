@@ -1,10 +1,13 @@
 import { useViewNavigation, useViewState } from "../../app/navigation/view-route-model.js";
+import { importSpreadsheetInWorker } from "./spreadsheet-import-client.js";
 import { SpreadsheetEditor } from "./spreadsheet-editor.js";
-import { importSpreadsheet, newEditableWorkbook, type EditableWorkbook } from "./spreadsheet-editor-model.js";
+import { newEditableWorkbook, type EditableWorkbook } from "./spreadsheet-editor-model.js";
 import { useRef, useState, type RefObject } from "react";
 import { FileSpreadsheet, FolderOpen, Plus, X } from "lucide-react";
 import { Banner, Button, Dialog, DialogBody, DialogContent, DialogFooter, Field, IconButton, Input, PageHeading, SearchInput, Tab, TabList, TabPanel, Tabs, TableList, dsIcon, useToasts } from "../../ds/ui.js";
 import { SpreadsheetImportDialog } from "./spreadsheet-import.js";
+import { SpreadsheetColumnImport } from "./spreadsheet-column-import.js";
+import { prepareSpreadsheetColumns, selectSpreadsheetColumns } from "./spreadsheet-column-import-model.js";
 import { ROSTER_FIELD_GROUPS } from "./spreadsheet-mock-data.js";
 import { addMockSpreadsheetType, initialSpreadsheetSheets, registeredSpreadsheetWorkbook, registerLocalSpreadsheet, retainSpreadsheetCopy, spreadsheetFields, useSpreadsheetMocks, type RegisteredSpreadsheet, type SpreadsheetType } from "./spreadsheet-mock-model.js";
 
@@ -49,12 +52,15 @@ export function SpreadsheetsSettings({ workbook, workbookDirty, onWorkbook }: { 
   const [query, setQuery] = useViewState("spreadsheetQuery", "", "replace");
   const [selectedId, setSelectedId] = useViewState("spreadsheet", workbook?.libraryId ?? null);
   const navigation = useViewNavigation();
-  const openDocument = (id: string) => { setSelectedId(id); navigation?.update({ spreadsheetSheet: undefined, spreadsheetPage: 0, spreadsheetRowsQuery: "", spreadsheetMapping: undefined, spreadsheetImport: false, spreadsheetImportView: "mapping" }); };
+  const openDocument = (id: string) => { setSelectedId(id); navigation?.update({ spreadsheetSheet: undefined, spreadsheetPage: 0, spreadsheetColumnPage: 0, spreadsheetRowsQuery: "", spreadsheetMapping: undefined, spreadsheetImport: false, spreadsheetImportView: "mapping", spreadsheetImportSheet: undefined, spreadsheetImportColumnPage: 0 }); setImportOpen(false); };
   const upload = useRef<HTMLInputElement>(null);
   const libraryButtons = useRef(new Map<string, HTMLButtonElement>());
   const [busy, setBusy] = useState(false);
   const [fileError, setFileError] = useState("");
   const [importOpen, setImportOpen] = useViewState("spreadsheetImport", false);
+  const [importView, setImportView] = useViewState("spreadsheetImportView", "mapping");
+  const importTrigger = useRef<HTMLButtonElement>(null);
+  const pendingImport = workbook && !workbook.libraryId ? workbook : null;
   const [editingId, setEditingId] = useViewState("spreadsheetMapping", undefined);
   const editing = files.find(file => file.id === editingId);
   const [typeId, setTypeId] = useViewState("spreadsheetType", undefined);
@@ -64,8 +70,8 @@ export function SpreadsheetsSettings({ workbook, workbookDirty, onWorkbook }: { 
   const setViewType = (type: SpreadsheetType | undefined) => setTypeId(type?.id ?? null);
   const typeTrigger = useRef<HTMLButtonElement>(null);
   const selected = selectedId === null ? undefined : files.find(file => file.id === selectedId);
-  const visibleWorkbook = selected ? workbook?.libraryId === selected.id ? workbook : registeredSpreadsheetWorkbook(selected) : null;
-  const openFile = (file: RegisteredSpreadsheet) => { openDocument(file.id); onWorkbook(registeredSpreadsheetWorkbook(file), false); };
+  const visibleWorkbook = pendingImport ? null : selected ? workbook?.libraryId === selected.id ? workbook : registeredSpreadsheetWorkbook(selected) : null;
+  const openFile = (file: RegisteredSpreadsheet) => { if (pendingImport) return; openDocument(file.id); onWorkbook(registeredSpreadsheetWorkbook(file), false); };
   const documentChange = (next: EditableWorkbook | null, dirty: boolean) => {
     if (selected && !dirty && (next || workbook && !workbookDirty)) retainSpreadsheetCopy(selected.id, next ?? workbook!);
     onWorkbook(next, dirty);
@@ -76,19 +82,26 @@ export function SpreadsheetsSettings({ workbook, workbookDirty, onWorkbook }: { 
   };
   const importFile = async (file: File) => {
     setBusy(true); setFileError("");
-    try { const document = await importSpreadsheet(file.name, await file.arrayBuffer()); const registered = registerLocalSpreadsheet(document); openDocument(registered.id); onWorkbook({ ...document, libraryId: registered.id }, false); }
+    try { const document = prepareSpreadsheetColumns(await importSpreadsheetInWorker(file.name, await file.arrayBuffer())); onWorkbook(document, true); setSelectedId(null); setImportView("columns"); navigation?.update({ spreadsheetImportSheet: document.sheets[0].id, spreadsheetImportColumnPage: 0, spreadsheetMapping: undefined }); setImportOpen(true); }
     catch (error) { setFileError(error instanceof Error ? error.message : String(error)); }
     finally { setBusy(false); if (upload.current) upload.current.value = ""; }
   };
+  const confirmImport = () => {
+    if (!pendingImport) throw new Error("SPREADSHEET_IMPORT_DRAFT_UNAVAILABLE");
+    const document = selectSpreadsheetColumns(pendingImport);
+    const registered = registerLocalSpreadsheet(document);
+    openDocument(registered.id); onWorkbook({ ...document, libraryId: registered.id }, false);
+  };
   const visibleFiles = files.filter(file => `${file.name} ${types.find(type => type.id === file.typeId)?.name ?? ""}`.toLowerCase().includes(query.toLowerCase()));
   return <section aria-label="Spreadsheets" className="spreadsheet-workspace settings-reference-page min-w-0 text-body">
-    <input ref={upload} disabled={busy} type="file" accept=".xlsx,.csv" aria-label="Open XLSX or CSV" className="sr-only" onChange={event => { const file = event.target.files?.[0]; if (file) void importFile(file); }} />
+    <input ref={upload} disabled={busy || !!pendingImport} type="file" accept=".xlsx,.csv" aria-label="Open XLSX or CSV" className="sr-only" onChange={event => { const file = event.target.files?.[0]; if (file) void importFile(file); }} />
     {fileError && <Banner tone="danger" title="Spreadsheet unavailable">{fileError}</Banner>}
     {selectedId !== null && !selected ? <Banner tone="danger" title="Spreadsheet unavailable"><p>This file is no longer registered.</p><Button onClick={() => setSelectedId(null)}>Open library</Button></Banner> : visibleWorkbook ? <SpreadsheetEditor key={selectedId ?? visibleWorkbook.name} document={visibleWorkbook} dirty={visibleWorkbook === workbook && workbookDirty} onDocument={documentChange} onMapping={selected && types.some(type => type.id === selected.typeId) ? () => { setEditingId(selected.id); navigation?.update({ spreadsheetImportView: "mapping" }); setImportOpen(true); } : undefined} /> : <>
       <PageHeading title="Spreadsheets" description="Manage files and reusable spreadsheet types." className="settings-heading-actions" actionAlignment="title" actions={tab === "registered" ? <>
-        <Button variant="secondary" disabled={busy} icon={<Plus aria-hidden className={dsIcon.md} />} onClick={() => { const document = newEditableWorkbook(); const file = registerLocalSpreadsheet(document); openDocument(file.id); onWorkbook({ ...document, libraryId: file.id }, true); }}>New spreadsheet</Button>
-        <Button variant="primary" disabled={busy} icon={<FolderOpen aria-hidden className={dsIcon.md} />} onClick={() => upload.current?.click()}>{busy ? "Importing…" : "Import spreadsheet"}</Button>
+        <Button variant="secondary" disabled={busy || !!pendingImport} icon={<Plus aria-hidden className={dsIcon.md} />} onClick={() => { const document = newEditableWorkbook(); const file = registerLocalSpreadsheet(document); openDocument(file.id); onWorkbook({ ...document, libraryId: file.id }, true); }}>New spreadsheet</Button>
+        <Button ref={importTrigger} variant="primary" disabled={busy} icon={<FolderOpen aria-hidden className={dsIcon.md} />} onClick={() => { if (pendingImport) { setImportView("columns"); setImportOpen(true); } else upload.current?.click(); }}>{busy ? "Importing…" : pendingImport ? "Review import" : "Import spreadsheet"}</Button>
       </> : <Button variant="primary" onClick={event => { typeTrigger.current = event.currentTarget; setViewType(undefined); setTypeOpen(true); }}>Add spreadsheet type</Button>} />
+      {pendingImport && <Banner tone="info" title="Import ready to review">{pendingImport.name} · Choose columns before adding this file to your library.</Banner>}
       <Tabs value={tab} onValueChange={value => { setTab(value as "registered" | "types"); setSelectedId(null); }}>
       <TabList label="Spreadsheet settings" className="mb-[var(--ds-space-page)]"><Tab value="registered" count={files.length}>Registered spreadsheets</Tab><Tab value="types" count={types.length}>Spreadsheet types</Tab></TabList>
       <TabPanel value="registered">
@@ -98,7 +111,7 @@ export function SpreadsheetsSettings({ workbook, workbookDirty, onWorkbook }: { 
         <div className="flex flex-col gap-3">{types.map(type => <article key={type.id} className="flex items-center gap-3 rounded-lg border border-ui-stroke bg-ui-panel px-[14px] py-3"><span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-ui-stroke bg-ui-table text-ui-muted"><FileSpreadsheet aria-hidden className={dsIcon.md} /></span><div className="min-w-0 flex-1"><h3 className="text-heading font-semibold">{type.name}</h3><p className="mt-[3px] text-caption text-ui-secondary">{type.id === "roster" ? "People, job details and hiring progress." : "A reusable set of named spreadsheet fields."}</p></div><span className="mr-2 shrink-0 text-caption text-ui-muted">{type.fields.length} fields</span><Button variant="secondary" onClick={event => { typeTrigger.current = event.currentTarget; setViewType(type); }}>View fields</Button></article>)}</div>
       </TabPanel></Tabs>
     </>}
-    <SpreadsheetImportDialog open={importOpen} onOpenChange={setImportOpen} existing={editing} onRegistered={() => { if (!editing) { setTab("registered"); setSelectedId(null); setQuery(""); } }} />
+    {importView === "columns" ? pendingImport ? <SpreadsheetColumnImport open={importOpen} document={pendingImport} onOpenChange={setImportOpen} onChange={next => onWorkbook(next, true)} onCancel={() => { setImportOpen(false); onWorkbook(null, false); }} onConfirm={confirmImport} returnFocus={importTrigger} /> : importOpen && <Dialog open onOpenChange={setImportOpen}><DialogContent title="Import unavailable" description="Choose the file again to review its columns."><DialogBody>The pending file is no longer in memory.</DialogBody><DialogFooter><Button onClick={() => setImportOpen(false)}>Close</Button></DialogFooter></DialogContent></Dialog> : <SpreadsheetImportDialog open={importOpen} onOpenChange={setImportOpen} existing={editing} onRegistered={() => { if (!editing) { setTab("registered"); setSelectedId(null); setQuery(""); } }} />}
     <SpreadsheetTypeDialog open={typeOpen} onOpenChange={setTypeOpen} type={viewType} returnFocus={typeTrigger} />
   </section>;
 }
