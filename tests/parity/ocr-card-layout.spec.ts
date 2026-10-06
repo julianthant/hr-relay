@@ -97,15 +97,10 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) {
       await expect(drawer).toContainText("3 selected for approval");
       await page.keyboard.press("Space");
       await expect(drawer).toContainText("4 selected for approval");
-      const notes = record.getByRole("textbox", { name: "Notes", exact: true });
-      await expect(notes).toHaveJSProperty("tagName", "TEXTAREA");
-      const fieldContentWidth = await oath.locator('[data-slot="card-content"]').evaluate(node => node.clientWidth - parseFloat(getComputedStyle(node).paddingLeft) - parseFloat(getComputedStyle(node).paddingRight));
-      expect((await notes.boundingBox())!.width).toBeCloseTo(fieldContentWidth, 0);
+      await expect(record.getByRole("textbox", { name: "Notes", exact: true })).toHaveCount(0);
       const employeeSigned = record.getByRole("checkbox", { name: "Employee signed", exact: true });
       const officerSigned = record.getByRole("checkbox", { name: "Officer signed", exact: true });
       if (width >= 1440) expect((await employeeSigned.boundingBox())!.y).toBe((await officerSigned.boundingBox())!.y);
-      await notes.fill("Reviewed manually\nKeep the printed date.");
-      await expect(notes).toHaveValue("Reviewed manually\nKeep the printed date.");
       const originalSource = await image.getAttribute("src");
       await record.getByRole("textbox", { name: "Date signed", exact: true }).fill("4-24-26");
       await expect(image).toHaveAttribute("src", originalSource!);
@@ -144,6 +139,16 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) {
       await rail.getByRole("button", { name: "Emergency Contact", exact: true }).click();
       await logs.getByRole("button", { name: "Open OCR", exact: true }).click();
       await logs.getByRole("button", { name: /^Records \d+$/u }).click();
+      const contact = drawer.getByRole("region", { name: "Record person-1", exact: true });
+      const notes = contact.getByRole("textbox", { name: "Notes", exact: true });
+      await expect(notes).toHaveJSProperty("tagName", "TEXTAREA");
+      const contactBody = notes.locator('xpath=ancestor::*[@data-slot="card-content"]');
+      const fieldContentWidth = await contactBody.evaluate(node => node.clientWidth - parseFloat(getComputedStyle(node).paddingLeft) - parseFloat(getComputedStyle(node).paddingRight));
+      expect((await notes.boundingBox())!.width).toBeCloseTo(fieldContentWidth, 0);
+      const contactImage = contact.getByRole("img"), originalContactSource = await contactImage.getAttribute("src");
+      await notes.fill("Reviewed manually\nKeep the printed date.");
+      await expect(notes).toHaveValue("Reviewed manually\nKeep the printed date.");
+      await expect(contactImage).toHaveAttribute("src", originalContactSource!);
       const contactSources = drawer.getByRole("region", { name: "Source PDF", exact: true });
       expect(await contactSources.count()).toBeGreaterThan(1);
       for (const contactSource of await contactSources.all()) {

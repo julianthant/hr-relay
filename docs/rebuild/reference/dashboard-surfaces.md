@@ -7898,6 +7898,29 @@ Records body through the native-history owner; approval remains a separate expli
 no decision or command. The 2026-10-06 correction is verified in `log-header-actions-10003539`.
 The adjacent Review status badge is omitted only when that Review action is present; Records bodies
 retain their status and tools.
+
+The 2026-10-06 manual-input amendment removes Notes from Oath review shapes while retaining
+Emergency Contact Notes. PDF launch and rerun options distinguish OCR delegation from extraction.
+Turning off Extract with OCR still creates the linked OCR child and waiting parent, but skips roster
+loading, extraction and automatic identity matching. Review opens immediately with one blank record;
+the operator can add records, enter values, select source pages and approve explicitly. No extracted
+person count or identity is inferred from the fixture. Manual Employee IDs remain operator supplied,
+not verified lookup evidence. The selected document type controls the manual field shape even when
+a stored source fixture has a different type or I-9 section. Approved records are copied immutably
+into independent downstream runs.
+
+Preview step controls keep form-fill, save and submit actions included. A reading step can use entered
+values instead; mixed read/form steps retain their form action and offer manual values for the read
+portion. Automatic dependency gates retain approval and linked-outcome ordering without presenting an
+optional checkbox. Required form actions are included again when opening a rerun, while retained
+manual facts and OCR mode belong to the private draft. Person-specific reading facts are limited to
+one person; mismatched manual Employee IDs refuse approval. Entered reading values replace downstream
+preview inputs and appear as operator-entered log evidence; they cannot certify a submitted receipt.
+Source-page route coordinates include the exact run and record, preventing cross-run page collisions.
+These are frontend preview semantics. Served Person Lookup and Separations retain descriptor-owned
+capabilities, including existing D307 omissions; new manual reading capabilities require the owning
+backend contract before they can replace served required steps. No executor or backend schema is
+changed. Evidence is `manual-ocr-review-10003539`; frozen parity and phase-exit gates remain with 3.1.19.
 The report's visible name is Analytics across navigation, search, headings, browser titles, back links
 and loading announcements. Existing Activity route identifiers remain supported. Completed,
 Outstanding and Failed totals open one context-aware exact-run list, bounded to 20 rows per page.

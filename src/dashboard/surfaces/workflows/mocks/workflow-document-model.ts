@@ -23,9 +23,10 @@ export function mockDocumentFixture(draft: Pick<MockDraft, "files">): DocumentFi
   return fixture;
 }
 
-export function documentSourcePages(draft: Pick<MockDraft, "files">, record: ReviewRecord): readonly ReviewSourcePage[] | undefined {
+export function documentSourcePages(draft: Pick<MockDraft, "files" | "ocrMode">, record: ReviewRecord): readonly ReviewSourcePage[] | undefined {
   const fixture = mockDocumentFixture(draft);
   if (!fixture) return undefined;
+  if (draft.ocrMode === "manual") return pageImages[fixture.name].map((imageUrl, index) => ({ page: index + 1, imageUrl }));
   const pages = record.kind === "i9" ? [record.page, Number(record.fields.find(field => field.key === "section2")?.value)] : record.kind === "separation" ? [1, 2, 3] : [record.page];
   return pages.map((page, index) => {
     const imageUrl = pageImages[fixture.name]?.[page - 1];

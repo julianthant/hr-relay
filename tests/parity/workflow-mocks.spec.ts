@@ -1,5 +1,8 @@
-import { expect, test, type Locator } from "@playwright/test";
+import { createHash } from "node:crypto";
+import { chooseSelect } from "./helpers/select-choice.js";
+import { expect, test, type Locator, type Page, type TestInfo } from "@playwright/test";
 import { MOCK_WORKFLOWS } from "../../src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.js";
+import { manualReadFields, mockStepIsLocked, mockStepIsDependency } from "../../src/dashboard/surfaces/workflows/mocks/workflow-manual-model.js";
 import { seedMockRuns } from "../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
@@ -9,12 +12,17 @@ import { FIXTURE_START_PICKER_BOOTSTRAP, FIXTURE_START_PICKER_DAY_WIRE, FIXTURE_
 
 const mockProfile = { bootstrap: { ...FIXTURE_START_PICKER_BOOTSTRAP, workflows: FIXTURE_START_PICKER_BOOTSTRAP.workflows.filter((flow: unknown) => (flow as { id: string }).id === "separations") }, day: FIXTURE_START_PICKER_DAY_WIRE, descriptorHash: FIXTURE_START_PICKER_DESCRIPTOR_HASH };
 const pdf = { name: "fictional-packet.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF") };
+async function attachScreenshotFile(page: Page, info: TestInfo, name: string) {
+  const path = info.outputPath(name);
+  await page.screenshot({ path });
+  await info.attach(name, { path, contentType: "image/png" });
+}
 async function advance(dialog: Locator) {
   const preview = dialog.getByRole("button", { name: "Preview plan", exact: true });
   await (await preview.count() ? preview : dialog.getByRole("button", { name: "Continue", exact: true })).click();
 }
 
-for (const theme of PARITY_THEMES) test(`OnBase document type selection and review @ ${theme.attribute}-1440`, async ({ page }, info) => {
+for (const theme of PARITY_THEMES) test(`OnBase document type selection and review @ ${theme.attribute}-1440`, { annotation: [{ type: "required-a11y-evidence", description: `onbase-types-${theme.attribute}.a11y.yml` }] }, async ({ page }, info) => {
   ensureParityBundle();
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, profile: mockProfile });
   const errors: string[] = [], writes: string[] = [];
@@ -26,16 +34,17 @@ for (const theme of PARITY_THEMES) test(`OnBase document type selection and revi
     await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
     const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
     const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
-    for (const type of types) {
+    for (const [index, type] of types.entries()) {
+      const previousType = types[index - 1] ?? "Emergency Contact";
       await rail.getByRole("button", { name: "OnBase", exact: true }).click();
       await page.getByRole("button", { name: "Start a run", exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
-      const picker = dialog.getByRole("button", { name: "Emergency Contact Document type", exact: true });
+      const picker = dialog.getByRole("button", { name: `${previousType} Document type`, exact: true });
       await picker.press("Enter");
-      const menu = page.getByRole("menu", { name: "Emergency Contact Document type", exact: true });
+      const menu = page.getByRole("menu", { name: `${previousType} Document type`, exact: true });
       await expect(menu.getByRole("menuitemradio")).toHaveText(types);
-      await expect(menu.getByRole("menuitemradio", { checked: true })).toHaveText("Emergency Contact");
-      await info.attach(`document-types-${type}-${theme.attribute}.png`, { body: await page.screenshot(), contentType: "image/png" });
+      await expect(menu.getByRole("menuitemradio", { checked: true })).toHaveText(previousType);
+      await attachScreenshotFile(page, info, `document-types-${type}-${theme.attribute}.png`);
       await menu.getByRole("menuitemradio", { name: type, exact: true }).click();
       await expect(dialog.getByRole("button", { name: `${type} Document type`, exact: true })).toBeFocused();
       await expect(dialog.getByText("Other document types", { exact: true })).toHaveCount(0);
@@ -56,7 +65,7 @@ for (const theme of PARITY_THEMES) test(`OnBase document type selection and revi
         await expect(review.getByRole("combobox", { name: "Source page", exact: true })).toHaveCount(0);
         await expect(review.getByRole("img")).toHaveCount(1);
       }
-      await info.attach(`review-${type}-${theme.attribute}.png`, { body: await page.screenshot(), contentType: "image/png" });
+      await attachScreenshotFile(page, info, `review-${type}-${theme.attribute}.png`);
       await review.getByRole("button", { name: "Approve records", exact: true }).click();
       await logs.getByRole("button", { name: /^Records \d+$/u }).click();
       await logs.getByRole("button", { name: /^Linked runs \(/u }).click();
@@ -71,13 +80,17 @@ for (const theme of PARITY_THEMES) test(`OnBase document type selection and revi
       await expect(rerun.getByRole("button", { name: `${type} Document type`, exact: true })).toBeVisible();
       await rerun.getByRole("button", { name: "Cancel", exact: true }).click();
     }
+    const a11yName = `onbase-types-${theme.attribute}.a11y.yml`, a11y = await logs.ariaSnapshot();
+    await info.attach(`onbase-types-${theme.attribute}.png`, { body: await page.screenshot(), contentType: "image/png" });
+    await info.attach(a11yName, { body: a11y, contentType: "text/yaml" });
+    info.annotations.push({ type: `a11y-attachment-sha256:${a11yName}`, description: createHash("sha256").update(a11y).digest("hex") });
     expect(errors).toEqual([]); expect(writes).toEqual([]);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1440);
   } finally { await server.close(); }
 });
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) {
-  test(`all workflow previews, Run and Rerun @ ${theme.attribute}-${width}`, async ({ page }, info) => {
+  test(`all workflow previews, Run and Rerun @ ${theme.attribute}-${width}`, { annotation: [{ type: "required-a11y-evidence", description: `workflow-previews-${theme.attribute}-${width}.a11y.yml` }] }, async ({ page }, info) => {
     ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, profile: mockProfile });
     const errors: string[] = [], writes: string[] = [], external: string[] = [];
@@ -102,7 +115,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) {
           const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
           await expect(logs.getByRole("heading", { level: 2 })).toHaveText(sample.subject);
           if (flow.methods[0] === "delegated") await expect(logs).toContainText("Read Section 2 signer");
-          await info.attach(`delegated-${flow.id}-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+          await attachScreenshotFile(page, info, `delegated-${flow.id}-${theme.attribute}-${width}.png`);
           continue;
         }
         await picker.getByRole("button", { name: flow.label, exact: true }).click();
@@ -128,7 +141,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) {
           await expect(dialog.locator('input[type="url"]')).toHaveCount(0);
         }
         await expect(dialog.getByRole("button", { name: "Continue", exact: true })).toBeEnabled();
-        await info.attach(`input-${flow.id}-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+        await attachScreenshotFile(page, info, `input-${flow.id}-${theme.attribute}-${width}.png`);
         await advance(dialog);
         await expect(dialog.getByRole("region", { name: "Options", exact: true })).toBeVisible();
         await expect(dialog.getByRole("checkbox", { name: "Dry run", exact: true })).toHaveCount(flow.dryRun ? 1 : 0);
@@ -139,14 +152,21 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) {
         await dialog.getByRole("radio", { name: "Headless", exact: true }).press("Space");
         await dialog.getByRole("checkbox", { name: "Capture screenshots", exact: true }).uncheck();
         await dialog.getByRole("checkbox", { name: "Customize steps", exact: true }).check();
-        await info.attach(`options-${flow.id}-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+        await attachScreenshotFile(page, info, `options-${flow.id}-${theme.attribute}-${width}.png`);
         await advance(dialog);
         const stepRegion = dialog.getByRole("region", { name: "Steps", exact: true });
-        await expect(stepRegion.getByRole("checkbox")).toHaveCount(flow.steps.length);
+        await expect(stepRegion.getByRole("checkbox")).toHaveCount(flow.steps.filter(step => !mockStepIsDependency(step)).length + flow.steps.filter(step => mockStepIsLocked(flow.id, step) && manualReadFields(flow.id, step.key).length > 0).length);
         await expect(dialog).toContainText(`${flow.steps.length} / ${flow.steps.length} included`);
         await expect(stepRegion.locator("li").first()).toHaveCSS("min-height", "58px");
-        await stepRegion.getByRole("checkbox", { name: flow.steps[0].label, exact: true }).uncheck();
-        await info.attach(`steps-${flow.id}-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+        const optional = flow.steps.find(step => !mockStepIsLocked(flow.id, step) && !mockStepIsDependency(step))!;
+        await stepRegion.getByRole("checkbox", { name: optional.label, exact: true }).uncheck();
+        for (const field of manualReadFields(flow.id, optional.key)) {
+          const value = field.date ? "10/06/2026" : field.options ? field.options[0] : /employee id/iu.test(field.label) ? "10000001" : field.token === "$name" ? "Jordan Lee" : "None";
+          const group = stepRegion.getByRole("group", { name: `Manual values for ${optional.label}`, exact: true });
+          if (field.options) await chooseSelect(group.getByRole("combobox", { name: field.label, exact: true }), value);
+          else await group.getByRole("textbox", { name: field.label, exact: true }).fill(value);
+        }
+        await attachScreenshotFile(page, info, `steps-${flow.id}-${theme.attribute}-${width}.png`);
         await advance(dialog);
         await expect(dialog.getByRole("region", { name: "Confirm", exact: true })).toBeVisible();
         const confirmation = dialog.getByRole("region", { name: "Confirm", exact: true });
@@ -155,12 +175,12 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) {
         await expect(confirmation).toHaveCSS("gap", summaryGap);
         await expect(confirmation).toContainText("Bulk");
         await expect(confirmation).toContainText("Headless · screenshots off");
-        await expect(confirmation).toContainText(`Omitted: ${flow.steps[0].label}`);
+        await expect(confirmation).toContainText(`Omitted: ${optional.label}`);
         await expect(confirmation.locator("dl")).toHaveCSS("font-family", /-apple-system/);
         await expect(confirmation.locator("details")).toHaveCount(0);
         await expect(confirmation.getByText("Workflow plan", { exact: true })).toHaveCount(0);
         expect((await dialog.locator(":scope > footer").boundingBox())!.height).toBe(57);
-        await info.attach(`confirm-${flow.id}-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+        await attachScreenshotFile(page, info, `confirm-${flow.id}-${theme.attribute}-${width}.png`);
         await dialog.getByRole("button", { name: "Start preview", exact: true }).click();
         await expect(dialog).toHaveCount(0);
         const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
@@ -169,8 +189,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) {
         await logs.getByRole("button", { name: "Rerun", exact: true }).click();
         const rerun = page.getByRole("dialog", { name: "Rerun", exact: true });
         await expect(rerun.getByRole("list", { name: "Run configuration path" }).getByRole("listitem")).toHaveText([/^1\s*Steps$/u, /^2\s*Values$/u, /^3\s*Options$/u, /^4\s*Confirm$/u]);
-        await expect(rerun.getByRole("complementary", { name: "Source run", exact: true })).toContainText(flow.label);
-        await expect(rerun.getByRole("checkbox", { name: flow.steps[0].label, exact: true })).not.toBeChecked();
+        await expect(rerun.getByRole("complementary", { name: "Source run", exact: true })).toHaveCount(0);
+        await expect(rerun.getByRole("checkbox", { name: optional.label, exact: true })).not.toBeChecked();
         await expect(rerun.locator(".launch-step-status")).toHaveCount(flow.steps.length);
         await advance(rerun);
         await expect(rerun.getByRole("region", { name: "Values", exact: true })).toBeVisible();
@@ -180,6 +200,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) {
         await expect(rerun.getByRole("checkbox", { name: "Capture screenshots", exact: true })).not.toBeChecked();
         await advance(rerun);
         await expect(rerun.getByText("Workflow plan", { exact: true })).toHaveCount(0);
+        await expect(rerun.getByRole("region", { name: "Confirm", exact: true })).toContainText(flow.methods[0] === "pdf" ? pdf.name : flow.example);
         await rerun.getByRole("button", { name: "Create rerun", exact: true }).click();
         await expect(rerun).toHaveCount(0);
         await logs.getByRole("button", { name: /^Linked runs \(\d+\)$/u }).click();
@@ -206,11 +227,15 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) {
       await expect(upload.getByRole("spinbutton", { name: "Workers", exact: true })).toHaveCount(0);
       await advance(upload);
       await expect(upload.getByText("Workflow plan", { exact: true })).toHaveCount(0);
-      await info.attach(`upload-only-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+      await attachScreenshotFile(page, info, `upload-only-${theme.attribute}-${width}.png`);
       await upload.getByRole("button", { name: "Start preview", exact: true }).click();
       await expect(upload).toHaveCount(0);
       await expect(approvalLogs.getByRole("navigation", { name: "Run timeline", exact: true }).getByRole("button", { name: /^Wait for all signatures/u })).toHaveCount(0);
       await page.keyboard.press("Escape");
+      const a11yName = `workflow-previews-${theme.attribute}-${width}.a11y.yml`, a11y = await approvalLogs.ariaSnapshot();
+      await info.attach(`workflow-previews-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+      await info.attach(a11yName, { body: a11y, contentType: "text/yaml" });
+      info.annotations.push({ type: `a11y-attachment-sha256:${a11yName}`, description: createHash("sha256").update(a11y).digest("hex") });
       expect(errors).toEqual([]); expect(writes).toEqual([]);
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
     } finally { await server.close(); }

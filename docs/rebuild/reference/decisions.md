@@ -290,6 +290,13 @@ step navigation. OCR Review opens the existing Records body with native Back/For
 approval and resolution remain explicit actions. The layout is unchanged. D347's dashboard-surfaces
 owner records this behavior; evidence is `log-header-actions-10003539`.
 
+The 2026-10-06 manual-input amendment removes Oath Notes, keeps OCR delegation with optional
+extraction, starts manual OCR review with blank records and preserves explicit approval. Preview
+reading steps accept operator facts; form-fill/save/submit actions remain included, and dependency
+waits remain automatic. Source-page coordinates bind run and record. Served descriptor capabilities
+are unchanged pending backend contract admission. D347's dashboard-surfaces owner records the
+contract; evidence is `manual-ocr-review-10003539`.
+
 The save-feedback amendment adds existing success toasts for confirmed typed settings, protected
 settings, saved keyboard edits, local spreadsheet registration/mappings and exported spreadsheet copies.
 One acknowledged attempt produces one value-free confirmation; failures and uncertainty retain their

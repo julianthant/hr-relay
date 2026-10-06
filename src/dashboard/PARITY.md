@@ -650,3 +650,24 @@ navigation/history/reload, worker import, typed mapping, sheet exclusion, editin
 roundtrip and retained library identity. Each state emits body-backed screenshot/accessibility
 evidence. The existing save-toast cases cover editor save/readback after regrouping. Evidence is
 `frontend-wiring-prep-10003539`; frozen reference/coverage phase-exit gates remain with 3.1.19.
+
+## Manual OCR review and reading inputs (2026-10-06)
+
+Oath review omits Notes; Emergency Contact retains its multiline field. Turning off Extract with OCR
+in PDF Options still creates an OCR child but goes directly to blank manual review. Identity is
+operator supplied, required values are validated, and only explicit approval creates downstream
+people. The selected document type governs blank manual fields independently of fixture extraction. Automatic extraction remains the default. Rerun retains the mode, manual facts and lineage.
+
+Preview Steps lock form-fill/save/submit actions. Unchecking a reading step reveals its manual
+values; mixed read/form steps offer manual reading values while keeping form work. Dependency waits
+are automatic, and manually entered facts cannot stand in for submitted receipt proof. Logs identify
+operator-entered values and downstream previews use them. Required form actions are included on
+rerun without mutating the source. Private values stay outside URLs. Source-page view coordinates
+bind the run and record, so switching between I-9 and contact review preserves visible documents.
+
+`workflow-manual-input.test.ts`, the existing workflow/source/archive tests, and the updated
+`ocr-card-layout.spec.ts`/`workflow-mocks.spec.ts` preserve membership and existing document,
+keyboard, geometry, history and no-write assertions. `workflow-manual-input.spec.ts` covers both
+themes at 1024×720 and 1440×1000 with paired screenshot/accessibility evidence. Served Person Lookup
+and Separations keep current descriptor authority; new manual capability wiring belongs to the
+backend owner. Evidence is `manual-ocr-review-10003539`. Frozen references are unchanged.

@@ -1022,7 +1022,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
     const created = mockRunsForDraft(id, draft, mockRuns.length, sourceId);
     setMockRuns(previous => [...created, ...previous]);
     setMockNotificationTimes(previous => ({ ...previous, ...Object.fromEntries(created.map(run => [run.id, servedNowRef.current])) }));
-    setRoute(current => ({ ...current, start: false, view: { ...current.view, preview: id, mockRun: created[0]?.id, launchWorkflow: undefined, launchSource: undefined, launchStage: undefined } }));
+    const review = draft.ocrMode === "manual" ? created.find(run => run.workflowId === "ocr") : undefined;
+    setRoute(current => ({ ...current, start: false, view: { ...current.view, preview: review ? "ocr" : id, mockRun: review?.id ?? created[0]?.id, records: review?.id, launchWorkflow: undefined, launchSource: undefined, launchStage: undefined } }));
     setLaunchOpen(false);
   }, [mockRuns.length, setLaunchOpen, setRoute]);
   const onRailSelect = useCallback((id: string) => { setRailPreview(null); selectWorkflow(id); }, [selectWorkflow, setRailPreview]);

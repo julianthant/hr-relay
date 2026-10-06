@@ -96,12 +96,6 @@
             "label": "State",
             "value": "CA",
             "section": "Oath"
-          },
-          {
-            "key": "notes",
-            "label": "Notes",
-            "value": "",
-            "section": "Oath"
           }
         ],
         "selected": true,
@@ -211,12 +205,6 @@
             "label": "State",
             "value": "CA",
             "section": "Oath"
-          },
-          {
-            "key": "notes",
-            "label": "Notes",
-            "value": "",
-            "section": "Oath"
           }
         ],
         "selected": true,
@@ -314,12 +302,6 @@
             "key": "state",
             "label": "State",
             "value": "CA",
-            "section": "Oath"
-          },
-          {
-            "key": "notes",
-            "label": "Notes",
-            "value": "",
             "section": "Oath"
           }
         ],
@@ -419,12 +401,6 @@
             "label": "State",
             "value": "CA",
             "section": "Oath"
-          },
-          {
-            "key": "notes",
-            "label": "Notes",
-            "value": "",
-            "section": "Oath"
           }
         ],
         "selected": true,
@@ -522,12 +498,6 @@
             "key": "state",
             "label": "State",
             "value": "CA",
-            "section": "Oath"
-          },
-          {
-            "key": "notes",
-            "label": "Notes",
-            "value": "",
             "section": "Oath"
           }
         ],

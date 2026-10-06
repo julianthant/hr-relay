@@ -4,7 +4,7 @@ import { Button, Dialog, DialogContent, DialogBody, DialogFooter, IconButton, Po
 import { cn } from "../../../lib/utils.js";
 import { LogPanel } from "../../run-detail/log-panel.js";
 import { queueRunHeader } from "../../run-detail/run-header-model.js";
-import { mockNeedsReview, mockQueueStatus, mockRunLog, mockRunStatus, type MockRun } from "./workflow-mock-model.js";
+import { mockApprovalError, mockNeedsReview, mockQueueStatus, mockRunLog, mockRunStatus, type MockRun } from "./workflow-mock-model.js";
 import { mockWorkflow } from "./workflow-mock-catalog.js";
 import { mockQueueId, mockQueueSurface, mockQueueSurfaces } from "./workflow-queue-model.js";
 import { QueuePanel, type QueueFilterScope } from "../../queue/queue.js";
@@ -72,7 +72,15 @@ export function WorkflowMockLog({ run, runs, onRerun, onApprove, onChange, onDis
   const setRecordsVisible = onReviewOpenChange ?? setLocalReviewOpen;
   const { workflowId, draft } = run;
   const surface = useMemo(() => mockQueueSurface(run, day), [run, day]);
-  const sourcePages = useMemo(() => hasRecords ? Object.fromEntries(seedReviewRecords({ workflowId, draft }).map(record => [record.id, documentSourcePages(draft, record) ?? reviewSourcePages(record)])) : {}, [hasRecords, workflowId, draft]);
+  const sourcePages = useMemo(() => {
+    if (!hasRecords) return {};
+    const originals = seedReviewRecords({ workflowId, draft });
+    return Object.fromEntries(reviewRecords(run).map(record => {
+      const original = originals.find(item => item.id === record.id) ?? originals[0];
+      if (!original) throw new Error("MOCK_REVIEW_SHAPE_MISSING");
+      return [record.id, documentSourcePages(draft, original) ?? reviewSourcePages(original)];
+    }));
+  }, [hasRecords, workflowId, draft, run]);
   const { steps, timeline } = recordsVisible ? { steps: [], timeline: [] } : mockRunLog(run);
   const linked = runs.filter(item => item.parentId === run.id || item.id === run.parentId || item.id === run.sourceId || item.id === run.ocrRunId || item.ocrRunId === run.id);
   return <LogPanel title={run.subject} steps={steps} timeline={timeline} context={queueRunHeader(surface, mockWorkflow(run.workflowId).label, nowIso)}
@@ -95,6 +103,6 @@ export function WorkflowMockLog({ run, runs, onRerun, onApprove, onChange, onDis
         </Popover>}
       </span>}
       content={recordsVisible ? <div id={`records-${mockQueueId(run.id)}`} className="flex min-h-0 min-w-0 flex-1">
-        <WorkflowMockReview key={run.id} run={run} sourcePages={sourcePages} onChange={onChange} onApprove={mockNeedsReview(run) ? onApprove : undefined} onDiscard={mockNeedsReview(run) ? onDiscard : undefined} onRestore={onRestore} />
+        <WorkflowMockReview key={run.id} approvalError={mockApprovalError(run)} run={run} sourcePages={sourcePages} onChange={onChange} onApprove={mockNeedsReview(run) ? onApprove : undefined} onDiscard={mockNeedsReview(run) ? onDiscard : undefined} onRestore={onRestore} />
       </div> : undefined} />;
 }

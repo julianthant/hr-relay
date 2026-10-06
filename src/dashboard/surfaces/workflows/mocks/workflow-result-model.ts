@@ -1,3 +1,4 @@
+import { manualFact, usesManualRead } from "./workflow-manual-model.js";
 import type { MockRun } from "./workflow-mock-model.js";
 import { mockWorkflow, type MockStep } from "./workflow-mock-catalog.js";
 import type { LogEntry } from "../../run-detail/logs/log-feed-model.js";
@@ -28,6 +29,8 @@ const VALUES: Readonly<Record<string, string>> = {
   "Transaction number": "DEMO-TXN-001", "Union code": "SX", "Wage": "$17.75 per hour",
 };
 export function mockFieldValue(run: MockRun, label: string): string {
+  const manual = manualFact(run.workflowId, run.draft, label);
+  if (manual !== undefined) return manual;
   const record = run.workflowId === "ocr" ? seedReviewRecords(run)[0] : mockInputRecord(run);
   if (run.workflowId === "ocr" && ["Records read", "Records reported", "People resolved", "Active people"].includes(label)) return String(reviewRecords(run).length);
   if (run.workflowId === "ocr" && label === "Roster rows matched") return `${reviewRecords(run).filter(item => item.match === "matched").length} / ${reviewRecords(run).length}`;
@@ -62,6 +65,7 @@ export function mockStepNode(run: MockRun, step: MockStep): PreviewNode | undefi
   return workflowPreviewGraph(run.workflowId).nodes.find(node => node.id === id);
 }
 export function mockDetailEntries(run: MockRun, step: MockStep, state: LogTimelineState, time: string): readonly LogEntry[] {
+  if (usesManualRead(run.draft, step.key)) return [];
   if (state === "skipped" && run.workflowId === "onboarding" && run.draft.dryRun && run.draft.selectedSteps.includes(step.key) && ["i9-creation", "transaction"].includes(step.key) && !(step.key === "i9-creation" && run.draft.hireType === "rehire")) {
     const values = step.key === "i9-creation" ? [["Employee", "Jordan Lee"], ["Email", run.subject], ["Profile ID", "Synthetic placeholder · no profile created"]] : [["Template", run.draft.hireType === "rehire" ? "UC_CONC_HIRE" : "UC_FULL_HIRE"], ["Position number", "DEMO-POS-001"], ["Wage", "$17.75 per hour"], ["Effective date", "08/03/2026"]];
     return [{ kind: "fields", id: `${run.id}:${step.key}:staged`, title: "Staged form · dry run", fields: values.map(([label, value], index) => ({ id: `${run.id}:${step.key}:staged:${index}`, time, kind: "fill", label, value })) }, { kind: "note", id: `${run.id}:${step.key}:abandoned`, time, message: step.key === "i9-creation" ? "I-9 form filled and abandoned without Save & Continue." : "Smart HR form staged without Save and Submit." }];
@@ -75,7 +79,7 @@ export function mockDetailEntries(run: MockRun, step: MockStep, state: LogTimeli
     const proofs = [...new Set(contract.filter(item => item.proof).map(item => item.proof))];
     if (proofs.length) entries.push({ kind: "note", id: `${run.id}:${step.key}:proof`, time, message: `Readback: ${proofs.join("; ")}.`, tone: "positive" });
   }
-  if (step.key === "prep:awaiting-approval" && run.workflowId === "ocr") entries.push({ kind: "decision", id: `${run.id}:review-gate`, time, decision: { title: run.approved ? "Records approved" : "Review extracted records", state: run.approved ? "resolved" : "review", message: "Review records before processing." } });
+  if (step.key === "prep:awaiting-approval" && run.workflowId === "ocr") entries.push({ kind: "decision", id: `${run.id}:review-gate`, time, decision: { title: run.approved ? "Records approved" : run.draft.ocrMode === "manual" ? "Review records" : "Review extracted records", state: run.approved ? "resolved" : "review", message: "Review records before processing." } });
   if (run.workflowId === "oath-upload" && step.key === "fill-form") entries.push({ kind: "fields", id: `${run.id}:ticket-form`, fields: [["Subject", "HDH New Hire Oaths"], ["Attachment", run.draft.files.map(file => file.name).join(", ")]].map(([label, value], index) => ({ id: `${run.id}:ticket-field:${index}`, time, kind: "fill", label, value })) });
   return entries;
 }

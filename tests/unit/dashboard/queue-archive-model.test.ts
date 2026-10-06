@@ -26,7 +26,7 @@ describe("queue snapshots in the local Archive", () => {
     const initial = seedMockRuns();
     const ocr = initial.find(run => run.workflowId === "ocr" && run.draft.formType === "oath")!;
     const records = reviewRecords(ocr).map((record, index) => ({ ...record, selected: index !== 1,
-      fields: record.fields.map(field => field.label === "Notes" ? { ...field, value: "Retain this manual edit" } : field),
+      fields: record.fields.map(field => field.label === "Printed name" ? { ...field, value: "Retain this manual edit" } : field),
     }));
     const runs = updateMockReview(initial, ocr.id, records);
     const before = JSON.stringify(runs);
@@ -39,7 +39,7 @@ describe("queue snapshots in the local Archive", () => {
     expect(report.completed).toBeUndefined();
     expect(report.snapshot?.kind === "workflow" && report.snapshot.run.approved).toBe(false);
     expect(report.snapshot?.kind === "workflow" && report.snapshot.run.records).toEqual(records);
-    expect(report.fields).toContainEqual(["Jordan Lee · Page 1 · Notes", "Retain this manual edit"]);
+    expect(report.fields).toContainEqual(["Jordan Lee · Page 1 · Printed name", "Retain this manual edit"]);
     expect(JSON.stringify(runs)).toBe(before);
     expect(report.snapshot?.kind === "workflow" && report.snapshot.run).not.toBe(runs.find(run => run.id === ocr.id));
     expect(mockArchiveLogs(report)).toEqual(report.savedLogs);
