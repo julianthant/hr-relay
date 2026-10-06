@@ -513,3 +513,14 @@ is retained only across workflows, and Status only for outstanding runs with dif
 states. Selected logs retain full status evidence. Measured populations, exact identity, pagination,
 route coordinates and focus remain unchanged. Evidence is `analytics-context-20261005`; no frozen
 references were changed and full phase-exit gates remain deferred.
+
+## Analytics sorting amendment (2026-10-05)
+
+Analytics run tables use the shared DS sortable header for Name and Duration. Name initially sorts
+ascending and Duration descending; activating the same header reverses its order. The entire matched
+population is sorted before pagination, with unavailable durations last and stable identity ties.
+Ordering resets to the first page while preserving header focus. Bounded route coordinates retain
+the sort through pagination, reload, exact logs, breadcrumbs and browser history. Existing routes
+without sorting retain supplied ordering. Both themes preserve caption styling, left-aligned names,
+right-aligned durations, 24px targets and readable contrast. Evidence is `analytics-sort-20261005`;
+backend reporting and frozen phase-exit gates remain deferred.

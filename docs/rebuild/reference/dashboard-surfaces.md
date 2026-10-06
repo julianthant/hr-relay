@@ -7847,10 +7847,21 @@ The 2026-10-05 Analytics scope amendment names workflow timing views directly, f
 and timing eligibility are stated once beside the count. Workflow-scoped lists omit the redundant
 Workflow column; completed, timed and failed lists omit their already-known terminal Status column.
 Outstanding lists retain Status because running and waiting differ. Cross-workflow lists retain
-Workflow. Thus workflow timing uses only Run and Duration without changing the measured population,
+Workflow. Thus workflow timing uses only Name and Duration without changing the measured population,
 row identity, exact log access, pagination or URL/history owner. Full verification/status evidence
 remains in the selected run's logs. Evidence is `analytics-context-20261005`; backend reporting and
 frozen phase-exit gates remain deferred.
+
+The Analytics sorting amendment makes Name and Duration headers sortable through the existing DS
+`TH` primitive. Name starts ascending; Duration starts descending; repeated activation reverses the
+direction. Ordering applies to the complete matched population before the 20-row page slice. Unknown
+durations stay last in either direction, and ties retain a stable identity order. Sorting resets the
+page to zero and clears selected logs while preserving the metric and workflow. The optional bounded
+`activityBrowse.sort` column/direction coordinates restore through reload, Back/Forward, pagination
+and exact-run breadcrumbs; old routes without sorting retain their supplied order. Keyboard focus
+stays on the activated header, with `aria-sort` and direction glyphs. No filter control or backend
+reporting change is introduced. Evidence is `analytics-sort-20261005`; frozen phase-exit gates remain
+deferred to 3.1.19.
 
 Local queue selection mode and Select menu items are retired. Archive applies
 immediately; Delete asks first and cancellation retains its served confirmation. Member check marks
