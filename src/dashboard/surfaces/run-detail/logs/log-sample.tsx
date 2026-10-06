@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Badge } from "../../../ds/ui.js";
 import { StatusBadge } from "../../shared/status/status.js";
 import { dsStatusOf } from "../../shared/status/status-model.js";
@@ -9,14 +9,16 @@ import { decisionScenarios, previewScenarios } from "./log-fixture.js";
 import { selectedLogPresentation, selectedLogSample, type LogSelection } from "./log-selection-model.js";
 import { continuedLookupTimeline } from "./log-selected-fixture.js";
 import type { LogTimelineStage } from "./log-timeline-model.js";
+import { queueRunHeader } from "../run-header-model.js";
 
 /** Status-matched fictional previews with a separate served queue-facts view. */
-export function LogSample({ selection }: { selection?: LogSelection }) {
+export function LogSample({ selection, nowIso }: { selection?: LogSelection; nowIso?: string }) {
   const scenarioId = new URLSearchParams(typeof window === "undefined" ? "" : window.location.search).get("logPreview") ?? (selection ? "preview" : "separation");
   const [edited, setEdited] = useState<{ basis: string; steps: readonly LogStep[]; timeline: readonly LogTimelineStage[] }>();
   const scenarios = [...previewScenarios, ...decisionScenarios];
-  const selected = selection ? selectedLogPresentation(selection) : undefined;
-  const preview = selection ? selectedLogSample(selection) : undefined;
+  const row = selection?.row, workflowLabel = selection?.workflowLabel;
+  const selected = useMemo(() => row && workflowLabel !== undefined ? selectedLogPresentation({ row, workflowLabel }) : undefined, [row, workflowLabel]);
+  const preview = useMemo(() => row && workflowLabel !== undefined ? selectedLogSample({ row, workflowLabel }) : undefined, [row, workflowLabel]);
   const scenario = scenarioId === "preview" && preview ? preview : scenarioId === "selected" && selected
     ? { ...selected, id: "selected", label: "Queue facts", subject: "" } : scenarios.find(item => item.id === scenarioId);
   if (!scenario) throw new Error("log-sample-scenario-missing");
@@ -40,5 +42,5 @@ export function LogSample({ selection }: { selection?: LogSelection }) {
       return { basis, timeline: scenarioId === "preview" ? continuedLookupTimeline(current?.basis === basis ? current.timeline : scenario.timeline, action.id) : scenario.timeline, steps: nextSteps };
     });
   };
-  return <LogPanel key={basis} title={scenarioId === "preview" && preview ? preview.subject : scenarioId === "selected" && selected ? selected.title : scenario.subject} status={selection && (scenarioId === "preview" || scenarioId === "selected") ? <StatusBadge status={dsStatusOf(selection.row.status)} presentation="queue" /> : <Badge tone="neutral">{scenario.status}</Badge>} steps={steps} timeline={timeline} initialStepId={scenarioId === "preview" ? preview?.initialStepId : undefined} onDecision={scenarioId === "selected" ? undefined : decide} />;
+  return <LogPanel key={basis} context={selection && (scenarioId === 'preview' || scenarioId === 'selected') ? queueRunHeader(selection.row, selection.workflowLabel, nowIso ?? selection.row.updatedAt) : undefined} title={scenarioId === "preview" && preview ? preview.subject : scenarioId === "selected" && selected ? selected.title : scenario.subject} status={selection && (scenarioId === "preview" || scenarioId === "selected") ? <StatusBadge status={dsStatusOf(selection.row.status)} presentation="queue" /> : <Badge tone="neutral">{scenario.status}</Badge>} steps={steps} timeline={timeline} initialStepId={scenarioId === "preview" ? preview?.initialStepId : undefined} onDecision={scenarioId === "selected" ? undefined : decide} />;
 }

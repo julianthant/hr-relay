@@ -1,4 +1,4 @@
-import { parseViewRoute, type ViewRoute } from "./view-route-model.js";
+import { parseViewRoute, ViewRouteSchema, type ViewRoute } from "./view-route-model.js";
 import { parseArchiveFolderRoute, parseArchiveBrowse, type ArchiveBrowseState } from "./archive-route-model.js";
 /**
  * The app's visible state lives in the query string.
@@ -157,6 +157,12 @@ export function parseRoute(search: string): AppRouteState {
   const view = parseViewRoute(params.get("view"));
   if (view === null) route.viewInvalid = true;
   else if (Object.keys(view).length) route.view = view;
+  const activityPreview = params.get('activityPreview');
+  if (activityPreview !== null) {
+    const preview = ViewRouteSchema.shape.activityPreview.safeParse(activityPreview);
+    if (!preview.success) route.viewInvalid = true;
+    else route.view = { ...route.view, activityPreview: preview.data };
+  }
   if (day !== null) route.day = day;
   if (run !== null && run.length > 0) route.run = run;
   if (section !== null && section.length > 0) route.section = section;

@@ -1011,7 +1011,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
   const settingsOpen = ["settings", "archive", "activity", "explore"].includes(takeover);
   const settingsResolution = resolveSettingsSection(buildSettingsNav(settingsSections), route.settings ?? "");
   const pageName = takeover === "settings" ? settingsResolution.state === "open" ? settingsResolution.entry.label : "Settings"
-    : takeover === "archive" ? "Archive" : takeover === "activity" ? "Activity" : takeover === "explore" ? "Explorer"
+    : takeover === "archive" ? "Archive" : takeover === "activity" ? "Analytics" : takeover === "explore" ? "Explorer"
     : takeover === "intake" ? "Edit Data" : route.start ? route.view?.launchSource || route.view?.launchRerun ? "Rerun" : "Run" : railPreview ? MOCK_WORKFLOWS.find(flow => flow.id === railPreview)?.label ?? "Unavailable workflow"
     : workflows.find(workflow => workflow.id === activeWorkflowId)?.label ?? "Dashboard";
   useEffect(() => { document.title = `${pageName} — HR GPT`; }, [pageName]);
@@ -1273,11 +1273,11 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
                 <div role="group" aria-label="Log date controls" className="dashboard-log-date"><DatePicker label="Dashboard date" hideLabel triggerLabel="Choose date" required value={day} max={today}
                   onChange={next => { if (next !== "") setRoute({ ...route, day: next, run: undefined }); }} className="w-44" footer={choose => <Button size="sm" variant="ghost" onClick={() => choose(today)}>Today</Button>} /></div>
                 </section>
-            {previewFlow && railRow && dateSelection.state === "valid" ? <WorkflowMockLog key={railRow.id} run={railRow} runs={mockRuns} onRerun={() => openMockLaunch({ workflowId: railRow.workflowId, source: railRow })} onApprove={() => { setMockRuns(previous => approveMockRun(previous, railRow.id)); setMockNotificationTimes(previous => ({ ...previous, [railRow.id]: nowIso })); }}
+            {previewFlow && railRow && dateSelection.state === "valid" ? <WorkflowMockLog key={railRow.id} run={railRow} runs={mockRuns} day={day} nowIso={nowIso} onRerun={() => openMockLaunch({ workflowId: railRow.workflowId, source: railRow })} onApprove={() => { setMockRuns(previous => approveMockRun(previous, railRow.id)); setMockNotificationTimes(previous => ({ ...previous, [railRow.id]: nowIso })); }}
               reviewOpen={railReviewId === railRow.id} onReviewOpenChange={open => setRailReviewId(open ? railRow.id : undefined)}
               onChange={records => setMockRuns(previous => updateMockReview(previous, railRow.id, records))} onDiscard={() => { setMockRuns(previous => discardMockReview(previous, railRow.id)); setMockNotificationTimes(previous => ({ ...previous, [railRow.id]: nowIso })); }} onRestore={() => { setMockRuns(previous => restoreMockReview(previous, railRow.id)); setMockNotificationTimes(previous => ({ ...previous, [railRow.id]: nowIso })); }}
               onSelect={id => { const next = mockRuns.find(run => run.id === id); if (!next) throw new Error(`MOCK_LINKED_RUN_MISSING: ${id}`); setRoute(current => ({ ...current, view: { ...current.view, preview: next.workflowId, mockRun: next.id, records: undefined } })); }} /> : !previewFlow && route.run !== undefined && selectedRow !== undefined && dateSelection.state === "valid" ? (
-              <LogSample key={route.run} selection={{ row: selectedRow, workflowLabel: workflowLabelOf(selectedRow.workflowId) }} />
+              <LogSample key={route.run} nowIso={nowIso} selection={{ row: selectedRow, workflowLabel: workflowLabelOf(selectedRow.workflowId) }} />
             ) : dateError === undefined && dayResource.state !== "failed" && dayWire === undefined && route.run !== undefined ? <RunPanelSkeleton /> : (
               <Panel className="min-h-0"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]"><EmptyState
                 icon={<PanelRight aria-hidden className={dsIcon.lg} />}

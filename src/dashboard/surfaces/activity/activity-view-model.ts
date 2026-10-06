@@ -1,5 +1,6 @@
 import type { ActivityVolume } from "../../../domain/dashboard/activity-volume.js";
 import type { ActivityDateRange } from "./activity-model.js";
+import type { ActivityRunRecord } from './activity-drilldown-model.js';
 
 export interface ActivityWorkflow {
   readonly id: string;
@@ -19,6 +20,7 @@ export interface SuccessfulRunTiming {
 }
 
 export interface ActivitySummary {
+  readonly runs?: readonly ActivityRunRecord[];
   readonly range: ActivityDateRange;
   readonly timeZone: string;
   readonly total: number;

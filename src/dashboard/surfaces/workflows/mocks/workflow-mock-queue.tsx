@@ -3,11 +3,10 @@ import { ArrowUpRight, GitBranch, ListChecks } from "lucide-react";
 import { Button, Dialog, DialogContent, DialogBody, DialogFooter, IconButton, Popover, PopoverContent, PopoverTrigger, dsFocus } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 import { LogPanel } from "../../run-detail/log-panel.js";
-import { LogFeed } from "../../run-detail/logs/log-feed.js";
-import { LogTimeline } from "../../run-detail/logs/log-timeline.js";
+import { queueRunHeader } from "../../run-detail/run-header-model.js";
 import { mockNeedsReview, mockQueueStatus, mockRunLog, mockRunStatus, type MockRun } from "./workflow-mock-model.js";
 import { mockWorkflow } from "./workflow-mock-catalog.js";
-import { mockQueueId, mockQueueSurfaces } from "./workflow-queue-model.js";
+import { mockQueueId, mockQueueSurface, mockQueueSurfaces } from "./workflow-queue-model.js";
 import { QueuePanel, type QueueFilterScope } from "../../queue/queue.js";
 import type { QueueSortKey } from "../../queue/queue-model.js";
 import { StatusBadge } from "../../shared/status/status.js";
@@ -61,10 +60,11 @@ export function WorkflowMockQueue({ label, runs, allRuns, selected, onSelect, on
   </div>;
 }
 
-export function WorkflowMockLog({ run, runs, onRerun, onApprove, onChange, onDiscard, onRestore, onSelect, reviewOpen, onReviewOpenChange }: {
+export function WorkflowMockLog({ run, runs, onRerun, onApprove, onChange, onDiscard, onRestore, onSelect, reviewOpen, onReviewOpenChange, day, nowIso }: {
   run: MockRun; runs: readonly MockRun[]; onRerun: () => void; onApprove: () => void;
   onChange: (records: readonly ReviewRecord[]) => void; onDiscard: () => void; onRestore: () => void; onSelect: (id: string) => void;
   reviewOpen?: boolean; onReviewOpenChange?: (open: boolean) => void;
+  day: string; nowIso: string;
 }) {
   const [localReviewOpen, setLocalReviewOpen] = useState(false);
   const [linksOpen, setLinksOpen] = useState(false);
@@ -72,10 +72,11 @@ export function WorkflowMockLog({ run, runs, onRerun, onApprove, onChange, onDis
   const recordsVisible = hasRecords && (reviewOpen ?? localReviewOpen);
   const setRecordsVisible = onReviewOpenChange ?? setLocalReviewOpen;
   const { workflowId, draft } = run;
+  const surface = useMemo(() => mockQueueSurface(run, day), [run, day]);
   const sourcePages = useMemo(() => hasRecords ? Object.fromEntries(seedReviewRecords({ workflowId, draft }).map(record => [record.id, documentSourcePages(draft, record) ?? reviewSourcePages(record)])) : {}, [hasRecords, workflowId, draft]);
   const { steps, timeline } = recordsVisible ? { steps: [], timeline: [] } : mockRunLog(run);
   const linked = runs.filter(item => item.parentId === run.id || item.id === run.parentId || item.id === run.sourceId || item.id === run.ocrRunId || item.ocrRunId === run.id);
-  return <LogPanel title={run.subject} steps={steps} timeline={timeline}
+  return <LogPanel title={run.subject} steps={steps} timeline={timeline} context={queueRunHeader(surface, mockWorkflow(run.workflowId).label, nowIso)}
       status={<StatusBadge status={dsStatusOf(mockQueueStatus(run))} presentation="queue" />}
       toolbar={<span className="flex items-center gap-2">
         {hasRecords && <Button size="sm" variant={recordsVisible ? "secondary" : "outline"} aria-pressed={recordsVisible} aria-controls={recordsVisible ? `records-${mockQueueId(run.id)}` : undefined} icon={<ListChecks aria-hidden className="size-4" />} onClick={() => setRecordsVisible(!recordsVisible)}>Records {reviewRecords(run).length}</Button>}
@@ -95,5 +96,5 @@ export function WorkflowMockLog({ run, runs, onRerun, onApprove, onChange, onDis
       </span>}
       content={recordsVisible ? <div id={`records-${mockQueueId(run.id)}`} className="flex min-h-0 min-w-0 flex-1">
         <WorkflowMockReview key={run.id} run={run} sourcePages={sourcePages} onChange={onChange} onApprove={mockNeedsReview(run) ? onApprove : undefined} onDiscard={mockNeedsReview(run) ? onDiscard : undefined} onRestore={onRestore} />
-      </div> : <LogFeed steps={steps} navigation={jump => <LogTimeline stages={timeline} onJump={jump} />} />} />;
+      </div> : undefined} />;
 }

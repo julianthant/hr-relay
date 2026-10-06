@@ -75,8 +75,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await installTheme(page, theme);
       await page.emulateMedia({ reducedMotion: "reduce" });
       await page.goto(`${server.baseUrl}/?settings=activity&activityPreview=loading`);
-      const body = page.getByRole("region", { name: "Activity report", exact: true });
-      await expect(body.getByRole("status", { name: "Loading activity report", exact: true })).toBeVisible();
+      const body = page.getByRole("region", { name: "Analytics report", exact: true });
+      await expect(body.getByRole("status", { name: "Loading analytics report", exact: true })).toBeVisible();
       const before = await bounds(body.locator(".activity-summary > div"));
       const sections = await body.locator("h2").allTextContents();
       await captureLoading(page, info, `activity-loading-${theme.attribute}-${width}`);

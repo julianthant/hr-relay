@@ -1,23 +1,26 @@
 import { ActivityDurations } from "./activity-duration.js";
 import { type ReactNode } from "react";
 import { BarChart3 } from "lucide-react";
-import { Select, PageHeading } from "../../ds/ui.js";
+import { Select, PageHeading, dsFocus } from "../../ds/ui.js";
+import { ActivityDrilldown } from './activity-drilldown.js';
+import type { ActivityBrowse } from './activity-drilldown-model.js';
 import { ActivitySkeleton } from "./activity-loading.js";
 import { ACTIVITY_DATE_PRESETS, type ActivityDatePreset, type ActivityDateRange } from "./activity-model.js";
 import { ActivityRange } from "./activity-range.js";
 import { ActivityVolume } from "./activity-volume.js";
 import { activityCompletionRate, activityDuration, activityFailureRate, type ActivitySummary, type ActivityViewState } from "./activity-view-model.js";
 
-function Metrics({ report }: { report: ActivitySummary }) {
+function Metrics({ report, onSelection }: { report: ActivitySummary; onSelection?: (next: ActivityBrowse) => void }) {
   const metrics = [
-    { label: "Completed", value: String(report.completed), note: `of ${report.total} runs in this period` },
-    { label: "Outstanding", value: String(report.outstanding), note: `${report.running} running · ${report.waiting} waiting`, tone: "text-ui-warning" },
-    { label: "Failed", value: String(report.failed), note: activityFailureRate(report.failed, report.terminal), tone: report.failed ? "text-ui-danger" : undefined },
+    { label: "Completed", metric: 'completed' as const, value: String(report.completed), note: `of ${report.total} runs in this period` },
+    { label: "Outstanding", metric: 'outstanding' as const, value: String(report.outstanding), note: `${report.running} running · ${report.waiting} waiting`, tone: "text-ui-warning" },
+    { label: "Failed", metric: 'failed' as const, value: String(report.failed), note: activityFailureRate(report.failed, report.terminal), tone: report.failed ? "text-ui-danger" : undefined },
     { label: "Median duration", value: activityDuration(report.duration.medianSeconds), note: `${report.duration.measured} measured · ${report.duration.unmeasured} unmeasured` },
   ];
-  return <dl aria-label="Activity summary" className="activity-summary m-0 grid grid-cols-4 gap-2">
-    {metrics.map(metric => <div key={metric.label} className="min-w-0 rounded-xl border border-ui-stroke bg-ui-panel px-3 py-4">
+  return <dl aria-label="Analytics summary" className="activity-summary m-0 grid grid-cols-4 gap-2">
+    {metrics.map(metric => <div key={metric.label} className="relative min-w-0 rounded-xl border border-ui-stroke bg-ui-panel px-3 py-4">
       <dt className="text-body text-ui-secondary">{metric.label}</dt><dd className={`mb-1 ml-0 mt-1 tabular-nums min-[1151px]:mb-2 min-[1151px]:mt-2 ${metric.value === "Unavailable" ? "text-section" : "text-page font-normal"} ${metric.tone ?? "text-ui-primary"}`}>{metric.value}</dd><p className="m-0 text-caption text-ui-muted">{metric.note}</p>
+      {metric.metric && onSelection && <button type="button" aria-label={`View ${metric.label.toLowerCase()} runs (${metric.value})`} className={`absolute inset-0 cursor-pointer rounded-xl hover:bg-ui-hover/30 ${dsFocus}`} onClick={() => onSelection({ metric: metric.metric, page: 0 })} />}
     </div>)}
   </dl>;
 }
@@ -69,18 +72,19 @@ function Performance({ report }: { report: ActivitySummary }) {
   ]} /></section>;
 }
 
-export function ActivityView({ data, range, rangeRevision = 0, period, onPreset, onRange, notice }: {
+export function ActivityView({ data, range, rangeRevision = 0, period, onPreset, onRange, notice, selection, onSelection }: {
   data: ActivityViewState; range: ActivityDateRange; today: string; period: ActivityDatePreset;
   rangeRevision?: number;
   onPreset: (preset: ActivityDatePreset) => void; onRange: (range: ActivityDateRange) => void;
   onExport?: (format: "csv" | "xlsx") => void; notice?: string;
+  selection?: ActivityBrowse | null; onSelection?: (next: ActivityBrowse | null) => void;
 }) {
-  return <section aria-label="Activity report" className="settings-reference-page settings-data-section ui-theme-scope text-ui-primary">
-    <PageHeading title="Activity" description="Run outcomes, volume and performance." />
+  return <section aria-label="Analytics report" className="settings-reference-page settings-data-section ui-theme-scope text-ui-primary">
+    <PageHeading title="Analytics" description="Run outcomes, volume and performance." />
     <div className="activity-header-filters"><div className="activity-period-controls"><Select aria-label="Report period" variant="toolbar" value={period} onChange={event => onPreset(event.target.value as ActivityDatePreset)}>{ACTIVITY_DATE_PRESETS.map(preset => <option key={preset.value} value={preset.value}>{preset.label}</option>)}</Select><ActivityRange key={rangeRevision} range={range} onApply={onRange} onEdit={() => onPreset('custom')} /></div></div>
     {notice && <p role="status" className="m-0 text-body text-ui-secondary">{notice}</p>}
     <div className="min-w-0" aria-busy={data.state === "loading" || undefined}>
-      {data.state === "loaded" ? <><Metrics report={data.report} /><div className="mt-6 flex min-w-0 flex-col gap-6"><Outcomes report={data.report} /><ActivityDurations report={data.report} /><ActivityVolume volume={data.report.volume} /><Transactions report={data.report} /><Coverage report={data.report} /><Performance report={data.report} /></div></> : data.state === "loading" ? <ActivitySkeleton range={range} /> : <div role="alert" className="flex min-h-72 flex-col items-center justify-center text-center"><BarChart3 aria-hidden className="mb-4 size-6 text-ui-muted" /><h2 className="m-0 text-section">Activity unavailable</h2><p className="mb-0 mt-2 max-w-md text-body text-ui-secondary">{data.reason}</p></div>}
+      {data.state === "loaded" ? selection && onSelection ? <ActivityDrilldown report={data.report} selection={selection} onSelection={onSelection} /> : <><Metrics report={data.report} onSelection={data.report.runs ? onSelection : undefined} /><div className="mt-6 flex min-w-0 flex-col gap-6"><Outcomes report={data.report} /><ActivityDurations report={data.report} onWorkflow={data.report.runs && onSelection ? workflow => onSelection({ metric: 'timed', workflow, page: 0 }) : undefined} /><ActivityVolume volume={data.report.volume} /><Transactions report={data.report} /><Coverage report={data.report} /><Performance report={data.report} /></div></> : data.state === "loading" ? <ActivitySkeleton range={range} /> : <div role="alert" className="flex min-h-72 flex-col items-center justify-center text-center"><BarChart3 aria-hidden className="mb-4 size-6 text-ui-muted" /><h2 className="m-0 text-section">Analytics unavailable</h2><p className="mb-0 mt-2 max-w-md text-body text-ui-secondary">{data.reason}</p></div>}
     </div>
   </section>;
 }

@@ -19,6 +19,7 @@ type DashboardTakeoverCloseFocusTargetId
 } from "./dashboard-app-model.js";
 import { SETTINGS_GEAR_ID } from "../surfaces/settings/settings-model.js";
 import type { SettingsExitGuard } from "./navigation/navigation-model.js";
+import type { RouteSetter } from "./navigation/view-route-model.js";
 import {
 activeTakeover,
 routeWithoutTakeovers,
@@ -26,7 +27,7 @@ type AppRouteState
 } from "./navigation/url-state.js";
 export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSections,workflowLabels,workflowCatalog,activeWorkflowId,
  workflowLabelOf,supportsDryRun,closeTakeoverTo,onSettingsExitGuardChange,theme,onToggleTheme,archiveReports,children}: {
- takeover: ReturnType<typeof activeTakeover>; route: AppRouteState; setRoute: (next: AppRouteState, mode?: "push" | "replace") => void;
+ takeover: ReturnType<typeof activeTakeover>; route: AppRouteState; setRoute: RouteSetter;
  boot: FrontendBootstrapWire; settingsSections: ComponentProps<typeof SettingsPage>["sections"];
  workflowCatalog: readonly WorkflowCatalogEntry[]; workflowLabels: ReadonlyMap<string,string>; activeWorkflowId: string; workflowLabelOf: (id: string) => string;
  supportsDryRun: boolean;
@@ -51,7 +52,7 @@ export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSection
    onView={next => setRoute({ ...route, settings: "archive", archive: route.archive ?? ARCHIVE_INDEX, archiveView: next })}
    onFolder={folder => setRoute({ ...route, settings: "archive", archive: ARCHIVE_INDEX,
      archiveDashboard: folder?.dashboardKey, archiveWorkflow: folder?.workflow, archiveBrowse: { filters: {} } })}
- /> : dataSection === "activity" ? <ActivityReport range={route.activity ?? ""} onRange={next => setRoute({ ...route, settings: "activity", activity: next })} />
+ /> : dataSection === "activity" ? <ActivityReport range={route.activity ?? ""} onRange={next => setRoute(current => ({ ...current, settings: "activity", activity: next }))} />
  : dataSection === "explorer" ? <WorkflowExplorer catalog={workflowCatalog} /> : undefined;
  return (takeover === "settings" || dataContent !== undefined ? (
             <SettingsPage

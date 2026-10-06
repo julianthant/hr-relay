@@ -4,7 +4,7 @@ import "./settings-data.css";
 import { SpreadsheetsSettings } from "../spreadsheets/spreadsheets.js";
 import { EditableSettingsSectionIdSchema } from "../../../domain/dashboard/settings-editor.js";
 import { SettingsAuthoritySection } from "./editor/settings-authorities.js";
-import { Activity, Archive, BookMarked, Workflow, CircleAlert, ClipboardCheck, Database, FolderOpen, Gauge, Keyboard as KeyboardIcon, Link2, Monitor, Settings as SettingsIcon, SlidersHorizontal, Table2, ArrowLeft } from "lucide-react";
+import { BarChart3, Archive, BookMarked, Workflow, CircleAlert, ClipboardCheck, Database, FolderOpen, Gauge, Keyboard as KeyboardIcon, Link2, Monitor, Settings as SettingsIcon, SlidersHorizontal, Table2, ArrowLeft } from "lucide-react";
 import { useCallback,useEffect,useMemo,useRef,useState,type ReactNode } from "react";
 import type { FrontendBootstrapWire } from "../../../domain/dashboard/bootstrap.js";
 import {
@@ -58,7 +58,7 @@ const NAV_ICON: Record<SettingsNavIcon, typeof Database> = {
   spreadsheets: Table2,
   explorer: Workflow,
   archive: Archive,
-  activity: Activity,
+  activity: BarChart3,
 };
 
 

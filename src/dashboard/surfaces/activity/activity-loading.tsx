@@ -16,7 +16,7 @@ function TableSkeleton({ title, columns = 2, rows = 2, notes = false }: { title:
 
 export function ActivitySkeleton({ range }: { range: ActivityDateRange }) {
   const volume = buildActivityVolumeBoundarySkeleton(range, "UTC");
-  return <LoadingRegion label="Loading activity report">
+  return <LoadingRegion label="Loading analytics report">
     <div className="activity-summary grid grid-cols-4 gap-2">{[0, 1, 2, 3].map(index => <div key={index} className="min-w-0 rounded-xl border border-ui-stroke bg-ui-panel px-3 py-4">
       <div className="text-body"><SkeletonText className="w-3/4" /></div><div className="mb-1 mt-1 text-page min-[1151px]:mb-2 min-[1151px]:mt-2"><SkeletonText className="w-2/5" /></div><div className="h-[2lh] text-caption min-[1151px]:h-[1lh]"><SkeletonText className="w-full" /></div>
     </div>)}</div>

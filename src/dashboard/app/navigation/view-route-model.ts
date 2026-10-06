@@ -22,6 +22,9 @@ export const ViewRouteSchema = z.object({
   bumpScope: z.enum(["workflows", "dashboard"]).optional(), bumpSelection: z.array(identity).max(100).optional(), bumpReview: z.string().max(4000).nullable().optional(),
   keyboardQuery: z.string().max(500).optional(),
   preflightScope: identity.optional(), capabilitiesQuery: z.string().max(500).optional(),
+  activityBrowse: z.object({ metric: z.enum(['completed', 'outstanding', 'failed', 'timed']), workflow: identity.optional(),
+    page: z.number().int().min(0).max(100000), run: identity.optional() }).strict().nullable().optional(),
+  activityPreview: z.enum(['normal', 'empty', 'incomplete', 'loading', 'unavailable']).optional(),
 }).strict();
 export type ViewRoute = z.infer<typeof ViewRouteSchema>;
 export type RouteSetter = (next: AppRouteState | ((current: AppRouteState) => AppRouteState), mode?: "push" | "replace") => void;

@@ -1,0 +1,46 @@
+import { useEffect, useMemo, useRef } from 'react';
+import { ArrowLeft } from 'lucide-react';
+import { Button, dsFocus } from '../../ds/ui.js';
+import { LogPanel } from '../run-detail/log-panel.js';
+import { StatusBadge } from '../shared/status/status.js';
+import { activityDuration, type ActivitySummary } from './activity-view-model.js';
+import { activityDrilldown, ACTIVITY_RUN_LABELS, ACTIVITY_RUN_PAGE_SIZE, type ActivityBrowse, type ActivityRunRecord } from './activity-drilldown-model.js';
+
+function RunStatus({ run }: { run: ActivityRunRecord }) {
+  return <StatusBadge presentation="queue" status={run.status === 'completed' ? run.readback === true ? 'verifiedDone' : 'doneWarnings' : run.status} />;
+}
+
+export function ActivityDrilldown({ report, selection, onSelection }: { report: ActivitySummary; selection: ActivityBrowse; onSelection: (next: ActivityBrowse | null) => void }) {
+  const heading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => { heading.current?.focus({ preventScroll: true }); }, [selection.metric, selection.workflow, selection.page, selection.run]);
+  const result = useMemo(() => report.runs ? activityDrilldown(report.runs, selection) : { state: 'unavailable' as const, reason: 'Run details are unavailable for this report.' }, [report.runs, selection]);
+  const context = useMemo(() => result.state === 'loaded' && result.run ? { workflow: result.run.workflowLabel, displayId: result.run.displayId, attempt: result.run.attempt, reviewPending: result.run.status === 'waiting',
+    timing: { text: activityDuration(result.run.seconds) } } : undefined, [result]);
+  const back = () => onSelection(selection.run ? { ...selection, run: undefined } : null);
+  return <section aria-label="Analytics runs" className="min-w-0">
+    <Button size="sm" variant="ghost" icon={<ArrowLeft aria-hidden className="size-4" />} onClick={back}>{selection.run ? 'Back to runs' : 'Back to Analytics'}</Button>
+    <h2 ref={heading} tabIndex={-1} className={`mb-1 mt-4 w-fit rounded-sm text-section ${dsFocus} ${result.state === 'loaded' && result.run ? 'sr-only' : ''}`}>{result.state === 'loaded' && result.run ? `${result.run.subject} logs` : ACTIVITY_RUN_LABELS[selection.metric]}</h2>
+    {result.state === 'unavailable' ? <p role="alert" className="text-body text-ui-secondary">{result.reason}</p> : result.run ?
+      <div className="mt-3 flex h-[calc(var(--ds-space-base)*72)] min-w-0 flex-col"><LogPanel key={result.run.id} title={result.run.subject}
+        status={<RunStatus run={result.run} />} steps={result.run.steps} timeline={result.run.timeline}
+        context={context} /></div>
+      : <>
+        <p className="mb-3 mt-0 text-caption text-ui-muted">{result.workflowLabel ? `${result.workflowLabel} · ` : ''}{result.matches.length} {result.matches.length === 1 ? 'run' : 'runs'}</p>
+        <div className="overflow-hidden rounded-[var(--ds-radius-body-group)] border border-ui-stroke bg-ui-panel">
+          <table aria-label={ACTIVITY_RUN_LABELS[selection.metric]} className="w-full table-fixed border-collapse text-body">
+            <colgroup><col className="w-[35%]" /><col className="w-[27%]" /><col /><col className="w-[18%]" /></colgroup>
+            <thead className="bg-ui-table text-caption text-ui-secondary"><tr>{['Run', 'Workflow', 'Status', 'Duration'].map(label => <th key={label} scope="col" className="px-4 py-3 text-left font-normal last:text-right">{label}</th>)}</tr></thead>
+            <tbody>{result.rows.map(run => <tr key={run.id} className="border-t border-ui-stroke even:bg-ui-table">
+              <td className="px-4 py-3"><button type="button" aria-label={`Open logs for ${run.subject}, ${run.displayId}`} onClick={() => onSelection({ ...selection, run: run.id })} className={`block max-w-full rounded-sm text-left text-ui-info hover:underline ${dsFocus}`}><span className="block text-control">{run.subject}</span><span className="block text-caption tabular-nums text-ui-muted">{run.displayId}</span></button></td>
+              <td className="px-4 py-3">{run.workflowLabel}</td><td className="px-4 py-3"><RunStatus run={run} /></td><td className="px-4 py-3 text-right tabular-nums">{activityDuration(run.seconds)}</td>
+            </tr>)}</tbody>
+          </table>
+          {!result.rows.length && <p className="m-0 px-4 py-6 text-center text-body text-ui-secondary">No matching runs in this period.</p>}
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-ui-stroke px-4 py-2 text-caption text-ui-muted">
+            <span>{result.matches.length ? `${result.start + 1}–${Math.min(result.matches.length, result.start + ACTIVITY_RUN_PAGE_SIZE)} of ${result.matches.length}` : '0 runs'}</span>
+            <span className="flex gap-2"><Button size="sm" variant="ghost" disabled={selection.page === 0} onClick={() => onSelection({ ...selection, page: selection.page - 1 })}>Previous</Button><Button size="sm" variant="ghost" disabled={result.start + ACTIVITY_RUN_PAGE_SIZE >= result.matches.length} onClick={() => onSelection({ ...selection, page: selection.page + 1 })}>Next</Button></span>
+          </div>
+        </div>
+      </>}
+  </section>;
+}

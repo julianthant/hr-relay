@@ -3,7 +3,7 @@ import type { ShellView } from "../top-bar-model.js";
 
 export const NAVBAR_VIEWS: readonly { id: ShellView; label: string }[] = [
   { id: "queue", label: "Dashboard" }, { id: "archive", label: "Archive" },
-  { id: "explorer", label: "Explorer" }, { id: "activity", label: "Activity" },
+  { id: "explorer", label: "Explorer" }, { id: "activity", label: "Analytics" },
 ];
 export type NavbarSearchResult = Readonly<{ id: string; subject: string; workflow: string; day: string; state: string; publicId?: string; destination?: NotificationDestination }>;
 export type NavbarData = Readonly<{ today: string; counts: Readonly<Record<string, number>>; results: readonly NavbarSearchResult[] }>;

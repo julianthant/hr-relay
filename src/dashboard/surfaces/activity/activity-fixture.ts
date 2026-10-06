@@ -2,6 +2,8 @@ import { successfulWorkflowTimings } from "./activity-timing-model.js";
 import { ActivityVolumeSchema, buildActivityVolumeBoundarySkeleton } from "../../../domain/dashboard/activity-volume.js";
 import type { ActivityDateRange } from "./activity-model.js";
 import type { ActivityViewState } from "./activity-view-model.js";
+import type { ActivityRunRecord } from './activity-drilldown-model.js';
+import { runDisplayId, workflowDisplayCode } from '../shared/status/run-display-model.js';
 
 export const ACTIVITY_SAMPLE_TODAY = "2026-09-26";
 export const ACTIVITY_SAMPLE_RANGE: ActivityDateRange = { from: "2026-09-20", to: ACTIVITY_SAMPLE_TODAY };
@@ -28,6 +30,30 @@ const records = [5, 8, 7, 6, 9, 9].flatMap((count, day) => Array.from({ length: 
   kuali: index < 17,
 }));
 
+function sampleRun(row: typeof records[number], incomplete: boolean): ActivityRunRecord {
+  const index = records.indexOf(row);
+  const subject = ['Jordan Lee', 'Casey Rivera', 'Taylor Park', 'Alex Morgan', 'Morgan Chen', 'Nguyen, Thi'][index % 6];
+  const workflowLabel = row.workflow === 'sample-separations' ? 'Separations' : 'Person lookup';
+  const status = row.status as ActivityRunRecord['status'];
+  const time = new Date(row.instant).toLocaleTimeString('en-GB', { timeZone: 'America/Los_Angeles' });
+  const finalTime = row.duration === null ? time : new Date(Date.parse(row.instant) + row.duration * 1000).toLocaleTimeString('en-GB', { timeZone: 'America/Los_Angeles' });
+  const steps: ActivityRunRecord['steps'] = [
+    { id: `${row.id}:input`, time, title: 'Run input', entries: [{ kind: 'fields', id: `${row.id}:subject`, fields: [
+      { id: `${row.id}:name`, time, kind: 'read', label: 'Employee', value: subject },
+      { id: `${row.id}:workflow`, time, kind: 'read', label: 'Workflow', value: workflowLabel },
+    ] }] },
+    { id: `${row.id}:outcome`, time: finalTime, title: status === 'completed' ? 'Run completed' : status === 'failed' ? 'Document read failed' : status === 'waiting' ? 'Review employee match' : 'Read employee record',
+      entries: status === 'failed' || status === 'waiting' ? [{ kind: 'decision', id: `${row.id}:decision`, time: finalTime,
+        decision: status === 'failed' ? { state: 'failed', title: 'Document read failed', message: 'The document read timed out.', footer: 'No final submission was started.' }
+          : { state: 'review', title: 'Review employee match', message: `Confirm the employee match for ${subject}.` } }]
+        : [{ kind: 'note', id: `${row.id}:result`, time: finalTime, message: status === 'completed' ? `${workflowLabel} completed for ${subject}.` : `Reading the employee record for ${subject}.`, tone: status === 'completed' ? 'positive' : 'info' }] },
+  ];
+  return { id: row.id, displayId: runDisplayId(row.id, workflowDisplayCode(workflowLabel)), subject, day: row.day, workflowId: row.workflow,
+    workflowLabel, status, seconds: incomplete ? null : row.duration, readback: incomplete ? null : row.readback, attempt: 1, steps,
+    timeline: steps.map((step, position) => ({ id: step.id, stepId: step.id, label: step.title,
+      state: position === 0 || status === 'completed' ? 'completed' : status === 'waiting' ? 'waiting' : status === 'failed' ? 'failed' : 'active', substeps: [] })) };
+}
+
 export function activitySample(range: ActivityDateRange, scenario: ActivitySampleState): ActivityViewState {
   if (scenario === "loading") return { state: "loading" };
   if (scenario === "unavailable") return { state: "unavailable", reason: "The report is unavailable. Try another period or return later." };
@@ -46,6 +72,7 @@ export function activitySample(range: ActivityDateRange, scenario: ActivitySampl
     buckets: skeleton.buckets.map(bucket => ({ ...bucket, runs: rows.filter(row => row.instant >= bucket.start && row.instant < bucket.endExclusive).length })),
   });
   return { state: "loaded", report: {
+    runs: rows.map(row => sampleRun(row, scenario === 'incomplete')),
     range, timeZone: volume.timeZone, total: rows.length, completed, failed,
     running: count("running"), waiting: count("waiting"), outstanding: count("running") + count("waiting"), terminal: terminal.length,
     duration: { medianSeconds: measured.length ? 134 : null, longestSeconds: measured.length ? Math.max(...measured) : null,

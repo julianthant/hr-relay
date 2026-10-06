@@ -181,7 +181,7 @@ export function buildSettingsNav(
     clientEntry("spreadsheets", "Spreadsheets", "spreadsheets"),
     clientEntry("explorer", "Explorer", "explorer"),
     clientEntry("archive", "Archive", "archive"),
-    clientEntry("activity", "Activity", "activity"),
+    clientEntry("activity", "Analytics", "activity"),
   ] });
   const statusEntries: SettingsNavEntry[] = [];
   for (const section of sections) {

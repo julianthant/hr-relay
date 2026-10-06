@@ -17,7 +17,7 @@ export const SHELL_VIEW_LABEL: Record<ShellView, string> = {
   queue: "Dashboard",
   archive: "Archive",
   explorer: "Explorer",
-  activity: "Activity",
+  activity: "Analytics",
 };
 
 

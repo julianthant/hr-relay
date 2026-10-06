@@ -18,7 +18,7 @@ describe("canonical workspace rail", () => {
     for (const label of ["HR GPT", "Search runs", "Notifications, 3 unread"]) assert.ok(html.includes(label), label);
     assert.doesNotMatch(html, /RRSS HR|aria-label="Dashboard"|Run count unavailable|HR Automation|>Settings<|lucide-shield|Preflight|doctor|Storage checks/);
     assert.doesNotMatch(html, /Dashboard date|Choose date|aria-label="Back"|aria-label="Forward"|Switch to light theme|role="banner"/);
-    assert.doesNotMatch(html, /aria-label="Main navigation"|>Archive<|>Explorer<|>Activity</);
+    assert.doesNotMatch(html, /aria-label="Main navigation"|>Archive<|>Explorer<|>Activity<|>Analytics</);
   });
   it("finds every requested word across the local run fields, with no empty-query loss", () => {
     assert.equal(navbarSearch(NAVBAR_SAMPLE.results, "").length, 3);

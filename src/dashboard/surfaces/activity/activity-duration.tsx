@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Skeleton } from '../../ds/ui.js';
+import { Skeleton, dsFocus } from '../../ds/ui.js';
 import { SkeletonText } from '../shared/loading/loading.js';
 import { activityDuration, type ActivitySummary } from './activity-view-model.js';
 import { workflowDurationChart } from './activity-duration-model.js';
@@ -17,14 +17,15 @@ function DurationFrame({ children, ticks }: { children: ReactNode; ticks: readon
   </div>;
 }
 
-export function ActivityDurations({ report }: { report: ActivitySummary }) {
+export function ActivityDurations({ report, onWorkflow }: { report: ActivitySummary; onWorkflow?: (workflow: string) => void }) {
   const chart = workflowDurationChart(report.workflows);
   return <section aria-labelledby="activity-duration-heading" className="activity-durations">
     <h2 id="activity-duration-heading" className="mb-1 mt-0 text-section">Average workflow time</h2>
     <p className="mb-3 mt-0 text-body text-ui-secondary">Elapsed time per completed run in this period.</p>
     <figure className="m-0" aria-label="Average workflow time">
       <DurationFrame ticks={chart.ticks.map(seconds => activityDuration(seconds))}>
-        {chart.rows.length ? <ol className="activity-duration-rows">{chart.rows.map(workflow => <li key={workflow.id} className="activity-duration-grid activity-duration-row">
+        {chart.rows.length ? <ol className="activity-duration-rows">{chart.rows.map(workflow => {
+          const row = <>
           <div className="activity-duration-copy"><span className="text-body">{workflow.label}</span>
             <span className="text-caption text-ui-muted">{workflow.successfulTiming.measured} of {workflow.completed} completed runs timed</span>
           </div>
@@ -34,8 +35,9 @@ export function ActivityDurations({ report }: { report: ActivitySummary }) {
           </div>
           <span className={`activity-duration-value text-body ${workflow.averageSeconds === null ? 'text-ui-secondary' : ''}`}>
             {workflow.averageSeconds === null ? workflow.successfulTiming.measured === 0 ? 'Not timed' : 'Unavailable' : activityDuration(workflow.averageSeconds)}
-          </span>
-        </li>)}</ol> : <p className="activity-duration-empty text-body text-ui-secondary">No workflow activity in this period</p>}
+          </span></>;
+          return <li key={workflow.id}>{onWorkflow ? <button type="button" aria-label={`View timed completed runs for ${workflow.label}`} className={`activity-duration-grid activity-duration-row activity-duration-open ${dsFocus}`} onClick={() => onWorkflow(workflow.id)}>{row}</button> : <div className="activity-duration-grid activity-duration-row">{row}</div>}</li>;
+        })}</ol> : <p className="activity-duration-empty text-body text-ui-secondary">No workflow activity in this period</p>}
       </DurationFrame>
     </figure>
   </section>;

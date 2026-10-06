@@ -14,6 +14,7 @@ const index = settingsSearchIndex(groups, document, true);
 describe("Settings field search", () => {
   it("finds pages and the displayed field names with their canonical parent page", () => {
     assert.equal(searchSettings(index, "general")[0]?.target, undefined);
+    assert.deepEqual(searchSettings(index, 'analytics').map(result => [result.label, result.entry.id]), [['Analytics', 'activity']]);
     assert.deepEqual(searchSettings(index, "backoff").map(result => [result.label, result.entry.id, result.target]), [
       ["Backoff base", "performance", "ocr.backoffBaseMs"], ["Backoff cap", "performance", "ocr.backoffCapMs"],
     ]);
