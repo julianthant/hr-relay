@@ -473,3 +473,19 @@ field inventory and attempt-menu focus checks follow the current source/markup w
 assertions. Backend wiring, richer headers and Activity drilldowns are outside this batch. Focused
 evidence belongs to `frontend-reliability-20261005`; inherited broad contract failures and full frozen
 phase-exit gates remain explicit. No references were refrozen.
+
+## Compact run headers and Analytics amendment (2026-10-05)
+
+The operator approved restrained richer headers and exact-run drilldowns. The subject remains the
+primary heading. A quiet second line shows workflow, short run ID, attempt and retained elapsed time.
+One contextual Review, Resolve or View failure control jumps to existing log evidence and clears log
+search; it never executes a decision. The Review badge beside the subject is omitted when the header
+has a Review button. Records bodies retain their status and existing controls.
+The dashboard report is named Analytics in navigation, search, headings, browser titles, back links
+and loading announcements. Existing Activity route identifiers remain valid.
+Completed, Outstanding and Failed totals open one four-column matching-run list. Workflow averages
+open measured successful runs only. Lists mount 20 rows per page and open exact run logs in the existing
+frame. Predicate, workflow, page and run coordinates restore through reload and Back/Forward. Range
+changes clear the drilldown in one history entry; Back restores both. Empty, unavailable and missing
+timing remain explicit, and mock scenario selection survives navigation. Backend reporting remains
+unwired. Evidence is `headers-activity-20261005`; full frozen phase-exit gates remain deferred.

@@ -15,7 +15,7 @@ producers live together under `surfaces/`.
 | `surfaces/workflows/` | One frontend workflow catalog; `mocks/` holds preview contracts and producers |
 | `surfaces/notifications/`, `surfaces/sessions/` | Each feature’s view, model and mock producer |
 | `surfaces/settings/` | Settings shell plus `general/`, `editor/`, `providers/`, `routes/`, `storage/`, `preflight/`, `navigation/`, `catalog/` |
-| `surfaces/archive/`, `surfaces/activity/`, `surfaces/explorer/` | Their page components, models, local fixtures and styles |
+| `surfaces/archive/`, `surfaces/activity/`, `surfaces/explorer/` | Archive, Analytics and Explorer page components, models, local fixtures and styles; Analytics retains the existing Activity module and route identifiers |
 | `surfaces/spreadsheets/`, `surfaces/intake/` | Workbook editing/import and intake workspace |
 | `surfaces/shared/` | Reused actions, status formatting, loading geometry and run evidence |
 | `client/` | Stable `index.ts`, `queries.ts`, `commands.ts` facades; implementations in `queries/`, `commands/`, `subscriptions/` |

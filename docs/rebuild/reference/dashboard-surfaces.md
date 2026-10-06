@@ -7807,6 +7807,28 @@ data, identity, focus or privacy assertions. Inherited obsolete contracts and fu
 remain explicit. Evidence is retained in `frontend-reliability-20261005`; richer run headers and
 Activity drilldowns remain proposals outside this batch.
 
+The subsequent 2026-10-05 run-header/Analytics amendment implements the operator-approved compact
+proposal. Subject headings retain their prominence; one quiet context line adds workflow, the existing
+short run ID, attempt and retained elapsed time. Queued runs omit timing; missing finished timing is
+explicit. A single contextual Review, Resolve or View failure action navigates to a visible unresolved
+decision or failure, clearing log search and focusing its heading. It performs no decision or command.
+The adjacent Review status badge is omitted only when that Review action is present; Records bodies
+retain their status and tools.
+The report's visible name is Analytics across navigation, search, headings, browser titles, back links
+and loading announcements. Existing Activity route identifiers remain supported. Completed,
+Outstanding and Failed totals open one four-column exact-run list, bounded to 20 rows per page.
+Average workflow time opens the same measured successful root-run population used by that average;
+untimed successes are excluded from that list and remain included in the completed total. Selecting
+a row opens its exact logs with the same compact header. Report and row facts share one local producer
+and one presentation seam; backend aggregation and transport remain unwired.
+Metric, workflow, page and run coordinates belong to the existing bounded history owner. Reload,
+Back/Forward and Back to runs preserve exact selection/page. Changing the period clears the drilldown
+atomically; Back restores the previous range and selection. Empty lists, unknown destinations and
+missing measurements remain explicit. Review fixtures retain their selected scenario across history
+and reload. The amendment adds no processing/wait breakdown, extra summary cards or automatic approval.
+Evidence is retained in `headers-activity-20261005`; frozen parity and full phase-exit gates remain
+with 3.1.19.
+
 Local queue selection mode and Select menu items are retired. Archive applies
 immediately; Delete asks first and cancellation retains its served confirmation. Member check marks
 are retired; the final log step has no divider. Command toasts show subject and clock without the local
