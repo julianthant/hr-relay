@@ -168,6 +168,7 @@ export type QueueParentLookup = (
 export type QueueActionsOf = (surface: QueueSurfaceWire) => readonly ActionDescriptorWire[];
 
 const NO_ACTIONS: QueueActionsOf = () => [];
+const NO_MEMBERS: readonly MemberSurfaceWire[] = [];
 
 /* the band ordering and its sort vocabulary live in `queue-model.ts` — see the note there */
 export type { QueueSortKey };
@@ -532,7 +533,7 @@ function MemberLine({ surface, item, selected, onSelect }: {
         <div className="flex min-w-0 items-center gap-[var(--ds-space-snug)]">
           <Icon aria-hidden className={cn(dsIcon.sm, "shrink-0", spec.iconClass, status === "running" && "animate-spin motion-reduce:animate-none")} />
           <BareButton type="button" title={surface.subtitle.state === "present" ? surface.subtitle.value : surface.subtitle.reason}
-            aria-label={selectionLabel} onClick={(event) => { event.stopPropagation(); onSelect(String(surface.runId)); }}
+            aria-label={selectionLabel} aria-pressed={selected} onClick={(event) => { event.stopPropagation(); onSelect(String(surface.runId)); }}
             className={cn("min-w-0 truncate text-left text-[color:var(--ds-fg)] hover:underline", dsFocus)}
           >{queueRowTitle(surface)}</BareButton>
           {item.attempts.length > 1 && <QueueAttemptSelector title={queueRowTitle(surface)} surface={surface} item={item}
@@ -838,12 +839,13 @@ function QueueAttemptSelector({ title, surface, item, selectedRunId, onSelect }:
 export function QueueRow({
   surface,
   itemGroup,
-  members = [],
+  members = NO_MEMBERS,
   state,
   handlers,
   actionsOf = NO_ACTIONS,
   workflowLabelOf,
   parentOf,
+  deferOffscreen = false,
 }: {
   surface: QueueSurfaceWire;
   itemGroup?: QueueItemGroup;
@@ -860,6 +862,7 @@ export function QueueRow({
    * handed down, rather than each row searching an array it does not own.
    */
   parentOf?: QueueParentLookup;
+  deferOffscreen?: boolean;
 }) {
   const status = dsStatusOf(surface.status);
   const announcing = useAttentionAnnounce(status);
@@ -962,6 +965,7 @@ export function QueueRow({
           }}
           className={cn(
             "group relative flex min-w-0 flex-1 cursor-pointer flex-col overflow-hidden border",
+            deferOffscreen && "[content-visibility:auto] [contain-intrinsic-size:auto_160px]",
             dsRadius.lg,
             dsMotion.base,
             dsSurface.card,
@@ -1162,6 +1166,27 @@ export function QueueRow({
  */
 export type QueueFilterScope = { kind: "needsYou" } | { kind: "status"; word: string };
 
+const MemoQueueRow = memo(QueueRow, (before, after) => {
+  const shallowEqual = (left: object, right: object): boolean => {
+    const entries = Object.entries(left);
+    return entries.length === Object.keys(right).length
+      && entries.every(([key, value]) => value === Reflect.get(right, key));
+  };
+  const { state: beforeState, handlers: beforeHandlers, ...beforeProps } = before;
+  const { state: afterState, handlers: afterHandlers, ...afterProps } = after;
+  const { selectedRunId: beforeSelected, ...beforeView } = beforeState;
+  const { selectedRunId: afterSelected, ...afterView } = afterState;
+  if (!shallowEqual(beforeProps, afterProps) || !shallowEqual(beforeHandlers, afterHandlers)
+    || !shallowEqual(beforeView, afterView)) return false;
+  if (beforeSelected === afterSelected) return true;
+  const belongs = (id: string | undefined): boolean => id !== undefined && (
+    String(after.surface.runId) === id
+    || after.itemGroup?.attempts.some(attempt => String(attempt.runId) === id) === true
+    || after.members?.some(member => String(member.runId) === id) === true
+  );
+  return !belongs(beforeSelected) && !belongs(afterSelected);
+});
+
 /**
  * D4 (Track D, ref frontend-backend-integration §7.4; audit finding P1) — this
  * panel is `memo`'d, and every prop it takes is stable or primitive at the one
@@ -1359,11 +1384,12 @@ export const QueuePanel = memo(function QueuePanel({
                   if (item === undefined) throw new Error(`queue row lost item ${String(row.itemId)}`);
                   const selectedAttempt = item.attempts.find((attempt) => String(attempt.runId) === state.selectedRunId);
                   const visible = state.selectMode === true ? item.representative : selectedAttempt ?? item.representative;
-                  return <QueueRow
+                  return <MemoQueueRow
                     key={item.key}
                     surface={visible}
                     itemGroup={item}
-                    members={membersOf.get(String(visible.runId)) ?? []}
+                    members={membersOf.get(String(visible.runId)) ?? NO_MEMBERS}
+                    deferOffscreen={displayTop.length > 100}
                     state={state}
                     handlers={handlers}
                     actionsOf={actionsOf}

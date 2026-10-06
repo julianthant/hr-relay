@@ -90,7 +90,13 @@ export function LogFeed({ steps, label = "Run logs", embedded = false, beforeCon
       jumpFrame.current = undefined;
     });
   };
-  const visible = useMemo(() => filterLogSteps(visualLogSteps(steps), query), [steps, query]);
+  const visual = useMemo(() => visualLogSteps(steps), [steps]);
+  const visible = useMemo(() => filterLogSteps(visual, query), [visual, query]);
+  const hidden = useMemo(() => {
+    if (afterStep === undefined) return [];
+    const ids = new Set(visible.map(step => step.id));
+    return steps.filter(step => !ids.has(step.id));
+  }, [steps, visible, afterStep]);
   const count = logRowCount(visible);
   const copy = async () => {
     try { await navigator.clipboard.writeText(logPlainText(visible)); setCopyState("copied"); }
@@ -100,11 +106,11 @@ export function LogFeed({ steps, label = "Run logs", embedded = false, beforeCon
     {navigation?.(jump)}
     <div className={cn("min-w-0 flex-1 px-4 pb-6 pt-5", !embedded && "overflow-y-auto focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ui-info")} ref={scroller} role={embedded ? undefined : "region"} aria-label={embedded ? undefined : label} tabIndex={embedded ? undefined : 0} aria-busy={loading || undefined}>
       {beforeContent}
-      {steps.filter(step => !visible.some(item => item.id === step.id)).map(step => {
+      {hidden.map(step => {
         const content = afterStep?.(step.id);
         return content == null ? null : <div key={step.id}>{content}</div>;
       })}
-      {visible.map((step, index) => <section key={step.id} aria-labelledby={`${id}-${step.id}`} className={cn("grid min-w-0 grid-cols-[var(--spacing-log-time)_minmax(0,1fr)] gap-x-4 border-ui-stroke py-5 first:pt-0", index < visible.length - 1 && "border-b")}>
+      {visible.map((step, index) => <section key={step.id} aria-labelledby={`${id}-${step.id}`} className={cn("grid min-w-0 grid-cols-[var(--spacing-log-time)_minmax(0,1fr)] gap-x-4 border-ui-stroke py-5 first:pt-0", index < visible.length - 1 && "border-b", visible.length > 200 && "[content-visibility:auto] [contain-intrinsic-size:auto_140px]")}>
         <time className={cn("font-data text-caption tabular-nums text-ui-muted", step.header === false ? "pt-4" : "pt-0.5")}>{step.time}</time>
         <div className="min-w-0">
           <header className={step.header === false ? "sr-only" : "mb-4 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1"}><h3 id={`${id}-${step.id}`} ref={node => { if (node) headings.current.set(step.id, node); else headings.current.delete(step.id); }} tabIndex={-1} className="m-0 rounded-sm text-heading focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ui-info">{step.title}</h3>{step.system && <span className="inline-flex items-center gap-1.5 border-l border-ui-stroke pl-3 text-body text-ui-muted"><Monitor aria-hidden className="size-3.5" />{step.system}</span>}</header>
