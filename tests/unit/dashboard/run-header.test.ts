@@ -33,9 +33,17 @@ describe('compact run headers', () => {
     assert.equal(queueRunHeader(row, 'Person lookup', '2026-08-04T16:12:00.000Z').timing?.text, queueRunHeader(row, 'Person lookup', row.updatedAt).timing?.text);
   });
   it('only offers navigation to visible unresolved decisions and failures', () => {
-    assert.deepEqual(runHeaderAction(steps, []), { label: 'Review', stepId: 'review' });
+    assert.deepEqual(runHeaderAction(steps, []), { label: 'Review', stepId: 'review', entryId: 'match' });
     assert.equal(runHeaderAction([{ ...steps[0], entries: [{ kind: 'decision', id: 'match', time: '09:10:00', decision: { state: 'resolved', title: 'Reviewed' } }] }], []), undefined);
     assert.equal(runHeaderAction([], [{ id: 'missing', stepId: 'absent', label: 'Failed', state: 'failed', substeps: [] }]), undefined);
+    for (const [state, label] of [['parked', 'Resolve'], ['held', 'Resolve'], ['unconfirmed', 'Resolve'], ['failed', 'View failure']] as const) {
+      assert.deepEqual(runHeaderAction([{ ...steps[0], entries: [
+        { kind: 'decision', id: 'resolved', time: '09:09:00', decision: { state: 'resolved', title: 'Earlier decision' } },
+        { kind: 'decision', id: 'target', time: '09:10:00', decision: { state, title: 'Current decision' } },
+      ] }], []), { label, stepId: 'review', entryId: 'target' });
+    }
+    assert.deepEqual(runHeaderAction([{ ...steps[0], entries: [{ kind: 'note', id: 'error', time: '09:10:00', message: 'Browser unavailable', tone: 'danger' }] }],
+      [{ id: 'failed', stepId: 'review', label: 'Failed', state: 'failed', substeps: [] }]), { label: 'View failure', stepId: 'review' });
   });
   it('does not attach queue facts to an unrelated standalone log scenario', () => {
     const run: MockRun = { id: 'header-fixture', workflowId: 'person-lookup', title: 'Jordan', subject: 'Jordan', draft: initialMockDraft('person-lookup'), approved: true, seeded: true };
@@ -56,7 +64,8 @@ describe('compact run headers', () => {
     const descriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollIntoView');
     const scroll = vi.fn(); Object.defineProperty(Element.prototype, 'scrollIntoView', { configurable: true, value: scroll });
     try {
-      await act(async () => root.render(createElement(LogPanel, { title: 'Jordan', steps, timeline: [], onDecision: decision,
+      const hiddenHeadingSteps = [{ ...steps[0], header: false, entries: [{ kind: 'note' as const, id: 'before-match', time: '09:09:00', message: 'Identity read finished.' }, ...steps[0].entries] }];
+      await act(async () => root.render(createElement(LogPanel, { title: 'Jordan', steps: hiddenHeadingSteps, timeline: [], onDecision: decision,
         status: createElement('span', { 'data-review-badge': true }, 'Review'),
         context: { workflow: 'Person lookup', displayId: 'PL00000001', attempt: 2, reviewPending: true, timing: { text: '2m 0s' } } })));
       assert.equal(host.querySelector('[data-review-badge]'), null);
@@ -68,7 +77,10 @@ describe('compact run headers', () => {
       assert.match(host.textContent ?? '', /No matching actions/);
       const review = [...host.querySelectorAll('button')].find(button => button.textContent === 'Review'); assert(review);
       await act(async () => { review.click(); await new Promise(resolve => setTimeout(resolve, 40)); });
-      assert.equal(document.activeElement?.textContent, 'Employee match'); assert.equal(scroll.mock.calls.length, 0); assert.equal(decision.mock.calls.length, 0);
+      assert.equal(document.activeElement?.getAttribute('role'), 'group');
+      assert.equal(document.activeElement?.getAttribute('aria-label'), 'Review identity');
+      assert.equal(document.activeElement?.closest('.sr-only'), null);
+      assert.equal(scroll.mock.calls.length, 0); assert.equal(decision.mock.calls.length, 0);
       assert.equal(host.querySelector('[aria-label="Run context"]'), null);
       assert.equal(host.querySelector('h2')?.textContent, 'Jordan');
       assert.doesNotMatch(host.querySelector('header')?.textContent ?? '', /PL00000001|Attempt #|Elapsed/);

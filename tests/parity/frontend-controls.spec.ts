@@ -35,6 +35,13 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         const after = await header.boundingBox(); expect(after?.y).toBeCloseTo(before!.y, 0);
         const logViewport = panel.getByRole('region', { name: 'Run logs', exact: true });
         await expect.poll(() => logViewport.evaluate(element => element.contains(document.activeElement))).toBe(true);
+        await expect.poll(() => logViewport.evaluate(element => {
+          const target = document.activeElement;
+          if (!(target instanceof HTMLElement) || !element.contains(target)) return false;
+          const bounds = target.getBoundingClientRect(), viewport = element.getBoundingClientRect();
+          return target.getAttribute('role') === 'group' && !target.closest('.sr-only') && bounds.width > 100 && bounds.height > 20
+            && bounds.top >= viewport.top && bounds.top < viewport.bottom && getComputedStyle(target).outlineStyle === 'solid';
+        })).toBe(true);
         await panel.getByRole('button', { name: 'Go to latest action', exact: true }).click();
         expect(await page.evaluate(() => window.scrollY)).toBe(0); await expect(header).toBeVisible();
         await expect.poll(() => logViewport.evaluate(element => Math.abs(element.scrollHeight - element.clientHeight - element.scrollTop))).toBeLessThanOrEqual(1);

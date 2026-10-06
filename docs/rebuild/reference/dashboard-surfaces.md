@@ -7892,7 +7892,10 @@ failures and frozen phase-exit verification remain explicit obligations.
 The subsequent 2026-10-05 run-header/Analytics amendment implements the operator-approved compact
 proposal. Subject headings retain their prominence. The later frontend-polish amendment removes the
 workflow, short run ID, attempt and elapsed context line from the header. A single contextual Review, Resolve or View failure action navigates to a visible unresolved
-decision or failure, clearing log search and focusing its heading. It performs no decision or command.
+decision or failure, clearing log search and visibly focusing the exact decision card inside the log
+scroller. Failures without a decision retain step navigation. OCR Review opens its existing editable
+Records body through the native-history owner; approval remains a separate explicit action. It performs
+no decision or command. The 2026-10-06 correction is verified in `log-header-actions-10003539`.
 The adjacent Review status badge is omitted only when that Review action is present; Records bodies
 retain their status and tools.
 The report's visible name is Analytics across navigation, search, headings, browser titles, back links

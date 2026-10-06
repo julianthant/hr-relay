@@ -284,6 +284,12 @@ original command. Saved and active settings remain distinct. Backend source and 
 inherited broad contract failures remain explicit. Richer headers and Activity drilldowns are proposals.
 D347's dashboard-surfaces owner records the contract; evidence is `frontend-reliability-20261005`.
 
+The 2026-10-06 log-header correction targets and visibly focuses the exact unresolved decision card
+after clearing log search, including steps with hidden headings. Failure steps without decisions keep
+step navigation. OCR Review opens the existing Records body with native Back/Forward restoration;
+approval and resolution remain explicit actions. The layout is unchanged. D347's dashboard-surfaces
+owner records this behavior; evidence is `log-header-actions-10003539`.
+
 The save-feedback amendment adds existing success toasts for confirmed typed settings, protected
 settings, saved keyboard edits, local spreadsheet registration/mappings and exported spreadsheet copies.
 One acknowledged attempt produces one value-free confirmation; failures and uncertainty retain their

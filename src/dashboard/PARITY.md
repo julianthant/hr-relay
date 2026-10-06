@@ -497,8 +497,10 @@ phase-exit gates remain explicit. No references were refrozen.
 The operator approved restrained richer headers and exact-run drilldowns. The subject remains the
 primary heading. The later frontend-polish amendment removes the workflow, short ID, attempt and
 elapsed context line from the header.
-One contextual Review, Resolve or View failure control jumps to existing log evidence and clears log
-search; it never executes a decision. The Review badge beside the subject is omitted when the header
+One contextual Review, Resolve or View failure control jumps to the exact existing decision card,
+clears log search and visibly focuses the card within the log scroller. Failure steps without a
+decision retain step navigation. OCR Review opens the existing editable Records body through its
+history owner; it does not approve records. No header control executes a decision. The Review badge beside the subject is omitted when the header
 has a Review button. Records bodies retain their status and existing controls.
 The dashboard report is named Analytics in navigation, search, headings, browser titles, back links
 and loading announcements. Existing Activity route identifiers remain valid.
@@ -507,7 +509,7 @@ open measured successful runs only. Lists mount 20 rows per page and open exact 
 frame. Predicate, workflow, page and run coordinates restore through reload and Back/Forward. Range
 changes clear the drilldown in one history entry; Back restores both. Empty, unavailable and missing
 timing remain explicit, and mock scenario selection survives navigation. Backend reporting remains
-unwired. Evidence is `headers-activity-20261005`; full frozen phase-exit gates remain deferred.
+unwired. Evidence is `headers-activity-20261005` and `log-header-actions-10003539`; full frozen phase-exit gates remain deferred.
 
 ## Shared page breadcrumbs amendment (2026-10-05)
 

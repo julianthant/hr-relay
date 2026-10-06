@@ -76,6 +76,7 @@ export function WorkflowMockLog({ run, runs, onRerun, onApprove, onChange, onDis
   const { steps, timeline } = recordsVisible ? { steps: [], timeline: [] } : mockRunLog(run);
   const linked = runs.filter(item => item.parentId === run.id || item.id === run.parentId || item.id === run.sourceId || item.id === run.ocrRunId || item.ocrRunId === run.id);
   return <LogPanel title={run.subject} steps={steps} timeline={timeline} context={queueRunHeader(surface, mockWorkflow(run.workflowId).label, nowIso)}
+      onReview={hasRecords ? () => setRecordsVisible(true) : undefined}
       status={<StatusBadge status={dsStatusOf(mockQueueStatus(run))} presentation="queue" />}
       toolbar={<span className="flex items-center gap-2">
         {hasRecords && <Button size="sm" variant={recordsVisible ? "secondary" : "outline"} aria-pressed={recordsVisible} aria-controls={recordsVisible ? `records-${mockQueueId(run.id)}` : undefined} icon={<ListChecks aria-hidden className="size-4" />} onClick={() => setRecordsVisible(!recordsVisible)}>Records {reviewRecords(run).length}</Button>}

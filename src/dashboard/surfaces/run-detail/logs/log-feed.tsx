@@ -57,7 +57,7 @@ export function LogFeed({ steps, label = "Run logs", embedded = false, beforeCon
   afterStep?: (id: string) => ReactNode;
   trailingContent?: ReactNode;
   footerContent?: ReactNode;
-  navigation?: (jump: (stepId: string) => void) => ReactNode;
+  navigation?: (jump: (stepId: string, entryId?: string) => void) => ReactNode;
 }) {
   const [query, setQuery] = useState("");
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
@@ -65,6 +65,7 @@ export function LogFeed({ steps, label = "Run logs", embedded = false, beforeCon
   const scroller = useRef<HTMLDivElement>(null);
   const end = useRef<HTMLDivElement>(null);
   const headings = useRef(new Map<string, HTMLHeadingElement>());
+  const entryTargets = useRef(new Map<string, HTMLDivElement>());
   const jumpFrame = useRef<number | undefined>(undefined);
   useEffect(() => {
     if (!initialStepId) return;
@@ -77,21 +78,27 @@ export function LogFeed({ steps, label = "Run logs", embedded = false, beforeCon
     viewport.scrollTop += section.getBoundingClientRect().top - viewport.getBoundingClientRect().top - Number.parseFloat(style.paddingTop || "0");
   }, [initialStepId]);
   useEffect(() => () => { if (jumpFrame.current !== undefined) cancelAnimationFrame(jumpFrame.current); }, []);
-  const jump = (stepId: string) => {
-    if (!visualLogSteps(steps).some(step => step.id === stepId)) throw new Error("log-timeline-step-missing");
+  const jump = (stepId: string, entryId?: string) => {
+    const step = visualLogSteps(steps).find(step => step.id === stepId);
+    if (!step) throw new Error("log-timeline-step-missing");
+    const targetEntryId = entryId ?? (step.header === false ? step.entries[0]?.id : undefined);
+    if (targetEntryId && !step.entries.some(entry => entry.id === targetEntryId)) throw new Error("log-navigation-entry-missing");
     setQuery("");
     if (jumpFrame.current !== undefined) cancelAnimationFrame(jumpFrame.current);
     jumpFrame.current = requestAnimationFrame(() => {
       const heading = headings.current.get(stepId);
       if (!heading) throw new Error("log-timeline-heading-missing");
+      const target = targetEntryId ? entryTargets.current.get(JSON.stringify([stepId, targetEntryId])) : heading;
+      if (!target) throw new Error("log-navigation-target-missing");
       const section = heading.closest("section");
       if (!section) throw new Error("log-timeline-section-missing");
       const viewport = scroller.current;
       if (!viewport) throw new Error("log-timeline-viewport-missing");
       const style = getComputedStyle(viewport);
-      if (end.current) end.current.style.height = `${Math.max(0, viewport.clientHeight - section.getBoundingClientRect().height - Number.parseFloat(style.paddingTop || "0") - Number.parseFloat(style.paddingBottom || "0"))}px`;
-      viewport.scrollTop += section.getBoundingClientRect().top - viewport.getBoundingClientRect().top - Number.parseFloat(style.paddingTop || "0");
-      heading.focus({ preventScroll: true });
+      const scrollTarget = targetEntryId ? target : section;
+      if (end.current) end.current.style.height = `${Math.max(0, viewport.clientHeight - scrollTarget.getBoundingClientRect().height - Number.parseFloat(style.paddingTop || "0") - Number.parseFloat(style.paddingBottom || "0"))}px`;
+      viewport.scrollTop += scrollTarget.getBoundingClientRect().top - viewport.getBoundingClientRect().top - Number.parseFloat(style.paddingTop || "0");
+      target.focus({ preventScroll: true });
       jumpFrame.current = undefined;
     });
   };
@@ -118,8 +125,13 @@ export function LogFeed({ steps, label = "Run logs", embedded = false, beforeCon
       {visible.map((step, index) => <section key={step.id} aria-labelledby={`${id}-${step.id}`} className={cn("grid min-w-0 grid-cols-[var(--spacing-log-time)_minmax(0,1fr)] gap-x-4 border-ui-stroke py-5 first:pt-0", index < visible.length - 1 && "border-b", visible.length > 200 && "[content-visibility:auto] [contain-intrinsic-size:auto_140px]")}>
         <time className={cn("font-data text-caption tabular-nums text-ui-muted", step.header === false ? "pt-4" : "pt-0.5")}>{step.time}</time>
         <div className="min-w-0">
-          <header className={step.header === false ? "sr-only" : "mb-4 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1"}><h3 id={`${id}-${step.id}`} ref={node => { if (node) headings.current.set(step.id, node); else headings.current.delete(step.id); }} tabIndex={-1} className="m-0 rounded-sm text-heading focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ui-info">{step.title}</h3>{step.system && <span className="inline-flex items-center gap-1.5 border-l border-ui-stroke pl-3 text-body text-ui-muted"><Monitor aria-hidden className="size-3.5" />{step.system}</span>}</header>
-          <div className="flex min-w-0 flex-col gap-3">{step.entries.map((entry, index) => <div key={entry.id}><Entry entry={entry} onDecision={onDecision} timeInStep={step.header === false && index === 0} />{(entry.kind === "fields" || entry.kind === "click") && entry.screenshots && <LogScreenshots screenshots={entry.screenshots} />}</div>)}</div>
+          <header className={step.header === false ? "sr-only" : "mb-4 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1"}><h3 id={`${id}-${step.id}`} ref={node => { if (node) headings.current.set(step.id, node); else headings.current.delete(step.id); }} tabIndex={-1} className="m-0 rounded-sm text-heading focus:outline-2 focus:outline-offset-4 focus:outline-ui-info">{step.title}</h3>{step.system && <span className="inline-flex items-center gap-1.5 border-l border-ui-stroke pl-3 text-body text-ui-muted"><Monitor aria-hidden className="size-3.5" />{step.system}</span>}</header>
+          <div className="flex min-w-0 flex-col gap-3">{step.entries.map((entry, index) => <div key={entry.id}
+            ref={node => { const key = JSON.stringify([step.id, entry.id]); if (node) entryTargets.current.set(key, node); else entryTargets.current.delete(key); }}
+            role={entry.kind === "decision" || (step.header === false && index === 0) ? "group" : undefined}
+            aria-label={entry.kind === "decision" ? entry.decision.title : step.header === false && index === 0 ? step.title : undefined}
+            tabIndex={entry.kind === "decision" || (step.header === false && index === 0) ? -1 : undefined}
+            className="rounded-lg focus:outline-2 focus:outline-offset-2 focus:outline-ui-info"><Entry entry={entry} onDecision={onDecision} timeInStep={step.header === false && index === 0} />{(entry.kind === "fields" || entry.kind === "click") && entry.screenshots && <LogScreenshots screenshots={entry.screenshots} />}</div>)}</div>
         </div>
         {afterStep?.(step.id)}
       </section>)}
