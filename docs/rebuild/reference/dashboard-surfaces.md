@@ -7807,6 +7807,26 @@ data, identity, focus or privacy assertions. Inherited obsolete contracts and fu
 remain explicit. Evidence is retained in `frontend-reliability-20261005`; richer run headers and
 Activity drilldowns remain proposals outside this batch.
 
+The frontend readiness amendment completes the operator's five frontend-only follow-ups. Sanitized
+Explorer templates preserve readonly segments and exact string/boolean/null conditions through the
+canonical display renderer. Missing required display values remain errors. Mounted dashboard tests
+exercise slow bootstrap/first snapshot, startup failure, stale events and cursor-preserving reconnect
+through the real typed client. Existing Settings and worker-port tests retain refusal and uncertain
+outcome/readback coverage; no runtime backend change or product fault-control panel is introduced.
+Settings controls use stable field names. UCPath credential autocomplete is scoped; unrelated
+configuration disables autocomplete. Keyboard selection and password reveal remain available, and
+member buttons expose their selected state. Preflight compact and full views share direct remedy
+destinations; unknown failed checks still offer Settings.
+Queue selection redraws only affected item/member families while changed rows, handlers, clock and
+bulk state remain observable. Large loaded Queue and Log lists defer offscreen layout without removing
+records from DOM, search, copy or exact-step focus. Log filtering avoids a repeated quadratic hidden-step
+scan. The real-component production fixture measures render/interaction time and heap cleanup with
+complete synthetic populations. These optimizations do not bound DOM memory; backend paging remains
+required. The current mounted-producer checklist in ref frontend-backend-integration §5 distinguishes
+local mocks from retained, unmounted runtime clients and records IDs, outcomes, paging, events and
+reload semantics. Evidence is retained in `frontend-readiness-20261005`. Inherited broad contract/type
+failures and frozen phase-exit verification remain explicit obligations.
+
 The subsequent 2026-10-05 run-header/Analytics amendment implements the operator-approved compact
 proposal. Subject headings retain their prominence; one quiet context line adds workflow, the existing
 short run ID, attempt and retained elapsed time. Queued runs omit timing; missing finished timing is

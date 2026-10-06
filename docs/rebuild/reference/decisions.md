@@ -283,6 +283,15 @@ stays in memory; only view coordinates enter native history. Uncertain worker re
 original command. Saved and active settings remain distinct. Backend source and authority are unchanged;
 inherited broad contract failures remain explicit. Richer headers and Activity drilldowns are proposals.
 D347's dashboard-surfaces owner records the contract; evidence is `frontend-reliability-20261005`.
+
+The frontend readiness follow-up preserves sanitized Explorer display types, exercises HTTP/SSE
+faults through mounted pages, shares direct Preflight remedies and completes Settings field metadata.
+Measured Queue row reuse and offscreen Queue/Log layout deferral preserve full loaded populations;
+memory remains unbounded by these changes. The current wiring checklist names mounted local producers
+separately from retained runtime transport, including identity, outcomes, paging, events and reload.
+Backend source/authority and the approved design remain unchanged. Inherited diagnostics and phase-exit
+gates remain explicit. Owners: dashboard-surfaces D347 and frontend-backend-integration §5; evidence
+is `frontend-readiness-20261005`.
 The import amendment adds per-sheet selection and labels before registration, physically removes
 excluded data from the copy, and retains private pending choices through routed review navigation.
 

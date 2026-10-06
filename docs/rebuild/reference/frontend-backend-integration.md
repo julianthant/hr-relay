@@ -1131,6 +1131,54 @@ Track D's checklist for every row that lands on this section — D1, D4, D6, D7,
 
 <!-- roadmap: dash-defaults -->
 
+### Current frontend mock wiring checklist — 2026-10-05
+
+This checklist describes the mounted D347 frontend after the operator's mock-first amendments.
+The older runtime matrix below records retained implementation, not current mounting. Backend
+wiring is deferred. Extend the existing `src/dashboard/client/index.ts` facade and canonical
+`src/domain/dashboard/**` schemas; do not add a second frontend API/type layer. Replace the producer
+behind each view model, preserving its explicit loading, empty, failure, refusal and uncertain arms.
+
+| Surface | Mounted producer and seam | Required data and transition contract |
+| --- | --- | --- |
+| Shell and workflow catalog | Typed bootstrap/day client; `workflow-catalog-model.ts` merges served registration with the approved preview catalog | Stable workflow IDs, labels, start capability and availability remain distinct. Bootstrap carries actor, clock, descriptor/config identity and storage/readiness. Missing or invalid bootstrap fails visibly. |
+| Queue and row commands | `useDashboardDay` consumes strict day SSE; `useQueuePreview` adds session-local fictional changes | Exact day, generation/cursor, run/item identity, attempt, containment, status, revision, rollup and action descriptors. Reconnect resumes the last cursor; stale events cannot replace newer rows. Runtime commands retain CAS and command identity. Local retry/archive/delete overlays must be replaced with explicit command settlement and readback. |
+| Logs and OCR Records | `LogSample`, `WorkflowMockLog` and workflow/OCR producers in `workflows/mocks/`; retained `useRunDetail` transport is not the default mounted Logs producer | Ordered stable step/action IDs, timestamps, field observations, decisions, screenshot dimensions/availability and exact record/page identity. OCR correction and selection must survive navigation; approval needs one explicit matching result. An unknown write offers reconciliation, not a blind retry. |
+| Start and Rerun | Shared launch/rerun models use typed planner/client for served starts; registered previews create local mock runs | Accepted inputs, required/omittable steps, resolved options, plan/source identity and matching command result. Preserve pending locks, refusal and exact-attempt recovery. A selectable catalog entry does not establish executable registration. |
+| Settings, protected values and paths | Existing typed editor clients and revision/readback models | Effective/default/override values, field metadata, persisted/active revisions and protected authority state. Names follow field paths; credential autocomplete is scoped to UCPath. Pending save locks controls; uncertain save checks the original attempt. Native path picking remains behind its existing client. |
+| Preflight and storage | Typed Preflight/doctor query and rerun clients | Served checks, scope/fingerprints, checked time and explicit unavailable/history state. Rerun retains the completed report's nodes and geometry. Shared remedy mapping navigates to Credentials, Routes, Storage, Sessions or Settings; rendering performs no repair. Storage excludes run history. |
+| Sessions and workers | `sessionsSample` and `createSessionPreviewPort` | Stable worker/resource identity, workflow capability, state and command identity. Pending/confirmed/refused/uncertain fixtures already model duplicate locks and recovery without resubmission. Replace the port and worker producer together; retained runtime controls are not evidence of current worker-service wiring. |
+| Notifications and shell search | `notificationPreviewState` derives local inbox destinations from current queue/mock runs; shell results use loaded records | Exact run/day/workflow destination, subject, status, event time and read state. Read does not resolve urgency. Missing targets refuse; never route merely to a workflow type. Durable notification delivery/read state and cross-day search remain wiring work. |
+| Archive and version review | `MockArchiveWorkspace`, archive samples and current-session local snapshots | Self-contained immutable archived run IDs, version/workflow, outcome, dates, saved fields and evidence. Search targets exact reports across versions. Runtime archive query/bump/export clients are retained but unmounted here. Replace producer/commands together and preserve the explicit review stage. |
+| Analytics | `activitySample` feeds `ActivityView` and its exact-population drilldown | Unique root-run records, status, workflow, start/end and explicit missing duration. Successful measured runs alone enter workflow averages; measured zero is retained. Matched counts, populations and paging agree. Export currently reports that it is unconnected. |
+| Explorer | `WorkflowExplorer` uses local workflow fixtures and choice/source models | Stable workflow/node/operation/field IDs, source metadata and ordered timeline. Public display conditions compare string, boolean and null values exactly; withheld/missing values are not guessed. Definition/runtime compiler wiring remains separate. |
+| Spreadsheets | Real CSV/XLSX parsing/export workers plus local library/editor models | Workbook/sheet/row/column identities, values/types/fills and selected-column labels. Registration physically removes excluded columns/sheets. Preserve validation, cancellation, draft exit guards and the 50-version Undo bound. Library persistence and intake authority must be connected explicitly. |
+
+**Paging, events and reload.** Public page coordinates are owned only by
+`app/navigation/url-state.ts` and `ViewRouteSchema`. Search typing replaces history; selection,
+page and wizard changes push it. Breadcrumbs and native Back/Forward use the same owner. Private
+values, uploaded bytes, pending commands, OCR edits and workbook history never enter URLs. Those
+drafts survive navigation within the mounted session, not reload; a reloaded URL cannot recreate a
+locally created run or private draft. Loaded fixture identities resolve on reload; unknown targets
+must remain explicit. Workflow selection/appearance/shortcuts have their existing browser preference
+owners, separate from authoritative data.
+
+Queue and Logs currently retain all loaded records in DOM. Offscreen layout deferral and row reuse
+reduce rendering work but do not bound memory. Preserve complete search/copy/jump semantics when
+introducing backend cursor pages, and distinguish loaded rows from authoritative total counts.
+Analytics slices a filtered, sorted population into 20-row pages. Spreadsheet rendering is bounded to
+50 rows and 20 columns, with full-sheet search and physical import projection. Archive's current mock
+search covers its complete local report set; a runtime replacement needs a complete backend index,
+not a search of the loaded page alone.
+
+**Frontend verification.** `frontend-fault-pages.test.ts` mounts the real app with the typed client,
+HTTP fixtures and controlled SSE: delayed bootstrap/first snapshot, startup HTTP failure, stale
+cursor rejection, disconnect with retained rows and exact-cursor resume. Existing mounted Settings
+and worker-port tests cover refusal and uncertainty. They replace transport responses, not parsers
+or page hooks. The isolated production Queue/Log performance fixture and raw browser/heap samples
+are retained in `frontend-readiness-20261005`. This is frontend evidence, not runtime service admission
+or a completed phase-exit gate.
+
 This matrix is the generic surface completeness checklist. Under D311/D317 the workflow compiler fills its
 workflow-varying declarations and one registry-wide conformance suite checks every workflow definition. A
 separate `Dashboard · wire` task is retained only as historical evidence or as a capability-delta

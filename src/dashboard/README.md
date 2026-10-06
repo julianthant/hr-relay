@@ -44,6 +44,16 @@ Feature mocks own fictional state transitions. Replace a producer behind its exi
 view model when wiring a feature. Keep explicit loading, empty, refusal, unknown outcome
 and failed states; do not substitute fixture success when transport fails.
 
+The [current wiring checklist](../../docs/rebuild/reference/frontend-backend-integration.md#current-frontend-mock-wiring-checklist--2026-10-05)
+distinguishes mounted producers from retained transport implementations. Use it before replacing a
+mock. In particular, current Logs, Analytics, Archive, notifications and Sessions still contain local
+producers; the older runtime matrix is not proof that those consumers are mounted today.
+
+`tests/perf/frontend/` builds an isolated production fixture using the real Queue and Log components.
+It measures rendering, interaction and heap cleanup independently of HR services. Preserve complete
+search, copy, selection and focus when changing rendering. Offscreen layout deferral reduces layout
+work; it does not bound loaded data or DOM memory.
+
 ## Navigation
 
 `app/navigation/url-state.ts` owns public page coordinates. The bounded `view` query

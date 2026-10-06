@@ -526,3 +526,13 @@ of adding per-character entries. Controls reset paging and retain focus. The sha
 variant aligns with the picker while default search consumers remain unchanged. Previous sorted URLs
 remain valid. Evidence is `analytics-filter-20261005`; backend reporting and frozen phase-exit gates
 remain deferred.
+
+The frontend readiness follow-up adds real-client mounted-page faults for delayed bootstrap/first
+snapshot, failed startup, stale SSE and cursor-preserving reconnect. Shared Preflight remedies and
+Settings field names/autocomplete preserve existing navigation and layout. Queue reuse observes
+selection across attempt/member families and all row/handler/clock/bulk changes. Large Queue/Log
+lists defer offscreen layout while preserving complete loaded DOM, search/copy and keyboard/jump
+focus; memory is not bounded. The isolated production fixture measures rendering, action latency
+and cleanup. Current mounted producers and retained runtime consumers are distinguished in ref
+frontend-backend-integration §5. `frontend-readiness-20261005` owns the focused evidence; inherited
+full diagnostic failures and the frozen visual/coverage/phase-exit gates remain explicit.
