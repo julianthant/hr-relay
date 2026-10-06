@@ -7816,7 +7816,7 @@ The adjacent Review status badge is omitted only when that Review action is pres
 retain their status and tools.
 The report's visible name is Analytics across navigation, search, headings, browser titles, back links
 and loading announcements. Existing Activity route identifiers remain supported. Completed,
-Outstanding and Failed totals open one four-column exact-run list, bounded to 20 rows per page.
+Outstanding and Failed totals open one context-aware exact-run list, bounded to 20 rows per page.
 Average workflow time opens the same measured successful root-run population used by that average;
 untimed successes are excluded from that list and remain included in the completed total. Selecting
 a row opens its exact logs with the same compact header. Report and row facts share one local producer
@@ -7841,6 +7841,16 @@ Analytics metric/workflow/page selection, Archive folder/search scope and native
 Settings and spreadsheet draft-exit guards and focus return retain their existing authority.
 Backend contracts and transport are unchanged. Evidence is retained in `breadcrumbs-20261005`;
 frozen visual/a11y references and full phase-exit gates remain with 3.1.19.
+
+The 2026-10-05 Analytics scope amendment names workflow timing views directly, for example
+“Separations run times,” in the section heading, breadcrumb and accessible table name. Completion
+and timing eligibility are stated once beside the count. Workflow-scoped lists omit the redundant
+Workflow column; completed, timed and failed lists omit their already-known terminal Status column.
+Outstanding lists retain Status because running and waiting differ. Cross-workflow lists retain
+Workflow. Thus workflow timing uses only Run and Duration without changing the measured population,
+row identity, exact log access, pagination or URL/history owner. Full verification/status evidence
+remains in the selected run's logs. Evidence is `analytics-context-20261005`; backend reporting and
+frozen phase-exit gates remain deferred.
 
 Local queue selection mode and Select menu items are retired. Archive applies
 immediately; Delete asks first and cancellation retains its served confirmation. Member check marks

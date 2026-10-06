@@ -4,8 +4,9 @@ import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, it, vi } from 'vitest';
 import { ActivityReport } from '../../../src/dashboard/surfaces/activity/activity.js';
+import { ActivityDrilldown } from '../../../src/dashboard/surfaces/activity/activity-drilldown.js';
 import { activitySample, ACTIVITY_SAMPLE_RANGE } from '../../../src/dashboard/surfaces/activity/activity-fixture.js';
-import { activityDrilldown, ACTIVITY_RUN_PAGE_SIZE } from '../../../src/dashboard/surfaces/activity/activity-drilldown-model.js';
+import { activityDrilldown, ACTIVITY_RUN_PAGE_SIZE, type ActivityBrowse } from '../../../src/dashboard/surfaces/activity/activity-drilldown-model.js';
 import { parseViewRoute } from '../../../src/dashboard/app/navigation/view-route-model.js';
 import { parseRoute, routeToSearch } from '../../../src/dashboard/app/navigation/url-state.js';
 
@@ -72,6 +73,36 @@ describe('Activity drilldown records and navigation', () => {
     assert.equal(fixture.view?.activityPreview, 'empty');
     assert.equal(parseRoute(routeToSearch({ ...fixture, view: { ...fixture.view, activityBrowse: browse } })).view?.activityPreview, 'empty');
     assert.equal(parseRoute('?settings=activity&activityPreview=missing').viewInvalid, true);
+  });
+  it('names the chosen workflow and only repeats facts that vary within the selected scope', async () => {
+    const host = document.createElement('div'); document.body.append(host);
+    const root = createRoot(host);
+    const value = report(); const onSelection = vi.fn();
+    const cases: readonly { selection: ActivityBrowse; title: string; columns: readonly string[] }[] = [
+      { selection: { metric: 'timed', workflow: 'sample-separations', page: 0 }, title: 'Separations run times', columns: ['Run', 'Duration'] },
+      { selection: { metric: 'completed', page: 0 }, title: 'Completed runs', columns: ['Run', 'Workflow', 'Duration'] },
+      { selection: { metric: 'failed', page: 0 }, title: 'Failed runs', columns: ['Run', 'Workflow', 'Duration'] },
+      { selection: { metric: 'outstanding', page: 0 }, title: 'Outstanding runs', columns: ['Run', 'Workflow', 'Status', 'Duration'] },
+    ];
+    try {
+      for (const scenario of cases) {
+        await act(async () => root.render(createElement(ActivityDrilldown, { report: value, selection: scenario.selection, onSelection })));
+        assert.equal(host.querySelector('h2')?.textContent, scenario.title);
+        const table = host.querySelector('table'); assert(table);
+        assert.equal(table.getAttribute('aria-label'), scenario.title);
+        assert.deepEqual([...table.querySelectorAll('th')].map(cell => cell.textContent), scenario.columns);
+        assert([...table.querySelectorAll('tbody tr')].every(row => row.children.length === scenario.columns.length));
+        if (scenario.selection.metric === 'timed') {
+          assert.match(host.textContent ?? '', /24 completed runs with recorded duration/);
+          assert.doesNotMatch(table.textContent ?? '', /Separations|Done/);
+          await act(async () => table.querySelector('button')!.click());
+          assert.deepEqual(onSelection.mock.calls[0], [{ ...scenario.selection, run: value.runs.find(row => row.workflowId === 'sample-separations' && row.status === 'completed' && row.seconds !== null)!.id }]);
+        }
+        if (scenario.selection.metric === 'outstanding') {
+          assert.match(table.textContent ?? '', /Running/); assert.match(table.textContent ?? '', /Review/);
+        }
+      }
+    } finally { await act(async () => root.unmount()); host.remove(); }
   });
   it('opens a matching run and returns to its list and overview through mounted controls', async () => {
     const host = document.createElement('div'); document.body.append(host);

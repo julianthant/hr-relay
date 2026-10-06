@@ -11,6 +11,11 @@ export type ActivityBrowse = Readonly<{ metric: 'completed' | 'outstanding' | 'f
 export const ACTIVITY_RUN_PAGE_SIZE = 20;
 export const ACTIVITY_RUN_LABELS = { completed: 'Completed runs', outstanding: 'Outstanding runs', failed: 'Failed runs', timed: 'Timed completed runs' } as const;
 
+export function activityDrilldownTitle(selection: ActivityBrowse, workflowLabel?: string): string {
+  if (!workflowLabel) return ACTIVITY_RUN_LABELS[selection.metric];
+  return selection.metric === 'timed' ? `${workflowLabel} run times` : `${workflowLabel} · ${ACTIVITY_RUN_LABELS[selection.metric].toLowerCase()}`;
+}
+
 export function activityDrilldown(records: readonly ActivityRunRecord[], selection: ActivityBrowse) {
   const ids = new Set<string>();
   for (const row of records) {

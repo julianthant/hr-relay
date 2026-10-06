@@ -483,7 +483,7 @@ search; it never executes a decision. The Review badge beside the subject is omi
 has a Review button. Records bodies retain their status and existing controls.
 The dashboard report is named Analytics in navigation, search, headings, browser titles, back links
 and loading announcements. Existing Activity route identifiers remain valid.
-Completed, Outstanding and Failed totals open one four-column matching-run list. Workflow averages
+Completed, Outstanding and Failed totals open one context-aware matching-run list. Workflow averages
 open measured successful runs only. Lists mount 20 rows per page and open exact run logs in the existing
 frame. Predicate, workflow, page and run coordinates restore through reload and Back/Forward. Range
 changes clear the drilldown in one history entry; Back restores both. Empty, unavailable and missing
@@ -503,3 +503,13 @@ folder/search, native history, draft-exit confirmations and opener focus are pre
 controls navigate steps; modal dismissal is separate from page hierarchy. Runtime transport remains
 unwired. Evidence is `breadcrumbs-20261005`. Workspace test locators follow the new Settings control;
 frozen references are not changed and full phase-exit gates remain deferred.
+
+## Analytics scope amendment (2026-10-05)
+
+The operator requested clear workflow context without repeated workflow/status values. Workflow
+timing views use a heading, breadcrumb and table name such as “Separations run times.” Their tables
+contain Run and Duration; measured completion eligibility is stated once beside the count. Workflow
+is retained only across workflows, and Status only for outstanding runs with differing actionable
+states. Selected logs retain full status evidence. Measured populations, exact identity, pagination,
+route coordinates and focus remain unchanged. Evidence is `analytics-context-20261005`; no frozen
+references were changed and full phase-exit gates remain deferred.
