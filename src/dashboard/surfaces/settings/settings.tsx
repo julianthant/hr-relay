@@ -13,7 +13,7 @@ SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID
 import { Banner,Button,Dialog,DialogContent,DialogFooter,DsBodyScope,IconButton,SearchInput,SectionLabel,StatusDot,TakeoverFrame,dsFocus,dsMotion,dsIcon,dsSurface,dsText } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { plural } from "../shared/status/format.js";
-import type { SettingsSaveListener } from "./editor/settings-attempt-model.js";
+import type { SettingsSaveListener, SettingsSaveProblemListener } from "./editor/settings-attempt-model.js";
 import { useEditableSettings } from "./editor/settings-editor-model.js";
 import { EditableSettingsSection } from "./editor/settings-editor.js";
 import { RoutesSection } from "./routes/settings-routes.js";
@@ -193,6 +193,7 @@ export function SettingsPage({
   onSection,
   onExitGuardChange,
   onSaved,
+  onSaveProblem,
   onClose,
 }: {
   storage: StorageHealthSummary;
@@ -214,11 +215,12 @@ export function SettingsPage({
   /** Lets the shell route every Settings-unmounting control through this draft owner. */
   onClose: () => void;
   onSaved?: SettingsSaveListener;
+  onSaveProblem?: SettingsSaveProblemListener;
   onExitGuardChange?: (guard: ((proceed: () => void) => void) | undefined) => void;
 }) {
   const [workbookDraft, setWorkbookDraft] = useState<{ document: EditableWorkbook | null; dirty: boolean }>({ document: null, dirty: false });
   const onWorkbook = (document: EditableWorkbook | null, dirty: boolean) => setWorkbookDraft({ document, dirty });
-  const editor = useEditableSettings({ actorId, descriptorFingerprint, onSaved });
+  const editor = useEditableSettings({ actorId, descriptorFingerprint, onSaved, onSaveProblem });
   const [pendingExit, setPendingExit] = useState<(() => void) | undefined>(undefined);
   const exitFocusTarget = useRef<HTMLElement | null>(null);
   const settingsDocument = editor.editor.state === "loaded" ? editor.editor.document : undefined;

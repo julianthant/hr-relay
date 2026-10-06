@@ -1,4 +1,4 @@
-import type { SettingsSaveNotice } from "../../../../src/dashboard/surfaces/settings/editor/settings-attempt-model.js";
+import type { SettingsSaveNotice, SettingsSaveProblem } from "../../../../src/dashboard/surfaces/settings/editor/settings-attempt-model.js";
 import { FingerprintSchema } from "../../../../src/domain/ids.js";
 import { canonicalJsonStringify } from "../../../../src/domain/canonical-json.js";
 import { sha256Hex } from "../../../../src/domain/sha256.js";
@@ -84,6 +84,7 @@ export function syntheticSettingsAuthority(options: { providerFile?: string; par
 export async function mountSettingsHarness(authority: ReturnType<typeof syntheticSettingsAuthority>, section = "general", readDocument: (() => unknown) | undefined = undefined) {
   const commands: unknown[] = [];
   const notices: SettingsSaveNotice[] = [];
+  const problems: SettingsSaveProblem[] = [];
   const ports = {
     response: (): Response | undefined => undefined,
     read: (): unknown => readDocument?.() ?? authority.read(),
@@ -104,14 +105,14 @@ export async function mountSettingsHarness(authority: ReturnType<typeof syntheti
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   let editor: ReturnType<typeof useEditableSettings> | undefined;
   function Harness({ sectionId }: { sectionId: string }) {
-    editor = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: "d".repeat(64), onSaved: notice => notices.push(notice) });
+    editor = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: "d".repeat(64), onSaved: notice => notices.push(notice), onSaveProblem: notice => problems.push(notice) });
     if (sectionId === "routes") return createElement(RoutesSection, { editor });
     return ["credentials", "protected-store", "provider-env", "runtime-isolation"].includes(sectionId)
       ? createElement(SettingsAuthoritySection, { editor, sectionId }) : createElement(EditableSettingsSection, { editor, sectionId });
   }
   const render = async (sectionId: string): Promise<void> => { await act(async () => { root.render(createElement(DashboardClientProvider, { client, children: createElement(Harness, { sectionId }) })); }); };
   await render(section);
-  return { host, commands, notices, ports, client, render, controller: () => { if (editor === undefined) throw new Error("settings-not-mounted"); return editor; },
+  return { host, commands, notices, problems, ports, client, render, controller: () => { if (editor === undefined) throw new Error("settings-not-mounted"); return editor; },
     close: () => { act(() => root.unmount()); host.remove(); } };
 }
 export async function settingsAction(action: () => void): Promise<void> { await act(async () => { action(); }); }

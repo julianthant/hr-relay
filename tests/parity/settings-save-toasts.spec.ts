@@ -63,6 +63,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await task.press("ControlOrMeta+z"); await expect(task).toHaveValue("0");
       await expect(page.getByText("Enter a positive duration that resolves to a whole millisecond.", { exact: true })).toBeVisible();
       await page.waitForTimeout(800); await expect(toasts).toHaveCount(0);
+      await expect(page.getByText("Unsaved changes", { exact: true })).toHaveCount(0);
       expect(read().revision).toBe(1);
       const pending = new Promise<void>(resolve => { release = resolve; });
       await page.route("**/api/v1/commands", async route => { await pending; await route.fallback(); }, { times: 1 });
@@ -89,6 +90,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(toasts).toHaveCount(0); await expect(page.getByText("Saved", { exact: true })).toBeVisible();
       await page.route("**/api/v1/commands", route => route.abort("failed"), { times: 1 });
       await task.fill("240"); await expect(page.getByText("Settings write unconfirmed", { exact: true })).toBeVisible();
+      const unconfirmed = toasts.filter({ hasText: "Settings save unconfirmed" });
+      await expect(unconfirmed).toHaveCount(1);
+      await expect(unconfirmed).not.toContainText("Saved Task");
+      await unconfirmed.locator('[data-slot="toast-close"]').hover();
+      await unconfirmed.getByRole("button", { name: "Dismiss", exact: true }).click();
       await expect(toasts).toHaveCount(0);
       await page.getByRole("button", { name: "Retry exact attempt", exact: true }).click();
       await expect(toasts.filter({ hasText: `Saved ${label}` })).toBeVisible();
@@ -96,11 +102,32 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(page.getByText("Saved", { exact: true })).toBeVisible();
 
       await page.getByRole("link", { name: "Credentials", exact: true }).click();
-      await page.getByRole("textbox", { name: "UCPath username", exact: true }).fill("synthetic-toast-user");
+      const username = page.getByRole("textbox", { name: "UCPath username", exact: true });
+      await username.fill("synthetic-toast-user");
+      await expect(toasts).toHaveCount(0);
+      await page.getByRole("heading", { name: "Credentials", exact: true }).click();
       await expect(toasts.filter({ hasText: "Saved UCPath username" })).toBeVisible();
       await expect(toasts).not.toContainText("synthetic-toast-user");
       await toasts.locator('[data-slot="toast-close"]').hover(); await expect(toasts.getByRole("button", { name: "Dismiss", exact: true })).toBeVisible();
       await toasts.getByRole("button", { name: "Dismiss", exact: true }).click(); await expect(toasts).toHaveCount(0);
+
+      await page.route("**/api/v1/commands", route => route.fulfill({ status: 403, json: { state: "error", code: "OPERATOR_MUTATION_ORIGIN_REFUSED", message: "private-server-sentinel", retryable: false } }), { times: 1 });
+      await username.fill("private-refused-sentinel");
+      await page.getByRole("heading", { name: "Credentials", exact: true }).click();
+      const refused = toasts.filter({ hasText: "Credentials weren't saved" });
+      await expect(refused).toHaveCount(1);
+      await expect(page.getByText("Credentials were not applied", { exact: true })).toBeVisible();
+      await expect(username).toHaveValue("private-refused-sentinel");
+      await expect(refused).not.toContainText("private-refused-sentinel");
+      await expect(page.locator("body")).not.toContainText("private-server-sentinel");
+      await refused.locator('[data-slot="toast-close"]').hover();
+      await refused.getByRole("button", { name: "Dismiss", exact: true }).click();
+      await expect(toasts).toHaveCount(0);
+      await page.getByRole("button", { name: "Retry edit", exact: true }).click();
+      await expect(toasts.filter({ hasText: "Saved UCPath username" })).toHaveCount(1);
+      await toasts.locator('[data-slot="toast-close"]').hover();
+      await toasts.getByRole("button", { name: "Dismiss", exact: true }).click();
+      await expect(toasts).toHaveCount(0);
 
       await page.getByRole("link", { name: "Keyboard", exact: true }).click();
       await page.getByRole("button", { name: "Edit Search runs shortcut 1", exact: true }).click();

@@ -1,8 +1,8 @@
 import { Banner, Button, Refusal, dsText } from "../../../ds/ui.js";
 import type { SettingsSaveState } from "./settings-attempt-model.js";
-export function SettingsSaveFeedback({ save, protectedStore = false, name: explicitName, retry, retryConflict, restartRequired = false, dirty = false }: { save: SettingsSaveState; protectedStore?: boolean; name?: string; retry: () => void; retryConflict?: () => void; restartRequired?: boolean; dirty?: boolean }) {
+export function SettingsSaveFeedback({ save, protectedStore = false, name: explicitName, retry, retryConflict, restartRequired = false }: { save: SettingsSaveState; protectedStore?: boolean; name?: string; retry: () => void; retryConflict?: () => void; restartRequired?: boolean }) {
   const name = explicitName ?? (protectedStore ? "Credentials" : "Settings");
-  if (save.state === "idle") return dirty ? <span role="status" className={dsText.meta}>Unsaved changes</span> : null;
+  if (save.state === "idle") return null;
   if (save.state === "saving") return <span role="status" className={dsText.meta}>Saving…</span>;
   if (save.state === "applied") return <span role="status" className={dsText.meta}>{save.replayed ? "Already saved" : "Saved"}{restartRequired ? " · Restart required" : ""}</span>;
   if (save.state === "refused") return <Refusal title={`${name} were not applied`} code={save.code ?? "settings-draft-invalid"}>{save.message}{retryConflict !== undefined && <span className="block"><Button size="sm" variant="secondary" onClick={retryConflict}>Retry edit</Button></span>}</Refusal>;

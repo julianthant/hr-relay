@@ -321,6 +321,13 @@ existing feedback and exact retry identity. Location plans identify the saved pl
 move. Persistent status and restart requirements remain after toast expiry. D347's dashboard-surfaces
 owner records the contract; evidence is `save-toasts-10003539`.
 
+The save-result amendment hides Unsaved changes text and flushes valid idle settings drafts when
+focus leaves the edited field, alongside the existing typing debounce. Date segments and credential
+controls remain one field. Refused, conflicting and unconfirmed attempts emit value-free problem
+toasts; success still requires matching acknowledgment and readback. Persistent recovery details,
+retained drafts and exact retry identity remain. D347's dashboard-surfaces owner records the contract;
+evidence is `settings-save-result-10003539`.
+
 The wiring-preparation amendment moves Performance, Paths and Routes to Advanced while keeping
 General and Credentials in Personal and retaining all eleven page IDs and editor authority. XLSX
 editable-copy import ignores Excel worksheet/table filter rules, including unsupported color filters;

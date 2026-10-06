@@ -27,10 +27,10 @@ export function RoutesSection({ editor }: { editor: ReturnType<typeof useEditabl
   const filtered = routes.filter(({ leaf, presentation }) => `${presentation.name} ${presentation.description} ${Object.values(presentation.fields).map(field => `${field.name} ${field.description}`).join(" ")} ${leaf.path === "urls.sharepoint.prod" ? "Onboarding roster URL Download the onboarding roster" : ""}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   return <section className="settings-page-panel routes-page">
     <PageHeading title="Routes" description="Production destinations, organized by system." />
-    <form className="routes-page-form" onSubmit={event => { event.preventDefault(); editor.submit(); }}>
+    <form className="routes-page-form" onBlur={editor.onFieldBlur} onSubmit={event => { event.preventDefault(); editor.submit(); }}>
       {document.runtimeStatus.state === "restart-required" && <Banner tone="warning" title="Restart required">Saved routes take effect after this dashboard restarts. This process still uses settings revision {String(document.runtimeStatus.active.settingsRevision)}.</Banner>}
       {editor.readProblem !== undefined && <Banner tone="warning" title="Current routes unavailable">{editor.readProblem} <Button size="sm" onClick={editor.reload}>Refresh current values</Button></Banner>}
-      <SettingsSaveFeedback save={editor.save} dirty={editor.dirtyCount > 0} restartRequired={editor.editor.state === "loaded" && editor.editor.document.runtimeStatus.state === "restart-required"} retry={editor.retry} retryConflict={editor.submit} />
+      <SettingsSaveFeedback save={editor.save} restartRequired={editor.editor.state === "loaded" && editor.editor.document.runtimeStatus.state === "restart-required"} retry={editor.retry} retryConflict={editor.submit} />
       <SearchInput className="routes-page-search" aria-label="Find a system or route" placeholder="Search systems or routes" value={query} onClear={() => setQuery("")} onChange={event => setQuery(event.target.value)} />
       <div className="routes-page-list">
         {filtered.map(({ leaf, presentation }) => {

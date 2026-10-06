@@ -449,14 +449,19 @@ Focused evidence is `onbase-document-types-20261005`; runtime document admission
 
 ## Confirmed save feedback (2026-10-06)
 
-Typed Settings and credential saves notify through the shared success toast only after matching command
-identity and refreshed readback. Batched edits produce one confirmation, using public field labels and
-never values. Pending, invalid, refused, conflicting and unconfirmed attempts do not notify; exact replay
-can confirm Already saved. Navigation and read refresh do not repeat a toast. Persistent status and
+Typed Settings and credential saves run after typing settles (700 ms for ordinary settings, 1200 ms
+for credentials) or immediately when focus leaves the edited field. Date segments and credential
+controls in the same field do not flush between controls. Invalid drafts retain inline validation;
+no Unsaved changes status is shown. The shared success toast requires matching command identity
+and refreshed readback. Batched edits produce one confirmation, using public field labels and never
+values. Refused attempts emit a danger toast; conflicting and unconfirmed attempts emit a warning
+toast without claiming success. Drafts, persistent recovery details and exact retry identity remain.
+Pending attempts do not notify; exact replay can confirm Already saved. Navigation and read refresh
+do not repeat a toast. Persistent status and
 restart information remain after toast dismissal/expiry. Browser-saved keyboard edits, local spreadsheet
 mappings/type registration and copy exports use the same feedback. Spreadsheet typing remains a draft;
 export says Spreadsheet copy exported. A saved location plan does not claim a completed folder move.
-Evidence is retained under `save-toasts-10003539`.
+Evidence is retained under `save-toasts-10003539` and `settings-save-result-10003539`.
 
 ## Frontend organization and navigation amendment (2026-10-05)
 

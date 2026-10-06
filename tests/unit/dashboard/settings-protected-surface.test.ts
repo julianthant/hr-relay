@@ -203,8 +203,8 @@ it("retains applied feedback until the next draft changes its state", async () =
     assert.match(host.textContent ?? "", /Already saved/u);
     await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
     assert.match(host.textContent ?? "", /Already saved/u);
-    await act(async () => root.render(createElement(SettingsSaveFeedback, { save: { state: "idle" }, dirty: true, protectedStore: true, retry: () => undefined })));
-    assert.match(host.textContent ?? "", /Unsaved changes/u);
+    await act(async () => root.render(createElement(SettingsSaveFeedback, { save: { state: "idle" }, protectedStore: true, retry: () => undefined })));
+    assert.equal(host.textContent, "");
     assert.doesNotMatch(host.textContent ?? "", /Already saved/u);
   } finally {
     await act(async () => root.unmount());

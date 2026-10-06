@@ -15,6 +15,15 @@ export type SettingsSaveState =
   | { readonly state: "refused" | "conflict" | "unconfirmed"; readonly message: string; readonly code?: string };
 export type SettingsSaveNotice = Readonly<{ title: string; description?: string }>;
 export type SettingsSaveListener = (notice: SettingsSaveNotice) => void;
+export type SettingsSaveProblem = SettingsSaveNotice & Readonly<{ tone: "danger" | "warning" }>;
+export type SettingsSaveProblemListener = (notice: SettingsSaveProblem) => void;
+export function settingsSaveProblem(save: SettingsSaveState, protectedStore = false): SettingsSaveProblem | undefined {
+  const name = protectedStore ? "Credentials" : "Settings";
+  if (save.state === "unconfirmed") return { tone: "warning", title: `${name} save unconfirmed`, description: "Your draft is retained. Retry the exact attempt to confirm the result." };
+  if (save.state === "conflict") return { tone: "warning", title: `${name} changed`, description: "Your draft is retained. Review the current values before retrying." };
+  if (save.state === "refused") return { tone: "danger", title: `${name} weren't saved`, description: "Your draft is retained. Review the save details before retrying." };
+  return undefined;
+}
 export function settingsSaveNotice(labels: readonly string[], replayed: boolean, restartRequired = false): SettingsSaveNotice {
   return { title: `${replayed ? "Already saved" : "Saved"} ${labels.length === 1 ? labels[0] : "settings"}`,
     ...(restartRequired ? { description: "Restart required to use these changes." } : {}) };

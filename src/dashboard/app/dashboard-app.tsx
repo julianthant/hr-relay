@@ -1183,7 +1183,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
             workflowCatalog={workflowCatalog} settingsSections={settingsSections} workflowLabels={workflowLabels} activeWorkflowId={activeWorkflowId}
             workflowLabelOf={workflowLabelOf} supportsDryRun={startWorkflow?.inputRun.state === "present" && startWorkflow.inputRun.surface.supportsDryRun === true}
             closeTakeoverTo={closeTakeoverTo}
-            onSettingsExitGuardChange={onSettingsExitGuardChange} onSettingsSaved={notice => toast({ tone: "success", ...notice })} theme={theme} onToggleTheme={onToggleTheme}>
+            onSettingsExitGuardChange={onSettingsExitGuardChange} onSettingsSaved={notice => toast({ tone: "success", ...notice })} onSettingsSaveProblem={toast} theme={theme} onToggleTheme={onToggleTheme}>
           <>
           {/*
             ONE COMPOSED ACTION BAR (ref dashboard-surfaces §Shell, D18). It was two bands: a

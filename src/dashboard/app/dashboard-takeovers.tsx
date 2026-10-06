@@ -22,13 +22,14 @@ routeWithoutTakeovers,
 type AppRouteState
 } from "./navigation/url-state.js";
 export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSections,workflowLabels,workflowCatalog,activeWorkflowId,
- workflowLabelOf,supportsDryRun,closeTakeoverTo,onSettingsExitGuardChange,onSettingsSaved,theme,onToggleTheme,children}: {
+ workflowLabelOf,supportsDryRun,closeTakeoverTo,onSettingsExitGuardChange,onSettingsSaved,onSettingsSaveProblem,theme,onToggleTheme,children}: {
  takeover: ReturnType<typeof activeTakeover>; route: AppRouteState; setRoute: RouteSetter;
  boot: FrontendBootstrapWire; settingsSections: ComponentProps<typeof SettingsPage>["sections"];
  workflowCatalog: readonly WorkflowCatalogEntry[]; workflowLabels: ReadonlyMap<string,string>; activeWorkflowId: string; workflowLabelOf: (id: string) => string;
  supportsDryRun: boolean;
  closeTakeoverTo: (target: DashboardTakeoverCloseFocusTargetId,next: AppRouteState) => void;
  onSettingsSaved?: ComponentProps<typeof SettingsPage>["onSaved"];
+ onSettingsSaveProblem?: ComponentProps<typeof SettingsPage>["onSaveProblem"];
  onSettingsExitGuardChange: (guard: SettingsExitGuard | undefined) => void; theme: DemoTheme; onToggleTheme: () => void; children: ReactNode;
 }) {
  const dataSection = takeover === "settings" ? route.settings
@@ -51,6 +52,7 @@ export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSection
               onClose={() => closeTakeoverTo(SETTINGS_GEAR_ID, routeWithoutTakeovers(route))}
               onExitGuardChange={onSettingsExitGuardChange}
               onSaved={onSettingsSaved}
+              onSaveProblem={onSettingsSaveProblem}
             />
           ) : takeover === "intake" && route.intake !== undefined ? (
             /* UF-FU-1: the surface owns the same full-bleed `TakeoverFrame`

@@ -119,7 +119,7 @@ describe("editable Settings surface", () => {
     assert.ok(duplicateSectionResult.error.issues.some((issue) => issue.message.includes("repeats section general")));
   });
 
-  it("autosaves one atomic leaf-operation draft after a settled edit", async () => {
+  it("autosaves one atomic leaf-operation draft when the exit dialog takes focus", async () => {
     const applied: unknown[] = [];
     let closeCount = 0;
     let exitGuard: ((proceed: () => void) => void) | undefined;
@@ -167,11 +167,12 @@ describe("editable Settings surface", () => {
       navigation.dispatchEvent(new Event("input", { bubbles: true }));
       navigation.dispatchEvent(new Event("change", { bubbles: true }));
     });
-    assert.ok([...host.querySelectorAll<HTMLButtonElement>("button")].some(button => button.textContent === "Undo"), "the retained draft has an in-row undo action");
+    assert.equal([...host.querySelectorAll<HTMLButtonElement>("button")].some(button => button.textContent === "Undo"), false, "the retained draft has no visible undo button");
     if (exitGuard === undefined) throw new Error("Settings exit guard was not registered");
     await act(async () => { exitGuard?.(() => { closeCount += 1; }); });
     assert.equal(closeCount, 0, "a dirty page cannot navigate away without a choice");
     assert.match(document.body.textContent ?? "", /Discard unsaved settings\?/u);
+    assert.equal(applied.length, 1, "leaving the edited input flushes its valid draft");
     const beforeUnload = new Event("beforeunload", { cancelable: true });
     window.dispatchEvent(beforeUnload);
     assert.equal(beforeUnload.defaultPrevented, true, "a dirty draft protects against browser unload");
@@ -187,7 +188,7 @@ describe("editable Settings surface", () => {
     assert.deepEqual(command.payload.patch, {
       "timeouts.navigationMs": { set: 111000 },
     });
-    assert.equal((applied[0] as { requestedAt: string }).requestedAt, "2026-08-28T18:00:00.700Z");
+    assert.equal((applied[0] as { requestedAt: string }).requestedAt, "2026-08-28T18:00:00.000Z");
   });
 
   it("refuses a cleared zero-allowed OCR field instead of converting it to zero", async () => {
