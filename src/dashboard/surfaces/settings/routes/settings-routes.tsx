@@ -57,7 +57,6 @@ export function RoutesSection({ editor }: { editor: ReturnType<typeof useEditabl
               </>}
               {editor.errors[leaf.path] !== undefined && <p role="alert" className="routes-page-error">{editor.errors[leaf.path]}</p>}
               {(leaf.source === "settings" || operation !== undefined) && <div className="routes-page-system-actions">
-                {operation !== undefined && <Button size="sm" variant="ghost" disabled={editor.locked} onClick={() => editor.reset(leaf.path)}>Undo edit</Button>}
                 {leaf.source === "settings" && <Button size="sm" variant="ghost" disabled={editor.locked} onClick={() => editor.clear(leaf.path)}>Reset to default</Button>}
               </div>}
             </div>;

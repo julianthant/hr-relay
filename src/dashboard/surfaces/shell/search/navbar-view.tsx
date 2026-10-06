@@ -19,7 +19,7 @@ export function RailSearch({ data, onResult }: { data: NavbarData; onResult: (re
   const trigger = useRef<HTMLButtonElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const optionPrefix = useId();
-  const results = navbarSearch(data.results, query);
+  const results = data.unavailable ? [] : navbarSearch(data.results, query);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target;
@@ -39,14 +39,14 @@ export function RailSearch({ data, onResult }: { data: NavbarData; onResult: (re
             onValueChange={value => { setQuery(value); setActiveResult(""); setNotice(""); }}
             onClear={() => { setQuery(""); setActiveResult(""); setNotice(""); input.current?.focus(); }} /></div>
           <CommandList label="Search results">
-            <CommandEmpty>No runs match your search.</CommandEmpty>
+            <CommandEmpty>{data.unavailable ?? "No runs match your search."}</CommandEmpty>
             <CommandGroup heading={query.trim() ? "Matching runs" : "Recent runs"}>
               {results.map(result => <CommandItem asChild key={result.id} value={result.id} onSelect={() => { onResult(result, () => { setOpen(false); setNotice(""); }, setNotice); }}>
                 <div id={`${optionPrefix}-${result.id}`}><div className="flex min-w-0 flex-1 flex-col gap-1 py-1"><div className="flex items-center justify-between gap-3"><strong className="truncate font-semibold">{result.subject}</strong><span className="shrink-0 text-caption text-ui-secondary">{result.state}</span></div><span className="truncate text-caption text-ui-muted">{result.workflow} · {navbarDayLabel(result.day)}</span></div></div>
               </CommandItem>)}
             </CommandGroup>
           </CommandList>
-          <p role="status" className="m-0 border-t border-ui-stroke px-4 py-3 text-caption text-ui-muted">{notice || `${results.length} ${results.length === 1 ? "run" : "runs"}`}</p>
+          <p role="status" className="m-0 border-t border-ui-stroke px-4 py-3 text-caption text-ui-muted">{notice || data.unavailable || `${results.length} ${results.length === 1 ? "run" : "runs"}`}</p>
         </Command>
       </DialogContent>
     </Dialog>

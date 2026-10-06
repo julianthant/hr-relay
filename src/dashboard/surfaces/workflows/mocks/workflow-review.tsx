@@ -92,18 +92,27 @@ export function WorkflowMockReview({ run, sourcePages, approvalError, onChange, 
   const originals = useMemo(() => seedReviewRecords({ workflowId, draft }), [workflowId, draft]);
   const readOnly = reviewIsReadOnly(run);
   const count = records.filter(reviewCanApprove).length;
-  return <section aria-label="OCR records" className="flex min-h-0 min-w-0 flex-1 flex-col text-ui-primary">
+  return <section aria-label="OCR records" onKeyDown={event => {
+    if (!run.discarded || event.defaultPrevented || event.repeat || event.altKey || event.shiftKey
+      || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "z"
+      || (event.target instanceof HTMLElement && event.target.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]'))) return;
+    event.preventDefault();
+    onRestore();
+    requestAnimationFrame(() => focusRecord(focusId.current, "[data-ocr-review-heading]", true));
+  }} className="flex min-h-0 min-w-0 flex-1 flex-col text-ui-primary">
     <div ref={body} aria-label="Record review cards" tabIndex={0} className={cn("min-h-0 min-w-0 flex-1 space-y-3 overflow-y-auto p-3", dsFocus)}>
       {records.length === 0 ? <div role="status" className="flex h-full items-center justify-center text-body text-ui-muted">No records extracted</div> : records.map(record => <ReviewRecordCard key={record.id} run={run} record={record} original={originals.find(item => item.id === record.id)} pages={sourcePages?.[record.id] ?? []} onFocus={() => { focusId.current = record.id; }} onChange={updated => onChange(records.map(item => item.id === updated.id ? updated : item))} />)}
     </div>
-    {(onApprove || run.discarded) && <footer className="flex shrink-0 flex-wrap items-center gap-3 border-t border-ui-stroke bg-ui-table px-3 py-3">
+    {(onApprove || onDiscard) && !run.discarded && <footer className="flex shrink-0 flex-wrap items-center gap-3 border-t border-ui-stroke bg-ui-table px-3 py-3">
       {onApprove && <div className="min-w-0 flex-1 text-caption"><span className="text-ui-muted">{count} selected for approval</span>{approvalError && <p role="status" className="m-0 mt-1 text-ui-warning">{approvalError}</p>}</div>}
       <div className="ml-auto flex flex-wrap items-center gap-2">
         {!readOnly && records.length > 0 && <Button size="sm" icon={<Plus aria-hidden className="size-4" />} onClick={() => {
           const next = addMockReviewRecord(records); onChange(next); focusId.current = next[next.length - 1].id;
           requestAnimationFrame(() => focusRecord(focusId.current, 'input[name="employeeId"]'));
         }}>Add record</Button>}
-        <Button size="sm" onClick={run.discarded ? onRestore : onDiscard}>{run.discarded ? "Undo discard" : "Discard"}</Button>
+        {onDiscard && !run.discarded && <Button size="sm" onClick={() => {
+          onDiscard(); requestAnimationFrame(() => focusRecord(focusId.current, "[data-ocr-review-heading]", true));
+        }}>Discard</Button>}
         {onApprove && <Button size="sm" variant="primary" disabled={count === 0 || Boolean(approvalError)} onClick={() => { onApprove(); requestAnimationFrame(() => focusRecord(focusId.current, "[data-ocr-review-heading]", true)); }}>Approve records</Button>}
       </div>
     </footer>}

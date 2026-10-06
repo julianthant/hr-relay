@@ -57,6 +57,10 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const task = page.getByRole("textbox", { name: "Task", exact: true });
       const toasts = page.locator('[data-slot="toast"]');
       await task.fill("0");
+      await task.press("End"); await task.pressSequentially("1");
+      await expect(task).toHaveValue("01");
+      await expect(page.getByRole("button", { name: /^Undo/u })).toHaveCount(0);
+      await task.press("ControlOrMeta+z"); await expect(task).toHaveValue("0");
       await expect(page.getByText("Enter a positive duration that resolves to a whole millisecond.", { exact: true })).toBeVisible();
       await page.waitForTimeout(800); await expect(toasts).toHaveCount(0);
       expect(read().revision).toBe(1);
@@ -68,7 +72,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       release();
       const saved = toasts.filter({ hasText: `Saved ${label}` });
       await expect(saved).toHaveCount(1); await expect(saved).toHaveAttribute("role", "status");
-      await saved.hover();
+      await saved.locator('[data-slot="toast-close"]').hover();
       expect(await page.evaluate(() => ({ tag: document.activeElement?.tagName, id: document.activeElement?.id }))).toEqual(focusWhileSaving);
       await task.focus(); await expect(task).toBeFocused();
       expect(read().revision).toBe(2);
@@ -95,7 +99,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.getByRole("textbox", { name: "UCPath username", exact: true }).fill("synthetic-toast-user");
       await expect(toasts.filter({ hasText: "Saved UCPath username" })).toBeVisible();
       await expect(toasts).not.toContainText("synthetic-toast-user");
-      await toasts.hover(); await expect(toasts.getByRole("button", { name: "Dismiss", exact: true })).toBeVisible();
+      await toasts.locator('[data-slot="toast-close"]').hover(); await expect(toasts.getByRole("button", { name: "Dismiss", exact: true })).toBeVisible();
       await toasts.getByRole("button", { name: "Dismiss", exact: true }).click(); await expect(toasts).toHaveCount(0);
 
       await page.getByRole("link", { name: "Keyboard", exact: true }).click();
@@ -108,14 +112,14 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(toasts.filter({ hasText: "Saved Search runs shortcut" })).toBeVisible();
       const storedShortcuts = await page.evaluate(() => localStorage.getItem("hr-gpt-shortcuts-v1"));
       expect(validateShortcutPreferences(JSON.parse(storedShortcuts ?? "null") as unknown).bindings.search).toEqual(["g"]);
-      await toasts.hover(); await expect(toasts.getByRole("button", { name: "Dismiss", exact: true })).toBeVisible();
+      await toasts.locator('[data-slot="toast-close"]').hover(); await expect(toasts.getByRole("button", { name: "Dismiss", exact: true })).toBeVisible();
       await toasts.getByRole("button", { name: "Dismiss", exact: true }).click(); await expect(toasts).toHaveCount(0);
 
       await page.getByRole("link", { name: "Spreadsheets", exact: true }).click();
       await page.getByLabel("Open XLSX or CSV", { exact: true }).setInputFiles({ name: "typed-records.csv", mimeType: "text/csv", buffer: Buffer.from("Employee ID,Legal Name,Personal Email\n10000001,Jordan Lee,jordan@example.com\n") });
       await page.getByRole("button", { name: "Import selected columns", exact: true }).click();
       await expect(toasts.filter({ hasText: "Spreadsheet imported" })).toBeVisible();
-      await toasts.hover(); await expect(toasts.getByRole("button", { name: "Dismiss", exact: true })).toBeVisible();
+      await toasts.locator('[data-slot="toast-close"]').hover(); await expect(toasts.getByRole("button", { name: "Dismiss", exact: true })).toBeVisible();
       await toasts.getByRole("button", { name: "Dismiss", exact: true }).click(); await expect(toasts).toHaveCount(0);
       await page.getByRole("textbox", { name: "A2", exact: true }).fill("10000002");
       await expect(page.getByText(/Edited copy/u)).toBeVisible(); await expect(toasts).toHaveCount(0);

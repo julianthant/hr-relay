@@ -73,8 +73,7 @@ export function mockOperations(run: MockRun, step: MockStep): readonly MockOpera
     return exact;
   }
   if (key.includes("auth") || key === "authenticate") return [click(`Open ${step.system ?? "the system"}`), read("Session", [["System", step.system ?? "OnBase"], ["Authentication", "Authenticated"], ["Identity", "Demo operator"]])];
-  if (key === "delegate-ocr") return [read("Document delegation", [["PDF", "$pdf"], ["Form type", "$formType"], ["OCR run", run.ocrRunId ?? "Not created"]])];
-  if (key === "wait-ocr") return [read("OCR dependency", [["Approval", "$approval"], ["Approved people", "$approvedCount"]])];
+  if (key === "read-document") return [read("Document delegation", [["PDF", "$pdf"], ["Form type", "$formType"], ["OCR run", run.ocrRunId ?? "Not created"]])];
   if (key === "members" || key === "rollup") return [read(key === "members" ? "Approved person runs" : "Person outcomes", [["People", "$approvedCount"], ["Workflow", run.workflowId], ["Failed", "0"], ["Cancelled", "0"]])];
   throw new Error(`MOCK_OPERATION_STEP_UNKNOWN: ${run.workflowId}:${key}`);
 }

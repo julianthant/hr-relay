@@ -47,7 +47,6 @@ export function EditableSettingsSection({ editor, sectionId, appearance }: { edi
               {(custom || operation !== undefined) && <div className="settings-row-actions">
                 {editor.save.state === "conflict" && operation !== undefined && <span className={cn(dsText.meta, "w-full text-[color:var(--ds-fg-muted)]")}>Current value: {shownCurrent}</span>}
                 {custom && !requiredJobEndDate && operation?.kind !== "clear" && <Button size="sm" variant="ghost" title={`Standard value: ${shownDefault}`} onClick={() => editor.clear(leaf.path)} disabled={editor.locked}>Restore standard</Button>}
-                {operation !== undefined && <Button size="sm" variant="ghost" onClick={() => editor.reset(leaf.path)} disabled={editor.locked}>Undo edit</Button>}
               </div>}
               {leaf.hazard !== undefined && <span className={cn(dsText.meta, "settings-row-hazard text-[color:var(--ds-status-waiting-fg)]")}>{leaf.hazard}</span>}
               </div>;

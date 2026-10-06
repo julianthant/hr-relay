@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Check, ArrowLeft, ArrowRight, Play } from "lucide-react";
 import { BareButton, Banner, Button, Checkbox, ChoicePicker, DateInput, DialogBody, DialogFooter, Field, Input, Badge, MetaLine, SegmentedChoice, Textarea } from "../../../ds/ui.js";
 import { MOCK_FORM_TYPES, MOCK_ONBASE_TYPES, mockWorkflow, type MockWorkflowId } from "./workflow-mock-catalog.js";
-import { initialMockDraft, mockConfirmationFacts, mockDraftError, mockDraftInputError, mockInputEntries, mockLaunchCount, mockSelectableSteps, mockOcrPreparationSteps, mockOathDuplicate, mockStepState, type MockDraft, type MockFile, type MockRun } from "./workflow-mock-model.js";
+import { initialMockDraft, mockConfirmationFacts, mockDraftError, mockDraftInputError, mockInputEntries, mockLaunchCount, mockSelectableSteps, mockOcrReadSteps, mockOathDuplicate, mockStepState, type MockDraft, type MockFile, type MockRun } from "./workflow-mock-model.js";
 import "../../run-start/launch-presentation.css";
 import { cn } from "../../../lib/utils.js";
 import { RunConfirmLayout, RunOptionsLayout, RunStepsList } from "../../run-start/run-launch-layout.js";
@@ -31,9 +31,9 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
   const typedEntries = mockInputEntries(workflowId, draft);
   const count = mockLaunchCount(workflowId, draft);
   const steps = mockSelectableSteps(workflowId, draft);
-  const preparation = mockOcrPreparationSteps(workflowId, draft);
+  const preparation = mockOcrReadSteps(workflowId, draft);
   const planSteps = [...preparation, ...steps];
-  const included = preparation.length + steps.filter(step => draft.selectedSteps.includes(step.key)).length;
+  const included = (draft.ocrMode === "manual" ? 0 : preparation.length) + steps.filter(step => draft.selectedSteps.includes(step.key)).length;
   const patch = (next: Partial<MockDraft>) => { const value = { ...draft, ...next }; setDraft(value); onDraftChange?.(value); };
   const chooseFiles = async (files: readonly File[]) => {
     setReading(true); setFileError(undefined);
@@ -71,9 +71,12 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
           </>}
           {pdf && <>
             <WorkflowPdfInput files={draft.files} busy={reading} onChoose={files => { void chooseFiles(files); }} onRemove={index => { patch({ files: draft.files.filter((_, number) => number !== index) }); setFileError(undefined); }} />
+            <div className={cn("grid min-w-0 gap-3", flow.roster && !uploadOnly && (workflowId === "ocr" || workflowId === "onbase") && "grid-cols-2")}>
             {flow.roster && !uploadOnly && <ChoicePicker label="Roster" value={draft.roster} options={[{ value: "existing", label: "Existing Onboarding Roster" }, { value: "download", label: "Download Onboarding Roster" }]} onChange={roster => { if (roster === "existing" || roster === "download") patch({ roster }); }} />}
-            {workflowId === "onbase" && <><ChoicePicker label="Document type" value={draft.documentType} options={MOCK_ONBASE_TYPES} onChange={documentType => patch({ documentType })} /><p className="text-caption text-ui-secondary">Selected PDFs merge into one document. Approved pages import separately for each person.</p></>}
+            {workflowId === "onbase" && <ChoicePicker label="Document type" value={draft.documentType} options={MOCK_ONBASE_TYPES} onChange={documentType => patch({ documentType })} />}
             {workflowId === "ocr" && <ChoicePicker label="Form type" value={draft.formType} options={MOCK_FORM_TYPES} onChange={formType => patch({ formType })} />}
+            </div>
+            {workflowId === "onbase" && <p className="text-caption text-ui-secondary">Selected PDFs merge into one document. Approved pages import separately for each person.</p>}
           </>}
           {draft.method === "roster" && <ChoicePicker label="Spreadsheet" value="onboarding" options={[{ value: "onboarding", label: "Onboarding Roster" }]} onChange={() => undefined} />}
           {draft.method === "delegated" && <Banner tone="info" title="Delegated lookup">Searches I-9 Complete by last and first name, optionally SSN, then reads the Section 2 signer and status. The parent owns this run.</Banner>}
@@ -83,7 +86,7 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
         </section>}
         {stage === "Options" && <RunOptionsLayout priority={draft.priority === "background" ? "bulk" : "interactive"} onPriorityChange={priority => patch({ priority: priority === "bulk" ? "background" : "interactive" })} browserMode={draft.browser} onBrowserModeChange={browser => patch({ browser })}
           flags={<>
-            {!source && steps.length > 0 && <Checkbox label="Customize steps" description="Choose optional steps." checked={optionalSteps} onCheckedChange={value => { setOptionalSteps(value === true); if (value !== true) patch({ selectedSteps: flow.steps.map(step => step.key), manualSteps: [] }); }} />}
+            {!source && planSteps.length > 0 && <Checkbox label="Customize steps" description="Choose optional steps." checked={optionalSteps} onCheckedChange={value => { setOptionalSteps(value === true); if (value !== true) patch({ selectedSteps: flow.steps.map(step => step.key), manualSteps: [] }); }} />}
             {pdf && !uploadOnly && <Checkbox label="Extract with OCR" description="Turn off to enter records manually in OCR review." checked={draft.ocrMode !== "manual"} onCheckedChange={value => patch({ ocrMode: value === true ? "extract" : "manual" })} />}
             {flow.dryRun && <Checkbox label="Dry run" description="Stop before submission." checked={draft.dryRun} onCheckedChange={value => patch({ dryRun: value === true })} />}
             <Checkbox label="Capture screenshots" description="Keep browser captures." checked={draft.captures} onCheckedChange={value => patch({ captures: value === true })} />
@@ -99,7 +102,7 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
           const fields = manualReadFields(workflowId, step.key), manual = usesManualRead(draft, step.key);
           const setManual = (value: boolean) => patch({ manualSteps: value ? [...new Set([...(draft.manualSteps ?? []), step.key])] : (draft.manualSteps ?? []).filter(key => key !== step.key) });
           return <li key={step.key} className="launch-step-row flex min-w-0 flex-col gap-2"><div className="flex items-start gap-[var(--ds-space-base)]">
-            {dependency ? <span className="text-body">{step.label}{" "}<span className="ml-2 text-caption text-ui-muted">{["wait-ocr", "wait-approval"].includes(step.key) ? "Approval required" : "Automatic"}</span></span> : <Checkbox label={step.label} description={locked ? "Form action · required" : step.system} disabled={locked} checked={draft.selectedSteps.includes(step.key)} onCheckedChange={value => {
+            {step.key === "read-document" ? <Checkbox label={step.label} description={step.system} checked={draft.ocrMode !== "manual"} onCheckedChange={value => patch({ ocrMode: value === true ? "extract" : "manual" })} /> : dependency ? <span className="text-body">{step.label}{" "}<span className="ml-2 text-caption text-ui-muted">{step.key === "wait-approval" ? "Approval required" : "Automatic"}</span></span> : <Checkbox label={step.label} description={locked ? "Form action · required" : step.system} disabled={locked} checked={draft.selectedSteps.includes(step.key)} onCheckedChange={value => {
               const included = value === true;
               patch({ selectedSteps: included ? [...new Set([...draft.selectedSteps, step.key])] : draft.selectedSteps.filter(key => key !== step.key),
                 manualSteps: !included && fields.length ? [...new Set([...(draft.manualSteps ?? []), step.key])] : (draft.manualSteps ?? []).filter(key => key !== step.key) });
@@ -113,7 +116,7 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
           </li>;
         }) : <li className="p-3 text-body text-ui-secondary">OCR preparation reads and matches the PDF records.</li>}</RunStepsList>{mockStepInputError(workflowId, draft) && <p role="alert" className="text-caption text-ui-danger">{mockStepInputError(workflowId, draft)}</p>}</section>}
         {stage === "Confirm" && <RunConfirmLayout count={count} flags={<RunFlagChips dryRun={flow.dryRun && draft.dryRun} priority={draft.priority === "background" ? "bulk" : "interactive"} />}
-          description={source ? "A new run linked to the source." : pdf && !uploadOnly ? workflowId === "onbase" ? "One combined document sent to OCR for review." : "One run per PDF. OCR reviews records before downstream work." : "One run for each accepted entry."}
+          description={source ? "A new run linked to the source." : pdf && !uploadOnly ? workflowId === "onbase" ? "One combined document sent to OCR for review." : workflowId === "ocr" ? "One OCR run per PDF. Results stay in Records." : "One run per PDF. OCR reviews records before downstream work." : "One run for each accepted entry."}
           facts={[...mockConfirmationFacts(workflowId, draft), ...(source ? [{ key: "Source", value: source.subject }] : [])]}>
           {error && <p role="alert" className="text-caption text-ui-danger">{error}</p>}
         </RunConfirmLayout>}

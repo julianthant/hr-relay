@@ -4,8 +4,9 @@ import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { startFixtureServer } from "./helpers/fixture-bff.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
+import { attachShellA11y } from "./helpers/shell-proof.js";
 
-for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) test(`one workflow catalog supplies every current selector @ ${theme.attribute}-${width}`, async ({ page }, info) => {
+for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) test(`one workflow catalog supplies every current selector @ ${theme.attribute}-${width}`, { annotation: [{ type: "required-a11y-evidence", description: `catalog-run-${theme.attribute}-${width}.a11y.yml` }] }, async ({ page }, info) => {
   ensureParityBundle();
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, profile: { bootstrap: FIXTURE_START_PICKER_BOOTSTRAP, day: FIXTURE_START_PICKER_DAY_WIRE, descriptorHash: FIXTURE_START_PICKER_DESCRIPTOR_HASH } });
   try {
@@ -22,11 +23,13 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) test(
     const run = page.getByRole("dialog", { name: "Start a run", exact: true });
     const picker = run.getByRole("navigation", { name: "Workflow", exact: true });
     expect(await picker.getByRole("button").evaluateAll(buttons => buttons.map(button => button.getAttribute("aria-label")))).toEqual(labels);
-    for (const label of ["OCR", "I-9 Lookup"]) {
+    await expect(picker.getByRole("button", { name: "OCR", exact: true })).toBeEnabled();
+    for (const label of ["SharePoint Download", "I-9 Lookup"]) {
       const choice = picker.getByRole("button", { name: label, exact: true });
       await expect(choice).toBeDisabled(); await expect(choice).toHaveAttribute("aria-description", "Started by a parent workflow.");
     }
     await info.attach(`catalog-run-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+    await attachShellA11y(page, info, `catalog-run-${theme.attribute}-${width}.a11y.yml`);
     await page.keyboard.press("Escape");
     for (const label of labels) {
       await page.getByRole("button", { name: "Add workers", exact: true }).click();
@@ -48,10 +51,10 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) test(
     expect(await page.getByRole("option").allTextContents()).toEqual(labels);
     await page.keyboard.press("Escape");
     await page.goto(`${server.baseUrl}/?settings=archive&day=${FIXTURE_DAY}`);
-    await page.getByRole("combobox", { name: "Archived workflow", exact: true }).click();
-    await expect(page.getByRole("option")).toHaveCount(labels.length + 1);
-    const archiveLabels = await page.getByRole("option").allTextContents();
-    expect(archiveLabels.slice(1, 16)).toEqual(labels);
+    await expect(page.getByText("Archive page removed", { exact: true })).toBeVisible();
+    await expect(page.getByRole("combobox", { name: "Archived workflow", exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "Return to dashboard", exact: true }).click();
+    await expect(page.getByRole("navigation", { name: "Workflows", exact: true })).toBeVisible();
     await info.attach(`catalog-archive-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
     expect(errors).toEqual([]); expect(writes).toEqual([]);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);

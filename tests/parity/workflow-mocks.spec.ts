@@ -3,7 +3,7 @@ import { chooseSelect } from "./helpers/select-choice.js";
 import { expect, test, type Locator, type Page, type TestInfo } from "@playwright/test";
 import { MOCK_WORKFLOWS } from "../../src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.js";
 import { manualReadFields, mockStepIsLocked, mockStepIsDependency } from "../../src/dashboard/surfaces/workflows/mocks/workflow-manual-model.js";
-import { seedMockRuns, mockOcrPreparationSteps, initialMockDraft } from "../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
+import { seedMockRuns, mockOcrReadSteps, mockSelectableSteps, initialMockDraft } from "../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "./helpers/fixture-bff.js";
@@ -115,6 +115,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) {
           const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
           await expect(logs.getByRole("heading", { level: 2 })).toHaveText(sample.subject);
           if (flow.methods[0] === "delegated") await expect(logs).toContainText("Read Section 2 signer");
+          if (flow.id === "sharepoint-download") { await expect(logs).toContainText("Onboarding Roster.xlsx"); await expect(logs).toContainText("Download roster"); }
+          await expect(logs.getByRole("button", { name: "Rerun", exact: true })).toHaveCount(0);
           await attachScreenshotFile(page, info, `delegated-${flow.id}-${theme.attribute}-${width}.png`);
           continue;
         }
@@ -136,10 +138,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) {
         await expect(dialog).not.toContainText("The composition:");
         if (flow.methods[0] === "typed") await dialog.getByRole("textbox", { name: flow.inputLabel, exact: true }).fill(flow.example);
         if (flow.methods[0] === "pdf") await dialog.locator('input[type="file"]').setInputFiles(pdf);
-        if (flow.id === "sharepoint-download") {
-          await expect(dialog.getByRole("button", { name: "Onboarding Roster Spreadsheet", exact: true })).toBeVisible();
-          await expect(dialog.locator('input[type="url"]')).toHaveCount(0);
-        }
         await expect(dialog.getByRole("button", { name: "Continue", exact: true })).toBeEnabled();
         await attachScreenshotFile(page, info, `input-${flow.id}-${theme.attribute}-${width}.png`);
         await advance(dialog);
@@ -155,10 +153,13 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) {
         await attachScreenshotFile(page, info, `options-${flow.id}-${theme.attribute}-${width}.png`);
         await advance(dialog);
         const stepRegion = dialog.getByRole("region", { name: "Steps", exact: true });
-        await expect(stepRegion.getByRole("checkbox")).toHaveCount(flow.steps.filter(step => !mockStepIsDependency(step)).length + flow.steps.filter(step => mockStepIsLocked(flow.id, step) && manualReadFields(flow.id, step.key).length > 0).length);
-        await expect(dialog).toContainText(`${flow.steps.length + mockOcrPreparationSteps(flow.id, initialMockDraft(flow.id)).length} / ${flow.steps.length + mockOcrPreparationSteps(flow.id, initialMockDraft(flow.id)).length} included`);
+        const visibleSteps = mockSelectableSteps(flow.id, initialMockDraft(flow.id));
+        const reading = mockOcrReadSteps(flow.id, initialMockDraft(flow.id));
+        const stepCount = visibleSteps.length + reading.length;
+        await expect(stepRegion.getByRole("checkbox")).toHaveCount(visibleSteps.filter(step => !mockStepIsDependency(step)).length + visibleSteps.filter(step => mockStepIsLocked(flow.id, step) && manualReadFields(flow.id, step.key).length > 0).length + reading.length);
+        await expect(dialog).toContainText(`${stepCount} / ${stepCount} included`);
         await expect(stepRegion.locator("li").first()).toHaveCSS("min-height", "58px");
-        const optional = flow.steps.find(step => !mockStepIsLocked(flow.id, step) && !mockStepIsDependency(step))!;
+        const optional = flow.id === "ocr" ? reading[0] : visibleSteps.find(step => !mockStepIsLocked(flow.id, step) && !mockStepIsDependency(step))!;
         await stepRegion.getByRole("checkbox", { name: optional.label, exact: true }).uncheck();
         for (const field of manualReadFields(flow.id, optional.key)) {
           const value = field.date ? "10/06/2026" : field.options ? field.options[0] : /employee id/iu.test(field.label) ? "10000001" : field.token === "$name" ? "Jordan Lee" : "None";
@@ -175,7 +176,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) {
         await expect(confirmation).toHaveCSS("gap", summaryGap);
         await expect(confirmation).toContainText("Bulk");
         await expect(confirmation).toContainText("Headless · screenshots off");
-        await expect(confirmation).toContainText(`Omitted: ${optional.label}`);
+        await expect(confirmation).toContainText(flow.id === "ocr" ? "Off · enter records in review" : `Omitted: ${optional.label}`);
         await expect(confirmation.locator("dl")).toHaveCSS("font-family", /-apple-system/);
         await expect(confirmation.locator("details")).toHaveCount(0);
         await expect(confirmation.getByText("Workflow plan", { exact: true })).toHaveCount(0);
@@ -191,7 +192,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) {
         await expect(rerun.getByRole("list", { name: "Run configuration path" }).getByRole("listitem")).toHaveText([/^1\s*Steps$/u, /^2\s*Values$/u, /^3\s*Options$/u, /^4\s*Confirm$/u]);
         await expect(rerun.getByRole("complementary", { name: "Source run", exact: true })).toHaveCount(0);
         await expect(rerun.getByRole("checkbox", { name: optional.label, exact: true })).not.toBeChecked();
-        await expect(rerun.locator(".launch-step-status")).toHaveCount(flow.steps.length + mockOcrPreparationSteps(flow.id, initialMockDraft(flow.id)).length);
+        await expect(rerun.locator(".launch-step-status")).toHaveCount(stepCount);
         await advance(rerun);
         await expect(rerun.getByRole("region", { name: "Values", exact: true })).toBeVisible();
         await advance(rerun);
@@ -285,7 +286,10 @@ for (const theme of PARITY_THEMES) test(`workflow mode controls @ ${theme.attrib
     await advance(dialog);
     await expect(dialog.getByRole("region", { name: "Steps", exact: true })).toBeVisible();
     const stepChecks = dialog.getByRole("region", { name: "Steps", exact: true }).getByRole("checkbox");
-    for (const checkbox of await stepChecks.all()) await checkbox.uncheck();
+    for (const checkbox of await stepChecks.all()) {
+      if (await checkbox.isDisabled()) await expect(checkbox).toBeChecked();
+      else await checkbox.uncheck();
+    }
     await expect(dialog.getByRole("button", { name: "Preview plan", exact: true })).toBeDisabled();
     await dialog.getByRole("button", { name: "2 Options", exact: true }).click();
     await dialog.getByRole("checkbox", { name: "Customize steps", exact: true }).uncheck();
@@ -300,7 +304,8 @@ for (const theme of PARITY_THEMES) test(`workflow mode controls @ ${theme.attrib
     await page.getByRole("button", { name: "Start a run", exact: true }).click();
     await dialog.getByRole("navigation", { name: "Workflow", exact: true }).getByRole("button", { name: "Emergency Contact", exact: true }).click();
     await expect(dialog).toContainText("Emergency Contact · Workflow preview");
-    await expect(dialog.locator('input[type="file"]')).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Choose PDFs", exact: true })).toBeVisible();
+    await expect(dialog.locator('input[type="file"]')).toHaveCount(1);
     await page.keyboard.press("Escape");
     expect(writes).toEqual([]);
   } finally { await server.close(); }

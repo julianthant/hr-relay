@@ -39,20 +39,21 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         await expect(dialog).toContainText("Bulk: background batches; interactive runs take priority.");
         await dialog.getByRole("radio", { name: "Bulk", exact: true }).press("Space");
         await dialog.getByRole("checkbox", { name: "Customize steps", exact: true }).check();
-        await dialog.getByRole("checkbox", { name: "Extract with OCR", exact: true }).setChecked(extraction);
         await dialog.getByRole("button", { name: "Continue", exact: true }).click();
         const steps = dialog.getByRole("region", { name: "Steps", exact: true });
         const rows = steps.getByRole("listitem");
-        await expect(rows).toHaveCount(5);
-        await expect(rows.nth(0)).toContainText("Delegate document to OCR");
-        await expect(rows.nth(1)).toContainText("Wait for OCR approval");
-        await expect(rows.nth(1)).toContainText("Approval required");
-        await expect(rows.nth(0).getByRole("checkbox")).toHaveCount(0);
-        await expect(rows.nth(1).getByRole("checkbox")).toHaveCount(0);
+        await expect(rows).toHaveCount(4);
+        await expect(rows.nth(0)).toContainText("Read emergency contact");
+        await expect(rows.nth(0)).toContainText("OCR");
+        await expect(steps).not.toContainText("Delegate document to OCR");
+        await expect(steps).not.toContainText("Wait for OCR approval");
+        const reading = steps.getByRole("checkbox", { name: "Read emergency contact", exact: true });
+        await expect(reading).toBeEnabled(); await expect(reading).toBeChecked();
+        await reading.setChecked(extraction);
         await expect(steps.getByRole("checkbox", { name: "Read existing contacts", exact: true })).toBeEnabled();
         await expect(steps.getByRole("checkbox", { name: "Fill emergency contact", exact: true })).toBeDisabled();
         await expect(steps.getByRole("checkbox", { name: "Save emergency contact", exact: true })).toBeDisabled();
-        await expect(dialog).toContainText("5 / 5 included");
+        await expect(dialog).toContainText(extraction ? "4 / 4 included" : "3 / 4 included");
         if (extraction) {
           const a11y = await dialog.ariaSnapshot();
           await info.attach(`${planName}.png`, { body: await page.screenshot(), contentType: "image/png" });
@@ -60,11 +61,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           info.annotations.push({ type: `a11y-attachment-sha256:${planName}.a11y.yml`, description: createHash("sha256").update(a11y).digest("hex") });
         }
         await dialog.getByRole("button", { name: "Preview plan", exact: true }).click();
-        await expect(dialog.getByRole("region", { name: "Confirm", exact: true })).toContainText("5 / 5 included");
+        await expect(dialog.getByRole("region", { name: "Confirm", exact: true })).toContainText(extraction ? "4 / 4 included" : "3 / 4 included");
         await expect(dialog.getByRole("region", { name: "Confirm", exact: true })).toContainText("Bulk");
         await dialog.getByRole("button", { name: "Start preview", exact: true }).click();
         if (extraction) {
-          await expect(logs).toContainText("Wait for OCR approval");
+          await expect(logs).toContainText("Read emergency contact");
           await logs.getByRole("button", { name: "Open OCR", exact: true }).click();
           await logs.locator("header").first().getByRole("button", { name: "Review", exact: true }).click();
           await expect(logs.getByRole("textbox", { name: "Employee ID", exact: true })).toHaveValue("10000001");
@@ -79,6 +80,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           info.annotations.push({ type: `a11y-attachment-sha256:${reviewName}.a11y.yml`, description: createHash("sha256").update(a11y).digest("hex") });
           for (const [label, value] of [["Employee ID", "10000022"], ["First name", "Sam"], ["Last name", "Rivera"], ["Contact name", "Alex Rivera"], ["Cell phone", "2025550101"]]) await review.getByRole("textbox", { name: label, exact: true }).fill(value);
           await review.getByRole("button", { name: "Approve records", exact: true }).click();
+          await expect(page.getByText("Records approved", { exact: true })).toBeVisible();
+          await expect(page.getByText("1 record released to the parent workflow.", { exact: true })).toBeVisible();
           await rail.getByRole("button", { name: "Emergency Contact", exact: true }).click();
           await expect(page.getByRole("region", { name: "Queue", exact: true })).toContainText("Sam Rivera");
         }

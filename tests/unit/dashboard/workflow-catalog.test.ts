@@ -8,6 +8,7 @@ import { buildWorkflowCatalog, servedLaunchWorkflows } from "../../../src/dashbo
 import { WorkflowRail } from "../../../src/dashboard/surfaces/shell/workflow-rail.js";
 import { RunWorkflowPicker } from "../../../src/dashboard/surfaces/run-start/run-start-picker.js";
 import { explorerWorkflowOptions } from "../../../src/dashboard/surfaces/explorer/explorer-workflow-model.js";
+import { MOCK_FORM_TYPES } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.js";
 import { previewSessionAdd } from "../../../src/dashboard/surfaces/sessions/sessions-fixture.js";
 
 const served = launchWorkflows(parseWorkflows(FIXTURE_START_PICKER_BOOTSTRAP.workflows));
@@ -38,6 +39,10 @@ describe("frontend workflow catalog", () => {
     expect(picker.match(/disabled=""/gu)).toHaveLength(2);
     expect(picker).toContain("Started by a parent workflow.");
   });
+  it("admits standalone OCR and limits parent-only launches to I-9 Lookup and SharePoint Download", () => {
+    expect(catalog.find(entry => entry.id === "ocr")?.launch.state).toBe("preview");
+    expect(catalog.filter(entry => entry.launch.state === "unavailable").map(entry => entry.id).sort()).toEqual(["i9-lookup", "sharepoint-download"]);
+  });
   it("adds local workers for every registration without inventing a UCPath browser or a claimed run", () => {
     for (const entry of catalog) {
       const result = previewSessionAdd({ state: "ready", workers: [] }, catalog, entry.id, 2, 10);
@@ -48,5 +53,8 @@ describe("frontend workflow catalog", () => {
       expect(result.workers[0].browsers.map(browser => browser.label)).toEqual([...new Set(entry.preview?.steps.flatMap(step => step.system ? [step.system] : []) ?? [])]);
     }
     expect(() => previewSessionAdd({ state: "ready", workers: [] }, catalog, "unregistered", 1, 10)).toThrow("sessions-preview-add-invalid");
+  });
+  it("lists only actual OCR document types", () => {
+    expect(MOCK_FORM_TYPES.map(type => type.value)).toEqual(["oath", "emergency-contact", "onbase-emergency-contact", "i9"]);
   });
 });

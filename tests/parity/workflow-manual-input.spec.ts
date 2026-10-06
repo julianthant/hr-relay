@@ -85,7 +85,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await review.getByRole("checkbox", { name: "Employee signed", exact: true }).check();
       await review.getByRole("checkbox", { name: "Officer signed", exact: true }).check();
       await expect(review.getByRole("button", { name: "Approve records", exact: true })).toBeEnabled();
-      await expect(review).toContainText("not confirmed by a UCPath lookup");
+      await expect(review).not.toContainText("not confirmed by a UCPath lookup");
       await info.attach(`manual-input-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
       const a11y = await review.ariaSnapshot();
       await info.attach(a11yName, { body: a11y, contentType: "text/yaml" });

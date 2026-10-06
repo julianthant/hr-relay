@@ -27,6 +27,15 @@ describe("canonical workspace rail", () => {
     assert.equal(navbarSearch(NAVBAR_SAMPLE.results, "Jordan Completed").length, 0);
     assert.equal(navbarSearch(NAVBAR_SAMPLE.results, "missing person").length, 0);
   });
+  it("keeps the rail mounted without presenting invalid-date search rows", () => {
+    const html = renderToStaticMarkup(createElement(WorkspaceRail, {
+      settingsOpen: false, workflows: buildWorkflowCatalog([]), active: "", preview: null, onSelect: noop, onPreview: noop,
+      notifications: notificationsSample("normal"), onOpenNotification: noop, onSearch: noop,
+      searchData: { ...NAVBAR_SAMPLE, unavailable: "Invalid date: invalid-day.", results: [{ ...NAVBAR_SAMPLE.results[0], day: "invalid-day", subject: "Unavailable search row" }] },
+    }));
+    assert.ok(html.includes('aria-label="Workflows"'));
+    assert.doesNotMatch(html, /Unavailable search row/);
+  });
   it("preserves measured zero and an unavailable date count as separate values", () => {
     assert.equal(NAVBAR_SAMPLE.counts["2026-09-20"], 0);
     assert.equal(NAVBAR_SAMPLE.counts["2026-08-20"], undefined);

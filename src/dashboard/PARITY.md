@@ -653,7 +653,7 @@ evidence. The existing save-toast cases cover editor save/readback after regroup
 
 ## Manual OCR review and reading inputs (2026-10-06)
 
-Oath review omits Notes; Emergency Contact retains its multiline field. Turning off Extract with OCR
+Every OCR review shape omits Notes. Turning off Extract with OCR
 in PDF Options still creates an OCR child but goes directly to blank manual review. Identity is
 operator supplied, required values are validated, and only explicit approval creates downstream
 people. The selected document type governs blank manual fields independently of fixture extraction. Automatic extraction remains the default. Rerun retains the mode, manual facts and lineage.
@@ -672,11 +672,42 @@ themes at 1024×720 and 1440×1000 with paired screenshot/accessibility evidence
 and Separations keep current descriptor authority; new manual capability wiring belongs to the
 backend owner. Evidence is `manual-ocr-review-10003539`. Frozen references are unchanged.
 
-The subsequent launch-plan polish uses shared 14px picker chevrons and explains Interactive/Bulk
-beside Priority. PDF plans show automatic OCR delegation and required approval before downstream
-steps, including extraction-off plans; Steps and Confirm include those rows. Oath Upload reuses its
-existing approval gate, and upload-only/typed inputs add no OCR rows. Source downstream outcomes stay
-pending while OCR approval waits. `ocr-launch-plan.spec.ts` covers keyboard/focus, both OCR modes,
-explicit approval and downstream contact values in both themes at 1024 and 1440px, with required
-screenshot/accessibility pairs. Existing all-workflow and OCR/manual-review cases retain their
-membership and assertions. Evidence is `ocr-launch-polish-10003539`; frozen references are unchanged.
+The subsequent launch-plan amendment retains 14px picker chevrons and Interactive/Bulk help, but
+replaces automatic delegation/approval rows with one selectable document read labeled OCR. The
+checkbox controls extraction; delegation and explicit parent approval still occur when it is off.
+Emergency Contact shows four steps (three included without extraction). Parent document types fix
+record fields. Standalone OCR is runnable and has Records without downstream approval; I-9 Lookup
+and SharePoint Download are parent-only. `ocr-launch-plan.spec.ts` and `ocr-direct.spec.ts` cover both
+modes, required form actions, fixed field shapes, parent handoff, standalone rerun and shared toasts
+in both themes at 1024 and 1440px. Existing all-workflow, OCR/source and manual-review membership,
+keyboard, geometry, history and no-write assertions remain. Required form-action checks explicitly
+remain checked while optional reading steps are replaced with manual inputs.
+
+`date-typing.spec.ts` reproduces the General Job end date defect before the correction and checks
+month/day after every year digit, completed year, calendar selection and Escape in both themes at
+1024 and 1440px. The US-format parser and emitted year now round-trip; parsed date identity is stable
+during unrelated rerenders. Local approval, discard/restore, launch/rerun and deletion show the
+existing confirmation toast only after their guarded action succeeds. Passive success-toast bodies
+let clicks reach underlying OCR controls while keeping dismissal interactive; action/error notices
+retain interaction. Settings removes inline Undo controls and keeps native text undo; pending date/folder selections
+revert with Ctrl+Z/Cmd+Z within their field. OCR discard
+restores with Ctrl+Z/Cmd+Z inside Records, preserves heading focus and does not intercept text entry
+or undo approval. `ocr-direct.spec.ts` and `workflow-components.spec.ts` exercise keyboard restore;
+`settings-save-toasts.spec.ts` retains native typing undo and confirmed-save behavior. Backend acknowledgment and
+durable persistence remain separate wiring obligations. Evidence is `ocr-read-actions-10003539`;
+frozen references are unchanged.
+
+The document-shape amendment aligns Roster and Form type in one row, removes Verify from direct
+OCR choices and removes Notes from all generated and fixture-backed OCR records. Valid manually
+entered IDs retain manual provenance without an unverified-lookup warning. Approval requires eight
+digits starting with 10; invalid IDs and unknown records remain blocked. Browser checks cover both
+layout widths/themes, supported choices, absent Notes, invalid-to-valid ID correction, keyboard
+restore and unchanged source images. Closing Records restores focus to its header button.
+`workflow-components.spec.ts` and `workflow-catalog.spec.ts` retain their complete membership,
+attach required screenshot/accessibility evidence, and check all workflow views/selectors. The
+retired Archive selector is checked through its removal notice and dashboard return.
+
+The broader workflow check reproduced a blank screen on `?day=invalid-day`: hidden search rows
+formatted the invalid date. Search now reports the date error and exposes no rows; the shell remains
+mounted. The canonical workflow cases preserve invalid-date refusal, verify empty/unavailable search,
+and recover the queue by choosing Today, without a reload or page errors.

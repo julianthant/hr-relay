@@ -1,14 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { approveMockRun, initialMockDraft, mockDraftError, mockApprovalError, mockRunLog, mockRunsForDraft, mockStepState, mockOcrPreparationSteps, mockConfirmationFacts } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
+import { approveMockRun, initialMockDraft, mockDraftError, mockApprovalError, mockRunLog, mockRunsForDraft, mockStepState, mockOcrReadSteps, mockConfirmationFacts } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
 import { reviewRecords, reviewCanApprove, editReviewRecord, seedReviewRecords, updateMockReview } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-review-model.js";
 import { MOCK_WORKFLOWS, mockWorkflow } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.js";
 import { editableMockDraft, manualReadFields, mockStepIsLocked, mockStepIsDependency } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-manual-model.js";
 import { documentSourcePages } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-document-model.js";
 
 describe("manual OCR and reading inputs", () => {
-  it("removes Oath Notes and retains Emergency Contact Notes", () => {
+  it("omits Notes from every OCR document shape", () => {
     expect(seedReviewRecords({ workflowId: "oath-signature", draft: initialMockDraft("oath-signature") })[0].fields.some(field => field.key === "notes")).toBe(false);
-    expect(seedReviewRecords({ workflowId: "emergency-contact", draft: initialMockDraft("emergency-contact") })[0].fields.some(field => field.key === "notes")).toBe(true);
+    for (const formType of ["oath", "emergency-contact", "onbase-emergency-contact", "i9"]) {
+      for (const record of seedReviewRecords({ workflowId: "ocr", draft: { ...initialMockDraft("ocr"), formType } })) expect(record.fields.some(field => field.key === "notes")).toBe(false);
+    }
   });
   it("delegates without extraction, seeds blank fields and requires explicit approval", () => {
     const draft = { ...initialMockDraft("oath-signature"), method: "pdf" as const, ocrMode: "manual" as const, dryRun: false, files: [{ name: "single-oath.pdf", size: 4096, digest: "fixture:document:single-oath.pdf" }] };
@@ -33,21 +35,22 @@ describe("manual OCR and reading inputs", () => {
     expect(mockRunLog(person).steps.flatMap(step => step.entries).flatMap(entry => entry.kind === "fields" ? entry.fields : []).some(field => field.label === "Signature date" && field.value === "10/06/2026")).toBe(true);
     expect(runs.every(run => !run.approved)).toBe(true);
   });
-  it("shows OCR delegation and approval before PDF contact work in either extraction mode", () => {
+  it("shows one selectable OCR read with an internal approval gate in either extraction mode", () => {
     for (const ocrMode of ["extract", "manual"] as const) {
       const draft = { ...initialMockDraft("emergency-contact"), ocrMode, files: [{ name: "contact.pdf", size: 100, digest: "synthetic" }] };
-      expect(mockOcrPreparationSteps("emergency-contact", draft).map(step => step.key)).toEqual(["delegate-ocr", "wait-ocr"]);
-      expect(mockConfirmationFacts("emergency-contact", draft).find(fact => fact.key === "Steps")?.value).toBe("5 / 5 included");
+      expect(mockOcrReadSteps("emergency-contact", draft).map(step => step.key)).toEqual(["read-document"]);
+      expect(mockConfirmationFacts("emergency-contact", draft).find(fact => fact.key === "Steps")?.value).toBe(ocrMode === "manual" ? "3 / 4 included" : "4 / 4 included");
       const [parent, ocr] = mockRunsForDraft("emergency-contact", draft, 1);
       expect(parent.ocrRunId).toBe(ocr.id);
-      expect(mockStepState(parent, { key: "wait-ocr", label: "Review", message: "" })).toBe("waiting");
+      expect(mockOcrReadSteps("emergency-contact", draft)[0]).toMatchObject({ label: "Read emergency contact", system: "OCR" });
+      expect(ocr.draft.formType).toBe("emergency-contact");
+      expect(mockStepState(parent, { key: "read-document", label: "Read emergency contact", message: "" })).toBe(ocrMode === "manual" ? "skipped" : "waiting");
       expect(mockStepState(parent, { key: "fill-form", label: "Fill", message: "" })).toBe("pending");
       expect(mockStepState(parent, { key: "save", label: "Save", message: "" })).toBe("pending");
-      expect(draft.selectedSteps).not.toContain("delegate-ocr");
-      expect(draft.selectedSteps).not.toContain("wait-ocr");
+      expect(draft.selectedSteps).not.toContain("read-document");
     }
-    expect(mockOcrPreparationSteps("oath-upload", { ...initialMockDraft("oath-upload"), uploadMode: "upload-only" })).toEqual([]);
-    expect(mockOcrPreparationSteps("onboarding", initialMockDraft("onboarding"))).toEqual([]);
+    expect(mockOcrReadSteps("oath-upload", { ...initialMockDraft("oath-upload"), uploadMode: "upload-only" })).toEqual([]);
+    expect(mockOcrReadSteps("onboarding", initialMockDraft("onboarding"))).toEqual([]);
   });
   it("refuses omitted form filling and submit steps", () => {
     const flow = mockWorkflow("emergency-contact");

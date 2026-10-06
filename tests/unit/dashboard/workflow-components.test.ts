@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { WorkflowMockReview } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-review.js";
 import { MOCK_WORKFLOWS } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.js";
 import { approveMockRun, initialMockDraft, mockRunLog, mockRunsForDraft, seedMockRuns } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
-import { addMockReviewRecord, discardMockReview, editReviewRecord, reviewCanApprove, reviewRecords, reviewValue, updateMockReview, reviewIsReadOnly, restoreMockReview } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-review-model.js";
+import { addMockReviewRecord, discardMockReview, editReviewRecord, reviewCanApprove, reviewApprovalError, reviewRecords, reviewValue, updateMockReview, reviewIsReadOnly, restoreMockReview } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-review-model.js";
 import { buildWorkflowMock, initialWorkflowChoices, updateWorkflowChoice, workflowChoices, workflowContractSource } from "../../../src/dashboard/surfaces/explorer/explorer-workflow-model.js";
 import { buildWorkflowCatalog } from "../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 import { allFields } from "../../../src/dashboard/surfaces/explorer/explorer-flow-model.js";
@@ -43,7 +43,13 @@ describe("complete workflow presentation mocks", () => {
   it("keeps manual identity provenance, selection gates and each approved person's edited values", () => {
     const runs = preparation("emergency-contact"), source = runs.find(run => run.workflowId === "ocr")!, original = reviewRecords(source)[0];
     const edited = editReviewRecord(editReviewRecord(original, "employeeId", "10000009"), "contactName", "Sam Lee");
-    expect(edited.match).toBe("manual"); expect(edited.warnings.join(" ")).toContain("not confirmed by a UCPath lookup");
+    expect(edited.match).toBe("manual"); expect(edited.warnings).toEqual([]);
+    for (const invalid of ["1000000", "12000001", "100000001", "10abcdef"]) {
+      const invalidRecord = editReviewRecord(edited, "employeeId", invalid);
+      expect(reviewCanApprove(invalidRecord)).toBe(false);
+      expect(reviewApprovalError(invalidRecord)).toBe("Employee ID must start with 10 and contain eight digits.");
+      expect(reviewApprovalError(editReviewRecord(invalidRecord, "employeeId", "10000009"))).toBeUndefined();
+    }
     expect(reviewCanApprove({ ...edited, unknown: true })).toBe(false);
     expect(reviewCanApprove(editReviewRecord(edited, "employeeId", "x"))).toBe(false);
     const updated = updateMockReview(runs, source.id, [edited, { ...edited, id: "person-2", selected: false }]);

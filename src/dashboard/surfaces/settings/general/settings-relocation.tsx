@@ -1,7 +1,7 @@
 import { LoadingRegion, SettingsRowsSkeleton } from "../../shared/loading/loading.js";
 import { useEffect, useRef, useState } from "react";
-import { Copy, Ellipsis } from "lucide-react";
-import { Banner, Button, Field, IconButton, Input, Popover, PopoverContent, PopoverTrigger, dsIcon } from "../../../ds/ui.js";
+import { Copy } from "lucide-react";
+import { Banner, Button, Field, IconButton, Input, dsIcon } from "../../../ds/ui.js";
 import type { useStorageRelocation } from "./settings-relocation-model.js";
 import { desiredRelocationPair } from "./settings-relocation-model.js";
 import { SettingsPathPicker } from "./settings-path-picker.js";
@@ -37,11 +37,15 @@ function RuntimePathRow({ editor, name, value, title, description }: {
   editor: Editor; name: "stateRoot" | "artifactRoot"; value: string; title: string; description: string;
 }) {
   const field = name === "stateRoot" ? "paths.stateRoot" : "paths.artifactRoot";
-  return <div data-settings-path={field} className="settings-relocation-row">
+  return <div data-settings-path={field} className="settings-relocation-row" onKeyDown={event => {
+    if (editor.draft[name] === undefined || event.defaultPrevented || event.repeat || event.altKey || event.shiftKey
+      || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "z"
+      || (event.target instanceof HTMLElement && event.target.closest('[role="dialog"]'))) return;
+    event.preventDefault(); editor.reset(name);
+  }}>
     <Field orientation="horizontal" controlWidth="wide" label={title} description={description} error={editor.errors[name]} disabled={editor.locked}>
       <div className="settings-compact-control">
         <SettingsPathPicker field={field} label={title} value={value} disabled={editor.locked} onSelected={path => editor.update(name, path)} />
-        {editor.draft[name] !== undefined && <Popover><PopoverTrigger asChild><IconButton size="xs" label={`Actions for ${title}`} icon={<Ellipsis aria-hidden className={dsIcon.sm} />} /></PopoverTrigger><PopoverContent title="Value actions" width="sm" align="end"><Button size="sm" variant="ghost" disabled={editor.locked} onClick={() => editor.reset(name)}>Undo edit</Button></PopoverContent></Popover>}
       </div>
     </Field>
   </div>;

@@ -5,9 +5,10 @@ import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "./helpers/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { chooseSelect } from "./helpers/select-choice.js";
+import { attachShellA11y } from "./helpers/shell-proof.js";
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  test(`complete Explorer workflow contracts @ ${theme.attribute}-${width}`, async ({ page }, info) => {
+  test(`complete Explorer workflow contracts @ ${theme.attribute}-${width}`, { annotation: [{ type: "required-a11y-evidence", description: `explorer-work-study-${theme.attribute}-${width}.a11y.yml` }] }, async ({ page }, info) => {
     ensureParityBundle(); const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [], writes: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
@@ -22,6 +23,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         await expect(surface.locator("li[data-step-number]:visible")).not.toHaveCount(0);
         await expect(page.locator('[data-slot="select-content"]')).toBeHidden();
         await info.attach(`explorer-${flow.id}-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+      if (flow.id === "work-study") await attachShellA11y(page, info, `explorer-${flow.id}-${theme.attribute}-${width}.a11y.yml`);
         expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
       }
       await chooseSelect(surface.getByRole("combobox", { name: "Explorer workflow", exact: true }), "fixture-work-study");
@@ -38,7 +40,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect(errors).toEqual([]); expect(writes).toEqual([]);
     } finally { await server.close(); }
   });
-  test(`PDF review and independent person outcomes @ ${theme.attribute}-${width}`, async ({ page }, info) => {
+  test(`PDF review and independent person outcomes @ ${theme.attribute}-${width}`, { annotation: [{ type: "required-a11y-evidence", description: `contact-review-${theme.attribute}-${width}.a11y.yml` }] }, async ({ page }, info) => {
     ensureParityBundle(); const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [], writes: string[] = [];
     page.on("pageerror", error => errors.push(error.message)); page.on("request", request => { if (request.method() !== "GET") writes.push(request.url()); });
@@ -76,7 +78,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(drawer.getByRole("button", { name: "Approve records", exact: true })).toBeDisabled();
       await record.getByRole("textbox", { name: "Employee ID", exact: true }).fill("10000009");
       await record.getByRole("textbox", { name: "Contact name", exact: true }).fill("Sam Lee");
-      await expect(record).toContainText("not confirmed by a UCPath lookup");
+      await expect(record).not.toContainText("not confirmed by a UCPath lookup");
       const image = drawer.getByRole("img", { name: "Source page 1 of emergency-contacts.pdf", exact: true });
       await expect(image).toBeVisible();
       expect(await image.getAttribute("src")).toMatch(/emergency-contacts-1.*\.webp$/u);
@@ -84,6 +86,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(record.getByRole("textbox", { name: "Street", exact: true })).toBeVisible();
       await expect(pageImage).toHaveAttribute("src", sourceUrl!);
       await info.attach(`contact-review-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+      await attachShellA11y(page, info, `contact-review-${theme.attribute}-${width}.a11y.yml`);
       await drawer.getByRole("button", { name: "Approve records", exact: true }).click();
       await expect(record.getByRole("textbox")).toHaveCount(0);
       await logs.getByRole("button", { name: /^Records \d+$/u }).click();
@@ -109,8 +112,10 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await logs.getByRole("button", { name: /^Records \d+$/u }).click();
       await drawer.getByRole("button", { name: "Discard", exact: true }).click();
       await expect(drawer).toContainText("Discarded"); await expect(drawer.getByRole("button", { name: "Approve records", exact: true })).toHaveCount(0);
-      await expect(drawer.getByRole("button", { name: "Undo discard", exact: true })).toBeFocused();
-      await drawer.getByRole("button", { name: "Undo discard", exact: true }).click();
+      await expect(drawer.getByRole("button", { name: /Undo/u })).toHaveCount(0);
+      const discardedHeading = drawer.locator("[data-ocr-review-heading]").first();
+      await expect(discardedHeading).toBeFocused();
+      await discardedHeading.press("Control+z");
       await expect(drawer.getByRole("button", { name: "Approve records", exact: true })).toBeEnabled();
       await logs.getByRole("button", { name: /^Records \d+$/u }).click();
       await rail.getByRole("button", { name: "I-9 Check", exact: true }).click();
@@ -133,7 +138,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   });
 }
 
-for (const theme of PARITY_THEMES) test(`delegated OCR form workspaces @ ${theme.attribute}`, async ({ page }, info) => {
+for (const theme of PARITY_THEMES) test(`delegated OCR form workspaces @ ${theme.attribute}`, { annotation: [{ type: "required-a11y-evidence", description: `ocr-Oath Upload-${theme.attribute}.a11y.yml` }] }, async ({ page }, info) => {
   ensureParityBundle(); const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   const writes: string[] = []; page.on("request", request => { if (request.method() !== "GET") writes.push(request.url()); });
   try {
@@ -153,6 +158,7 @@ for (const theme of PARITY_THEMES) test(`delegated OCR form workspaces @ ${theme
       await expect(drawer.getByRole("heading", { name: "Taylor Lee", exact: true })).toBeVisible();
       await expect(drawer.getByRole("button", { name: "Approve records", exact: true })).toBeEnabled();
       await info.attach(`ocr-${label}-${theme.attribute}.png`, { body: await page.screenshot(), contentType: "image/png" });
+      if (label === "Oath Upload") await attachShellA11y(page, info, `ocr-${label}-${theme.attribute}.a11y.yml`);
       await logs.getByRole("button", { name: /^Records \d+$/u }).click(); await expect(logs.getByRole("button", { name: /^Records \d+$/u })).toBeFocused();
     }
     expect(writes).toEqual([]);
@@ -160,7 +166,7 @@ for (const theme of PARITY_THEMES) test(`delegated OCR form workspaces @ ${theme
 });
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  test(`focused records, canonical rows and keyboard links @ ${theme.attribute}-${width}`, async ({ page }, info) => {
+  test(`focused records, canonical rows and keyboard links @ ${theme.attribute}-${width}`, { annotation: [{ type: "required-a11y-evidence", description: `focused-records-${theme.attribute}-${width}.a11y.yml` }] }, async ({ page }, info) => {
     ensureParityBundle(); const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [], writes: string[] = [];
     page.on("pageerror", error => errors.push(error.message)); page.on("request", request => { if (request.method() !== "GET") writes.push(request.url()); });
@@ -174,7 +180,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(queue.getByRole("button", { name: /emergency-contacts.pdf —/u })).toBeVisible();
       await expect(queue.getByRole("button", { name: "Attempts for emergency-contacts.pdf", exact: true })).toBeVisible();
       await expect(queue).not.toContainText("PDF preparation");
-      await expect(queue).toContainText("Wait for OCR approval");
+      await expect(queue).toContainText("Read emergency contact");
       await logs.getByRole("button", { name: "Open OCR", exact: true }).click();
       const reviewTrigger = logs.getByRole("button", { name: /^Records \d+$/u });
       await reviewTrigger.focus(); await page.keyboard.press("Enter");
@@ -189,7 +195,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(first).toHaveCount(1);
       const added = drawer.getByRole("region", { name: "Record manual-4", exact: true });
       await expect(added.getByRole("textbox", { name: "Employee ID", exact: true })).toBeFocused();
-      await added.getByRole("textbox", { name: "Employee ID", exact: true }).fill("0012345");
+      await added.getByRole("textbox", { name: "Employee ID", exact: true }).fill("10001234");
       await added.getByRole("textbox", { name: "First name", exact: true }).fill("Taylor");
       await added.getByRole("textbox", { name: "Last name", exact: true }).fill("Chen");
       await drawer.getByRole("checkbox", { name: "Include Taylor Chen", exact: true }).click();
@@ -197,8 +203,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(drawer.getByRole("combobox", { name: "Record", exact: true })).toHaveCount(0);
       await expect(first.getByRole("textbox", { name: "Contact name", exact: true })).toHaveValue("Alex Lee");
       await expect(added.getByRole("textbox", { name: "Contact name", exact: true })).toHaveValue("Sam Chen");
-      await expect(added.getByRole("textbox", { name: "Employee ID", exact: true })).toHaveValue("0012345");
+      await expect(added.getByRole("textbox", { name: "Employee ID", exact: true })).toHaveValue("10001234");
       await info.attach(`focused-records-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+      await attachShellA11y(page, info, `focused-records-${theme.attribute}-${width}.a11y.yml`);
       await drawer.getByRole("button", { name: "Approve records", exact: true }).click();
       await expect(added.getByRole("textbox")).toHaveCount(0);
       await expect(drawer.getByRole("heading", { name: "Taylor Chen", exact: true })).toBeFocused();
@@ -209,7 +216,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const linked = page.getByRole("dialog", { name: "Linked runs", exact: true });
       await expect(linked).toContainText("Taylor Chen"); await page.keyboard.press("Escape"); await expect(links).toBeFocused();
       await links.click(); await linked.getByRole("button", { name: /Taylor Chen/u }).click();
-      await expect(logs).toContainText("Sam Chen"); await expect(logs).toContainText("0012345");
+      await expect(logs).toContainText("Sam Chen"); await expect(logs).toContainText("10001234");
       await expect(logs.getByRole("textbox")).toHaveCount(0); await expect(logs.getByRole("button", { name: /^Records/u })).toHaveCount(0);
       await logs.getByRole("button", { name: /^Linked runs \(/u }).click();
       await linked.getByRole("button", { name: /emergency-contacts.pdf.*Parent/u }).click();
@@ -225,7 +232,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   });
 }
 
-for (const theme of PARITY_THEMES) test(`every local workflow uses canonical queue and log views @ ${theme.attribute}`, async ({ page }, info) => {
+for (const theme of PARITY_THEMES) test(`every local workflow uses canonical queue and log views @ ${theme.attribute}`, { annotation: [{ type: "required-a11y-evidence", description: `canonical-onboarding-${theme.attribute}.a11y.yml` }] }, async ({ page }, info) => {
   ensureParityBundle(); const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   const errors: string[] = [], writes: string[] = [];
   page.on("pageerror", error => errors.push(error.message)); page.on("request", request => { if (request.method() !== "GET") writes.push(request.url()); });
@@ -243,10 +250,19 @@ for (const theme of PARITY_THEMES) test(`every local workflow uses canonical que
       await expect(logs.getByRole("tab", { name: /^Linked runs/u })).toHaveCount(0);
       await expect(logs).not.toContainText("Fictional workflow preview");
       await info.attach(`canonical-${flow.id}-${theme.attribute}.png`, { body: await page.screenshot(), contentType: "image/png" });
+      if (flow.id === "onboarding") await attachShellA11y(page, info, `canonical-${flow.id}-${theme.attribute}.a11y.yml`);
     }
     await page.goto(`${server.baseUrl}/?day=invalid-day`);
     await rail.getByRole("button", { name: "OCR", exact: true }).click();
     await expect(page.getByText("Choose a valid date", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Search runs", exact: true }).click();
+    const search = page.getByRole("dialog", { name: "Search runs", exact: true });
+    await expect(search.getByRole("status")).toHaveText("Invalid date: invalid-day.");
+    await expect(search.getByRole("option")).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: /^Choose date/u }).click();
+    await page.getByRole("button", { name: "Today", exact: true }).click();
+    await expect(page.getByRole("region", { name: "Queue", exact: true }).getByRole("button", { name: /^Attempts for/u }).first()).toBeVisible();
     expect(errors).toEqual([]); expect(writes).toEqual([]);
   } finally { await server.close(); }
 });

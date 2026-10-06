@@ -109,13 +109,13 @@ describe("legacy workflow previews", () => {
     expect(keys).toEqual(["servicenow-auth", "open-hr-form", "fill-form", "submit"]);
     const full = mockPipeline("oath-upload", draft("oath-upload")).map(step => step.key);
     expect(full.indexOf("wait-signatures")).toBeLessThan(full.indexOf("servicenow-auth"));
-    expect(full[0]).toBe("delegate-ocr");
+    expect(full[0]).toBe("read-document");
   });
   it("holds downstream work for approval, then creates independent oath signers", () => {
     const runs = mockRunsForDraft("oath-upload", draft("oath-upload"), 1), run = runs[0];
     const log = mockRunLog(run);
     expect(log.timeline.find(step => step.label === "Sign in to ServiceNow")!.state).toBe("pending");
-    expect(log.timeline.slice(0, 3).map(step => step.state)).toEqual(["completed", "waiting", "pending"]);
+    expect(log.timeline.slice(0, 3).map(step => step.state)).toEqual(["waiting", "pending", "pending"]);
     const after = approveMockRun(runs, runs[1].id);
     expect(after.find(candidate => candidate.id === run.id)!.approved).toBe(true);
     expect(after.find(candidate => candidate.workflowId === "oath-signature")!.parentId).toBe(run.id);
@@ -166,9 +166,10 @@ describe("legacy workflow previews", () => {
     expect(mockQueueView([done, waiting], ["all"], "oldest")).toEqual([waiting, done]);
   });
   it("seeds each workflow with its own fictional input and log graph", () => {
-    const runs = seedMockRuns(); expect(runs.filter(run => !run.parentId)).toHaveLength(13);
+    const runs = seedMockRuns(); expect(runs.filter(run => !run.parentId)).toHaveLength(12);
     expect(runs).toHaveLength(19);
-    expect(runs.find(run => run.workflowId === "i9-lookup")!.parentId).toBe("mock:onbase:sample:ocr");
+    for (const id of ["i9-lookup", "sharepoint-download"]) expect(runs.find(run => run.workflowId === id)!.parentId).toBe("mock:onbase:sample:ocr");
+    expect(runs.find(run => run.id === "mock:onbase:sample:ocr")!.draft.roster).toBe("download");
     expect(runs.filter(run => run.parentId && run.workflowId === "ocr")).toHaveLength(5);
     expect(runs.filter(run => run.records !== undefined).every(run => run.workflowId === "ocr")).toBe(true);
     for (const run of runs) {

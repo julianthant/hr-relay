@@ -713,12 +713,6 @@
             "label": "Country",
             "value": "USA",
             "section": "Emergency contact"
-          },
-          {
-            "key": "notes",
-            "label": "Notes",
-            "value": "",
-            "section": "Emergency contact"
           }
         ],
         "selected": true,
@@ -919,12 +913,6 @@
             "label": "Country",
             "value": "USA",
             "section": "Emergency contact"
-          },
-          {
-            "key": "notes",
-            "label": "Notes",
-            "value": "",
-            "section": "Emergency contact"
           }
         ],
         "selected": true,
@@ -1124,12 +1112,6 @@
             "key": "country",
             "label": "Country",
             "value": "USA",
-            "section": "Emergency contact"
-          },
-          {
-            "key": "notes",
-            "label": "Notes",
-            "value": "",
             "section": "Emergency contact"
           }
         ],
@@ -2270,12 +2252,6 @@
             "label": "Country",
             "value": "USA",
             "section": "Emergency contact"
-          },
-          {
-            "key": "notes",
-            "label": "Notes",
-            "value": "",
-            "section": "Emergency contact"
           }
         ],
         "selected": true,
@@ -2476,12 +2452,6 @@
             "key": "country",
             "label": "Country",
             "value": "USA",
-            "section": "Emergency contact"
-          },
-          {
-            "key": "notes",
-            "label": "Notes",
-            "value": "",
             "section": "Emergency contact"
           }
         ],
@@ -2686,12 +2656,6 @@
             "label": "Country",
             "value": "USA",
             "section": "Emergency contact"
-          },
-          {
-            "key": "notes",
-            "label": "Notes",
-            "value": "",
-            "section": "Emergency contact"
           }
         ],
         "selected": true,
@@ -2892,12 +2856,6 @@
             "key": "country",
             "label": "Country",
             "value": "USA",
-            "section": "Emergency contact"
-          },
-          {
-            "key": "notes",
-            "label": "Notes",
-            "value": "",
             "section": "Emergency contact"
           }
         ],

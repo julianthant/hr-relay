@@ -7899,8 +7899,7 @@ no decision or command. The 2026-10-06 correction is verified in `log-header-act
 The adjacent Review status badge is omitted only when that Review action is present; Records bodies
 retain their status and tools.
 
-The 2026-10-06 manual-input amendment removes Notes from Oath review shapes while retaining
-Emergency Contact Notes. PDF launch and rerun options distinguish OCR delegation from extraction.
+The 2026-10-06 manual-input amendment removes Notes from every OCR review shape. PDF launch and rerun options distinguish OCR delegation from extraction.
 Turning off Extract with OCR still creates the linked OCR child and waiting parent, but skips roster
 loading, extraction and automatic identity matching. Review opens immediately with one blank record;
 the operator can add records, enter values, select source pages and approve explicitly. No extracted
@@ -7922,14 +7921,39 @@ capabilities, including existing D307 omissions; new manual reading capabilities
 backend contract before they can replace served required steps. No executor or backend schema is
 changed. Evidence is `manual-ocr-review-10003539`; frozen parity and phase-exit gates remain with 3.1.19.
 
-The subsequent launch-plan polish shows PDF preparation before downstream workflow steps: automatic
-OCR delegation and required OCR approval. These rows cannot be omitted and count toward Steps and
-Confirm totals. Oath Upload retains its existing approval gate without adding a duplicate; upload-only
-and typed input add no OCR preparation. Extraction-off plans preserve both delegation and approval.
-Downstream steps remain pending while the source parent waits for OCR approval. Shared priority help
-defines Interactive as work the operator is waiting on and Bulk as background batches; Interactive
-takes queue priority without changing scheduling authority. Shared ChoicePicker chevrons use the
-14px design-system icon size. This is frontend-only; evidence is `ocr-launch-polish-10003539`.
+The subsequent launch-plan amendment presents one selectable document-reading step, such as
+Read emergency contact, with OCR underneath like other step system labels. Checking it extracts
+predefined document fields into OCR Records. Unchecking it retains the linked OCR child and parent
+approval gate but opens blank Records immediately. Delegation and approval remain internal ordering
+constraints rather than separate checklist rows. Emergency Contact counts four steps with extraction
+and three of four without it. Typed launches and upload-only mode add no document read. The parent
+workflow/document type fixes the field shape; a differently typed fixture cannot substitute another
+form. OCR is directly runnable, with a form-type choice and Records but no downstream approval.
+Only I-9 Lookup and SharePoint Download are parent-only. Delegated OCR retries retain their parent;
+standalone OCR retries and deletion remain independent. Roster and document-type choices share
+one row. Direct OCR offers Oath, Emergency Contact, OnBase Emergency Contact and I-9; Verify is not
+a document choice. Notes are absent from generated and fixture-backed OCR records. Manually
+entered Employee IDs retain manual provenance without an unverified-lookup warning. IDs must start
+with 10 and contain eight digits; invalid format still blocks approval. Unknown records and other
+approval requirements remain explicit.
+
+Shared priority help defines Interactive as work the operator is waiting on and Bulk as background
+batches; Interactive takes queue priority without changing scheduling authority. ChoicePicker
+chevrons use the 14px design-system icon size. The shared date picker retains month/day through every
+year digit by round-tripping a four-digit year and preserving parsed date identity during partial
+edits. Display remains MM/DD/YYYY while ISO transport remains unchanged. Completed local approval,
+discard, restore, run/rerun creation and deletion use the shared value-free confirmation toast.
+Passive success-toast bodies allow pointer events through to underlying controls; their dismiss
+buttons remain interactive. Action/error toasts retain interaction. Refused approvals produce no
+success notice; real wiring must wait for matching acknowledgment. Settings removes inline Undo
+controls and leaves text editing to native keyboard undo. Ctrl+Z/Cmd+Z reverts an unsaved date or
+folder selection within its field. OCR removes Undo discard; Ctrl+Z/Cmd+Z
+restores a discarded review only while focus is inside its Records surface. Discard and restore
+retain the focused record heading; editable fields keep native undo. Approval is never undone by
+this shortcut.
+Invalid date links retain the shell and date error. Search reports the same unavailability and
+presents no invalid-date rows; choosing a valid date restores the queue without a reload.
+This is frontend-only; evidence is `ocr-read-actions-10003539`.
 
 The report's visible name is Analytics across navigation, search, headings, browser titles, back links
 and loading announcements. Existing Activity route identifiers remain supported. Completed,

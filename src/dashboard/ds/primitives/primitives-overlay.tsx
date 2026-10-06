@@ -1021,11 +1021,11 @@ function ToastViewport() {
   const { toasts } = ToastPrimitive.useToastManager();
   const inert = useAnyOverlayOpen();
   return <BaseToastViewport aria-label="Notifications" data-ds-toast-viewport="default" inert={inert || undefined}>
-    {toasts.map(item => <BaseToast key={item.id} toast={item} role={item.type === "error" ? "alert" : "status"} data-ds-toast-state="full" className={cn(inert && "pointer-events-none")}>
+    {toasts.map(item => <BaseToast key={item.id} toast={item} role={item.type === "error" ? "alert" : "status"} data-ds-toast-state="full" className={cn((inert || item.type === "success" && !item.actionProps) && "pointer-events-none")}>
       <BaseToastContent><BaseToastIcon type={item.type} />
         <div className="min-w-0 flex-1"><BaseToastTitle /><BaseToastDescription /></div>
         {item.actionProps && <BaseToastAction disabled={inert} />}
-        <BaseToastClose disabled={inert} aria-label="Dismiss" />
+        <BaseToastClose disabled={inert} className={!inert && item.type === "success" && !item.actionProps ? "pointer-events-auto" : undefined} aria-label="Dismiss" />
       </BaseToastContent>
     </BaseToast>)}
   </BaseToastViewport>;

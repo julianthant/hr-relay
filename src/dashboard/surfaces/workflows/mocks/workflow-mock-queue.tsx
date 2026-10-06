@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUpRight, GitBranch, ListChecks } from "lucide-react";
 import { Button, Dialog, DialogContent, DialogBody, DialogFooter, IconButton, Popover, PopoverContent, PopoverTrigger, dsFocus } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
@@ -70,6 +70,14 @@ export function WorkflowMockLog({ run, runs, onRerun, onApprove, onChange, onDis
   const hasRecords = run.workflowId === "ocr";
   const recordsVisible = hasRecords && (reviewOpen ?? localReviewOpen);
   const setRecordsVisible = onReviewOpenChange ?? setLocalReviewOpen;
+  const recordsButton = useRef<HTMLButtonElement>(null);
+  const previousRecordsVisible = useRef(recordsVisible);
+  useEffect(() => {
+    const frame = previousRecordsVisible.current && !recordsVisible
+      ? requestAnimationFrame(() => recordsButton.current?.focus({ preventScroll: true })) : undefined;
+    previousRecordsVisible.current = recordsVisible;
+    return () => { if (frame !== undefined) cancelAnimationFrame(frame); };
+  }, [recordsVisible]);
   const { workflowId, draft } = run;
   const surface = useMemo(() => mockQueueSurface(run, day), [run, day]);
   const sourcePages = useMemo(() => {
@@ -87,9 +95,9 @@ export function WorkflowMockLog({ run, runs, onRerun, onApprove, onChange, onDis
       onReview={hasRecords ? () => setRecordsVisible(true) : undefined}
       status={<StatusBadge status={dsStatusOf(mockQueueStatus(run))} presentation="queue" />}
       toolbar={<span className="flex items-center gap-2">
-        {hasRecords && <Button size="sm" variant={recordsVisible ? "secondary" : "outline"} aria-pressed={recordsVisible} aria-controls={recordsVisible ? `records-${mockQueueId(run.id)}` : undefined} icon={<ListChecks aria-hidden className="size-4" />} onClick={() => setRecordsVisible(!recordsVisible)}>Records {reviewRecords(run).length}</Button>}
+        {hasRecords && <Button ref={recordsButton} size="sm" variant={recordsVisible ? "secondary" : "outline"} aria-pressed={recordsVisible} aria-controls={recordsVisible ? `records-${mockQueueId(run.id)}` : undefined} icon={<ListChecks aria-hidden className="size-4" />} onClick={() => setRecordsVisible(!recordsVisible)}>Records {reviewRecords(run).length}</Button>}
         {run.workflowId !== "ocr" && run.ocrRunId && <Button size="sm" onClick={() => onSelect(run.ocrRunId!)}>Open OCR</Button>}
-        {!["i9-lookup", "ocr"].includes(run.workflowId) && run.role !== "person" && <Button size="sm" onClick={onRerun}>Rerun</Button>}
+        {mockWorkflow(run.workflowId).runnable && !(run.workflowId === "ocr" && run.parentId) && run.role !== "person" && <Button size="sm" onClick={onRerun}>Rerun</Button>}
         {linked.length > 0 && <Popover open={linksOpen} onOpenChange={setLinksOpen}>
           <PopoverTrigger asChild><IconButton size="sm" variant="outline" label={`Linked runs (${linked.length})`} icon={<GitBranch aria-hidden className="size-4" />} /></PopoverTrigger>
           <PopoverContent title="Linked runs" align="end" width="md">
@@ -103,6 +111,6 @@ export function WorkflowMockLog({ run, runs, onRerun, onApprove, onChange, onDis
         </Popover>}
       </span>}
       content={recordsVisible ? <div id={`records-${mockQueueId(run.id)}`} className="flex min-h-0 min-w-0 flex-1">
-        <WorkflowMockReview key={run.id} approvalError={mockApprovalError(run)} run={run} sourcePages={sourcePages} onChange={onChange} onApprove={mockNeedsReview(run) ? onApprove : undefined} onDiscard={mockNeedsReview(run) ? onDiscard : undefined} onRestore={onRestore} />
+        <WorkflowMockReview key={run.id} approvalError={mockApprovalError(run)} run={run} sourcePages={sourcePages} onChange={onChange} onApprove={mockNeedsReview(run) ? onApprove : undefined} onDiscard={mockNeedsReview(run) || run.workflowId === "ocr" && !run.parentId && !run.discarded ? onDiscard : undefined} onRestore={onRestore} />
       </div> : undefined} />;
 }

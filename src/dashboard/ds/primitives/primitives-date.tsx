@@ -1,7 +1,7 @@
 import { I18nProvider } from "react-aria-components/I18nProvider";
 import { Calendar as HeroCalendar, DateField, DatePicker as HeroDatePicker, Label, RangeCalendar as HeroRangeCalendar } from "@heroui/react";
 import { parseDate, type CalendarDate } from "@internationalized/date";
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { cn } from "../../lib/utils.js";
 import { Input } from "./primitives-form.js";
 import { Popover, PopoverAnchor, PopoverContent } from "./primitives-overlay.js";
@@ -56,7 +56,7 @@ export function DateInput({ name, label, value, onChange, min, max, inline = fal
   const focusFrame = useRef<number | undefined>(undefined);
   const id = useId();
   useEffect(() => () => { if (focusFrame.current !== undefined) cancelAnimationFrame(focusFrame.current); }, []);
-  const selected = valueFormat === "us" ? textDateValue(value) : dateValue(value);
+  const selected = useMemo(() => valueFormat === "us" ? textDateValue(value) : dateValue(value), [value, valueFormat]);
   const pickerLabel = triggerLabel ?? `Choose ${label.toLowerCase()}${textEntry || /date$/iu.test(label) ? "" : " date"}`;
   const setOpen = (open: boolean) => {
     if (focusFrame.current !== undefined) cancelAnimationFrame(focusFrame.current);
@@ -64,7 +64,7 @@ export function DateInput({ name, label, value, onChange, min, max, inline = fal
     setCalendarOpen(open); onOpenChange?.(open);
   };
   const setDate = (date: CalendarDate | null) => {
-    onChange(date === null ? "" : valueFormat === "us" ? `${textDateFormat === "MM/DD/YYYY" ? String(date.month).padStart(2, "0") : String(date.month)}/${textDateFormat === "MM/DD/YYYY" ? String(date.day).padStart(2, "0") : String(date.day)}/${String(date.year)}` : date.toString());
+    onChange(date === null ? "" : valueFormat === "us" ? `${textDateFormat === "MM/DD/YYYY" ? String(date.month).padStart(2, "0") : String(date.month)}/${textDateFormat === "MM/DD/YYYY" ? String(date.day).padStart(2, "0") : String(date.day)}/${String(date.year).padStart(4, "0")}` : date.toString());
     if (calendarOpen) setOpen(false);
   };
   return <I18nProvider locale="en-US"><Popover open={calendarOpen} onOpenChange={setOpen}><PopoverAnchor asChild><HeroDatePicker isOpen={calendarOpen} onOpenChange={setOpen}
@@ -127,7 +127,8 @@ export function DateRangeInput({ label, value, onChange, onEdit, fromLabel = "St
     if (!next) focusFrame.current = requestAnimationFrame(() => opener.current?.focus({ preventScroll: true }));
     setOpen(next);
   };
-  const from = dateValue(draft.from), to = dateValue(draft.to);
+  const from = useMemo(() => dateValue(draft.from), [draft.from]);
+  const to = useMemo(() => dateValue(draft.to), [draft.to]);
   const minimum = dateValue(min), maximum = dateValue(max);
   const invalid = (from !== null && to !== null && from.compare(to) > 0) || [from, to].some(date => date !== null && ((minimum !== null && date.compare(minimum) < 0) || (maximum !== null && date.compare(maximum) > 0)));
   const changeEndpoint = (key: "from" | "to", date: CalendarDate | null) => {

@@ -297,11 +297,22 @@ waits remain automatic. Source-page coordinates bind run and record. Served desc
 are unchanged pending backend contract admission. D347's dashboard-surfaces owner records the
 contract; evidence is `manual-ocr-review-10003539`.
 
-The subsequent launch-plan polish displays automatic PDF-to-OCR delegation and required approval
-before downstream steps, including extraction-off plans, with truthful included counts and pending
-source outcomes. Shared priority help defines Interactive/Bulk and ChoicePicker chevrons use 14px.
-Scheduling, approval and backend authority are unchanged. D347's dashboard-surfaces owner records
-the contract; evidence is `ocr-launch-polish-10003539`.
+The subsequent launch-plan amendment replaces the two preparation rows with one selectable document
+read labeled OCR. Extraction-off retains delegation, blank Records and explicit parent approval.
+Parent document types fix record fields. Notes and the Verify document choice are removed; roster
+and type choices share one row. Valid manually entered Employee IDs retain manual provenance
+without a warning; eight-digit IDs beginning with 10 are required. OCR can start directly without downstream approval, while
+I-9 Lookup and SharePoint Download remain parent-only. The date picker preserves MM/DD during year
+entry. Completed local review/run actions use shared confirmation toasts. Shared priority help and
+14px chevrons remain. Scheduling, approval and backend authority are unchanged. D347's
+dashboard-surfaces owner records the contract; evidence is `ocr-read-actions-10003539`. Invalid
+date links retain an explicit queue/search error instead of formatting invalid search rows; the
+date picker recovers the queue without a reload.
+
+The keyboard-undo amendment removes Settings inline Undo and OCR Undo discard controls. Settings
+text entry uses native undo; Ctrl+Z/Cmd+Z inside OCR Records restores a discarded review without
+reversing approval or intercepting editable fields. Passive success-toast bodies pass clicks through
+while their dismiss buttons remain interactive. D347's dashboard-surfaces owner records the behavior.
 
 The save-feedback amendment adds existing success toasts for confirmed typed settings, protected
 settings, saved keyboard edits, local spreadsheet registration/mappings and exported spreadsheet copies.

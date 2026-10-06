@@ -55,13 +55,13 @@ describe("OCR source comparison and corrected handoff", () => {
   it("keeps the source image fixed across corrections and approval, and copies every corrected field", () => {
     const runs = preparation(), source = runs[1], original = reviewRecords(source)[0];
     const image = reviewSourcePages(original)[0].imageUrl;
-    const corrected = original.fields.reduce((record, field) => editReviewRecord(record, field.key, field.key === "employeeId" ? "0012345" : field.kind === "boolean" ? "false" : field.kind === "date" ? "2026-08-04" : `${field.value} corrected`), original);
+    const corrected = original.fields.reduce((record, field) => editReviewRecord(record, field.key, field.key === "employeeId" ? "10001234" : field.kind === "boolean" ? "false" : field.kind === "date" ? "2026-08-04" : `${field.value} corrected`), original);
     const updated = updateMockReview(runs, source.id, [corrected]);
     expect(reviewSourcePages(seedReviewRecords(updated[1])[0])[0].imageUrl).toBe(image);
     const approved = approveMockRun(updated, source.id), child = approved.find(run => run.role === "person")!;
     expect(child.inputRecord).toEqual(corrected); expect(child.inputRecord).not.toBe(corrected);
     expect(child.inputRecord!.fields).not.toBe(corrected.fields);
-    expect(reviewValue(child.inputRecord!, "employeeId")).toBe("0012345");
+    expect(reviewValue(child.inputRecord!, "employeeId")).toBe("10001234");
     expect(reviewSourcePages(seedReviewRecords(approved.find(run => run.id === source.id)!)[0])[0].imageUrl).toBe(image);
   });
   it("offers both fixed I-9 source pages independently of corrected page fields", () => {

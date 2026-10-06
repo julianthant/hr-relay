@@ -1,5 +1,5 @@
 import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
-import { mockWorkflow, type MockWorkflowId } from "../workflows/mocks/workflow-mock-catalog.js";
+import { MOCK_FORM_TYPES, mockWorkflow, type MockWorkflowId } from "../workflows/mocks/workflow-mock-catalog.js";
 import { initialMockDraft, type MockRun } from "../workflows/mocks/workflow-mock-model.js";
 import { mockFieldValue, mockStepNode } from "../workflows/mocks/workflow-result-model.js";
 import { mockOperations, mockOperationValue } from "../workflows/mocks/workflow-operation-model.js";
@@ -20,7 +20,7 @@ export function workflowChoices(id: MockWorkflowId): readonly Choice[] {
     "fixture-oath-upload": [choice("mode", "Processing mode", [["full", "Full process"], ["upload-only", "Upload-only"]]), review, choice("signers", "Linked signatures", [["complete", "All succeeded"], ["failed", "One failed"], ["cancelled", "One cancelled"]]), rehearsal],
     "fixture-onbase": [review, choice("keyset", "Employee Lookup keyset", [["found", "Employee found"], ["missing", "No match; required keywords missing"]]), rehearsal],
     "fixture-kronos-pay-rule": [choice("action", "Election decision", [["change", "Rule must change"], ["unchanged", "Current rule is correct"], ["missing", "Employee absent from tracker"]])],
-    "fixture-ocr": [review, choice("form", "Form type", [["oath", "Oath"], ["emergency-contact", "Emergency Contact"], ["onbase-emergency-contact", "OnBase Emergency Contact"], ["verify", "Verify"], ["i9", "I-9"]])],
+    "fixture-ocr": [review, choice("form", "Form type", MOCK_FORM_TYPES.map(type => [type.value, type.label] as const))],
     "fixture-i9-check": [choice("pair", "Packet identity", [["complete", "Section 1 and Section 2 paired"], ["missing", "Missing person identity"]])],
     "fixture-crm-doc-download": [choice("record", "CRM search result", [["found", "Record with attached PDFs"], ["empty", "Record without attachments"], ["missing", "No matching record"]])],
     "fixture-old-kronos-reports": [choice("pdf", "Report validation", [["valid", "PDF identity matches"], ["empty", "No data returned"], ["mismatch", "PDF identity mismatch"]])],
@@ -89,7 +89,7 @@ export function buildWorkflowMock(id: MockWorkflowId, values: WorkflowChoices): 
       if (item.fields) parts.push({ kind: "form", id: `operation-${index}-${operationIndex}`, title: item.label, mode: item.fields.some(row => row[2] === "fill") ? "Fill" : "Read", parts: [{ kind: "rows", fields: item.fields.map(([label, value, mode], fieldIndex) => ({ id: `operation-${index}-${operationIndex}-${fieldIndex}`, label, value: mockOperationValue(run, value), mode: mode ?? "read", source: `operation:${index}:${operationIndex}:${fieldIndex}` })) }] });
       if (item.verify) parts.push(action(item.verify));
     });
-    if (key === "fixture-ocr" && node.id === "Read forms") parts.push({ kind: "note", text: values.form === "verify" ? "Read-only completeness report: paper signatures and contacts, UCPath identity, CRM service/oath dates and I-9 signer lookup." : values.form === "i9" ? "Pair Section 1 and Section 2 identities for OCR review before downstream retention processing." : `Extract ${values.form === "oath" ? "printed name, Employee ID, signed date and signature flags" : "employee identity, contact name, relationship, phones and contact address"}. OCR owns corrections and approval; downstream workflows consume the approved record.` });
+    if (key === "fixture-ocr" && node.id === "Read forms") parts.push({ kind: "note", text: values.form === "i9" ? "Pair Section 1 and Section 2 identities for OCR review before downstream retention processing." : `Extract ${values.form === "oath" ? "printed name, Employee ID, signed date and signature flags" : "employee identity, contact name, relationship, phones and contact address"}. OCR owns corrections and approval; downstream workflows consume the approved record.` });
     if (key === "fixture-old-kronos-reports" && node.id === "Downloading") parts.push(action(values.pdf === "valid" ? "Retain the matching Time Detail PDF and append Done to the tracker." : "Delete the empty or mismatched PDF and append the explicit tracker outcome.", "read"));
     steps.push({ number, title: node.id, system: node.delegatesTo === "fixture-ocr" || key === "fixture-ocr" && node.system === "i9" || key === "fixture-i9-check" && node.system === "i9" ? "OCR" : node.system ? systems[node.system] ?? "Local" : "Local", parts });
     if (blocked && stopAfter === undefined) stopAfter = number;

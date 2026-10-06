@@ -6,7 +6,7 @@ const WORKFLOW_PREVIEW_DEFINITIONS = [{"id": "separations", "label": "Separation
  * src/dashboard/lib/{input-run-registry,run-modal-registry,onbase-document-types,run-settings}.ts,
  * src/dashboard/components/run-modal/{RunModal,SharePointDownloadButton}.tsx,
  * src/workflows/<id>/{workflow,schema,handler}.ts and src/services/ocr/forms/registry.ts.
- * Direct-launch eligibility follows the current operator policy; OCR stays delegation-only. */
+ * Direct-launch eligibility follows the current operator policy; OCR is directly launchable; I-9 Lookup and SharePoint Download require a parent. */
 export const MOCK_LEGACY_COMMIT = "9bb973672666b9267569a22d3fa0af722e4c5e87";
 export type MockWorkflowId = typeof WORKFLOW_PREVIEW_DEFINITIONS[number]["id"];
 export type MockMethod = "typed" | "pdf" | "roster" | "delegated";
@@ -54,7 +54,7 @@ const contracts: Record<MockWorkflowId, Contract> = {
     step("kronos-auth", "Sign in to New Kronos", "New Kronos", "Open the People timekeeper workspace."),
     step("update-pay-rule", "Update pay rule", "New Kronos", "Apply the elected pay rule effective 07/01/2026.", true),
   ], result: [["Employee ID", "10000001"], ["Union code", "SX"], ["Current pay rule", "DEMO-CT-BASE"], ["New pay rule", "DEMO-OT-BASE"], ["Old code", "CT"], ["New code", "OT"], ["Effective date", "07/01/2026"]] },
-  ocr: { runnable: false, methods: ["pdf"], inputLabel: "PDFs", placeholder: "", example: "scan.pdf", dryRun: false, roster: true, steps: [], result: [["Records", "1"], ["Employee", "Jordan Lee"], ["Employee ID", "10000001"]] },
+  ocr: { runnable: true, methods: ["pdf"], inputLabel: "PDFs", placeholder: "", example: "scan.pdf", dryRun: false, roster: true, steps: [], result: [["Records", "1"], ["Employee", "Jordan Lee"], ["Employee ID", "10000001"]] },
   "oath-signature": { runnable: true, methods: ["typed", "pdf"], inputLabel: "Employee IDs", placeholder: "10000001, 10000002", example: "10000001", dryRun: true, roster: true, steps: [
     step("crm-verify", "Verify onboarding and oath date", "CRM", "Verify the employee's CRM onboarding record and the date to sign."),
     step("ucpath-auth", "Sign in to UCPath", "UCPath", "Open the employee's oath transaction."), step("transaction", "Sign oath", "UCPath", "Record the oath signature with the verified signature date.", true),
@@ -84,7 +84,7 @@ const contracts: Record<MockWorkflowId, Contract> = {
     step("search-record", "Find CRM record", "CRM", "Search for the onboarding record using Employee ID or email."), step("download", "Download documents", "CRM", "Download the record's stored PDFs into the employee folder."),
     step("archive", "Archive downloaded documents", undefined, "Finish the document folder and record the downloaded PDF paths."),
   ], result: [["PDFs", "entry-sheet.pdf, onboarding-packet.pdf"], ["Folder", "Jordan Lee"]] },
-  "sharepoint-download": { runnable: true, methods: ["roster"], inputLabel: "Spreadsheet", placeholder: "", example: "Onboarding Roster", dryRun: false, roster: false, steps: [
+  "sharepoint-download": { runnable: false, methods: ["roster"], inputLabel: "Spreadsheet", placeholder: "", example: "Onboarding Roster", dryRun: false, roster: false, steps: [
     step("navigate", "Open configured spreadsheet", "SharePoint", "Resolve the configured Onboarding Roster destination and open SharePoint."),
     step("download", "Download roster", "SharePoint", "Download the spreadsheet into the roster folder used by roster-backed workflows."),
   ], result: [["Spreadsheet", "Onboarding Roster"], ["File", "onboarding-roster.xlsx"]] },
@@ -94,7 +94,7 @@ const contracts: Record<MockWorkflowId, Contract> = {
   ], result: [["Employee", "Jordan Lee"], ["Employee ID", "10000001"], ["Report", "Time Detail_Jordan Lee (10000001).pdf"]] },
 };
 export const MOCK_WORKFLOWS: readonly MockWorkflow[] = WORKFLOW_PREVIEW_DEFINITIONS.map(flow => ({ ...flow, ...contracts[flow.id] }));
-export const MOCK_FORM_TYPES = [{ value: "oath", label: "Oath" }, { value: "emergency-contact", label: "Emergency Contact" }, { value: "onbase-emergency-contact", label: "OnBase Emergency Contact" }, { value: "verify", label: "Verify" }, { value: "i9", label: "I-9" }] as const;
+export const MOCK_FORM_TYPES = [{ value: "oath", label: "Oath" }, { value: "emergency-contact", label: "Emergency Contact" }, { value: "onbase-emergency-contact", label: "OnBase Emergency Contact" }, { value: "i9", label: "I-9" }] as const;
 export const MOCK_ONBASE_TYPES = [
   { value: "Oath", label: "Oath", formType: "oath" },
   { value: "I-9 Section 1", label: "I-9 Section 1", formType: "i9", i9Section: 1 },

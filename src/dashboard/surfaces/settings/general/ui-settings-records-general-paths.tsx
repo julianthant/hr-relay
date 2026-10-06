@@ -7,7 +7,6 @@ import { formatSetting, settingInput, type SettingsDraftOperation } from "../edi
 import type { useEditableSettings } from "../editor/settings-editor-model.js";
 import { SettingsSaveFeedback } from "../editor/settings-feedback.js";
 import { settingNote, settingTitle } from "../settings-presentation.js";
-import { SettingsRowActions } from "../editor/ui-settings-records-row-actions.js";
 import { StorageRelocationRows } from "./settings-relocation.js";
 import { SettingsPathPicker } from "./settings-path-picker.js";
 import type { NativePathField } from "../../../../domain/dashboard/native-path-picker.js";
@@ -36,12 +35,17 @@ function ScalarRow({ editor, leaf, wide = false }: { editor: Editor; leaf: Edita
     <Switch name={leaf.path} label={title} description={description} checked={raw === "true"} disabled={editor.locked} onCheckedChange={value => editor.update(leaf.path, String(value))} />
     {editor.save.state === "conflict" && editor.draft[leaf.path] !== undefined && <p className={dsText.meta}>Current value: {formatSetting(leaf.effectiveValue)}</p>}
   </div>;
-  return <div data-settings-path={leaf.path} className="settings-compact-row">
+  return <div data-settings-path={leaf.path} className="settings-compact-row" onKeyDown={event => {
+    if (leaf.input !== "date" || editor.draft[leaf.path] === undefined || event.defaultPrevented || event.repeat
+      || event.altKey || event.shiftKey || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "z"
+      || (event.target instanceof HTMLElement && event.target.closest('[role="dialog"]'))) return;
+    event.preventDefault(); editor.reset(leaf.path);
+  }}>
     <Field orientation="horizontal" controlWidth={wide ? "wide" : "standard"} label={title} description={description} error={error} required={leaf.input === "date"} disabled={editor.locked}>
       <div className="settings-compact-control">{leaf.input === "date"
         ? <DateInput name={leaf.path} label={title} value={raw} onChange={value => editor.update(leaf.path, value)} valueFormat="us" hideLabel required disabled={editor.locked} />
         : <Input type="text" name={leaf.path} autoComplete="off" value={raw} disabled={editor.locked} onChange={event => editor.update(leaf.path, event.target.value)} />}
-      <SettingsRowActions editor={editor} leaf={leaf} textEntry /></div>
+      </div>
     </Field>
     {editor.save.state === "conflict" && editor.draft[leaf.path] !== undefined && <p className={dsText.meta}>Current value: {formatSetting(leaf.effectiveValue)}</p>}
   </div>;
@@ -51,7 +55,12 @@ function PathRow({ editor, field }: { editor: Editor; field: NativePathField }) 
   const leaf = servedLeaf(editor, field);
   const raw = rawValue(leaf, editor.draft[field]);
   const title = settingTitle(leaf);
-  return <div data-settings-path={field} className="settings-compact-row">
+  return <div data-settings-path={field} className="settings-compact-row" onKeyDown={event => {
+    if (editor.draft[field] === undefined || event.defaultPrevented || event.repeat || event.altKey || event.shiftKey
+      || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "z"
+      || (event.target instanceof HTMLElement && event.target.closest('[role="dialog"]'))) return;
+    event.preventDefault(); editor.reset(field);
+  }}>
     <Field orientation="horizontal" controlWidth="wide" label={title} description={settingNote(leaf)} error={editor.errors[field]} disabled={editor.locked}>
       <div className="settings-compact-control">
         <SettingsPathPicker field={field} label={title} value={raw} disabled={editor.locked} onSelected={path => editor.update(field, path)} />

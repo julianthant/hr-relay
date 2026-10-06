@@ -3,7 +3,7 @@ import { mockWorkflow, type MockStep, type MockWorkflowId } from "./workflow-moc
 import type { MockDraft } from "./workflow-mock-model.js";
 
 export type ManualReadField = Readonly<{ key: string; label: string; token?: string; date: boolean; options?: readonly string[] }>;
-export function mockStepIsDependency(step: MockStep): boolean { return ["delegate-ocr", "wait-ocr", "wait-approval", "wait-signatures"].includes(step.key); }
+export function mockStepIsDependency(step: MockStep): boolean { return ["wait-approval", "wait-signatures"].includes(step.key); }
 export function mockStepIsLocked(id: MockWorkflowId, step: MockStep): boolean {
   return Boolean(step.write || ["fill-form", "fill-keywords", "prepare-import"].includes(step.key)
     || id === "separations" && ["ucpath-job-summary", "kronos-search"].includes(step.key)

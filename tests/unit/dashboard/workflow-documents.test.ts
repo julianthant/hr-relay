@@ -45,7 +45,7 @@ describe("document-complete OCR previews", () => {
   });
   it("copies all corrected contact fields to the contact preview and preserves the source history", () => {
     const runs = seedMockRuns(), run = runs.find(run => run.subject === "detect-test.pdf" && run.workflowId === "ocr")!;
-    const records = reviewRecords(run).map(record => ({ ...editReviewRecord(record, "employeeId", "0012345"), selected: true }));
+    const records = reviewRecords(run).map(record => ({ ...editReviewRecord(record, "employeeId", "10001234"), selected: true }));
     const updated = updateMockReview(runs, run.id, records), approved = approveMockRun(updated, run.id);
     const children = approved.filter(child => child.ocrRunId === run.id && child.role === "person");
     expect(children).toHaveLength(4);
