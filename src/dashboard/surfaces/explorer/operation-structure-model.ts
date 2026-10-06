@@ -1,6 +1,6 @@
 import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
 import { DeclaredActionIdentitySchema } from "../../../domain/task-provenance.js";
-import { renderOperationTemplate } from "../../../domain/workflow/operation-display.js";
+import { displayConditionMatches, type DisplayTemplateValue } from './operation-template-model.js';
 import type { WorkflowOperationDisplaySnapshot } from "../../../domain/workflow/operation-display-snapshot.js";
 import type { OperationActionObservationWire } from "../../../domain/dashboard/operation-structure.js";
 import type { ActionValueProducer, DeclaredActionIdentity } from "../../../domain/task-provenance.js";
@@ -169,7 +169,7 @@ export function operationObservationKey(definition: WorkflowOperationDisplaySnap
 }
 
 export function contiguousOperationRows<T extends { readonly logId: string }>(rows: readonly T[], definition: WorkflowOperationDisplaySnapshot, observations: readonly OperationActionObservationWire[], breaks: ReadonlySet<string>): readonly Readonly<{ rows: readonly T[]; observations: readonly OperationActionObservationWire[] }>[] {
-  const byId = new Map(observations.map((observation) => [observation.logId, observation]));
+  const byId = new Map<string, OperationActionObservationWire>(observations.map((observation) => [observation.logId, observation]));
   const groups: { rows: T[]; observations: OperationActionObservationWire[]; key?: string }[] = [];
   for (const row of rows) {
     const observation = byId.get(row.logId);
@@ -184,14 +184,14 @@ export function contiguousOperationRows<T extends { readonly logId: string }>(ro
 
 export function observedOperationOutcome(action: OperationAction, observations: readonly OperationActionObservationWire[]): Readonly<{ state: "selected"; label: string } | { state: "unavailable"; reason: string }> | undefined {
   if (action.outcomes === undefined || action.outcomes.length === 0) return undefined;
-  const values: Record<string, string | undefined> = {};
+  const values: Record<string, DisplayTemplateValue> = {};
   for (const outcome of action.outcomes) {
     const candidates = observations.filter((item) => item.occurrence.state === "confirmed" && item.occurrence.value?.slot === outcome.when.variable);
     const value = candidates.at(-1)?.occurrence.value;
-    if (value?.state !== "observed" || typeof value.value !== "string") return { state: "unavailable", reason: "Retained result unavailable" };
+    if (value?.state !== "observed" || !(typeof value.value === "string" || typeof value.value === 'boolean' || value.value === null)) return { state: "unavailable", reason: "Retained result unavailable" };
     values[outcome.when.variable] = value.value;
   }
-  const selected = action.outcomes.filter((outcome) => renderOperationTemplate({ id: "observed-outcome", variables: [{ id: outcome.when.variable, slot: outcome.when.variable }], segments: [{ kind: "optional", when: outcome.when, segments: [{ kind: "literal", value: "selected" }] }], join: { separator: "", trim: "none" } }, values) === "selected");
+  const selected = action.outcomes.filter((outcome) => displayConditionMatches(outcome.when, values));
   if (selected.length !== 1) return { state: "unavailable", reason: selected.length === 0 ? "No declared result matched" : "Declared result is ambiguous" };
   return { state: "selected", label: selected[0].label };
 }

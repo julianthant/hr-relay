@@ -94,7 +94,7 @@ function CredentialsSection({ editor }: { editor: Editor }) {
               return <Field key={slot} label={`Key ${String(position)}`} description={note} error={provider.errors[slot]}
                 orientation="horizontal" controlWidth="medium" disabled={providerLocked}>
                 <SecretField label={`${providerName(family.name)} Key ${String(position)}`} identity={`${slot}:${keys.sourceVersionToken}`}
-                  value={value} readOnly={parentOnly} autoComplete="new-password" spellCheck={false}
+                  name={slot} value={value} readOnly={parentOnly} autoComplete="off" spellCheck={false}
                   placeholder={parentOnly ? "No active value" : "Enter API key"}
                   onChange={event => provider.update(slot, event.target.value)}
                   {...(parentOnly ? {} : { onRemove: () => askRemove({ kind: "provider", slot, label: `${providerName(family.name)} Key ${String(position)}`,

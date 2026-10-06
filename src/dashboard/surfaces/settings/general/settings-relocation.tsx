@@ -25,7 +25,7 @@ function RelocationCommand({ commandId }: { commandId: string }) {
   };
   return <div className="settings-relocation-command-block">
     <div className="settings-relocation-command">
-      <Input type="text" aria-label="Relocation command" value={command} readOnly onFocus={event => event.currentTarget.select()} />
+      <Input name="storageRelocationCommand" autoComplete="off" type="text" aria-label="Relocation command" value={command} readOnly onFocus={event => event.currentTarget.select()} />
       <IconButton size="sm" variant="outline" label="Copy relocation command" icon={<Copy aria-hidden className={dsIcon.sm} />} onClick={() => { void copy(); }} />
     </div>
     {copyState === "copied" && <span role="status">Command copied</span>}

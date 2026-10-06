@@ -48,7 +48,7 @@ function BudgetEditor({ editor, leaf, description, first }: { editor: Editor; le
       <div className="settings-provider-grid">{leaf.control.fields.map(field => {
         const presented = providerFieldPresentation(field.name);
         return <Field data-settings-path={`${leaf.path}.${field.name}`} key={field.name} label={presented.label} description={presented.unit} required={field.required} disabled={editor.locked}>
-          <Input type="number" min={field.minimum} step={1} aria-label={`${name}: ${presented.label}`} value={raw[field.name] ?? ""}
+          <Input name={`${leaf.path}.${field.name}`} autoComplete="off" type="number" min={field.minimum} step={1} aria-label={`${name}: ${presented.label}`} value={raw[field.name] ?? ""}
             aria-invalid={editor.errors[leaf.path] !== undefined || undefined} disabled={editor.locked}
             onChange={event => editor.update(leaf.path, { ...raw, [field.name]: event.target.value })} />
         </Field>;

@@ -38,7 +38,7 @@ function PerformanceRow({ editor, leaf }: { editor: Editor; leaf: EditableSettin
     {unit !== undefined && leaf.input === "number" && typeof raw === "string"
       ? <Field orientation="horizontal" label={settingTitle(leaf)} description={settingNote(leaf)} error={error} disabled={editor.locked}>
         <div className="settings-compact-control">
-          <UnitField type="text" inputMode={unit === "seconds" ? "decimal" : "numeric"} unit={unit} value={raw} disabled={editor.locked}
+          <UnitField name={leaf.path} autoComplete="off" type="text" inputMode={unit === "seconds" ? "decimal" : "numeric"} unit={unit} value={raw} disabled={editor.locked}
             aria-invalid={error !== undefined || undefined} onChange={event => editor.update(leaf.path, event.target.value)} />
           <SettingsRowActions editor={editor} leaf={leaf} textEntry />
         </div>

@@ -44,7 +44,7 @@ export function RoutesSection({ editor }: { editor: ReturnType<typeof useEditabl
                 const detail = presentation.fields[field.name];
                 if (detail === undefined) throw new Error("routes-section-field-missing");
                 return <Field data-settings-path={`${leaf.path}.${field.name}`} key={field.name} orientation="horizontal" controlWidth="wide" label={detail.name} description={detail.description} required className="routes-page-field">
-                  <Input type="url" required spellCheck={false} value={raw[field.name] ?? ""} disabled={editor.locked}
+                  <Input name={`${leaf.path}.${field.name}`} autoComplete="off" type="url" required spellCheck={false} value={raw[field.name] ?? ""} disabled={editor.locked}
                     aria-invalid={editor.errors[leaf.path] !== undefined || undefined}
                     onChange={event => editor.update(leaf.path, { ...raw, [field.name]: event.target.value })} />
                 </Field>;

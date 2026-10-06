@@ -118,6 +118,27 @@ it("remedies navigate to their owner and never repair through rendering",async()
   assert.deepEqual([storage,sessions,settings],[1,1,1]);assert.match(host.textContent??"",/Blocks: executor.run/u);
 });
 
+for (const presentation of ["compact", "settings"] as const) it(`${presentation} credential and route remedies use the same exact destinations`, async () => {
+  const served = await report(); const destinations: string[] = [];
+  const checks = ["secrets.ucpath-sso", "secrets.timekeeper", "secrets.sharepoint-roster"].map(id => ({
+    id: PreflightCheckIdSchema.parse(id), label: id, verdict: "fail" as const,
+    detail: "Synthetic credential unavailable", blocks: ["executor.run"], remediation: "Review configuration", checkedAt: served.checkedAt,
+  }));
+  const actions = { actorId: "local-operator", descriptorFingerprint: served.descriptorFingerprint,
+    showSettings(section?: "storage" | "credentials" | "routes") { destinations.push(section ?? "settings"); }, showSessions() { throw new Error("wrong remedy"); } };
+  const client = { preflightScopes: () => Promise.resolve([]) } as unknown as DashboardClient;
+  host = document.createElement("div"); document.body.append(host);
+  await act(async () => { root = createRoot(host as HTMLElement); root.render(createElement(DashboardClientProvider, { client,
+    children: createElement(PreflightActionsProvider, { actions, children: createElement(PreflightReportContent, {
+      presentation, preflight: { state: "completed", report: served, checks }, onRerun() { throw new Error("unexpected command"); },
+    }) }) })); });
+  assert.deepEqual(destinations, []);
+  const remedies = [...host.querySelectorAll("button")].filter(button => button.textContent?.startsWith("Configure "));
+  assert.equal(remedies.length, 3);
+  for (const button of remedies) await act(async () => button.click());
+  assert.deepEqual(destinations, ["credentials", "credentials", "routes"]);
+});
+
 it("Settings groups served checks and keeps failures, blocks, and only exact remedies visible",async()=>{
   const served=await report();let storage=0,sessions=0,settings=0,reruns=0;
   const checks=["fiscal.current","authority.health","process.orphans","browser.assets"].map(id=>({
@@ -138,9 +159,9 @@ it("Settings groups served checks and keeps failures, blocks, and only exact rem
   assert.doesNotMatch(host.textContent??"",/Scope details|Technical details|Synthetic .* unavailable|Remedy:|Repair browser.assets/u);
   assert.match(host.textContent??"",/Affected: Run execution/u);
   const buttons=[...host.querySelectorAll("button")].filter(button=>button.textContent?.startsWith("Open "));
-  assert.equal(buttons.length,3);
+  assert.equal(buttons.length,4);
   for(const button of buttons)await act(async()=>button.click());
-  assert.deepEqual([storage,sessions,settings],[1,1,1]);
+  assert.deepEqual([storage,sessions,settings],[1,1,2]);
   const rerun=[...host.querySelectorAll("button")].find(button=>button.textContent==="Run preflight");
   assert.ok(rerun);await act(async()=>rerun.click());assert.equal(reruns,1);
 });

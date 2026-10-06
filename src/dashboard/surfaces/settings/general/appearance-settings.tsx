@@ -2,6 +2,6 @@ import { BodySection, FormGroup, Switch, type DemoTheme } from "../../../ds/ui.j
 
 export function AppearanceSettings({ theme, onToggleTheme }: { theme: DemoTheme; onToggleTheme: () => void }) {
   return <BodySection title="Appearance"><FormGroup label="Appearance"><div data-settings-path="appearance.theme" className="settings-compact-row">
-    <Switch label="Dark theme" description="Dashboard appearance on this browser." checked={theme === "dark"} onCheckedChange={onToggleTheme} />
+    <Switch name="appearance.theme" label="Dark theme" description="Dashboard appearance on this browser." checked={theme === "dark"} onCheckedChange={onToggleTheme} />
   </div></FormGroup></BodySection>;
 }

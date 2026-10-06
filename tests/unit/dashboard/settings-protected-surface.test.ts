@@ -55,6 +55,12 @@ describe("independent protected Settings surface", () => {
     assert.equal(h.host.querySelectorAll('input[type="password"]').length, 2);
     assert.doesNotMatch(h.host.textContent ?? "", /SharePoint onboarding roster URL/u);
     assert.ok([...h.host.querySelectorAll<HTMLInputElement>("input")].every(input => input.value === ""));
+    const username = h.host.querySelector<HTMLInputElement>('input[name="ucpathUserId"]');
+    const password = h.host.querySelector<HTMLInputElement>('input[name="ucpathPassword"]');
+    assert.equal(username?.autocomplete, "section-ucpath username");
+    assert.equal(password?.autocomplete, "section-ucpath new-password");
+    assert.ok(password?.closest("form"));
+    assert.ok([...h.host.querySelectorAll<HTMLInputElement>("input")].every(input => input.name));
     const values = { ucpathUserId: "synthetic-user-sentinel", ucpathPassword: "synthetic-password-sentinel", timekeeperName: "synthetic-timekeeper-sentinel", sharepointOnboardingRosterUrl: "https://example.test/synthetic-url-sentinel", activityPersonPseudonym: JSON.stringify({ keyHex: "a".repeat(64), keyGeneration: "activity-person-synthetic-sentinel" }) };
     for (const name of ProtectedSettingsNameSchema.options) {
       await settingsAction(() => h.controller().protectedEditor.update(name, "")); assert.ok(h.controller().protectedEditor.errors[name]);

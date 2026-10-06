@@ -13,11 +13,7 @@ export function preflightVerdict(checks: readonly PreflightCheckWire[]): Preflig
   if (checks.some(check => check.verdict === "warning")) return "warning";
   return "pass";
 }
-export function preflightRemedy(check: string): "settings" | "storage" | "sessions" {
-  if (check === "process.orphans") return "sessions";
-  if (check === "authority.health" || check === "filesystem.health") return "storage";
-  return "settings";
-}
+export { preflightRemedy } from '../settings/preflight/preflight-remedy-model.js';
 export function useDoctorPreflight() {
   const actions = usePreflightActions();
   const client = useSettingsClient();

@@ -29,13 +29,13 @@ export function ProtectedSettingField({ editor, name, description, controlWidth 
     orientation="horizontal" controlWidth={controlWidth} className={className}
     disabled={disabled}>
     {visible ? <div className="ds-secret-field">
-      <Input type="text" value={value} disabled={disabled} autoComplete="off" spellCheck={false} placeholder="Enter value"
+      <Input type="text" name={name} value={value} disabled={disabled} autoComplete={name === "ucpathUserId" ? "section-ucpath username" : "off"} spellCheck={false} placeholder="Enter value"
         onChange={event => credentials.update(name, event.target.value)} />
       {canRemove && <IconButton type="button" label={`Remove ${label}`} disabled={disabled} variant="danger-outline" size="sm"
         className="ds-secret-remove" icon={<Trash2 aria-hidden className={dsIcon.sm} />}
         onClick={() => onRemove(stored !== undefined, label)} />}
     </div> : <SecretField label={label} identity={`${name}:${stored?.valueId ?? "empty"}`} value={value}
-      autoComplete="new-password" spellCheck={false} placeholder="Enter value"
+      name={name} autoComplete={name === "ucpathPassword" ? "section-ucpath new-password" : "off"} spellCheck={false} placeholder="Enter value"
       onChange={event => credentials.update(name, event.target.value)}
       {...(canRemove ? { onRemove: () => onRemove(stored !== undefined, label) } : {})} />}
   </Field>;

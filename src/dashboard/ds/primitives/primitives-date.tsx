@@ -44,8 +44,8 @@ export function Calendar({ label, value, onChange, minValue, maxValue, autoFocus
 }
 
 /** HeroUI owns the fields and calendar; Radix preserves focus inside existing dialogs. */
-export function DateInput({ label, value, onChange, min, max, inline = false, className, textEntry = false, textDateFormat = "M/D/YYYY", valueFormat = textEntry ? "us" : "iso", disabled = false, required = false, onOpenChange, hideLabel = false, triggerLabel, footer }: {
-  label: string; value: string; onChange: (value: string) => void; min?: string; max?: string;
+export function DateInput({ name, label, value, onChange, min, max, inline = false, className, textEntry = false, textDateFormat = "M/D/YYYY", valueFormat = textEntry ? "us" : "iso", disabled = false, required = false, onOpenChange, hideLabel = false, triggerLabel, footer }: {
+  name?: string; label: string; value: string; onChange: (value: string) => void; min?: string; max?: string;
   inline?: boolean; className?: string; textEntry?: boolean; textDateFormat?: "M/D/YYYY" | "MM/DD/YYYY"; valueFormat?: "iso" | "us";
   disabled?: boolean; required?: boolean; onOpenChange?: (open: boolean) => void;
   hideLabel?: boolean; triggerLabel?: string; footer?: ReactNode | ((choose: (value: string) => void) => ReactNode);
@@ -67,12 +67,12 @@ export function DateInput({ label, value, onChange, min, max, inline = false, cl
     if (calendarOpen) setOpen(false);
   };
   return <Popover open={calendarOpen} onOpenChange={setOpen}><PopoverAnchor asChild><HeroDatePicker isOpen={calendarOpen} onOpenChange={setOpen}
-    value={selected} onChange={setDate} minValue={dateValue(min) ?? undefined} maxValue={dateValue(max) ?? undefined}
+    name={textEntry ? undefined : name} value={selected} onChange={setDate} minValue={dateValue(min) ?? undefined} maxValue={dateValue(max) ?? undefined}
     isInvalid={(value !== "" && selected === null) || undefined} isDisabled={disabled} isRequired={required}
     className={cn("ds-date-picker min-w-0", inline && "ds-date-picker--inline", textEntry && "ds-date-picker--text", className)}>
     <Label className={cn("ds-date-label", (textEntry || hideLabel) && "sr-only")}>{label}</Label>
     <DateField.Group fullWidth className={textEntry ? "ds-date-text-group" : undefined}>
-      {textEntry ? <Input type="text" inputMode="numeric" placeholder={textDateFormat} aria-label={label} required={required} disabled={disabled} value={value} onChange={event => onChange(event.target.value)} className="ds-date-text-input" /> : <DateField.Input>{segment => <DateField.Segment segment={segment} />}</DateField.Input>}
+      {textEntry ? <Input name={name} autoComplete="off" type="text" inputMode="numeric" placeholder={textDateFormat} aria-label={label} required={required} disabled={disabled} value={value} onChange={event => onChange(event.target.value)} className="ds-date-text-input" /> : <DateField.Input>{segment => <DateField.Segment segment={segment} />}</DateField.Input>}
       <DateField.Suffix><HeroDatePicker.Trigger ref={calendarTrigger} aria-label={pickerLabel} aria-controls={calendarOpen ? id : undefined}><HeroDatePicker.TriggerIndicator /></HeroDatePicker.Trigger></DateField.Suffix>
     </DateField.Group>
     </HeroDatePicker></PopoverAnchor>

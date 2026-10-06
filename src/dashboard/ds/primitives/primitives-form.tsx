@@ -515,6 +515,7 @@ export function RadioGroup<T extends string>({
  * Checkbox instead — a switch that does nothing until you press Save is a lie.
  */
 export function Switch({
+  name,
   checked,
   onCheckedChange,
   label,
@@ -522,6 +523,7 @@ export function Switch({
   disabled,
   className,
 }: {
+  name?: string;
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
   label: ReactNode;
@@ -530,7 +532,7 @@ export function Switch({
   className?: string;
 }) {
   return (
-    <HeroSwitch isSelected={checked} onChange={onCheckedChange} isDisabled={disabled} className={cn("ds-switch-row flex items-start gap-[var(--ds-space-base)]", className)}>
+    <HeroSwitch name={name} isSelected={checked} onChange={onCheckedChange} isDisabled={disabled} className={cn("ds-switch-row flex items-start gap-[var(--ds-space-base)]", className)}>
       <HeroSwitch.Content className="ds-switch-content flex min-w-0 flex-1 flex-row-reverse items-center justify-between">
         <HeroSwitch.Control onClick={event => { event.preventDefault(); event.stopPropagation(); if (!disabled) onCheckedChange(!checked); }} className={cn(
         "ds-switch-control relative inline-flex shrink-0 cursor-pointer items-center rounded-full border",

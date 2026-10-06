@@ -16,7 +16,7 @@ function available(selectedRunId = RUN) {
     },
     item: { workflowId: "person-lookup", itemId: ITEM },
     page: { limit: 25, offset: 0, totalEntries: 1, entries: [
-      { disposition: "live", runId: selectedRunId, workflowId: "person-lookup", itemId: ITEM, attempt: 2, rowRevision: 3 },
+      { disposition: "live", runId: selectedRunId, workflowId: "person-lookup", itemId: ITEM, attempt: 2, rowRevision: 3, partitionDay: "2026-08-03" },
     ], nextCursor: null },
   };
 }

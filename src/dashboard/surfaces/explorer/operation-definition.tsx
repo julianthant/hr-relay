@@ -1,11 +1,11 @@
 import { useRef, useState } from "react";
 import { Link2 } from "lucide-react";
-import { renderOperationTemplate, type OperationTemplateSegment } from "../../../domain/workflow/operation-display.js";
 import type { WorkflowOperationDisplaySnapshot } from "../../../domain/workflow/operation-display-snapshot.js";
 import { Button, Dialog, DialogBody, DialogContent, Input, dsIcon, dsText } from "../../ds/ui.js";
 import { definitionValueSources, operationFieldTemplate, type OperationAction, type OperationInvocation } from "./operation-structure-model.js";
+import { renderDisplayTemplate, type DisplayTemplate } from './operation-template-model.js';
 
-function TemplateSegments({ segments }: { segments: readonly OperationTemplateSegment[] }) {
+function TemplateSegments({ segments }: { segments: readonly DisplayTemplate['segments'][number][] }) {
   return <div className="operation-template-segments">{segments.map((segment, index) => segment.kind === "literal" ? <span key={index}>{segment.value}</span> : segment.kind === "variable" ? <mark key={index}>{`{${segment.variable}}`}</mark> : <div key={index} className="operation-template-clause"><span className={dsText.meta}>{segment.when.variable} {segment.when.kind}{segment.when.value === undefined ? "" : ` ${JSON.stringify(segment.when.value)}`}</span><TemplateSegments segments={segment.segments} /></div>)}</div>;
 }
 
@@ -14,7 +14,7 @@ export function OperationFieldTemplate({ invocation, action, observed = false }:
   const [values, setValues] = useState<Readonly<Record<string, string>>>({});
   if (template === undefined) return null;
   let preview: string | undefined;
-  if (template.variables.every((variable) => values[variable.id] !== undefined)) preview = renderOperationTemplate(template, values);
+  if (template.variables.every((variable) => values[variable.id] !== undefined)) preview = renderDisplayTemplate(template, values);
   return <details className="operation-template"><summary className={dsText.meta}>Template</summary>
     <TemplateSegments segments={template.segments} />
     {!observed && <><div className="operation-template-inputs">{template.variables.map((variable) => <label key={variable.id} className={dsText.meta}>{variable.id}<Input aria-label={`${action.label ?? action.id} preview ${variable.id}`} value={values[variable.id] ?? ""} onChange={(event) => setValues((current) => ({ ...current, [variable.id]: event.target.value }))} /></label>)}</div>

@@ -5,7 +5,8 @@ import { cn } from "../../../lib/utils.js";
 import { usePreflightActions } from "./preflight-actions-model.js";
 import { usePreflightScope } from "./preflight-client.js";
 import type { useEditableSettings } from "../editor/settings-editor-model.js";
-import { preflightRemedy, preflightVerdict } from "../../shell/preflight-popover-model.js";
+import { preflightVerdict } from "../../shell/preflight-popover-model.js";
+import { preflightRemedy, preflightRemedyLabel } from './preflight-remedy-model.js';
 import type { PreflightRerunState } from "./settings-preflight-model.js";
 import type { PreflightCheckWire } from "../../shell/preflight-popover-model.js";
 import type { EditableSettingsWire } from "../../../../domain/dashboard/settings-editor.js";
@@ -68,18 +69,9 @@ function missingCredentialCopy(check: PreflightCheckWire, protectedSettings: Edi
   return `${missing.join(" and ")} ${missing.length === 1 ? "is" : "are"} missing.`;
 }
 
-function targetedRemedy(id: string): "settings" | "storage" | "sessions" | "credentials" | "routes" | undefined {
-  if (id === "authority.health") return "storage";
-  if (id === "process.orphans") return "sessions";
-  if (id === "fiscal.current") return "settings";
-  if (id === "secrets.sharepoint-roster") return "routes";
-  if (Object.hasOwn(SECRET_FIELDS, id)) return "credentials";
-  return undefined;
-}
-
 function SettingsPreflightCheck({ check, protectedSettings }: { check: PreflightCheckWire; protectedSettings?: EditableSettingsWire["protectedSettings"] }) {
   const actions = usePreflightActions();
-  const remedy = check.verdict === "pass" ? undefined : targetedRemedy(check.id);
+  const remedy = check.verdict === "pass" ? undefined : preflightRemedy(check.id);
   const action = remedy === undefined ? undefined : () => {
     if (remedy === "sessions") actions.showSessions();
     else actions.showSettings(remedy === "storage" ? "storage" : remedy === "credentials" ? "credentials" : remedy === "routes" ? "routes" : undefined);
@@ -96,7 +88,7 @@ function SettingsPreflightCheck({ check, protectedSettings }: { check: Preflight
       : <Badge tone={check.verdict === "fail" ? "danger" : "warning"}>{check.verdict === "warning" ? "Needs attention" : "Blocked"}</Badge>} />
     {action !== undefined && <div className="diagnostic-check-detail">
       <Button size="sm" variant="ghost" className="diagnostic-remedy-action" onClick={action}>
-        {remedy === "sessions" ? "Open Sessions" : remedy === "storage" ? "Open Storage" : remedy === "credentials" ? "Configure credentials" : remedy === "routes" ? "Configure SharePoint route" : "Open Settings"}
+        {remedy !== undefined && preflightRemedyLabel(remedy)}
       </Button>
     </div>}
   </div>;
@@ -199,8 +191,8 @@ export function PreflightReportContent({ preflight, onRerun, presentation = "com
           {check.verdict !== "pass" && <Button size="sm" variant="ghost" onClick={() => {
             const remedy = preflightRemedy(check.id);
             if (remedy === "sessions") actions.showSessions();
-            else actions.showSettings(remedy === "storage" ? "storage" : undefined);
-          }}>{preflightRemedy(check.id) === "sessions" ? "Open Sessions" : preflightRemedy(check.id) === "storage" ? "Open Storage" : "Open Settings"}</Button>}
+            else actions.showSettings(remedy === 'settings' ? undefined : remedy);
+          }}>{preflightRemedyLabel(preflightRemedy(check.id))}</Button>}
         </div>)}
       </div>
     </>}
