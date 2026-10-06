@@ -1,3 +1,4 @@
+import { formatInstantDate } from "../../lib/date-format.js";
 import type { ActivityVolume, ActivityVolumeGranularity } from "../../../domain/dashboard/activity-volume.js";
 
 const MIN_AXIS_LABEL_GAP_PX = 8;
@@ -65,37 +66,9 @@ function inclusiveEnd(instant: string): Date {
   return new Date(milliseconds - 1);
 }
 
-function localDateParts(instant: string | Date, timeZone: string): { month: string; day: string; year: string } {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).formatToParts(typeof instant === "string" ? new Date(instant) : instant);
-  const value = (type: Intl.DateTimeFormatPartTypes): string => parts.find((part) => part.type === type)?.value ?? "";
-  return { month: value("month"), day: value("day"), year: value("year") };
-}
-
-function dateLabel(instant: string | Date, timeZone: string, includeYear: boolean): string {
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    month: "short",
-    day: "numeric",
-    ...(includeYear ? { year: "numeric" } : {}),
-  }).format(typeof instant === "string" ? new Date(instant) : instant);
-}
-
 function conciseDateRange(start: string, endExclusive: string, timeZone: string): string {
-  const end = inclusiveEnd(endExclusive);
-  const startParts = localDateParts(start, timeZone);
-  const endParts = localDateParts(end, timeZone);
-  if (startParts.year === endParts.year && startParts.month === endParts.month && startParts.day === endParts.day) {
-    return dateLabel(start, timeZone, false);
-  }
-  if (startParts.year === endParts.year) {
-    return `${dateLabel(start, timeZone, false)}–${dateLabel(end, timeZone, false)}`;
-  }
-  return `${dateLabel(start, timeZone, true)}–${dateLabel(end, timeZone, true)}`;
+  const from = formatInstantDate(start, timeZone), to = formatInstantDate(inclusiveEnd(endExclusive), timeZone);
+  return from === to ? from : `${from}–${to}`;
 }
 
 function conciseIntervalLabel(
@@ -107,24 +80,12 @@ function conciseIntervalLabel(
   if (granularity === "hourly") {
     return new Intl.DateTimeFormat("en-US", {
       timeZone,
-      month: "short",
-      day: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      year: "numeric",
       hour: "numeric",
       timeZoneName: "shortOffset",
     }).format(new Date(start));
-  }
-  if (granularity === "monthly") {
-    const end = inclusiveEnd(endExclusive);
-    const startParts = localDateParts(start, timeZone);
-    const endParts = localDateParts(end, timeZone);
-    const label = (instant: string | Date) => new Intl.DateTimeFormat("en-US", {
-      timeZone,
-      month: "short",
-      year: "numeric",
-    }).format(typeof instant === "string" ? new Date(instant) : instant);
-    return startParts.month === endParts.month && startParts.year === endParts.year
-      ? label(start)
-      : `${label(start)}–${label(end)}`;
   }
   if (granularity === "yearly") {
     const end = inclusiveEnd(endExclusive);
@@ -141,8 +102,8 @@ function axisFormatter(timeZone: string, granularity: ActivityVolumeGranularity)
     : granularity === "yearly"
       ? { year: "numeric" }
       : granularity === "monthly"
-        ? { month: "short", year: "2-digit" }
-        : { month: "short", day: "numeric" };
+        ? { month: "2-digit", year: "numeric" }
+        : { month: "2-digit", day: "2-digit", year: "numeric" };
   return new Intl.DateTimeFormat("en-US", { timeZone, ...options });
 }
 

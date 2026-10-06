@@ -82,9 +82,9 @@ describe("Activity date range model", () => {
     const parsed = parseActivityRange("2025-12-31..2026-01-01", "2026-01-02");
     assert.deepEqual(parsed, { from: "2025-12-31", to: "2026-01-01" });
     assert.equal(activityRangeValue(parsed), "2025-12-31..2026-01-01");
-    assert.equal(activityCompactRangeLabel(parsed), "Dec 31, 2025 – Jan 1, 2026");
-    assert.equal(activityCompactRangeLabel({ from: "2026-08-27", to: "2026-09-26" }), "Aug 27 – Sep 26, 2026");
-    assert.equal(activityCompactRangeLabel({ from: "2024-02-29", to: "2024-02-29" }), "Feb 29, 2024");
+    assert.equal(activityCompactRangeLabel(parsed), "12/31/2025 – 01/01/2026");
+    assert.equal(activityCompactRangeLabel({ from: "2026-08-27", to: "2026-09-26" }), "08/27/2026 – 09/26/2026");
+    assert.equal(activityCompactRangeLabel({ from: "2024-02-29", to: "2024-02-29" }), "02/29/2024");
   });
 
   it("uses the next calendar date as the exclusive end for a one-day leap-day interval", () => {
@@ -186,7 +186,7 @@ describe("Activity date range model", () => {
 
     const todayRange = activityPresetRange("today", reportToday);
     assert.deepEqual(todayRange, { from: "2026-09-25", to: "2026-09-25" });
-    assert.equal(activityCompactRangeLabel(todayRange), "Sep 25, 2026");
+    assert.equal(activityCompactRangeLabel(todayRange), "09/25/2026");
     assert.deepEqual(readyRange("2026-09-25", "2026-09-25").interval, {
       start: "2026-09-25",
       endExclusive: "2026-09-26",

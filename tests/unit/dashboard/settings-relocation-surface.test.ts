@@ -7,7 +7,6 @@ import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { StorageRelocationRows } from "../../../src/dashboard/surfaces/settings/general/settings-relocation.js";
 import { SettingsPage } from "../../../src/dashboard/surfaces/settings/settings.js";
-import { DEFAULT_CATALOG_VIEW } from "../../../src/dashboard/surfaces/settings/catalog/row-catalog-model.js";
 import { FIXTURE_EDITABLE_SETTINGS } from "../../parity/helpers/fixture-settings.js";
 import { StorageHealthSummaryWireSchema } from "../../../src/domain/dashboard/bootstrap.js";
 import { useStorageRelocation, cancelRelocationCommand, desiredRelocationPair, planRelocationCommand } from "../../../src/dashboard/surfaces/settings/general/settings-relocation-model.js";
@@ -300,8 +299,7 @@ describe("storage relocation Paths controls", () => {
     const storage = StorageHealthSummaryWireSchema.parse({ authority: "healthy", backup: "current", checkedAt: "2026-09-26T12:00:00.000Z" });
     await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(SettingsPage, { onClose: () => undefined,
       storage, sections: [], workflowLabels: new Map(), section: "paths", actorId: "local-operator", descriptorFingerprint: "d".repeat(64),
-      preflight: [], catalogQuery: "", catalogView: DEFAULT_CATALOG_VIEW, onCatalogQuery: () => undefined,
-      onCatalogView: () => undefined, onSection: () => undefined, onExitGuardChange: next => { guard = next; },
+      preflight: [], onSection: () => undefined, onExitGuardChange: next => { guard = next; },
     }) })); });
     await act(async () => undefined);
     const change = host.querySelector('[data-settings-path="paths.artifactRoot"] button[aria-label="Change Artifact folder"]');
@@ -332,8 +330,7 @@ describe("storage relocation Paths controls", () => {
     const storage = StorageHealthSummaryWireSchema.parse({ authority: "healthy", backup: "current", checkedAt: "2026-09-26T12:00:00.000Z" });
     await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(SettingsPage, { onClose: () => undefined,
       storage, sections: [], workflowLabels: new Map(), section: "paths", actorId: "local-operator", descriptorFingerprint: "d".repeat(64),
-      preflight: [], catalogQuery: "", catalogView: DEFAULT_CATALOG_VIEW, onCatalogQuery: () => undefined,
-      onCatalogView: () => undefined, onSection: () => undefined, onExitGuardChange: () => undefined,
+      preflight: [], onSection: () => undefined, onExitGuardChange: () => undefined,
     }) })));
     await act(async () => undefined);
     const change = host.querySelector('[data-settings-path="paths.downloadsDir"] button[aria-label="Change Downloads directory"]');

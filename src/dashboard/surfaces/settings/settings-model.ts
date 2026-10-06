@@ -31,7 +31,6 @@ export type SettingsNavIcon =
   | "routes"
   | "capabilities"
   | "keyboard"
-  | "ui-catalog"
   | "unrendered"
   | "spreadsheets"
   | "explorer"
@@ -84,17 +83,7 @@ export interface SettingsNavEntry {
   readonly id: string;
   readonly label: string;
   readonly icon: SettingsNavIcon;
-  /**
-   * `served` — the server LISTED this section; `client` — the bundle
-   * contributes it and `settingsSections` does not name it. It is about who
-   * owns the LIST, not who holds the data: `Keyboard` is client-owned end to
-   * end (SE7 — editable bindings used by this build, so a served section for
-   * it would be the server describing the client to itself), while the
-   * `UI catalog` added by D295 is client-LISTED and still reads a served
-   * artifact over `GET /api/v1/ui-catalog`. Nothing on the wire lists it
-   * because the catalog is not a setting; it is the reference the operator
-   * looks up, and the demo's Help group is where a looked-up page lives.
-   */
+  /** Served entries come from the bootstrap; client entries are owned by this bundle. */
   readonly source: "served" | "client";
 }
 
@@ -110,15 +99,7 @@ export interface SettingsNavGroup {
 export const SETTINGS_KEYBOARD_SECTION_ID = "keyboard";
 
 
-/**
- * The Help group's catalog entry (D295).
- *
- * The generated UI catalog was its own takeover behind `?catalog=`, entered
- * from a queue-toolbar button. D295 retires both: it is reference material an
- * operator LOOKS UP, which is the Help group's whole membership rule, and one
- * takeover with one nav is a shorter path to it than a toolbar button that had
- * been added, removed and restored three times (D275 item 1, D281 item 2).
- */
+/** Retired route token retained for compatibility notices and historical reader contracts. */
 export const SETTINGS_UI_CATALOG_SECTION_ID = "ui-catalog";
 export const SETTINGS_PREFLIGHT_SECTION_ID = "preflight";
 export const SETTINGS_DATA_SECTION_IDS: ReadonlySet<string> = new Set(["explorer", "activity"]);
@@ -182,7 +163,7 @@ export function buildSettingsNav(
   ] });
   const statusEntries: SettingsNavEntry[] = [];
   for (const section of sections) {
-    if (section.id === SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID || section.id === "providers") continue;
+    if (section.id === SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID || section.id === "providers" || section.id === SETTINGS_UI_CATALOG_SECTION_ID) continue;
     statusEntries.push(servedEntry(section.id, section.label));
     if (section.id === "storage") statusEntries.push({ id: SETTINGS_PREFLIGHT_SECTION_ID, label: "Preflight", icon: "preflight", source: "client" });
   }
@@ -195,7 +176,6 @@ export function buildSettingsNav(
     heading: "Help",
     entries: [
       { id: SETTINGS_KEYBOARD_SECTION_ID, label: "Keyboard", icon: "keyboard", source: "client" },
-      { id: SETTINGS_UI_CATALOG_SECTION_ID, label: "UI catalog", icon: "ui-catalog", source: "client" },
     ],
   });
   return groups;

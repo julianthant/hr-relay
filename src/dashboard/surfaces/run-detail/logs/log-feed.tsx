@@ -1,3 +1,4 @@
+import { displayExtractedDate } from "../../../lib/date-format.js";
 import { LogSkeleton } from "../../shared/loading/loading.js";
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowDownToLine, Check, Copy, Cpu, Eye, GitBranch, Info, Monitor, MousePointer2, PanelsTopLeft, PencilLine, ScanSearch } from "lucide-react";
@@ -41,7 +42,7 @@ function LogNote({ entry, timeInStep }: { entry: Extract<LogEntry, { kind: "note
 }
 
 function FieldValue({ value }: { value: string }) {
-  return <>{value.split(/(\b[A-Z]{2,}[A-Za-z\d]*-[A-Za-z\d-]+\b)/gu).map((part, index) => /^[A-Z]{2,}[A-Za-z\d]*-[A-Za-z\d-]+$/u.test(part) && part.length < 80 ? <span key={index} className="whitespace-nowrap">{part}</span> : part)}</>;
+  return <>{displayExtractedDate(value).split(/(\b[A-Z]{2,}[A-Za-z\d]*-[A-Za-z\d-]+\b)/gu).map((part, index) => /^[A-Z]{2,}[A-Za-z\d]*-[A-Za-z\d-]+$/u.test(part) && part.length < 80 ? <span key={index} className="whitespace-nowrap">{part}</span> : part)}</>;
 }
 
 /** Shared presentation for the operator stream and the isolated design preview. */
@@ -72,8 +73,8 @@ export function LogFeed({ steps, label = "Run logs", embedded = false, beforeCon
     const viewport = scroller.current;
     if (!section || !viewport) throw new Error("log-initial-step-missing");
     const style = getComputedStyle(viewport);
-    if (end.current) end.current.style.height = `${Math.max(0, viewport.clientHeight - section.getBoundingClientRect().height - Number.parseFloat(style.paddingTop) - Number.parseFloat(style.paddingBottom))}px`;
-    viewport.scrollTop += section.getBoundingClientRect().top - viewport.getBoundingClientRect().top - Number.parseFloat(style.paddingTop);
+    if (end.current) end.current.style.height = `${Math.max(0, viewport.clientHeight - section.getBoundingClientRect().height - Number.parseFloat(style.paddingTop || "0") - Number.parseFloat(style.paddingBottom || "0"))}px`;
+    viewport.scrollTop += section.getBoundingClientRect().top - viewport.getBoundingClientRect().top - Number.parseFloat(style.paddingTop || "0");
   }, [initialStepId]);
   useEffect(() => () => { if (jumpFrame.current !== undefined) cancelAnimationFrame(jumpFrame.current); }, []);
   const jump = (stepId: string) => {
@@ -85,7 +86,11 @@ export function LogFeed({ steps, label = "Run logs", embedded = false, beforeCon
       if (!heading) throw new Error("log-timeline-heading-missing");
       const section = heading.closest("section");
       if (!section) throw new Error("log-timeline-section-missing");
-      section.scrollIntoView({ block: "start", behavior: "instant" });
+      const viewport = scroller.current;
+      if (!viewport) throw new Error("log-timeline-viewport-missing");
+      const style = getComputedStyle(viewport);
+      if (end.current) end.current.style.height = `${Math.max(0, viewport.clientHeight - section.getBoundingClientRect().height - Number.parseFloat(style.paddingTop || "0") - Number.parseFloat(style.paddingBottom || "0"))}px`;
+      viewport.scrollTop += section.getBoundingClientRect().top - viewport.getBoundingClientRect().top - Number.parseFloat(style.paddingTop || "0");
       heading.focus({ preventScroll: true });
       jumpFrame.current = undefined;
     });
@@ -129,7 +134,7 @@ export function LogFeed({ steps, label = "Run logs", embedded = false, beforeCon
       <span className="ml-auto inline-flex items-center gap-1">
         <span className="mr-2 text-caption text-ui-muted" role="status">{copyState === "copied" ? "Copied" : copyState === "failed" ? "Copy unavailable" : ""}</span>
         <IconButton label="Copy logs" icon={copyState === "copied" ? <Check aria-hidden className="size-3.5" /> : <Copy aria-hidden className="size-3.5" />} onClick={() => void copy()} disabled={!count} />
-        <IconButton label="Go to latest action" icon={<ArrowDownToLine aria-hidden className="size-3.5" />} onClick={() => embedded ? end.current?.scrollIntoView({ block: "end", behavior: "instant" }) : scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "instant" })} disabled={!count} />
+        <IconButton label="Go to latest action" icon={<ArrowDownToLine aria-hidden className="size-3.5" />} onClick={() => { if (end.current) end.current.style.height = "0px"; if (embedded) end.current?.scrollIntoView({ block: "end", behavior: "instant" }); else scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "instant" }); }} disabled={!count} />
       </span>
     </footer>
   </div>;

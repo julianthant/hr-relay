@@ -65,7 +65,6 @@ import {
   settingsCloseFocusTargetId,
   type SettingsSection,
 } from "../../../src/dashboard/surfaces/settings/settings-model.js";
-import { DEFAULT_CATALOG_VIEW } from "../../../src/dashboard/surfaces/settings/catalog/row-catalog-model.js";
 
 /** Parsed, so a case cannot express a section the bootstrap would refuse. */
 function section(id: string, label: string): SettingsSection {
@@ -233,12 +232,6 @@ describe("the settings nav renders real navigation, not buttons (unit F4b findin
   const markup = renderToStaticMarkup(createElement(DashboardClientProvider, {
     client: STATIC_SETTINGS_CLIENT,
     children: createElement(SettingsPage, { onClose: () => undefined,
-      // D295: the catalog is a Settings section now. No render here opens it,
-      // so these carry the section's defaults rather than a fixture nothing reads.
-      catalogQuery: "",
-      catalogView: DEFAULT_CATALOG_VIEW,
-      onCatalogQuery: () => undefined,
-      onCatalogView: () => undefined,
       storage: HEALTHY_STORAGE,
       sections: [STORAGE],
     // Opened on Keyboard rather than Storage, so this render never reaches
@@ -287,12 +280,6 @@ describe("curly quotes around a section name (unit F4b finding 3)", () => {
     const markup = renderToStaticMarkup(createElement(DashboardClientProvider, {
       client: STATIC_SETTINGS_CLIENT,
       children: createElement(SettingsPage, { onClose: () => undefined,
-        // D295: the catalog is a Settings section now. No render here opens it,
-        // so these carry the section's defaults rather than a fixture nothing reads.
-        catalogQuery: "",
-        catalogView: DEFAULT_CATALOG_VIEW,
-        onCatalogQuery: () => undefined,
-        onCatalogView: () => undefined,
         storage: HEALTHY_STORAGE,
         sections: [STORAGE],
       section: "budgets",
@@ -311,12 +298,6 @@ describe("curly quotes around a section name (unit F4b finding 3)", () => {
     const markup = renderToStaticMarkup(createElement(DashboardClientProvider, {
       client: STATIC_SETTINGS_CLIENT,
       children: createElement(SettingsPage, { onClose: () => undefined,
-        // D295: the catalog is a Settings section now. No render here opens it,
-        // so these carry the section's defaults rather than a fixture nothing reads.
-        catalogQuery: "",
-        catalogView: DEFAULT_CATALOG_VIEW,
-        onCatalogQuery: () => undefined,
-        onCatalogView: () => undefined,
         storage: HEALTHY_STORAGE,
         sections: [STORAGE, section("budgets", "Budgets")],
       section: "budgets",

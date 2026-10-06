@@ -6,7 +6,6 @@ type FrontendBootstrapWire
 import { ActivityReport } from "../surfaces/activity/activity.js";
 import { WorkflowExplorer } from "../surfaces/explorer/explorer.js";
 import { IntakeWorkspace } from "../surfaces/intake/intake.js";
-import { DEFAULT_CATALOG_VIEW } from "../surfaces/settings/catalog/row-catalog-model.js";
 import { AppearanceSettings } from "../surfaces/settings/general/appearance-settings.js";
 import type { DemoTheme } from "../ds/ui.js";
 import { SettingsPage } from "../surfaces/settings/settings.js";
@@ -43,10 +42,6 @@ export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSection
               section={route.settings ?? dataSection ?? ""}
               searchTarget={route.settingsTarget}
               dataContent={dataContent}
-              catalogQuery={route.catalog ?? ""}
-              catalogView={route.catalogView ?? DEFAULT_CATALOG_VIEW}
-              onCatalogQuery={(next) => setRoute({ ...route, catalog: next })}
-              onCatalogView={(next) => setRoute({ ...route, catalogView: next })}
               actorId={boot.actor.id}
               descriptorFingerprint={boot.descriptorHash}
               preflight={boot.preflight ?? []}

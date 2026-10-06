@@ -385,14 +385,7 @@ describe("the two remaining takeovers use the shared focus boundary (UF-FU-1)", 
     assert.equal(first.textContent?.trim(), "Close");
   });
 
-  /*
-    D295's negative half. The catalog used to be the fifth takeover and is a
-    Settings section now, so the claims invert: it must have NO frame of its
-    own, and the frame it lives in must still own exactly one exit. A second
-    close control inside the content pane would be two exits from one page —
-    which is why `UiCatalogSection` takes no `onClose` at all.
-  */
-  it("the UI catalog draws inside the Settings frame and owns no exit of its own", async () => {
+  it("the retired UI catalog URL shows an explicit removal notice without mounting its reader", async () => {
     await mountDashboard("?settings=ui-catalog");
 
     const frame = frameOf("Settings");
@@ -402,8 +395,9 @@ describe("the two remaining takeovers use the shared focus boundary (UF-FU-1)", 
       null,
       "the catalog must no longer mount a frame of its own",
     );
-    assert.match(frame.textContent ?? "", /UI catalog/u);
-    assert.equal(takeFirstTab(frame).textContent?.trim(), "General");
+    assert.match(frame.textContent ?? "", /UI catalog removed/u);
+    assert.equal([...frame.querySelectorAll("a")].some(link => link.textContent?.trim() === "UI catalog"), false);
+    assert.equal(takeFirstTab(frame).getAttribute("aria-label"), "Back to dashboard");
     assert.equal(
       document.querySelector('[aria-label="Close the UI catalog"]'),
       null,
@@ -482,14 +476,14 @@ describe("Settings exits share the page-owned draft guard", () => {
     };
     const editorLabel = sectionLink("General").textContent?.trim();
     assert.equal(editorLabel, "General");
-    await act(async () => sectionLink("UI catalog").click());
-    assert.match(window.location.search, /settings=ui-catalog/u);
+    await act(async () => sectionLink("Keyboard").click());
+    assert.match(window.location.search, /settings=keyboard/u);
     assert.equal(document.querySelectorAll('section[aria-label="Settings"]').length, 1);
     const dashboard = buttonNamed("Back to workflows");
     await press(dashboard);
     await press(buttonNamed("Keep editing"));
     assert.equal(document.activeElement, dashboard, "cancelling the shell exit restores focus to its persistent navigation control");
-    assert.match(window.location.search, /settings=ui-catalog/u);
+    assert.match(window.location.search, /settings=keyboard/u);
     await press(dashboard);
     await act(async () => {
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));

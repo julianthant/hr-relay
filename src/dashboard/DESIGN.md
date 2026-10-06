@@ -477,6 +477,8 @@ Two things this rule does **not** license:
   long queue, and an unnamed table is a mystery to a screen reader.
 - **One primary and at most one danger action per surface.** Actions go
   right-aligned in a footer, primary last, so the eye ends on the verb.
+- **Paired actions have distinct treatments.** Cancel uses the subdued filled `muted` variant; its neighboring action retains its outlined, primary or destructive treatment. Peer toolbar controls retain their existing style. Dialog footers inherit the dialog’s bottom corner radii, including when dropdowns need visible overflow.
+- **Calendar dates use MM/DD/YYYY.** Pad month and day and use four-digit years. Preserve ISO values in route, storage and transport contracts. Date-only values keep their calendar day; timestamps use the appropriate local or report timezone. Calendar month/year headings and hourly chart labels describe periods rather than complete dates. Unknown OCR dates require normalization or correction, never a guessed century.
 - **Every dialog footer is the same footer**, in this order:
   `meta (quiet, left) · Back? · Cancel · [primary]`. Put the quiet note in
   `DialogFooter`'s `meta` prop. The dismiss verb is **`Cancel`** when the

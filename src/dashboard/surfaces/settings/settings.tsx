@@ -4,7 +4,7 @@ import "./settings-data.css";
 import { SpreadsheetsSettings } from "../spreadsheets/spreadsheets.js";
 import { EditableSettingsSectionIdSchema } from "../../../domain/dashboard/settings-editor.js";
 import { SettingsAuthoritySection } from "./editor/settings-authorities.js";
-import { ArrowLeft, BarChart3, BookMarked, Workflow, CircleAlert, ClipboardCheck, Database, FolderOpen, Gauge, Keyboard as KeyboardIcon, Link2, Monitor, Settings as SettingsIcon, SlidersHorizontal, Table2 } from "lucide-react";
+import { ArrowLeft, BarChart3, Workflow, CircleAlert, ClipboardCheck, Database, FolderOpen, Gauge, Keyboard as KeyboardIcon, Link2, Monitor, Settings as SettingsIcon, SlidersHorizontal, Table2 } from "lucide-react";
 import { useCallback,useEffect,useMemo,useRef,useState,type ReactNode } from "react";
 import type { FrontendBootstrapWire } from "../../../domain/dashboard/bootstrap.js";
 import {
@@ -13,16 +13,14 @@ SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID
 import { Banner,Button,Dialog,DialogContent,DialogFooter,DsBodyScope,IconButton,SearchInput,SectionLabel,StatusDot,TakeoverFrame,dsFocus,dsMotion,dsIcon,dsSurface,dsText } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { plural } from "../shared/status/format.js";
-import type { CatalogView } from "./catalog/row-catalog-model.js";
 import { useEditableSettings } from "./editor/settings-editor-model.js";
 import { EditableSettingsSection } from "./editor/settings-editor.js";
 import { RoutesSection } from "./routes/settings-routes.js";
 import { KeyboardSection } from "./navigation/settings-keyboard.js";
 import { PreflightSection } from "./preflight/settings-preflight.js";
-import { SETTINGS_DATA_SECTION_IDS,SETTINGS_GEAR_ID,SETTINGS_KEYBOARD_SECTION_ID,SETTINGS_PREFLIGHT_SECTION_ID,SETTINGS_UI_CATALOG_SECTION_ID,buildSettingsNav,resolveSettingsSection,type SettingsNavEntry,type SettingsNavIcon,type SettingsSection } from "./settings-model.js";
+import { SETTINGS_DATA_SECTION_IDS,SETTINGS_GEAR_ID,SETTINGS_KEYBOARD_SECTION_ID,SETTINGS_PREFLIGHT_SECTION_ID,buildSettingsNav,resolveSettingsSection,type SettingsNavEntry,type SettingsNavIcon,type SettingsSection } from "./settings-model.js";
 import { storageNeedsAttention,type StorageHealthSummary } from "./storage/storage-settings-model.js";
 import { StorageSection } from "./storage/storage-settings.js";
-import { UiCatalogSection } from "./catalog/ui-catalog.js";
 import { searchSettings, settingsSearchIndex, type SettingsSearchResult } from "./navigation/settings-search-model.js";
 import { SettingsSearchTargetContext, useSettingsSearchArrival } from "./navigation/settings-search-target-model.js";
 
@@ -53,7 +51,6 @@ const NAV_ICON: Record<SettingsNavIcon, typeof Database> = {
   routes: Link2,
   capabilities: Table2,
   keyboard: KeyboardIcon,
-  "ui-catalog": BookMarked,
   unrendered: CircleAlert,
   spreadsheets: Table2,
   explorer: Workflow,
@@ -189,10 +186,6 @@ export function SettingsPage({
   searchTarget,
   dataContent,
   appearance,
-  catalogQuery,
-  catalogView,
-  onCatalogQuery,
-  onCatalogView,
   actorId,
   descriptorFingerprint,
   preflight: _preflight,
@@ -212,17 +205,6 @@ export function SettingsPage({
   searchTarget?: string;
   dataContent?: ReactNode;
   appearance?: ReactNode;
-  /**
-   * The `ui-catalog` section's own two route keys (D295). They are threaded
-   * through rather than held here for the reason `?catalogView=` was made
-   * route-owned in the first place: a link must be able to land on the actual
-   * catalog panel with the actual search term in ONE navigation, and a local
-   * state authority beside a URL is two answers to one question.
-   */
-  catalogQuery: string;
-  catalogView: CatalogView;
-  onCatalogQuery: (next: string) => void;
-  onCatalogView: (next: CatalogView) => void;
   actorId: string;
   descriptorFingerprint: string;
   preflight: NonNullable<FrontendBootstrapWire["preflight"]>;
@@ -350,7 +332,7 @@ export function SettingsPage({
             redirected: landing on Storage under `?settings=budgets` tells the
             operator they are reading something they are not. */}
         {resolution.state === "unknown" && (
-          resolution.requested === "archive" ? <Banner tone="info" title="Archive page removed">
+          resolution.requested === "ui-catalog" ? <Banner tone="info" title="UI catalog removed">Use the Settings navigation to return to a dashboard page.</Banner> : resolution.requested === "archive" ? <Banner tone="info" title="Archive page removed">
             Existing stored run data has not been deleted. <Button variant="ghost" onClick={() => requestExit(onClose)}>Return to dashboard</Button>
           </Banner> : <Banner tone="danger" title="No such settings section">
             This build has no settings section called “{resolution.requested}”. Pick one from the
@@ -365,15 +347,6 @@ export function SettingsPage({
         {isDataSection && dataContent}
         {resolution.state === "open" && resolution.entry.id === "spreadsheets" && <SpreadsheetsSettings workbook={workbookDraft.document} workbookDirty={workbookDraft.dirty} onWorkbook={onWorkbook} />}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_KEYBOARD_SECTION_ID && <KeyboardSection />}
-        {/* The catalog remains a Help destination inside the Settings page. */}
-        {resolution.state === "open" && resolution.entry.id === SETTINGS_UI_CATALOG_SECTION_ID && (
-          <UiCatalogSection
-            query={catalogQuery}
-            onQuery={onCatalogQuery}
-            view={catalogView}
-            onView={onCatalogView}
-          />
-        )}
         {resolution.state === "open" && resolution.entry.id === "storage" && <StorageSection storage={storage} />}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_PREFLIGHT_SECTION_ID && <PreflightSection editor={editor} workflowLabels={workflowLabels} />}
         {resolution.state === "open" && resolution.entry.id === "routes" && <RoutesSection editor={editor} />}

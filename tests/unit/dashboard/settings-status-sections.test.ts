@@ -40,7 +40,6 @@ import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { SettingsPage } from "../../../src/dashboard/surfaces/settings/settings.js";
 import { buildSettingsNav } from "../../../src/dashboard/surfaces/settings/settings-model.js";
-import { DEFAULT_CATALOG_VIEW } from "../../../src/dashboard/surfaces/settings/catalog/row-catalog-model.js";
 
 class MeasurementFreeResizeObserver {
   observe(): void {}
@@ -144,12 +143,6 @@ async function mount(
   const element = createElement(DashboardClientProvider, {
     client,
     children: createElement(SettingsPage, { onClose: () => undefined,
-      // D295: the catalog is a Settings section now. No render here opens it,
-      // so these carry the section's defaults rather than a fixture nothing reads.
-      catalogQuery: "",
-      catalogView: DEFAULT_CATALOG_VIEW,
-      onCatalogQuery: () => undefined,
-      onCatalogView: () => undefined,
       storage: HEALTHY_STORAGE,
       sections,
       workflowLabels: LABELS,

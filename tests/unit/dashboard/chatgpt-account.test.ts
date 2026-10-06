@@ -49,7 +49,8 @@ describe("General ChatGPT account", () => {
     assert.equal(document.querySelector('[role="dialog"]'), null);
     assert.equal(document.querySelectorAll('input[type="password"],input[name="token"],input[name="apiKey"]').length, 0);
     assert.equal(port.getSnapshot().state, "connected");
-    assert.match(host?.textContent ?? "", /Using ChatGPT plan/u);
+    assert.match(host?.textContent ?? "", /jordan.lee@example\.com/u);
+    assert.doesNotMatch(host?.textContent ?? "", /Using ChatGPT plan|Preview/u);
     assert.equal(document.activeElement, host?.querySelector(`a[href="${CHATGPT_USAGE_URL}"]`));
   });
 
@@ -65,7 +66,8 @@ describe("General ChatGPT account", () => {
     assert.equal(host?.querySelector(`a[href="${CHATGPT_USAGE_URL}"]`), null);
     await click("Continue with ChatGPT");
     assert.equal(document.querySelector('[role="dialog"]'), null);
-    assert.match(host?.textContent ?? "", /Using ChatGPT plan/u);
+    assert.match(host?.textContent ?? "", /jordan.lee@example\.com/u);
+    assert.doesNotMatch(host?.textContent ?? "", /Using ChatGPT plan|Preview/u);
     const usage = host?.querySelector<HTMLAnchorElement>(`a[href="${CHATGPT_USAGE_URL}"]`);
     assert.ok(usage);
     assert.equal(usage.target, "_blank");
@@ -81,7 +83,8 @@ describe("General ChatGPT account", () => {
     const storageBefore = { local: localStorage.length, session: sessionStorage.length };
     await act(async () => { await port.signIn({ usePlan: true }); });
     await mount(port);
-    assert.match(host?.textContent ?? "", /Using ChatGPT plan/u);
+    assert.match(host?.textContent ?? "", /jordan.lee@example\.com/u);
+    assert.doesNotMatch(host?.textContent ?? "", /Using ChatGPT plan|Preview/u);
     assert.deepEqual({ local: localStorage.length, session: sessionStorage.length }, storageBefore);
     assert.equal(createPreviewChatGptAccountPort().getSnapshot().state, "signed-out");
   });

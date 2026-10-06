@@ -46,7 +46,7 @@ describe("canonical workspace rail", () => {
     assert.equal(navbarShiftDay("2026-12-31", 1), "2027-01-01");
     assert.equal(navbarShiftMonth("2026-12", 1), "2027-01");
     assert.equal(navbarMonthLabel("2026-09"), "September 2026");
-    assert.equal(navbarDayLabel("2026-09-26"), "Sat, Sep 26");
+    assert.equal(navbarDayLabel("2026-09-26"), "09/26/2026");
     for (const [key, expected] of [["ArrowLeft", "2026-09-22"], ["ArrowRight", "2026-09-24"], ["ArrowUp", "2026-09-16"], ["ArrowDown", "2026-09-30"], ["Home", "2026-09-20"], ["End", "2026-09-26"]]) assert.equal(navbarCalendarKey("2026-09-23", key), expected);
     assert.equal(navbarCalendarKey("2026-03-31", "PageUp"), "2026-02-28");
     assert.equal(navbarCalendarKey("2024-01-31", "PageDown"), "2024-02-29");

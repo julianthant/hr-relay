@@ -21,7 +21,7 @@ export function SessionPanel({ catalog, open, onOpenChange, settingsOpen, onSett
     return { ...worker, workflow: registration.label };
   }) } : data, [data, catalog]);
   return <SessionsView data={display} open={open} onOpenChange={onOpenChange} workflows={catalog}
-    onControl={commands.control} operations={commands.operations} onCheck={commands.check}
+    idleCountdowns={commands.idleCountdowns} onControl={commands.control} operations={commands.operations} onCheck={commands.check}
     settingsOpen={settingsOpen} onSettings={onSettings}
     onAdd={commands.add} />;
 }

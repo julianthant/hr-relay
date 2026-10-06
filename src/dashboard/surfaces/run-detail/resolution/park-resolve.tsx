@@ -182,7 +182,7 @@ export function InlineParkedWrite({
             options={options.map(option => ({ value: option.key, label: option.label, description: option.detail }))} />
         </DialogBody>
         <DialogFooter>
-          <Button variant="secondary" onClick={() => setReviewOpen(false)}>Cancel</Button>
+          <Button variant="muted" onClick={() => setReviewOpen(false)}>Cancel</Button>
           <Button variant="primary" disabled={action === undefined} onClick={() => {
             if (action === undefined) return;
             setReviewOpen(false);

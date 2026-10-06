@@ -3,13 +3,20 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { WorkflowMockReview } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-review.js";
 import { mockOperationValue } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-operation-model.js";
-import { approveMockRun, initialMockDraft, mockRunLog, mockRunsForDraft } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
+import { approveMockRun, initialMockDraft, mockRunLog, mockRunsForDraft, seedMockRuns } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
 import { editReviewRecord, reviewRecords, reviewValue, seedReviewRecords, updateMockReview } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-review-model.js";
 import { reviewFieldBlocks, reviewFieldGroups, reviewSourcePages } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-review-source-model.js";
-import { OCR_DOCUMENT_FIXTURES } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-document-model.js";
+import { documentSourcePages, OCR_DOCUMENT_FIXTURES } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-document-model.js";
 
 const preparation = () => mockRunsForDraft("emergency-contact", { ...initialMockDraft("emergency-contact"), files: [{ name: "contact.pdf", size: 1024, digest: "fixture" }] }, 1);
 describe("OCR source comparison and corrected handoff", () => {
+  it("presents extracted oath dates with four-digit years without changing the source image", () => {
+    const run = seedMockRuns().find(run => run.id === "mock:oath-signature:sample:ocr")!;
+    const markup = renderToStaticMarkup(createElement(WorkflowMockReview, { run, sourcePages: { "person-1": documentSourcePages(run.draft, reviewRecords(run)[0])! }, onChange: () => {}, onRestore: () => {} }));
+    expect(markup).toContain('value="04/27/2026"'); expect(markup).toContain('value="04/23/2026"');
+    expect(markup).not.toContain('value="04/27/26"'); expect(markup).not.toContain('value="4-23-26"');
+    expect(markup).toContain('single-oath-1.webp');
+  });
   it("accepts source image URLs separately from the extracted field response", () => {
     const run = preparation()[1];
     const markup = renderToStaticMarkup(createElement(WorkflowMockReview, { run, sourcePages: { "person-1": [{ page: 1, imageUrl: "/retained/source-page-1.png" }] }, onChange: () => {}, onRestore: () => {} }));

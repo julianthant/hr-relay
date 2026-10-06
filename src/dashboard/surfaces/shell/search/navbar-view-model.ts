@@ -1,3 +1,4 @@
+import { formatCalendarDate } from "../../../lib/date-format.js";
 import type { NotificationDestination } from "../../notifications/notifications-view-model.js";
 import type { ShellView } from "../top-bar-model.js";
 
@@ -15,7 +16,7 @@ function dateValue(day: string): Date {
   return date;
 }
 export function navbarDayLabel(day: string): string {
-  return new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" }).format(dateValue(day));
+  dateValue(day); return formatCalendarDate(day);
 }
 export function navbarShiftDay(day: string, amount: number): string {
   const date = dateValue(day);

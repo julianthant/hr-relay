@@ -32,12 +32,13 @@ import { dsClip, dsFocus, dsIcon, dsMotion, dsRadius, dsText } from "../theme/to
  * ====================================================================== */
 
 /**
- * Seven variants, and the choice is semantic, not decorative:
+ * Button variants, and the choice is semantic, not decorative:
  *   primary   — the ONE affirmative action on a surface (Approve, Run, Save)
  *   brand     — the product-level launch CTA (`Start a run`). A NEUTRAL solid
  *               (`--ds-brand-solid-*`), so the queue toolbar CTA is neither the
  *               near-white fill of every dialog primary nor a status hue.
  *   secondary — a real alternative to primary (Cancel, Back, Skip)
+ *   muted     — subdued filled dismissal beside an affirmative action
  *   outline   — a peer action in a group of equals (toolbar, filters)
  *   ghost     — a tertiary action that must not compete (Details, Copy)
  *   danger    — an irreversible write (Delete, Terminate). Never the default.
@@ -74,6 +75,10 @@ const buttonVariants = cva(
           "bg-[var(--ds-control-bg)] text-[color:var(--ds-control-fg)]",
           "border-[color:var(--ds-border-strong)]",
           "hover:bg-[var(--ds-control-bg-hover)]",
+        ),
+        muted: cn(
+          "bg-[var(--ds-surface-3)] text-[color:var(--ds-fg-secondary)] border-transparent",
+          "hover:bg-[var(--ds-surface-selected)] hover:text-[color:var(--ds-fg)]",
         ),
         outline: cn(
           "bg-transparent text-[color:var(--ds-fg-secondary)]",

@@ -23,7 +23,7 @@ it("browses independently and retains a usable tab stop across empty months", as
     assert.equal(host.querySelector('[aria-label="Back"]'), null);
     assert.equal(host.querySelector('[aria-label="Forward"]'), null);
     assert.equal(host.querySelector('[title="Run count unavailable"]'), null);
-    assert.deepEqual(dateSegments(), ['9', '26', '2026']);
+    assert.deepEqual(dateSegments(), ['09', '26', '2026']);
     await click(button("Choose date"));
     assert.match(document.activeElement?.getAttribute("aria-label") ?? "", /Saturday, September 26, 2026/);
     await act(async () => document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true, cancelable: true }))); await settle();
@@ -31,9 +31,9 @@ it("browses independently and retains a usable tab stop across empty months", as
     assert.equal(calendarTabStops(), 1);
     assert.equal(dateCell("Sunday, September 27, 2026").getAttribute("aria-disabled"), "true");
     await click(button("Previous month")); assert.match(document.body.textContent ?? "", /August 2026/); assert.equal(calendarTabStops(), 1);
-    assert.deepEqual(dateSegments(), ['9', '26', '2026']);
-    await click(dateCell("Thursday, August 20, 2026")); assert.deepEqual(dateSegments(), ['8', '20', '2026']); assert.equal(host.querySelector('[title="Run count unavailable"]'), null); assert.equal(document.querySelector('[role="dialog"]'), null);
-    await click(button("Choose date")); await click(button("Today")); assert.deepEqual(dateSegments(), ['9', '26', '2026']); assert.equal(host.querySelector('[aria-label="Forward"]'), null);
+    assert.deepEqual(dateSegments(), ['09', '26', '2026']);
+    await click(dateCell("Thursday, August 20, 2026")); assert.deepEqual(dateSegments(), ['08', '20', '2026']); assert.equal(host.querySelector('[title="Run count unavailable"]'), null); assert.equal(document.querySelector('[role="dialog"]'), null);
+    await click(button("Choose date")); await click(button("Today")); assert.deepEqual(dateSegments(), ['09', '26', '2026']); assert.equal(host.querySelector('[aria-label="Forward"]'), null);
     assert.equal(fetch.mock.calls.length, 0);
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });

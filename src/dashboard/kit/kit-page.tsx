@@ -358,7 +358,7 @@ function ActionsSection() {
         <Button variant="primary" icon={<Play aria-hidden className="size-3.5" />}>
           Run
         </Button>
-        <Button variant="secondary">Cancel</Button>
+        <Button variant="muted">Cancel</Button>
         <Button variant="outline" icon={<Upload aria-hidden className="size-3.5" />}>
           Upload
         </Button>
@@ -1059,7 +1059,7 @@ function FormsSection() {
           description="This key will no longer be available to use."
         >
           <DialogFooter>
-            <Button variant="secondary" onClick={() => setPendingKey(null)}>Cancel</Button>
+            <Button variant="muted" onClick={() => setPendingKey(null)}>Cancel</Button>
             <Button variant="danger" onClick={() => {
               setKeys((current) => current.filter((key) => key.id !== pendingKey));
               setPendingKey(null);

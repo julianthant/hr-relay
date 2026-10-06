@@ -176,7 +176,7 @@ export function PreflightReportContent({ preflight, onRerun, presentation = "com
     {previousMessage !== undefined && <Banner tone="warning" title="Previous result">{previousMessage} Run preflight for current readiness.</Banner>}
     {displayed !== undefined && <>
       <span className={cn(dsText.meta, "break-words text-[color:var(--ds-fg-muted)]")}>
-        Last checked <time dateTime={displayed.report.checkedAt}>{displayed.report.checkedAt}</time>
+        Last checked <time dateTime={displayed.report.checkedAt}>{fmtInstantDay(displayed.report.checkedAt)} {fmtClock(displayed.report.checkedAt)}</time>
       </span>
       <div className="settings-preflight-list">
         {displayed.checks.map(check => <div key={check.id} className="settings-preflight-item">

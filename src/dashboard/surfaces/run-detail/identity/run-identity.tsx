@@ -464,7 +464,7 @@ function RenameDialogBody({
           />
         }
       >
-        <Button variant="secondary" onClick={onCancel}>
+        <Button variant="muted" onClick={onCancel}>
           Cancel
         </Button>
         <Button variant="primary" disabled={problem !== undefined} title={problem} onClick={submit}>

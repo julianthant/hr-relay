@@ -1,6 +1,6 @@
 import { useContext, useEffect, useRef, useState } from "react";
 import { ExternalLink } from "lucide-react";
-import { Badge, Banner, BodySection, Button, ButtonLink, FormGroup, ResultRow, Skeleton, dsIcon } from "../../../ds/ui.js";
+import { Banner, BodySection, Button, ButtonLink, FormGroup, ResultRow, Skeleton, dsIcon } from "../../../ds/ui.js";
 import { LoadingRegion, SkeletonText } from "../../shared/loading/loading.js";
 import { CHATGPT_USAGE_URL, ChatGptAccountContext, useChatGptAccount, type ChatGptAccountPort } from "./chatgpt-account-model.js";
 
@@ -45,12 +45,12 @@ export function ChatGptAccountSettings({ port: override }: { port?: ChatGptAccou
   const connected = account.state === "connected";
   const plan = connected ? account.planUsage : undefined;
   const label = connected ? account.name : account.state === "expired" ? "Sign in again" : "Use your ChatGPT plan";
-  const description = connected ? <><span className="block break-all">{account.email}</span><span className="block">{plan === "enabled" ? "Using ChatGPT plan" : plan === "limit-reached" ? "Usage limit reached" : "ChatGPT plan access not enabled"}</span></>
+  const description = connected ? <><span className="block break-all">{account.email}</span>{plan !== "enabled" && <span className="block">{plan === "limit-reached" ? "Usage limit reached" : "ChatGPT plan access not enabled"}</span>}</>
     : account.state === "expired" ? "Your ChatGPT session expired." : "Sign in to use your plan for OCR.";
   return <BodySection title="ChatGPT account">
     <FormGroup label="ChatGPT account"><div ref={region} data-settings-path="chatgpt.account">
       {account.state === "loading" ? <LoadingRegion label="Loading ChatGPT account"><ResultRow controlWidth="wide" label={<SkeletonText className="w-40" />} description={<SkeletonText className="w-60" />} value={<Skeleton className="h-[var(--ds-h-body-control)] w-48 rounded-[var(--ds-radius-body-control)]" />} /></LoadingRegion>
-        : <ResultRow controlWidth="wide" label={<span className="inline-flex flex-wrap items-center gap-2">{label}{port.mode === "preview" && <Badge tone="neutral">Preview</Badge>}</span>} description={description}
+        : <ResultRow controlWidth="wide" label={label} description={description}
           value={<div className="flex flex-wrap items-center justify-end gap-2">
             {connected && plan !== "disabled" && <ButtonLink variant={plan === "limit-reached" ? "primary" : "secondary"} href={CHATGPT_USAGE_URL} target="_blank" rel="noopener noreferrer" iconAfter={<ExternalLink aria-hidden className={dsIcon.sm} />}>Manage usage</ButtonLink>}
             {(!connected || plan === "disabled") && <Button variant="secondary" disabled={pending !== undefined} loading={pending === "sign-in"} onClick={() => { void perform("sign-in"); }}>Continue with ChatGPT</Button>}

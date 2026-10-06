@@ -55,7 +55,7 @@ describe("Activity volume chart model", () => {
 
   it("keeps all seven formatted day labels when they fit and preserves both endpoints when they do not", () => {
     const oneWeek = volumeForRange("2026-09-20", "2026-09-26", (index) => index + 1);
-    const fitted = createActivityVolumeChartModel(oneWeek, 360);
+    const fitted = createActivityVolumeChartModel(oneWeek, 640);
     const crowded = createActivityVolumeChartModel(oneWeek, 160);
     assert.equal(fitted.state, "complete");
     assert.equal(crowded.state, "complete");
@@ -175,7 +175,7 @@ describe("Activity volume chart model", () => {
     const daily = createActivityVolumeChartModel(volumeForRange("2026-09-22", "2026-09-23"), 280);
     assert.equal(daily.state, "complete");
     if (daily.state === "complete") {
-      assert.equal(daily.buckets[0]?.intervalLabel, "Sep 22");
+      assert.equal(daily.buckets[0]?.intervalLabel, "09/22/2026");
       assert.match(daily.buckets[0]?.accessibleLabel ?? "", /^Interval \[2026-09-22T00:00:00\.000-07:00, 2026-09-23T00:00:00\.000-07:00\) in America\/Los_Angeles: 0 runs$/u);
     }
   });

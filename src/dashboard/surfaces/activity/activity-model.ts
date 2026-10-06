@@ -1,3 +1,4 @@
+import { formatCalendarDate } from "../../lib/date-format.js";
 /**
  * The activity report's range vocabulary — the one shape the URL carries.
  *
@@ -284,25 +285,13 @@ export function applyActivityRangeDraft(draft: ActivityRangeDraft): ActivityRang
   return buildActivityRangeModel({ from: draft.from, to: draft.to });
 }
 
-function compactActivityDate(value: string, includeYear: boolean): string {
-  const date = parseActivityCalendarDate(value);
-  if (date === null) throw new RangeError("activityCompactRangeLabel: date must be a valid YYYY-MM-DD report-calendar date");
-  return new Date(date.utcMilliseconds).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    ...(includeYear ? { year: "numeric" } : {}),
-    timeZone: "UTC",
-  });
-}
-
 /** Compact, unambiguous heading label for the exact applied report-calendar dates. */
 export function activityCompactRangeLabel(range: ActivityDateRange): string {
   const from = parseActivityCalendarDate(range.from);
   const to = parseActivityCalendarDate(range.to);
   if (from === null || to === null || range.from > range.to) throw new RangeError("activityCompactRangeLabel: range must contain valid ordered dates");
-  if (range.from === range.to) return compactActivityDate(range.from, true);
-  const sameYear = from.year === to.year;
-  return `${compactActivityDate(range.from, !sameYear)} – ${compactActivityDate(range.to, true)}`;
+  if (range.from === range.to) return formatCalendarDate(range.from);
+  return `${formatCalendarDate(range.from)} – ${formatCalendarDate(range.to)}`;
 }
 
 export type ActivityPeriod = "today" | "week" | "month" | "custom";

@@ -1,7 +1,8 @@
+import { displayExtractedDate, formatInstantDate } from "../../lib/date-format.js";
 import type { Fill, Workbook } from 'exceljs';
 import { parse } from 'csv-parse/browser/esm/sync';
 import type { SpreadsheetColumnBinding } from './spreadsheet-fields-model.js';
-import { spreadsheetValueMatches } from './spreadsheet-fields-model.js';
+import { spreadsheetField, spreadsheetValueMatches } from './spreadsheet-fields-model.js';
 
 export type SheetCell = Readonly<{ value: string | number | boolean | Date | null; fill?: Fill; background?: string }>;
 export type SheetRow = Readonly<{ id: string; cells: readonly SheetCell[] }>;
@@ -59,6 +60,12 @@ export function spreadsheetForeground(background: string | undefined): string | 
 export function cellText(cell: SheetCell): string {
   return cell.value instanceof Date ? cell.value.toISOString().slice(0, 10) : cell.value === null ? '' : String(cell.value);
 }
+export function cellDisplayText(cell: SheetCell, fieldId?: string | null): string {
+  if (cell.value instanceof Date) return formatInstantDate(cell.value, 'UTC');
+  const text = cellText(cell);
+  return fieldId && spreadsheetField(fieldId).type === 'date' ? displayExtractedDate(text) : text;
+}
+
 export function columnName(index: number): string {
   let value = index + 1, result = '';
   while (value > 0) { value -= 1; result = String.fromCharCode(65 + value % 26) + result; value = Math.floor(value / 26); }

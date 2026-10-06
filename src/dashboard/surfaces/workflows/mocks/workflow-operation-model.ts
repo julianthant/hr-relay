@@ -1,3 +1,4 @@
+import { displayExtractedDate } from "../../../lib/date-format.js";
 import type { MockRun } from "./workflow-mock-model.js";
 import { MOCK_FORM_TYPES, type MockStep, type MockWorkflowId } from "./workflow-mock-catalog.js";
 import { mockInputRecord, reviewRecords, reviewValue, seedReviewRecords } from "./workflow-review-model.js";
@@ -100,10 +101,6 @@ export const MOCK_OPERATION_CATALOG: Readonly<Record<MockWorkflowId, Readonly<Re
   },
 };
 
-function usDate(value: string): string {
-  if (!/^\d{4}-\d{2}-\d{2}$/u.test(value)) return value;
-  const [year, month, day] = value.split("-"); return `${month}/${day}/${year}`;
-}
 export function mockOperationValue(run: MockRun, value: string): string {
   if (!/^\$[a-z]/u.test(value)) return value;
   const original = seedReviewRecords(run)[0], record = run.workflowId === "ocr" ? original : mockInputRecord(run), field = (key: string) => reviewValue(record, key) || "—";
@@ -111,19 +108,19 @@ export function mockOperationValue(run: MockRun, value: string): string {
     employeeId: run.role === "person" ? field("employeeId") : /^\d{5,}$/u.test(run.subject) && run.workflowId !== "separations" ? run.subject : field("employeeId"),
     subject: run.subject, name: `${field("firstName")} ${field("lastName")}`, firstName: field("firstName"), lastName: field("lastName"),
     sourceName: `${reviewValue(original, "firstName")} ${reviewValue(original, "lastName")}`, sourceEmployeeId: reviewValue(original, "employeeId"),
-    email: run.subject.includes("@") ? run.subject : "jordan.lee@example.com", effectiveDate: usDate(run.draft.effectiveDate),
+    email: run.subject.includes("@") ? run.subject : "jordan.lee@example.com", effectiveDate: displayExtractedDate(run.draft.effectiveDate),
     hireType: run.draft.hireType === "rehire" ? "Rehire" : "New hire", existingPerson: run.draft.hireType === "rehire" ? field("employeeId") : "No match",
     hireTemplate: run.draft.hireType === "rehire" ? "UC_CONC_HIRE" : "UC_FULL_HIRE", hireReason: run.draft.hireType === "rehire" ? "Concurrent Hire - Non Dual Emp" : "Hire - No Prior UC Affiliation",
-    hireComments: run.draft.hireType === "rehire" ? `Concurrent Hire as Dining Student Effective ${usDate(run.draft.effectiveDate)}. PCN DEMO-POS-001. Job number #DEMO-REC-001.` : `New Dining Student Hire Effective ${usDate(run.draft.effectiveDate)}. Job number #DEMO-REC-001.`,
-    profileId: run.draft.dryRun ? "1000001 · unsaved placeholder" : "DEMO-I9-001", workStudyComments: `Updated pool id to F per work study award ${usDate(run.draft.effectiveDate)}`,
+    hireComments: run.draft.hireType === "rehire" ? `Concurrent Hire as Dining Student Effective ${displayExtractedDate(run.draft.effectiveDate)}. PCN DEMO-POS-001. Job number #DEMO-REC-001.` : `New Dining Student Hire Effective ${displayExtractedDate(run.draft.effectiveDate)}. Job number #DEMO-REC-001.`,
+    profileId: run.draft.dryRun ? "1000001 · unsaved placeholder" : "DEMO-I9-001", workStudyComments: `Updated pool id to F per work study award ${displayExtractedDate(run.draft.effectiveDate)}`,
     pdf: run.draft.files.map(file => file.name).join(", "), formType: run.parentWorkflowId === "onbase" ? run.draft.documentType : MOCK_FORM_TYPES.find(item => item.value === run.draft.formType)?.label ?? run.draft.formType, sourcePage: String(record.page),
     documentType: run.draft.documentType, documentName: run.draft.documentType === "Emergency Contact" ? "EMERGENCY CONTACT INFORMATION" : run.draft.documentType.toUpperCase(),
     roster: run.draft.formType === "i9" ? "Action History" : "Onboarding Roster", rosterMode: run.draft.roster === "download" ? "Fresh SharePoint download" : "Registered local workbook",
     recordCount: String(reviewRecords(run).length), approvedCount: String(run.approvedCount ?? 0), approval: run.approved ? "Approved" : "Waiting for review",
-    signedDate: usDate(field("dateSigned")),
+    signedDate: displayExtractedDate(field("dateSigned")),
     contactName: field("contactName"), relationship: field("relationship"), phone: field("cellPhone"), sameAddress: field("sameAddress") === "true" ? "Yes" : "No",
     street: field("street"), city: field("city"), state: field("state"), zip: field("zip"), country: field("country"), section1: field("section1"), section2: field("section2"),
-    reportStart: usDate(run.draft.startDate), reportEnd: usDate(run.draft.endDate),
+    reportStart: displayExtractedDate(run.draft.startDate), reportEnd: displayExtractedDate(run.draft.endDate),
   };
   const result = values[value.slice(1)];
   if (result === undefined) throw new Error(`MOCK_OPERATION_VALUE_UNKNOWN: ${value}`);

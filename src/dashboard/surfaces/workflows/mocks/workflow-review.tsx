@@ -1,3 +1,4 @@
+import { displayExtractedDate } from "../../../lib/date-format.js";
 import { useViewState } from "../../../app/navigation/view-route-model.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus, ZoomIn, ZoomOut, Maximize } from "lucide-react";
@@ -48,10 +49,10 @@ function ReviewRecordCard({ run, record, original, pages, onChange, onFocus }: {
   const renderField = (item: ReviewField) => {
     const { wide, multiline } = reviewFieldPresentation(item);
     const changed = original?.fields.find(field => field.key === item.key)?.value !== item.value;
-    if (readOnly || item.readOnly) return <dl key={item.key} className={cn("m-0 min-w-0", wide && "col-span-full")}><dt className="text-caption text-ui-muted">{item.label}</dt><dd className="m-0 mt-1 whitespace-pre-wrap break-words text-body">{item.kind === "boolean" ? item.value === "true" ? "Yes" : "No" : item.value || "—"}</dd></dl>;
+    if (readOnly || item.readOnly) return <dl key={item.key} className={cn("m-0 min-w-0", wide && "col-span-full")}><dt className="text-caption text-ui-muted">{item.label}</dt><dd className="m-0 mt-1 whitespace-pre-wrap break-words text-body">{item.kind === "boolean" ? item.value === "true" ? "Yes" : "No" : (item.kind === "date" ? displayExtractedDate(item.value) : item.value) || "—"}</dd></dl>;
     if (item.kind === "boolean") return <Checkbox key={item.key} label={item.label} checked={item.value === "true"} onCheckedChange={value => update(item.key, String(value === true))} />;
     return <Field key={item.key} className={wide ? "col-span-full" : undefined} label={<span className="inline-flex flex-wrap items-center gap-x-2">{item.label}{changed && original && <span className="text-caption font-normal text-ui-info">Edited</span>}</span>}>
-      {item.kind === "relationship" ? <Select aria-label={item.label} value={item.value} onChange={event => update(item.key, event.target.value)}>{!REVIEW_RELATIONSHIPS.includes(item.value) && <option value={item.value}>{item.value || "Unspecified"}</option>}{REVIEW_RELATIONSHIPS.map(value => <option key={value} value={value}>{value}</option>)}</Select> : multiline ? <Textarea aria-label={item.label} name={item.key} rows={2} value={item.value} onChange={event => update(item.key, event.target.value)} /> : <Input aria-label={item.label} name={item.key} spellCheck={item.key === "employeeId" ? false : undefined} type="text" value={item.value} onChange={event => update(item.key, event.target.value)} />}
+      {item.kind === "relationship" ? <Select aria-label={item.label} value={item.value} onChange={event => update(item.key, event.target.value)}>{!REVIEW_RELATIONSHIPS.includes(item.value) && <option value={item.value}>{item.value || "Unspecified"}</option>}{REVIEW_RELATIONSHIPS.map(value => <option key={value} value={value}>{value}</option>)}</Select> : multiline ? <Textarea aria-label={item.label} name={item.key} rows={2} value={item.value} onChange={event => update(item.key, event.target.value)} /> : <Input aria-label={item.label} name={item.key} spellCheck={item.key === "employeeId" ? false : undefined} type="text" placeholder={item.kind === "date" ? "MM/DD/YYYY" : undefined} value={item.kind === "date" ? displayExtractedDate(item.value) : item.value} onChange={event => update(item.key, event.target.value)} />}
     </Field>;
   };
   return <section aria-label={`Record ${record.id}`} data-review-record-id={record.id} onFocusCapture={onFocus} className="grid min-w-0 grid-cols-[minmax(0,3fr)_minmax(0,2fr)] overflow-hidden rounded-lg border border-ui-stroke bg-ui-panel">

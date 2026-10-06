@@ -68,7 +68,7 @@ describe('compact run headers', () => {
       assert.match(host.textContent ?? '', /No matching actions/);
       const review = [...host.querySelectorAll('button')].find(button => button.textContent === 'Review'); assert(review);
       await act(async () => { review.click(); await new Promise(resolve => setTimeout(resolve, 40)); });
-      assert.equal(document.activeElement?.textContent, 'Employee match'); assert.equal(scroll.mock.calls.length, 1); assert.equal(decision.mock.calls.length, 0);
+      assert.equal(document.activeElement?.textContent, 'Employee match'); assert.equal(scroll.mock.calls.length, 0); assert.equal(decision.mock.calls.length, 0);
       assert.equal(host.querySelector('[aria-label="Run context"]'), null);
       assert.equal(host.querySelector('h2')?.textContent, 'Jordan');
       assert.doesNotMatch(host.querySelector('header')?.textContent ?? '', /PL00000001|Attempt #|Elapsed/);

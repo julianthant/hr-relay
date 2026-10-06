@@ -72,7 +72,7 @@ export function RoutesSection({ editor }: { editor: ReturnType<typeof useEditabl
       <DialogContent size="sm" hideClose className="ds-body-overlay" title={`Remove ${removal?.label ?? "onboarding roster URL"}?`}
         description={removal?.hasSaved ? "The stored URL will be removed from the protected store." : "This unsent value will be removed from the editor. No write will be sent."}
         onCloseAutoFocus={event => { if (removeTrigger.current?.isConnected) { event.preventDefault(); removeTrigger.current.focus(); } removeTrigger.current = null; }}>
-        <DialogFooter><Button variant="secondary" onClick={() => setRemoval(null)}>Cancel</Button>
+        <DialogFooter><Button variant="muted" onClick={() => setRemoval(null)}>Cancel</Button>
           <Button variant="danger" onClick={() => { if (removal === null) return; if (removal.hasSaved) credentials.clear(rosterName); else credentials.reset(rosterName); setRemoval(null); }}>Remove URL</Button></DialogFooter>
       </DialogContent>
     </Dialog>

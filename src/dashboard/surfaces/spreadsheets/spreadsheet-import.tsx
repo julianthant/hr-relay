@@ -84,6 +84,6 @@ export function SpreadsheetImportDialog({ open, onOpenChange, existing, onRegist
         <div className="flex shrink-0 items-center justify-between gap-3 text-caption text-ui-muted">{view === "mapping" ? <><span>{sheet.mapping.filter(field => field !== NOT_MAPPED && field !== WORKBOOK_ONLY).length} of {sheet.columns.length} columns mapped</span><span>Search uses all mapped data</span></> : <><span>{sheet.name} · {MOCK_ROSTER_ROWS.length} records</span><span>Headers at row {sheet.headerRow}</span></>}</div>
       </DialogBody>
     </div>
-    <DialogFooter meta={<span className="text-caption text-[color:var(--ds-fg-muted)]"><strong className="text-ui-primary">{type.name}</strong> · {sheets.length} sheets</span>}><Button variant="secondary" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="primary" disabled={errors.length > 0 || !name.trim()} onClick={finish}>{existing ? "Save mappings" : `Import ${type.name.toLowerCase()}`}</Button></DialogFooter>
+    <DialogFooter meta={<span className="text-caption text-[color:var(--ds-fg-muted)]"><strong className="text-ui-primary">{type.name}</strong> · {sheets.length} sheets</span>}><Button variant="muted" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="primary" disabled={errors.length > 0 || !name.trim()} onClick={finish}>{existing ? "Save mappings" : `Import ${type.name.toLowerCase()}`}</Button></DialogFooter>
   </DialogContent></Dialog>;
 }

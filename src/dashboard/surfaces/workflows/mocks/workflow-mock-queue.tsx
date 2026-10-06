@@ -53,7 +53,7 @@ export function WorkflowMockQueue({ label, runs, allRuns, selected, onSelect, on
         focusRemainingRow();
       }}>
         <DialogBody>{pendingDelete && <p className="m-0 text-body text-ui-secondary">Remove this run and {mockDeletionIds(allRuns, pendingDelete.id).length - 1} linked runs from the queue.</p>}</DialogBody>
-        <DialogFooter><Button onClick={() => setPendingDelete(undefined)}>Cancel</Button><Button variant="danger" onClick={() => { if (!pendingDelete) return; deleted.current = true; onDelete(mockDeletionIds(allRuns, pendingDelete.id)); setPendingDelete(undefined); }}>Delete</Button></DialogFooter>
+        <DialogFooter><Button variant="muted" onClick={() => setPendingDelete(undefined)}>Cancel</Button><Button variant="danger" onClick={() => { if (!pendingDelete) return; deleted.current = true; onDelete(mockDeletionIds(allRuns, pendingDelete.id)); setPendingDelete(undefined); }}>Delete</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   </div>;

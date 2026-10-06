@@ -262,7 +262,7 @@ function Scrim({ layer, entered, slow }: { layer: string; entered: boolean; slow
  *   <DialogContent title="Approve 12 records" description="…">
  *     <DialogBody>…</DialogBody>
  *     <DialogFooter>
- *       <Button variant="secondary" onClick={…}>Cancel</Button>
+ *       <Button variant="muted" onClick={…}>Cancel</Button>
  *       <Button variant="primary" onClick={…}>Approve</Button>
  *     </DialogFooter>
  *   </DialogContent>
@@ -416,7 +416,7 @@ export function DialogFooter({
         // draws. It was `surface-2` + a full-strength border — a second answer
         // to "this sits back from the panel" living in a primitive, which is
         // the worst place for one to live: every consumer inherits it.
-        "border-[color:var(--ds-border-subtle)] bg-[var(--ds-recess-bg)]",
+        "border-[color:var(--ds-border-subtle)] bg-[var(--ds-recess-bg)] [border-end-start-radius:inherit] [border-end-end-radius:inherit]",
         meta ? "justify-between" : "justify-end",
         className,
       )}

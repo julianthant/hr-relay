@@ -16,7 +16,6 @@ import {
   type StorageDoctorWire,
 } from "../../../src/domain/dashboard/storage.js";
 import { ProtectedSettingsNameSchema } from "../../../src/domain/config/protected-settings.js";
-import { DEFAULT_CATALOG_VIEW } from "../../../src/dashboard/surfaces/settings/catalog/row-catalog-model.js";
 
 class MeasurementFreeResizeObserver {
   observe(): void {}
@@ -90,12 +89,6 @@ async function mountDoctor(report: StorageDoctorWire, fetchReport: () => Promise
       children: createElement(PreflightActionsProvider, {
         actions: { actorId: "local-operator", descriptorFingerprint: "a".repeat(64), showSettings: () => undefined, showSessions: () => undefined },
         children: createElement(SettingsPage, { onClose: () => undefined,
-        // D295: the catalog is a Settings section now. No render here opens it,
-        // so these carry the section's defaults rather than a fixture nothing reads.
-        catalogQuery: "",
-        catalogView: DEFAULT_CATALOG_VIEW,
-        onCatalogQuery: () => undefined,
-        onCatalogView: () => undefined,
         storage,
         sections: SECTIONS,
         workflowLabels: new Map<string, string>(),

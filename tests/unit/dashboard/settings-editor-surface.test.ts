@@ -12,7 +12,6 @@ import { StorageHealthSummaryWireSchema } from "../../../src/domain/dashboard/bo
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { SettingsPage } from "../../../src/dashboard/surfaces/settings/settings.js";
-import { DEFAULT_CATALOG_VIEW } from "../../../src/dashboard/surfaces/settings/catalog/row-catalog-model.js";
 import { settingInput } from "../../../src/dashboard/surfaces/settings/editor/settings-draft-model.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -52,8 +51,7 @@ describe("editable Settings surface", () => {
     } as unknown as DashboardClient;
     host = document.createElement("div"); document.body.append(host);
     await act(async () => { root = createRoot(host!); root.render(createElement(DashboardClientProvider, { client,
-      children: createElement(SettingsPage, { onClose: () => undefined, catalogQuery: "", catalogView: DEFAULT_CATALOG_VIEW,
-        onCatalogQuery: () => undefined, onCatalogView: () => undefined, storage: STORAGE, sections: [],
+      children: createElement(SettingsPage, { onClose: () => undefined, storage: STORAGE, sections: [],
         workflowLabels: new Map<string, string>(), section: "credentials", actorId: "local-operator",
         descriptorFingerprint: "d".repeat(64), preflight: [], onSection: () => undefined,
         onExitGuardChange: next => { guard = next; } }),
@@ -139,12 +137,6 @@ describe("editable Settings surface", () => {
       root.render(createElement(DashboardClientProvider, {
         client,
         children: createElement(SettingsPage, { onClose: () => undefined,
-          // D295: the catalog is a Settings section now. No render here opens it,
-          // so these carry the section's defaults rather than a fixture nothing reads.
-          catalogQuery: "",
-          catalogView: DEFAULT_CATALOG_VIEW,
-          onCatalogQuery: () => undefined,
-          onCatalogView: () => undefined,
           storage: STORAGE,
           sections: [],
           workflowLabels: new Map<string, string>(),
@@ -216,12 +208,6 @@ describe("editable Settings surface", () => {
       root.render(createElement(DashboardClientProvider, {
         client,
         children: createElement(SettingsPage, { onClose: () => undefined,
-          // D295: the catalog is a Settings section now. No render here opens it,
-          // so these carry the section's defaults rather than a fixture nothing reads.
-          catalogQuery: "",
-          catalogView: DEFAULT_CATALOG_VIEW,
-          onCatalogQuery: () => undefined,
-          onCatalogView: () => undefined,
           storage: STORAGE,
           sections: [],
           workflowLabels: new Map<string, string>(),
@@ -270,7 +256,6 @@ describe("editable Settings surface", () => {
     await act(async () => {
       root = createRoot(host as HTMLElement);
       root.render(createElement(DashboardClientProvider, { client, children: createElement(SettingsPage, { onClose: () => undefined,
-        catalogQuery: "", catalogView: DEFAULT_CATALOG_VIEW, onCatalogQuery: () => undefined, onCatalogView: () => undefined,
         storage: STORAGE, sections: [], workflowLabels: new Map<string, string>(), section: "general", actorId: "local-operator",
         descriptorFingerprint: "d".repeat(64), preflight: [], onSection: () => undefined,
       }) }));
@@ -308,10 +293,6 @@ describe("editable Settings surface", () => {
       root.render(createElement(DashboardClientProvider, {
         client,
         children: createElement(SettingsPage, { onClose: () => undefined,
-          catalogQuery: "",
-          catalogView: DEFAULT_CATALOG_VIEW,
-          onCatalogQuery: () => undefined,
-          onCatalogView: () => undefined,
           storage: STORAGE,
           sections: [],
           workflowLabels: new Map<string, string>(),
