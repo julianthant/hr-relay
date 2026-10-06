@@ -89,7 +89,7 @@ export interface SettingsNavEntry {
 
 
 export interface SettingsNavGroup {
-  readonly id: "personal" | "data" | "status" | "help";
+  readonly id: "personal" | "advanced" | "data" | "status" | "help";
   readonly heading: string;
   readonly entries: readonly SettingsNavEntry[];
 }
@@ -135,8 +135,6 @@ export function settingsCloseFocusTargetId(gearMounted: boolean): string {
 
 
 /**
- * The demo's three nav groups, minus the ones this build has no member for.
- *
  * The approved Settings page list stays available while the current editor
  * projection loads or fails. Each page still reads its values and edit
  * authority from the served projection; Status and Help remain independent.
@@ -146,16 +144,17 @@ export function buildSettingsNav(
   editor?: EditableSettingsWire,
 ): readonly SettingsNavGroup[] {
   const groups: SettingsNavGroup[] = [];
-  const entries = [
+  groups.push({ id: "personal", heading: "Personal", entries: [
     clientEntry("general", "General", "general"),
+    clientEntry("credentials", "Credentials", "general"),
+  ] });
+  groups.push({ id: "advanced", heading: "Advanced", entries: [
     clientEntry("performance", "Performance", "performance"),
     clientEntry("paths", "Paths", "paths"),
     clientEntry("routes", "Routes", "routes"),
-    clientEntry("credentials", "Credentials", "general"),
     ...(editor?.sections.filter(section => !EDITOR_SECTIONS.has(section.id) && !FOLDED_EDITOR_SECTIONS.has(section.id))
       .map(section => servedEntry(section.id, section.label)) ?? []),
-  ];
-  groups.push({ id: "personal", heading: "Personal", entries });
+  ] });
   groups.push({ id: "data", heading: "Data", entries: [
     clientEntry("spreadsheets", "Spreadsheets", "spreadsheets"),
     clientEntry("explorer", "Explorer", "explorer"),

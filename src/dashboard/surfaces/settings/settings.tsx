@@ -248,7 +248,7 @@ export function SettingsPage({
     return () => { element.removeEventListener("scroll", remember); };
   }, [activeId, searchTarget, searchVisit]);
   useSettingsSearchArrival(content, target, searchVisit, activeId, selectedResult?.label);
-  const settingsEntries = groups.find(group => group.id === "personal")?.entries ?? [];
+  const settingsEntries = groups.filter(group => group.id === "personal" || group.id === "advanced").flatMap(group => group.entries);
   const activeSettingsEditorSection = activeId !== undefined && settingsEntries.some(entry => entry.id === activeId);
   const totalDirty = (workbookDraft.dirty ? 1 : 0) + editor.dirtyCount + editor.protectedEditor.dirtyCount + editor.providerEditor.dirtyCount + editor.relocationEditor.dirtyCount;
   const providerUncertain = editor.providerEditor.save.state === "unconfirmed";

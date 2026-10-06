@@ -71,9 +71,10 @@ describe("canonical Settings navigation", () => {
   const document = fixtureSettingsDocument();
   const groups = buildSettingsNav(servedStatusSections, document);
 
-  it("serves the approved 11 pages under the four shared groups", () => {
+  it("serves the approved 11 pages under the five shared groups", () => {
     assert.deepEqual(groups.map(group => [group.heading, group.entries.map(entry => entry.id)]), [
-      ["Personal", ["general", "performance", "paths", "routes", "credentials"]],
+      ["Personal", ["general", "credentials"]],
+      ["Advanced", ["performance", "paths", "routes"]],
       ["Data", ["spreadsheets", "explorer", "activity"]],
       ["Status", ["storage", "preflight"]],
       ["Help", ["keyboard"]],
@@ -84,7 +85,8 @@ describe("canonical Settings navigation", () => {
   it("keeps the approved navigation while the editable settings projection is unavailable", () => {
     const unavailableGroups = buildSettingsNav(servedStatusSections);
     assert.deepEqual(unavailableGroups.map(group => [group.heading, group.entries.map(entry => entry.id)]), [
-      ["Personal", ["general", "performance", "paths", "routes", "credentials"]],
+      ["Personal", ["general", "credentials"]],
+      ["Advanced", ["performance", "paths", "routes"]],
       ["Data", ["spreadsheets", "explorer", "activity"]],
       ["Status", ["storage", "preflight"]],
       ["Help", ["keyboard"]],

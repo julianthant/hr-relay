@@ -4,6 +4,7 @@ import { SettingsSectionPrimitiveSchema } from "../../../src/domain/dashboard/bo
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
 import Excel from 'exceljs';
+import { readFileSync } from 'node:fs';
 import { DEFAULT_SHORTCUT_PREFERENCES, shortcutActionForEvent, shortcutChord, validateShortcutPreferences } from '../../../src/dashboard/surfaces/settings/navigation/keyboard-preferences-model.js';
 import { successfulRunSeconds } from '../../../src/dashboard/surfaces/activity/activity-duration-model.js';
 import { activitySample, ACTIVITY_SAMPLE_RANGE } from '../../../src/dashboard/surfaces/activity/activity-fixture.js';
@@ -77,6 +78,34 @@ describe('HR GPT presentation models', () => {
 });
 
 describe('XLSX / CSV editor round trips', () => {
+  it('imports color-filtered Excel tables with all records, fills and other sheets intact', async () => {
+    const source = bytes(readFileSync(new URL('./fixtures/color-filtered-roster.xlsx', import.meta.url)));
+    const original = new Uint8Array(source).slice();
+    await assert.rejects(new Excel.Workbook().xlsx.load(source), /Unexpected xml node in parseOpen.*colorFilter/u);
+    const document = await importSpreadsheet('color-filtered-roster.xlsx', source);
+    assert.deepEqual(document.sheets.map(sheet => sheet.name), ['Roster', 'Notes']);
+    const roster = document.sheets[0];
+    assert.deepEqual(roster.rows.map(row => row.cells.map(cell => cell.value)), [
+      ['Legal Name', 'Employee ID', 'Personal Email'],
+      ['Jordan Lee', '10000001', 'jordan@example.com'],
+      ['Taylor Chen', '10000002', 'taylor@example.com'],
+    ]);
+    assert.equal(roster.rows[1].cells[1].background, '#ffff00');
+    assert.equal(roster.rows[2].cells[1].background, '#00ff00');
+    assert.equal(document.sheets[1].rows[0].cells[0].value, 'Keep literal <autoFilter> text');
+    assert.deepEqual(new Uint8Array(source), original);
+    const copy = await importSpreadsheet('copy.xlsx', await spreadsheetXlsx(document));
+    assert.deepEqual(copy.sheets, document.sheets);
+  });
+  it('refuses malformed table XML rather than silently dropping invalid metadata', async () => {
+    const { default: JSZip } = await import('jszip');
+    const archive = await JSZip.loadAsync(readFileSync(new URL('./fixtures/color-filtered-roster.xlsx', import.meta.url)));
+    const table = archive.file('xl/tables/table1.xml');
+    assert(table);
+    archive.file(table.name, (await table.async('string')).replace('</autoFilter>', ''));
+    const data = await archive.generateAsync({ type: 'arraybuffer' });
+    await assert.rejects(importSpreadsheet('malformed.xlsx', data), /SPREADSHEET_TABLE_XML_INVALID/u);
+  });
   it('preserves CSV leading zeros, quoted commas, newlines and edited values', async () => {
     const source = 'Name,ID,Notes\r\n"Doe, Alex",00123,"Line one\nLine two"\r\nNguyen,00005,plain';
     const document = await importSpreadsheet('people.csv', new TextEncoder().encode(source).buffer);

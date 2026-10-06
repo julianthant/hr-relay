@@ -107,6 +107,46 @@ export function updateSpreadsheetFields(sheet: EditableSheet, rowId: string, val
     return update ? { ...cell, value: update.value } : cell;
   }) }) };
 }
+/** Imports retain all records; Excel's table filter rules are presentation metadata. */
+async function spreadsheetValueInput(data: ArrayBuffer): Promise<ArrayBuffer> {
+  const [{ default: JSZip }, { SaxesParser }] = await Promise.all([import('jszip'), import('saxes')]);
+  const archive = await JSZip.loadAsync(data);
+  let changed = false;
+  for (const entry of Object.values(archive.files).filter(file => /^xl\/tables\/[^/]+\.xml$/u.test(file.name))) {
+    const xml = await entry.async('string');
+    const ranges: { start: number; end: number }[] = [];
+    const parser = new SaxesParser({ xmlns: true });
+    let depth = 0, tagStart = 0, filterStart = 0;
+    let filterDepth: number | undefined;
+    parser.on('opentagstart', () => { tagStart = xml.lastIndexOf('<', parser.position - 1); });
+    parser.on('opentag', tag => {
+      depth++;
+      if (depth === 2 && tag.local === 'autoFilter' && tag.uri === 'http://schemas.openxmlformats.org/spreadsheetml/2006/main') {
+        filterStart = tagStart;
+        filterDepth = depth;
+      }
+    });
+    parser.on('closetag', () => {
+      if (depth === filterDepth) {
+        ranges.push({ start: filterStart, end: parser.position });
+        filterDepth = undefined;
+      }
+      depth--;
+    });
+    try { parser.write(xml).close(); }
+    catch (cause) { throw new Error('SPREADSHEET_TABLE_XML_INVALID', { cause }); }
+    if (!ranges.length) continue;
+    let cursor = 0;
+    const retained = ranges.map(range => {
+      const content = xml.slice(cursor, range.start);
+      cursor = range.end;
+      return content;
+    }).join('') + xml.slice(cursor);
+    archive.file(entry.name, retained);
+    changed = true;
+  }
+  return changed ? archive.generateAsync({ type: 'arraybuffer', compression: 'DEFLATE' }) : data;
+}
 export async function importSpreadsheet(name: string, data: ArrayBuffer): Promise<EditableWorkbook> {
   if (data.byteLength > 20 * 1024 * 1024) throw new Error('SPREADSHEET_TOO_LARGE: maximum file size is 20 MB.');
   if (/\.csv$/i.test(name)) {
@@ -118,7 +158,7 @@ export async function importSpreadsheet(name: string, data: ArrayBuffer): Promis
   if (!/\.xlsx$/i.test(name)) throw new Error('SPREADSHEET_FORMAT_UNSUPPORTED: choose XLSX or CSV.');
   const Excel = (await import('exceljs')).default;
   const workbook = new Excel.Workbook();
-  await workbook.xlsx.load(data);
+  await workbook.xlsx.load(await spreadsheetValueInput(data), { ignoreNodes: ['autoFilter'] });
   const themes = workbook.model.themes;
   let hasFormulas = false, total = 0;
   const sheets = workbook.worksheets.map(sheet => {
