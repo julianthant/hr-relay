@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { act,createElement,useState } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach,it } from "vitest";
+import { afterEach,beforeEach,it,vi } from "vitest";
 import { ArchiveWorkspace } from "../../../src/dashboard/surfaces/archive/archive.js";
 import { RuntimeArchiveWorkspace } from "../../../src/dashboard/surfaces/archive/archive-runtime.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
@@ -20,7 +20,8 @@ const BEFORE=SavedVersionIndexWireSchema.parse({appVersion:"0.1.0",workflows:[{w
 }]});
 const AFTER=SavedVersionIndexWireSchema.parse({...BEFORE,changes:BEFORE.changes.map(change=>({...change,state:"applied",completedRunIds:change.memberRunIds}))});
 let dispose:(()=>Promise<void>)|undefined;
-afterEach(async()=>{await dispose?.();dispose=undefined;document.body.replaceChildren();});
+beforeEach(()=>vi.stubGlobal("ResizeObserver",class { observe() {} unobserve() {} disconnect() {} }));
+afterEach(async()=>{await dispose?.();dispose=undefined;document.body.replaceChildren();vi.unstubAllGlobals();});
 const text=()=>document.body.textContent??"";
 const buttons=()=>[...document.querySelectorAll("button")];
 async function press(label:string) {

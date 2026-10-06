@@ -312,7 +312,7 @@ export function SettingsPage({
   return (
     <TakeoverFrame label="Settings" direction="row" animateFrame={false} className="settings-takeover">
       <nav aria-label="Settings sections" className="settings-panel-nav rail-scroll">
-        <header className="settings-nav-header"><Button size="sm" variant="ghost" icon={<ArrowLeft className={dsIcon.sm} />} onClick={() => requestExit(onClose)}>Back to dashboard</Button></header>
+        <header className="settings-nav-header"><h2>Settings</h2><IconButton label="Back to dashboard" size="sm" icon={<ArrowLeft className={dsIcon.md} />} onClick={() => requestExit(onClose)} /></header>
         <SearchInput ref={navSearch} aria-label="Search settings" placeholder="Search" value={navQuery} onChange={event => setNavQuery(event.target.value)} onClear={() => setNavQuery("")} className="settings-nav-search"
           aria-controls={navQuery.trim() ? "settings-search-results" : undefined}
           onKeyDown={event => {

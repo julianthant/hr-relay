@@ -3,10 +3,10 @@ import { useState } from "react";
 import { Check, ArrowLeft, ArrowRight, Play } from "lucide-react";
 import { BareButton, Banner, Button, Checkbox, ChoicePicker, DateInput, DialogBody, DialogFooter, Field, Input, Badge, MetaLine, SegmentedChoice, Textarea } from "../../../ds/ui.js";
 import { MOCK_FORM_TYPES, MOCK_ONBASE_TYPES, mockWorkflow, type MockWorkflowId } from "./workflow-mock-catalog.js";
-import { initialMockDraft, mockConfirmationFacts, mockDraftError, mockInputEntries, mockLaunchCount, mockSelectableSteps, mockOathDuplicate, mockRunStatus, mockStepState, type MockDraft, type MockFile, type MockRun } from "./workflow-mock-model.js";
+import { initialMockDraft, mockConfirmationFacts, mockDraftError, mockInputEntries, mockLaunchCount, mockSelectableSteps, mockOathDuplicate, mockStepState, type MockDraft, type MockFile, type MockRun } from "./workflow-mock-model.js";
 import "../../run-start/launch-presentation.css";
 import { cn } from "../../../lib/utils.js";
-import { RunConfirmLayout, RunOptionsLayout, RunSourceSummary, RunStepsList } from "../../run-start/run-launch-layout.js";
+import { RunConfirmLayout, RunOptionsLayout, RunStepsList } from "../../run-start/run-launch-layout.js";
 import { RunFlagChips } from "../../run-start/run-start-kit.js";
 import { WorkflowPdfInput } from "./workflow-pdf-input.js";
 
@@ -47,7 +47,6 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
   };
   return <>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      {source && <RunSourceSummary title={source.subject} facts={[{ label: "Workflow", value: flow.label }, { label: "Status", value: mockRunStatus(source) }]} />}
       <ol aria-label="Run configuration path" className="launch-stagebar m-0 list-none">
         {stages.map((name, position) => <li key={name} aria-current={name === stage ? "step" : undefined}><BareButton aria-label={`${position + 1} ${name}`} onClick={() => setStage(name)} disabled={position > index}>
           <span aria-hidden className="launch-stage-marker" data-current={name === stage || undefined} data-completed={position < index || undefined}>{position < index ? <Check className="size-3" aria-hidden /> : position + 1}</span><span className={cn("text-body", name === stage ? "font-semibold" : "text-ui-secondary")}>{name}</span></BareButton></li>)}

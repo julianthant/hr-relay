@@ -3,7 +3,7 @@ import { servedLaunchWorkflows, type WorkflowCatalogEntry } from "../workflows/w
 import "./launch-presentation.css";
 import { mockWorkflow, type MockWorkflowId } from "../workflows/mocks/workflow-mock-catalog.js";
 import { WorkflowMockRunForm } from "../workflows/mocks/workflow-mock-run.js";
-import { RunConfirmLayout, RunOptionsLayout, RunSourceSummary, RunStepsList } from "./run-launch-layout.js";
+import { RunConfirmLayout, RunOptionsLayout, RunStepsList } from "./run-launch-layout.js";
 import type { MockDraft, MockRun } from "../workflows/mocks/workflow-mock-model.js";
 import { RunWorkflowPicker } from "./run-start-picker.js";
 import type { RerunValuesSnapshot } from "../../../domain/dashboard/rerun-values.js";
@@ -455,6 +455,7 @@ export function RunStartDialog({
   const updateView = navigation?.update;
   const [localPreviewSelection, setLocalPreviewSelection] = useState(previewLaunch);
   const previewSelection = navigation ? previewLaunch : localPreviewSelection;
+  const previewOwnsStages = previewSelection !== undefined;
   const setPreviewSelection = useCallback((next: typeof previewLaunch) => {
     if (updateView) updateView({ launchWorkflow: next?.workflowId, launchSource: next?.source?.id });
     else setLocalPreviewSelection(next);
@@ -591,8 +592,9 @@ export function RunStartDialog({
   const launchStages = useMemo(() => runStartStages(customizeSteps, "typed", isRerun), [customizeSteps, isRerun]);
 
   useEffect(() => {
+    if (previewOwnsStages) return;
     setCurrentStage((current) => reconcileRunStartStage(launchStages, current));
-  }, [launchStages, setCurrentStage]);
+  }, [launchStages, setCurrentStage, previewOwnsStages]);
 
   /**
    * C109 (D272 item 8) — a plan, and the RESULT behind it, outlive nothing that
@@ -658,8 +660,8 @@ export function RunStartDialog({
     setPlan(null);
     setResult(null);
     setError(null);
-    setCurrentStage((current) => current === "Confirm" ? (isRerun ? "Values" : "Input") : current);
-  }, [requestFingerprint, isRerun, setCurrentStage]);
+    if (!previewOwnsStages) setCurrentStage((current) => current === "Confirm" ? (isRerun ? "Values" : "Input") : current);
+  }, [requestFingerprint, isRerun, setCurrentStage, previewOwnsStages]);
 
   /**
    * The typed box, so an exit from a settled banner can put the keyboard back
@@ -998,11 +1000,6 @@ export function RunStartDialog({
 
           {previewSelection && onSubmitPreview && previewRuns ? <WorkflowMockRunForm key={`${previewSelection.workflowId}:${previewSelection.source?.id ?? "start"}`} workflowId={previewSelection.workflowId} source={previewSelection.source} runs={previewRuns} initialDraft={previewDrafts.current.get(`${previewSelection.workflowId}:${previewSelection.source?.id ?? "start"}`)} onDraftChange={draft => previewDrafts.current.set(`${previewSelection.workflowId}:${previewSelection.source?.id ?? "start"}`, draft)} onClose={() => closeAndReset(false)} onSubmit={onSubmitPreview} /> : <>
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-            {isRerun && <RunSourceSummary title={rerunSource?.label ?? "Selected run"} facts={snapshot === null ? [] : [
-              { label: "Workflow", value: `${workflow?.label ?? snapshot.source.workflow} · ${versionTag(snapshot.source.descriptorVersion)}` },
-              { label: "Outcome", value: snapshot.source.outcome === "done" ? "Completed" : snapshot.source.outcome === "failed" ? `Failed${snapshot.steps.some(step => step.state === "failed") ? ` at ${stepLabel(snapshot.steps.find(step => step.state === "failed")!.key)}` : ""}` : "Interrupted" },
-              { label: "Progress", value: `${snapshot.steps.filter(step => step.state === "completed").length} / ${snapshot.steps.length} steps completed` },
-            ]} />}
             <ol aria-label="Run configuration path" className="launch-stagebar">
               {launchStages.map((stage, index) => {
                 const activeIndex = launchStages.findIndex(entry => entry.label === (currentStage === "Warning" ? "Steps" : currentStage));
