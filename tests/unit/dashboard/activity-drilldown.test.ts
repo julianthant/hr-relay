@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, it, vi } from 'vitest';
 import { ActivityReport } from '../../../src/dashboard/surfaces/activity/activity.js';
 import { ActivityDrilldown } from '../../../src/dashboard/surfaces/activity/activity-drilldown.js';
 import { activitySample, ACTIVITY_SAMPLE_RANGE } from '../../../src/dashboard/surfaces/activity/activity-fixture.js';
-import { activityDrilldown, nextActivitySort, ACTIVITY_RUN_PAGE_SIZE, type ActivityBrowse } from '../../../src/dashboard/surfaces/activity/activity-drilldown-model.js';
+import { activityDrilldown, activityOrderValue, setActivityOrder, ACTIVITY_RUN_PAGE_SIZE, type ActivityBrowse, type ActivitySelectionHandler } from '../../../src/dashboard/surfaces/activity/activity-drilldown-model.js';
 import { parseViewRoute } from '../../../src/dashboard/app/navigation/view-route-model.js';
 import { parseRoute, routeToSearch } from '../../../src/dashboard/app/navigation/url-state.js';
 
@@ -66,11 +66,11 @@ describe('Activity drilldown records and navigation', () => {
     assert.equal(untimed.state, 'loaded'); if (untimed.state === 'loaded') assert.equal(untimed.matches.length, 0);
   });
   it('bounds and validates public Activity coordinates in the existing history schema', () => {
-    const browse = { metric: 'timed', workflow: 'sample-separations', page: 1, run: 'activity-sample-4', sort: { column: 'duration', direction: 'descending' } } as const;
+    const browse = { metric: 'timed', workflow: 'sample-separations', page: 1, run: 'activity-sample-4', sort: { column: 'duration', direction: 'descending' }, query: 'Jordan' } as const;
     assert.deepEqual(parseViewRoute(JSON.stringify({ activityBrowse: browse })), { activityBrowse: browse });
     for (const invalid of [{ ...browse, metric: 'all' }, { ...browse, page: -1 }, { ...browse, subject: 'private draft' },
       { ...browse, sort: { column: 'status', direction: 'ascending' } }, { ...browse, sort: { column: 'name', direction: 'random' } },
-      { ...browse, sort: { column: 'duration', direction: 'ascending', subject: 'private draft' } }]) assert.equal(parseViewRoute(JSON.stringify({ activityBrowse: invalid })), null);
+      { ...browse, sort: { column: 'duration', direction: 'ascending', subject: 'private draft' } }, { ...browse, query: 'a'.repeat(501) }]) assert.equal(parseViewRoute(JSON.stringify({ activityBrowse: invalid })), null);
     const fixture = parseRoute('?settings=activity&activityPreview=empty');
     assert.equal(fixture.view?.activityPreview, 'empty');
     assert.equal(parseRoute(routeToSearch({ ...fixture, view: { ...fixture.view, activityBrowse: browse } })).view?.activityPreview, 'empty');
@@ -105,6 +105,31 @@ describe('Activity drilldown records and navigation', () => {
     assert(combined.every((row, index) => index === 0 || combined[index - 1].seconds! >= row.seconds!));
     assert.equal(combined[0].seconds, Math.max(...combined.map(row => row.seconds!)));
   });
+  it('filters all matching runs by name or exact identity before paging and retains ordering', () => {
+    const value = report();
+    const base: ActivityBrowse = { metric: 'timed', workflow: 'sample-separations', page: 1 };
+    const ordered = setActivityOrder(base, 'duration-descending');
+    assert.equal(ordered.page, 0); assert.equal(activityOrderValue(ordered), 'duration-descending');
+    assert.equal(activityOrderValue(setActivityOrder(ordered, 'default')), 'default');
+    assert.throws(() => setActivityOrder(base, 'unknown'), /ACTIVITY_ORDER_INVALID/);
+    const first = value.runs.find(row => row.workflowId === base.workflow && row.status === 'completed' && row.seconds !== null)!;
+    for (const query of [first.displayId.toLowerCase(), first.id]) {
+      const result = activityDrilldown(value.runs, { ...ordered, query });
+      if (result.state !== 'loaded') throw new Error('filtered-result-missing');
+      assert.deepEqual(result.rows, [first]); assert.equal(result.total, 24);
+    }
+    const selection = { ...ordered, query: '  JORDAN   lee  ' };
+    const result = activityDrilldown(value.runs, selection); if (result.state !== 'loaded') throw new Error('name-filter-missing');
+    assert(result.matches.length > 1); assert(result.matches.every(row => row.subject === 'Jordan Lee'));
+    assert(result.rows.every((row, index) => index === 0 || result.rows[index - 1].seconds! >= row.seconds!));
+    assert.equal(activityDrilldown(value.runs, { ...selection, run: value.runs.find(row => row.subject === 'Casey Rivera')!.id }).state, 'unavailable');
+    const empty = activityDrilldown(value.runs, { ...ordered, query: 'no such person' });
+    if (empty.state !== 'loaded') throw new Error('empty-filter-missing');
+    assert.equal(empty.rows.length, 0); assert.equal(empty.total, 24);
+    const unchanged = activityDrilldown(value.runs, { ...ordered, query: '   ' });
+    if (unchanged.state !== 'loaded') throw new Error('empty-query-missing');
+    assert.equal(unchanged.matches.length, 24);
+  });
   it('names the chosen workflow and only repeats facts that vary within the selected scope', async () => {
     const host = document.createElement('div'); document.body.append(host);
     const root = createRoot(host);
@@ -135,29 +160,29 @@ describe('Activity drilldown records and navigation', () => {
       }
     } finally { await act(async () => root.unmount()); host.remove(); }
   });
-  it('toggles header sorting, resets paging and retains keyboard focus and exact log coordinates', async () => {
+  it('uses a filter bar, leaves headers passive and retains search focus and exact log coordinates', async () => {
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host);
-    const value = report(); const onSelection = vi.fn<(next: ActivityBrowse | null) => void>();
-    const initial: ActivityBrowse = { metric: 'timed', workflow: 'sample-separations', page: 1 };
+    const value = report(); const onSelection = vi.fn<ActivitySelectionHandler>();
+    const initial: ActivityBrowse = { metric: 'timed', workflow: 'sample-separations', page: 1, sort: { column: 'name', direction: 'ascending' } };
     try {
       await act(async () => root.render(createElement(ActivityDrilldown, { report: value, selection: initial, onSelection })));
-      const duration = host.querySelector<HTMLButtonElement>('thead th:last-child button'); assert(duration);
-      duration.focus(); await act(async () => duration.click());
-      const sorted = nextActivitySort(initial, 'duration');
-      assert.deepEqual(sorted, { ...initial, page: 0, run: undefined, sort: { column: 'duration', direction: 'descending' } });
-      assert.deepEqual(onSelection.mock.calls[0], [sorted]);
-      await act(async () => root.render(createElement(ActivityDrilldown, { report: value, selection: sorted, onSelection })));
-      assert.equal(document.activeElement, duration);
-      assert.equal(host.querySelector('thead th:last-child')?.getAttribute('aria-sort'), 'descending');
-      assert.equal(host.querySelector('thead th:first-child')?.getAttribute('aria-sort'), 'none');
-      await act(async () => duration.click());
-      assert.deepEqual(onSelection.mock.calls[1], [nextActivitySort(sorted, 'duration')]);
-      assert.equal(nextActivitySort(sorted, 'duration').sort?.direction, 'ascending');
-      await act(async () => host.querySelector<HTMLButtonElement>('thead th:first-child button')!.click());
-      assert.deepEqual(onSelection.mock.calls[2], [nextActivitySort(sorted, 'name')]);
+      const input = host.querySelector<HTMLInputElement>('input[aria-label="Search runs"]'); assert(input);
+      assert(input.closest('.ds-search-field--toolbar'));
+      assert.equal(host.querySelectorAll('thead button, thead [aria-sort]').length, 0);
+      assert.equal(host.querySelector('[role="group"]')?.getAttribute('aria-label'), 'Run filters');
+      assert.equal(host.querySelector('[role="combobox"]')?.getAttribute('data-value'), 'name-ascending');
+      await act(async () => input.focus());
+      const searched: ActivityBrowse = { ...initial, query: 'Jordan', page: 0 };
+      await act(async () => root.render(createElement(ActivityDrilldown, { report: value, selection: searched, onSelection })));
+      assert.equal(document.activeElement, input); assert.equal(input.value, 'Jordan');
+      const result = activityDrilldown(value.runs, searched); if (result.state !== 'loaded') throw new Error('filtered-run-missing');
+      assert.match(host.querySelector('[role="status"]')?.textContent ?? '', new RegExp(`${result.matches.length} of 24 completed runs`));
       await act(async () => host.querySelector<HTMLButtonElement>('tbody button')!.click());
-      const result = activityDrilldown(value.runs, sorted); if (result.state !== 'loaded') throw new Error('sorted-run-missing');
-      assert.deepEqual(onSelection.mock.calls[3], [{ ...sorted, run: result.rows[0].id }]);
+      assert.deepEqual(onSelection.mock.calls[0], [{ ...searched, run: result.rows[0].id }]);
+      const empty = { ...searched, query: 'no such person' };
+      await act(async () => root.render(createElement(ActivityDrilldown, { report: value, selection: empty, onSelection })));
+      assert.match(host.textContent ?? '', /No runs match your search/);
+      assert.equal(host.querySelector('[role="combobox"]')?.getAttribute('data-value'), 'name-ascending');
     } finally { await act(async () => root.unmount()); host.remove(); }
   });
   it('opens a matching run and returns to its list and overview through mounted controls', async () => {

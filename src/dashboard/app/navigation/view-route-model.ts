@@ -23,7 +23,7 @@ export const ViewRouteSchema = z.object({
   keyboardQuery: z.string().max(500).optional(),
   preflightScope: identity.optional(), capabilitiesQuery: z.string().max(500).optional(),
   activityBrowse: z.object({ metric: z.enum(['completed', 'outstanding', 'failed', 'timed']), workflow: identity.optional(),
-    page: z.number().int().min(0).max(100000), run: identity.optional(),
+    page: z.number().int().min(0).max(100000), run: identity.optional(), query: z.string().max(500).optional(),
     sort: z.object({ column: z.enum(['name', 'duration']), direction: z.enum(['ascending', 'descending']) }).strict().optional() }).strict().nullable().optional(),
   activityPreview: z.enum(['normal', 'empty', 'incomplete', 'loading', 'unavailable']).optional(),
 }).strict();

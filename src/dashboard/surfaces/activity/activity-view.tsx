@@ -3,7 +3,7 @@ import { type ReactNode } from "react";
 import { BarChart3 } from "lucide-react";
 import { Select, PageHeading, dsFocus } from "../../ds/ui.js";
 import { ActivityBreadcrumbs, ActivityDrilldown } from './activity-drilldown.js';
-import type { ActivityBrowse } from './activity-drilldown-model.js';
+import type { ActivityBrowse, ActivitySelectionHandler } from './activity-drilldown-model.js';
 import { ActivitySkeleton } from "./activity-loading.js";
 import { ACTIVITY_DATE_PRESETS, type ActivityDatePreset, type ActivityDateRange } from "./activity-model.js";
 import { ActivityRange } from "./activity-range.js";
@@ -77,7 +77,7 @@ export function ActivityView({ data, range, rangeRevision = 0, period, onPreset,
   rangeRevision?: number;
   onPreset: (preset: ActivityDatePreset) => void; onRange: (range: ActivityDateRange) => void;
   onExport?: (format: "csv" | "xlsx") => void; notice?: string;
-  selection?: ActivityBrowse | null; onSelection?: (next: ActivityBrowse | null) => void;
+  selection?: ActivityBrowse | null; onSelection?: ActivitySelectionHandler;
 }) {
   return <section aria-label="Analytics report" className="settings-reference-page settings-data-section ui-theme-scope text-ui-primary">
     {selection && onSelection && data.state === 'loaded' && <ActivityBreadcrumbs report={data.report} selection={selection} onSelection={onSelection} />}

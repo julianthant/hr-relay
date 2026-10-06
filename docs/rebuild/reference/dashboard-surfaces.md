@@ -7852,16 +7852,18 @@ row identity, exact log access, pagination or URL/history owner. Full verificati
 remains in the selected run's logs. Evidence is `analytics-context-20261005`; backend reporting and
 frozen phase-exit gates remain deferred.
 
-The Analytics sorting amendment makes Name and Duration headers sortable through the existing DS
-`TH` primitive. Name starts ascending; Duration starts descending; repeated activation reverses the
-direction. Ordering applies to the complete matched population before the 20-row page slice. Unknown
-durations stay last in either direction, and ties retain a stable identity order. Sorting resets the
-page to zero and clears selected logs while preserving the metric and workflow. The optional bounded
-`activityBrowse.sort` column/direction coordinates restore through reload, Back/Forward, pagination
-and exact-run breadcrumbs; old routes without sorting retain their supplied order. Keyboard focus
-stays on the activated header, with `aria-sort` and direction glyphs. No filter control or backend
-reporting change is introduced. Evidence is `analytics-sort-20261005`; frozen phase-exit gates remain
-deferred to 3.1.19.
+The Analytics filter-bar amendment replaces sortable headers with passive Name and Duration headings.
+A compact bar above the table uses the shared toolbar SearchInput and Select for name/run-ID search
+and default, alphabetical or duration ordering. Search matches all case-insensitive terms across
+subject and exact IDs, within the selected metric/workflow population, before ordering and the
+20-row page slice. The count shows matched and total runs; a no-match search remains clearable.
+Unknown durations stay last in either direction, and identity ties remain stable. Controls reset
+to page zero and preserve focus. Optional bounded `activityBrowse.query` and existing sort coordinates
+restore through reload, pagination, exact logs, breadcrumbs and Back/Forward. Typing replaces the
+current history entry; picker and clear actions retain discrete navigation. Previous sorted routes
+resolve to the picker selection. The shared toolbar search variant matches Select height without
+changing default search consumers. Backend reporting is unchanged. Evidence is
+`analytics-filter-20261005`; frozen phase-exit gates remain deferred to 3.1.19.
 
 Local queue selection mode and Select menu items are retired. Archive applies
 immediately; Delete asks first and cancellation retains its served confirmation. Member check marks

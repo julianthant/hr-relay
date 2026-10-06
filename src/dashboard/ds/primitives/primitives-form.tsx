@@ -557,11 +557,11 @@ export function Switch({
 /** A search field with its icon and a clear control. Used by every list. */
 export const SearchInput = forwardRef<
   HTMLInputElement,
-  InputHTMLAttributes<HTMLInputElement> & { onClear?: () => void; shortcut?: ReactNode }
->(function SearchInput({ className, onClear, shortcut, value, defaultValue, disabled, readOnly, ...props }, ref) {
+  InputHTMLAttributes<HTMLInputElement> & { onClear?: () => void; shortcut?: ReactNode; variant?: 'field' | 'toolbar' }
+>(function SearchInput({ className, onClear, shortcut, variant = 'field', value, defaultValue, disabled, readOnly, ...props }, ref) {
   const field = useFieldControl();
   return (
-    <HeroSearchField className={cn("ds-search-field", className)} aria-label={props["aria-label"]}
+    <HeroSearchField className={cn("ds-search-field", variant === 'toolbar' && 'ds-search-field--toolbar', className)} aria-label={props["aria-label"]}
       value={value === undefined ? undefined : String(value)} defaultValue={defaultValue === undefined ? undefined : String(defaultValue)}
       isDisabled={disabled ?? field.disabled} isReadOnly={readOnly} isInvalid={field["aria-invalid"] || props["aria-invalid"] === true} onClear={onClear}>
       <HeroSearchField.Group>
