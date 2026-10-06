@@ -7940,8 +7940,9 @@ retained selections, Choose PDFs and per-file removal; roster selection follows 
 validation, asynchronous reading locks and source history remain intact. Backend contracts are
 unchanged. Evidence is `frontend-polish-20261005` and `frontend-final-20261005`; frozen phase-exit gates remain with 3.1.19.
 
-Local queue selection mode and Select menu items are retired. Archive applies
-immediately; Delete asks first and cancellation retains its served confirmation. Member check marks
+Local queue selection mode and Select menu items are retired. End-user Archive actions and the
+queue row context menu are retired; visible footer/outcome commands remain. Delete asks first,
+with its served confirmation retained. Member check marks
 are retired; the final log step has no divider. Command toasts show subject and clock without the local
 actor ID. Run/Rerun follows the approved Design 1 proportions, controls and flows exactly, as
 required on 2026-10-04; §9.7.1 owns the presentation measurements and source-value behavior.
@@ -8342,6 +8343,29 @@ dropped, and this table is how a citation to the old flat list resolves.
 - [ ] D13's `Re-upload` verb, and the OCR/packet surfaces D7/D8/D10/D17 describe (§9.3)
 - [!] D16's "no confirmation dialog" against the built confirm-first dialog — reconcile before `{#separations-compiled-acceptance}` closes
 > 2026-08-21 | docs-dash-surfaces 5.1c | verified against src/core/command-kernel.ts (`shape: "single"` at every enqueue), src/domain/dashboard/projection.ts (`ContainmentSchema`), src/dashboard/surfaces/{queue,queue-model}*, src/dashboard/ds/theme/tokens.css; left: the producer for every group-shaped fact in this section
+
+## Typed spreadsheet mappings and queue menu retirement — 2026-10-06
+
+The operator replaced imported free-text labels with catalog dropdowns. The frontend catalog reuses
+canonical intake IDs and explicitly names roster-only fields under `roster.*`. Known headers and
+unambiguous employee/transaction values suggest assignments; numeric I-9 IDs and email ownership
+are not guessed from value shape alone. The header row is detected and selectable. Kept columns
+require known, unique fields per sheet and valid nonblank values; unmapped columns must be assigned
+or deselected. Employee IDs are eight digits starting with 10, transaction numbers start with T,
+and I-9 profile IDs contain six or seven digits. Missing future roster values remain allowed.
+
+The imported copy excludes preamble and deselected data while preserving raw headers, typed cells,
+fills, row IDs and stable source-column bindings. Saved edits/mapping changes retain library identity.
+Inserted columns start unmapped. Frontend read/write helpers address stable fields and refuse invalid
+patches before changing any cell. Library persistence, OCR matching/person-lookup fallback and
+workflow roster writes remain backend work. These presentation constraints do not amend canonical
+backend coercion, transaction authority or schema migration policy.
+
+Queue right-click, double-click, Menu/Shift+F10 and `m` menu entry points are removed. Visible footer
+and outcome actions preserve served descriptor authority and preview behavior. Saved keyboard
+preferences discard only their retired menu binding. Generic ContextMenu components remain in the
+UI kit. Focused evidence is `spreadsheet-field-mapping-10003539`; frozen phase-exit gates remain with
+3.1.19.
 
 ## Run completion storage
 

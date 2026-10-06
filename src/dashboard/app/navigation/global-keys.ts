@@ -39,7 +39,7 @@ import { shortcutActionForEvent, useShortcutPreferences } from "../../surfaces/s
  *    the top level, minimise the Workflow Panel — is real and is bound below.
  */
 import { useEffect } from "react";
-import { openContextMenuFor, useDsModalOpen } from "../../ds/ui.js";
+import { useDsModalOpen } from "../../ds/ui.js";
 import type { PanelTab } from "../../surfaces/run-detail/log-panel-model.js";
 import type { WorkflowPanelMode } from "../../surfaces/shell/shell-model.js";
 
@@ -142,25 +142,6 @@ export function useGlobalKeys(bindings: GlobalKeyBindings): void {
       if (action === "start") {
         event.preventDefault();
         onStartRun();
-        return;
-      }
-
-      /**
-       * `m` — the selected row's FULL command set from the keyboard.
-       *
-       * The `⋯` button is gone and right-click replaced it, which on its own
-       * would put every command that is not in the footer behind a pointer. The
-       * platform's own Menu / Shift+F10 key already works (the browser
-       * dispatches `contextmenu` on the FOCUSED element and Radix's trigger
-       * answers it); `m` is the route that does not depend on the operator's
-       * keyboard having that key, and it works from the SELECTION rather than
-       * from focus. `openContextMenuFor` is the ds helper that exists for this
-       * and had no caller until now.
-       */
-      if (action === "menu") {
-        if (selectedRunId === undefined) return;
-        event.preventDefault();
-        openContextMenuFor(document.querySelector(`[data-demo-row-id="${selectedRunId}"]`));
         return;
       }
 

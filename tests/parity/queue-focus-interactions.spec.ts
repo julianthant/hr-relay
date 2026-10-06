@@ -7,13 +7,13 @@ import { FIXTURE_DAY } from './helpers/fixture-identity.js';
 import { FIXTURE_DAY_WIRE } from './helpers/fixture-queue.js';
 
 const failed = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.surfaceKind === 'single' && row.status === 'failed');
-if (failed === undefined) throw new Error('Focus verification requires a failed single-row fixture');
+if (failed === undefined) throw new Error('Focus verification requires a failed fixture with preview footer actions');
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   const evidence = `queue-focus-${theme.attribute}-${width}.a11y.yml`;
   test(`approved Focus queue and Run input @ ${theme.attribute} ${width}`, { annotation: [{ type: 'required-a11y-evidence', description: evidence }] }, async ({ page }, info) => {
     ensureParityBundle();
-    const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: 'working-tree' } });
+    const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: 'working-tree' }, dayWire: { ...FIXTURE_DAY_WIRE, queueSurfaces: FIXTURE_DAY_WIRE.queueSurfaces.map(row => row.runId === failed.runId ? { ...row, actions: [] } : row) } });
     try {
       const writes: string[] = [], errors: string[] = [];
       page.on('request', request => { if (request.method() !== 'GET') writes.push(`${request.method()} ${new URL(request.url()).pathname}`); });
@@ -57,24 +57,24 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const source = page.locator(`[data-demo-row-id="${failed.runId}"]`);
       await expect(source).toBeVisible();
       await source.dblclick();
-      const menu = page.getByRole('menu');
-      for (const label of ['Retry', 'Archive', 'Delete']) await expect(menu.getByRole('menuitem', { name: label, exact: true })).toBeVisible();
-      await expect(menu.getByRole('menuitem', { name: 'Select', exact: true })).toHaveCount(0);
-      await menu.getByRole('menuitem', { name: 'Retry', exact: true }).click();
+      await expect(page.getByRole('menu')).toHaveCount(0);
+      await source.focus(); await page.keyboard.press('Shift+F10');
+      await expect(page.getByRole('menu')).toHaveCount(0);
+      await source.click({ button: 'right' });
+      await expect(page.getByRole('menu')).toHaveCount(0);
+      await source.getByRole('button', { name: 'Retry', exact: true }).click();
       await expect(page.getByText('1 run queued', { exact: true })).toBeVisible();
       await expect(page.getByRole('dialog', { name: /run/i })).toHaveCount(0); await expect(source).toHaveCount(0);
       await status.click(); await statuses.getByRole('menuitemcheckbox', { name: /^All / }).click(); await page.keyboard.press('Escape');
       const retried = rows.filter({ hasText: 'Mock retry queued with original settings' });
       await expect(retried).toHaveCount(1); await expect(retried).toContainText(`#${failed.attempt + 1}`);
       await retried.getByRole('button', { name: /^Attempts for/ }).click(); await expect(page.getByRole('menu', { name: /^Attempts for/ })).toContainText(`#${failed.attempt}`); await page.keyboard.press('Escape');
-      const another = rows.filter({ hasNotText: 'Mock retry queued with original settings' }).first();
-      await retried.focus(); await page.keyboard.press('Shift+F10'); await expect(menu.getByRole('menuitem', { name: 'Archive', exact: true })).toBeVisible(); await page.keyboard.press('Escape');
-      await another.click({ button: 'right' }); await menu.getByRole('menuitem', { name: 'Archive', exact: true }).click();
-      await expect(page.getByText('1 run archived', { exact: true })).toBeVisible(); await expect(page.getByRole('dialog')).toHaveCount(0);
-      await retried.click({ button: 'right' }); await menu.getByRole('menuitem', { name: 'Delete', exact: true }).click();
+      await retried.focus(); await page.keyboard.press('m');
+      await expect(page.getByRole('menu')).toHaveCount(0);
+      await retried.getByRole('button', { name: 'Delete', exact: true }).click();
       const confirmation = page.getByRole('dialog', { name: 'Delete this run?', exact: true }); await expect(confirmation).toBeVisible(); await expect(retried).toBeVisible();
       await confirmation.getByRole('button', { name: 'Keep run', exact: true }).click(); await expect(retried).toBeVisible();
-      await retried.click({ button: 'right' }); await menu.getByRole('menuitem', { name: 'Delete', exact: true }).click(); await confirmation.getByRole('button', { name: 'Delete run', exact: true }).click(); await expect(retried).toHaveCount(0);
+      await retried.getByRole('button', { name: 'Delete', exact: true }).click(); await confirmation.getByRole('button', { name: 'Delete run', exact: true }).click(); await expect(retried).toHaveCount(0);
       await page.reload(); await expect(source).toBeVisible(); await expect(page.getByRole('button', { name: 'Delete selected runs' })).toHaveCount(0);
 
       await start.click();

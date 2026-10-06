@@ -602,3 +602,17 @@ Completed runs still use the existing queue status/date filters and Logs. Stored
 historical report readers and transport contracts are retained, unmounted; unified historical search
 and upgrade migrations are not implemented by this frontend change. Focused evidence is
 `archive-page-retirement-10003539`. Frozen parity, coverage and phase-exit gates remain with 3.1.19.
+
+## Typed spreadsheet fields and queue menu retirement (2026-10-06)
+
+Imported column labels now use dropdowns from the shared canonical/roster field catalog. Header-row
+selection, source provenance, unique mappings, nonblank value validation and physical exclusion are
+verified with retained row/type/fill identity. Local registration/editing keeps stable field bindings
+and library identity; field-based read/write helpers are frontend seams, not backend execution.
+
+Queue ContextMenu and double-click/Menu/Shift+F10/m entry points are retired. Footer Retry/Delete,
+served Rerun/other descriptors, confirmation, focus, attempts and status filters remain. The previous
+queue-footer Archive specification is replaced by the same four theme/viewport cases for current
+footer geometry and menu absence. Its historical Archive assertions are retired under the operator's
+prior Archive removal. Generic kit primitives remain available. Focused evidence is
+`spreadsheet-field-mapping-10003539`; no frozen references are rewritten.

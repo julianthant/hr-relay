@@ -1,9 +1,11 @@
 import type { Fill, Workbook } from 'exceljs';
 import { parse } from 'csv-parse/browser/esm/sync';
+import type { SpreadsheetColumnBinding } from './spreadsheet-fields-model.js';
+import { spreadsheetValueMatches } from './spreadsheet-fields-model.js';
 
 export type SheetCell = Readonly<{ value: string | number | boolean | Date | null; fill?: Fill; background?: string }>;
 export type SheetRow = Readonly<{ id: string; cells: readonly SheetCell[] }>;
-export type EditableSheet = Readonly<{ id: string; name: string; rows: readonly SheetRow[]; width: number; hidden: readonly number[] }>;
+export type EditableSheet = Readonly<{ id: string; name: string; rows: readonly SheetRow[]; width: number; hidden: readonly number[]; headerRow?: number; sourceHeaderRow?: number; columnBindings?: readonly SpreadsheetColumnBinding[] }>;
 export type EditableWorkbook = Readonly<{ name: string; libraryId?: string; sheets: readonly EditableSheet[]; themes: Workbook['model']['themes']; hasFormulas: boolean }>;
 const MAX_CELLS = 100_000;
 const indexedColors = ['000000','FFFFFF','FF0000','00FF00','0000FF','FFFF00','FF00FF','00FFFF','000000','FFFFFF','FF0000','00FF00','0000FF','FFFF00','FF00FF','00FFFF','800000','008000','000080','808000','800080','008080','C0C0C0','808080','9999FF','993366','FFFFCC','CCFFFF','660066','FF8080','0066CC','CCCCFF','000080','FF00FF','FFFF00','00FFFF','800080','800000','008080','0000FF','00CCFF','CCFFFF','CCFFCC','FFFF99','99CCFF','FF99CC','CC99FF','FFCC99','3366FF','33CCCC','99CC00','FFCC00','FF9900','FF6600','666699','969696','003366','339966','003300','333300','993300','993366','333399','333333'];
@@ -63,7 +65,40 @@ export function columnName(index: number): string {
   return result;
 }
 export function newEditableWorkbook(): EditableWorkbook {
-  return { name: 'Untitled.xlsx', themes: [], hasFormulas: false, sheets: [{ id: 'sheet-1', name: 'Sheet 1', width: 3, hidden: [], rows: [{ id: 'header', cells: [{ value: 'Name' }, { value: 'Employee ID' }, { value: 'Notes' }] }, { id: 'row-1', cells: [{ value: '' }, { value: '' }, { value: '' }] }] }] };
+  return { name: 'Untitled.xlsx', themes: [], hasFormulas: false, sheets: [{ id: 'sheet-1', name: 'Sheet 1', width: 3, hidden: [], headerRow: 1, columnBindings: ['fullName', 'eid', 'roster.notes'].map((fieldId, column) => ({ id: `sheet-1:column:${column}`, sourceColumn: null, sourceHeader: ['Name', 'Employee ID', 'Notes'][column], fieldId, basis: 'manual' })), rows: [{ id: 'header', cells: [{ value: 'Name' }, { value: 'Employee ID' }, { value: 'Notes' }] }, { id: 'row-1', cells: [{ value: '' }, { value: '' }, { value: '' }] }] }] };
+}
+export function addSpreadsheetColumn(sheet: EditableSheet, title: string): EditableSheet {
+  if (!title.trim()) throw new Error('SPREADSHEET_COLUMN_TITLE_REQUIRED');
+  return { ...sheet, width: sheet.width + 1,
+    columnBindings: sheet.columnBindings ? [...sheet.columnBindings, { id: crypto.randomUUID(), sourceColumn: null, sourceHeader: title.trim(), fieldId: null, basis: 'unmapped' }] : undefined,
+    rows: sheet.rows.map((row, index) => ({ ...row, cells: [...row.cells, { value: index === 0 ? title.trim() : '' }] })),
+  };
+}
+function spreadsheetFieldColumn(sheet: EditableSheet, fieldId: string): number {
+  const columns = sheet.columnBindings?.flatMap((binding, column) => binding.fieldId === fieldId ? [column] : []) ?? [];
+  if (columns.length !== 1 || columns[0] >= sheet.width) throw new Error('SPREADSHEET_FIELD_BINDING_UNAVAILABLE');
+  return columns[0];
+}
+function spreadsheetDataRow(sheet: EditableSheet, rowId: string): SheetRow {
+  const rows = sheet.rows.slice(sheet.headerRow ?? 1).filter(row => row.id === rowId);
+  if (rows.length !== 1) throw new Error('SPREADSHEET_DATA_ROW_UNAVAILABLE');
+  return rows[0];
+}
+/** Read and write by stable fields, independently of column order or edited header text. */
+export function readSpreadsheetField(sheet: EditableSheet, rowId: string, fieldId: string): SheetCell['value'] {
+  return spreadsheetDataRow(sheet, rowId).cells[spreadsheetFieldColumn(sheet, fieldId)].value;
+}
+export function updateSpreadsheetFields(sheet: EditableSheet, rowId: string, values: Readonly<Record<string, SheetCell['value']>>): EditableSheet {
+  spreadsheetDataRow(sheet, rowId);
+  const updates = Object.entries(values).map(([fieldId, value]) => {
+    const column = spreadsheetFieldColumn(sheet, fieldId);
+    if (!spreadsheetValueMatches(fieldId, cellText({ value }))) throw new Error('SPREADSHEET_FIELD_VALUE_INVALID');
+    return { column, value };
+  });
+  return { ...sheet, rows: sheet.rows.map(row => row.id !== rowId ? row : { ...row, cells: row.cells.map((cell, column) => {
+    const update = updates.find(entry => entry.column === column);
+    return update ? { ...cell, value: update.value } : cell;
+  }) }) };
 }
 export async function importSpreadsheet(name: string, data: ArrayBuffer): Promise<EditableWorkbook> {
   if (data.byteLength > 20 * 1024 * 1024) throw new Error('SPREADSHEET_TOO_LARGE: maximum file size is 20 MB.');

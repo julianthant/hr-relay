@@ -29,11 +29,6 @@ export const DEMO_SHORTCUTS: DemoShortcut[] = [
   { keys: ["/"], what: "search runs — name, subject, trace id, run id or workflow", where: "Anywhere" },
   { keys: ["j", "k"], what: "move down / up the queue", where: "The queue" },
   { keys: ["n"], what: "jump to the next row waiting on you", where: "The queue" },
-  // The keyboard route to the row context menu. Right-click and the platform's
-  // own Menu / Shift+F10 key open the same menu; this one does not depend on
-  // the operator's keyboard having that key, and it works from the SELECTION
-  // rather than from focus.
-  { keys: ["m"], what: "every command on the selected row", where: "The queue" },
 ];
 
 /** the registry, in scope order, with empty scopes dropped */

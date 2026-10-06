@@ -7,20 +7,21 @@ export const SHORTCUT_ACTIONS = [
   { id: 'next', title: 'Next run', description: 'Move down the visible queue.', defaults: ['j', 'ArrowDown'] },
   { id: 'previous', title: 'Previous run', description: 'Move up the visible queue.', defaults: ['k', 'ArrowUp'] },
   { id: 'attention', title: 'Next run needing you', description: 'Jump to the next run waiting for a decision.', defaults: ['n'] },
-  { id: 'menu', title: 'Run actions', description: 'Open the action menu for the current run.', defaults: ['m'] },
 ] as const;
 export type ShortcutAction = typeof SHORTCUT_ACTIONS[number]['id'];
 export type ShortcutPreferences = Readonly<{ numberMode: 'runs' | 'workflows'; bindings: Readonly<Record<ShortcutAction, readonly string[]>> }>;
 export const DEFAULT_SHORTCUT_PREFERENCES: ShortcutPreferences = Object.freeze({ numberMode: 'runs', bindings: Object.freeze(Object.fromEntries(SHORTCUT_ACTIONS.map(action => [action.id, Object.freeze([...action.defaults])])) as Record<ShortcutAction, readonly string[]>) });
 const binding = z.array(z.string().min(1)).max(8);
-const schema = z.strictObject({ numberMode: z.enum(['runs', 'workflows']), bindings: z.strictObject({ search: binding, start: binding, next: binding, previous: binding, attention: binding, menu: binding }) });
+const schema = z.strictObject({ numberMode: z.enum(['runs', 'workflows']), bindings: z.strictObject({ search: binding, start: binding, next: binding, previous: binding, attention: binding }) });
 const storageKey = 'hr-gpt-shortcuts-v1';
 const listeners = new Set<() => void>();
 let cachedRaw: string | null = null;
 let cached: ShortcutPreferences = DEFAULT_SHORTCUT_PREFERENCES;
 
 export function validateShortcutPreferences(value: unknown): ShortcutPreferences {
-  const parsed = schema.parse(value);
+  const legacy = schema.extend({ bindings: schema.shape.bindings.extend({ menu: binding.optional() }) }).parse(value);
+  const { menu: _retiredMenu, ...bindings } = legacy.bindings;
+  const parsed = schema.parse({ ...legacy, bindings });
   const seen = new Set<string>();
   for (const keys of Object.values(parsed.bindings)) for (const chord of keys) {
     if (chord === 'Escape' || /^(Meta|Ctrl)\+[1-9]$/.test(chord)) throw new Error('This shortcut is reserved.');

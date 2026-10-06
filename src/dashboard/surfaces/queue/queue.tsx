@@ -43,14 +43,12 @@ import {
   dsSize,
   dsSurface,
   dsText,
-  openContextMenuFor,
 } from "../../ds/ui.js";
 import type { ActionDescriptorWire } from "../../../domain/dashboard/actions.js";
 import { isTerminalQueueStatus } from "../../../domain/dashboard/projection.js";
 import {
   FooterActions,
   OutcomeActionButton,
-  RowContextMenu,
   type DashboardActionHandler,
 } from "../shared/actions/actions.js";
 import { dayLabel, fmtClock, fmtElapsed, plural, runTiming } from "../shared/status/format.js";
@@ -468,9 +466,6 @@ function RowFooterLine({
           </span>
         )}
       </div>
-      {/* The frequent commands, inline. The full set is one right-click away —
-          there is no `⋯`, because a button whose only job is to admit there are
-          more buttons is a slot spent on every row in the queue. */}
       <div className="flex shrink-0 items-center gap-[var(--ds-space-hair)]">
         <FooterActions
           actions={actions}
@@ -479,7 +474,6 @@ function RowFooterLine({
           {...(onAction === undefined ? {} : { onAction })}
         />
       </div>
-      <span className="sr-only">{`Right-click or press m for every command on ${queueRowTitle(surface)}`}</span>
     </div>
   );
 }
@@ -916,23 +910,11 @@ export function QueueRow({
         onCheckedChange={() => onToggleBulk(surface.runId)}
         className="mt-[var(--ds-space-queue-top)] shrink-0"
       />}
-      <RowContextMenu
-        actions={actions}
-        target={target}
-        rowLabel={queueRowTitle(surface)}
-        {...(onAction === undefined ? {} : { onAction })}
-        {...(handlers.onSelectBulk === undefined ? {} : { onSelectRow: () => handlers.onSelectBulk?.(surface.runId) })}
-        {...(handlers.onPreviewAction === undefined ? {} : { onPreviewAction: (action: 'retry' | 'delete') => handlers.onPreviewAction?.(action, [surface.runId]) })}
-      >
         <div
           onClick={event => {
             if (event.detail > 1) return;
             if (state.selectMode === true) handlers.onToggleBulk?.(surface.runId);
             else handlers.onSelect(surface.runId);
-          }}
-          onDoubleClick={event => {
-            if ((event.target as HTMLElement).closest('button, input, a') !== null) return;
-            event.preventDefault(); openContextMenuFor(event.currentTarget);
           }}
           role="button"
           tabIndex={0}
@@ -951,9 +933,6 @@ export function QueueRow({
             // Nested controls keep native Enter/Space activation. Only the
             // focused row itself uses those keys to open its detail.
             if (event.target !== event.currentTarget) return;
-            if (event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey)) {
-              event.preventDefault(); openContextMenuFor(event.currentTarget); return;
-            }
             if (event.key === 'Escape' && state.selectMode === true) { event.preventDefault(); event.stopPropagation(); handlers.onExitSelection?.(); return; }
             if (event.key === "Enter" || event.key === " ") {
               event.preventDefault();
@@ -1148,7 +1127,6 @@ export function QueueRow({
             onSelect={handlers.onSelect}
           />
         </div>
-      </RowContextMenu>
     </div>
   );
 }

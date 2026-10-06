@@ -4,11 +4,12 @@ import { SpreadsheetEditor } from "./spreadsheet-editor.js";
 import { newEditableWorkbook, type EditableWorkbook } from "./spreadsheet-editor-model.js";
 import { useRef, useState, type RefObject } from "react";
 import { FileSpreadsheet, FolderOpen, Plus, X } from "lucide-react";
-import { Banner, Button, Dialog, DialogBody, DialogContent, DialogFooter, Field, IconButton, Input, PageHeading, SearchInput, Tab, TabList, TabPanel, Tabs, TableList, dsIcon, useToasts } from "../../ds/ui.js";
+import { Banner, Button, Dialog, DialogBody, DialogContent, DialogFooter, Field, IconButton, Input, PageHeading, SearchInput, Select, Tab, TabList, TabPanel, Tabs, TableList, dsIcon, useToasts } from "../../ds/ui.js";
 import { SpreadsheetImportDialog } from "./spreadsheet-import.js";
 import { SpreadsheetColumnImport } from "./spreadsheet-column-import.js";
 import { prepareSpreadsheetColumns, selectSpreadsheetColumns } from "./spreadsheet-column-import-model.js";
 import { ROSTER_FIELD_GROUPS } from "./spreadsheet-mock-data.js";
+import { SPREADSHEET_FIELDS, fieldForSpreadsheetHeader } from './spreadsheet-fields-model.js';
 import { addMockSpreadsheetType, initialSpreadsheetSheets, registeredSpreadsheetWorkbook, registerLocalSpreadsheet, retainSpreadsheetCopy, spreadsheetFields, useSpreadsheetMocks, type RegisteredSpreadsheet, type SpreadsheetType } from "./spreadsheet-mock-model.js";
 
 function SpreadsheetTypeDialog({ open, onOpenChange, type, returnFocus }: { open: boolean; onOpenChange: (open: boolean) => void; type?: SpreadsheetType; returnFocus: RefObject<HTMLButtonElement | null> }) {
@@ -34,10 +35,10 @@ function SpreadsheetTypeDialog({ open, onOpenChange, type, returnFocus }: { open
         <div className="flex items-center justify-between"><h3 className="text-body font-semibold">{type ? "Field" : "Fields"}</h3>{type ? <span className="text-caption text-ui-muted">Source column</span> : <Button variant="secondary" size="sm" onClick={() => setFields(current => [...current, ""])}>Add field</Button>}</div>
         {type ? <div className="flex flex-col gap-3">{fieldGroups.map(group => <section key={group.name ?? "fields"} aria-label={group.name ?? `${type.name} fields`} className="overflow-hidden rounded-[7px] border border-ui-stroke">
             {group.name && <div className="border-b border-ui-stroke bg-ui-table px-3 py-[7px] text-caption text-ui-muted">{group.name}</div>}
-            {group.fields.map(field => <div key={field} className="flex justify-between gap-3 border-b border-ui-stroke px-3 py-2 last:border-0"><strong className="text-body font-semibold">{field}</strong><span className="text-caption text-ui-muted">{sourceColumns.find(([mapped]) => mapped === field)?.[1]}</span></div>)}
+            {group.fields.map(field => <div key={field} className="flex justify-between gap-3 border-b border-ui-stroke px-3 py-2 last:border-0"><div><strong className="text-body font-semibold">{field}</strong><p className="text-caption text-ui-muted">{fieldForSpreadsheetHeader(field)?.format}</p></div><span className="text-caption text-ui-muted">{sourceColumns.find(([mapped]) => mapped === field)?.[1]}</span></div>)}
           </section>)}</div> : <div className="shrink-0 overflow-hidden rounded-[7px] border border-ui-stroke">{fields.map((field, index) => <div key={index} className="flex items-center gap-[9px] border-b border-ui-stroke px-[10px] py-[6px] last:border-0">
             <span aria-hidden className="w-[19px] shrink-0 text-caption text-ui-muted">{index + 1}</span>
-            <Input aria-label={`Field name ${index + 1}`} value={field} placeholder="Field name" className="h-8 min-w-0 flex-1" onChange={event => setFields(current => current.map((value, position) => position === index ? event.target.value : value))} />
+            <Select aria-label={`Dashboard field ${index + 1}`} value={field} className="h-8 min-w-0 flex-1" onChange={event => setFields(current => current.map((value, position) => position === index ? event.target.value : value))}><option value="">Choose a field</option>{SPREADSHEET_FIELDS.map(option => <option key={option.id} value={option.label}>{option.label}</option>)}</Select>
             <IconButton label={`Remove field ${index + 1}`} icon={<X aria-hidden className={dsIcon.sm} />} onClick={() => setFields(current => current.filter((_, position) => position !== index))} />
           </div>)}</div>}
       </section>
@@ -89,14 +90,22 @@ export function SpreadsheetsSettings({ workbook, workbookDirty, onWorkbook }: { 
   const confirmImport = () => {
     if (!pendingImport) throw new Error("SPREADSHEET_IMPORT_DRAFT_UNAVAILABLE");
     const document = selectSpreadsheetColumns(pendingImport);
-    const registered = registerLocalSpreadsheet(document);
+    const registered = registerLocalSpreadsheet(document, editingId);
     openDocument(registered.id); onWorkbook({ ...document, libraryId: registered.id }, false);
   };
   const visibleFiles = files.filter(file => `${file.name} ${types.find(type => type.id === file.typeId)?.name ?? ""}`.toLowerCase().includes(query.toLowerCase()));
   return <section aria-label="Spreadsheets" className="spreadsheet-workspace settings-reference-page min-w-0 text-body">
     <input ref={upload} disabled={busy || !!pendingImport} type="file" accept=".xlsx,.csv" aria-label="Open XLSX or CSV" className="sr-only" onChange={event => { const file = event.target.files?.[0]; if (file) void importFile(file); }} />
     {fileError && <Banner tone="danger" title="Spreadsheet unavailable">{fileError}</Banner>}
-    {selectedId !== null && !selected ? <Banner tone="danger" title="Spreadsheet unavailable"><p>This file is no longer registered.</p><Button onClick={() => setSelectedId(null)}>Open library</Button></Banner> : visibleWorkbook ? <SpreadsheetEditor key={selectedId ?? visibleWorkbook.name} document={visibleWorkbook} dirty={visibleWorkbook === workbook && workbookDirty} onDocument={documentChange} onMapping={selected && types.some(type => type.id === selected.typeId) ? () => { setEditingId(selected.id); navigation?.update({ spreadsheetImportView: "mapping" }); setImportOpen(true); } : undefined} /> : <>
+    {selectedId !== null && !selected ? <Banner tone="danger" title="Spreadsheet unavailable"><p>This file is no longer registered.</p><Button onClick={() => setSelectedId(null)}>Open library</Button></Banner> : visibleWorkbook ? <SpreadsheetEditor key={selectedId ?? visibleWorkbook.name} document={visibleWorkbook} dirty={visibleWorkbook === workbook && workbookDirty} onDocument={documentChange} onMapping={selected ? () => {
+      setEditingId(selected.id);
+      if (selected.typeId === 'local') {
+        const draft = { ...visibleWorkbook, libraryId: undefined };
+        onWorkbook(draft.sheets.every(sheet => sheet.columnBindings) ? draft : prepareSpreadsheetColumns(draft), true);
+        setImportView('columns');
+      } else setImportView('mapping');
+      setImportOpen(true);
+    } : undefined} /> : <>
       <PageHeading title="Spreadsheets" description="Manage files and reusable spreadsheet types." className="settings-heading-actions" actionAlignment="title" actions={tab === "registered" ? <>
         <Button variant="secondary" disabled={busy || !!pendingImport} icon={<Plus aria-hidden className={dsIcon.md} />} onClick={() => { const document = newEditableWorkbook(); const file = registerLocalSpreadsheet(document); openDocument(file.id); onWorkbook({ ...document, libraryId: file.id }, true); }}>New spreadsheet</Button>
         <Button ref={importTrigger} variant="primary" disabled={busy} icon={<FolderOpen aria-hidden className={dsIcon.md} />} onClick={() => { if (pendingImport) { setImportView("columns"); setImportOpen(true); } else upload.current?.click(); }}>{busy ? "Importing…" : pendingImport ? "Review import" : "Import spreadsheet"}</Button>

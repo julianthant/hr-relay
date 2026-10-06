@@ -6,7 +6,7 @@
  * callbacks provide fixture-only controls and never create command descriptors.
  *
  * Port scope: the run-action renderers (footer, banner, park resolutions,
- * outcome, context menu), the server-authored confirm dialog, and the result
+ * outcome), the server-authored confirm dialog, and the result
  * feedback split. `settleCommandResult` (D253) decides every command verdict;
  * applied settlements toast, while the two refusal settlements remain in the
  * bounded persistent feed with their exact server facts. The demo's `settling`
@@ -21,7 +21,7 @@
  * reach the wire at `src/domain/dashboard/actions.ts`. They had simply been
  * rendering as bare banner pills, dropping the served `detail` on the floor.
  */
-import { Fragment, useRef, type ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import {
   AlertTriangle,
   ArrowUpRight,
@@ -49,11 +49,6 @@ import {
 import {
   BareButton,
   Button,
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
   Dialog,
   DialogContent,
   DialogFooter,
@@ -445,82 +440,6 @@ export function OutcomeActionButton({
     >
       {action.label}
     </BareButton>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// The row's own commands, on the row — right-click, not a `⋯`
-// ---------------------------------------------------------------------------
-
-/**
- * Wraps a row so right-clicking it opens its full command set.
- *
- * WHY THIS REPLACED THE `⋯`. The overflow button was a control whose only job
- * was to admit there were more controls: it took a slot in every footer in the
- * queue, it named nothing, and it put the row's commands behind a 24px target.
- *
- * WHAT IS IN IT is not a client decision. The items are `actions[]` at the
- * `menu` placement, and the server sends every footer and outcome descriptor
- * with that placement too — so the menu is the row's FULL set, the footer is
- * the frequent subset of the same list, and a command the surface never sent is
- * structurally unreachable from either.
- *
- * The order is by KIND, which is the only grouping that survives a new
- * descriptor: go-somewhere first, do-something next, the one irreversible
- * command last behind a rule.
- */
-export function RowContextMenu({
-  actions,
-  target,
-  rowLabel,
-  onAction = NOOP_ACTION,
-  children,
-  onSelectRow,
-  onPreviewAction,
-}: {
-  actions: readonly ActionDescriptorWire[];
-  target: ActionTarget;
-  /** what the menu is FOR — the row's own name, for the menu's accessible label */
-  rowLabel: string;
-  onAction?: DashboardActionHandler;
-  children: ReactNode;
-  onSelectRow?: () => void;
-  onPreviewAction?: (action: 'retry' | 'delete') => void;
-}) {
-  const items = actionsAt(actions, "menu");
-  if (items.length === 0 && onSelectRow === undefined && onPreviewAction === undefined) return <>{children}</>;
-  const navigate = items.filter((a) => a.kind === "navigation");
-  const commands = items.filter((a) => a.kind === "command" && a.intent !== "destructive");
-  const destructive = items.filter((a) => a.kind === "command" && a.intent === "destructive");
-  const groups = [navigate, commands, destructive].filter((g) => g.length > 0);
-
-  return (
-    <ContextMenu modal={false}>
-      <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
-      <ContextMenuContent className="queue-row-menu" label={`Commands for ${rowLabel}`}>
-
-        {onPreviewAction !== undefined ? <>
-          <ContextMenuItem icon={<RotateCcw className={dsIcon.sm} />} onSelect={() => onPreviewAction('retry')}>Retry</ContextMenuItem>
-          <ContextMenuSeparator className="my-1 h-px bg-ui-stroke" />
-          <ContextMenuItem icon={<Trash2 className={dsIcon.sm} />} tone="destructive" onSelect={() => requestAnimationFrame(() => onPreviewAction('delete'))}>Delete</ContextMenuItem>
-        </> : groups.map((group, i) => (
-          <Fragment key={i}>
-            {i > 0 && <ContextMenuSeparator className={cn("my-[var(--ds-space-tight)] h-px", dsBorder.subtle, "border-t")} />}
-            {group.map((a) => (
-              <ContextMenuItem
-                key={a.key}
-                icon={ICONS[a.icon ?? "external"]}
-                tone={a.intent === "destructive" ? "destructive" : "neutral"}
-                hint={a.kind === "command" && a.confirm ? "asks first" : undefined}
-                onSelect={() => onAction(a, target)}
-              >
-                {a.label}
-              </ContextMenuItem>
-            ))}
-          </Fragment>
-        ))}
-      </ContextMenuContent>
-    </ContextMenu>
   );
 }
 
