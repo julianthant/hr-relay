@@ -30,7 +30,7 @@ export function RoutesSection({ editor }: { editor: ReturnType<typeof useEditabl
     <form className="routes-page-form" onSubmit={event => { event.preventDefault(); editor.submit(); }}>
       {document.runtimeStatus.state === "restart-required" && <Banner tone="warning" title="Restart required">Saved routes take effect after this dashboard restarts. This process still uses settings revision {String(document.runtimeStatus.active.settingsRevision)}.</Banner>}
       {editor.readProblem !== undefined && <Banner tone="warning" title="Current routes unavailable">{editor.readProblem} <Button size="sm" onClick={editor.reload}>Refresh current values</Button></Banner>}
-      <SettingsSaveFeedback save={editor.save} retry={editor.retry} retryConflict={editor.submit} />
+      <SettingsSaveFeedback save={editor.save} dirty={editor.dirtyCount > 0} restartRequired={editor.editor.state === "loaded" && editor.editor.document.runtimeStatus.state === "restart-required"} retry={editor.retry} retryConflict={editor.submit} />
       <SearchInput className="routes-page-search" aria-label="Find a system or route" placeholder="Search systems or routes" value={query} onClear={() => setQuery("")} onChange={event => setQuery(event.target.value)} />
       <div className="routes-page-list">
         {filtered.map(({ leaf, presentation }) => {

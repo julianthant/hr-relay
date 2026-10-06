@@ -26,7 +26,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenu
  * each is a fixed map over a closed served enum or a display-only subtraction
  * of two served instants — never a second opinion about what a run IS.
  */
-import { memo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { AlertTriangle, ArrowRight, ArrowUpRight, ChevronDown, ChevronUp, FileText } from "lucide-react";
 import { cn } from "../../lib/utils.js";
@@ -1218,8 +1218,8 @@ export const QueuePanel = memo(function QueuePanel({
   header?: ReactNode;
   renderBody?: (body: ReactNode) => ReactNode;
 }) {
-  const { top, membersOf } = partition(surfaces);
-  const { displayTop, itemByRunId } = queueItemLayout(top);
+  const { top, membersOf } = useMemo(() => partition(surfaces), [surfaces]);
+  const { displayTop, itemByRunId } = useMemo(() => queueItemLayout(top), [top]);
   const bands = queueDisplayGroups(displayTop, sort, state.nowIso);
 
   /**

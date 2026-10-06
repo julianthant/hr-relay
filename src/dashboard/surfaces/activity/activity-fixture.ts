@@ -1,3 +1,4 @@
+import { successfulWorkflowTimings } from "./activity-timing-model.js";
 import { ActivityVolumeSchema, buildActivityVolumeBoundarySkeleton } from "../../../domain/dashboard/activity-volume.js";
 import type { ActivityDateRange } from "./activity-model.js";
 import type { ActivityViewState } from "./activity-view-model.js";
@@ -17,6 +18,8 @@ const records = [5, 8, 7, 6, 9, 9].flatMap((count, day) => Array.from({ length: 
   instant: `2026-09-${21 + day}T${String(16 + index % 6).padStart(2, "0")}:00:00.000Z`,
 }))).map((record, index) => ({
   ...record,
+  id: `activity-sample-${index}`,
+  parentRunId: null,
   workflow: index < 29 ? "sample-separations" : "sample-person-lookup",
   status: index < 24 || index >= 29 && index < 43 ? "completed" : index === 28 ? "waiting" : index === 24 || index === 25 ? "failed" : "running",
   duration: index < 39 ? index === 0 ? 281 : index === 1 ? 74 : 134 : null,
@@ -29,6 +32,10 @@ export function activitySample(range: ActivityDateRange, scenario: ActivitySampl
   if (scenario === "loading") return { state: "loading" };
   if (scenario === "unavailable") return { state: "unavailable", reason: "The report is unavailable. Try another period or return later." };
   const rows = scenario === "empty" ? [] : records.filter(row => row.day >= range.from && row.day <= range.to);
+  const successfulTimings = successfulWorkflowTimings(rows.map(row => ({
+    id: row.id, workflowId: row.workflow, parentRunId: row.parentRunId,
+    status: row.status as 'completed' | 'failed' | 'running' | 'waiting', seconds: scenario === 'incomplete' ? null : row.duration,
+  })));
   const count = (status: string) => rows.filter(row => row.status === status).length;
   const completed = count("completed");
   const failed = count("failed");
@@ -51,11 +58,8 @@ export function activitySample(range: ActivityDateRange, scenario: ActivitySampl
       { id: "sample-person-lookup", label: "Person lookup", version: "2.0" },
     ].flatMap(workflow => {
       const group = rows.filter(row => row.workflow === workflow.id);
-      const successful = group.filter(row => row.status === "completed");
-      const timings = scenario === "incomplete" ? [] : successful.flatMap(row => row.duration === null ? [] : [row.duration]);
       return group.length ? [{ ...workflow, total: group.length, completed: group.filter(row => row.status === "completed").length,
-        successfulTiming: { totalSeconds: timings.length ? timings.reduce((total, seconds) => total + seconds, 0) : successful.length ? null : 0,
-          measured: timings.length, unmeasured: successful.length - timings.length },
+        successfulTiming: successfulTimings.get(workflow.id) ?? { totalSeconds: 0, measured: 0, unmeasured: 0 },
         failed: group.filter(row => row.status === "failed").length, outstanding: group.filter(row => row.status === "running" || row.status === "waiting").length }] : [];
     }),
     transactions: [

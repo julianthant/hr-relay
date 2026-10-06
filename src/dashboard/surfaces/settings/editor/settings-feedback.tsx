@@ -1,22 +1,10 @@
-import { useEffect, useState } from "react";
 import { Banner, Button, Refusal, dsText } from "../../../ds/ui.js";
 import type { SettingsSaveState } from "./settings-attempt-model.js";
-export function SettingsSaveFeedback({ save, protectedStore = false, name: explicitName, retry, retryConflict }: { save: SettingsSaveState; protectedStore?: boolean; name?: string; retry: () => void; retryConflict?: () => void }) {
-  const [showApplied, setShowApplied] = useState(true);
-  const appliedReplay = save.state === "applied" ? save.replayed : undefined;
-  useEffect(() => {
-    if (save.state !== "applied") {
-      setShowApplied(false);
-      return;
-    }
-    setShowApplied(true);
-    const timer = window.setTimeout(() => setShowApplied(false), 2200);
-    return () => window.clearTimeout(timer);
-  }, [appliedReplay, save.state]);
+export function SettingsSaveFeedback({ save, protectedStore = false, name: explicitName, retry, retryConflict, restartRequired = false, dirty = false }: { save: SettingsSaveState; protectedStore?: boolean; name?: string; retry: () => void; retryConflict?: () => void; restartRequired?: boolean; dirty?: boolean }) {
   const name = explicitName ?? (protectedStore ? "Credentials" : "Settings");
-  if (save.state === "idle") return null;
+  if (save.state === "idle") return dirty ? <span role="status" className={dsText.meta}>Unsaved changes</span> : null;
   if (save.state === "saving") return <span role="status" className={dsText.meta}>Saving…</span>;
-  if (save.state === "applied") return showApplied ? <span role="status" className={dsText.meta}>{appliedReplay ? "Already saved" : "Saved"}</span> : null;
+  if (save.state === "applied") return <span role="status" className={dsText.meta}>{save.replayed ? "Already saved" : "Saved"}{restartRequired ? " · Restart required" : ""}</span>;
   if (save.state === "refused") return <Refusal title={`${name} were not applied`} code={save.code ?? "settings-draft-invalid"}>{save.message}{retryConflict !== undefined && <span className="block"><Button size="sm" variant="secondary" onClick={retryConflict}>Retry edit</Button></span>}</Refusal>;
   const title = { unconfirmed: `${name} write unconfirmed`, conflict: `${name} changed` }[save.state];
   return <Banner tone="warning" title={title}>

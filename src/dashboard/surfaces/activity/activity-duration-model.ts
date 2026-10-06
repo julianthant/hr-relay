@@ -10,7 +10,10 @@ export function successfulRunSeconds(timing: SuccessfulRunTiming): number | null
 }
 
 export function workflowDurationChart(workflows: readonly ActivityWorkflow[]) {
-  const rows = workflows.map(workflow => ({ ...workflow, averageSeconds: successfulRunSeconds(workflow.successfulTiming) }))
+  const rows = workflows.map(workflow => {
+    if (workflow.successfulTiming.measured + workflow.successfulTiming.unmeasured !== workflow.completed) throw new Error('ACTIVITY_TIMING_COVERAGE_INVALID');
+    return { ...workflow, averageSeconds: successfulRunSeconds(workflow.successfulTiming) };
+  })
     .sort((left, right) => (right.averageSeconds ?? -1) - (left.averageSeconds ?? -1));
   const longest = Math.max(0, ...rows.map(row => row.averageSeconds ?? 0));
   const interval = [1, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600].find(seconds => seconds >= longest / 4)
