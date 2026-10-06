@@ -59,7 +59,7 @@
 .operation-actions > div + div { border-top: 1px solid var(--ds-border-subtle); }
 [data-operation-muted="true"] { opacity: 0.4; }
 .operation-source-region { display: contents; }
-.operation-source-return { position: sticky; top: var(--ds-panel-head-h,0px); z-index: 1; background: var(--ds-surface-1); padding: var(--ds-space-snug) var(--ds-space-cozy); }
+.operation-source-return { position: sticky; top: 0; z-index: 1; background: var(--ds-surface-1); padding: var(--ds-space-snug) var(--ds-space-cozy); }
 .explorer-secondary-definition { margin-top: var(--ds-space-section); border-top: 1px solid var(--ds-border-subtle); padding-top: var(--ds-space-base); }
 .explorer-secondary-definition > summary { cursor: pointer; margin-bottom: var(--ds-space-base); }
 

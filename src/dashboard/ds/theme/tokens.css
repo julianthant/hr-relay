@@ -2203,7 +2203,7 @@ body[data-demo-theme="light"] {
   border: 0;
   border-radius: min(32px, calc(var(--radius) * 2.5));
   box-shadow: var(--overlay-shadow);
-  font-family: var(--ds-font-ui);
+  font-family: var(--ds-font-body);
 }
 
 .ds-range-calendar {

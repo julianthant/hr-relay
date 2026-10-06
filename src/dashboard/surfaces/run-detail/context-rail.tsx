@@ -665,7 +665,7 @@ export function AttemptHistorySection({
                     title={entry.disposition === "live"
                       ? "Open this attempt from " + entry.partitionDay + "."
                       : "Open this archived run."}
-                    className={cn(dsText.body, "text-[color:var(--ds-link)] underline underline-offset-2")}
+                    className={cn(dsText.body, "text-[color:var(--ds-fg-link)] underline underline-offset-2")}
                   >
                     {attemptLabel(entry)}
                   </a>

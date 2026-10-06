@@ -64,7 +64,7 @@ describe("workflow batches in the queue", () => {
     const trigger = document.querySelector<HTMLButtonElement>('button[aria-label="Attempts for Ben"]');
     assert.ok(trigger);
     await act(async () => trigger.click());
-    assert.ok(document.body.querySelector('button[aria-current="true"]'));
+    assert.ok(document.body.querySelector('[role="menuitemradio"][aria-checked="true"]'));
     assert.ok(!document.body.textContent?.includes("Attempts ·"));
   });
   it("keeps the focused attempt menu item when a newer retry arrives out of order", async () => {
@@ -73,13 +73,13 @@ describe("workflow batches in the queue", () => {
     const trigger = document.querySelector<HTMLButtonElement>('button[aria-label="Attempts for Ben"]');
     assert.ok(trigger);
     await act(async () => trigger.click());
-    const oldAttempt = document.querySelector<HTMLButtonElement>('button[aria-current="true"]');
+    const oldAttempt = document.querySelector<HTMLElement>('[role="menuitemradio"][aria-checked="true"]');
     assert.ok(oldAttempt);
     await act(async () => oldAttempt.focus());
     await render([row(5, true, 2, 3), ...rows], undefined, row(2).runId);
-    const selected = document.querySelector<HTMLButtonElement>('button[aria-current="true"]');
+    const selected = document.querySelector<HTMLElement>('[role="menuitemradio"][aria-checked="true"]');
     assert.equal(document.activeElement, selected);
-    assert.equal(selected?.getAttribute("aria-label"), "Open Ben — attempt 1 — queued");
+    assert.match(selected?.textContent ?? "", /#1.*Queued/u);
     assert.equal(document.querySelector('[aria-label="Attempts for Ben"]')?.getAttribute("aria-expanded"), "true");
     assert.equal(document.querySelectorAll('[data-demo-row-id]').length, 3);
     assert.equal(document.querySelectorAll(`[data-demo-row-id="${String(row(2).runId)}"]`).length, 1);

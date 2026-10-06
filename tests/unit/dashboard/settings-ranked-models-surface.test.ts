@@ -47,7 +47,10 @@ describe("provider budgets and models", () => {
     assert.match(host.textContent ?? "", /Request limits and model preferences for each provider\./u);
     assert.deepEqual([...host.querySelectorAll("h2")].map(node => node.textContent), ["Request budgets", "Model priority"]);
     assert.equal(host.querySelectorAll(".settings-provider-disclosure").length, 9);
-    assert.equal(host.querySelectorAll("[data-settings-path]").length, 2, "only expanded disclosures mount their controls");
+    assert.equal(host.querySelectorAll(".settings-provider-budget, .settings-provider-models").length, 2, "only expanded disclosures mount their controls");
+    assert.deepEqual([...host.querySelectorAll(".settings-provider-grid [data-settings-path]")].map(node => node.getAttribute("data-settings-path")).sort(), [
+      "providers.ocrExtract.concurrency", "providers.ocrExtract.costLimitUsdMicros", "providers.ocrExtract.dailyRequestLimit", "providers.ocrExtract.requestsPerMinute", "providers.ocrExtract.timeoutMs",
+    ]);
     assert.equal(host.querySelectorAll("textarea").length, 0);
     assert.equal(host.querySelectorAll(".settings-provider-grid input").length, 5);
     assert.equal(modelArea(host).querySelectorAll(".ds-ranked-item").length, 2);

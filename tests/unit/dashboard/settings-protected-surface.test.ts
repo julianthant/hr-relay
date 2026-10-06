@@ -183,7 +183,7 @@ it.each([
   assert.equal(html.includes("Retry exact attempt"), retry);
 });
 
-it("shows applied feedback briefly, then clears it", async () => {
+it("retains applied feedback until the next draft changes its state", async () => {
   vi.useFakeTimers();
   const host = document.createElement("div");
   document.body.append(host);
@@ -195,8 +195,11 @@ it("shows applied feedback briefly, then clears it", async () => {
       retry: () => undefined,
     })));
     assert.match(host.textContent ?? "", /Already saved/u);
-    await act(async () => { await vi.advanceTimersByTimeAsync(2201); });
-    assert.equal(host.textContent, "");
+    await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
+    assert.match(host.textContent ?? "", /Already saved/u);
+    await act(async () => root.render(createElement(SettingsSaveFeedback, { save: { state: "idle" }, dirty: true, protectedStore: true, retry: () => undefined })));
+    assert.match(host.textContent ?? "", /Unsaved changes/u);
+    assert.doesNotMatch(host.textContent ?? "", /Already saved/u);
   } finally {
     await act(async () => root.unmount());
     host.remove();
