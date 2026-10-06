@@ -22,7 +22,7 @@ describe("Settings field search", () => {
       ["job end date", "general", `annualDates.FY${document.currentFiscalYear}.jobEndDate`],
       ["browser viewport width", "general", "display.screenWidth"],
       ["CRM onboarding search", "routes", "urls.crm.prod.onboardingSearch"],
-      ["Census daily request", "providers", "providers.geocodeCensus.dailyRequestLimit"],
+      ["OpenAI login", "general", "chatgpt.account"],
       ["UCPath username", "credentials", "protected.ucpathUserId"],
       ["runtime state folder", "paths", "paths.stateRoot"],
     ]) assert.ok(searchSettings(index, term).some(result => result.entry.id === section && result.target === target), term);
@@ -45,7 +45,9 @@ describe("Settings field search", () => {
       parentSlotNames: [], fileSlotNamesAtBoot: ["GEMINI_API_KEY"], bootFileRevision: 1,
       bootFileSourceVersionToken: "a".repeat(64), overriddenSlots: [], restartRequired: false });
     const safe = settingsSearchIndex(groups, copy);
-    assert.ok(safe.some(result => result.target === "provider-keys.groqApiKeys"));
+    assert.ok(!safe.some(result => result.target?.startsWith("provider-keys.") || result.target?.startsWith("providers.")));
+    assert.deepEqual(searchSettings(safe, "Census daily request"), []);
+    assert.deepEqual(searchSettings(safe, "API keys"), []);
     assert.ok(!JSON.stringify(safe).includes(value));
     assert.deepEqual(searchSettings(safe, value), []);
     assert.deepEqual(searchSettings(safe, "/tmp/settings-fixture"), []);

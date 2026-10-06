@@ -561,3 +561,19 @@ the local form, including when switching from served rerun or restoring a direct
 and individual remove controls; roster selection follows below. Reading locks and PDF validation
 remain visible. Evidence is `frontend-polish-20261005` and `frontend-final-20261005`; backend wiring and frozen phase-exit
 gates remain deferred.
+
+## ChatGPT account amendment (2026-10-06)
+
+The operator retired Provider budgets & models and provider API-key controls. General now places
+a compact ChatGPT account card before Appearance. Settings has thirteen pages; legacy `providers`
+and `provider-env` links resolve to General, and search targets the exact account card. UCPath and
+workflow protected settings remain.
+
+The default account port is a memory-only preview with explicit sample-account consent. Cancel
+does not connect; identity-only sign-in does not enable plan usage. Sign-out clears the preview
+identity. Loading, expired, unavailable, plan-disabled and usage-limit states remain distinct.
+Pending actions lock duplicate submission and failed actions retain the last confirmed state.
+The real OAuth session, plan eligibility, secure tokens and persistence remain backend work behind
+`ChatGptAccountContext`; no authentication network or browser token storage is introduced.
+Focused evidence is `chatgpt-settings-20261005`. Frozen parity, coverage and phase-exit gates remain
+with 3.1.19.

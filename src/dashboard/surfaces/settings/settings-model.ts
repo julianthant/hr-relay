@@ -50,7 +50,6 @@ const SERVED_NAV_ICON: Readonly<Record<string, SettingsNavIcon>> = Object.freeze
   performance: "performance",
   paths: "paths",
   routes: "routes",
-  providers: "performance",
   credentials: "general",
   storage: "storage",
   [SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID]: "capabilities",
@@ -62,7 +61,8 @@ const SETTINGS_ALIASES: Readonly<Record<string, string>> = Object.freeze({
   display: "general",
   "annual-dates": "general",
   "runtime-isolation": "paths",
-  "provider-env": "credentials",
+  providers: "general",
+  "provider-env": "general",
   "protected-store": "credentials",
 });
 
@@ -171,7 +171,6 @@ export function buildSettingsNav(
     clientEntry("performance", "Performance", "performance"),
     clientEntry("paths", "Paths", "paths"),
     clientEntry("routes", "Routes", "routes"),
-    clientEntry("providers", "Provider budgets & models", "performance"),
     clientEntry("credentials", "Credentials", "general"),
     ...(editor?.sections.filter(section => !EDITOR_SECTIONS.has(section.id) && !FOLDED_EDITOR_SECTIONS.has(section.id))
       .map(section => servedEntry(section.id, section.label)) ?? []),
@@ -185,7 +184,7 @@ export function buildSettingsNav(
   ] });
   const statusEntries: SettingsNavEntry[] = [];
   for (const section of sections) {
-    if (section.id === SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID) continue;
+    if (section.id === SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID || section.id === "providers") continue;
     statusEntries.push(servedEntry(section.id, section.label));
     if (section.id === "storage") statusEntries.push({ id: SETTINGS_PREFLIGHT_SECTION_ID, label: "Preflight", icon: "preflight", source: "client" });
   }

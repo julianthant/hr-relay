@@ -7452,8 +7452,19 @@ skeletons. Existing historical warnings remain in place while refreshing. Pendin
 claims current readiness, and failed readback retains explicitly historical evidence. Focused evidence
 is retained in `preflight-refresh-20261005`; freshness, identity isolation and command authority remain
 unchanged. Full frozen-reference and repository gates remain with 3.1.19.
+The 2026-10-06 ChatGPT account amendment retires the Provider budgets & models page and provider
+API-key controls from the frontend. General places the account card before Appearance; thirteen
+Settings pages remain. Legacy `providers` and `provider-env` links open General, and search points
+to `chatgpt.account`. UCPath and workflow protected controls remain. The memory-only preview port
+models explicit sign-in, optional plan consent and sign-out without collecting credentials, storing
+tokens or contacting OpenAI. Identity alone does not enable plan use. Loading, expired, unavailable,
+plan-disabled and usage-limit states remain distinct; pending locks and failed actions preserve
+confirmed state. `ChatGptAccountContext` is the replacement seam for backend OAuth/session/consent
+authority. Existing backend provider contracts are retained; UI retirement does not migrate them.
+Evidence is `chatgpt-settings-20261005`; phase-exit gates remain deferred.
+
 Loading placeholders follow each mounted page's existing geometry. General, Paths, Performance,
-Routes, provider budgets and Credentials retain their headings, group order, row spacing and control
+Routes and Credentials retain their headings, group order, row spacing and control
 widths. Activity keeps its metric cards, tables and chart frame; the UI catalog retains its two-column
 browser. Storage and Preflight keep their titled summary and check rows. Notifications, Sessions,
 queue, Logs and spreadsheet intake use placeholders for their own cards, columns and fixed actions.

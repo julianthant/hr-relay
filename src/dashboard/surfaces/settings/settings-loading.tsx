@@ -2,15 +2,13 @@ import { BodySection, FormGroup, PageHeading, ResultRow, Skeleton } from "../../
 import { LoadingRegion, SettingsRowsSkeleton, SkeletonText } from "../shared/loading/loading.js";
 import { routeLoadingGroups } from "./routes/settings-routes-model.js";
 import { settingPlaceholderCopy } from "./settings-presentation.js";
-import { SECRET_FAMILY_SPECS } from "../../../domain/config/provider-family-specs.js";
 
 export function SettingsSectionSkeleton({ section, contentOnly = false }: { section: string; contentOnly?: boolean }) {
-  const copy = section === "general" ? { title: "General", description: "Appearance, browser behavior, display, and job end date." }
+  const copy = section === "general" ? { title: "General", description: "ChatGPT account, appearance, and browser preferences." }
     : section === "paths" ? { title: "Paths", description: "Workflow files and runtime locations." }
     : section === "performance" ? { title: "Performance", description: "Time limits for navigation, work, and sign-in." }
-    : section === "providers" ? { title: "Provider budgets & models", description: "Request limits and model preferences for each provider." }
     : section === "routes" ? { title: "Routes", description: "Production destinations, organized by system." }
-    : { title: "Credentials", description: "Sign-in details, protected configuration, and provider keys." };
+    : { title: "Credentials", description: "Sign-in details and protected workflow configuration." };
   return <section className="settings-compact-page" data-settings-loading={section}>
     {!contentOnly && <PageHeading {...copy} />}
     <LoadingRegion label={`Loading ${copy.title.toLowerCase()}`} className="settings-compact-form">
@@ -29,14 +27,11 @@ export function SettingsSectionSkeleton({ section, contentOnly = false }: { sect
           <BodySection title="Workflow documents"><FormGroup label="Workflow documents loading"><SettingsRowsSkeleton rows={2} wide /></FormGroup></BodySection>
         </> : section === "performance" ? <>
           {[{ title: "Navigation", rows: 3 }, { title: "Work", rows: 3 }, { title: "Sign-in & Duo", rows: 4 }, { title: "Additional limits", rows: 4 }].map(group => <BodySection key={group.title} title={group.title}><FormGroup label={`${group.title} loading`}><SettingsRowsSkeleton rows={group.rows} presentation={group.title === "Additional limits" ? "disclosure" : "field"} /></FormGroup></BodySection>)}
-        </> : section === "providers" ? <>
-          <BodySection title="Request budgets"><FormGroup label="Request budgets loading"><div><SettingsRowsSkeleton rows={1} presentation="disclosure" /><div className="settings-provider-budget-content"><div className="settings-provider-grid">{[0, 1, 2, 3, 4].map(index => <div key={index} className="ds-field"><div className="ds-field-label"><SkeletonText className="w-3/4" /></div><Skeleton className="mt-[var(--ds-space-tight)] h-[var(--ds-h-body-control)]" /><div className="ds-field-description"><SkeletonText className="w-16" /></div></div>)}</div></div></div><SettingsRowsSkeleton rows={3} presentation="disclosure" /></FormGroup></BodySection>
-          <BodySection title="Model priority"><FormGroup label="Model priority loading"><div><SettingsRowsSkeleton rows={1} presentation="disclosure" /><div className="flex flex-col gap-2 px-[var(--ds-space-base)] pb-[var(--ds-space-base)]">{[0, 1].map(index => <Skeleton key={index} className="h-[var(--ds-h-body-row)]" />)}</div></div><SettingsRowsSkeleton rows={4} presentation="disclosure" /></FormGroup></BodySection>
         </> : section === "routes" ? <>
           <Skeleton className="mb-[var(--ds-space-section)] h-[var(--ds-h-body-control)]" />
           {routeLoadingGroups().map(group => <BodySection key={group.title} title={<span className="routes-section-heading"><span>{group.title}</span><span>{group.rows} {group.rows === 1 ? "URL" : "URLs"}</span></span>}><FormGroup label={`${group.title} routes loading`}><SettingsRowsSkeleton rows={group.rows} wide /></FormGroup></BodySection>)}
         </> : <>
-          {["UCPath sign-in", "Workflow configuration", "Provider keys"].map((title, index) => <BodySection key={title} title={title}><FormGroup label={`${title} loading`}><SettingsRowsSkeleton rows={index === 2 ? SECRET_FAMILY_SPECS.length : 2} presentation={index === 2 ? "disclosure" : "field"} /></FormGroup></BodySection>)}
+          {["UCPath sign-in", "Workflow configuration"].map(title => <BodySection key={title} title={title}><FormGroup label={`${title} loading`}><SettingsRowsSkeleton rows={2} presentation="field" /></FormGroup></BodySection>)}
         </>}
       </div>
     </LoadingRegion>

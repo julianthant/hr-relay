@@ -20,26 +20,18 @@ function providerDocument(h: Awaited<ReturnType<typeof setup>>) {
   return keys.document.providerKeys;
 }
 
-describe("Credentials provider editor", () => {
-  it("shows saved and sparse parent-only slots masked with stable identities", async () => {
+describe("retained provider adapter behind retired Credentials controls", () => {
+  it("keeps provider authority available without exposing its retired key controls", async () => {
     const h = await setup({ parentSlots: { GROQ_API_KEY3: " synthetic-parent-three ", GEMINI_API_KEY3: "synthetic-parent-override" } });
     const keys = providerDocument(h);
     assert.equal(keys.activeSlots.GROQ_API_KEY3, "synthetic-parent-three");
     assert.equal(keys.slots.GEMINI_API_KEY3, "synthetic-saved-three");
-    assert.equal(h.host.querySelectorAll('input[type="password"]').length, 4);
+    assert.equal(h.host.querySelectorAll('input[type="password"]').length, 2);
     assert.ok(h.host.querySelector('button[aria-label="Show UCPath password"]'));
     assert.ok(h.host.querySelector('button[aria-label="Show Historical Activity pseudonym"]'));
-    assert.equal(h.host.querySelectorAll('.settings-provider-families input[type="password"]').length, 2);
-    assert.doesNotMatch(h.host.textContent ?? "", /synthetic-saved-one|synthetic-parent-three/u);
-    const gemini = [...h.host.querySelectorAll("button")].find(button => button.getAttribute("aria-label") === "Show Gemini Key 1");
-    assert.ok(gemini);
-    await act(async () => gemini.click());
-    assert.equal(h.host.querySelectorAll('.settings-provider-families input[type="text"]').length, 1);
-    const groqGroup = [...h.host.querySelectorAll("button")].find(button => button.textContent?.includes("Groq") && button.textContent.includes("saved keys"));
-    assert.ok(groqGroup); await act(async () => groqGroup.click());
-    assert.match(h.host.textContent ?? "", /Key 3/u);
-    assert.doesNotMatch(h.host.textContent ?? "", /Key 2/u);
-    assert.equal([...h.host.querySelectorAll("button")].some(button => button.getAttribute("aria-label") === "Remove Groq Key 3"), false);
+    assert.equal(h.host.querySelector('.settings-provider-families'), null);
+    assert.doesNotMatch(h.host.textContent ?? "", /Provider keys|Add key|synthetic-saved-one|synthetic-parent-three/u);
+    assert.equal(h.commands.length, 0);
   });
 
   it("adds the lowest free file slot, saves only valid edits, and preserves sparse numbering", async () => {
@@ -59,25 +51,11 @@ describe("Credentials provider editor", () => {
     assert.equal(providerDocument(h).slots.GEMINI_API_KEY3, "synthetic-saved-three");
   });
 
-  it("cancels removal, restores focus, then confirms only the selected saved slot", async () => {
+  it("retains exact selected-slot removal in the deferred provider adapter", async () => {
     const h = await setup();
-    const remove = [...h.host.querySelectorAll("button")].find(button => button.getAttribute("aria-label") === "Remove Gemini Key 1");
-    assert.ok(remove); remove.focus();
-    await act(async () => remove.click());
-    assert.match(document.body.textContent ?? "", /Remove Gemini Key 1\?/u);
-    const cancel = [...document.body.querySelectorAll("button")].find(button => button.textContent === "Cancel");
-    assert.ok(cancel); await act(async () => cancel.click());
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 250)); });
+    assert.equal(h.host.querySelector('[aria-label="Remove Gemini Key 1"]'), null);
     assert.equal(h.controller().providerEditor.dirtyCount, 0);
-    assert.equal(document.activeElement?.getAttribute("aria-label"), "Remove Gemini Key 1");
-    await act(async () => remove.click());
-    await act(async () => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 250)); });
-    assert.equal(h.controller().providerEditor.dirtyCount, 0);
-    assert.equal(document.activeElement?.getAttribute("aria-label"), "Remove Gemini Key 1");
-    await act(async () => remove.click());
-    const confirm = [...document.body.querySelectorAll("button")].find(button => button.textContent === "Remove key");
-    assert.ok(confirm); await act(async () => confirm.click());
+    await settingsAction(() => h.controller().providerEditor.remove("GEMINI_API_KEY"));
     assert.deepEqual(h.controller().providerEditor.draft.GEMINI_API_KEY, { kind: "clear" });
     await settingsAction(() => h.controller().providerEditor.submit());
     assert.equal(providerDocument(h).slots.GEMINI_API_KEY, undefined);
@@ -120,7 +98,8 @@ describe("Credentials provider editor", () => {
   it("shows override and restart truthfully and removes an unsent blank without a write", async () => {
     const h = await setup({ parentSlots: { GEMINI_API_KEY: "synthetic-parent" } });
     assert.equal(providerDocument(h).restartRequired, false);
-    assert.match(h.host.textContent ?? "", /Saved key is shadowed by the environment/u);
+    assert.equal(providerDocument(h).activeSlots.GEMINI_API_KEY, "synthetic-parent");
+    assert.ok(providerDocument(h).parentSlotNames.includes("GEMINI_API_KEY"));
     await settingsAction(() => { assert.equal(h.controller().providerEditor.add("GEMINI_API_KEY"), "GEMINI_API_KEY2"); });
     await settingsAction(() => h.controller().providerEditor.remove("GEMINI_API_KEY2"));
     assert.equal(h.controller().providerEditor.dirtyCount, 0);
@@ -137,7 +116,9 @@ describe("Credentials provider editor", () => {
     const document = h.authority.read();
     h.ports.read = () => ({ ...document, providerKeys: { state: "unknown", reason: "provider-store-unavailable" } });
     await settingsAction(() => h.controller().reload());
-    assert.match(h.host.textContent ?? "", /Provider keys unavailable/u);
+    assert.doesNotMatch(h.host.textContent ?? "", /Provider keys|Add key/u);
+    const loaded = h.controller().editor;
+    assert.equal(loaded.state === "loaded" && loaded.document.providerKeys.state, "unknown");
     assert.equal(h.controller().providerEditor.add("GEMINI_API_KEY"), undefined);
     assert.equal(h.commands.length, 0);
   });

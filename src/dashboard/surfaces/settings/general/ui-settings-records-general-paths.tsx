@@ -11,6 +11,7 @@ import { SettingsRowActions } from "../editor/ui-settings-records-row-actions.js
 import { StorageRelocationRows } from "./settings-relocation.js";
 import { SettingsPathPicker } from "./settings-path-picker.js";
 import type { NativePathField } from "../../../../domain/dashboard/native-path-picker.js";
+import { ChatGptAccountSettings } from "./chatgpt-account.js";
 
 type Editor = ReturnType<typeof useEditableSettings>;
 
@@ -101,7 +102,8 @@ function PathsContent({ editor }: { editor: Editor }) {
 
 export function CompactSettingsSection({ editor, sectionId, appearance }: { editor: Editor; sectionId: "general" | "paths"; appearance?: ReactNode }) {
   return <section className="settings-compact-page">
-    <PageHeading title={sectionId === "general" ? "General" : "Paths"} description={sectionId === "general" ? "Appearance, browser behavior, display, and job end date." : "Workflow files and runtime locations."} />
+    <PageHeading title={sectionId === "general" ? "General" : "Paths"} description={sectionId === "general" ? "ChatGPT account, appearance, and browser preferences." : "Workflow files and runtime locations."} />
+    {sectionId === "general" && <ChatGptAccountSettings />}
     {sectionId === "general" && appearance}
     {editor.editor.state === "loading" ? <SettingsSectionSkeleton section={sectionId} contentOnly /> : editor.editor.state === "failed" ? <Banner tone="danger" title="Editable settings could not be read"><Button size="sm" onClick={editor.reload}>Try again</Button></Banner> : <CompactSettingsForm editor={editor} sectionId={sectionId} />}
   </section>;

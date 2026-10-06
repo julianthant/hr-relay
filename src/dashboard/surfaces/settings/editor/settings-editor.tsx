@@ -9,12 +9,11 @@ import { SettingsSaveFeedback } from "./settings-feedback.js";
 import { timeoutReadableValue, timeoutSetting } from "../general/settings-timeouts-model.js";
 import { CompactSettingsSection } from "../general/ui-settings-records-general-paths.js";
 import { PerformanceSettingsSection } from "../general/ui-settings-records-performance.js";
-import { ProviderSettingsSection } from "../providers/settings-provider.js";
 
 export function EditableSettingsSection({ editor, sectionId, appearance }: { editor: ReturnType<typeof useEditableSettings>; sectionId: string; appearance?: ReactNode }) {
   if (sectionId === "general" || sectionId === "paths") return <CompactSettingsSection editor={editor} sectionId={sectionId} appearance={appearance} />;
   if (sectionId === "performance") return <PerformanceSettingsSection editor={editor} />;
-  if (sectionId === "providers") return <ProviderSettingsSection editor={editor} />;
+  if (sectionId === "providers") return <Banner tone="info" title="Provider settings retired">ChatGPT sign-in is available in General.</Banner>;
   if (editor.editor.state === "loading") return <Spinner label="Reading editable settings" />;
   if (editor.editor.state === "failed") return <Banner tone="danger" title="Editable settings could not be read"><Button size="sm" variant="secondary" onClick={editor.reload}>Try again</Button></Banner>;
   const document = editor.editor.document;

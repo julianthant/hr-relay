@@ -76,20 +76,20 @@ describe("canonical Settings navigation", () => {
   const document = fixtureSettingsDocument();
   const groups = buildSettingsNav(servedStatusSections, document);
 
-  it("serves the approved 14 pages under the four shared groups", () => {
+  it("serves the approved 13 pages under the four shared groups", () => {
     assert.deepEqual(groups.map(group => [group.heading, group.entries.map(entry => entry.id)]), [
-      ["Personal", ["general", "performance", "paths", "routes", "providers", "credentials"]],
+      ["Personal", ["general", "performance", "paths", "routes", "credentials"]],
       ["Data", ["spreadsheets", "explorer", "archive", "activity"]],
       ["Status", ["storage", "preflight"]],
       ["Help", ["keyboard", "ui-catalog"]],
     ]);
-    assert.equal(groups.flatMap(group => group.entries).length, 14);
+    assert.equal(groups.flatMap(group => group.entries).length, 13);
   });
 
   it("keeps the approved navigation while the editable settings projection is unavailable", () => {
     const unavailableGroups = buildSettingsNav(servedStatusSections);
     assert.deepEqual(unavailableGroups.map(group => [group.heading, group.entries.map(entry => entry.id)]), [
-      ["Personal", ["general", "performance", "paths", "routes", "providers", "credentials"]],
+      ["Personal", ["general", "performance", "paths", "routes", "credentials"]],
       ["Data", ["spreadsheets", "explorer", "archive", "activity"]],
       ["Status", ["storage", "preflight"]],
       ["Help", ["keyboard", "ui-catalog"]],
@@ -102,7 +102,7 @@ describe("canonical Settings navigation", () => {
   it("folds legacy section URLs to their new page and keeps unknown requests explicit", () => {
     for (const [legacy, canonical] of [
       ["display", "general"], ["annual-dates", "general"], ["runtime-isolation", "paths"],
-      ["provider-env", "credentials"], ["protected-store", "credentials"],
+      ["providers", "general"], ["provider-env", "general"], ["protected-store", "credentials"],
     ] as const) {
       const resolved = resolveSettingsSection(groups, legacy);
       assert.equal(resolved.state, "open");
@@ -113,7 +113,7 @@ describe("canonical Settings navigation", () => {
 
   it("shows the read refusal without hiding tabs while an independent page is open", async () => {
     const page = await mountFailedRead("keyboard");
-    assert.equal(page.querySelectorAll('a[href^="?settings="]').length, 14);
+    assert.equal(page.querySelectorAll('a[href^="?settings="]').length, 13);
     assert.ok(page.textContent?.includes("Editable settings unavailable"), page.textContent ?? "");
     assert.ok(page.textContent?.includes("Settings could not be read."), page.textContent ?? "");
     assert.ok([...page.querySelectorAll("button")].some(button => button.textContent?.includes("Try again")));

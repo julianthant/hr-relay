@@ -40,6 +40,12 @@ from `src/domain/**`; no frontend wire mirrors or server/workflow composition im
 other workflow consumers. Availability, preview capability and executable registration
 are distinct fields; a displayed mock is not proof of a backend implementation.
 
+General’s ChatGPT account card consumes `ChatGptAccountPort` through `ChatGptAccountContext`.
+The default producer is a memory-only preview. Replace the context port using the existing typed
+client/domain seam for verified session, consent, sign-in and sign-out results; credentials and
+tokens belong to the backend. Provider budget/model and API-key controls are retired from the
+frontend; their existing backend contracts remain pending integration.
+
 Feature mocks own fictional state transitions. Replace a producer behind its existing
 view model when wiring a feature. Keep explicit loading, empty, refusal, unknown outcome
 and failed states; do not substitute fixture success when transport fails.

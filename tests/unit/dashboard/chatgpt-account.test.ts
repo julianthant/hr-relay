@@ -1,0 +1,142 @@
+// @vitest-environment jsdom
+import assert from "node:assert/strict";
+import { act, createElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { renderToStaticMarkup } from "react-dom/server";
+import { afterEach, beforeEach, describe, it, vi } from "vitest";
+import { ChatGptAccountSettings } from "../../../src/dashboard/surfaces/settings/general/chatgpt-account.js";
+import { CHATGPT_USAGE_URL, ChatGptAccountContext, createPreviewChatGptAccountPort, type ChatGptAccountPort, type ChatGptAccountSnapshot } from "../../../src/dashboard/surfaces/settings/general/chatgpt-account-model.js";
+
+Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
+let root: Root | undefined;
+let host: HTMLElement | undefined;
+beforeEach(() => { vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} }); });
+afterEach(() => { act(() => root?.unmount()); host?.remove(); root = undefined; host = undefined; vi.unstubAllGlobals(); });
+
+async function mount(port: ChatGptAccountPort) {
+  host = document.createElement("div"); document.body.append(host);
+  await act(async () => { root = createRoot(host!); root.render(createElement(ChatGptAccountSettings, { port })); });
+}
+
+function button(name: string): HTMLButtonElement {
+  const found = [...document.querySelectorAll("button")].find(node => node.textContent?.trim() === name);
+  if (!found) throw new Error(`missing-account-button:${name}`);
+  return found;
+}
+async function click(name: string) { await act(async () => { button(name).click(); }); }
+
+function controlledPort(snapshot: ChatGptAccountSnapshot, operations: Partial<Pick<ChatGptAccountPort, "signIn" | "signOut">> = {}): ChatGptAccountPort {
+  return { mode: "live", getSnapshot: () => snapshot, subscribe: () => () => undefined,
+    signIn: () => Promise.resolve(), signOut: () => Promise.resolve(), ...operations };
+}
+
+describe("General ChatGPT account", () => {
+  it("accepts the shared account adapter through context without changing the Settings form", () => {
+    const port = controlledPort({ state: "connected", name: "Wired operator", email: "wired@example.com", planUsage: "disabled" });
+    const html = renderToStaticMarkup(createElement(ChatGptAccountContext.Provider, { value: port, children: createElement(ChatGptAccountSettings) }));
+    assert.match(html, /Wired operator.*wired@example\.com/u);
+    assert.match(html, /ChatGPT plan access not enabled/u);
+    assert.doesNotMatch(html, /Preview|Jordan Lee/u);
+  });
+  it("keeps cancellation signed out and never asks for a password, API key or real OAuth token", async () => {
+    const port = createPreviewChatGptAccountPort();
+    await mount(port);
+    button("Continue with ChatGPT").focus();
+    await click("Continue with ChatGPT");
+    assert.match(document.body.textContent ?? "", /No OpenAI sign-in occurs/u);
+    assert.equal(document.querySelectorAll('input[type="password"],input[name="token"],input[name="apiKey"]').length, 0);
+    await click("Cancel");
+    assert.equal(port.getSnapshot().state, "signed-out");
+    assert.equal(host?.querySelector('a[href="https://chatgpt.com/settings/usage"]'), null);
+  });
+
+  it("keeps identity sign-in separate from plan consent, then enables usage and signs out", async () => {
+    const port = createPreviewChatGptAccountPort();
+    await mount(port);
+    await click("Continue with ChatGPT");
+    const consent = document.querySelector<HTMLElement>('[role="checkbox"]');
+    assert.ok(consent);
+    await act(async () => consent.click());
+    await click("Connect preview account");
+    const identity = port.getSnapshot();
+    assert.equal(identity.state, "connected");
+    if (identity.state !== "connected") throw new Error("preview-account-not-connected");
+    assert.equal(identity.planUsage, "disabled");
+    assert.match(host?.textContent ?? "", /ChatGPT plan access not enabled/u);
+    assert.equal(host?.querySelector(`a[href="${CHATGPT_USAGE_URL}"]`), null);
+    await click("Continue with ChatGPT");
+    await click("Connect preview account");
+    assert.match(host?.textContent ?? "", /Using ChatGPT plan/u);
+    const usage = host?.querySelector<HTMLAnchorElement>(`a[href="${CHATGPT_USAGE_URL}"]`);
+    assert.ok(usage);
+    assert.equal(usage.target, "_blank");
+    assert.equal(usage.rel, "noopener noreferrer");
+    assert.ok(!window.location.search.includes("jordan.lee"));
+    await click("Sign out");
+    assert.equal(port.getSnapshot().state, "signed-out");
+    assert.doesNotMatch(host?.textContent ?? "", /jordan\.lee@example\.com/u);
+  });
+
+  it("preserves preview connection across Settings remounts without writing credentials to storage", async () => {
+    const port = createPreviewChatGptAccountPort();
+    const storageBefore = { local: localStorage.length, session: sessionStorage.length };
+    await act(async () => { await port.signIn({ usePlan: true }); });
+    await mount(port);
+    assert.match(host?.textContent ?? "", /Using ChatGPT plan/u);
+    assert.deepEqual({ local: localStorage.length, session: sessionStorage.length }, storageBefore);
+    assert.equal(createPreviewChatGptAccountPort().getSnapshot().state, "signed-out");
+  });
+
+  it("locks a pending live sign-in and reports refusal without inventing a connected account", async () => {
+    let reject!: (error: Error) => void;
+    let calls = 0;
+    const port = controlledPort({ state: "signed-out" }, { signIn: () => {
+      calls += 1; return new Promise<void>((_resolve, refuse) => { reject = refuse; });
+    } });
+    await mount(port);
+    await click("Continue with ChatGPT");
+    assert.equal(button("Continue with ChatGPT").disabled, true);
+    await click("Continue with ChatGPT");
+    assert.equal(calls, 1);
+    assert.equal(document.querySelector('[role="dialog"]'), null);
+    assert.equal(port.getSnapshot().state, "signed-out");
+    await act(async () => reject(new Error("synthetic-refusal")));
+    assert.match(host?.textContent ?? "", /ChatGPT sign-in could not be completed/u);
+    assert.equal(button("Continue with ChatGPT").disabled, false);
+    assert.equal(port.getSnapshot().state, "signed-out");
+  });
+
+  it("keeps the account visible when sign-out cannot be confirmed", async () => {
+    const port = controlledPort({ state: "connected", name: "Preview operator", email: "operator@example.com", planUsage: "enabled" },
+      { signOut: () => Promise.reject(new Error("synthetic-lost-response")) });
+    await mount(port);
+    await click("Sign out");
+    assert.match(host?.textContent ?? "", /Sign-out could not be confirmed/u);
+    assert.match(host?.textContent ?? "", /operator@example\.com/u);
+    assert.equal(port.getSnapshot().state, "connected");
+    assert.equal(button("Sign out").disabled, false);
+  });
+
+  it("renders loading, expired, unavailable and usage-limit states distinctly", () => {
+    const render = (snapshot: ChatGptAccountSnapshot) => renderToStaticMarkup(createElement(ChatGptAccountSettings, { port: controlledPort(snapshot) }));
+    const loading = render({ state: "loading" });
+    assert.match(loading, /Loading ChatGPT account/u);
+    assert.doesNotMatch(loading, /Continue with ChatGPT/u);
+    assert.match(render({ state: "expired" }), /Your ChatGPT session expired/u);
+    assert.match(render({ state: "unavailable", message: "Account read failed" }), /ChatGPT account unavailable.*Account read failed/u);
+    const limited = render({ state: "connected", name: "Preview operator", email: "operator@example.com", planUsage: "limit-reached" });
+    assert.match(limited, /Usage limit reached/u);
+    assert.match(limited, /Manage usage/u);
+    assert.doesNotMatch(limited, /Using ChatGPT plan|Continue with ChatGPT/u);
+  });
+
+  it("allows an in-flight adapter to settle after the card unmounts", async () => {
+    let finish!: () => void;
+    const port = controlledPort({ state: "signed-out" }, { signIn: () => new Promise<void>(resolve => { finish = resolve; }) });
+    await mount(port);
+    await click("Continue with ChatGPT");
+    act(() => root?.unmount()); root = undefined;
+    await act(async () => finish());
+    assert.equal(port.getSnapshot().state, "signed-out");
+  });
+});
