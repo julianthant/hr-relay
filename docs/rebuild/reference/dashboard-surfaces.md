@@ -7473,6 +7473,21 @@ publication occurs outside the end-user frontend. Backend review, archival scope
 and immutable historical reports are unchanged; UI retirement does not authorize a runtime migration.
 Evidence is `frontend-controls-removal-10003539`; phase-exit gates remain deferred.
 
+The later 2026-10-06 Archive-page amendment retires the entire end-user Archive page, superseding
+its preceding mock browsing and queue-archive presentation. Twelve Settings pages remain. The
+application no longer imports or mounts the Archive page, offers its Settings/shell search destinations,
+captures queue snapshots for it, or publishes a fictional Archive notification shortcut. Queue
+preview menus retain Retry and Delete. Legacy `settings=archive` and `archive` URLs, including old
+report/version-stage coordinates, show an explicit removal notice with a guarded dashboard return;
+other unknown Settings requests retain their failure state. Stored-data read failures remain visible.
+Completed runs retain the existing day/status queue filters and Logs.
+
+Stored backend history, historical readers and transport contracts remain intact and unmounted.
+This presentation change does not implement a unified cross-day/cross-version run query, migrate
+existing records, change active-run upgrade compatibility, or supersede D348's backend authority.
+Those wiring and lifecycle changes require their own owner before runtime adoption. Evidence is
+`archive-page-retirement-10003539`; frozen phase-exit gates remain deferred.
+
 Loading placeholders follow each mounted page's existing geometry. General, Paths, Performance,
 Routes and Credentials retain their headings, group order, row spacing and control
 widths. Activity keeps its metric cards, tables and chart frame; the UI catalog retains its two-column

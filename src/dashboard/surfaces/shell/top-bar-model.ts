@@ -21,7 +21,7 @@ export const SHELL_VIEW_LABEL: Record<ShellView, string> = {
 };
 
 
-export const SHELL_VIEWS: readonly ShellView[] = ["queue", "archive", "explorer", "activity"];
+export const SHELL_VIEWS: readonly ShellView[] = ["queue", "explorer", "activity"];
 
 
 /**

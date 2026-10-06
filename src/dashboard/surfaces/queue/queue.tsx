@@ -135,8 +135,7 @@ export interface QueueHandlers {
   onToggleBulk?: (runId: string) => void;
   onSelectBulk?: (runId: string) => void;
   onExitSelection?: () => void;
-  onPreviewAction?: (action: 'retry' | 'archive' | 'delete', ids: readonly string[]) => void;
-  previewArchive?: boolean;
+  onPreviewAction?: (action: 'retry' | 'delete', ids: readonly string[]) => void;
   /** Mark a loaded member checked by you. This has no authority effect. */
   /**
    * Jump to the run that delegated this one — the panel switch AND the
@@ -420,7 +419,7 @@ function RowFooterLine({
   actions: readonly ActionDescriptorWire[];
   onAction?: DashboardActionHandler;
   nowIso: string;
-  onPreviewAction?: (action: 'retry' | 'archive' | 'delete') => void;
+  onPreviewAction?: (action: 'retry' | 'delete') => void;
 }) {
   // Elapsed is display-only arithmetic over two SERVED instants (ref frontend-backend-integration §4).
   //
@@ -918,13 +917,12 @@ export function QueueRow({
         className="mt-[var(--ds-space-queue-top)] shrink-0"
       />}
       <RowContextMenu
-        previewArchive={handlers.previewArchive}
         actions={actions}
         target={target}
         rowLabel={queueRowTitle(surface)}
         {...(onAction === undefined ? {} : { onAction })}
         {...(handlers.onSelectBulk === undefined ? {} : { onSelectRow: () => handlers.onSelectBulk?.(surface.runId) })}
-        {...(handlers.onPreviewAction === undefined ? {} : { onPreviewAction: (action: 'retry' | 'archive' | 'delete') => handlers.onPreviewAction?.(action, [surface.runId]) })}
+        {...(handlers.onPreviewAction === undefined ? {} : { onPreviewAction: (action: 'retry' | 'delete') => handlers.onPreviewAction?.(action, [surface.runId]) })}
       >
         <div
           onClick={event => {
@@ -1143,7 +1141,7 @@ export function QueueRow({
           <RowFooterLine
             surface={surface}
             actions={actions}
-            {...(handlers.onPreviewAction === undefined ? {} : { onPreviewAction: (action: 'retry' | 'archive' | 'delete') => handlers.onPreviewAction?.(action, [surface.runId]) })}
+            {...(handlers.onPreviewAction === undefined ? {} : { onPreviewAction: (action: 'retry' | 'delete') => handlers.onPreviewAction?.(action, [surface.runId]) })}
             {...(onAction === undefined ? {} : { onAction })}
             nowIso={state.nowIso}
             itemGroup={itemGroup}

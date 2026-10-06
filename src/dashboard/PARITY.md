@@ -589,3 +589,16 @@ their original version metadata, search, tabs, files and exports.
 Version publication remains developer-controlled outside the end-user frontend. This presentation
 retirement does not change the backend's reviewed archival contract or migrate existing records.
 Focused evidence is `frontend-controls-removal-10003539`; frozen phase-exit gates remain deferred.
+
+## Archive page retirement (2026-10-06)
+
+The operator retired Archive from Settings. Twelve pages remain. Archive is absent from navigation,
+Settings/shell search, queue preview menus and notification shortcuts, and its local snapshot state
+is no longer composed into the application. Retry and Delete retain their existing behavior.
+Legacy `settings=archive` and `archive` URLs show a removal notice and a guarded dashboard return,
+including old report/version-stage coordinates. Other unknown Settings sections remain explicit.
+
+Completed runs still use the existing queue status/date filters and Logs. Stored backend history,
+historical report readers and transport contracts are retained, unmounted; unified historical search
+and upgrade migrations are not implemented by this frontend change. Focused evidence is
+`archive-page-retirement-10003539`. Frozen parity, coverage and phase-exit gates remain with 3.1.19.

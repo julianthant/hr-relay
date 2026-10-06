@@ -15,7 +15,8 @@ function ready(state = notificationPreviewState("normal", input)) {
 describe("interactive notification destinations", () => {
   it("uses the exact source subjects, workflows, gate and failed/completed runs", () => {
     const state = ready();
-    expect(state.items).toHaveLength(14);
+    expect(state.items).toHaveLength(13);
+    expect(state.items.some(item => item.id === "sample-archive")).toBe(false);
     expect(notificationView(state, "all").unread).toBe(3);
     const failed = state.items.find(item => item.destination.kind === "run" && item.destination.runId === FIXTURE_IDS.failedRun)!;
     expect(failed).toMatchObject({ subject: "EID 10555001", title: "Run failed", destination: { kind: "run", runId: FIXTURE_IDS.failedRun, day: FIXTURE_DAY } });
@@ -87,26 +88,26 @@ describe("interactive notification destinations", () => {
   });
   it("refuses deleted, stale-day and invalid records destinations instead of opening another run", () => {
     const state = ready();
-    expect(notificationDestinationRefusal(state.items[0].destination, { ...input, rows: [] })).toMatch(/no longer in the queue/);
+    expect(notificationDestinationRefusal(state.items[0].destination, { ...input, rows: [] })).toMatch(/no longer available/);
     expect(notificationDestinationRefusal(state.items[0].destination, { ...input, day: "2026-08-02" })).toMatch(/day is no longer open/);
     expect(notificationDestinationRefusal({ kind: "preview-run", day: FIXTURE_DAY, runId: "missing", records: true }, input)).toMatch(/unavailable/);
     expect(notificationDestinationRefusal({ kind: "preview-run", day: FIXTURE_DAY, runId: "mock:onboarding:sample", records: true }, input)).toMatch(/unavailable/);
-    expect(notificationDestinationRefusal({ kind: "archive" }, { ...input, rows: [], runs: [] })).toBeUndefined();
+    expect(state.items.every(item => item.destination.kind === "run" || item.destination.kind === "preview-run")).toBe(true);
   });
   it("keeps missing data distinct and never invents failed or completed runs for an empty queue", () => {
     expect(notificationPreviewState("normal", { ...input, rows: undefined })).toEqual({ state: "loading" });
     expect(notificationPreviewState("normal", { ...input, unavailable: "Queue unavailable" })).toEqual({ state: "unavailable", reason: "Queue unavailable" });
     const empty = ready(notificationPreviewState("normal", { ...input, rows: [], runs: [] }));
-    expect(empty.items.map(item => item.id)).toEqual(["sample-archive"]);
+    expect(empty.items).toEqual([]);
     for (const scenario of ["loading", "unavailable", "empty"]) expect(notificationPreviewState(scenario, input).state).toBe(scenario === "empty" ? "ready" : scenario);
     expect(() => notificationPreviewState("unknown", input)).toThrow("notification-sample-missing");
   });
-  it("uses the shared served clock for ages, retaining no invented timestamp for Archive", () => {
+  it("uses the shared served clock for ages and omits the retired Archive shortcut", () => {
     const before = ready();
     const later = ready(notificationPreviewState("normal", { ...input, nowIso: "2026-08-03T11:05:00.000-07:00" }));
     expect(before.items.find(item => item.title === "Run failed")!.age).toBe("26 min ago");
     expect(later.items.find(item => item.title === "Run failed")!.age).toBe("1 hr ago");
-    expect(before.items.find(item => item.id === "sample-archive")!.age).toBe("");
+    expect(before.items.some(item => item.id === "sample-archive")).toBe(false);
     const fresh = ready(notificationPreviewState("normal", { ...input, eventTimes: { "mock:emergency-contact:sample:ocr": FIXTURE_NOW } }));
     expect(fresh.items.find(item => item.destination.kind === "preview-run" && item.destination.runId === "mock:emergency-contact:sample:ocr")!.age).toBe("Just now");
     expect(() => notificationPreviewState("normal", { ...input, nowIso: "invalid" })).toThrow("NOTIFICATION_PREVIEW_TIME_INVALID");

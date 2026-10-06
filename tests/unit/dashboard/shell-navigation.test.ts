@@ -147,30 +147,41 @@ describe("mounted shell navigation", () => {
   });
 });
 
-async function editWidth() {
-  const field = document.querySelector<HTMLInputElement>('input[type="number"]'); assert.ok(field);
+async function editNavigationTimeout() {
+  const field = document.querySelector<HTMLInputElement>('input[name="timeouts.navigationMs"]'); assert.ok(field);
   await act(async () => {
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value")?.set?.call(field,"1777");
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value")?.set?.call(field,"111");
     field.dispatchEvent(new Event("input",{bubbles:true}));
   });
 }
 it("keeps the Settings editor and draft across section/catalog native history", async () => {
-  await mount("?settings=display");
-  await editWidth();
+  await mount("?settings=performance");
+  await editNavigationTimeout();
   const catalog = [...document.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Settings sections"] a')].find(link => link.textContent?.trim() === "UI catalog"); assert.ok(catalog);
   await click(catalog);
   await historyMove("back");
-  assert.equal(document.querySelector<HTMLInputElement>('input[type="number"]')?.value,"1777");
+  assert.equal(document.querySelector<HTMLInputElement>('input[name="timeouts.navigationMs"]')?.value,"111");
   assert.equal(document.body.textContent?.includes("Discard unsaved settings?"),false);
-  const archive = document.querySelector<HTMLAnchorElement>('nav[aria-label="Settings sections"] a[href="?settings=archive"]'); assert.ok(archive);
-  await click(archive);
-  assert.ok(document.querySelector('[aria-label="Archive"]'));
+  const analytics = document.querySelector<HTMLAnchorElement>('nav[aria-label="Settings sections"] a[href="?settings=activity"]'); assert.ok(analytics);
+  await click(analytics);
+  assert.equal(document.querySelector("h1")?.textContent, "Analytics");
   assert.equal(document.body.textContent?.includes("Discard unsaved settings?"), false);
   await historyMove("back");
-  assert.equal(document.querySelector<HTMLInputElement>('input[type="number"]')?.value,"1777");
+  assert.equal(document.querySelector<HTMLInputElement>('input[name="timeouts.navigationMs"]')?.value,"111");
   await click(button("Settings"));
   await click(button("Discard changes"));
   assert.equal(new URLSearchParams(location.search).has("settings"),false);
+});
+it.each(["?settings=archive", "?archive=", "?archive=archive-demo-run-48216&archiveView=versions"])("keeps retired Archive URL %s explicit and returns to the queue", async search => {
+  await mount(search);
+  assert.match(document.body.textContent ?? "", /Archive page removed/u);
+  assert.equal(document.querySelector('[aria-label="Archive"]'), null);
+  assert.equal(document.querySelector('a[href="?settings=archive"]'), null);
+  assert.equal(document.querySelectorAll('nav[aria-label="Settings sections"] a').length, 12);
+  await click(button("Return to dashboard"));
+  assert.equal(parseRoute(location.search).archive, undefined);
+  assert.equal(parseRoute(location.search).settings, undefined);
+  assert.ok(document.querySelector('[data-demo-row-id]'));
 });
 it("toolbar history restores the selected tab without adding an intermediate tab entry", async () => {
   await mount(`?day=${FIXTURE_DAY_WIRE.day}&run=${FIXTURE_IDS.doneRun}&section=receipt`);

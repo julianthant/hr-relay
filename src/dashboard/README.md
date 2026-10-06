@@ -15,7 +15,8 @@ producers live together under `surfaces/`.
 | `surfaces/workflows/` | One frontend workflow catalog; `mocks/` holds preview contracts and producers |
 | `surfaces/notifications/`, `surfaces/sessions/` | Each feature’s view, model and mock producer |
 | `surfaces/settings/` | Settings shell plus `general/`, `editor/`, `providers/`, `routes/`, `storage/`, `preflight/`, `navigation/`, `catalog/` |
-| `surfaces/archive/`, `surfaces/activity/`, `surfaces/explorer/` | Archive, Analytics and Explorer page components, models, local fixtures and styles; Analytics retains the existing Activity module and route identifiers |
+| `surfaces/activity/`, `surfaces/explorer/` | Analytics and Explorer page components, models, local fixtures and styles; Analytics retains the existing Activity module and route identifiers |
+| `surfaces/archive/` | Retained, unmounted historical report readers and transport models; Archive is retired from product navigation |
 | `surfaces/spreadsheets/`, `surfaces/intake/` | Workbook editing/import and intake workspace |
 | `surfaces/shared/` | Reused actions, status formatting, loading geometry and run evidence |
 | `client/` | Stable `index.ts`, `queries.ts`, `commands.ts` facades; implementations in `queries/`, `commands/`, `subscriptions/` |
@@ -52,8 +53,14 @@ and failed states; do not substitute fixture success when transport fails.
 
 The [current wiring checklist](../../docs/rebuild/reference/frontend-backend-integration.md#current-frontend-mock-wiring-checklist--2026-10-05)
 distinguishes mounted producers from retained transport implementations. Use it before replacing a
-mock. In particular, current Logs, Analytics, Archive, notifications and Sessions still contain local
+mock. In particular, current Logs, Analytics, notifications and Sessions still contain local
 producers; the older runtime matrix is not proof that those consumers are mounted today.
+
+Archive is no longer mounted or offered in Settings, shell search, queue menus or notifications.
+Legacy Archive URLs show an explicit removal notice and a guarded return to the dashboard. Stored
+history and backend archival contracts remain intact. A unified cross-day, cross-version run query
+and upgrade compatibility/migration policy still require backend integration; page retirement does
+not make historical reports available in the current day queue.
 
 `tests/perf/frontend/` builds an isolated production fixture using the real Queue and Log components.
 It measures rendering, interaction and heap cleanup independently of HR services. Preserve complete

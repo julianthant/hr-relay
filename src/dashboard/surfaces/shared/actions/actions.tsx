@@ -34,7 +34,6 @@ import {
   Pencil,
   RotateCcw,
   Search,
-  Archive,
   Trash2,
   X,
 } from "lucide-react";
@@ -228,7 +227,7 @@ export function FooterActions({
   actions: readonly ActionDescriptorWire[];
   target: ActionTarget;
   onAction?: DashboardActionHandler;
-  onPreviewAction?: (action: 'retry' | 'archive' | 'delete') => void;
+  onPreviewAction?: (action: 'retry' | 'delete') => void;
 }) {
   const footer = actionsAt(actions, "footer");
   if (footer.length === 0 && !onPreviewAction) return null;
@@ -478,7 +477,6 @@ export function RowContextMenu({
   children,
   onSelectRow,
   onPreviewAction,
-  previewArchive = true,
 }: {
   actions: readonly ActionDescriptorWire[];
   target: ActionTarget;
@@ -487,8 +485,7 @@ export function RowContextMenu({
   onAction?: DashboardActionHandler;
   children: ReactNode;
   onSelectRow?: () => void;
-  onPreviewAction?: (action: 'retry' | 'archive' | 'delete') => void;
-  previewArchive?: boolean;
+  onPreviewAction?: (action: 'retry' | 'delete') => void;
 }) {
   const items = actionsAt(actions, "menu");
   if (items.length === 0 && onSelectRow === undefined && onPreviewAction === undefined) return <>{children}</>;
@@ -504,7 +501,6 @@ export function RowContextMenu({
 
         {onPreviewAction !== undefined ? <>
           <ContextMenuItem icon={<RotateCcw className={dsIcon.sm} />} onSelect={() => onPreviewAction('retry')}>Retry</ContextMenuItem>
-          {previewArchive && <ContextMenuItem icon={<Archive className={dsIcon.sm} />} onSelect={() => onPreviewAction('archive')}>Archive</ContextMenuItem>}
           <ContextMenuSeparator className="my-1 h-px bg-ui-stroke" />
           <ContextMenuItem icon={<Trash2 className={dsIcon.sm} />} tone="destructive" onSelect={() => requestAnimationFrame(() => onPreviewAction('delete'))}>Delete</ContextMenuItem>
         </> : groups.map((group, i) => (

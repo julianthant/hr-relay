@@ -17,10 +17,10 @@ import { WorkflowMockReview } from "./workflow-review.js";
 import { documentSourcePages } from "./workflow-document-model.js";
 import { mockDeletionIds } from "./workflow-mock-model.js";
 
-export function WorkflowMockQueue({ label, runs, allRuns, selected, onSelect, onRetry, onDelete, onArchive, day, nowIso, sort, filter }: {
+export function WorkflowMockQueue({ label, runs, allRuns, selected, onSelect, onRetry, onDelete, day, nowIso, sort, filter }: {
   label: string; runs: readonly MockRun[]; selected?: string; onSelect: (id: string) => void;
   day: string; nowIso: string; sort: QueueSortKey; filter?: QueueFilterScope;
-  allRuns: readonly MockRun[]; onRetry: (id: string) => void; onDelete: (ids: readonly string[]) => void; onArchive: (id: string) => void;
+  allRuns: readonly MockRun[]; onRetry: (id: string) => void; onDelete: (ids: readonly string[]) => void;
 }) {
   const [pendingDelete, setPendingDelete] = useState<MockRun>();
   const queueRoot = useRef<HTMLDivElement>(null);
@@ -44,7 +44,6 @@ export function WorkflowMockQueue({ label, runs, allRuns, selected, onSelect, on
       if (!run) throw new Error("MOCK_QUEUE_ACTION_TARGET_MISSING");
       if (action === "retry") onRetry(run.id);
       else if (action === "delete") { deleteLauncher.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setPendingDelete(run); }
-      else { onArchive(run.id); requestAnimationFrame(focusRemainingRow); }
     } }} workflowLabelOf={id => mockWorkflow(id).label} />
     <Dialog open={!!pendingDelete} onOpenChange={open => { if (!open) setPendingDelete(undefined); }}>
       <DialogContent title={`Delete ${pendingDelete?.subject ?? "run"}?`} size="sm" onCloseAutoFocus={event => {

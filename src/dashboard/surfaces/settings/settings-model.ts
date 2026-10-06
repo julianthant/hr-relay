@@ -35,7 +35,6 @@ export type SettingsNavIcon =
   | "unrendered"
   | "spreadsheets"
   | "explorer"
-  | "archive"
   | "activity";
 
 
@@ -122,7 +121,7 @@ export const SETTINGS_KEYBOARD_SECTION_ID = "keyboard";
  */
 export const SETTINGS_UI_CATALOG_SECTION_ID = "ui-catalog";
 export const SETTINGS_PREFLIGHT_SECTION_ID = "preflight";
-export const SETTINGS_DATA_SECTION_IDS: ReadonlySet<string> = new Set(["explorer", "archive", "activity"]);
+export const SETTINGS_DATA_SECTION_IDS: ReadonlySet<string> = new Set(["explorer", "activity"]);
 
 
 /**
@@ -179,7 +178,6 @@ export function buildSettingsNav(
   groups.push({ id: "data", heading: "Data", entries: [
     clientEntry("spreadsheets", "Spreadsheets", "spreadsheets"),
     clientEntry("explorer", "Explorer", "explorer"),
-    clientEntry("archive", "Archive", "archive"),
     clientEntry("activity", "Analytics", "activity"),
   ] });
   const statusEntries: SettingsNavEntry[] = [];

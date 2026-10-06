@@ -1,8 +1,7 @@
 export type NotificationCategory = "all" | "attention" | "failed";
 export type NotificationFilter = "all" | "unread" | "attention" | "failed";
 export type NotificationDestination = Readonly<{ kind: "run"; runId: string; day: string }>
-  | Readonly<{ kind: "preview-run"; runId: string; day: string; records: boolean }>
-  | Readonly<{ kind: "archive" }>;
+  | Readonly<{ kind: "preview-run"; runId: string; day: string; records: boolean }>;
 export type NotificationItem = Readonly<{
   id: string; title: string; subject: string; workflow: string; detail: string;
   tone: "danger" | "warning" | "positive" | "info"; age: string;

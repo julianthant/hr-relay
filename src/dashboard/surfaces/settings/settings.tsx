@@ -4,7 +4,7 @@ import "./settings-data.css";
 import { SpreadsheetsSettings } from "../spreadsheets/spreadsheets.js";
 import { EditableSettingsSectionIdSchema } from "../../../domain/dashboard/settings-editor.js";
 import { SettingsAuthoritySection } from "./editor/settings-authorities.js";
-import { ArrowLeft, BarChart3, Archive, BookMarked, Workflow, CircleAlert, ClipboardCheck, Database, FolderOpen, Gauge, Keyboard as KeyboardIcon, Link2, Monitor, Settings as SettingsIcon, SlidersHorizontal, Table2 } from "lucide-react";
+import { ArrowLeft, BarChart3, BookMarked, Workflow, CircleAlert, ClipboardCheck, Database, FolderOpen, Gauge, Keyboard as KeyboardIcon, Link2, Monitor, Settings as SettingsIcon, SlidersHorizontal, Table2 } from "lucide-react";
 import { useCallback,useEffect,useMemo,useRef,useState,type ReactNode } from "react";
 import type { FrontendBootstrapWire } from "../../../domain/dashboard/bootstrap.js";
 import {
@@ -57,7 +57,6 @@ const NAV_ICON: Record<SettingsNavIcon, typeof Database> = {
   unrendered: CircleAlert,
   spreadsheets: Table2,
   explorer: Workflow,
-  archive: Archive,
   activity: BarChart3,
 };
 
@@ -351,7 +350,9 @@ export function SettingsPage({
             redirected: landing on Storage under `?settings=budgets` tells the
             operator they are reading something they are not. */}
         {resolution.state === "unknown" && (
-          <Banner tone="danger" title="No such settings section">
+          resolution.requested === "archive" ? <Banner tone="info" title="Archive page removed">
+            Existing stored run data has not been deleted. <Button variant="ghost" onClick={() => requestExit(onClose)}>Return to dashboard</Button>
+          </Banner> : <Banner tone="danger" title="No such settings section">
             This build has no settings section called “{resolution.requested}”. Pick one from the
             list beside this.
           </Banner>

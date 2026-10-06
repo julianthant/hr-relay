@@ -56,7 +56,6 @@ export function notificationPreviewState(scenario: string, input: PreviewInput):
   const done = rows.find(row => row.status === "done");
   const review = input.runs.find(run => run.workflowId === "ocr" && run.targetWorkflowId === "emergency-contact" && run.seeded);
   const items: NotificationItem[] = rows.map(row => runItem(row, row !== failed && row !== done, input));
-  items.push({ id: "sample-archive", title: "Archive", subject: "Saved reports", workflow: "Archive", detail: "Browse saved workflow reports.", tone: "info", age: "", read: true, action: "Open archive", destination: { kind: "archive" } });
   for (const run of input.runs) {
     if ((run.seeded && run.workflowId !== "ocr") || (run.parentId && run.workflowId !== "ocr") || mockWaitsForOcr(run)) continue;
     items.push(mockItem(run, run.seeded && run !== review, input));
@@ -65,9 +64,8 @@ export function notificationPreviewState(scenario: string, input: PreviewInput):
 }
 
 export function notificationDestinationRefusal(destination: NotificationDestination, input: Pick<PreviewInput, "day" | "rows" | "runs">): string | undefined {
-  if (destination.kind === "archive") return undefined;
   if (destination.day !== input.day) return "The notification's day is no longer open. Reopen the notification from that day.";
-  if (destination.kind === "run") return input.rows?.some(row => row.runId === destination.runId) ? undefined : "This run is no longer in the queue. Look for it in Archive.";
+  if (destination.kind === "run") return input.rows?.some(row => row.runId === destination.runId) ? undefined : "This run is no longer available. Refresh the run list and try again.";
   const run = input.runs.find(item => item.id === destination.runId);
   if (!run || (destination.records && run.workflowId !== "ocr")) return "The linked preview is unavailable. Reopen the notification list.";
   return undefined;

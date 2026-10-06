@@ -2,7 +2,7 @@ import type { NotificationDestination } from "../../notifications/notifications-
 import type { ShellView } from "../top-bar-model.js";
 
 export const NAVBAR_VIEWS: readonly { id: ShellView; label: string }[] = [
-  { id: "queue", label: "Dashboard" }, { id: "archive", label: "Archive" },
+  { id: "queue", label: "Dashboard" },
   { id: "explorer", label: "Explorer" }, { id: "activity", label: "Analytics" },
 ];
 export type NavbarSearchResult = Readonly<{ id: string; subject: string; workflow: string; day: string; state: string; publicId?: string; destination?: NotificationDestination }>;
