@@ -291,6 +291,14 @@ existing feedback and exact retry identity. Location plans identify the saved pl
 move. Persistent status and restart requirements remain after toast expiry. D347's dashboard-surfaces
 owner records the contract; evidence is `save-toasts-10003539`.
 
+The wiring-preparation amendment moves Performance, Paths and Routes to Advanced while keeping
+General and Credentials in Personal and retaining all eleven page IDs and editor authority. XLSX
+editable-copy import ignores Excel worksheet/table filter rules, including unsupported color filters;
+all records and supported fills remain available, original source bytes remain unchanged, and malformed
+XML refuses import. Frontend-backend-integration §5 records component intent, persistence boundaries
+and acceptance evidence for wiring. This does not implement backend matching or storage. D347's
+dashboard-surfaces owner records the presentation contract; evidence is `frontend-wiring-prep-10003539`.
+
 The frontend readiness follow-up preserves sanitized Explorer display types, exercises HTTP/SSE
 faults through mounted pages, shares direct Preflight remedies and completes Settings field metadata.
 Measured Queue row reuse and offscreen Queue/Log layout deferral preserve full loaded populations;

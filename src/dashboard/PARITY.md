@@ -634,3 +634,17 @@ queue-footer Archive specification is replaced by the same four theme/viewport c
 footer geometry and menu absence. Its historical Archive assertions are retired under the operator's
 prior Archive removal. Generic kit primitives remain available. Focused evidence is
 `spreadsheet-field-mapping-10003539`; no frozen references are rewritten.
+
+## XLSX compatibility and Advanced settings (2026-10-06)
+
+Settings groups Personal (General, Credentials), Advanced (Performance, Paths, Routes), Data,
+Status and Help retain the same eleven pages, route IDs, search and guarded editor transitions.
+Real XLSX import now reads all records despite unsupported Excel table color-filter rules. Only
+filter metadata is omitted from the editable parsing copy; original bytes, values and supported
+cell fills remain intact, and malformed XML still refuses import.
+
+`spreadsheet-xlsx-compatibility.spec.ts` exercises both desktop widths and themes, Advanced
+navigation/history/reload, worker import, typed mapping, sheet exclusion, editing, fills, export
+roundtrip and retained library identity. Each state emits body-backed screenshot/accessibility
+evidence. The existing save-toast cases cover editor save/readback after regrouping. Evidence is
+`frontend-wiring-prep-10003539`; frozen reference/coverage phase-exit gates remain with 3.1.19.

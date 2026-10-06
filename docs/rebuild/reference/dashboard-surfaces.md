@@ -7815,6 +7815,17 @@ remains a wiring obligation. The Preflight summary shows Last checked followed b
 local date and time, including retained previous results. Readiness freshness and rerun authority are
 unchanged. Focused evidence for these amendments is retained in `workflow-duration-20261005`.
 
+The 2026-10-06 wiring-preparation amendment groups General and Credentials under Personal,
+Performance, Paths and Routes under Advanced, and retains the existing Data, Status and Help groups.
+All eleven page IDs, search destinations, editor lifecycle and draft guards remain unchanged.
+XLSX value-copy import ignores worksheet and table filter rules, including unsupported table
+color-filter metadata, so every retained record is available for column mapping. Parsing uses a
+private copy; source bytes remain immutable. Values, supported cell fills and other sheets survive;
+malformed table XML still fails visibly. Typed field validation and physical import exclusion are
+unchanged. The component intent and acceptance table belongs to frontend-backend-integration §5;
+backend matching, durable storage and workflow updates remain deferred. Focused evidence is
+`frontend-wiring-prep-10003539`.
+
 The 2026-10-05 frontend reliability amendment implements the operator's six audit priorities only
 in browser code and fictional producers. Spreadsheet parsing and export run in disposable workers;
 the existing 20 MB and 100,000-cell limits remain. The viewer mounts at most 50 data rows and 20
