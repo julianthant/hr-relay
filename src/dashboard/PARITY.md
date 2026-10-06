@@ -258,7 +258,7 @@ Ref frontend-backend-integration §10 and ref dashboard-surfaces §9.9 own this 
 Workflow names align with category text by reserving the category icon and gap inside each row.
 Card edges remain close to the panel sides; counts, theme, row height and selection behavior are unchanged.
 
-The 2026-10-04 permanent-shell revision makes Workflow and Settings navigation 264px wide and full-height above Sessions. The 48px Navbar occupies the remaining width. The full-height rounded bordered queue uses a 30% track with a 244px minimum. Its controls move to the rounded bordered 48px Action panel above Logs alongside the date picker. Logs retains a separate rounded bordered container with 12px canvas gutters; the workflow launcher and panel-mode shortcuts are removed. Legacy workflow labels are marked layout previews with fictional queues/logs. Notifications group actionable updates by workflow with no snooze or desktop-delivery controls. Base UI toast cards replace compact chips while preserving persistent errors, recovery actions, overlay inertness and the Session floor. Archive/Activity headers, searchable capabilities and shortcut rows follow Settings geometry. Focused desktop interaction checks cover both themes at 1024 and 1440 pixels; frozen references and full repository gates remain owned by 3.1.19.
+The 2026-10-04 permanent-shell revision makes Workflow and Settings navigation 264px wide and full-height above Sessions. The 48px Navbar occupies the remaining width. The full-height rounded bordered queue uses a 30% track; the 2026-10-06 amendment raises its minimum from 244px to 376px. Its controls move to the rounded bordered 48px Action panel above Logs alongside the date picker. Logs retains a separate rounded bordered container with 12px canvas gutters; the workflow launcher and panel-mode shortcuts are removed. Legacy workflow labels are marked layout previews with fictional queues/logs. Notifications group actionable updates by workflow with no snooze or desktop-delivery controls. Base UI toast cards replace compact chips while preserving persistent errors, recovery actions, overlay inertness and the Session floor. Archive/Activity headers, searchable capabilities and shortcut rows follow Settings geometry. Focused desktop interaction checks cover both themes at 1024 and 1440 pixels; frozen references and full repository gates remain owned by 3.1.19.
 
 Settings entry keeps its full-height rail and Navbar opaque and stationary while only content fades. The workflow scrollbar and visible search shortcut hint are hidden, retaining scrolling and the `/` binding. Shared Select items use padded SelectGroup composition; menu surfaces and items retain measured insets. Escape closes an inner Base UI popup before its enclosing dialog or drawer. Queue filters use Base UI ToggleGroup. Log title bars and comparison headers have distinct opaque fills; selected-run status badges match their queue rows. Focused checks cover control placement, keyboard navigation, narrow filter fit, dropdown padding, status treatments and Settings entry frames.
 
@@ -711,3 +711,18 @@ The broader workflow check reproduced a blank screen on `?day=invalid-day`: hidd
 formatted the invalid date. Search now reports the date error and exposes no rows; the shell remains
 mounted. The canonical workflow cases preserve invalid-date refusal, verify empty/unavailable search,
 and recover the queue by choosing Today, without a reload or page errors.
+
+
+## Queue width and single-line footers (2026-10-06)
+
+The workflow rail yields from 264px at 1440px to 208px at and below 1216px;
+Settings retains its 264px rail. Action panels below 450px use a 144px date field
+so Start, Status, Sort and Attention stay separate from the date. The queue keeps
+a 376px minimum beside Logs and scales with its existing 30% track on wider desktops. Shared queue footers place
+time, attempt, compact run ID, elapsed and 24px actions on one line, replacing
+the earlier wrapping-metadata rule. Unusually long compact IDs may ellipsize;
+the exact trace remains available in their tooltip. The 1024×720 desktop canvas
+floor and scrolling below it remain. Focused dark/light checks cover 1024, 1280,
+1440 and 1920px, intermediate resize thresholds, the canvas floor, attempt
+controls and local Retry/Delete. Evidence is retained in
+`queue-responsive-10003539`; frozen references and phase-exit gates remain 3.1.19.

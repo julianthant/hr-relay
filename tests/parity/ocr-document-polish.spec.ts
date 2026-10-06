@@ -5,9 +5,15 @@ import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "./helpers/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { chooseSelect } from "./helpers/select-choice.js";
+import { attachShellA11y } from "./helpers/shell-proof.js";
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  test(`document-complete OCR queue, viewer and actions @ ${theme.attribute}-${width}`, async ({ page }, info) => {
+  const queueEvidence = `ocr-queue-${theme.attribute}-${width}.a11y.yml`;
+  const inputEvidence = `run-pdf-inputs-${theme.attribute}-${width}.a11y.yml`;
+  const documentEvidence = (name: string) => `ocr-${name}-${theme.attribute}-${width}.a11y.yml`;
+  test(`document-complete OCR queue, viewer and actions @ ${theme.attribute}-${width}`, {
+    annotation: [queueEvidence, inputEvidence, ...OCR_DOCUMENT_FIXTURES.map(doc => documentEvidence(doc.name))].map(description => ({ type: "required-a11y-evidence", description })),
+  }, async ({ page }, info) => {
     ensureParityBundle(); const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [], writes: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
@@ -26,6 +32,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const aliases = await queue.locator("span[title]").allTextContents();
       expect(aliases.filter(value => /^OCR\d{8}$/u.test(value))).toHaveLength(5);
       await info.attach(`ocr-queue-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+      await attachShellA11y(page, info, queueEvidence);
       for (const doc of OCR_DOCUMENT_FIXTURES) {
         await queue.getByRole("button", { name: new RegExp(`^${doc.name.replaceAll(".", "\\.")} —`, "u") }).click();
         await logs.getByRole("button", { name: `Records ${doc.records.length}`, exact: true }).click();
@@ -69,6 +76,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         await expect(editor.getByRole("button", { name: "Approve records", exact: true })).toBeInViewport();
         await expect(page.locator('[data-slot="select-content"]:visible')).toHaveCount(0);
         await info.attach(`ocr-${doc.name}-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+        await attachShellA11y(page, info, documentEvidence(doc.name));
         const overflow = await editor.evaluate(node => {
           const bounds = node.getBoundingClientRect();
           return [...node.querySelectorAll<HTMLElement>("input:not([aria-hidden=true]),textarea,button:not([aria-hidden=true]),section")].filter(element => {
@@ -82,7 +90,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const single = queue.getByRole("button", { name: /^single-oath.pdf —/u });
       await single.getByRole("button", { name: "Retry", exact: true }).focus(); await page.keyboard.press("Enter");
       const rerun = page.getByRole("dialog", { name: "Rerun", exact: true });
-      await expect(rerun).toBeVisible(); await expect(rerun).toContainText("single-oath.pdf");
+      await expect(rerun).toBeVisible();
+      await rerun.getByRole("button", { name: "Continue", exact: true }).click();
+      await expect(rerun.getByRole("list", { name: "Selected PDFs", exact: true })).toContainText("single-oath.pdf");
       await rerun.getByRole("button", { name: "Cancel", exact: true }).click();
       await expect(single.getByRole("button", { name: "Retry", exact: true })).toBeFocused();
       await single.getByRole("button", { name: "Delete", exact: true }).click();
@@ -96,8 +106,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const lookupRetry = queue.getByRole("button", { name: "Retry", exact: true });
       await lookupRetry.click();
       await expect(rerun).toBeVisible();
-      await expect(rerun.getByRole("complementary", { name: "Source run", exact: true })).toContainText("OnBase");
-      await expect(rerun).toContainText("detect-test.pdf");
+      await expect(rerun).toContainText("OnBase · Workflow preview");
+      await rerun.getByRole("button", { name: "Continue", exact: true }).click();
+      await expect(rerun.getByRole("list", { name: "Selected PDFs", exact: true })).toContainText("detect-test.pdf");
       await rerun.getByRole("button", { name: "Cancel", exact: true }).click();
       await expect(lookupRetry).toBeFocused();
       await page.getByRole("button", { name: "Start a run", exact: true }).click();
@@ -111,6 +122,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(launcher).not.toContainText("The ticket waits for all signers");
       await expect(launcher).toHaveCSS("opacity", "1");
       await info.attach(`run-pdf-inputs-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+      await attachShellA11y(page, info, inputEvidence);
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
       expect(errors).toEqual([]); expect(writes).toEqual([]);
     } finally { await server.close(); }

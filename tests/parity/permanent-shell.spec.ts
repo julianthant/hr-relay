@@ -4,9 +4,14 @@ import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "./helpers/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { FIXTURE_IDS } from "./helpers/fixture-queue.js";
+import { attachShellA11y } from "./helpers/shell-proof.js";
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  test(`permanent rail with separate queue, Action panel and Logs @ ${theme.attribute}-${width}`, async ({ page }, info) => {
+  const actionEvidence = `action-panel-${theme.attribute}-${width}.a11y.yml`;
+  const settingsEvidence = `permanent-shell-${theme.attribute}-${width}.a11y.yml`;
+  test(`permanent rail with separate queue, Action panel and Logs @ ${theme.attribute}-${width}`, {
+    annotation: [actionEvidence, settingsEvidence].map(description => ({ type: "required-a11y-evidence", description })),
+  }, async ({ page }, info) => {
     ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, preflightScenario: "ready" });
     try {
@@ -20,7 +25,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(rail).toBeVisible();
       const workspace = page.getByRole("complementary", { name: "Workspace" });
       const railBounds = (await workspace.boundingBox())!;
-      expect(railBounds.x).toBe(0); expect(railBounds.y).toBe(0); expect(railBounds.width).toBe(264);
+      expect(railBounds.x).toBe(0); expect(railBounds.y).toBe(0); expect(railBounds.width).toBe(width === 1024 ? 208 : 264);
       await expect(rail.getByRole("button")).toHaveCount(15);
       const typeStyle = (node: Element) => ({ size: getComputedStyle(node).fontSize, weight: getComputedStyle(node).fontWeight });
       expect(await rail.getByRole("button", { name: "Person Lookup", exact: true }).evaluate(typeStyle)).toEqual(await rail.getByRole("button", { name: "I-9 Lookup", exact: true }).evaluate(typeStyle));
@@ -49,8 +54,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const queue = page.getByRole("region", { name: "Queue", exact: true }), logs = page.locator(".dashboard-log-column");
       const actions = logs.getByRole("region", { name: "Action panel", exact: true });
       const queueBounds = (await queue.boundingBox())!, logBounds = (await logs.boundingBox())!;
-      expect(queueBounds.x).toBe(276); expect(queueBounds.y).toBe(12); expect(logBounds.y).toBe(12);
-      expect(queueBounds.width).toBeGreaterThanOrEqual(244);
+      expect(queueBounds.x).toBe(railBounds.width + 12); expect(queueBounds.y).toBe(12); expect(logBounds.y).toBe(12);
+      expect(queueBounds.width).toBeGreaterThanOrEqual(376);
       expect(logBounds.x).toBeCloseTo(queueBounds.x + queueBounds.width + 12);
       expect(logBounds.x + logBounds.width).toBe(width - 12);
       const actionBounds = (await actions.boundingBox())!;
@@ -67,7 +72,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(queue.getByRole("button", { name: "Start a run", exact: true })).toHaveCount(0);
       const controls = actions.getByRole("group", { name: "Action panel controls", exact: true });
       await expect(controls).toBeVisible();
-      for (const control of [page.getByRole("button", { name: "Start a run", exact: true }), page.getByRole("button", { name: "Filter queue by status", exact: true }), page.getByRole("combobox", { name: "Sort the queue", exact: true })]) {
+      for (const control of [page.getByRole("button", { name: "Start a run", exact: true }), page.getByRole("button", { name: "Filter queue by status", exact: true }), page.getByRole("combobox", { name: "Sort the queue", exact: true }), page.getByRole("button", { name: "Attention first", exact: true })]) {
         const bounds = (await control.boundingBox())!;
         expect(await controls.locator(control).count()).toBe(1);
         expect(bounds.x).toBeGreaterThanOrEqual(actionBounds.x);
@@ -84,9 +89,13 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           const style = getComputedStyle(node);
           return { color: style.color, background: style.backgroundColor, border: style.borderColor, font: style.fontSize, text: node.textContent, icon: node.querySelector("svg")?.innerHTML };
         };
-        expect(await logPanel.locator("header [data-slot=badge]").first().evaluate(badgeStyle)).toEqual(await row.locator("[data-slot=badge]").first().evaluate(badgeStyle));
+        const header = logPanel.locator("header").first();
+        if (id === FIXTURE_IDS.openGateRun) {
+          await expect(header.getByRole("button", { name: "Review", exact: true })).toBeVisible();
+          await expect(header.locator("[data-slot=badge]")).toHaveCount(0);
+        } else expect(await header.locator("[data-slot=badge]").first().evaluate(badgeStyle)).toEqual(await row.locator("[data-slot=badge]").first().evaluate(badgeStyle));
       }
-      expect(await logPanel.locator(":scope > header").evaluate(node => getComputedStyle(node).backgroundColor)).not.toBe(await logPanel.evaluate(node => getComputedStyle(node).backgroundColor));
+      expect(await logPanel.locator("header").first().evaluate(node => getComputedStyle(node).backgroundColor)).not.toBe(await logPanel.evaluate(node => getComputedStyle(node).backgroundColor));
       for (const frame of [queue, actions, logPanel]) {
         expect(await frame.evaluate(node => {
           const style = getComputedStyle(node);
@@ -98,6 +107,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         })).toEqual({ bordered: true, rounded: true, opaque: true });
       }
       await info.attach(`action-panel-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+      await attachShellA11y(page, info, actionEvidence);
       await expect(page.getByRole("group", { name: "Frequent queue filters", exact: true })).toHaveCount(0);
       await expect(logs.getByRole("button", { name: /^Choose date/u })).toBeVisible();
       await page.keyboard.press("w"); await page.keyboard.press("Escape"); await expect(rail).toBeVisible();
@@ -120,12 +130,13 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect(optionBounds.x - popupBounds.x).toBeGreaterThanOrEqual(6);
       await page.keyboard.press("Escape");
       await rail.getByRole("button", { name: "Onboarding", exact: true }).click();
-      const preview = page.getByRole("region", { name: "Onboarding queue", exact: true });
-      await expect(preview).not.toContainText("fictional sample runs");
-      await preview.getByRole("button").first().click();
-      await expect(logs.getByRole("region", { name: "Selected run logs", exact: true }).locator(":scope > header h2")).toContainText("EID 10873698");
+      const preview = queue.locator('[data-demo-row-id]:not(tr)').first();
+      await expect(preview).toContainText("jordan.lee@example.com");
+      await expect(queue).not.toContainText("fictional sample runs");
+      await preview.click();
+      await expect(logs.getByRole("region", { name: "Selected run logs", exact: true }).locator("header h2")).toContainText("jordan.lee@example.com");
       await rail.getByRole("button", { name: "Person Lookup", exact: true }).click();
-      await expect(preview).toHaveCount(0);
+      await expect(queue).not.toContainText("jordan.lee@example.com");
       const railFill = await bar.evaluate(node => getComputedStyle(node).backgroundColor);
       await page.getByRole("button", { name: "Settings", exact: true }).click();
       const settings = page.getByRole("navigation", { name: "Settings sections", exact: true });
@@ -150,6 +161,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
       expect(errors).toEqual([]); expect(writes).toEqual([]);
       await info.attach(`permanent-shell-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+      await attachShellA11y(page, info, settingsEvidence);
     } finally { await server.close(); }
   });
 }

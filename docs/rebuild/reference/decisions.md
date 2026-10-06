@@ -480,6 +480,12 @@ linked subtree without approval or a fabricated completion date. Session-local s
 existing Archive folders, details, Logs and exports; served command authority remains unchanged.
 D347's dashboard-surfaces owner records the contract and `queue-footer-archive-20261005` evidence.
 
+The 2026-10-06 queue layout amendment gives Queue a 376px minimum and lets the workflow rail
+yield from 264px to 208px; Settings remains 264px. Queue metadata and 24px actions stay on one
+line at all supported widths, with exact trace tooltips for unusually long compact IDs. The desktop
+canvas floor is preserved. D347's dashboard-surfaces owner records the contract; evidence is
+`queue-responsive-10003539`.
+
 The controls amendment extends Settings search cues through full-width row card padding. Shared tabs begin at the rail's left edge and slide one underline over 220ms for pointer selection, snapping for keyboard and reduced motion. Spreadsheet toolbar/footer controls share the body height and omit explanatory notes. Archive folder counts sit beside search; Activity calendars align right without visible Start/End prefixes. Exact-control focus, date semantics, editing and export behavior remain unchanged. D347's dashboard-surfaces owner records the presentation contract.
 
 The Archive bump amendment moves review to a second dialog step with aligned current/new versions,

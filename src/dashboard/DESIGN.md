@@ -502,10 +502,11 @@ Two things this rule does **not** license:
   with `overflow-wrap:anywhere`, while the right-side status cluster moves to a
   second line before it can clip or ellipsize the subject. The status glyph
   remains aligned to the first title line.
-- **A row footer's facts WRAP; they never truncate.** `time · #run · trace ·
-  timing` is a wrapping provenance line with the controls as a sibling pinned
-  top-right — so a run with a queue note takes a second line instead of cutting
-  its trace id to `1…`. A row with little to say stays one line high.
+- **Queue footers stay on one line.** Time, attempt, compact run ID, duration and
+  24px action targets center vertically without wrapping. The queue keeps a 376px
+  minimum while the workflow rail yields from 264px to 208px. An unusually long
+  compact ID may ellipsize; its tooltip retains the exact trace. Below the desktop
+  canvas floor the page scrolls rather than compressing queue rows.
 - **Member status changes order and ink, never row shape.** Failed, waiting,
   parked and warning members sort ahead of routine members but keep the same
   one-line `status · name · detail · EID` tracks. The mini-table's summary strip

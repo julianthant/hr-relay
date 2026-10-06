@@ -393,15 +393,7 @@ const SUBLINE_TONE: Record<ProposedStatus, string> = {
   cancelled: "text-[color:var(--ds-fg-muted)]",
 };
 
-/**
- * The row's FOOTER — the run's provenance line and its controls.
- *
- * The meta zone is one wrapping provenance line, and
- * the controls are a sibling centered at the right. When a run carries a trace, a
- * subtitle and an elapsed, all three stay readable — the demo's production
- * predecessor packed them onto one line and `truncate`d whatever lost, which at
- * a 400px queue rendered a trace id cut to a single character.
- */
+/** One provenance line; unusually long aliases yield before the clock and controls. */
 function RowFooterLine({
   surface,
   actions,
@@ -444,11 +436,11 @@ function RowFooterLine({
         className={cn(
           dsText.meta,
           dsText.nums,
-          "flex min-h-[var(--ds-h-sm)] min-w-0 flex-1 flex-wrap items-center",
-          "gap-x-[var(--ds-space-base)] gap-y-[var(--ds-space-hair)] text-[color:var(--ds-fg-muted)]",
+          "flex min-h-[var(--ds-h-sm)] min-w-0 flex-1 flex-nowrap items-center",
+          "gap-[var(--ds-space-base)] text-[color:var(--ds-fg-muted)]",
         )}
       >
-        <span className="whitespace-nowrap">{fmtClock(surface.startedAt)}</span>
+        <span className="shrink-0 whitespace-nowrap">{fmtClock(surface.startedAt)}</span>
         <QueueAttemptSelector
           title={queueRowTitle(surface)}
           surface={surface}
@@ -457,11 +449,11 @@ function RowFooterLine({
           onSelect={onSelect}
         />
         {/* The compact alias is display-only; the tooltip retains the exact trace. */}
-        <span className="whitespace-nowrap text-[color:var(--ds-fg-secondary)]" title={surface.traceId}>
+        <span className="min-w-0 truncate text-[color:var(--ds-fg-secondary)]" title={surface.traceId}>
           {runDisplayId(surface.runId, surface.traceId)}
         </span>
         {timing !== undefined && (
-          <span className="whitespace-nowrap" {...(timing.title === undefined ? {} : { title: timing.title })}>
+          <span className="shrink-0 whitespace-nowrap" {...(timing.title === undefined ? {} : { title: timing.title })}>
             {timing.text}
           </span>
         )}
@@ -814,7 +806,7 @@ function QueueAttemptSelector({ title, surface, item, selectedRunId, onSelect }:
   const attempts = item?.attempts ?? [surface];
   return <DropdownMenu open={open} onOpenChange={setOpen}>
     <DropdownMenuTrigger asChild><BareButton type="button" aria-label={`Attempts for ${title}`} title={`Attempt ${surface.attempt}`} onClick={event => event.stopPropagation()}
-      className={cn("inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-caption text-ui-muted hover:bg-ui-hover hover:text-ui-primary", dsFocus)}>
+      className={cn("inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-caption text-ui-muted hover:bg-ui-hover hover:text-ui-primary", dsFocus)}>
       #{surface.attempt}<ChevronDown aria-hidden className="size-3" />
     </BareButton></DropdownMenuTrigger>
     <DropdownMenuContent aria-label={`Attempts for ${title}`} className="w-56">
