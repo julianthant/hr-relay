@@ -25,6 +25,7 @@
 import "./theme/tokens.css";
 
 export { Collapsible, CollapsibleTrigger, CollapsibleContent } from "./primitives/shadcn-collapsible.js";
+export { PageBreadcrumbs } from "./primitives/page-breadcrumbs.js";
 
 export {
   dsText,

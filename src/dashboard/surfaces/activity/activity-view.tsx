@@ -2,7 +2,7 @@ import { ActivityDurations } from "./activity-duration.js";
 import { type ReactNode } from "react";
 import { BarChart3 } from "lucide-react";
 import { Select, PageHeading, dsFocus } from "../../ds/ui.js";
-import { ActivityDrilldown } from './activity-drilldown.js';
+import { ActivityBreadcrumbs, ActivityDrilldown } from './activity-drilldown.js';
 import type { ActivityBrowse } from './activity-drilldown-model.js';
 import { ActivitySkeleton } from "./activity-loading.js";
 import { ACTIVITY_DATE_PRESETS, type ActivityDatePreset, type ActivityDateRange } from "./activity-model.js";
@@ -80,6 +80,7 @@ export function ActivityView({ data, range, rangeRevision = 0, period, onPreset,
   selection?: ActivityBrowse | null; onSelection?: (next: ActivityBrowse | null) => void;
 }) {
   return <section aria-label="Analytics report" className="settings-reference-page settings-data-section ui-theme-scope text-ui-primary">
+    {selection && onSelection && data.state === 'loaded' && <ActivityBreadcrumbs report={data.report} selection={selection} onSelection={onSelection} />}
     <PageHeading title="Analytics" description="Run outcomes, volume and performance." />
     <div className="activity-header-filters"><div className="activity-period-controls"><Select aria-label="Report period" variant="toolbar" value={period} onChange={event => onPreset(event.target.value as ActivityDatePreset)}>{ACTIVITY_DATE_PRESETS.map(preset => <option key={preset.value} value={preset.value}>{preset.label}</option>)}</Select><ActivityRange key={rangeRevision} range={range} onApply={onRange} onEdit={() => onPreset('custom')} /></div></div>
     {notice && <p role="status" className="m-0 text-body text-ui-secondary">{notice}</p>}

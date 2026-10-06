@@ -1,7 +1,6 @@
 import { useLayoutEffect, useRef, type ReactNode } from 'react';
-import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from '../../ds/primitives/breadcrumb.js';
 import { Download, FileText } from 'lucide-react';
-import { Badge, Button, PageHeading, StatusPill, dsIcon, useToasts } from '../../ds/ui.js';
+import { Badge, Button, PageBreadcrumbs, PageHeading, StatusPill, dsIcon, useToasts } from '../../ds/ui.js';
 import { ArchiveFieldGroup, ArchiveFieldRows, ArchiveResourceState } from './archive-visual.js';
 import { MOCK_ARCHIVE_REPORT_SECTIONS, mockArchiveDate, type MockArchiveRun } from './archive-mock-model.js';
 import { mockArchiveLogs } from './archive-mock-logs-model.js';
@@ -30,7 +29,7 @@ export function MockArchiveReport({ run, section, onSection, onHistory, onBack, 
  };
  return <article ref={article} aria-label="Saved run report">
   <div className="mock-archive-folder-header">
-   <Breadcrumb aria-label="Archive breadcrumbs"><BreadcrumbList><BreadcrumbItem><BreadcrumbLink asChild><button type="button" onClick={onHistory}>Archive</button></BreadcrumbLink></BreadcrumbItem><BreadcrumbSeparator /><BreadcrumbItem><span>{run.dashboard === 'unrecorded' ? 'Version not recorded' : `Dashboard ${run.dashboard}`}</span></BreadcrumbItem><BreadcrumbSeparator /><BreadcrumbItem><BreadcrumbLink asChild><button type="button" onClick={onBack}>{run.workflowLabel}</button></BreadcrumbLink></BreadcrumbItem><BreadcrumbSeparator /><BreadcrumbItem><BreadcrumbPage>Run {run.number}</BreadcrumbPage></BreadcrumbItem></BreadcrumbList></Breadcrumb>
+   <PageBreadcrumbs label="Archive breadcrumbs" items={[{ label: 'Archive', onClick: onHistory }, { label: run.dashboard === 'unrecorded' ? 'Version not recorded' : `Dashboard ${run.dashboard}` }, { label: run.workflowLabel, onClick: onBack }, { label: `Run ${run.number}` }]} />
    <PageHeading title={run.title} description={`${run.workflowLabel} · Run ${run.number}`} actionAlignment="title" actions={actions} />
   </div>
   <div className="mock-archive-report-layout">

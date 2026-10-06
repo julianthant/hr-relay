@@ -4,13 +4,13 @@ import "./settings-data.css";
 import { SpreadsheetsSettings } from "../spreadsheets/spreadsheets.js";
 import { EditableSettingsSectionIdSchema } from "../../../domain/dashboard/settings-editor.js";
 import { SettingsAuthoritySection } from "./editor/settings-authorities.js";
-import { BarChart3, Archive, BookMarked, Workflow, CircleAlert, ClipboardCheck, Database, FolderOpen, Gauge, Keyboard as KeyboardIcon, Link2, Monitor, Settings as SettingsIcon, SlidersHorizontal, Table2, ArrowLeft } from "lucide-react";
+import { BarChart3, Archive, BookMarked, Workflow, CircleAlert, ClipboardCheck, Database, FolderOpen, Gauge, Keyboard as KeyboardIcon, Link2, Monitor, Settings as SettingsIcon, SlidersHorizontal, Table2 } from "lucide-react";
 import { useCallback,useEffect,useMemo,useRef,useState,type ReactNode } from "react";
 import type { FrontendBootstrapWire } from "../../../domain/dashboard/bootstrap.js";
 import {
 SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID
 } from "../../../domain/dashboard/settings.js";
-import { Banner,Button,Dialog,DialogContent,DialogFooter,DsBodyScope,IconButton,SearchInput,SectionLabel,StatusDot,TakeoverFrame,dsFocus,dsMotion,dsIcon,dsSurface,dsText } from "../../ds/ui.js";
+import { Banner,Button,Dialog,DialogContent,DialogFooter,DsBodyScope,IconButton,PageBreadcrumbs,SearchInput,SectionLabel,StatusDot,TakeoverFrame,dsFocus,dsMotion,dsIcon,dsSurface,dsText } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { plural } from "../shared/status/format.js";
 import type { CatalogView } from "./catalog/row-catalog-model.js";
@@ -312,7 +312,7 @@ export function SettingsPage({
   return (
     <TakeoverFrame label="Settings" direction="row" animateFrame={false} className="settings-takeover">
       <nav aria-label="Settings sections" className="settings-panel-nav rail-scroll">
-        <header className="settings-nav-header"><h2>Settings</h2><IconButton label="Back to dashboard" size="sm" icon={<ArrowLeft className={dsIcon.md} />} onClick={() => requestExit(onClose)} /></header>
+        <header className="settings-nav-header"><PageBreadcrumbs label="Settings breadcrumbs" items={[{ label: 'Dashboard', onClick: () => requestExit(onClose) }, { label: 'Settings' }]} /></header>
         <SearchInput ref={navSearch} aria-label="Search settings" placeholder="Search" value={navQuery} onChange={event => setNavQuery(event.target.value)} onClear={() => setNavQuery("")} className="settings-nav-search"
           aria-controls={navQuery.trim() ? "settings-search-results" : undefined}
           onKeyDown={event => {

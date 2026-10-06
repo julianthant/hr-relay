@@ -6,7 +6,6 @@
 .dashboard-shell .settings-takeover { padding: 0; flex-direction: row; border: 0; border-radius: 0; overflow: hidden; }
 .dashboard-shell .settings-takeover > nav.settings-panel-nav { display: flex; width: var(--shell-rail-width); height: auto; max-height: none; flex-direction: column; flex-shrink: 0; gap: 16px; overflow-y: auto; border-right: 1px solid var(--ui-stroke); padding: 20px 16px 24px; background: var(--ds-surface-1); }
 .settings-nav-header { display: flex; min-height: 32px; height: 32px; align-items: center; justify-content: space-between; padding-left: 12px; }
-.settings-nav-header h2 { margin: 0; font-size: 23px; font-weight: 500; }
 .settings-nav-search [data-slot="search-field-group"] { border: 0; background: var(--ui-hover); }
 .settings-nav-group { display: flex; flex-direction: column; gap: 4px; }
 .settings-nav-group > span { padding: 0 12px 8px; color: var(--ui-secondary); font-size: 14px; }

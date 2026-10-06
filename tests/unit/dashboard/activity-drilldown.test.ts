@@ -88,10 +88,13 @@ describe('Activity drilldown records and navigation', () => {
       await click('button[aria-label^="Open logs for"]');
       assert(host.querySelector('section[aria-label="Selected run logs"]'));
       assert.match(host.textContent ?? '', /Attempt #1/);
-      const back = [...host.querySelectorAll('button')].find(button => button.textContent === 'Back to runs'); assert(back);
+      const breadcrumbs = () => host.querySelector('nav[aria-label="Analytics breadcrumbs"]');
+      assert.equal(breadcrumbs()?.querySelector('[aria-current="page"]')?.textContent, host.querySelector('section[aria-label="Selected run logs"] h2')?.textContent);
+      const back = [...breadcrumbs()!.querySelectorAll('button')].find(button => button.textContent === 'Completed runs'); assert(back);
       await act(async () => back.click());
       assert.match(host.textContent ?? '', /1–20 of 38/);
-      const overview = [...host.querySelectorAll('button')].find(button => button.textContent === 'Back to Analytics'); assert(overview);
+      assert.equal(breadcrumbs()?.querySelector('[aria-current="page"]')?.textContent, 'Completed runs');
+      const overview = [...breadcrumbs()!.querySelectorAll('button')].find(button => button.textContent === 'Analytics'); assert(overview);
       await act(async () => overview.click());
       assert(host.querySelector('button[aria-label="View completed runs (38)"]'));
     } finally { await act(async () => root.unmount()); host.remove(); }

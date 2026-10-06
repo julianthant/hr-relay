@@ -17,7 +17,7 @@ export function BreadcrumbLink({ asChild, className, ...props }: ComponentProps<
   return <Component data-slot="breadcrumb-link" className={cn("inline-flex min-h-6 min-w-6 items-center rounded-sm transition-colors hover:text-ui-primary focus-visible:outline-2 focus-visible:outline-ui-info", className)} {...props} />;
 }
 export function BreadcrumbPage({ className, ...props }: ComponentProps<"span">) {
-  return <span data-slot="breadcrumb-page" role="link" aria-disabled="true" aria-current="page" className={cn("font-normal text-ui-primary", className)} {...props} />;
+  return <span data-slot="breadcrumb-page" aria-current="page" className={cn("font-normal text-ui-primary", className)} {...props} />;
 }
 export function BreadcrumbSeparator({ children, className, ...props }: ComponentProps<"li">) {
   return <li data-slot="breadcrumb-separator" role="presentation" aria-hidden="true" className={cn("[&>svg]:size-3.5", className)} {...props}>{children ?? <ChevronRight />}</li>;

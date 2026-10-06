@@ -2,14 +2,13 @@ import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.j
 import { ChevronRight, Download, FileText, Folder, Layers3 } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
 import { ArchiveBrowseStateSchema, EMPTY_ARCHIVE_BROWSE, type ArchiveBrowseState } from '../../app/navigation/archive-route-model.js';
-import { Button, DateRangeInput, Dialog, DialogContent, PageHeading, Select, TableList, TableToolbar, dsIcon, useToasts } from '../../ds/ui.js';
+import { Button, DateRangeInput, Dialog, DialogContent, PageBreadcrumbs, PageHeading, Select, TableList, TableToolbar, dsIcon, useToasts } from '../../ds/ui.js';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from '../../ds/primitives/dropdown-menu.js';
 import { ArchiveResourceState } from './archive-visual.js';
 import { MockArchiveBump } from './archive-mock-bump.js';
 import { ArchiveMockSearch, MockArchiveSearchResults } from './archive-mock-search.js';
 import { MockArchiveReport } from './archive-mock-report.js';
 import { MOCK_ARCHIVE_RUNS, mockArchiveWorkflows, mockArchiveDate, mockArchiveDateBoundary, mockArchiveExport, mockArchiveFilter, mockArchiveResultLabel, mockArchiveScope, type MockArchiveFolder, type MockArchiveRun } from './archive-mock-model.js';
-import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from '../../ds/primitives/breadcrumb.js';
 import './archive-mock.css';
 
 export function MockArchiveWorkspace({ catalog, selection, view, folder, browse, browseInvalid, onBrowse, onSelection, onView, onFolder, onOpenReport, additionalReports }: {
@@ -91,7 +90,7 @@ export function MockArchiveWorkspace({ catalog, selection, view, folder, browse,
       {searching ? searchResults : <MockVersionFolders rows={rows} onFolder={onFolder} />}
      </> : <>
       <div className="mock-archive-folder-header">
-       <Breadcrumb aria-label="Archive breadcrumbs"><BreadcrumbList><BreadcrumbItem><BreadcrumbLink asChild><button type="button" onClick={recover}>Archive</button></BreadcrumbLink></BreadcrumbItem><BreadcrumbSeparator /><BreadcrumbItem><span>{folder.dashboardKey === 'unrecorded' ? 'Version not recorded' : `Dashboard ${folder.dashboardKey}`}</span></BreadcrumbItem><BreadcrumbSeparator /><BreadcrumbItem><BreadcrumbPage>{scope[0].workflowLabel}</BreadcrumbPage></BreadcrumbItem></BreadcrumbList></Breadcrumb>
+       <PageBreadcrumbs label="Archive breadcrumbs" items={[{ label: 'Archive', onClick: recover }, { label: folder.dashboardKey === 'unrecorded' ? 'Version not recorded' : `Dashboard ${folder.dashboardKey}` }, { label: scope[0].workflowLabel }]} />
        <PageHeading title={scope[0].workflowLabel} actionAlignment="title" actions={actions} />
       </div>
       {searching ? <>

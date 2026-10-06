@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { ArrowLeft } from 'lucide-react';
-import { Button, dsFocus } from '../../ds/ui.js';
+import { Button, PageBreadcrumbs, dsFocus } from '../../ds/ui.js';
 import { LogPanel } from '../run-detail/log-panel.js';
 import { StatusBadge } from '../shared/status/status.js';
 import { activityDuration, type ActivitySummary } from './activity-view-model.js';
@@ -10,16 +9,22 @@ function RunStatus({ run }: { run: ActivityRunRecord }) {
   return <StatusBadge presentation="queue" status={run.status === 'completed' ? run.readback === true ? 'verifiedDone' : 'doneWarnings' : run.status} />;
 }
 
+export function ActivityBreadcrumbs({ report, selection, onSelection }: { report: ActivitySummary; selection: ActivityBrowse; onSelection: (next: ActivityBrowse | null) => void }) {
+  const result = report.runs ? activityDrilldown(report.runs, selection) : undefined;
+  const breadcrumbs = [{ label: 'Analytics', onClick: () => onSelection(null) },
+    { label: ACTIVITY_RUN_LABELS[selection.metric], onClick: () => onSelection({ ...selection, run: undefined }) },
+    ...(selection.run ? [{ label: result?.state === 'loaded' && result.run ? result.run.subject : 'Run unavailable' }] : [])];
+  return <PageBreadcrumbs label="Analytics breadcrumbs" items={breadcrumbs} />;
+}
+
 export function ActivityDrilldown({ report, selection, onSelection }: { report: ActivitySummary; selection: ActivityBrowse; onSelection: (next: ActivityBrowse | null) => void }) {
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => { heading.current?.focus({ preventScroll: true }); }, [selection.metric, selection.workflow, selection.page, selection.run]);
   const result = useMemo(() => report.runs ? activityDrilldown(report.runs, selection) : { state: 'unavailable' as const, reason: 'Run details are unavailable for this report.' }, [report.runs, selection]);
   const context = useMemo(() => result.state === 'loaded' && result.run ? { workflow: result.run.workflowLabel, displayId: result.run.displayId, attempt: result.run.attempt, reviewPending: result.run.status === 'waiting',
     timing: { text: activityDuration(result.run.seconds) } } : undefined, [result]);
-  const back = () => onSelection(selection.run ? { ...selection, run: undefined } : null);
   return <section aria-label="Analytics runs" className="min-w-0">
-    <Button size="sm" variant="ghost" icon={<ArrowLeft aria-hidden className="size-4" />} onClick={back}>{selection.run ? 'Back to runs' : 'Back to Analytics'}</Button>
-    <h2 ref={heading} tabIndex={-1} className={`mb-1 mt-4 w-fit rounded-sm text-section ${dsFocus} ${result.state === 'loaded' && result.run ? 'sr-only' : ''}`}>{result.state === 'loaded' && result.run ? `${result.run.subject} logs` : ACTIVITY_RUN_LABELS[selection.metric]}</h2>
+    <h2 ref={heading} tabIndex={-1} className={`mb-1 mt-0 w-fit rounded-sm text-section ${dsFocus} ${result.state === 'loaded' && result.run ? 'sr-only' : ''}`}>{result.state === 'loaded' && result.run ? `${result.run.subject} logs` : ACTIVITY_RUN_LABELS[selection.metric]}</h2>
     {result.state === 'unavailable' ? <p role="alert" className="text-body text-ui-secondary">{result.reason}</p> : result.run ?
       <div className="mt-3 flex h-[calc(var(--ds-space-base)*72)] min-w-0 flex-col"><LogPanel key={result.run.id} title={result.run.subject}
         status={<RunStatus run={result.run} />} steps={result.run.steps} timeline={result.run.timeline}

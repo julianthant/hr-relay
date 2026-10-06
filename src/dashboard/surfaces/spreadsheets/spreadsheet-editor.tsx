@@ -1,8 +1,7 @@
 import { useViewState } from "../../app/navigation/view-route-model.js";
-import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "../../ds/primitives/breadcrumb.js";
 import { useDeferredValue, useMemo, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Columns3, Download, Plus, Undo2, Redo2 } from 'lucide-react';
-import { Banner, Button, Dialog, DialogBody, DialogContent, DialogFooter, IconButton, Input, PageHeading, SearchInput, Select } from '../../ds/ui.js';
+import { Banner, Button, Dialog, DialogBody, DialogContent, DialogFooter, IconButton, Input, PageBreadcrumbs, PageHeading, SearchInput, Select } from '../../ds/ui.js';
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../ds/primitives/dropdown-menu.js';
 import { cellText, columnName, downloadSpreadsheet, editSpreadsheetCell, sortSpreadsheet, spreadsheetForeground, type EditableSheet, type EditableWorkbook } from './spreadsheet-editor-model.js';
 import { exportSheetInWorker, exportSpreadsheetInWorker } from "./spreadsheet-import-client.js";
@@ -70,7 +69,7 @@ export function SpreadsheetEditor({ document, dirty, onDocument, onMapping }: { 
     if (key !== 'z' && key !== 'y') return;
     event.preventDefault(); stepHistory(key === 'y' || event.shiftKey ? 'redo' : 'undo');
   }} onBlur={event => { if (event.target.classList.contains('spreadsheet-cell-input')) { editGroup.current = undefined; setHistory(current => ({ ...current, group: undefined })); } }}>
-    <Breadcrumb><BreadcrumbList><BreadcrumbItem><BreadcrumbLink asChild><button type="button" onClick={() => dirty ? setCloseOpen(true) : onDocument(null, false)}>Spreadsheets</button></BreadcrumbLink></BreadcrumbItem><BreadcrumbSeparator /><BreadcrumbItem><BreadcrumbPage className="truncate">{document.name}</BreadcrumbPage></BreadcrumbItem></BreadcrumbList></Breadcrumb>
+    <PageBreadcrumbs items={[{ label: 'Spreadsheets', onClick: () => dirty ? setCloseOpen(true) : onDocument(null, false) }, { label: document.name }]} />
     <PageHeading title={document.name} description={`${document.sheets.length} ${document.sheets.length === 1 ? 'sheet' : 'sheets'} · ${dirty ? 'Edited copy' : 'Saved copy'}`} actions={onMapping && <Button variant="secondary" onClick={onMapping}>Edit column mappings</Button>} />
     {!sheet && <Banner tone="danger" title="Sheet unavailable"><p>This sheet is no longer in the workbook.</p><Button onClick={() => { setSheetId(''); setPage(0); }}>Open first sheet</Button></Banner>}
     {error && <Banner tone="danger" title="Spreadsheet unavailable">{error}</Banner>}

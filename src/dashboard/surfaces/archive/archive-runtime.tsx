@@ -6,7 +6,7 @@ import type { ArchiveGroupQuery } from "../../../domain/archive/report.js";
 import type { SavedArchiveQuery, SavedRuntimeVersionIndexWire } from "../../../domain/dashboard/archive.js";
 import { formatRuntimeVersion } from "../../../domain/archive/runtime-version.js";
 import { settleCommandResult } from "../../app/commands/command-result.js";
-import { Button, Card, Checkbox, Dialog, DialogBody, DialogContent, DialogFooter, DateRangeInput, DsBodyScope, dsIcon, dsSurface, dsText, SearchInput, PageHeader, PageHeading, Panel, PanelBody, Popover, PopoverContent, PopoverTrigger, Select, TBody, TD, TH, THead, TR } from "../../ds/ui.js";
+import { Button, Card, Checkbox, Dialog, DialogBody, DialogContent, DialogFooter, DateRangeInput, DsBodyScope, dsIcon, dsSurface, dsText, SearchInput, PageBreadcrumbs, PageHeader, PageHeading, Panel, PanelBody, Popover, PopoverContent, PopoverTrigger, Select, TBody, TD, TH, THead, TR } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { useArchiveClient } from "./archive-client.js";
 import { archiveDisplayDate, archiveInitialSummaryColumns, archiveReportCount, archiveReviewMatchesPreview, archiveReviewRunLabel, archiveRuntimeVersionPreview, archiveSummaryColumnAlignment, archiveSummaryColumnLabel, archiveSummaryColumns, archiveSummaryValue, archiveVersionKey, archiveVersionLabel, archiveWorkflowVersionLabels, groupArchiveVersions, mergeArchiveSummaryColumns, type ArchiveSummaryColumn, type DashboardArchiveGroup } from "./archive-runtime-model.js";
@@ -371,9 +371,7 @@ function ArchiveGroupsPanel({ active, selection, folder, onSelection, onFolder, 
 }
 
 function ArchiveBreadcrumb({ items }: { items: { label: string; onClick?: () => void }[] }) {
-  return <nav aria-label="Archive path" className={cn(dsText.meta, "flex min-h-[20px] flex-wrap items-center gap-[var(--ds-space-snug)] !text-[12px] !leading-[20px] text-[color:var(--ds-fg-muted)]")}>
-    {items.map((item, index) => <span key={`${index}:${item.label}`} className="flex items-center gap-[var(--ds-space-snug)]">{index > 0 && <span aria-hidden>›</span>}{item.onClick ? <Button variant="ghost" className="h-auto p-0 text-[color:var(--ds-fg-muted)]" onClick={item.onClick}>{item.label}</Button> : <strong aria-current={index === items.length - 1 ? "page" : undefined} className="min-w-0 break-words text-[color:var(--ds-fg)] [overflow-wrap:anywhere]">{item.label}</strong>}</span>)}
-  </nav>;
+  return <PageBreadcrumbs label="Archive path" items={items} />;
 }
 
 function ArchiveDashboardHeading({ dashboard }: { dashboard: DashboardArchiveGroup }) {
