@@ -447,6 +447,17 @@ continues through Confirm, OCR, approved person logs and Rerun, with single-sect
 Focused evidence is `onbase-document-types-20261005`; runtime document admission is unchanged.
 
 
+## Confirmed save feedback (2026-10-06)
+
+Typed Settings and credential saves notify through the shared success toast only after matching command
+identity and refreshed readback. Batched edits produce one confirmation, using public field labels and
+never values. Pending, invalid, refused, conflicting and unconfirmed attempts do not notify; exact replay
+can confirm Already saved. Navigation and read refresh do not repeat a toast. Persistent status and
+restart information remain after toast dismissal/expiry. Browser-saved keyboard edits, local spreadsheet
+mappings/type registration and copy exports use the same feedback. Spreadsheet typing remains a draft;
+export says Spreadsheet copy exported. A saved location plan does not claim a completed folder move.
+Evidence is retained under `save-toasts-10003539`.
+
 ## Frontend organization and navigation amendment (2026-10-05)
 
 Feature components, models, styles and producers share cohesive directories. Navigation and commands

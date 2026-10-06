@@ -7,7 +7,7 @@ import {
   storageRelocationDesiredDigest, storageRelocationRequestFingerprint,
   type CommandResult, type StorageRelocationCommandRequest, type StorageRelocationPlanView,
 } from "../../../../domain/commands.js";
-import { beforeEffectRefusal, uncertainSettingsCode } from "../editor/settings-attempt-model.js";
+import { beforeEffectRefusal, uncertainSettingsCode, type SettingsSaveListener, type SettingsSaveNotice } from "../editor/settings-attempt-model.js";
 import { useSettingsClient } from "../editor/settings-client.js";
 
 type Pair = StorageRelocationPlanView["sourcePair"];
@@ -66,7 +66,7 @@ function confirms(command: StorageRelocationCommandRequest, result: CommandResul
     && readback.pending.desiredPair.artifactRoot === command.payload.desiredPair.artifactRoot;
 }
 
-export function useStorageRelocation(input: Readonly<{ actorId: string }>) {
+export function useStorageRelocation(input: Readonly<{ actorId: string; onSaved?: SettingsSaveListener }>) {
   const client = useSettingsClient();
   const [read, setRead] = useState<Read>({ state: "loading" });
   const [readProblem, setReadProblem] = useState(false);
@@ -103,6 +103,7 @@ export function useStorageRelocation(input: Readonly<{ actorId: string }>) {
   const perform = async (command: StorageRelocationCommandRequest): Promise<void> => {
     if (busy.current) return;
     busy.current = true; attempt.current = command; setSave({ state: "saving" });
+    let notice: SettingsSaveNotice | undefined;
     try {
       const result = await client.applyStorageRelocation(command);
       if (result.commandId !== command.commandId) throw new Error("storage-relocation-result-identity");
@@ -122,6 +123,9 @@ export function useStorageRelocation(input: Readonly<{ actorId: string }>) {
       const readback = await readCurrent();
       if (!confirms(command, result, readback)) throw new Error("storage-relocation-readback-unconfirmed");
       attempt.current = undefined; setDraft({}); setSave({ state: "applied" });
+      notice = command.type === "plan-storage-relocation"
+        ? { title: result.state === "already-applied" ? "Location plan already saved" : "Saved location plan" }
+        : { title: "Location plan cancelled" };
     } catch (error) {
       const refused = beforeEffectRefusal(error);
       if (refused) attempt.current = undefined;
@@ -129,6 +133,7 @@ export function useStorageRelocation(input: Readonly<{ actorId: string }>) {
         ? "The request was refused before execution. Your draft is retained."
         : "The plan write could not be confirmed. It may already be recorded. Retry the exact attempt; your draft is retained." });
     } finally { busy.current = false; }
+    if (notice) input.onSaved?.(notice);
   };
   const submit = (): void => {
     if (read.state !== "available" || locked || Object.keys(draft).length === 0 || Object.values(errors).some(Boolean)) return;

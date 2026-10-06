@@ -13,6 +13,12 @@ export type SettingsSaveState =
   | { readonly state: "saving" }
   | { readonly state: "applied"; readonly replayed: boolean }
   | { readonly state: "refused" | "conflict" | "unconfirmed"; readonly message: string; readonly code?: string };
+export type SettingsSaveNotice = Readonly<{ title: string; description?: string }>;
+export type SettingsSaveListener = (notice: SettingsSaveNotice) => void;
+export function settingsSaveNotice(labels: readonly string[], replayed: boolean, restartRequired = false): SettingsSaveNotice {
+  return { title: `${replayed ? "Already saved" : "Saved"} ${labels.length === 1 ? labels[0] : "settings"}`,
+    ...(restartRequired ? { description: "Restart required to use these changes." } : {}) };
+}
 export function checkedSettingsResult(command: SettingsAttempt, input: unknown): CommandResult {
   const result = CommandResultSchema.safeParse(input);
   if (!result.success || result.data.commandId !== command.commandId || result.data.state === "confirmation-required") throw new Error("settings-result-unconfirmed");

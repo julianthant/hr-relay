@@ -8,7 +8,7 @@ import { exportSheetInWorker, exportSpreadsheetInWorker } from "./spreadsheet-im
 import { EMPTY_WORKBOOK_HISTORY, recordWorkbookEdit, stepWorkbookHistory, type WorkbookHistory } from './spreadsheet-history-model.js';
 import './spreadsheet-editor.css';
 
-export function SpreadsheetEditor({ document, dirty, onDocument, onMapping }: { document: EditableWorkbook; dirty: boolean; onMapping?: () => void; onDocument: (next: EditableWorkbook | null, dirty: boolean) => void }) {
+export function SpreadsheetEditor({ document, dirty, onDocument, onMapping, onExported }: { document: EditableWorkbook; dirty: boolean; onExported?: () => void; onMapping?: () => void; onDocument: (next: EditableWorkbook | null, dirty: boolean) => void }) {
   const [sheetId, setSheetId] = useViewState('spreadsheetSheet', '');
   const [query, setQuery] = useViewState('spreadsheetRowsQuery', '', 'replace');
   const [page, setPage] = useViewState('spreadsheetPage', 0);
@@ -41,8 +41,9 @@ export function SpreadsheetEditor({ document, dirty, onDocument, onMapping }: { 
     if (!document || !sheet) throw new Error('SPREADSHEET_DOCUMENT_UNAVAILABLE');
     setBusy(true); setError('');
     try { downloadSpreadsheet(format === 'csv' ? await exportSheetInWorker(sheet) : await exportSpreadsheetInWorker(document), document.name, format); const partial = format === 'csv' && document.sheets.length > 1 || document.sheets.some(item => item.hidden.length > 0); if (!partial) savedCopy.current = document; onDocument(document, partial ? dirty : false); }
-    catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); }
+    catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); return; }
     finally { setBusy(false); }
+    onExported?.();
   };
   const width = sheet?.width ?? 0, hidden = sheet?.hidden;
   const columns = useMemo(() => Array.from({ length: width }, (_, index) => index).filter(index => !hidden?.includes(index)), [width, hidden]);

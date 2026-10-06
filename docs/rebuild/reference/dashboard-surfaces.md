@@ -7839,7 +7839,17 @@ activation is blocked; uncertain recovery checks the original command identity w
 Normal, refused and uncertain fixtures exercise this lifecycle without worker-service transport.
 Settings keeps Saving, Saved, refusal and uncertainty feedback visible until a subsequent edit or
 outcome changes it. Restart-required is shown only when the readback distinguishes saved and active
-revisions; existing exact-attempt recovery is unchanged.
+revisions; existing exact-attempt recovery is unchanged. Confirmed typed edits also emit one existing
+success toast per acknowledged attempt. A single setting uses its public field label; a batch uses
+Saved settings. No typed value or credential is repeated. Matching result identity and refreshed
+readback are required before notification; pending, invalid, refused, conflicting and unconfirmed
+writes never emit success. An exact replay says Already saved. Section navigation and refresh do not
+repeat a toast. Keyboard edits notify after browser preference storage succeeds. Spreadsheet column
+mappings and type registration notify after local registration; cell edits remain drafts until export,
+whose confirmation says Spreadsheet copy exported. Location-plan confirmation names the saved plan
+without claiming a folder move. Success toasts retain the shared dismiss and expiry behavior;
+persistent save/restart/refusal feedback remains available after expiry. Focused evidence is
+`save-toasts-10003539`.
 Successful timing is computed from unique completed root-run records, excluding delegated children,
 failed and unfinished runs. Missing measurements and measured zero remain distinct; measured plus
 unmeasured coverage must equal the completed-run count. No server aggregate or backend authority is

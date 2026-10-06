@@ -284,6 +284,13 @@ original command. Saved and active settings remain distinct. Backend source and 
 inherited broad contract failures remain explicit. Richer headers and Activity drilldowns are proposals.
 D347's dashboard-surfaces owner records the contract; evidence is `frontend-reliability-20261005`.
 
+The save-feedback amendment adds existing success toasts for confirmed typed settings, protected
+settings, saved keyboard edits, local spreadsheet registration/mappings and exported spreadsheet copies.
+One acknowledged attempt produces one value-free confirmation; failures and uncertainty retain their
+existing feedback and exact retry identity. Location plans identify the saved plan rather than a folder
+move. Persistent status and restart requirements remain after toast expiry. D347's dashboard-surfaces
+owner records the contract; evidence is `save-toasts-10003539`.
+
 The frontend readiness follow-up preserves sanitized Explorer display types, exercises HTTP/SSE
 faults through mounted pages, shares direct Preflight remedies and completes Settings field metadata.
 Measured Queue row reuse and offscreen Queue/Log layout deferral preserve full loaded populations;

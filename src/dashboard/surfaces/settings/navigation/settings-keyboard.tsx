@@ -3,9 +3,10 @@ import '../reference-settings.css';
 import { useState } from 'react';
 import { Pencil, Trash2 } from 'lucide-react';
 import { Banner, Button, Dialog, DialogBody, DialogContent, DialogFooter, IconButton, Input, PageHeading, SearchInput } from '../../../ds/ui.js';
+import type { SettingsSaveListener } from "../editor/settings-attempt-model.js";
 import { DEFAULT_SHORTCUT_PREFERENCES, SHORTCUT_ACTIONS, saveShortcutPreferences, shortcutChord, shortcutLabel, useShortcutPreferences, type ShortcutAction } from './keyboard-preferences-model.js';
 
-export function KeyboardSection() {
+export function KeyboardSection({ onSaved }: { onSaved?: SettingsSaveListener }) {
   const preferences = useShortcutPreferences();
   const [query, setQuery] = useViewState('keyboardQuery', '', 'replace');
   const [editing, setEditing] = useState<{ id: ShortcutAction; index: number } | null>(null);
@@ -18,7 +19,8 @@ export function KeyboardSection() {
     const next = [...preferences.bindings[editing.id]];
     next[editing.index] = captured;
     try { saveShortcutPreferences({ ...preferences, bindings: { ...preferences.bindings, [editing.id]: next } }); setEditing(null); }
-    catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); }
+    catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); return; }
+    onSaved?.({ title: `Saved ${SHORTCUT_ACTIONS.find(action => action.id === editing.id)!.title} shortcut` });
   };
   return <section className="settings-reference-page settings-shortcuts">
     <PageHeading title="Keyboard shortcuts" />

@@ -13,6 +13,7 @@ SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID
 import { Banner,Button,Dialog,DialogContent,DialogFooter,DsBodyScope,IconButton,SearchInput,SectionLabel,StatusDot,TakeoverFrame,dsFocus,dsMotion,dsIcon,dsSurface,dsText } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { plural } from "../shared/status/format.js";
+import type { SettingsSaveListener } from "./editor/settings-attempt-model.js";
 import { useEditableSettings } from "./editor/settings-editor-model.js";
 import { EditableSettingsSection } from "./editor/settings-editor.js";
 import { RoutesSection } from "./routes/settings-routes.js";
@@ -191,6 +192,7 @@ export function SettingsPage({
   preflight: _preflight,
   onSection,
   onExitGuardChange,
+  onSaved,
   onClose,
 }: {
   storage: StorageHealthSummary;
@@ -211,11 +213,12 @@ export function SettingsPage({
   onSection: (next: string, target?: string) => void;
   /** Lets the shell route every Settings-unmounting control through this draft owner. */
   onClose: () => void;
+  onSaved?: SettingsSaveListener;
   onExitGuardChange?: (guard: ((proceed: () => void) => void) | undefined) => void;
 }) {
   const [workbookDraft, setWorkbookDraft] = useState<{ document: EditableWorkbook | null; dirty: boolean }>({ document: null, dirty: false });
   const onWorkbook = (document: EditableWorkbook | null, dirty: boolean) => setWorkbookDraft({ document, dirty });
-  const editor = useEditableSettings({ actorId, descriptorFingerprint });
+  const editor = useEditableSettings({ actorId, descriptorFingerprint, onSaved });
   const [pendingExit, setPendingExit] = useState<(() => void) | undefined>(undefined);
   const exitFocusTarget = useRef<HTMLElement | null>(null);
   const settingsDocument = editor.editor.state === "loaded" ? editor.editor.document : undefined;
@@ -346,7 +349,7 @@ export function SettingsPage({
         )}
         {isDataSection && dataContent}
         {resolution.state === "open" && resolution.entry.id === "spreadsheets" && <SpreadsheetsSettings workbook={workbookDraft.document} workbookDirty={workbookDraft.dirty} onWorkbook={onWorkbook} />}
-        {resolution.state === "open" && resolution.entry.id === SETTINGS_KEYBOARD_SECTION_ID && <KeyboardSection />}
+        {resolution.state === "open" && resolution.entry.id === SETTINGS_KEYBOARD_SECTION_ID && <KeyboardSection onSaved={onSaved} />}
         {resolution.state === "open" && resolution.entry.id === "storage" && <StorageSection storage={storage} />}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_PREFLIGHT_SECTION_ID && <PreflightSection editor={editor} workflowLabels={workflowLabels} />}
         {resolution.state === "open" && resolution.entry.id === "routes" && <RoutesSection editor={editor} />}

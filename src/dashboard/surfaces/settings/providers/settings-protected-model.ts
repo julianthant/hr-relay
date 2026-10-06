@@ -6,7 +6,7 @@ import { ProtectedSettingsCommandRequestSchema } from "../../../../domain/comman
 import { ProtectedSettingsPatchSchema, ProtectedValueSchemas, type ProtectedSettingsName } from "../../../../domain/config/protected-settings.js";
 import type { EditableSettingsWire } from "../../../../domain/dashboard/settings-editor.js";
 import { useSettingsClient } from "../editor/settings-client.js";
-import { beforeEffectRefusal, checkedSettingsResult, protectedReadbackConfirms, settingsRefusal, uncertainSettingsCode, type ProtectedSettingsAttempt, type SettingsSaveState } from "../editor/settings-attempt-model.js";
+import { beforeEffectRefusal, checkedSettingsResult, protectedReadbackConfirms, settingsSaveNotice, type SettingsSaveListener, type SettingsSaveNotice, settingsRefusal, uncertainSettingsCode, type ProtectedSettingsAttempt, type SettingsSaveState } from "../editor/settings-attempt-model.js";
 
 type ProtectedDraftOperation = { readonly kind: "set"; readonly raw: string } | { readonly kind: "clear" };
 type ProtectedDraft = Partial<Record<ProtectedSettingsName, ProtectedDraftOperation>>;
@@ -14,7 +14,7 @@ function protectedValue(name: ProtectedSettingsName, raw: string): unknown {
   return ProtectedValueSchemas[name].parse(name === "activityPersonPseudonym" ? JSON.parse(raw) as unknown : raw);
 }
 export function useProtectedSettings(input: {
-  actorId: string; readReady: boolean; document: EditableSettingsWire | undefined; refresh: () => Promise<EditableSettingsWire>;
+  actorId: string; readReady: boolean; document: EditableSettingsWire | undefined; refresh: () => Promise<EditableSettingsWire>; onSaved?: SettingsSaveListener;
 }) {
   const client = useSettingsClient();
   const [draft, setDraft] = useState<ProtectedDraft>({});
@@ -48,6 +48,7 @@ export function useProtectedSettings(input: {
   const perform = async (command: ProtectedSettingsAttempt): Promise<void> => {
     if (busy.current) return;
     busy.current = true; pending.current = command; setSave({ state: "saving" });
+    let notice: SettingsSaveNotice | undefined;
     try {
       const result = checkedSettingsResult(command, await client.executeCommand(command));
       const settled = settleCommandResult(result);
@@ -63,14 +64,16 @@ export function useProtectedSettings(input: {
         setSave({ state: uncertainSettingsCode(settled.code) ? "unconfirmed" : "refused", code: settled.code, message: settingsRefusal(settled.code) }); return;
       }
       const document = await input.refresh();
-      if (!protectedReadbackConfirms(command, result, document)) throw new Error("credential-readback-unconfirmed");
+      if (document.protectedSettings.state !== "available" || !protectedReadbackConfirms(command, result, document)) throw new Error("credential-readback-unconfirmed");
       pending.current = undefined; setDraft({}); setErrors({});
       setSave({ state: "applied", replayed: settled.replayed });
+      notice = settingsSaveNotice(document.protectedSettings.rows.filter(row => row.name in command.payload.entries).map(row => row.name === "ucpathUserId" ? "UCPath username" : row.label), settled.replayed);
     } catch (error) {
       const refused = beforeEffectRefusal(error);
       if (refused) pending.current = undefined;
       setSave({ state: refused ? "refused" : "unconfirmed", code: refused ? "settings-admission-refused" : undefined, message: refused ? "The request was refused before execution. Your credential draft is retained." : "The credential write could not be confirmed. It may already be stored. Retry the exact attempt; your draft is retained." });
     } finally { busy.current = false; }
+    if (notice) input.onSaved?.(notice);
   };
   const submit = (): void => {
     if (!input.readReady || busy.current || pending.current !== undefined || available?.state !== "available" || Object.keys(draft).length === 0 || Object.values(errors).some(error => error !== undefined)) return;

@@ -50,6 +50,7 @@ function SpreadsheetTypeDialog({ open, onOpenChange, type, returnFocus }: { open
 
 export function SpreadsheetsSettings({ workbook, workbookDirty, onWorkbook }: { workbook: EditableWorkbook | null; workbookDirty: boolean; onWorkbook: (next: EditableWorkbook | null, dirty: boolean) => void }) {
   const { files, types } = useSpreadsheetMocks();
+  const { toast } = useToasts();
   const [tab, setTab] = useViewState("spreadsheetTab", "registered");
   const [query, setQuery] = useViewState("spreadsheetQuery", "", "replace");
   const [selectedId, setSelectedId] = useViewState("spreadsheet", workbook?.libraryId ?? null);
@@ -93,12 +94,13 @@ export function SpreadsheetsSettings({ workbook, workbookDirty, onWorkbook }: { 
     const document = selectSpreadsheetColumns(pendingImport);
     const registered = registerLocalSpreadsheet(document, editingId);
     openDocument(registered.id); onWorkbook({ ...document, libraryId: registered.id }, false);
+    toast({ tone: "success", title: editingId ? "Column mappings saved" : "Spreadsheet imported" });
   };
   const visibleFiles = files.filter(file => `${file.name} ${types.find(type => type.id === file.typeId)?.name ?? ""}`.toLowerCase().includes(query.toLowerCase()));
   return <section aria-label="Spreadsheets" className="spreadsheet-workspace settings-reference-page min-w-0 text-body">
     <input ref={upload} disabled={busy || !!pendingImport} type="file" accept=".xlsx,.csv" aria-label="Open XLSX or CSV" className="sr-only" onChange={event => { const file = event.target.files?.[0]; if (file) void importFile(file); }} />
     {fileError && <Banner tone="danger" title="Spreadsheet unavailable">{fileError}</Banner>}
-    {selectedId !== null && !selected ? <Banner tone="danger" title="Spreadsheet unavailable"><p>This file is no longer registered.</p><Button onClick={() => setSelectedId(null)}>Open library</Button></Banner> : visibleWorkbook ? <SpreadsheetEditor key={selectedId ?? visibleWorkbook.name} document={visibleWorkbook} dirty={visibleWorkbook === workbook && workbookDirty} onDocument={documentChange} onMapping={selected ? () => {
+    {selectedId !== null && !selected ? <Banner tone="danger" title="Spreadsheet unavailable"><p>This file is no longer registered.</p><Button onClick={() => setSelectedId(null)}>Open library</Button></Banner> : visibleWorkbook ? <SpreadsheetEditor key={selectedId ?? visibleWorkbook.name} document={visibleWorkbook} dirty={visibleWorkbook === workbook && workbookDirty} onDocument={documentChange} onExported={() => toast({ tone: "success", title: "Spreadsheet copy exported" })} onMapping={selected ? () => {
       setEditingId(selected.id);
       if (selected.typeId === 'local') {
         const draft = { ...visibleWorkbook, libraryId: undefined };
