@@ -1,6 +1,6 @@
 import { useContext, useEffect, useRef, useState } from "react";
 import { ExternalLink } from "lucide-react";
-import { Badge, Banner, BodySection, Button, ButtonLink, Checkbox, Dialog, DialogContent, DialogFooter, FormGroup, ResultRow, Skeleton, dsIcon } from "../../../ds/ui.js";
+import { Badge, Banner, BodySection, Button, ButtonLink, FormGroup, ResultRow, Skeleton, dsIcon } from "../../../ds/ui.js";
 import { LoadingRegion, SkeletonText } from "../../shared/loading/loading.js";
 import { CHATGPT_USAGE_URL, ChatGptAccountContext, useChatGptAccount, type ChatGptAccountPort } from "./chatgpt-account-model.js";
 
@@ -8,24 +8,31 @@ export function ChatGptAccountSettings({ port: override }: { port?: ChatGptAccou
   const contextPort = useContext(ChatGptAccountContext);
   const port = override ?? contextPort;
   const account = useChatGptAccount(port);
-  const [previewOpen, setPreviewOpen] = useState(false);
-  const [usePlan, setUsePlan] = useState(true);
   const [pending, setPending] = useState<"sign-in" | "sign-out">();
   const [error, setError] = useState<string>();
   const mounted = useRef(false);
   const locked = useRef(false);
-  const trigger = useRef<HTMLElement | null>(null);
+  const actionFocus = useRef<HTMLElement | null>(null);
   const region = useRef<HTMLDivElement>(null);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useEffect(() => {
+    if (pending !== undefined) return;
+    const previous = actionFocus.current;
+    if (previous && !previous.isConnected && document.activeElement === document.body) {
+      region.current?.querySelector<HTMLElement>("a,button")?.focus();
+    }
+    actionFocus.current = null;
+  }, [account.state, pending]);
   const perform = async (action: "sign-in" | "sign-out") => {
     if (locked.current) return;
     locked.current = true;
+    actionFocus.current = document.activeElement instanceof HTMLElement && region.current?.contains(document.activeElement)
+      ? document.activeElement : null;
     setPending(action);
     setError(undefined);
     try {
-      if (action === "sign-in") await port.signIn({ usePlan });
+      if (action === "sign-in") await port.signIn({ usePlan: true });
       else await port.signOut();
-      if (mounted.current) setPreviewOpen(false);
     } catch {
       if (mounted.current) setError(action === "sign-in"
         ? "ChatGPT sign-in could not be completed. Try again."
@@ -34,13 +41,6 @@ export function ChatGptAccountSettings({ port: override }: { port?: ChatGptAccou
       locked.current = false;
       if (mounted.current) setPending(undefined);
     }
-  };
-  const beginSignIn = () => {
-    trigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    setError(undefined);
-    setUsePlan(true);
-    if (port.mode === "preview") setPreviewOpen(true);
-    else void perform("sign-in");
   };
   const connected = account.state === "connected";
   const plan = connected ? account.planUsage : undefined;
@@ -53,22 +53,11 @@ export function ChatGptAccountSettings({ port: override }: { port?: ChatGptAccou
         : <ResultRow controlWidth="wide" label={<span className="inline-flex flex-wrap items-center gap-2">{label}{port.mode === "preview" && <Badge tone="neutral">Preview</Badge>}</span>} description={description}
           value={<div className="flex flex-wrap items-center justify-end gap-2">
             {connected && plan !== "disabled" && <ButtonLink variant={plan === "limit-reached" ? "primary" : "secondary"} href={CHATGPT_USAGE_URL} target="_blank" rel="noopener noreferrer" iconAfter={<ExternalLink aria-hidden className={dsIcon.sm} />}>Manage usage</ButtonLink>}
-            {(!connected || plan === "disabled") && <Button variant="secondary" disabled={pending !== undefined} loading={pending === "sign-in"} onClick={beginSignIn}>Continue with ChatGPT</Button>}
+            {(!connected || plan === "disabled") && <Button variant="secondary" disabled={pending !== undefined} loading={pending === "sign-in"} onClick={() => { void perform("sign-in"); }}>Continue with ChatGPT</Button>}
             {connected && <Button variant="ghost" disabled={pending !== undefined} loading={pending === "sign-out"} onClick={() => { void perform("sign-out"); }}>Sign out</Button>}
           </div>} />}
       {account.state === "unavailable" && <Banner tone="warning" title="ChatGPT account unavailable">{account.message}</Banner>}
-      {error !== undefined && !previewOpen && <Banner tone="danger" title="ChatGPT connection failed">{error}</Banner>}
+      {error !== undefined && <Banner tone="danger" title="ChatGPT connection failed">{error}</Banner>}
     </div></FormGroup>
-    <Dialog open={previewOpen} onOpenChange={open => { if (!locked.current) setPreviewOpen(open); }}>
-      <DialogContent size="sm" className="ds-body-overlay" title="Preview ChatGPT sign-in" description="Use a sample account to test this connection. No OpenAI sign-in occurs." onEscapeKeyDown={event => { if (locked.current) event.preventDefault(); }} onCloseAutoFocus={event => {
-        const target = trigger.current?.isConnected ? trigger.current : region.current?.querySelector<HTMLElement>("button");
-        if (target) { event.preventDefault(); target.focus(); }
-        trigger.current = null;
-      }}>
-        <Checkbox label="Use ChatGPT plan for OCR" checked={usePlan} disabled={pending !== undefined} onCheckedChange={checked => setUsePlan(checked === true)} />
-        {error !== undefined && <Banner tone="danger" title="ChatGPT connection failed">{error}</Banner>}
-        <DialogFooter><Button variant="secondary" disabled={pending !== undefined} onClick={() => setPreviewOpen(false)}>Cancel</Button><Button loading={pending === "sign-in"} disabled={pending !== undefined} onClick={() => { void perform("sign-in"); }}>Connect preview account</Button></DialogFooter>
-      </DialogContent>
-    </Dialog>
   </BodySection>;
 }

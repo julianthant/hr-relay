@@ -38,26 +38,25 @@ describe("General ChatGPT account", () => {
     assert.match(html, /ChatGPT plan access not enabled/u);
     assert.doesNotMatch(html, /Preview|Jordan Lee/u);
   });
-  it("keeps cancellation signed out and never asks for a password, API key or real OAuth token", async () => {
+  it("connects the preview account directly without a dialog or collecting credentials", async () => {
     const port = createPreviewChatGptAccountPort();
+    const signIn = vi.spyOn(port, "signIn");
     await mount(port);
     button("Continue with ChatGPT").focus();
     await click("Continue with ChatGPT");
-    assert.match(document.body.textContent ?? "", /No OpenAI sign-in occurs/u);
+    assert.equal(signIn.mock.calls.length, 1);
+    assert.deepEqual(signIn.mock.calls[0], [{ usePlan: true }]);
+    assert.equal(document.querySelector('[role="dialog"]'), null);
     assert.equal(document.querySelectorAll('input[type="password"],input[name="token"],input[name="apiKey"]').length, 0);
-    await click("Cancel");
-    assert.equal(port.getSnapshot().state, "signed-out");
-    assert.equal(host?.querySelector('a[href="https://chatgpt.com/settings/usage"]'), null);
+    assert.equal(port.getSnapshot().state, "connected");
+    assert.match(host?.textContent ?? "", /Using ChatGPT plan/u);
+    assert.equal(document.activeElement, host?.querySelector(`a[href="${CHATGPT_USAGE_URL}"]`));
   });
 
-  it("keeps identity sign-in separate from plan consent, then enables usage and signs out", async () => {
+  it("requests plan access directly for a disabled account, then signs out", async () => {
     const port = createPreviewChatGptAccountPort();
+    await port.signIn({ usePlan: false });
     await mount(port);
-    await click("Continue with ChatGPT");
-    const consent = document.querySelector<HTMLElement>('[role="checkbox"]');
-    assert.ok(consent);
-    await act(async () => consent.click());
-    await click("Connect preview account");
     const identity = port.getSnapshot();
     assert.equal(identity.state, "connected");
     if (identity.state !== "connected") throw new Error("preview-account-not-connected");
@@ -65,7 +64,7 @@ describe("General ChatGPT account", () => {
     assert.match(host?.textContent ?? "", /ChatGPT plan access not enabled/u);
     assert.equal(host?.querySelector(`a[href="${CHATGPT_USAGE_URL}"]`), null);
     await click("Continue with ChatGPT");
-    await click("Connect preview account");
+    assert.equal(document.querySelector('[role="dialog"]'), null);
     assert.match(host?.textContent ?? "", /Using ChatGPT plan/u);
     const usage = host?.querySelector<HTMLAnchorElement>(`a[href="${CHATGPT_USAGE_URL}"]`);
     assert.ok(usage);

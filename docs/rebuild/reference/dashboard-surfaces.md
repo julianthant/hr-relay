@@ -7456,12 +7456,13 @@ The 2026-10-06 ChatGPT account amendment retires the Provider budgets & models p
 API-key controls from the frontend. General places the account card before Appearance; thirteen
 Settings pages remain. Legacy `providers` and `provider-env` links open General, and search points
 to `chatgpt.account`. UCPath and workflow protected controls remain. The memory-only preview port
-models explicit sign-in, optional plan consent and sign-out without collecting credentials, storing
-tokens or contacting OpenAI. Identity alone does not enable plan use. Loading, expired, unavailable,
+connects the sample account directly from Continue with ChatGPT, requesting plan use without an
+intermediate dialog. Sign-out clears it without collecting credentials, storing tokens or contacting
+OpenAI. Real consent and plan eligibility belong to the replacement adapter. Loading, expired, unavailable,
 plan-disabled and usage-limit states remain distinct; pending locks and failed actions preserve
 confirmed state. `ChatGptAccountContext` is the replacement seam for backend OAuth/session/consent
 authority. Existing backend provider contracts are retained; UI retirement does not migrate them.
-Evidence is `chatgpt-settings-20261005`; phase-exit gates remain deferred.
+Evidence is `chatgpt-settings-20261005` and `chatgpt-direct-10003539`; phase-exit gates remain deferred.
 
 The later 2026-10-06 developer-controls amendment removes Browser viewport from General, its
 loading placeholders and Settings search. The backend retains worker viewport configuration.

@@ -340,12 +340,13 @@ contracts remain unchanged. D347's dashboard-surfaces owner records this contrac
 `frontend-polish-20261005` and `frontend-final-20261005`. Frozen phase-exit gates remain deferred.
 
 The 2026-10-06 ChatGPT account amendment retires Provider budgets & models and provider API-key
-controls from the frontend. General exposes an explicit memory-only sign-in preview, optional plan
-consent, sign-out and official usage management. Thirteen Settings pages remain; old provider links
+controls from the frontend. General exposes a memory-only sign-in preview that connects directly
+from Continue with ChatGPT without an intermediate dialog, plus sign-out and official usage management.
+Real consent and plan eligibility remain adapter-owned. Thirteen Settings pages remain; old provider links
 resolve to General. UCPath/workflow protected controls and backend provider contracts remain.
 `ChatGptAccountContext` supplies the future session/consent adapter; real OAuth, tokens and plan
 eligibility remain backend work. D347's dashboard-surfaces owner records this contract; evidence is
-`chatgpt-settings-20261005`.
+`chatgpt-settings-20261005` and `chatgpt-direct-10003539`.
 
 The later 2026-10-06 developer-controls amendment retires General's Browser viewport control,
 loading layout and search target, plus Archive's Plan a bump selection/review/apply flow. Old
