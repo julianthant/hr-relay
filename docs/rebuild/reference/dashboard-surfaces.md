@@ -7921,6 +7921,16 @@ These are frontend preview semantics. Served Person Lookup and Separations retai
 capabilities, including existing D307 omissions; new manual reading capabilities require the owning
 backend contract before they can replace served required steps. No executor or backend schema is
 changed. Evidence is `manual-ocr-review-10003539`; frozen parity and phase-exit gates remain with 3.1.19.
+
+The subsequent launch-plan polish shows PDF preparation before downstream workflow steps: automatic
+OCR delegation and required OCR approval. These rows cannot be omitted and count toward Steps and
+Confirm totals. Oath Upload retains its existing approval gate without adding a duplicate; upload-only
+and typed input add no OCR preparation. Extraction-off plans preserve both delegation and approval.
+Downstream steps remain pending while the source parent waits for OCR approval. Shared priority help
+defines Interactive as work the operator is waiting on and Bulk as background batches; Interactive
+takes queue priority without changing scheduling authority. Shared ChoicePicker chevrons use the
+14px design-system icon size. This is frontend-only; evidence is `ocr-launch-polish-10003539`.
+
 The report's visible name is Analytics across navigation, search, headings, browser titles, back links
 and loading announcements. Existing Activity route identifiers remain supported. Completed,
 Outstanding and Failed totals open one context-aware exact-run list, bounded to 20 rows per page.

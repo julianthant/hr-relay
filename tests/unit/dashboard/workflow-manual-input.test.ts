@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { approveMockRun, initialMockDraft, mockDraftError, mockApprovalError, mockRunLog, mockRunsForDraft, mockStepState } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
+import { approveMockRun, initialMockDraft, mockDraftError, mockApprovalError, mockRunLog, mockRunsForDraft, mockStepState, mockOcrPreparationSteps, mockConfirmationFacts } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
 import { reviewRecords, reviewCanApprove, editReviewRecord, seedReviewRecords, updateMockReview } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-review-model.js";
 import { MOCK_WORKFLOWS, mockWorkflow } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.js";
 import { editableMockDraft, manualReadFields, mockStepIsLocked, mockStepIsDependency } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-manual-model.js";
@@ -32,6 +32,22 @@ describe("manual OCR and reading inputs", () => {
     expect(person.draft.ocrMode).toBe("manual");
     expect(mockRunLog(person).steps.flatMap(step => step.entries).flatMap(entry => entry.kind === "fields" ? entry.fields : []).some(field => field.label === "Signature date" && field.value === "10/06/2026")).toBe(true);
     expect(runs.every(run => !run.approved)).toBe(true);
+  });
+  it("shows OCR delegation and approval before PDF contact work in either extraction mode", () => {
+    for (const ocrMode of ["extract", "manual"] as const) {
+      const draft = { ...initialMockDraft("emergency-contact"), ocrMode, files: [{ name: "contact.pdf", size: 100, digest: "synthetic" }] };
+      expect(mockOcrPreparationSteps("emergency-contact", draft).map(step => step.key)).toEqual(["delegate-ocr", "wait-ocr"]);
+      expect(mockConfirmationFacts("emergency-contact", draft).find(fact => fact.key === "Steps")?.value).toBe("5 / 5 included");
+      const [parent, ocr] = mockRunsForDraft("emergency-contact", draft, 1);
+      expect(parent.ocrRunId).toBe(ocr.id);
+      expect(mockStepState(parent, { key: "wait-ocr", label: "Review", message: "" })).toBe("waiting");
+      expect(mockStepState(parent, { key: "fill-form", label: "Fill", message: "" })).toBe("pending");
+      expect(mockStepState(parent, { key: "save", label: "Save", message: "" })).toBe("pending");
+      expect(draft.selectedSteps).not.toContain("delegate-ocr");
+      expect(draft.selectedSteps).not.toContain("wait-ocr");
+    }
+    expect(mockOcrPreparationSteps("oath-upload", { ...initialMockDraft("oath-upload"), uploadMode: "upload-only" })).toEqual([]);
+    expect(mockOcrPreparationSteps("onboarding", initialMockDraft("onboarding"))).toEqual([]);
   });
   it("refuses omitted form filling and submit steps", () => {
     const flow = mockWorkflow("emergency-contact");

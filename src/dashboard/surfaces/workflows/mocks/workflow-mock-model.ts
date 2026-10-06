@@ -88,6 +88,17 @@ export function mockDraftError(id: string, draft: MockDraft): string | undefined
   return mockDraftInputError(id, draft) ?? (draft.manualSteps?.length && mockInputEntries(id, draft).length > 1 ? "Manual reading values apply to one person. Start one run at a time." : undefined) ?? mockStepInputError(mockWorkflow(id).id, draft);
 }
 
+function ocrPreparationSteps(draft: MockDraft): readonly MockStep[] {
+  return [
+    { key: "delegate-ocr", label: "Delegate document to OCR", system: "OCR", message: draft.ocrMode === "manual" ? "Send the PDF to OCR review for manual entry." : "OCR extracts the document and owns its record review." },
+    { key: "wait-ocr", label: "Wait for OCR approval", system: "OCR", message: "Wait for the linked OCR run to release approved data." },
+  ];
+}
+export function mockOcrPreparationSteps(id: string, draft: MockDraft): readonly MockStep[] {
+  if (draft.method !== "pdf" || id === "ocr" || id === "oath-upload" && draft.uploadMode === "upload-only") return [];
+  const steps = ocrPreparationSteps(draft);
+  return id === "oath-upload" ? steps.slice(0, 1) : steps;
+}
 export function mockPipeline(id: string, draft: MockDraft): readonly MockStep[] {
   const flow = mockWorkflow(id);
   if (id === "ocr") return [...(draft.roster === "download" ? mockWorkflow("sharepoint-download").steps.map(step => ({ ...step, key: `roster:${step.key}` })) : []), ...prep.map(step => ({ ...step,
@@ -97,8 +108,7 @@ export function mockPipeline(id: string, draft: MockDraft): readonly MockStep[] 
     ...(step.key === "prep:person-lookup" && draft.formType === "verify" ? { message: "Resolve identity and read CRM service/oath dates and I-9 signer evidence." } : {}),
   }))];
   const steps = flow.steps.filter(step => !(id === "oath-upload" && draft.uploadMode === "upload-only" && ["wait-approval", "wait-signatures"].includes(step.key)));
-  return draft.method === "pdf" && !(id === "oath-upload" && draft.uploadMode === "upload-only")
-    ? [{ key: "delegate-ocr", label: "Delegate document to OCR", message: "OCR extracts the document and owns its record review." }, ...steps] : steps;
+  return [...mockOcrPreparationSteps(id, draft), ...steps];
 }
 export function mockNeedsReview(run: MockRun): boolean {
   return run.workflowId === "ocr" && !!run.targetWorkflowId && !!run.parentId && !run.approved && !run.discarded;
@@ -127,6 +137,7 @@ export function mockStepState(run: MockRun, step: MockStep): LogTimelineState {
     const gate = run.workflowId === "ocr" ? "prep:awaiting-approval" : run.workflowId === "oath-upload" ? "wait-approval" : "wait-ocr";
     const reviewIndex = pipeline.findIndex(item => item.key === gate);
     const position = pipeline.findIndex(item => item.key === step.key);
+    if (position < 0) return "pending";
     if (position === reviewIndex) return "waiting";
     if (position > reviewIndex) return "pending";
   }
@@ -136,8 +147,7 @@ export function mockStepState(run: MockRun, step: MockStep): LogTimelineState {
 export function mockRunPipeline(run: MockRun): readonly MockStep[] {
   if (run.role === "person") return mockWorkflow(run.workflowId).steps;
   if (run.ocrRunId && run.workflowId !== "oath-upload") return [
-    { key: "delegate-ocr", label: "Delegate document to OCR", message: "OCR extracts the document and owns its record review." },
-    { key: "wait-ocr", label: "Wait for OCR approval", message: "Wait for the linked OCR run to release approved data." },
+    ...ocrPreparationSteps(run.draft),
     { key: "members", label: "Start approved people", message: "Start one independent run per approved record." },
     { key: "rollup", label: "Collect person outcomes", message: "Collect the linked person outcomes." },
   ];
@@ -306,10 +316,11 @@ export function mockConfirmationFacts(id: MockWorkflowId, draft: MockDraft): rea
   const flow = mockWorkflow(id), pdf = draft.method === "pdf";
   const uploadOnly = id === "oath-upload" && draft.uploadMode === "upload-only";
   const steps = mockSelectableSteps(id, draft), omitted = steps.filter(step => !draft.selectedSteps.includes(step.key));
+  const automatic = mockOcrPreparationSteps(id, draft).length;
   return [
     { key: "Workflow", value: flow.label },
     { key: "Input", value: draft.method === "typed" ? draft.text : draft.method === "roster" ? "Onboarding Roster" : draft.files.map(file => file.name).join(", ") },
-    { key: "Steps", value: `${steps.length - omitted.length} / ${steps.length} included${omitted.length ? ` · Omitted: ${omitted.map(step => step.label).join(", ")}` : ""}` },
+    { key: "Steps", value: `${steps.length + automatic - omitted.length} / ${steps.length + automatic} included${omitted.length ? ` · Omitted: ${omitted.map(step => step.label).join(", ")}` : ""}` },
     ...(draft.manualSteps?.length ? [{ key: "Manual reading", value: steps.filter(step => usesManualRead(draft, step.key)).map(step => step.label).join(", ") }] : []),
     ...(pdf && !uploadOnly ? [{ key: "OCR extraction", value: draft.ocrMode === "manual" ? "Off · enter records in review" : "On" }] : []),
     { key: "Queue", value: draft.priority === "interactive" ? "Interactive" : "Bulk" },

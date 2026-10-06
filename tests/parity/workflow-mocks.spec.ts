@@ -3,7 +3,7 @@ import { chooseSelect } from "./helpers/select-choice.js";
 import { expect, test, type Locator, type Page, type TestInfo } from "@playwright/test";
 import { MOCK_WORKFLOWS } from "../../src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.js";
 import { manualReadFields, mockStepIsLocked, mockStepIsDependency } from "../../src/dashboard/surfaces/workflows/mocks/workflow-manual-model.js";
-import { seedMockRuns } from "../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
+import { seedMockRuns, mockOcrPreparationSteps, initialMockDraft } from "../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "./helpers/fixture-bff.js";
@@ -156,7 +156,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) {
         await advance(dialog);
         const stepRegion = dialog.getByRole("region", { name: "Steps", exact: true });
         await expect(stepRegion.getByRole("checkbox")).toHaveCount(flow.steps.filter(step => !mockStepIsDependency(step)).length + flow.steps.filter(step => mockStepIsLocked(flow.id, step) && manualReadFields(flow.id, step.key).length > 0).length);
-        await expect(dialog).toContainText(`${flow.steps.length} / ${flow.steps.length} included`);
+        await expect(dialog).toContainText(`${flow.steps.length + mockOcrPreparationSteps(flow.id, initialMockDraft(flow.id)).length} / ${flow.steps.length + mockOcrPreparationSteps(flow.id, initialMockDraft(flow.id)).length} included`);
         await expect(stepRegion.locator("li").first()).toHaveCSS("min-height", "58px");
         const optional = flow.steps.find(step => !mockStepIsLocked(flow.id, step) && !mockStepIsDependency(step))!;
         await stepRegion.getByRole("checkbox", { name: optional.label, exact: true }).uncheck();
@@ -191,7 +191,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) {
         await expect(rerun.getByRole("list", { name: "Run configuration path" }).getByRole("listitem")).toHaveText([/^1\s*Steps$/u, /^2\s*Values$/u, /^3\s*Options$/u, /^4\s*Confirm$/u]);
         await expect(rerun.getByRole("complementary", { name: "Source run", exact: true })).toHaveCount(0);
         await expect(rerun.getByRole("checkbox", { name: optional.label, exact: true })).not.toBeChecked();
-        await expect(rerun.locator(".launch-step-status")).toHaveCount(flow.steps.length);
+        await expect(rerun.locator(".launch-step-status")).toHaveCount(flow.steps.length + mockOcrPreparationSteps(flow.id, initialMockDraft(flow.id)).length);
         await advance(rerun);
         await expect(rerun.getByRole("region", { name: "Values", exact: true })).toBeVisible();
         await advance(rerun);

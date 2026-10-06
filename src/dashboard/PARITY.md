@@ -671,3 +671,12 @@ keyboard, geometry, history and no-write assertions. `workflow-manual-input.spec
 themes at 1024×720 and 1440×1000 with paired screenshot/accessibility evidence. Served Person Lookup
 and Separations keep current descriptor authority; new manual capability wiring belongs to the
 backend owner. Evidence is `manual-ocr-review-10003539`. Frozen references are unchanged.
+
+The subsequent launch-plan polish uses shared 14px picker chevrons and explains Interactive/Bulk
+beside Priority. PDF plans show automatic OCR delegation and required approval before downstream
+steps, including extraction-off plans; Steps and Confirm include those rows. Oath Upload reuses its
+existing approval gate, and upload-only/typed inputs add no OCR rows. Source downstream outcomes stay
+pending while OCR approval waits. `ocr-launch-plan.spec.ts` covers keyboard/focus, both OCR modes,
+explicit approval and downstream contact values in both themes at 1024 and 1440px, with required
+screenshot/accessibility pairs. Existing all-workflow and OCR/manual-review cases retain their
+membership and assertions. Evidence is `ocr-launch-polish-10003539`; frozen references are unchanged.

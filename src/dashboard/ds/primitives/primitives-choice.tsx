@@ -1,7 +1,7 @@
 import { useId, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { cn } from "../../lib/utils.js";
-import { dsText } from "../theme/tokens.js";
+import { dsIcon, dsText } from "../theme/tokens.js";
 import { Button } from "./primitives-core.js";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "./dropdown-menu.js";
 
@@ -23,7 +23,7 @@ export function ChoicePicker({ label, value, options, onChange, disabled, hideLa
     <label htmlFor={id} data-slot="label" className={cn(dsText.meta, "font-medium text-[color:var(--ds-fg-secondary)]", hideLabel && "sr-only")}>{label}</label>
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild><Button id={id} disabled={disabled} aria-label={`${selected.label} ${label}`} className="w-full justify-between">
-        <span className="min-w-0 flex-1 truncate text-left">{selected.label}</span><ChevronDown aria-hidden data-icon="inline-end" />
+        <span className="min-w-0 flex-1 truncate text-left">{selected.label}</span><ChevronDown aria-hidden data-icon="inline-end" className={cn(dsIcon.md, "shrink-0")} />
       </Button></DropdownMenuTrigger>
       <DropdownMenuContent aria-label={label} className="w-[var(--anchor-width)]">
         <DropdownMenuGroup><DropdownMenuRadioGroup value={value} onValueChange={next => { onChange(next); setOpen(false); }}>

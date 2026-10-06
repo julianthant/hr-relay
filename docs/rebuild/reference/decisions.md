@@ -297,6 +297,12 @@ waits remain automatic. Source-page coordinates bind run and record. Served desc
 are unchanged pending backend contract admission. D347's dashboard-surfaces owner records the
 contract; evidence is `manual-ocr-review-10003539`.
 
+The subsequent launch-plan polish displays automatic PDF-to-OCR delegation and required approval
+before downstream steps, including extraction-off plans, with truthful included counts and pending
+source outcomes. Shared priority help defines Interactive/Bulk and ChoicePicker chevrons use 14px.
+Scheduling, approval and backend authority are unchanged. D347's dashboard-surfaces owner records
+the contract; evidence is `ocr-launch-polish-10003539`.
+
 The save-feedback amendment adds existing success toasts for confirmed typed settings, protected
 settings, saved keyboard edits, local spreadsheet registration/mappings and exported spreadsheet copies.
 One acknowledged attempt produces one value-free confirmation; failures and uncertainty retain their

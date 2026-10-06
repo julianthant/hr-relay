@@ -12,7 +12,7 @@ export function RunOptionsLayout({ flags, children, priority, onPriorityChange, 
     <div className="launch-flags">{flags}</div>
     {children}
     <div className="launch-options-grid">
-      <div><SegmentedChoice label="Priority" value={priority} onChange={onPriorityChange} options={[{ value: "interactive", label: "Interactive" }, { value: "bulk", label: "Bulk" }]} /><p className="mt-[5px] text-caption text-ui-muted">Bulk work yields to interactive runs.</p></div>
+      <div><SegmentedChoice label="Priority" value={priority} onChange={onPriorityChange} options={[{ value: "interactive", label: "Interactive" }, { value: "bulk", label: "Bulk" }]} /><p className="mt-[5px] text-caption text-ui-muted">Interactive: work you’re waiting on. Bulk: background batches; interactive runs take priority.</p></div>
       <div><SegmentedChoice label="Browser mode" value={browserMode} onChange={onBrowserModeChange} options={[{ value: "headed", label: "Headed" }, { value: "headless", label: "Headless" }]} /><p className="mt-[5px] text-caption text-ui-muted">{browserMode === "headed" ? "Open visible browser windows." : "Run browsers in the background."}</p></div>
     </div>
     {fixedFacts && <div className="launch-fixed-facts">{fixedFacts}</div>}

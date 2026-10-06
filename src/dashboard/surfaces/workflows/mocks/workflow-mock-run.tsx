@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Check, ArrowLeft, ArrowRight, Play } from "lucide-react";
 import { BareButton, Banner, Button, Checkbox, ChoicePicker, DateInput, DialogBody, DialogFooter, Field, Input, Badge, MetaLine, SegmentedChoice, Textarea } from "../../../ds/ui.js";
 import { MOCK_FORM_TYPES, MOCK_ONBASE_TYPES, mockWorkflow, type MockWorkflowId } from "./workflow-mock-catalog.js";
-import { initialMockDraft, mockConfirmationFacts, mockDraftError, mockDraftInputError, mockInputEntries, mockLaunchCount, mockSelectableSteps, mockOathDuplicate, mockStepState, type MockDraft, type MockFile, type MockRun } from "./workflow-mock-model.js";
+import { initialMockDraft, mockConfirmationFacts, mockDraftError, mockDraftInputError, mockInputEntries, mockLaunchCount, mockSelectableSteps, mockOcrPreparationSteps, mockOathDuplicate, mockStepState, type MockDraft, type MockFile, type MockRun } from "./workflow-mock-model.js";
 import "../../run-start/launch-presentation.css";
 import { cn } from "../../../lib/utils.js";
 import { RunConfirmLayout, RunOptionsLayout, RunStepsList } from "../../run-start/run-launch-layout.js";
@@ -31,7 +31,9 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
   const typedEntries = mockInputEntries(workflowId, draft);
   const count = mockLaunchCount(workflowId, draft);
   const steps = mockSelectableSteps(workflowId, draft);
-  const included = steps.filter(step => draft.selectedSteps.includes(step.key)).length;
+  const preparation = mockOcrPreparationSteps(workflowId, draft);
+  const planSteps = [...preparation, ...steps];
+  const included = preparation.length + steps.filter(step => draft.selectedSteps.includes(step.key)).length;
   const patch = (next: Partial<MockDraft>) => { const value = { ...draft, ...next }; setDraft(value); onDraftChange?.(value); };
   const chooseFiles = async (files: readonly File[]) => {
     setReading(true); setFileError(undefined);
@@ -53,7 +55,7 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
         {stages.map((name, position) => <li key={name} aria-current={name === stage ? "step" : undefined}><BareButton aria-label={`${position + 1} ${name}`} onClick={() => setStage(name)} disabled={position > index}>
           <span aria-hidden className="launch-stage-marker" data-current={name === stage || undefined} data-completed={position < index || undefined}>{position < index ? <Check className="size-3" aria-hidden /> : position + 1}</span><span className={cn("text-body", name === stage ? "font-semibold" : "text-ui-secondary")}>{name}</span></BareButton></li>)}
       </ol><DialogBody className="launch-content @container">
-        <section className="flex flex-col gap-1"><div className="flex items-baseline justify-between gap-3"><h3 className="text-heading font-semibold">{stage === "Options" ? "Run options" : stage === "Steps" ? source ? "Choose what to run again" : "Workflow steps" : stage === "Confirm" ? "Review the plan" : source ? "Values for the new run" : "Run input"}</h3>{stage === "Steps" && <span className="text-caption text-ui-muted">{included} / {steps.length} included</span>}</div>
+        <section className="flex flex-col gap-1"><div className="flex items-baseline justify-between gap-3"><h3 className="text-heading font-semibold">{stage === "Options" ? "Run options" : stage === "Steps" ? source ? "Choose what to run again" : "Workflow steps" : stage === "Confirm" ? "Review the plan" : source ? "Values for the new run" : "Run input"}</h3>{stage === "Steps" && <span className="text-caption text-ui-muted">{included} / {planSteps.length} included</span>}</div>
           {stage !== "Confirm" && <p className="text-body text-ui-secondary">{stage === "Options" ? "Set how this work enters the queue." : stage === "Steps" ? source ? "Select steps for the new run. Statuses show the source outcome." : "Replace reading steps with manual values. Form actions stay included." : flow.methods[0] === "delegated" ? "I-9 Lookup runs inside its parent workflow." : pdf ? "Choose the documents to process." : "Each entry starts one run."}</p>}
         </section>
         <div className="flex min-w-0 flex-col gap-[var(--ds-space-loose)]">
@@ -91,13 +93,13 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
             {workflowId === "old-kronos-reports" ? <Field label="Workers"><Input type="number" min={1} step={1} value={draft.workers} onChange={event => patch({ workers: Number(event.target.value) })} /></Field> : (pdf && !uploadOnly) || draft.method === "typed" ? <ChoicePicker label="Workers" value={String(draft.workers)} options={[{ value: "auto", label: "Auto" }, ...Array.from({ length: 8 }, (_, number) => ({ value: String(number + 1), label: String(number + 1) }))]} onChange={workers => patch({ workers: workers === "auto" ? "auto" : Number(workers) })} /> : null}
           </div>}
         </RunOptionsLayout>}
-        {stage === "Steps" && <section aria-label="Steps" className="flex flex-col gap-[var(--ds-space-cozy)]"><h4 id="run-start-steps" className="sr-only">Steps</h4><RunStepsList>{steps.length ? steps.map(step => {
+        {stage === "Steps" && <section aria-label="Steps" className="flex flex-col gap-[var(--ds-space-cozy)]"><h4 id="run-start-steps" className="sr-only">Steps</h4><RunStepsList>{planSteps.length ? planSteps.map(step => {
           const state = source ? mockStepState(source, step) : undefined;
           const locked = mockStepIsLocked(workflowId, step), dependency = mockStepIsDependency(step);
           const fields = manualReadFields(workflowId, step.key), manual = usesManualRead(draft, step.key);
           const setManual = (value: boolean) => patch({ manualSteps: value ? [...new Set([...(draft.manualSteps ?? []), step.key])] : (draft.manualSteps ?? []).filter(key => key !== step.key) });
           return <li key={step.key} className="launch-step-row flex min-w-0 flex-col gap-2"><div className="flex items-start gap-[var(--ds-space-base)]">
-            {dependency ? <span className="text-body">{step.label}<span className="ml-2 text-caption text-ui-muted">Automatic dependency</span></span> : <Checkbox label={step.label} description={locked ? "Form action · required" : step.system} disabled={locked} checked={draft.selectedSteps.includes(step.key)} onCheckedChange={value => {
+            {dependency ? <span className="text-body">{step.label}{" "}<span className="ml-2 text-caption text-ui-muted">{["wait-ocr", "wait-approval"].includes(step.key) ? "Approval required" : "Automatic"}</span></span> : <Checkbox label={step.label} description={locked ? "Form action · required" : step.system} disabled={locked} checked={draft.selectedSteps.includes(step.key)} onCheckedChange={value => {
               const included = value === true;
               patch({ selectedSteps: included ? [...new Set([...draft.selectedSteps, step.key])] : draft.selectedSteps.filter(key => key !== step.key),
                 manualSteps: !included && fields.length ? [...new Set([...(draft.manualSteps ?? []), step.key])] : (draft.manualSteps ?? []).filter(key => key !== step.key) });
