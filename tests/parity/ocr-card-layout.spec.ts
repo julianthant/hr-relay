@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { createHash } from "node:crypto";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "./helpers/fixture-bff.js";
@@ -6,7 +7,8 @@ import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { chooseSelect } from "./helpers/select-choice.js";
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) {
-  test(`OCR card fields and anchored source controls @ ${theme.attribute}-${width}`, async ({ page }, info) => {
+  const a11yName = `oath-card-${theme.attribute}-${width}.a11y.yml`;
+  test(`OCR card fields and unobstructed source controls @ ${theme.attribute}-${width}`, { annotation: [{ type: "required-a11y-evidence", description: a11yName }] }, async ({ page }, info) => {
     ensureParityBundle(); const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [], writes: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
@@ -18,6 +20,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) {
       const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
       await rail.getByRole("button", { name: "Oath Upload", exact: true }).click();
       await logs.getByRole("button", { name: "Open OCR", exact: true }).click();
+      await expect(page.getByRole("region", { name: "Queue", exact: true }).getByRole("heading", { name: "OCR", exact: true })).toHaveCount(0);
+      await expect(rail.getByRole("button", { name: "OCR", exact: true })).toHaveAttribute("aria-current", "page");
       await logs.getByRole("button", { name: /^Records \d+$/u }).click();
       const drawer = logs.getByRole("region", { name: "OCR records", exact: true });
       const cards = drawer.locator('[aria-label="Record review cards"]');
@@ -36,6 +40,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) {
         card: (await record.boundingBox())!, preview: (await source.locator("[data-review-preview]").boundingBox())!,
         controls: (await controls.boundingBox())!, image: (await image.boundingBox())!,
       };
+      expect(before.controls.y + before.controls.height).toBeLessThanOrEqual(before.preview.y);
       await source.getByRole("button", { name: "Zoom in", exact: true }).click();
       expect((await image.boundingBox())!.width).toBeGreaterThan(before.image.width);
       expect(await record.boundingBox()).toEqual(before.card);
@@ -99,7 +104,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) {
       expect(scrolledControls.y - scrolledCard.y).toBeCloseTo(toolbarAtTop.y - cardAtTop.y, 5);
       await cards.evaluate(node => node.scrollTo({ top: 0 }));
       await info.attach(`oath-card-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
-      await info.attach(`oath-card-${theme.attribute}-${width}.yml`, { body: await drawer.ariaSnapshot(), contentType: "text/yaml" });
+      const a11y = await drawer.ariaSnapshot();
+      await info.attach(a11yName, { body: a11y, contentType: "text/yaml" });
+      info.annotations.push({ type: `a11y-attachment-sha256:${a11yName}`, description: createHash("sha256").update(a11y).digest("hex") });
       await rail.getByRole("button", { name: "I-9 Check", exact: true }).click();
       await logs.getByRole("button", { name: "Open OCR", exact: true }).click();
       await logs.getByRole("button", { name: /^Records \d+$/u }).click();
@@ -112,8 +119,38 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) {
       await expect(i9.getByRole("img")).toHaveAccessibleName("Source page 1 of i9.pdf");
       await expect(i9.getByRole("button", { name: "Fit page", exact: true })).toBeDisabled();
       await expect(pager).toContainText("Section 2 · Page 1");
+      const i9Controls = (await i9.getByRole("toolbar", { name: "PDF controls", exact: true }).boundingBox())!;
+      const i9Preview = (await i9.locator("[data-review-preview]").boundingBox())!;
+      expect(i9Controls.y + i9Controls.height).toBeLessThanOrEqual(i9Preview.y);
+      await expect.poll(() => i9.getByRole("img").evaluate(node => (node as HTMLImageElement).complete && (node as HTMLImageElement).naturalWidth > 0)).toBe(true);
+      await i9.getByRole("button", { name: "Zoom in", exact: true }).focus();
+      await page.keyboard.press("Enter");
+      await expect(i9.getByRole("button", { name: "Fit page", exact: true })).toBeEnabled();
+      await i9.getByRole("button", { name: "Fit page", exact: true }).click();
       await expect(page.locator('[data-slot="select-content"]')).toBeHidden();
       await info.attach(`i9-card-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+      await rail.getByRole("button", { name: "Emergency Contact", exact: true }).click();
+      await logs.getByRole("button", { name: "Open OCR", exact: true }).click();
+      await logs.getByRole("button", { name: /^Records \d+$/u }).click();
+      const contactSources = drawer.getByRole("region", { name: "Source PDF", exact: true });
+      expect(await contactSources.count()).toBeGreaterThan(1);
+      for (const contactSource of await contactSources.all()) {
+        const contactControls = (await contactSource.getByRole("toolbar", { name: "PDF controls", exact: true }).boundingBox())!;
+        const contactPreview = (await contactSource.locator("[data-review-preview]").boundingBox())!;
+        expect(contactControls.y + contactControls.height).toBeLessThanOrEqual(contactPreview.y);
+      }
+      await info.attach(`contact-card-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+      const queue = page.getByRole("region", { name: "Queue", exact: true });
+      const deletes = queue.getByRole("button", { name: "Delete", exact: true });
+      const initialCount = await deletes.count();
+      expect(initialCount).toBeGreaterThan(0);
+      for (let remaining = initialCount; remaining > 0; remaining--) {
+        await deletes.first().click();
+        await page.getByRole("dialog").getByRole("button", { name: "Delete", exact: true }).click();
+        await expect(deletes).toHaveCount(remaining - 1);
+      }
+      await expect(queue).toContainText("No OCR runs");
+      await expect(queue).toBeFocused();
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
       expect(errors).toEqual([]); expect(writes).toEqual([]);
     } finally { await server.close(); }

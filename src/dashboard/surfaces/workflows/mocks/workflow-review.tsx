@@ -23,18 +23,18 @@ function ReviewSourcePreview({ recordId, subject, pages }: { recordId: string; s
   const available = Boolean(source && !imageError);
   const loading = available && loadedImage !== source.imageUrl;
   return <section aria-label="Source PDF" className="min-w-0 border-r border-ui-stroke bg-ui-table p-3">
-    {source && <div className="mb-2 flex min-h-4 items-center">
-      {pages.length > 1 ? <Select aria-label="Source page" value={String(sourceIndex)} onChange={event => { setSourceIndex(Number(event.target.value)); setImageError(false); fitPage(); }} className="w-44 max-w-full">{pages.map((page, index) => <option key={page.page} value={index}>{page.label ?? `Page ${page.page}`}</option>)}</Select> : <span className="text-caption text-ui-muted">Page {source.page}</span>}
-    </div>}
+    <div className="mb-2 flex flex-wrap items-center gap-2">
+      {source && <div className="min-w-0 flex-1">{pages.length > 1 ? <Select aria-label="Source page" value={String(sourceIndex)} onChange={event => { setSourceIndex(Number(event.target.value)); setImageError(false); fitPage(); }} className="w-44 max-w-full">{pages.map((page, index) => <option key={page.page} value={index}>{page.label ?? `Page ${page.page}`}</option>)}</Select> : <span className="text-caption text-ui-muted">Page {source.page}</span>}</div>}
+      <div role="toolbar" aria-label="PDF controls" className="ml-auto flex shrink-0 items-center gap-1">
+        <IconButton size="sm" variant="ghost" label="Zoom out" icon={<ZoomOut aria-hidden className="size-4" />} disabled={!available || loading || zoom <= 50} onClick={() => setZoom(Math.max(50, zoom - 25))} />
+        <IconButton size="sm" variant="ghost" label="Zoom in" icon={<ZoomIn aria-hidden className="size-4" />} disabled={!available || loading || zoom >= 200} onClick={() => setZoom(Math.min(200, zoom + 25))} />
+        <IconButton size="sm" variant="ghost" label="Fit page" icon={<Maximize aria-hidden className="size-4" />} disabled={!available || loading || zoom === 100} onClick={fitPage} />
+      </div>
+    </div>
     <div data-review-preview className="relative min-w-0" style={{ aspectRatio }}>
       <div ref={imageViewport} tabIndex={0} aria-label="PDF page image" className={cn("absolute inset-0 overflow-auto rounded-sm border border-ui-stroke", dsFocus)}>
         {available ? <img src={source.imageUrl} alt={`Source page ${source.page} of ${subject}`} loading="lazy" className="mx-auto block h-auto max-w-none" style={{ width: `${zoom}%` }} onLoad={event => { setAspectRatio(event.currentTarget.naturalWidth / event.currentTarget.naturalHeight); setLoadedImage(source.imageUrl); }} onError={() => setImageError(true)} /> : <p role="status" className="m-0 p-3 text-body text-ui-muted">{imageError ? "Source page unavailable" : "No source page for this record"}</p>}
         {loading && <LoadingRegion label="Loading source PDF" className="absolute inset-0"><Skeleton className="h-full w-full rounded-none" /></LoadingRegion>}
-      </div>
-      <div role="toolbar" aria-label="PDF controls" className="absolute bottom-3 right-3 z-10 flex items-center gap-1 rounded-lg border border-ui-stroke bg-ui-panel p-1 shadow-sm">
-        <IconButton size="sm" variant="ghost" label="Zoom out" icon={<ZoomOut aria-hidden className="size-4" />} disabled={!available || loading || zoom <= 50} onClick={() => setZoom(Math.max(50, zoom - 25))} />
-        <IconButton size="sm" variant="ghost" label="Zoom in" icon={<ZoomIn aria-hidden className="size-4" />} disabled={!available || loading || zoom >= 200} onClick={() => setZoom(Math.min(200, zoom + 25))} />
-        <IconButton size="sm" variant="ghost" label="Fit page" icon={<Maximize aria-hidden className="size-4" />} disabled={!available || loading || zoom === 100} onClick={fitPage} />
       </div>
     </div>
   </section>;

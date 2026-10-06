@@ -29,10 +29,10 @@ export function WorkflowMockQueue({ label, runs, allRuns, selected, onSelect, on
   const surfaces = useMemo(() => mockQueueSurfaces(runs, day), [runs, day]);
   const ids = useMemo(() => new Map(runs.map(run => [mockQueueId(run.id), run.id])), [runs]);
   const focusRemainingRow = () => {
-    const target = queueRoot.current?.querySelector<HTMLElement>("[data-demo-row-id]") ?? queueRoot.current?.querySelector<HTMLElement>("h2");
+    const target = queueRoot.current?.querySelector<HTMLElement>("[data-demo-row-id]") ?? queueRoot.current?.querySelector<HTMLElement>('[aria-label="Queue"]');
     if (target) { if (!target.hasAttribute("tabindex")) target.tabIndex = -1; target.focus(); }
   };
-  return <div ref={queueRoot} className="flex min-h-0 min-w-0 flex-1 flex-col [&>section]:flex-1"><QueuePanel surfaces={surfaces} panelLabel={label} day={day} sort={sort} filter={filter}
+  return <div ref={queueRoot} className="flex min-h-0 min-w-0 flex-1 flex-col [&>section]:flex-1"><QueuePanel surfaces={surfaces} panelLabel={label} header={false} day={day} sort={sort} filter={filter}
     state={{ selectedRunId: selected ? mockQueueId(selected) : undefined, openWells: new Set(), panelWorkflowId: runs[0]?.workflowId, nowIso }}
     handlers={{ onSelect: id => {
       const target = ids.get(id);

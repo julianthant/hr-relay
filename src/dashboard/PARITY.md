@@ -375,6 +375,13 @@ the inherited concrete-workflow-ID guard conflict, remain owned by 3.1.19.
 
 ## Page loading presentation
 
+OCR source page selection and zoom/fit controls share a row above the image viewport. They do not
+float over document text. Zoom and panning keep the card and controls stable, and page changes
+restore the fitted image. Local queue panels omit repeated workflow titles because the sidebar
+already supplies that context. The replacement run-history/search and upgrade-review prototype is
+rejected; existing shell search and status semantics remain. Focused desktop dark/light checks at
+1024, 1440 and 1920 pixels cover the amendment; frozen references remain unchanged.
+
 Loading states use the shared DS Skeleton with page-specific geometry: Settings groups and control
 widths, Activity metrics/tables/chart, catalog columns, titled diagnostics, notification rows, session
 cards, queue cards, Logs and intake mapping/actions. OCR image placeholders fill the fixed PDF frame;

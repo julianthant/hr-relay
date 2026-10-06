@@ -7628,11 +7628,16 @@ selection, Employee and Oath. Inclusion keeps
 its accessible action name without a repeated visible Include label. Warnings and invalid-identity
 messages stay in the selection card. Adjacent boolean fields share a wrapping row; notes support
 multiline editing, and long fields use the full form width without changing response-field order or
-membership. Page labels/selectors sit above the source. Zoom controls anchor to the image frame's
-bottom-right corner and contain only zoom/fit actions. The frame follows the source image's aspect
+membership. Page labels/selectors and zoom/fit controls share a compact row above the source image.
+Controls remain outside the image viewport and never cover document text. The frame follows the source image's aspect
 ratio; magnified images pan inside it without resizing the card or moving its controls. Selecting a
 different source page restores the fitted view. The repeated filename header and internal group
 dividers are retired.
+Local queue panels omit the repeated workflow heading; the selected sidebar entry supplies that
+context. Empty queues retain their workflow-specific message. The existing shell-wide search is
+the run-search entry point. The replacement history/search and upgrade-review prototype is rejected;
+no additional search bar, update status or update-review UI is admitted. Existing statuses remain
+unchanged; Write parked still means an uncertain write awaiting proof, not generic update incompatibility.
 One fixed footer shows the valid selection count, Add record, Discard and Approve records. Adding a
 record scrolls to its Employee ID; approval preserves field corrections, copies only eligible selected
 records to downstream previews and locks the source response. Run PDF and roster inputs share a
