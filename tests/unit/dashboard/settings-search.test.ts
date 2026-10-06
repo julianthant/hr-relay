@@ -20,7 +20,6 @@ describe("Settings field search", () => {
     ]);
     for (const [term, section, target] of [
       ["job end date", "general", `annualDates.FY${document.currentFiscalYear}.jobEndDate`],
-      ["browser viewport width", "general", "display.screenWidth"],
       ["CRM onboarding search", "routes", "urls.crm.prod.onboardingSearch"],
       ["OpenAI login", "general", "chatgpt.account"],
       ["UCPath username", "credentials", "protected.ucpathUserId"],
@@ -48,6 +47,8 @@ describe("Settings field search", () => {
     assert.ok(!safe.some(result => result.target?.startsWith("provider-keys.") || result.target?.startsWith("providers.")));
     assert.deepEqual(searchSettings(safe, "Census daily request"), []);
     assert.deepEqual(searchSettings(safe, "API keys"), []);
+    assert.deepEqual(searchSettings(safe, "Browser viewport"), []);
+    assert.ok(!safe.some(result => result.target?.startsWith("display.")));
     assert.ok(!JSON.stringify(safe).includes(value));
     assert.deepEqual(searchSettings(safe, value), []);
     assert.deepEqual(searchSettings(safe, "/tmp/settings-fixture"), []);

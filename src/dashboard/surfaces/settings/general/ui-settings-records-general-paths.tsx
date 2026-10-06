@@ -2,7 +2,7 @@ import { SettingsSectionSkeleton } from "../settings-loading.js";
 import type { ReactNode } from "react";
 import { Form } from "@heroui/react";
 import type { EditableSettingsLeafWire } from "../../../../domain/dashboard/settings-editor.js";
-import { Banner, BodySection, Button, DateInput, Field, FormGroup, Input, PageHeading, ResultRow, Switch, UnitField, dsText } from "../../../ds/ui.js";
+import { Banner, BodySection, Button, DateInput, Field, FormGroup, Input, PageHeading, Switch, dsText } from "../../../ds/ui.js";
 import { formatSetting, settingInput, type SettingsDraftOperation } from "../editor/settings-draft-model.js";
 import type { useEditableSettings } from "../editor/settings-editor-model.js";
 import { SettingsSaveFeedback } from "../editor/settings-feedback.js";
@@ -63,23 +63,12 @@ function PathRow({ editor, field }: { editor: Editor; field: NativePathField }) 
 
 function GeneralContent({ editor, year }: { editor: Editor; year: number }) {
   const date = servedLeaf(editor, `annualDates.FY${String(year)}.jobEndDate`);
-  const width = servedLeaf(editor, "display.screenWidth");
-  const height = servedLeaf(editor, "display.screenHeight");
   return <>
     <BodySection title="Employment"><FormGroup label="Employment"><ScalarRow editor={editor} leaf={date} /></FormGroup></BodySection>
     <BodySection title="Browser"><FormGroup label="Browser">
       {(["browser.headless", "features.debugScreenshots", "features.duoWebAuthn"] as const).map(path => <ScalarRow key={path} editor={editor} leaf={servedLeaf(editor, path)} />)}
     </FormGroup></BodySection>
-    <BodySection title="Display"><FormGroup label="Display"><div data-settings-path="display.viewport" className="settings-viewport-row">
-      <ResultRow controlWidth="wide" label="Browser viewport" description="Width and height used for browser sessions." value={<div className="settings-compact-control"><div className="settings-viewport-pair">
-          {([width, height] as const).map(leaf => <label key={leaf.path} htmlFor={`settings-${leaf.path}`} data-settings-path={leaf.path} className="settings-viewport-control">
-            <span>{settingTitle(leaf)}</span>
-            <UnitField name={leaf.path} autoComplete="off" id={`settings-${leaf.path}`} bodyWidth="stretch" type="number" min={leaf.minimum} step={1} unit="px" aria-label={`Browser viewport ${settingTitle(leaf).toLowerCase()}`} aria-describedby={editor.errors[width.path] !== undefined || editor.errors[height.path] !== undefined ? "settings-viewport-error" : undefined} value={rawValue(leaf, editor.draft[leaf.path])} disabled={editor.locked} aria-invalid={editor.errors[leaf.path] !== undefined || undefined} onChange={event => editor.update(leaf.path, event.target.value)} />
-          </label>)}
-        </div><SettingsRowActions editor={editor} leaf={width} companion={height} textEntry /></div>} />
-      {(editor.errors[width.path] ?? editor.errors[height.path]) !== undefined && <p id="settings-viewport-error" role="alert" className="settings-viewport-error">{editor.errors[width.path] ?? editor.errors[height.path]}</p>}
-      {editor.save.state === "conflict" && (editor.draft[width.path] !== undefined || editor.draft[height.path] !== undefined) && <p className={dsText.meta}>Current value: {formatSetting(width.effectiveValue)} × {formatSetting(height.effectiveValue)} px</p>}
-    </div></FormGroup></BodySection>
+
   </>;
 }
 

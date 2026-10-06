@@ -1,4 +1,4 @@
-import { BodySection, FormGroup, PageHeading, ResultRow, Skeleton } from "../../ds/ui.js";
+import { BodySection, FormGroup, PageHeading, Skeleton } from "../../ds/ui.js";
 import { LoadingRegion, SettingsRowsSkeleton, SkeletonText } from "../shared/loading/loading.js";
 import { routeLoadingGroups } from "./routes/settings-routes-model.js";
 import { settingPlaceholderCopy } from "./settings-presentation.js";
@@ -16,7 +16,6 @@ export function SettingsSectionSkeleton({ section, contentOnly = false }: { sect
         {section === "general" ? <>
           <BodySection title="Employment"><FormGroup label="Employment loading"><SettingsRowsSkeleton rows={1} /></FormGroup></BodySection>
           <BodySection title="Browser"><FormGroup label="Browser loading">{[0, 1, 2].map(index => <div key={index} className="ds-body-row" data-control-width="standard"><div><SkeletonText className="w-40 text-body" /><div><SkeletonText className="w-60 text-caption" /></div></div><Skeleton className="ml-auto h-[var(--ds-h-body-switch)] w-[var(--ds-w-body-switch)] rounded-full" /></div>)}</FormGroup></BodySection>
-          <BodySection title="Display"><FormGroup label="Display loading"><ResultRow className="[&_.ds-result-row-value]:w-full" controlWidth="wide" label={<SkeletonText className="w-40" />} description={<SkeletonText className="w-60" />} value={<div className="settings-viewport-pair w-[var(--ds-w-body-control-wide)] max-w-full">{[0, 1].map(index => <div key={index} className="settings-viewport-control"><SkeletonText className="w-12" /><Skeleton className="h-[calc(var(--ds-h-body-control)+2*var(--ds-border-w))] w-full" /></div>)}</div>} /></FormGroup></BodySection>
         </> : section === "paths" ? <>
           <BodySection title="Runtime locations"><FormGroup label="Runtime locations loading"><SettingsRowsSkeleton rows={5} wide copy={[
             { label: "Runtime state folder", description: "Persistent settings and run data." },

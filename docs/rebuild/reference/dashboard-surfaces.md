@@ -7463,6 +7463,15 @@ confirmed state. `ChatGptAccountContext` is the replacement seam for backend OAu
 authority. Existing backend provider contracts are retained; UI retirement does not migrate them.
 Evidence is `chatgpt-settings-20261005`; phase-exit gates remain deferred.
 
+The later 2026-10-06 developer-controls amendment removes Browser viewport from General, its
+loading placeholders and Settings search. The backend retains worker viewport configuration.
+Plan a bump and its dialog are retired from mounted mock and retained runtime Archive; legacy
+version-stage URLs render ordinary browsing and issue no version command. Existing report version
+metadata, exact-run search, tabs, retained files and export remain. Developer-controlled version
+publication occurs outside the end-user frontend. Backend review, archival scope, active-run blockers
+and immutable historical reports are unchanged; UI retirement does not authorize a runtime migration.
+Evidence is `frontend-controls-removal-10003539`; phase-exit gates remain deferred.
+
 Loading placeholders follow each mounted page's existing geometry. General, Paths, Performance,
 Routes and Credentials retain their headings, group order, row spacing and control
 widths. Activity keeps its metric cards, tables and chart frame; the UI catalog retains its two-column

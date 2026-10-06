@@ -577,3 +577,15 @@ The real OAuth session, plan eligibility, secure tokens and persistence remain b
 `ChatGptAccountContext`; no authentication network or browser token storage is introduced.
 Focused evidence is `chatgpt-settings-20261005`. Frozen parity, coverage and phase-exit gates remain
 with 3.1.19.
+
+## Developer controls retirement (2026-10-06)
+
+The operator removed Browser viewport from General, its loading geometry and Settings search.
+Worker viewport configuration remains backend-owned. Plan a bump and its selection/review/apply
+dialog are removed from both mounted mock Archive and retained runtime Archive. Old version-stage
+URLs show ordinary Archive browsing without dispatching a version command. Saved reports retain
+their original version metadata, search, tabs, files and exports.
+
+Version publication remains developer-controlled outside the end-user frontend. This presentation
+retirement does not change the backend's reviewed archival contract or migrate existing records.
+Focused evidence is `frontend-controls-removal-10003539`; frozen phase-exit gates remain deferred.

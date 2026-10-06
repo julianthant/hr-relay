@@ -30,10 +30,9 @@ export function settingsSearchIndex(groups: readonly SettingsNavGroup[], documen
     add("paths", "Artifact folder", "paths.artifactRoot", "Run evidence and generated artifacts");
   }
   if (document === undefined) return results;
-  add("general", "Browser viewport", "display.viewport", "Display width height");
   for (const section of document.sections) for (const leaf of section.leaves) {
     // The folded General page renders these controls, not the retired operator-label field.
-    if (leaf.path === "actor.label" || section.id === "providers") continue;
+    if (leaf.path === "actor.label" || leaf.path.startsWith("display.") || section.id === "providers") continue;
     if (section.id === "routes") {
       const presentation = routePresentation(leaf);
       add("routes", presentation.name, leaf.path, presentation.description);
@@ -42,7 +41,7 @@ export function settingsSearchIndex(groups: readonly SettingsNavGroup[], documen
         add("routes", `${presentation.name} · ${detail.name}`, `${leaf.path}.${field.name}`, detail.description);
       }
     } else {
-      const label = leaf.path.startsWith("display.") ? `Browser viewport ${settingTitle(leaf).toLocaleLowerCase()}` : settingTitle(leaf);
+      const label = settingTitle(leaf);
       add(section.id, label, leaf.path, settingNote(leaf));
     }
   }

@@ -1,20 +1,17 @@
-import { ArchiveBumpStepHeading, ArchiveBumpVersionSummary } from './archive-bump-review.js';
 import { EMPTY_ARCHIVE_BROWSE, ArchiveBrowseStateSchema, type ArchiveBrowseState } from "../../app/navigation/archive-route-model.js";
-import { Archive, ArrowLeft, ArrowRight, ChevronDown, ChevronRight, Download, Folder, Layers3 } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Archive, ChevronRight, Download, Folder, Layers3 } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ArchiveGroupQuery } from "../../../domain/archive/report.js";
 import type { SavedArchiveQuery, SavedRuntimeVersionIndexWire } from "../../../domain/dashboard/archive.js";
-import { formatRuntimeVersion } from "../../../domain/archive/runtime-version.js";
-import { settleCommandResult } from "../../app/commands/command-result.js";
-import { Button, Card, Checkbox, Dialog, DialogBody, DialogContent, DialogFooter, DateRangeInput, DsBodyScope, dsIcon, dsSurface, dsText, SearchInput, PageBreadcrumbs, PageHeader, PageHeading, Panel, PanelBody, Popover, PopoverContent, PopoverTrigger, Select, TBody, TD, TH, THead, TR } from "../../ds/ui.js";
+import { Button, Card, DateRangeInput, DsBodyScope, dsIcon, dsSurface, dsText, SearchInput, PageBreadcrumbs, PageHeader, PageHeading, Panel, PanelBody, Popover, PopoverContent, PopoverTrigger, Select, TBody, TD, TH, THead, TR } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { useArchiveClient } from "./archive-client.js";
-import { archiveDisplayDate, archiveInitialSummaryColumns, archiveReportCount, archiveReviewMatchesPreview, archiveReviewRunLabel, archiveRuntimeVersionPreview, archiveSummaryColumnAlignment, archiveSummaryColumnLabel, archiveSummaryColumns, archiveSummaryValue, archiveVersionKey, archiveVersionLabel, archiveWorkflowVersionLabels, groupArchiveVersions, mergeArchiveSummaryColumns, type ArchiveSummaryColumn, type DashboardArchiveGroup } from "./archive-runtime-model.js";
+import { archiveDisplayDate, archiveInitialSummaryColumns, archiveReportCount, archiveReviewRunLabel, archiveSummaryColumnAlignment, archiveSummaryColumnLabel, archiveSummaryColumns, archiveSummaryValue, archiveVersionKey, archiveVersionLabel, archiveWorkflowVersionLabels, groupArchiveVersions, mergeArchiveSummaryColumns, type ArchiveSummaryColumn, type DashboardArchiveGroup } from "./archive-runtime-model.js";
 import type { ArchiveExportFormat } from "../../../domain/dashboard/archive-export.js";
 import { archiveExportBlob, readWorkflowExport } from "./archive-export-model.js";
 import { SavedArchiveDeletion, SavedArchiveDeletionStatus, SavedArchiveReport } from "./archive-report.js";
 import { ArchiveResourceState, ArchiveTable } from "./archive-visual.js";
-import { savedCommandEnvelope, useSavedResource } from "./archive-report-model.js";
+import { useSavedResource } from "./archive-report-model.js";
 
 type BrowseProps = { browse?: ArchiveBrowseState; browseInvalid?: boolean; onBrowse?: (browse: ArchiveBrowseState, mode?: "push" | "replace") => void };
 type Props = BrowseProps & {
@@ -33,7 +30,7 @@ type RunExportHandle = { identity: string; runId: string; start: (format: Archiv
 const EXPORT_SELECTION_CHANGED = "Archive export stopped because its selection changed. Start it again for this selection.";
 const RUN_EXPORT_SELECTION_CHANGED = "Run export stopped because the selected report changed. Start it again for this run.";
 
-export function RuntimeArchiveWorkspace({ selection, view, folder, actorId, onSelection, onView, onFolder, browse, browseInvalid, onBrowse }: Props) {
+export function RuntimeArchiveWorkspace({ selection, folder, actorId, onSelection, onView, onFolder, browse, browseInvalid, onBrowse }: Props) {
   const client = useArchiveClient();
   const [revision, setRevision] = useState(0);
   const [workflowExportVisible, setWorkflowExportVisible] = useState(false);
@@ -43,14 +40,13 @@ export function RuntimeArchiveWorkspace({ selection, view, folder, actorId, onSe
   const [runExportMenuOpen, setRunExportMenuOpen] = useState(false);
   const workflowExportHandle = useRef<WorkflowExportHandle | null>(null);
   const runExportHandle = useRef<RunExportHandle | null>(null);
-  const bumpTrigger = useRef<HTMLButtonElement | null>(null);
   const refresh = useCallback(() => setRevision(value => value + 1), []);
   const versionsRead = useCallback(() => client.savedRuntimeVersions(), [client]);
   const versions = useSavedResource(versionsRead, revision);
   useEffect(() => {
-    if (view !== "runs" || !workflowExportVisible) setWorkflowExportMenuOpen(false);
-    if (view !== "runs" || !runExportVisible) setRunExportMenuOpen(false);
-  }, [view, workflowExportVisible, runExportVisible]);
+    if (!workflowExportVisible) setWorkflowExportMenuOpen(false);
+    if (!runExportVisible) setRunExportMenuOpen(false);
+  }, [workflowExportVisible, runExportVisible]);
   return <div className="ds-body-overlay flex min-h-0 flex-1 flex-col bg-[var(--ds-surface-page)]">
     <PageHeader
       className="min-w-0 !flex-nowrap"
@@ -58,8 +54,8 @@ export function RuntimeArchiveWorkspace({ selection, view, folder, actorId, onSe
       icon={<Archive className={dsIcon.md} />}
       badge={versions.state === "loaded" ? <span className={cn(dsText.meta, "border-l border-[color:var(--ds-border)] pl-[var(--ds-space-base)] text-[color:var(--ds-fg-muted)]")}>Current · {archiveVersionLabel(versions.value.dashboard)}</span> : undefined}
       actions={<>
-        <Button size="toolbar" variant={view === "runs" ? "secondary" : "ghost"} aria-pressed={view === "runs"} onClick={() => onView("runs")}>Version archives</Button>
-        {view === "runs" && workflowExportVisible && <Popover open={workflowExportMenuOpen} onOpenChange={setWorkflowExportMenuOpen}>
+        <Button size="toolbar" variant="secondary" aria-pressed onClick={() => onView("runs")}>Version archives</Button>
+        {workflowExportVisible && <Popover open={workflowExportMenuOpen} onOpenChange={setWorkflowExportMenuOpen}>
           <PopoverTrigger asChild><Button size="toolbar" variant="secondary" icon={<Download className={dsIcon.sm} aria-hidden />}>Export workflow</Button></PopoverTrigger>
           <PopoverContent className="ds-body-scope ds-body-overlay !w-[320px] !max-w-[calc(100vw-var(--ds-space-section))] !bg-[var(--ds-surface-overlay)]" title="Export workflow" align="end" width="sm">
             <div className="flex flex-col gap-[12px] p-[16px]"><p className={cn(dsText.meta, "m-0 text-[color:var(--ds-fg-secondary)]")}>All saved runs in this filtered workflow, including hidden fields.</p>
@@ -69,7 +65,7 @@ export function RuntimeArchiveWorkspace({ selection, view, folder, actorId, onSe
             </div>
           </PopoverContent>
         </Popover>}
-        {view === "runs" && runExportVisible && <Popover open={runExportMenuOpen} onOpenChange={setRunExportMenuOpen}>
+        {runExportVisible && <Popover open={runExportMenuOpen} onOpenChange={setRunExportMenuOpen}>
           <PopoverTrigger asChild><Button size="toolbar" variant="secondary" icon={<Download className={dsIcon.sm} aria-hidden />}>Export run</Button></PopoverTrigger>
           <PopoverContent className="ds-body-scope ds-body-overlay !w-[320px] !max-w-[calc(100vw-var(--ds-space-section))] !bg-[var(--ds-surface-overlay)]" title="Export saved run" align="end" width="sm">
             <div className="flex flex-col gap-[12px] p-[16px]"><p className={cn(dsText.meta, "m-0 text-[color:var(--ds-fg-secondary)]")}>Complete public report, including hidden fields.</p>
@@ -78,20 +74,15 @@ export function RuntimeArchiveWorkspace({ selection, view, folder, actorId, onSe
             </div>
           </PopoverContent>
         </Popover>}
-        <Button ref={bumpTrigger} size="toolbar" variant={view === "versions" ? "secondary" : "ghost"} aria-pressed={view === "versions"} onClick={() => onView("versions")}>Plan a bump</Button>
       </>}
     />
     <div className={cn("min-h-0 flex-1 overflow-auto p-[var(--ds-shell-inset)]", dsSurface.bodyPage)}><div className="relative min-h-full rounded-[var(--ds-radius-lg)] border border-[color:var(--ds-border)] px-[18px] pt-[22px] pb-[75px] min-[1200px]:px-[25px] min-[1200px]:pt-[26px] min-[1200px]:pb-[84px]">
       {browseInvalid && <p role="alert">Invalid Archive browsing state. Exports are blocked until you choose a valid scope. <Button variant="secondary" onClick={() => onBrowse?.({ filters: {} }, "replace")}>Use unfiltered archives</Button></p>}
-      <ArchiveGroupsPanel active={view === "runs" || selection !== "" || folder !== null} selection={selection} folder={folder} onSelection={onSelection} onFolder={onFolder} versions={versions} revision={revision} onRefresh={refresh} actorId={actorId}
+      <ArchiveGroupsPanel active selection={selection} folder={folder} onSelection={onSelection} onFolder={onFolder} versions={versions} revision={revision} onRefresh={refresh} actorId={actorId}
         exportHandle={workflowExportHandle} onExportVisibilityChange={setWorkflowExportVisible} onExportActivityChange={setWorkflowExportActive}
         runExportHandle={runExportHandle} onRunExportVisibilityChange={setRunExportVisible} browse={browse} browseInvalid={browseInvalid} onBrowse={onBrowse} />
     </div></div>
-    <Dialog open={view === "versions"} onOpenChange={open => { if (!open) onView("runs"); }}>
-      {view === "versions" && <DialogContent size="md" className="ds-body-scope ds-body-overlay !w-[calc(100vw-var(--ds-space-section))] !max-w-[650px] !bg-[var(--ds-surface-overlay)]" title="Plan a version bump" description={`Current dashboard ${versions.state === "loaded" ? formatRuntimeVersion(versions.value.dashboard) : "version unavailable"}`} onCloseAutoFocus={event => { event.preventDefault(); bumpTrigger.current?.focus(); }}>
-        <RuntimeBumpPanel actorId={actorId} contextRunId={selection} contextWorkflowId={folder?.workflow} versions={versions} onChanged={refresh} onCancel={() => onView("runs")} />
-      </DialogContent>}
-    </Dialog>
+
   </div>;
 }
 
@@ -393,191 +384,4 @@ function ArchiveDashboardFolder({ dashboard, workflowLabel, onOpen, hideHeading 
       })}</div></PanelBody>
     </Panel>
   </section>;
-}
-
-function RuntimeBumpPanel({ actorId, contextRunId, contextWorkflowId, versions, onChanged, onCancel }: { onCancel: () => void; actorId: string; contextRunId: string; contextWorkflowId?: string; versions: ReturnType<typeof useSavedResource<SavedRuntimeVersionIndexWire>>; onChanged: () => void }) {
-  const client = useArchiveClient();
-  const [kind, setKind] = useState<"workflows" | "dashboard">("workflows");
-  const [selected, setSelected] = useState<string[] | null>(null);
-  const [step, setStep] = useState<"select" | "review">("select");
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
-  const [activeReview, setActiveReview] = useState<{ changeId: string; scopeKey: string; generation: number; authorityRevision?: number } | null>(null);
-  const applyRequests = useRef(new Map<string, unknown>());
-  const busyRef = useRef(false);
-  const generation = useRef(0);
-  const previousScopeKey = useRef<string | null>(null);
-  const previousContextKey = useRef(JSON.stringify([contextRunId, contextWorkflowId]));
-  const cachedWire = useRef<SavedRuntimeVersionIndexWire | undefined>(undefined);
-  const contextRead = useCallback(() => contextRunId === "" ? Promise.resolve(null) : client.savedArchiveReport(contextRunId), [client, contextRunId]);
-  const contextReport = useSavedResource(contextRead);
-  if (versions.state === "loaded") cachedWire.current = versions.value;
-  const wire = versions.state === "error" ? undefined : versions.state === "loaded" ? versions.value : cachedWire.current;
-  const eligible = wire?.workflows.map(row => row.workflowId) ?? [];
-  const contextWorkflow = contextReport.state === "loaded" && contextReport.value?.state === "available"
-    ? contextReport.value.workflow : contextWorkflowId;
-  const defaultWorkflow = contextWorkflow === undefined ? eligible[0]
-    : eligible.find(id => id === contextWorkflow);
-  const contextPending = contextRunId !== "" && selected === null && contextReport.state === "loading";
-  const selectedIds = wire === undefined ? [] : selected === null
-    ? (defaultWorkflow === undefined ? [] : [defaultWorkflow])
-    : selected.filter(id => eligible.some(eligibleId => eligibleId === id));
-  const preview = wire === undefined ? null : archiveRuntimeVersionPreview(wire, kind, selectedIds);
-  const dashboardPreview = wire === undefined ? null : archiveRuntimeVersionPreview(wire, "dashboard", []);
-  const scope = preview?.scope ?? null;
-  const scopeKey = wire === undefined || contextPending ? null : JSON.stringify(scope);
-
-  useLayoutEffect(() => {
-    const contextKey = JSON.stringify([contextRunId, contextWorkflowId]);
-    if (previousContextKey.current === contextKey) return;
-    previousContextKey.current = contextKey;
-    setSelected(null);
-    setStep("select");
-    setActiveReview(null);
-    setMessage("");
-  }, [contextRunId, contextWorkflowId]);
-  useLayoutEffect(() => {
-    if (scopeKey === null) return;
-    if (previousScopeKey.current === null) {
-      previousScopeKey.current = scopeKey;
-      return;
-    }
-    if (previousScopeKey.current === scopeKey) return;
-    previousScopeKey.current = scopeKey;
-    generation.current += 1;
-    setActiveReview(null);
-    setMessage("");
-  }, [scopeKey]);
-  useLayoutEffect(() => {
-    if (activeReview === null || wire === undefined) return;
-    if (activeReview.authorityRevision === undefined) {
-      if (wire.changes.some(change => change.changeId === activeReview.changeId && change.state === "planned")) {
-        setActiveReview({ ...activeReview, authorityRevision: wire.revision });
-      }
-      return;
-    }
-    if (activeReview.authorityRevision !== wire.revision) {
-      setActiveReview(null);
-      setMessage("Review is stale. Review again.");
-    }
-  }, [activeReview, wire]);
-
-  const stateBody = (children: ReactNode) => <><DialogBody>{children}</DialogBody><DialogFooter><Button variant="secondary" onClick={onCancel}>Cancel</Button></DialogFooter></>;
-  if (versions.state === "error") return stateBody(<p role="alert">{versions.message}</p>);
-  if (wire === undefined) return stateBody(<p role="status">Loading runtime versions…</p>);
-  if (contextPending) return stateBody(<p role="status">Loading the selected report’s workflow…</p>);
-  if (selected === null && contextWorkflow !== undefined && !eligible.some(id => id === contextWorkflow)) return stateBody(<div role="alert" className="space-y-[var(--ds-space-base)]"><p className="m-0">Archived workflow {contextWorkflow} is no longer registered. It was not replaced with another workflow.</p><Button variant="secondary" onClick={() => setSelected([])}>Choose a registered workflow</Button></div>);
-  const selectedScopeKey = scopeKey ?? "";
-  const activeChange = activeReview === null ? undefined : wire.changes.find(change => change.changeId === activeReview.changeId && change.state === "planned");
-  const reviewPayloadMatches = activeChange !== undefined && archiveReviewMatchesPreview(preview, activeChange);
-  const reviewMatches = activeReview !== null && activeReview.scopeKey === selectedScopeKey
-    && activeReview.generation === generation.current && wire.revision === activeReview.authorityRevision && versions.state === "loaded" && reviewPayloadMatches;
-  const submit = (request: unknown, action: "review" | "apply", reviewBasis?: { changeId: string; scopeKey: string; generation: number }) => {
-    if (busyRef.current) return;
-    busyRef.current = true;
-    setStep("review");
-    setBusy(true);
-    if (action === "review") setActiveReview(null);
-    setMessage(action === "review" ? "Reviewing affected runs…" : "Applying version change…");
-    void client.executeCommand(request).then(result => {
-      const settled = settleCommandResult(result);
-      if (settled.kind === "applied") {
-        if (action === "review" && reviewBasis !== undefined) {
-          if (generation.current === reviewBasis.generation && previousScopeKey.current === reviewBasis.scopeKey) {
-            setActiveReview(reviewBasis);
-            setMessage("Version review updated.");
-          } else setMessage("Review is stale because the workflow selection changed. Review again.");
-        } else {
-          setActiveReview(null);
-          setMessage(settled.replayed ? "Version change was already applied." : "Version change applied.");
-        }
-      } else {
-        const refusal = settled.reason === "rejected" ? `${settled.code}: ${settled.message}` : settled.problem;
-        const stale = /stale|membership|version basis/iu.test(refusal);
-        if (stale) setActiveReview(null);
-        setMessage(stale ? "Review is stale. Review again." : refusal);
-      }
-      onChanged();
-    }, (error: unknown) => setMessage(error instanceof Error ? error.message : "Version command failed.")).finally(() => {
-      busyRef.current = false;
-      setBusy(false);
-    });
-  };
-  const review = () => {
-    if (scope === null || selectedScopeKey === "" || versions.state !== "loaded") return;
-    const request = { ...savedCommandEnvelope(actorId), type: "plan-runtime-version",
-      target: { scope } };
-    submit(request, "review", { changeId: request.commandId, scopeKey: selectedScopeKey, generation: generation.current });
-  };
-  const apply = (change: SavedRuntimeVersionIndexWire["changes"][number]) => {
-    if (busyRef.current) return;
-    if (change.state === "planned" && (!reviewMatches || activeReview.changeId !== change.changeId)) {
-      setMessage("Review is stale for the current selection. Review again.");
-      return;
-    }
-    let request = applyRequests.current.get(change.changeId);
-    if (request === undefined) {
-      if (change.state === "applying") {
-        if (change.resumeRequest === undefined) { setMessage("This change is applying, but its original command request is unavailable."); return; }
-        request = change.resumeRequest;
-      } else {
-        request = { ...savedCommandEnvelope(actorId), type: "apply-runtime-version", target: { changeId: change.changeId, reviewFingerprint: change.reviewFingerprint } };
-      }
-      applyRequests.current.set(change.changeId, request);
-    }
-    submit(request, "apply");
-  };
-  const workflowLabel = (id: string) => wire.workflows.find(row => row.workflowId === id)?.label ?? id;
-  const currentChange = wire.changes.find(change => change.changeId === wire.applyingChangeId && change.state === "applying")
-    ?? wire.changes.find(change => change.state === "applying")
-    ?? (reviewMatches ? wire.changes.find(change => change.changeId === activeReview.changeId && change.state === "planned") : undefined);
-  const changeSummary = (change: SavedRuntimeVersionIndexWire["changes"][number]) => {
-    const affected = change.scope.kind === "dashboard" ? change.before.workflows.map(row => row.workflowId) : change.scope.workflowIds;
-    const blockers = change.members.filter(member => member.state !== "terminal");
-    return <section key={change.changeId} aria-label={change.state === "applying" ? "Version change applying" : change.state === "applied" ? "Version change applied" : "Reviewed version change"} className="space-y-[var(--ds-space-base)]">
-      {change.state === "planned" && change !== currentChange && <p role="status">Review is stale for the current selection. Review again.</p>}
-      {change.state === "applying" && <p role="status">Transfer interrupted or still applying. Resume with the original command request.</p>}
-      <ArchiveBumpVersionSummary before={change.before} after={change.after} affected={affected} workflows={wire.workflows} />
-      {blockers.length > 0 && <p role="status" className="archive-bump-notice">Blocked by {blockers.length} active or pending {blockers.length === 1 ? "run" : "runs"}. Finish or resolve these runs before applying.</p>}
-      {change.state === "applying" && change.resumeRequest === undefined && !applyRequests.current.has(change.changeId) && <p role="status">The original apply request is unavailable. No replacement request will be created.</p>}
-    </section>;
-  };
-  const reviewing = step === "review" || currentChange?.state === "applying";
-  const affectedCount = currentChange === undefined ? preview?.transition.affectedWorkflowIds.length ?? 0
-    : currentChange.scope.kind === "dashboard" ? currentChange.before.workflows.length : currentChange.scope.workflowIds.length;
-  const back = () => {
-    generation.current += 1;
-    setActiveReview(null);
-    setMessage("");
-    setStep("select");
-  };
-  return <><DialogBody className="archive-bump-body">
-    <ArchiveBumpStepHeading step={reviewing ? "review" : "select"} description={reviewing ? `${affectedCount} ${affectedCount === 1 ? "workflow" : "workflows"} included in this change.` : "Select the workflows to include in this change."} />
-    {versions.state === "loading" && <p role="status">Refreshing runtime versions…</p>}
-    {!reviewing && <fieldset aria-label="Version bump scope" className="archive-bump-scopes">
-      <div className="archive-bump-scope" data-active={kind === "workflows" || undefined}>
-        <label className="archive-bump-label"><input type="radio" name="archive-bump-scope" checked={kind === "workflows"} disabled={eligible.length === 0} onChange={() => setKind("workflows")} />Selected workflow</label>
-        {kind === "workflows" && <div className="archive-bump-picker">
-          <p className={cn(dsText.meta, "m-0 font-medium")}>Workflow to bump</p>
-          <Popover><PopoverTrigger asChild><Button variant="secondary" className="h-[36px] w-full justify-between border-[color:var(--ds-control-border)]" iconAfter={<ChevronDown className={dsIcon.sm} aria-hidden />} aria-label="Workflow to bump">{selectedIds.length === 0 ? "Select a workflow" : selectedIds.length === 1 ? workflowLabel(selectedIds[0]) : `${selectedIds.length} workflows · ${selectedIds.map(workflowLabel).join(", ")}`}</Button></PopoverTrigger><PopoverContent className="ds-body-scope ds-body-overlay !z-50 !w-[min(360px,calc(100vw-32px))] !bg-[var(--ds-surface-overlay)] p-[12px]" title="Workflow to bump" align="start"><fieldset aria-label="Workflows to bump" className="max-h-[240px] space-y-[4px] overflow-y-auto border-0 p-0">{wire.workflows.map(row => { const after = preview?.transition.after.workflows.find(item => item.workflowId === row.workflowId)?.version ?? row.version; return <div key={row.workflowId} className="flex min-h-[36px] items-center"><Checkbox label={`${row.label} · ${selectedIds.includes(row.workflowId) ? `${formatRuntimeVersion(row.version)} → ${formatRuntimeVersion(after)}` : `Unchanged · ${formatRuntimeVersion(row.version)}`}`} checked={selectedIds.includes(row.workflowId)} onCheckedChange={checked => setSelected(checked ? [...selectedIds, row.workflowId] : selectedIds.filter(id => id !== row.workflowId))} /></div>; })}</fieldset></PopoverContent></Popover>
-        </div>}
-      </div>
-      <div className="archive-bump-scope" data-active={kind === "dashboard" || undefined}>
-        <label className="archive-bump-label"><input type="radio" name="archive-bump-scope" checked={kind === "dashboard"} disabled={eligible.length === 0} onChange={() => setKind("dashboard")} />All workflows</label>
-        <p className={cn(dsText.meta, "mb-0 ml-[var(--ds-space-section)] mt-[var(--ds-space-tight)] text-[color:var(--ds-fg-muted)]")}>{dashboardPreview === null ? "Dashboard version preview unavailable until a workflow is registered." : `Dashboard ${formatRuntimeVersion(dashboardPreview.transition.before.dashboard)} → ${formatRuntimeVersion(dashboardPreview.transition.after.dashboard)} · All workflow versions advance together`}</p>
-      </div>
-    </fieldset>}
-    {wire.workflows.length === 0 && <p role="status">No eligible workflows are registered for a version change.</p>}
-    {reviewing && <div className="archive-bump-review">
-      {currentChange !== undefined && changeSummary(currentChange)}
-      {currentChange === undefined && message === "" && <p role="status" className="archive-bump-notice">Review the version change before applying.</p>}
-      {activeReview !== null && activeChange !== undefined && !reviewPayloadMatches && <p role="status" className="archive-bump-notice">The reviewed versions do not match this selection. Review again.</p>}
-    </div>}
-    {wire.applyingChangeId !== undefined && currentChange?.state !== "applying" && <p role="status">A version change is applying.</p>}
-    {message !== "" && !(activeReview !== null && activeChange !== undefined && !reviewPayloadMatches && message === "Version review updated.") && <p role="status" className={cn(dsText.meta, "m-0")}>{message}</p>}
-  </DialogBody><DialogFooter meta={reviewing && currentChange?.state !== "applying" ? <Button variant="ghost" icon={<ArrowLeft className={dsIcon.sm} />} disabled={busy || versions.state !== "loaded"} onClick={back}>Back</Button> : undefined}><Button variant="secondary" onClick={onCancel}>Cancel</Button>
-    {currentChange?.state === "applying" ? (currentChange.resumeRequest === undefined && !applyRequests.current.has(currentChange.changeId) ? null : <Button variant="primary" disabled={busy || versions.state !== "loaded" || (currentChange.resumeRequest === undefined && !applyRequests.current.has(currentChange.changeId))} onClick={() => apply(currentChange)}>Resume version change</Button>)
-      : reviewing && currentChange?.state === "planned" && currentChange.members.every(member => member.state === "terminal") ? <Button variant="primary" disabled={busy || currentChange.members.some(member => member.state !== "terminal") || !reviewMatches} onClick={() => apply(currentChange)}>Apply reviewed change</Button>
-        : <Button variant="primary" iconAfter={<ArrowRight className={dsIcon.sm} aria-hidden />} disabled={busy || scope === null || versions.state !== "loaded"} onClick={review}>Review change</Button>}
-  </DialogFooter></>;
 }

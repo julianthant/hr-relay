@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, createElement, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { ArchiveBrowseState } from "../../../src/dashboard/app/navigation/archive-route-model.js";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { RuntimeArchiveWorkspace } from "../../../src/dashboard/surfaces/archive/archive-runtime.js";
@@ -14,7 +14,8 @@ import { H_REPORT } from "../../parity/helpers/fixture-archive-report.js";
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 let dispose: (() => Promise<void>) | undefined;
 let restoreDownloadApis: (() => void) | undefined;
-afterEach(async () => { await dispose?.(); restoreDownloadApis?.(); restoreDownloadApis = undefined; vi.restoreAllMocks(); document.body.replaceChildren(); });
+beforeEach(() => { vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} }); });
+afterEach(async () => { await dispose?.(); restoreDownloadApis?.(); restoreDownloadApis = undefined; vi.restoreAllMocks(); vi.unstubAllGlobals(); document.body.replaceChildren(); });
 
 const groups = { groups: [{ dashboardVersion: null, workflow: H_REPORT.workflow, workflowVersion: null,
   reportCount: 1, latestCompletedAt: H_REPORT.completedAt }] };
@@ -88,20 +89,12 @@ async function clickWorkflowExport(format: "JSON" | "CSV") {
   await click("Export");
   await click(format);
 }
-async function toggleCheckbox(label: string) {
-  const checkbox = [...document.querySelectorAll<HTMLElement>('[role="checkbox"]')].find(row => {
-    const labelId = row.getAttribute("aria-labelledby");
-    return labelId !== null && document.getElementById(labelId)?.textContent === label;
-  });
-  expect(checkbox, `checkbox ${label}`).toBeDefined();
-  await act(async () => checkbox!.click());
-}
 
-it("shows version groups with report detail and keeps the two views in the top header", async () => {
+it("shows version groups with report detail and export in the top header", async () => {
   const calls = await mount();
   const header = document.querySelector("header");
   expect(header?.textContent).toContain("Version archives");
-  expect(header?.textContent).toContain("Plan a bump");
+  expect(header?.textContent).not.toContain("Plan a bump");
   expect(header?.textContent).not.toContain("Refresh");
   expect(document.body.textContent).toContain("Version not recorded");
   await clickContaining(H_REPORT.workflow);
@@ -109,7 +102,9 @@ it("shows version groups with report detail and keeps the two views in the top h
   expect(document.querySelector('table[aria-label="removed-workflow saved runs"]')).not.toBeNull();
   expect(document.body.textContent).toContain(H_REPORT.title);
   await click(H_REPORT.title);
-  expect(document.querySelector("article nav")?.textContent).not.toContain("Outputs");
+  const tabs = document.querySelector('[role="tablist"]');
+  expect(tabs).not.toBeNull();
+  expect(tabs?.textContent).not.toContain("Outputs");
   expect(document.querySelector("article")?.textContent).toContain("Synthetic subject");
   expect(calls.savedArchiveIndex).toHaveBeenCalledWith(expect.objectContaining({workflow:H_REPORT.workflow,versionState:"unrecorded",limit:50}));
 });
@@ -231,20 +226,13 @@ it("resets report pagination when search changes while keeping the selected work
   expect(lastQuery).not.toHaveProperty("after");
 });
 
-it("reviews one workflow without changing the dashboard scope, then offers the all-workflow action", async () => {
+it("keeps developer version commands absent while browsing a workflow", async () => {
   const calls = await mount();
-  await click("Plan a bump");
-  await click("Review change");
-  expect(calls.executeCommand).toHaveBeenCalledWith(expect.objectContaining({type:"plan-runtime-version",
-    target:{scope:{kind:"workflows",workflowIds:["first-workflow"]}}}));
-  await act(async () => {
-    const all = document.querySelectorAll<HTMLInputElement>('input[name="archive-bump-scope"]')[1];
-    expect(all).toBeDefined();
-    all?.click();
-  });
-  await click("Review change");
-  expect(calls.executeCommand).toHaveBeenLastCalledWith(expect.objectContaining({type:"plan-runtime-version",
-    target:{scope:{kind:"dashboard"}}}));
+  await clickContaining(H_REPORT.workflow);
+  expect(document.body.textContent).not.toContain("Plan a bump");
+  expect(document.querySelector('input[name="archive-bump-scope"]')).toBeNull();
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
+  expect(calls.executeCommand).not.toHaveBeenCalled();
 });
 
 it("waits for every page before serializing and clicking the workflow download", async () => {
@@ -330,15 +318,13 @@ it("discards late pages after the operator opens a different report", async () =
   expect(document.querySelector('[aria-label="Saved archive report"]')).not.toBeNull();
 });
 
-it("shows unchecked workflow versions unchanged in a normalized multi-workflow preview", async () => {
-  await mount();
-  await click("Plan a bump");
-  await act(async () => document.querySelector<HTMLButtonElement>('button[aria-label="Workflow to bump"]')?.click());
-  expect(document.body.textContent).toContain("First workflow · 1.1 → 1.2");
-  expect(document.body.textContent).toContain("Second workflow · Unchanged · 1.0");
-  await toggleCheckbox("Second workflow · Unchanged · 1.0");
-  expect(document.body.textContent).toContain("First workflow · 1.1 → 2.0");
-  expect(document.body.textContent).toContain("Second workflow · 1.0 → 2.0");
+it("keeps developer version controls absent from an unavailable version index", async () => {
+  const calls = await mount(undefined, undefined, async () => { throw new Error("synthetic-version-read-unavailable"); });
+  expect(document.body.textContent).toContain("synthetic-version-read-unavailable");
+  expect(document.body.textContent).not.toContain("Plan a bump");
+  expect(document.querySelector('button[aria-label="Workflow to bump"]')).toBeNull();
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
+  expect(calls.executeCommand).not.toHaveBeenCalled();
 });
 
 it("announces missing persisted columns and resets only the column selection explicitly", async () => {

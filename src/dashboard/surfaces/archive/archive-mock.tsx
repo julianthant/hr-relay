@@ -2,16 +2,15 @@ import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.j
 import { ChevronRight, Download, FileText, Folder, Layers3 } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
 import { ArchiveBrowseStateSchema, EMPTY_ARCHIVE_BROWSE, type ArchiveBrowseState } from '../../app/navigation/archive-route-model.js';
-import { Button, DateRangeInput, Dialog, DialogContent, PageBreadcrumbs, PageHeading, Select, TableList, TableToolbar, dsIcon, useToasts } from '../../ds/ui.js';
+import { Button, DateRangeInput, PageBreadcrumbs, PageHeading, Select, TableList, TableToolbar, dsIcon, useToasts } from '../../ds/ui.js';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from '../../ds/primitives/dropdown-menu.js';
 import { ArchiveResourceState } from './archive-visual.js';
-import { MockArchiveBump } from './archive-mock-bump.js';
 import { ArchiveMockSearch, MockArchiveSearchResults } from './archive-mock-search.js';
 import { MockArchiveReport } from './archive-mock-report.js';
 import { MOCK_ARCHIVE_RUNS, mockArchiveWorkflows, mockArchiveDate, mockArchiveDateBoundary, mockArchiveExport, mockArchiveFilter, mockArchiveResultLabel, mockArchiveScope, type MockArchiveFolder, type MockArchiveRun } from './archive-mock-model.js';
 import './archive-mock.css';
 
-export function MockArchiveWorkspace({ catalog, selection, view, folder, browse, browseInvalid, onBrowse, onSelection, onView, onFolder, onOpenReport, additionalReports }: {
+export function MockArchiveWorkspace({ catalog, selection, folder, browse, browseInvalid, onBrowse, onSelection, onFolder, onOpenReport, additionalReports }: {
  catalog: readonly WorkflowCatalogEntry[]; selection: string; view: 'runs' | 'versions'; folder: MockArchiveFolder | null;
  browse?: ArchiveBrowseState; browseInvalid?: boolean;
  additionalReports?: readonly MockArchiveRun[];
@@ -24,7 +23,6 @@ export function MockArchiveWorkspace({ catalog, selection, view, folder, browse,
  const searchInputRef = useRef<HTMLInputElement>(null);
  const searchResultsRef = useRef<HTMLElement>(null);
  const lastSearchRun = useRef<string | undefined>(undefined);
- const bumpTrigger = useRef<HTMLButtonElement>(null);
  const [exportOpen, setExportOpen] = useState(false);
  const browsing = browse ?? EMPTY_ARCHIVE_BROWSE;
  const reports = useMemo(() => [...MOCK_ARCHIVE_RUNS, ...additionalReports ?? []], [additionalReports]);
@@ -68,7 +66,6 @@ export function MockArchiveWorkspace({ catalog, selection, view, folder, browse,
      <DropdownMenuGroup><DropdownMenuItem onSelect={() => download('json')}>JSON</DropdownMenuItem><DropdownMenuItem onSelect={() => download('csv')}>CSV</DropdownMenuItem></DropdownMenuGroup><p className="m-0 px-2 py-2 text-caption text-ui-muted">{exportRows.length} matching {exportRows.length === 1 ? 'report' : 'reports'}. JSON includes saved fields, settings and files.</p>
     </DropdownMenuContent>
    </DropdownMenu>}
-   <Button ref={bumpTrigger} variant="secondary" onClick={() => onView('versions')}>Plan a bump</Button>
   </>;
  return <section aria-label="Archive" className="mock-archive settings-reference-page settings-data-section">
   {(folder === null && report === undefined || unavailable || invalid) && <PageHeading title="Archive" actionAlignment="title" actions={actions} />}
@@ -106,13 +103,7 @@ export function MockArchiveWorkspace({ catalog, selection, view, folder, browse,
       </>}
      </>}
   </div>
-  <Dialog open={view === 'versions'} onOpenChange={open => { if (!open) onView('runs'); }}>
-   {view === 'versions' && <DialogContent size="md" className="ds-body-scope ds-body-overlay !w-[calc(100vw-var(--ds-space-section))] !max-w-[650px] !bg-[var(--ds-surface-overlay)]" title="Plan a version bump" description="Current dashboard 1.4" onCloseAutoFocus={event => { event.preventDefault(); bumpTrigger.current?.focus(); }}>
-    <MockArchiveBump contextWorkflow={report?.workflow ?? folder?.workflow} onCancel={() => onView('runs')} onFinish={() => {
-     onView('runs'); toast({ tone: 'info', title: 'Mock bump reviewed', description: 'No version or run was changed.' });
-    }} />
-   </DialogContent>}
-  </Dialog>
+
  </section>;
 }
 

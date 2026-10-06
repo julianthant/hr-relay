@@ -148,7 +148,7 @@ describe("editable Settings surface", () => {
           storage: STORAGE,
           sections: [],
           workflowLabels: new Map<string, string>(),
-          section: "general",
+          section: "performance",
           actorId: "local-operator",
           descriptorFingerprint: "d".repeat(64),
           preflight: [],
@@ -161,21 +161,19 @@ describe("editable Settings surface", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-28T18:00:00.000Z"));
 
-    const width = host.querySelector('[data-settings-path="display.screenWidth"] input');
-    const height = host.querySelector('[data-settings-path="display.screenHeight"] input');
-    assert.ok(width instanceof HTMLInputElement);
-    assert.ok(height instanceof HTMLInputElement);
-    assert.equal(height.disabled, false);
-    await act(async () => { width.focus(); });
-    assert.equal(document.activeElement, width, "the editable control accepts keyboard focus");
+    const navigation = host.querySelector('[data-settings-path="timeouts.navigationMs"] input');
+    assert.ok(navigation instanceof HTMLInputElement);
+    assert.equal(navigation.disabled, false);
+    await act(async () => { navigation.focus(); });
+    assert.equal(document.activeElement, navigation, "the editable control accepts keyboard focus");
     await act(async () => {
       // React's controlled-input tracker requires the native setter bypass here.
       const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
       if (descriptor?.set === undefined) throw new Error("HTML input value setter is unavailable");
       // eslint-disable-next-line @typescript-eslint/unbound-method
-      Reflect.apply(descriptor.set, width, ["1980"]);
-      width.dispatchEvent(new Event("input", { bubbles: true }));
-      width.dispatchEvent(new Event("change", { bubbles: true }));
+      Reflect.apply(descriptor.set, navigation, ["111"]);
+      navigation.dispatchEvent(new Event("input", { bubbles: true }));
+      navigation.dispatchEvent(new Event("change", { bubbles: true }));
     });
     assert.ok([...host.querySelectorAll<HTMLButtonElement>("button")].some(button => button.textContent === "Undo"), "the retained draft has an in-row undo action");
     if (exitGuard === undefined) throw new Error("Settings exit guard was not registered");
@@ -195,8 +193,7 @@ describe("editable Settings surface", () => {
     const command = applied[0] as { target: { expectedRevision: number }; payload: { patch: unknown } };
     assert.equal(command.target.expectedRevision, 1);
     assert.deepEqual(command.payload.patch, {
-      "display.screenHeight": { set: 1440 },
-      "display.screenWidth": { set: 1980 },
+      "timeouts.navigationMs": { set: 111000 },
     });
     assert.equal((applied[0] as { requestedAt: string }).requestedAt, "2026-08-28T18:00:00.700Z");
   });
@@ -281,6 +278,8 @@ describe("editable Settings surface", () => {
     await act(async () => undefined);
     vi.useFakeTimers();
     const datePath = `annualDates.FY${String(DOCUMENT.currentFiscalYear)}.jobEndDate`;
+    assert.equal(host.querySelector('[data-settings-path="display.viewport"]'), null);
+    assert.equal(host.querySelector('input[name="display.screenWidth"], input[name="display.screenHeight"]'), null);
     const date = host.querySelector(`[data-settings-path="${datePath}"] .ds-date-picker`);
     assert.ok(date);
     assert.equal(date.querySelectorAll('.ds-date-text-input').length, 0);

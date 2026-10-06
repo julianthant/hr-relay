@@ -479,24 +479,6 @@
 .settings-path-picker-error { margin: var(--ds-space-tight) 0 0; color: var(--ds-danger); font-size: var(--ds-text-body-description); }
 .settings-compact-actions { display: flex; flex-direction: column; align-items: stretch; }
 .settings-compact-row > p,
-.settings-viewport-row > p { margin: 0 0 var(--ds-space-base); font-size: var(--ds-text-body-description); }
-.settings-viewport-row > .ds-body-row { width: 100%; }
-.settings-viewport-pair {
-  display: grid;
-  width: 100%;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--ds-space-cozy);
-}
-.settings-viewport-control {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: var(--ds-space-tight);
-  color: var(--ds-fg-secondary);
-  font-size: var(--ds-text-body-description);
-}
-.settings-viewport-control .ds-unit-field { width: 100%; }
-.settings-viewport-error { color: var(--ds-danger); }
 .settings-performance-disclosure-content { border-top: 1px solid var(--ds-border-subtle); }
 .settings-performance-disclosure-content > .settings-performance-row + .settings-performance-row { border-top: 1px solid var(--ds-border-subtle); }
 .settings-performance-row .settings-compact-control > .ds-unit-field { flex: 0 1 var(--ds-w-body-unit); }
