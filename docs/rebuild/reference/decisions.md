@@ -328,6 +328,12 @@ toasts; success still requires matching acknowledgment and readback. Persistent 
 retained drafts and exact retry identity remain. D347's dashboard-surfaces owner records the contract;
 evidence is `settings-save-result-10003539`.
 
+The audit-decision amendment (operator direction, 2026-10-06) starts every launch with Dry run off,
+keeps completed standalone OCR Records editable without downstream approval, computes all Analytics
+duration tiles from successful completed runs, retains exact-interval volume-bar names and locks
+preview sign-in steps that required form actions depend on. D347's dashboard-surfaces owner records
+the contract; evidence is `frontend-audit-fixes-10003539`.
+
 The wiring-preparation amendment moves Performance, Paths and Routes to Advanced while keeping
 General and Credentials in Personal and retaining all eleven page IDs and editor authority. XLSX
 editable-copy import ignores Excel worksheet/table filter rules, including unsupported color filters;

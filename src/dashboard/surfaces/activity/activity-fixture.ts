@@ -73,7 +73,9 @@ export function activitySample(range: ActivityDateRange, scenario: ActivitySampl
   const completed = count("completed");
   const failed = count("failed");
   const terminal = rows.filter(row => row.status === "completed" || row.status === "failed");
-  const measured = scenario === "incomplete" ? [] : terminal.flatMap(row => row.duration === null ? [] : [row.duration]);
+  // Duration tiles use the successful population, like the workflow averages.
+  const successful = rows.filter(row => row.status === "completed");
+  const measured = scenario === "incomplete" ? [] : successful.flatMap(row => row.duration === null ? [] : [row.duration]);
   const skeleton = buildActivityVolumeBoundarySkeleton(range, "America/Los_Angeles");
   const volume = ActivityVolumeSchema.parse({ state: "complete", ...skeleton, coveredRuns: rows.length,
     buckets: skeleton.buckets.map(bucket => ({ ...bucket, runs: rows.filter(row => row.instant >= bucket.start && row.instant < bucket.endExclusive).length })),
@@ -83,8 +85,8 @@ export function activitySample(range: ActivityDateRange, scenario: ActivitySampl
     range, timeZone: volume.timeZone, total: rows.length, completed, failed,
     running: count("running"), waiting: count("waiting"), outstanding: count("running") + count("waiting"), terminal: terminal.length,
     duration: { medianSeconds: median(measured), longestSeconds: measured.length ? Math.max(...measured) : null,
-      totalSeconds: measured.length ? measured.reduce((total, seconds) => total + seconds, 0) : terminal.length ? null : 0,
-      measured: measured.length, unmeasured: terminal.length - measured.length },
+      totalSeconds: measured.length ? measured.reduce((total, seconds) => total + seconds, 0) : successful.length ? null : 0,
+      measured: measured.length, unmeasured: successful.length - measured.length },
     failures: scenario === "incomplete" ? null : failed ? [{ label: "Document read timeout", runs: failed }] : [],
     evidence: scenario === "incomplete" ? { verified: null, unread: null } : { verified: rows.filter(row => row.status === "completed" && row.readback).length, unread: rows.filter(row => row.status === "completed" && !row.readback).length },
     workflows: [

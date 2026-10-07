@@ -79,7 +79,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await launcher.getByRole("button", { name: "Start preview", exact: true }).click();
       await expect(bell).toHaveAccessibleName("Notifications, 1 unread"); await bell.click();
       const created = inbox.locator(".notification-row").filter({ hasText: "notification.hire@example.com" });
-      await expect(created).toContainText("Dry run complete"); await expect(created).toContainText("Just now"); await created.getByRole("button", { name: "notification.hire@example.com", exact: true }).click();
+      await expect(created).toContainText("Completed"); await expect(created).toContainText("Just now"); await created.getByRole("button", { name: "notification.hire@example.com", exact: true }).click();
       await expect(logs.getByRole("heading", { level: 2 })).toHaveText("notification.hire@example.com");
       await expect(bell).toHaveAccessibleName("Notifications, 0 unread");
       await info.attach(`notification-created-run-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });

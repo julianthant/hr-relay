@@ -60,7 +60,7 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
         </section>
         <div className="flex min-w-0 flex-col gap-[var(--ds-space-loose)]">
         {(stage === "Input" || stage === "Values") && <section aria-label={stage} className="flex flex-col gap-3">
-          {flow.methods.length > 1 && <SegmentedChoice label="Input method" value={draft.method} options={flow.methods.map(value => ({ value, label: value === "typed" ? "Employee IDs" : "PDFs" }))} onChange={method => patch({ method, dryRun: method === "pdf" ? false : flow.dryRun })} />}
+          {flow.methods.length > 1 && <SegmentedChoice label="Input method" value={draft.method} options={flow.methods.map(value => ({ value, label: value === "typed" ? "Employee IDs" : "PDFs" }))} onChange={method => patch({ method })} />}
           {workflowId === "oath-upload" && <SegmentedChoice label="Processing mode" value={draft.uploadMode} options={[{ value: "full", label: "Full process" }, { value: "upload-only", label: "Upload-only" }]} onChange={uploadMode => patch({ uploadMode })} />}
           {workflowId === "person-lookup" && <><SegmentedChoice label="Lookup mode" value={draft.lookupMode} options={[{ value: "search", label: "Search" }, { value: "match", label: "Match" }]} onChange={lookupMode => patch({ lookupMode, crmCheck: lookupMode === "search" })} /><Checkbox label="CRM check" checked={draft.crmCheck} onCheckedChange={value => patch({ crmCheck: value === true })} /></>}
           {draft.method === "typed" && <>

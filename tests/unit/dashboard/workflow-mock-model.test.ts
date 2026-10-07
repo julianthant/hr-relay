@@ -133,8 +133,11 @@ describe("legacy workflow previews", () => {
     expect(rerun[1].workflowId).toBe("ocr"); expect(mockNeedsReview(rerun[1])).toBe(true); expect(rerun[1].parentId).toBe(rerun[0].id); expect(rerun[1].id).not.toBe(`${run.id}:person:0`);
     expect(steps.some(step => step.title === "Result")).toBe(false);
   });
+  it("starts every launch with Dry run off", () => {
+    for (const flow of MOCK_WORKFLOWS) expect(initialMockDraft(flow.id).dryRun).toBe(false);
+  });
   it("skips write terminals in dry run, rehire I-9 and normal lookup CRM dates", () => {
-    const run = mockRunsForDraft("separations", draft("separations"), 1)[0];
+    const run = mockRunsForDraft("separations", draft("separations", { dryRun: true }), 1)[0];
     for (const step of mockWorkflow("separations").steps.filter(step => step.write)) expect(mockStepState(run, step)).toBe("skipped");
     const rehire = mockRunsForDraft("onboarding", draft("onboarding", { hireType: "rehire" }), 1)[0];
     expect(mockStepState(rehire, mockWorkflow("onboarding").steps.find(step => step.key === "i9-creation")!)).toBe("skipped");

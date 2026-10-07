@@ -744,5 +744,7 @@ date validation error. Preview Steps lock a sign-in step while a required form a
 system remains. Imported spreadsheet cells that their typed field would refuse are marked invalid,
 and the focused cell's problem appears in the editor footer. Shell search uses the shared status
 labels, a focused log or PDF viewport keeps its own arrow-key panning, and preview queues no longer
-move the hidden served selection. Evidence is `frontend-audit-fixes-10003539`; frozen references and
+move the hidden served selection. Operator decisions: every launch starts with Dry run off, completed
+standalone OCR Records stay editable, Analytics duration tiles use successful runs, and volume-bar
+names keep exact intervals. Evidence is `frontend-audit-fixes-10003539`; frozen references and
 phase-exit gates remain with 3.1.19.

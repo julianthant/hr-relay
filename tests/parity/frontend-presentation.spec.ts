@@ -101,7 +101,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const surface = page.getByRole("region", { name: "Activity report", exact: true });
       const metrics = surface.getByLabel("Activity summary");
       await expect(metrics).toContainText("38");
-      await expect(metrics).toContainText("36 measured · 4 unmeasured");
+      await expect(metrics).toContainText("34 measured · 4 unmeasured");
       await expect(surface.getByRole("row", { name: "Separations 24 3 2 29" })).toBeVisible();
       const separation = surface.getByRole("button", { name: "Separations", exact: true });
       await expect(separation).toHaveAttribute("aria-expanded", "true");

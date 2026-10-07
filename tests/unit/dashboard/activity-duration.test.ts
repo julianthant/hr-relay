@@ -61,12 +61,13 @@ describe('workflow duration comparisons', () => {
 });
 
 describe('Activity median duration', () => {
-  it('derives the median from the same measured terminal population the tile counts', () => {
+  it('derives the median from the measured successful population the tiles count', () => {
     const data = activitySample(ACTIVITY_SAMPLE_RANGE, 'normal');
     assert.equal(data.state, 'loaded');
     if (data.state !== 'loaded') return;
     const runs = data.report.runs; assert.ok(runs);
-    const measured = runs.filter(run => (run.status === 'completed' || run.status === 'failed') && run.seconds !== null).map(run => run.seconds as number).sort((a, b) => a - b);
+    assert.equal(runs.filter(run => run.status === 'completed').length, data.report.duration.measured + data.report.duration.unmeasured);
+    const measured = runs.filter(run => run.status === 'completed' && run.seconds !== null).map(run => run.seconds as number).sort((a, b) => a - b);
     assert.equal(measured.length, data.report.duration.measured);
     const middle = Math.floor(measured.length / 2);
     const expected = measured.length % 2 === 1 ? measured[middle] : Math.round(((measured[middle - 1] ?? 0) + (measured[middle] ?? 0)) / 2);

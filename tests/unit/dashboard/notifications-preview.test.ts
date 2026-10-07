@@ -75,7 +75,7 @@ describe("interactive notification destinations", () => {
     expect(notificationView(applyNotificationReads(approved, { [item.id]: true }), "all").unread).toBe(2);
   });
   it("adds notifications for new completed runs and delegated OCR approvals, not unfinished parents", () => {
-    const done = mockRunsForDraft("onboarding", { ...initialMockDraft("onboarding"), text: "new.hire@example.com" }, 51);
+    const done = mockRunsForDraft("onboarding", { ...initialMockDraft("onboarding"), text: "new.hire@example.com", dryRun: true }, 51);
     const pending = mockRunsForDraft("emergency-contact", { ...initialMockDraft("emergency-contact"), files: [{ name: "new-contact.pdf", size: 100, digest: "synthetic" }] }, 52);
     const state = ready(notificationPreviewState("normal", { ...input, runs: [...done, ...pending, ...input.runs] }));
     const added = state.items.filter(item => { const destination = item.destination; return destination.kind === "preview-run" && [...done, ...pending].some(run => run.id === destination.runId); });

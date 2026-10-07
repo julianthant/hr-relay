@@ -40,7 +40,8 @@ export function initialMockDraft(id: string): MockDraft {
   return { method: flow.methods[0], text: "", files: [], lookupMode: "search", crmCheck: true,
     hireType: "new-hire", uploadMode: "full", roster: "existing", formType: id === "i9-check" ? "i9" : id === "onbase" ? "onbase-emergency-contact" : id === "emergency-contact" ? "emergency-contact" : "oath",
     documentType: "Emergency Contact", effectiveDate: "2026-08-03", startDate: "2017-01-01", endDate: "2026-01-31", workers: id === "old-kronos-reports" ? 4 : "auto",
-    dryRun: flow.methods[0] === "pdf" ? false : flow.dryRun, priority: "interactive", browser: "headed", captures: true,
+    // Dry run is an explicit operator choice; every launch starts with it off.
+    dryRun: false, priority: "interactive", browser: "headed", captures: true,
     ocrMode: "extract", manualSteps: [], manualValues: {}, selectedSteps: flow.steps.map(step => step.key) };
 }
 

@@ -7873,6 +7873,16 @@ whose confirmation says Spreadsheet copy exported. Location-plan confirmation na
 without claiming a folder move. Success toasts retain the shared dismiss and expiry behavior;
 persistent save/restart/refusal feedback remains available after expiry. Focused evidence is
 `save-toasts-10003539` and `settings-save-result-10003539`.
+
+The audit-decision amendment (operator direction, 2026-10-06) starts every Run and Rerun launch
+with Dry run off; Dry run is an explicit choice that is never preset by input method or workflow.
+A completed standalone OCR run keeps editable Records with Add record and Discard and no downstream
+approval; durable persistence and revision binding for those edits remain backend wiring work.
+Analytics duration tiles (median, longest, total measured runtime and their coverage) use the
+successful completed-run population, matching the workflow averages. Volume-bar accessible names
+keep the exact interval and time zone so repeated local hours stay distinct. Preview sign-in steps stay
+included while a required form action on the same system remains. Evidence is
+`frontend-audit-fixes-10003539`.
 Successful timing is computed from unique completed root-run records, excluding delegated children,
 failed and unfinished runs. Missing measurements and measured zero remain distinct; measured plus
 unmeasured coverage must equal the completed-run count. No server aggregate or backend authority is
