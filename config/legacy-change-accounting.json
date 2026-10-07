@@ -104,6 +104,16 @@
     "Candidate gates on codex/repository-cleanup: 4884 unit tests passed (232 files), 166 architecture tests passed (31 files), typecheck:all passed, build:dashboard passed, lint passed, legacy test lint ratchet passed (0 new/replaced fingerprints, 1 baseline diagnostic removed).",
     "Independent reviewer sup_review PASS verdict on candidate dc468393."
    ]
+  },
+  {
+   "id": "contact-import-repairs-2026-10-06",
+   "closedAt": "2026-10-06",
+   "evidence": [
+    "Read-only rebuild recheck: tests/unit/worker-sessions.test.ts and browser-session-factory.test.ts: 35 passed; /tmp/hr-scans-review/rebuild-session-recheck.log.",
+    "Rebuild OnBase and UCPath session providers lint passed; /tmp/hr-scans-review/rebuild-session-lint.log.",
+    "Legacy changes affect the production authentication, emergency-contact save and OnBase correction seams. Rebuild session providers are independent; this is provenance accounting, not a claim that those behaviors were ported.",
+    "Legacy focused tests passed, architecture 166 passed, typecheck passed; full unit gate remains non-green because of existing roster fixtures, a timing failure and inventory changes repaired and rechecked afterward."
+   ]
   }
  ],
  "commits": [
@@ -2732,6 +2742,167 @@
      "impactRationale": "test(ucpath): remove redundant non-null assertion in selector capture helper",
      "rebuildRecheckIds": [
       "repository-cleanup-gates-2026-09-10"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "25e718524e0ac07236173c7b541019c1d899a7a3",
+   "parentCommit": "9bb973672666b9267569a22d3fa0af722e4c5e87",
+   "changes": [
+    {
+     "path": "src/infra/auth/CLAUDE.md",
+     "changeKind": "modified",
+     "beforeSha256": "1029563a18f05065e052ae7d07467aa32c1c5cd0d0192199374b387c7d792539",
+     "afterSha256": "3e0e4debd554f427340bf9d606d1f01f2294aedc577ef2c1be074b54256a43b7",
+     "capabilityIds": [
+      "legacy-workflow-onbase"
+     ],
+     "impactRationale": "Continue verified OnBase warm SSO training reminders before probing login fields.",
+     "rebuildRecheckIds": [
+      "contact-import-repairs-2026-10-06"
+     ]
+    },
+    {
+     "path": "src/infra/auth/login.ts",
+     "changeKind": "modified",
+     "beforeSha256": "b011566f652ed8b5354c17b4202a8dfce9e97b0813aadc4c182830dede0e194b",
+     "afterSha256": "1c712997e9be39c94d74df1f1fb36084a2beddb2154bb630e39c7a0156cff03d",
+     "capabilityIds": [
+      "legacy-workflow-onbase"
+     ],
+     "impactRationale": "Continue verified OnBase warm SSO training reminders before probing login fields.",
+     "rebuildRecheckIds": [
+      "contact-import-repairs-2026-10-06"
+     ]
+    },
+    {
+     "path": "tests/unit/infra/auth/onbase-login.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "d45f2415167e865abb80c9f6a2f7e7420a0a7f934c15f2e33900cf49c1b9bb0f",
+     "afterSha256": "2d2aea632e6c8b7b178a22b3af9713337d8c9dc1d8d5ed7a306c776153aa2228",
+     "capabilityIds": [
+      "legacy-workflow-onbase"
+     ],
+     "impactRationale": "Continue verified OnBase warm SSO training reminders before probing login fields.",
+     "rebuildRecheckIds": [
+      "contact-import-repairs-2026-10-06"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "e6d0edcfcad68d6311da524ca4d2228a60462dc1",
+   "parentCommit": "25e718524e0ac07236173c7b541019c1d899a7a3",
+   "changes": [
+    {
+     "path": "src/systems/ucpath/CLAUDE.md",
+     "changeKind": "modified",
+     "beforeSha256": "3655b0cde6c0c63ebdd23acbd174cfdfa9ec0af6276d90eea34936d34f6b2d9f",
+     "afterSha256": "742f9ca8da0e179c987706c31e11eef4f8706947db9fa7e7ea5f928ade365f38",
+     "capabilityIds": [
+      "legacy-workflow-emergency-contact"
+     ],
+     "impactRationale": "Read the verified UCPath Message dialog and preserve the requested primary contact during conflict recovery.",
+     "rebuildRecheckIds": [
+      "contact-import-repairs-2026-10-06"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/SELECTORS.md",
+     "changeKind": "modified",
+     "beforeSha256": "44935de974aa5205003879f03164147793966b4d0fa9bbda90396db21af5d218",
+     "afterSha256": "9a5a51250fa1e3a36b5e41576d6e0e466fc50e2570294e7dfd5b9bfb36935e6d",
+     "capabilityIds": [
+      "legacy-workflow-emergency-contact"
+     ],
+     "impactRationale": "Read the verified UCPath Message dialog and preserve the requested primary contact during conflict recovery.",
+     "rebuildRecheckIds": [
+      "contact-import-repairs-2026-10-06"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/personal-data.ts",
+     "changeKind": "modified",
+     "beforeSha256": "6bb4c067ef52f0ca321705e57fef3490e65a7d0f99937c1c301dcbb99855659e",
+     "afterSha256": "c745ff23bc1352eec1667fdbe97fdb6f631ffd433ac245a5a7ab0f7dbd253e86",
+     "capabilityIds": [
+      "legacy-workflow-emergency-contact"
+     ],
+     "impactRationale": "Read the verified UCPath Message dialog and preserve the requested primary contact during conflict recovery.",
+     "rebuildRecheckIds": [
+      "contact-import-repairs-2026-10-06"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/selectors.ts",
+     "changeKind": "modified",
+     "beforeSha256": "02e58204c930c400af4bc97333efefe971563b5411e314b4be6b0932415fb89b",
+     "afterSha256": "db80949aed6c011d759cbf439b0f479c78446d8f13571fe90156fe68fdf2db32",
+     "capabilityIds": [
+      "legacy-workflow-emergency-contact"
+     ],
+     "impactRationale": "Read the verified UCPath Message dialog and preserve the requested primary contact during conflict recovery.",
+     "rebuildRecheckIds": [
+      "contact-import-repairs-2026-10-06"
+     ]
+    },
+    {
+     "path": "tests/unit/systems/ucpath/personal-data.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "91ed2fc625c9011f690e7fc94513548ca4ba95a71bbae4e5741e38da669e8832",
+     "afterSha256": "aad41ee242e6d2a223ecdde25bd66a69bd4757679284d1a33636704b5a05afbf",
+     "capabilityIds": [
+      "legacy-workflow-emergency-contact"
+     ],
+     "impactRationale": "Read the verified UCPath Message dialog and preserve the requested primary contact during conflict recovery.",
+     "rebuildRecheckIds": [
+      "contact-import-repairs-2026-10-06"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "7a6bd0114b1256b1008a4bb00ea157d8dbeeafc6",
+   "parentCommit": "e6d0edcfcad68d6311da524ca4d2228a60462dc1",
+   "changes": [
+    {
+     "path": "src/workflows/onbase/CLAUDE.md",
+     "changeKind": "modified",
+     "beforeSha256": "7b069d70d97b8f169f46a78f68fdb167fbaa54bb355ffe3e246839ca5137f46f",
+     "afterSha256": "336999284eabd99cc3396be145eefba66286c07f709d5bf0db6f94477cb670bb",
+     "capabilityIds": [
+      "legacy-workflow-onbase"
+     ],
+     "impactRationale": "Honor validated edit-and-resume OnBase fallback keywords while retaining original identity, page and document boundaries.",
+     "rebuildRecheckIds": [
+      "contact-import-repairs-2026-10-06"
+     ]
+    },
+    {
+     "path": "src/workflows/onbase/handler.ts",
+     "changeKind": "modified",
+     "beforeSha256": "a1d11527724b61b81ba16aabbfb9e3c4b7f8e576a11c254e34e61be478e644b0",
+     "afterSha256": "533d003b7acc1e3aa2f93ec7a94996cc7f0df78fe6426d85179a8c9319a637b9",
+     "capabilityIds": [
+      "legacy-workflow-onbase"
+     ],
+     "impactRationale": "Honor validated edit-and-resume OnBase fallback keywords while retaining original identity, page and document boundaries.",
+     "rebuildRecheckIds": [
+      "contact-import-repairs-2026-10-06"
+     ]
+    },
+    {
+     "path": "tests/unit/workflows/onbase/fallback-keywords.test.ts",
+     "changeKind": "added",
+     "beforeSha256": null,
+     "afterSha256": "5fbc953adbbc0fadf99c018189dcf2159dd49718120ddb5ea08bf27a21c79740",
+     "capabilityIds": [
+      "legacy-workflow-onbase"
+     ],
+     "impactRationale": "Honor validated edit-and-resume OnBase fallback keywords while retaining original identity, page and document boundaries.",
+     "rebuildRecheckIds": [
+      "contact-import-repairs-2026-10-06"
      ]
     }
    ]
