@@ -39,7 +39,9 @@ export function useIdleSessionRefresh(data: SessionsViewState, operations: Reado
   const schedule = useRef(new IdleSessionSchedule());
   const latest = useRef({ data, operations, send });
   const [countdowns, setCountdowns] = useState<Readonly<Record<string, IdleSessionCountdown>>>({});
-  useEffect(() => { latest.current = { data, operations, send }; schedule.current.sync(data, Date.now()); setCountdowns(schedule.current.view(Date.now())); }, [data, operations, send]);
+  useEffect(() => { latest.current = { data, operations, send }; }, [data, operations, send]);
+  // Only new session data changes deadlines; callback or operation identity alone must not re-render the countdown.
+  useEffect(() => { schedule.current.sync(data, Date.now()); setCountdowns(schedule.current.view(Date.now())); }, [data]);
   useEffect(() => {
     const timer = setInterval(() => {
       const now = Date.now();
