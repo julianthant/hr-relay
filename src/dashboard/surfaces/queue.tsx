@@ -45,7 +45,6 @@ import {
   dsRadius,
   dsSize,
   dsSurface,
-  openContextMenuFor,
   dsText,
 } from "../ds/ui.js";
 import type { ActionDescriptorWire } from "../../models/dashboard/actions.js";
