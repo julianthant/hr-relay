@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MOCK_WORKFLOWS, MOCK_ONBASE_TYPES, mockWorkflow } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.js";
-import { approveMockRun, initialMockDraft, mockConfirmationFacts, mockDraftError, mockInputEntries, mockLaunchCount, mockNeedsReview, mockOathDuplicate, mockPipeline, mockQueueCounts, mockQueueView, mockRunLog, mockRunPipeline, mockRunsForDraft, mockSelectableSteps, mockStepState, seedMockRuns, type MockDraft } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
+import { approveMockRun, initialMockDraft, mockDeletionCopy, mockConfirmationFacts, mockDraftError, mockInputEntries, mockLaunchCount, mockNeedsReview, mockOathDuplicate, mockPipeline, mockQueueCounts, mockQueueView, mockRunLog, mockRunPipeline, mockRunsForDraft, mockSelectableSteps, mockStepState, seedMockRuns, type MockDraft } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
 import { reviewRecords } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-review-model.js";
 import { reviewSourcePages } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-review-source-model.js";
 
@@ -178,5 +178,14 @@ describe("legacy workflow previews", () => {
       expect(steps.map(step => step.title)).toEqual(mockRunPipeline(run).map(step => step.label));
       expect(new Set(steps.map(step => step.id)).size).toBe(steps.length);
     }
+  });
+});
+
+describe("mock deletion confirmation copy", () => {
+  it("states linked runs only when they exist and agrees in number", () => {
+    expect(mockDeletionCopy(0)).toBe("Remove this run from the queue.");
+    expect(mockDeletionCopy(1)).toBe("Remove this run and 1 linked run from the queue.");
+    expect(mockDeletionCopy(3)).toBe("Remove this run and 3 linked runs from the queue.");
+    expect(() => mockDeletionCopy(-1)).toThrow("MOCK_DELETE_LINK_COUNT_INVALID");
   });
 });

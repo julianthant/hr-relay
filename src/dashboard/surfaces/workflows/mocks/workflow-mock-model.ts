@@ -211,6 +211,10 @@ export function mockDeletionIds(runs: readonly MockRun[], id: string): readonly 
   }
   return [...removed];
 }
+export function mockDeletionCopy(linked: number): string {
+  if (!Number.isSafeInteger(linked) || linked < 0) throw new Error("MOCK_DELETE_LINK_COUNT_INVALID");
+  return linked === 0 ? "Remove this run from the queue." : `Remove this run and ${linked} linked ${linked === 1 ? "run" : "runs"} from the queue.`;
+}
 export function mockApprovalError(run: MockRun): string | undefined {
   if (!run.targetWorkflowId || run.targetWorkflowId === "oath-upload" || !run.draft.manualSteps?.length) return undefined;
   const records = reviewRecords(run).filter(reviewCanApprove);

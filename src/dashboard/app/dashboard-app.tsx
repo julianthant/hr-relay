@@ -71,7 +71,7 @@ import { completeMockReviewAction, type MockReviewAction } from "../surfaces/wor
 import { mockQueueId, mockRunDisplayId } from "../surfaces/workflows/mocks/workflow-queue-model.js";
 import { updateMockReview } from "../surfaces/workflows/mocks/workflow-review-model.js";
 import "../surfaces/shell/permanent-shell.css";
-import { PROPOSED_STATUS,dsStatusOf } from "../surfaces/shared/status/status-model.js";
+import { PROPOSED_STATUS, dsStatusOf, statusAccessibleName } from "../surfaces/shared/status/status-model.js";
 import { StorageBanner } from "../surfaces/settings/storage/storage-settings.js";
 import { WorkspaceRail } from "../surfaces/shell/workspace-rail.js";
 import { notificationDestinationRefusal, notificationPreviewState } from "../surfaces/notifications/notifications-preview-model.js";
@@ -312,6 +312,8 @@ function LoadedApp({
   const launch = useRunLaunch(route.start, DASHBOARD_MAIN_REGION_ID);
   const [railPreview, setRailPreview] = useViewState("preview", null);
   const [mockRuns, setMockRuns] = useState<readonly MockRun[]>(seedMockRuns);
+  // The route selection clears after the removal commits; a run deleted here is not an unavailable destination.
+  const [deletedMockRuns, setDeletedMockRuns] = useState<ReadonlySet<string>>(() => new Set());
   const launchWorkflow = route.view?.launchWorkflow;
   const launchSource = route.view?.launchSource;
   const mockLaunch = useMemo(() => route.start && launchWorkflow && MOCK_WORKFLOWS.some(flow => flow.id === launchWorkflow) ? { workflowId: mockWorkflow(launchWorkflow).id,
@@ -941,9 +943,10 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
     onCyclePanelMode: () => {},
     panelMode: "sidebar",
     onMinimisePanel: () => {},
-    visibleRunIds: keyboardOrder,
+    // A preview queue is not the served queue; its rows must not move the hidden served selection.
+    visibleRunIds: railPreview ? [] : keyboardOrder,
     workflowIds: workflows.map(workflow => String(workflow.id)), onWorkflow: selectWorkflow,
-    attentionRunIds: keyboardAttention,
+    attentionRunIds: railPreview ? [] : keyboardAttention,
     selectedRunId: route.run,
     onSelectRun: selectRun,
     panelTabs: NO_LOG_TABS,
@@ -1040,7 +1043,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
     setRoute(current => ({ ...current, view: { ...current.view, preview: id, mockRun: (runs.find(run => run.id === `mock:${id}:sample`) ?? runs.find(run => !run.parentId) ?? runs[0])?.id, records: undefined } }));
   }, [mockRuns, setRoute]);
   const searchData = useMemo(() => ({ today, counts: {}, unavailable: dateError, results: dateError ? [] : [
-    ...previewQueue.rows.map(row => ({ id: String(row.runId), publicId: runDisplayId(row.runId, row.traceId), subject: row.title, workflow: workflowLabelOf(row.workflowId), day, state: row.status,
+    ...previewQueue.rows.map(row => ({ id: String(row.runId), publicId: runDisplayId(row.runId, row.traceId), subject: row.title, workflow: workflowLabelOf(row.workflowId), day, state: statusAccessibleName(dsStatusOf(row.status)),
       destination: { kind: "run" as const, runId: String(row.runId), day } })),
     ...mockRuns.map(run => ({ id: run.id, publicId: mockRunDisplayId(run), subject: run.title, workflow: mockWorkflow(run.workflowId).label, day, state: mockRunStatus(run),
       destination: { kind: "preview-run" as const, runId: run.id, day, records: run.workflowId === "ocr" && !run.approved } })),
@@ -1099,7 +1102,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
     : route.start && route.view?.launchWorkflow && !mockLaunch ? "This launch workflow is not registered."
     : route.start && route.view?.launchSource && !mockLaunch?.source ? "The source run is no longer available."
     : route.start && route.view?.launchServed && !startWorkflows.some(flow => flow.workflowId === route.view?.launchServed) ? "This launch workflow is not served."
-    : railRun && !mockRuns.some(run => run.id === railRun) ? "This preview run is no longer available." : undefined;
+    : railRun && !mockRuns.some(run => run.id === railRun) && !deletedMockRuns.has(railRun) ? "This preview run is no longer available." : undefined;
   if (destinationError) return <EmptyState title="Destination unavailable" description={destinationError} action={<Button onClick={() => setRoute({ start: false })}>Open dashboard</Button>} />;
 
   return (
@@ -1230,7 +1233,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
               <div className="dashboard-queue-column">
               {previewFlow && dateSelection.state === "valid" ? <WorkflowMockQueue label={previewFlow.label} runs={railQueueRows} allRuns={mockRuns} selected={railRun} onSelect={setRailRun}
                 onRetry={id => { const source = mockRetrySource(mockRuns, id); openMockLaunch({ workflowId: source.workflowId, source }); }}
-                onDelete={ids => { setMockRuns(previous => previous.filter(run => !ids.includes(run.id))); toast({ tone: "success", title: "Run deleted" }); if (railRun && ids.includes(railRun)) { setRailRun(undefined); setRailReviewId(undefined); } }}
+                onDelete={ids => { setDeletedMockRuns(previous => new Set([...previous, ...ids])); setMockRuns(previous => previous.filter(run => !ids.includes(run.id))); toast({ tone: "success", title: "Run deleted" }); if (railRun && ids.includes(railRun)) { setRailRun(undefined); setRailReviewId(undefined); } }}
                 day={day} nowIso={nowIso} sort={sort} filter={queueFilterScope} /> : dayWire === undefined || workflows.length === 0 || !workflows.some(workflow => workflow.id === activeWorkflowId) ? (
                 dateError === undefined && dayResource.state !== "failed" && dayWire === undefined ? <QueueSkeleton label={workflows.find(workflow => workflow.id === activeWorkflowId)?.label} /> : <Panel className="min-h-0"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]">
                   <EmptyState title={dateError !== undefined ? "Choose a valid date" : dayResource.state === "failed" ? "Could not load queue" : dayWire === undefined ? "Loading queue" : workflows.length === 0 ? "No workflows available" : "Workflow unavailable"}

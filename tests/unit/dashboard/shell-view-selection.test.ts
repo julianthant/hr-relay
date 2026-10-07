@@ -28,7 +28,7 @@ const BASE = { start: false } as const;
 const SEGMENT_OF = {
   settings: "none",
   intake: "none",
-  archive: "archive",
+  archive: "none",
   explore: "explorer",
   activity: "activity",
   none: "queue",
@@ -46,7 +46,7 @@ describe("the Top Bar switcher's pressed segment", () => {
   });
 
   it("presses the segment that owns the main region for the three it does name", () => {
-    assert.equal(shellViewOf(activeTakeover({ ...BASE, archive: "index" })), "archive");
+    assert.equal(shellViewOf(activeTakeover({ ...BASE, archive: "index" })), "none", "the retired Archive notice has no switcher segment");
     assert.equal(shellViewOf(activeTakeover({ ...BASE, explore: "separations" })), "explorer");
     assert.equal(shellViewOf(activeTakeover({ ...BASE, activity: "" })), "activity");
   });
@@ -60,7 +60,7 @@ describe("the Top Bar switcher's pressed segment", () => {
     // that actually renders — `settings` outranks `archive`, so the switcher
     // presses nothing even though `?archive=` is present.
     assert.equal(shellViewOf(activeTakeover({ ...BASE, settings: "", archive: "index" })), "none");
-    assert.equal(shellViewOf(activeTakeover({ ...BASE, archive: "index", explore: "separations" })), "archive");
+    assert.equal(shellViewOf(activeTakeover({ ...BASE, archive: "index", explore: "separations" })), "none");
   });
 
   /**

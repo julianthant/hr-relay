@@ -1,5 +1,5 @@
 import { useViewNavigation, useViewState } from "../../app/navigation/view-route-model.js";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { StartCommandRequestSchema } from "../../../domain/commands.js";
 import { systemClock } from "../../../domain/clock.js";
 import { canonicalJsonStringify, type JsonValue } from "../../../domain/canonical-json.js";
@@ -21,7 +21,10 @@ export function useRunLaunch(initialOpen: boolean, mainRegionId: string) {
   const open = navigation?.start ?? localOpen;
   const routeSetStart = navigation?.setStart;
   const setOpen = useCallback((next: boolean) => routeSetStart ? routeSetStart(next) : setLocalOpen(next), [routeSetStart]);
-  const [rerunSource, setRerunSource] = useViewState("launchRerun", undefined);
+  const [routedRerunSource, setRerunSource] = useViewState("launchRerun", undefined);
+  // Route updates re-parse the whole view, so keep the source's identity while its value is unchanged.
+  const rerunKey = routedRerunSource === undefined ? undefined : JSON.stringify(routedRerunSource);
+  const rerunSource = useMemo(() => rerunKey === undefined ? undefined : JSON.parse(rerunKey) as RerunLaunchSource, [rerunKey]);
   const launcher = useRef<HTMLElement | null>(null);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);

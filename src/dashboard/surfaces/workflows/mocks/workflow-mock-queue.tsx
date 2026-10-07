@@ -15,7 +15,7 @@ import { reviewRecords, seedReviewRecords, type ReviewRecord } from "./workflow-
 import { reviewSourcePages } from "./workflow-review-source-model.js";
 import { WorkflowMockReview } from "./workflow-review.js";
 import { documentSourcePages } from "./workflow-document-model.js";
-import { mockDeletionIds } from "./workflow-mock-model.js";
+import { mockDeletionCopy, mockDeletionIds } from "./workflow-mock-model.js";
 
 export function WorkflowMockQueue({ label, runs, allRuns, selected, onSelect, onRetry, onDelete, day, nowIso, sort, filter }: {
   label: string; runs: readonly MockRun[]; selected?: string; onSelect: (id: string) => void;
@@ -52,7 +52,7 @@ export function WorkflowMockQueue({ label, runs, allRuns, selected, onSelect, on
         deleted.current = false;
         focusRemainingRow();
       }}>
-        <DialogBody>{pendingDelete && <p className="m-0 text-body text-ui-secondary">Remove this run and {mockDeletionIds(allRuns, pendingDelete.id).length - 1} linked runs from the queue.</p>}</DialogBody>
+        <DialogBody>{pendingDelete && <p className="m-0 text-body text-ui-secondary">{mockDeletionCopy(mockDeletionIds(allRuns, pendingDelete.id).length - 1)}</p>}</DialogBody>
         <DialogFooter><Button variant="muted" onClick={() => setPendingDelete(undefined)}>Cancel</Button><Button variant="danger" onClick={() => { if (!pendingDelete) return; deleted.current = true; onDelete(mockDeletionIds(allRuns, pendingDelete.id)); setPendingDelete(undefined); }}>Delete</Button></DialogFooter>
       </DialogContent>
     </Dialog>

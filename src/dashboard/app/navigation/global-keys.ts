@@ -107,6 +107,11 @@ export function nextAttention(
   return attention.find((id) => visible.indexOf(id) > index) ?? attention[0];
 }
 
+/** A focused scroll viewport (log, PDF page) keeps its native arrow-key panning. */
+function scrollsVertically(element: HTMLElement): boolean {
+  return element.scrollHeight > element.clientHeight && /^(auto|scroll)$/u.test(getComputedStyle(element).overflowY);
+}
+
 export function useGlobalKeys(bindings: GlobalKeyBindings): void {
   const preferences = useShortcutPreferences();
   const modalOpen = useDsModalOpen();
@@ -135,6 +140,7 @@ export function useGlobalKeys(bindings: GlobalKeyBindings): void {
       ) {
         return;
       }
+      if (target instanceof HTMLElement && (event.key === "ArrowDown" || event.key === "ArrowUp") && scrollsVertically(target)) return;
       if (modalOpen || document.querySelector('[role="dialog"][data-state="open"], [role="menu"][data-state="open"]') !== null) return;
       const action = shortcutActionForEvent(event, preferences);
       if (!action && (event.metaKey || event.ctrlKey || event.altKey)) return;
