@@ -17,7 +17,15 @@ it("renders saved facts without provider, live descriptors, records, or executio
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   dispose = async () => { await act(async () => root.unmount()); };
   const unsafe = "<script>unsafe()</script>";
-  const sections = H_REPORT.sections.map((section, index) => index !== 0 || section.kind !== "values" ? section : { ...section, values: [...section.values, { label: "Literal text", value: unsafe }] });
+  const savedLogText = `Complete supplied saved log for synthetic transaction T1234567. ${unsafe}`;
+  const savedIdentifier = "SYNTHETIC_COMPLETE_IDENTIFIER_10800000";
+  const sections = [
+    ...H_REPORT.sections.map((section, index) => {
+      if (section.title === "Saved logs" && section.kind === "text") return { ...section, text: savedLogText };
+      return index !== 0 || section.kind !== "values" ? section : { ...section, values: [...section.values, { label: "Literal text", value: unsafe }] };
+    }),
+    { kind: "values" as const, title: "Logs", values: [{ label: "Supplied identifier", value: savedIdentifier }] },
+  ];
   await act(async () => root.render(createElement(SavedArchiveReport, { report: { ...H_REPORT, sections, files: [] } })));
   expect(host.textContent).toContain("Synthetic subject");
   expect(host.textContent).toContain(unsafe);
@@ -27,6 +35,8 @@ it("renders saved facts without provider, live descriptors, records, or executio
   expect(H_REPORT.sections.find(section => section.title === "Retained work")).toBeDefined();
   expect(host.querySelector("script")).toBeNull();
   await clickSection("Logs");
+  expect(host.textContent).toContain(savedLogText);
+  expect(host.textContent).toContain(savedIdentifier);
   expect(host.textContent).not.toContain("No live resolution is available.");
   expect(host.querySelector("script")).toBeNull();
   await clickSection("Retained files");
