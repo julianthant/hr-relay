@@ -54,6 +54,13 @@ function sampleRun(row: typeof records[number], incomplete: boolean): ActivityRu
       state: position === 0 || status === 'completed' ? 'completed' : status === 'waiting' ? 'waiting' : status === 'failed' ? 'failed' : 'active', substeps: [] })) };
 }
 
+function median(values: readonly number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1 ? sorted[middle] ?? null : Math.round(((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2);
+}
+
 export function activitySample(range: ActivityDateRange, scenario: ActivitySampleState): ActivityViewState {
   if (scenario === "loading") return { state: "loading" };
   if (scenario === "unavailable") return { state: "unavailable", reason: "The report is unavailable. Try another period or return later." };
@@ -75,7 +82,7 @@ export function activitySample(range: ActivityDateRange, scenario: ActivitySampl
     runs: rows.map(row => sampleRun(row, scenario === 'incomplete')),
     range, timeZone: volume.timeZone, total: rows.length, completed, failed,
     running: count("running"), waiting: count("waiting"), outstanding: count("running") + count("waiting"), terminal: terminal.length,
-    duration: { medianSeconds: measured.length ? 134 : null, longestSeconds: measured.length ? Math.max(...measured) : null,
+    duration: { medianSeconds: median(measured), longestSeconds: measured.length ? Math.max(...measured) : null,
       totalSeconds: measured.length ? measured.reduce((total, seconds) => total + seconds, 0) : terminal.length ? null : 0,
       measured: measured.length, unmeasured: terminal.length - measured.length },
     failures: scenario === "incomplete" ? null : failed ? [{ label: "Document read timeout", runs: failed }] : [],
