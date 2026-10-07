@@ -34,6 +34,7 @@ import { TestTargetRegistryDefectError } from "../../../../../../src/backend/app
 import {
   ClassifiedDiagnosticValueSchema,
   directIdentifierDigestReference,
+  directIdentifierDisplay,
   redactDiagnosticFields,
   redactionDigest,
   RedactionResultSchema,
@@ -674,6 +675,12 @@ describe("schema-owned redaction", () => {
     assert.equal(reference, directIdentifierDigestReference(source));
     assert.equal(reference.includes(source), false);
     assert.notEqual(reference, directIdentifierDigestReference(`${source}-other`));
+  });
+
+  it("displays the complete identifier supplied by its caller", () => {
+    const source = "SYNTHETIC_COMPLETE_DIRECT_IDENTIFIER";
+    assert.equal(directIdentifierDisplay(source), source);
+    assert.equal(directIdentifierDisplay(`${source}-other`), `${source}-other`);
   });
 
   it("retains original diagnostic values across the classification corpus", () => {

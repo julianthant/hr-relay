@@ -7,7 +7,7 @@ import { settleCommandResult } from "../app/command-result.js";
 import { Badge,Button,ButtonLink,DateInput,Dialog,DialogBody,DialogContent,DialogFooter,DialogTrigger,Disclosure,dsIcon,dsText,Input,PageHeader,Panel,PanelBody,PanelHeader,Select,Table,TBody,TD,TH,THead,TR,Textarea } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { useArchiveClient as useDashboardClient } from "../state/archive-client.js";
-import { archiveFileRelationships,archiveWorkflowGroups,readableArchiveLabel,savedCommandEnvelope,savedDateFilterSummary,savedDownload,savedFilterQuery,savedOutcomeLabel,savedPlanRequest,useSavedResource,visibleArchiveSections } from "./archive-report-model.js";
+import { archiveFileRelationships,archiveLogSections,archiveWorkflowGroups,readableArchiveLabel,savedCommandEnvelope,savedDateFilterSummary,savedDownload,savedFilterQuery,savedOutcomeLabel,savedPlanRequest,useSavedResource,visibleArchiveSections } from "./archive-report-model.js";
 import { ArchiveFieldGroup, ArchiveFieldRows, ArchiveStructuredValue, ArchiveTable } from "./archive-visual.js";
 
 export function SavedArchiveReport({ report, deletion, section, onSection }: { report: SavedArchiveReportWire; deletion?: ReactNode; section?: number; onSection?: (section: number) => void }) {
@@ -50,14 +50,15 @@ export function SavedArchiveReport({ report, deletion, section, onSection }: { r
         : cell.label === "Total elapsed" && typeof cell.value === "number" ? <span title="Includes queued and waiting time">{formatArchiveElapsed(cell.value)}</span> : <ArchiveStructuredValue value={cell.value} /> })) ?? []} /></ArchiveFieldGroup>}
     {group?.kind === "facts" && <ArchiveFieldGroup title={group.label} showHeading={false}>
       {(group.values?.length ?? 0) > 0 && <ArchiveFieldRows rows={group.values!.map(cell => ({ label: cell.label, value: <ArchiveStructuredValue value={cell.value} /> }))} />}
-      {group.sections?.map((section, index) => section.kind === "unavailable" ? <p key={index} className="m-[var(--ds-space-cozy)]">{section.reason}</p>
-        : section.kind === "text" ? <p key={index} className="m-[var(--ds-space-cozy)] whitespace-pre-wrap">{section.text}</p>
-          : section.kind === "table" ? <div key={index} className="overflow-x-auto"><ArchiveTable label={group.label}><THead><TR>{section.columns.map((column, n) => <TH key={n}>{column}</TH>)}</TR></THead><TBody>{section.rows.map((row, n) => <TR key={n}>{row.map((cell, m) => <TD key={m}><ArchiveStructuredValue value={cell} /></TD>)}</TR>)}</TBody></ArchiveTable></div> : null)}
+      {group.sections?.map((section, index) => <SavedFrozenSection key={index} section={section} />)}
     </ArchiveFieldGroup>}
     {group?.kind === "input" && group.value !== undefined && <ArchiveFieldGroup title={group.label} showHeading={false}><ArchiveFieldRows rows={archiveDisplayRows(group.value)} /></ArchiveFieldGroup>}
     {group?.kind === "settings" && <ArchiveFieldGroup title="Settings" showHeading={false}><ArchiveFieldRows rows={group.values?.flatMap(cell => cell.label === "Captured settings" && cell.value !== null && typeof cell.value === "object" && !Array.isArray(cell.value) && Object.keys(cell.value).length > 0
       ? archiveDisplayRows(cell.value) : [{ label: cell.label, value: <ArchiveStructuredValue value={cell.value} /> }]) ?? []} /></ArchiveFieldGroup>}
     </section>)}</div>}
+    {selectedItem?.kind === "logs" && <div className="flex flex-col gap-[24px]">{archiveLogSections(report).length === 0
+      ? <p>No log section was retained with this report.</p>
+      : archiveLogSections(report).map((section, index) => <ArchiveFieldGroup key={index} title={section.title}><SavedFrozenSection section={section} /></ArchiveFieldGroup>)}</div>}
     {selectedItem?.kind === "files" && <ArchiveFieldGroup title="Retained files" ariaLabel="Retained attachments" showHeading={false}>
       {report.files.length === 0 ? <p className="m-[var(--ds-space-cozy)]">No attachment was retained with this report.</p> : <>{report.files.map(file => <SavedAttachment key={`${report.runId}:${file.digest}`} runId={report.runId} file={file} relationships={archiveFileRelationships(report, file.digest)} />)}</>}
     </ArchiveFieldGroup>}
@@ -66,6 +67,15 @@ export function SavedArchiveReport({ report, deletion, section, onSection }: { r
     {deletion}
   </article>;
 }
+function SavedFrozenSection({ section }: { section: SavedArchiveReportWire["sections"][number] }) {
+  switch (section.kind) {
+    case "values": return <ArchiveFieldRows rows={section.values.map(cell => ({ label: cell.label, value: <ArchiveStructuredValue value={cell.value} /> }))} />;
+    case "unavailable": return <p className="m-[var(--ds-space-cozy)]">{section.reason}</p>;
+    case "text": return <p className="m-[var(--ds-space-cozy)] whitespace-pre-wrap">{section.text}</p>;
+    case "table": return <div className="overflow-x-auto"><ArchiveTable label={section.title}><THead><TR>{section.columns.map((column, n) => <TH key={n}>{column}</TH>)}</TR></THead><TBody>{section.rows.map((row, n) => <TR key={n}>{row.map((cell, m) => <TD key={m}><ArchiveStructuredValue value={cell} /></TD>)}</TR>)}</TBody></ArchiveTable></div>;
+  }
+}
+
 function archiveDisplayRows(value: ArchiveReportCell): { label: string; value: ReactNode }[] {
   return value !== null && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length > 0
     ? Object.entries(value).map(([label, entry]) => ({ label: readableArchiveLabel(label), value: <ArchiveStructuredValue value={ArchiveReportCellSchema.parse(entry)} /> }))

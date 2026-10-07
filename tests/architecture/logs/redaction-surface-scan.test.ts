@@ -811,7 +811,7 @@ describe("redaction surface scan — the canary sweep (ref clock-config-secrets 
     );
   });
 
-  it("redacts the exit run's person identifiers out of its evidence receipt", () => {
+  it("retains the exit run's supplied person identifiers in its evidence receipt", () => {
     // The REAL 2026-08-04 exit run through the REAL derivation. Its subject's
     // name is the canary: it is genuinely present in the stored checkpoints and
     // is declared `direct-identifier`/`last4`, so a receipt that still spells it
@@ -833,7 +833,7 @@ describe("redaction surface scan — the canary sweep (ref clock-config-secrets 
     const serialized = canonicalJsonStringify(receipt);
     assert.ok(serialized.includes(subjectName), "the receipt omitted the retained subject name");
     assert.ok(serialized.includes("Battistessa"), "the receipt omitted the retained surname");
-    assert.ok(serialized.includes("nnie"), "the declared last4 transform must still answer the question");
+    assert.ok(serialized.includes("nnie"), "the complete subject name must include its final characters");
   });
 
   it("retains classified and unclassified diagnostic values", () => {
