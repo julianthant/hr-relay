@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { approveMockRun, initialMockDraft, mockDraftError, mockApprovalError, mockRunLog, mockRunsForDraft, mockStepState, mockOcrReadSteps, mockConfirmationFacts } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
 import { reviewRecords, reviewCanApprove, editReviewRecord, seedReviewRecords, updateMockReview } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-review-model.js";
 import { MOCK_WORKFLOWS, mockWorkflow } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.js";
-import { editableMockDraft, manualReadFields, mockStepIsLocked, mockStepIsDependency } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-manual-model.js";
+import { editableMockDraft, manualReadFields, mockStepInputError, mockStepIsLocked, mockStepIsDependency, mockStepIsRequiredSignIn } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-manual-model.js";
 import { documentSourcePages } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-document-model.js";
 
 describe("manual OCR and reading inputs", () => {
@@ -60,7 +60,7 @@ describe("manual OCR and reading inputs", () => {
   });
   it("validates manual reading values, logs their provenance and passes the date to the form", () => {
     const draft = { ...initialMockDraft("oath-signature"), text: "10000022", dryRun: false, selectedSteps: ["ucpath-auth", "transaction"], manualSteps: ["crm-verify"], manualValues: { "crm-verify": { "crm-onboarding": "Record found", "process-stage": "Onboarding complete", "first-day-of-service": "10/06/2026", "signed-date": "10/06/2026" } } };
-    expect(mockDraftError("oath-signature", { ...draft, manualValues: {} })).toMatch(/Enter crm onboarding/u);
+    expect(mockDraftError("oath-signature", { ...draft, manualValues: {} })).toMatch(/Enter CRM onboarding for verify onboarding and oath date\./u);
     expect(mockDraftError("oath-signature", { ...draft, manualValues: { "crm-verify": { ...draft.manualValues["crm-verify"], "signed-date": "02/30/2026" } } })).toMatch(/valid date/u);
     expect(mockDraftError("oath-signature", draft)).toBeUndefined();
     const run = mockRunsForDraft("oath-signature", draft, 2)[0];
@@ -94,6 +94,15 @@ describe("manual OCR and reading inputs", () => {
     expect(mockStepIsLocked("separations", job)).toBe(true);
     expect(manualReadFields("separations", job.key).map(field => field.label)).toContain("Position number");
     expect(mockStepIsLocked("oath-signature", mockWorkflow("oath-signature").steps[0])).toBe(false);
+  });
+  it("keeps sign-in included while a required action on the same system remains", () => {
+    const oathSignIn = mockWorkflow("oath-signature").steps.find(step => step.key === "ucpath-auth")!;
+    expect(mockStepIsRequiredSignIn("oath-signature", oathSignIn)).toBe(true);
+    expect(mockStepIsLocked("oath-signature", oathSignIn)).toBe(true);
+    expect(mockStepInputError("oath-signature", { ...initialMockDraft("oath-signature"), selectedSteps: ["crm-verify", "transaction"] })).toBe("Sign in to UCPath is required.");
+    const crmSignIn = mockWorkflow("onboarding").steps.find(step => step.label === "Sign in to CRM")!;
+    expect(mockStepIsRequiredSignIn("onboarding", crmSignIn)).toBe(false);
+    expect(mockStepIsLocked("onboarding", crmSignIn)).toBe(false);
   });
   it("restores required form actions in an editable rerun without changing the source", () => {
     const source = { ...initialMockDraft("emergency-contact"), selectedSteps: ["navigation", "save"] };

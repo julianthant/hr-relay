@@ -3,7 +3,7 @@ import { afterEach, describe, it } from 'vitest';
 import { CANONICAL_FIELD_IDS } from '../../../src/domain/fields/registry.js';
 import { SPREADSHEET_FIELDS, fieldForSpreadsheetHeader, spreadsheetValueMatches, suggestSpreadsheetField } from '../../../src/dashboard/surfaces/spreadsheets/spreadsheet-fields-model.js';
 import { prepareSpreadsheetColumns, selectSpreadsheetColumns, setSpreadsheetColumnField, setSpreadsheetHeaderRow, spreadsheetColumnErrors } from '../../../src/dashboard/surfaces/spreadsheets/spreadsheet-column-import-model.js';
-import { addSpreadsheetColumn, editSpreadsheetCell, newEditableWorkbook, readSpreadsheetField, updateSpreadsheetFields, type EditableWorkbook } from '../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
+import { addSpreadsheetColumn, editSpreadsheetCell, newEditableWorkbook, readSpreadsheetField, spreadsheetCellProblem, updateSpreadsheetFields, type EditableWorkbook } from '../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
 import { registerLocalSpreadsheet, registeredSpreadsheetWorkbook, retainSpreadsheetCopy, resetSpreadsheetMocks, searchMockSpreadsheet } from '../../../src/dashboard/surfaces/spreadsheets/spreadsheet-mock-model.js';
 afterEach(resetSpreadsheetMocks);
 const book = (values: readonly (readonly string[])[]): EditableWorkbook => ({ name: 'Fictional.csv', themes: [], hasFormulas: false, sheets: [{ id: 'sheet', name: 'Roster', width: values[0].length, hidden: [], rows: values.map((cells, i) => ({ id: `row-${i}`, cells: cells.map(value => ({ value })) })) }] });
@@ -82,5 +82,20 @@ describe('typed spreadsheet field contract', () => {
     assert.equal(updated.id, file.id); assert.equal(updated.addedAt, file.addedAt);
     assert.equal(updated.sheets[0].bindings![1].fieldId, 'roster.notes');
     assert.throws(() => retainSpreadsheetCopy('unknown', source), /SPREADSHEET_NOT_FOUND/);
+  });
+});
+
+describe('editor typed-cell problems', () => {
+  it('names the bound field for a value import would refuse and stays silent otherwise', () => {
+    const base = book([['Employee ID', 'Notes'], ['12345', 'x']]).sheets[0];
+    const sheet = { ...base, columnBindings: [
+      { id: 'eid', sourceColumn: 0, sourceHeader: 'Employee ID', fieldId: 'eid', basis: 'header' as const },
+      { id: 'notes', sourceColumn: 1, sourceHeader: 'Notes', fieldId: null, basis: 'unmapped' as const },
+    ] };
+    assert.equal(spreadsheetCellProblem(sheet, 0, '12345'), 'Does not match Employee ID (8 digits, starting with 10).');
+    assert.equal(spreadsheetCellProblem(sheet, 0, '10000001'), undefined);
+    assert.equal(spreadsheetCellProblem(sheet, 0, ''), undefined);
+    assert.equal(spreadsheetCellProblem(sheet, 1, 'anything'), undefined);
+    assert.equal(spreadsheetCellProblem(base, 0, '12345'), undefined);
   });
 });

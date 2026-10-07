@@ -22,6 +22,7 @@ export function SpreadsheetColumnImport({ open, document, onOpenChange, onChange
   const visible = matches.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
   const errors = useMemo(() => spreadsheetColumnErrors(document), [document]);
   const selected = document.sheets.reduce((total, entry) => total + entry.width - entry.hidden.length, 0);
+  const keptSheets = document.sheets.filter(entry => entry.width > entry.hidden.length).length;
   const updateSheet = (next: EditableSheet) => onChange({ ...document, sheets: document.sheets.map(entry => entry.id === next.id ? next : entry) });
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent size="xl" title="Choose spreadsheet columns" description="Match kept columns to dashboard fields." className="launch-design spreadsheet-dialog" onCloseAutoFocus={event => { if (returnFocus.current) { event.preventDefault(); returnFocus.current.focus(); } }}>
     <DialogBody className="spreadsheet-main flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -39,6 +40,6 @@ export function SpreadsheetColumnImport({ open, document, onOpenChange, onChange
         <div className="flex shrink-0 items-center justify-between gap-3 text-caption text-ui-muted"><span>{sheet.width - sheet.hidden.length} of {sheet.width} columns selected · {Math.max(0, sheet.rows.length - spreadsheetHeaderRow(sheet)).toLocaleString()} rows</span><div className="flex items-center gap-2"><Button variant="ghost" size="sm" disabled={!page} onClick={() => setPage(page - 1)} aria-label="Previous import columns">Previous</Button><span>{matches.length ? page * PAGE_SIZE + 1 : 0}–{Math.min(matches.length, (page + 1) * PAGE_SIZE)} of {matches.length}</span><Button variant="ghost" size="sm" disabled={(page + 1) * PAGE_SIZE >= matches.length} onClick={() => setPage(page + 1)} aria-label="Next import columns">Next</Button></div></div>
       </>}
       {errors.length > 0 && <p role="status" className="shrink-0 text-caption text-ui-danger">{errors[0]}{errors.length > 1 ? ` ${errors.length - 1} more to review.` : ''}</p>}
-    </DialogBody><DialogFooter meta={`${selected} columns selected across ${document.sheets.length} sheets`}><Button variant="muted" onClick={onCancel}>Cancel import</Button><Button variant="primary" disabled={errors.length > 0} onClick={onConfirm}>Import selected columns</Button></DialogFooter>
+    </DialogBody><DialogFooter meta={`${selected} ${selected === 1 ? "column" : "columns"} selected across ${keptSheets} ${keptSheets === 1 ? "sheet" : "sheets"}`}><Button variant="muted" onClick={onCancel}>Cancel import</Button><Button variant="primary" disabled={errors.length > 0} onClick={onConfirm}>Import selected columns</Button></DialogFooter>
   </DialogContent></Dialog>;
 }

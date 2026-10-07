@@ -3,11 +3,25 @@ import { mockWorkflow, type MockStep, type MockWorkflowId } from "./workflow-moc
 import type { MockDraft } from "./workflow-mock-model.js";
 
 export type ManualReadField = Readonly<{ key: string; label: string; token?: string; date: boolean; options?: readonly string[] }>;
+/** Lowercases a label's first word for mid-sentence use while keeping acronyms such as CRM and ID. */
+function inSentence(label: string): string {
+  const [first = "", ...rest] = label.split(" ");
+  return [/^[A-Z0-9-]{2,}$/u.test(first) ? first : first.charAt(0).toLowerCase() + first.slice(1), ...rest].join(" ");
+}
+
 export function mockStepIsDependency(step: MockStep): boolean { return ["wait-approval", "wait-signatures"].includes(step.key); }
-export function mockStepIsLocked(id: MockWorkflowId, step: MockStep): boolean {
+function formStepIsLocked(id: MockWorkflowId, step: MockStep): boolean {
   return Boolean(step.write || ["fill-form", "fill-keywords", "prepare-import"].includes(step.key)
     || id === "separations" && ["ucpath-job-summary", "kronos-search"].includes(step.key)
     || id === "i9-check" && step.key === "roster-match");
+}
+/** Sign-in to a system stays included while a required action on that system remains in the plan. */
+export function mockStepIsRequiredSignIn(id: MockWorkflowId, step: MockStep): boolean {
+  return step.key.includes("auth") && step.system !== undefined
+    && mockWorkflow(id).steps.some(other => other.key !== step.key && other.system === step.system && formStepIsLocked(id, other));
+}
+export function mockStepIsLocked(id: MockWorkflowId, step: MockStep): boolean {
+  return formStepIsLocked(id, step) || mockStepIsRequiredSignIn(id, step);
 }
 export function manualReadFields(id: MockWorkflowId, key: string): readonly ManualReadField[] {
   if (["ocr", "i9-lookup"].includes(id) || key.includes("auth") || mockStepIsDependency({ key, label: key, message: "" })) return [];
@@ -37,13 +51,13 @@ export function mockStepInputError(id: MockWorkflowId, draft: MockDraft): string
     if (id === "oath-upload" && draft.uploadMode === "upload-only" && mockStepIsDependency(step)) continue;
     if ((mockStepIsLocked(id, step) || mockStepIsDependency(step)) && !draft.selectedSteps.includes(step.key)) return `${step.label} is required.`;
     const fields = manualReadFields(id, step.key), manual = usesManualRead(draft, step.key);
-    if (fields.length && !draft.selectedSteps.includes(step.key) && !manual) return `Enter manual values for ${step.label.toLowerCase()}.`;
+    if (fields.length && !draft.selectedSteps.includes(step.key) && !manual) return `Enter manual values for ${inSentence(step.label)}.`;
     if (!manual) continue;
     if (!fields.length) return `${step.label} does not accept manual values.`;
     for (const field of fields) {
       const value = draft.manualValues?.[step.key]?.[field.key]?.trim();
-      if (!value) return `Enter ${field.label.toLowerCase()} for ${step.label.toLowerCase()}.`;
-      if (field.options && !field.options.includes(value)) return `Choose ${field.label.toLowerCase()}.`;
+      if (!value) return `Enter ${inSentence(field.label)} for ${inSentence(step.label)}.`;
+      if (field.options && !field.options.includes(value)) return `Choose ${inSentence(field.label)}.`;
       if (/employee id$/iu.test(field.label) && !/^10\d{6}$/u.test(value)) return "Employee ID must start with 10 and contain eight digits.";
       if (field.date) {
         const match = /^(\d{2})\/(\d{2})\/(\d{4})$/u.exec(value);

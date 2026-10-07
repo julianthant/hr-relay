@@ -17,4 +17,6 @@
 .ds-body-scope .spreadsheet-grid .spreadsheet-cell-input { height: 32px; width: 100%; max-width: none; border: 0; border-radius: 0; box-shadow: none; padding: 6px 10px; font-size: 12px; background: transparent; color: inherit; }
 .spreadsheet-grid td[data-fill="imported"], .spreadsheet-grid th[style] { color: #171717; }
 .spreadsheet-grid td:focus-within, .spreadsheet-grid th:focus-within { outline: 2px solid var(--ui-info); outline-offset: -2px; }
+.spreadsheet-grid td[data-invalid] { box-shadow: inset 0 0 0 2px var(--ds-danger); }
+.spreadsheet-cell-problem { color: var(--ds-danger); }
 .spreadsheet-editor-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; font-size: var(--text-caption); color: var(--ui-muted); }

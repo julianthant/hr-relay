@@ -8,7 +8,7 @@ import "../../run-start/launch-presentation.css";
 import { cn } from "../../../lib/utils.js";
 import { RunConfirmLayout, RunOptionsLayout, RunStepsList } from "../../run-start/run-launch-layout.js";
 import { RunFlagChips } from "../../run-start/run-start-kit.js";
-import { editableMockDraft, manualReadFields, mockStepInputError, mockStepIsLocked, mockStepIsDependency, usesManualRead } from "./workflow-manual-model.js";
+import { editableMockDraft, manualReadFields, mockStepInputError, mockStepIsLocked, mockStepIsDependency, mockStepIsRequiredSignIn, usesManualRead } from "./workflow-manual-model.js";
 import { Select } from "../../../ds/ui.js";
 import { WorkflowPdfInput } from "./workflow-pdf-input.js";
 
@@ -102,7 +102,7 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
           const fields = manualReadFields(workflowId, step.key), manual = usesManualRead(draft, step.key);
           const setManual = (value: boolean) => patch({ manualSteps: value ? [...new Set([...(draft.manualSteps ?? []), step.key])] : (draft.manualSteps ?? []).filter(key => key !== step.key) });
           return <li key={step.key} className="launch-step-row flex min-w-0 flex-col gap-2"><div className="flex items-start gap-[var(--ds-space-base)]">
-            {step.key === "read-document" ? <Checkbox label={step.label} description={step.system} checked={draft.ocrMode !== "manual"} onCheckedChange={value => patch({ ocrMode: value === true ? "extract" : "manual" })} /> : dependency ? <span className="text-body">{step.label}{" "}<span className="ml-2 text-caption text-ui-muted">{step.key === "wait-approval" ? "Approval required" : "Automatic"}</span></span> : <Checkbox label={step.label} description={locked ? "Form action · required" : step.system} disabled={locked} checked={draft.selectedSteps.includes(step.key)} onCheckedChange={value => {
+            {step.key === "read-document" ? <Checkbox label={step.label} description={step.system} checked={draft.ocrMode !== "manual"} onCheckedChange={value => patch({ ocrMode: value === true ? "extract" : "manual" })} /> : dependency ? <span className="text-body">{step.label}{" "}<span className="ml-2 text-caption text-ui-muted">{step.key === "wait-approval" ? "Approval required" : "Automatic"}</span></span> : <Checkbox label={step.label} description={locked ? mockStepIsRequiredSignIn(workflowId, step) ? `${step.system ?? "Sign-in"} · required` : "Form action · required" : step.system} disabled={locked} checked={draft.selectedSteps.includes(step.key)} onCheckedChange={value => {
               const included = value === true;
               patch({ selectedSteps: included ? [...new Set([...draft.selectedSteps, step.key])] : draft.selectedSteps.filter(key => key !== step.key),
                 manualSteps: !included && fields.length ? [...new Set([...(draft.manualSteps ?? []), step.key])] : (draft.manualSteps ?? []).filter(key => key !== step.key) });

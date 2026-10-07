@@ -228,3 +228,11 @@ export function downloadSpreadsheet(data: ArrayBuffer | string, name: string, fo
   document.body.append(link); link.click(); link.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+
+/** A typed data cell that its column's field would refuse on import; typing remains a draft. */
+export function spreadsheetCellProblem(sheet: EditableSheet, column: number, value: string): string | undefined {
+  const fieldId = sheet.columnBindings?.[column]?.fieldId;
+  if (!fieldId || spreadsheetValueMatches(fieldId, value)) return undefined;
+  const field = spreadsheetField(fieldId);
+  return `Does not match ${field.label} (${field.format}).`;
+}

@@ -159,9 +159,17 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) {
         await expect(stepRegion.getByRole("checkbox")).toHaveCount(visibleSteps.filter(step => !mockStepIsDependency(step)).length + visibleSteps.filter(step => mockStepIsLocked(flow.id, step) && manualReadFields(flow.id, step.key).length > 0).length + reading.length);
         await expect(dialog).toContainText(`${stepCount} / ${stepCount} included`);
         await expect(stepRegion.locator("li").first()).toHaveCSS("min-height", "58px");
-        const optional = flow.id === "ocr" ? reading[0] : visibleSteps.find(step => !mockStepIsLocked(flow.id, step) && !mockStepIsDependency(step))!;
-        await stepRegion.getByRole("checkbox", { name: optional.label, exact: true }).uncheck();
-        for (const field of manualReadFields(flow.id, optional.key)) {
+        const optionalStep = visibleSteps.find(step => !mockStepIsLocked(flow.id, step) && !mockStepIsDependency(step));
+        // Sign-in that a required form action depends on is locked, so some flows have no optional step.
+        const readingOnly = flow.id === "ocr";
+        const optional = readingOnly ? reading[0] : optionalStep;
+        if (optional === undefined) {
+          for (const step of visibleSteps.filter(candidate => !mockStepIsDependency(candidate))) {
+            const box = stepRegion.getByRole("checkbox", { name: step.label, exact: true });
+            await expect(box).toBeDisabled(); await expect(box).toBeChecked();
+          }
+        } else await stepRegion.getByRole("checkbox", { name: optional.label, exact: true }).uncheck();
+        for (const field of optional ? manualReadFields(flow.id, optional.key) : []) {
           const value = field.date ? "10/06/2026" : field.options ? field.options[0] : /employee id/iu.test(field.label) ? "10000001" : field.token === "$name" ? "Jordan Lee" : "None";
           const group = stepRegion.getByRole("group", { name: `Manual values for ${optional.label}`, exact: true });
           if (field.options) await chooseSelect(group.getByRole("combobox", { name: field.label, exact: true }), value);
@@ -176,7 +184,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) {
         await expect(confirmation).toHaveCSS("gap", summaryGap);
         await expect(confirmation).toContainText("Bulk");
         await expect(confirmation).toContainText("Headless · screenshots off");
-        await expect(confirmation).toContainText(flow.id === "ocr" ? "Off · enter records in review" : `Omitted: ${optional.label}`);
+        if (optional === undefined) await expect(confirmation).not.toContainText("Omitted");
+        else await expect(confirmation).toContainText(readingOnly ? "Off · enter records in review" : `Omitted: ${optional.label}`);
         await expect(confirmation.locator("dl")).toHaveCSS("font-family", /-apple-system/);
         await expect(confirmation.locator("details")).toHaveCount(0);
         await expect(confirmation.getByText("Workflow plan", { exact: true })).toHaveCount(0);
@@ -191,7 +200,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) {
         const rerun = page.getByRole("dialog", { name: "Rerun", exact: true });
         await expect(rerun.getByRole("list", { name: "Run configuration path" }).getByRole("listitem")).toHaveText([/^1\s*Steps$/u, /^2\s*Values$/u, /^3\s*Options$/u, /^4\s*Confirm$/u]);
         await expect(rerun.getByRole("complementary", { name: "Source run", exact: true })).toHaveCount(0);
-        await expect(rerun.getByRole("checkbox", { name: optional.label, exact: true })).not.toBeChecked();
+        if (optional !== undefined) await expect(rerun.getByRole("checkbox", { name: optional.label, exact: true })).not.toBeChecked();
         await expect(rerun.locator(".launch-step-status")).toHaveCount(stepCount);
         await advance(rerun);
         await expect(rerun.getByRole("region", { name: "Values", exact: true })).toBeVisible();
