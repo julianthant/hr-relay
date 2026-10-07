@@ -182,7 +182,7 @@ describe("typed Settings catalog controls", () => {
     assert.equal(host.querySelector("select"), null);
     assert.equal([...host.querySelectorAll("button")].some(button => button.textContent === "Save changes"), false);
   });
-  it("offers Undo only for a pending Performance text edit", async () => {
+  it("discards a pending Performance clear without an inline Undo control", async () => {
     const authority = syntheticSettingsAuthority(); cleanups.push(authority.close);
     const mounted = await mountSettingsHarness(authority, "performance", () => fixtureSettingsDocument({ timeouts: { navigationMs: 22_000 } }, 2)); cleanups.push(mounted.close);
     const row = mounted.host.querySelector('[data-settings-path="timeouts.navigationMs"]'); assert.ok(row);
@@ -192,9 +192,8 @@ describe("typed Settings catalog controls", () => {
     assert.equal(row.querySelectorAll(".settings-row-actions").length, 0);
     await settingsAction(() => mounted.controller().clear("timeouts.navigationMs"));
     assert.deepEqual(mounted.controller().draft["timeouts.navigationMs"], { kind: "clear" });
-    const undo = [...row.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Undo");
-    assert.ok(undo);
-    await settingsAction(() => undo.click());
+    assert.equal([...row.querySelectorAll<HTMLButtonElement>("button")].some(button => button.textContent === "Undo"), false);
+    await settingsAction(() => mounted.controller().reset("timeouts.navigationMs"));
     assert.equal(mounted.controller().draft["timeouts.navigationMs"], undefined);
     assert.equal(mounted.commands.length, 0);
   });

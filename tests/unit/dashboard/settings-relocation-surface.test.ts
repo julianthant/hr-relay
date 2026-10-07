@@ -268,7 +268,7 @@ describe("storage relocation Paths controls", () => {
     const client = { storageRelocationPlans: () => Promise.resolve(INITIAL), applyStorageRelocation: (input: unknown) => { commands.push(input); throw new Error("unexpected write"); } } as unknown as DashboardClient;
     const surface = await mount(client);
     await edit("Artifact folder", "relative");
-    assert.ok(surface.host.querySelector('button[aria-label="Actions for Artifact folder"]'));
+    assert.equal(surface.host.querySelector('button[aria-label="Actions for Artifact folder"]'), null);
     await act(async () => surface.controller().reset("artifactRoot"));
     await idle();
     assert.equal(commands.length, 0);

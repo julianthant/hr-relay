@@ -59,7 +59,6 @@ import {
   DASHBOARD_MAIN_REGION_ID,
   SETTINGS_GEAR_ID,
   SETTINGS_KEYBOARD_SECTION_ID,
-  SETTINGS_UI_CATALOG_SECTION_ID,
   buildSettingsNav,
   resolveSettingsSection,
   settingsCloseFocusTargetId,
@@ -123,26 +122,24 @@ describe("the settings route (D272 item 1)", () => {
 });
 
 describe("the settings page's nav (D274 item 5)", () => {
-  it("puts every served section under Status and always offers both Help entries", () => {
+  it("puts every served section under Status and always offers the Help keyboard entry", () => {
     const groups = buildSettingsNav([STORAGE]);
-    assert.deepEqual(groups.map((group) => group.heading), ["Personal", "Data", "Status", "Help"]);
+    assert.deepEqual(groups.map((group) => group.heading), ["Personal", "Advanced", "Data", "Status", "Help"]);
     assert.deepEqual(groups.find(group => group.id === "status")?.entries.map((entry) => entry.id), ["storage", "preflight"]);
     assert.equal(groups.find(group => group.id === "status")?.entries[0]?.source, "served");
     assert.equal(groups.find(group => group.id === "status")?.entries[1]?.source, "client");
     assert.deepEqual(
       groups.find(group => group.id === "help")?.entries.map((entry) => entry.id),
-      [SETTINGS_KEYBOARD_SECTION_ID, SETTINGS_UI_CATALOG_SECTION_ID],
+      [SETTINGS_KEYBOARD_SECTION_ID],
     );
-    // Neither is a SERVED section: `settingsSections` lists the keyboard legend
-    // nowhere (a fact about THIS bundle's bindings) and lists the catalog
-    // nowhere either (D295 — the catalog is not a setting; it is reference
-    // material the operator looks up, and its data comes from its own route).
-    assert.deepEqual(groups.find(group => group.id === "help")?.entries.map((entry) => entry.source), ["client", "client"]);
+    // The keyboard legend is not a SERVED section: it is a fact about THIS bundle's bindings.
+    // The UI catalog entry is retired (2026-10-06 developer-controls retirement).
+    assert.deepEqual(groups.find(group => group.id === "help")?.entries.map((entry) => entry.source), ["client"]);
   });
 
   it("keeps Preflight available when no status section is served", () => {
     const groups = buildSettingsNav([]);
-    assert.deepEqual(groups.map((group) => group.heading), ["Personal", "Data", "Status", "Help"]);
+    assert.deepEqual(groups.map((group) => group.heading), ["Personal", "Advanced", "Data", "Status", "Help"]);
     assert.deepEqual(groups.find(group => group.id === "status")?.entries.map((entry) => entry.id), ["preflight"]);
   });
 

@@ -177,7 +177,7 @@ it.each(["?settings=archive", "?archive=", "?archive=archive-demo-run-48216&arch
   assert.match(document.body.textContent ?? "", /Archive page removed/u);
   assert.equal(document.querySelector('[aria-label="Archive"]'), null);
   assert.equal(document.querySelector('a[href="?settings=archive"]'), null);
-  assert.equal(document.querySelectorAll('nav[aria-label="Settings sections"] a').length, 12);
+  assert.equal(document.querySelectorAll('nav[aria-label="Settings sections"] a').length, 11);
   await click(button("Return to dashboard"));
   assert.equal(parseRoute(location.search).archive, undefined);
   assert.equal(parseRoute(location.search).settings, undefined);

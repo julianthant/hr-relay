@@ -13,7 +13,7 @@ describe("frontend notification state", () => {
     const state = notificationsSample("normal");
     const all = notificationView(state, "all");
     assert.equal(all.unread, 3);
-    assert.equal(all.shown.length, 5);
+    assert.deepEqual(all.shown.map(item => item.id), ["sample-verification", "sample-approval", "sample-review", "sample-completed"]);
     assert.deepEqual(all.pinned, []);
     for (const filter of ["all", "unread", "attention", "failed"] as const) assert.deepEqual(notificationView(state, filter).pinned, []);
     assert.deepEqual(notificationView(state, "unread").shown.map(item => item.id), ["sample-verification", "sample-approval", "sample-completed"]);
