@@ -731,3 +731,18 @@ floor and scrolling below it remain. Focused dark/light checks cover 1024, 1280,
 1440 and 1920px, intermediate resize thresholds, the canvas floor, attempt
 controls and local Retry/Delete. Evidence is retained in
 `queue-responsive-10003539`; frozen references and phase-exit gates remain 3.1.19.
+
+## Audit corrections (2026-10-06)
+
+The frontend readiness audit's defects are corrected without visual redesign. Served Rerun keeps
+its source identity across route updates, so Continue reaches Values, Options and Confirm. Deleting
+the open preview run keeps the shell mounted and moves focus to the next row or the Queue region; the
+dialog names linked runs only when they exist. Settings keeps the pending-save lock, but focus returns
+to the control the lock displaced once the attempt settles. Segmented dates keep an incomplete year
+inside the field: nothing is saved until the fourth digit, and leaving with fewer digits shows the
+date validation error. Preview Steps lock a sign-in step while a required form action on the same
+system remains. Imported spreadsheet cells that their typed field would refuse are marked invalid,
+and the focused cell's problem appears in the editor footer. Shell search uses the shared status
+labels, a focused log or PDF viewport keeps its own arrow-key panning, and preview queues no longer
+move the hidden served selection. Evidence is `frontend-audit-fixes-10003539`; frozen references and
+phase-exit gates remain with 3.1.19.
