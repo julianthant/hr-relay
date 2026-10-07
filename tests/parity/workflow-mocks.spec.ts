@@ -169,7 +169,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) {
             await expect(box).toBeDisabled(); await expect(box).toBeChecked();
           }
         } else await stepRegion.getByRole("checkbox", { name: optional.label, exact: true }).uncheck();
-        for (const field of optional ? manualReadFields(flow.id, optional.key) : []) {
+        if (optional !== undefined) for (const field of manualReadFields(flow.id, optional.key)) {
           const value = field.date ? "10/06/2026" : field.options ? field.options[0] : /employee id/iu.test(field.label) ? "10000001" : field.token === "$name" ? "Jordan Lee" : "None";
           const group = stepRegion.getByRole("group", { name: `Manual values for ${optional.label}`, exact: true });
           if (field.options) await chooseSelect(group.getByRole("combobox", { name: field.label, exact: true }), value);
