@@ -1,12 +1,13 @@
-/** One exact capture list serves its canonical Receipt placement and compact Logs placement. */
+import { fmtActionClock } from "./format.js";
+/** Verified captures retain their exact run membership. */
 import { Banner, Button, ButtonLink, Dialog, DialogBody, DialogClose, DialogContent, DialogFooter,
   DialogTrigger, EmptyState, SectionLabel, Skeleton, dsRadius, dsText } from "../ds/ui.js";
-import type { RunCaptureArtifactWire } from "../../domain/dashboard/run-detail.js";
+import type { RunCaptureArtifactWire } from "../../models/dashboard/run-detail.js";
 import { cn } from "../lib/utils.js";
 import { runCaptureFrame, useRunCaptureImage, type RunCaptureItem, type RunCapturesState } from "./run-captures-model.js";
 
 export function RunCaptures({ captures, compact = false }: { captures: RunCapturesState; compact?: boolean }) {
-  if (captures.state === "inactive") return null;
+  if (captures.state === "inactive" || (captures.state === "available" && captures.items.length === 0)) return null;
   return (
     <section
       aria-label="Run captures"
@@ -63,13 +64,26 @@ export function RunCaptures({ captures, compact = false }: { captures: RunCaptur
   );
 }
 
-function RunCaptureImagePreview({ item }: { item: RunCaptureItem }) {
+export function OperationCapture({ item, capturedAt }: { item: RunCaptureItem; capturedAt?: string }) {
+  return <div className="operation-capture">
+    <Dialog>
+      <DialogTrigger asChild><Button variant="ghost" className="operation-capture-trigger" aria-label={`Open capture ${item.capture.artifact.artifactId}`}><RunCaptureImagePreview item={item} inline /></Button></DialogTrigger>
+      <DialogContent title="Run capture" description="Retained screenshot" size="xl">
+        <DialogBody><RunCaptureImagePreview item={item} inline />{item.capture.artifact.sensitivity === "restricted" && <Banner tone="warning" title="Restricted capture">{item.capture.artifact.redaction}</Banner>}</DialogBody>
+        <DialogFooter><DialogClose asChild><Button variant="ghost">Close</Button></DialogClose><ButtonLink href={item.downloadUrl} download={`capture-${item.capture.artifact.artifactId}`}>Download</ButtonLink></DialogFooter>
+      </DialogContent>
+    </Dialog>
+    <div className="flex items-center gap-[var(--ds-space-base)]">{capturedAt !== undefined && <time title={capturedAt} className={dsText.meta}>{fmtActionClock(capturedAt)}</time>}{item.capture.artifact.sensitivity === "restricted" && <span className={dsText.meta}>Restricted capture · {item.capture.artifact.redaction}</span>}</div>
+  </div>;
+}
+
+function RunCaptureImagePreview({ item, inline = false }: { item: RunCaptureItem; inline?: boolean }) {
   const image = useRunCaptureImage(item.capture.artifact);
   const { artifact } = item.capture;
   if (artifact.mediaKind !== "image") throw new Error("Only an image capture has an inline preview.");
   return (
     <figure aria-label="Run capture preview" aria-busy={image.state === "loading"}
-      className={cn(dsRadius.md, runCaptureFrame(item.capture), "flex max-h-[56dvh] w-full shrink-0 flex-col overflow-hidden bg-[color:var(--ds-surface-2)]")}
+      className={cn(dsRadius.md, inline ? "border border-[color:var(--ds-border)]" : runCaptureFrame(item.capture), "flex max-h-[56dvh] w-full shrink-0 flex-col overflow-hidden bg-[color:var(--ds-surface-2)]")}
       style={{ aspectRatio: `${String(artifact.width)} / ${String(artifact.height)}` }}>
       <div className="relative min-h-0 flex-1">
         {image.state === "loading" && <>
@@ -82,9 +96,9 @@ function RunCaptureImagePreview({ item }: { item: RunCaptureItem }) {
           onLoad={event => { image.decode(event.currentTarget); }} onError={event => { image.fail(event.currentTarget); }} />
         {image.state === "failed" && <div className="absolute inset-0 overflow-auto"><Banner tone="danger" title="Capture image could not be displayed">The browser could not load or decode this capture with its recorded dimensions.</Banner></div>}
       </div>
-      <figcaption className={cn(dsText.meta, "min-h-[calc(1lh+var(--ds-space-tight)*2)] shrink-0 break-words bg-[color:var(--ds-surface-2)] px-[var(--ds-space-snug)] py-[var(--ds-space-tight)] text-[color:var(--ds-fg-muted)]")}>
+      {!inline && <figcaption className={cn(dsText.meta, "min-h-[calc(1lh+var(--ds-space-tight)*2)] shrink-0 break-words bg-[color:var(--ds-surface-2)] px-[var(--ds-space-snug)] py-[var(--ds-space-tight)] text-[color:var(--ds-fg-muted)]")}>
         {image.state === "ready" && "Image decoded"}
-      </figcaption>
+      </figcaption>}
     </figure>
   );
 }

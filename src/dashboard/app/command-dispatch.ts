@@ -26,9 +26,9 @@
  * are the honest ones: a shape this build has no ceremony for, an EID the
  * packet never showed, an answer that was never authored.
  */
-import { systemClock } from "../../domain/clock.js";
-import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
-import { directIdentifierDigestReference } from "../../domain/redaction.js";
+import { systemClock } from "../../rules/time/clock.js";
+import type { ActionDescriptorWire } from "../../models/dashboard/actions.js";
+import { directIdentifierDisplay } from "../../rules/redaction/redaction.js";
 import type { ActionTarget } from "../surfaces/actions.js";
 import {
   identityCeremonyFor,
@@ -189,7 +189,7 @@ function composeGateResult(
   if (value === undefined) {
     return {
       state: "refused",
-      reason: `EID ${decided.decision === "approved" ? directIdentifierDigestReference(decided.eid) : "unavailable"} is not among the candidates `
+      reason: `EID ${decided.decision === "approved" ? directIdentifierDisplay(decided.eid) : "unavailable"} is not among the candidates `
         + "this packet served, so there is no `chosenFrom` label to record it under",
     };
   }

@@ -1,3 +1,4 @@
+import { ObservedOperationStructureWireSchema } from "../../../models/dashboard/operation-structure.js";
 /**
  * Which tabs a run detail advertises, and which one opens.
  *
@@ -13,7 +14,7 @@ import {
   LogPageCursorSchema,
   type LogRowWire,
   type NotePageSchema,
-} from "../../../domain/dashboard/run-detail.js";
+} from "../../../models/dashboard/run-detail.js";
 
 export type NotePage = z.infer<typeof NotePageSchema>;
 
@@ -230,7 +231,12 @@ export function appendLogPage(page: NotePage, requestedCursor: string, next: Not
   }
   const rows = [...existing, ...appended];
   const notes = rows.flatMap((row) => row.kind === "note" ? [row.note] : []);
-  return { runId: page.runId, rows, notes, nextCursor: next.nextCursor };
+  const left = page.operationStructure;
+  const right = next.operationStructure;
+  if (left?.state !== right?.state || (left?.state === "observed" && right?.state === "observed" && left.definition.contentDigest !== right.definition.contentDigest)) throw new Error("log-operation-frozen-definition-mismatch");
+  const operationStructure = left?.state === "observed" && right?.state === "observed"
+    ? ObservedOperationStructureWireSchema.parse({ ...left, observations: [...left.observations, ...right.observations] }) : left;
+  return { runId: page.runId, rows, notes, nextCursor: next.nextCursor, ...(operationStructure === undefined ? {} : { operationStructure }) };
 }
 
 export interface LogPagesState {

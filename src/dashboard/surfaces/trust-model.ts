@@ -1,7 +1,7 @@
 import { settleCommandResult } from "../app/command-result.js";
 import { useEffect, useRef, useState } from "react";
-import { FailureResolutionCommandSchema } from "../../domain/commands.js";
-import { RunDetailSectionResponseSchema } from "../../domain/dashboard/run-detail.js";
+import { FailureResolutionCommandSchema } from "../../rules/commands/commands.js";
+import { RunDetailSectionResponseSchema } from "../../models/dashboard/run-detail.js";
 import type { DashboardClient } from "../client/index.js";
 /**
  * The pure half of `trust.tsx` (the surface/model pairing rule, ref
@@ -14,9 +14,9 @@ import type { DashboardClient } from "../client/index.js";
  */
 import type { z } from "zod";
 import { DashboardClientError } from "../client/index.js";
-import type { DiagnosticBundleWire } from "../../domain/dashboard/diagnostic-bundle.js";
-import type { FailureDetailWireSchema } from "../../domain/dashboard/run-detail.js";
-import type { RunEvidenceReceiptSchema } from "../../domain/trust/evidence.js";
+import type { DiagnosticBundleWire } from "../../models/dashboard/diagnostic-bundle.js";
+import type { FailureDetailWireSchema } from "../../models/dashboard/run-detail.js";
+import type { RunEvidenceReceiptSchema } from "../../models/trust/evidence.js";
 import { fmtClock, plural, shortHash } from "./format.js";
 import { SYSTEM_LABEL } from "./system-chip-model.js";
 
@@ -256,7 +256,7 @@ type ReceiptFact = RunEvidenceReceiptWire["input"][number];
  * The Input section's ONE input-fingerprint footer.
  *
  * `inputFingerprint` is a fact about the RUN (`canonicalInputFingerprint`,
- * `src/core/evidence-receipt.ts`), not about any one field — every fact in
+ * `src/backend/runs/evidence-receipt.ts`), not about any one field — every fact in
  * `receipt.input` whose source is `kind: "input"` carries the identical
  * value. `trust.tsx` used to draw it as `evidenceSourceMeta`'s per-row meta,
  * which printed the same hash on every row (cut to `shortHash`'s 8 chars,
@@ -475,7 +475,7 @@ export function writeProofReadBack(
  * a commit action with no `proved` block means two different things on the
  * two compositions, and only the receipt's own stamp can say which.
  */
-export function writeProofAbsence(composition: 2 | 3 | 4 | undefined): string {
+export function writeProofAbsence(composition: 2 | 3 | 4 | 5 | undefined): string {
   return composition === undefined
     ? "derived before receipts carried write proof (composition 1) — what proved this write was not recorded on it"
     : "no completion proof is in authority for this write — no settled write intent reached it";
@@ -571,4 +571,15 @@ export function useFailureResolution(
     }
   };
   return { current, readError, commandError, pending, note, setNote, submit };
+}
+
+/** Historical transforms are not a complete value unless their source was retained. */
+export function completeEvidenceText(value: Readonly<{
+  state: string;
+  value?: unknown;
+  rawValue?: unknown;
+}>): string {
+  const complete = value.rawValue !== undefined ? value.rawValue : value.state === "allowed" ? value.value : undefined;
+  return complete === undefined ? "Complete value unavailable in this historical record"
+    : typeof complete === "string" ? complete : JSON.stringify(complete);
 }

@@ -1,4 +1,4 @@
-import { ActivityReportSelectionSchema,type ActivityReportSelection } from "../../domain/dashboard/activity-selection.js";
+import { ActivityReportSelectionSchema,type ActivityReportSelection } from "../../models/dashboard/activity-selection.js";
 import { parseOrThrow } from "./query-parse.js";
 import { protocolError } from "./errors.js";
 import { verifySelectionDownload,type SelectionDownload } from "./selection-download.js";

@@ -164,6 +164,7 @@ export interface TestClock extends Clock {
 }
 
 export const systemClock: Clock = Object.freeze({ /* new Date() / Date.now() / performance.now() */ });
+export function capturedInstantClock(instant: string, elapsed?: Pick<Clock, "monotonicMs">): Clock { /* … */ }
 export function manualClock(at: Date, initialMonotonicMs = 0): TestClock { /* … */ }
 ```
 
@@ -171,8 +172,8 @@ Three shape choices are load-bearing. `systemClock` is **frozen at module load**
 monkey-patch the production clock in place and leave it patched for the next file. `TestClock`
 advances wall and monotonic time **independently**, which is what makes skew and elapsed-budget
 behaviour testable without sleeping. And `localDatePart` / `formatTraceTimestamp` are exported pure
-functions taking a `Date`, so the two implementations (`systemClock` and `manualClock`) share one
-formatter rather than agreeing by coincidence.
+functions taking a `Date`, so the clock implementations share one formatter rather than agreeing
+by coincidence.
 
 **Composition with the other contracts (nothing else changes shape — only the `now` input):**
 
@@ -747,7 +748,8 @@ in the catalog's type — that is how §D331.8's precedence rule is enforced rat
 | `runtime-isolation` | every leaf FIXED BY CODE, where a change is a code change and a new process: the five isolation paths `paths.stateRoot`, `paths.artifactRoot`, `paths.browserProfileRoot`, `paths.duoCredential`, `paths.duoExtensionDir` (D121/D216/D321); the nine `urls.<system>.prod` route sets ("production is the code default", §4); `actor.id` (the fixed local-operator id); and the Duo WebAuthn credential FILE (machine-written under the profile root; `credential-file`, read by `requireSecretFile` only) | `config/runtime-isolation.json` + `runtime-paths.ts` + `schema.ts` defaults (a code change), the ceremony | the resolver (paths, prod routes, actor id — provenance `default`, never overridable by any document) / `requireSecretFile` |
 
 **The environment layer of the resolver is RETIRED for catalogued leaves.** After 1.6,
-`CONFIG_ENV_BINDINGS` is empty and `resolve.ts` takes no environment override input at all; its
+The config environment binding registry and its schema/type are removed. `resolve.ts` takes no
+environment override input at all; its
 inputs are (the ordinary document, the host facts, the contract/runtime-path defaults). What remains
 environment-sourced is exactly: provider API keys (through the secrets accessor, never the
 resolver), the `config-default` host display publication (a DEFAULT, not an override), the
@@ -1102,9 +1104,10 @@ NOT AN INPUT to it.
 
 - The catalog's type admits one `sourceClass` per row (§D331.1), so a second source is
   unrepresentable, not merely unadvised.
-- `CONFIG_ENV_BINDINGS` is empty and its registry type is retained only so the guard can assert
-  emptiness; `runtime-environment.ts`'s `config` channel has zero members; `TIMEKEEPER_NAME`'s
-  `config-and-secret` dual channel is deleted with its leaf.
+- No config environment binding registry or binding schema/type remains. The runtime environment
+  audit directly refuses active `config`, `config-and-secret`, `secret` and `provider-model` exact
+  channels; config modules admit no `process.env` access. Host facts remain an explicit resolver input.
+  `TIMEKEEPER_NAME`'s `config-and-secret` dual channel is deleted with its leaf.
 - Every migrated environment key (the 32 config bindings, `UCPATH_USER_ID`, `UCPATH_PASSWORD`,
   `TIMEKEEPER_NAME`, `ONBOARDING_ROSTER_URL`, the two pseudonym keys, the two canary keys, the five
   `OCR_*_MODELS` chain keys, and the five legacy singular `OCR_*_MODEL` spellings once
@@ -1335,7 +1338,7 @@ deleted or renamed proof is a red guard, not silent drift.
 |---|---|---|---|
 | P1 | The catalog is bidirectionally complete: one row per populated `ConfigSchema` leaf, per `SECRET_SPECS` entry (D341 retired `TEST_TARGET_SECRET_SPECS`; 86 rows), per `SECRET_FAMILY_SPECS` family and per `config-default`/process-ownership channel — and no row without a leaf | enumerate every source at test time (never a hand-kept list) and diff both directions; adding a leaf without a row, or a row naming nothing, is red | NEW guard `tests/unit/architecture/settings-catalog.test.ts` + `docs/rebuild/guard-inventory.json` |
 | P2 | One `sourceClass` per row, the `sensitivity` → `sourceClass` pairing is refused when wrong, and every listed consumer exists while every reader of the key is listed | feed the registry's `superRefine` a `protected-secret` row with `sourceClass: ordinary-settings` (and each other illegal pairing) and assert the parse refuses by key; drop a real reader from `consumers` and the guard is red | `settings-catalog.test.ts`; `src/domain/config/catalog.ts` |
-| P3 | `CONFIG_ENV_BINDINGS` is empty and `runtime-environment.ts`'s `config` channel has zero members (the `config-and-secret` dual channel is gone with its leaf) | assert emptiness and zero cardinality directly; any restored binding is red | `settings-catalog.test.ts`, `tests/unit/architecture/runtime-environment-coverage.test.ts` |
+| P3 | No config environment binding machinery remains; runtime environment exact channels have no active config, dual config/secret, secret or provider-model authority. Every migrated key is explicitly refused. | Direct inventory assertions and restored-channel/missing-refusal negative controls; config source scans reject direct, aliased and computed environment access. | `tests/unit/architecture/runtime-environment-coverage.test.ts`, `secrets-single-source.test.ts`, `composition-reads-no-environment-leaf.test.ts` |
 | P4 | The resolver takes no environment input — `resolveConfig(document, hostFacts, clock?)` — and `ConfigProvenanceSchema` is exactly `"settings" \| "default"` | type-level plus runtime: resolve with a hostile `process.env` populated for every retired key and assert byte-identical output and no `"env"` provenance value anywhere | `src/domain/config/resolve.ts`, `provenance.ts`, `tests/unit/config.test.ts` |
 | P5 | L1 — no catalogued protected name is a `ConfigSchema` leaf; `operator.timekeeperName` is deleted, not emptied | walk the parsed `ConfigSchema` leaf paths against the catalog's protected rows and assert an empty intersection | `settings-catalog.test.ts`, `src/domain/config/schema.ts` |
 | P6 | L2 — no protected value is in the `configFingerprint` preimage | derived from P5: assert the fingerprint preimage is `canonicalJsonStringify(config)` and that `config` contains no protected key | `settings-catalog.test.ts`, `tests/unit/config.test.ts` |
@@ -1766,6 +1769,19 @@ open-ordering closes the old-build path. Neither alone would do.
    never regenerates an entry — the operator enters it through §D331.5's protected arm, and until then
    the first credential-needing action refuses by key name.
 
+### D362 — Bounded normal admission mutex contention · 2026-09-29
+
+Ordinary installation admission and release wait up to five monotonic seconds for an occupied
+admission critical section, sleeping between attempts. Only mkdir EEXIST enters this wait; other
+filesystem failures propagate. Recheck private directory shape during contention, including normal
+holder removal races. Waiting does not steal, delete, or reinterpret a mutex owner. Exclusive
+installation lease conflicts still refuse immediately after entering the critical section.
+
+A typed mutex timeout may enter D354 recovery only after a strict published or interrupted owner
+record proves its exact process birth identity gone or reused. Live, unknown, and empty-owner states
+remain busy without recovery. Malformed custody remains a distinct refusal. The existing fixed
+restore admission and complete stopped-system proof still recheck every recovery prerequisite.
+
 ### D354 — Proven abandoned admission mutex recovery at startup · 2026-09-27
 
 An ordinary runtime entrypoint that encounters an occupied installation admission mutex may run
@@ -1879,6 +1895,10 @@ Before writing that configuration, a durable operation-bound activation checkpoi
 native authority/archive snapshots, nonsecret inventory binding, ordinary Settings revision and
 fingerprint, and the selected configuration snapshot identity, contents, fingerprint, and time.
 Recovery reuses this intent rather than selecting a fresh backup or probing a new host configuration.
+The activation transaction uses `capturedInstantClock` for the intent's validated captured instant,
+so durable snapshot and authority timestamps match that exact checkpoint. Its wall instant is
+immutable and each `now()` returns a fresh Date; elapsed budgets still use the live monotonic
+clock. The production adapter exposes only `Clock`, without test-only advance or set operations.
 It accepts only the exact pre-activation authority or the exact transactionally committed intent;
 a third state refuses. This also applies to artifact-only moves, where activation changes the source
 database itself. Credential bytes are compared privately and do not contribute secret-derived
@@ -2058,6 +2078,24 @@ audit and snapshot bytes stay intact. A historical snapshot used for a retained
 production run projects the production routes without changing its stored
 fingerprint. Historical test-instance runs refuse execution. No missing or
 corrupt saved settings may fall back to defaults.
+
+### D365 — Accepted Settings save superseded before readback · 2026-10-02
+
+An authenticated accepted command and a later saved revision are a settled save that has been
+superseded, not an unresolved submission. The Settings editor clears that command's submission
+uncertainty, retains the operator's draft for review, and presents the current saved values through
+its existing conflict state. It does not claim that the retained draft is currently saved and never
+automatically resubmits it. A new write requires the operator to review and retry the retained edit
+against current authority.
+
+A missing or mismatched receipt, failed readback, or unverifiable authority remains unconfirmed
+and retains the immutable exact-attempt retry. Revision order alone cannot authenticate a receipt,
+and an opaque provider source token has no ordering semantics. Ordinary settings, credentials and
+provider keys retain their separate authority, replay and confirmation rules. This decision changes
+the supported recovery classification, not the approved components or layout; a new visible state
+requires separate operator design work.
+
+Implementation and check evidence belong to [W1](../plans/phase-3/dashboard-surface-wiring.md#w1--make-settings-lifecycle-clear-then-wire-confirmed-readback).
 
 ### D346 — Settings values on the local operator surface · 2026-09-24
 
@@ -2611,48 +2649,16 @@ source-provenance closure. Runner provenance survives object/array property sele
 destructuring. The current derived root is `vite.dashboard.config.ts`, pinned so package-script
 drift is reviewed. Strings, comments and type-only imports are deliberately inert controls.
 
-Today the tree is stricter than the contract requires: `resolve.ts` takes `env: NodeJS.ProcessEnv`
-as a parameter and reads nothing, so the config owner's permission is currently unexercised.
+The resolver takes ordinary configuration and explicit host facts; it has no environment
+parameter or config environment binding registry.
 
-**`no-secret-values-in-logs.test.ts`** — the companion. `secrets-single-source` decides WHO may read
-a credential; this one decides WHAT may be said about it, because the moment a value is spliced into
-a string it has left the classification behind and every downstream writer copies it verbatim. It
-scans **every template-literal interpolation in `src/**`** (a thrown `Error` message is as durable as
-a log line) and **every argument to a `log.*` / `console.*` call** (so a bare `log.info(password)` is
-caught without a template). A name is sensitive when its normalized form contains one of fourteen
-roots — `password`, `passwd`, `passphrase`, `secret`, `credential`, `privatekey`, `apikey`,
-`accesskey`, `authtoken`, `bearertoken`, `sessiontoken`, `refreshtoken`, `cookie`, `storagestate`,
-`ssn`. Descriptor suffixes exempt the companions that DESCRIBE a credential (`secretName`,
-`credentialPath`, `tokenCount`, `…Spec`, `…Env`, `…Classification`), and `key`/`keys`/`state` are
-deliberately NOT on that list, because `apiKey`, `secretKey`, `privateKey` and `storageState` all
-carry the value. Its allowlist is empty too.
-
-The closed direct-identifier family also covers employee/timekeeper names and the EID spellings
-used by the codebase, including `eid`, `emplId`, `documentEid`, `employeeId`, and the reviewed
-observed/expected/query variants. Presentation templates are exempt only when they are the direct
-return expression that renders typed UI; a nested callback or local template is still a violation.
-Runtime diagnostics project a bounded digest reference instead of a raw identifier, while typed UI
-keeps a full EID as structured React content rather than first collapsing it into an opaque string.
-The direct-identifier allowlist remains empty.
-
-The scanner follows scoped aliases through declarations, assignments, single-return functions,
-destructuring, direct object-literal payloads (property, shorthand, static-computed and spread
-forms), object/array packing and property reads, including locally resolvable computed-key aliases
-at both construction and read, as well as concatenation, conditionals, arrays, `join`, `String` and
-`JSON.stringify`. A computed read whose key remains dynamic fails closed when the container's
-provenance carries a sensitive value. It resolves aliased `Error`, `new Error`, logger/console calls
-and `ctx.fail` as diagnostic sinks; console/logger method identity survives object/array packing,
-property selection, destructuring, aliasing and `call`/`apply`/`bind`, with unresolved selection
-from a sink-bearing container treated as a sink.
-Structural EID/EMPLID suffixes cover target/person/current variants while
-reviewed schema/field/path names and equality predicates remain descriptors. Alias provenance is
-resolved before a descriptor-looking local name can claim an exemption. Natural idempotency-key
-bindings join the closed sensitive family even
-though their stable business identity is still retained in authority. A sanitizer exemption exists
-only when the call resolves to the canonical imported helper in `src/domain/redaction.ts`; a local or
-shadowed look-alike remains a violation. Likewise, the two descriptor-only exceptions are tied to the
-real imported `defineWorkflowDescriptor` call: direct `presentation.title`/`subtitle` returns and the
-durable `identity.matchKey` callback. Look-alike objects and shadowed factories receive no exemption.
+**D361 — complete local supplied values.** The [local-evidence owner](operator-trust.md#d361--complete-local-operator-evidence--2026-10-01)
+permits complete values already supplied to authorized classified local capture and presentation.
+It adds no credential reader or secret lookup. `secrets-single-source` continues to enforce closed
+reader and environment ownership; raw credential-named interpolation still needs a classified
+boundary, with the exact local identifier-display symbol admitted by the retained guard.
+Receipt compositions 1–4 remain exact; new composition 5 retains complete local facts. D346's
+provider transforms and repository-authored OS notifications remain separate and unchanged.
 
 ### The planned successor: the OS keychain, behind this accessor
 

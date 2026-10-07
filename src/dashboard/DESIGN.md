@@ -19,7 +19,7 @@ Three adaptations for a reader in THIS tree (a third was undisclosed until Track
   - "one import (`demo-ui.tsx`)" is `src/dashboard/ds/ui.tsx` here (not `ui.ts` — the barrel is a
     `.tsx` file). The rule is unchanged: surfaces import the barrel, never `ds/*` directly.
   - the guards this document says are enforced live in
-    `tests/unit/architecture/helpers/ratchet-arms.ts` as the `frontend-tailwind-compliance` arm,
+    `tests/architecture/helpers/ratchet-arms.ts` as the `frontend-tailwind-compliance` arm,
     not in a file of their own. Precisely: legacy's arm ran four checks (reduced-motion coverage,
     the z-index scale, image loading discipline, palette/hex); this port dropped three and shipped
     only palette/hex, and this document went on asserting "guard enforced" for the reduced-motion
@@ -62,6 +62,15 @@ the macOS system UI font (San Francisco) through the dashboard sans token.
     carry a `specimen-` prefix (`dashboard-wire-boundary` forbids a registered workflow-id literal
     under `src/dashboard`), and the dirty `ValueField` is a real controlled field.
 -->
+
+**Current visual acceptance (2026-10-02).** This brief and the retained demo remain design
+references. The parity suite and reference corpus were retired; historical visual receipts do not
+prove current acceptance. Future visual-test design is operator-led, and this note does not claim a
+refreeze or new visual acceptance.
+
+**Current Logs theme scope (2026-09-30).** Logs is the first surface using the reusable Tailwind v4
+palette and type scale. See [DASHBOARD-THEME.md](ds/DASHBOARD-THEME.md) for its tokens and incremental
+adoption guidance; `.ui-theme-scope` keeps the new palette opt-in for existing DS controls.
 
 # Rebuild demo — design brief
 

@@ -25,7 +25,7 @@ import type { z } from "zod";
 import { cn } from "../lib/utils.js";
 import { Banner, DS_STATUS, EmptyState, MetaLine, dsIcon, dsRadius, dsText } from "../ds/ui.js";
 import { ReceiptEvidenceBody } from "./trust.js";
-import type { RunDetailSectionResponseSchema } from "../../domain/dashboard/run-detail.js";
+import type { RunDetailSectionResponseSchema } from "../../models/dashboard/run-detail.js";
 import { receiptConfidenceChip, receiptIdentityItems } from "./receipt-model.js";
 import { testInstanceSystems } from "./test-instance-hazard.js";
 import type { OutcomeWire, TerminalOutcomeResult } from "./status-model.js";

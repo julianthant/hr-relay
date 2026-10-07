@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { SavedArchiveReportWireSchema } from "../../domain/dashboard/archive.js";
-import { ArchiveGroupQuerySchema, ArchiveQuerySchema } from "../../domain/archive/report.js";
+import { SavedArchiveReportWireSchema } from "../../models/dashboard/archive.js";
+import { ArchiveGroupQuerySchema, ArchiveQuerySchema } from "../../models/archive/report.js";
 
 export const ArchiveBrowseStateSchema = z.strictObject({
   filters: ArchiveGroupQuerySchema.extend({ workflow: z.string().min(1).max(160).optional(),

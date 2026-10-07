@@ -7,7 +7,7 @@
  * surface invalidate upward into `dashboard-app.tsx` and remount the app
  * instead of hot-swapping the component.
  */
-import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
+import type { ActionDescriptorWire } from "../../models/dashboard/actions.js";
 
 /**
  * Which typed resolution a served descriptor names. Nothing else may open this
@@ -19,4 +19,26 @@ import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
 export function identityGateArm(action: ActionDescriptorWire): "approved" | "rejected" | undefined {
   if (action.kind !== "command" || action.command !== "resolve-gate") return undefined;
   return action.resolution;
+}
+
+
+import type { IdentityGateDetail } from "../app/identity-ceremony.js";
+
+const JOB_DISPOSITION_LABEL = {
+  "single-active-job": "One active job", "no-active-job": "No active jobs",
+  "concurrent-active-jobs": "Multiple active jobs", "indeterminate-status": "Employment status unknown",
+} as const;
+
+export function identityComparisonRows(gate: IdentityGateDetail) {
+  const { packet } = gate;
+  return packet.comparisons.map(row => {
+    switch (row.field) {
+      case "name": return { ...row, label: "Name" };
+      case "eid": return { ...row, label: "Employee ID" };
+      case "employment": return { ...row, label: "Employment", documentValue: "Separation request", ucpathValue: `${JOB_DISPOSITION_LABEL[packet.jobs.disposition]} · ${String(packet.jobs.rowCount)} record(s)` };
+      case "name-search": return { ...row, label: "Name search", documentValue: packet.documentName,
+        ucpathValue: packet.nameSearch.status === "resolved" ? `${packet.nameSearch.candidate.name} · ${packet.nameSearch.candidate.eid}`
+          : packet.nameSearch.status === "ambiguous" ? `Multiple candidates · ${packet.nameSearch.candidateEids.join(", ")}` : "No matching employee" };
+    }
+  });
 }

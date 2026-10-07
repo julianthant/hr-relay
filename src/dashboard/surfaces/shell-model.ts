@@ -1,11 +1,11 @@
 import { useCallback,useState } from "react";
 import { z } from "zod";
-import { WorkflowBootstrapPrimitiveSchema } from "../../domain/dashboard/bootstrap.js";
+import { WorkflowBootstrapPrimitiveSchema } from "../../models/dashboard/bootstrap.js";
 import type {
 QueueSurfaceWireSchema,
 StatusCountWireSchema,
 WorkflowCountWireSchema
-} from "../../domain/dashboard/projection.js";
+} from "../../models/dashboard/projection.js";
 import { dsFocus,dsMotion,dsRadius,dsText } from "../ds/ui.js";
 import { readEnumPreference,writePreference } from "../lib/preference-storage.js";
 import { cn } from "../lib/utils.js";

@@ -1,36 +1,57 @@
 # 10 — Guards & Tests: the test suite and the guard umbrella
 
-Status: **as-built through 2026-09-02, and normative for the testing tiers R10 ratifies.** Every
-guard named here is checked against `docs/rebuild/guard-inventory.json` and
-`tests/unit/architecture/` at HEAD, never against this document's own earlier prose (D252). At HEAD
-the tree carries **81 inventory entries — 70 active, 9 retired, 2 planned**, exactly 70 files under
-`tests/unit/architecture/`, nine executable ratchet arms in
-`tests/unit/architecture/helpers/ratchet-arms.ts`, 17 scenario files under `tests/scenario/`, 222
-parity reference triples, and a measured `test:coverage` of **87.34 % lines / 85.40 % statements /
-89.41 % functions / 76.39 % branches** (28,534 / 33,412 statements). §10 is the normative half:
-`tests/` is organized by **what a test needs**, and every test that must RUN a workflow is a live
-dry-run scenario.
+Status: **guard ownership and gate policy are current; the R10 scenario/parity tier specification is
+historical.** D363 retired `tests/scenario/` and `tests/parity/` on 2026-10-02. Current
+suite roots and boundaries are in the [codebase map](codebase-structure.md); future scenario and
+visual-test design requires a separate operator-led task. Workflow-declared scenario IDs remain
+contract data, not proof that tests executed. If a rehearsal manifest is missing, report it
+unavailable before execution. Unit fixtures that inject scenario inputs prove only their unit
+behavior, not production scenario execution. Counts and gate results below refer to their dated
+evidence, not the current tree.
 
-**Where to start.** §10 if you are writing tests or adding a workflow. §5.1 if you are adding or
+**Where to start.** Current test roots and gate policy are in the codebase map and §3.14. §5.1 if you are adding or
 retiring a guard. §2 and §3 for what each guard actually holds. §11 is the phase-by-phase activation
 ledger — history, kept because "which guard activated when, and what was deliberately NOT activated"
 is the record that stops a planned guard being reported as green.
 
+<a id="scenario-and-parity-suite-retirement--2026-10-02"></a>
+
+## D363 — Scenario and parity suite retirement — 2026-10-02
+
+The operator retired `tests/scenario/`, `tests/parity/`, their exact suite-only cases and the parity
+reference corpus. The [current codebase map](codebase-structure.md) is the single current test-tree
+home. Section 10 and older parity receipts remain dated history, not active commands, coverage
+claims or visual acceptance. Workflow-declared scenario IDs remain contract data, not test evidence;
+synthetic fixtures do not substitute for production scenario proof. An absent rehearsal manifest
+reports unavailable before execution. The Explorer's scenario source links remain unresolved, and
+edits requiring scenario compile evidence are blocked pending operator-led test design.
+
+`parity-reference-authority` retired with its sole parity lane. `scenario-coverage` and
+`test-target-registry` remain active for their retained pure graph and shared test-target invariants;
+five corpus cases and five T1b-manifest cases were retired from those mixed guards. Other semantic,
+import-boundary, provenance and write-safety guards remain. Coverage floors are unchanged. Dashboard
+TSX is no longer excluded solely for the retired parity lane; instrumentation does not itself
+execute UI behavior. Exact suite and sole-consumer case scope is recorded in the
+[layout-polish amendment](../plans/phase-3/backend-and-unit-tests.md#layout-polish--finish-the-approved-structure-before-phase-3)
+and [retirement ledger](</Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/backend-layout-polish/implementation/retirement-and-freeze.json>);
+the retained/retired cases for `scenario-coverage` and `test-target-registry` are pinned in their
+[guard receipts](</Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/backend-layout-polish/implementation/scenario-guard-retirement.json>)
+and [test-target receipt](</Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/backend-layout-polish/implementation/test-target-guard-retirement.json>).
+
 Owns gap-audit (`08`) BLOCKER #2: ratchet port map, safety guards, descriptor projection coverage,
-guard inventory, TDD topology, the testing tiers, and the live lane.
+guard inventory, current test-scope policy, and gate cadence.
 
 ## Ownership header (D1)
 
 | | |
 |---|---|
-| **This doc OWNS** | The test/guard suite: ratchet inventory, strict-boundary/driver/subject/control/delegation/storage guards, transaction/write/outbox/provenance/artifact safety guards, descriptor projection coverage, accidental-shrink meta-test, **the testing tiers and the `tests/` layout (§10)**, the subject registry, the dry-run scenario contract, and the live lane. |
-| **Imports (never redefines)** | Task contract / `effect` / `example` / `fakeCtx` / mutation primitive / dry-run overloads — **ref task-contract**. Descriptor shape + `descriptor-coverage.test.ts` §1.4 + run-state/checkpoint/delegation — **ref workflow-model**. Span/event schema + command protocol + storage recovery + notifications + completion and the cross-repo runtime/cutover boundary — **ref dashboard-surfaces**. Worker/session/sleep-budget guards, the worker pool and the Duo ceremony lease — **ref execution-and-sessions**. Receipt/idempotency/fence/subject contract and the dry-run beat order — **ref write-safety**. Clock/config/secrets single-source — **ref clock-config-secrets**. Semantic UI registry, scenarios, evidence, knowledge/fix records, editor projections — **ref operator-trust**. The visual/a11y parity lane's own contract — **ref frontend-backend-integration §7**. |
+| **This doc OWNS** | Current guard inventory, ratchet and safety-guard policy, descriptor projection coverage, accidental-shrink protection, current test-scope policy and gate cadence. |
+| **Imports (never redefines)** | Task contract / `effect` / `example` / `fakeCtx` / mutation primitive / dry-run overloads — **ref task-contract**. Descriptor shape + `descriptor-coverage.test.ts` §1.4 + run-state/checkpoint/delegation — **ref workflow-model**. Span/event schema + command protocol + storage recovery + notifications + completion and the cross-repo runtime/cutover boundary — **ref dashboard-surfaces**. Worker/session/sleep-budget guards, the worker pool and the Duo ceremony lease — **ref execution-and-sessions**. Receipt/idempotency/fence/subject contract and the dry-run beat order — **ref write-safety**. Clock/config/secrets single-source — **ref clock-config-secrets**. Semantic UI registry, evidence, knowledge/fix records and editor projections — **ref operator-trust**. |
 | **Charter bindings** | "Same quality umbrella from day one"; "fail loud"; §1a fill/submit split is the dry-run safety model. Descriptor SSOT replaces parity lists in the rebuild repo; the legacy repo's own guard tests remain through initial cutover. |
 
-**One-sentence thesis.** ONE place owns *how* every doc's per-§ guard promise lands in
-`tests/unit/architecture/`, what each of the nine ported ratchet arms scans, why descriptor
-projection coverage replaces parallel parity lists, and — since R10 — **what a test needs in order to
-run**, because that is the only split that tells an agent which suites a change must re-run.
+**Current thesis.** ONE place owns how guard promises are recorded and verified, what each active
+ratchet scans, and the current focused/phase-exit gate cadence. The former scenario/parity tiers are
+preserved below as historical design evidence only.
 
 ---
 
@@ -445,7 +466,16 @@ read while still permitting replay-safe browser downloads.
   unions are exhaustive; unknown keys fail. AST guards reject exported persistence/wire interfaces
   with no schema, decision-bearing `Record<string,unknown|JsonValue>`, `any`, unchecked `as`, and
   catch/default parsing at these seams. Runtime corruption fixtures exercise JSONL, SQLite, HTTP,
-  SSE, and config reads.
+  SSE, and config reads. D355/D356's exact operation-display authoring/compiler symbols and
+  validated snapshot-identity argument are in-process APIs; their symbol-level classification
+  permits no additional export or unsafe source construct in either module.
+- **`workflow-operation-display-boundary.test.ts`.** D355/D356 declarations retain a browser-safe
+  runtime import closure with no Node builtin, browser runtime, or store/driver implementation.
+  Only compiler-produced complete displays freeze into recursively strict JSON snapshots. The
+  real reader refuses unknown nested fields, executable values, missing complete structure,
+  mismatched envelope identity and altered content digests. Import-closure and durable-boundary
+  negative controls accompany the valid compiler-produced round-trip; legacy capability remains
+  the explicit active result for definitions without complete declarations.
 - **`canonical-input-snapshot.test.ts`.** Ingress input applies defaults/coercions/transforms once;
   the stored canonical value round-trips through the descriptor's validation-only `canonicalInput`
   schema on every DB/resume read. A deliberately non-idempotent transform proves resume does not
@@ -453,9 +483,10 @@ read while still permitting replay-safe browser downloads.
 - **`semantic-ui-registry.test.ts`.** Every driver action/observation/page-state dependency resolves
   to one same-system canonical registry id. IDs are unique; search terms never create identity;
   `supersedes` references resolve without cycles. Entries have owner/intent/state/selector-strategy/
-  verification metadata and scenario refs. Generated `UI-CATALOG.md` must match the registry.
-  Removed ids require an explicit `supersedes` migration that updates all dependents—never a second
-  name for the same element.
+  verification metadata and scenario refs. Removed ids require an explicit `supersedes` migration
+  that updates all dependents—never a second name for the same element. The generated UI catalog
+  and its byte-freshness check were retired by operator amendment on 2026-10-01; semantic registry
+  and verification proofs remain.
 - **`task-driver-boundary.test.ts`.** Task/workflow modules cannot import Playwright types, driver
   internals, selector registry implementation, or call `locator/newPage/evaluate` directly. Public
   driver signatures reject selector strings, Page, Locator, and untyped maps; they expose domain
@@ -707,7 +738,7 @@ new readers, any other audit method, or any write outside the kernel fails the g
   system acceptance, which remains with 3.1.19.
 - **`provider-capability-boundary.test.ts`.** Every service task with remote I/O declares a D63
   capability and receives only its narrowed injected client. Direct provider SDK/raw network imports
-  are allowed only in registered `infra/providers/**` adapters. Every capability has timeout/abort,
+  are allowed only in registered `src/backend/processing/providers/**` adapters. Every capability has timeout/abort,
   concurrency/rate admission, config/secret preflight, redaction, evidence, and unavailable/invalid
   scenarios; every adapter has a consuming contract. Scheduler fixtures prove an exhausted provider
   cannot bypass its provider budget or occupy a worker indefinitely.
@@ -839,7 +870,7 @@ marker advanced.
 directions plus two extras, and the checked-in empty set is correct against the as-built — but its
 "a store now implements this, delete the entry" arm had **no fixture**, so it was enforced only by
 the empty set happening to be right. An empty allowlist cannot prove an arm; it now has one.
-`provider-capability-boundary`'s exact `src/infra/providers` file list is airtight in the
+`provider-capability-boundary`'s exact `src/backend/processing/providers` file list is airtight in the
 tree→guard direction, but two defects sat on the other side: `ADMISSION_MODULE_IMPORTERS` listed
 the admission module as its own importer (unreachable — the arm resolves *imports*), and the D68
 declared provider inventory had drifted from the built adapter tree with nothing watching (groq,
@@ -1145,15 +1176,17 @@ and intermediate integration. Phase 3.1 and earlier admitted assignments keep th
 
 | Stage | Required verification |
 | --- | --- |
-| Task/subtask implementation and integration | Add or update meaningful regression coverage. Run `npm run test -- <exact affected test paths>`, scoped lint with zero warnings, and the type/static/generated checks affected by the change. Bind actual paths and commands in the brief. Repair failures now; do not defer a red focused check. No whole test/architecture suite, full coverage or broad parity run per task/group. |
-| Phase exit | Run `npm run typecheck`, `npm run lint`, then `npm run test:coverage`; coverage includes unit, architecture and scenario projects, so do not append duplicate whole-suite runs. Also run every applicable phase-wide parity, generated-freshness, build, performance, recovery and live acceptance gate. Fix failures, rerun invalidated focused checks and re-establish the full exit gates on the corrected combined tree before phase completion. |
+| Task/subtask implementation and integration | Add or update meaningful regression coverage. Run `npm run test -- <exact affected test paths>`, scoped lint with zero warnings, and the type/static/generated checks affected by the change. Bind actual paths and commands in the brief. Repair failures now; do not defer a red focused check. No whole test/architecture suite or full coverage per task/group. |
+| Phase exit | Run `npm run typecheck`, `npm run lint`, then `npm run test:coverage`; coverage includes the registered unit, integration and architecture projects, so do not append duplicate whole-suite runs. Also run every applicable phase-wide generated-freshness, build, performance, recovery and live acceptance gate. Scenario and visual-test requirements are operator-led, not implied by this cadence. Fix failures, rerun invalidated focused checks and re-establish the full exit gates on the corrected combined tree before phase completion. |
 | Documentation/evidence only | Use the existing documentation-only and unchanged-input rules below; a recording-only commit is not another full test cycle. |
 
 A phase here is an executable delivery part: 3.2, 3.3, 3.5, each admitted 4.x, 5A/5B and each
 scheduled 6A–6F part. Optional 3.4 binds a selected feature batch and one end-of-batch full gate;
 unselected features are never release prerequisites. A later batch gets its own exit evidence.
 The owning plan names the final gate outcome and carries an explicit list of deferred broad checks.
-Focused PASS is task evidence, not proof that those deferred checks passed.
+Focused PASS is task evidence, not proof that those deferred checks passed. The 2026-10-02
+operator amendment separately retires the scenario and parity suites; this is not a change to the
+coverage floors or to retained semantic guards.
 
 Independent reviews remain as required by the owning phase. Phase 3.2's final audit/freeze remains
 read-only: a defect returns to bounded remediation and restarts the audit. Phase 3.3 may not repair
@@ -1199,6 +1232,12 @@ all-project targeted convenience and `test:architecture` is the guard-only targe
 neither is an additional per-commit obligation. The 2026-08-12 timings above remain the historical
 evidence that adopted D191, not a claim about today's topology or runtime.
 
+**2026-09-30 Phase-1 tier amendment.** The current gate collects four disjoint projects: `unit`,
+`integration`, `architecture`, and `scenario`. A suite that exercises real storage, a process,
+socket, browser or composed workflow moves intact to integration; `test:unit` selects only
+deterministic units. The earlier three-project statement records the 2026-09-02 adoption state.
+This changes neither retained test membership nor D91's coverage floors.
+
 **2026-09-05 test-run reliability amendment (operator-approved maintenance).** The npm gate
 names, test membership, four-worker ceiling, timeouts, suite-size assertion and coverage floors stay
 unchanged. Batch Vitest entrypoints now execute through `scripts/test-runner.ts`, which launches
@@ -1227,7 +1266,7 @@ checks and zero counted pixel-difference allowance are unchanged. Child progress
 remain visible. This bounds silent hangs; sustained output from a stuck child is not proof of
 progress and is not detected by this inactivity bound.
 
-Regression evidence lives in `tests/unit/scripts/test-runner.test.ts` and the existing parity JSON
+Regression evidence lives in `tests/integration/scripts/test-runner.test.ts` and the existing parity JSON
 and gate-manifest suites: real child success/failure, silent stall, worker/parent SIGKILL, live-group
 preservation, safe reclamation, path/ownership refusal and actual failing Vitest CLI execution.
 
@@ -1584,18 +1623,19 @@ nobody notices the umbrella shrank. Extends the existing `gate-coverage` meta-gu
 
 `docs/rebuild/guard-inventory.json` is the reviewed design inventory (owner, invariant, replacement
 required on removal); under D93 it travels with the plan docs into the rebuild repo, where
-`tests/unit/architecture/guard-manifest.test.ts` loads it rather than defining a second inline name
+`tests/architecture/guard-manifest.test.ts` loads it rather than defining a second inline name
 set. The test asserts:
-1. every inventory name maps to a real file recursively under `tests/unit/architecture/`;
+1. every inventory name maps to a real file recursively under `tests/architecture/`;
 2. every recursively discovered `*.test.ts` file is in the inventory (no unregistered guard — forces a
    conscious add, and forces this doc's inventory to stay honest);
-3. the named `unit`, `architecture`, and `scenario` Vitest projects form one exhaustive,
+3. the named `unit`, `integration`, `architecture`, and `scenario` Vitest projects form one exhaustive,
    non-overlapping collection of every offline authored `*.test.ts`/`*.test.tsx` file; the future
    live-dependent combined tier stays uncollected until it has its own runner; architecture includes
-   the complete recursive guard directory exactly, `unit` excludes it exactly, the architecture
+   the complete recursive guard directory exactly, `unit` and `integration` use disjoint roots, the architecture
    project excludes nothing, and `test:architecture` selects only that project while forcing empty
    collection to fail; an
-   independently collected unit test exercises that refusal so
+   independently collected integration process test exercises that refusal, while pure unit
+   policy tests reject empty, duplicate and orphaned injected listings, so
    the architecture lane cannot be its sole witness (a rename or nested guard cannot orphan or
    double-run it);
 4. every active rebuild-`src/` scan resolves at least one file; a family is activated in the same
@@ -1663,9 +1703,9 @@ makes no stronger mechanical claim.
 
 The inventory is the one machine-readable place the umbrella is enumerated. Each doc owns its
 guards' contracts; the manifest owns that they exist and stay wired. **This list is the as-built set
-at HEAD, read from `docs/rebuild/guard-inventory.json` — 81 entries: 70 `active`, 9 `retired`, 2
+at HEAD, read from `docs/rebuild/guard-inventory.json` — 97 entries: 85 `active`, 11 `retired`, 1
 `planned`** — not an aspiration. `guard-manifest.test.ts` compares the active `file` list against a
-recursive walk of `tests/unit/architecture/` with `deepEqual`, which is bidirectional by
+recursive walk of `tests/architecture/` with `deepEqual`, which is bidirectional by
 construction and has one consequence worth stating outright: **a retired or planned guard's
 `.test.ts` file must not exist on disk**, or the walk finds a file the inventory does not claim.
 
@@ -1895,8 +1935,10 @@ arm. *Red-capable oracle, two halves.* Compile-time: the `env` parameter is FIRS
 `resolveConfig` (`src/domain/config/resolve.ts:415`) and `resolveConfigWithProvenance` (`:419`), so
 removing it is red at every one of the nine composition call sites — no silent widening is possible.
 Runtime: P4 resolves with a hostile `process.env` populated for every retired key and asserts
-byte-identical output and no `"env"` value anywhere; P3 asserts `CONFIG_ENV_BINDINGS` (`resolve.ts:241`)
-is empty and `runtime-environment.ts`'s `config` channel has zero members. Note for 1.6: `resolveConfig`
+byte-identical output and no `"env"` value anywhere. P3 directly asserts zero forbidden active exact
+environment channels and explicit refusal for every migrated key; restored-channel and removed-refusal
+negative controls exercise the runtime audit. Config modules are scanned for direct, aliased and
+computed environment access. No config binding schema/type or empty registry remains. Note for 1.6: `resolveConfig`
 has zero `src/` callers today but THIRTEEN files import it (ten under `tests/unit/**`, two under `tests/parity/helpers/**`, and `scripts/live-browser-login-smoke.ts:57`, inside the `typecheck` program — corrected 2026-09-04 by R04 from "five test files"), so its deletion is a test AND scripts edit too —
 §D331.11 P39's "changed deliberately in the same commit" rule covers exactly this.
 
@@ -2010,6 +2052,14 @@ read (§D332.9 rule 4) — the deletion and its proof are one commit, or the ada
 <!-- /roadmap-status -->
 
 "Same quality umbrella, made concrete." A new task or workflow is built **test-first** against these:
+
+The current local execution layout distinguishes deterministic units from integration proofs.
+`tests/unit/` may read a tracked fixture or wire a DOM component with injected ports. A test that
+actually opens SQLite (including `:memory:`), a server socket, a child process, a browser, or a
+composed workflow belongs under `tests/integration/`; a mixed suite moves intact until its owner
+extracts pure cases. Structural repository guards live under `tests/architecture/`. Scenario and
+browser parity sources retain their separate owners. The four write-order tiers below describe
+how new task evidence accumulates; they do not make a real database test a unit.
 
 1. **Pure-logic unit** — `task.impl.run({ input, ctx: fakeCtx })`. Ref task-contract §7B makes every task run a
   plain-object call; the `fakeCtx` contract uses the matching effect-specific ctx with a fake typed
@@ -2177,7 +2227,13 @@ Net: the safety suite plus descriptor projection coverage replace synchronized h
 guards—one contract change, and the compiler plus ratchets force the rest.
 
 
-## 10. The test family, and the split by what a test needs (R10)
+## 10. Historical R10 test family and retired scenario/parity tiers
+
+The specification below records the former R10 scenario/parity test tiers and their dated
+implementation. The operator retired both suites on 2026-10-02. Keep this material for provenance,
+but do not use its paths, counts, commands or checklists as current test requirements. Current test
+roots and active guard status live in the [codebase map](codebase-structure.md), the retirement
+amendment above and the guard inventory.
 
 
 - [x] DOCS the spec — §10 rewritten as-built with the tiers, layout, naming, run policy, subject registry, durable result and the two checklists (this commit)
@@ -2192,9 +2248,10 @@ guards—one contract change, and the compiler plus ratchets force the rest.
 > 2026-08-25 | test-tiers | registry, authority row and CLI runner built; the finalization canary now records `blocked`/`not-started` before browser composition because its honest subject is unavailable until 2026-08-28. The T1 PROOF remains open until that manifest records `met`
 > 2026-09-02 | test-suite-rationalization R5a | the T1a structural half is complete for all seven registered workflows: each owns exactly one `workflows/<workflow-id>/structural.scenario.test.ts`, the architecture lane refuses split/flat ownership, and all structural person/document identities are synthetic. The overall T1 item remains open: only `separations` and `separations-kuali-finalization` have T1b manifests, and their sole retained canary is honestly `gone`/blocked rather than `met`.
 
-This section is normative and it is the one an agent writing tests reads first. **R10's rule:
-`tests/` is organized by what a test NEEDS in order to run**, because that is the only split that
-answers the question every change actually asks — *which suites must I re-run?* A split by subject
+This was the normative R10 test policy; the operator retired its scenario and parity tiers on
+2026-10-02. The remaining specification is retained as decision history, not current instructions.
+**R10's former rule was: `tests/` is organized by what a test NEEDS in order to run**, because that
+was the split intended to answer the question every change asked — *which suites must I re-run?* A split by subject
 (“the separations tests”) cannot answer it; a split by mechanism (“unit vs integration”) cannot
 either. A split by need can: a test that needs nothing but the tree runs on every commit, and a test
 that must RUN a workflow needs a browser, a real system and a real subject, so it runs when somebody
@@ -2202,27 +2259,30 @@ asks for it and its result is recorded.
 
 ### 10.1 The test family, as built
 
-Ten members. Folder, runner, when it runs, what it may touch, what it proves. R7 refreshed the
-family-wide census and taxonomy on 2026-09-02.
+Eleven members. Folder, runner, when it runs, what it may touch, what it proves. R7's
+2026-09-02 census labels below are historical; the current four-project collection and tier
+boundary are in §10.9 and §6.
 
 | family | folder | runner | when | may touch | proves |
 |---|---|---|---|---|---|
-| **unit** | `tests/unit/**` (306 files / 111,789 lines, architecture excluded) | vitest project `unit` | every commit | pure functions, fake ctx, temp dirs, its own SQLite files under a temp root — **never** a real runtime root (`test-runtime-root-isolation`) | one module's decision logic, against its own schemas |
-| **architecture guards** | `tests/unit/architecture/**` (70 files / 27,587 lines) | vitest project `architecture`; `npm run test:architecture` selects that project by name | every commit | this repository as DATA — source text, ASTs, registries, `package.json`, and TypeScript configs; authenticated frozen provenance may describe legacy facts, but no finished gate reads the legacy checkout | that a rule holds everywhere, and — through `guard-manifest` — that each of the nine arms still fires against a violating fixture |
+| **unit** | `tests/unit/**` | vitest project `unit`; `npm run test:unit` selects only this project | focused Phase-1 iteration and the full gate at phase exit | pure functions, fake ctx, fixture reads and injected-port DOM wiring; no exercised database, process, socket, browser or composed workflow | one module's deterministic decision logic, against its own schemas |
+| **integration** | `tests/integration/**` | vitest project `integration`; `npm run test:integration` selects only this project | explicit later execution and the applicable full gate at phase exit | isolated real storage, processes, sockets and composed workflows; **never** a real runtime root (`test-runtime-root-isolation`) | actual adapter and composition behavior that a pure unit cannot establish |
+| **architecture guards** | `tests/architecture/**` | vitest project `architecture`; `npm run test:architecture` selects that project by name | focused affected checks and the full gate at phase exit | this repository as DATA — source text, ASTs, registries, `package.json`, and TypeScript configs; authenticated frozen provenance may describe legacy facts, but no finished gate reads the legacy checkout | that a rule holds everywhere, and — through `guard-manifest` — that each registered arm still fires against a violating fixture |
 | **fixture scenarios** | `tests/scenario/*.scenario.test.ts` (6 capability files) + `tests/scenario/workflows/<workflow-id>/structural.scenario.test.ts` (7 T1a files) + `tests/scenario/dashboard/**` (3 T2 files) | vitest project `scenario` | every commit | `walkDescriptor` over a real descriptor with caller-supplied node outputs; fake stores or one isolated authority database; no browser | that one declared graph or dashboard command/projection path binds, refuses and terminates as authored, and that graph coverage points claimed are the ones walked |
 | **integration walks** | `tests/scenario/*.walk.test.ts` (1) | vitest project `scenario` | every commit | ONE real authority database and the production read models | the JOINS only composition can falsify; it claims no coverage point and carries no manifest row (D185) |
-| **dashboard unit tests** | `tests/unit/dashboard/**` (102 files) | vitest project `unit` | every commit | extracted `*-model.ts` decisions plus wiring-level `jsdom` tests that opt in per file; anything visual stays in parity | that a surface's pure half computes what it claims and its wiring dispatches/focuses as contracted |
+| **dashboard unit tests** | `tests/unit/dashboard/**` | vitest project `unit` | focused affected checks and the full gate at phase exit | extracted `*-model.ts` decisions plus wiring-level `jsdom` tests with injected ports; anything visual stays in parity | that a surface's pure half computes what it claims and its wiring dispatches/focuses as contracted |
 | **parity** | `tests/parity/**` — 17 specs, **281 cases**, **222 reference triples** (`.png` + `.a11y.yml` + `.meta.json`) | `npm run test:parity` (Playwright, outside Vitest and coverage) | on a dashboard change, and before a slice closes | the built bundle over ephemeral fixture and seeded BFFs; never ports 3938/5174 | that the rendered pixel/a11y/browser contract has not moved; every stored reference half is asserted, `maxDiffPixels: 0`, and dual-adapter structure proves fixture relevance |
 | **performance budgets** | `tests/perf/dashboard-benchmark.ts` | `npm run perf:dashboard` plus unit negative controls | before a slice closes and after a measured dashboard data-path change | one deterministic seeded authority database under a temp root; no production ports or runtime root | exact non-duration bounds on day-wire SQL, patch reparses, log scope, archive freeze and member-preview delta; elapsed timings remain observational because host contention is not a stable correctness oracle |
-| **the recovery drill** | inside `storage-recovery.test.ts` | vitest project `unit` | every commit | temporary SQLite databases and the official `node:sqlite` online-backup API | that a corrupted authority database restores from the newest verified backup, rebuilds projections ONLY, and that D181's stopped-system proof is derivable from real runtime-lock files |
+| **the recovery drill** | `tests/integration/storage-restore-drill.test.ts` and related recovery suites | vitest project `integration` | explicit later execution and the applicable full gate at phase exit | temporary SQLite databases and the official `node:sqlite` online-backup API | that a corrupted authority database restores from the newest verified backup, rebuilds projections ONLY, and that D181's stopped-system proof is derivable from real runtime-lock files |
 | **the controlled-commit proof** | `docs/rebuild/reference/write-safety.md` §Phase-2 controlled-commit as-built | **recorded, never re-run** | once, 2026-08-04 | a real Kuali document | that the write kernel fences, commits, verifies by reload read-back and refuses a replay in 2 ms. A recorded proof is evidence; re-running it would be a second real HR write, so it is cited, not executed. Each workflow still owes its own §3.2 controlled-commit proof at its migration. |
 | **live selector re-verification** | no folder — a pre-authorized act at each migration | `playwright-cli`, by the agent | at every workflow's migration | real pages, read-only (`snapshot`) | that a ported selector still resolves. D150 retired the cross-repo accounting in favour of exactly this, because a selector checked against the live system beats one diffed against legacy's copy of it. |
 
 ### 10.2 The split: no-dry-run tests and dry-run tests
 
-**A no-dry-run test needs nothing but this tree.** Unit, architecture guards, structural fixture
-scenarios, dashboard feature scenarios, parity. They are deterministic, they touch no external
-system, and they are cheap enough that the only sane policy is to run them.
+**A no-dry-run test needs nothing but this tree.** Unit, integration, architecture guards,
+structural fixture scenarios, dashboard feature scenarios and parity do not touch external HR
+systems. Integration proofs may still create isolated databases, sockets or child processes and
+need the applicable gate's resource budget.
 
 **When they run:**
 
@@ -2434,7 +2494,13 @@ answer from the same shared input under test. Preserve synthetic-subject ranges,
 clocks, dataset shapes/counts, case membership, isolation, timeouts and coverage floors.
 
 **Files and privacy.** Offline imports must succeed without private configuration, credentials,
-provider access, database startup or browsers. Tracked safe file paths resolve relative to their
+provider access, database startup or browsers. Exact credential factory capabilities may be imported
+by the recorded admission helpers only with deferred function-body references and deferred producer
+functions. The preflight corpus may reference Chromium only to install launch-refusal spies inside
+its explicit executor. Eager call/new/alias/namespace/unlisted-symbol/IIFE/callback controls enforce
+this boundary. Executable synthetic process fixtures live in `tests/process-fixtures`; their exact
+child-entrypoint consumers are recorded and module imports into that tier are forbidden. Tracked safe
+file paths resolve relative to their
 config and stay inside the checkout. Private paths resolve only when explicitly requested and never
 fall back to another worktree. Include a minimal synthetic PDF and a consumer proving actual readable
 bytes; no tracked real HR documents or fabricated private corpus. Missing/invalid selected files,
@@ -2463,7 +2529,7 @@ run through the repository runner (`npm test -- <files>`), none needs a private 
 | P5 `test-data-local` binding (name + opaque `sourceId`, never a value) through start, receipts, redaction, resume/rerun/archive | `tests/unit/dry-run-scenario-composition.test.ts` (binding captured at `runtime.start`), `tests/unit/source-bound-repeat.test.ts`, `tests/unit/rerun-protected-identity.test.ts`, `tests/unit/archive-protected-identity.test.ts`, `tests/unit/run-record-service/service.test.ts`, `tests/unit/write-sequencer.test.ts`, `tests/unit/run-executor.test.ts` |
 | P6 destination missing/equal/conflict/invalid, source change under lock, failure after staging before source retirement, lock held, retry idempotence | `tests/unit/config/credential-test-data-migration.test.ts` |
 | P7 synthetic v1 history and upgrade binding replayed under the frozen legacy schema (`LEGACY_PROTECTED_SETTINGS_SCHEMA_HASH` pinned), operational entries preserved, retired command/write/value identities fenced, ordinary reader refuses v1 until migrated; pre-D341 durable command/audit rows stay readable through `commands-history` | `tests/unit/config/credential-test-data-migration.test.ts`, `tests/unit/config/credential-store.test.ts`, `tests/unit/protected-settings-history.test.ts`, `tests/unit/storage-upgrade-d331.test.ts` |
-| P8 fixture accounting: no cross-tier import of `tests/unit/{fixtures,helpers}`, cross-tier imports of `tests/unit/architecture/helpers/` limited to the three recorded `descriptor-fixtures` importers, shared fixtures pure at import, tracked shared inputs, ignored private file and staging pattern, README ownership map | `tests/unit/architecture/test-data-ownership.test.ts` (guard `test-data-ownership`), `tests/fixtures/README.md` |
+| P8 fixture accounting: cross-tier imports of unit-only fixtures/helpers are refused except exact parity compatibility exports; three unchanged scenario/shared callers use the pinned descriptor-fixture export; three named shared resource harnesses remain explicit. Shared data fixtures stay pure, tracked inputs and ignored private files are checked, and the README maps owners. | `tests/architecture/test-data-ownership.test.ts` (guard `test-data-ownership`), `tests/fixtures/README.md` |
 | P9 actual reset-root preflight, reviewed private conversion, readback, value-safe credential comparison, doctor | recorded below after integration; not inferred from P6/P7 |
 
 Defects the proofs found and fixed in the candidate: the credential store's pre-rename live check
@@ -2801,9 +2867,10 @@ restated:
 
 ```
 tests/
-  unit/                                     unchanged — one module's decision logic, fake ctx, no browser
-    architecture/                           unchanged — the 65 guards + helpers/ + fixtures/
-    dashboard/                              unchanged — the surfaces' extracted *-model.ts halves
+  unit/                                     deterministic policy and component wiring with injected ports
+    dashboard/                              the surfaces' extracted *-model.ts halves
+  integration/                              real storage, process, socket or composed workflow proofs
+  architecture/                             recursive structural guards, helpers and violation fixtures
   scenario/
     helpers/                                pure-walk, coverage-claims, the fake stores
     workflows/<workflow-id>/
@@ -2827,23 +2894,26 @@ a manifest that vitest picked up would start a browser inside the per-commit gat
 them by GLOB rather than by discipline. `*.walk.test.ts` keeps D185's meaning exactly: a walk claims
 no coverage point and the manifest's `file` regex refuses a walk path outright.
 
-**Vitest projects.** Three, as built. `vitest.config.ts` makes every authored Vitest file belong to
+**Vitest projects.** Four. `vitest.config.ts` makes every authored offline Vitest file belong to
 exactly one named project; `guard-manifest` enumerates the real corpus and rejects both orphaned and
 multiply collected files. A future dry-run-dependent `combined` tier stays uncollected until it has
 an executor and a deliberate script.
 
 | project | include | in `test:coverage` |
 |---|---|---|
-| `unit` | `tests/unit/**/*.test.ts`, **excluding** `tests/unit/architecture/**` | yes |
-| `architecture` | `tests/unit/architecture/**/*.test.ts` | yes |
+| `unit` | `tests/unit/**/*.test.ts` | yes |
+| `integration` | `tests/integration/**/*.test.ts` | yes |
+| `architecture` | `tests/architecture/**/*.test.ts` | yes |
 | `scenario` | `tests/scenario/**/*.test.ts`, excluding future live-dependent `tests/scenario/combined/**` | yes |
 
 **jsdom, per file (D277, 2026-08-27).** `jsdom` is a devDependency and is never a project default: a test that needs a real DOM to pin wiring — what a press dispatches, where focus returns — declares `@vitest-environment jsdom` at the top of its own file inside `unit`. The environment is opted into by the file, so a pure `*-model.ts` test never pays for a DOM, and a DOM test can never be mistaken for a visual claim — visual claims belong to `tests/parity/**`.
 
-The `unit` exclusion is the point of the architecture split: guard files execute once inside
-`test:coverage`. `test:architecture` is `tsx scripts/test-runner.ts run --project architecture --passWithNoTests=false`, and `guard-manifest`
-binds its script, complete recursive include, empty exclude, unit exclusion, and non-empty
-collection together.
+The distinct roots keep guards out of `test:unit` and execute them once inside `test:coverage`.
+`test:unit` and `test:integration` lock selection to their named projects and accept only positional
+file filters; project/config overrides are refused. `test:architecture` selects only its named
+project with non-empty collection. `guard-manifest` checks all four project includes, empty
+excludes where applicable, unique ownership and non-empty collection; injected-listing policy
+tests prove duplicate, orphan and empty refusals.
 
 `tests/e2e/**` is outside the vitest projects entirely, like `tests/parity/**`, and both are excluded
 from coverage instrumentation.
@@ -2853,7 +2923,9 @@ and D190's lesson is that a lane nobody chains is a lane that cannot fail.
 
 | script | runs | trigger |
 |---|---|---|
-| `npm run typecheck && npm run lint && npm run test:coverage` | unit + architecture + T1 structural + T2 + the walks, with the floors | default implementation candidates and finalizer completion; focused parallel-worker and documentation-only exceptions in §3.14 D191 |
+| `npm run test:unit` | deterministic unit project only | focused local backend iterations in the supporting Phase 1–5 initiative |
+| `npm run test:integration` | preserved integration project only | explicit later operator-reviewed integration execution |
+| `npm run typecheck && npm run lint && npm run test:coverage` | unit + integration + architecture + T1 structural + T2 + the walks, with the floors | default implementation candidates and finalizer completion; focused parallel-worker and documentation-only exceptions in §3.14 D191 |
 | `npm run test:parity` | 281 browser cases, including 222 reference triples and the dual-adapter comparison | every dashboard change; before a slice closes |
 | `npm run perf:dashboard` | reproducible structural counters plus observational timings | after a measured dashboard data-path change; before a slice closes |
 | `npm run cli -- dry-run-scenario <workflow> --subject <label>` | ONE T1b manifest against the real systems | at a workflow's migration; whenever its graph or its transaction node changes; to refresh a stale recorded result |
@@ -2881,6 +2953,13 @@ Targeted local iteration is allowed, while supervisor integration and merge requ
 type/lint/coverage family. The affected-suite ≤30 s, full-coverage ≤90 s, and parity ≤75 s targets
 are measured objectives, never permission to delete unique protection, weaken isolation/parallelism,
 raise an allowance, lower a floor, or add an exclusion.
+
+Runner scratch lives under the owned `/tmp/hrt-<uid>/run-*` directory: successful runs remove
+their scratch, failed runs retain `failure.txt` and the tail, and `test:reap` checks ownership
+before explicit reclamation. `coverage/`, `test-results/`, and `tests/parity/.output/` are ignored
+generated output; reviewed parity references and reproducible fixtures stay tracked. Accepted
+task evidence belongs under the external rebuild-evidence root. `test-artifact-ownership` checks
+the current Git paths/ignore policy, with injected negative controls in the unit policy test.
 
 One configured streaming `verbose` reporter owns Vitest output: project, file, suite, and the full
 behavior/refusal title remain visible as work completes. Scripts do not layer a second reporter.
@@ -3145,6 +3224,11 @@ exit remains the live Person Lookup spine proof.
 
 ### Phase 1d guard-activation boundary (ratified 2026-08-01)
 
+**Current amendment — 2026-10-01.** The UI catalog feature, generated-artifact freshness check,
+and catalog-only test cases are retired. Semantic UI registries, selector evidence, verification,
+provenance and write-safety assertions remain. The dated Phase 1d inventory below preserves its
+original paths and gate evidence; current homes are in [codebase structure](codebase-structure.md).
+
 <!-- roadmap: p1-authority -->
 
 Phase 1d activates only guards whose real seam exists: port provenance, semantic UI registry and
@@ -3247,7 +3331,7 @@ root, temp→fsync→atomic-rename durability sequence, crash-boundary recovery,
 idempotency; its AST canary rejects direct mutable filesystem access from task/workflow
 implementations.
 `provider-capability-boundary` confines raw network/provider modules and adapter implementations to
-`infra/providers`, pins exact capability client narrowing, and has a direct-network/forged-adapter
+`src/backend/processing/providers`, pins exact capability client narrowing, and has a direct-network/forged-adapter
 canary. The recursive strict-boundary catalog now includes session, retry, artifact, provider, and
 artifact-root schemas. These active guards cover only the real 1d interfaces/declarations,
 artifact writer, and provider deterministic fakes: 1f admission/budget/worker/session-runtime
@@ -3289,7 +3373,7 @@ same commits as those targets. The acceptance set is non-vacuous and fail-both-w
   no sleeping worker. Production pool/consumer coverage remains 2h.
 
 The activated D112 guard walks every `src/**` import and each task's transitive local import graph:
-raw network/vendor modules and adapter implementations remain under `infra/providers/**`; task and
+raw network/vendor modules and adapter implementations remain under `src/backend/processing/providers/**`; task and
 store graphs cannot reach those adapters; only `core/provider-admission.ts` constructs the admitted
 client or consumes the adapter interface. It audits the closed capability/config mapping in both
 directions, pins one deterministic harness surface, proves denial/timeout/abort never fall through

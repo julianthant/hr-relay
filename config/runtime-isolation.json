@@ -21,9 +21,9 @@
     "sourceRoot": "src",
     "entrypoint": "src/cli.ts",
     "commands": {
-      "dashboard": "tsx scripts/dev-dashboard.ts",
-      "dashboard:prod": "tsx scripts/secure-env-bootstrap.ts cli dashboard --prod",
-      "cli": "tsx scripts/secure-env-bootstrap.ts cli"
+      "dashboard": "tsx scripts/dev/dashboard.ts",
+      "dashboard:prod": "tsx scripts/dev/secure-env-bootstrap.ts cli dashboard --prod",
+      "cli": "tsx scripts/dev/secure-env-bootstrap.ts cli"
     },
     "stateRoot": ".tracker",
     "archiveDatabaseFile": "archive.sqlite",
@@ -34,9 +34,9 @@
     "browserProfileRoot": ".auth",
     "browserSessionNamespace": "hrauto-rebuild",
     "runtimeConfig": {
-      "module": "src/config/runtime-isolation.ts",
+      "module": "src/backend/app/config/runtime-isolation.ts",
       "factory": "defineRuntimeIsolation",
-      "factoryModule": "src/config/define-runtime-isolation.ts",
+      "factoryModule": "src/models/config/define-runtime-isolation.ts",
       "factoryExport": "defineRuntimeIsolation",
       "exportName": "rebuildRuntimeIsolation"
     },
@@ -44,7 +44,7 @@
       {
         "path": "src/cli.ts",
         "factory": "startRebuildRuntime",
-        "factoryModule": "src/core/runtime-composition.ts",
+        "factoryModule": "src/backend/app/composition/runtime-composition.ts",
         "factoryExport": "startRebuildRuntime",
         "bindingPath": "0.isolation",
         "runnerExport": "runCli"

@@ -1,4 +1,4 @@
-import type { EditableSettingsLeafWire } from "../../domain/dashboard/settings-editor.js";
+import type { EditableSettingsLeafWire } from "../../models/dashboard/settings-editor.js";
 
 type TimeoutSetting = Readonly<{
   title: string;

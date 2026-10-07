@@ -2,7 +2,7 @@ import { z } from "zod";
 import type {
 WorkerCardWireSchema,
 WorkerPoolWireSchema
-} from "../../domain/dashboard/projection.js";
+} from "../../models/dashboard/projection.js";
 import { type SubscriptionState } from "../client/subscription.js";
 import { dsClip,dsRadius,dsText } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
@@ -180,7 +180,7 @@ export function poolFactsForWorkflow(
  * D271's ratified cap on an initial workflow pool. The browser bundle may not
  * import `src/core` (`dashboard-wire-boundary`), so the number is restated here
  * and PINNED to the kernel's `MAX_WORKERS_PER_POOL` by
- * `tests/unit/dashboard/worker-pool-controls.test.ts` — a cap raised on one side
+ * `tests/integration/dashboard/worker-pool-controls.test.ts` — a cap raised on one side
  * alone fails that test rather than letting this panel offer a size the
  * supervisor refuses. Raising it requires a named concurrency proof at the
  * proposed size (D271), which is a decision, not a constant edit.

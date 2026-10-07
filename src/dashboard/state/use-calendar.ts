@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { CalendarWire } from "../../domain/dashboard/calendar.js";
+import type { CalendarWire } from "../../models/dashboard/calendar.js";
 import { protocolError } from "../client/errors.js";
 import { useDashboardClient } from "./client-context.js";
 import { LOADING, observeAsyncResource, type AsyncResource } from "./async-resource.js";

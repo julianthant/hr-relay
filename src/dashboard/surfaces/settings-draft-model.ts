@@ -1,6 +1,6 @@
-import { canonicalJsonStringify } from "../../domain/canonical-json.js";
-import { SettingsPatchSchema, type SettingsPatch } from "../../domain/config/settings.js";
-import type { EditableSettingsLeafWire, EditableSettingsWire, EditorValue } from "../../domain/dashboard/settings-editor.js";
+import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
+import { SettingsPatchSchema, type SettingsPatch } from "../../models/config/settings.js";
+import type { EditableSettingsLeafWire, EditableSettingsWire, EditorValue } from "../../models/dashboard/settings-editor.js";
 import { timeoutInput, timeoutSetting, timeoutValue } from "./settings-timeouts-model.js";
 import { performanceSectionGroups } from "./settings-performance-model.js";
 

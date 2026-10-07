@@ -74,19 +74,16 @@ import {
   dsText,
   type DsStatus,
 } from "../ds/ui.js";
-import type { RunDetailWireSchema } from "../../domain/dashboard/run-detail.js";
-import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
-import type { CapabilityAvailabilitySchema } from "../../domain/absence.js";
+import type { RunDetailWireSchema } from "../../models/dashboard/run-detail.js";
+import type { ActionDescriptorWire } from "../../models/dashboard/actions.js";
+import type { CapabilityAvailabilitySchema } from "../../rules/validation/absence.js";
 import type { IdentityGatePayload } from "../app/identity-ceremony.js";
-import { OutcomeActionButton, type DashboardActionHandler } from "./actions.js";
+import { OutcomeActionButton, DataActions, type DashboardActionHandler } from "./actions.js";
+import { AttemptHistorySection } from "./context-rail.js";
 import { LogsTab, RunLivenessDot } from "./run-detail/logs.js";
-import { ContextRail, ContextRailSpine } from "./context-rail.js";
-import { useContextRail, type ContextSections } from "./context-rail-model.js";
-import { RunCaptures } from "./run-captures.js";
 import type { RunCapturesState } from "./run-captures-model.js";
 import type { QueueSurfaceWire } from "./run-identity.js";
 import { dsStatusOf, outcomeDsStatusOf } from "./status-model.js";
-import { DETAIL_THREE_COLUMN_PX } from "./layout-metrics.js";
 import { PANEL_TAB_LABEL, defaultTabFor, tabsFor, terminalOutcomeText, type PanelTab } from "./log-panel-model.js";
 import { decisionAge } from "./run-detail/timeline-model.js";
 import {
@@ -98,7 +95,6 @@ import {
 } from "./run-detail/gate-park.js";
 import { InlineFailureRecord } from "./run-detail/receipt-failure.js";
 import type { PanelSections } from "./run-detail/sections.js";
-import { ReceiptTab } from "./run-detail/receipt-failure.js";
 import { Timeline } from "./run-detail/timeline.js";
 
 export { Timeline };
@@ -295,7 +291,7 @@ const PANEL_KIND_NAME: Record<RunDetailWire["panelKind"], string> = {
 };
 
 const PANEL_KIND_EXPLANATION: Record<RunDetailWire["panelKind"], string> = {
-  run: "Opening it shows the log stream, every value the run read or wrote, and the receipt once it ends.",
+  run: "Opening it shows the chronological log stream and the run controls.",
   review: "Opening it starts the review — the scanned page beside the fields read from it, one person at a time.",
   group: "Opening it lists the people it holds, attention first, and you can open any one of them from there.",
   member: "Opening it walks the set — previous, next, and a checked mark so you keep your place in it.",
@@ -386,10 +382,6 @@ export const LogPanel = memo(function LogPanel({
   const available = tabsFor(detail);
   const fallback = defaultTabFor(detail);
   const effectiveTab = tab !== undefined && available.includes(tab) ? tab : fallback;
-  const receipt = sections.receipt ?? {
-    state: "missing" as const,
-    reason: "this run advertises no receipt section",
-  };
   const clearCaptureSelection = captures?.state === "available" ? captures.select : undefined;
   // The same read spans Logs and Receipt, but a dialog belongs to the tab that
   // opened it. Moving tabs closes that short-lived visual state without
@@ -544,6 +536,8 @@ export const LogPanel = memo(function LogPanel({
       : gate.state === "open"
         ? gate.label
         : outcome.reason;
+  const showOutcome = effectiveTab !== "logs" || outcome.state !== "terminal"
+    || outcome.rehearsal !== true || outcome.result !== "partial";
   /**
    * At most ONE notice, and the gate wins.
    *
@@ -585,44 +579,6 @@ export const LogPanel = memo(function LogPanel({
    *   one that would disagree.
    */
   const regionRef = useRef<HTMLDivElement>(null);
-  const [threeColumn, setThreeColumn] = useState(false);
-  useLayoutEffect(() => {
-    const region = regionRef.current;
-    if (region === null) return;
-    const publish = (): void => {
-      setThreeColumn(
-        window.getComputedStyle(region).containerType !== "normal"
-        && region.getBoundingClientRect().width >= DETAIL_THREE_COLUMN_PX,
-      );
-    };
-    publish();
-    const observer = new ResizeObserver(publish);
-    observer.observe(region);
-    return () => observer.disconnect();
-  }, []);
-  // Unmeasured is NOT "three columns": the first render has no layout behind
-  // it, and defaulting to the spine would flash a collapsed rail over data the
-  // operator never asked to hide.
-  const railState = useContextRail(threeColumn);
-  // The rail widens to its edit width while the Data surface is EXPANDED
-  // (`--ds-w-context-rail-wide`, ref dashboard-surfaces D19(d)); the flag resets when the
-  // operator switches runs so one run's edit session can never widen another's.
-  const [dataExpanded, setDataExpanded] = useState(false);
-  useEffect(() => setDataExpanded(false), [detail.runId]);
-  /*
-    `context-evidence` IS NOT HANDED TO THE RAIL (R6 f.19). The demo states the
-    rail's order twice — Data · Attempts · Delegation — and moves captures to
-    Receipt explicitly, because evidence QUALIFIES an outcome rather than
-    feeding the live stream. The section re-homes to the Receipt tab; it sits on
-    the audit's hookup ledger so it is relocated, not lost. Nothing regresses
-    today: the arm is `declared-unserved` (D184) and no composition populates it.
-  */
-  const railSections: ContextSections = {
-    ...(sections["context-data"] === undefined ? {} : { "context-data": sections["context-data"] }),
-    ...(sections["context-attempts"] === undefined
-      ? {}
-      : { "context-attempts": sections["context-attempts"] }),
-  };
 
   return (
     /*
@@ -664,11 +620,7 @@ export const LogPanel = memo(function LogPanel({
         "flex min-h-0 w-full min-w-0 flex-1 flex-col gap-[var(--ds-space-cozy)] overflow-y-auto",
         "@min-[868px]/detail:grid @min-[868px]/detail:overflow-hidden",
         "@min-[868px]/detail:grid-rows-[auto_minmax(0,1fr)]",
-        railState.collapsed
-          ? "@min-[868px]/detail:grid-cols-[minmax(0,1fr)_var(--ds-w-context-spine)]"
-          : dataExpanded
-            ? "@min-[868px]/detail:grid-cols-[minmax(0,1fr)_var(--ds-w-context-rail-wide)]"
-            : "@min-[868px]/detail:grid-cols-[minmax(0,1fr)_var(--ds-w-context-rail)]",
+        "@min-[868px]/detail:grid-cols-[minmax(0,1fr)]",
       )}
     >
       {detail.timeline.events.length > 0 && (
@@ -678,8 +630,7 @@ export const LogPanel = memo(function LogPanel({
             "min-w-0 shrink-0 border",
             "border-[color:var(--ds-border)] bg-[var(--ds-surface-1)]",
             dsRadius.lg,
-            "@min-[868px]/detail:col-span-2 @min-[868px]/detail:row-start-1",
-            "@min-[1068px]/detail:col-span-1 @min-[1068px]/detail:col-start-1",
+            "@min-[868px]/detail:col-span-1 @min-[868px]/detail:col-start-1 @min-[868px]/detail:row-start-1",
           )}
         >
           <Timeline detail={detail} nowIso={nowIso} />
@@ -693,8 +644,8 @@ export const LogPanel = memo(function LogPanel({
           // NOT scroll with the body: an `absolute` child of a scroller is
           // positioned against the scrolled content, so the reminder would
           // slide away the moment the operator moved the stream.
-          "@container relative flex min-h-[24rem] min-w-0 flex-col overflow-hidden border",
-          "border-[color:var(--ds-border)] bg-[var(--ds-surface-1)]",
+          "ui-theme-scope @container relative flex min-h-[24rem] min-w-0 flex-col overflow-hidden border",
+          "border-ui-stroke bg-ui-panel font-ui text-ui-primary",
           dsRadius.lg,
           "@min-[868px]/detail:col-start-1 @min-[868px]/detail:row-start-2 @min-[868px]/detail:min-h-0",
         )}
@@ -704,7 +655,7 @@ export const LogPanel = memo(function LogPanel({
           ref={scrollRef}
           className="scroll-pt-[var(--ds-panel-head-h,0px)] flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto"
         >
-          <div ref={headRef} className={cn("sticky top-0 shrink-0 bg-[var(--ds-surface-1)]", dsLayer.sticky)}>
+          <div ref={headRef} className={cn("sticky top-0 shrink-0 bg-ui-panel", dsLayer.sticky)}>
             {/*
               THE HEADER CARRIES IDENTITY, AND ONLY IDENTITY: title · ⓘ · trace.
 
@@ -724,21 +675,18 @@ export const LogPanel = memo(function LogPanel({
             */}
             <div
               className={cn(
-                "flex flex-wrap items-center border-b",
-                dsBorder.subtle,
-                "gap-x-[var(--ds-space-base)] gap-y-[var(--ds-space-tight)] px-[var(--ds-space-cozy)] py-[var(--ds-space-base)]",
+                "flex min-h-12 flex-wrap items-center gap-x-4 gap-y-2 border-b border-ui-stroke px-4 py-3",
               )}
             >
               <span
                 className={cn(
-                  dsText.title,
-                  dsText.flush,
-                  "min-w-0 max-w-full break-words font-semibold text-[color:var(--ds-fg)]",
+                  "min-w-0 max-w-full text-heading text-ui-primary text-balance [overflow-wrap:break-word]",
                 )}
               >
                 {detail.header.title}
               </span>
-              <span className="ml-auto flex min-w-0 max-w-full items-center gap-[var(--ds-space-base)]">
+              <DataActions actions={actions.filter(action => action.key !== "rerun")} target={{ runId: detail.runId, expectedVersion: detail.rowRevision }} onAction={handleAction} />
+              <span className="ml-auto flex min-w-0 max-w-full items-center gap-2">
                 <PanelKindInfo
                   panelKind={detail.panelKind}
                   workflowLabel={workflowLabel}
@@ -746,9 +694,7 @@ export const LogPanel = memo(function LogPanel({
                 />
                 <span
                   className={cn(
-                    dsText.meta,
-                    dsText.nums,
-                    "min-w-0 break-all text-[color:var(--ds-fg-muted)]",
+                    "min-w-0 break-all font-data text-caption text-ui-muted",
                   )}
                 >
                   {detail.header.traceId}
@@ -764,7 +710,7 @@ export const LogPanel = memo(function LogPanel({
                 as another hairline strip. Same wrap rule as the identity
                 header — the sentence fills; the age and the action sit beside
                 it when they fit, else under at natural length. */}
-            <div
+            {showOutcome && <div
               className={cn(
                 "flex flex-wrap items-center border-b",
                 "gap-x-[var(--ds-space-base)] gap-y-[var(--ds-space-tight)] px-[var(--ds-space-cozy)] py-[var(--ds-space-snug)]",
@@ -796,10 +742,9 @@ export const LogPanel = memo(function LogPanel({
                   omitKeys={PANEL_OMITS_OUTCOME_ACTIONS}
                 />
               </span>
-            </div>
+            </div>}
 
-            {/* tabs — derived from what the run ADVERTISES, never a fixed set */}
-            <div
+            {available.length > 1 && <div
               role="tablist"
               aria-label="Run detail sections"
               className={cn(
@@ -836,10 +781,11 @@ export const LogPanel = memo(function LogPanel({
                   </Tooltip>
                 );
               })}
-            </div>
+            </div>}
           </div>
 
           {/* THE TAB BODY, in the same scroller as the head above it. */}
+          {effectiveTab !== "logs" && sections["context-attempts"] !== undefined && <details className="border-b border-[color:var(--ds-border-subtle)] px-[var(--ds-space-cozy)] py-[var(--ds-space-snug)]"><summary className={dsText.meta}>Attempts</summary><AttemptHistorySection payload={sections["context-attempts"]} /></details>}
           {effectiveTab === "logs" && (
             <LogsTab
               actorId={actorId}
@@ -848,6 +794,7 @@ export const LogPanel = memo(function LogPanel({
               notes={sections.logs}
               failure={sections.failure}
               parked={parked}
+              identity={sections["identity-gate"]}
               gateActions={gateActions}
               onResolveGate={handleGateResolution}
               onResolvePark={handleParkResolution}
@@ -861,27 +808,6 @@ export const LogPanel = memo(function LogPanel({
               aiAdvisory={aiAdvisory}
               nowIso={nowIso}
             />
-          )}
-          {effectiveTab === "receipt" && (
-            <>
-            <ReceiptTab
-              outcome={detail.outcome}
-              receipt={receipt}
-              resolvedInstances={surface?.resolvedInstances ?? []}
-              /*
-                Ledger 2 row D13 — `dryRun` is REQUIRED on `ReceiptView` and is
-                genuinely `undefined` here when the panel is opened for a run
-                outside the currently loaded day: `surface` is looked up in
-                THIS day's queue surfaces (`dashboard-app.tsx`'s
-                `openPanelSurface`), and a deep link across a day boundary
-                finds no row there while `detail` still loads fine. That is
-                "we do not know", never "not a rehearsal" — see `receipt.tsx`'s
-                own doc comment for why this is not defaulted to `false`.
-              */
-              dryRun={surface?.dryRun}
-            />
-            {captures !== undefined && <RunCaptures captures={captures} />}
-            </>
           )}
           {(effectiveTab === "review" || effectiveTab === "people") && <UnservedTab tab={effectiveTab} />}
         </div>
@@ -918,42 +844,6 @@ export const LogPanel = memo(function LogPanel({
         )}
       </section>
 
-      {railState.collapsed ? (
-        <ContextRailSpine
-          summary={detail.context}
-          onOpen={() => railState.setOpen(true)}
-          className={cn(
-            "@min-[868px]/detail:col-start-2 @min-[868px]/detail:row-start-2",
-            "@min-[1068px]/detail:row-start-1 @min-[1068px]/detail:row-span-2",
-          )}
-        />
-      ) : (
-        <ContextRail
-          summary={detail.context}
-          sections={railSections}
-          /*
-            COLLAPSING CLEARS THE EXPANSION (D273 item 5). The demo's one hook
-            does it in `setOpen(false)` (`DemoContextRail.tsx:181-191`) and the
-            reason is the same here: the rail that comes back is a NEW mount,
-            and a stale expansion is a wide column behind a header reading
-            `Run data`.
-          */
-          onClose={() => {
-            railState.setOpen(false);
-            setDataExpanded(false);
-          }}
-          dataExpanded={dataExpanded}
-          onDataExpandedChange={setDataExpanded}
-          actions={actions}
-          target={{ runId: detail.runId, expectedVersion: detail.rowRevision }}
-          onAction={handleAction}
-          className={cn(
-            "shrink-0",
-            "@min-[868px]/detail:col-start-2 @min-[868px]/detail:row-start-2 @min-[868px]/detail:shrink",
-            "@min-[1068px]/detail:row-start-1 @min-[1068px]/detail:row-span-2",
-          )}
-        />
-      )}
 
       <GateParkDialogs
         gateTarget={gateTarget}

@@ -1,5 +1,5 @@
-import { canonicalJsonStringify } from "../../domain/canonical-json.js";
-import type { PreflightReadinessWire, PreflightSelection } from "../../domain/preflight-contract.js";
+import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
+import type { PreflightReadinessWire, PreflightSelection } from "../../models/preflight/preflight-contract.js";
 import type { PreflightQueries } from "./preflight-queries.js";
 
 type Report = Extract<PreflightReadinessWire, { state: "present" }>["report"];

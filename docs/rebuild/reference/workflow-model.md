@@ -18,9 +18,42 @@ as-built blocks above §0. Each has been folded into the numbered section it ame
 states the contract AND what the tree actually holds in one place. The chronology header that
 recorded *when* the doc changed is `history/superseded/2026-08-21-workflow-model-status-header.md`.
 
-**Two workflows are registered** (`src/control/workflow-registry.ts`): `person-lookup` and
-`separations`. The latter owns its declared timeline steps. The five former `separations-*`
-registrations remain as historical step proofs and test fixtures, outside the active registry.
+**Two operator workflows enter**
+(`src/backend/app/registries/workflow-registry.ts`): `person-lookup` and `separations`. Separately,
+`step-proof-modules.ts` composes the five retained Separations chunk-harness definitions for
+historical proof reads; they do not enter the operator workflow registry or become startable, and
+their composition does not claim current scenario-test coverage.
+
+## Current source layout — operator-approved 2026-10-01
+
+The current folder map and dependency rules live in [codebase structure](codebase-structure.md).
+`src/workflow-kit/` owns shared browser-safe workflow authoring and compilation; schema shapes live
+in `src/models/`, and reusable pure decisions live in `src/rules/`. Each operator workflow keeps its
+browser-safe entry at `src/workflows/<id>/workflow.ts`; the workflow-specific `task-registry.ts` and
+`tasks/` are backend-loaded. A chunk harness is `src/workflows/<composition>/steps/<step>/step.ts`.
+For Separations,
+the five step keys are `identity-check`, `kronos-timecard`, `kuali-extraction`, `kuali-finalization`
+and `ucpath-transaction`. `src/workflow-kit/validation/source-layout.ts` derives workflow source and
+potential scenario locations from role, so paths move without changing runtime workflow IDs. The backend
+composition root in `src/backend/app/registries/` binds the main definitions to registered tasks and
+composes retained proofs separately. Renderer and lower-level packages must not import workflow
+implementations, and definitions must not import backend task implementations. The registration
+filename is `task-registry.ts`; task-store types, factories and namespace IDs keep their meanings.
+
+<a id="workflow-model-scenario-test-amendment-2026-10-02"></a>
+
+**Scenario-test amendment — operator-approved 2026-10-02.** `tests/scenario/` and `tests/parity/`
+were retired. `definition.scenarios` IDs remain declaration data for contract validation; they do
+not assert that tests ran. The source-layout scenario helpers do not imply current scenario files or
+coverage. Rehearsal manifests are unavailable before execution when absent. Future scenario and
+visual-test requirements are operator-led. The dated scenario-corpus sections below are historical;
+`scenario-coverage` retains pure graph-point checks and does not assert production scenario
+execution. Unit fixtures that inject scenario inputs remain unit evidence, not production-scenario
+proof. See the
+[current test policy](guards-and-tests.md#scenario-and-parity-suite-retirement--2026-10-02).
+
+The older path diagrams and status snapshots below retain their original decision and behavioral
+evidence. Their directory names are superseded by the current map; they are not a second layout.
 
 ## Ownership (D1)
 
@@ -32,6 +65,7 @@ registrations remain as historical step proofs and test fixtures, outside the ac
 | Run-state machine incl. gate nodes and parks (D5) | |
 | Checkpoint/resume model: store, freshness (D8), scope (D9), task-authoring rule | |
 | Span-id path grammar + attempt semantics (what the engine brackets) | |
+| Frozen action occurrence identity and D364 declared step-result selection | Ref dashboard-surfaces: action/fact event wire schema and timestamps |
 | Workflow terminal result schema and child-run result typing | Ref dashboard-surfaces: command/action/enqueue policy semantics and durable dependency/command storage |
 | | Ref operator-trust: semantic UI registry, scenarios, evidence receipt, explorer/editor projections |
 
@@ -75,7 +109,7 @@ context** (typed data flow between tasks). Time lives in ref dashboard-surfaces'
 <!-- roadmap-status: p1-authority -->
 - [x] ONE bundle-safe descriptor module per workflow, value-importing only zod + `src/domain/**` + the audited `src/base/**` builders — enforced by walking the real import graph (§1.1/§1.2, D106; `src/base/workflow.ts`, `tests/unit/architecture/descriptor-coverage.test.ts` "keeps every descriptor module's value-import closure bundle-safe")
 - [x] `identity` is a MATCH KEY only; the kernel mints `ItemId` from `(workflowId, matchKey)` at enqueue, because a descriptor cannot hash and two derivations of one identity drift (D103, `src/base/workflow.ts:170-183`)
-- [x] the typed DAG builder ships with the exact `S`/`Nodes` accumulators, `build()`-time forward-reference validation for branch and parallel targets (D104) and the mandated real-scale type proof (§3; `src/base/flow.ts`, `tests/types/flow-graph.typecheck.ts`, `tests/unit/flow-type-budget.test.ts`)
+- [x] the typed DAG builder ships with the exact `S`/`Nodes` accumulators, `build()`-time forward-reference validation for branch and parallel targets (D104) and the mandated real-scale type proof (§3; `src/base/flow.ts`, `tests/types/flow-graph.typecheck.ts`, `tests/integration/flow-type-budget.test.ts`)
 - [x] `descriptor-coverage` is the ONE coverage guard — 17 cases over `DESCRIPTORS`, both directions (§1.4)
 - [x] checkpoint replay with a REQUIRED per-node `replay` policy, the D8 freshness walk, and the item-scoped store (§5.3 · §5.5 · §5.7)
 - [x] labels resolve from exactly two layers and no third (§1.5, D16)
@@ -786,6 +820,19 @@ use their retained descriptors without admitting a new run or worker for those i
 
 #### 1.2.2 The workflow tree IS the rail and the timeline (D265, 2026-08-21)
 
+**Current path/file convention — operator-approved 2026-10-01.** The composition remains
+`src/workflows/<workflow>/workflow.ts`; only chunk-harness source moves to
+`src/workflows/<workflow>/steps/<step>/step.ts`. If future operator-led test design adds structural
+scenarios, the source-layout helper can derive matching role paths; no such files are current.
+`workflowSourceFolder`, `workflowSourcePath`,
+`workflowScenarioFolder` and `workflowStructuralScenarioPath` in
+`src/workflow-kit/validation/source-layout.ts` are the shared derivation for Explorer links, audits
+and authoring-budget checks. The main `WORKFLOW_MODULES` tuple still contains operator workflows;
+`STEP_PROOF_MODULES` separately composes retained harness proofs. Runtime workflow IDs and the
+D106 browser-safe import boundary do not change.
+
+The 2026-08-21/09-02 path discussion below records the prior step folder and entry-file convention;
+its role, timeline and safety decisions remain, but current path statements below follow this amendment.
 
 - [x] the rule, the separations mapping and the `workflow-layout` guard's invariant are written (this section, D265, 2026-08-21)
 - [x] `src/workflows/separations/` holds six step folders and the composition's `timeline` is one category per folder
@@ -815,18 +862,17 @@ rules below still audit those files, but they confer no registration or startabi
 | Path | What it is | Role (§1.2.1) | Where it shows |
 |---|---|---|---|
 | `src/workflows/<workflow>/workflow.ts` (its compiled descriptor + module) | a workflow the RAIL lists | `standalone` · `composition` | the rail, the picker, the Explorer |
-| `src/workflows/<workflow>/<step>/` | one TIMELINE STEP of that workflow — the folder name is the step's key | a folder, with a retained proof definition when present | one segment of that workflow's timeline; no separate picker, Explorer or worker entry (D345) |
+| `src/workflows/<workflow>/steps/<step>/step.ts` | one chunk-harness proof definition for the named timeline step | `chunk-harness` with `{ of, step }` | retained proof composition; no test-coverage claim, operator entry or startability |
 | ~~`src/workflows/proving/<workflow>/`~~ | **RETIRED the same day (D266)** — there is no test equipment: a proof of machinery is a dry-run scenario on the real workflow (ref guards-and-tests §10), never a workflow of its own | — | — |
 
 1. **A top-level folder is a rail entry.** The rail is D220's filter (`standalone` + `composition`),
    and since this ruling that filter is a READ of the tree's top level: nothing may sit at
    `src/workflows/<x>/` that the rail would not list, and nothing the rail lists may live anywhere
-   else. There is no reserved `proving/` arm.
+   else. The operator entry remains `workflow.ts`. There is no reserved `proving/` arm.
 2. **A sub-folder is a timeline step, and the declared timeline is one category per sub-folder.**
    D225 made the timeline categorical — a descriptor declares `timeline: [{ label, nodes }]`, one
-   category per segment, exhaustive over the graph. The step folder is where that category LIVES:
-   it holds the step's node fragments (the `.step()` / `.transaction()` / `.gate()` calls and the
-   pure folds only those nodes consume — what the composition imports to build itself) and the
+   category per segment, exhaustive over the graph. The declared step folder is under `steps/<step>/`; when separately proved it holds the
+   `step.ts` chunk-harness definition. The composition continues to own the step's node identities and the
    composition declares exactly one category per step folder, keyed by the folder name, labelled
    by the folder's own declared label. **D225's exhaustiveness now holds both ways:** a declared
    category with no folder, a folder with no category, or a node owned by two folders each fails
@@ -840,8 +886,7 @@ rules below still audit those files, but they confer no registration or startabi
    > is a declared group with no folder — and the guard's arm (b) below reads: every step folder
    > is a declared group AND a retained proof address; a declared group needs no folder.
 3. **A harness lives inside the step it proves.** D219's sentence — *a chunk harness is a step of
-   its composition* — becomes a path: the harness's `workflow.ts` sits in the step
-   folder, and its role gains the folder, `{ kind: "chunk-harness", of, step }`. The role audit
+   its composition* — becomes a path: the harness's `step.ts` sits under `steps/<step>/`, and its role gains the folder, `{ kind: "chunk-harness", of, step }`. The role audit
    refuses a `step` that `of` does not declare as a timeline category, or an `of` that is not an
    active composition. A harness that needs other steps' nodes IMPORTS
    their entry identities rather than restating them — today the three write harnesses each carry a second
@@ -865,6 +910,9 @@ are under `src/workflows/` and value-import only what a descriptor may.
 
 **The separations mapping — D225's six approved categories, as folders.**
 
+The table below is the prior folder/file mapping retained as D225 history; current harness paths use
+`src/workflows/separations/steps/<step>/step.ts` as specified above.
+
 | `src/workflows/separations/<step>/` | Timeline label (D225) | Nodes | Harness inside (id unchanged) |
 |---|---|---|---|
 | `kuali-extraction/` | Kuali extraction | `action` · `document` · `plan` · `termination-type` | `separations-kuali-read` |
@@ -879,16 +927,16 @@ operator-approved strings and the label/key pair is declared once in the folder.
 becomes `kuali-extraction` because the folder IS the category and the category's name was already
 ruled.
 
-**The guard — `workflow-layout` (`tests/unit/architecture/workflow-layout.test.ts`, active in
+**The guard — `workflow-layout` (`tests/architecture/workflow-kit/workflow-layout.test.ts`, active in
 `docs/rebuild/guard-inventory.json`, owned here).** Four arms, all decided against the real registry
 and the real tree, each with a violating fixture: (a) every active or retained proof module's path matches its
-role's arm above and holds exactly its one `workflow.ts` (D312/D317), and nothing else lives under
+role's arm above and holds exactly its one role-derived definition file (`workflow.ts` or `steps/<step>/step.ts`) (D312/D317), and nothing else lives under
 `src/workflows/` — a stray folder is refused; (b) for every workflow that declares a timeline, every
 step folder is one of its declared groups and the address of a retained `chunk-harness` proof, and a
 workflow with no declared timeline has no step folders (a declared group with no harness has no
 folder — D312 §1.6.1 item 5, 2026-09-02); (c) every `chunk-harness.step` names one of `of`'s declared categories; (d)
 `descriptor-coverage` §1.4 and `workflow-editor-compile-integrity` derive a descriptor's path from
-its ROLE (`src/workflows/<id>/` or `src/workflows/<of>/<step>/`), never from its id alone.
+its ROLE (`src/workflows/<id>/workflow.ts` or `src/workflows/<of>/steps/<step>/step.ts`), never from its id alone.
 
 **Every later migration inherits this shape** through the Phase 4 admission packet (§1.6.2):
 one top-level folder when the workflow is a rail workflow, step folders for its declared timeline,
@@ -1173,18 +1221,40 @@ refactor. The rejected alternatives are keeping the current multi-file assembly 
 API, or replacing the proven runtime with a second workflow engine. The first preserves the cost;
 the second spends write-safety evidence to solve an authoring problem.
 
+**Explorer definition projection (W6, operator-approved 2026-10-03).** Normal compiled registration
+feeds `workflowExplorerDeclaration` and its closed `definitionPreview` compiled/unavailable
+contract. Authors maintain the ordered definition and typed references, plus optional
+`operationDisplay`; they add no second workflow graph or Explorer renderer map. The producer
+requires the descriptor compiled from that definition and refuses identity, timeline
+content/order, or complete graph-coverage mismatches. It derives displayed systems in first-use
+order. Omitted `operationDisplay` remains explicit legacy/unavailable capability, never inferred
+detail. A source jump resolves only through one exact displayed producer; missing, ambiguous or
+retired anchors stay unavailable. Definition choices are hypothetical and confer no run state or
+execution authority. Branchless definitions omit `Preview paths`; declared choices retain their
+exact target. The approved adapter reuses existing Explorer components/design, with input-prop,
+component-instance and layout changes allowed; it adds no component design. See the [W6 decision](decisions.md#operator-amendments)
+and [acceptance](../plans/phase-3/dashboard-surface-wiring.md#w6-acceptance--2026-10-03).
+
 #### 1.6.1 The simplicity budget and explicit entry algebra (D312/D315/D316, 2026-09-02)
 
+**Current authoring/testing amendment — operator-approved 2026-10-02.** D312's four-artifact
+workflow surface below included scenario proof files, which were retired with `tests/scenario/`.
+Current authored artifacts are the workflow definition and its migration record, plus any new task
+required by the feature. Declared scenario IDs remain contract-validation data; they do not claim
+test execution. An absent rehearsal manifest is unavailable before execution. Future scenario tests
+are a separate operator-led design task.
+
 For a workflow that reuses existing tasks and generic surfaces, the authored workflow surface is
-exactly four artifacts:
+four artifacts under the former scenario-tier contract:
 
 1. `src/workflows/<id>/workflow.ts` containing one `defineWorkflow(...)` call;
 2. `tests/scenario/workflows/<id>/structural.scenario.test.ts`;
 3. `tests/scenario/workflows/<id>/dry-run.scenario.ts`; and
 4. `docs/rebuild/migrations/<id>.md`.
 
-Generated descriptors, module requirements, registry values, build-manifest rows and generic
-dashboard projections do not count because they are not authored. New driver operations, reusable
+Those T1 files are historical and are not current requirements. Generated descriptors, module
+requirements, registry values, build-manifest rows and generic dashboard projections do not count
+because they are not authored. New driver operations, reusable
 store tasks or genuinely new dashboard capabilities are allowed only when the workflow requires new
 behavior; they may not carry descriptor/module/registry glue under another name. A grouping, label,
 run-option or omission-form change to a reuse-only workflow changes `workflow.ts` once.
@@ -1265,9 +1335,10 @@ may be recorded as tasks beneath the selected subphase before admission. The mig
 gate and Phase 3 prerequisites are unchanged; numbered discovery tasks do not claim admission.
 
 Admission verification and phase completion are different gates. Admission proves that the planned
-workflow is understood well enough to build. Phase completion proves that the rebuilt workflow works
-under T1, live selector verification and controlled-write evidence where applicable. Work done for
-one candidate never silently admits the next candidate.
+workflow is understood well enough to build. Phase completion uses the owning plan's current checks,
+live selector verification and controlled-write evidence where applicable; the retired T1 scenario
+tier is not current evidence or a gate. Future scenario-test requirements need separate operator-led
+design. Work done for one candidate never silently admits the next candidate.
 
 #### 1.6.3 Shared capabilities enter with the first admitted consumer (D319/D329)
 
@@ -1298,9 +1369,19 @@ A workflow's optional `operationDisplay` is the composition layer. Its complete 
 instantiates every task/prepare/commit contract occurrence by stable occurrence path, binds only
 declared value slots, and supplies composition-specific transforms and outcome cases. Its value
 references resolve real run-input, configuration, constant, task-output, transformation, or child-
-output schema paths. Outcome case ids and continuations are display predicates, not executable
-scenario ids; `contract.scenarios` remains the test corpus only. Templates retain literal,
+output schema paths. Outcome case ids and continuations are display predicates, not workflow scenario
+ids; `contract.scenarios` remains declaration data for contract validation, not proof of test execution.
+Templates retain literal,
 variable, and ordered optional segments with closed pure conditions and declared join/trim rules.
+A fill-field action may reference its exact task-owned template through `templateId`. Compiler and
+frozen snapshot validation refuse missing templates or references on other action kinds. The
+optional reference participates in the frozen digest; historical absent references remain absent.
+A compute action may bind an optional exact contract-output `valueSlot`; the compiler refuses
+input or missing slots. The existing occurrence binder classifies and retains its supplied result
+under the same output privacy rules as a read. Absent slots retain their historical meaning; a
+transform declaration alone does not supply an observed result.
+Task authors use the same `renderOperationTemplate` helper to produce runtime text and preview
+text. A display reference alone neither executes a fill nor proves its observed value.
 
 The task-owned operation tree admits open/resume page, click, keypress, read/fill/select/check
 field, compute, verify, branch, join, operator-gate, delegation, and session-lifecycle actions.
@@ -1319,6 +1400,73 @@ runtime action binding and frozen-run identity, and P1.3 owns dashboard/server p
 freezes a serializable projection of a complete display in each new run envelope; runtime keeps the
 existing driver and graph execution paths and binds only completed driver gestures to that frozen
 projection. No current descriptor is a substitute for missing historical structure.
+
+
+#### 1.6.6 Expected-effect action confirmation (D359, 2026-09-29)
+
+An optional task action `confirmationActionId` names its frozen same-page verification action.
+`runDeclaredAction` completion proves callback return only. Its optional confirmation callback
+executes that declared verifier after the gesture and retains a separate confirmed occurrence
+linked to the exact verification occurrence and timestamp. The binder requires the declared
+link, later verification, matching physical session incarnation and current action occurrence;
+new starts and failures invalidate old completion evidence, and confirmation is single-use.
+The same consumed value is captured once. Both durable Notes and dashboard wire preserve this
+optional evidence; old observations remain unconfirmed without reconstruction.
+
+Invocation headings retain the sealed entry’s optional human label in the frozen snapshot and
+its digest. Historical snapshots without a label use their stable declared operation identity.
+
+Logs may display successful structured actions only with this evidence. Started and completed
+gestures remain neutral driver diagnostics. Verification failures propagate through the existing
+executor/write authority; confirmation does not create write proof, change fences or enable retries
+of unknown writes. Buffered note drain remains outside the operation's write window.
+
+#### D364 — Confirmed task facts and declared step results (2026-10-02)
+
+On a complete frozen operation invocation, `ctx.confirmed` accepts only references found in that
+invocation's frozen action tree. Its occurrence identity binds the definition fingerprint, run,
+node/task, attempt, claim generation, task attempt, invocation id and path, logical action/session,
+and the browser session incarnation when present. The ordinary step occurrence is
+`runId/attempt/claimGeneration/taskAttempt/occurrencePath`; a protected submit uses
+`runId/attempt/claimGeneration/nodeId/transaction`.
+
+`confirmOutcome` accepts only a frozen declared outcome reference and a completed
+`read-validation` verifier. `result()` uses confirmed evidence from that exact invocation and
+session: one matching declared case yields its frozen `caseId`, label and source; missing or invalid
+evidence yields `unavailable`, duplicate evidence or multiple matches yields `ambiguous`, and no
+matching declared case yields `no-match`. These states stay distinct; no missing observation
+becomes an empty result. The exact method signatures live in ref task-contract §4.2; the v1 event and
+time fields live in ref dashboard-surfaces D364. Protected submit confirmation remains owned by ref
+write-safety §3.
+
+#### 1.6.5 Exact child and derived-result sources (D358, 2026-09-29)
+
+An awaited `one/terminal/one` child may be a terminal result dependency. The existing terminal
+evidence owner admits a distinct `child-resolved` arm, supplied from the actual retained canonical
+child run and result. It retains parent run and declared edge, child run/item/workflow/attempt,
+descriptor version/fingerprint, result schema and result/dependency digests. The sealed descriptor
+factory validates the target workflow/result schema and the retained child envelope/result identity
+before the same terminal derive consumes the successful child outcome. Failed, cancelled, blocked
+or unknown children cannot supply this arm. Other cardinalities and unawaited children cannot use
+a single-child terminal-result dependency; they refuse rather than fabricate one. A child result
+is not a parent task checkpoint. Child output bindings retain the existing declared success path.
+
+The existing `result(schema, references, derive, sources?)` seam may declare direct output sources
+or a `derived` source with a nonempty, uniquely named input list. Every source names an actual
+terminal dependency and schema field. The same derive produces and validates the result once;
+derived lineage does not infer causality by comparing equal outputs. Each declared input retains
+its exact finalized action identity or the named `exact-input-occurrence-not-retained` evidence.
+Result sources and lineage have independent content digests and must belong to the exact retained
+dependency source binding already covered by the terminal dependency digest. Rehashing a foreign
+occurrence cannot make it an admitted input. Optional source fields are read forward; historical
+records are not backfilled or reconstructed.
+
+An action bound to a workflow transformation executes that declaration's existing pure derive
+against its actual declared inputs and validates the consumed output field. Its provenance names
+every declared input, retaining all exact source identities for action-produced inputs, definition
+references for non-action inputs, or named unavailable evidence for missing/ambiguous captures.
+A same-valued observation from another task is not a replacement source. Configuration inputs
+require the actual retained configuration value at execution; examples are not runtime authority.
 
 ---
 
@@ -1830,11 +1978,16 @@ Two deviations from §3's sketch, both as-built:
 
 `tests/types/flow-graph.typecheck.ts` is item 1e's mandated real-scale proof: a 21-node
 representative graph plus sixteen `@ts-expect-error` controls, so a transform that collapses to a top
-type fails the proof rather than passing it vacuously. `tests/unit/flow-type-budget.test.ts` records
+type fails the proof rather than passing it vacuously. `tests/integration/flow-type-budget.test.ts` records
 `tsc --extendedDiagnostics` over that file alone and fails outside the 5s / 1 GiB budget (measured
 0.47s / 215 MiB on the baseline machine).
 
-**Graph scenario coverage** is `src/domain/workflow/scenario-coverage.ts`. Task-level coverage is
+**Historical scenario-coverage implementation.** The design below describes the retired production
+scenario corpus and its former paths. `tests/scenario/` no longer exists; the retained
+`scenario-coverage` guard checks pure graph points and negative controls only, as recorded in the
+[current guard inventory](../guard-inventory.json) and [test policy](guards-and-tests.md#scenario-and-parity-suite-retirement--2026-10-02).
+
+**Graph scenario coverage** was implemented at `src/domain/workflow/scenario-coverage.ts`. Task-level coverage was
 already `defineTaskContract`'s job; what it cannot see is the graph, so
 `deriveGraphCoveragePoints` reads the paths off the runtime node view — one point per branch arm,
 open+resolve per gate, zero/one/many fan-out plus replay per delegation, one per declared policy on
@@ -2333,6 +2486,25 @@ Fix: re-run "ucpath-job-summary" (start there, or mark it always-rerun for this 
    input/assertions through a new start plan; no source checkpoint is inherited and the source run
    remains unchanged. A changed match key derives a new logical item. An unchanged item may retain
    retry lineage, but either path gets its own service-minted run identity only on Confirm.
+
+Retained ordinary configuration fields are resolved from the run's exact validated ConfigSnapshot
+identity and fingerprint. Configuration examples do not substitute for retained values, and protected
+settings are not admitted into this map or the frozen definition. The same pure transform can bind
+runtime text and its display attribution through this scope.
+
+The existing task provenance collector admits actual child-result dependencies and walks exact
+retained checkpoint/result references with 16-result and 256-checkpoint bounds. It preserves the
+original observed time and applies the existing derived freshness rules. SQLite terminal admission
+independently rereads each canonical child result and its dependencies before accepting the seal.
+Action lineage retains immediate child result identities and every exact input; unavailable inputs
+remain unavailable through nested transformations. Protected-derived outputs are conservatively
+redacted; missing upstream protection proof is withheld, even for a local-operator value slot.
+
+Exact source lookup authorizes canonical child membership or an exact source identity retained by
+the current owner's canonical result/dependencies, within one authority read snapshot. The latter
+supports replayed origins without admitting unrelated runs; retained references are bounded to 4096.
+The source's frozen definition, retained attempt/claim and precise observation still own admission.
+Historical archives missing operation evidence report unavailable rather than reconstructing it.
 
 #### 5.6.1 Former two operator recovery choices (D314, 2026-09-02; superseded by D334)
 

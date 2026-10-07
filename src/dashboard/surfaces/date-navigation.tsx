@@ -1,4 +1,4 @@
-import type { CalendarWire } from "../../domain/dashboard/calendar.js";
+import type { CalendarWire } from "../../models/dashboard/calendar.js";
 import type { AsyncResource } from "../state/async-resource.js";
 import { useCalendar } from "../state/use-calendar.js";
 import { Calendar as HeroCalendar } from "@heroui/react";

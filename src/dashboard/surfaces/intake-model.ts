@@ -20,12 +20,12 @@
  */
 import { useEffect, useState } from "react";
 import type { z } from "zod";
-import { canonicalJsonStringify, type JsonObject, type JsonValue } from "../../domain/canonical-json.js";
-import type { ServedHeaderCandidateSchema } from "../../domain/intake/header-discovery.js";
-import type { RowRejectSchema } from "../../domain/intake/manifest.js";
-import type { IntakeRowCorrectionSchema } from "../../domain/intake/session.js";
-import type { SuggestionSchema } from "../../domain/intake/suggestions.js";
-import type { IntakeManifestWire, IntakeSessionWire } from "../../domain/intake/wire.js";
+import { canonicalJsonStringify, type JsonObject, type JsonValue } from "../../rules/validation/canonical-json.js";
+import type { ServedHeaderCandidateSchema } from "../../rules/intake/header-discovery.js";
+import type { RowRejectSchema } from "../../models/intake/manifest.js";
+import type { IntakeRowCorrectionSchema } from "../../models/intake/session.js";
+import type { SuggestionSchema } from "../../models/intake/suggestions.js";
+import type { IntakeManifestWire, IntakeSessionWire } from "../../models/intake/wire.js";
 import { fmtClock, shortHash } from "./format.js";
 
 type ServedHeaderCandidate = z.infer<typeof ServedHeaderCandidateSchema>;

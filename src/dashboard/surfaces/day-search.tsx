@@ -16,7 +16,7 @@ import { Search, SearchX } from "lucide-react";
 import {
   type CrossDateSearchPage,
   type CrossDateSearchResult,
-} from "../../domain/dashboard/search.js";
+} from "../../models/dashboard/search.js";
 import { cn } from "../lib/utils.js";
 import {
   Badge,

@@ -1,6 +1,6 @@
-import { systemClock } from "../../domain/clock.js";
-import { WorkerBrowserCommandRequestSchema } from "../../domain/commands.js";
-import type { WorkerControlBasis } from "../../domain/run/worker.js";
+import { systemClock } from "../../rules/time/clock.js";
+import { WorkerBrowserCommandRequestSchema } from "../../rules/commands/commands.js";
+import type { WorkerControlBasis } from "../../models/run/worker.js";
 import type { WorkerCardWire } from "../surfaces/session-panel-model.js";
 import { settleCommandResult } from "./command-result.js";
 import type { DashboardClient } from "../client/index.js";

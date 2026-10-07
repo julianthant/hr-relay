@@ -1,8 +1,8 @@
 import type { z } from "zod";
 import type {
 ServerClockWireSchema
-} from "../../domain/dashboard/bootstrap.js";
-import type { DayCountWireSchema } from "../../domain/dashboard/projection.js";
+} from "../../models/dashboard/bootstrap.js";
+import type { DayCountWireSchema } from "../../models/dashboard/projection.js";
 
 
 

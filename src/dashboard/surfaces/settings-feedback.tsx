@@ -17,6 +17,8 @@ export function SettingsSaveFeedback({ save, protectedStore = false, name: expli
   if (save.state === "idle") return null;
   if (save.state === "saving") return <span role="status" className={dsText.meta}>Saving…</span>;
   if (save.state === "applied") return showApplied ? <span role="status" className={dsText.meta}>{appliedReplay ? "Already saved" : "Saved"}</span> : null;
+  if (save.feedback === "chip" && save.state === "refused") return retryConflict === undefined ? null : <Button size="sm" variant="secondary" onClick={retryConflict}>Retry edit</Button>;
+  if (save.feedback === "chip" && save.state === "conflict") return retryConflict === undefined ? null : <Button size="sm" variant="secondary" onClick={retryConflict}>Retry edit</Button>;
   if (save.state === "refused") return <Refusal title={`${name} were not applied`} code={save.code ?? "settings-draft-invalid"}>{save.message}{retryConflict !== undefined && <span className="block"><Button size="sm" variant="secondary" onClick={retryConflict}>Retry edit</Button></span>}</Refusal>;
   const title = { unconfirmed: `${name} write unconfirmed`, conflict: `${name} changed` }[save.state];
   return <Banner tone="warning" title={title}>

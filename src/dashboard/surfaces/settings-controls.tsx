@@ -1,4 +1,4 @@
-import type { EditableSettingsLeafWire } from "../../domain/dashboard/settings-editor.js";
+import type { EditableSettingsLeafWire } from "../../models/dashboard/settings-editor.js";
 import { Field, Input, Switch, Textarea, UnitField, dsText } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { settingInput, type SettingsDraftInput, type SettingsDraftOperation } from "./settings-draft-model.js";

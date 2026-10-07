@@ -1,10 +1,10 @@
-import { FrontendBootstrapWireSchema, WorkflowBootstrapPrimitiveSchema, type FrontendBootstrapWire } from "../../domain/dashboard/bootstrap.js";
+import { FrontendBootstrapWireSchema, WorkflowBootstrapPrimitiveSchema, type FrontendBootstrapWire } from "../../models/dashboard/bootstrap.js";
 import { z } from "zod";
 import {
 PreflightRerunCommandRequestSchema,
 PreflightReadinessWireSchema, PreflightSelectionSchema, type PreflightSelection, type PreflightReadinessWire,
 PreflightRerunCommandResultWireSchema,
-} from "../../domain/preflight-contract.js";
+} from "../../models/preflight/preflight-contract.js";
 import { DashboardClientError } from "./errors.js";
 import { parseOrThrow } from "./query-parse.js";
 import type { DashboardTransport } from "./transport.js";

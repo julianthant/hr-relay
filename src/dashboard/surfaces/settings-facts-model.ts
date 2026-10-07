@@ -1,7 +1,7 @@
 import { useEffect,useState } from "react";
 import {
 type SettingsFactsWire
-} from "../../domain/dashboard/settings.js";
+} from "../../models/dashboard/settings.js";
 import { observeResource } from "../state/async-resource.js";
 import { useSettingsClient as useDashboardClient } from "../state/settings-client.js";
 

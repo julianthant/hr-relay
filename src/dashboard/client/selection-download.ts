@@ -1,4 +1,4 @@
-import { sha256Hex } from "../../domain/sha256.js";
+import { sha256Hex } from "../../rules/validation/sha256.js";
 import { schemaError } from "./errors.js";
 import type { BinaryResponse } from "./transport.js";
 

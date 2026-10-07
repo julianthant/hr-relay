@@ -12,8 +12,10 @@ docs/
 ├── roadmap/              Plan source, notation, and generated tracking site
 ├── rebuild/
 │   ├── plans/            Phase/subphase folders, README overviews and optional task files
-│   ├── reference/        Contracts, decision pointers, lessons, and store catalog
-│   ├── migrations/       Workflow migration and acceptance records
+│   ├── reference/        Contracts, current codebase map, decision pointers, lessons, and store catalog
+│   ├── migrations/       Workflow migration records, acceptance records, and preserved legacy inventories
+│   │   └── legacy/       Byte-preserved checked-in provenance and verification inputs
+│   ├── evidence/         Sanitized selector evidence, organized by system
 │   ├── guides/           Practical instructions grounded in the contracts and code
 │   ├── findings/         Diagnoses and proposals awaiting or recording disposition
 │   ├── history/          Frozen reviews, design inputs, and superseded text
@@ -30,7 +32,14 @@ outside disposable worktrees. On 2026-09-17, 45 existing folders moved into that
 `relocation.json` maps their original paths and verifies unchanged file hashes and symlink targets.
 Current documentation uses the new locations. Raw logs, command receipts, historical scripts and
 older Git revisions retain their original paths and bytes; use the map when resolving those records.
-These path updates do not rerun or change the historical gate results.
+Selector fixture and live-read-only evidence now lives under `rebuild/evidence/selectors/<system>/`;
+retained semantic registries name the evidence used by verification. Legacy migration/provenance
+inventories live under `rebuild/migrations/legacy/` and remain checked-in inputs to migration and
+architecture tests. Both relocations preserve payload bytes and stay separate from operator runtime
+state; ignored `config/test-data.local.json` remains private local test input. Active source links use
+the current `src/backend/`, `src/models/`, `src/rules/` and `src/workflow-kit/` layout;
+source-pinned excerpts and frozen records keep their original paths to retain the cited revision.
+These path updates do not rerun or change historical gate results.
 
 ## Find the right document
 
@@ -38,6 +47,7 @@ These path updates do not rerun or change the historical gate results.
 | --- | --- |
 | Find the assigned phase or task | [Roadmap source](roadmap/roadmap.md), then the overview or task file named by its `doc:` binding; [plans index](rebuild/plans/README.md) |
 | Find a requirement's owner | [D1 ownership map](roadmap/roadmap.md#d1-ownership-map--the-quick-index-concept--owning-doc); `ref <slug>` means `rebuild/reference/<slug>.md` |
+| Find current source/test folders and dependency boundaries | [Codebase structure](rebuild/reference/codebase-structure.md) |
 | Understand a numbered decision | [Decision pointer index](rebuild/reference/decisions.md), then its named owner; [operator context](decisions/README.md) explains choices |
 | Add or change a workflow | [Workflow authoring guide](rebuild/guides/workflow-authoring.md), then its [migration record](rebuild/migrations/README.md) |
 | Diagnose or record a gap | [Findings index](rebuild/findings/README.md); a finding does not authorize implementation |
@@ -49,8 +59,8 @@ These path updates do not rerun or change the historical gate results.
 
 | Output | Source and command |
 | --- | --- |
-| [Roadmap site](roadmap/index.html) | [Roadmap source](roadmap/roadmap.md), tagged phase/reference/migration sections, and [renderer](../scripts/generate-roadmap.ts); `npm run roadmap`, then `npm run roadmap:check` |
-| [Store catalog, §2](rebuild/reference/stores.md) | Store declarations through [src/stores/index.ts](../src/stores/index.ts); `npm run stores:catalog`, then `npm run stores:catalog:check` |
+| [Roadmap site](roadmap/index.html) | [Roadmap source](roadmap/roadmap.md), tagged phase/reference/migration sections, and [renderer](../scripts/docs/generate-roadmap.ts); `npm run roadmap`, then `npm run roadmap:check` |
+| [Store catalog, §2](rebuild/reference/stores.md) | Store declarations through [src/backend/app/registries/task-registry.ts](../src/backend/app/registries/task-registry.ts); `npm run stores:catalog`, then `npm run stores:catalog:check` |
 
 Edit generated content at its source. The remaining sections of the store reference are authored
 prose. [Roadmap notation](roadmap/notation.md) documents the plan bindings.

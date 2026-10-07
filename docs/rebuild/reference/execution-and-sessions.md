@@ -30,6 +30,7 @@ and the originals are preserved verbatim in
 | This doc **OWNS** (siblings reference, never redefine) |
 |---|
 | Worker claim/heartbeat/recovery behavior and the one-item-in-flight invariant |
+| D364 worker-local confirmed-action stream identity and publisher lifetime (§3) |
 | Browser-session ownership, reuse, reset/close discipline, and explicit fresh-session boundaries |
 | Worker spawning and queue dispatch/backpressure |
 | The speed contract: condition waits, sleep-tax removal, and bounded operations |
@@ -237,6 +238,15 @@ while (!stopSignal.aborted) {
 // on every exit path, including a throw:
 await sessions.closeAll("worker-stop");
 ```
+
+#### D364 — worker-local confirmed-action publisher (2026-10-02)
+
+Each worker loop creates one confirmed-action publisher with its worker id, a fresh stream-incarnation
+id and a capacity of 256. The publisher assigns increasing sequence numbers within that incarnation.
+The loop closes it on every exit before closing browser sessions and warns if events remain pending.
+Its injected append path is optional; this worker-local queue and identity do not claim persisted
+ordered streaming, which belongs to Phase 4 (ref dashboard-surfaces D364). Saturation and append
+health are diagnostics and never settle a run or external write.
 
 - Claim authority is SQLite with owner, attempt, claim generation, heartbeat renewal, fenced
   terminalization, dead-worker recovery, and bounded re-poll.

@@ -10,12 +10,12 @@
 import type {
   ActivityPeopleTotal,
   ActivityReportWire,
-} from "../../domain/dashboard/activity.js";
+} from "../../models/dashboard/activity.js";
 import {
   ACTIVITY_VOLUME_MAX_YEAR_BUCKETS,
   ACTIVITY_VOLUME_WEEK_STARTS_ON,
   chooseActivityVolumeGranularity,
-} from "../../domain/dashboard/activity-volume.js";
+} from "../../models/dashboard/activity-volume.js";
 import { dayLabel, plural } from "./format.js";
 
 /** What the Activity Who column needs off a queue row, and nothing else. */

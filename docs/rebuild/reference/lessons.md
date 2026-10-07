@@ -319,7 +319,8 @@ _2026-09-04 — the entries from here to the "end of moved block" line were move
   proof matches the current launcher's fresh nonce and both public markers arrive within the runner
   deadline and byte limit; public markers or another launcher's nonce refuse. The shared preflight
   wire imports only browser-safe check/capability/report leaves; the Node-backed runtime registry
-  stays server-side. Raw Vite HTTP belongs to one `infra/providers` adapter whose discriminated
+  stays server-side. Raw Vite HTTP belongs to the `src/backend/app/host/local-vite-probe.ts` host
+  resource, whose discriminated
   refusal survives into the detector summary. Register the launch nonce as process-ownership
   environment authority, including the launcher's bounded pass-through and Vite's exact read.
   Parse Origin before applying loopback policy, and keep content type/length, stream read, UTF-8 and

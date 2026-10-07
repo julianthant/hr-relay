@@ -19,13 +19,13 @@ export { applyDashboardDayPatch } from "./day-state.js";
 export type { SubscriptionState } from "./subscription.js";
 export type { StartPlanResponse } from "./commands.js";
 export type { OperatorXlsxClientDownload } from "./commands.js";
-export type { OperatorXlsxExportRequest } from "../../domain/dashboard/xlsx-export.js";
+export type { OperatorXlsxExportRequest } from "../../models/dashboard/xlsx-export.js";
 export type { IntakeUploadRequest, IntakeUploadResult } from "./queries.js";
 export type {
   CrossDateSearchPage,
   CrossDateSearchQuery,
   CrossDateSearchQueryInput,
-} from "../../domain/dashboard/search.js";
+} from "../../models/dashboard/search.js";
 
 export interface DashboardClient extends DashboardQueries, DashboardCommands {
   subscribeDay(

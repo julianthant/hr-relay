@@ -44,7 +44,7 @@
  * Reading a fact off the settlement is the point. Re-deriving the VERDICT from
  * `result.state` is what `command-result-exhaustive.test.ts` refuses.
  */
-import type { CommandResult } from "../../domain/commands.js";
+import type { CommandResult } from "../../rules/commands/commands.js";
 
 /** The kernel's own rejection vocabulary, taken from the wire union rather than restated. */
 type CommandRejectionCode = Extract<CommandResult, { state: "rejected" }>["code"];
@@ -143,6 +143,6 @@ export function commandFailureToast(failure: CommandDispatchFailure): CommandFai
     description: `${failure.caught instanceof Error ? failure.caught.message : String(failure.caught)} `
       + (failure.command === "archive"
         ? "Review Archive in the recovery banner to recover the original request before sending another."
-        : "The command may already have been recorded: open the run and read its receipt before sending it again."),
+        : "The command may already have been recorded: open the run and check its logs before sending it again."),
   };
 }

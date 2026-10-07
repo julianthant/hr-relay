@@ -27,6 +27,14 @@ export function fmtClock(iso: string): string {
   return `${h12}:${String(date.getMinutes()).padStart(2, "0")} ${suffix}`;
 }
 
+/** Confirmed action time in the operator's local wall clock, with seconds. */
+export function fmtActionClock(iso: string): string {
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) throw new Error(`fmtActionClock: not an ISO instant: ${iso}`);
+  const date = new Date(ms);
+  return [date.getHours(), date.getMinutes(), date.getSeconds()].map((part) => String(part).padStart(2, "0")).join(":");
+}
+
 /**
  * An interval in the operator's words.
  *

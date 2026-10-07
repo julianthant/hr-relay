@@ -13,7 +13,7 @@ import {
   actionsAt,
   type ActionDescriptorWire,
   type ActionIntent,
-} from "../../domain/dashboard/actions.js";
+} from "../../models/dashboard/actions.js";
 import { dsFocus, dsMotion, dsRadius, dsText } from "../ds/ui.js";
 
 /**

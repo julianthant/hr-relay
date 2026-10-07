@@ -1,5 +1,5 @@
 import { elapsedSecondsBetween, fmtElapsed } from "../format.js";
-import type { RunDetailWireSchema } from "../../../domain/dashboard/run-detail.js";
+import type { RunDetailWireSchema } from "../../../models/dashboard/run-detail.js";
 import type { z } from "zod";
 
 type RunDetailWire = z.infer<typeof RunDetailWireSchema>;

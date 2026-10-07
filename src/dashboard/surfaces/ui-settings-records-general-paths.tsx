@@ -1,5 +1,5 @@
 import { Form } from "@heroui/react";
-import type { EditableSettingsLeafWire } from "../../domain/dashboard/settings-editor.js";
+import type { EditableSettingsLeafWire } from "../../models/dashboard/settings-editor.js";
 import { Banner, BodySection, Button, DateInput, Field, FormGroup, Input, PageHeading, ResultRow, Spinner, Switch, UnitField, dsText } from "../ds/ui.js";
 import { formatSetting, settingInput, type SettingsDraftOperation } from "./settings-draft-model.js";
 import type { useEditableSettings } from "./settings-editor-model.js";
@@ -8,7 +8,7 @@ import { settingNote, settingTitle } from "./settings-presentation.js";
 import { SettingsRowActions } from "./ui-settings-records-row-actions.js";
 import { StorageRelocationRows } from "./settings-relocation.js";
 import { SettingsPathPicker } from "./settings-path-picker.js";
-import type { NativePathField } from "../../domain/dashboard/native-path-picker.js";
+import type { NativePathField } from "../../models/dashboard/native-path-picker.js";
 
 type Editor = ReturnType<typeof useEditableSettings>;
 

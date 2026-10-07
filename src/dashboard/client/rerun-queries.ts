@@ -1,4 +1,4 @@
-import { RerunValuesRequestSchema, RerunValuesResponseSchema, type RerunValuesResponse } from "../../domain/dashboard/rerun-values.js";
+import { RerunValuesRequestSchema, RerunValuesResponseSchema, type RerunValuesResponse } from "../../models/dashboard/rerun-values.js";
 import { httpError, schemaError } from "./errors.js";
 import { parseOrThrow } from "./query-parse.js";
 import type { DashboardTransport } from "./transport.js";

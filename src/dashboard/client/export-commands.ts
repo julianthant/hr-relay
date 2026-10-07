@@ -1,5 +1,5 @@
 import { verifySelectionDownload,type SelectionDownload } from "./selection-download.js";
-import { SearchMetadataExportRequestSchema,type SearchMetadataExportRequest } from "../../domain/dashboard/search-export.js";
+import { SearchMetadataExportRequestSchema,type SearchMetadataExportRequest } from "../../models/dashboard/search-export.js";
 import { z } from "zod";
 import {
 OPERATOR_XLSX_MEDIA_TYPE,
@@ -7,8 +7,8 @@ OperatorXlsxExportIdSchema,
 OperatorXlsxExportRequestSchema,
 OperatorXlsxFileNameSchema,
 type OperatorXlsxExportRequest,
-} from "../../domain/dashboard/xlsx-export.js";
-import { FingerprintSchema } from "../../domain/ids.js";
+} from "../../models/dashboard/xlsx-export.js";
+import { FingerprintSchema } from "../../rules/identity/ids.js";
 import { schemaError } from "./errors.js";
 import type { DashboardTransport } from "./transport.js";
 

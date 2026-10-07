@@ -1,10 +1,141 @@
-# `reference/decisions.md` — the decision ledger (D1–D357, 2026-07-17 → 2026-09-27)
+# `reference/decisions.md` — the decision ledger (D1–D366, 2026-07-17 → 2026-10-03)
+
+The numbered decision history through D362 remains unchanged. D363–D366 are recorded in the
+current operator amendments below; no earlier number is reused.
+
+## Operator amendments
+
+**W6 Explorer definition projection (operator-approved 2026-10-03):** Explorer uses one generic
+ordered projection of a compiled definition, with descriptor identity, timeline order/content and
+complete graph coverage checked; no second graph or workflow-specific renderer map is maintained.
+Systems follow first-use order. Complete operation-display declarations are optional; absent
+declarations remain explicit legacy/unavailable capability. A source jump requires one exact
+displayed producer; missing, ambiguous and retired anchors remain unavailable. Choices are
+hypothetical, not run state; branchless definitions omit `Preview paths`. Existing Explorer
+components/design are reused; input props, component instances and layout may change, with no new
+component design. Owner: [workflow-model §1.6](workflow-model.md#16-workflow-definition--the-one-authoring-seam-d311d317d329-2026-09-04); local package evidence:
+[W6 acceptance](../plans/phase-3/dashboard-surface-wiring.md#w6-acceptance--2026-10-03).
+
+**D366 — Notification event and local action feedback (operator-approved 2026-10-03):** all eight
+declared backend notification kinds receive a durable panel row and compact in-app chip under the
+approved policy. Ordinary events use canonical committed publication evidence; backfill gaps use
+explicit pinned-wire provenance and stay pinned, while subject-mismatch is a separate publication.
+Confirmed Settings saves and notification controls receive result-bound local feedback
+without creating inbox rows. Definite Settings server refusal/conflict uses the approved compact
+danger chip with no inline command-refusal copy or new panel alert; its closed receipt binds
+`actorId`, `commandId`, save `kind` and `outcome`, with manual dismissal, scoped deduplication and
+stale isolation. Unconfirmed/unknown Settings saves receive a persistent danger chip titled `Save
+unconfirmed` alongside the current recovery warning and exact-attempt retry, with no panel alert or
+success/failure/no-effect claim. Its receipt contains only `actorId`, `commandId` and `kind`, deduped
+by actor/kind/command plus unconfirmed phase; it has no target/action. Only typed
+`authority-uncertain` / `authority-unjournaled`, post-dispatch unknown or unconfirmed authoritative
+readback can trigger it; provider saves also support identity-bound pending recovery.
+Run accepted/started is toast-only with its callback deferred, and other unsettled
+events have no blanket policy. W2's Snooze, Unsnooze, dedupe/replay, commit-before-delivery and OS
+contracts remain. Exact approved source provenance, event targets and identities are in
+[§2.6](dashboard-surfaces.md#w2a-publication-policy-2026-10-03) and
+[§9.6](dashboard-surfaces.md#w2a-feedback-policy-2026-10-03). The initial approved binding subset is
+locally accepted at `1db0e1b363dacd82ee56386d427e77814868660b`; admitted Settings feedback bindings
+are locally accepted at `8cb10a13ce2d9b2bdb293e608f107d009b0e3eeb`. Source/check evidence is in the
+main-owned [W2a Settings continuation](../plans/phase-3/dashboard-surface-wiring.md#w2a-settings-feedback-continuation--2026-10-03).
+Deferred and unbound later events remain open. Execution state is owned by the
+[W2a receipt](../plans/phase-3/dashboard-surface-wiring.md#w2a-execution-receipt--2026-10-03).
+
+**D365 — Accepted Settings save superseded before readback (operator-approved W1, 2026-10-02):**
+an authenticated accepted save followed by a later saved revision clears submission uncertainty,
+retains the draft for review, and shows current saved values through the existing conflict state.
+It never automatically resubmits or claims the retained edit is currently saved. Actual uncertainty
+and mismatched evidence retain the immutable exact-attempt retry. Separate authority and confirmation
+rules remain. Owner: [Settings recovery](clock-config-secrets.md#d365--accepted-settings-save-superseded-before-readback--2026-10-02);
+execution/evidence: [W1](../plans/phase-3/dashboard-surface-wiring.md#w1--make-settings-lifecycle-clear-then-wire-confirmed-readback).
+
+**D364 — Confirmed action and declared step-result v1 (approved Phase 3, 2026-10-02):**
+complete frozen task invocations expose the exact `ctx.confirmed` API; published facts bind exact
+action, verifier, purpose, proof and timestamps; step results select only declared outcomes from
+confirmed evidence. Submit facts require the write sequencer's durable saved-effect proof. Queue
+saturation and append failures remain logging health, separate from external outcome. Phase 4 owns
+persisted worker streaming and its run-scoped composite transport; the existing day-only `pc` stream
+remains unchanged. Frontend Logs connection, results and capture association remain Phase 5. Owners:
+[task-contract §4.2](task-contract.md#42-where-instrumentation-attaches),
+[workflow-model](workflow-model.md#d364--confirmed-task-facts-and-declared-step-results-2026-10-02),
+[dashboard-surfaces](dashboard-surfaces.md#d364--confirmed-actionfact-v1-and-step-result-2026-10-02),
+[write-safety](write-safety.md#d364--confirmed-submit-fact-follows-durable-settlement-2026-10-02),
+[execution-and-sessions](execution-and-sessions.md#d364--worker-local-confirmed-action-publisher-2026-10-02),
+[frontend-backend-integration §3.5](frontend-backend-integration.md#35-resumable-subscription-protocol),
+and the [current code map](codebase-structure.md).
+
+**UI catalog retirement (2026-10-01).** The generated UI catalog feature and its catalog-specific
+navigation, route, projection, generator, search command and generated documents are retired.
+D177, D274, D295 and D303 are superseded only for their catalog-specific requirements; semantic UI
+registries, selector verification/provenance, proofs, effects, write safety and Workflow Explorer
+task links remain. Owners: [operator trust](operator-trust.md#ui-catalog-retirement-amendment--operator-approved-2026-10-01),
+[dashboard surfaces §9.5.3](dashboard-surfaces.md#953-the-workflow-explorer-and-the-ui-catalog--read-only-graph-strict-safe-edits-d176d177),
+and [frontend/backend integration](frontend-backend-integration.md#ui-catalog-retirement--operator-approved-2026-10-01).
+
+**D363 — Scenario and parity test retirement (operator-approved 2026-10-02).** Retire
+`tests/scenario/`, `tests/parity/`, their exact suite-only cases and the parity reference corpus.
+The five corpus-dependent cases in `scenario-coverage` and five T1b-manifest cases in
+`test-target-registry` retire; their remaining pure graph, registry, negative-control, semantic,
+import-boundary, provenance and write-safety checks stay active. Coverage floors do not change, and
+Dashboard TSX remains instrumented without claiming visual execution. Declared workflow scenario
+IDs remain contract data, not test evidence. A missing rehearsal manifest reports unavailable before
+execution; synthetic fixtures do not substitute for production scenario proof. The Explorer's
+scenario source links remain unresolved, so edits requiring scenario compile evidence are blocked.
+Future scenario and visual-test design requires a separate operator-led task. Current policy and
+retirement evidence: [guards and tests](guards-and-tests.md#scenario-and-parity-suite-retirement--2026-10-02),
+[workflow model](workflow-model.md#workflow-model-scenario-test-amendment-2026-10-02),
+[operator trust](operator-trust.md#scenario-and-parity-test-retirement-amendment--operator-approved-2026-10-02),
+the owning [retirement record](../plans/phase-3/backend-and-unit-tests.md#layout-polish--finish-the-approved-structure-before-phase-3),
+and its exact [suite retirement](</Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/backend-layout-polish/implementation/retirement-and-freeze.json>),
+[scenario guard cases](</Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/backend-layout-polish/implementation/scenario-guard-retirement.json>)
+and [test-target guard cases](</Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/backend-layout-polish/implementation/test-target-guard-retirement.json>).
+
+**D360 — Concise resolve and failure presentation (approved 2026-09-30):**
+R1 shows identity evidence comparisons; F2 leads with write outcome and next steps. Concise code-based
+classification is separate from the retained full error. Diagnostics, follow-up and advisory move to
+Details. Identity and recovery controls retain served commands and bound ceremonies; verification
+starts with an unselected evidence choice. Unknown submissions cannot gain retry permission from
+presentation or transience. Owner: [operator-trust §2.1](operator-trust.md#21-durable-failurerecord).
+
+**D359 — Explicit expected-effect confirmation (approved Plan 1 Assignment B, 2026-09-29):**
+Completed callbacks remain gesture evidence. A frozen action may name a same-page verification;
+the existing action helper and binder retain confirmed state only after that exact later verifier
+succeeds in the same physical incarnation and current occurrence. Historical evidence is not
+upgraded, consumed values are captured once, and existing write outcome/fence/drain authority stays
+unchanged. Owner: [workflow-model §1.6.6](workflow-model.md#166-expected-effect-action-confirmation-d359-2026-09-29).
+
+**D358 — Exact child and derived-result sources (approved Plan 1 Assignment A, 2026-09-29):**
+Awaited single-child terminal results use the existing sealed dependency authority with exact
+canonical child/result identity and digests, never a parent task checkpoint. Result declarations
+retain every explicit derived input's exact finalized source or named unavailable evidence;
+transformation action attribution uses the same pure declaration and validates consumed output.
+Canonical terminal admission rereads child dependencies; bounded child provenance preserves original
+observation times. Exact retained config feeds the same pure derive. Protected-derived values redact
+or withhold when protection cannot be proved; replay sources require exact canonical retained
+identity. Historical optional evidence is read forward, never reconstructed. Owner:
+[workflow-model §1.6.5](workflow-model.md#165-exact-child-and-derived-result-sources-d358-2026-09-29).
+**D362 — Bounded normal admission mutex contention (operator-approved, 2026-09-29):**
+Admission and release wait up to five monotonic seconds only for mkdir EEXIST contention, checking
+private directory shape and sleeping between attempts. Other filesystem failures propagate;
+exclusive lease conflicts remain immediate. Timeout is typed busy. D354 recovery requires strict
+proof of an exact dead or reused owner identity; live, unknown, empty, or malformed custody is never
+stolen or deleted.
+Owner: [clock-config-secrets §D362](clock-config-secrets.md#d362--bounded-normal-admission-mutex-contention--2026-09-29).
+
+**D361 — Complete local operator evidence (2026-10-01).** New authorized local captures,
+receipt composition 5, display and exports retain complete supplied classified values. Historical
+compositions remain exact; D346 provider and OS-notification egress policy remains separate.
+Owner: [operator-trust §D361](operator-trust.md#d361--complete-local-operator-evidence--2026-10-01).
+
 
 **D357 — Shared Explorer/Logs operation structure (approved Plan 1 P1.3, 2026-09-27):**
 Explorer serves the canonical redacted complete declaration that an enqueue would freeze. Logs
 serve the run's retained snapshot plus only the current page's completed action occurrences,
 joined by exact run, fingerprint, invocation, action, occurrence, and target identities. A
-current registry descriptor never fills a historical gap. New Plan 1 envelopes stamp complete or
+current registry descriptor never fills a historical gap. Optional capture anchors are admitted
+against exact durably retained Notes through the existing runtime root, bounded without draining
+buffered evidence; their digest and full served identity own the inline image join. Unbound captures
+retain their original digest and verified gallery. Owner detail: [operator-trust §2.2](operator-trust.md). New Plan 1 envelopes stamp complete or
 legacy capability, so a removed complete snapshot fails by name; pre-Plan-1 envelopes remain
 explicit legacy. Browser action raw values remain out of the Logs row; protected provenance stays
 redacted.
@@ -29,7 +160,12 @@ compose presentation-only outcomes; the existing graph remains the sole source o
 parallel, transaction, and child authority. Absent declarations are explicit legacy capability and
 do not add a descriptor field. Scenario ids remain executable test corpus identifiers, not display
 outcomes. P1.1 does not migrate active workflows or bind runtime events; those are P1.2/P1.3 work.
+Fill-field template associations are explicit task-owned `templateId` references, validated and
+frozen with the declaration; previews reuse the runtime template helper rather than label inference.
 Owner: [workflow-model §1.6.4](workflow-model.md#164-versioned-operation-display-declarations-d355-2026-09-27).
+
+Computed actions may optionally bind an exact contract-output value slot, with the existing
+occurrence binding and output privacy policy; a declaration alone never invents a result.
 
 **D354 — Proven abandoned admission mutex recovery at startup (operator-directed, 2026-09-27):**
 An ordinary runtime entrypoint may retry admission once after the existing stopped-system proof
@@ -1308,7 +1444,7 @@ _phase: platform_
 
 | # | Decision | Owner (normative text) |
 |---|---|---|
-| **D191** | **`test:coverage` REPLACES `test` + `test:architecture` AS THE PER-COMMIT GATE — THE D190 RECOMMENDATION IS ADOPTED. 2026-09-02 AMENDMENT: THE SUPERSET IS THE SELF-CONTAINED, DISJOINT `unit` + `architecture` + `scenario` PROJECT SET; `test` AND `test:architecture` ARE TARGETED CONVENIENCES, AND RISK-BASED RETENTION, LABELED OUTPUT, AND STRUCTURAL PERFORMANCE BOUNDS ARE PART OF THE GATE CONTRACT. 2026-09-05: OWNED TEST-RUN SCRATCH, VERIFIED RECLAMATION AND BOUNDED PARITY INACTIVITY PRESERVE THE SAME MEMBERSHIP/FLOORS AND PER-COMMIT OBLIGATION. 2026-09-06: DOCUMENTATION-ONLY SCOPED CHECKS, VERIFIED UNCHANGED-INPUT EVIDENCE REUSE AND RESOURCE-BASED GATE SCHEDULING; IMPLEMENTATION GATES AND EXISTING ASSIGNMENTS REMAIN BINDING.** | ref guards-and-tests §3.14 D191 and §10.9 (primary); ref frontend-backend-integration §7.4 (performance bounds); root `CLAUDE.md` |
+| **D191** | **`test:coverage` REPLACES `test` + `test:architecture` AS THE PER-COMMIT GATE — THE D190 RECOMMENDATION IS ADOPTED. 2026-09-02 AMENDMENT: THE SUPERSET WAS THE SELF-CONTAINED, DISJOINT `unit` + `architecture` + `scenario` PROJECT SET; `test` AND `test:architecture` ARE TARGETED CONVENIENCES, AND RISK-BASED RETENTION, LABELED OUTPUT, AND STRUCTURAL PERFORMANCE BOUNDS ARE PART OF THE GATE CONTRACT. 2026-09-05: OWNED TEST-RUN SCRATCH, VERIFIED RECLAMATION AND BOUNDED PARITY INACTIVITY PRESERVE THE SAME MEMBERSHIP/FLOORS AND PER-COMMIT OBLIGATION. 2026-09-06: DOCUMENTATION-ONLY SCOPED CHECKS, VERIFIED UNCHANGED-INPUT EVIDENCE REUSE AND RESOURCE-BASED GATE SCHEDULING; IMPLEMENTATION GATES AND EXISTING ASSIGNMENTS REMAIN BINDING. 2026-09-30 PHASE-1 TIER AMENDMENT: FOUR DISJOINT PROJECTS ADD EXPLICIT `integration`; `test:unit` SELECTS ONLY DETERMINISTIC UNITS, WHILE RETAINED RESOURCE SUITES MOVE INTACT. MEMBERSHIP AND D91 FLOORS STAY FIXED.** | ref guards-and-tests §3.14 D191 and §10.9 (primary); ref frontend-backend-integration §7.4 (performance bounds); root `CLAUDE.md` |
 | **D192** | **THE THREE PRODUCERLESS ADVISORY TOOLS GET THEIR DISPOSITIONS: RUN SUMMARY AND SELECTOR SUGGESTION RETIRE, RECORD SANITY CHECK STAYS OPEN, DEFERRED TO ORDER-8 SEPARATIONS.** | ref operator-trust §4.4 as-built (primary); `config/legacy-capabilities.json` (`legacy-tool-ops-summarize-run`, `legacy-tool-ops-selector-suggest`, `legacy-tool-ops-sanity-check-record`) |
 
 ## Reconciliation round 47 (2026-08-12) — operator decisions: the scope, the storage stance, and the Phase-3 entry
@@ -1811,7 +1947,7 @@ _D270 is minted by this round and lands with its normative text in its owning do
 
 | # | Decision | Owning doc |
 |---|---|---|
-| **D270** | **EVERY RECORDED DATA POINT IS EMITTED ON THE SPAN AT RECORD TIME, REDACTED BY THE DECLARED CLASSIFICATION — AN UNDECLARED LEAF FAILS LOUD.** The D115 collector's points validated a task's output and were then DISCARDED, so the log beside them carried prose about a step rather than the step's evidence. A twelfth span arm, `data.observed`, lands in BOTH halves of the parity pair (`src/core/span-emitter.ts` and the wire leaf `src/events/types.ts`) carrying `{nodeId, taskId, observedAt, points}` on the producing task's own span path — one event per `ctx.recordData` CALL, because a batch is one observation of the page, so the collector reads the clock ONCE per call and `observedAt` is that single instant. RECORD time and not finalization is load-bearing: a task that throws after reading the page has still read the page. Each point's value is split by the provenance collector's own leaf rule and pushed through `redactEvidenceLeaf` — the SAME declared table the D82 receipt uses, never a second implementation — so an UNDECLARED leaf fails the recording task by name, fixtures included (the executor's fixture contracts borrow a manifest-known id because `resolveTaskImplFingerprint` refuses any other, and their paths are declared rather than exempted; a bypass would mean the refusal is never exercised by a composed run). The point carries `direction` NATIVELY and NO `system` (D252/D106 — the store declares it and `dataOrigins` serves it). The channel is the SPAN stream and not notes: the notes stream has no production emitter and `NoteFieldWire`'s closed kinds cannot carry a direction, so `assertNoteWithinRunScope` is not on this path. The queue projection ignores the arm BY NAME, so a stream carrying it cannot degrade `ingestFromDisk` (D218). D184's orphan-classification rule re-baselines on the BUILD MANIFEST's task set rather than the descriptor-reachable one, because the emission fires for whatever a composed descriptor names. Thirteen `recordData` sites stay unclassified BY NAME (four write-sequencer probe roles, four verify roles, four descriptor-less data-service tasks, and one descriptor-less OCR task) — listed in ref operator-trust §2.3.9, never guessed. Commits `ef090ea4` `68954117` `4d074886` `aabd46f4`. | ref dashboard-surfaces §1.1 (the arm) · ref operator-trust §2.3.9 (the declaration) · doc 03a §Observed logs — the log carries what the page said |
+| **D270** | **EVERY RECORDED DATA POINT IS EMITTED ON THE SPAN AT RECORD TIME, REDACTED BY THE DECLARED CLASSIFICATION — AN UNDECLARED LEAF FAILS LOUD.** The D115 collector's points validated a task's output and were then DISCARDED, so the log beside them carried prose about a step rather than the step's evidence. A twelfth span arm, `data.observed`, lands in BOTH halves of the parity pair (`src/core/span-emitter.ts` and the wire leaf `src/events/types.ts`) carrying `{nodeId, taskId, observedAt, points}` on the producing task's own span path — one event per `ctx.recordData` CALL, because a batch is one observation of the page, so the collector reads the clock ONCE per call and `observedAt` is that single instant. RECORD time and not finalization is load-bearing: a task that throws after reading the page has still read the page. Each point's value is split by the provenance collector's own leaf rule and pushed through `redactEvidenceLeaf` — the SAME declared table the D82 receipt uses, never a second implementation — so an UNDECLARED leaf fails the recording task by name, fixtures included (the executor's fixture contracts borrow a manifest-known id because `resolveTaskImplFingerprint` refuses any other, and their paths are declared rather than exempted; Plan 1 form fixtures use the explicitly classified `fictional` namespace, absent from active schemas, with identifiers masked and free-text comments dropped; a bypass would mean the refusal is never exercised by a composed run). The point carries `direction` NATIVELY and NO `system` (D252/D106 — the store declares it and `dataOrigins` serves it). The channel is the SPAN stream and not notes: the notes stream has no production emitter and `NoteFieldWire`'s closed kinds cannot carry a direction, so `assertNoteWithinRunScope` is not on this path. The queue projection ignores the arm BY NAME, so a stream carrying it cannot degrade `ingestFromDisk` (D218). D184's orphan-classification rule re-baselines on the BUILD MANIFEST's task set rather than the descriptor-reachable one, because the emission fires for whatever a composed descriptor names. Thirteen `recordData` sites stay unclassified BY NAME (four write-sequencer probe roles, four verify roles, four descriptor-less data-service tasks, and one descriptor-less OCR task) — listed in ref operator-trust §2.3.9, never guessed. Commits `ef090ea4` `68954117` `4d074886` `aabd46f4`. | ref dashboard-surfaces §1.1 (the arm) · ref operator-trust §2.3.9 (the declaration) · doc 03a §Observed logs — the log carries what the page said |
 
 ## Reconciliation round 95 (2026-08-26) — Phase 3a's 49 fidelity recommendations are ratified
 
@@ -2674,13 +2810,15 @@ Astra/high, maximum three concurrent. Existing gates and local merge conditions 
 
 ### Notifications amendments — 2026-09-14
 
-Operator-approved with the complete 3.1.9.5 plan; requirements are ratified, implementation is pending.
-These are dated amendments to existing decisions, not new decision numbers or completed build claims.
+Operator-approved with the complete 3.1.9.5 plan. W2 does not close or admit the broader
+publication/persistence obligations, which retain their existing owners. These are dated amendments
+to existing decisions, not new decision numbers.
 
 | Existing decision | Approved amendment and normative owner |
 | --- | --- |
 | D134 / D138 / D262 | Notification-owned SQLite source identity and health observations make source replay a no-op; identity and inbox create/fold are atomic. Distinct events fold once, preserving replayed operator state. This supersedes the historical absence of processing metadata and memory-only restart dedupe, while retaining inbox authority, immutable ledger and no per-attempt OS history. See [dashboard-surfaces §2.6](dashboard-surfaces.md#notifications-publication-amendment-2026-09-14) and [operator-trust §6](operator-trust.md#notifications-behavior-amendment-2026-09-14). |
 | D79b / D86 / D138 | All eight current event kinds get production callers; repeating starts on the third distinct retained matching workflow/step/error-class failure with no time window, including verified archives. Verified-done requires canonical receipt evidence. Actual channel/count/publication identity, current-authority targets and explicit browser delivery are owned by [dashboard-surfaces §9.6](dashboard-surfaces.md#notifications-inbox-amendment-2026-09-14) and [frontend-backend-integration §5.1.6](frontend-backend-integration.md#notifications-wire-amendment-2026-09-14). |
+| W2 interaction — 2026-10-02 | Backend-clock one-hour Snooze, guarded Unsnooze and canonical display/wiring are accepted locally under focused W2 review. Broader publication/persistence obligations are not closed or admitted by W2 and retain their existing owners. See [dashboard-surfaces §9.6](dashboard-surfaces.md#notifications-w2-amendment-2026-10-02) and [frontend/backend wiring](frontend-backend-integration.md#notifications-w2-wiring-2026-10-02). |
 | D322 / D222 | Narrowly allow notification of actual failed backup operations or verified corrupt backup evidence. Missing/old/generation-stale unrequested backups still do not alert; explicit-only backup writing and unchanged doctor/recovery remain. D222's retired cadence/producer does not return. See [dashboard-surfaces §2.5](dashboard-surfaces.md#backup-notification-amendment-2026-09-14). |
 
 Persistence joins the next schema migration (52 at the approved base), strict registration, supported
@@ -2752,3 +2890,21 @@ Operator-directed amendment: terminal Queue roots and complete terminal delegate
 archived manually through the C0 saved-report transfer; permanent deletion remains a separately
 confirmed menu command. Root revision, tree membership, interrupted adoption/publication and retained
 write-protection requirements belong to [dashboard-surfaces](dashboard-surfaces.md#manual-terminal-archive-amendment-2026-09-29).
+
+### UI catalog retirement amendment — operator-approved 2026-10-01
+
+This amends existing decisions; it assigns no new decision number.
+
+| Existing decision | Current disposition |
+| --- | --- |
+| D177 | The generated operator catalog surface, artifact projection, generator and search command are retired. |
+| D274 | Its catalog-specific product-surface clause is retired; other product surfaces remain unchanged. |
+| D295 | The Settings catalog section and catalog URL state are retired with the feature. |
+| D303 | The catalog rail/record presentation and catalog projection requirements are retired. |
+
+Semantic UI registries, canonical IDs, selectors, verification and evidence provenance, task links,
+effect classification, write proofs and their safety assertions remain. The Workflow Explorer remains
+and builds task links from the semantic registries. [Operator trust](operator-trust.md#ui-catalog-retirement-amendment--operator-approved-2026-10-01)
+owns the current contract; [dashboard surfaces §9.5.3](dashboard-surfaces.md#953-the-workflow-explorer-and-the-ui-catalog--read-only-graph-strict-safe-edits-d176d177)
+and [frontend/backend integration §3.6](frontend-backend-integration.md#36-query-and-artifact-surface)
+own their surface and route pointers.

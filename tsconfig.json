@@ -22,7 +22,6 @@
     "tests/**/*",
     "scripts/**/*",
     "vitest.config.ts",
-    "vite.dashboard.config.ts",
-    "playwright.parity.config.ts"
+    "vite.dashboard.config.ts"
   ]
 }

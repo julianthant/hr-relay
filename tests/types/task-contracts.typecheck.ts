@@ -3,17 +3,17 @@ import {
   declareDriver,
   declareDriverFor,
   defineBrowserStore,
-} from "../../src/base/store.js";
-import { defineUnwiredSessionProvider } from "../../src/base/session.js";
-import type { CommitTaskCtx, ReadTaskCtx } from "../../src/base/task.js";
-import { defineTask, taskFailer } from "../../src/base/task.js";
-import { ContractFieldPathSchema, defineTaskContract } from "../../src/domain/contracts/base.js";
-import { EidSchema, ObservationIdSchema, ScenarioIdSchema, taskId } from "../../src/domain/ids.js";
+} from "../../src/workflow-kit/task-registry.js";
+import { defineUnwiredSessionProvider } from "../../src/workflow-kit/session.js";
+import type { CommitTaskCtx, ReadTaskCtx } from "../../src/workflow-kit/task.js";
+import { defineTask, taskFailer } from "../../src/workflow-kit/task.js";
+import { ContractFieldPathSchema, defineTaskContract } from "../../src/models/task/task-contract.js";
+import { EidSchema, ObservationIdSchema, ScenarioIdSchema, taskId } from "../../src/rules/identity/ids.js";
 import {
   UCPATH_PERSON_ORG_DISPLAYED_EID,
   UCPATH_PERSON_ORG_SEARCH_SCREEN,
-} from "../../src/domain/ui/ucpath-person-org.js";
-import type { UcpathPersonOrgDriver } from "../../src/domain/ui/ucpath-person-org.js";
+} from "../../src/models/ui/ucpath-person-org.js";
+import type { UcpathPersonOrgDriver } from "../../src/models/ui/ucpath-person-org.js";
 
 // @ts-expect-error browser task contexts reject service-system drivers
 export type InvalidBrowserTaskContext = ReadTaskCtx<{ readonly system: "extraction" }, readonly ["invalid"]>;

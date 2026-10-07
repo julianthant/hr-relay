@@ -1,12 +1,12 @@
-import { CalendarQuerySchema, CalendarWireSchema, type CalendarQuery, type CalendarWire } from "../../domain/dashboard/calendar.js";
+import { CalendarQuerySchema, CalendarWireSchema, type CalendarQuery, type CalendarWire } from "../../models/dashboard/calendar.js";
 import { protocolError } from "./errors.js";
-import { FrontendBootstrapWireSchema,type FrontendBootstrapWire } from "../../domain/dashboard/bootstrap.js";
+import { FrontendBootstrapWireSchema,type FrontendBootstrapWire } from "../../models/dashboard/bootstrap.js";
 import {
 CrossDateSearchPageSchema,
 CrossDateSearchQuerySchema,
 type CrossDateSearchPage,
 type CrossDateSearchQueryInput,
-} from "../../domain/dashboard/search.js";
+} from "../../models/dashboard/search.js";
 import { parseOrThrow } from "./query-parse.js";
 import type { DashboardTransport } from "./transport.js";
 

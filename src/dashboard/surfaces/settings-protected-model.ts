@@ -1,12 +1,13 @@
 import { settleCommandResult } from "../app/command-result.js";
-import { useEffect, useEffectEvent, useRef, useState } from "react";
-import { systemClock } from "../../domain/clock.js";
-import { deepFreeze } from "../../domain/immutability.js";
-import { ProtectedSettingsCommandRequestSchema } from "../../domain/commands.js";
-import { ProtectedSettingsPatchSchema, ProtectedValueSchemas, type ProtectedSettingsName } from "../../domain/config/protected-settings.js";
-import type { EditableSettingsWire } from "../../domain/dashboard/settings-editor.js";
+import { useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { systemClock } from "../../rules/time/clock.js";
+import { deepFreeze } from "../../rules/validation/immutability.js";
+import { ProtectedSettingsCommandRequestSchema } from "../../rules/commands/commands.js";
+import { ProtectedSettingsPatchSchema, ProtectedValueSchemas, type ProtectedSettingsName } from "../../models/config/protected-settings.js";
+import type { EditableSettingsWire } from "../../models/dashboard/settings-editor.js";
 import { useSettingsClient } from "../state/settings-client.js";
 import { beforeEffectRefusal, checkedSettingsResult, protectedReadbackConfirms, settingsRefusal, uncertainSettingsCode, type ProtectedSettingsAttempt, type SettingsSaveState } from "./settings-attempt-model.js";
+import { deliverDefinitiveSettingsRefusal, deliverUnconfirmedSettingsSave, type ConfirmedSettingsSave, type DefinitiveSettingsRefusal, type UnconfirmedSettingsSave } from "./settings-save-feedback-model.js";
 
 type ProtectedDraftOperation = { readonly kind: "set"; readonly raw: string } | { readonly kind: "clear" };
 type ProtectedDraft = Partial<Record<ProtectedSettingsName, ProtectedDraftOperation>>;
@@ -15,13 +16,24 @@ function protectedValue(name: ProtectedSettingsName, raw: string): unknown {
 }
 export function useProtectedSettings(input: {
   actorId: string; readReady: boolean; document: EditableSettingsWire | undefined; refresh: () => Promise<EditableSettingsWire>;
+  onConfirmedSave?: (receipt: ConfirmedSettingsSave) => void;
+  onDefinitiveRefusal?: (receipt: DefinitiveSettingsRefusal) => void;
+  onUnconfirmedSave?: (receipt: UnconfirmedSettingsSave) => void;
 }) {
   const client = useSettingsClient();
+  const incarnation = useMemo(() => ({ client, actorId: input.actorId }), [client, input.actorId]);
+  const activeIncarnation = useRef(incarnation);
   const [draft, setDraft] = useState<ProtectedDraft>({});
   const [errors, setErrors] = useState<Partial<Record<ProtectedSettingsName, string>>>({});
   const [save, setSave] = useState<SettingsSaveState>({ state: "idle" });
   const pending = useRef<ProtectedSettingsAttempt | undefined>(undefined);
   const busy = useRef(false);
+  useLayoutEffect(() => {
+    activeIncarnation.current = incarnation;
+    if (pending.current !== undefined) setSave({ state: "unconfirmed",
+      message: "The credential write could not be confirmed after the Settings connection changed. Retry the exact attempt; your draft is retained." });
+    else setSave(previous => previous.state === "applied" ? { state: "idle" } : previous);
+  }, [incarnation]);
   const available = input.document?.protectedSettings;
   const update = (name: ProtectedSettingsName, raw: string): void => {
     if (busy.current || pending.current !== undefined || available?.state !== "available" || !available.rows.some(row => row.name === name)) return;
@@ -46,31 +58,44 @@ export function useProtectedSettings(input: {
     pending.current = undefined; setDraft({}); setErrors({}); setSave({ state: "idle" });
   };
   const perform = async (command: ProtectedSettingsAttempt): Promise<void> => {
-    if (busy.current) return;
+    if (busy.current || incarnation !== activeIncarnation.current) return;
+    const attemptIncarnation = incarnation;
     busy.current = true; pending.current = command; setSave({ state: "saving" });
+    let confirmed: ConfirmedSettingsSave | undefined;
     try {
       const result = checkedSettingsResult(command, await client.executeCommand(command));
+      if (attemptIncarnation !== activeIncarnation.current) return;
       const settled = settleCommandResult(result);
       if (settled.kind === "refused" && settled.reason === "conflict") {
         pending.current = undefined;
-        try { await input.refresh(); setSave({ state: "conflict", message: "Credentials changed. Current presence is refreshed beside your retained edit. Review it before retrying." }); }
-        catch { setSave({ state: "conflict", message: "Credentials changed, but current presence could not be read. Refresh before retrying the retained edit." }); }
+        try { await input.refresh(); if (attemptIncarnation !== activeIncarnation.current) return; setSave({ state: "conflict", feedback: "chip", message: "Credentials changed. Current presence is refreshed beside your retained edit. Review it before retrying." }); }
+        catch { if (attemptIncarnation !== activeIncarnation.current) return; setSave({ state: "conflict", feedback: "chip", message: "Credentials changed, but current presence could not be read. Refresh before retrying the retained edit." }); }
+        deliverDefinitiveSettingsRefusal(input.onDefinitiveRefusal, { actorId: command.requestedBy, commandId: command.commandId, kind: "protected", outcome: "conflict" });
         return;
       }
       if (settled.kind === "refused") {
         if (settled.reason !== "rejected") throw new Error("settings-result-unconfirmed");
         if (!uncertainSettingsCode(settled.code)) pending.current = undefined;
-        setSave({ state: uncertainSettingsCode(settled.code) ? "unconfirmed" : "refused", code: settled.code, message: settingsRefusal(settled.code) }); return;
+        const uncertain = uncertainSettingsCode(settled.code);
+        setSave({ state: uncertain ? "unconfirmed" : "refused", ...(!uncertain && { feedback: "chip" as const }), code: settled.code, message: settingsRefusal(settled.code) });
+        if (!uncertain) deliverDefinitiveSettingsRefusal(input.onDefinitiveRefusal, { actorId: command.requestedBy, commandId: command.commandId, kind: "protected", outcome: "refused" });
+        else deliverUnconfirmedSettingsSave(input.onUnconfirmedSave, { actorId: command.requestedBy, commandId: command.commandId, kind: "protected" });
+        return;
       }
       const document = await input.refresh();
+      if (attemptIncarnation !== activeIncarnation.current) return;
       if (!protectedReadbackConfirms(command, result, document)) throw new Error("credential-readback-unconfirmed");
       pending.current = undefined; setDraft({}); setErrors({});
       setSave({ state: "applied", replayed: settled.replayed });
+      confirmed = { actorId: command.requestedBy, commandId: command.commandId, kind: "protected", replayed: settled.replayed };
     } catch (error) {
+      if (attemptIncarnation !== activeIncarnation.current) return;
       const refused = beforeEffectRefusal(error);
       if (refused) pending.current = undefined;
       setSave({ state: refused ? "refused" : "unconfirmed", code: refused ? "settings-admission-refused" : undefined, message: refused ? "The request was refused before execution. Your credential draft is retained." : "The credential write could not be confirmed. It may already be stored. Retry the exact attempt; your draft is retained." });
+      if (!refused) deliverUnconfirmedSettingsSave(input.onUnconfirmedSave, { actorId: command.requestedBy, commandId: command.commandId, kind: "protected" });
     } finally { busy.current = false; }
+    if (confirmed !== undefined && attemptIncarnation === activeIncarnation.current) input.onConfirmedSave?.(confirmed);
   };
   const submit = (): void => {
     if (!input.readReady || busy.current || pending.current !== undefined || available?.state !== "available" || Object.keys(draft).length === 0 || Object.values(errors).some(error => error !== undefined)) return;

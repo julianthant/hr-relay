@@ -13,8 +13,6 @@ import { parseArchiveFolderRoute, parseArchiveBrowse, type ArchiveBrowseState } 
 
 import type { ArchiveView } from "../surfaces/archive-model.js";
 import type { ShellViewSelection } from "../surfaces/top-bar-model.js";
-import { parseCatalogView, type CatalogView } from "../surfaces/row-catalog-model.js";
-import { SETTINGS_UI_CATALOG_SECTION_ID } from "../surfaces/settings-model.js";
 
 export interface AppRouteState {
   readonly day?: string;
@@ -44,32 +42,6 @@ export interface AppRouteState {
    * both were reachable.
    */
   readonly explore?: string;
-  /**
-   * The generated UI catalog's search term (2i-G, D177), SUBORDINATE to
-   * `settings` since D295.
-   *
-   * It used to be a takeover key in its own right — presence opened the
-   * catalog, and an empty value meant "open, nothing typed". The catalog is a
-   * Settings section now, so `?settings=ui-catalog` is what opens it and this
-   * carries only the term, which may still legitimately be blank. It is NOT
-   * folded into the `settings` value because a section id and a free-text
-   * search are two different things, and one key holding both would have to
-   * escape one inside the other.
-   *
-   * Both this and `catalogView` are read and written ONLY while `settings`
-   * names the catalog section — enforced in `parseRoute`/`routeToSearch` rather
-   * than at each call site, so a URL can never carry a search term for a page
-   * that is not open.
-   */
-  readonly catalog?: string;
-  /**
-   * The catalog's visible view (D274 item 4). It travels with `catalog` for the
-   * same reason `archiveView` travels with `archive`: the section has two
-   * panels — the generated selector catalog and the row-and-panel vocabulary —
-   * and a door from elsewhere has to be able to land on the right one in a
-   * single navigation rather than asking the operator to take a second action.
-   */
-  readonly catalogView?: CatalogView;
   /**
    * The read-only Archive (2i-G, D179). An empty value opens the index; a run
    * id opens that archived run's detail beside it — the same
@@ -121,8 +93,6 @@ export function parseRoute(search: string): AppRouteState {
   const section = params.get("section");
   const intake = params.get("intake");
   const explore = params.get("explore");
-  const catalog = params.get("catalog");
-  const catalogView = params.get("catalogView");
   const archive = params.get("archive");
   const archiveView = params.get("archiveView");
   const archiveDashboard = params.get("archiveDashboard");
@@ -136,8 +106,6 @@ export function parseRoute(search: string): AppRouteState {
     start: boolean;
     intake?: string;
     explore?: string;
-    catalog?: string;
-    catalogView?: CatalogView;
     archive?: string;
     archiveView?: ArchiveView;
     archiveDashboard?: string;
@@ -152,18 +120,6 @@ export function parseRoute(search: string): AppRouteState {
   if (section !== null && section.length > 0) route.section = section;
   if (intake !== null && intake.length > 0) route.intake = intake;
   if (explore !== null && explore.length > 0) route.explore = explore;
-  // D295: the catalog keys are subordinate to `settings`. An empty VALUE is
-  // still meaningful — the section open with no search term — but presence no
-  // longer opens anything, so a bare `?catalog=kuali` is dropped rather than
-  // silently carried beside a page it does not describe.
-  if (catalog !== null && settings === SETTINGS_UI_CATALOG_SECTION_ID) {
-    route.catalog = catalog;
-    // Follows `archiveView`: an unrecognised view is DROPPED rather than
-    // carried, so a mistyped link lands on the catalog's default panel instead
-    // of on a blank region naming a view this build does not render.
-    const parsedCatalogView = parseCatalogView(catalogView);
-    if (parsedCatalogView !== undefined) route.catalogView = parsedCatalogView;
-  }
   // An EMPTY value is meaningful for both of these (the index, and the default
   // range), so presence is what opens the surface.
   if (archive !== null) {
@@ -200,12 +156,6 @@ export function routeToSearch(route: AppRouteState): string {
   if (route.start) params.set("start", "1");
   if (route.intake !== undefined) params.set("intake", route.intake);
   if (route.explore !== undefined) params.set("explore", route.explore);
-  // The other half of `parseRoute`'s D295 gate, so the pair round-trips: a
-  // catalog term is written only while the section that reads it is open.
-  if (route.catalog !== undefined && route.settings === SETTINGS_UI_CATALOG_SECTION_ID) {
-    params.set("catalog", route.catalog);
-    if (route.catalogView !== undefined) params.set("catalogView", route.catalogView);
-  }
   if (route.archive !== undefined) {
     params.set("archive", route.archive);
     if (route.archiveView !== undefined) params.set("archiveView", route.archiveView);
@@ -244,8 +194,6 @@ export function routeForCrossDateSearchResult(
     start: false,
     intake: undefined,
     explore: undefined,
-    catalog: undefined,
-    catalogView: undefined,
     archive: undefined,
     archiveView: undefined,
     archiveDashboard: undefined,
@@ -339,5 +287,5 @@ export function shellViewOf(takeover: ActiveTakeover): ShellViewSelection {
 export function routeWithoutTakeovers(route: AppRouteState): AppRouteState {
   return { ...route, intake: undefined, explore: undefined, archive: undefined, archiveView: undefined,
     archiveDashboard: undefined, archiveWorkflow: undefined, archiveBrowse: undefined, archiveBrowseInvalid: undefined,
-    activity: undefined, settings: undefined, catalog: undefined, catalogView: undefined };
+    activity: undefined, settings: undefined,  };
 }

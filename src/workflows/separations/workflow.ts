@@ -91,92 +91,92 @@
  * re-read can never file a second termination.
  */
 import { z } from "zod";
-import { OmittedStepResultArmSchema } from "../../domain/workflow/step-omission.js";
-import { defineWorkflow, defineStepEntries } from "../../base/workflow-definition.js";
-import { requireFact, defineWorkflowStep } from "../../base/workflow.js";
+import { OmittedStepResultArmSchema } from "../../models/workflow/step-omission.js";
+import { defineWorkflow, defineStepEntries } from "../../workflow-kit/workflow-definition.js";
+import { requireFact, defineWorkflowStep } from "../../workflow-kit/workflow.js";
 import {
   ResolvedIdentitySubjectSchema,
   IdentityApprovalResultSchema,
-} from "../../domain/separations/identity-approval.js";
+} from "../../rules/separations/identity-approval.js";
 import {
   buildFinalizationComments,
   separationInitials,
   assertSeparationDates,
-} from "../../domain/separations/separation-dates.js";
+} from "../../rules/separations/separation-dates.js";
 import {
   TerminationReceiptSchema,
   TERMINATION_RECEIPT_ACCEPTED_STATUSES,
   assertTerminationReceipt,
-} from "../../domain/separations/termination-receipt.js";
+} from "../../rules/separations/termination-receipt.js";
 import {
   KualiDocumentNumberSchema,
   KualiTimekeeperNameSchema,
-} from "../../domain/ui/kuali-document-identity.js";
-import { KualiSavedFinalizationProofSchema } from "../../domain/ui/kuali-separation-finalization.js";
+} from "../../models/ui/kuali-document-identity.js";
+import { KualiSavedFinalizationProofSchema } from "../../models/ui/kuali-separation-finalization.js";
 import {
   UcpathPendingSweepHistoricalOrCurrentProofSchema,
-} from "../../domain/ui/ucpath-smart-hr-termination.js";
-import { defineCanonicalInput } from "../../domain/workflow/canonical-input.js";
-import { defineWorkflowRole } from "../../domain/workflow/module-role.js";
-import { STANDARD_WORKFLOW_ACTIONS } from "../../domain/workflow/presentation.js";
-import { KualiReadSeparationDocument } from "../../domain/contracts/kuali/read-separation-document.js";
-import { KualiSearchSeparationAction } from "../../domain/contracts/kuali/search-separation-action.js";
+} from "../../models/ui/ucpath-smart-hr-termination.js";
+import { defineCanonicalInput } from "../../models/workflow/canonical-input.js";
+import { defineWorkflowRole } from "../../workflow-kit/validation/module-role.js";
+import { STANDARD_WORKFLOW_ACTIONS } from "../../models/workflow/presentation.js";
+import { KualiReadSeparationDocument } from "../../models/systems/kuali/read-separation-document.js";
+import { KualiSearchSeparationAction } from "../../models/systems/kuali/search-separation-action.js";
 import {
   SeparationsMatchTerminationType,
-} from "../../domain/contracts/separations/match-termination-type.js";
+} from "../../models/workflows/separations/match-termination-type.js";
 import {
   SeparationsReadSeparationPlan,
   ReadSeparationPlanOutputSchema,
-} from "../../domain/contracts/separations/read-separation-plan.js";
-import { SeparationsMatchIdentity } from "../../domain/contracts/separations/match-identity.js";
+} from "../../models/workflows/separations/read-separation-plan.js";
+import { SeparationsMatchIdentity } from "../../models/workflows/separations/match-identity.js";
 import {
   SeparationsMatchSeparationSubject,
-} from "../../domain/contracts/separations/match-separation-subject.js";
+} from "../../models/workflows/separations/match-separation-subject.js";
 import {
   SeparationsVerifyIdentityApproval,
   VerifyIdentityApprovalOutputSchema,
-} from "../../domain/contracts/separations/verify-identity-approval.js";
-import { SearchPersonOrg } from "../../domain/contracts/ucpath/search-person-org.js";
+} from "../../models/workflows/separations/verify-identity-approval.js";
+import { SearchPersonOrg } from "../../models/systems/ucpath/search-person-org.js";
 import {
   SeparationsMatchActiveEmployment,
-} from "../../domain/contracts/separations/match-active-employment.js";
+} from "../../models/workflows/separations/match-active-employment.js";
 import {
   SeparationsMatchDepartmentOption,
-} from "../../domain/contracts/separations/match-department-option.js";
-import { UcpathReadJobSummary } from "../../domain/contracts/ucpath/read-job-summary.js";
+} from "../../models/workflows/separations/match-department-option.js";
+import { UcpathReadJobSummary } from "../../models/systems/ucpath/read-job-summary.js";
 import {
   NewKronosReadSeparationTimecard,
-} from "../../domain/contracts/new-kronos/read-separation-timecard.js";
-import { NewKronosSearchEmployee } from "../../domain/contracts/new-kronos/search-employee.js";
+} from "../../models/systems/new-kronos/read-separation-timecard.js";
+import { NewKronosSearchEmployee } from "../../models/systems/new-kronos/search-employee.js";
 import {
   SeparationsReadSeparationDates,
   ReadSeparationDatesOutputSchema,
-} from "../../domain/contracts/separations/read-separation-dates.js";
-import type { JsonObject, JsonValue } from "../../domain/canonical-json.js";
-import type { StepOmissionDeclaration } from "../../domain/workflow/step-omission.js";
+} from "../../models/workflows/separations/read-separation-dates.js";
+import type { JsonObject, JsonValue } from "../../rules/validation/canonical-json.js";
+import type { StepOmissionDeclaration } from "../../models/workflow/step-omission.js";
 import {
   SeparationsVerifyTerminationReceipt,
-} from "../../domain/contracts/separations/verify-termination-receipt.js";
-import { UcpathCreateTermination } from "../../domain/contracts/ucpath/create-termination.js";
+} from "../../models/workflows/separations/verify-termination-receipt.js";
+import { UcpathCreateTermination } from "../../models/systems/ucpath/create-termination.js";
 import {
   UcpathDeletePendingTerminations,
-} from "../../domain/contracts/ucpath/delete-pending-terminations.js";
+} from "../../models/systems/ucpath/delete-pending-terminations.js";
 import {
   UcpathStagePendingTerminationSweep,
-} from "../../domain/contracts/ucpath/stage-pending-termination-sweep.js";
-import { UcpathStageTermination } from "../../domain/contracts/ucpath/stage-termination.js";
+} from "../../models/systems/ucpath/stage-pending-termination-sweep.js";
+import { UcpathStageTermination } from "../../models/systems/ucpath/stage-termination.js";
 import {
   UcpathReadPendingTerminationSet,
-} from "../../domain/contracts/ucpath/read-pending-termination-set.js";
+} from "../../models/systems/ucpath/read-pending-termination-set.js";
 import {
   KualiSaveSeparationFinalization,
-} from "../../domain/contracts/kuali/save-separation-finalization.js";
+} from "../../models/systems/kuali/save-separation-finalization.js";
 import {
   KualiStageSeparationFinalization,
-} from "../../domain/contracts/kuali/stage-separation-finalization.js";
+} from "../../models/systems/kuali/stage-separation-finalization.js";
 import {
   UcpathVerifyTerminationFilingPresent,
-} from "../../domain/contracts/ucpath/verify-termination-filing-present.js";
+} from "../../models/systems/ucpath/verify-termination-filing-present.js";
 
 /* ── The timeline's step identities ─────────────────────────────────────────
  *

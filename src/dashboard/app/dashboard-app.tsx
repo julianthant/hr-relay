@@ -1,28 +1,25 @@
-import { RerunValuesRequestSchema } from "../../domain/dashboard/rerun-values.js";
+import { RerunValuesRequestSchema } from "../../models/dashboard/rerun-values.js";
 import { routeWithoutTakeovers } from "./url-state.js";
 import { PreflightActionsProvider } from "../state/preflight-actions.js";
-import { resolveDateSelection, routeForDay, routeForStartedRun } from "./date-state-model.js";
+import { routeForDay, routeForStartedRun } from "./date-state-model.js";
 import { RunLaunchHost } from "./run-launch.js";
 import { launchWorkflows, useRunLaunch } from "./run-launch-model.js";
 import { createWorkerCommandDispatch } from "./worker-command-dispatch.js";
-import { navigateNotification, type OpenNotification } from "../state/notification-navigation.js";
+import { createNotificationNavigationIdentity, navigateNotification, type OpenNotification } from "../state/notification-navigation.js";
 import { PanelRight } from "lucide-react";
 import { useCallback,useMemo,useRef,useState,type CSSProperties } from "react";
-import { CapabilityAvailabilitySchema,type CapabilityAvailability } from "../../domain/absence.js";
-import { WorkflowBatchCommandRequestSchema } from "../../domain/commands.js";
-import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
+import { CapabilityAvailabilitySchema,type CapabilityAvailability } from "../../rules/validation/absence.js";
+import { WorkflowBatchCommandRequestSchema } from "../../rules/commands/commands.js";
+import type { ActionDescriptorWire } from "../../models/dashboard/actions.js";
 import {
 SettingsSectionPrimitiveSchema,
 type FrontendBootstrapWire,
-} from "../../domain/dashboard/bootstrap.js";
-import type { CrossDateSearchResult } from "../../domain/dashboard/search.js";
+} from "../../models/dashboard/bootstrap.js";
+import type { CrossDateSearchResult } from "../../models/dashboard/search.js";
 import { EmptyState,Panel,PanelBody,ToastProvider,TooltipProvider,dsIcon,useDemoTheme,useToasts } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { useDashboardClient } from "../state/client-context.js";
-import { useServedNow } from "../state/served-clock.js";
 import { useBootstrap } from "../state/use-bootstrap.js";
-import { useDashboardDay } from "../state/use-dashboard-day.js";
-import { useRunDetail } from "../state/use-run-detail.js";
 import {
 commandResultFeedEntry,
 toastAppliedCommandResult,
@@ -36,7 +33,7 @@ type PendingCommand,
 } from "../surfaces/actions.js";
 import { CommandRecovery, type CommandRecoveryEntry } from "../surfaces/command-recovery.js";
 import { ARCHIVE_INDEX } from "../surfaces/archive-model.js";
-import { serverLocalDay,type DayCountWire } from "../surfaces/date-navigation-model.js";
+import { type DayCountWire } from "../surfaces/date-navigation-model.js";
 import { fmtClock } from "../surfaces/format.js";
 import { tabsFor,type PanelTab } from "../surfaces/log-panel-model.js";
 import { LogPanel } from "../surfaces/log-panel.js";
@@ -101,6 +98,7 @@ shellViewOf,
 type AppRouteState
 } from "./url-state.js";
 import { usePanelSections } from "./use-panel-sections.js";
+import { useConsumerAuthority } from "./use-consumer-authority.js";
 
 
 /**
@@ -319,23 +317,6 @@ function LoadedApp({
   checkedIds,
   onCheckedIds,
 }: LoadedAppProps) {
-  /**
-   * THE clock (D256). The server's instant is the authority; the browser
-   * contributes only the monotonic time since that instant arrived, and every
-   * live elapsed on the screen — the queue row's timer, the gate-age pill, the
-   * session footer, the worker cards, the notification ages — is computed
-   * against this ONE value. Before it, `boot.serverClock.now` was frozen at
-   * page load and a parked run read `0s` for over two minutes.
-   */
-  const nowIso = useServedNow(boot.serverClock.now);
-  const today = serverLocalDay({ ...boot.serverClock, now: nowIso });
-  const dateSelection = resolveDateSelection(route.day, today);
-  const day = dateSelection.state === "valid" ? dateSelection.day : dateSelection.requested;
-  const dateError = dateSelection.state === "valid" ? undefined : dateSelection.reason === "future"
-    ? `Date ${day} is after Today (${today}).` : `Invalid date: ${day || "(empty)"}.`;
-  const { day: dayResource, connection } = useDashboardDay(dateSelection.state === "valid" ? day : undefined);
-
-  const dayWire = dayResource.state === "loaded" && dayResource.value.day === day ? dayResource.value : undefined;
   // Bumped by an applied Data correction: the save moved the run version, so
   // the open detail (and, through its rowRevision, every fetched section)
   // refetches rather than serving a CAS basis the kernel will now refuse.
@@ -343,21 +324,8 @@ function LoadedApp({
   /** Refused command answers are local, bounded reading context; the durable
    * audit remains the server's authority. Applied answers toast instead. */
   const [commandResults, setCommandResults] = useState<readonly CommandResultFeedEntry[]>([]);
-  /**
-   * THE OPEN PANEL FOLLOWS ITS RUN (D257).
-   *
-   * The day stream is the one live feed this app has, and the run's own row on
-   * it carries `rowRevision` — the authority version the panel's detail is
-   * read at. Handing it to `useRunDetail` is what makes the panel notice its
-   * run moving: before it, the nonce above was bumped ONLY by a dispatched
-   * command or an applied Data edit, so a panel left open through a run's
-   * progress kept serving the wire as of the last thing the operator clicked.
-   * A run whose row is not on this day (an archived run, another day's run)
-   * serves no revision and is not followed — it cannot move.
-   */
-  const servedRowRevision = dayWire?.queueSurfaces
-    .find((row) => String(row.runId) === route.run)?.rowRevision;
-  const detail = useRunDetail(dateSelection.state === "valid" ? route.run : undefined, detailNonce, servedRowRevision);
+  const { actorId, nowIso, today, day, dateError, dayResource, connection, dayWire, detail, refreshDay } =
+    useConsumerAuthority(boot, route, detailNonce);
   const selection = shellSelection(route, day, dayWire, detail);
   const detailValue = selection.state === "ready" ? selection.detail : undefined;
   const offered = detailValue === undefined ? [] : tabsFor(detailValue);
@@ -422,6 +390,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
   const bulkIdsRef = useRef(bulkIds);
   bulkIdsRef.current = bulkIds;
   const client = useDashboardClient();
+  const notificationIdentity = useRef(createNotificationNavigationIdentity(route, client));
+  notificationIdentity.current.update(route, client);
   const { toast } = useToasts();
 
   const workflowLabelOf = useCallback(
@@ -602,7 +572,9 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
   );
 
   const openNotification = useCallback<OpenNotification>((id, opened, refused) => {
+    const selection = notificationIdentity.current.start();
     void navigateNotification({ lookup: () => client.notificationTarget(id), guard: leaveSettings, refused,
+      isCurrent: () => notificationIdentity.current.isCurrent(selection),
       open: target => {
         const base = routeForCrossDateSearchResult(route, { runId: "", partitionDay: day });
         if (target.kind === "storage") setRoute({ ...base, run: undefined, section: undefined, settings: "storage" });
@@ -734,7 +706,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
           the human (ref write-safety §14.6 risk 1).
         */
         const composed = composeCommandRequest(action, target, {
-          actorId: boot.actor.id,
+          actorId: actorId,
           source,
           commandId,
           requestedAt,
@@ -784,7 +756,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
               workflowLabel: workflowLabelOf(String(surface?.workflowId ?? activeWorkflowId)),
               actionLabel: actionToSettle.label,
               clock: fmtClock(nowIso),
-              actorId: boot.actor.id,
+              actorId: actorId,
             });
             if (feedEntry === undefined) throw new Error("refused command settlement produced no feed entry");
             setCommandResults((previous) => [feedEntry, ...previous].slice(0, 4));
@@ -797,7 +769,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
             command: actionToSettle.command,
             subject: surface === undefined ? `run ${targetToSettle.runId}` : queueRowTitle(surface),
             clock: fmtClock(nowIso),
-            actorId: boot.actor.id,
+            actorId: actorId,
           });
           if (actionToSettle.command === "delete" || actionToSettle.command === "archive") {
             const deletedRunIds = new Set<string>();
@@ -846,7 +818,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
         toast(commandFailureToast({ stage: "after-dispatch", caught, command: actionToSettle.command }));
       });
     },
-    [boot.actor.id, client, sections, toast, dayWire, workflowLabelOf, activeWorkflowId, nowIso, setRoute, onBulkIds],
+    [actorId, client, sections, toast, dayWire, workflowLabelOf, activeWorkflowId, nowIso, setRoute, onBulkIds],
   );
 
   /**
@@ -884,7 +856,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
         const requestedAt = retained?.requestedAt ?? nowIso;
 
         const composed = composeBulkRunCommand(plan, {
-          actorId: boot.actor.id,
+          actorId: actorId,
           source: "queue",
           commandId,
           requestedAt,
@@ -933,9 +905,9 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
         toast(commandFailureToast({ stage: "after-dispatch", caught }));
       });
     },
-    [boot.actor.id, client, nowIso, toast],
+    [actorId, client, nowIso, toast],
   );
-  const workerCommands = useMemo(() => createWorkerCommandDispatch(client, { actorId: boot.actor.id, source: "session-panel" }), [client, boot.actor.id]);
+  const workerCommands = useMemo(() => createWorkerCommandDispatch(client, { actorId: actorId, source: "session-panel" }), [client, actorId]);
   const planWorkerCount = workerCommands.plan;
   const spawnWorker = workerCommands.spawn;
 
@@ -1056,12 +1028,12 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
    */
   const setBatchGrouping = useCallback(async (batch: QueueBatch, groupInQueue: boolean): Promise<void> => {
     const request = WorkflowBatchCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: nowIso,
-      requestedBy: boot.actor.id, source: "dashboard", family: "workflow-batch", type: "set-batch-grouping",
+      requestedBy: actorId, source: "dashboard", family: "workflow-batch", type: "set-batch-grouping",
       target: { batchId: batch.id, expectedVersion: batch.version }, payload: { groupInQueue } });
     const result = await client.executeCommand(request);
     const settlement = settleCommandResult(result);
     if (settlement.kind === "refused") throw new Error(settlement.message);
-  }, [boot.actor.id, client, nowIso]);
+  }, [actorId, client, nowIso]);
 
   const queueHandlers = useMemo(
     (): QueueHandlers => ({
@@ -1226,8 +1198,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
         archiveWorkflow: undefined,
         activity: undefined,
         explore: undefined,
-        catalog: undefined,
-        catalogView: undefined,
         settings: undefined,
       };
       leaveSettings(() => {
@@ -1258,8 +1228,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
       archiveWorkflow: undefined,
       activity: undefined,
       explore: undefined,
-      catalog: undefined,
-      catalogView: undefined,
       settings: "",
     });
   }, [route, setRoute]);
@@ -1270,7 +1238,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
     // fills it. `min-w-0` + `overflow-hidden` live up there with the root
     // classes the demo has (`min-h-0` was this tree's own addition and is what
     // a flex CHILD needs, which is exactly what this element now is).
-    <PreflightActionsProvider actions={{ actorId: boot.actor.id, descriptorFingerprint: boot.descriptorHash,
+    <PreflightActionsProvider actions={{ actorId: actorId, descriptorFingerprint: boot.descriptorHash,
       showSettings: section => leaveSettings(() => setRoute({ ...routeWithoutTakeovers(route), settings: section ?? "" })),
       showSessions: () => setSessionsOpen(true),
     }}>
@@ -1288,7 +1256,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
         notifications={dayNotifications}
         onOpenNotification={openNotification}
         notificationConnected={connection.state === "live" && dayWire !== undefined}
-        actorId={boot.actor.id}
+        refreshNotifications={refreshDay}
+        actorId={actorId}
         nowIso={nowIso}
         storage={boot.storage}
         settingsOpen={takeover === "settings"}
@@ -1558,7 +1527,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
                   workflowLabel={workflowLabelOf(selection.detail.header.workflowId)}
                   currentAppVersion={boot.appVersion}
                   servedDescriptorHash={workflowShapeOf(selection.detail.header.workflowId)}
-                  actorId={boot.actor.id}
+                  actorId={actorId}
                   onDetailEdited={onDetailEdited}
                   aiAdvisory={advisoryAvailability}
                   /* The SAME instant `viewState.nowIso` dates the queue's rows
@@ -1625,7 +1594,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
         controller={launch}
         workflows={startWorkflows}
         panelWorkflowId={activeWorkflowId}
-        actorId={boot.actor.id}
+        actorId={actorId}
         onApplied={(workflowId) => {
           leaveSettings(() => {
             setActiveWorkflowId(workflowId);

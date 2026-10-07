@@ -4,9 +4,9 @@ ArchivedCaptureResourceWireSchema,
 ArchivedRunDetailWireSchema,SavedArchiveDetailWireSchema,SavedArchiveFileWireSchema,SavedArchiveIndexWireSchema,SavedArchiveGroupsWireSchema,SavedArchiveQuerySchema,SavedVersionIndexWireSchema,SavedRuntimeVersionIndexWireSchema,type ArchiveIndexWire,
 type ArchivedCaptureResourceWire,
 type ArchivedRunDetailWire,type SavedArchiveDetailWire,type SavedArchiveFileWire,type SavedArchiveIndexWire,type SavedArchiveGroupsWire,type SavedArchiveQuery,type SavedVersionIndexWire,type SavedRuntimeVersionIndexWire
-} from "../../domain/dashboard/archive.js";
-import { ArchiveGroupQuerySchema, type ArchiveGroupQuery } from "../../domain/archive/report.js";
-import { ArtifactIdSchema,FingerprintSchema,RunIdSchema } from "../../domain/ids.js";
+} from "../../models/dashboard/archive.js";
+import { ArchiveGroupQuerySchema, type ArchiveGroupQuery } from "../../models/archive/report.js";
+import { ArtifactIdSchema,FingerprintSchema,RunIdSchema } from "../../rules/identity/ids.js";
 import { runIdentityError } from "./detail-queries.js";
 import {
 DashboardClientError

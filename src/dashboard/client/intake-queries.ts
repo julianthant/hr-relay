@@ -1,4 +1,4 @@
-import { IntakeSessionWireSchema,type IntakeSessionWire } from "../../domain/intake/wire.js";
+import { IntakeSessionWireSchema,type IntakeSessionWire } from "../../models/intake/wire.js";
 import {
 WIRE_ERROR_BODY,
 httpError,

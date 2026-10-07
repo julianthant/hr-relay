@@ -20,8 +20,8 @@ import type {
   ExplorerWorkflowWire,
   SourceLinkWire,
   ExplorerFreshnessWire,
-} from "../../domain/dashboard/explorer.js";
-import type { CommandResult } from "../../domain/commands.js";
+} from "../../models/dashboard/explorer.js";
+import type { CommandResult } from "../../rules/commands/commands.js";
 
 /** The three presentation rows DCC5 may edit; everything else is inspection-only. */
 export type ExplorerPresentationField = "workflow-label" | "workflow-icon" | "workflow-category";

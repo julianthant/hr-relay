@@ -25,9 +25,9 @@
  * confirmation"*. Nothing re-reads a version between the confirm dialog and the
  * post, because that is precisely the drift the CAS exists to catch.
  */
-import { systemClock } from "../../domain/clock.js";
-import type { BulkRunCommandOutcome, BulkRunCommandResponse } from "../../domain/commands.js";
-import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
+import { systemClock } from "../../rules/time/clock.js";
+import type { BulkRunCommandOutcome, BulkRunCommandResponse } from "../../rules/commands/commands.js";
+import type { ActionDescriptorWire } from "../../models/dashboard/actions.js";
 
 /**
  * The bulk vocabulary the strip offers, in the order it draws them.

@@ -11,7 +11,7 @@ import { DashboardClientError } from "../client/errors.js";
 import type {
   CrossDateSearchPage,
   CrossDateSearchResult,
-} from "../../domain/dashboard/search.js";
+} from "../../models/dashboard/search.js";
 import type { QueueStatus } from "./status-model.js";
 import type { QueueSurfaceWire } from "./queue-model.js";
 

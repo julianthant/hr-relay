@@ -1,5 +1,5 @@
 import { useMemo, useSyncExternalStore } from "react";
-import { canonicalJsonStringify } from "../../domain/canonical-json.js";
+import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { preflightReadinessResource, type PreflightReadinessIdentity } from "../client/preflight-state.js";
 import { usePreflightClient } from "./preflight-client.js";
 

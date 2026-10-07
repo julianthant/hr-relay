@@ -1,6 +1,6 @@
 import { ShieldAlert } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
-import type { StorageDoctorWire } from "../../domain/dashboard/storage.js";
+import type { StorageDoctorWire } from "../../models/dashboard/storage.js";
 import { Badge, Banner, BodySection, Button, Disclosure, FormGroup, PageHeading, ResultRow, StatusDot, dsIcon } from "../ds/ui.js";
 import { useStorageClient } from "../state/storage-client.js";
 import { fmtClock, fmtInstantDay, plural } from "./format.js";

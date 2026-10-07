@@ -39,9 +39,9 @@ import { fmtClock, plural } from "./format.js";
 import { SystemChip } from "./system-chip.js";
 import { logLedgerOf } from "./run-detail/logs-model.js";
 import type { LogLedgerFact } from "./run-detail/logs-model.js";
-import { actionsAt, type ActionDescriptorWire } from "../../domain/dashboard/actions.js";
+import { actionsAt, type ActionDescriptorWire } from "../../models/dashboard/actions.js";
 import { ITEM_ATTEMPT_HISTORY_MAX_LIMIT,
-  type ItemAttemptHistoryResponse, type ItemAttemptHistoryRun } from "../../domain/dashboard/item-attempt-history.js";
+  type ItemAttemptHistoryResponse, type ItemAttemptHistoryRun } from "../../models/dashboard/item-attempt-history.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { parseRoute, routeForCrossDateSearchResult, routeToSearch } from "../app/url-state.js";
 import type { DashboardActionHandler, ActionTarget } from "./actions.js";
@@ -562,7 +562,7 @@ function attemptLabel(entry: ItemAttemptHistoryRun): string {
   return "Attempt " + entry.attempt + (entry.disposition === "archived" ? " · archived" : "");
 }
 
-function AttemptHistorySection({
+export function AttemptHistorySection({
   payload,
 }: {
   payload: { runId: string };

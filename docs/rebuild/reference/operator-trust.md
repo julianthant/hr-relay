@@ -20,13 +20,60 @@ with provenance into a repository that shares no module graph with legacy (§1.3
 minimal durable `FailureRecord` is Phase 1f's while automatic bundles, receipts and `explain` are
 Phase 2g's (§2).
 
+## D361 — Complete local operator evidence · 2026-10-01
+
+New authorized local diagnostic captures, observed facts and receipt composition 5 retain each
+complete supplied value with its original classification (`state: allowed`, `transform: allow`).
+Local display and exports preserve supplied identifiers, failure prose and every collected result
+field; CSV formula safety, typed XLSX cells, snapshot membership/order/limits and access rules remain.
+This includes secret or credential-file values already supplied to an authorized local capture;
+it does not authorize reading or discovering additional credentials. Missing original historical
+values stay explicitly unavailable: no digest, suffix, count or basename is reconstructed as a value.
+Historical records and receipt compositions 1–4 retain their exact derivations and stored bytes.
+Archives admit composition 5 alongside supported historical compositions 3 and 4.
+
+D346 provider and OS-notification egress remains separately classified. `redactValue` and the closed
+classification/transform policy still govern provider facts. Failure advisory prose and identifiers
+remain dropped; contact advice still excludes fields whose canonical transform forbids provider use.
+`retainLocalEvidenceValue` and local diagnostic/receipt capture do not bypass that policy. Provider
+prompt schemas reject nonpermitted complete local fields, and OS notifications retain their
+repository-authored-only origin rule. The startup proposal to disclose complete advisory values is
+deferred; this local amendment does not authorize it. Credential-reader and environment guards remain
+active, and the existing credential-named diagnostic interpolation guard is retained.
+
+Identity keys, checksums, request fingerprints, permanent-write digests and exact durable joins retain
+their byte derivations. Existing Host/Origin admission, loopback access, session ownership, storage
+permissions, external-write safety and artifact identity remain required.
+
+## UI catalog retirement amendment — operator-approved 2026-10-01
+
+The generated UI catalog feature is retired: no catalog navigation or URL keys, endpoint/client
+method, projection schema, generator, selector-search command, generated JSON, or per-system catalog
+documents remain. The semantic UI registries and their stable IDs, live verification/evidence,
+selector recipes, effect classification, write proofs and safety assertions remain authoritative.
+The Workflow Explorer remains; its task links are built by
+`src/backend/systems/ui-task-links.ts` from those registries and preserve commit-task attribution.
+This amendment supersedes the catalog-specific requirements in D177, D274, D295 and D303; the
+dated decision and UI-contract history remains below as history, not current product scope.
+
+<a id="scenario-and-parity-test-retirement-amendment--operator-approved-2026-10-02"></a>
+
+## Scenario and parity test retirement amendment — operator-approved 2026-10-02
+
+The operator retired `tests/scenario/` and `tests/parity/`. Workflow-declared scenario identifiers
+and semantic UI verification/provenance records remain data contracts; none proves a test ran or
+current visual acceptance. Future scenario and visual-test design is operator-led. The Explorer's
+scenario source links remain honestly unresolved after suite removal. Do not invent replacement
+paths or wire fields; Explorer edits that require scenario compile evidence are blocked pending that
+operator-led design. Missing rehearsal manifests report unavailable before execution.
+
 ## Ownership (D1)
 
 | This doc **OWNS** | Imports from the owning sibling |
 |---|---|
-| Canonical UI vocabulary: `ElementId`, `ScreenId`, `PageStateId`, `ObservationId`, search terms, registry records, generated catalog, and the typed system-driver boundary | Task contract/store/session model → ref task-contract; page leases → ref execution-and-sessions |
+| Canonical UI vocabulary: `ElementId`, `ScreenId`, `PageStateId`, `ObservationId`, semantic registry records, and the typed system-driver boundary | Task contract/store/session model → ref task-contract; page leases → ref execution-and-sessions |
 | Operator evidence receipt, failure record, diagnostic bundle, `explain run`, and redaction policy | Event/storage wire and retention → ref dashboard-surfaces; write-binding proof/write ledger → ref write-safety; secrets → ref clock-config-secrets |
-| Scenario corpus/manifests and the bug→regression-scenario rule | Task `example` and errors → ref task-contract; graph outcomes → ref workflow-model; test lanes/guards → ref guards-and-tests |
+| Evidence references and semantic UI verification scenarios | Task `example` and errors → ref task-contract; graph outcomes → ref workflow-model; active test tiers and future scenario-test design → ref guards-and-tests |
 | Structured knowledge lifecycle and the AI-assisted `FixRecord` ledger | Existing lessons are migration inputs, not another authority |
 | Read-only workflow explorer and the staged, constrained workflow editor | Descriptor/graph/delegation model → ref workflow-model; spans/projections → ref dashboard-surfaces |
 | The webpage-ready base capability inventory (§8) | Build order → the phase docs |
@@ -36,7 +83,7 @@ contracts. It defines the semantic/operator layer those contracts project into.
 
 All interfaces shown here are readable views of strict, versioned zod schemas; implementation
 types are inferred from those schemas. The registry, scenario, failure, evidence, diagnostic,
-knowledge, fix, editor-draft, and generated-catalog boundaries reject unknown keys recursively.
+knowledge, fix and editor-draft boundaries reject unknown keys recursively.
 Canonical ids/digests/instants are branded. A generic metadata map may exist only inside an opaque,
 schema-versioned diagnostic attachment that no workflow, command, projection, or policy reads.
 
@@ -47,7 +94,7 @@ schema-versioned diagnostic attachment that no workflow, command, projection, or
 <!-- roadmap: phase-1 -->
 
 <!-- roadmap-status: phase-1 -->
-- [x] a stable operator vocabulary instead of TypeScript property paths — four branded ids, 120 catalog entries (§1.1, §1.7)
+- [x] a stable operator vocabulary instead of TypeScript property paths — branded semantic ids and system-owned registries (§1.1, §1.7); the generated catalog was retired 2026-10-01
 - [x] tasks cannot reach a raw `Page` — `task-driver-boundary`, AST plus transitive import graph (§1.4)
 - [x] a failed run persists a structured record rather than a message — Phase 1f's durable `FailureRecord` (§2.1)
 - [x] a `done` run carries a receipt of inputs, observations, decisions, actions, verification, reuse and uncertainty (D141, §2.3)
@@ -222,6 +269,12 @@ blobs by `legacy-selector-port-provenance`, so legacy moving on cannot invalidat
 (and, per the charter, live re-verification at each migration is what keeps the SELECTOR current).
 
 ### 1.3 One canonical catalog for the operator and AI tools
+
+**Superseded by the operator-approved 2026-10-01 retirement amendment above.** The feature has no
+current generated projection, catalog surface, selector-search command or per-system catalog
+document. Semantic registries remain live; the Workflow Explorer builds its task links from them.
+The D177 text below records the previous contract and must not be used as current implementation
+scope.
 
 <!-- roadmap: p1-authority -->
 <!-- roadmap: p2-2i -->
@@ -497,6 +550,36 @@ projections — all three land below in D140–D143, which is where the `evidenc
 
 ### 2.1 Durable `FailureRecord`
 
+**D360 — Concise operator presentation (approved R1/F2 and expanded cases, 2026-09-30).**
+Logs use R1 evidence comparisons for identity/resolve and F2 write-outcome-first failure/recovery.
+The primary failure block exposes the six distinct write states, expected/observed display-safe
+identity, and next steps from the served remediation family. An uncertain or in-flight submission
+always says not to retry; committed and verified writes say not to submit again. Transience is not
+retry permission. Controls still come from current server descriptors.
+
+`FailureDetailWire.display` is an additive concise classification projected by the BFF from an
+exact error code. It does not parse raw messages or change the durable record. Unclassified codes
+use a neutral problem heading and direct the operator to the recorded error. Old wires use the same pure classification. The complete safe
+summary, code, cause chain, trace IDs, remediation messages, follow-up controls and advisory
+availability remain in Details; Archive keeps its existing detailed view. Inline failure captures
+join the exact validated diagnostic bundle, never a nearby timestamp. They appear once in the failure
+block; unrelated and non-image artifacts keep their existing capture gallery.
+
+Identity comparisons preserve disagreement order, exact names and employee IDs. Employment and
+name-search rows use their typed packet facts for concise display; original comparisons and notes
+remain accessible. All candidates remain visible, and the confirmation dialog exposes the complete
+bound write plan. Typed EID membership, deliberate candidate choice, required rejection reason,
+authority-change refusal and transport uncertainty keep their existing semantics. Employment
+observations do not introduce a job-selection command or new approval.
+
+Write recovery starts with one verification entry and an unselected choice among the served
+present/absent commands. The choice opens the existing bound proof ceremony and sends no command.
+All required proof fields and schema/generation/subject bindings remain intact. Forms group fields,
+use full-width comment textareas, and keep fixed values and constraints accessible. Date-specific
+confirmation remains unavailable until its owning workflow serves a supported packet; visual approval
+does not create a new transaction capability.
+
+
 <!-- roadmap: p1-kernel -->
 
 <!-- roadmap-status: p1-kernel -->
@@ -620,6 +703,17 @@ snapshot, the kernel captures one bounded bundle:
 - descriptor/task/config/build fingerprints, resolved prod/test instance;
 - worker, lease, claim generation, clock health, disk/DB health;
 - checkpoint ids/freshness/provenance summaries and prior retry lineage.
+
+Plan 1 may optionally attach an exact frozen action identity to a diagnostic bundle. The existing
+capture service admits it before writing artifacts; the repository independently rereads the
+run-scoped retained Notes through RuntimeAdmission's state root. Admission compares the complete
+identity, including attempt, claim, occurrence path, physical session and confirmation. It consumes
+at most 128 bounded slices of 200 lines and 256 KiB each; missing evidence or an exceeded bound
+refuses by name. It never drains buffered Notes, changes a write window, guesses an occurrence or
+downgrades an invalid anchor to an unbound capture. The optional identity participates in the bundle
+content digest; absent identities retain the existing digest grammar. The five trigger policies and
+unbound capture API remain unchanged. Logs may inline an image only at its exact served occurrence;
+unbound and unloaded captures retain the existing verified gallery.
 
 Bundles are content-addressed and indexed by `DiagnosticBundleId`. Retention is explicit: an
 ordinary bundle's `purgeAfter` is its own capture instant plus **30 days**
@@ -1197,6 +1291,11 @@ refusal is never exercised by a composed run, and the executor's fixtures are th
 the unit lane has. The two person identifiers there carry the same `last4` as everywhere else, so a
 fixture cannot become the surface that proves a raw identifier reaches a stream.
 
+Plan 1 form fixtures borrow existing manifest ids and wrap their additional task output in
+`fictional`, a namespace absent from active output schemas. Those leaves have explicit declarations;
+the employee uses `last4`, and both free-text comments use `drop`. Action values remain governed by
+the separate sealed operation-slot policy. The fixture namespace adds no active workflow capability.
+
 The write-sequencer corpus injects its fixed implementation fingerprint instead. Its five sealed
 task contracts export their exact ids as `WRITE_FIXTURE_TASK_IDS`; the orphan-classification guard
 adds only that derived set to the manifest/runtime baseline. Its probe/prepare/commit/verify leaves
@@ -1334,6 +1433,11 @@ cannot tell.
 ---
 
 ## 3. Scenario corpus: workflows improve safely as new cases are discovered
+
+**Historical test-tier record.** The executable `tests/scenario/` suite and its parity companion
+were retired on 2026-10-02. The dated corpus and tier state below are retained as history; use the
+current operator amendment above and `ref guards-and-tests` for test policy. Semantic UI verification
+scenarios and their proof requirements remain separate from those retired suites.
 
 <!-- roadmap: p2-2j -->
 
@@ -1626,7 +1730,7 @@ leak in D161's adapter:** `JSON.parse`'s own message QUOTES the offending input
 (`Unexpected token 'I', "I think the"…`), so the shared transport now reports only the error's
 NAME beside the answer's length.
 
-**One adapter, per-consumer schemas.** `src/infra/providers/gemini-advisory.ts` is transport +
+**One adapter, per-consumer schemas.** `src/backend/processing/providers/gemini-advisory.ts` is transport +
 provenance only — it stamps provider/model and passes the model's JSON through VERBATIM as
 `answer`, and the CONSUMER owns the closed shape. `gemini-transport.ts` is the half it shares with
 D161's OCR adapter (endpoint, header-borne key, the 429 → `rate-exhausted` mapping with the
@@ -1802,6 +1906,10 @@ parallel graph. It shows:
 This serves both operator debugging and AI code changes: “the failure is at
 `separations/ucpath-transaction → ucpath.smart-hr.ready-to-submit`” resolves to stable ids and source
 locations without reverse-engineering row prose.
+
+The scenario source-link entries currently remain unresolved because their test suite was removed.
+Do not fabricate a replacement link or wire field. Explorer changes that require scenario compile
+evidence remain blocked pending operator-led test design.
 
 **Phase A shipped in 2i-G and is as-built in §5.7 (the derivation and its two named exclusions),
 §5.8 (the catalog surface) and §5.9 (the node panel's derived field census).** Those three sections
@@ -2143,7 +2251,7 @@ authority; the descriptor and validated draft history are.
 <!-- roadmap-status: p2-2i -->
 - [x] the explorer is a projection of the ONE composition root, guarded in both directions over the REAL registry (D176)
 - [x] source links RESOLVE against a real listing; a miss is `unresolved` carrying the path it tried
-- [x] the UI catalog surface serves the COMMITTED artifact and refuses a stale one (D177)
+- [x] D177's committed-artifact surface was delivered historically; the catalog feature was retired by the 2026-10-01 operator amendment, while the semantic registries remain
 - [x] the node panel is a derived FIELD census (D227) and the descriptor's own prose is declared and guarded (D229)
 - [ ] the live-run overlay stays EXCLUDED by decision — run facts belong to the run-detail timeline
 - [ ] scenario coverage CLAIMS stay in the executable corpus by decision, not for want of a wire
@@ -2228,6 +2336,11 @@ safe subset: DCC5 adds exact field-row affordances only for label, icon and cate
 review and exact refreshed readback; no other explorer fact becomes editable.
 
 ### 5.8 The generated UI catalog gets a surface, and it serves the COMMITTED artifact (2026-08-09, D177)
+
+**Historical D177 contract, superseded 2026-10-01.** The surface and all catalog-specific
+navigation, route, projection, generation and search requirements are retired. See the current
+[retirement amendment](#ui-catalog-retirement-amendment--operator-approved-2026-10-01); semantic
+registries, verification, provenance and write-safety requirements remain in force.
 
 <!-- roadmap: p2-2i -->
 
@@ -2468,8 +2581,8 @@ messages. Every durable notification links to a run/failure/gate/command/storage
 only actions currently authorized by the server projection. Reading/snoozing affects the
 notification, never the underlying run or failure.
 
-That list is the POLICY. §6.3 says which of it a producer actually fires today, and it is two of
-seven.
+That list is the POLICY. §6.3 records the older discovery-base producer coverage; the later W2/W2a
+implementation and feedback status is owned by [dashboard-surfaces D366](dashboard-surfaces.md#w2a-feedback-policy-2026-10-03).
 
 ### 6.1 The fold is an UPDATE, and that is not a weakened ledger (D134)
 
@@ -2522,7 +2635,7 @@ suppresses delivery only: it never flips status, and marking read never clears a
 
 ---
 
-### 6.3 As-built — the closed vocabulary, the two publishers, and the five arms with no producer
+### 6.3 Historical as-built at discovery base — the closed vocabulary, two publishers, and five arms with no producer
 
 <!-- roadmap: p2-2g -->
 
@@ -2698,7 +2811,8 @@ can reach today.
 19. Content-addressed immutable artifacts and idempotent outbox-based mutable projections.
 20. Append-only span/note streams and server-side queue/timeline/session projections.
 21. Durable actor-keyed typed notifications with read/unread state and optional snooze
-    **[no OS delivery exists; two of seven triggers have a producer — §6.3]**.
+    **[at the 2026-08-20 discovery checkpoint: no OS delivery was wired and two of seven triggers
+    had a producer — historical §6.3; later W2 status is recorded in dashboard-surfaces]**.
 22. Structured failure records and automatic redacted diagnostic bundles.
 23. Per-run evidence receipts showing inputs, observations, decisions, actions, verification,
     output, reuse, and uncertainty.

@@ -4,8 +4,16 @@
  * file's date/key helpers stay behind until a ported surface needs them).
  */
 import { type ClassValue, clsx } from "clsx";
-import { twMerge } from "tailwind-merge";
+import { extendTailwindMerge } from "tailwind-merge";
+
+const merge = extendTailwindMerge({
+  extend: {
+    classGroups: {
+      "font-size": [{ text: ["caption", "body", "control", "heading", "section", "page"] }],
+    },
+  },
+});
 
 export function cn(...inputs: ClassValue[]): string {
-  return twMerge(clsx(inputs));
+  return merge(clsx(inputs));
 }

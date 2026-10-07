@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DashboardDayWireSchema,type DashboardDayWire } from "../../domain/dashboard/projection.js";
+import { DashboardDayWireSchema,type DashboardDayWire } from "../../models/dashboard/projection.js";
 import { parseOrThrow } from "./query-parse.js";
 import type { DashboardTransport } from "./transport.js";
 

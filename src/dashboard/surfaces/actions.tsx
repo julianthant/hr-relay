@@ -22,7 +22,7 @@
  * FALSE and was corrected by the R8 audit
  * (`docs/plans/2026-08-13-detail-fidelity-audit.md`, finding 1): the
  * `parked-write` section projects both resolutions with their `detail`
- * sentences (`src/server/dashboard/queries/run-detail.ts:516-551`) and they
+ * sentences (`src/backend/runs/dashboard/queries/run-detail.ts:516-551`) and they
  * reach the wire at `src/domain/dashboard/actions.ts`. They had simply been
  * rendering as bare banner pills, dropping the served `detail` on the floor.
  */
@@ -76,7 +76,7 @@ import {
   type ActionDescriptorWire,
   type ActionIconKey,
   type ActionIntent,
-} from "../../domain/dashboard/actions.js";
+} from "../../models/dashboard/actions.js";
 
 /** The object a run action is about — the row id and the revision it was projected at. */
 export interface ActionTarget {
@@ -269,6 +269,10 @@ export function FooterActions({
 // ---------------------------------------------------------------------------
 // Banner — the decision the row is sitting on
 // ---------------------------------------------------------------------------
+
+export function DataActions({ actions, target, onAction = NOOP_ACTION }: { actions: readonly ActionDescriptorWire[]; target: ActionTarget; onAction?: DashboardActionHandler }) {
+  return <div className="flex gap-[var(--ds-space-snug)]">{actionsAt(actions, "data").map((action) => <BareButton key={action.key} className={intentPill(action.intent, "md")} onClick={() => onAction(action, target)}>{action.label}</BareButton>)}</div>;
+}
 
 export function BannerActions({
   actions,

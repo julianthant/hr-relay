@@ -20,7 +20,7 @@
  * serves identities and refusals, so that is what renders.
  */
 import { Check, CheckCircle2, FlaskConical } from "lucide-react";
-import type { SurfaceField } from "../../domain/workflow/ingress.js";
+import type { SurfaceField } from "../../models/workflow/ingress.js";
 import { cn } from "../lib/utils.js";
 import {
   Badge,
@@ -42,11 +42,11 @@ import {
   dsText,
 } from "../ds/ui.js";
 import { fmtClock } from "./format.js";
-import type { CommandResult } from "../../domain/commands.js";
+import type { CommandResult } from "../../rules/commands/commands.js";
 import type { StartPlanResponse } from "../client/index.js";
 import { surfaceValueLabel } from "./run-start-kit-model.js";
 import type { StepOmissionDraft, StepOmissionFactDraft } from "./run-start-model.js";
-import type { StepOmissionForm } from "../../domain/workflow/step-omission.js";
+import type { StepOmissionForm } from "../../models/workflow/step-omission.js";
 /** the non-default run flags shown in the preview and confirmation */
 export function RunFlagChips({
   dryRun,

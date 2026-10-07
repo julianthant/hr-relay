@@ -1,4 +1,4 @@
-import type { ActivityVolume, ActivityVolumeGranularity } from "../../domain/dashboard/activity-volume.js";
+import type { ActivityVolume, ActivityVolumeGranularity } from "../../models/dashboard/activity-volume.js";
 
 const MIN_AXIS_LABEL_GAP_PX = 8;
 const MAX_AXIS_DIVISIONS = 4;

@@ -1,6 +1,7 @@
 # Operator dashboard
 
-Everything here is browser-reachable. Import only permitted pure contracts from `src/domain/**`;
+Everything here is browser-reachable. Import only permitted browser-safe contracts and rules from
+`src/models/**`, `src/rules/**`, and `src/workflow-kit/**`;
 never import Node or server code. `kit.html` is a separate entry whose closure is only `ds/**`
 and `lib/**`, never app/surfaces/client/state.
 
@@ -8,8 +9,9 @@ and `lib/**`, never app/surfaces/client/state.
 
 Use `/ui`. Read [DESIGN.md](DESIGN.md) and open the specimen (`npm run web` →
 `http://localhost:5174/kit.html`) before choosing primitives. Read [PARITY.md](PARITY.md) before
-changing a ruled deviation or judging reference parity. Search [LESSONS.md](LESSONS.md) by the
-surface/decision and read matching entries. Requested lessons go there.
+changing a ruled deviation; its decisions remain current while parity-suite receipts are historical.
+Search [LESSONS.md](LESSONS.md) by the surface/decision and read matching entries. Requested
+lessons go there.
 
 ## Boundaries
 
@@ -21,7 +23,8 @@ surface/decision and read matching entries. Requested lessons go there.
   The DS barrel is the deliberate exception. See the Fast Refresh architecture guard and
   `docs/rebuild/reference/frontend-backend-integration.md` §8 item 14.
 - D294 retired mobile/phone document Capture Mode. Do not restore its entry, UI, transport, or
-  routes. Diagnostic screenshots, Capture tiles, receipts, Archive, and spreadsheet intake remain.
+  routes. Diagnostic screenshots, Capture tiles, Archive, and spreadsheet intake remain. Run data rail and
+  Receipt tab are retired; internal transaction proof and required run controls remain.
 - Use served authority and the shared command/refusal models; do not invent availability, identity,
   status, or write success in the browser. Preserve route-owned Archive views and exact run joins.
 
@@ -29,14 +32,14 @@ surface/decision and read matching entries. Requested lessons go there.
 
 D340: desktop/laptop only. Do not add mobile-only layouts, coarse-pointer styling or phone/touch
 test variants. Keep the 1024×720 CSS-pixel minimum desktop canvas: queue beside detail, document
-scrolling below the floor. Preserve desktop/zoom behavior, keyboard access and the desktop parity lane.
-The exact retirement/replacement mapping is in ref frontend-backend-integration §10.
+scrolling below the floor. Preserve desktop/zoom behavior and keyboard access. The operator
+reinstated the desktop parity screenshot suite on 2026-10-07 as the presentation-freeze check.
+The exact UI retirement mapping is in ref frontend-backend-integration §10.
 
 `npm run dashboard` starts BFF + Vite; `npm run web` alone needs a BFF. `npm run web:build` builds
 production assets. Root typecheck/lint/coverage requirements apply.
 
-For a single-surface change, run its filtered parity spec. Shared shell/tokens/primitives/models
-need the full `npm run test:parity` lane. Run the full lane before the last commit of a dashboard
-implementation unit. Never refreeze merely to pass: `test:parity:update` requires a deliberate,
-reviewed reference change. The lane and exact filters are owned by
-`docs/rebuild/reference/frontend-backend-integration.md` §7.
+`npm run test:parity` checks the presentation freeze against the brief 0 references: zero visual
+diffs when components receive mock values. Never refresh references to make wiring pass. The owning
+phase sets focused unit, integration, architecture, type, lint and coverage checks. Scenario tests
+remain retired.

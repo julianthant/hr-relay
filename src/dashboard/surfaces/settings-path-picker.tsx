@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { NativePathField } from "../../domain/dashboard/native-path-picker.js";
+import type { NativePathField } from "../../models/dashboard/native-path-picker.js";
 import { PathControl } from "../ds/ui.js";
 import { useDashboardClient } from "../state/client-context.js";
 

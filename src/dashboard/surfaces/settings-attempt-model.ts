@@ -1,9 +1,10 @@
 import { z } from "zod";
-import { CommandResultSchema, ProtectedSettingsCommandRequestSchema, SettingsCommandRequestSchema, type CommandResult } from "../../domain/commands.js";
-import { ProtectedSettingsReadbackSchema } from "../../domain/config/protected-settings.js";
-import { canonicalJsonStringify } from "../../domain/canonical-json.js";
+import { CommandResultSchema, ProtectedSettingsCommandRequestSchema, SettingsCommandRequestSchema, type CommandResult } from "../../rules/commands/commands.js";
+import { ProtectedSettingsReadbackSchema } from "../../models/config/protected-settings.js";
+import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { DashboardClientError } from "../client/errors.js";
-import type { EditableSettingsWire } from "../../domain/dashboard/settings-editor.js";
+import type { EditableSettingsWire } from "../../models/dashboard/settings-editor.js";
+import { ordinaryReadbackConfirms } from "./settings-draft-model.js";
 
 export type OrdinarySettingsAttempt = z.infer<typeof SettingsCommandRequestSchema>;
 export type ProtectedSettingsAttempt = z.infer<typeof ProtectedSettingsCommandRequestSchema>;
@@ -12,7 +13,7 @@ export type SettingsSaveState =
   | { readonly state: "idle" }
   | { readonly state: "saving" }
   | { readonly state: "applied"; readonly replayed: boolean }
-  | { readonly state: "refused" | "conflict" | "unconfirmed"; readonly message: string; readonly code?: string };
+  | { readonly state: "refused" | "conflict" | "unconfirmed"; readonly message: string; readonly code?: string; readonly feedback?: "chip" };
 export function checkedSettingsResult(command: SettingsAttempt, input: unknown): CommandResult {
   const result = CommandResultSchema.safeParse(input);
   if (!result.success || result.data.commandId !== command.commandId || result.data.state === "confirmation-required") throw new Error("settings-result-unconfirmed");
@@ -55,4 +56,13 @@ export function protectedReadbackConfirms(command: ProtectedSettingsAttempt, res
     const presence = current.entries[name as keyof typeof current.entries];
     return "clear" in operation ? !presence.present : presence.present;
   });
+}
+export function ordinaryReadbackState(command: OrdinarySettingsAttempt, result: CommandResult, document: EditableSettingsWire): "confirmed" | "superseded" | "unresolved" {
+  if ((result.state !== "applied" && result.state !== "already-applied") || result.commandId !== command.commandId
+    || result.settingsRevision !== command.target.expectedRevision + 1 || result.settingsFingerprint === undefined
+    || result.affectedTargets.length !== 1 || result.affectedTargets[0]?.family !== "settings"
+    || result.affectedTargets[0]?.revision !== result.settingsRevision) return "unresolved";
+  if (document.revision > result.settingsRevision) return "superseded";
+  return document.revision === result.settingsRevision && document.settingsFingerprint === result.settingsFingerprint
+    && ordinaryReadbackConfirms(document, command.payload.patch) ? "confirmed" : "unresolved";
 }

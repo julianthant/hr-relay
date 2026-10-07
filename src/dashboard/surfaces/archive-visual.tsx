@@ -1,7 +1,7 @@
-import { Copy } from "lucide-react";
+import { Archive, CircleAlert, Copy } from "lucide-react";
 import { useState, type ReactNode } from "react";
-import { ArchiveReportCellSchema, type ArchiveReportCell } from "../../domain/archive/report.js";
-import { Button, dsIcon, dsText, Table } from "../ds/ui.js";
+import { ArchiveReportCellSchema, type ArchiveReportCell } from "../../models/archive/report.js";
+import { Button, dsIcon, Skeleton, Table } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { savedCell } from "./archive-report-model.js";
 
@@ -9,14 +9,14 @@ export function ArchiveTable({ label, children, className, roomy = false }: { la
   return <Table label={label} className={cn(
     "min-w-max [&_thead_tr]:!h-[40px] [&_thead_th]:!h-[40px] [&_thead_th]:!px-[var(--ds-space-cozy)] [&_thead_th]:!py-[var(--ds-space-snug)] [&_thead_th]:!text-[12px] [&_thead_th]:!font-semibold [&_thead_th]:!normal-case [&_thead_th]:!tracking-normal",
     "[&_tbody_tr]:h-[46px] [&_tbody_td]:!px-[var(--ds-space-cozy)] [&_tbody_td]:!py-[var(--ds-space-snug)] [&_tbody_td]:!text-[12px] [&_tbody_tr:hover]:bg-[var(--ds-surface-2)]",
-    roomy && "[&_thead_tr]:!h-[44px] [&_thead_th]:!h-[44px] [&_thead_th]:!px-[16px] [&_tbody_tr]:!min-h-[52px] [&_tbody_td]:!px-[16px] [&_tbody_td]:!py-[16px]",
+    roomy && "[&_thead_tr]:!h-[40px] [&_thead_th]:!h-[40px] [&_thead_th]:!px-[16px] [&_tbody_tr]:!min-h-[48px] [&_tbody_td]:!px-[16px] [&_tbody_td]:!py-[12px]",
     className,
   )}>{children}</Table>;
 }
 
 export function ArchiveFieldGroup({ title, ariaLabel, children, className, showHeading = true }: { title: string; ariaLabel?: string; children: ReactNode; className?: string; showHeading?: boolean }) {
   return <section aria-label={ariaLabel ?? title} className={cn("min-w-0 overflow-hidden rounded-[var(--ds-radius-md)] border border-[color:var(--ds-border)] bg-[var(--ds-surface-1)]", className)}>
-    {showHeading && <h3 className={cn(dsText.ui, "m-0 border-b border-[color:var(--ds-border)] px-[20px] py-[17px] !text-[12px] !leading-[17.4px] font-semibold")}>{title}</h3>}
+    {showHeading && <h3 className="m-0 border-b border-[color:var(--ds-border)] px-[16px] py-[12px] text-body font-semibold">{title}</h3>}
     {children}
   </section>;
 }
@@ -24,11 +24,24 @@ export function ArchiveFieldGroup({ title, ariaLabel, children, className, showH
 export function ArchiveFieldRows({ rows, columns = "two" }: { rows: readonly { label: string; value: ReactNode; copyValue?: string }[]; columns?: "one" | "two" }) {
   return <dl className={cn("grid min-w-0 grid-cols-1", columns === "two" && "min-[1200px]:grid-cols-2")}>
     {rows.map((row, index) => <div key={`${row.label}:${index}`} className={cn(
-      "grid min-h-[46px] min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-x-[var(--ds-space-base)] gap-y-[var(--ds-space-tight)] border-b border-[color:var(--ds-border)] px-[20px] py-[14px] text-[12px] leading-[17.4px] last:border-b-0",
+      "grid min-h-[40px] min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-x-[var(--ds-space-base)] gap-y-[var(--ds-space-tight)] border-b border-[color:var(--ds-border)] px-[16px] py-[10px] text-body last:border-b-0",
       columns === "two" && "min-[1200px]:[&:nth-child(odd)]:border-r",
       columns === "two" && index >= rows.length - (rows.length % 2 === 0 ? 2 : 1) && "min-[1200px]:border-b-0",
     )}><dt className="min-w-0 break-words text-[color:var(--ds-fg-muted)] [overflow-wrap:anywhere]">{row.label}</dt><dd className="m-0 min-w-0 break-words text-right font-medium [overflow-wrap:anywhere]">{row.copyValue === undefined ? row.value : <ArchiveCopyable label={row.label} value={row.copyValue}>{row.value}</ArchiveCopyable>}</dd></div>)}
   </dl>;
+}
+
+export function ArchiveResourceState({ kind, title, message, action }: { kind: "loading" | "empty" | "error"; title: string; message?: string; action?: ReactNode }) {
+  return <section role={kind === "error" ? "alert" : "status"} aria-busy={kind === "loading" ? true : undefined} className="min-w-0 rounded-[var(--ds-radius-md)] border border-[color:var(--ds-border)] bg-[var(--ds-surface-1)] p-[20px]">
+    <div className="flex min-w-0 items-start gap-[12px]">
+      {kind !== "loading" && (kind === "error" ? <CircleAlert aria-hidden className={cn(dsIcon.md, "mt-[2px] shrink-0 text-[color:var(--ds-danger)]")} /> : <Archive aria-hidden className={cn(dsIcon.md, "mt-[2px] shrink-0 text-[color:var(--ds-fg-muted)]")} />)}
+      <div className="min-w-0 flex-1 space-y-[8px]"><h2 className="m-0 text-heading text-[color:var(--ds-fg)]">{title}</h2>
+        {message !== undefined && <p className="m-0 max-w-prose break-words text-body text-[color:var(--ds-fg-secondary)] [overflow-wrap:anywhere]">{message}</p>}
+        {action !== undefined && <div className="pt-[4px]">{action}</div>}
+      </div>
+    </div>
+    {kind === "loading" && <div aria-hidden className="mt-[16px] space-y-[12px]"><Skeleton className="h-[12px] w-[45%]" /><Skeleton className="h-[12px] w-[70%]" /><Skeleton className="h-[12px] w-[55%]" /></div>}
+  </section>;
 }
 
 export function ArchiveStructuredValue({ value }: { value: ArchiveReportCell }) {

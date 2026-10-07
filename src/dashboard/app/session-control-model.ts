@@ -1,4 +1,4 @@
-import { WorkerBrowserCommandRequestSchema } from "../../domain/commands.js";
+import { WorkerBrowserCommandRequestSchema } from "../../rules/commands/commands.js";
 import { useEffect, useRef, useState } from "react";
 import type { WorkerCardWire } from "../surfaces/session-panel-model.js";
 import type { WorkerCommandDispatch, WorkerControlAction } from "./worker-command-dispatch.js";

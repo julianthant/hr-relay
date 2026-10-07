@@ -26,13 +26,13 @@ import type {
   ArchivedCaptureResourceWire,
   ArchivedRunDetailWire,
   WorkflowVersionStateWire,
-} from "../../domain/dashboard/archive.js";
+} from "../../models/dashboard/archive.js";
 import {
   VersionBumpChangeRecordSchema,
   type VersionBumpChangeRecord,
-} from "../../domain/archive/change-record.js";
-import type { ArchivedCaptureTile } from "../../domain/archive/sections.js";
-import type { VersionScope } from "../../domain/commands.js";
+} from "../../models/archive/change-record.js";
+import type { ArchivedCaptureTile } from "../../models/archive/sections.js";
+import type { VersionScope } from "../../rules/commands/commands.js";
 import type { DsStatus } from "../ds/ui.js";
 import { fmtClock, plural, shortHash } from "./format.js";
 import { testInstanceSystems } from "./test-instance-hazard.js";

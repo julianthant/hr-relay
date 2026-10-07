@@ -47,8 +47,10 @@
 import { useMemo, type ReactNode } from "react";
 import { AlertTriangle, ArrowUpDown, Ban, CheckCircle2, CheckSquare, RotateCcw, Square, X } from "lucide-react";
 import { cn } from "../lib/utils.js";
-import type { BulkRunCommandOutcome } from "../../domain/commands.js";
+import type { BulkRunCommandOutcome } from "../../rules/commands/commands.js";
 import {
+  ActionBar,
+  ActionBarRow,
   BareButton,
   Button,
   Dialog,
@@ -62,7 +64,6 @@ import {
   dsIcon,
   dsMotion,
   dsRadius,
-  dsSize,
   dsSurface,
   dsText,
 } from "../ds/ui.js";
@@ -245,16 +246,8 @@ export function QueueToolbar({
   );
 
   return (
-    <div
-      className={cn(
-        "flex shrink-0 flex-col overflow-hidden border",
-        dsRadius.lg,
-        dsBorder.base,
-        dsSurface.card,
-        className,
-      )}
-    >
-      <div className={cn("flex items-center", dsSize.hBar, "gap-[var(--ds-space-snug)] px-[var(--ds-space-cozy)]")}>
+    <ActionBar className={className}>
+      <ActionBarRow label="Queue actions">
         {leading}
         {runStart}
         {(leading !== undefined || runStart !== undefined) && (
@@ -309,7 +302,7 @@ export function QueueToolbar({
           )}
           Select
         </BareButton>
-      </div>
+      </ActionBarRow>
 
       {/* SELECT MODE IS A MODE, so it gets its own band rather than six more
           controls shoved into a bar already carrying three groups. It exists
@@ -599,6 +592,6 @@ export function QueueToolbar({
           )}
         </div>
       )}
-    </div>
+    </ActionBar>
   );
 }

@@ -1,7 +1,6 @@
-import { EditableSettingsSectionIdSchema } from "../../domain/dashboard/settings-editor.js";
+import { EditableSettingsSectionIdSchema } from "../../models/dashboard/settings-editor.js";
 import { SettingsAuthoritySection } from "./settings-authorities.js";
 import {
-BookMarked,
 CircleAlert,
 ClipboardCheck,
 Database,
@@ -14,25 +13,25 @@ Settings as SettingsIcon,
 SlidersHorizontal,
 Table2
 } from "lucide-react";
-import { useCallback,useEffect,useRef,useState } from "react";
-import type { FrontendBootstrapWire } from "../../domain/dashboard/bootstrap.js";
+import { useCallback,useEffect,useMemo,useRef,useState } from "react";
+import type { FrontendBootstrapWire } from "../../models/dashboard/bootstrap.js";
 import {
 SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID
-} from "../../domain/dashboard/settings.js";
-import { Banner,Button,Dialog,DialogContent,DialogFooter,DsBodyScope,IconButton,SectionLabel,StatusDot,TakeoverFrame,dsFocus,dsIcon,dsMotion,dsSurface,dsText } from "../ds/ui.js";
+} from "../../models/dashboard/settings.js";
+import { Banner,Button,Dialog,DialogContent,DialogFooter,DsBodyScope,IconButton,SectionLabel,StatusDot,TakeoverFrame,dsFocus,dsIcon,dsMotion,dsSurface,dsText,useToasts } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
+import { useSettingsClient } from "../state/settings-client.js";
 import { plural } from "./format.js";
-import type { CatalogView } from "./row-catalog-model.js";
 import { CapabilitiesSection } from "./settings-capabilities.js";
 import { useEditableSettings } from "./settings-editor-model.js";
+import { createSettingsSaveFeedback } from "./settings-save-feedback-model.js";
 import { EditableSettingsSection } from "./settings-editor.js";
 import { RoutesSection } from "./settings-routes.js";
 import { KeyboardSection } from "./settings-keyboard.js";
 import { PreflightSection } from "./settings-preflight.js";
-import { SETTINGS_GEAR_ID,SETTINGS_KEYBOARD_SECTION_ID,SETTINGS_PREFLIGHT_SECTION_ID,SETTINGS_UI_CATALOG_SECTION_ID,buildSettingsNav,resolveSettingsSection,type SettingsNavEntry,type SettingsNavIcon,type SettingsSection } from "./settings-model.js";
+import { SETTINGS_GEAR_ID,SETTINGS_KEYBOARD_SECTION_ID,SETTINGS_PREFLIGHT_SECTION_ID,buildSettingsNav,resolveSettingsSection,type SettingsNavEntry,type SettingsNavIcon,type SettingsSection } from "./settings-model.js";
 import { storageNeedsAttention,type StorageHealthSummary } from "./storage-settings-model.js";
 import { StorageSection } from "./storage-settings.js";
-import { UiCatalogSection } from "./ui-catalog.js";
 
 
 export type { SettingsSection,StorageHealthSummary };
@@ -61,7 +60,6 @@ const NAV_ICON: Record<SettingsNavIcon, typeof Database> = {
   routes: Link2,
   capabilities: Table2,
   keyboard: KeyboardIcon,
-  "ui-catalog": BookMarked,
   unrendered: CircleAlert,
 };
 
@@ -176,10 +174,6 @@ export function SettingsPage({
   sections,
   workflowLabels,
   section,
-  catalogQuery,
-  catalogView,
-  onCatalogQuery,
-  onCatalogView,
   actorId,
   descriptorFingerprint,
   preflight: _preflight,
@@ -195,17 +189,6 @@ export function SettingsPage({
   workflowLabels: ReadonlyMap<string, string>;
   /** the open section id — `""` is the page's own default, from `?settings=` */
   section: string;
-  /**
-   * The `ui-catalog` section's own two route keys (D295). They are threaded
-   * through rather than held here for the reason `?catalogView=` was made
-   * route-owned in the first place: a link must be able to land on the actual
-   * catalog panel with the actual search term in ONE navigation, and a local
-   * state authority beside a URL is two answers to one question.
-   */
-  catalogQuery: string;
-  catalogView: CatalogView;
-  onCatalogQuery: (next: string) => void;
-  onCatalogView: (next: CatalogView) => void;
   actorId: string;
   descriptorFingerprint: string;
   preflight: NonNullable<FrontendBootstrapWire["preflight"]>;
@@ -213,7 +196,33 @@ export function SettingsPage({
   /** Lets the shell route every Settings-unmounting control through this draft owner. */
   onExitGuardChange?: (guard: ((proceed: () => void) => void) | undefined) => void;
 }) {
-  const editor = useEditableSettings({ actorId, descriptorFingerprint });
+  const { toast, dismiss } = useToasts();
+  const settingsClient = useSettingsClient();
+  const feedback = useMemo(() => createSettingsSaveFeedback((tone, title, description) =>
+    toast({ tone, title, description }), dismiss), [toast, dismiss]);
+  const feedbackScope = useRef({ actorId, client: settingsClient, section, version: 0, active: true });
+  if (feedbackScope.current.actorId !== actorId || feedbackScope.current.client !== settingsClient || feedbackScope.current.section !== section) {
+    feedbackScope.current = { actorId, client: settingsClient, section, version: feedbackScope.current.version + 1, active: true };
+  }
+  const feedbackVersion = feedbackScope.current.version;
+  useEffect(() => { feedback.reset(); }, [actorId, settingsClient, section, feedback]);
+  useEffect(() => {
+    feedbackScope.current.active = true;
+    return () => { feedbackScope.current.active = false; feedbackScope.current.version += 1; feedback.reset(); };
+  }, [feedback]);
+  const onConfirmedSave = useCallback((receipt: Parameters<typeof feedback.publish>[0]) => {
+    if (!feedbackScope.current.active || feedbackScope.current.version !== feedbackVersion) return;
+    feedback.publish(receipt, actorId);
+  }, [actorId, feedback, feedbackVersion]);
+  const onDefinitiveRefusal = useCallback((receipt: Parameters<typeof feedback.publishRefusal>[0]) => {
+    if (!feedbackScope.current.active || feedbackScope.current.version !== feedbackVersion) return;
+    feedback.publishRefusal(receipt, actorId);
+  }, [actorId, feedback, feedbackVersion]);
+  const onUnconfirmedSave = useCallback((receipt: Parameters<typeof feedback.publishUnconfirmed>[0]) => {
+    if (!feedbackScope.current.active || feedbackScope.current.version !== feedbackVersion) return;
+    feedback.publishUnconfirmed(receipt, actorId);
+  }, [actorId, feedback, feedbackVersion]);
+  const editor = useEditableSettings({ actorId, descriptorFingerprint, onConfirmedSave, onDefinitiveRefusal, onUnconfirmedSave });
   const [pendingExit, setPendingExit] = useState<(() => void) | undefined>(undefined);
   const exitFocusTarget = useRef<HTMLElement | null>(null);
   const groups = buildSettingsNav(sections, editor.editor.state === "loaded" ? editor.editor.document : undefined);
@@ -314,15 +323,6 @@ export function SettingsPage({
           </Banner>
         )}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_KEYBOARD_SECTION_ID && <KeyboardSection />}
-        {/* The catalog remains a Help destination inside the Settings page. */}
-        {resolution.state === "open" && resolution.entry.id === SETTINGS_UI_CATALOG_SECTION_ID && (
-          <UiCatalogSection
-            query={catalogQuery}
-            onQuery={onCatalogQuery}
-            view={catalogView}
-            onView={onCatalogView}
-          />
-        )}
         {resolution.state === "open" && resolution.entry.id === "storage" && <StorageSection storage={storage} />}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_PREFLIGHT_SECTION_ID && <PreflightSection editor={editor} />}
         {resolution.state === "open" && resolution.entry.id === "routes" && <RoutesSection editor={editor} />}

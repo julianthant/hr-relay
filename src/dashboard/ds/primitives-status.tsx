@@ -17,8 +17,8 @@ import {
 import { cn } from "../lib/utils.js";
 import { ShadcnBadge } from "./shadcn-badge.js";
 import { dsClip, dsIcon, dsRadius, dsText } from "./tokens.js";
-import { DISPLAY_STATUS_LABELS } from "../../domain/dashboard/status-vocabulary.js";
-import type { displayStatusOf } from "../../domain/dashboard/status-vocabulary.js";
+import { DISPLAY_STATUS_LABELS } from "../../models/dashboard/status-vocabulary.js";
+import type { displayStatusOf } from "../../models/dashboard/status-vocabulary.js";
 
 /**
  * The shared queue status vocabulary.
@@ -256,7 +256,7 @@ export const DS_STATUS: Record<DsStatus, DsStatusSpec> = {
     dot: "bg-[var(--ds-status-verified-done-mark)]",
     dotBorder: "border-[color:var(--ds-status-verified-done-mark)]",
     meaning:
-      "Finished AND read back from the system. The receipt carries the proof.",
+      "Finished and read back from the system.",
   },
 };
 
@@ -324,6 +324,7 @@ export function StatusPill({
   hideIcon,
   label,
   className,
+  presentation = "default",
 }: {
   status: DsStatus;
   /** how long it has been in this state — "12m", "2h". Show it when known. */
@@ -341,9 +342,20 @@ export function StatusPill({
    */
   label?: string;
   className?: string;
+  /** Queue rows use the operator-approved compact attention treatments. */
+  presentation?: "default" | "queue";
 }) {
   const spec = DS_STATUS[status];
   const Icon = spec.icon;
+  const compactAttention = presentation === "queue" && (status === "waiting" || status === "failed");
+  const chip = compactAttention
+    ? status === "waiting"
+      ? "bg-[var(--ds-queue-info-bg)] border-[color:var(--ds-queue-info-border)]"
+      : "bg-[var(--ds-queue-danger-bg)] border-[color:var(--ds-queue-danger-border)]"
+    : spec.chip;
+  const text = compactAttention
+    ? status === "waiting" ? "text-ui-info font-medium" : "text-ui-danger font-medium"
+    : presentation === "queue" && status === "running" ? "text-ui-info" : spec.text;
   return (
     <ShadcnBadge
       title={spec.meaning}
@@ -358,18 +370,18 @@ export function StatusPill({
         dsText.meta,
         dsText.flush,
         PILL_SIZE[size],
-        spec.chip,
-        spec.text,
+        chip,
+        text,
         className,
       )}
     >
-      {!hideIcon && !spec.pillHideIcon && (
+      {!hideIcon && (!spec.pillHideIcon || compactAttention) && (
         <Icon
           aria-hidden
           className={cn(
             dsIcon.sm,
             "shrink-0",
-            spec.iconTone,
+            presentation === "queue" && (compactAttention || status === "running") ? text : spec.iconTone,
             spec.spin && "animate-spin motion-reduce:animate-none",
           )}
         />

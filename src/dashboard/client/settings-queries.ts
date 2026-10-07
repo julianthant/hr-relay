@@ -1,11 +1,11 @@
-import { EditableSettingsWireSchema,type EditableSettingsWire } from "../../domain/dashboard/settings-editor.js";
-import { SettingsFactsWireSchema,type SettingsFactsWire } from "../../domain/dashboard/settings.js";
+import { EditableSettingsWireSchema,type EditableSettingsWire } from "../../models/dashboard/settings-editor.js";
+import { SettingsFactsWireSchema,type SettingsFactsWire } from "../../models/dashboard/settings.js";
 import { DashboardClientError } from "./errors.js";
 import { parseOrThrow } from "./query-parse.js";
 import type { DashboardTransport } from "./transport.js";
-import { StorageRelocationPlanViewSchema, type StorageRelocationPlanView } from "../../domain/commands.js";
+import { StorageRelocationPlanViewSchema, type StorageRelocationPlanView } from "../../rules/commands/commands.js";
 import { NativePathPickerRequestSchema, NativePathPickerResponseSchema,
-  type NativePathPickerRequest, type NativePathPickerResponse } from "../../domain/dashboard/native-path-picker.js";
+  type NativePathPickerRequest, type NativePathPickerResponse } from "../../models/dashboard/native-path-picker.js";
 import { httpError, schemaError } from "./errors.js";
 
 

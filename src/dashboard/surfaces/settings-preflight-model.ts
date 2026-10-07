@@ -1,6 +1,6 @@
 import { useEffect } from "react";
-import { systemClock } from "../../domain/clock.js";
-import type { PreflightReadinessWire } from "../../domain/preflight-contract.js";
+import { systemClock } from "../../rules/time/clock.js";
+import type { PreflightReadinessWire } from "../../models/preflight/preflight-contract.js";
 import { usePreflightReadiness } from "../state/preflight-readiness.js";
 import { usePreflightScope } from "../state/preflight-client.js";
 import type { EditableSettingsState } from "./settings-editor-model.js";

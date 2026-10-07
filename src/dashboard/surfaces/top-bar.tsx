@@ -5,7 +5,7 @@ ShieldCheck,
 Sun
 } from "lucide-react";
 import { Fragment,type ReactElement,memo } from "react";
-import type { CrossDateSearchResult } from "../../domain/dashboard/search.js";
+import type { CrossDateSearchResult } from "../../models/dashboard/search.js";
 import { BareButton,DEMO_THEME_LABEL,type DemoTheme,IconButton,dsBorder,dsFocus,dsIcon,dsMotion,dsRadius,dsSize,dsSurface,dsText } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { type DayCountWire } from "./date-navigation-model.js";
@@ -14,7 +14,7 @@ import { DaySearchControl } from "./day-search.js";
 import type { NavControls } from "./navigation-controls.js";
 import { NavHistoryControls } from "./navigation-controls.js";
 import { type NotificationRowWire } from "./notification-bell-model.js";
-import { NotificationBell } from "./notification-bell.js";
+import { ConnectedNotifications } from "./notifications/connected-notifications.js";
 import { type PreflightCheckWire } from "./preflight-popover-model.js";
 import { PreflightPopover } from "./preflight-popover.js";
 import type { QueueSurfaceWire } from "./queue-model.js";
@@ -101,6 +101,7 @@ export const TopBar = memo(function TopBar({
   notifications,
   onOpenNotification,
   notificationConnected,
+  refreshNotifications,
   actorId,
   nowIso,
   preflight,
@@ -126,6 +127,7 @@ export const TopBar = memo(function TopBar({
   notifications: readonly NotificationRowWire[];
   onOpenNotification: OpenNotification;
   notificationConnected: boolean;
+  refreshNotifications: () => void;
   actorId: string;
   /**
    * The app's ONE live instant (D256) — the same value the queue rows, the
@@ -243,7 +245,7 @@ export const TopBar = memo(function TopBar({
             absence removes it, because an indicator over no report would
             invent a pass. */}
         <PreflightPopover checks={preflight} onRerun={onPreflightRerun} />
-        <NotificationBell notifications={notifications} actorId={actorId} nowIso={nowIso} onOpenNotification={onOpenNotification} connected={notificationConnected} />
+        <ConnectedNotifications rows={notifications} actorId={actorId} day={day} nowIso={nowIso} onOpenNotification={onOpenNotification} connected={notificationConnected} dayState={dayState} refresh={refreshNotifications} />
         {/* THE KEYBOARD GLYPH IS GONE. Operator, on the demo: *"the keyboard
             icon will be removed from there since we already have help in
             settings."* The destination that instruction traded it for now
@@ -278,4 +280,3 @@ export const TopBar = memo(function TopBar({
 export { DateNav } from "./date-navigation.js";
 export { NavHistoryControls } from "./navigation-controls.js";
 export type { NavControls } from "./navigation-controls.js";
-export { NotificationBell } from "./notification-bell.js";

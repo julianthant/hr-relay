@@ -1,5 +1,41 @@
 # Dashboard surfaces — the span model, the ONE projection, the command protocol, and the operator surfaces
 
+## Plan 1 operator amendment — 2026-09-29
+
+The approved shared Explorer/Logs rendering replaces the Run data rail and Receipt tab in the
+Dashboard run panel. Saved receipt selections fall back to Logs. Served data-placement controls
+remain available in the run header; internal recorded values, canonical receipt proof and transaction
+verification authority remain unchanged. This retirement overrides the older rail/tab layout below.
+Logs tables use distinct opaque surfaces and always-open forms. Computation groups contain rows
+only. Successful action rows require D359 expected-effect evidence; old gesture notes remain neutral.
+Gate and failure blocks use the same neutral form frame, with matching opaque header/body colors.
+The approved R1/F2 layouts and concise evidence rules are owned by operator-trust §2.1 (D360). Identity evidence is available inline,
+while approval still uses the served ceremony. Failure effect and safe-action evidence remain first;
+served expected/observed subject comparisons remain visible before optional diagnostic detail.
+Explorer session chips show task-implementation session needs as declarations, never login success.
+Verification details stay in a secondary disclosure; exact source jumps open it when needed.
+An operator gate without a supported resolution packet remains held and names that unavailable
+ceremony. The shared renderer does not invent a generic approve command or decision payload.
+
+## Frontend-first Logs amendment — 2026-09-30
+
+The September 30 frontend-first Logs scope is a projection using the shared `LogFeed` and isolated
+`logs.html` mock preview. For observed operation records, it projects only existing confirmed read,
+fill, click, and keypress data; internal computation rows and steps are omitted from presentation.
+Legacy rows retain neutral activity and observed facts through the existing read. That scope adds
+no backend transport or runtime behavior; D364 below records the later v1 runtime contract. Driver, source, template disclosures,
+and the Attempts dropdown are removed from this surface. A panel with only Logs omits the redundant
+tab strip; panels with multiple advertised tabs retain navigation. Under the operator's explicit scope,
+existing identity, resolve, and failure blocks plus related backend and test work stay deferred, not
+retired; their internal contracts remain authoritative. The reusable palette and type scale are in
+the [Dashboard theme guide](../../../src/dashboard/ds/DASHBOARD-THEME.md).
+
+The run-panel header omits Rerun and the Logs view omits the completed dry-run/partial strip.
+Filled values use plain blue text without an input-like container.
+Screenshots appear at the end of their associated step, without a separate Captures section or
+empty-capture placeholder. The timeline keeps its step segments and omits its start/working-time footer.
+
+
 **What this doc is.** The contract for everything the operator SEES and for every mechanism that
 feeds it: the span/notes event model (§1), the storage and transport split between authority and
 projection (§2), the descriptor fields this layer consumes (§3), the completion contract (§4), the
@@ -19,8 +55,8 @@ Context rail as its sub-square) · gate ceremony · archive/activity/explorer ·
 intake, mobile capture and Edit Data — in that order and under those names, then add the three
 squares that exist only here: settings/storage, the shell, and the delegation/row model. One
 square, one name, one order: a `Dashboard · wire` task in the tree names a square, and it must name
-the same square in both docs. That doc owns the WIRE (endpoints, payload shapes, the parity lane);
-this doc owns what a surface MEANS, what it refuses to show, and why an absence is drawn as an
+the same square in both docs. That doc owns the WIRE (endpoints, payload shapes, and the historical
+parity-lane record); this doc owns what a surface MEANS, what it refuses to show, and why an absence is drawn as an
 absence.
 
 **Status blocks.** A section that describes a tree node carries `<!-- roadmap: <id> -->` and, once
@@ -38,12 +74,12 @@ baseline and owns its final desktop/zoom matrix; it does not repeat mobile clean
 
 | | Concept | Where |
 |---|---|---|
-| **This doc OWNS** | the span/notes wire schema and its identities (D10), the state-root layout, the SQLite authority/projection split and the recovery contract, enqueue/action/queue command semantics (D67/D95), durable notifications, local artifact outboxes/projectors, the SSE surface payloads, the completion union, the cross-repo runtime boundary (D88/D89/D93), the ratified delegation/presentation decisions, **the ONE run/queue projection (D81)**, **run versioning + major-bump archival (D80/D274)**, **run display names (D83)** | §1–§5, §9 |
+| **This doc OWNS** | the span/notes and D364 confirmed-action/fact wire schemas and identities (D10/D364), the state-root layout, the SQLite authority/projection split and the recovery contract, enqueue/action/queue command semantics (D67/D95), durable notifications, local artifact outboxes/projectors, the SSE surface payloads, the completion union, the cross-repo runtime boundary (D88/D89/D93), the ratified delegation/presentation decisions, **the ONE run/queue projection (D81)**, **run versioning + major-bump archival (D80/D274)**, **run display names (D83)** | §1–§5, §9 |
 | **Imports from `ref task-contract`** | the task contract and `defineTask`, the task-id grammar (`<system>/<verb-object>`, D2), the closed `SystemId` union, the error taxonomy | referenced, never redefined |
 | **Imports from `ref workflow-model`** | the descriptor shape and builder, `RunEnvelope` (`dryRun`'s one home, D6), the run-state machine including gates and parks (D5), the checkpoint store, and the readable span-path grammar | referenced, never redefined |
 | **Exports `ref workflow-model` adopts** | verdict/detail semantics, completion-program semantics, and the wire projections; the descriptor carries every consumed field | §3–§4 |
 | **Imports from `ref operator-trust`** | `FailureRecord`, evidence receipts and diagnostic bundles, semantic action targets, scenario ids, knowledge/fix references | referenced, never redefined |
-| **Imports from `ref frontend-backend-integration`** | the HTTP/SSE transport, the per-square wiring matrix (§5.1), the action-descriptor rule (§8.5) and the parity lane (§7) | referenced, never redefined |
+| **Imports from `ref frontend-backend-integration`** | the HTTP/SSE transport, the per-square wiring matrix (§5.1), the action-descriptor rule (§8.5), and the historical parity-lane record (§7) | referenced, never redefined |
 
 The "Where" column read `§§1–5, §9–10` until 2026-08-20 and had been wrong since 2i: §11 (intake),
 §12 (the capture phone) and §13 (the two reference takeovers) were this doc's too. They folded into
@@ -209,6 +245,68 @@ older envelope records without a Plan 1 capability stamp remain explicit legacy.
 stamp `complete` or `legacy`, so a missing complete snapshot cannot silently downgrade. The
 normal note row continues to omit raw browser action payloads; any field value is read from the
 already-redacted provenance arm.
+
+### D364 — Confirmed action/fact v1 and step result (2026-10-02)
+
+The strict `version: 1` event is a separate, proof-bearing contract beside the existing raw
+browser-action notes. Its envelope carries `eventId` (= `workerStreamId/sequence`), `workerId`, `workerStreamId`,
+positive per-stream `sequence`, optional `runSessionId`, `traceId`, `stepOccurrence`, the exact
+`action`, `source`,
+`occurredAt` and publisher-stamped `recordedAt`. The action identity binds run, definition fingerprint,
+node/task, optional child invocation, attempt, claim generation, task attempt, frozen invocation/path,
+logical action occurrence and logical session, plus physical browser-session identity when present.
+An occurrence may carry its state and D359's confirmation link (verifier action id, occurrence ordinal
+and `verifiedAt`). `source` names the registered browser `system`, or `headless: service|workflow`; log prose is not a
+source. Ordinary step occurrence is
+`runId/attempt/claimGeneration/taskAttempt/occurrencePath`; submit occurrence is
+`runId/attempt/claimGeneration/nodeId/transaction`.
+
+Ordinary lifecycle traces publish as actions start, complete, fail or are not run. Successful facts
+publish only after verification, while the enclosing task may remain blocked on later work.
+Protected-commit lifecycle attempts remain
+in the existing raw-note path after sequencer settlement; this stream does not promise a trace for
+every protected attempt. The registered sensitivity/scalar binder withholds restricted, HR,
+unclassified, object and headless values before both confirmed publication and raw-note draining;
+allowed public scalars and protected-source provenance remain.
+
+A `trace` records `started`, `completed`, `failed` or `not-run`, with an optional reason; its state
+must equal the action occurrence state. A `fact` records `read`, `fill`, `interaction`, `verification` or `submit`; purpose is `read-validation`
+for read/verification, `readback` for fill, `interaction-effect` for interaction, and `saved-effect`
+for submit. Every fact carries the completed verifier occurrence, `verdict: matched`, a 64-character
+lowercase SHA-256 observation digest and `confirmedAt`. For ordinary facts the digest hashes
+(`hrauto:confirmed-observation:v1`), a NUL byte, and canonical observed JSON; submit reuses the
+durable write-proof digest. The proof carries the exact verifier identity, matched verdict and digest,
+not arbitrary observed JSON. Only submit
+may carry `disposition: committed` and durable proof
+(`writeIntentId`, checkpoint node and proof digest). `occurredAt` records the action or transaction
+time, `confirmedAt` the successful verification or durable settlement time, and `recordedAt` event
+construction time.
+
+`DeclaredStepResult` is a separate v1 task result, not a fabricated event or client-side inference.
+It is bound to one frozen task invocation and step occurrence. Exactly one confirmed declared case
+returns `selected` with frozen `caseId`, label and source; missing proof returns `unavailable`,
+duplicate evidence or multiple matching cases returns `ambiguous`, and no matching case returns
+`no-match`.
+
+The worker-local publisher stamps worker/stream identity and sequence and uses a bounded queue
+(capacity 256 in the worker loop). `delivered` means the append completed; `queued` means pending,
+not durable; refusal reports `saturated`, `closed` or `unconnected`. Append and health-report errors
+remain publisher-health diagnostics (`healthy`, `saturated`, `closed`, `append-failed`,
+`unconnected`, `proof-unavailable`, `program-error`); a throwing health callback sets
+`diagnosticFailure`. Raw browser-note draining is a separate post-settlement path:
+it attempts every note, reports append/program/warning failures, and does not replace the settled task
+or external-write result. Neither logging failure nor saturation says whether a remote HR action
+landed; only the write-safety settlement owns that outcome.
+
+**Phase 4 persistence.** A confirmed event is an optional, strict `confirmedAction` member on the
+existing run-scoped `NoteWire` JSONL row. The neutral note remains legacy-compatible; its append
+completes before the event is exposed to readers, and absence in old notes is never promoted into a
+confirmed event. The writer retains D364's exact frozen action/verifier, proof and privacy bindings.
+Notes keep D86's 30-day retention. Immutable Archive snapshots carry `confirmedActions` through the
+paged Logs section while pre-v1 snapshots keep that field absent. The worker stream UUID incarnation
+and positive sequence form `eventId` as `workerStreamId/sequence`. The frontend Logs connection,
+step-result display and capture association remain Phase 5; this v1 event carries no screenshot
+artifact.
 
 ## 10. D272–D276 — Phase 3a operator ratification (2026-08-26; ports and proofs remain open)
 
@@ -2724,7 +2822,8 @@ ref guards-and-tests §5.2's and are not repeated here.
 
 <a id="notifications-publication-amendment-2026-09-14"></a>
 
-**Approved publication amendment — 2026-09-14 (3.1.9.5; implementation pending).**
+**Approved publication amendment — 2026-09-14 (3.1.9.5; broader implementation pending at
+approval).**
 The operator approved the complete [Notifications execution brief](../plans/phase-3/3.1-finish-the-dashboard/task-9-5-finish-notifications-and-delivery-behavior.md#approved-execution-brief--2026-09-14).
 This is the current requirement where historical D134/D138/D222/D262 descriptions below differ;
 it is not an assertion that the newly required code or proof already exists.
@@ -2757,11 +2856,29 @@ it is not an assertion that the newly required code or proof already exists.
   notification boundaries; never private archive source JSON, arbitrary diagnostics, captured fields
   or secrets. Resolve targets at open time against current lifecycle authority.
 
-**Current baseline at `9f9dfe3566084e165bd508ae8b66dc3ebe325010`:** only `gate-opened` and
+**Historical pre-W2 baseline at `9f9dfe3566084e165bd508ae8b66dc3ebe325010`:** only `gate-opened` and
 `backfill-gap` have production callers. The storage-health module is present but D322 retired its
 caller; the other five event kinds are unwired. The historical checklist/table below records earlier
 builds and does not establish current publication coverage. §9.6's dated amendment owns the UI and
 browser delivery behavior; ref operator-trust §6 owns receipt, replay and lifecycle constraints.
+
+<a id="w2a-publication-policy-2026-10-03"></a>
+
+**W2a approved publication policy — D366 (2026-10-03; approved binding subset locally accepted at
+`1db0e1b363dacd82ee56386d427e77814868660b`).** The policy covers all eight declared event kinds
+(`run-failed`, `subject-mismatch`, `repeating-failure`,
+`verified-done`, `gate-opened`, `write-parked`, `storage-degraded`, `backfill-gap`): ordinary kinds
+derive a durable panel row and compact in-app chip from canonical committed publication evidence;
+`backfill-gap` uses its explicit pinned-wire provenance and keeps its immutable row.
+`subject-mismatch` is its own publication even when a failed-run publication also exists. The
+accepted storage coverage includes disk-space, WAL-growth, integrity-check, backup and lease-expiry
+concerns. Retired `outbox-stalled` remains unpublished; no absent publisher is admitted. Durable rows
+commit before delivery. Source occurrence, folded row, command attempt and wire publication remain
+distinct identities; publication identity is separate from row revision, and local action feedback
+never publishes toast text as an inbox event. W2's
+backend-clock one-hour Snooze, explicit Unsnooze, independent read/snooze state, pin/fold/replay
+rules, and existing OS routing and permission behavior remain in force. The exact in-app mapping
+and its pending/unbound cases are owned by §9.6.
 
 
 <!-- roadmap: p2-2g -->
@@ -2772,7 +2889,7 @@ browser delivery behavior; ref operator-trust §6 owns receipt, replay and lifec
 - [x] D222 — the first production publisher: the backup-health watch, on state TRANSITIONS only
 - [x] D262 — the second: the open-operator-gate watch over `runs.listParkedAtGate()`, with `link` moved onto the wire
 - [x] A46 — the third: an unreplayable historical SSE cursor commits one durable, permanently pinned backfill-gap Refusal before the replacement snapshot is served (`68dea43a`)
-- [ ] FIVE of the eight trigger arms have no publisher — `run-failed`, `subject-mismatch`, `write-parked`, `repeating-failure`, `verified-done` (below); each belongs to the surface or slice that owns the state it announces
+- [ ] At the 2026-08-25 A46 checkpoint, five of the eight trigger arms had no publisher — `run-failed`, `subject-mismatch`, `write-parked`, `repeating-failure`, `verified-done` (below); each belongs to the surface or slice that owns the state it announces. This is historical coverage, not the W2/W2a status.
 > 2026-08-25 | track-f A46 | verified against src/domain/notification-triggers.ts, src/services/notifications/{inbox,storage-health,gate-park,backfill-gap}.ts, src/server/dashboard/subscriptions/dashboard-stream.ts and src/domain/dashboard/projection.ts; left: the five unpublished arms
 <!-- /roadmap-status -->
 
@@ -2791,7 +2908,7 @@ best-effort; a failed toast never loses the unread inbox item. Snooze suppresses
 expiry without changing read state. Notification text uses redacted arguments and links to the
 evidence/failure/run — never raw secrets or captured form contents.
 
-**The trigger union, and which arms anything actually publishes.** `NotificationTriggerEventSchema`
+**Historical pre-W2 publisher inventory (A46, 2026-08-25; base `9f9dfe3566084e165bd508ae8b66dc3ebe325010`): trigger union and publisher coverage then.** `NotificationTriggerEventSchema`
 (`src/domain/notification-triggers.ts`) has eight arms; `projectNotificationTrigger` maps each onto
 its D79b channel, severity and title, and that routing is implemented exactly as §9.6 states it.
 Three arms have a production publisher:
@@ -6199,6 +6316,19 @@ hygiene row.
 
 #### 9.5.3 The Workflow Explorer and the UI catalog — read-only graph, strict safe edits (D176/D177)
 
+**Current status — operator amendments 2026-10-01/02.** The Workflow Explorer remains; the UI
+catalog surface and catalog-specific routes, URL state, schemas, generation and search are retired.
+The semantic registries, selectors, verification/provenance, effect classification and write proofs
+remain. Catalog navigation, route state, projection and parity material are historical. The parity
+suite and reference corpus were retired on 2026-10-02; no current visual acceptance is claimed.
+Future visual-test design requires the operator. Explorer scenario source links remain unresolved,
+and changes requiring scenario compile evidence are blocked pending operator-led design. See
+[operator trust](operator-trust.md#ui-catalog-retirement-amendment--operator-approved-2026-10-01)
+and its [scenario/parity amendment](operator-trust.md#scenario-and-parity-test-retirement-amendment--operator-approved-2026-10-02).
+[Frontend/backend integration §3.6](frontend-backend-integration.md#36-query-and-artifact-surface)
+owns the served route inventory. The Logs layout amendment preserves the approved presentation and
+interaction treatment; it adds no Logs API, which remains future Phase 3–5 work.
+
 Ref operator-trust §5 owns what the explorer IS and §1.3 owns what the catalog IS; this section owns where they
 sit and what they refuse to look like.
 
@@ -6244,7 +6374,11 @@ acts on a page. A page that colours six kinds six ways spends its whole colour b
 and has nothing left for consequence. In every case the word travels beside the glyph, so the tint
 is never the only encoding.
 
-##### D295 (2026-09-01) — the catalog is a Settings SECTION, and `?catalog=` is subordinate
+##### D295 (2026-09-01) — historical catalog Settings and URL contract
+
+**Historical D295 contract, superseded by the current status amendment at the top of §9.5.3:**
+the catalog section, route keys and navigation described below were retired on 2026-10-01. The
+Workflow Explorer and its current layout contract remain.
 
 **The Explorer replaces the queue at `?explore=<workflowId>`. The UI catalog does not replace
 anything: it is the `ui-catalog` section of the Settings takeover, at `?settings=ui-catalog`.**
@@ -6395,24 +6529,101 @@ own entry stays a `ghost` button because it is not a command.
 
 <a id="notifications-inbox-amendment-2026-09-14"></a>
 
-**Approved inbox/delivery amendment — 2026-09-14 (3.1.9.5; implementation pending).**
+**Approved inbox/delivery amendment — 2026-09-14 (3.1.9.5; implementation pending at
+approval).**
 Read §2.6's [publication amendment](#notifications-publication-amendment-2026-09-14) as the current
 contract where the historical wire restrictions below differ. Actual Ping/Inbox channel and counts
 make the filters truthful. Publication identity is distinct from row revision: read/unread/snooze
 changes do not represent a new delivery event. Pinned backfill rows remain permanent, immutable and
 visible under every ordinary filter. Read/unread and snooze stay independent; dismiss closes the
 drawer or desktop toast and never deletes a durable row. Existing actor, revision and command-replay
-protections remain; no unsnooze or new lifecycle command is introduced.
+protections remain. The 2026-09-14 approval implied no Unsnooze; W2 below supersedes that rule with
+explicit, command-kernel-guarded Unsnooze.
 
 Notification targets resolve on activation to the current live run on its own date, exact failure,
 verified saved report, Storage, or an explicit missing/deleted refusal. Navigation uses the existing
 Settings dirty-draft guard and honors cancellation. No frozen archive snapshot is rewritten.
 
+<a id="notifications-w2-amendment-2026-10-02"></a>
+
+**W2 implementation — accepted locally, 2026-10-02.** Repaired source candidate
+`4ffd665fe7b9a3f626a6772d68d4a8a7c849ef44` passed focused local acceptance; see the
+[source receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-02/dashboard-notifications-w2/commit/w2-g2-git-commit-receipt.md),
+[independent review](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-02/dashboard-notifications-w2/review/W2-R1-final.md)
+and [repair verification](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-02/dashboard-notifications-w2/verification-repair/W2-V1-repair-report.md).
+This closes W2 only; it does not close or admit §2.6's broader publisher/persistence obligations,
+which retain their existing owners.
+
+- A new Snooze derives exactly 3,600,000 ms from the backend application clock. Explicit Unsnooze
+  is guarded by the command kernel. Actor/version CAS, exact-command replay/refusal, independent
+  read and snooze axes, pin immutability, fold/publication identity and commit-before-delivery order
+  remain binding.
+- Pre-W2 deadline-bearing commands are readable only through frozen historical journal/audit
+  schemas. An authenticated exact completed replay returns `already-applied` without writes or
+  deadline recalculation. New ingress rejects `payload.until`; unknown, pending, divergent or
+  wrong-actor historical envelopes refuse.
+- Serve declared display facts from canonical linked run/workflow evidence. Archived, missing or
+  incompatible context is explicitly unavailable; never infer subject or detail from a title.
+- The fixed green in-page `NotificationPing` presents real verified completion only. Nonpositive
+  in-page Ping states need separate operator design. Existing OS routing, permission and status are
+  unchanged; verified-done remains inbox-only for OS delivery. This amendment adds no component or
+  visual state.
+
+<a id="w2a-feedback-policy-2026-10-03"></a>
+
+**W2a approved feedback policy — D366 (2026-10-03; initial approved bindings locally accepted at
+`1db0e1b363dacd82ee56386d427e77814868660b`; admitted Settings feedback bindings locally accepted at
+`8cb10a13ce2d9b2bdb293e608f107d009b0e3eeb`).** Deferred feature events and unbound mocks remain
+open. The exact approved
+presentation source is commit
+`2d2dd9c6a6ca38980da2f59be79c1b53a9a182fc`, `src/dashboard/ds/primitives-overlay.tsx`, SHA-256
+`aab66434a861abc0e923cd14d44c4a4f09155bb9196a926737b2d51679ec0bc4`. Reuse its compact-chip
+`ToastProvider` / `ToastViewport` / `ToastCard`, including expansion, focus, timers and dismissal;
+the backend colored-rail variant is not the approved source. Danger chips remain until manual
+dismissal. This policy does not claim that every callback or mock is bound.
+
+| Event | In-app feedback | Target and identity |
+|---|---|---|
+| `run-failed` | Durable panel row + danger chip | Existing guarded failure lookup; manual dismissal; actor-scoped publication ID. |
+| `subject-mismatch` | Its own durable panel row + danger chip, even alongside `run-failed` | Existing guarded failure lookup; manual dismissal; separate publication ID. |
+| `repeating-failure` | Durable panel row + warning chip at the third distinct matching failure | Existing guarded failure lookup; 3 seconds; publication ID. |
+| `verified-done` | Durable panel row + success chip replacing the green in-app Ping | Existing guarded run lookup; 3 seconds; publication ID. OS delivery remains inbox-only. |
+| `gate-opened` | Durable panel row + warning chip | Existing guarded run lookup; 3 seconds; publication ID. |
+| `write-parked` | Durable panel row + truthful danger chip | Existing guarded run lookup; manual dismissal; publication ID. Unknown writes are not asserted as failure or no effect. |
+| `storage-degraded` | Durable panel row + warning chip | Existing guarded Storage lookup; 3 seconds; publication ID. This does not admit a missing publisher. |
+| `backfill-gap` | Pinned durable warning + danger chip | No target or fabricated action; manual chip dismissal; pin and retention remain immutable. |
+| Ordinary Settings, protected credential and provider-key save confirmed | Chip title `Saved` / `Already saved` with closed description `Settings saved` / `Credential settings saved` / `Provider keys saved`; preserve existing inline status, no new panel alert | Receipt binds only `actorId`, `commandId`, kind (`ordinary` / `protected` / `provider-key`) and `replayed`; replay selects `Already saved`. Require matching result and authoritative readback; 3 seconds. No draft/private values, action or activation claim. |
+| Settings definite server refusal / revision conflict | Approved compact danger chip; retain the existing standalone `Retry edit` control and draft/recovery state, with no inline command-refusal copy or new panel alert | Closed local receipt: `actorId`, `commandId`, `kind` (`ordinary` / `protected` / `provider-key`) and `outcome` (`refused` / `conflict`). No target or chip action; manual dismissal, receipt-scoped dedupe and stale actor/client/incarnation isolation. |
+| Unconfirmed / unknown Settings save result | Persistent danger chip titled `Save unconfirmed` beside the existing recovery warning and exact-attempt retry control; manual dismissal; no new panel alert | Receipt contains only `actorId`, `commandId` and `kind` (`ordinary` / `protected` / `provider-key`); dedupe by actor/kind/command plus the unconfirmed phase. No target/action; use the closed kind-specific recovery description and make no success/failure/no-effect claim. Trigger only for the current exact attempt's actual unconfirmed outcome: typed `authority-uncertain` / `authority-unjournaled`, post-dispatch unknown or unconfirmed authoritative readback; provider also supports identity-bound pending recovery. Source/check evidence is in the [W2a Settings continuation](../plans/phase-3/dashboard-surface-wiring.md#w2a-settings-feedback-continuation--2026-10-03). |
+| Read, Unread, Snooze and Unsnooze confirmed | Success acknowledgement; no new panel alert or chip action | Matching applied command ID and exact notification target; 3 seconds; control scope + command ID + outcome. Stream state changes do not repeat it. |
+| Notification-control refusal or revision conflict | Danger chip plus current notice; no new panel alert | Existing panel row; manual dismissal; control scope + command ID + outcome. |
+| Notification-control result unknown after dispatch, including target mismatch | Truthful danger chip plus current notice; no new panel alert | Existing panel row; manual dismissal; control scope + command ID + outcome. No automatic retry, success claim or no-effect claim. |
+
+Confirmed-save chips require both the matching result and authoritative readback. Provider
+confirmed-save feedback also requires the current incarnation, including identity-bound pending
+recovery. A later definite saved/refused/conflict result settles the exact prior unknown before
+replacement delivery; delivery failure does not restore it. Ordinary notification chips derive only
+from declared kinds in canonical committed publication metadata and validate actor, row, trigger and
+dedupe fingerprint; `backfill-gap` uses its explicit pinned-wire provenance.
+Publication IDs, source
+occurrences, folded rows, command attempts, row revisions and the provider's local sequential toast
+IDs are distinct. Older rows without publication metadata remain unavailable;
+initial snapshots, reconnect/replay, read-only revisions and active Snooze do not redeliver chips.
+Actor, day, client, selection or unmount invalidation closes stale chips and invalidates their
+actions. Popup delivery failure never removes the durable row.
+
+The refusal chip policy applies only to definitive server refusal/conflict results; local validation
+and accepted-but-superseded saves retain their existing distinct behavior. General commands,
+identity/Park resolution, export,
+worker controls, Archive, intake/import and later feature events get no blanket policy. Run
+accepted/started is toast-only after confirmed acceptance; its Run/Rerun callback remains deferred.
+Later packages bind their own callbacks. OS delivery, permission and status remain W2-owned.
+
 An explicit gesture in the drawer enables desktop notifications. Silent Ping delivery uses the
 Notifications API only while the dashboard is open and only after durable publication. Inbox-only
-rows never toast. Same-origin Web Locks elect one tab owner; initial baseline, reload, reconnect,
-duplicate snapshots, state commands and owner handover do not replay old toasts. Denied permission,
-unsupported capability, synchronous throws and asynchronous errors are explicit. An accepted API
+rows never produce OS toasts. Same-origin Web Locks elect one tab owner; initial baseline, reload,
+reconnect, duplicate snapshots, state commands and owner handover do not replay old toasts. Denied
+permission, unsupported capability, synchronous throws and asynchronous errors are explicit. An accepted API
 call proves only submission to the browser API, not human visibility. Delivery failures never mutate
 the inbox or create per-attempt OS authority. Both themes, keyboard/focus, desktop resizing and zoom
 retain the Phase 3.1 contract; no mobile/coarse-pointer variants or existing PNG refreeze are admitted.
@@ -6430,10 +6641,11 @@ rows for this actor. Nothing about it is a toast: a desktop notification is a de
 and the row is the record, so an inbox item exists whether or not anything was ever displayed by the
 operating system.
 
-**Routing, ratified (D79b + D86), plus A46's safety arm.** **failed · gate-waiting · write-parked ·
-repeating · storage · backfill-gap** → **Ping**; **verified-done** → **Inbox only**. The backfill gap
-also enters the permanently pinned safety lane. Pings are silent. The ordinary lifecycle is deliberately
-slimmed from five states (unread/read/acknowledged/snoozed/resolved plus per-attempt delivery
+**Historical routing at the 2026-09-14 baseline (D79b + D86), plus A46's safety arm.** **failed · gate-waiting · write-parked ·
+repeating · storage · backfill-gap** → **Ping**; **verified-done** → **Inbox only for OS delivery**.
+The backfill gap also enters the permanently pinned safety lane. Pings are silent. The ordinary
+lifecycle is deliberately slimmed from five states
+(unread/read/acknowledged/snoozed/resolved plus per-attempt delivery
 records — that was multi-user incident tooling) to **read/unread plus an optional snooze**, and the
 inbox is **actor-keyed from day one** (the D75 seam) even though there is one actor today. Retention:
 notes 30d, spans 30d, **ledger forever**, artifacts and checkpoints until purge.
@@ -6450,12 +6662,14 @@ durable row's `summary`, `trigger` and `count` stay off both arms: they are pros
 and §2.6's line is that ids and closed codes may cross while prose may not. A row that names a run
 draws `Open run` (or `Open failure`); `storage` and `backfill-gap` draw no invented destination.
 
-**Every ordinary action CASes the row's own revision.** `notification-read`, `notification-unread` and
-`notification-snooze` are the whole family (`src/domain/commands.ts:266-267`), each carrying
+**Every ordinary action CASes the row's own revision.** `notification-read`, `notification-unread`,
+`notification-snooze` and `notification-unsnooze` are the whole family
+(`src/rules/commands/commands.ts`), each carrying
 `expectedVersion: entry.revision` — the bell holds a served row, not a guess about it — and both
 refusal arms are settled through the one exhaustive fold, because a conflict that fell through to the
-success path is D253's defect on a control whose only feedback is that the row changed. Snooze has
-no inverse on purpose: the kernel serves no `notification-unsnooze`, so the surface offers none.
+success path is D253's defect on a control whose only feedback is that the row changed. W2
+supersedes the 2026-09-14 no-inverse rule: new Snooze lasts 3,600,000 ms on the backend application
+clock, and the command kernel guards explicit Unsnooze.
 The pinned arm exposes no lifecycle control or revision. The authority itself refuses every fold or
 state update for that trigger — read, unread, snooze, clear-snooze and direct same-state writes — so
 hiding or version-bumping it is impossible through any service/repository path, not merely the
@@ -6474,7 +6688,7 @@ about the server's clock, so the row ages against the one calibrated `nowIso` §
 distributes — a browser whose wall clock is off would otherwise age an alert against a time nobody
 else believes.
 
-**As-built, and the three absences the surface is honest about.**
+**Historical as-built at the 2026-09-14 baseline, and the three absences the surface recorded.**
 
 1. **Five of the eight trigger arms have no publisher.** Three production paths publish:
    `storage-health.ts` (`storage-degraded`, D222), `gate-park.ts` (`gate-opened`, D262), and the

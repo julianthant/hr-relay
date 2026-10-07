@@ -1,8 +1,10 @@
-# Dashboard parity rulings
+# Dashboard visual rulings
 
-Read before changing a listed deviation or judging reference parity. These are operator-ratified
-exceptions, moved from the instruction pair on 2026-09-04; relocation does not revoke them.
-The current owning contracts supersede dated claims. `DESIGN.md` remains the visual authority.
+These operator-ratified deviations remain design decisions, moved from the instruction pair on
+2026-09-04; relocation does not revoke them. The parity suite and reference corpus were retired on
+2026-10-02. Historical visual receipts are not current acceptance evidence; future visual-test
+design is operator-led. The current owning contracts supersede dated claims. `DESIGN.md` remains the
+visual authority.
 
 ## Ruled deviations from the rebuild-demo
 

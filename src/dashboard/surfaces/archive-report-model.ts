@@ -1,7 +1,7 @@
 import { useEffect,useState } from "react";
-import { systemClock } from "../../domain/clock.js";
-import { SavedArchiveFileWireSchema,type SavedArchiveQuery,type SavedArchiveReportWire,type SavedVersionIndexWire } from "../../domain/dashboard/archive.js";
-import type { ArchiveReportCell } from "../../domain/archive/report.js";
+import { systemClock } from "../../rules/time/clock.js";
+import { SavedArchiveFileWireSchema,type SavedArchiveQuery,type SavedArchiveReportWire,type SavedVersionIndexWire } from "../../models/dashboard/archive.js";
+import type { ArchiveReportCell } from "../../models/archive/report.js";
 import { observeResource } from "../state/async-resource.js";
 
 export type SavedResource<T> = { state: "loading" } | { state: "loaded"; value: T } | { state: "error"; message: string };
@@ -71,62 +71,60 @@ export type VisibleArchiveSection = {
   sections?: SavedArchiveReportWire["sections"];
 };
 
-const separationFacts: Readonly<Record<string, string>> = {
-  "Employee name": "Employee", "Employee ID": "Employee", "Document number": "Employee",
-  "Last day worked": "Separation dates", "Separation date": "Separation dates", "Termination effective date": "Separation dates",
-  "Date source": "Date reconciliation", "Kuali last day worked": "Date reconciliation", "Kuali separation date": "Date reconciliation",
-  "Last day worked changed": "Date reconciliation", "Separation date changed": "Date reconciliation", "Latest sick date": "Date reconciliation",
-  "First holiday date": "Date reconciliation", "Latest holiday date": "Date reconciliation", "Separation determining leave": "Date reconciliation",
-  "Unclassified pay codes": "Date reconciliation",
-};
-const lookupFacts: Readonly<Record<string, string>> = {
-  "Employee name": "Employee", "Employee ID": "Employee", "Lookup status": "Lookup details", "Source system": "Lookup details",
-};
-
-/** Synthetic view keys follow sealed sections; historical section keys never change. */
+/** View groups retain frozen section order and keys independently of workflow registration. */
 export function archiveWorkflowGroups(report: SavedArchiveReportWire): VisibleArchiveSection[] {
-  const base = report.sections.length + 10;
-  const items: VisibleArchiveSection[] = [{ key: base + 9, label: "Run summary", kind: "summary", values: archiveRunSummaryValues(report) }];
-  const names = report.workflow === "separations" ? ["Employee", "Separation dates", "Date reconciliation", "Details"]
-    : report.workflow === "person-lookup" ? ["Employee", "Lookup details", "Details"] : ["Details"];
-  const mapping = report.workflow === "separations" ? separationFacts : report.workflow === "person-lookup" ? lookupFacts : {};
-  const buckets = new Map(names.map(name => [name, { values: [] as { label: string; value: ArchiveReportCell }[], sections: [] as SavedArchiveReportWire["sections"][number][] }]));
-  for (const section of report.sections) {
-    const workflowFacts = section.title.startsWith("Identity and ") || ["Captured facts", "Failure details", "Warning facts"].includes(section.title) || /^\d+ warnings?$/u.test(section.title);
-    if (!workflowFacts) continue;
-    if (section.kind === "values") for (const cell of section.values) buckets.get(mapping[cell.label] ?? "Details")?.values.push(cell);
-    else buckets.get("Details")?.sections.push(section);
+  const items: VisibleArchiveSection[] = [];
+  if (!report.sections.some(section => section.title === "Run summary" && section.kind === "values")) {
+    items.push({ key: report.sections.length + 19, label: "Run summary", kind: "summary", values: archiveRunSummaryValues(report) });
   }
-  items.push(...names.flatMap((name, index) => {
-    const bucket = buckets.get(name);
-    return bucket === undefined || bucket.values.length + bucket.sections.length === 0 ? [] : [{ key: base + index, label: name, kind: "facts" as const, values: bucket.values, sections: bucket.sections }];
-  }));
-  const input = report.sections.find(section => section.title === "Inputs & settings" && section.kind === "values");
-  if (input?.kind === "values") {
-    const submitted = input.values.find(cell => cell.label === "Submitted input");
-    const parsed = input.values.find(cell => cell.label === "Parsed input");
-    const settings = input.values.find(cell => cell.label === "Captured settings");
-    if (submitted !== undefined) items.push({ key: base + 5, label: "Submitted input", kind: "input", value: submitted.value });
-    if (parsed !== undefined) items.push({ key: base + 6, label: "Parsed input", kind: "input", value: parsed.value });
-    if (settings !== undefined) items.push({ key: base + 7, label: "Settings", kind: "settings", values: [{ label: "Captured settings", value: visibleCapturedSettings(settings.value) }] });
-  } else {
-    const legacy = report.sections.find(section => section.title === "Run and frozen inputs" && section.kind === "values");
-    if (legacy?.kind === "values") {
-      for (const [prefix, label, key] of [["input.raw", "Submitted input", 5], ["input.parsed.value", "Parsed input", 6]] as const) {
-        const values = legacy.values.filter(cell => cell.label === prefix || cell.label.startsWith(`${prefix}.`))
-          .map(cell => ({ label: readableArchiveLabel(cell.label.slice(prefix.length).replace(/^\./u, "") || "Value"), value: cell.value }));
-        if (values.length > 0) items.push({ key: base + key, label, kind: "facts", values });
+  let syntheticKey = report.sections.length + 20;
+  report.sections.forEach((section, index) => {
+    const key = index + 1;
+    if (section.title === "Run summary" && section.kind === "values") {
+      items.push({ key, label: section.title, kind: "summary", values: section.values });
+    } else if (section.title === "Inputs & settings" && section.kind === "values") {
+      if (section.values.length === 0) items.push({ key, label: section.title, kind: "facts", values: section.values });
+      section.values.forEach(cell => {
+        const cellKey = syntheticKey++;
+        if (cell.label === "Submitted input" || cell.label === "Parsed input") {
+          items.push({ key: cellKey, label: cell.label, kind: "input", value: cell.value });
+        } else if (cell.label === "Captured settings") {
+          const value = visibleCapturedSettings(cell.value);
+          const settings = cell.value !== null && typeof cell.value === "object" && !Array.isArray(cell.value)
+            ? cell.value as Readonly<Record<string, ArchiveReportCell>> : undefined;
+          const metadata = settings === undefined ? [] : Object.entries(settings)
+            .filter(([label]) => label !== "config" || value !== settings.config).map(([label, entry]) => ({ label, value: entry }));
+          items.push({ key: cellKey, label: "Settings", kind: "settings", values: [
+            { label: cell.label, value },
+            ...(value !== cell.value ? metadata : []),
+          ] });
+        } else {
+          items.push({ key: cellKey, label: cell.label, kind: "facts", values: [cell] });
+        }
+      });
+    } else if (section.title === "Run and frozen inputs" && section.kind === "values") {
+      const inputPrefix = (label: string) => ["input.raw", "input.parsed.value"].find(prefix => label === prefix || label.startsWith(`${prefix}.`));
+      const values = section.values.filter(cell => inputPrefix(cell.label) === undefined);
+      items.push({ key, label: section.title, kind: "facts", values });
+      for (const [prefix, label] of [["input.raw", "Submitted input"], ["input.parsed.value", "Parsed input"]] as const) {
+        const inputValues = section.values.filter(cell => inputPrefix(cell.label) === prefix)
+          .map(cell => ({ label: cell.label.slice(prefix.length).replace(/^\./u, "") || "Value", value: cell.value }));
+        if (inputValues.length > 0) items.push({ key: syntheticKey++, label, kind: "facts", values: inputValues });
       }
+    } else {
+      items.push({ key, label: section.title, kind: "facts", ...(section.kind === "values" ? { values: section.values } : { sections: [section] }) });
     }
-  }
-  items.push({ key: base + 8, label: "Logs", kind: "logs" });
-  items.push({ key: report.sections.length + 1, label: "Retained files", kind: "files" });
+  });
   return items;
+}
+
+export function archiveLogSections(report: SavedArchiveReportWire): SavedArchiveReportWire["sections"] {
+  return report.sections.filter(section => section.title === "Logs" || section.title === "Saved logs");
 }
 
 export function archiveRunSummaryValues(report: SavedArchiveReportWire): readonly { label: string; value: ArchiveReportCell }[] {
   const summary = report.sections.find(section => section.title === "Run summary" && section.kind === "values");
-  if (summary?.kind === "values") return summary.values.filter(row => row.label !== "Outcome");
+  if (summary?.kind === "values") return summary.values;
   const legacy = report.sections.find(section => section.title === "Run and frozen inputs" && section.kind === "values");
   const field = (path: string): ArchiveReportCell | undefined => legacy?.kind === "values" ? legacy.values.find(row => row.label === path)?.value : undefined;
   const enqueued = field("envelope.enqueuedAt");

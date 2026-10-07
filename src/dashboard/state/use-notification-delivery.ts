@@ -1,6 +1,6 @@
 import { useNotificationClient } from "./notification-client.js";
 import { useEffect, useRef, useState } from "react";
-import type { NotificationWire } from "../../domain/dashboard/projection.js";
+import type { NotificationWire } from "../../models/dashboard/projection.js";
 import { browserNotificationPlatform, createNotificationDelivery, type NotificationDeliveryState } from "./notification-delivery.js";
 export function useNotificationDelivery(rows: readonly NotificationWire[], connected: boolean) {
   const client = useNotificationClient();

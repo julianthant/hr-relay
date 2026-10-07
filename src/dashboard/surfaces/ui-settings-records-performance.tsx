@@ -1,5 +1,5 @@
 import { Form } from "@heroui/react";
-import type { EditableSettingsLeafWire, EditorValue } from "../../domain/dashboard/settings-editor.js";
+import type { EditableSettingsLeafWire, EditorValue } from "../../models/dashboard/settings-editor.js";
 import { Banner, BodySection, Button, Disclosure, Field, FormGroup, PageHeading, Spinner, UnitField, dsText } from "../ds/ui.js";
 import { formatSetting, settingInput } from "./settings-draft-model.js";
 import type { useEditableSettings } from "./settings-editor-model.js";

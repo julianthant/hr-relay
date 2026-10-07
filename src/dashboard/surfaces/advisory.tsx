@@ -29,8 +29,8 @@ import { Sparkles } from "lucide-react";
 import type { z } from "zod";
 import { cn } from "../lib/utils.js";
 import { Button, MetaLine, Refusal, SectionLabel, Spinner, dsIcon, dsText } from "../ds/ui.js";
-import type { CapabilityAvailabilitySchema } from "../../domain/absence.js";
-import type { RunAdvisoryWireSchema } from "../../domain/dashboard/advisory.js";
+import type { CapabilityAvailabilitySchema } from "../../rules/validation/absence.js";
+import type { RunAdvisoryWireSchema } from "../../models/dashboard/advisory.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { DashboardClientError } from "../client/index.js";
 
@@ -45,7 +45,7 @@ type PanelState =
 
 /** The standing sentence. It renders on every produced advisory, unconditionally. */
 const ADVISORY_DISCLAIMER
-  = "Advisory only — generated from the redacted facts above. It is not evidence, "
+  = "Advisory only — generated from the supplied facts above. It is not evidence, "
   + "it cannot retry, resolve or change this run, and the record beside it is what happened.";
 
 export function FailureAdvisoryPanel({ runId, availability }: {
@@ -90,7 +90,7 @@ export function FailureAdvisoryPanel({ runId, availability }: {
         </Button>
         <span className={cn(dsText.meta, "min-w-0 text-[color:var(--ds-fg-muted)]")}>
           {composed
-            ? "Sends the redacted facts above to a model. Nothing is written."
+            ? "Sends the supplied facts above to a model. Nothing is written."
             : availability.reason}
         </span>
       </div>

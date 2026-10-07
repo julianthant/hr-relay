@@ -439,6 +439,17 @@
   --ds-space-snug: 6px;
   --ds-space-base: 8px;
   --ds-space-cozy: 12px;
+  --ds-queue-info-bg: color-mix(in srgb, var(--ui-info) 12%, transparent);
+  --ds-queue-info-border: color-mix(in srgb, var(--ui-info) 28%, transparent);
+  --ds-queue-danger-bg: color-mix(in srgb, var(--ui-danger) 12%, transparent);
+  --ds-queue-danger-border: color-mix(in srgb, var(--ui-danger) 28%, transparent);
+  --ds-space-queue-top: 14px;
+  --ds-tracking-brand: 0.035em;
+  --ds-w-queue-counter: 30px;
+  --ds-h-queue-member-head: 28px;
+  --ds-h-queue-member-line: 29px;
+  --ds-h-queue-member-well: calc(var(--ds-h-queue-member-head) + 5 * var(--ds-h-queue-member-line));
+  --ds-h-queue-member-well-open: calc(var(--ds-h-queue-member-head) + 20 * var(--ds-h-queue-member-line));
   --ds-space-loose: 16px;
   --ds-space-section: 24px;
   --ds-space-page: 32px;
@@ -503,14 +514,9 @@
      sites so a control added later cannot quietly drift by 6px, which is
      exactly how the composites' bordered box came to be 30 in a row of 24.
 
-     It is the DEFAULT control height (28), not the dense one (24). At 24 the
-     bar's ten pills each had 6px of ink above and below an 11px label inside a
-     36px band, and the operator read the result as controls of different sizes
-     even where the token had already made them identical — the padding, not the
-     height, was doing the differing. 28 in a 36 band leaves 4px of air top and
-     bottom and lets every control take the SAME `--ds-space-base` inset, which
-     is what "the same height no matter what" actually asks for. */
-  --ds-h-toolbar: var(--ds-h-md);
+     The approved shared Explorer/Dashboard control height is 32px. Every
+     toolbar control uses this token inside the same 36px band. */
+  --ds-h-toolbar: var(--ds-h-lg);
   --ds-h-topbar: 44px; /* the app top bar */
   /* The Session Card's micro step pipeline. It is a RESERVED band, not a
      measured one: every card gives the bar the same slot whether or not it
@@ -528,6 +534,9 @@
      floating in a dark well. Shared as the height budget for the metadata
      column so the two end on one line. */
   --ds-h-capture-box: 58vh;
+  --ds-w-operation-capture: 460px;
+  --ds-w-operation-time: 64px;
+  --ds-w-operation-label: 120px;
   /* the thumbnail strip along the capture column's bottom — tall enough that
      a page facsimile reads as a preview, not a labelled chip with a camera */
   --ds-h-capture-thumb: 72px;

@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
-import { systemClock } from "../../domain/clock.js";
-import { deepFreeze } from "../../domain/immutability.js";
-import { canonicalJsonStringify } from "../../domain/canonical-json.js";
+import { systemClock } from "../../rules/time/clock.js";
+import { deepFreeze } from "../../rules/validation/immutability.js";
+import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import {
   StorageRelocationCommandRequestSchema, StorageRelocationPlanViewSchema,
   storageRelocationDesiredDigest, storageRelocationRequestFingerprint,
   type CommandResult, type StorageRelocationCommandRequest, type StorageRelocationPlanView,
-} from "../../domain/commands.js";
+} from "../../rules/commands/commands.js";
 import { beforeEffectRefusal, uncertainSettingsCode } from "./settings-attempt-model.js";
 import { useSettingsClient } from "../state/settings-client.js";
 

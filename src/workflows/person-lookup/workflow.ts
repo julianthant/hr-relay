@@ -12,24 +12,24 @@
  * `ucpath/search-person-org` fails `tsc` here rather than at the first run.
  */
 import { z } from "zod";
-import { defineWorkflow } from "../../base/workflow-definition.js";
-import { requireFact } from "../../base/workflow.js";
+import { defineWorkflow } from "../../workflow-kit/workflow-definition.js";
+import { requireFact } from "../../workflow-kit/workflow.js";
 import {
   CrmReadOnboardingDates,
   ReadOnboardingDatesOutputSchema,
-} from "../../domain/contracts/crm/read-onboarding-dates.js";
-import { CrmReadOnboardingRecord } from "../../domain/contracts/crm/read-onboarding-record.js";
-import { CANONICAL_FIELDS } from "../../domain/fields/registry.js";
+} from "../../models/systems/crm/read-onboarding-dates.js";
+import { CrmReadOnboardingRecord } from "../../models/systems/crm/read-onboarding-record.js";
+import { CANONICAL_FIELDS } from "../../models/fields/registry.js";
 import {
   ActiveStatusOutcomeSchema,
   ReadActiveStatus,
-} from "../../domain/contracts/person-lookup/read-active-status.js";
-import { SearchPersonOrg } from "../../domain/contracts/ucpath/search-person-org.js";
-import { EidSchema } from "../../domain/ids.js";
-import { defineCanonicalInput } from "../../domain/workflow/canonical-input.js";
-import { defineIntakeProjection } from "../../domain/intake/projection.js";
-import { defineWorkflowRole } from "../../domain/workflow/module-role.js";
-import { STANDARD_WORKFLOW_ACTIONS } from "../../domain/workflow/presentation.js";
+} from "../../models/workflows/person-lookup/read-active-status.js";
+import { SearchPersonOrg } from "../../models/systems/ucpath/search-person-org.js";
+import { EidSchema } from "../../rules/identity/ids.js";
+import { defineCanonicalInput } from "../../models/workflow/canonical-input.js";
+import { defineIntakeProjection } from "../../models/intake/projection.js";
+import { defineWorkflowRole } from "../../workflow-kit/validation/module-role.js";
+import { STANDARD_WORKFLOW_ACTIONS } from "../../models/workflow/presentation.js";
 
 /* ── workflow-constant input ─────────────────────────────────────────────── */
 

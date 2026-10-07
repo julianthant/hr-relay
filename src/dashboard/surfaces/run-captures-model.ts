@@ -1,11 +1,21 @@
-/** D292: Receipt capture state belongs to the app's requested run, not a stale detail. */
+import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
+import type { DeclaredActionIdentity } from "../../rules/workflow/task-provenance.js";
+/** Capture state belongs to the app's requested run. */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { RunCaptureArtifactWire, RunDetailWire } from "../../domain/dashboard/run-detail.js";
+import type { RunCaptureArtifactWire, RunDetailWire } from "../../models/dashboard/run-detail.js";
 import { useDashboardClient } from "../state/client-context.js";
 
 export interface RunCaptureItem {
   readonly capture: RunCaptureArtifactWire;
   readonly downloadUrl: string;
+}
+
+export function exactBundleCaptures(items: readonly RunCaptureItem[], bundleId: string) {
+  return items.flatMap(item => {
+    if (item.capture.artifact.mediaKind !== "image") return [];
+    const origin = item.capture.origins.find(candidate => candidate.bundleId === bundleId);
+    return origin === undefined ? [] : [{ item, capturedAt: origin.capturedAt }];
+  });
 }
 
 type RunCapturesRead =
@@ -21,6 +31,16 @@ export type RunCapturesState = Exclude<RunCapturesRead, { state: "available" }>
     readonly selectedId: string | undefined;
     readonly select: (artifactId: string | undefined) => void;
   });
+
+export function exactOperationCaptures(items: readonly RunCaptureItem[], identity: DeclaredActionIdentity): readonly Readonly<{ item: RunCaptureItem; capturedAt: string }>[] {
+  const { value: _value, ...address } = identity as DeclaredActionIdentity & { value?: unknown };
+  const expected = canonicalJsonStringify(address);
+  return items.flatMap((item) => {
+    if (item.capture.artifact.mediaKind !== "image") return [];
+    const origin = item.capture.origins.find((candidate) => candidate.operation !== undefined && canonicalJsonStringify(candidate.operation) === expected);
+    return origin?.capturedAt === undefined ? [] : [{ item, capturedAt: origin.capturedAt }];
+  });
+}
 
 export function runCaptureFrame(capture: RunCaptureArtifactWire): string {
   return capture.origins.some(origin => origin.originKind === "failure")

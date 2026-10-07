@@ -1,4 +1,4 @@
-import { CrossDateSearchScopeSchema, CrossDateSearchStateFacetSchema, CrossDateSearchShapeFacetSchema, CrossDateSearchSystemFacetSchema } from "../../domain/dashboard/search.js";
+import { CrossDateSearchScopeSchema, CrossDateSearchStateFacetSchema, CrossDateSearchShapeFacetSchema, CrossDateSearchSystemFacetSchema } from "../../models/dashboard/search.js";
 import { Button, DateInput, Disclosure, Field, Input, Select, dsText } from "../ds/ui.js";
 import type { SearchFilterDraft } from "./search-filters-model.js";
 
