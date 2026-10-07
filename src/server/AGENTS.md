@@ -1,7 +1,7 @@
 # Server compositions and BFF
 
 Root instructions apply. Read this file before server or CLI composition changes, even when the
-task starts at the repository root. Keep it byte-identical with `CLAUDE.md`.
+task starts at the repository root.
 
 ## Invariants
 

@@ -27,19 +27,18 @@ production authority and rollback asset until the approved all-at-once cutover (
 - Retain evidence under `/Users/julianhein/Projects/hr-automation-rebuild-evidence/<task-date>/`.
   Resolve moved historical receipts through that parent's `relocation.json`. Preserve evidence
   and unknown files before cleanup; accepted cleanup removes both worktree registration and folder.
-- Keep existing AGENTS.md / CLAUDE.md twins byte-identical. Change instructions for changed rules;
+- Keep project instructions in AGENTS.md only. Change instructions for changed rules;
   do not add historical lessons or retrospective comments. Comments explain necessary current behavior
   or constraints only. Keep complete project instruction chains below 32,768 bytes.
-- `/astra-orchestrator` owns execution. Combine it with `/plan` or `/phase-plan` when planning is needed;
-  planning-only, roadmap recording and execution remain separate choices. An explicit plan-and-execute
-  request can continue in the same root after required approval and verified prerequisites.
+- Planning-only, roadmap recording and execution remain separate choices. An explicit plan-and-execute
+  request can continue in the same session after required approval and verified prerequisites.
 - The operator launches tasks and chooses integration. No automatic sibling/next-task dispatch or
   merge. Phase 3.2 onward uses tangible feature tasks and subtasks; only explicitly labelled Parallel
   nodes run concurrently. Follow the roadmap’s 2026-09-19 amendment; preserve admitted ownership
   and dependencies. Earlier assignments retain their owning cadence.
 - Complete only after assigned checks, authorized integration and cleanup, plus review where required.
   Report compact evidence and any remaining obligations. Use the existing record for routine transfers;
-  use `/handoff` for interrupted unique state. Personal rules own style and worker/reviewer models.
+  use `/handoff` for interrupted unique state. Global instructions own style and worker/reviewer selection.
 
 ## Verification cadence
 
@@ -79,7 +78,7 @@ run coverage without this task's compiler/linter contention. Guard additions/ret
 | Tests/guards | `ref guards-and-tests`; `tests/scenario/AGENTS.md` for scenarios |
 | Known failure/lesson | Search `ref lessons` and the module's linked ledger by seam/decision |
 | Environment, isolation, porting, conventions | Relevant section of the [operating reference](.agents/skill-library/repository-work/REFERENCE.md) |
-| Authorized delegation | Operating reference §Authorized orchestration, then the platform's personal `parallel-agent-work` reference |
+| Authorized delegation | Operating reference §Authorized orchestration and current global workflow instructions |
 
 ## Runtime boundaries
 

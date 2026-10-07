@@ -2,7 +2,7 @@
 
 Everything here is browser-reachable. Import only permitted pure contracts from `src/domain/**`;
 never import Node or server code. `kit.html` is a separate entry whose closure is only `ds/**`
-and `lib/**`, never app/surfaces/client/state. Keep this file and `CLAUDE.md` identical.
+and `lib/**`, never app/surfaces/client/state.
 
 ## Before a visual or behavioral change
 

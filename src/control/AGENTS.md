@@ -28,4 +28,4 @@ changing facts in instructions.
 
 Before admission changes, read `docs/rebuild/reference/guards-and-tests.md` §10.5 and the registry's
 unit/architecture tests. Search [LESSONS.md](LESSONS.md) for historical failures; requested new
-lessons go there. Keep this file and `CLAUDE.md` identical; root rules apply.
+lessons go there. Root rules apply.

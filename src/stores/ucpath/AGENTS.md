@@ -26,4 +26,4 @@ Before changing either surface, search [LESSONS.md](LESSONS.md) by the operation
 matching entries. Before termination/sweep changes, read `docs/rebuild/migrations/separations.md` §9.39,
 `docs/rebuild/reference/write-safety.md`, and the exact task/driver contracts. Use the generated
 `docs/rebuild/reference/stores.md` for task discovery; do not copy its inventory here.
-Requested lessons go in the ledger. Keep this file and `CLAUDE.md` identical; root rules apply.
+Requested lessons go in the ledger. Root rules apply.
