@@ -114,6 +114,28 @@
     "Legacy changes affect the production authentication, emergency-contact save and OnBase correction seams. Rebuild session providers are independent; this is provenance accounting, not a claim that those behaviors were ported.",
     "Legacy focused tests passed, architecture 166 passed, typecheck passed; full unit gate remains non-green because of existing roster fixtures, a timing failure and inventory changes repaired and rechecked afterward."
    ]
+  },
+  {
+   "id": "separation-empty-timecard-2026-10-06",
+   "closedAt": "2026-10-06",
+   "evidence": [
+    "Legacy focused separation suite: 180/180 passed; typecheck and source lint passed; legacy-test-lint-ratchet reports zero new/replaced fingerprints.",
+    "Legacy full unit suite: 4884 passed, 10 failed; four architecture failures reproduce on unchanged parent; six failures concern missing unrelated roster fixtures/environment. Serial lane: 20/20 passed.",
+    "Live New Kronos May 1–October 12 scans verified exact EIDs and 165 dates per employee: 4753 last physical work May 27; 4755 June 8; no sick/holiday extension.",
+    "Rebuild read-only review: src/workflows/separations/kronos-timecard/workflow.ts separates no-punches from failures and does not submit terminations. No rebuild runtime change or fix port is claimed.",
+    "D150 retirement is unchanged; read-only search of rebuild src/tests/scripts found no legacy-change-accounting reader. Archival accounting follows the operator-provided legacy standing instruction without reactivating retired guards."
+   ]
+  },
+  {
+   "id": "separation-hire-range-2026-10-06",
+   "closedAt": "2026-10-06",
+   "evidence": [
+    "Production commit 5458c2252b0d8b6b4d0d5c873cc1364af3dbf901 searches verified Person Org Summary Last Hire through today, matching EID, record and position and complete pagination; no assignment EFFDT fallback.",
+    "Focused separation and related system tests: 257 passed. Typecheck and source lint passed; legacy test lint ratchet: zero new/replaced fingerprints. Full unit: 4900 passed, 10 inherited failures (four architecture, six unrelated missing roster/environment); architecture: 162 passed, four inherited failures; serial: 20 passed.",
+    "Live CLI read and pure resolver validation: 4753 Last Hire 10/24/2025, all 348 dates through 10/06/2026, final physical punch 05/27/2026; 4755 Last Hire 04/13/2026, all 177 dates through 10/06/2026, final punch 06/08/2026. Verified EIDs and positions.",
+    "Rebuild read-only review: src/workflows/separations/kronos-timecard/workflow.ts takes explicit rangeStart/rangeEnd and returns read-only timecard outcomes; hire-date orchestration remains a future separations port. No runtime port or rebuild gate reactivation is claimed.",
+    "D150 remains retired: no legacy-change-accounting reader in current rebuild src/tests/scripts. This archival append follows the operator-provided production standing instruction. Evidence: /Users/julianhein/Projects/hr-automation/generated/separation-hire-range-10003539/verified-live.json."
+   ]
   }
  ],
  "commits": [
@@ -2903,6 +2925,239 @@
      "impactRationale": "Honor validated edit-and-resume OnBase fallback keywords while retaining original identity, page and document boundaries.",
      "rebuildRecheckIds": [
       "contact-import-repairs-2026-10-06"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "5c627a44d4ab5e21eb2065ff307128533862cb39",
+   "parentCommit": "066d3509a6a18a065cceae69051d45bb02158316",
+   "changes": [
+    {
+     "path": "src/workflows/separations/CLAUDE.md",
+     "changeKind": "modified",
+     "beforeSha256": "f73ffdf800707a7c50192697ca61651237a02c2f763800fba9e93289ba126673",
+     "afterSha256": "3909155b8ebf51768a5cbfd966872e47629fcade9f248c4b259fc4eaf81be116",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Separation workflow aborts when a found timecard lacks a physical punch or its required read fails, before receipt reuse, submission, date writeback or finalization. Tests and module instructions bind this contract.",
+     "rebuildRecheckIds": [
+      "separation-empty-timecard-2026-10-06"
+     ]
+    },
+    {
+     "path": "src/workflows/separations/steps/kronos-search.ts",
+     "changeKind": "modified",
+     "beforeSha256": "977d9316f6a0f4425aafe2615db10cf4cc425d1f008a194190d07e5eb745b54c",
+     "afterSha256": "3c7507d8bd1936a7e14f4ce297980e62590e322eda47fd78ad48392e72443467",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Separation workflow aborts when a found timecard lacks a physical punch or its required read fails, before receipt reuse, submission, date writeback or finalization. Tests and module instructions bind this contract.",
+     "rebuildRecheckIds": [
+      "separation-empty-timecard-2026-10-06"
+     ]
+    },
+    {
+     "path": "src/workflows/separations/workflow.ts",
+     "changeKind": "modified",
+     "beforeSha256": "f83d3277356f9b9dad62617bf7d7c6cb32296926fcb28b562ac83b5345b8df8a",
+     "afterSha256": "477c9408dd62304ad4f85fccab3308d2a6c3cd57fc6e1e30200dafad75d358f2",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Separation workflow aborts when a found timecard lacks a physical punch or its required read fails, before receipt reuse, submission, date writeback or finalization. Tests and module instructions bind this contract.",
+     "rebuildRecheckIds": [
+      "separation-empty-timecard-2026-10-06"
+     ]
+    },
+    {
+     "path": "tests/unit/workflows/separations/dry-run.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "1316990d3ee53e6eec845833fe835b7fe64bee7cfdf8e64b8980fd357d6e9135",
+     "afterSha256": "2657bc5822fa9d3f2d5dd6b02a39e890d5e8429a75d771bc54ac44aa02053908",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Separation workflow aborts when a found timecard lacks a physical punch or its required read fails, before receipt reuse, submission, date writeback or finalization. Tests and module instructions bind this contract.",
+     "rebuildRecheckIds": [
+      "separation-empty-timecard-2026-10-06"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "5458c2252b0d8b6b4d0d5c873cc1364af3dbf901",
+   "parentCommit": "5c627a44d4ab5e21eb2065ff307128533862cb39",
+   "changes": [
+    {
+     "path": "src/systems/new-kronos/CLAUDE.md",
+     "changeKind": "modified",
+     "beforeSha256": "36fabf636fa57f65750b8b09aca75fc3e68b362c7038a369208759a3323db1ff",
+     "afterSha256": "f12a7483cb7ba8fb9c68fc254fdcfc5ffcf11bc1ab2b37e78676da27c472cf56",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "The separation-only hire-date reader and date-range/timecard scan use verified Last Hire through today, cover all virtualized rows and requested dates, resolve years chronologically, and reject missing history or mismatched employee/job data before termination reuse or submission. Existing Person Lookup and other timecard APIs are unchanged; consumers were checked. Tests and module instructions bind this contract.",
+     "rebuildRecheckIds": [
+      "separation-hire-range-2026-10-06"
+     ]
+    },
+    {
+     "path": "src/systems/new-kronos/index.ts",
+     "changeKind": "modified",
+     "beforeSha256": "243cdd79cc070a9d8a3f714a98dca25eff71007c878e34a7448010a4f8bdcba1",
+     "afterSha256": "5d2ed98fc0ea580df788b4f439dca110f7565df935732688771866883820cf8c",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "The separation-only hire-date reader and date-range/timecard scan use verified Last Hire through today, cover all virtualized rows and requested dates, resolve years chronologically, and reject missing history or mismatched employee/job data before termination reuse or submission. Existing Person Lookup and other timecard APIs are unchanged; consumers were checked. Tests and module instructions bind this contract.",
+     "rebuildRecheckIds": [
+      "separation-hire-range-2026-10-06"
+     ]
+    },
+    {
+     "path": "src/systems/new-kronos/navigate.ts",
+     "changeKind": "modified",
+     "beforeSha256": "26f6c3cd0fb621c966312714dabc5481f5b10f676381552097a3fa3f6fb2eeaa",
+     "afterSha256": "37a25de26bbdedd80df6b1dae5cbaae6fc45aea358e28327bceafd2619dd7d09",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "The separation-only hire-date reader and date-range/timecard scan use verified Last Hire through today, cover all virtualized rows and requested dates, resolve years chronologically, and reject missing history or mismatched employee/job data before termination reuse or submission. Existing Person Lookup and other timecard APIs are unchanged; consumers were checked. Tests and module instructions bind this contract.",
+     "rebuildRecheckIds": [
+      "separation-hire-range-2026-10-06"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/index.ts",
+     "changeKind": "modified",
+     "beforeSha256": "6552c36837f5a57391942176221014fad0e42e4b9bb7cd108ae4c1f8cc60dd8a",
+     "afterSha256": "bfe5ae2c490275a7d103e0fdfa9af8dfc9273433c964e53405c80e95a5061246",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "The separation-only hire-date reader and date-range/timecard scan use verified Last Hire through today, cover all virtualized rows and requested dates, resolve years chronologically, and reject missing history or mismatched employee/job data before termination reuse or submission. Existing Person Lookup and other timecard APIs are unchanged; consumers were checked. Tests and module instructions bind this contract.",
+     "rebuildRecheckIds": [
+      "separation-hire-range-2026-10-06"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/person-org-summary.ts",
+     "changeKind": "modified",
+     "beforeSha256": "456505e908a86bf9f3fd547746bcbed76e1b1ca8924c7e018f54993b8986b804",
+     "afterSha256": "2df2e4912ed39dcd7926ee022832472ec14b26311fd6cddaf9e2729cd6b5f6f6",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "The separation-only hire-date reader and date-range/timecard scan use verified Last Hire through today, cover all virtualized rows and requested dates, resolve years chronologically, and reject missing history or mismatched employee/job data before termination reuse or submission. Existing Person Lookup and other timecard APIs are unchanged; consumers were checked. Tests and module instructions bind this contract.",
+     "rebuildRecheckIds": [
+      "separation-hire-range-2026-10-06"
+     ]
+    },
+    {
+     "path": "src/workflows/separations/CLAUDE.md",
+     "changeKind": "modified",
+     "beforeSha256": "3909155b8ebf51768a5cbfd966872e47629fcade9f248c4b259fc4eaf81be116",
+     "afterSha256": "960352f507fa541b9d01ea1b29db1e79f387019b726b8d05fc5ebf77e4c0386a",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "The separation-only hire-date reader and date-range/timecard scan use verified Last Hire through today, cover all virtualized rows and requested dates, resolve years chronologically, and reject missing history or mismatched employee/job data before termination reuse or submission. Existing Person Lookup and other timecard APIs are unchanged; consumers were checked. Tests and module instructions bind this contract.",
+     "rebuildRecheckIds": [
+      "separation-hire-range-2026-10-06"
+     ]
+    },
+    {
+     "path": "src/workflows/separations/schema.ts",
+     "changeKind": "modified",
+     "beforeSha256": "3f019b96d7f6cf0f6e53a0970b341d0ff6768ec753ace984e94de5b97fc9ba25",
+     "afterSha256": "9478c7b432cc4b3135e23ca5c3a94c007854431a5f260a18315fdb0e430c8bb7",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "The separation-only hire-date reader and date-range/timecard scan use verified Last Hire through today, cover all virtualized rows and requested dates, resolve years chronologically, and reject missing history or mismatched employee/job data before termination reuse or submission. Existing Person Lookup and other timecard APIs are unchanged; consumers were checked. Tests and module instructions bind this contract.",
+     "rebuildRecheckIds": [
+      "separation-hire-range-2026-10-06"
+     ]
+    },
+    {
+     "path": "src/workflows/separations/steps/kronos-search.ts",
+     "changeKind": "modified",
+     "beforeSha256": "3c7507d8bd1936a7e14f4ce297980e62590e322eda47fd78ad48392e72443467",
+     "afterSha256": "a75ec07dac48c8bc1c8dca2f4a8689c8c95f5af4fc48f9dd25869f1a1557250a",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "The separation-only hire-date reader and date-range/timecard scan use verified Last Hire through today, cover all virtualized rows and requested dates, resolve years chronologically, and reject missing history or mismatched employee/job data before termination reuse or submission. Existing Person Lookup and other timecard APIs are unchanged; consumers were checked. Tests and module instructions bind this contract.",
+     "rebuildRecheckIds": [
+      "separation-hire-range-2026-10-06"
+     ]
+    },
+    {
+     "path": "src/workflows/separations/workflow.ts",
+     "changeKind": "modified",
+     "beforeSha256": "477c9408dd62304ad4f85fccab3308d2a6c3cd57fc6e1e30200dafad75d358f2",
+     "afterSha256": "8485e05c96a5db75f183977073c2019027169486bcb810e3e727118154ed9393",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "The separation-only hire-date reader and date-range/timecard scan use verified Last Hire through today, cover all virtualized rows and requested dates, resolve years chronologically, and reject missing history or mismatched employee/job data before termination reuse or submission. Existing Person Lookup and other timecard APIs are unchanged; consumers were checked. Tests and module instructions bind this contract.",
+     "rebuildRecheckIds": [
+      "separation-hire-range-2026-10-06"
+     ]
+    },
+    {
+     "path": "tests/unit/systems/new-kronos/navigate.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "4c5a96d95aa0a210ce35fc2d18a5d77a16e96d128800a204569753f68df5f9ef",
+     "afterSha256": "d785470ce31a6ad3c9429f0b3a341b6f23c86027be2a3e349daebedf234f1817",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "The separation-only hire-date reader and date-range/timecard scan use verified Last Hire through today, cover all virtualized rows and requested dates, resolve years chronologically, and reject missing history or mismatched employee/job data before termination reuse or submission. Existing Person Lookup and other timecard APIs are unchanged; consumers were checked. Tests and module instructions bind this contract.",
+     "rebuildRecheckIds": [
+      "separation-hire-range-2026-10-06"
+     ]
+    },
+    {
+     "path": "tests/unit/systems/ucpath/person-org-summary.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "5f058d55335d4ab827fe96a0d42057bf13bd2d3caf7d6e8f5c55f8106b8998bb",
+     "afterSha256": "2309df6eee346161fbdd7ce9fdaf3dde6c3e27ff63e33559afcb7371a762eed1",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "The separation-only hire-date reader and date-range/timecard scan use verified Last Hire through today, cover all virtualized rows and requested dates, resolve years chronologically, and reject missing history or mismatched employee/job data before termination reuse or submission. Existing Person Lookup and other timecard APIs are unchanged; consumers were checked. Tests and module instructions bind this contract.",
+     "rebuildRecheckIds": [
+      "separation-hire-range-2026-10-06"
+     ]
+    },
+    {
+     "path": "tests/unit/workflows/separations/dry-run.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "2657bc5822fa9d3f2d5dd6b02a39e890d5e8429a75d771bc54ac44aa02053908",
+     "afterSha256": "154687922d88a08d6de38dc0572d5a517db2ef492c1331b3bb41de992816ca15",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "The separation-only hire-date reader and date-range/timecard scan use verified Last Hire through today, cover all virtualized rows and requested dates, resolve years chronologically, and reject missing history or mismatched employee/job data before termination reuse or submission. Existing Person Lookup and other timecard APIs are unchanged; consumers were checked. Tests and module instructions bind this contract.",
+     "rebuildRecheckIds": [
+      "separation-hire-range-2026-10-06"
+     ]
+    },
+    {
+     "path": "tests/unit/workflows/separations/schema.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "9164d0b51abc4549871a805556dbc1b8e363d081dc36a01efcb14d9deb7664bc",
+     "afterSha256": "496d5906651927d7a048951f51f4b4093e1c86789a01990fc56f2a3a292596a7",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "The separation-only hire-date reader and date-range/timecard scan use verified Last Hire through today, cover all virtualized rows and requested dates, resolve years chronologically, and reject missing history or mismatched employee/job data before termination reuse or submission. Existing Person Lookup and other timecard APIs are unchanged; consumers were checked. Tests and module instructions bind this contract.",
+     "rebuildRecheckIds": [
+      "separation-hire-range-2026-10-06"
      ]
     }
    ]
