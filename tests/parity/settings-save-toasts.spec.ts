@@ -69,12 +69,14 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.route("**/api/v1/commands", async route => { await pending; await route.fallback(); }, { times: 1 });
       await task.fill("210"); await expect(page.getByText("Saving…", { exact: true })).toBeVisible();
       await expect(toasts).toHaveCount(0);
-      const focusWhileSaving = await page.evaluate(() => ({ tag: document.activeElement?.tagName, id: document.activeElement?.id }));
       release();
       const saved = toasts.filter({ hasText: `Saved ${label}` });
       await expect(saved).toHaveCount(1); await expect(saved).toHaveAttribute("role", "status");
+      // The save lock disables controls while the command settles; focus returns to the edited field afterwards.
+      await expect(task).toBeFocused();
+      const focusBeforeHover = await page.evaluate(() => ({ tag: document.activeElement?.tagName, id: document.activeElement?.id }));
       await saved.locator('[data-slot="toast-close"]').hover();
-      expect(await page.evaluate(() => ({ tag: document.activeElement?.tagName, id: document.activeElement?.id }))).toEqual(focusWhileSaving);
+      expect(await page.evaluate(() => ({ tag: document.activeElement?.tagName, id: document.activeElement?.id }))).toEqual(focusBeforeHover);
       await task.focus(); await expect(task).toBeFocused();
       expect(read().revision).toBe(2);
       const toastBounds = (await saved.boundingBox())!;

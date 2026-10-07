@@ -63,12 +63,22 @@ export function DateInput({ name, label, value, onChange, min, max, inline = fal
     if (!open) focusFrame.current = requestAnimationFrame(() => calendarTrigger.current?.focus({ preventScroll: true }));
     setCalendarOpen(open); onOpenChange?.(open);
   };
+  // A year with fewer than four typed digits is still being entered. It stays in the field and is not
+  // published as a date; leaving the field publishes an unparseable value so the owner's validation refuses it.
+  const [partial, setPartial] = useState<{ date: CalendarDate; base: string; text: string } | null>(null);
+  const pendingYear = partial !== null && (value === partial.base || value === partial.text) ? partial.date : null;
+  const month = (date: CalendarDate) => textDateFormat === "MM/DD/YYYY" || valueFormat === "iso" ? String(date.month).padStart(2, "0") : String(date.month);
+  const day = (date: CalendarDate) => textDateFormat === "MM/DD/YYYY" || valueFormat === "iso" ? String(date.day).padStart(2, "0") : String(date.day);
+  const formatted = (date: CalendarDate, year: string) => valueFormat === "us" ? `${month(date)}/${day(date)}/${year}` : `${year}-${month(date)}-${day(date)}`;
   const setDate = (date: CalendarDate | null) => {
-    onChange(date === null ? "" : valueFormat === "us" ? `${textDateFormat === "MM/DD/YYYY" ? String(date.month).padStart(2, "0") : String(date.month)}/${textDateFormat === "MM/DD/YYYY" ? String(date.day).padStart(2, "0") : String(date.day)}/${String(date.year).padStart(4, "0")}` : date.toString());
+    if (date !== null && date.year < 1000) { setPartial({ date, base: pendingYear === null ? value : partial?.base ?? value, text: formatted(date, String(date.year)) }); return; }
+    setPartial(null);
+    onChange(date === null ? "" : valueFormat === "us" ? formatted(date, String(date.year)) : date.toString());
     if (calendarOpen) setOpen(false);
   };
+  const leaveIncompleteYear = () => { if (pendingYear !== null && partial !== null && value !== partial.text) onChange(partial.text); };
   return <I18nProvider locale="en-US"><Popover open={calendarOpen} onOpenChange={setOpen}><PopoverAnchor asChild><HeroDatePicker isOpen={calendarOpen} onOpenChange={setOpen}
-    shouldForceLeadingZeros name={textEntry ? undefined : name} value={selected} onChange={setDate} minValue={dateValue(min) ?? undefined} maxValue={dateValue(max) ?? undefined}
+    shouldForceLeadingZeros name={textEntry ? undefined : name} value={pendingYear ?? selected} onChange={setDate} onBlur={leaveIncompleteYear} minValue={dateValue(min) ?? undefined} maxValue={dateValue(max) ?? undefined}
     isInvalid={(value !== "" && selected === null) || undefined} isDisabled={disabled} isRequired={required}
     className={cn("ds-date-picker min-w-0", inline && "ds-date-picker--inline", textEntry && "ds-date-picker--text", className)}>
     <Label className={cn("ds-date-label", (textEntry || hideLabel) && "sr-only")}>{label}</Label>

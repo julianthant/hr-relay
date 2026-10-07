@@ -11,6 +11,7 @@ import { StorageRelocationRows } from "./settings-relocation.js";
 import { SettingsPathPicker } from "./settings-path-picker.js";
 import type { NativePathField } from "../../../../domain/dashboard/native-path-picker.js";
 import { ChatGptAccountSettings } from "./chatgpt-account.js";
+import { useSettingsFormFocus } from "../editor/settings-autosave-model.js";
 
 type Editor = ReturnType<typeof useEditableSettings>;
 
@@ -108,9 +109,10 @@ export function CompactSettingsSection({ editor, sectionId, appearance }: { edit
 }
 
 function CompactSettingsForm({ editor, sectionId }: { editor: Editor; sectionId: "general" | "paths" }) {
+  const settingsFocus = useSettingsFormFocus<HTMLFormElement>(editor.locked || editor.protectedEditor.locked, editor.onFieldBlur);
   if (editor.editor.state !== "loaded") throw new Error("settings-form-document-unavailable");
   const document = editor.editor.document;
-  return <Form validationBehavior="aria" className="settings-compact-form" onBlur={editor.onFieldBlur} onSubmit={event => { event.preventDefault(); editor.submit(); }}>
+  return <Form validationBehavior="aria" className="settings-compact-form" ref={settingsFocus} onSubmit={event => { event.preventDefault(); editor.submit(); }}>
       {document.runtimeStatus.state === "restart-required" && <Banner tone="warning" title="Restart required">Settings revision {String(document.runtimeStatus.persisted.settingsRevision)} is saved; this dashboard still runs revision {String(document.runtimeStatus.active.settingsRevision)}.</Banner>}
       {editor.readProblem !== undefined && <Banner tone="warning" title="Current settings unavailable">{editor.readProblem} <Button size="sm" onClick={editor.reload}>Refresh current values</Button></Banner>}
       <SettingsSaveFeedback save={editor.save} restartRequired={editor.editor.state === "loaded" && editor.editor.document.runtimeStatus.state === "restart-required"} retry={editor.retry} retryConflict={editor.submit} />

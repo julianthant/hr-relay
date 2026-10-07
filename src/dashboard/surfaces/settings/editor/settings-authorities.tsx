@@ -9,6 +9,7 @@ import { SettingsSaveFeedback } from "./settings-feedback.js";
 import { ProtectedSettingField } from "../providers/settings-protected-field.js";
 import { formatSetting } from "./settings-draft-model.js";
 import { groupDeploymentFacts, settingsFactLabel } from "./ui-settings-records-labels.js";
+import { useSettingsFormFocus } from "./settings-autosave-model.js";
 
 
 type Editor = ReturnType<typeof useEditableSettings>;
@@ -24,6 +25,7 @@ type Removal = { name: Parameters<Editor["protectedEditor"]["clear"]>[0]; label:
 function CredentialsSection({ editor }: { editor: Editor }) {
   const [removal, setRemoval] = useState<Removal | null>(null);
   const removeTrigger = useRef<HTMLElement | null>(null);
+  const settingsFocus = useSettingsFormFocus<HTMLFormElement>(editor.locked || editor.protectedEditor.locked, editor.onFieldBlur);
   if (editor.editor.state === "loading") return <SettingsSectionSkeleton section="credentials" />;
   if (editor.editor.state === "failed") return <Banner tone="danger" title="Credentials unavailable">
     {editor.editor.message.replace(/ Try again\.$/u, "")} <Button size="sm" variant="secondary" onClick={editor.reload}>Try again</Button>
@@ -46,7 +48,7 @@ function CredentialsSection({ editor }: { editor: Editor }) {
     {editor.readProblem !== undefined && <Banner tone="warning" title="Current values unavailable">{editor.readProblem} <Button size="sm" onClick={editor.reload}>Refresh values</Button></Banner>}
     {authority.state === "unknown" && <Banner tone="warning" title="Credentials unavailable">Saved credentials could not be read. <Button size="sm" onClick={editor.reload}>Retry read</Button></Banner>}
     <SettingsSaveFeedback save={credentials.save} protectedStore retry={credentials.retry} retryConflict={credentials.submit} />
-    <Form validationBehavior="aria" className="settings-compact-form" onBlur={editor.onFieldBlur} onSubmit={event => { event.preventDefault(); credentials.submit(); }}>
+    <Form validationBehavior="aria" className="settings-compact-form" ref={settingsFocus} onSubmit={event => { event.preventDefault(); credentials.submit(); }}>
       {(["UCPath sign-in", "Workflow configuration"] as const).map((title, groupIndex) => <BodySection key={title} title={title}>
         <FormGroup label={title}>
           {authority.rows.slice(groupIndex === 0 ? 0 : 2, groupIndex === 0 ? 2 : undefined)

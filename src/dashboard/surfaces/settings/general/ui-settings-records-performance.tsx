@@ -11,6 +11,7 @@ import { timeoutReadableValue, timeoutSetting } from "./settings-timeouts-model.
 import { SettingsValueControl } from "../editor/settings-controls.js";
 
 import { SettingsSearchDisclosure } from "../navigation/settings-search-disclosure.js";
+import { useSettingsFormFocus } from "../editor/settings-autosave-model.js";
 
 type Editor = ReturnType<typeof useEditableSettings>;
 
@@ -51,6 +52,7 @@ function PerformanceRow({ editor, leaf }: { editor: Editor; leaf: EditableSettin
 }
 
 export function PerformanceSettingsSection({ editor }: { editor: Editor }) {
+  const settingsFocus = useSettingsFormFocus<HTMLFormElement>(editor.locked || editor.protectedEditor.locked, editor.onFieldBlur);
   if (editor.editor.state === "loading") return <SettingsSectionSkeleton section="performance" />;
   if (editor.editor.state === "failed") return <Banner tone="danger" title="Editable settings could not be read"><Button size="sm" onClick={editor.reload}>Try again</Button></Banner>;
   const document = editor.editor.document;
@@ -61,7 +63,7 @@ export function PerformanceSettingsSection({ editor }: { editor: Editor }) {
   const additional = groups.filter(group => !primary.includes(group));
   return <section className="settings-compact-page settings-performance-page">
     <PageHeading title="Performance" description="Time limits for navigation, work, and sign-in." />
-    <Form validationBehavior="aria" className="settings-compact-form" onBlur={editor.onFieldBlur} onSubmit={event => { event.preventDefault(); editor.submit(); }}>
+    <Form validationBehavior="aria" className="settings-compact-form" ref={settingsFocus} onSubmit={event => { event.preventDefault(); editor.submit(); }}>
       {document.runtimeStatus.state === "restart-required" && <Banner tone="warning" title="Restart required">Settings revision {String(document.runtimeStatus.persisted.settingsRevision)} is saved; this dashboard still runs revision {String(document.runtimeStatus.active.settingsRevision)}.</Banner>}
       {editor.readProblem !== undefined && <Banner tone="warning" title="Current settings unavailable">{editor.readProblem} <Button size="sm" onClick={editor.reload}>Refresh current values</Button></Banner>}
       <SettingsSaveFeedback save={editor.save} restartRequired={editor.editor.state === "loaded" && editor.editor.document.runtimeStatus.state === "restart-required"} retry={editor.retry} retryConflict={editor.submit} />

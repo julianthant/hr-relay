@@ -9,6 +9,7 @@ import { routePresentation } from "./settings-routes-model.js";
 import { ProtectedSettingField } from "../providers/settings-protected-field.js";
 
 import { SettingsSearchTargetContext } from "../navigation/settings-search-target-model.js";
+import { useSettingsFormFocus } from "../editor/settings-autosave-model.js";
 
 export function RoutesSection({ editor }: { editor: ReturnType<typeof useEditableSettings> }) {
   const [query, setQuery] = useState("");
@@ -16,6 +17,7 @@ export function RoutesSection({ editor }: { editor: ReturnType<typeof useEditabl
   useEffect(() => { if (target !== undefined) setQuery(""); }, [target, visit]);
   const [removal, setRemoval] = useState<{ hasSaved: boolean; label: string } | null>(null);
   const removeTrigger = useRef<HTMLElement | null>(null);
+  const settingsFocus = useSettingsFormFocus<HTMLFormElement>(editor.locked || editor.protectedEditor.locked, editor.onFieldBlur);
   if (editor.editor.state === "loading") return <SettingsSectionSkeleton section="routes" />;
   if (editor.editor.state === "failed") return <Banner tone="danger" title="Routes could not be read"><Button size="sm" onClick={editor.reload}>Try again</Button></Banner>;
   const document = editor.editor.document;
@@ -27,7 +29,7 @@ export function RoutesSection({ editor }: { editor: ReturnType<typeof useEditabl
   const filtered = routes.filter(({ leaf, presentation }) => `${presentation.name} ${presentation.description} ${Object.values(presentation.fields).map(field => `${field.name} ${field.description}`).join(" ")} ${leaf.path === "urls.sharepoint.prod" ? "Onboarding roster URL Download the onboarding roster" : ""}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   return <section className="settings-page-panel routes-page">
     <PageHeading title="Routes" description="Production destinations, organized by system." />
-    <form className="routes-page-form" onBlur={editor.onFieldBlur} onSubmit={event => { event.preventDefault(); editor.submit(); }}>
+    <form className="routes-page-form" ref={settingsFocus} onSubmit={event => { event.preventDefault(); editor.submit(); }}>
       {document.runtimeStatus.state === "restart-required" && <Banner tone="warning" title="Restart required">Saved routes take effect after this dashboard restarts. This process still uses settings revision {String(document.runtimeStatus.active.settingsRevision)}.</Banner>}
       {editor.readProblem !== undefined && <Banner tone="warning" title="Current routes unavailable">{editor.readProblem} <Button size="sm" onClick={editor.reload}>Refresh current values</Button></Banner>}
       <SettingsSaveFeedback save={editor.save} restartRequired={editor.editor.state === "loaded" && editor.editor.document.runtimeStatus.state === "restart-required"} retry={editor.retry} retryConflict={editor.submit} />

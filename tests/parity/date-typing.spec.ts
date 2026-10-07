@@ -11,6 +11,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
+    const commands: string[] = [];
+    page.on("request", request => { if (request.method() === "POST" && request.url().includes("/api/v1/commands")) commands.push(request.url()); });
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 });
       await installTheme(page, theme);
@@ -22,9 +24,15 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await month.focus(); await page.keyboard.type("04");
       await day.focus(); await page.keyboard.type("27");
       await year.focus();
-      for (const digit of "2026") {
+      for (const [index, digit] of [..."2026"].entries()) {
         await page.keyboard.type(digit);
         await expect(month).toHaveText("04"); await expect(day).toHaveText("27");
+        if (index === 0) {
+          // A pause longer than the 700 ms save delay must not save an incomplete year or move focus.
+          await page.waitForTimeout(900);
+          expect(commands).toEqual([]);
+          await expect(year).toBeFocused(); await expect(year).toHaveText("2");
+        }
       }
       await expect(year).toHaveText("2026");
       await expect(page.getByRole("button", { name: /^Undo/u })).toHaveCount(0);

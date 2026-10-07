@@ -9,8 +9,10 @@ import { SettingsSaveFeedback } from "./settings-feedback.js";
 import { timeoutReadableValue, timeoutSetting } from "../general/settings-timeouts-model.js";
 import { CompactSettingsSection } from "../general/ui-settings-records-general-paths.js";
 import { PerformanceSettingsSection } from "../general/ui-settings-records-performance.js";
+import { useSettingsFormFocus } from "./settings-autosave-model.js";
 
 export function EditableSettingsSection({ editor, sectionId, appearance }: { editor: ReturnType<typeof useEditableSettings>; sectionId: string; appearance?: ReactNode }) {
+  const settingsFocus = useSettingsFormFocus<HTMLFormElement>(editor.locked || editor.protectedEditor.locked, editor.onFieldBlur);
   if (sectionId === "general" || sectionId === "paths") return <CompactSettingsSection editor={editor} sectionId={sectionId} appearance={appearance} />;
   if (sectionId === "performance") return <PerformanceSettingsSection editor={editor} />;
   if (sectionId === "providers") return <Banner tone="info" title="Provider settings retired">ChatGPT sign-in is available in General.</Banner>;
@@ -23,7 +25,7 @@ export function EditableSettingsSection({ editor, sectionId, appearance }: { edi
   const pageTitle = sections[0]?.label ?? sectionId;
   return <section className="settings-editor">
     <PageHeading title={pageTitle} />
-    <Form validationBehavior="aria" className="flex flex-col gap-[var(--ds-space-section)]" onBlur={editor.onFieldBlur} onSubmit={event => { event.preventDefault(); editor.submit(); }}>
+    <Form validationBehavior="aria" className="flex flex-col gap-[var(--ds-space-section)]" ref={settingsFocus} onSubmit={event => { event.preventDefault(); editor.submit(); }}>
       {document.runtimeStatus.state === "restart-required" && <Banner tone="warning" title="Restart required">Settings revision {String(document.runtimeStatus.persisted.settingsRevision)} is saved; this dashboard still runs revision {String(document.runtimeStatus.active.settingsRevision)}.</Banner>}
       {editor.readProblem !== undefined && <Banner tone="warning" title="Current settings unavailable"><span>{editor.readProblem} <Button size="sm" onClick={editor.reload}>Refresh current values</Button></span></Banner>}
       <SettingsSaveFeedback save={editor.save} restartRequired={editor.editor.state === "loaded" && editor.editor.document.runtimeStatus.state === "restart-required"} retry={editor.retry} retryConflict={editor.submit} />
