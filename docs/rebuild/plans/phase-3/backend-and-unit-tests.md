@@ -3,7 +3,9 @@
 Status: Phase 1, its startup reconciliation prerequisite and Phase 2 are accepted locally on
 2026-10-01; the operator-approved layout polish is accepted locally on 2026-10-02.
 Phase 3 and Phase 4 are accepted locally on 2026-10-02;
-Phase 5 remains proposed. This descriptive
+Phase 5 remains proposed; on 2026-10-02 the operator deferred standalone execution and scheduled
+the same deliverable as [W8](dashboard-surface-wiring.md#w8--connect-the-approved-logs-surface-after-the-other-wiring-packages).
+This descriptive
 supporting plan does not assign new roadmap task numbers, reopen accepted task checkboxes, or grant
 release/freeze/cutover admission. Roadmap recording and integration remain separate operator choices.
 
@@ -507,6 +509,12 @@ remain explicitly unverified until operator-reviewed complex checks. Do not call
 end-to-end performance result.
 
 ## Phase 5 — Serve the approved Logs UI with step results and captures
+
+**Scheduling amendment — 2026-10-02:** the operator deferred this standalone phase until the
+dashboard wiring packages. Its existing contract and acceptance scope below remain authoritative;
+execute it once as [W8](dashboard-surface-wiring.md#w8--connect-the-approved-logs-surface-after-the-other-wiring-packages)
+after the accepted Phase 4 and shared consumer prerequisites. This amendment does not launch W8
+or authorize overlapping work with the other surface owners.
 
 **Deliverable:** the existing LogFeed renders the backend's confirmed, display-ready step facts
 and receives live deltas without rediscovering business outcomes in the browser.
@@ -1463,6 +1471,9 @@ No push, merge, peer cleanup or next-phase launch. Commit and record Phase 4 evi
 ```
 
 ### Phase 5 prompt
+
+Reference scope only: standalone launch is deferred. Use the dashboard wiring plan's common
+preamble and W8 prompt for the same deliverable, preserving the requirements below.
 
 ```text
 Work in /Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-logs-backend.

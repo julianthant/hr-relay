@@ -2,7 +2,9 @@
 
 Status: W0, W1 and W2 accepted locally on 2026-10-02. W3–W7 remain proposed and unlaunched. Remove, Snooze and superseded Settings save meanings below are operator-approved.
 
-This is supporting, unnumbered work for the [backend and unit-test initiative](backend-and-unit-tests.md). That plan continues to own confirmed Logs and its Phases 3–5. This document owns the proposed Settings, Notifications, Activity, Archive, Sessions, Explorer, and Queue wiring packages. It does not assign roadmap task numbers or grant release, freeze, cutover, or Electron admission.
+This is supporting, unnumbered work for the [backend and unit-test initiative](backend-and-unit-tests.md). That plan continues to own the confirmed Logs contract and its Phases 3–5. This document owns the Settings, Notifications, Activity, Archive, Sessions, Explorer, and Queue wiring packages, and schedules the existing Phase 5 deliverable once as W8. It does not create a second Logs implementation or assign roadmap task numbers or grant release, freeze, cutover, or Electron admission.
+
+Scheduling amendment — 2026-10-02: the operator deferred standalone Logs Phase 5 and included its delivery as the final W8 package. W8 has not been launched. Existing W0–W7 source/check receipts retain their original scope.
 
 Toast follow-up — 2026-10-03: the operator launched W2a after accepted W2 and confirmed the compact-chip design and the event policies recorded below. Its execution receipt owns source/check acceptance and unresolved choices. The operator's ask-before-assuming rule applies to W2a and every later W package.
 
@@ -17,7 +19,7 @@ Connect the approved components to authoritative backend data and commands while
 - Preserve ordinary settings, private credentials, provider keys, run snapshots, archive custody, worker leases, and process ownership as distinct authorities where their lifecycles differ.
 - Use the existing TypeScript/Hono/SQLite/client/HTTP/SSE architecture. Do not add a distributed service, second queue authority, per-panel whole-day polling, or generic service framework.
 - Use focused unit tests, scoped lint, and affected static/generated/bundle checks. Complex test design and execution remain for later operator discussion. Preserve retained assertions and test membership; do not restore retired parity/scenario suites.
-- Exclude Logs, Run/Rerun design, spreadsheet import redesign, broad workflow migration, live HR actions, Electron packaging, and unrelated repository cleanup.
+- W0–W7 exclude Logs producer changes; W8 alone consumes the existing Logs Phase 5 scope. Run/Rerun design, spreadsheet import redesign, broad workflow migration, live HR actions, Electron packaging, and unrelated repository cleanup remain excluded.
 
 ## Verified planning inputs
 
@@ -59,6 +61,12 @@ Use explicit feature operations and one canonical production read path. HTTP par
 
 Re-use the existing dashboard-day resource for Queue, worker/pool facts and inbox updates where applicable. Settings, Activity and Archive retain their own explicit query identities. Preserve stable reference identities where memoized consumers depend on them. Cancel or ignore late responses by full selection/request identity, including A → B → A changes.
 
+For every feature when its callback wiring is admitted, inspect the approved mock's actual interaction handlers and record pending, accepted, refused and uncertain outcomes, modal dismissal, feedback text and navigation. Temporary action toasts use the existing toast system and authenticated command results. Durable inbox alerts use declared backend triggers and the shared inbox. A button click does not itself prove success or require a persistent alert. For the operator's Start Run example, the desired accepted outcome is dismissal plus a truthful queued/accepted toast; its concrete Run/Rerun callback wiring remains with that later design and implementation assignment. Do not infer this behavior from button labels or notification event types alone.
+
+**Operator rule — applies to all later W packages:** a mocked toast does not specify notification-panel membership. Before wiring or changing any event whose toast/panel behavior the operator has not explicitly settled, ask the operator and wait for the answer for that event. Inspect the actual mock; do not infer permission from its icon, text, severity, component presence, a suggested default or another event's rule. Group related questions where useful. Record each approved event's toast, durable-panel and target behavior at the existing owner; ratify material contract changes at the owning reference and decision index together. Preserve current accepted behavior while a change is unresolved, and continue independent approved work. Do not silently implement a proposed policy or treat elapsed time as an answer.
+
+Future workflow/system modules reuse the existing declared notification triggers and observation seams for canonical run failure, gate, parked-write and verified-completion facts. A genuinely new alert requires an explicitly owned trigger, display/target policy and deduplication tests. Preserve the separation between temporary action feedback, durable inbox history and desktop delivery. Do not add an arbitrary text publisher or make feature completion depend on successful notification delivery. These future extension rules do not broaden earlier acceptance receipts.
+
 Actual commands verified in the current package/runner:
 
 ```sh
@@ -74,7 +82,9 @@ Unit boundaries use real policy/adapter/controller code with fixed clocks, IDs, 
 
 ## Package order and verifiable outcomes
 
-Labels W0–W7 are local package labels only. Default order follows the operator's requested surface order. After W0, backend-only prerequisites in separate modules may run alongside Logs only with disjoint ownership; final consumer integration remains coordinated.
+Labels W0–W8 are local package labels only. Default order follows the operator's requested surface order, with the deferred Logs connection last in W8. After W0, backend-only prerequisites in separate modules may run alongside Logs infrastructure only with disjoint ownership; final consumer integration remains coordinated.
+
+W2a is a bounded follow-up to W2, not a renumbering of W3–W8. Its shared feedback policy precedes later callback wiring. Later packages bind their own feature callbacks to that policy; excluded Run/Rerun and spreadsheet features retain their separate design/implementation admission.
 
 ### W0 — Establish the approved consumers and shared data boundary
 
@@ -217,6 +227,16 @@ Verify navigation from Notifications and selection consumed by Sessions/Archive 
 
 **Outcome:** the existing Queue remains authoritative and the seven surfaces share correct identities and navigation without redesign.
 
+### W8 — Connect the approved Logs surface after the other wiring packages
+
+**Dependency:** accepted Logs Phase 4, W0 and the accepted W1–W7 consumer/selection boundaries. This is the operator-deferred [Phase 5 deliverable](backend-and-unit-tests.md#phase-5--serve-the-approved-logs-ui-with-step-results-and-captures), executed once through this package. Do not launch it as a separate concurrent Phase 5 task.
+
+Connect the existing approved `LogFeed` to confirmed actions, backend-selected concise results, system labels, timestamps, step grouping, paged history and the resumable live stream. Capture while the exact step page/session lease is owned and attach guarded artifact metadata once at that step end. Preserve detailed traces, truthful legacy records, failed/absent capture, deduplication and isolation from late run/attempt responses. Preserve all approved presentation; missing visible states remain separate operator design work.
+
+**Units:** the existing Phase 5 projection/adapter/component scope, including result selection, action timestamps, systems, step/capture identity, old records, paged/live duplication and late selection responses. Run focused units, lint and affected static/generated/bundle checks. Provide synthetic served payloads; live capture, visual behavior and complex tests remain deferred.
+
+**Outcome:** backend data drives the existing Logs renderer through the real client adapter and shared selection, completing the scheduled surface wiring scope. This does not prove live HR, complete workflow migration or release acceptance. Record its single source/check receipt here and link it from the original Phase 5 owner.
+
 ## Launch prompts
 
 Each prompt implements one package only after its prerequisites and decisions are accepted. Copy the common preamble plus the selected package text. These are proposed prompts, not authorization to launch.
@@ -239,7 +259,11 @@ design work. Do not substitute retired connected renderers or restore the catalo
 Include backend lifecycle/prerequisite fixes, adapters, callbacks, focused units,
 scoped lint and affected static/generated/bundle repairs for this package.
 Complex tests remain for later operator discussion. Preserve retained assertions.
-Exclude Logs, Run/Rerun, spreadsheet redesign, live HR and Electron delivery.
+For any mocked toast with unspecified toast/panel behavior, ask me before wiring
+that event. Do not infer its notification-panel membership or choose a default.
+Preserve settled decisions; record my answers and continue independent approved work.
+For W0–W7 exclude Logs producer work. W8 alone executes the deferred Phase 5 scope.
+Exclude Run/Rerun, spreadsheet redesign, live HR and Electron delivery.
 Preserve peer edits. No push, automatic branch merge/cleanup, or next-package launch.
 Record exact source/check evidence and remaining obligations at this package's owner.
 ```
@@ -344,6 +368,21 @@ Execute W7 only: preserve the connected QueuePanel and finish exact selection,
 day/attempt isolation, served actions and cross-surface navigation. Use one day
 resource/projection authority and bounded resume/reset behavior. Exclude Logs
 producer changes and Run/Rerun modal work. Finish focused unit/lint/bundle evidence.
+```
+
+### W8 prompt
+
+```text
+Execute W8 only after accepted Logs Phase 4 and W0–W7 boundaries: consume the
+existing Phase 5 scope in backend-and-unit-tests.md. Read the approved Logs
+handoff and verify current UI ancestry. Connect LogFeed to served confirmed
+facts/results and paged/live history; bind explicit step-end captures through
+the guarded artifact path. Preserve design, detailed traces, unknowns and exact
+run/attempt/session/step identity. Finish focused projection/adapter/wiring units,
+lint and affected static/generated/bundle checks; provide synthetic payloads.
+No complex/live/visual test execution or broad workflow migration. Record one W8
+acceptance receipt here and its pointer at the original Phase 5 owner. Do not
+launch another Phase 5 task, merge, push or start the next assignment.
 ```
 
 ## Acceptance receipts
