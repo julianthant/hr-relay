@@ -1298,17 +1298,12 @@ run, so item-row folding remains unbuilt.
 ### 2.5 `explain run`
 
 
-One CLI/API command is the canonical debug entry point:
-
-```text
-cli explain run <traceId|runId> [--json] [--bundle <dir>]
-```
+The retained explanation transport formats the canonical diagnostic view.
 
 It resolves the operation tree and prints, in this order: state, node timeline, checkpoint reuse,
 subject bindings, failure, last successful action, open gate, open dependency, command history,
 notifications, write intent/proof, evidence receipt, and the concrete next safe action
-(`src/server/explain/explain-run.ts:317-346`). Codex/Claude prompts reference this command and the
-generated catalog instead of asking the operator to manually assemble logs.
+(`src/server/explain/explain-run.ts:317-346`).
 
 **Three sections do not print what this paragraph once promised, and each says why rather than
 printing an empty heading — which is the whole discipline of this command.** `--bundle` **REFUSES**
