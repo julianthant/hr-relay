@@ -3320,10 +3320,8 @@ step-label switches, the stub map) becomes a projection of the descriptor set wi
 
 ## 4. Unified completion contract (replaces approveTo / approveDocumentTo / completeDelegatedRun)
 
-> **D338 (2026-09-06):** human and operator-directed agent callers use this same completion
-> protocol and the same server-declared checks. Caller kind adds no second approval or capability
-> restriction. Attribute the real caller; ref write-safety §D338 and ref frontend-backend-integration
-> §4 own this amendment.
+Only the operator, through the dashboard, initiates this completion protocol. Its server-declared
+checks and approval ceremony remain required.
 
 
 **Re-derived from `tracker/dashboard/ocr/approve.ts` + `prepare.ts` as-built (D11), not the OCR

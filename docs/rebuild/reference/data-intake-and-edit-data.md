@@ -952,16 +952,13 @@ scenario corpus — the second asserts the withheld value appears NOWHERE in the
 
 
 - [x] the three producers are admitted through ONE gate that cannot branch on the source, and an operator's hand reading fingerprints identically to the provider's (§4.3, D151; `src/domain/ocr/extraction.ts`, held by `ocr-producer-parity`)
-- [x] routes 2 and 3 are usable from a terminal today — `cli ocr forms | instruction | admit`, non-zero exit on refusal (`src/backend/transports/cli/ocr.ts`)
 - [x] route 1's production adapter is built as transport plus provenance (§4.11, D161; `src/backend/processing/providers/gemini-ocr-extract.ts`)
 - [ ] the review row and the approval cards this square wires are the DRAWN surface, which this doc does not own — ref dashboard-surfaces §9 (D7/D8/D10) and ref frontend-backend-integration §5.1
 - [ ] `ocr_approvals` (schema v10) has no writer in `src/` outside the storage layer — the approval ACT is what the review surface adds
 > 2026-08-20 | docs-cohesion data-intake-and-edit-data | verified against `src/domain/ocr/{extraction,instruction,form-registry,stack}.ts`, `src/server/ocr/compose.ts` and `grep -rl ocr_approvals src` (storage layer only); left: everything drawn
 
-**Operator requirement (2026-08-05):** a page may be read by the automated provider pipeline, by an
-AI the operator runs in their own terminal, or by the operator — and *"all should result in the same
-result consistently… the output should be in the same format no matter who does it and nobody skips
-anything."*
+OCR uses the same declared answer format and completeness rules for every retained provenance
+shape. Only the operator, through the dashboard, uses the app.
 
 Two mechanisms carry that, and neither is a convention:
 
@@ -996,21 +993,8 @@ never approved. `answersFingerprint` digests what was read while excluding who r
 so "two routes agree" is checkable rather than asserted, and confidence is excluded because it is
 the producer's opinion of itself rather than a fact about the page.
 
-**Routes 2 and 3 are usable now**, through `cli ocr` (`src/backend/transports/cli/ocr.ts` — three
-subjects, `forms` · `instruction` · `admit`):
-
-```
-cli ocr forms                      which forms exist, and how many fields each demands
-cli ocr instruction <form-type>    the exact brief EVERY route receives
-cli ocr admit <submission.json>    run the gate; print the record or the problems
-```
-
-An AI the operator runs in their own terminal reads `instruction`, writes the JSON it describes, and
-hands it to `admit`; so does the operator; so, later, does the provider adapter. `admit` **exits
-non-zero on refusal**, because a terminal agent's own tooling checks the exit status rather than
-reading prose, and a refused submission that exited zero would look accepted. An unreadable file is
-named as such rather than reaching the gate as `undefined`, where a JSON typo would come back as a
-complaint about `formType`.
+The retained CLI transport reports a non-zero exit on refusal and names unreadable files before
+admission. This implementation description grants no terminal or agent access to the app.
 
 The command adds no rule of its own — it reads, calls the gate, and reports — and
 `ocr-producer-parity` enforces that: only the gate may parse an `AdmittedExtraction`, the gate may
@@ -1022,8 +1006,7 @@ run the answer through the SAME gate. Its output type is the ordinary `AdmittedE
 deliberately no "provider result" shape, because a second shape is how two routes start meaning
 different things. Nothing in it interprets, repairs or supplements what the model returned: a model
 that answers a different field set than the form declares fails as `incomplete-extraction` carrying
-**the gate's own problem list**, so the operator reads the same correction text a terminal agent
-would have. A structured `unavailable` reason keeps its closed code and `retryAt` rather than being
+**the gate's own problem list**, so the operator reads the gate's correction text. A structured `unavailable` reason keeps its closed code and `retryAt` rather than being
 flattened to prose — those are the parts an operator can act on. A page the model could only
 partly read is still a success with `blockingPaths` set; that is what a human resolves.
 

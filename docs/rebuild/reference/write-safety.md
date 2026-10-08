@@ -1917,25 +1917,14 @@ built arm. Three are live operator or orchestrator calls, each with the migratio
 
 ## 14. Separation identity authority — the wrong-PERSON control
 
-### D338 — the same HR approval rules for human and agent callers (operator decision, 2026-09-06)
+### HR approval through the dashboard
 
-An agent acting for the operator may resolve every HR gate, authorize a live run and invoke the
-existing evidence-qualified write-resolution actions through the same API as a human. Every action
-passes the same evidence, identity, revision, freshness, approval-shape and submission checks. A
-well-formed agent action that satisfies those checks settles in one operation, exactly as a human
-action does; it does not wait for another actor. Record the actual acting agent in the existing
-resolver/audit fields, never label the action as human-performed.
-
-This supersedes the former Phase-3.4 two-actor proposal/confirmation design and any human-only caller
-interpretation of the operator gate below. It does not remove a gate, grant standing approval to an
-individual HR transaction, turn an observation into an approval, or let an unknown submit be retried.
-D309's independently supplied EID verification and name-resolved gate conditions are unchanged.
-D335's completed-transaction warning and fresh-submission authorization apply equally to both kinds
-of caller. The API caller must supply the same explicit resolution or confirmation the dashboard
-would send. Agent behavior follows the operator's instructions; the product adds no agent-specific
-capability block. Direct API access and actor attribution are owned by ref frontend-backend-integration
-§4. A second confirmer is rejected because the existing shared safeguards already govern the action.
-
+Only the operator, through the dashboard, resolves HR gates, authorizes a live run and invokes
+evidence-qualified write resolution. Every action retains its evidence, identity, revision,
+freshness, approval-shape and submission checks. Record the actual operator in the resolver/audit
+fields. Observation is not approval; individual transactions require their existing authorization.
+Independently supplied EID verification and name-resolved gate conditions remain required, as do
+the completed-transaction warning and fresh-submission authorization. Never retry an UNKNOWN submit.
 
 Status: **source-conditioned identity authority ratified and built 2026-09-02 (D309).** D77's
 2026-07-24 ALWAYS-GATE trigger is superseded for Separations. A Kuali document EID, or an explicit

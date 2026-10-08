@@ -648,7 +648,7 @@ projections and never changes state.
 **The start-plan wire has one owner (2026-09-03).** `src/domain/dashboard/start-plan.ts` declares
 `StartPlanRequestSchema` (what a browser authors — every leaf explicit, no defaults),
 `StartPlanIngressSchema` (what `POST /api/v1/start-plans` admits — the same leaves plus the
-server-owned `headless` / no-capture / `interactive` defaults for programmatic callers) and
+server-owned `headless` / no-capture / `interactive` defaults for internal transport composition) and
 `StartPlanWireSchema` (the answer — domain ids, fingerprints and instants; omitted step KEYS only,
 never omission facts or `rawInput`). `client/commands.ts` and `commands/start-plan-service.ts` import
 those three and declare none of their own; the client's former "mirror" with generic strings and
@@ -965,17 +965,9 @@ explicit valid dates stay pinned, and invalid/future dates have a visible recove
 [date contract](dashboard-surfaces.md#date-navigation-amendment-2026-09-18) and
 [calendar read contract](#calendar-navigation-read-amendment-2026-09-18) own the exact boundary.
 
-**D338 — agent/human API capability parity (operator decision, 2026-09-06).** Agents acting for the
-operator can invoke every action a human can invoke through the same BFF API, including queue/start,
-HR gate approval, live-run authorization and evidence-qualified write resolution. Derive and record
-the actual caller identity; identity controls attribution, not an agent-specific permission tier.
-No human-only restriction, second-actor confirmation, agent approval proposal, or extra
-`pending-confirmation` state is introduced. All callers satisfy the same command schemas, current
-revision/evidence checks, declared approval ceremony, duplicate-submit controls and unknown-outcome
-rules. Direct HTTP clients are supported; an MCP wrapper is optional convenience and never an
-additional admission layer or a release prerequisite. Phase 3.5 owns actor-aware API access and its
-parity proof. The write-safety consequence is owned by ref write-safety §D338.
-
+Only the operator, through the dashboard, uses the BFF API. Dashboard actions retain the command
+schemas, current revision/evidence checks, declared approval ceremony, duplicate-submit controls
+and unknown-outcome rules. Record the actual operator identity for attribution.
 
 > **D336 (2026-09-06; ref clock-config-secrets §D336):** ordinary settings values and their
 > revision/command audit are SQLite-owned. The Settings UI retains the catalog-driven set/clear,
@@ -2340,7 +2332,7 @@ corpus unless it is EXTRACTED — which is why the surface/model pairing rule (�
 rule as much as a Fast Refresh one, and why `terminalOutcomeText`, `deriveServedNow`,
 `planRunDetailFollow` and `classifyRunShape` are exported pure functions. The tiers that close the
 rest — one structural fixture scenario per workflow, dashboard feature scenarios, dashboard
-conditions attached to a live dry run, and the agent-operated parallel e2e — are
+conditions attached to a live dry run, and parallel end-to-end verification — are
 `ref:guards-and-tests`'s and D329's `{#workflow-authoring-core}` node.
 
 

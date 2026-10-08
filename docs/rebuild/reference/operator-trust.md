@@ -1570,7 +1570,7 @@ and parses a closed result. It records `promptTemplateVersion`, redacted input d
 provider/model, start/end, result-schema fingerprint, and one outcome:
 `advisory-produced | unavailable | invalid-response`. Pool exhaustion, missing keys, provider error,
 and invalid JSON are visible `unavailable/invalid-response`, never an empty “looks fine” result.
-Advisories can be copied into a draft `FixRecord` only by an explicit operator/Codex/Claude action;
+Advisories can be copied into a draft `FixRecord` only by an explicit operator action through the dashboard;
 they cannot transition a run, resolve evidence, select identity, acknowledge a warning, create a UI
 registry entry, or call the command/mutation services.
 - A migrated selector/element id updates records through the canonical registry mapping; free text

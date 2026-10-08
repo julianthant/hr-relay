@@ -2116,7 +2116,7 @@ amendment above and the guard inventory.
 - [x] BE T2 dashboard / non-run scenarios per feature, seeded from `tests/unit/dashboard` (§10.12) — the first feature is `separations` at `tests/scenario/dashboard/separations/` (2026-08-27); the corpus audit learned the tier as its THIRD kind (`DASHBOARD_SCENARIO_FILE_PATTERN`), which carries the integration walk's obligations because it walks no graph
 - [ ] BE T3 dashboard conditions attachable to a dry-run scenario — the first: separations §9.22 as a file (§10.7)
 - [x] BE the subject registry (`config/test-subjects.json`, values via `src/domain/secrets.ts`) + the insert-only `dry_run_scenario_results` row + `cli dry-run-scenario` (§10.5, §10.6)
-- [ ] PROOF T4 the agent-operated parallel e2e runner + the first journey, recorded — needs `{#parallel-runs}` and `{#duo-lease}` first (§10.8)
+- [ ] PROOF T4 operator dashboard parallel verification + the first journey, recorded — needs `{#parallel-runs}` and `{#duo-lease}` first (§10.8)
 - [ ] BE coverage floor 80/80/80 global, with D91's 50 % global branch gate adopted alongside it (§10.10)
 - [x] BE the FIRST T1 pair in the tree — `tests/scenario/workflows/separations-kuali-finalization/{structural.scenario.test.ts, dry-run.scenario.ts}`, seeded from the valid proof contracts/helpers of the dismantled annotation workflow (D266; ref workflow-model §1.2.2)
 > 2026-08-20 | docs-cohesion ref guards-and-tests | the spec is written against the code (`vitest.config.ts`, `src/core/run-executor.ts`, `src/core/write-sequencer.ts`, `tests/scenario/**`, `tests/parity/**`, `docs/rebuild/migrations/separations.md` §9.22); left: the four code units 5.2b–5.2d. Two as-built findings recorded rather than assumed: `TransactionDryRunPreviewSchema`'s `mismatch` subject arm is unreachable, and a real subject's EID is hardcoded across seven tracked files
@@ -2187,7 +2187,7 @@ week is still citable this week.
 | **T1** | per workflow: ONE structural scenario + ONE dry-run scenario | the second half only | `test:coverage` / `cli dry-run-scenario` |
 | **T2** | per dashboard feature: a feature scenario over the real projection, plus its parity references | no | `test:coverage` / `test:parity` |
 | **T3** | a dashboard CONDITION attached to a dry-run scenario — drive the real ceremony while the run is parked, assert the timeline while it is running, read the receipt after it settles | yes | `test:combined` |
-| **T4** | the agent-operated end-to-end tier: MANY dry-run scenarios in parallel | yes | `test:e2e` |
+| **T4** | operator dashboard end-to-end verification: MANY dry-run scenarios in parallel | yes | `test:e2e` |
 
 **The seed for the first pair (D266, 2026-08-21).** `kuali-timekeeper-annotation` — Phase 2's
 one-node proving workflow — is dismantled by the operator's ruling that it *is* this framework's
@@ -2684,10 +2684,9 @@ authority or wire fact that independently supports it. §9.22's own table — `|
 Paired authority / wire fact | Verdict |` — is the assertion shape; the file is that table made
 executable.
 
-### 10.8 T4 — the agent-operated parallel end-to-end tier
+### 10.8 T4 — operator dashboard concurrency verification
 
-**T4 is MANY dry-run scenarios running at once, operated by an agent, and it is the only tier that
-tests the platform rather than a workflow.** Its subject is concurrency: N runs across DIFFERENT
+**T4 is MANY dry-run scenarios running at once through the operator dashboard.** Its subject is concurrency: N runs across DIFFERENT
 workflows, and — the harder half — **two runs of the SAME workflow at once**.
 
 **It needs two things this tree does not have yet, and it may not be scheduled before them.**
@@ -2714,23 +2713,16 @@ subject label is distinct where the workflow's fence is subject-keyed, because t
 on one permanent key is a *deliberate* test that belongs in a manifest case with its expected
 refusal, not an accident of scheduling.
 
-**How an agent operates it** — the topology is `/custom-e2e-verify`'s, specialized here rather than
-restated:
+**The operator drives verification through the dashboard.**
 
-- **one driver, many read-only verifiers.** Exactly one agent owns the browser and the dashboard.
-  Verifier agents read artifacts and read-only endpoints — spans, the authority database, the
-  `dry_run_scenario_results` rows, the run-detail wire — and never touch the app. The driver finishes
-  driving, waits, then triages. A single end-of-run auditor does the cross-cutting reconciliation,
-  because splitting cross-cutting checks across agents lets an inconsistency fall between them.
 - **double-entry ground truth.** Every UI assertion is paired with an independent source. The
   dashboard is itself under test, so a green screen proves nothing alone.
 - **a workaround is a finding.** The driver acts only as an operator could. The moment it reaches
   for something no button offers, that is the defect — file it, take the minimum manual step, and
   stamp the affected assertion conditional. "It worked after I poked it" is the bug, not the
   all-clear.
-- **an append-only issue ledger.** One JSONL object per line, never edited by an agent that did not
-  write it: `id`, `kind` (`finding` · `corroboration` · `pass`), `foundBy`, `area`, a `dedupKey`
-  naming the SYMPTOM and never the cause, `severity`, `title`, at least one evidence path, `status`.
+- **an append-only issue ledger.** Record attributable findings, corroboration, passes and evidence
+  paths without overwriting another contributor's entries.
 - **red→green promotion.** A confirmed finding is promoted to a deterministic regression test in the
   LOWEST layer that can hold it — a unit test if a unit test can, a structural scenario if it must, a
   manifest case only if nothing cheaper reaches it. An unpinned fix will be rediscovered by the next
@@ -2805,7 +2797,7 @@ and D190's lesson is that a lane nobody chains is a lane that cannot fail.
 | `npm run perf:dashboard` | reproducible structural counters plus observational timings | after a measured dashboard data-path change; before a slice closes |
 | `npm run cli -- dry-run-scenario <workflow> --subject <label>` | ONE T1b manifest against the real systems | at a workflow's migration; whenever its graph or its transaction node changes; to refresh a stale recorded result |
 | `npm run test:combined` | T3, against a live dry run | when a dashboard surface a workflow depends on changes, and at that workflow's migration |
-| `npm run test:e2e` | T4, agent-operated | deliberately, after `{#parallel-runs}` and `{#duo-lease}` land; before cutover |
+| `npm run test:e2e` | T4, operator dashboard verification | deliberately, after `{#parallel-runs}` and `{#duo-lease}` land; before cutover |
 
 **The `scenario-coverage` audit is kept exactly as built and extended across the new folders.**
 Every scenario declares the coverage points it walked — an `it` title whose head (before `" — "`)
