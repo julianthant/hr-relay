@@ -11,7 +11,7 @@ import { descriptorSetHash } from "../../../src/backend/app/composition/dashboar
 import { projectWorkflowStartSteps } from "../../../src/backend/runs/queries/bootstrap.js";
 import {
 WORKFLOW_MODULES,
-} from "../../../src/workflow-kit/validation/workflow-module-audit.js";
+} from "../../../src/backend/app/registries/workflow-registry.js";
 import { separationsDescriptor } from "../../support/helpers/registered-workflows.js";
 import { FIXTURE_BOOTSTRAP } from "./fixture-bootstrap.js";
 import { CONFIG_FINGERPRINT,CONTRACT_FINGERPRINT,uuidOf,WORKFLOW_ID } from "./fixture-identity.js";

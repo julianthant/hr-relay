@@ -28,6 +28,7 @@ const ORDINARY: NotificationRowWire = {
   severity: "info",
   title: "Done",
   state: "unread",
+  context: { state: "unavailable" },
   occurredAt: "2026-08-25T17:01:00.000Z",
   revision: 1,
   }),
