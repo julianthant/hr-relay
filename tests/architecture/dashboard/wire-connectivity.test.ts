@@ -295,9 +295,8 @@ function projectedRowCommands(): ReadonlySet<string> {
   return commands;
 }
 
-// Operations replaced direct recovery buttons with reviewed Rerun navigation. The historical
-// command vocabulary remains kernel-readable; this exact asymmetry cannot credit any new key.
-const RETAINED_RECOVERY_ACTIONS = new Set(["retry", "restart"]);
+// Retained commands remain kernel-readable without a dashboard action opportunity.
+const RETAINED_UNPROJECTED_ACTIONS = new Set(["retry", "restart", "archive"]);
 
 const KERNEL_ONLY_COMMANDS: Readonly<Record<string, string>> = {
   "annotate-failure": "failure resolution targets an exact failure/version and uses the resolution command payload, not a generic run action descriptor",
@@ -427,15 +426,15 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
       ...projectedCommandKeys(readFileSync(join(REPO_ROOT, SECTION_DESCRIPTOR_PRODUCER), "utf8")),
     ]);
     assert.ok(projected.size > 3, "the descriptor-producer read under-ran; the scan or the row sweep is stale");
-    for (const key of RETAINED_RECOVERY_ACTIONS) {
-      assert.ok(actionKeys.includes(key) && kernelTypes.includes(key), `stale retained recovery command: ${key}`);
-      assert.ok(!projected.has(key), `retained recovery command became directly projected: ${key}`);
+    for (const key of RETAINED_UNPROJECTED_ACTIONS) {
+      assert.ok(actionKeys.includes(key) && kernelTypes.includes(key), `stale retained unprojected command: ${key}`);
+      assert.ok(!projected.has(key), `retained command became directly projected: ${key}`);
     }
     const navigation = queueRowActions(STANDARD_WORKFLOW_ACTIONS, {status:"failed",rowRevision:1,dryRun:false,isChild:false,
       parkedWrite:false,memberCount:0,isMember:false,named:false,workflowLabel:"Fixture",hasReviewPanel:false});
     assert.ok(navigation.some(action => action.kind === "navigation" && action.navigate.kind === "rerun"));
     for (const key of actionKeys) {
-      if (projected.has(key) || RETAINED_RECOVERY_ACTIONS.has(key)) continue;
+      if (projected.has(key) || RETAINED_UNPROJECTED_ACTIONS.has(key)) continue;
       problems.push(
         `ActionCommandKeySchema names "${key}" and nothing projects it — not queueRowActions over any `
         + `status, and no descriptor literal in ${SECTION_DESCRIPTOR_PRODUCER}. A served key nothing `

@@ -1,3 +1,4 @@
+import { seedInitialSettingsRuntimeConfig } from "../../support/fixtures/operator-command-fixtures.js";
 import { hostConfigFacts } from "../../../src/models/config/host-display.js";
 import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint, type SettingsPatch } from "../../../src/models/config/settings.js";
@@ -6,7 +7,7 @@ import { createSettingsApplicationExecutor } from "../../../src/backend/runs/com
 import { createCredentialStore } from "../../support/helpers/synthetic-storage-admission.js";
 import { readSettings } from "../../../src/backend/runtime/settings/settings-runtime.js";
 /** Private launch fixture: real SQLite, planner, command kernel, projection and controlled executor. */
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createServer, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
@@ -24,8 +25,8 @@ import { assertServedBundle, PARITY_DIST_DIR } from "./bundle.js";
 
 export async function startRunRerunServer() {
   assertServedBundle(PARITY_DIST_DIR, { proof: "working-tree" });
-  const h = launchHarness(); const source = await h.completeSource();
-  const stateRoot = mkdtempSync(join(tmpdir(), "hrauto-launch-projection-"));
+  const h = launchHarness("reject-active", seedInitialSettingsRuntimeConfig); const source = await h.completeSource();
+  const stateRoot = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-launch-projection-")));
   const database = h.database; const descriptorHash = descriptorSetHash([h.descriptor.contractFingerprint]);
   const day = h.clock.now().toISOString().slice(0, 10);
   const projection = createRunQueueProjection({ timeline: database.authority.timelineEvents,

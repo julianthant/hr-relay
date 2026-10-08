@@ -1,3 +1,6 @@
+import { fixtureIntakePresentation } from "../../parity/helpers/fixture-intake-routes.js";
+import { fixturePreflightReport } from "../../parity/helpers/fixture-preflight-routes.js";
+import { DEFAULT_DASHBOARD_PROFILE } from "../../parity/helpers/fixture-profile.js";
 /**
  * The parity fixture corpus is only trustworthy if it stays inside the strict
  * wire contracts AND internally consistent (D81: counts can never disagree
@@ -11,7 +14,7 @@ import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { DashboardDayWireSchema } from "../../../src/models/dashboard/projection.js";
 import { DashboardStreamEnvelopeSchema } from "../../../src/models/dashboard/subscription.js";
-import { FrontendBootstrapWireSchema } from "../../../src/models/dashboard/bootstrap.js";
+import { FrontendBootstrapWireSchema, WorkflowBootstrapPrimitiveSchema } from "../../../src/models/dashboard/bootstrap.js";
 import {
   fixtureHealthEnvelope,
   fixtureHelloEnvelope,
@@ -77,11 +80,26 @@ describe("intake fixture corpus", () => {
     expect(codes).toContain("cross-field");
   });
 
+  it("binds preflight reports to served authority rather than presentation identity", () => {
+    const profile = { ...DEFAULT_DASHBOARD_PROFILE, descriptorHash: "d".repeat(64) };
+    expect(fixturePreflightReport(profile).descriptorFingerprint).toBe(profile.bootstrap.descriptorHash);
+    const workflow = WorkflowBootstrapPrimitiveSchema.parse(profile.bootstrap.workflows[0]);
+    expect(fixturePreflightReport(profile, workflow.id).descriptorFingerprint).toBe(workflow.descriptorFingerprint);
+  });
   it("retains the complete rejected cell in local evidence", () => {
     const validation = FIXTURE_INTAKE_VALIDATED.validation;
     if (validation.state !== "validated") throw new Error("the validated fixture is not validated");
     const coercion = validation.rejected.find((reject) => reject.kind === "cell-coercion");
     expect(coercion).toBeDefined();
+    expect(coercion?.kind === "cell-coercion" ? coercion.raw : undefined).toEqual({
+      state: "allowed", classification: "direct-identifier", transform: "allow", value: "10-4567",
+    });
+    const presentation = fixtureIntakePresentation(FIXTURE_INTAKE_VALIDATED).validation;
+    if (presentation.state !== "validated") throw new Error("the presentation fixture is not validated");
+    const displayed = presentation.rejected.find(reject => reject.kind === "cell-coercion");
+    expect(displayed?.kind === "cell-coercion" ? displayed.raw : undefined).toEqual({
+      state: "transformed", classification: "direct-identifier", transform: "last4", value: "4567",
+    });
     expect(coercion?.kind === "cell-coercion" ? coercion.raw : undefined).toEqual({
       state: "allowed", classification: "direct-identifier", transform: "allow", value: "10-4567",
     });

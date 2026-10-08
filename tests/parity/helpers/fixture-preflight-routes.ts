@@ -12,7 +12,7 @@ export function fixturePreflightReport(profile: FixtureDashboardProfile, workflo
   const capabilities: RuntimeCapability[] = workflow ? ["executor.run", "system.ucpath.prod", "system.crm.prod"] : ["dashboard.serve"];
   return PreflightReportWireSchema.parse({
     configFingerprint: FIXTURE_EDITABLE_SETTINGS.activeConfigFingerprint,
-    descriptorFingerprint: workflow?.descriptorFingerprint ?? profile.descriptorHash,
+    descriptorFingerprint: workflow?.descriptorFingerprint ?? profile.bootstrap.descriptorHash,
     checkedAt: new Date().toISOString(), requestedCapabilities: capabilities,
     results: expectedPreflightChecks(capabilities).map(check => warning && check.id === "process.orphans"
       ? { status: "warning", check: check.id, summary: "An unused worker process is still present.", impact: "No active run is blocked.", remediation: "Review unused workers in Sessions." }

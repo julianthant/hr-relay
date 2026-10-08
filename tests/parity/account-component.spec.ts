@@ -1,7 +1,8 @@
 import { expect, test } from "@playwright/test";
 import { attachShellA11y } from "./helpers/shell-proof.js";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
-import { resolve } from "node:path";
+import { mkdtemp, rm } from "node:fs/promises";
+import { join, resolve } from "node:path";
+import { tmpdir } from "node:os";
 import { build, preview, type PreviewServer } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
@@ -21,8 +22,7 @@ let output: string;
 let baseUrl: string;
 test.describe.configure({ mode: "default" });
 test.beforeAll(async () => {
-  await mkdir(resolve(".tracker/visual-baseline"), { recursive: true });
-  output = await mkdtemp(resolve(".tracker/visual-baseline/account-component-"));
+  output = await mkdtemp(join(tmpdir(), "hrauto-account-component-"));
   const root = resolve("tests/parity/fixtures/account");
   await build({ configFile: false, root, plugins: [react(), tailwindcss()], logLevel: "warn", build: { outDir: output, emptyOutDir: true } });
   server = await preview({ configFile: false, root, logLevel: "warn", build: { outDir: output }, preview: { host: "127.0.0.1", port: 0, strictPort: true } });

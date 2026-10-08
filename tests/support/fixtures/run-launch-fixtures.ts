@@ -47,13 +47,13 @@ export function launchDescriptor(enqueue: EnqueuePolicy = "reject-active") {
       }).build({ schema: sourceBoundReadContract.output, dependsOn: ["read"], derive: ({ outputs }) => outputs.read }),
   });
 }
-export function launchHarness(enqueue: EnqueuePolicy = "reject-active") {
+export function launchHarness(enqueue: EnqueuePolicy = "reject-active", initializeRuntime?: Parameters<typeof sourceBoundHarness>[2]) {
   const h = sourceBoundHarness(launchDescriptor(enqueue), (world) => {
     const reads = sourceBoundReadStores(world); const writes = buildWriteFixtureRegistry(world);
     return defineTaskStoreRegistry([...reads.stores, ...writes.stores], {
       scenarioIds: [...reads.corpus.scenarioIds, ...writes.corpus.scenarioIds], tasks: [...reads.corpus.tasks, ...writes.corpus.tasks],
     });
-  });
+  }, initializeRuntime);
   const descriptor = h.descriptor;
   if (descriptor.surfaces.inputRun === undefined) throw new Error("launch fixture requires typed input");
   const workflow: RunStartWorkflow = { workflowId: descriptor.id, label: descriptor.label, categoryId: descriptor.category,

@@ -27,10 +27,13 @@ describe("frontend workflow catalog", () => {
     expect(servedLaunchWorkflows(catalog)).toEqual([]);
     const changed = served.map(flow => ({ ...flow, label: "Served label", inputRun: { state: "absent" as const, reason: "Not available" } }));
     expect(buildWorkflowCatalog(changed)).toEqual(catalog);
+    expect(PRODUCT_WORKFLOW_COMPOSITION.dataSources).toBeUndefined();
     expect(PRODUCT_WORKFLOW_COMPOSITION.sourceForRoute("person-lookup", false)).toBe("mock");
     expect(PRODUCT_WORKFLOW_COMPOSITION.sourceForRoute("person-lookup", true)).toBe("mock");
     expect(() => workflowSource("unknown-workflow")).toThrow("WORKFLOW_SOURCE_UNDECLARED");
     const configured = { ...WORKFLOW_SOURCES, "person-lookup": "served" as const };
+    expect(workflowComposition(configured).dataSources).toBeUndefined();
+    expect(workflowComposition(configured).sources).toBe(configured);
     expect(workflowComposition(configured).sourceForRoute("person-lookup", false)).toBe("served");
     expect(workflowComposition(configured).sourceForRoute("person-lookup", true)).toBe("served");
     expect(() => buildWorkflowCatalog([], true, configured)).toThrow("WORKFLOW_SERVED_REGISTRATION_MISSING");

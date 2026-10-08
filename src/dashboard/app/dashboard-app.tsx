@@ -118,7 +118,7 @@ function servedActions(surface: QueueSurfaceWire | undefined): readonly ActionDe
 }
 
 
-export function DashboardApp({ workflowComposition = productWorkflowComposition }: { workflowComposition?: (workflows: readonly import("../surfaces/run-start/run-start.js").RunStartWorkflow[]) => WorkflowComposition } = {}) {
+export function DashboardApp({ workflowComposition = productWorkflowComposition }: { workflowComposition?: (workflows: readonly import("../surfaces/run-start/run-start.js").RunStartWorkflow[]) => WorkflowComposition }) {
   const bootstrap = useBootstrap();
   const onPopstate = useRef<PopstateRouteHandler | undefined>(undefined);
   const [route, setRoute, nativeHistory] = useRoute(onPopstate);
@@ -305,7 +305,8 @@ function LoadedApp({
   const workflows = useMemo(() => parseWorkflows(boot.workflows), [boot.workflows]);
   const workflowComposition = useMemo(() => composeWorkflows(launchWorkflows(workflows)), [composeWorkflows, workflows]);
   const workflowCatalog = useMemo(() => buildWorkflowCatalog(launchWorkflows(workflows), workflowComposition.catalogIncludesMocks ?? true, workflowComposition.sources), [workflows, workflowComposition]);
-  const hasServedWorkflows = workflowComposition.servedDay ?? Object.values(workflowComposition.sources).includes("served");
+  const dataSources = workflowComposition.dataSources ?? workflowComposition.sources;
+  const hasServedWorkflows = workflowComposition.servedDay ?? Object.values(dataSources).includes("served");
   const { day: dayResource } = useDashboardDay(hasServedWorkflows && dateSelection.state === "valid" ? day : undefined, nowIso);
 
   const dayWire = dayResource.state === "loaded" && dayResource.value.day === day ? dayResource.value : undefined;
@@ -313,7 +314,7 @@ function LoadedApp({
 
   const { selectedWorkflowId: chosenWorkflowId, setSelectedWorkflowId: setActiveWorkflowId } = useSelectedWorkflow(workflows.some(flow => workflowSource(flow.id, workflowComposition.sources) === "served")
     ? workflows.filter(flow => workflowSource(flow.id, workflowComposition.sources) === "served") : workflowCatalog);
-  const workflowSurfaces = useMemo(() => dayWire?.queueSurfaces.filter(row => workflowSource(row.workflowId, workflowComposition.sources) === "served"), [dayWire, workflowComposition]);
+  const workflowSurfaces = useMemo(() => dayWire?.queueSurfaces.filter(row => workflowSource(row.workflowId, dataSources) === "served"), [dayWire, dataSources]);
   const previewQueue = useQueuePreview(workflowSurfaces, day);
   const selectedRow = previewQueue.rows.find(row => String(row.runId) === route.run);
   const activeWorkflowId = selectedRow?.workflowId ?? route.view?.workflow ?? chosenWorkflowId;
@@ -1030,6 +1031,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
   const previewFlow = railPreview ? MOCK_WORKFLOWS.find(flow => flow.id === railPreview) : undefined;
   const railRows = useMemo(() => mockRuns.filter(run => run.workflowId === railPreview), [mockRuns, railPreview]);
   const previewCounts = useMemo(() => mockWorkflowCounts(mockRuns), [mockRuns]);
+  const servedWorkflowCounts = useMemo(() => dayWire?.workflowCounts.filter(count => workflowSource(count.workflowId, dataSources) === "served"), [dayWire, dataSources]);
   const railQueueRows = useMemo(() => mockQueueView(railRows, filter, sort), [railRows, filter, sort]);
   const railRow = railRows.find(run => run.id === railRun) ?? (railRun === undefined ? railRows.find(run => run.id === `mock:${railPreview}:sample`) ?? railRows[0] : undefined);
   const setLaunchOpen = launch.setOpen;
@@ -1139,7 +1141,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
         target.focus({ preventScroll: true });
       }} className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[1000] focus:rounded-lg focus:bg-ui-panel focus:px-4 focus:py-2 focus:text-ui-primary focus:outline-2 focus:outline-ui-info">Skip to content</a>
       <div className="dashboard-workspace relative flex min-h-0 min-w-0 flex-1 flex-col">
-      <WorkspaceRail workflows={workflowCatalog} counts={dayWire?.workflowCounts.filter(count => workflowSource(count.workflowId, workflowComposition.sources) === "served")} previewCounts={previewCounts} active={activeWorkflowId} preview={railPreview}
+      <WorkspaceRail workflows={workflowCatalog} counts={servedWorkflowCounts} previewCounts={previewCounts} active={activeWorkflowId} preview={railPreview}
         onSelect={onRailSelect} onPreview={onRailPreview} settingsOpen={settingsOpen} notifications={notifications} onOpenNotification={openNotification} searchData={searchData} onSearch={onSearch} />
 
       <main

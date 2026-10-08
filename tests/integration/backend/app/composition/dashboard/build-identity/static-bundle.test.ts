@@ -134,9 +134,11 @@ describe("static bundle over a real temp bundle", () => {
   it("rejects parity composition for production and product composition for parity", async () => {
     const { dist } = scaffold();
     assert.throws(() => assertDashboardBuildCurrent({ repoRoot: REPO_ROOT, distDir: dist, buildScript: PARITY_BUILD_COMMAND }), /required composition/u);
+    await assert.rejects(openStaticBundle(dist, REPO_ROOT, PARITY_BUILD_COMMAND), /required composition/u);
     writeDashboardBuildIdentity({ repoRoot: REPO_ROOT, distDir: dist, buildScript: PARITY_BUILD_COMMAND });
     assert.equal(assertDashboardBuildCurrent({ repoRoot: REPO_ROOT, distDir: dist, buildScript: PARITY_BUILD_COMMAND }).buildScript, PARITY_BUILD_COMMAND);
     await assert.rejects(openStaticBundle(dist, REPO_ROOT), /required composition/u);
+    assert.ok(await openStaticBundle(dist, REPO_ROOT, PARITY_BUILD_COMMAND));
   });
 
   it("serves bundle bytes with exact headers, falls back to the SPA, and keeps API precedence", async () => {

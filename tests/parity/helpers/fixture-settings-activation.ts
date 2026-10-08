@@ -1,3 +1,4 @@
+import { PARITY_BUILD_COMMAND } from "../../../src/backend/app/composition/dashboard/build-identity.js";
 import type { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
 import { copyFileSync, cpSync, mkdtempSync, mkdirSync, realpathSync, rmSync } from "node:fs";
@@ -14,15 +15,19 @@ export async function startSettingsActivationServer() {
   const root = mkdtempSync(join(realpathSync(tmpdir()), "settings-desktop-"));
   let admission: RuntimeAdmission | undefined;
   try {
-    for (const name of ["package.json", "package-lock.json", "vite.dashboard.config.ts", "tsconfig.json"])
+    for (const name of ["package.json", "package-lock.json", "vite.dashboard.config.ts", "vite.parity.config.ts", "tsconfig.json"])
       copyFileSync(join(PARITY_REPO_ROOT, name), join(root, name));
     cpSync(join(PARITY_REPO_ROOT, "src"), join(root, "src"), { recursive: true });
+    for (const name of ["config/dashboard-workflow-sources.json", "tests/parity/app-entry.tsx", "tests/parity/helpers/workflow-composition.ts"]) {
+      mkdirSync(join(root, name, ".."), { recursive: true });
+      copyFileSync(join(PARITY_REPO_ROOT, name), join(root, name));
+    }
     mkdirSync(join(root, "dist")); cpSync(PARITY_DIST_DIR, join(root, "dist", "dashboard"), { recursive: true });
     admission = acquireEntrypointAdmission(root, "shared");
     if (admission.stateRoot !== join(root, ".tracker") || admission.artifactRoot !== join(root, ".tracker", "artifacts")) throw new Error("SETTINGS_FIXTURE_ADMISSION_ROOT_MISMATCH");
     const runtime = await composeDashboardRuntime({ admission, isolation: rebuildRuntimeIsolation, repoRoot: root,
       env: { HRAUTO_HOST_PRIMARY_DISPLAY: "2560x1440" }, clock: manualClock(new Date("2026-09-09T12:00:00.000Z")),
-      backendPortOverride: 0, frontendPortOverride: 0, frontend: "built-bundle" });
+      backendPortOverride: 0, frontendPortOverride: 0, frontend: "built-bundle", frontendBuildScript: PARITY_BUILD_COMMAND });
     return { url: `http://127.0.0.1:${String(runtime.port)}`, root,
       stop: async () => { try { await runtime.stop(); } finally { admission?.release(); rmSync(root, { recursive: true, force: true }); } } };
   } catch (error) { admission?.release(); rmSync(root, { recursive: true, force: true }); throw error; }

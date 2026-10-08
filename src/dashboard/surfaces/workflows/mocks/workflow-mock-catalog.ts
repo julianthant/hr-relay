@@ -1,3 +1,4 @@
+import { FingerprintSchema } from "../../../../rules/identity/ids.js";
 /** Label inventory copied from legacy hr-automation@9bb973672666b9267569a22d3fa0af722e4c5e87 src/dashboard/components/dev/rebuild-demo/demo-wire.ts; presentation only. */
 const WORKFLOW_PREVIEW_DEFINITIONS = [{"id": "separations", "label": "Separations", "category": "Separations"}, {"id": "onboarding", "label": "Onboarding", "category": "Onboarding"}, {"id": "person-lookup", "label": "Person Lookup", "category": "Search"}, {"id": "i9-lookup", "label": "I-9 Lookup", "category": "Search"}, {"id": "work-study", "label": "Work-Study", "category": "Work Study"}, {"id": "kronos-pay-rule", "label": "Kronos Pay Rule", "category": "Payroll"}, {"id": "ocr", "label": "OCR", "category": "Utils"}, {"id": "oath-signature", "label": "Oath Signature", "category": "Onboarding"}, {"id": "oath-upload", "label": "Oath Upload", "category": "Onboarding"}, {"id": "emergency-contact", "label": "Emergency Contact", "category": "Onboarding"}, {"id": "onbase", "label": "OnBase", "category": "OnBase"}, {"id": "i9-check", "label": "I-9 Check", "category": "Separations"}, {"id": "crm-doc-download", "label": "CRM Doc Download", "category": "Utils"}, {"id": "sharepoint-download", "label": "SharePoint Download", "category": "Utils"}, {"id": "old-kronos-reports", "label": "Old Kronos Reports", "category": "Timekeeping"}] as const;
 
@@ -98,7 +99,7 @@ export const MOCK_WORKFLOW_CATALOG = Object.freeze({
   sourceCommit: "631cc3ae35ac28de443210ebcc5f33648a77df6c",
   sourcePath: "tests/parity/helpers/fixture-identity.ts",
   personLookupContractFingerprint: "e8b456516a5fe0d4afe33f45190a36f9771a768147d75f28929b8b5c130bf024",
-  descriptorSetHash: "3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405",
+  descriptorSetHash: FingerprintSchema.parse("3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405"),
   workflows: MOCK_WORKFLOWS,
 });
 export const MOCK_FORM_TYPES = [{ value: "oath", label: "Oath" }, { value: "emergency-contact", label: "Emergency Contact" }, { value: "onbase-emergency-contact", label: "OnBase Emergency Contact" }, { value: "i9", label: "I-9" }] as const;

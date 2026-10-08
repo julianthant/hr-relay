@@ -1,3 +1,4 @@
+import { defineWorkflowRole } from "../../../src/workflow-kit/validation/module-role.js";
 import { servedFixtureSources } from "../../parity/helpers/workflow-composition.js";
 import { describe, expect, it } from "vitest";
 import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../parity/helpers/fixture-start.js";
@@ -32,9 +33,9 @@ describe("shared run catalog", () => {
   });
   it("shares sidebar category order and retains subordinate proving harnesses", () => {
     expect(runPickerGroups(catalog, "").map(group => group.label)).toEqual(["Search", "Separations", "Onboarding", "Work Study", "Payroll", "Utils", "OnBase", "Timekeeping"]);
-    const composition = { ...served[0], workflowId: "test-composition", role: { kind: "composition" as const } };
-    const harness = { ...served[0], workflowId: "test-harness", role: { kind: "chunk-harness" as const, of: "test-composition" as typeof served[number]["workflowId"] } };
-    const groups = runPickerGroups(buildWorkflowCatalog([composition, harness] as readonly RunStartWorkflow[], false, servedFixtureSources([composition, harness])), "");
+    const composition: RunStartWorkflow = { ...served[0], workflowId: "test-composition", role: defineWorkflowRole({ kind: "composition" }) };
+    const harness: RunStartWorkflow = { ...served[0], workflowId: "test-harness", role: defineWorkflowRole({ kind: "chunk-harness", of: "test-composition", step: composition.steps[0].key }) };
+    const groups = runPickerGroups(buildWorkflowCatalog([composition, harness], false, servedFixtureSources([composition, harness])), "");
     expect(groups[0].entries).toHaveLength(1);
     expect(groups[0].entries[0].members[0].entry.id).toBe("test-harness");
     expect(groups[0].entries[0].members[0].harness?.nested).toBe(true);

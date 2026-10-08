@@ -20,7 +20,7 @@ import { open, realpath, stat } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
 import type { MiddlewareHandler } from "hono";
 import { wireError } from "./routes/failure-status.js";
-import { assertDashboardBuildCurrent } from "../../app/composition/dashboard/build-identity.js";
+import { assertDashboardBuildCurrent, type DashboardBuildCommand } from "../../app/composition/dashboard/build-identity.js";
 
 export interface StaticBundle {
   /** The realpath of `dist/dashboard`; every served byte resolves strictly inside it. */
@@ -136,7 +136,7 @@ function insideBundle(distRoot: string, candidate: string): boolean {
  * Validate `dist/dashboard` BEFORE anything listens: a dashboard that would
  * answer 404 for its own app must never look started (fail loud, D189).
  */
-export async function openStaticBundle(distDir: string, repoRoot: string): Promise<StaticBundle> {
+export async function openStaticBundle(distDir: string, repoRoot: string, buildScript?: DashboardBuildCommand): Promise<StaticBundle> {
   let distRoot: string;
   try {
     distRoot = await realpath(distDir);
@@ -151,7 +151,7 @@ export async function openStaticBundle(distDir: string, repoRoot: string): Promi
   const index = await locate(bundle, ["index.html"]);
   if (index.kind === "not-found") throw new Error(`the built dashboard at ${distRoot} has no index.html; run \`npm run web:build\` first`);
   if (index.kind === "outside-bundle") throw new Error(`the built dashboard's index.html at ${distRoot} resolves outside the bundle`);
-  assertDashboardBuildCurrent({ distDir, repoRoot });
+  assertDashboardBuildCurrent({ distDir, repoRoot, buildScript });
   return bundle;
 }
 

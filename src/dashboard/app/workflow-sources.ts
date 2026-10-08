@@ -14,6 +14,7 @@ export function workflowSource(id: string, policy: WorkflowSourcePolicy = WORKFL
 
 export interface WorkflowComposition {
   readonly sources: WorkflowSourcePolicy;
+  readonly dataSources?: WorkflowSourcePolicy;
   readonly catalogIncludesMocks?: boolean;
   readonly servedDay?: boolean;
   readonly sourceForRoute: (id: string, requestedPreview: boolean) => WorkflowSource;
