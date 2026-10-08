@@ -57,6 +57,9 @@ export const extractFormPageTask = defineTask(ExtractFormPage, {
     });
 
     if (response.state === "unavailable") {
+      if (response.reason.code === "adapter-unavailable") {
+        return ctx.fail("ocr-provider-not-connected", "OCR provider not connected");
+      }
       // The reason is STRUCTURED — a closed code plus its message, and a
       // `retryAt` when the budget says when. Flattening it to text would throw
       // away the one part an operator can act on.

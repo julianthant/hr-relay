@@ -226,7 +226,7 @@ _No tasks registered — this store is a declaration-only placeholder._
 
 | Contract id | Title | Effect | Verb | Session | Capability | Inputs | Outputs | Freshness | Status |
 |---|---|---|---|---|---|---|---|---|---|
-| `normalization/read-contact-advice` | Normalizing contact | read | read | — (sessionless) | `geocode.census`, `geocode.nominatim`, `ai.advisory` | `contact`, `geocode`, `ai`, `readAt` | `normalized`, `relationshipCanonical`, `changes`, `disposition` | 24h | bound |
+| `normalization/read-contact-advice` | Normalizing contact | read | read | — (sessionless) | `geocode.census`, `geocode.nominatim` | `contact`, `geocode`, `readAt` | `normalized`, `relationshipCanonical`, `changes`, `disposition` | 24h | bound |
 
 ### `ocr`
 

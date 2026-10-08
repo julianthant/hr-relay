@@ -128,7 +128,7 @@ export const ProviderBudgetCounterSchema = z.strictObject({
 const ProviderAdmissionRequestBaseSchema = z.strictObject({
   admissionId: ProviderAdmissionIdSchema,
   execution: ProviderExecutionIdentitySchema,
-  capability: ProviderCapabilityIdSchema,
+  capability: ProviderCapabilityIdSchema.exclude(["ocr.extract"]),
   configSnapshotId: ConfigSnapshotIdSchema,
   configFingerprint: FingerprintSchema,
   requestFingerprint: FingerprintSchema,

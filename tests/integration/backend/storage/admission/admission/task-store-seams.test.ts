@@ -267,10 +267,10 @@ describe("task, store, session, provider, and artifact seams", () => {
     assert.throws(() => harness.adapter.estimate(request), /no queued script/);
     assert.throws(
       () => harness.adapter.estimate({
-        capability: "ai.advisory",
+        capability: "geocode.nominatim",
         payload: { schemaHash: hash, value: "fixture" },
       }),
-      /cannot estimate capability ai\.advisory/,
+      /cannot estimate capability geocode\.nominatim/,
     );
   })
 

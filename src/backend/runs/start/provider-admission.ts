@@ -104,6 +104,12 @@ export function createAdmittedProviderClient(
     || snapshot.fingerprint !== configFingerprint) {
     throw new Error(`provider client ${capability} received an internally inconsistent config snapshot`);
   }
+  if (capability === "ocr.extract") {
+    if (dependencies.adapters["ocr.extract"] !== undefined) throw new Error("OCR provider policy not connected");
+    return Object.freeze({ capability, async call() {
+      return unavailable({ code: "adapter-unavailable", message: "OCR provider not connected" });
+    } });
+  }
   const budget = providerBudget(snapshot.config, capability);
 
   return Object.freeze({

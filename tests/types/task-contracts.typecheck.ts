@@ -112,7 +112,7 @@ export const typedProviderTask = defineTask(providerContract, {
     // @ts-expect-error service tasks do not receive a browser driver
     void ctx.driver;
     // @ts-expect-error provider clients are narrowed to the declared capability
-    void ctx.providers["ai.advisory"];
+    void ctx.providers["geocode.census"];
     return { value: "fixture" };
   },
 });
