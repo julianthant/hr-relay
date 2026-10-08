@@ -1,6 +1,6 @@
 /**
  * Per-step durations on the run-detail timeline (ref dashboard-surfaces §1.1 span identity;
- * `docs/rebuild/findings/archive.md` "Per-step durations in the archived timeline").
+ * `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/findings/archive.md` "Per-step durations in the archived timeline").
  *
  * The measurement is the executor's OWN pair of instants for one span —
  * `span.ended` minus `span.started` at the same `(attempt, spanPath)` — and

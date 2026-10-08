@@ -9,8 +9,7 @@ the rebuild leaves `temp_src/` for its own repository, `hr-automation-rebuild`.*
 migration loop — is active.** The runtime says so itself: `COMPLETED_THROUGH = "2j"` /
 `ACTIVE_ITEM = "3-workflow-migration"` (`src/core/runtime-composition.ts:142-143`). This document is
 the VISION and is deliberately NOT rewritten as work lands, so its items keep their 2026-07 voice;
-what is BUILT of each one is recorded in the phase docs (`docs/rebuild/00`–`05`) and summarised in
-the `<!-- roadmap-status: … -->` blocks below.
+its dated implementation descriptions retain their original context.
 
 This is the single source of truth for the rebuild's vision and constraints. Every design doc in
 `docs/rebuild/` must conform to it. The operator reviews each accepted part in plain language before
@@ -18,10 +17,10 @@ it becomes binding.
 
 **Standing rule — a decision is not ratified until it lands in its owning doc.** Operator answers
 recorded only in a review file or decision sheet are *proposals*. The commit that records an
-answer must also fold it into the owning doc (D1 matrix, `reference/decisions.md`) and add one
+answer must also fold it into the owning doc (D1 matrix, `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/reference/decisions.md`) and add one
 changelog line to ref decisions. Review files and ref decisions are decision *history*; the owning doc is the
 only readable current truth. (Added 2026-07-26 after the 07-23/24 ratifications sat four days in
-`docs/rebuild/history/design-inputs/2026-07-22-second-look.md` while ref charter, the master plan and ref write-safety still
+`994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/history/design-inputs/2026-07-22-second-look.md` while ref charter, the master plan and ref write-safety still
 specified the world they replaced.)
 
 ## Why we're rebuilding (evidence from the 2026-07-17 structural survey)
@@ -46,16 +45,6 @@ specified the world they replaced.)
   edit when you make the first.
 
 ## Target architecture (the operator's vision, formalized)
-<!-- roadmap: phase-0 -->
-
-<!-- roadmap-status: phase-0 -->
-- [x] all 27 items were ratified in Phase 0 and reconciled through **Round 12** (D1–D94); the phase's own record — what it designed, how it ended — is `00-design-the-foundation.md` §Phase summary
-- [x] the items are numbered `### 1.`–`### 27.` as of 2026-08-21, so `ref:charter §12` resolves for the first time; the shape is `12.` rather than `§12 —` because that is what `scripts/roadmap/scan-docs.ts`'s section grammar parses
-- [x] **six** of these contracts have since been AMENDED by a later decision — D150 (legacy change accounting, §24 + §Non-negotiables), D191 (the gate family, §Non-negotiables), D247 with D216 beside it (command names are not an isolation resource), D263 (§One master plan's form), D193(c) (the Phase-3 entry, D84's order intact), D184 (the D58 inventory guard) — each marked in place above and tabulated in doc 00 §What no longer binds
-- [ ] **one** Phase-0 promise is still unbuilt: D79's `scaffold new-task` / `scaffold new-workflow` (the `new-workflow` half is owned by `{#def-explorer-edit}`, the `new-task` half has NO node owner). D85's test-target registry and real-kernel dry-run command are built under their R10 names (`config/test-subjects.json` and `cli dry-run-scenario`); current revalidation is owned by `{#workflow-authoring-core}`
-- [x] nothing in Phase 0 ITSELF is open — it wrote no runtime code by policy (§Process), so every item's build state is owned by the phase that implemented it, not by this doc
-> 2026-08-21 | docs-cohesion charter | verified against `src/core/runtime-composition.ts:142-143`, `docs/rebuild/00-design-the-foundation.md` §What no longer binds + §Two Phase-0 promises are still unbuilt, and `reference/decisions.md` rounds 1–12; left: nothing in Phase 0 — the six amendments and the two unbuilt promises are each owned elsewhere
-<!-- /roadmap-status -->
 
 
 ### 1. Task stores — two levels (operator directive 2026-07-17, the core of the modular structure)
@@ -174,21 +163,6 @@ are editable in place and schema-validated on save; identity, input, idempotency
 provenance are read-only. There is no separate Data/Edit Data tab or dialog.
 
 ### 13. Write-safety — fenced, fail-closed real mutations
-<!-- roadmap: p2-proof -->
-
-<!-- roadmap-status: p2-proof -->
-- [x] the fenced, fail-closed kernel is BUILT and MET LIVE (**D135**, 2026-08-04): a dry run with zero durable rows, a forced subject mismatch refused at beat ② with zero fence and zero click, ONE controlled commit on real Kuali doc **4489**, and an idempotent re-run answering `already-present` in 2 ms with no browser — evidence of record in ref write-safety §3.4
-- [x] the `resolve/probe → prepare → binding proof → fence → external-commit → proof → durable-commit` sequence this item describes is `src/core/write-sequencer.ts`, the ONLY module permitted to mint a mutation capability
-- [x] separations identity authority is built: the name-only gate is live-proved (**D202**), **D211** put the write plan inside its packet, and D309 adds exact supplied-EID/UCPath read-back machine verification without a human result
-- [x] three `effect: "commit"` contracts exist — `kuali/save-separation-finalization`, `ucpath/create-termination`, `ucpath/delete-pending-terminations`; D266 retired the annotation-only fourth contract with its test workflow
-- [ ] the per-system list is only part built: **CRM, ServiceNow, OnBase and I-9 have no commit contract at all**, and onbase/servicenow/i9 are three-line session declarations with zero tasks — each lands at its own migration (`{#migrations}`)
-- [ ] `recoveryAbsence: stabilized` is inherited by `kuali/save-separation-finalization` from the annotation proof's measured mechanism window (D207); confirming or moving that inheritance is chunk 5c's obligation. Both UCPath contracts stay `operator-only` because no UCPath propagation window has ever been measured
-> 2026-08-25 | D266 code reconciliation | the retired annotation contract remains only as `ref write-safety` §3.4 history; current inventory is the three real separations commits
-- [ ] the immutable ledger is built and guarded but its serialized writer has **no production caller** — `createLedgerProjector` is called only from `tests/`, so nothing drains the durable outbox to a file (doc 05 §Exit criteria)
-- [ ] the per-submit double-submit probe policy is decided per workflow at migration time via the §b questionnaire; **separations is the only workflow that has answered it**
-- [-] hash-chain / tail-anchor tamper evidence stays deferred to the multi-user phase (**D79**), and **D193** makes multi-user a LATER with no owner and no design
-> 2026-08-21 | docs-cohesion charter | verified against `src/core/write-sequencer.ts`, `src/domain/contracts/{kuali,ucpath}/`, `reference/write-safety.md` §3.4 and doc 05's ledger finding; left: the four systems with no commit contract, the unmeasured UCPath window, and the ledger writer nothing composes
-<!-- /roadmap-status -->
 
 
 *(Gap audit: ref foundation-gap-audit §2. Operator answers 2026-07-18. Full design: ref write-safety.)*
@@ -349,18 +323,6 @@ tests — remains preserved afterward. Any later retirement/deletion requires a 
 authorization and its own capability/rollback proof. Master owner: the phase docs; guard owner: ref guards-and-tests.
 
 ### 25. Versioning by fingerprint; archiving by version bump; git is the archive (2026-07-24)
-<!-- roadmap: p2-2i -->
-
-<!-- roadmap-status: p2-2i -->
-- [x] BUILT in 2i-G (**D179**): schema **v13**'s `archived_runs`, `archive_relaunches` and `version_bump_applications` abort UPDATE and DELETE **in SQL** — an archive whose rows could be rewritten is a weaker record than the live row it replaced
-- [x] the zero-compat-code claim is CHECKED rather than asserted: `archive-invariants` reads a stored record back with the descriptor list **empty**, which is the only test that can settle "viewing an archived run needs no old-version code"
-- [x] the app-version stamp this item depends on was MISSING — the queue projection stamped the build serving the PAGE, so run-detail's "different app build" warning compared a value with itself; `RunRecord` now carries an `appVersion` stamped at the ONE enqueue point and read forward, never back-filled (**D133**/**D179**)
-- [x] the workflow LABEL, and since **D242** the short CODE, are FROZEN into the archived record — resolving either later would be a descriptor read on the archived path, which this item forbids
-- [x] the MAJOR-bump "cannot archive a non-terminal run" rule is enforced where it decides: `apply` re-derives candidates AND blockers from authority inside its own transaction and refuses naming every blocker, so an unresolved possible-submit is never buried; D274 requires MINOR bumps to archive nothing and therefore never be blocked by non-terminal runs (implementation remains open)
-- [x] "git is the archive" holds for the CODE — no archive folders exist anywhere in the tree; prior descriptor versions live in git history while RUN data is archived as self-contained rows
-- [ ] two criteria left Phase 2 by explicit DISPOSITION, both on 2i surfaces: the Workflow Explorer's EDIT half (**D186**, reassigned with a named trigger) and the BFF serving no frontend bytes (**D189**) — neither is a waiver and both name an owner
-> 2026-08-21 | docs-cohesion charter | verified against `src/domain/archive/model.ts`, `src/services/archive/archive-service.ts`, `src/infra/sqlite/migrations.ts` and `tests/unit/architecture/archive-invariants.test.ts`; left: nothing in 2i itself — all eight squares are `[x]` at `{#p2-2i}`; the two dispositions are recorded above
-<!-- /roadmap-status -->
 
 
 No archive folders. Descriptors carry a version + content fingerprint; guards force a bump on
@@ -400,7 +362,6 @@ post-submit confirmation screenshot, and the person identity observed at commit.
 the operator can complete their double-check without opening UCPath.** Owner: ref write-safety (proof
 content) + ref operator-trust (receipt surface).
 ## Non-negotiables
-<!-- roadmap: phase-0 -->
 
 
 - **Fail loud.** The legacy repo's root `CLAUDE.md` rule applies in full to the rebuild repo from
@@ -514,52 +475,31 @@ content) + ref operator-trust (receipt surface).
   never run concurrently as production authority.
 
 ## One master plan (operator directive 2026-07-17)
-<!-- roadmap: phase-0 -->
 
 
 When the design docs converge, they are consolidated into a SINGLE phased plan containing every
 piece of information needed to build — there must never be multiple competing plans that can cause
 mix-ups. _(As built: that plan is the eight phase docs `docs/rebuild/00`–`05`, one per phase, plus
-`docs/roadmap/roadmap.md`'s governance prose and phase table. It was ONE file, `07-master-plan.md`,
+`994837d1f65abd9b9e2f546b3ca52bff90646583:docs/roadmap/roadmap.md`'s governance prose and phase table. It was ONE file, `07-master-plan.md`,
 until 2026-08-20, when it was dissolved into them and preserved at
-`docs/rebuild/history/superseded/2026-08-20-master-plan-dissolved.md`; the one-plan rule is unchanged — the
+`994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/history/superseded/2026-08-20-master-plan-dissolved.md`; the one-plan rule is unchanged — the
 phase docs are one plan, split by phase, and nothing else may sequence the build.)_ Each concept has
-exactly one owning doc (the D1 matrix in `reference/decisions.md`); the plan sequences phases and
+exactly one owning doc (the D1 matrix in `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/reference/decisions.md`); the plan sequences phases and
 references the owners, it does not redefine contracts.
 
 **Where the governance rules live now (D263, 2026-08-20).** This charter states the VISION and the
 non-negotiables; it does not govern how the program is run day to day. **The governing rules —
 which doc owns what, how a decision is ratified, how the plan tree and the docs are bound to each
-other, and what a status block means — live in `docs/roadmap/roadmap.md` §Governance**, beside the
-plan tree they govern. That file is also the source `npm run roadmap` renders the roadmap site
-from. Read §Governance first when the question is *"how is this program run"*; read this charter
+other, and what a status block means — live in `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/roadmap/roadmap.md` §Governance**, beside the
+plan tree they govern. That historical file described the former roadmap site. Read this charter
 when the question is *"what is being built and what may never be traded away"*. **After each build phase completes, it is documented**: subsequent
 phases add new docs and/or update existing ones so the documentation always matches what is built.
 The foundation's documentation is part of the foundation.
 
 ## Migration strategy
-<!-- roadmap: migrations -->
-<!-- roadmap: cutover -->
-
-<!-- roadmap-status: migrations -->
-- [x] the strategy itself is unchanged and still governs: one workflow at a time, each with its own migration plan doc, the §b questionnaire answered before building (ref workflow-model §1.6.2)
-- [x] order 0 (person-lookup) is live-proven from Phase 1; **separations (order 8) is the migration in flight** — **D193(c)** moved the phase ENTRY here to force the store task libraries into existence, explicitly WITHOUT re-sequencing D84's risk-proof order
-- [ ] thirteen workflows across nine order rows remain, and **no workflow after separations is named yet**; only person-lookup and the six separations descriptors are registered, so orders 1–7 and 9 have no descriptor at all
-- [ ] store reality behind the order: only `ucpath`, `crm`, `kuali` and `new-kronos` have real drivers; `onbase`, `servicenow`, `i9`, `old-kronos` and `sharepoint` are three-line session declarations with zero tasks
-- [ ] the legacy capability register stands at **47 open** · 20 replaced · 7 native · 4 retired; every open entry names `workflow-admission-backlog` and cutover requires zero
-> 2026-08-21 | docs-cohesion charter | verified against `{#migrations}` and the former doc 03c order. D319 now leaves every workflow after Phase 3 unnumbered; the open register entries remain cutover obligations under `workflow-admission-backlog`
-
-<!-- /roadmap-status -->
-
-<!-- roadmap-status: cutover -->
-- [x] the SHAPE is ratified and unchanged — one all-at-once authority switch, no per-workflow flip, no live proxy, no mixed-engine production period (**D89**, mechanics amended by **D93**), and the entire legacy repo preserved as the rollback asset
-- [ ] **nothing has started.** `{#cutover}` is `not started` and every one of its nine build items is open, including the rehearsal that has never run (doc 05 §Exit criteria)
-- [ ] closure — deletion or retirement of the legacy repo — is OUTSIDE this cutover and has no trigger, no elapsed-time rule and no automatic expiry; it needs a separate explicit operator authorization (`{#rollback-window}`)
-> 2026-08-21 | docs-cohesion charter | verified against `{#cutover}` and doc 05 §Stage summary + §Exit criteria; left: the whole of it — this section states the rule, doc 05 owns the execution
-<!-- /roadmap-status -->
 
 
-- **Phase 0 (COMPLETE 2026-07-31; `docs/rebuild/plans/phase-0/README.md`):** foundation design
+- **Phase 0 (COMPLETE 2026-07-31; `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-0/README.md`):** foundation design
   docs in `docs/rebuild/`, each reviewed part-by-part with the
   operator in plain language (what the old version did → why it hurt → how the new design fixes it).
 - **Phase 1 — the SPINE, whose exit test is a live workflow (restructured 2026-07-23, operator

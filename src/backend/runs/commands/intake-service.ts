@@ -76,7 +76,7 @@ export const INTAKE_UPLOAD_MAX_BYTES = 25 * 1024 * 1024;
  * dead exports): the Dropzone's accept list and size cap are client literals
  * today, and serving both from here is a NAMED open wire task
  * (ref dashboard-surfaces §9.7.1, the `FE the intake Dropzone` row in
- * `docs/roadmap/roadmap.md`). An unlanded consumer is not dead code.
+ * `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/roadmap/roadmap.md`). An unlanded consumer is not dead code.
  */
 export const INTAKE_UPLOAD_MEDIA_TYPES = Object.freeze([
   "text/csv",

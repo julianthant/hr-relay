@@ -19,17 +19,16 @@ _2026-09-04 — the entries from here to the "end of moved block" line were move
 - **2026-09-03 — roadmap cards are bounded execution summaries.** The map omits `status: never` nodes
   while retaining them in the plan, shows output progress as one built/total reading instead of square
   markers, keeps long phase roll-ups in the inspector, and ellipsizes phase metadata before the card
-  edge. Preserve those constraints in `tests/unit/roadmap/roadmap-ui.test.ts`.
+  edge. Preserve those constraints in `994837d1f65abd9b9e2f546b3ca52bff90646583:tests/unit/tooling/roadmap/roadmap-ui.test.ts`.
 
 - **2026-09-03 — the roadmap site is a desktop master-detail operations map.**
-  `scripts/generate-roadmap.ts` owns the interface and `docs/roadmap/index.html` stays generated. The
+  `994837d1f65abd9b9e2f546b3ca52bff90646583:scripts/docs/generate-roadmap.ts` owned the interface and `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/roadmap/index.html` stays generated. The
   command bar and plan facts sit above a scrollable map; the 420px inspector rail participates in layout
   and never floats over nodes. Every node names its status in text, feature squares mean planned outputs
   (fill = built, outline = open, color = layer), and the thin bottom rule alone means documentation
   progress. Clicking blank map space leaves node detail and returns to the guide; `Esc` does the same
   before a second `Esc` collapses the inspector. Preserve this interaction in
-  `tests/unit/roadmap/roadmap-ui.test.ts`, then run `npm run roadmap` and `npm run roadmap:check` after
-  every renderer change.
+  `994837d1f65abd9b9e2f546b3ca52bff90646583:tests/unit/tooling/roadmap/roadmap-ui.test.ts`, the commands recorded here belong to that retired renderer.
 
 - The dry-run declaration boundary is `src/domain/trust/dry-run-scenario.ts`; the runner/assertions
   are `src/core/dry-run-scenario-runner.ts`, and `src/server/dry-run-scenario/` owns real start-plan,

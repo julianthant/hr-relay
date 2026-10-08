@@ -32,7 +32,7 @@ five corpus cases and five T1b-manifest cases were retired from those mixed guar
 import-boundary, provenance and write-safety guards remain. Coverage floors are unchanged. Dashboard
 TSX is no longer excluded solely for the retired parity lane; instrumentation does not itself
 execute UI behavior. Exact suite and sole-consumer case scope is recorded in the
-[layout-polish amendment](../plans/phase-3/backend-and-unit-tests.md#layout-polish--finish-the-approved-structure-before-phase-3)
+layout-polish amendment (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-3/backend-and-unit-tests.md`)
 and [retirement ledger](</Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/backend-layout-polish/implementation/retirement-and-freeze.json>);
 the retained/retired cases for `scenario-coverage` and `test-target-registry` are pinned in their
 [guard receipts](</Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/backend-layout-polish/implementation/scenario-guard-retirement.json>)
@@ -93,7 +93,6 @@ a new occurrence fails immediately and needs the same review, never a silent add
 
 ### 1.1 Measured pre-rebuild gate baseline (refreshed 2026-07-31)
 
-<!-- roadmap: p1-base -->
 
 This baseline was executed in the **legacy repo**, after the full plan reread, with a clean worktree
 and no rebuild tree present:
@@ -132,15 +131,6 @@ that `npm run lint:tests` passes.
 
 ## 2. Ratchet port map
 
-<!-- roadmap: p1-base -->
-
-<!-- roadmap-status: p1-base -->
-- [x] the nine ratchet arms exist and are executable — each run over the real tree AND its own violating fixture by `guard-manifest` (§2.1, `tests/unit/architecture/helpers/ratchet-arms.ts`)
-- [x] the reviewed guard inventory is the machine SSOT and matches `tests/unit/architecture/` by `deepEqual`, both directions (§5)
-- [x] zero per-file allowlists — the legacy `Record<file,{count,reason}>` shape did not travel
-- [ ] two port-map invariants are held by nothing named: `cancel-mechanism` (one-mechanism cancel) and `tracker-row-emission` (no arm bans an `appendFileSync` to the event JSONL outside the emitter) — §2.1 and §5.1's open list
-> 2026-08-20 | docs-cohesion ref guards-and-tests | verified against `helpers/ratchet-arms.ts`, `guard-manifest.test.ts` and `guard-inventory.json` at HEAD — 9 arms, 75 entries (65 active / 8 retired / 2 planned); left: the two unheld invariants, written down rather than implied
-<!-- /roadmap-status -->
 
 Each existing guard's fate. **Every fail-loud ratchet must cover the rebuild tree from day one**
 (charter): ported grep-ratchets are re-homed into the rebuild repo's own suite scanning its `src/**`,
@@ -226,7 +216,6 @@ field it banned does not exist here. Where each invariant is held today, verifie
 
 #### The driver half of `inline-selectors` — a scope decision, not an oversight
 
-<!-- roadmap: p1-authority -->
 
 **Decided 2026-08-14.** The row above wants "driver selector literals must belong to the canonical UI
 registry entry they implement", and the obvious way to get it is to widen the arm's `select` from
@@ -258,15 +247,6 @@ an authored literal — at which point the driver directory becomes enforceable 
 
 ## 3. The safety guards
 
-<!-- roadmap: p1-authority -->
-
-<!-- roadmap-status: p1-authority -->
-- [x] the safety-guard core is active: strict boundary schemas, the semantic UI registry, the task/driver boundary, canonical-input snapshot, selector port provenance, `descriptor-coverage` (§3.8, §4)
-- [x] `no-positional-identity`, `transaction-pairing`, `permanent-key-dedupe`, `recovery-negative-proof-settlement`, `atomic-write-outbox` all active with violating fixtures
-- [x] D71's type proof exists as `tests/types/{task-contracts,flow-graph}.typecheck.ts` inside the one `tsc` program — a 21-node real-scale graph plus `@ts-expect-error` controls (§3.12 as-built)
-- [ ] D71's BUDGET half is unmeasured — nothing runs `tsc --extendedDiagnostics` against that graph, so the 5 s / 1 GiB acceptance value is unenforced (§3.12)
-> 2026-08-20 | docs-cohesion ref guards-and-tests | verified against the 65 active inventory entries and `tests/types/`; left: the type-budget measurement, and §3.1/§3.6's retirements are recorded in the sections themselves
-<!-- /roadmap-status -->
 
 Each guard below keys off a **closed union** (the contract `effect`, the sealed mutation-primitive
 registry, the descriptor node list) — never a text heuristic — so it cannot false-positive on prose.
@@ -278,7 +258,6 @@ the successor, never a silent shrink (§5).
 
 ### 3.1 `dry-run-composition-submit-free` — charter §1a as a static invariant (RETIRED by D188)
 
-<!-- roadmap: p2-proof -->
 
 **RETIRED 2026-08-09 (D188), replaced by `write-safety-contract` plus the executable
 `separations-kuali-finalization/dry-run-preview` scenario.** The retirement is recorded in
@@ -308,7 +287,6 @@ proof. The live lane asserts prepare spans/preview evidence exist while commit s
 
 ### 3.2 `transaction-pairing.test.ts` — prepare and commit share one lease scope
 
-<!-- roadmap: p1-authority -->
 
 **Thesis: every real submit has a paired fill; you cannot compose a submit whose fill is absent.**
 
@@ -325,13 +303,6 @@ occurs between prepare and commit.
 
 ### 3.3 `write-safety-contract.test.ts` — completion union + fenced, evidence-qualified recovery (HOSTS ref write-safety's guard)
 
-<!-- roadmap: p1-kernel -->
-
-<!-- roadmap-status: p1-kernel -->
-- [x] `write-safety-contract` is active and now also carries the retired `dry-run-composition-submit-free`'s invariant, asserted as DURABLE ABSENCE over a real database rather than as a missing call in a composition (D188)
-- [x] `control-command-single-path` proves the dispatcher is exhaustive across family AND action; `command-result-exhaustive` (D253) adds the refusal-arm half
-> 2026-08-20 | docs-cohesion ref guards-and-tests | verified against `guard-inventory.json` and §11's Phase 1f boundary; left: nothing in this doc's scope
-<!-- /roadmap-status -->
 
 **Thesis:** every `effect:"commit"` contract has write safety; no escape hatch. Every completion
 arm—receipt/save/upload—has a nontrivial `proofSchema`, normal-output extractor, recovery-probe
@@ -364,7 +335,6 @@ outcome but asserts zero write-ledger outboxes, so observation cannot masquerade
 
 ### 3.4 `no-positional-identity.test.ts` — items/checkpoints keyed by stable id, never index
 
-<!-- roadmap: p1-authority -->
 
 **Thesis (the docs-1/2 invariant): identity is a stable key, never an array position.** A row keyed
 by index silently binds the wrong person when the list reorders — the class of the real wrong-person
@@ -405,13 +375,6 @@ table has no stale rows to find. The first entry is what makes that arm necessar
 
 ### 3.6 `commit-routes-through-mutation` (D22 — closes the fence-bypass overclaim) (RETIRED by D188)
 
-<!-- roadmap: p2-proof -->
-
-<!-- roadmap-status: p2-proof -->
-- [x] the controlled-commit proof is RECORDED, not re-runnable — `reference/write-safety.md` §Phase-2 controlled-commit as-built is the citation, and re-running it would be a second real HR write (§10.1)
-- [x] `commit-routes-through-mutation` RETIRED by D188 → `task-driver-boundary`, which refuses a `commit` outside a capability-validating store driver against a violating fixture, over a WeakSet-unforgeable capability (D127)
-> 2026-08-20 | docs-cohesion ref guards-and-tests | verified against the inventory's retired set and `src/base/mutation-capability.ts`; each workflow still owes its own controlled-commit proof at its migration
-<!-- /roadmap-status -->
 
 **RETIRED 2026-08-09 (D188), replaced by `task-driver-boundary`.** That guard already refuses a
 `commit` implementation outside a capability-validating store driver, **against a violating
@@ -434,12 +397,6 @@ clicks additionally require the one fenced choke point. Together they make ref w
 
 ### 3.7 `artifact-effect-boundary.test.ts` — downloads are immutable; mutable files are projections
 
-<!-- roadmap: p2-2h -->
-
-<!-- roadmap-status: p2-2h -->
-- [x] `artifact-effect-boundary` is active: the path-free content-addressed ref, the temp→fsync→atomic-rename sequence, crash-boundary recovery, byte-identical idempotency, and an AST canary against direct mutable filesystem access from a task impl
-> 2026-08-20 | docs-cohesion ref guards-and-tests | verified against the inventory; the download-bearing workflows that will exercise it are `order-2`
-<!-- /roadmap-status -->
 
 - [x] the guard the download workflows land on already exists — `artifact-effect-boundary` (§3.7), so a browser download is structurally immutable before the first of them is written
 - [ ] the T1 pair for each of `crm-doc-download` / `sharepoint-download` / `old-kronos-reports` (§10.11)
@@ -456,8 +413,6 @@ read while still permitting replay-safe browser downloads.
 
 ### 3.8 Strict schemas + semantic driver/UI registry
 
-<!-- roadmap: p1-base -->
-<!-- roadmap: p1-authority -->
 
 - **`strict-boundary-schemas.test.ts`.** Enumerate every external/durable boundary export (workflow
   input/result, task input/output, run envelope, checkpoint, command, event/note, SSE wire,
@@ -494,7 +449,6 @@ read while still permitting replay-safe browser downloads.
 
 ### 3.9 Subject binding, control commands, and delegation
 
-<!-- roadmap: p1-kernel -->
 
 - [x] `delegation-manifest` is active and carries the retired `delegate-to-usage` / `delegate-to-all-impl-callers` invariants (§2.1): stable edge/item ids, concrete schemas, explicit cardinality/join/failure/cancel/retry policies, an atomic immutable manifest
 - [ ] the T1 pair for the delegating workflow, whose structural scenario must walk the fan-out at each declared cardinality (§10.11 step 2)
@@ -550,14 +504,6 @@ new readers, any other audit method, or any write outside the kernel fails the g
 
 ### 3.10 Trust surfaces: storage recovery, scenarios, evidence, and notifications
 
-<!-- roadmap: p2-2j -->
-<!-- roadmap: p2-2g -->
-
-<!-- roadmap-status: p2-2g -->
-- [x] the trust-surface guards are active: `migration-history-immutability`, `storage-recovery`, `scenario-coverage`, `evidence-receipt`, `notification-durability`, `knowledge-fix-integrity`, `workflow-editor-compile-integrity`
-- [x] D185's corpus-layout audit closes the direction the registered-set audits were blind to — a file of neither kind, an unregistered claim, a manifest row nothing executes (§3.10 as-built)
-> 2026-08-20 | docs-cohesion ref guards-and-tests | verified against `guard-inventory.json` and `src/domain/workflow/scenario-execution.ts`; §10.9 extends the same audit across the per-workflow folders
-<!-- /roadmap-status -->
 
 - **`migration-history-immutability.test.ts`.** Every released authority migration is pinned by a
   literal SHA-256 over its version and length-framed ordered statement bytes. The pinned version
@@ -684,27 +630,6 @@ new readers, any other audit method, or any write outside the kernel fails the g
 
 ### 3.11 Old-capability closure and advisory AI
 
-<!-- roadmap: p2-2i -->
-<!-- roadmap: cross-cutting -->
-<!-- roadmap: def-sanity-check -->
-
-<!-- roadmap-status: p2-2i -->
-- [x] `ai-advisory-no-authority` is active; D294 retires `capture-durability-and-scope`; `redaction-surface-scan` (D183) is the one sweep over every egress class (§3.15)
-- [x] `preflight-coverage` is active in 3.1.11.1: the manifest executor injects registry-derived faults through production detectors; `runtime-dependency-coverage` continues to hold declaration closure.
-> 2026-09-19 | 3.1.11.1 | executed fault coverage supplements the existing declaration and dashboard checks.
-<!-- /roadmap-status -->
-
-<!-- roadmap-status: cross-cutting -->
-- [x] `legacy-capability-disposition` audits the inventory five ways and derives the completed set by INVOKING the real `phase` command, so closing a tail arms the next sweep (§3.11 as-built, D184)
-- [ ] 50 entries remain genuinely `open`, each now owned by `workflow-admission-backlog` with the reason in the entry; `cutoverRequiresZeroOpen` is what they gate
-> 2026-08-20 | docs-cohesion ref guards-and-tests | verified against §3.11's as-built record; the entry-by-entry state lives in `config/legacy-capabilities.json`, not here
-<!-- /roadmap-status -->
-
-<!-- roadmap-status: def-sanity-check -->
-- [x] the advisory guard exists — `ai-advisory-no-authority` proves an advisory module cannot reach command, gate resolution, workflow state, UI-registry writes, subject matching, completion confidence or a mutation capability
-- [ ] D192's re-disposition of `legacy-tool-ops-sanity-check-record` is still open in the capability inventory (§3.11 as-built)
-> 2026-08-20 | docs-cohesion ref guards-and-tests | verified against the inventory; the panel itself is a deferral, not a guard gap
-<!-- /roadmap-status -->
 
 - **`legacy-capability-disposition.test.ts`.** Ref workflow-model §1.6.3's strict non-workflow inventory covers every old
   workflow directory, `services/*` module, route file/endpoint family, top-level dashboard component
@@ -881,7 +806,6 @@ reviewed declared-without-adapter reason.
 
 ### 3.12 D71 executable contract/type-budget suite
 
-<!-- roadmap: p1-authority -->
 
 The Phase-0 disposable spike is converted—not copied blindly—into committed tests against the real
 Phase-1 exports:
@@ -932,21 +856,6 @@ open rather than quietly dropped.
 
 ### 3.13 Round-8 guards (2026-07-26) — the decisions that need mechanical teeth
 
-<!-- roadmap: p1-spine -->
-<!-- roadmap: dash-defaults -->
-
-<!-- roadmap-status: p1-spine -->
-- [x] the four round-8 guards landed: `one-projection-counts` (D81), `identity-gate-before-commit` (D77), `archive-invariants` (D80), and the isolation pair `operational-isolation` + `test-runtime-root-isolation`
-- [x] `runtime-isolation`'s cross-tree half is RETIRED by D93 and `legacy-change-accounting` by D150 — both with successors named in the inventory, never a silent shrink
-> 2026-08-20 | docs-cohesion ref guards-and-tests | verified against the inventory's retired set; the D94 accounting narrative moved to `history/superseded/2026-08-20-guards-and-tests-legacy-change-accounting.md`
-<!-- /roadmap-status -->
-
-<!-- roadmap-status: dash-defaults -->
-- [x] `one-projection-counts` holds D81: no count reachable from a surface path originates outside the single run/queue projection payload
-- [x] `wire-connectivity` audits FOUR joints, not three — section arms, command keys, routes ↔ client, and the wire MIRRORS of durable vocabularies (`guard-inventory.json` corrected 2026-08-20)
-- [ ] T2 dashboard feature scenarios per feature, and the `scenario-dashboard` project that collects them (§10.9, §10.12) — spec only
-> 2026-08-20 | docs-cohesion ref guards-and-tests | the guard side is verified against `wire-connectivity.test.ts`; the test file's own header comment still says "Three joints" and is reported for the code unit
-<!-- /roadmap-status -->
 
 Four ratified decisions are worthless as prose. Each gets a guard, and each guard is listed in the
 §5.1 registered set.
@@ -1032,7 +941,7 @@ Four ratified decisions are worthless as prose. Each gets a guard, and each guar
   stronger than a diff against legacy's copy. `legacy-selector-port-provenance` is untouched: it
   reads a FIXED commit's blobs. `config/legacy-change-accounting.json` stays in the tree as a frozen
   historical record and is never extended. What the guard enforced while it existed is preserved at
-  `docs/rebuild/history/superseded/2026-08-20-guards-and-tests-legacy-change-accounting.md`.
+  `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/history/superseded/2026-08-20-guards-and-tests-legacy-change-accounting.md`.
 
 **Two live-compatibility guard families remain rejected (D88).** Continuous real-tracker replay
 and a runtime legacy wire-schema adapter would legitimize the forbidden live lift/proxy. If an
@@ -1043,15 +952,6 @@ explicit replacement in the guard inventory, not a silent shrink.
 
 ### 3.14 Testing standard (D85) — what replaces the e2e ritual
 
-<!-- roadmap: p2-2j -->
-
-<!-- roadmap-status: p2-2j -->
-- [x] D190 closed the safety-critical floor (70.08 % → 99.43 % on `run-queue-projection.ts`) and D191 made `test:coverage` the per-commit gate
-- [x] `redaction-surface-scan` (D183) and the D188 inventory re-disposition landed — six placeholder `planned` guards became four retirements with successors and two kept with real triggers
-- [ ] D91's BRANCH half is UNMET and its Phase-2-exit trigger has passed: `coverage.thresholds` configures lines/statements/functions only, so branches are report-only at a measured 76.39 % global (§3.14 as-built, §10.10)
-- [x] D85's parts 2 and 3 landed later under R10's names: `config/test-subjects.json`, insert-only `dry_run_scenario_results`, and `cli dry-run-scenario <workflow> --subject <label>` (§10.5–§10.6)
-> 2026-08-25 | test-tiers | the first finalization case exercised the unavailable-subject path: durable `blocked`/`not-started`, no run or trace id, and no browser runtime composed; the honest live green waits for the 2026-08-28 canary
-<!-- /roadmap-status -->
 
 The operator asked for a better standard than the `custom-hr-e2e-test` skill ritual. The ratified
 answer has four parts, and they are *kernel behavior*, not a skill:
@@ -1109,7 +1009,6 @@ lesson).
 
 #### D190 — the safety-critical coverage floor as-built (2j, 2026-08-09)
 
-<!-- roadmap: p2-2j -->
 
 **The floor above was RED and had been red for a whole tail.** `npm run test:coverage` failed the
 `src/**/*projection*.ts` safety-critical threshold from D180 (2i-G) until this decision closed it:
@@ -1169,7 +1068,7 @@ slipped in behind a coverage fix.
 
 #### Phase 3.2 onward — focused tasks, full phase-exit gates (2026-09-19)
 
-The operator-approved [task/cadence amendment](../../roadmap/roadmap.md#tangible-tasks-and-phase-exit-gates)
+The operator-approved task/cadence amendment (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/roadmap/roadmap.md`)
 overrides D191's default per-candidate and prerequisite/group full-gate cadence for Phase 3.2
 and later delivery phases. It applies equally to sequential tasks, prerequisites, parallel workers
 and intermediate integration. Phase 3.1 and earlier admitted assignments keep their own schedules.
@@ -1202,13 +1101,6 @@ For Phase 3.2 onward, the [2026-09-19 phase-exit cadence](#phase-exit-gates-from
 
 For remaining Phase 3.1 work, the [2026-09-13 exception](#phase-3-1-focused-finalization) below takes precedence: focused tasks/prerequisites and group integration, full gates and repairs only at 3.1.19, no independent review.
 
-<!-- roadmap: phase-3 -->
-
-<!-- roadmap-status: phase-3 -->
-- [x] the default implementation gate is `typecheck && lint && test:coverage` (D191; documentation-only and parallel-worker exceptions below) — a strict superset of the old `test` + `test:architecture` pair, measured faster (28.2 s vs ≈39 s)
-- [ ] the gate gains nothing new from R10: T1 structural and T2 are inside `test:coverage`, and every dry-run tier is deliberately outside it (§10.9)
-> 2026-08-20 | docs-cohesion ref guards-and-tests | verified against `package.json` and `CLAUDE.md`'s After-changes section
-<!-- /roadmap-status -->
 
 **Historical adoption record (2026-08-12).** The operator adopted the D190 recommendation as written:
 the per-commit gate family is `npm run typecheck && npm run lint && npm run test:coverage`,
@@ -1302,7 +1194,7 @@ isolation, deadlines and every required acceptance proof.
 
 **2026-09-09 parallel-finalizer amendment (operator-approved).** For Phase 3.2 onward, use the newer [phase-exit cadence](#phase-exit-gates-from-3-2); intermediate finalizers run focused checks. Phase 3 parallel groups and
 future parallel implementation plans use prerequisite → independent workers → finalizer, as owned
-by [roadmap D344](../../roadmap/roadmap.md#parallel-finalizer-cadence). This explicitly replaces
+by roadmap D344 (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/roadmap/roadmap.md`). This explicitly replaces
 per-worker full-suite gates for those groups, including candidate commits and review corrections.
 Other standalone implementation and prerequisite candidates retain the default D191 gates; existing
 in-flight assignments outside Phase 3 retain their recorded cadence unless explicitly revised.
@@ -1340,8 +1232,8 @@ These are focused development releases; full repository acceptance remains open.
 recovery/live acceptance proofs, including every frozen A01–A42 and D01–D05 outcome. It repairs
 gate-found defects in the same session across the consumed required Phase 3.1 paths, adds regression
 proof and verifies the final corrected tree; it no longer hands ordinary repairs back to earlier
-tasks. The [phase execution table](../plans/phase-3/3.1-finish-the-dashboard/README.md#execution-cadence--operator-amendment-2026-09-13)
-and [3.1.19 plan](../plans/phase-3/3.1-finish-the-dashboard/task-19-final-acceptance-and-close-phase-3-1.md)
+tasks. The phase execution table (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-3/3.1-finish-the-dashboard/README.md`)
+and 3.1.19 plan (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-3/3.1-finish-the-dashboard/task-19-final-acceptance-and-close-phase-3-1.md`)
 own exact intake, repair scope and proof scheduling. Product scope and contract decisions remain
 bounded by the approved frozen outcomes.
 
@@ -1356,10 +1248,10 @@ Reuse valid unchanged evidence and rerun invalidated checks under D191; recordin
 do not duplicate full runs. A failed check remains a failure. Preserve assertions, membership,
 coverage floors, timeouts, isolation, the four-worker ceiling and coverage without compiler/linter
 contention. Integration, live-write and cutover permissions do not expand. Governance:
-[2026-09-13 final-gates correction](../../roadmap/roadmap.md#phase-31-full-gates-and-repairs-at-final-acceptance-operator-amendment-2026-09-13).
+2026-09-13 final-gates correction (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/roadmap/roadmap.md`).
 
 **2026-09-09 scoped combined-database exception (operator-approved).** Only newly planned
-Phase 2.6 database-modernization assignments in the [combined workflow](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md)
+Phase 2.6 database-modernization assignments in the combined workflow (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md`)
 use focused tests, lint and affected generation/freshness checks for iteration and committed
 development releases. Record actual commands, exits, tested SHA/tree and proof rows; these releases
 may unlock their explicit dependents before independent review. They are not accepted master
@@ -1386,13 +1278,13 @@ independent review belong to 2.6.9, with required reruns after repairs. Handover
 and reuses unchanged final evidence. Other phases and existing in-flight assignments are unchanged.
 
 **2026-09-09 L integration exception.** The operator approved 2.6.7
-[L01–L06](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/prerequisites.md#approved-l-execution-brief--2026-09-09): focused tests, lint and affected freshness, then local master
+L01–L06 (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/prerequisites.md`): focused tests, lint and affected freshness, then local master
 merge and owned cleanup by the L supervisor. Repeat invalidated integration checks; full gates
 and complete independent review remain 2.6.9. This supersedes final-only master timing for L.
 
 **2026-09-09 C integration exception.** The operator explicitly approved 2.6.5 C local master
 integration and owned cleanup after the focused checks in its
-[approved C01–C05 brief](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/run-completion.md#approved-execution-brief--2026-09-09).
+approved C01–C05 brief (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/run-completion.md`).
 This overrides the earlier no-master-integration-until-final-PASS rule for C only. Run meaningful
 focused unit/architecture checks, lint, affected freshness and filtered Storage Doctor verification;
 repeat invalidated checks after integration changes and verify unchanged inputs before reuse.
@@ -1401,7 +1293,7 @@ review remain in 2.6.9. C completion is a merged development release, not final 
 No live application, push or automatic successor is authorized. Other assignments retain their rules.
 
 **2026-09-09 F integration exception.** The operator approved 2.6.6 F local master merge and
-owned cleanup after its [F01–F07 focused proof](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/foundation.md#approved-execution-brief--2026-09-09).
+owned cleanup after its F01–F07 focused proof (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/foundation.md`).
 This overrides generic no-master/retention timing for F only. Run its explicit focused unit and
 architecture selectors, lint, affected freshness and filtered existing UI proof; prove real baseline
 transactions/recovery and four-domain independence before release. Integration repairs require
@@ -1413,7 +1305,7 @@ automatic successor, push or waiver of a failing focused check is authorized.
 
 **2026-09-09 D integration exception.** The operator approved 2.6.6.2 D local master merge and
 owned cleanup after the focused gates in its
-[D01–D05 brief](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/diagnostics.md#approved-execution-brief--2026-09-09).
+D01–D05 brief (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/diagnostics.md`).
 Run the assigned unit/architecture selectors, lint, affected freshness and dedicated desktop proof;
 recheck invalidated integration inputs before release. This overrides generic no-peer-merge and
 retained-branch timing for D only. Full typecheck, coverage, whole architecture/parity, broad
@@ -1422,7 +1314,7 @@ may build its required candidate bundle. Preserve every product proof, assertion
 and timeout; scoped PASS is not phase acceptance and a failing focused check cannot be deferred.
 
 **2026-09-09 P integration exception.** The operator approved 2.6.6.1 P local master merge
-and owned cleanup after the [P01–P06 focused proof](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/provider-usage.md#approved-execution-brief--2026-09-09),
+and owned cleanup after the P01–P06 focused proof (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/provider-usage.md`),
 including mixed generic/legacy reservation integrity and historical valid/corrupt controls. This
 supersedes generic no-master/retained-candidate timing for P only. Run assigned/affected focused
 units/guards, lint and freshness; rerun invalidated integration checks or verify exact input reuse.
@@ -1430,7 +1322,7 @@ Full typecheck/coverage, broad architecture/parity/build/performance and complet
 remain 2.6.9. No proof, floor, failure semantics or sibling ownership is waived.
 
 **2026-09-09 G integration exception.** The operator approved 2.6.6.3 G
-[G01–G06](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/artifacts.md#approved-execution-brief--2026-09-09).
+G01–G06 (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/artifacts.md`).
 After repaired F, one supervisor runs the assigned focused tests, lint and affected freshness,
 merges locally into master and cleans up only G’s owned checkout/ref. This overrides generic
 retained-candidate/no-master timing for G; rerun invalidated checks after integration changes and
@@ -1439,7 +1331,7 @@ performance, combined archive/recovery proof and complete independent review rem
 G completion is a scoped development release only; no push, live application or sibling launch.
 
 **2026-09-09 S integration exception.** The operator approved 2.6.6.4 S
-[S01–S06](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/decisions.md#approved-s-execution-brief--2026-09-09).
+S01–S06 (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/decisions.md`).
 After complete repaired F, run the assigned focused units/guards, lint, affected freshness and
 isolated/filtered desktop proof; merge locally and remove only S's owned checkout/ref. This
 supersedes S's generic no-master/retained-candidate timing. Rerun invalidated integration checks
@@ -1449,7 +1341,7 @@ remain 2.6.9. No failing assertion, floor, safety boundary or sibling ownership 
 completion means a merged scoped development release, not full phase acceptance.
 
 **2026-09-09 A integration and proof-allocation exception.** The operator approved 2.6.7.1 A
-[A01–A06](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/decisions.md#approved-a-execution-brief--2026-09-09),
+A01–A06 (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/decisions.md`),
 including three bounded existing-test updates. Run its exact focused unit/architecture selectors,
 lint and affected freshness; merge locally after focused PASS and verify owned cleanup. Recheck
 invalidated integration inputs or prove exact input reuse. A proves generic display data and parser
@@ -1461,7 +1353,6 @@ waived; no failing focused check is deferred. No push, live application or succe
 
 ### 3.15 `redaction-surface-scan.test.ts` — the redaction surface scan (D183, 2j)
 
-<!-- roadmap: p2-2j -->
 
 Ref clock-config-secrets §6 already says redaction is schema-owned and that "tests seed canary passwords, cookies,
 storage state, SSNs, DOBs, and private keys and scan every produced note/failure/screenshot
@@ -1571,7 +1462,6 @@ in both directions, the surfaces those guards each see one at a time.
 
 ## 4. `descriptor-coverage.test.ts` — the ONE rebuild guard replacing parity-list design
 
-<!-- roadmap: p1-authority -->
 
 Owned by **ref workflow-model §1.4**; this doc owns the **crosswalk** (which legacy invariants it replaces in
 the rebuild repo, while the legacy repo's own guard files remain through initial cutover) and the
@@ -1616,7 +1506,6 @@ exceptions. The explicit projection matrix above and source-surface inventory ar
 
 ## 5. The guard-of-guards manifest — accidental shrink protection, not an undeletable law
 
-<!-- roadmap: p1-base -->
 
 Rot vector: a guard file is deleted, renamed, or dropped from the `test:architecture` glob, and
 nobody notices the umbrella shrank. Extends the existing `gate-coverage` meta-guard.
@@ -1699,7 +1588,6 @@ makes no stronger mechanical claim.
 
 ### 5.1 The full registered set — where every doc's guards converge
 
-<!-- roadmap: p1-base -->
 
 The inventory is the one machine-readable place the umbrella is enumerated. Each doc owns its
 guards' contracts; the manifest owns that they exist and stay wired. **This list is the as-built set
@@ -1716,7 +1604,7 @@ the real tree and against its own violating fixture.
 **Active, by owning contract:**
 
 - **Meta — the guard-of-guards and the gates (this doc, §5):** `guard-manifest`, `gate-coverage`,
-  `parity-reference-authority` (item 9), `roadmap-doc-binding` (D263 — the plan ↔ docs binding),
+  `parity-reference-authority` (item 9),
   `config-snapshot-generations` (item 10), `migration-history-immutability`,
   `operational-isolation`, `test-runtime-root-isolation`, `test-target-registry`.
 - **Descriptor and contract SSOT (ref workflow-model §1.4, ref task-contract):** `descriptor-coverage`,
@@ -2043,13 +1931,6 @@ read (§D332.9 rule 4) — the deletion and its proof are one commit, or the ada
 
 ## 6. TDD topology for the rebuild repo — four tiers, each an owned home
 
-<!-- roadmap: phase-1 -->
-
-<!-- roadmap-status: phase-1 -->
-- [x] the four-tier write order is as-built and unchanged: pure-logic unit → contract/type → architecture ratchets → the scenario tiers (§6)
-- [x] tier 4's name is corrected — there is no stub lane to pair with the live one (§7), so the tier is §10's scenario tiers
-> 2026-08-20 | docs-cohesion ref guards-and-tests | verified against `tests/scenario/helpers/pure-walk.ts` and the absence of any stub wiring in `src/`
-<!-- /roadmap-status -->
 
 "Same quality umbrella, made concrete." A new task or workflow is built **test-first** against these:
 
@@ -2107,7 +1988,7 @@ tree on 2026-08-20: zero occurrences of `maybeWrapE2EStub`, `StepDataFn` or `stu
 and although `defineTaskContract` requires an `example` and parses it through its own `output` schema
 at seal time (`src/domain/contracts/base.ts:474`), **no runtime module reads `.example`** to stand in
 for a task's output. The migration plan is preserved at
-`docs/rebuild/history/superseded/2026-08-20-guards-and-tests-stub-lane.md`.
+`994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/history/superseded/2026-08-20-guards-and-tests-stub-lane.md`.
 
 **What took its place is stronger, and it is why the absence is not a gap.** A stub lane exists to
 run a graph without touching a real system. This tree does that two ways instead, both against the
@@ -2161,17 +2042,11 @@ the parity corpus (§10.1).
 
 ## 9. Worked example — adding one new submit-bearing workflow
 
-<!-- roadmap: migrations -->
 
 - [x] the worked example is as-built for the guard half — every RED it names is a guard that exists at HEAD
 - [x] steps 6–7 have their first concrete implementation: the `separations-kuali-finalization` pair, typed subject registry, durable result table and production CLI runner; its first green live canary remains date-blocked until 2026-08-28
 > 2026-08-25 | test-tiers | blocked execution persisted the no-browser result; the migration node's PROOF stays open because blocked is evidence that the test did not run, not a green result
 
-<!-- roadmap-status: migrations -->
-- [x] the per-workflow guard loop is unchanged and every guard it fires is active
-- [x] the per-workflow TEST loop (§10.11's seven steps) has its first T1 pair and the shared registry/result/CLI machinery; later migrations repeat it per workflow
-> 2026-08-25 | test-tiers | first blocked authority result proves the unavailable-subject branch; left for this first pair: the date-gated live green and migration-record line
-<!-- /roadmap-status -->
 
 Scenario: a new `badge-reissue` workflow that fills and submits a UCPath form. Red→green, and what
 must be registered:
@@ -3105,7 +2980,6 @@ now.
 
 ### Phase 1b as-built guard delta (2026-07-31)
 
-<!-- roadmap: p1-base -->
 
 The rebuild guard lane is no longer a pre-tree promise. The reviewed manifest discovers every
 architecture test recursively and runs active whole-`src` arms over real source; typecheck, ESLint,
@@ -3125,7 +2999,6 @@ their future contracts are not reported as implemented by 1b.
 
 ### Phase 1c Stage A as-built guard delta (2026-07-31)
 
-<!-- roadmap: p1-authority -->
 
 The existing `strict-boundary-schemas.test.ts` catalog now registers every Stage-A durable/wire
 schema and exercises every command, proof, probe, settlement, intent/attempt, notification,
@@ -3145,7 +3018,6 @@ injection, and projector tests remain later Phase-1c/1f work; Stage A does not m
 
 ### Phase 1c Stage B as-built guard delta (2026-07-31)
 
-<!-- roadmap: p1-authority -->
 
 Stage B extends the existing `strict-boundary-schemas.test.ts` catalog with the adapter options,
 metadata/inspection, immutable-insert disposition, and strict SQLite storage-record shells. It also
@@ -3168,7 +3040,6 @@ HTTP/UI, and live lanes.
 
 ### Phase 1c Stage C as-built guard delta (2026-08-01)
 
-<!-- roadmap: p1-authority -->
 
 Stage C activates the existing `storage-recovery` inventory arm and gives it a non-empty focused
 architecture suite over real temporary SQLite databases and the official native online-backup API.
@@ -3194,7 +3065,6 @@ Stage-D or later work, so Phase 1c is still incomplete.
 
 ### Phase 1c Stage D as-built guard delta (2026-08-01)
 
-<!-- roadmap: p1-authority -->
 
 Stage D activates exactly three previously planned inventory entries in the same commit as their
 implementations and focused suites:
@@ -3229,7 +3099,6 @@ and catalog-only test cases are retired. Semantic UI registries, selector eviden
 provenance and write-safety assertions remain. The dated Phase 1d inventory below preserves its
 original paths and gate evidence; current homes are in [codebase structure](codebase-structure.md).
 
-<!-- roadmap: p1-authority -->
 
 Phase 1d activates only guards whose real seam exists: port provenance, semantic UI registry and
 safe catalog freshness, task/driver boundary, effect-contract/example/error/freshness/provenance/
@@ -3341,7 +3210,6 @@ guards and 2h production provider-pool/consumer guards remain planned.
 
 ### Phase 1f guard-activation boundary (ratified 2026-08-02)
 
-<!-- roadmap: p1-kernel -->
 
 Phase 1f must activate guards against the real executor/command/session/provider targets in the
 same commits as those targets. The acceptance set is non-vacuous and fail-both-ways:

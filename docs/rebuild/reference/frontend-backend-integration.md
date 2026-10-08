@@ -29,7 +29,7 @@ Visual authority:
 - `src/dashboard/DESIGN.md` — **this repository's own** design language and interaction rules, and
   the binding one for anything visual built here (`src/dashboard/CLAUDE.md` says to read it first);
 - `docs/rebuild/reference/dashboard-surfaces.md` §9 — ratified presentation decisions;
-- `docs/rebuild/history/design-inputs/2026-07-28-backend-capabilities-from-the-demo.md` — backend
+- `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/history/design-inputs/2026-07-28-backend-capabilities-from-the-demo.md` — backend
   discoveries made while building the target;
 - the **demo**, in the LEGACY repo — `src/dashboard/components/dev/rebuild-demo/DESIGN.md`, its
   `ds/` tokens and its rendered surfaces. It remains the visual oracle for anything not yet ported.
@@ -46,8 +46,6 @@ runtime import or proxy is permitted.
 
 ## 0. Outcome and non-negotiable decisions
 
-<!-- roadmap: phase-1 -->
-<!-- roadmap: dash-defaults -->
 
 The optimal foundation is a **typed dashboard backend-for-frontend (BFF) inside the rebuild repo's
 own Hono process**, backed by rebuilt authoritative SQLite state and server-side
@@ -122,23 +120,13 @@ The following are settled:
    matrix passes, the normal launcher is repointed at the rebuild repo once; the legacy repo is
    preserved wholesale as the rollback asset.
 
-<!-- roadmap-status: phase-1 -->
-- [x] 0.1 the frontend renders finished read models — every count, status, action and containment fact is projected (`src/server/dashboard/projectors/run-queue-projection.ts`). The ONE standing exception, the run modal reading `WORKFLOW_DESCRIPTORS` from the bundle, CLOSED 2026-08-21 with D264 row D11 (§4): the three fields are served on `WorkflowStartWireSchema` and `dashboard-wire-boundary` arm (15) keeps the registry out of every dashboard bundle
-- [x] 0.2 one transport owner per bundle — `src/dashboard/client/transport.ts`, enforced by `isNetworkOwner` in `provider-capability-boundary.test.ts`; the second owner it used to name, `src/dashboard/phone/capture-client.ts`, went with D294 and the guard no longer carves it out
-- [x] 0.3 REST snapshots + ONE resumable stream + ONE command route — `routes/api.ts`, `GET /events/v1`, `POST /api/v1/commands` (+ the bulk vector arm)
-- [x] 0.5 no optimistic authority — every surface settles through the served result and the next projection (D253, `app/command-result.ts`)
-- [x] 0.9 two repos, one cutover — structural since D93; `config/runtime-isolation.json` + `operational-isolation.test.ts` pin the one-machine half
-- [ ] 0.3's artifact half — "large immutable bytes use dedicated artifact routes": the schemas exist and NO route serves them (§3.6)
-- [ ] 0.6 end-to-end slices — the "Playwright visual proof" cell is filled for every ported surface (151 references) but the "fixture + degraded state" cell is not uniform; R10's test-tier remainder is now owned by `{#workflow-authoring-core}` (`ref:guards-and-tests`)
-> 2026-08-20 | docs-cohesion frontend-backend-integration | verified against src/server/dashboard/routes/api.ts, http-server.ts, src/dashboard/client/**, provider-capability-boundary.test.ts; left: the artifact byte route (§3.6) and D11 (§4)
-<!-- /roadmap-status -->
 
 ---
 ## 1. What the audit found
 
 _The 2026-07-30 audit that opened this document. §1.1 and §1.2 are kept as the dated record of what
 was surveyed; **§1.3's list of contract gaps is closed** and moved to
-`docs/rebuild/history/superseded/2026-08-20-frontend-backend-integration-1.3.md`, with the one gap
+`994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/history/superseded/2026-08-20-frontend-backend-integration-1.3.md`, with the one gap
 per line and where it landed. A citation of "§1.3" resolves there._
 
 ### 1.1 The production target is a complete product, not four panels
@@ -193,8 +181,6 @@ mirrors — the three properties §8's guards hold.
 
 ## 2. Production module boundaries
 
-<!-- roadmap: p1-spine -->
-<!-- roadmap: track-d -->
 
 The production tree makes the dependency direction obvious. This is the tree **as built**:
 
@@ -270,8 +256,6 @@ checklist lives in §7.4's status block, with the rest of the track.
 
 ## 3. Canonical transport contracts
 
-<!-- roadmap: p1-spine -->
-<!-- roadmap: p1-base -->
 
 The names below are integration roles; the reference specs own the final strict shapes. Every one
 of them is now a real exported schema — the file and export name are given per subsection.
@@ -283,28 +267,9 @@ projection cursors, explicit capability availability/absence, closed status/pane
 nested unknown-key rejection, each pinned by fixtures. 1b claimed no BFF, SSE server, command route,
 React client or rendered surface; `1g-spine` and `1i-spine` served them and `2g`–`2i` widened them.
 
-<!-- roadmap-status: p1-base -->
-- [x] the strict wire primitives — `src/domain/dashboard/{bootstrap,projection,run-detail,subscription,artifacts,primitives}.ts`, all recursively strict, unknown keys refused (`strict-boundary-schemas.test.ts`)
-- [x] the closed unions 1b froze are still the served ones — `RunDetailSectionSchema`, `TopicKeySchema`, `QueueStatus`, the capability `{state:"present"|"absent", reason}` shape
-- [x] no handwritten frontend mirror of any `*Wire` type (`dashboard-wire-boundary`)
-> 2026-08-20 | docs-cohesion frontend-backend-integration | verified against src/domain/dashboard/**; the 1b as-built block was FOLDED into this section (R9 item 1) rather than left as a dated appendix; left: nothing for 1b
-<!-- /roadmap-status -->
-
-<!-- roadmap-status: p1-spine -->
-- [x] `FrontendBootstrapWire` served and consumed — `queries/bootstrap.ts`, `GET /api/v1/bootstrap`
-- [x] `DashboardDayWire` served from the ONE projection — `projectors/run-queue-projection.ts`, `GET /api/v1/dashboard?day=`
-- [x] `RunDetailWire` + lazy sections — `queries/run-detail.ts`, `GET /api/v1/runs/:runId` + `/:section`
-- [x] one command route + one bulk arm — `POST /api/v1/commands`, `POST /api/v1/commands/bulk`
-- [x] one resumable stream with cursor resume — `subscriptions/dashboard-stream.ts`, `GET /events/v1`, `Last-Event-ID`
-- [x] the projector is fed by an offset-aware DISK TAIL, not an in-process hook (D218) — `compose.ts` seeds `rebuildFromJsonl()` and polls `ingestFromDisk()`
-- [ ] `run-detail`, `run-review`, `run-people` and `artifact` remain unserved; D364 `run-logs` now has a producer with explicit health transitions and per-subscriber failure isolation (§3.5)
-- [ ] the artifact resource schemas have no route (§3.6)
-> 2026-08-20 | docs-cohesion frontend-backend-integration | verified against src/server/dashboard/{routes/api.ts,compose.ts,queries/**,projectors/**,subscriptions/**} and src/domain/dashboard/**; left: the unserved stream topics and the artifact route, both now stated in their own sections
-<!-- /roadmap-status -->
 
 ### 3.1 `FrontendBootstrapWire`
 
-<!-- roadmap: p1-spine -->
 
 `FrontendBootstrapWireSchema` — `src/domain/dashboard/bootstrap.ts`. Fetched once at app boot and
 refetched when the subscription declares descriptor/config skew.
@@ -364,9 +329,6 @@ rendering a hole, and BOTH the Workflow Panel's rail and the Run Modal's picker 
 
 ### 3.2 `DashboardDayWire`
 
-<!-- roadmap: p1-spine -->
-<!-- roadmap: track-b -->
-<!-- roadmap: track-d -->
 
 `DashboardDayWireSchema` — `src/domain/dashboard/projection.ts`. One query provides the selected
 day's coherent shell and queue state:
@@ -403,7 +365,7 @@ under the amendment below; it must not replace selected-day counts with an indep
 #### Bounded calendar navigation read — 2026-09-18
 
 The operator approved this D81 transport clarification for
-[3.1.10 DN1–DN5](../plans/phase-3/3.1-finish-the-dashboard/task-10-repair-date-navigation-and-the-date-picker.md#approved-execution-brief--2026-09-18).
+3.1.10 DN1–DN5 (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-3/3.1-finish-the-dashboard/task-10-repair-date-navigation-and-the-date-picker.md`).
 The accepted 3.1.10 implementation serves `GET /api/v1/calendar?month=YYYY-MM&day=YYYY-MM-DD`
 (integrated into local master on 2026-09-19). Its strict response carries `month`, `day`,
 `today`, `authorityGeneration`, at most 31 ordered positive `monthCounts`, and nullable
@@ -515,8 +477,6 @@ measure and record the numbers §7.4 has been waiting for.
 
 ### 3.3 `RunDetailWire` and lazy sections
 
-<!-- roadmap: p1-spine -->
-<!-- roadmap: track-b -->
 
 `RunDetailWireSchema` — `src/domain/dashboard/run-detail.ts`. Opening a row fetches one small header
 plus only the selected panel section. A terminal 50-person packet must not ship every note, capture,
@@ -579,11 +539,6 @@ section (D257).
 
 ### 3.4 One command protocol
 
-<!-- roadmap: p1-kernel -->
-<!-- roadmap: track-b -->
-<!-- roadmap: track-d -->
-<!-- roadmap: def-settings -->
-<!-- roadmap: cross-cutting -->
 
 All JSON mutations enter one route (`POST /api/v1/commands`) and one durable command journal. The
 schemas are `src/domain/commands.ts`; the kernel is `src/core/command-kernel.ts`, and D113 confines
@@ -738,29 +693,9 @@ generalise to every future server-declared ceremony:
 The `RunDetailSectionResponse` arm this is stated over is `identity-gate`; ref write-safety §14.11 owns the
 gate's own ceremony table.
 
-<!-- roadmap-status: p1-kernel -->
-- [x] ONE command route + ONE journal — `POST /api/v1/commands`, `src/core/command-kernel.ts`, confined by `control-command-single-path` (D113)
-- [x] nine families / 36 active actions; every arm carries its required optimistic revision/version basis (`src/domain/commands.ts`, `src/core/command-kernel.ts`)
-- [x] three result arms with TWO refusals, settled through one exhaustive fold (D253, `command-result-exhaustive`)
-- [x] the bulk vector arm — per-target outcomes, `best-effort` (D235)
-- [x] the D75 checkpoint rejects a mismatched actor before replay/effects; matching or absent claims receive server-owned provenance, and exact replay preserves the original acceptance instant
-- [ ] `all-or-none` bulk mode — declared, refuses `capability-unavailable` (D235)
-> 2026-08-31 | D290 history integration | reconciled D75 pre-effect mismatch refusal with DCC1 same-actor stamping and exact single/bulk replay; all-or-none remains unavailable
-<!-- /roadmap-status -->
-
-<!-- roadmap-status: def-settings -->
-- [x] the command family, target and atomic N-leaf payload are contracted — `settings` / `apply-settings` in `src/domain/commands.ts`
-- [x] Settings renders effective/default/override provenance from the server-listed editable inventory
-- [x] the registry-derived `preflight` report and strict doctor-rerun route are served and consumed by DCC3's typed caller
-- [x] the resolver-owned `apply-settings` half is active, revision/schema/patch-bound and returns persisted readback with restart fencing
-- [x] the settings config-service authority behind `apply-settings` is strict and atomic (ref clock-config-secrets §3)
-> 2026-08-28 | DCC6 closure | verified DCC1–DCC3's bounded Settings authority/UI; credentials, AI assist, delete/recover and resolver-unowned legacy settings remain explicit open capability entries
-<!-- /roadmap-status -->
 
 ### 3.5 Resumable subscription protocol
 
-<!-- roadmap: p1-spine -->
-<!-- roadmap: track-c -->
 
 One stream carries closed envelopes (`DashboardStreamEnvelopeSchema`,
 `src/domain/dashboard/subscription.ts`):
@@ -903,8 +838,6 @@ fold after" structural.
 
 ### 3.6 Query and artifact surface
 
-<!-- roadmap: def-search-export -->
-<!-- roadmap: cross-cutting -->
 
 The served route layout (`src/backend/transports/http/routes/api.ts` — a fresh rebuild API, no legacy
 compatibility layer):
@@ -1022,15 +955,6 @@ D292; it must never infer provenance from run status. Generic, bundle-bound and 
 are not interchangeable. Real mounted app/native image/download consumption, not a dormant
 builder or literal, is the proof required for route connectivity. No new producer is introduced.
 
-<!-- roadmap-status: def-search-export -->
-- [x] the within-day search the shell actually needs — `surfaces/day-search.tsx` + `day-search-model.ts`, over the served day
-- [x] one export exists and travels with its rules — the Activity CSV (D240): the caveats are a BLOCK of the artifact, one rounding shared with the tile
-- [x] the DCR3 cross-date search authority + transport — strict `GET /api/v1/search` query/page contracts and typed client over the measured current separations corpus
-- [x] the DCR4 cross-date search surface — the Top Bar defaults to the durable Separations corpus and retains the served-day find behind its explicit scope
-- [ ] the generic artifact/screenshot resource family (`legacy-route-files`) — DCA serves diagnostic-index bytes, mounted D292 Logs/Receipt captures and frozen Archive resources; only the generic status/gallery family remains unserved
-- [x] the DCR5 operator xlsx authority + dedicated download command — authenticated exact selection, caveat-first redacted workbooks, immutable content-addressed evidence; the D164 retention sink remains distinct
-> 2026-08-28 | DCR receive | strict search authority/transport, Separations Top Bar controls and the dedicated verified XLSX command are delivered; generic artifact bytes remain open
-<!-- /roadmap-status -->
 
 ---
 ## 4. State ownership
@@ -1059,9 +983,6 @@ parity proof. The write-safety consequence is owned by ref write-safety §D338.
 > value-free readback; neither the frontend nor SQLite reconstructs credential-store state. Historical
 > file/journal coupling and paired-file restore descriptions are superseded for the target.
 
-
-<!-- roadmap: p1-spine -->
-<!-- roadmap: track-d -->
 
 | State | Owner | Frontend rule |
 |---|---|---|
@@ -1164,7 +1085,6 @@ Track D's checklist for every row that lands on this section — D1, D4, D6, D7,
 
 ## 5. Surface-to-backend wiring matrix
 
-<!-- roadmap: dash-defaults -->
 
 <a id="current-frontend-mock-wiring-checklist"></a>
 
@@ -1278,29 +1198,9 @@ until every cell in its row has an implementation and a test. The **Built** colu
 | AI failure advisory | on-demand `POST /api/v1/runs/:runId/advisory` | none — it is a request, not a projection | none; it is unjournaled and holds no authority (D178) | the advisory provider behind the zero-authority-edge guard | yes |
 | UI catalog | retired 2026-10-01 by operator amendment | none | none | semantic registries and Explorer task links remain; see ref operator-trust | no route, client method, projection or generated catalog |
 
-<!-- roadmap-status: dash-defaults -->
-- [x] run modal — the typed start door, its declared examples and its four modal rows (D250/D251, §5.1.1)
-- [x] queue row — ordinal, class, containment, linked runs, facts, per-row and bulk actions (D230–D235, §5.1.2)
-- [x] run detail — header, timeline, logs, receipt, failure, Context rail with step · direction · bound (D252, §5.1.3)
-- [x] gate ceremony — three server-declared shapes plus rejection, and the parked-write resolution beside it (D226/D245, §5.1.4)
-- [x] archive · activity · explorer — frozen archived detail, the aggregate + ledger block + CSV, the read-only graph (D179/D223/D236/D240/D227–D229, §5.1.5)
-- [x] notifications — the bell, its filters, and read/unread/snooze CASed on the row's own revision (D222/D253, §5.1.6)
-- [x] intake — upload → mapping → validate → manifest → fan-out (2h/2i-E, §5.1.7); the phone session it used to name was retired by D294
-- [~] Rerun prefill — D334 supersedes the wired checkpoint-edit command; 1.6.4 removes its writer, 2.6 Task 1-2 serves completed values/provenance, and 3.1 Task 11-2 lands the shared modal (§5.1.7)
-- [ ] Group People and OCR Review — both matrix rows have NO surface; `people` and `review` are declared-unserved (D184)
-- [ ] the live half of every square except the queue row — five of six stream topics have no producer, so a panel follows the day cursor and re-reads (§3.5)
-- [ ] the Session Panel's other six commands — kernel arms exist, controls do not
-- [x] preflight bootstrap + strict doctor-rerun route, consumed by DCC3's typed caller (§3.1)
-- [x] Settings resolver-owned atomic write/readback subset (§3.4); credentials, AI assist, delete/recover and resolver-unowned values remain later capability scope
-> 2026-08-28 | DCC6 closure | verified DCC1–DCC3's typed Settings/preflight control plane; left: the two unserved panel kinds, per-run stream topics, remaining controls and broader legacy settings scope
-> 2026-09-03 | dashboard-wiring U7 | verified against src/server/dashboard/routes/api.ts (no `/api/v1/capture/**` route survives), src/server/dashboard/commands/ (no `capture-service.ts`), src/dashboard/** (no `phone/`, no `capture.html`, no `capture-start.tsx`), tests/parity/ (no `capture-phone-reference.spec.ts`) and provider-capability-boundary's `isNetworkOwner` (operator client + http-server only): every Mobile Capture claim in §§0, 2, 3.4, 5, 5.1.7, 7.1, 8 and 9 now reads as D294-retired rather than implemented. Left: the two unserved panel kinds, per-run stream topics, remaining Session Panel controls and broader legacy settings scope — unchanged by this pass
-<!-- /roadmap-status -->
 
 ### 5.1 Critical user flows
 
-<!-- roadmap: dash-defaults -->
-<!-- roadmap: track-b -->
-<!-- roadmap: track-d -->
 
 **A flow is a WIRE SQUARE.** Each subsection below is one square built once in `{#dash-defaults}`.
 D311/D317 make the workflow compiler its per-workflow declaration path and the registry-wide conformance
@@ -1317,19 +1217,6 @@ Three rules hold across every square and are stated once here.
 **A server-declared ceremony is obeyed or refused by name**, never downgraded to the cheapest
 control the bundle knows (D226, §3.4).
 
-<!-- roadmap-status: track-b -->
-- [x] B1 the three identity-approval ceremonies + rejection, against the SERVER's shape (D226) — §5.1.4
-- [x] B2 a settled gate's decision on the panel; a rehearsal never wears `verified-done` (D237/D238) — §5.1.3
-- [x] B3 the run modal's four rows — three already in the bundle, one drawn read-only (D250/D251) — §5.1.1
-- [x] B4 queue rows: `QueueBaseFields` served + drawn, rename, the bulk strip + result vector (D230–D235) — §5.1.2
-- [x] B5 archive: frozen sections, five tabs, Export, ledger read-through (D223) — §5.1.5
-- [x] B6 explorer: field census, the declared `when` in words, descriptor prose (D227–D229) — §5.1.5
-- [x] B7 worker-card / session-footer batch; the rail names step, direction and bound; a CAS conflict is a refusal (D248/D249/D252/D253) — §3.2, §5.1.3
-- [x] B8 findings ledger zero-or-decided; `span.patched` retired (D254/D255)
-- [x] the fold is called by all 9 command surfaces and `src/dashboard/CLAUDE.md`'s claim is TRUE (Track D row D3, `1b13115f`)
-> 2026-08-20 | docs-cohesion frontend-backend-integration | verified against src/dashboard/surfaces/**, src/dashboard/app/command-result.ts, tests/unit/architecture/command-result-exhaustive.test.ts; left: D3's seven call sites and the CLAUDE.md sentence
-> 2026-08-21 | track-d3 | the seven call sites and the sentence both landed (`1b13115f`); nothing left on this block
-<!-- /roadmap-status -->
 
 #### D253 — a refused command that looks like a save (2026-08-20)
 
@@ -1406,14 +1293,13 @@ is a true sentence about a stale basis rather than a partial re-offer.
 
 #### 5.1.1 Run modal — plan, confirm, enqueue
 
-**Request-table naming amendment (2026-09-08; [side/worker-names](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/history/worker-names.md)).**
+**Request-table naming amendment (2026-09-08; side/worker-names (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/history/worker-names.md`)).**
 Since schema 35, the saved proposal is stored in `workflow_run_requests` (formerly `start_plans`).
 A request can produce zero or several runs. Confirmation uses the existing Start command
 and audit; successful consumption retains the request with `consumedBy`. `startPlans`,
 `startPlanId`, stored record fields, expiry, fingerprints, refusal behavior and transactional
 fan-out remain unchanged. No confirmation table or move into `workflow_runs` is introduced.
 
-<!-- roadmap: dash-defaults -->
 
 1. The descriptor projection determines which start doors exist and serves the real timeline with each
    step's `required | selectable` start state; absence includes the reason.
@@ -1613,8 +1499,6 @@ D251's fourth premise — that the bundle already carrying a fact makes a wire a
 
 #### 5.1.2 Queue row — the day's work
 
-<!-- roadmap: dash-defaults -->
-<!-- roadmap: track-b -->
 
 1. The day snapshot paints counts, rows, worker cards and the notification summary from ONE cursor.
 2. A row states its ordinal, class, containment, linked runs, facts and pipeline (§3.2), and carries
@@ -1639,8 +1523,6 @@ re-parsing the whole day (row D4); and the projector's member-preview and duplic
 
 #### 5.1.3 Run detail — open and follow a run
 
-<!-- roadmap: dash-defaults -->
-<!-- roadmap: track-b -->
 
 1. Bootstrap validates hashes and renders shell vocabulary.
 2. Selecting a row fetches the detail header and the default panel section.
@@ -1725,7 +1607,6 @@ for one fact.
 
 #### 5.1.4 Gate ceremony — and the parked-write resolution beside it
 
-<!-- roadmap: dash-defaults -->
 
 1. A parked run's detail advertises its ceremony section — `identity-gate` or `parked-write` — and
    the section carries the packet, the server-computed `approvalShape`, and the typed resolutions.
@@ -1762,8 +1643,6 @@ describes the built one.
 
 #### 5.1.5 Archive · Activity · Explorer — the three read surfaces
 
-<!-- roadmap: dash-defaults -->
-<!-- roadmap: track-b -->
 
 1. Archive serves a paged index and a **self-contained** archived detail — frozen row, detail,
    receipt and failure plus evidence POINTERS, readable with the descriptor list empty (D179).
@@ -1820,7 +1699,6 @@ D322's retired backup caller; current caller coverage is recorded at dashboard-s
 W2's accepted behavior and source/evidence record live in the
 [§9.6 notification amendment](dashboard-surfaces.md#notifications-w2-amendment-2026-10-02).
 
-<!-- roadmap: dash-defaults -->
 
 1. A service publishes a durable, actor-keyed notification row on a closed trigger; the row commits
    before any OS delivery is attempted (D138).
@@ -1849,7 +1727,6 @@ permission and status are unchanged by W2; see §9.6.
 
 #### 5.1.7 Intake and prior-run value projection
 
-<!-- roadmap: dash-defaults -->
 
 1. Upload returns an artifact ref; inspect returns columns and bounded samples.
 2. Exact fingerprint reuse is visible; suggestions remain unbound until accepted.
@@ -1866,7 +1743,7 @@ span per member, so the rows arrive through §5.1.2's ordinary path. The former 
 consumes that projection in the shared Rerun Run modal.
 
 **2026-09-14 approved remaining Intake acceptance:**
-[3.1.9.6](../plans/phase-3/3.1-finish-the-dashboard/task-9-6-finish-intake-surfaces.md#approved-execution-brief--2026-09-14)
+3.1.9.6 (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-3/3.1-finish-the-dashboard/task-9-6-finish-intake-surfaces.md`)
 owns cancellation-safe upload extraction, truthful progress/delivery uncertainty, current
 reject/required-field/zero-row readiness, explicit prior-import comparison and confirmation checked
 again before enqueue, immutable/replay-safe handoff and real-service browser proof. The
@@ -1892,16 +1769,12 @@ capture service's thrown refusals — went with D294, and row **D8**'s intake ha
 ---
 ## 6. Delivery sequence mapped to the phase docs
 
-<!-- roadmap: phase-1 -->
-<!-- roadmap: phase-2 -->
-<!-- roadmap: phase-3 -->
 
 These are **vertical-slice acceptance units**, not new phases. Every slice below `6.1`–`6.7` has
 landed; `6.8` is the standing rule each migration follows; `6.9` is the one named gap.
 
 ### 6.1 Before `1g-spine`: contract and visual foundation
 
-<!-- roadmap: p1-spine -->
 
 Landed with the earliest owning work items:
 
@@ -1915,7 +1788,6 @@ Landed with the earliest owning work items:
 
 ### 6.2 `1g-spine`: BFF spine
 
-<!-- roadmap: p1-spine -->
 
 Built:
 
@@ -1931,7 +1803,6 @@ Exited with contract tests proving a snapshot plus any valid patch sequence equa
 
 ### 6.3 `1i-spine`: exact shell + Person Lookup vertical slice
 
-<!-- roadmap: p1-spine -->
 
 Ported and wired the approved production shell, Workflow Panel, Status Bar, Queue Panel, run/member
 Log Panel, Context rail, Receipt placeholder, Start Run, and Session Panel. The target was not “four
@@ -1960,7 +1831,6 @@ the accessibility tree reported every word of it (D187, §7.1).
 
 ### 6.4 Phase 2 transaction proof
 
-<!-- roadmap: p2-proof -->
 
 Before broad UI tails, one write-capable workflow went through the same client:
 
@@ -1973,71 +1843,34 @@ Before broad UI tails, one write-capable workflow went through the same client:
 
 This validated that the visual trust model is backed by real write authority, not fixture prose.
 
-<!-- roadmap-status: p2-proof -->
-- [x] the controlled commit is MET LIVE — `kuali-timekeeper-annotation` on real doc 4489 (D135, 2026-08-04); ref write-safety §Phase-2 controlled-commit as-built holds the evidence
-- [x] the parked-write resolution reaches the operator through the same client — the `parked-write` section and both typed resolutions (§5.1.4)
-- [x] the dry-run boundary is visible on the row and honest in the receipt — a rehearsal never wears `verified-done` (D238)
-> 2026-08-20 | docs-cohesion frontend-backend-integration | verified against src/server/dashboard/queries/run-detail.ts's parked-write section and src/dashboard/surfaces/park-resolve.tsx; left: nothing on the integration side
-<!-- /roadmap-status -->
 
 ### 6.5 `2g`: trust surfaces
 
-<!-- roadmap: p2-2g -->
 
 Completed Receipt, Failure, captures metadata, rerun lineage/diff, durable notifications, search
 links, archive snapshot generation, and `explain run` projections. Receipt-owned screenshot
 placement and the Context data ledger are part of this slice, not optional polish.
 
-<!-- roadmap-status: p2-2g -->
-- [x] the receipt and the failure record render from authority — `trust.tsx` over `queries/run-detail.ts`'s receipt and failure sections (D140/D142)
-- [x] the durable notification inbox has a bell and a real publisher (D138/D222, §5.1.6)
-- [x] the Context data ledger names its step, direction and bound (D252, §5.1.3)
-- [x] verified run capture bytes in Logs and Receipt — D291/D292 serve the exact diagnostic-index artifact route; D306 shares that read across both placements, and the dashboard development origin proxies `/artifacts` beside `/api` and `/events` so Preview and Download receive the BFF's verified bytes rather than the SPA shell
-- [ ] the `context-evidence` rail section — declared-unserved; the receipt carries the trust content that exists (D184)
-> 2026-08-20 | docs-cohesion frontend-backend-integration | verified against src/dashboard/surfaces/{trust,receipt,context-rail,top-bar}.tsx and config/pending-wire-bindings.json; left: the two unserved sections, both blocked on the byte route
-<!-- /roadmap-status -->
 
 ### 6.6 `2h`: data acquisition
 
-<!-- roadmap: p2-2h -->
 
 Wired the mapping/validation/manifest flow, operator correction evidence, the now-superseded D166
 Edit Data checkpoint commands, and mobile capture authority/outbox recovery — the capture half of
 which D294 retired on 2026-08-31 and the Edit Data writer of which D334 assigns to 1.6.4 for removal.
 
-<!-- roadmap-status: p2-2h -->
-- [x] spreadsheet intake end to end — upload, header choice, explicit mapping, validation, immutable manifest, fan-out (§5.1.7)
-- [x] historical Edit Data over checkpoints — `run.edit-checkpoint`, declaration-gated by `capabilities.editData`; **superseded by D334**, replacement split across 1.6.4, 2.6 Task 1-2 and 3.1 Task 11-2
-- [x] mobile capture authority and its outbox — the phone bundle, the session, the ordered photo refs (2i-F). **RETIRED by D294 (2026-08-31)**: none of it survives in this tree
-- [ ] descriptor-driven upload / capture / spreadsheet / bare START methods — no registered workflow declares one, so the run modal has one method kind (D251, §5.1.1)
-- [ ] progressive OCR Review records — the store exists; the `review` panel kind and its section are declared-unserved (D184)
-> 2026-08-20 | docs-cohesion frontend-backend-integration | verified against src/dashboard/surfaces/{intake,capture-start,context-rail}.tsx and src/server/dashboard/commands/{intake,capture}-service.ts; left: the start-method kinds and the Review surface, both waiting on a declaring workflow
-<!-- /roadmap-status -->
 
 ### 6.7 `2i`: complete product shell
 
-<!-- roadmap: p2-2i -->
 
 Wired Settings/doctor/storage health plus DCC's bounded editable control plane, Archive/version bump, Explorer graph, the Activity
 report, generated safe catalog/help surfaces, worker/session controls, and the remaining
 notification and search states. The development row/panel catalog and design-system kit remain
 fixture-only.
 
-<!-- roadmap-status: p2-2i -->
-- [x] Archive + version bump, self-contained and insert-only (D179/D223, §5.1.5)
-- [x] the Activity report, its write-ledger block and its CSV export (D180/D236/D240, below)
-- [x] Explorer Phase A — the read-only graph, field census, declared `when`, descriptor prose (D227–D229), plus DCC's complete existing-workflow boundary: label/icon/category hot apply, named unavailable timeline/grouping and notification, strict policy/Edit Data source briefs
-- [x] the storage doctor and the backup summary the Settings surface renders
-- [x] the phone capture surface at its own viewport, in one theme (2i-F, §7.1). **RETIRED by D294 (2026-08-31)**: the surface and its parity spec are gone
-- [x] Settings — server-listed resolver-owned edit/readback plus preflight rerun and read-only doctor; broader legacy settings remain open (§3.4)
-- [ ] worker/session controls — six of seven have kernel arms and no control (§5)
-- [ ] the Explorer's live-run overlay and new-workflow authoring (D186); D283 closes no new-workflow or arbitrary descriptor authority
-> 2026-08-28 | DCC6 closure | verified DCC's bounded Settings path and complete existing-workflow Explorer boundary; left: broader legacy settings, six worker controls, the Explorer overlay and new-workflow authoring
-<!-- /roadmap-status -->
 
 #### D180 — the Activity report as-built (2i-G, 2026-08-09)
 
-<!-- roadmap: p2-2i -->
 
 `GET /api/v1/reports/activity?from=&to=` serves `ActivityReportWire`. **Both bounds are required
 and the route refuses without them** — an aggregate over a window the caller never named is a
@@ -2106,8 +1939,6 @@ decision lands in its owning doc.)*
 
 #### D236 — the write-ledger block is SERVED, as a second authority (2026-08-19)
 
-<!-- roadmap: p2-2i -->
-<!-- roadmap: track-b -->
 
 `ActivityReportWire` gains `ledger: { systems: [{ system, entries, prod, test }] }`, the demo's last
 Activity block. **It is the one field on this payload that does not come out of
@@ -2132,13 +1963,11 @@ consumer, so the exception cannot spread by precedent.
 
 #### D239 — the hours-saved tile is DROPPED (2026-08-19, operator ruling)
 
-<!-- roadmap: p2-2i -->
-<!-- roadmap: track-b -->
 
 **A decision, not a deferral, and there is no code to point at because the tile was never rendered.**
 The demo's fifth headline tile reads `HOURS SAVED ≈ 3.5` with an `estimate` badge; its whole input is
 `MANUAL_MINUTES`, a hand-kept minutes-per-workflow constant compiled into the demo's own wire module.
-`docs/rebuild/findings/activity.md` recorded it as decide-first with three questions attached — where the
+`994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/findings/activity.md` recorded it as decide-first with three questions attached — where the
 minutes live, who may change them and whether changes are versioned, and the wire shape. **The
 operator's answer is that none of those get answered: no operator-entered minutes store is built and
 the report keeps its measured tiles.**
@@ -2154,14 +1983,12 @@ never traced back to the constant it came from. `ActivityWorkflowTotal` therefor
 **What would re-open it:** a REAL minutes source — a measured baseline of the manual process, or a
 durable operator-owned store with an owner, an edit path and versioning so a re-run of an old range
 cannot silently restate history. Until one of those exists there is nothing true to multiply, and the
-tile stays out. The record in `docs/rebuild/findings/activity.md` closes with this decision rather than being
+tile stays out. The record in `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/findings/activity.md` closes with this decision rather than being
 deleted, so the argument survives the next person who notices the demo has five tiles and the product
 has four.
 
 #### D240 — the report is EXPORTABLE, and the rules travel with the numbers (2026-08-19)
 
-<!-- roadmap: p2-2i -->
-<!-- roadmap: track-b -->
 
 `GET /api/v1/reports/activity.csv?from=&to=` serves the same `ActivityReportWire` the panel renders,
 as a file, and the panel header carries the demo's `Export` button beside the ⓘ.
@@ -2247,15 +2074,13 @@ byte length and digest. Preserve actor-attributed XLSX persistence, immutable by
 request/evidence readability through versioned compatibility. Cancellation can stop delivery but
 must not claim rollback of an already persisted export.
 
-The [single 3.1.12 owner](../plans/phase-3/3.1-finish-the-dashboard/task-12-finish-activity-search-and-export.md#approved-execution-brief--2026-09-21)
+The single 3.1.12 owner (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-3/3.1-finish-the-dashboard/task-12-finish-activity-search-and-export.md`)
 assigns necessary search/Activity contracts, indexes, additive migrations, source publication/rebuild,
 storage/backup compatibility, route/composition/client wiring and focused production-service/browser
 proof. No live operator-state migration, archive-policy change or workflow execution is authorized.
 
 ### 6.8 Phase 3+ workflow migrations
 
-<!-- roadmap: dash-defaults -->
-<!-- roadmap: migrations -->
 
 **D311/D317 replace the repeated per-workflow wire project with one compiler contract.** A workflow
 definition compiles to the existing start/run-modal, queue, timeline/detail, gate, archive/activity,
@@ -2275,19 +2100,9 @@ This is an authoring change, not a redesign of the current run modal or worker. 
 the same `WorkflowStartWireSchema` fields and descriptor-derived surfaces the dashboard consumes
 today; existing generic behavior stays byte- and interaction-compatible through conversion.
 
-<!-- roadmap-status: migrations -->
-- [x] D311/D317 ratify the workflow-to-wire compiler as the one generic integration contract
-- [x] person-lookup (`{#person-lookup-acceptance}`) and separations (`{#separations-compiled-acceptance}`) supply the existing behavior the compiler must preserve
-- [ ] the workflow compiler, registry-wide conformance suite and two acceptance conversions
-- [ ] retire the repeated `Dashboard · wire` tasks for workflows that introduce no new capability
-- [ ] the squares a later migration needs and this build has not got: the Review panel kind, Group People, a generalised gate packet, the artifact byte route (§5)
-> 2026-09-02 | D311 | owner-first design ratified; implementation remains open in doc 03.2 §Task 1
-<!-- /roadmap-status -->
 
 ### 6.9 BUILT 2026-09-03 — the BFF serves the ordinary built dashboard in `--prod` mode (D189, amended D294)
 
-<!-- roadmap: phase2-dispositions -->
-<!-- roadmap: def-byte-path -->
 
 **Landed 2026-09-03.** `startRebuildRuntime` parses `dashboard [--prod]` and refuses any other
 argument by name; `composeDashboardRuntime({ frontend: "built-bundle" })` realpaths
@@ -2333,19 +2148,6 @@ Vite dev server that sits beside the BFF today — it is not, and never becomes,
 `production` throughout this doc as the charter defines it: the day this repo becomes the operator's
 daily local tool.
 
-<!-- roadmap-status: phase2-dispositions -->
-- [x] D189 — the BFF serves no frontend bytes: DECIDED, with an owner and a named trigger, not waived
-- [x] D186 — D283 completes the existing-workflow boundary: label/icon/category hot apply; timeline/grouping and notification named unavailable without owners; policy/Edit Data strict source briefs. New-workflow authoring and broader design remain reassigned on D79a's argument with their trigger in ref operator-trust §5.3
-- [x] both dispositions were honoured until their triggers fired: the static handler landed as `src/server/dashboard/static-bundle.ts` on 2026-09-03 (`def-byte-path` below), and the Explorer graph remains read-only outside its complete existing-workflow boundary
-> 2026-08-20 | docs-cohesion frontend-backend-integration | verified against src/server/dashboard/{http-server.ts,routes/api.ts,compose.ts} (no static/dist/serveStatic reference) and src/core/runtime-composition.ts (`--prod` unparsed); left: nothing — a disposition is closed by being stated with its trigger
-<!-- /roadmap-status -->
-
-<!-- roadmap-status: def-byte-path -->
-- [x] the static handler on the BFF — ported from the parity fixture's traversal-checked `serveStatic` and hardened (`src/server/dashboard/static-bundle.ts`, registered last in `routes/api.ts`)
-- [x] `--prod` parsed, so `npm run dashboard:prod` means what its name says (`parseDashboardCommandOptions`; any other argument refuses by name)
-> 2026-08-31 | D294 | Mobile Capture Mode and its public delivery scope are retired. The two ordinary local-dashboard items above remain open.
-> 2026-09-03 | dashboard-wiring remediation | both items landed; `config/legacy-capabilities.json` `legacy-route-static` is `native` → `static-bundle.ts`, status implemented
-<!-- /roadmap-status -->
 
 ---
 ## 7. Exact visual-parity and contract verification
@@ -2357,8 +2159,6 @@ comparisons as acceptance of the current UI. Future visual-test design requires 
 
 ### 7.1 Reference route matrix
 
-<!-- roadmap: p1-spine -->
-<!-- roadmap: track-c -->
 
 **The corpus as built (2026-09-02): 222 reference triples — a `.png`, a `.a11y.yml` and a
 `.meta.json` each, 666 files under `tests/parity/references/` — plus the non-reference browser
@@ -2488,13 +2288,6 @@ disagree, and `w-full` on the panel root. The rule: **when a test asserts throug
 of a surface, something must assert the other** — and a screenshot corpus nobody looks at records
 defects rather than catching them.
 
-<!-- roadmap-status: track-c -->
-- [x] the connection proof ran against the REAL composed separations dry run, every UI assertion paired with a direct authority check (`docs/rebuild/migrations/separations.md` §9.22 items 1–8)
-- [x] the five defects it found were fixed the same day — the ticking served clock (D256), the SSE-followed panel (D257), the honest shape hazard, the replayed timeline arm (D259), the unblocked archive (D258)
-- [x] the ONE deliberate re-freeze — every drift mapped to a ratified decision (D226–D261), asserted green
-- [ ] the states the proof could not reach because the harness cannot route to them: Settings and the Session Panel
-> 2026-08-20 | docs-cohesion frontend-backend-integration | verified against tests/parity/{dashboard-reference,capture-phone-reference}.spec.ts, helpers/{app-driver,capture,reference-store,bundle}.ts and the 139-triple corpus; corrected this section's matrix to the corpus that exists and listed what it still owes; left: the unroutable surfaces
-<!-- /roadmap-status -->
 
 ### 7.2 Dual-adapter parity harness
 
@@ -2530,7 +2323,6 @@ backend here is this repo's own, never the legacy one.
 
 ### 7.3 Required test layers
 
-<!-- roadmap: p2-2j -->
 
 | Layer | Required proof | Built |
 |---|---|---|
@@ -2551,18 +2343,9 @@ rest — one structural fixture scenario per workflow, dashboard feature scenari
 conditions attached to a live dry run, and the agent-operated parallel e2e — are
 `ref:guards-and-tests`'s and D329's `{#workflow-authoring-core}` node.
 
-<!-- roadmap-status: p2-2j -->
-- [x] the layer table above is real for six of seven layers, each with named files
-- [x] 2j's own findings are fixed and recorded — the unreachable restore path (D181), the dark `paper-ink` corpus and the two-pixel panel (D187), the underivable receipt (D187)
-- [ ] the component layer — no React render lane exists; `{#workflow-authoring-core}` owns it
-- [ ] the parity lane is outside the per-commit gate: `test:coverage` does not run it, so a `.tsx` change is gated only by the layers above until someone runs `npm run test:parity`
-> 2026-08-20 | docs-cohesion frontend-backend-integration | verified against vitest.config.ts (two projects: unit, scenario), package.json scripts and tests/**; left: the component layer and the parity lane's place in the gate
-<!-- /roadmap-status -->
 
 ### 7.4 Performance and resilience budgets
 
-<!-- roadmap: track-d -->
-<!-- roadmap: cutover -->
 
 Budgets are measured on the local production build with a realistic large fixture:
 
@@ -2822,32 +2605,11 @@ re-renders exactly as often as before while every gate stays green and no surfac
 empirical half is still owed and belongs with **D9**, which re-measures the list surfaces in a
 browser after virtualization lands.
 
-<!-- roadmap-status: track-d -->
-- [x] D1 one status/outcome derivation — `deriveRunStatus`, `taskStateOf` and `panelKindOf` are one implementation each in `src/server/dashboard/run-status.ts`, read by the queue projector AND `queries/run-detail.ts`; the unified task vocabulary keeps `cancelled` on D123's rule and `PipelineStepWireSchema.state` gains that arm (**D268**, `81bfed73`)
-- [x] D2 hygiene — the HTTP status is the error's KIND (`src/server/failures.ts` + `routes/failure-status.ts`, `f39b2e95`), the phone-host gate is wired from `capture.ingress: "forwarded"` with a producer guard (`47eeb44e`), the dead hooks and ten dead exports are gone (`69102aaf`), and the TEST-instance hazard / plural rule / hash cut are one each (`6d44bb1e`); the false D253 sentence was corrected with D3 (`1b13115f`)
-- [x] D3 every command settlement folds through `settleCommandResult` — all NINE command-issuing surfaces fold (`1b13115f`); the guard's second arm requires any module calling `.executeCommand(` to import it (`5c36a82d`)
-- [x] D4 patch-splice without re-parsing the whole day, `memo` on `QueuePanel`/`TopBar`/`LogPanel`, `viewState` and `nav` memoized; MEASURED against the seeded 1,240-row / 108-member fixture and recorded above — one SSE row patch `22.30 → 0.02 ms` and `dayWireSchemaParses 1 → 0`, with the four unchanged rows held as the control (`345475bf` the splice, `bb406615` the `memo` half + `dashboard-memo-prop-stability`)
-- [x] D5 bound the read scans — the member preview slices ids before joining (`d6d6c758`), one receipt read per row (same commit), the notes reader scoped to its run's own `(workflow, date)` partitions (`c1fa129b`, margin corrected in `c547f65a`), the archive freeze scans once per page walk (`c74efcca`); all four pinned by their BOUND in `tests/unit/server/dashboard-read-scan-bounds.test.ts` (`4d3247d8`) and MEASURED above — day wire 6,718 → 5,568 statements, preview delta 216 → 6, logs scope 4 → 2 partitions
-- [x] D11 the descriptor registry LEAVES the bundle — bootstrap serves `summary`, `enqueue` and `surfaces.inputRun` on `WorkflowStartWireSchema`, `dashboard-app.tsx` drops its `WORKFLOW_DESCRIPTORS` import, and `dashboard-wire-boundary` arm (15) holds the closure (amends D251, §4). Bundle 1,114,214 → 753,197 bytes
-- [?] D6 `useResource` in `state/` over `async-resource.ts` — the nine hand-copied fetch effects migrate and `state/` becomes what §2 says it is
-- [?] D7 split `LoadedApp` along its own seams — `useDayRoute`/`useRunDetailState`/`useBulkSelection` into `app/*-model.ts`, the five takeover layouts into `app/takeovers.tsx`
-- [?] D8 models for intake / archive / log-panel, the versioning half of `archive.tsx` split out, and ONE `foldTaskExecutions(row)` for pipeline / timeline / archive
-- [?] D9 a virtualized list primitive in `ds/`, adopted by queue / logs / archive, then re-measured — this section's virtualize-or-page bullet
-- [?] D10 one CAS transport — `expectedVersion` in the body everywhere, the `intake.prepare` double-parse dropped
-> 2026-08-20 | docs-cohesion frontend-backend-integration | verified that NOTHING in src/ or tests/ measures or asserts any budget in this section (no perf/budget/bench test, no 1,240-row fixture, no `memo`, no virtualization, no backpressure handling) — the section is normative and unenforced, exactly as D264 records; left: all eleven rows
-> 2026-08-21 | track-d D5 | D5 landed — the four read scans are bounded and the FIRST half of this section's owed numbers is recorded above (BEFORE `407d373f` → AFTER `c547f65a`, same command/seed/iterations). All four changes are behaviour-preserving, verified byte-identical over the perf fixture's whole day wire, three neighbouring days, six run details, six logs pages and five archive freezes. Two things a later reader should not have to re-derive: the day wire's −1,150 statements decompose exactly (940 receipt + 210 preview), and the logs row's modest 15 % is a property of the FIXTURE (78 % of its corpus is on the measured run's own day), not of the fix — what changed is that the read stopped growing with the corpus. Left: D4's half of the numbers, D2, D11
-> 2026-08-21 | track-d D11 | D11 LANDED (`149bc5f8` the wire + server projection + registry-wide test, `0911becd` the frontend drop + `dashboard-wire-boundary` arm 15). §4's one named divergence is closed and §7.4's exit-criterion 2 is MET. Measured: the production bundle fell 1,114,214 → 753,197 bytes (32 %). Seven free-text leaves of the new block are dispositioned `repository-authored` in the redaction audit — every one is a descriptor constant, and moving a constant onto the wire does not change where its bytes came from. Left on this section: D2–D5's numbers
-> 2026-08-21 | track-d D4 | D4 landed (`345475bf` splice + tests, `bb406615` memo + stable props + guard): `applyDashboardDayPatch` no longer re-parses the whole day — one SSE row patch went 22.30 → 0.02 ms median with `dayWireSchemaParses` 1 → 0, measured three times against the same seed with rows 1/3/4/5 held as an unchanged control; the three hot panels are `memo`'d with every prop stabilized at the parent and a new guard (`dashboard-memo-prop-stability`) refusing the five provably-fresh prop shapes. Recorded honestly: the D256 live clock is a prop of all three panels and ticks 1 Hz, so `memo` buys the re-renders BETWEEN ticks, not the ticks; the browser render count is deliberately NOT taken on a contended laptop and is left to D9. Left: D2, D5, D11, and §7.4's remaining unmeasured budgets
-> 2026-08-21 | track-d D1 | D1 landed as **D268** (`81bfed73`): one `deriveRunStatus`, one task-outcome vocabulary, one `panelKindOf`, pinned by `tests/unit/server/run-status-derivation.test.ts` asserting the queue row and the detail panel against each other; left: D2–D5, D11, and every number this section still owes
-> 2026-08-21 | track-d3 | D3 DONE (`1b13115f`, guard `5c36a82d`); left: ten rows. Nothing in this section's budgets moved — D3 is a settlement refactor with zero measured surface
-> 2026-08-25 | 03a reconciliation | the status block now matches the landed tree: D1–D5 + D11 are complete; D4/D5's BEFORE/AFTER measurements are recorded in this section; D6–D10 remain proposed and outside doc 03a's Track-D exit gate
-<!-- /roadmap-status -->
 
 ---
 
 ## 8. Mechanical guards
 
-<!-- roadmap: def-byte-path -->
 
 The guard for each rule, as built. `ref:guards-and-tests` owns the inventory;
 `docs/rebuild/guard-inventory.json` is the manifest and `guard-manifest.test.ts` checks it both
@@ -3072,8 +2834,6 @@ remain binding. Finishing every optional screen first is rejected because it ext
 path without establishing another required HR capability.
 
 
-<!-- roadmap: cutover -->
-
 Frontend/backend integration is complete only when — with the 2026-08-20 state of each:
 
 | # | Criterion | State |
@@ -3090,15 +2850,6 @@ Frontend/backend integration is complete only when — with the 2026-08-20 state
 | 10 | the preserved legacy demo/mock wire modules remain a design oracle/rollback asset in the legacy repo, which this repo structurally cannot import (D93) | **met** — no `rebuild-demo` reference anywhere in this tree |
 | 11 | cutover rehearsal proves the legacy and rebuild servers cannot share a port/root/lock/browser profile, every normal launch target repoints atomically as one unit, the legacy repo remains intact as the rollback asset, and no production route proxies/remounts the other repo's runtime | **unmet** — the isolation half is proven (`operational-isolation` against `config/runtime-isolation.json`); the REHEARSAL has not been run, and "every launch target repoints atomically" is contradicted while `--prod` is unparsed (§6.9) |
 
-<!-- roadmap-status: cutover -->
-- [x] 3 · 5 · 6 · 8 · 10 — met, each with a named guard or a recorded live gate
-- [~] 1 · 2 · 4 · 7 — partial, each with exactly one named blocker in the table above
-- [ ] 9 the complete reference matrix — Settings and the Session Panel are unroutable in the harness; keyboard/reduced-motion exist in one theme (§7.1)
-- [ ] 11 the cutover rehearsal — the isolation half is proven; the rehearsal itself has not run, and `--prod` must first mean what its name says (§6.9)
-- [x] §7.4's Track-D budgets — the 2026-08-21 instrument records the shared-fixture baseline and both D4/D5 AFTER rows; D9's later browser/virtualization measurement remains its own proposed work
-> 2026-08-20 | docs-cohesion frontend-backend-integration | verified each of the eleven criteria against the guard suite, the parity corpus and the served routes; left: 9 and 11 outright, four partials with one named blocker each, and the budgets
-> 2026-08-25 | 03a reconciliation | §7.4's D4/D5 budget row is MET; the other partial/unmet integration criteria above are unchanged
-<!-- /roadmap-status -->
 
 ### D272–D276 visual-design disposition (2026-08-26)
 

@@ -30,7 +30,7 @@ export type TimelineSegmentState =
 const RAN_STATES: readonly TimelineSegmentState[] = ["active", "done", "failed", "cancelled"];
 
 /**
- * The run-detail fidelity ruling (`docs/decisions/dashboard.md` §D273,
+ * The run-detail fidelity ruling (`994837d1f65abd9b9e2f546b3ca52bff90646583:docs/decisions/dashboard.md` §D273,
  * answered A on 2026-08-26; ledger 2 row B44) — the demo dims a segment it
  * could not measure (`DemoLogPanel.tsx:617`), so an unmeasured step is legible
  * as unmeasured rather than as one whose number happens to be missing.

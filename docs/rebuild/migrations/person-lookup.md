@@ -3,8 +3,8 @@
 **Status:** admitted in Phase 3; workflow-specific intake completed 2026-09-02. Current-source
 verification is pending in doc 03.2 Task 5-1; controlled acceptance closes in doc 03.3 Task 4.
 
-**Plan owner:** `docs/rebuild/plans/phase-3/3.2-finish-workflow-authoring/README.md` Task 5-1 and
-`docs/rebuild/plans/phase-3/3.3-accept-person-lookup-and-separations/README.md` Task 4
+**Plan owner:** `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-3/3.2-finish-workflow-authoring/README.md` Task 5-1 and
+`994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-3/3.3-accept-person-lookup-and-separations/README.md` Task 4
 
 **Inherited contracts:** ref charter §1/§3/§8; ref workflow-model §1.6/§8; ref task-contract
 §2.7/§2.8/§3.1; ref stores §2; ref dashboard-surfaces §9; ref guards-and-tests §10.11;

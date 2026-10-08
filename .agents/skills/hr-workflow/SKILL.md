@@ -36,8 +36,7 @@ source and compiled projections; this skill still produces a `hr-manage` runbook
    `src/backend/processing/<service>/`, and workflow mini-stores under `src/workflows/<id>/`.
    `docs/rebuild/reference/stores.md` §2 is derived from the task-store registry; code wins.
 4. `docs/rebuild/migrations/<id>.md` if present (separations is the worked example — §1
-   questionnaire, §9 live records) and the workflow's node in `docs/roadmap/roadmap.md` (status,
-   `you:` lines, `log:` lines).
+   questionnaire, §9 live records).
 5. The reference docs it cites: `workflow-model` (run state machine, §5.4 validation/resume),
    `write-safety` (beats ①–⑦, §3.2 controlled-commit proof, §14 gate),
    `execution-and-sessions`, `guards-and-tests` §3.14 (focused and phase-exit cadence), and
@@ -115,7 +114,7 @@ Stop when you can fill every template section from evidence. A section you canno
 - <dated lines: run/trace ids, subject label, dry/controlled, durable counts, result — copied from docs/rebuild/migrations/<id>.md §9, newest first>
 
 ## Record when you are done
-- dated line in `docs/rebuild/migrations/<id>.md`; tree node status block + `npm run roadmap` (notation: `docs/roadmap/notation.md`) in the same commit; store/dashboard AGENTS.md only for invariants; lesson-worthy findings → tell the operator ("this looks lesson-worthy: …") — `/hr-lesson` is theirs to invoke.
+- dated line in `docs/rebuild/migrations/<id>.md`; store/dashboard AGENTS.md only for invariants; lesson-worthy findings → tell the operator ("this looks lesson-worthy: …") — `/hr-lesson` is theirs to invoke.
 ```
 
 ## 4 · Verify the generated resource

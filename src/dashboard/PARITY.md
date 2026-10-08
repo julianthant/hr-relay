@@ -208,7 +208,7 @@ remain unchanged; their broad acceptance and deliberate refreeze stay with 3.1.1
 ## Ruled deviations from the rebuild-demo
 
 One shell affordance has no demo counterpart and STAYS, ruled by **D272 item 3**
-(`ref dashboard-surfaces` §10; operator context is `docs/decisions/dashboard.md` §D272
+(`ref dashboard-surfaces` §10; operator context is `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/decisions/dashboard.md` §D272
 item 3, answered A on 2026-08-26). It is recorded here so a later fidelity pass reads it as a
 decision rather than as drift, and the site carries the same citation in code.
 

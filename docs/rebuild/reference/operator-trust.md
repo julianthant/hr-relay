@@ -91,17 +91,6 @@ schema-versioned diagnostic attachment that no workflow, command, projection, or
 
 ## 0. Why this is foundation work, not dashboard polish
 
-<!-- roadmap: phase-1 -->
-
-<!-- roadmap-status: phase-1 -->
-- [x] a stable operator vocabulary instead of TypeScript property paths — branded semantic ids and system-owned registries (§1.1, §1.7); the generated catalog was retired 2026-10-01
-- [x] tasks cannot reach a raw `Page` — `task-driver-boundary`, AST plus transitive import graph (§1.4)
-- [x] a failed run persists a structured record rather than a message — Phase 1f's durable `FailureRecord` (§2.1)
-- [x] a `done` run carries a receipt of inputs, observations, decisions, actions, verification, reuse and uncertainty (D141, §2.3)
-- [x] the explorer answered “documentation or editing surface” — read-only graph plus D283's strict existing-workflow label/icon/category subset; broader editing remains behind D186's named trigger (D176/D186/D283)
-- [ ] lessons still accumulate as prose: the structured store is built and nothing writes to it (§4.1)
-> 2026-08-20 | docs-cohesion operator-trust | verified each of §0's six drift problems against the code; five are closed by the base, the sixth (lessons → knowledge records) is blocked on a caller, not on a schema
-<!-- /roadmap-status -->
 
 The old codebase already contains many correct selectors, identity checks, screenshots, lessons,
 and queue actions, but they are difficult to reuse consistently:
@@ -130,22 +119,9 @@ meant to remove.
 
 ## 1. Canonical UI vocabulary and typed system drivers
 
-<!-- roadmap: p1-authority -->
-
-<!-- roadmap-status: p1-authority -->
-- [x] four branded semantic ids, imported and never redeclared (D101) — `src/domain/ids.ts:43-46`
-- [x] four per-store server-only registries; locator recipes never leave the server (§1.2, §1.7)
-- [x] typed drivers, raw Playwright confined to the driver/session owners — `task-driver-boundary`
-- [x] verification is conjunctive (D98/D99) and a staging anchor carries `exactly-one-editable` (D208)
-- [x] the generated catalog is the ONE projection and throws when stale (§1.3, D177)
-- [ ] `semantic-ui-registry` never calls Kuali's own audit functions — three stores of four (§1.7)
-- [ ] D208 rule 1 is an authoring obligation, not a machine check; its trigger is a second exception (§1.6)
-> 2026-08-20 | docs-cohesion operator-trust | verified against src/domain/ui/**, src/stores/*/driver/ui-registry.ts, generated/ui-catalog.json and tests/unit/architecture/{semantic-ui-registry,task-driver-boundary}.test.ts; left: the Kuali audit call site and D208's second exception
-<!-- /roadmap-status -->
 
 ### 1.1 Four identifiers with one job each
 
-<!-- roadmap: p1-authority -->
 
 ```ts
 export type ElementId = Brand<string, "ElementId">;          // "ucpath.smart-hr.save-submit"
@@ -178,7 +154,6 @@ there would have made determinism impossible.
 
 ### 1.2 Registry record
 
-<!-- roadmap: p1-authority -->
 
 ```ts
 // Server-only definition under stores/<system>/driver/. Client/task code receives generated ids and
@@ -276,8 +251,6 @@ document. Semantic registries remain live; the Workflow Explorer builds its task
 The D177 text below records the previous contract and must not be used as current implementation
 scope.
 
-<!-- roadmap: p1-authority -->
-<!-- roadmap: p2-2i -->
 
 The build generates a **safe projection** at `generated/ui-catalog.json` and one per-system
 `UI-CATALOG.md` from the server registry. Each entry includes canonical id, label, search terms,
@@ -318,7 +291,6 @@ example, added by D261 (2026-08-20): "the Kuali Action List row for this documen
 
 ### 1.4 Tasks do not receive raw `Page`
 
-<!-- roadmap: p1-authority -->
 
 Raw Playwright access is confined to `stores/<system>/driver/**`, worker-owned session
 infrastructure, and the registry interpreter. Browser task contexts receive a typed driver:
@@ -375,7 +347,6 @@ is improved incrementally only after its fixtures/live checks exist.
 
 ### 1.5 Registry separation—no “one giant task store” ambiguity
 
-<!-- roadmap: p1-authority -->
 
 | Concern | Canonical owner | Reuse meaning |
 |---|---|---|
@@ -391,7 +362,6 @@ an informal substitute for another.
 
 ### 1.6 Verification evidence is conjunctive, and a staging anchor needs the stronger arm
 
-<!-- roadmap: p1-authority -->
 
 _Ratified 2026-08-01 as the Phase-1d UI seam (D98 · D99 · D101), amended 2026-08-14 (D208).
 The four rulings amend §1.2's `verification` block and what §1.3 may project; they are stated
@@ -451,7 +421,6 @@ here rather than in a dated block at the top of the file._
 
 ### 1.7 As-built — what the four registries hold today
 
-<!-- roadmap: p1-authority -->
 
 _Counted from the committed `generated/ui-catalog.json` on 2026-08-20; the catalog is the projection,
 so these are the facts the operator and an AI can actually resolve._
@@ -489,26 +458,6 @@ site in the guard; until it lands, §9's first row is narrower than it sounds.
 
 ## 2. Trust evidence: what happened, why the result is credible, and what remains uncertain
 
-<!-- roadmap: p1-base -->
-<!-- roadmap: p2-2g -->
-
-<!-- roadmap-status: p1-base -->
-- [x] strict schemas for failures, redacted bundles, receipts, scenario manifests, preflight scenarios and knowledge/fix records (Phase 1b, 2026-07-31)
-- [x] every top-level evidence row in the strict boundary catalog, exercised against recursive unknown-key injection — `strict-boundary-schemas`
-- [x] receipt invariants refuse false verified completion and unresolved mandatory evidence — in the schema's own `superRefine`, and again as a SQL CHECK
-> 2026-08-20 | docs-cohesion operator-trust | verified against src/domain/trust/**, src/infra/sqlite/migrations.ts; the 1b claim is exactly the schema half and this section now says which tables came later (D134)
-<!-- /roadmap-status -->
-<!-- roadmap-status: p2-2g -->
-- [x] schema v10's five durable tables plus the indexed `failures.fingerprint` (D134)
-- [x] automatic redacted diagnostic capture, two-phase, persisted inside the terminal transaction (D137)
-- [x] the durable actor-keyed inbox — the row commits before any delivery, and a repeat FOLDS (D134/D138)
-- [x] knowledge and fix admission audited INSIDE the insert transaction (D139)
-- [x] the receipt DERIVED from authority rather than minted at settlement (D140–D143)
-- [ ] `explain failure <fingerprint>` is not built (§2.1, §4.2)
-- [ ] the knowledge projection has no caller, so no `KNOWLEDGE.md` exists (§4.1)
-- [ ] the retention sweep has no caller (§2.2) — `{#def-retention}`, `never` by D193
-> 2026-08-20 | docs-cohesion operator-trust | verified against src/core/{evidence-receipt,diagnostic-capture}.ts, src/services/{notifications,trust}/**, src/infra/sqlite/migrations.ts; left: the three unreachable halves above, each named in its own section
-<!-- /roadmap-status -->
 
 **The schemas landed first, then the tables.** Phase 1b (2026-07-31) built the strict
 boundary; schema v10 (D134, 2026-08-04) built the durable tables the rest of this section
@@ -580,15 +529,6 @@ confirmation remains unavailable until its owning workflow serves a supported pa
 does not create a new transaction capability.
 
 
-<!-- roadmap: p1-kernel -->
-
-<!-- roadmap-status: p1-kernel -->
-- [x] the exact strict `FailureRecord` in non-rebuildable authority for every failed task/run, its `failureId` associated atomically with the failure transition (Phase 1f)
-- [x] four invariants live in the schema, not in a test: one primary cause, `transient` agreeing with it, no present-but-empty block, and `attempting`/`unknown` requiring a commit action
-- [x] the whitelist wire (D142) — a field added to the durable record reaches no surface until someone classifies it
-> 2026-08-20 | docs-cohesion operator-trust | verified against src/domain/trust/failure.ts:72-103 and the run-detail failure section; the interface printed here was three fields out of date and now matches
-<!-- /roadmap-status -->
-
 A failed task/run persists a structured failure; `span.ended.error?: string` alone is retired.
 
 ```ts
@@ -657,7 +597,6 @@ and named again in §4.2 where the doc used to describe it in the present tense.
 
 #### 2.1.1 The failure section serves content through a whitelist schema (D142)
 
-<!-- roadmap: p2-2g -->
 
 `FailureDetailWireSchema` names every field it projects off the durable `FailureRecord`. That is doc
 11's "unclassified fields drop" applied structurally: a field added to the durable record later
@@ -676,17 +615,6 @@ browser-reachable and drops `node:crypto`/`node:path` for `sha256Hex` and a two-
 
 ### 2.2 Automatic diagnostic bundle
 
-<!-- roadmap: p2-2g -->
-<!-- roadmap: def-retention -->
-<!-- roadmap: def-search-export -->
-
-<!-- roadmap-status: def-retention -->
-- [ ] scheduling the sweep — it is built and tested and nothing calls it, so no bundle has ever been purged here
-- [ ] the content-store reference count that would let the reported unreferenced bytes be reclaimed
-- [x] D193 dispositioned BOTH `wont-build-unless-asked`, and the operator's reasoning is recorded in §2.2.1
-- [!] the node's own title names a “14/8/5 schedule” that no constant in this tree implements — the shipped number is 30 days from the bundle's own capture instant (§2.2)
-> 2026-08-20 | docs-cohesion operator-trust | verified against src/domain/trust/diagnostic-capture.ts:44 and src/services/trust/diagnostic-retention.ts:45-85; left: the node title, which this doc cannot change
-<!-- /roadmap-status -->
 
 On an unexpected state, task failure, subject mismatch, recovery park, or operator-requested
 snapshot, the kernel captures one bounded bundle:
@@ -739,7 +667,6 @@ the phrase.
 
 #### 2.2.1 As-built — a bundle is captured at the trigger, redacted at capture, and bound to its failure (D137)
 
-<!-- roadmap: p2-2g -->
 
 The trigger set is **closed and is the sentence §2.2 opens with**: unexpected state, task failure, subject
 mismatch, recovery park, operator-requested snapshot. Each maps one-to-one onto a stored
@@ -838,8 +765,6 @@ read apply unchanged; there is no second screenshot store or duplicate byte rout
 
 ### 2.3 `RunEvidenceReceipt`
 
-<!-- roadmap: p2-2g -->
-<!-- roadmap: observed-logs -->
 
 - [x] a previewed run's receipt derives `partial` with `unknown` confidence, so `verified-done` is structurally unreachable for a preview (§2.3.7, D215/D238)
 - [x] the envelope's `dryRun` and the terminal preview result must AGREE or the derivation throws
@@ -925,7 +850,6 @@ completion proof, the values the system showed back for the write.
 
 #### 2.3.1 Evidence classification and cross-source obligations are DECLARED (D140)
 
-<!-- roadmap: p2-2g -->
 
 `src/domain/trust/evidence-classification.ts` binds every leaf of every workflow input, task output,
 and workflow result to one ref clock-config-secrets §6 classification plus one permitted transform. Three rules make
@@ -970,7 +894,6 @@ and privacy classifications remain unchanged.
 
 #### 2.3.2 The receipt is a pure function of authority, derived and then pinned (D141)
 
-<!-- roadmap: p2-2g -->
 
 The receipt is **not** written inside the terminal settlement transaction. Two reasons, in order of
 weight. First, authority must never depend on a projection to terminalize: a receipt-shaped problem
@@ -1143,7 +1066,6 @@ the graph, and an undeclared arm value as negative controls.
 
 #### 2.3.5 A settled gate's panel names the verdict, the approver and the instant (D237)
 
-<!-- roadmap: track-b -->
 
 **Ratified 2026-08-19.** D202 put the approver into authority, D203 taught the kernel to read a
 `gate_results` row as a dependency's evidence, and D204 taught the RECEIPT the same thing. The
@@ -1189,7 +1111,6 @@ over `src/domain/trust/gate-decisions.ts`; pinned by
 
 #### 2.3.6 A transaction node IS a terminal dependency — the named gap, closed by D144
 
-<!-- roadmap: p2-2g -->
 
 **Closed 2026-08-04 (D144, ref write-safety §3.1).** The gap was real: the sequencer stored a transaction
 checkpoint under the durable `TransactionOutcome` schema hash while the descriptor factory's
@@ -1204,7 +1125,6 @@ terminal/receipt oracle.
 
 #### 2.3.7 A DRY RUN is a rehearsal, and the label is derived from the verdict (D215/D238)
 
-<!-- roadmap: track-b -->
 
 **Ratified 2026-08-19.** `done → verified-done` used to be mechanical, so a preview that wrote
 nothing wore the label reserved for an independently verified real completion — while its own
@@ -1231,7 +1151,6 @@ operator-facing sentence is only as pinned as the parity corpus unless it is ext
 
 #### 2.3.8 The demo's `receiptInvariant` Banner is structurally unnecessary here (ledger 2 D11)
 
-<!-- roadmap: track-b -->
 
 **Answered 2026-08-21.** The demo's Receipt renders a `receiptInvariant` Banner that fires when a
 receipt claims `result: "verified-done"` without `confidence: "verified"` — a defensive display for
@@ -1260,7 +1179,6 @@ authority and at the domain schema both.
 
 #### 2.3.9 The declaration is the OBSERVED LOG's redaction too (D270)
 
-<!-- roadmap: observed-logs -->
 
 **Ratified 2026-08-21; transaction lane completed 2026-08-25.** §2.3.1's table stopped being a
 receipt-only contract. Every point a task records through `ctx.recordData` is captured and stamped
@@ -1368,15 +1286,6 @@ VALUES never appear in a receipt, an Explain, a span or a wire — only step key
 
 ### 2.4 Attempt transparency
 
-<!-- roadmap: p2-2g -->
-<!-- roadmap: def-search-export -->
-
-<!-- roadmap-status: def-search-export -->
-- [ ] the screenshot gallery and the artifact-bytes route the diagnostic store would serve (§2.2)
-- [x] attempts remain separately inspectable: `retryOf` links them, the queue shows the attempt number, and each receipt carries its own facts and `reuse` rows
-- [ ] fold runs for one logical item into one queue row with separately selectable attempts; the current projection emits one top-level row per run
-> 2026-09-03 | D289 amendment | automatic field-level comparison retired; separate attempt evidence remains
-<!-- /roadmap-status -->
 
 A retry preserves the logical queue item, receives the next attempt number, and links to the prior
 run through `retryOf`. The target presentation is one queue row for that item with separately
@@ -1388,7 +1297,6 @@ run, so item-row folding remains unbuilt.
 
 ### 2.5 `explain run`
 
-<!-- roadmap: p2-2g -->
 
 One CLI/API command is the canonical debug entry point:
 
@@ -1421,7 +1329,6 @@ than fixed, because this pass changes documents and not code.
 
 #### 2.5.1 `explain run` and the receipt are one derivation (D143)
 
-<!-- roadmap: p2-2g -->
 
 `cli explain run <traceId|runId> [--json]` resolves either identity and prints §2.5's
 sections in §2.5's order. For a settled run it derives the SAME receipt the dashboard serves, so a
@@ -1439,19 +1346,9 @@ were retired on 2026-10-02. The dated corpus and tier state below are retained a
 current operator amendment above and `ref guards-and-tests` for test policy. Semantic UI verification
 scenarios and their proof requirements remain separate from those retired suites.
 
-<!-- roadmap: p2-2j -->
-
-<!-- roadmap-status: p2-2j -->
-- [x] the executable corpus and `scenario-coverage`, audited in BOTH directions, plus D185's corpus-layout audit
-- [ ] `ScenarioManifest`'s preflight fault set has no runner and `preflight-coverage` stays `planned` (D188)
-- [ ] §3.2's coverage policy is not proved in full — the audit is over graph-derived points, not a contract's error enum
-- [ ] the tier layout moves to `ref guards-and-tests §Testing tiers` under R10; this section keeps what a scenario IS
-> 2026-08-20 | docs-cohesion operator-trust | verified against tests/scenario/** (16 files), tests/unit/architecture/scenario-coverage.test.ts and guard-inventory.json; left: the runner and the tier move
-<!-- /roadmap-status -->
 
 ### 3.1 `example` is not a scenario
 
-<!-- roadmap: p2-2j -->
 
 Ref task-contract's contract `example` remains the canonical happy-path output used for type checks and cheap
 stubs. A scenario includes inputs, page/data fixtures, timing/failure injection, expected actions,
@@ -1503,7 +1400,6 @@ and preflight corpus completion does not credit workflow scenarios.
 
 ### 3.2 Minimum scenario coverage
 
-<!-- roadmap: p2-2j -->
 
 - [ ] regression scenarios for separations' close-out
 - [ ] knowledge records for separations — blocked on a CALLER, not on a schema: the store, the admission audit and the projection are built and unreachable (§4.1)
@@ -1539,7 +1435,6 @@ tracked as `{#workflow-authoring-core}` with workflow cases under the two 3.2 ac
 
 ### 3.3 Unexpected states become data, never fallbacks
 
-<!-- roadmap: phase-1 -->
 
 If a page does not match a declared `PageStateId`, the driver returns/throws `UnexpectedPageState`
 with captured evidence and parks/fails according to the descriptor. It does not try an unlabeled
@@ -1558,11 +1453,9 @@ test plus live evidence. A failure fingerprint may not be marked resolved with o
 
 ## 4. Structured knowledge and AI-assisted fix history
 
-<!-- roadmap: p2-2g -->
 
 ### 4.1 LESSONS are migration input, not the new authority
 
-<!-- roadmap: p2-2g -->
 
 The plan does **not** move `LESSONS.md` wholesale into each rebuilt store. During a store/workflow
 migration, each relevant old lesson is triaged into one of three destinations:
@@ -1612,7 +1505,6 @@ them. Owned by `{#workflow-write-mechanics}`, which carries the former first-mig
 
 ### 4.2 `FixRecord`—what Codex/Claude changed and how it was proven
 
-<!-- roadmap: p2-2g -->
 
 ```ts
 export interface FixRecord {
@@ -1642,7 +1534,6 @@ still passes — **is not built** (§2.1). The indexed `fix_records.failure_fing
 
 ### 4.3 Maintenance and search
 
-<!-- roadmap: p2-2g -->
 
 - New record creation checks for matching scope/symptom/element/scenario before adding; suspected
   duplicates require an explicit supersedes/related link.
@@ -1661,15 +1552,6 @@ plain reason that the table is empty.
 
 ### 4.4 Optional AI assistance reads the evidence; it never becomes the evidence
 
-<!-- roadmap: p2-2i -->
-<!-- roadmap: def-sanity-check -->
-
-<!-- roadmap-status: def-sanity-check -->
-- [x] the operator RULED on it: 2026-08-18, no AI feature — the §14.2 gate packet's server-computed `comparisons` array IS the sanity check (§4.4.2)
-- [x] `config/legacy-capabilities.json` carries `legacy-tool-ops-sanity-check-record` as `retired`, machine-checked by `legacy-capability-disposition`
-- [!] the tree still shows this node `planned` with `you: re-disposition D192`; the doc and the capability register both say RETIRED, and only the orchestrator may move a node
-> 2026-08-20 | docs-cohesion operator-trust | verified against config/legacy-capabilities.json and src/domain/dashboard/advisory.ts (AdvisorySurfaceIdSchema is still the D178 two-value shape); left: the node's own status
-<!-- /roadmap-status -->
 
 The old `services/llm` capabilities are explicitly dispositioned rather than disappearing behind a
 proxy. Shared provider/key/rate-limit clients move under infra because OCR and contact normalization
@@ -1696,7 +1578,6 @@ registry entry, or call the command/mutation services.
 
 #### 4.4.1 As-built — the prompt, the answer schema, and the zero-authority edge (D178)
 
-<!-- roadmap: p2-2i -->
 
 **What a prompt is made of, and what it is NOT.** `src/domain/trust/advisory.ts` assembles every
 prompt from the subject record's LEAVES, each pushed through the ONE `redactValue` implementation
@@ -1797,8 +1678,6 @@ production adapter takes its `fetch` by injection precisely so these can exist.
 
 #### 4.4.2 The three producerless adapters get their dispositions (D192, closed 2026-08-18)
 
-<!-- roadmap: p2-2i -->
-<!-- roadmap: def-sanity-check -->
 
 dispositions.**
 
@@ -1829,7 +1708,6 @@ dispositions.**
 
 ### 4.5 As-built — knowledge is admitted before it is inserted, and supersession is expressed forward (D139)
 
-<!-- roadmap: p2-2g -->
 
 The knowledge/fix tables are insert-only (D134), so a duplicate that lands cannot be retracted.
 Admission is therefore audited INSIDE the insert transaction. Two ACTIVE records may not claim the
@@ -1865,21 +1743,9 @@ active-knowledge rules.
 
 ## 5. Workflow explorer/editor—staged hybrid, one graph
 
-<!-- roadmap: p2-2i -->
-<!-- roadmap: def-explorer-edit -->
 
 ### 5.1 Decision
 
-<!-- roadmap: p2-2i -->
-<!-- roadmap: def-explorer-edit -->
-
-<!-- roadmap-status: def-explorer-edit -->
-- [x] Phase B's currently owned closed subset — presentation override plus descriptor-derived refusal/brief inventory (§5.3, D283)
-- [x] the compile/apply protocol: strict versioned override, temp+fsync+atomic-replace, stale-base refusal, code-change brief (§5.4)
-- [ ] the new-workflow authoring path (§5.5), folded into this node by the operator on 2026-08-20 rather than given its own
-- [x] the trigger is named and checkable: the SECOND production workflow whose policy an operator wants to change without a code change (D186)
-> 2026-08-28 | DCC4 | D283 supersedes D186's stale timing trigger for the currently owned safe subset. D186's safety boundary remains: presentation-only hot apply; policy/Edit Data source changes become reviewed briefs; notification preferences stay unavailable because no descriptor owner exists; new-workflow authoring remains deferred.
-<!-- /roadmap-status -->
 
 Build a **read-only workflow explorer in Phase-2 tail 2i**, with closed presentation/policy editing
 alongside it after graph, validation, versioning, and evidence are proven. A free-form visual
@@ -1888,7 +1754,6 @@ write-proof logic remain reviewed source work.
 
 ### 5.2 Phase A—read-only explorer (Phase-2 tail 2i)
 
-<!-- roadmap: p2-2i -->
 
 The explorer is a projection of the exact descriptor and live span/checkpoint data—not a mined or
 parallel graph. It shows:
@@ -2000,7 +1865,6 @@ its space on them. Each removes a repetition; none removes a fact.
 
 #### 5.2.3 Recipe view — Explorer shows the authored workflow (D311, 2026-09-02)
 
-<!-- roadmap: workflow-authoring-model -->
 
 For a D311/D317 workflow, the Explorer's primary graph list is grouped by the compiled workflow definition:
 one group per timeline tuple, in outer-array order, headed by the tuple's stable key, label and task
@@ -2039,15 +1903,6 @@ amends the former default graph-list layout without weakening its projection or 
 
 ### 5.3 Phase B—safe edits only
 
-<!-- roadmap: def-explorer-edit -->
-<!-- roadmap: phase2-dispositions -->
-
-<!-- roadmap-status: phase2-dispositions -->
-- [x] D283 fires the safe closed subset despite D186's earlier second-consumer timing trigger
-- [x] strict draft/validate/apply and atomic presentation override are built; no executable descriptor authority is mutable
-- [x] `workflow-editor-compile-integrity` carries Phase A and Phase B arms in both directions
-> 2026-08-28 | DCC4 | verified against the real registry, strict protocol tests, atomic failure/readback tests and the active guard
-<!-- /roadmap-status -->
 
 > **D186 timing superseded for the safe subset by D283 (2026-08-28).** Phase B's strict closed
 > subset is built. D186's rationale still governs its safety shape, and new-workflow authoring is
@@ -2099,10 +1954,10 @@ independently authoritative JSON override file, prepared file claim or file/SQLi
 A user-requested restore of a prior appearance is an ordinary revisioned update, not a filesystem rollback.
 
 **Ownership amendment — operator-approved, 2026-09-13.**
-[Phase 3.1.9](../plans/phase-3/3.1-finish-the-dashboard/task-9-establish-independent-dashboard-boundaries.md#approved-execution-brief--2026-09-13)
+Phase 3.1.9 (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-3/3.1-finish-the-dashboard/task-9-establish-independent-dashboard-boundaries.md`)
 owns the complete conversion of existing overrides and removal of the old mechanism: SQLite migration,
 atomic command/audit binding, reader/writer cutover, conversion/recovery proof and guard-inventory
-changes. [3.1.9.4](../plans/phase-3/3.1-finish-the-dashboard/task-9-4-finish-workflow-explorer-and-catalog-editing.md)
+changes. 3.1.9.4 (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-3/3.1-finish-the-dashboard/task-9-4-finish-workflow-explorer-and-catalog-editing.md`)
 retains editor work over the accepted prerequisite. This replaces the earlier Task 9-4 conversion
 allocation; no sibling shares its migration or root-composition writer. Import existing valid overrides
 once, refuse conflicting/malformed sources, and prove old files cannot influence appearance after
@@ -2110,8 +1965,6 @@ conversion. The 3.1.9 A candidate appends migration 51 without changing released
 or recovery floor 46. Its conversion and focused evidence are recorded in the approved task owner;
 operator integration and B's completion remain separate release steps.
 
-
-<!-- roadmap: def-explorer-edit -->
 
 Every edit is a draft with a base descriptor version/fingerprint. “Validate” runs the same builder,
 schema, graph, guard, and scenario checks as source-authored descriptors. “Generate patch” produces:
@@ -2198,12 +2051,11 @@ cannot apply the edit itself. Anything the closed editable set cannot express pr
 
 _The rejected DSL pipeline's own design text — codegen, isolated build, restart-gated apply,
 exact-hash rollback — is preserved verbatim at
-`docs/rebuild/history/superseded/2026-08-20-operator-trust-5.4-dsl-authoring.md`. It is history,
+`994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/history/superseded/2026-08-20-operator-trust-5.4-dsl-authoring.md`. It is history,
 not a design to implement._
 
 ### 5.5 New-workflow authoring path
 
-<!-- roadmap: def-explorer-edit -->
 
 > **NOT BUILT; D283 superseded D186 timing only for §5.3's safe existing-workflow subset.** New
 > workflow authoring remains deferred under D186/D79a. No scaffold flow, CLI command or
@@ -2235,7 +2087,6 @@ then becomes selectable by workflows; this is the “fix once, reuse everywhere�
 
 ### 5.6 What happens to the old workflow modifier
 
-<!-- roadmap: def-explorer-edit -->
 
 Its useful presentation editing and operation mining are port inventory. The preserved legacy
 modifier stays inside the legacy repo; with no shared module graph (D93) it cannot be proxied or
@@ -2246,17 +2097,6 @@ authority; the descriptor and validated draft history are.
 
 ### 5.7 Phase A as-built — the explorer is a projection, and it proves it (2026-08-09, D176)
 
-<!-- roadmap: p2-2i -->
-
-<!-- roadmap-status: p2-2i -->
-- [x] the explorer is a projection of the ONE composition root, guarded in both directions over the REAL registry (D176)
-- [x] source links RESOLVE against a real listing; a miss is `unresolved` carrying the path it tried
-- [x] D177's committed-artifact surface was delivered historically; the catalog feature was retired by the 2026-10-01 operator amendment, while the semantic registries remain
-- [x] the node panel is a derived FIELD census (D227) and the descriptor's own prose is declared and guarded (D229)
-- [ ] the live-run overlay stays EXCLUDED by decision — run facts belong to the run-detail timeline
-- [ ] scenario coverage CLAIMS stay in the executable corpus by decision, not for want of a wire
-> 2026-08-20 | docs-cohesion operator-trust | verified against src/server/dashboard/queries/explorer.ts and src/dashboard/surfaces/explorer.tsx; both exclusions are still deliberate and still true
-<!-- /roadmap-status -->
 
 Phase A landed in 2i-G. §5.2's list is served, with two named exclusions below.
 
@@ -2342,7 +2182,6 @@ navigation, route, projection, generation and search requirements are retired. S
 [retirement amendment](#ui-catalog-retirement-amendment--operator-approved-2026-10-01); semantic
 registries, verification, provenance and write-safety requirements remain in force.
 
-<!-- roadmap: p2-2i -->
 
 §1.3's catalog was reachable only from `npm run selector:search` and two markdown projections. It
 now has a read-only surface — `Settings -> Help -> UI catalog` since D295; ref dashboard-surfaces
@@ -2377,13 +2216,6 @@ made-up heading.
 
 ### 5.9 The node panel is a FIELD table, and its census is derived (2026-08-19, D227)
 
-<!-- roadmap: track-b -->
-
-<!-- roadmap-status: track-b -->
-- [x] B6 — the node panel is a FIELD table whose census projects the contract's own zod shape (D227)
-- [x] B2's derivation half — a settled gate names verdict, approver and instant from the durable row (D237), and a dry run reads `rehearsal`, never `verified-done` (D238)
-> 2026-08-20 | docs-cohesion operator-trust | verified against src/validation/contract-boundary.ts, src/server/dashboard/queries/run-detail.ts and src/domain/trust/gate-decisions.ts; every wire square that cites this section reads the same derivation
-<!-- /roadmap-status -->
 
 §5.7's presentation delta recorded that the ported node panel listed TASK ARMS where the operator's
 demo lists contract FIELDS, and that the header counted arms with the ⓘ saying so. That gap is
@@ -2522,7 +2354,7 @@ reported twice. The demo's third segment (`1 file`) stays absent for the reason 
 <a id="notifications-behavior-amendment-2026-09-14"></a>
 
 **Approved operator behavior amendment — 2026-09-14 (3.1.9.5; implementation pending).**
-The [complete task brief](../plans/phase-3/3.1-finish-the-dashboard/task-9-5-finish-notifications-and-delivery-behavior.md#approved-execution-brief--2026-09-14)
+The complete task brief (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-3/3.1-finish-the-dashboard/task-9-5-finish-notifications-and-delivery-behavior.md`)
 and [dashboard-surfaces §2.6 amendment](dashboard-surfaces.md#notifications-publication-amendment-2026-09-14)
 ratify the current behavior where the historical sections below differ. Eight existing event kinds
 are in scope; the broader policy examples below do not create new trigger arms in this task.
@@ -2560,8 +2392,6 @@ publishers are wired. The following older as-built counts and storage-cadence cl
 they do not prove the approved producer or browser behavior has been implemented.
 
 
-<!-- roadmap: p2-2g -->
-
 The notification wire is owned by ref dashboard-surfaces; this section defines operator behavior. Notifications
 are produced server-side from durable state/event transitions, never solely from a React effect.
 They survive dashboard reloads and dedupe by stable fingerprint.
@@ -2586,7 +2416,6 @@ implementation and feedback status is owned by [dashboard-surfaces D366](dashboa
 
 ### 6.1 The fold is an UPDATE, and that is not a weakened ledger (D134)
 
-<!-- roadmap: p2-2g -->
 
 A repeated identical trigger folds into the **one row** its `(actorId, dedupeFingerprint)` already
 owns: `count` increments, `lastSeenAt` advances, `status` returns to `unread` (a repeat is news
@@ -2612,7 +2441,6 @@ notification fold is available to the ledger, and nothing in the ledger is mutab
 
 ### 6.2 The durable row is committed BEFORE any delivery, and a failed toast changes nothing (D138)
 
-<!-- roadmap: p2-2g -->
 
 `publish` settles create-or-fold in one authority transaction and only then attempts OS delivery.
 A delivery that throws is **reported and never written back**: status, count, and version are
@@ -2637,7 +2465,6 @@ suppresses delivery only: it never flips status, and marking read never clears a
 
 ### 6.3 Historical as-built at discovery base — the closed vocabulary, two publishers, and five arms with no producer
 
-<!-- roadmap: p2-2g -->
 
 - [x] the notification square — `gate-park.ts` publishes `gate-opened` for a run parked at a gate, on transitions only (D262)
 - [ ] `failed`, `subject-mismatch` and `write-parked` have no producer, so the square is filled for the GATE arm alone (§6.3)
@@ -2694,13 +2521,6 @@ and let the other fall through to success.
 
 ## 7. Local-FIRST scope, the multi-user seams, and the retained safety floor
 
-<!-- roadmap: later-unplanned -->
-
-<!-- roadmap-status: later-unplanned -->
-- [x] the four seams are built and carry one constant local operator: actor attribution, one identity checkpoint, credential-set-keyed sessions, per-actor notification state
-- [x] D193 reaffirmed solo, local, never hosted — no slice designs for multi-user and none may claim scope in its name
-> 2026-08-29 | D75 authority close | verified the first BFF middleware derives the strict configured solo actor for every request, command claims must match before effects, and new XLSX evidence is actor-attributed without rewriting old rows
-<!-- /roadmap-status -->
 
 **Amended 2026-07-23 (D75).** The operator intends to open this tool to other people later and
 wants that to be *configuration, not a second rebuild*. So the scope statement is no longer
@@ -2764,15 +2584,6 @@ These are correctness and recoverability requirements, not production-scale cere
 
 ## 8. Base capability inventory (webpage-ready)
 
-<!-- roadmap: cross-cutting -->
-
-<!-- roadmap-status: cross-cutting -->
-- [x] eleven of the 49 inventory rows now name their own gap in brackets rather than reading as shipped
-- [x] DCC1–DCC3 close the resolver-owned `apply-settings` arm plus Settings readback, preflight rerun and doctor controls; credentials, AI assist, delete/recover and resolver-unowned settings remain open
-- [ ] `test-login` and the workflow-preflight RUNNER are unbuilt; the storage/authority half of the doctor is real and was drilled at 2j (D181)
-- [x] DCR3–DCR5 deliver strict current-corpus search authority/transport, the Separations Top Bar surface and actor-attributed evidenced operator XLSX; DCA serves diagnostic-index and frozen Archive bytes while broader generic artifact-resource coverage remains open. DCR6's original D289 comparison was delivered historically and retired by its 2026-09-03 amendment.
-> 2026-09-03 | D289 amendment | automatic receipt comparison retired; search, XLSX and capture evidence remain delivered
-<!-- /roadmap-status -->
 
 The following is the canonical list Claude may use to build an explanatory webpage. It describes
 what the **base** implements before workflow-specific leaf behavior is migrated.
@@ -2986,7 +2797,7 @@ six named extras as a closed list. An Explorer fact that is neither in §5.2's b
 ## Diagnostic evidence and resolution
 
 **2026-09-08 — approved, pending implementation.**
-[Side task `side/diagnostics`](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/diagnostics.md) combines the approved renames
+Side task `side/diagnostics` (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/diagnostics.md`) combines the approved renames
 `diagnostic_bundles` → `diagnostic_snapshots`, `diagnostic_attachments` → `diagnostic_files`, and
 `evidence_receipts` → `run_receipts` with retirement of `knowledge_records` and `fix_records`.
 The operator superseded the earlier suggested lesson/fix renames with removal: workflow/module and
@@ -3005,7 +2816,7 @@ all receipt derivation bindings remain unchanged. Resolution records an operator
 problem was addressed; it does not prove a fix, change the failed outcome or resolve uncertain
 external writes. [Dashboard surfaces](dashboard-surfaces.md#failure-resolution) owns explicit actions
 and live/archived presentation. This amendment is approved design, not implementation or permission
-to apply a database upgrade. The [parallel execution binding](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md) assigns shared diagnostic
+to apply a database upgrade. The parallel execution binding (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md`) assigns shared diagnostic
 storage/retirement to prerequisite B and operator resolution to an independent peer after B.
 
 ### Phase 2.6 naming and XLSX evidence amendment — 2026-09-09
@@ -3015,8 +2826,8 @@ protection and evidence semantics. F/G consolidate each XLSX export's request/co
 file evidence into one generated_artifacts row and retire operator_xlsx_exports; prior separate-table
 requirements are superseded. Preserve independent export identities, immutable issued receipt fields,
 exact snapshot selection, byte verification and authorized downloads. Owners:
-[artifact conversion and proof](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/artifacts.md#xlsx-consolidation-amendment--2026-09-09)
-and [naming scope](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/renames.md).
+artifact conversion and proof (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/artifacts.md`)
+and naming scope (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/renames.md`).
 This is an approved future contract, not implementation evidence.
 
 ## Activity search and export privacy — 2026-09-21
@@ -3055,19 +2866,19 @@ protected-derived digest may escape via responses, exports, logs or provenance. 
 non-Activity authorized projections and retained protected-input authentication. No new key/pseudonym
 mechanism replaces the retired Activity tables.
 
-This is the C0-admitted target contract, not a claim of implemented behavior. The [Phase 2.6 owner](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md) binds sequential prerequisites, focused development proof and final 2.6.9 acceptance. Released evidence and migrations remain immutable.
+This is the C0-admitted target contract, not a claim of implemented behavior. The Phase 2.6 owner (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md`) binds sequential prerequisites, focused development proof and final 2.6.9 acceptance. Released evidence and migrations remain immutable.
 
 ### F implementation baseline — 2026-09-09
 
 F adds separately versioned failure annotations and capture/query/command ports, with unavailable action capability. Immutable failure/diagnostic/receipt JSON remains unchanged. Knowledge/fix live authority is retired only with verified historical preservation; D owns live resolution actions.
 
-Implementation, frozen interfaces and focused evidence: [F execution owner](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/foundation.md#f-execution-record--2026-09-09).
+Implementation, frozen interfaces and focused evidence: F execution owner (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/foundation.md`).
 This records implementation of the approved C0 contract, not a new decision or full-phase acceptance.
 
 
 ## D resolution history admission — 2026-09-09
 
-The approved [2.6.6.2 D01–D05 brief](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/diagnostics.md#approved-execution-brief--2026-09-09)
+The approved 2.6.6.2 D01–D05 brief (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/diagnostics.md`)
 closes the missing timeline representation for the already required atomic resolution history.
 D owns a strict resolution payload in `src/events/timeline.ts`, appended through the existing
 transaction/repository with ordinary retention. Preserve original failure/receipt/completion

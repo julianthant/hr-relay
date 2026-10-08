@@ -2,7 +2,7 @@
 /**
  * D273 items 1, 4 and 5 — the run-detail cues that are composed in JSX.
  *
- * Operator context is `docs/decisions/dashboard.md` §D273
+ * Operator context is `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/decisions/dashboard.md` §D273
  * (answered A on 2026-08-26); the audited rows are ledger 2 A3, A13, B91 and
  * C4. Each claim here is about the words or the ownership of a rendered
  * element, so `renderToStaticMarkup` is the instrument — the same one

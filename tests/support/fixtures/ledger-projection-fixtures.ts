@@ -49,7 +49,7 @@ export function ledgerCommitFixture(
      * Bind the filed transaction to a REAL run. The archive derives a record's
      * ledger pointers by walking `writeIntents.listByRun`, so a fixture whose
      * intent names a run nobody enqueued can never be archived — which is
-     * exactly the gap `docs/rebuild/findings/archive.md` recorded.
+     * exactly the gap `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/findings/archive.md` recorded.
      */
     runId?: string;
     workflowId?: string;

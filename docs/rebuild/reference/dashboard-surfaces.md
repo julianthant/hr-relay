@@ -268,7 +268,7 @@ feeds it: the span/notes event model (§1), the storage and transport split betw
 projection (§2), the descriptor fields this layer consumes (§3), the completion contract (§4), the
 cross-repo runtime boundary (§5), and one section per operator surface (§9). It is a REFERENCE
 spec — cited as `ref dashboard-surfaces §N` and never actionable on its own. What is scheduled, and
-what is left, lives in the phase docs `docs/rebuild/00`–`05` and in `docs/roadmap/roadmap.md`.
+what is left, lives in the phase docs `docs/rebuild/00`–`05` and in `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/roadmap/roadmap.md`.
 
 **How to read it.** §0 is the legacy grounding — why this layer exists at all. §1–§3 are the
 platform half: the event vocabulary, where each byte lives, the one command protocol, and the
@@ -285,11 +285,6 @@ square, one name, one order: a `Dashboard · wire` task in the tree names a squa
 the same square in both docs. That doc owns the WIRE (endpoints, payload shapes, and the historical
 parity-lane record); this doc owns what a surface MEANS, what it refuses to show, and why an absence is drawn as an
 absence.
-
-**Status blocks.** A section that describes a tree node carries `<!-- roadmap: <id> -->` and, once
-per node per doc, a `<!-- roadmap-status: <id> -->` checklist the roadmap generator renders in that
-node's drawer. Where a node's checklist lives under a different section of this doc, the section
-says so in one line rather than opening a second block.
 
 **Desktop support scope (D340, 2026-09-06).** Ref frontend-backend-integration §10 owns desktop-only
 dashboard acceptance. Responsive behavior remains required for supported desktop windows and zoom;
@@ -315,8 +310,8 @@ The "Where" column read `§§1–5, §9–10` until 2026-08-20 and had been wron
 ## § number map (old → new)
 
 Section numbers are load-bearing: 33 tree nodes carry a `ref:dashboard-surfaces §N` ref that the
-`roadmap-doc-binding` guard resolves against a real heading, ~150 code comments cite one, and
-`history/` plus `docs/rebuild/migrations/separations.md` cite the OLD numbers and are deliberately not
+retired roadmap binding guard resolved against a real heading, ~150 code comments cite one, and
+the former planning record plus `docs/rebuild/migrations/separations.md` cite the OLD numbers and are deliberately not
 swept. So the numbering moved as little as it could (cohesion plan §6.2, option B): **§1–§8 keep
 their numbers and their meanings**, and §9 becomes the operator-surface shelf that §10–§13 fold
 into.
@@ -325,15 +320,15 @@ into.
 
 | was | is now |
 |---|---|
-| the opening `Status:` + nine `**Amended …**` sentences | `history/superseded/2026-08-20-dashboard-surfaces-amendment-log.md` |
-| `## Phase 1c Stage A–D as-built …` (four blocks) | `history/superseded/2026-08-20-dashboard-surfaces-phase-1c-stage-deltas.md`; residue in §2.3, §2.4, §2.5 |
+| the opening `Status:` + nine `**Amended …**` sentences | `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/history/superseded/2026-08-20-dashboard-surfaces-amendment-log.md` |
+| `## Phase 1c Stage A–D as-built …` (four blocks) | `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/history/superseded/2026-08-20-dashboard-surfaces-phase-1c-stage-deltas.md`; residue in §2.3, §2.4, §2.5 |
 | `## Phase 1f authority and command ratification` | §2.4's *Phase 1f — the authority and command ratification*, which is what `ref dashboard-surfaces §Phase-1f authority` still names |
 | `## 9. Ratified delegation and presentation decisions` | §9.10 — §9 is now *The operator surfaces* |
 
-**Folded into §9 — every row below has landed, and on 2026-08-21 `docs/roadmap/roadmap.md`'s `doc:`
+**Folded into §9 — every row below has landed, and on 2026-08-21 `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/roadmap/roadmap.md`'s `doc:`
 refs were retargeted to the right-hand column, so the transitional alias headings that used to sit
 at the foot of this doc are DELETED. The numbers in the left column no longer resolve to a heading:
-this table is the permanent record for the `history/`, `docs/rebuild/migrations/separations.md` and code
+this table is the permanent record for the the former planning record, `docs/rebuild/migrations/separations.md` and code
 comments that still cite them.**
 
 | was | is now | unit |
@@ -343,14 +338,14 @@ comments that still cite them.**
 | *The shape hazard compares a run against ITS OWN workflow's served shape* | **§9.2** (landed) | 5.1c |
 | `## Phase 1g/1i-spine as-built presentation deltas` (D123 · D124 · D126) | **§9.3 · §9.2 · §9.9** (landed) | 5.1c |
 | `### D225`/`#### D259` · `### D238` · `## Wave-2 connection-proof presentation deltas` (D256 · D257) | **§9.3 · §9.9** (landed) | 5.1c |
-| *Shell and layout as rebuilt* | **§9.9** (landed); its superseded 400/470 widths → `history/superseded/2026-08-20-dashboard-surfaces-shell-widths.md` | 5.1c |
+| *Shell and layout as rebuilt* | **§9.9** (landed); its superseded 400/470 widths → `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/history/superseded/2026-08-20-dashboard-surfaces-shell-widths.md` | 5.1c |
 | §9's row-model D5–D24 | **§9.10** (landed), with its per-entry table naming §9.1 · §9.2 · §9.3 · §9.3.1 · §9.4 · §9.9 | 5.1c |
 | §10.1 the ONE projection + D236 · §10.2 the archive + D179/D242/D223 | **§9.5.2 · §9.5.1** (landed) | 5.1d |
 | §10.3 operator-assigned display names (D83) · §10.4 the notification model (D79b/D86) | **§9.2 · §9.6** (landed) | 5.1d |
 | §11 the intake workspace · §12 the capture phone | **§9.7.1 · §9.7.2** (landed), with Edit Data's PLACE as §9.7.3 | 5.1d |
 | §13 the two reference takeovers | **§9.5.3** (landed); the takeover precedence rule moved up to §9.5, where all five keys are | 5.1d |
 | `## Phase 1e as-built completion + delegation-manifest delta` | **§4's opening · §4.1 · §4.4** (landed) — folded into the subsections it amends | 5.1d |
-| §5.1–§5.4, the `<details>` coexistence design | `history/superseded/2026-08-21-dashboard-surfaces-coexistence.md`; §5 keeps the live boundary contract | 5.1d |
+| §5.1–§5.4, the `<details>` coexistence design | `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/history/superseded/2026-08-21-dashboard-surfaces-coexistence.md`; §5 keeps the live boundary contract | 5.1d |
 
 Two contracts deliberately do NOT move with their surface, because they are the model rather than
 the screen: the durable notification row stays in §2.6 (the bell and the inbox are §9.6), and the
@@ -390,15 +385,6 @@ What is **good** and must be kept (charter: port, don't rewrite):
 
 ## 1. The span event model
 
-<!-- roadmap: p1-spine -->
-<!-- roadmap-status: p1-spine -->
-- [x] the span wire union, its two identity tuples and the emit-time write-once rule (`src/events/types.ts`, `src/infra/events/span-jsonl-writer.ts`; 1g-spine)
-- [x] D214 — the task span path carries the claim generation, so two executions of one node inside one attempt are distinguishable (`taskSpanPath`, `src/core/span-emitter.ts`)
-- [x] D215 — `transaction.previewed` carries `not-observed`, and the wire leaf and the kernel port were re-pinned against each other after the first settled preview killed a worker (separations §9.15)
-- [x] D345 — the NOTES stream has a production action emitter; the executor appends completed browser gestures after task/transaction settlement (`{#observed-logs}`)
-- [ ] `span.ended` carries no `verdict`, so the descriptor's `verdicts` vocabulary has nothing to key off (§1.3, §3.2)
-> 2026-08-20 | docs-dash-surfaces 5.1b | verified against src/events/types.ts, src/core/span-emitter.ts, src/core/run-executor.ts, src/infra/events/{span-jsonl-writer,note-jsonl-writer,jsonl-streams}.ts and the real state root; left: the notes producer and the verdict channel, both named below
-<!-- /roadmap-status -->
 
 ### D345 — Run data and action Logs · 2026-09-24
 
@@ -634,7 +620,7 @@ workflow, workflow version and dates with bounded, deterministic pagination. The
 has no Done/Failed outcome badges or outcome filter; the stored outcome remains a plain field in
 the complete report. New reports freeze both runtime versions; old report bytes are never
 rewritten. Existing report integrity, attachment custody, deletion/disposition, export and
-descriptor-independent rendering remain binding. The approved [3.1.24 task plan](../plans/phase-3/3.1-finish-the-dashboard/task-24-archive-runtime-versions.md)
+descriptor-independent rendering remain binding. The approved 3.1.24 task plan (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-3/3.1-finish-the-dashboard/task-24-archive-runtime-versions.md`)
 owns implementation and focused proof. The 3.1.23 UI finalizer remains its prerequisite.
 
 #### Workflow-record presentation amendment — 2026-09-26
@@ -713,7 +699,7 @@ interactive designs for review before implementation finalization.
 
 ### D281 — UI-1: the elements the demo does not cover (2026-08-27)
 
-Ratified 2026-08-27; operator context is `docs/decisions/dashboard.md` §D281 (run UI-1; the audit
+Ratified 2026-08-27; operator context is `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/decisions/dashboard.md` §D281 (run UI-1; the audit
 `docs/plans/2026-08-27-ui-fidelity-audit.md`'s `new-in-current` rows plus UF-FU-2), all recommended.
 The rebuild-demo (legacy `1ec1d870`, `src/dashboard/components/dev/rebuild-demo/`) is the design
 authority for everything it covers; what it does not cover is ruled here, once, so no later audit
@@ -727,14 +713,14 @@ re-books it. Merged at `a3683bf3`.
 6. Keep the authored display names and notes for `new-kronos`, `old-kronos`, `sharepoint` (`settings-model.ts` `SYSTEM_HOST_PRESENTATION`, each marked `// authored — no demo counterpart`); UF-SET-26 requires a note on every row. B leaves three of nine rows blank, C waits on copy the demo never had.
 7. **The storage band goes full-bleed.** The demo's geometry (`RebuildDemo.tsx:654` / `DemoSettings.tsx:1204+`: border-bottom only, no radius, x=0, mounted above the shellView switch) replaces the inset `Banner` card at the storage-band site — on the queue view too, since the same site serves both. D276 item 4's refusal to revert the `Banner` PRIMITIVE stands: the primitive keeps its bordered, rounded shape everywhere else; the band gets its own full-bleed arm. A keeps an x=12 band over x=0 takeovers; C is the half-match U4a rejected (`dashboard-app.tsx:1377-1383`). **Open port: UI-2 U6** (`docs/plans/2026-08-27-ui-runs.md`).
 
-Standing from the same receive (summarized in `docs/decisions/dashboard.md` §D281, all recommended, no D-number — run-plan
+Standing from the same receive (summarized in `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/decisions/dashboard.md` §D281, all recommended, no D-number — run-plan
 matters): intake and the UI catalog adopt `TakeoverFrame` (UF-FU-1 → UI-2 U7); fidelity ledger 1's Region A
-counts are recounted (U8); the G1 finding (`docs/rebuild/findings/activity.md`) is diagnosed as the one backend unit
+counts are recounted (U8); the G1 finding (`994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/findings/activity.md`) is diagnosed as the one backend unit
 inside UI-2 (U9) and Activity's populated body is audited after it (U10); UI-2 started after the former Phase 3b R2 closed.
 
 ### D282 — finish the dashboard; retain truthful current-only evidence (2026-08-28)
 
-Ratified from the operator answers summarized in `docs/decisions/dashboard.md` §D282–D283 after both
+Ratified from the operator answers summarized in `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/decisions/dashboard.md` §D282–D283 after both
 coordinator residue questions **A** and directed the coordinator to complete the dashboard through
 parallel supervised runs.
 
@@ -815,15 +801,6 @@ generation binding. The guard runs in the same exclusive migration transaction a
 rolls back v22's table, triggers, metadata and `user_version`, leaving an exact v21 database at v21
 with no residue. An empty v21 database upgrades normally; the migration never guesses a commitment.
 
-<!-- roadmap: observed-logs -->
-<!-- roadmap-status: observed-logs -->
-- [x] D345 — the worker composes the notes writer; allowlisted task messages and completed browser gestures append to run-scoped notes
-- [x] D270 — `data.observed`: every point captured at record time and redacted by declaration; probe/prepare/verify emit synchronously, commit flushes after callback settlement; the queue projection ignores the arm by name
-- [x] BE transaction probe/prepare/commit/verify roles emit their declared observations, with the durable fence carried by strict `transaction.fenced`; commit delivery waits for callback settlement so no fallible span write occupies fence→click
-- [x] D345 — the lazy Logs query joins bounded-scope notes with indexed `transaction.fenced` rows in one immutable page walk; the Run data query validates and serves indexed `data.observed` for the exact run
-- [x] D345/D346 — Logs shows action/task notes, entered values, captures and fences; the Context rail shows original observed facts with producer, system, time and attempt
-> 2026-09-24 | D345 | action notes and the Logs/Run data split replace the D254 as-built gap
-<!-- /roadmap-status -->
 
 ### 1.1 Primitives
 
@@ -988,7 +965,6 @@ parse and visible quarantine contract; it is not a runtime boundary.
 
 #### D254 — the `span.patched` detail channel is RETIRED (2026-08-20, operator ruling)
 
-<!-- roadmap: track-b -->
 
 **`span.patched` is removed from the span vocabulary.** It carried a declared per-workflow key set
 (`descriptor.details`) and folded into a `row.details` map the run-detail Context rail read. It had
@@ -997,7 +973,7 @@ parse and visible quarantine contract; it is not a runtime boundary.
 only producers that ever existed were test fixtures; and `.tracker-rebuild/spans` — every real run
 this program has ever executed — holds no such line. Every surface fed by the channel therefore
 rendered its empty state permanently, through every green gate, since 1g-spine. The gap was recorded
-in `docs/rebuild/findings/dashboard-projection.md` on 2026-08-14 (found while building the subject title,
+in `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/findings/dashboard-projection.md` on 2026-08-14 (found while building the subject title,
 which reads a CHECKPOINT for exactly this reason — §1.2 above).
 
 **The ruling is to remove, not to build.** An arm nothing can emit is not "unused", it is
@@ -1079,8 +1055,6 @@ every tick, and it holds today because the span half is real.
 
 ### 1.2 What each of today's surfaces becomes (all are projections)
 
-<!-- roadmap: p1-spine -->
-<!-- roadmap: dash-defaults -->
 
 | Surface | Legacy mechanism | Projection of | As-built |
 |---|---|---|---|
@@ -1099,7 +1073,7 @@ reading twice. The draft said *"run span tree's notes ⊕ the owning worker span
 <a id="sqlite-timeline-history"></a>
 
 **2026-09-08 — T1 implementation candidate; T2 remains pending.**
-[Side plan `side/timeline-history`](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/history/timeline-t1.md) owns a SQLite
+Side plan `side/timeline-history` (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/history/timeline-t1.md`) owns a SQLite
 timeline, database-derived transaction Activity/exports and frozen archive transaction sections.
 It consumes accepted worker, operation and command-group integration at schema 37. T1 uses
 schema 38/floor 37. The following T1 rules supersede the older file-backed span descriptions
@@ -1220,20 +1194,9 @@ promised here is built and one is not:
 
 ## 2. Storage and transport
 
-<!-- roadmap: p1-authority -->
-<!-- roadmap-status: p1-authority -->
-- [x] the authority/projection table split, the exhaustive frozen registry and the once-per-transaction generation rule (1c; `src/domain/authority.ts`, `src/infra/sqlite/authority-database.ts`)
-- [x] released migrations are immutable — every integrated version's ordered statement bytes are pinned by literal digest through v27; DCC4's superseded v19 SQL/digest is retained only as source-lineage refusal evidence (`src/infra/sqlite/migrations.ts`, `migration-history-immutability`)
-- [x] the ten strict command target families and the actor-stamped idempotent envelope (D95/D283, §2.4)
-- [x] the durable notification row, folded in place per `(actorId, dedupeFingerprint)` (D134, §2.6)
-- [x] the descriptor fields this layer consumes are declared and validated at `build()` (§3)
-- [ ] `StepDisplayRule`, `GateProjectionDefinition` and the `ArtifactSinkId` sink registry are named in §3.2 and implemented nowhere
-> 2026-08-20 | docs-dash-surfaces 5.1b | verified against src/domain/authority.ts, src/infra/sqlite/{authority-database,migrations}.ts, src/domain/commands.ts and src/domain/workflow/presentation.ts; left: §3.2's three unimplemented declaration shapes
-> 2026-08-31 | D290 integration | verified integrated v1–v27 migration pins, ten current command families, exact DCC4 v19 source-lineage digest, and fail-loud refusal of that superseded suffix
-<!-- /roadmap-status -->
 
 The four dated `Phase 1c Stage A–D` blocks that used to stand above §0 are in
-`history/superseded/2026-08-20-dashboard-surfaces-phase-1c-stage-deltas.md`; what they landed is
+`994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/history/superseded/2026-08-20-dashboard-surfaces-phase-1c-stage-deltas.md`; what they landed is
 stated here, in §2.3, §2.4 and §2.5, as what IS rather than as what a stage added.
 
 **The whole layer in one picture.** The load-bearing rule is the split between what is *authority*
@@ -1299,16 +1262,6 @@ no second path a badge could take.
 
 ### 2.1 On disk — JSONL-per-day stays, two streams
 
-<!-- roadmap: p1-spine -->
-<!-- roadmap: observed-logs -->
-<!-- roadmap: def-retention -->
-<!-- roadmap-status: def-retention -->
-- [x] the 30-day floor for both event streams is a settled number and it is enforced: `EVENT_STREAM_RETENTION_DAYS = 30`, applied once at boot before the fold (`src/domain/archive/retention.ts`, `src/server/dashboard/compose.ts`)
-- [x] `ledger/` is structurally unprunable — `pruneEventStreams` can only see `spans`/`notes`, and a ratchet fails any module that both names `ledger/` and calls a deletion primitive
-- [ ] the diagnostic-bundle 14/8/5 purge schedule and the content-store refcount reclamation (D193 `wont-build-unless-asked`; `ref operator-trust` §2.2 owns the schedule, §2.5 the backup retention)
-- [ ] a configurable backup path — §2.5's *"a configurable path may point at another local volume"* is unimplemented, and the suspect directory is `<stateRoot>/suspects` by construction with no config leaf
-> 2026-08-20 | docs-dash-surfaces 5.1b | verified against src/infra/events/jsonl-streams.ts, src/domain/archive/retention.ts and the D181 as-built below; left: both remainders are D193's, on nobody's milestone until the operator asks
-<!-- /roadmap-status -->
 
 The rebuild owns the distinct `.tracker-rebuild/` state root. Production `src` owns `.tracker/`;
 neither runtime reads or writes the other's root.
@@ -1409,7 +1362,6 @@ Rationale against alternatives:
 
 ### 2.2 Projections are computed server-side — the wire carries surfaces, not rows
 
-<!-- roadmap: p1-spine -->
 
 The legacy client re-implements queue-surface classification, status keying and pipeline math. Here
 the wire carries **finished projections**: the client renders and never re-derives. Descriptor
@@ -1473,7 +1425,6 @@ payload is already merged and ordered server-side — no client owns merge or de
 
 ### 2.3 SQLite (role per D14)
 
-<!-- roadmap: p1-authority -->
 
 _Its checklist is the `p1-authority` status block under §2 — one block per node per doc._
 
@@ -1522,14 +1473,6 @@ in §2.4; ordinary cleanup, Hide, projection rebuild, and runtime code cannot re
 
 #### D218 — the projector consumes the span stream FROM DISK, cross-process (2026-08-14)
 
-<!-- roadmap: separations-compiled-acceptance -->
-<!-- roadmap-status: separations-compiled-acceptance -->
-- [x] D218 — the projection's ONE live feed is an offset-aware disk tail; the `onEvent` hook is deleted, so "append first, fold after" is structural (`ingestFromDisk`, `src/server/dashboard/projectors/run-queue-projection.ts`)
-- [x] D218 — two triggers, one cursor: the 250 ms dashboard poll and the command service's own tick after `run.queued`/`gate.resolved`
-- [x] D218 — a torn trailing line is not consumed until its newline lands; an unparsable line degrades and the guarded rebuild refuses it by name; a file shorter than its cursor throws
-- [x] D222 — the backup hazard publishes a durable `storage-degraded` notification on TRANSITIONS and leaves the every-view banner to authority-unavailable alone (§2.6)
-> 2026-08-20 | docs-dash-surfaces 5.1b | verified against run-queue-projection.ts, src/infra/events/jsonl-streams.ts, src/server/dashboard/{compose,commands/command-service}.ts and src/services/notifications/storage-health.ts; the node's other fixes (D219–D221, D243/D244) are `ref workflow-model` §1.2.1/§4 and `ref execution-and-sessions` §4.2
-<!-- /roadmap-status -->
 
 "One projector" had been implemented single-process: a one-shot boot `rebuildFromJsonl` plus an
 in-process post-append hook on the BFF's OWN span writer. The worker is a separate OS process, so
@@ -1568,7 +1511,6 @@ As-built contract:
 
 #### D255 — a `span.ended` binds to an OPEN entry, and one producer still owes its execution identity (2026-08-20)
 
-<!-- roadmap: track-b -->
 
 **The fold rule.** A task `span.ended` binds to the LAST entry at `(attempt, spanPath)` whose
 `endedAt` is absent; when every entry at that identity is already closed (or none exists) the close
@@ -1612,7 +1554,6 @@ sequencer the node span path it already computed.
 
 #### D258 — the timeline event id carries the OCCURRENCE ordinal, read forward (2026-08-20)
 
-<!-- roadmap: track-c -->
 
 **The rule.** A timeline event's `noteId` is `deterministicUuid("timeline:<runId>:<seed>")` where the
 seed is the event's whole span identity (`task:<attempt>:<spanPath>`, or the gate's own
@@ -1651,7 +1592,6 @@ D123 exists to prevent).
 
 #### D268 — ONE run-status derivation, ONE task-outcome vocabulary (2026-08-21)
 
-<!-- roadmap: track-d -->
 
 **The rule.** There is one projection (this section), and from D268 there is one DERIVATION on top
 of it. `deriveRunStatus(row, authority)`, `taskStateOf(outcome)` and `panelKindOf(shape)` are one
@@ -1726,16 +1666,6 @@ same way still fails.
 
 ### 2.4 One command protocol with strict target families
 
-<!-- roadmap: p1-kernel -->
-<!-- roadmap-status: p1-kernel -->
-- [x] D67/D95/D283/D351/D352 — twelve closed target families over 40 actions, one idempotent actor-stamped envelope, one exhaustive dispatcher, one durable command journal (`src/domain/commands.ts`, `src/core/command-kernel.ts`)
-- [x] the Phase-1 arm partition is checked against the D95 registry in BOTH directions at module load — an action neither list carries, or both, throws before any command can dispatch (`command-kernel.ts`)
-- [x] D233/D234 — CAS on every run verb, `bump` included; `hide`/`unhide` are retired from the whole stack
-- [x] D253 — `CommandResultSchema` has three arms and TWO are refusals; every dashboard module settles through the one exhaustive fold (`src/dashboard/app/commands/command-result.ts`, guarded by `command-result-exhaustive`)
-- [x] D109 — a descriptor-driven start consumes a server-issued `start_plan`, revalidated and consumed in the same transaction that creates the runs
-- [!] `supersede-active` is implemented in the kernel, unanticipated by the planner, and reported to the operator as unimplemented — three sites, two answers (below)
-> 2026-08-20 | docs-dash-surfaces 5.1b | verified against src/domain/commands.ts, src/domain/dashboard/actions.ts, src/core/{command-kernel,run-fan-out}.ts, src/services/start/plan.ts and src/dashboard/app/commands/command-result.ts; left: the `supersede-active` split, filed rather than fixed here
-<!-- /roadmap-status -->
 
 The dashboard, CLI, recovery code, workflow editor, notification inbox, gate resolvers and capture
 UI all issue the same idempotent command **envelope**, then one strict target-family arm (D67).
@@ -1814,15 +1744,6 @@ section read *"`run`'s `edit-checkpoint` arm plus the `intake`, `settings`, `ver
 `notification` and `capture` families remain schema-recognized but return
 `capability-unavailable`"* until 2026-08-20; that was true of Phase 1f and of nothing since 2i.
 
-<!-- roadmap: def-settings -->
-<!-- roadmap-status: def-settings -->
-- [x] the family, its action and its target shape are ratified and schema-recognized (D95)
-- [x] `apply-settings` is active and the checked deferred partition is empty
-- [x] Settings renders the sections the SERVER serves; DCC3 edits only its resolver-owned inventory, while health/doctor and environment-owned values remain read-only (2i-D)
-- [x] the handler takes one expected config revision and one strict atomic multi-leaf patch over `ref clock-config-secrets`'s resolver, never per-field route writes
-- [x] applied/replay readback names restart-required, and the dashboard/worker runtime-generation barrier refuses mixed-generation starts
-> 2026-08-28 | DCC3 | the server-listed Settings edit/readback/preflight controls consume the active authority; health/doctor and environment-owned values remain read-only
-<!-- /roadmap-status -->
 
 **A result has three arms and TWO of them are refusals (D253).** `CommandResultSchema` is
 `applied`/`already-applied` (carrying the affected targets), `conflict` (carrying the server's
@@ -1970,7 +1891,7 @@ and require replanning; their reserved ids are never adopted.
 
 Phase 1f closed the authority semantics the Phase-1c storage shell deliberately left open. This
 block was a top-level section above §0 until 2026-08-20 and is cited from code and from
-`reference/decisions.md` as *ref dashboard-surfaces §Phase-1f authority*; it now lives here, inside
+`994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/reference/decisions.md` as *ref dashboard-surfaces §Phase-1f authority*; it now lives here, inside
 the command protocol it ratified. Four of its points are this section's, and all four are as-built:
 
 - **`run_failures` is a non-rebuildable authority family** (named `failures` through schema 40). Every failed task or run writes
@@ -1994,7 +1915,7 @@ the command protocol it ratified. Four of its points are this section's, and all
   `run_terminal_authorizations` and `run_terminal_outbox`. Explicit schema-40 provenance preserves
   original authorization/receipt JSON and journal fingerprints for historical replay. No new
   terminal outbox or delivery obligation is created. Frozen archive bytes remain unchanged.
-  C's focused development proof is recorded in [run-completion.md](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/run-completion.md#c-execution-evidence--2026-09-09);
+  C's focused development proof is recorded in run-completion.md (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/run-completion.md`);
   complete independent review and phase acceptance remain in 2.6.9.
 - **Beat ⑦ is one outer authority transaction** over the current claim generation and intent
   generation: mark intent and attempt committed, persist the schema-valid transaction-output
@@ -2037,17 +1958,6 @@ continues through the command/audit journal and atomic `explorer-overrides.json`
 
 ### 2.5 Non-rebuildable SQLite recovery contract
 
-<!-- roadmap: p1-authority -->
-<!-- roadmap: p2-2j -->
-<!-- roadmap-status: p2-2j -->
-- [x] the boot interlock: `quick_check`, schema-version validation, foreign keys, every authority row's `record_json` parsed through its registered strict schema, and the invariant queries — any failure starts read-only degraded with one named cause and blocks enqueue/claim/commit/control
-- [x] the verified online backup: `node:sqlite.backup`, the copy self-verified read-only, the manifest bound to the final bytes, fsync + atomic rename; no `VACUUM INTO` and no live-WAL file copy (D72)
-- [x] 2i-D's cadence — one backup at process start, a coalesced verified backup on each 15-minute tick ONLY when the store is dirty, and a graceful-drain backup inside `stop()` — **superseded by D322 (2026-09-03): no automatic backup; `cli storage backup` is the only writer**
-- [x] the two health readings, and which is which: the cheap bootstrap summary versus the doctor's on-demand byte re-verification (`cli storage doctor [--json]`, exit 0 only when authority and span/authority reconciliation are healthy; since D322 the backup arm is reported, not gated)
-- [x] **D181** — `cli storage restore --from <manifest>` is live and DRILLED (2026-08-09, on a copy of the standing local authority database); singleton roles claim atomically, workers own per-start records, all owners participate in exclusive restore admission, records release only after authority closure, and any unproven pre-swap WAL/SHM rollback reports an explicit uncertain state
-- [ ] the 14/8/5 retention sweep and a configurable backup path — both D193 `wont-build-unless-asked` (§2.1's `def-retention` block carries them)
-> 2026-08-20 | docs-dash-surfaces 5.1b | verified against src/infra/sqlite/{offline-restore,recovery-stop-proof,runtime-process-locks}.ts, src/server/storage/compose.ts, src/server/dashboard/queries/storage.ts and the drill table below; left: only D193's two remainders
-<!-- /roadmap-status -->
 
 Calling `state.db` authoritative without a recovery path would make a single corrupt file capable
 of erasing claim, delegation, checkpoint, and write-fence truth. The base therefore includes:
@@ -2240,7 +2150,6 @@ Only verified available failure evidence may announce the failure; absence canno
 
 #### D181 — the restore command, and the process locks the interlock was always about (2j, 2026-08-09)
 
-<!-- roadmap: p2-2j -->
 
 **`cli storage restore --from <manifest.json>` is live, and the reason it could not have
 been built earlier is that its precondition did not exist.** `OfflineAuthorityRestoreService` has
@@ -2408,9 +2317,9 @@ Released migrations 1–34 retain their statement bytes and digests; historical 
 and 36 retain their own exact table sets, command grammars, fingerprint order and invariant
 queries. An unfinished committed schema-32–36 conversion must settle with its original build
 before a newer conversion. Historical migration/trigger identifiers keep their spellings.
-The [worker](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/history/worker-names.md),
-[operation](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/history/operation-names.md) and
-[command-group integration](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/history/command-groups.md#assigned-combined-integration--2026-09-08)
+The worker (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/history/worker-names.md`),
+operation (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/history/operation-names.md`) and
+command-group integration (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/history/command-groups.md`)
 records own implementation and acceptance evidence. No operator database application is authorized.
 
 The upgrade is **`npm run cli -- storage upgrade [--plan] [--json]`**, a fourth `storage` subcommand
@@ -2880,7 +2789,7 @@ inspection. Inspection does not authorize restoring a below-floor source. Preser
 historical database recovery independently of these expired settings imports; valid supported-source
 controls must still reach successful settlement. Ordinary boot and current responses never obtain
 values from displaced sources. No operator database application or second controlled write is
-introduced. [The approved F01–F07 brief](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/final-validation.md#approved-execution-brief--2026-09-10)
+introduced. The approved F01–F07 brief (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/final-validation.md`)
 owns execution and proof; this amendment is a requirement, not an implementation claim.
 
 The roster this contract names, with the phase each expires (ref guards-and-tests §5.2 carries the
@@ -3070,7 +2979,7 @@ ref guards-and-tests §5.2's and are not repeated here.
 
 **Approved publication amendment — 2026-09-14 (3.1.9.5; broader implementation pending at
 approval).**
-The operator approved the complete [Notifications execution brief](../plans/phase-3/3.1-finish-the-dashboard/task-9-5-finish-notifications-and-delivery-behavior.md#approved-execution-brief--2026-09-14).
+The operator approved the complete Notifications execution brief (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-3/3.1-finish-the-dashboard/task-9-5-finish-notifications-and-delivery-behavior.md`).
 This is the current requirement where historical D134/D138/D222/D262 descriptions below differ;
 it is not an assertion that the newly required code or proof already exists.
 
@@ -3126,20 +3035,6 @@ backend-clock one-hour Snooze, explicit Unsnooze, independent read/snooze state,
 rules, and existing OS routing and permission behavior remain in force. The exact in-app mapping
 and its pending/unbound cases are owned by §9.6.
 
-
-<!-- roadmap: p2-2g -->
-<!-- roadmap-status: p2-2g -->
-- [x] D134 — the durable row is the record: one row per `(actorId, dedupeFingerprint)`, folded in place, with schema v10's unique index and the triggers freezing identity, creation and a strictly advancing `version`
-- [x] D138 — publish settles create-or-fold in ONE authority transaction and only then attempts OS delivery; a delivery that throws is reported and never written back
-- [x] D138 — the trigger union is ids, closed codes and counts, with no free-text argument, so captured form contents have nowhere to enter
-- [x] D222 — the first production publisher: the backup-health watch, on state TRANSITIONS only
-- [x] D262 — the second: the open-operator-gate watch over `runs.listParkedAtGate()`, with `link` moved onto the wire
-- [x] A46 — the third: an unreplayable historical SSE cursor commits one durable, permanently pinned backfill-gap Refusal before the replacement snapshot is served (`68dea43a`)
-- [ ] At the 2026-08-25 A46 checkpoint, five of the eight trigger arms had no publisher — `run-failed`, `subject-mismatch`, `write-parked`, `repeating-failure`, `verified-done` (below); each belongs to the surface or slice that owns the state it announces. This is historical coverage, not the W2/W2a status.
-> 2026-08-25 | track-f A46 | verified against src/domain/notification-triggers.ts, src/services/notifications/{inbox,storage-health,gate-park,backfill-gap}.ts, src/server/dashboard/subscriptions/dashboard-stream.ts and src/domain/dashboard/projection.ts; left: the five unpublished arms
-<!-- /roadmap-status -->
-
-<!-- roadmap: separations-compiled-acceptance -->
 
 _D218 and D222 are carried into `separations-compiled-acceptance`; that node's historical platform checklist is the status block under §2.3's
 D218 — one block per node per doc._
@@ -3341,7 +3236,6 @@ button's word stays in the surface; the server says which run, never what to cal
 
 ## 3. Descriptor fields this layer consumes (shape owned by ref workflow-model)
 
-<!-- roadmap: p1-authority -->
 
 _Its checklist is the `p1-authority` status block under §2._
 
@@ -3430,7 +3324,6 @@ step-label switches, the stub map) becomes a projection of the descriptor set wi
 > protocol and the same server-declared checks. Caller kind adds no second approval or capability
 > restriction. Attribute the real caller; ref write-safety §D338 and ref frontend-backend-integration
 > §4 own this amendment.
-
 
 
 **Re-derived from `tracker/dashboard/ocr/approve.ts` + `prepare.ts` as-built (D11), not the OCR
@@ -3838,25 +3731,12 @@ legacy's copy of it.
 lift adapter, a legacy→native status mapping, per-run `(engine, cutoverGeneration)` authority and a
 scoped dashboard flip, inside a `<details>` block labelled *superseded by D88/D89/D93 — do not
 implement*. It moved whole to
-`history/superseded/2026-08-21-dashboard-surfaces-coexistence.md` (2026-08-21), because a long
+`994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/history/superseded/2026-08-21-dashboard-surfaces-coexistence.md` (2026-08-21), because a long
 unbuildable contract kept inside a live reference doc is read by somebody eventually — and one of
 its sentences (§5.3's `(engine, cutoverGeneration)` stamp) was already being cited from outside the
 block as if it were live. Nothing about it is deleted; §5's live half above is what answers those
-questions now, and `docs/rebuild/plans/phase-5/5B-switch-production-authority/README.md` owns the phase.
+questions now, and `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-5/5B-switch-production-authority/README.md` owns the phase.
 
-<!-- roadmap: cutover -->
-<!-- roadmap-status: cutover -->
-- [x] D93 — the isolation is PHYSICAL: two repositories, no shared module graph, build or process, so a cross-runtime import is impossible rather than banned
-- [x] the one-machine distinctness is pinned in `config/runtime-isolation.json` and proved by `operational-isolation.test.ts`, from one top-level `defineRuntimeIsolation` call
-- [x] D216 — one narrowing, argued and recorded: the profile ROOT name may coincide, the browser session namespace may not
-- [x] D247 — command names are not an isolation resource; each named script must be byte-exactly its declared script
-- [x] D89/D93 — the switch is one all-at-once repoint of the launcher, and the whole legacy repository is the rollback asset; nothing in it is deleted
-- [x] the rejected coexistence design is preserved in `history/superseded/`, and its absence from the tree is verified (no `liftLegacy`/`compat/`/`temp_src`, no `engine` on `RunRecord`, `proxyDispositionAllowed: false`)
-- [ ] the legacy capability register at zero open — **47 open** of 78 today (20 replaced · 7 native · 4 retired); `cutoverRequiresZeroOpen: true` makes it the gate
-- [ ] the cutover run itself — stop new legacy enqueues, drain/park/reconcile, back up both runtimes, the approved one-time import, the atomic repoint, the rollback bridge (`doc 05`)
-- [ ] `one-time-import-offline` is a `planned` guard with NO subject: no import path exists in this tree, and it activates in the commit that builds the cutover data migration
-> 2026-08-21 | docs-dash-surfaces 5.1d | verified against config/runtime-isolation.json, config/legacy-capabilities.json (78 entries: 47 open · 20 replaced · 7 native · 4 retired), src/domain/runtime-environment.ts, tests/unit/architecture/operational-isolation.test.ts; left: 47 capabilities and the cutover run
-<!-- /roadmap-status -->
 
 ---
 
@@ -4015,14 +3895,14 @@ That doc owns each square's WIRE — its endpoints, payload shapes and parity re
 owns what the square MEANS: what it shows, what it refuses to show, why an absence is drawn as an
 absence, and which ratified decision settled it.
 
-A `Dashboard · wire` task in `docs/roadmap/roadmap.md` names a square. It must name the same square
+A `Dashboard · wire` task in `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/roadmap/roadmap.md` names a square. It must name the same square
 in both docs, which is why the taxonomy is shared rather than each doc's own.
 
 **Complete as of 2026-08-21.** §9 is the destination of the 2026-08-20 reorganization (cohesion plan
 R9 item 3; the § number map at the top of this doc), and both surface units have landed: §9.1–§9.4,
 §9.9 and §9.10 (unit 5.1c) and §9.5–§9.8 (unit 5.1d). Nothing folds into it any more, §10–§13 are
 gone, and the numbers they held no longer resolve to a heading: the transitional alias block that
-carried them was DELETED on 2026-08-21 once `docs/roadmap/roadmap.md`'s `doc:` refs were retargeted,
+carried them was DELETED on 2026-08-21 once `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/roadmap/roadmap.md`'s `doc:` refs were retargeted,
 and the § number map at the top of this doc is the permanent record.
 
 ### 9.1 The run modal — plan, confirm, enqueue
@@ -4155,7 +4035,7 @@ The operator may change eligible optional selections and copy, edit or clear off
 Completion never supplies an implicit checkpoint replay or repeat consent: a selected completed
 transaction still follows D335's exact warning acknowledgment and final-submit rules. The rejected
 alternative left required completed steps unchecked and required manual correction before submit.
-Implementation belongs to [3.1.11.2](../plans/phase-3/3.1-finish-the-dashboard/task-11-2-make-run-and-rerun-enqueue-real-work.md#approved-execution-brief--2026-09-19);
+Implementation belongs to 3.1.11.2 (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-3/3.1-finish-the-dashboard/task-11-2-make-run-and-rerun-enqueue-real-work.md`);
 this amendment is approved scope, not a runtime completion claim.
 
 **D335 — warning acknowledgment precedes Values; final submission starts the run (2026-09-05).**
@@ -4324,7 +4204,6 @@ That changes where the declaration is READ, not what it says.
 
 ### 9.2 The queue row — the day's work
 
-<!-- roadmap: track-b -->
 
 **What it is.** The surface an operator lives on. One row per run, folded from the ONE run/queue
 projection (§2.2, D81) — never from a per-row query — so every count on every other surface is the
@@ -4472,7 +4351,7 @@ the moment it arrived and a projection serving none of them.
 verb, a route. Every field above is SERVED, and its absence is a union whose reason the operator
 reads, which is a stronger record than a manifest line nobody sees. The facts with no producer at
 all were never added to the schema, so there is no orphan arm to declare either; they are restated
-in `docs/rebuild/findings/queue-rows.md` with the producer each one waits on.
+in `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/findings/queue-rows.md` with the producer each one waits on.
 
 #### The subject-title seam is a DECLARATION
 
@@ -5329,7 +5208,7 @@ and historical families before claiming a combined current schema.
 
 
 **2026-09-08 command-group storage — combined implementation and independent review accepted; local integration recorded in the task owner.**
-[Side task `side/command-groups`](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/history/command-groups.md) moves the
+Side task `side/command-groups` (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/history/command-groups.md`) moves the
 exact accepted bulk envelope from `bulk_command_acceptances` into a non-executable parent
 row in `commands`, with direct individual commands linked by nullable `parent_command_id`.
 The parent retains original selection/order, versions, options, fingerprint and acceptance
@@ -5432,29 +5311,9 @@ in the log panel. D329 routes any still-open source-changing disposition through
 **Wire.** `ref frontend-backend-integration` §5.1.2 owns `QueueBaseFields`' payload shape, the bulk
 endpoint, the action-descriptor rule (§8.5) and the parity references.
 
-<!-- roadmap-status: track-b -->
-- [x] D124 — `endedAt` served in its own right; an in-flight row is schema-refused from carrying one; a terminal row without one draws `duration unknown` (`projection.ts`, `format.ts`)
-- [x] D230 — `runNumber` read from authority, never from a row's position; the trace chip is its sibling, not its substitute
-- [x] D231 — `containment` + `linkedRuns[]`, disjoint by construction; one `PanelRedirectChip` for every redirect
-- [x] D232 — the fifth semantic hue, named for its meaning, chip-only, one colour on the row and the provenance bar
-- [x] D233 — `rename` served as a descriptor-driven control; every run verb CASes `expectedVersion`, `bump` included, no exceptions left
-- [x] D234 — hide/unhide retired stack-wide; ONE whole-run exclusion (archive) inherited by every count; `RunRecord.hidden` a parse-tolerated vestige
-- [x] D235 — the bulk door is N children and one vector; offered ≠ eligible; skips counted and stated
-- [x] the subject-title seam: one declared `subjectProjection`, read from the stored checkpoint, throwing on a non-string leaf (`run-subject-title.ts`)
-- [x] the shape hazard compares a run against its OWN workflow's served fingerprint; three verdicts, both directions pinned
-- [x] D252 — a ledger value names its step, direction and freshness bound, all from the DECLARATION, through the same functions the executor calls (§9.3.1)
-- [x] D253 — three result arms, TWO refusals, one exhaustive `settleCommandResult` fold guarded against a violating fixture (§9.3.1)
-- [!] D16's "no confirmation dialog" against the served member-counting confirm — the code confirms; reconcile before `{#separations-compiled-acceptance}` closes
-- [x] D12's gate age is fully served and the `waiting` pill draws none of it — answered 2026-08-18 (the amendment above; former doc 03b §Smaller operator calls open, preserved in history): the pill carries no age, the wait renders in the row's footer meta and in the log panel
-- [ ] D9's `rejected` containment arm is not on the wire; `ContainmentSchema` serves `root | member | linked` and the row model's `rejected` arm is not on it
-- [ ] D13's `Re-upload` is not in `ActionCommandKeySchema`; the failure summary half is built and served
-- [ ] every group-row fact (D5 collapse, D11's well, D14's group-of-one, `memberPreview`, the rollup) is drawn from fixtures — no `operation` run has ever been minted (§9.10)
-> 2026-08-20 | docs-dash-surfaces 5.1c | verified against src/domain/dashboard/projection.ts, src/server/dashboard/projectors/{queue-row-actions,run-subject-title}.ts, src/domain/dashboard/actions.ts, src/dashboard/surfaces/{queue,queue-toolbar,queue-model,run-identity-model}*, src/dashboard/ds/theme/tokens.css; left: the group shape's producer and D16's operator call
-<!-- /roadmap-status -->
 
 ### 9.3 Run detail — open and follow a run
 
-<!-- roadmap: dash-defaults -->
 
 **What it is.** The surface whose whole job is to explain ONE run. It is opened from a queue row
 (§9.2) and it names that run the SAME way the row does — the header title goes through the identical
@@ -5785,27 +5644,9 @@ producers are the OCR and group workflows nobody has built.
 **Wire.** `ref frontend-backend-integration` §5.1.3 owns `RunDetailWire`, the section endpoints, the
 follow key on the day wire and the parity references.
 
-<!-- roadmap-status: dash-defaults -->
-- [x] D19 — the tab set is SERVED, not fixed; captures live in Receipt; Data is a rail section edited in place
-- [x] D21 — equal-width segments with the duration printed; the wait on the step's own bar; a queued run draws its shape; three legible states
-- [x] D123 — `skipped` is its own arm and carries the durable result's own closed reason, stamped by the executor and folded verbatim
-- [x] D225 — the timeline is categorical, the fold is served, and a declared timeline is exhaustive or the factory refuses it
-- [x] D259 — a replayed step is its own arm with `replayedFrom` and no duration; three conditions, two residuals stated
-- [x] D238 — a rehearsal takes the receipt's own `partial`; `verified-done` beside `rehearsal` is unrepresentable
-- [x] D237 — a settled gate's decision record renders inline at `resolvedAt` off the durable `gate_results` row (§9.4)
-- [x] D257 — the open panel follows its run on the served `rowRevision`; changes not differences; neither half blanks
-- [x] D187 — `w-full` on the panel root; the two-pixel run-detail column is closed
-- [x] D258 — the timeline event id carries the occurrence ordinal, read forward (derivation stays in §2.3, beside the fold it corrects)
-- [ ] `review` and `people` are declared and never served — `buildRunSection` throws by name and the client draws `UnservedTab`; the runs that would carry them cannot be minted (§9.10)
-- [ ] `context-evidence` is fetched whenever advertised and handed to nothing; no consumer exists
-- [ ] no parity reference photographs the categorical strip — the run-detail fixture serves no `steps`
-- [ ] D17's per-member receipt table: `receipt.tsx` renders no member rollup
-> 2026-08-20 | docs-dash-surfaces 5.1c | verified against src/server/dashboard/queries/run-detail.ts, src/domain/dashboard/run-detail.ts, src/base/workflow.ts, src/dashboard/surfaces/{log-panel,log-panel-model,receipt}*, src/dashboard/surfaces/run-detail/use-run-detail.ts; left: four declared-unservable sections and the categorical strip's missing reference
-<!-- /roadmap-status -->
 
 #### 9.3.1 The Context rail — Data, Edit Data, provenance
 
-<!-- roadmap: track-b -->
 
 A sub-square of run detail rather than a square of its own: the tree's `WIRE run detail` line names
 the data rail, and the rail has no life apart from the run whose panel it rides. Its `track-b`
@@ -6075,9 +5916,6 @@ the three commands and the parity references.
 
 ### 9.5 Archive · Activity · Explorer — the three read surfaces
 
-<!-- roadmap: p2-2i -->
-<!-- roadmap: p1-spine -->
-<!-- roadmap: track-b -->
 
 **What they are.** Three surfaces that answer a question about runs the operator is no longer
 running: what a swept run WAS (§9.5.1), what a range of days ADDS UP TO (§9.5.2), and what a
@@ -6101,21 +5939,6 @@ added to the resolver in the right places and not to the doc.)*
 **Wire.** `ref frontend-backend-integration` §5.1.5 owns the endpoints, the payload shapes and the
 parity references for all three.
 
-<!-- roadmap-status: p2-2i -->
-- [x] 2i-A trust surfaces — the evidence receipt and the failure record render in the run's own panel (§9.3; `ref operator-trust` owns the artifacts)
-- [x] 2i-B the durable notification inbox and its bell (§9.6; the durable model is §2.6)
-- [x] 2i-C the Context rail and its Edit Data half (§9.3.1; the field policy is `ref data-intake-and-edit-data` §6)
-- [x] 2i-D Settings over a live backup cadence, with DCC's resolver-owned atomic edit/preflight controls and the read-only storage doctor (§9.8; the contract is §2.5)
-- [x] 2i-E the intake workspace over schema v12 — all seven surface decisions (D173, §9.7.1)
-- [x] 2i-F was historically delivered; D294 retires mobile Capture Mode (§9.7.2), while diagnostic capture evidence remains
-- [x] 2i-G the archive model and the Activity report over schema v13, the Explorer's read-only graph plus DCC's strict label/icon/category edit subset, the UI catalog and the AI advisories (D176–D180, §9.5.1 · §9.5.2 · §9.5.3)
-- [!] the bell cannot measure ordinary `Ping`/`Inbox` routing because `delivery` stays off the wire; A46's closed pinned kind now makes `Pings` non-zero for a backfill gap, while `Inbox` remains structurally zero (§9.6)
-- [!] the intake Dropzone's accept list and size cap are client literals, not the server constants the doc claimed (§9.7.1)
-- [~] D186 — D283/DCC close only the Explorer's strict existing-workflow label/icon/category subset; broader authoring/policy work remains deferred with its named trigger (`{#def-explorer-edit}`, §9.5.3)
-- [ ] D189/D294 — the production BFF serves no frontend bytes, so `dashboard:prod` cannot serve the ordinary built local dashboard (`{#def-byte-path}`)
-- [ ] the per-archived-run storage delta is unmeasured: no production database has archived a run (§9.5.1)
-> 2026-08-21 | docs-dash-surfaces 5.1d | verified against src/dashboard/surfaces/{archive,activity,explorer,ui-catalog,intake,settings,top-bar}*, src/dashboard/phone/**, src/dashboard/app/navigation/url-state.ts, src/server/dashboard/queries/{archive,explorer,storage}.ts, src/services/archive/archive-service.ts; left: the two deferrals and three named deviations above
-<!-- /roadmap-status -->
 
 #### 9.5.1 The Archive — a record that needs no old code to read (D80)
 
@@ -6433,7 +6256,7 @@ enqueued. Two halves with opposite rules, in one file so the difference is visib
 
 #### 9.5.2 Activity — a range rendering of the ONE projection, and the one exemption (D81)
 
-**2026-09-21 approved target:** [3.1.12](../plans/phase-3/3.1-finish-the-dashboard/task-12-finish-activity-search-and-export.md#approved-execution-brief--2026-09-21)
+**2026-09-21 approved target:** 3.1.12 (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-3/3.1-finish-the-dashboard/task-12-finish-activity-search-and-export.md`)
 finishes all roadmap search filters and snapshot-bound redacted exports. The
 [canonical amendment](frontend-backend-integration.md#activity-search-and-export-amendment--2026-09-21)
 owns validated/indexed metadata, cancellation/stale-result refusal, summary-backed page/CSV/XLSX
@@ -6556,15 +6379,6 @@ commit did file one and left both durable outbox rows behind. The gap is the out
 projection, not the fold; §2.1 owns the stream, and the missing composition is `{#track-d}`'s
 hygiene row.
 
-<!-- roadmap: def-search-export -->
-<!-- roadmap-status: def-search-export -->
-- [x] the Activity CSV (D240) — the one export this product serves, caveats first, from the served payload
-- [ ] BE the generic artifact resource-status/gallery family: DCA1's exact diagnostic-index byte route and D292's mounted Receipt capture consumer are served; `ArtifactResourceWireSchema` status and the generic gallery remain unserved
-- [ ] BOTH cross-date run search — the top bar filters the SERVED DAY only, and Activity's range is an aggregate rather than a row search (§9.9 owns the day search)
-- [ ] BE the operator xlsx export — the xlsx sink is a retention sink, uncomposed in production (D164)
-- [x] D289 amendment RETIRES automatic rerun comparison — the same logical item keeps separately inspectable attempts with their own number and ordinary facts (`ref operator-trust` §2.4)
-> 2026-09-03 | D289 amendment | comparison surface removed; no replacement comparison is planned
-<!-- /roadmap-status -->
 
 #### 9.5.3 The Workflow Explorer and the UI catalog — read-only graph, strict safe edits (D176/D177)
 
@@ -6769,13 +6583,6 @@ owns what the rail and the record each must carry. Its entry no longer sits besi
 explorer's in the panel's action bar (D295): it is `Settings -> Help -> UI catalog`. The explorer's
 own entry stays a `ghost` button because it is not a command.
 
-<!-- roadmap: def-explorer-edit -->
-<!-- roadmap-status: def-explorer-edit -->
-- [x] the deferral is a DISPOSITION with an argument, not a gap: D186 reassigns broad authoring/editing on D79a's many-workflow reasoning, while D283 separately schedules the strict existing-workflow subset
-- [x] the graph/read half remains structurally read-only; DCC4/5 add exact field-row label/icon/category validate/apply/readback without making any other fact editable
-- [ ] the trigger that ends the remaining broad deferral is the second workflow that wants a policy/authoring change without a code change; `ref operator-trust` §5.5 owns new-workflow authoring
-> 2026-08-28 | DCC5 | verified strict field ownership, complete typed envelope and exact refreshed readback; left: broad authoring, policy, notification and Edit Data authority
-<!-- /roadmap-status -->
 
 ### 9.6 Notifications — the durable inbox and its bell
 
@@ -6846,7 +6653,7 @@ dismissal. This policy does not claim that every callback or mock is bound.
 | `backfill-gap` | Pinned durable warning + danger chip | No target or fabricated action; manual chip dismissal; pin and retention remain immutable. |
 | Ordinary Settings, protected credential and provider-key save confirmed | Chip title `Saved` / `Already saved` with closed description `Settings saved` / `Credential settings saved` / `Provider keys saved`; preserve existing inline status, no new panel alert | Receipt binds only `actorId`, `commandId`, kind (`ordinary` / `protected` / `provider-key`) and `replayed`; replay selects `Already saved`. Require matching result and authoritative readback; 3 seconds. No draft/private values, action or activation claim. |
 | Settings definite server refusal / revision conflict | Approved compact danger chip; retain the existing standalone `Retry edit` control and draft/recovery state, with no inline command-refusal copy or new panel alert | Closed local receipt: `actorId`, `commandId`, `kind` (`ordinary` / `protected` / `provider-key`) and `outcome` (`refused` / `conflict`). No target or chip action; manual dismissal, receipt-scoped dedupe and stale actor/client/incarnation isolation. |
-| Unconfirmed / unknown Settings save result | Persistent danger chip titled `Save unconfirmed` beside the existing recovery warning and exact-attempt retry control; manual dismissal; no new panel alert | Receipt contains only `actorId`, `commandId` and `kind` (`ordinary` / `protected` / `provider-key`); dedupe by actor/kind/command plus the unconfirmed phase. No target/action; use the closed kind-specific recovery description and make no success/failure/no-effect claim. Trigger only for the current exact attempt's actual unconfirmed outcome: typed `authority-uncertain` / `authority-unjournaled`, post-dispatch unknown or unconfirmed authoritative readback; provider also supports identity-bound pending recovery. Source/check evidence is in the [W2a Settings continuation](../plans/phase-3/dashboard-surface-wiring.md#w2a-settings-feedback-continuation--2026-10-03). |
+| Unconfirmed / unknown Settings save result | Persistent danger chip titled `Save unconfirmed` beside the existing recovery warning and exact-attempt retry control; manual dismissal; no new panel alert | Receipt contains only `actorId`, `commandId` and `kind` (`ordinary` / `protected` / `provider-key`); dedupe by actor/kind/command plus the unconfirmed phase. No target/action; use the closed kind-specific recovery description and make no success/failure/no-effect claim. Trigger only for the current exact attempt's actual unconfirmed outcome: typed `authority-uncertain` / `authority-unjournaled`, post-dispatch unknown or unconfirmed authoritative readback; provider also supports identity-bound pending recovery. Source/check evidence is in the W2a Settings continuation (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-3/dashboard-surface-wiring.md`). |
 | Read, Unread, Snooze and Unsnooze confirmed | Success acknowledgement; no new panel alert or chip action | Matching applied command ID and exact notification target; 3 seconds; control scope + command ID + outcome. Stream state changes do not repeat it. |
 | Notification-control refusal or revision conflict | Danger chip plus current notice; no new panel alert | Existing panel row; manual dismissal; control scope + command ID + outcome. |
 | Notification-control result unknown after dispatch, including target mismatch | Truthful danger chip plus current notice; no new panel alert | Existing panel row; manual dismissal; control scope + command ID + outcome. No automatic retry, success claim or no-effect claim. |
@@ -6880,8 +6687,6 @@ call proves only submission to the browser API, not human visibility. Delivery f
 the inbox or create per-attempt OS authority. Both themes, keyboard/focus, desktop resizing and zoom
 retain the Phase 3.1 contract; no mobile/coarse-pointer variants or existing PNG refreeze are admitted.
 
-
-<!-- roadmap: p2-2g -->
 
 The `p2-2g` checklist lives at §2.6, which owns the durable ROW — the fold, the trigger union, the
 publish-then-deliver ordering — and `platform-fixes`' at §2.3's D218 block. This section adds
@@ -6972,7 +6777,6 @@ the parity references.
 
 ### 9.7 Intake and Edit Data (mobile Capture Mode retired by D294)
 
-<!-- roadmap: p2-2i -->
 
 The `p2-2i` checklist lives at §9.5. The remaining byte-path deferral is `{#def-byte-path}`.
 
@@ -7037,7 +6841,7 @@ superseded for this presentation; existing intake schemas, services and durable-
 not retired by the mock registry. Full dashboard acceptance and reference refreezing remain 3.1.19.
 
 **2026-09-14 approved presentation amendment:**
-[3.1.9.6](../plans/phase-3/3.1-finish-the-dashboard/task-9-6-finish-intake-surfaces.md#approved-execution-brief--2026-09-14)
+3.1.9.6 (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-3/3.1-finish-the-dashboard/task-9-6-finish-intake-surfaces.md`)
 extracts the existing spreadsheet upload component from the Run modal, preserving that entry and
 ordinary Run/Rerun behavior. Progress and cancellation must describe actual delivery; unresolved
 rejects, missing required fields and zero valid rows keep Start blocked even after review
@@ -7300,9 +7104,6 @@ launcher and shared modal.
 
 ### 9.8 Settings and the storage doctor
 
-<!-- roadmap: p2-2j -->
-<!-- roadmap: def-settings -->
-<!-- roadmap: def-retention -->
 
 A dashboard-only square. DCC3's Settings UI issues one strict `apply-settings` command only for the
 resolver-owned inventory the server lists. Three checklists reach it — `p2-2j`'s is at §2.5 (the
@@ -7365,7 +7166,6 @@ blocked" lists were not ported with it.
 
 ### 9.9 The shell — top bar, worker cards, keys, theme
 
-<!-- roadmap: track-c -->
 
 A dashboard-only square: `ref frontend-backend-integration` §5.1 has no counterpart, because the
 shell issues no commands of its own. It is the frame every other square renders inside, and it owns
@@ -7421,7 +7221,7 @@ an absent element. It is the same defect class as D187's two-pixel panel (§9.3)
 *(Measured effect of the reading-pattern split at 1280×720, kept as the record: chrome above the
 panels 190px → 117px; each panel 469px → 542px tall; the tab body 123–215px → 213–335px. The
 superseded 400/470 numbers and the reasoning that produced them are in
-`history/superseded/2026-08-20-dashboard-surfaces-shell-widths.md`.)*
+`994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/history/superseded/2026-08-20-dashboard-surfaces-shell-widths.md`.)*
 
 #### The status bar: `All`, a composite, then every individual status (D18)
 
@@ -8300,7 +8100,7 @@ The card has no independent worker-step producer. For a claimed run, it joins th
 Without that row or a claim, it draws a neutral line and the served absence reason; it never
 invents step dots. Browser health comes from the exact session's dated owner observation, and
 missing observations say `Not checked`. The remaining idle-worker step-vector gap is recorded in
-`docs/rebuild/findings/dashboard-projection.md`. The tally vocabulary is the served lease state
+`994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/findings/dashboard-projection.md`. The tally vocabulary is the served lease state
 (`starting`, not the demo's `authenticating` — R7's ruling).
 
 <a id="session-controls-presentation-2026-09-18"></a>
@@ -8308,7 +8108,7 @@ missing observations say `Not checked`. The remaining idle-worker step-vector ga
 #### Session controls presentation — 2026-09-18
 
 **Operator-approved requirements, implemented by
-[3.1.11](../plans/phase-3/3.1-finish-the-dashboard/task-11-finish-sessions-worker-pools-and-browser-lifecycle.md#approved-execution-brief--2026-09-18).**
+3.1.11 (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-3/3.1-finish-the-dashboard/task-11-finish-sessions-worker-pools-and-browser-lifecycle.md`).**
 The [session-controls amendment](execution-and-sessions.md#session-controls-amendment-2026-09-18)
 owns effects, identity and recovery. D305's strip, cards, identity facts and Add-workers dialog
 remain the presentation boundary. Add Pause/Resume and exact-session Refresh/Reopen there; do not
@@ -8413,7 +8213,7 @@ wrong on every run an operator is actually watching.
 
 ##### Date navigation amendment — 2026-09-18
 
-Operator-approved for [3.1.10 DN1–DN5](../plans/phase-3/3.1-finish-the-dashboard/task-10-repair-date-navigation-and-the-date-picker.md#approved-execution-brief--2026-09-18);
+Operator-approved for 3.1.10 DN1–DN5 (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-3/3.1-finish-the-dashboard/task-10-repair-date-navigation-and-the-date-picker.md`);
 implemented and accepted into local master on 2026-09-19. This extends D256's
 single served-clock rule to calendar selection and states A19's date-navigation behavior:
 
@@ -8444,21 +8244,6 @@ the bounded calendar query; date navigation issues no commands. `ref frontend-ba
 §4 owns bootstrap state (including D219's `role` leaf and D264's moved declaration fields), §3 the
 read contract and §7 the parity lane.
 
-<!-- roadmap-status: track-c -->
-- [x] D256 — one served-clock calibration, monotonic elapsed, every consumer including the keyboard sort key; a backwards elapsed is drawn, not clamped
-- [x] D257 — the open run-detail panel follows its run on the served `rowRevision` (§9.3)
-- [x] the shape hazard compares a run against its OWN workflow's served fingerprint, three verdicts, both directions pinned (§9.2)
-- [x] D259 — a replayed step is its own arm and is never `pending` (§9.3)
-- [x] the parity corpus re-frozen once, deliberately: 151/151 assert-green over 139 references × 3 files
-- [x] D18 — the pill row, the composite over projected buckets, the deleted banner and the inline decision
-- [x] D22 + D126 — both terminal dones draw `Done`; icon + hue + count carry it visibly and `accessibleLabel` carries it for assistive technology, pixels unchanged
-- [x] D219/D220/D241/D266 — role-driven grouping in ONE module: harnesses nested where listed and dropped from the rail; the sole `proving` workflow and `Test equipment` group retired
-- [x] D224 — the action bar is an island; the gap above the panels equals the gap between them
-- [x] D195 — the panel region is a grid, so the no-run-open case cannot leave ~950px of empty black
-- [!] the drawn word for `waiting` is `Review`; D12/D18/D22/D23 all say `Waiting on you` — reconcile under `{#separations-compiled-acceptance}` before freeze
-- [ ] re-calibration on the SSE `health` heartbeat, deferred with its trigger named (D189's exposed path)
-> 2026-08-20 | docs-dash-surfaces 5.1c | verified against src/dashboard/surfaces/{shell,shell-model,workflow-category,status}*, src/dashboard/ds/{primitives-status.tsx,tokens.css}, src/dashboard/state/served-clock.ts, src/dashboard/app/{dashboard-app,global-keys}*, src/dashboard/surfaces/queue/layout-metrics.ts; left: the heartbeat instant and one vocabulary call
-<!-- /roadmap-status -->
 
 ### 9.10 The delegation and row model (row-model D5–D24)
 
@@ -8490,10 +8275,10 @@ demo-feature-plan ledger §6. That ledger's vocabulary is the one used throughou
 **`containment`** = `member | linked | rejected`, Group Row anatomy + presentation ladder + rollup
 precedence, and delegation shapes S0–S7.
 
-**This series is NOT `reference/decisions.md`'s D-numbers.** Cite these as *row-model D6…D24*,
+**This series is NOT `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/reference/decisions.md`'s D-numbers.** Cite these as *row-model D6…D24*,
 prefix mandatory. The collision is real and load-bearing: this series' **row-model D22** shortens
 the status vocabulary, while the memo's bare **D22** is an unrelated contract-shape/guards ownership
-split. `reference/decisions.md` carries the matching warning at its top; keep both in step.
+split. `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/reference/decisions.md` carries the matching warning at its top; keep both in step.
 
 **Two dated amendments moved several entries after the fact, and each says so where it lands.** The
 2026-07-27 demo redesign took D11's 41+ status-matrix rung, moved Data off the tab set without
@@ -8667,11 +8452,11 @@ UI kit. Focused evidence is `spreadsheet-field-mapping-10003539`; frozen phase-e
 ## Run completion storage
 
 **2026-09-09 — C scoped implementation; final acceptance remains 2.6.9.**
-[Task 2.6.5 C](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/run-completion.md) amends D110/D114 and
+Task 2.6.5 C (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/run-completion.md`) amends D110/D114 and
 D330 storage: schema 41 moves `run_terminal_authorizations` evidence into a strict immutable completion record
 on `workflow_runs`, renames `failures` to `run_failures`, and retires the unused `run_terminal_outbox`.
 It follows accepted timeline T2 integration, before the shared database foundation, under the
-[parallel execution binding](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md). Running predecessor plans remain unchanged.
+parallel execution binding (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md`). Running predecessor plans remain unchanged.
 
 Active ownership remains the run's worker/claim generation and expected-version protocol. Completion
 preserves the exact accepted worker, generation, version, timestamp and result/failure identity after
@@ -8691,9 +8476,9 @@ database conversion is authorized.
 ## Failure resolution
 
 **2026-09-08 — approved, pending implementation.**
-[Side task `side/diagnostics`](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/diagnostics.md) adds Mark resolved and Reopen
+Side task `side/diagnostics` (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/diagnostics.md`) adds Mark resolved and Reopen
 after the shared foundation supplies run completion and annotation storage. Its independent parallel
-assignment follows the [parallel execution binding](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md). The actions appear in existing failure details. The current annotation is stored on the
+assignment follows the parallel execution binding (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md`). The actions appear in existing failure details. The current annotation is stored on the
 owning `run_failures` row separately from immutable occurrence evidence, with its own version,
 operator actor/time and optional bounded note. It needs no fix/lesson table, required commit or
 verification report. Historical failures start unresolved; matching fingerprints or later successful
@@ -8711,7 +8496,7 @@ evidence. This records approved scope, not a current feature or database applica
 ## Artifact storage model
 
 **2026-09-08 — approved, pending implementation.**
-[Side task `side/artifacts`](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/artifacts.md) owns one-row `imported_artifacts`,
+Side task `side/artifacts` (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/artifacts.md`) owns one-row `imported_artifacts`,
 `extracted_artifacts` and `generated_artifacts`; [data intake](data-intake-and-edit-data.md#artifact-storage-model)
 owns their lifecycle/identity rules. Preserve intake mapping/validation/correction/exclusion, frozen
 submission, batch origin/grouping, command replay and current duplicate/re-upload behavior. Historical
@@ -8739,7 +8524,7 @@ F retires only the unused SQL spans projection; timeline_events and historical f
 for admitted conversion/recovery remain. F/G put each explicit XLSX export's request and completion
 evidence on its generated_artifacts file row and retire operator_xlsx_exports; no second receipt
 table. Preserve unique request/receipt identities, snapshot selection, immutable evidence, download
-verification and authorization. The [single owning plan](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/artifacts.md#xlsx-consolidation-amendment--2026-09-09)
+verification and authorization. The single owning plan (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/artifacts.md`)
 specifies conversion and proof; current implementation is not claimed by this amendment.
 
 ## C0 archive, summary and surface contract — 2026-09-09
@@ -8792,19 +8577,19 @@ notes/log files and timeline events. Unknown authoritative population blocks ret
 classification; a storage-only table name is not proof of safely disposable data. Verified historical
 preservation and absence/refusal guards precede removal.
 
-This is the C0-admitted target contract, not a claim of implemented behavior. The [Phase 2.6 owner](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md) binds sequential prerequisites, focused development proof and final 2.6.9 acceptance. Released evidence and migrations remain immutable.
+This is the C0-admitted target contract, not a claim of implemented behavior. The Phase 2.6 owner (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md`) binds sequential prerequisites, focused development proof and final 2.6.9 acceptance. Released evidence and migrations remain immutable.
 
 ### F implementation baseline — 2026-09-09
 
 F removes only approved unused SQL spans/gates/notes/OCR approval scaffolding, refusing unknown population, and retires knowledge/fix live authority with source-bound preservation. Logs, timeline events, historical span readers, approvals and live-read results remain. Archive transfer and summaries are later work.
 
-Implementation, frozen interfaces and focused evidence: [F execution owner](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/foundation.md#f-execution-record--2026-09-09).
+Implementation, frozen interfaces and focused evidence: F execution owner (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/foundation.md`).
 This records implementation of the approved C0 contract, not a new decision or full-phase acceptance.
 
 
 ## D live resolution context admission — 2026-09-09
 
-The approved [2.6.6.2 D01–D05 brief](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/diagnostics.md#approved-execution-brief--2026-09-09)
+The approved 2.6.6.2 D01–D05 brief (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/diagnostics.md`)
 assigns `log-panel.tsx` live-context/actor wiring to D alongside its existing trust component/model.
 Shared failure rendering defaults to read-only; the archive caller receives no live resolution
 controls. Live controls use durable annotation readback and cross-process refresh without changing
@@ -8821,7 +8606,7 @@ and descendant runs, immutable existing report bytes, command/audit grammar, num
 other retained evidence. Migration 50 follows unchanged released migrations 1–49; floor remains 46.
 Supported stopped conversion/restore must preserve paired archive recovery and shared files.
 Archived confirmed transactions remain in Activity until explicit deletion. The
-[owning finalization amendment](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/final-validation.md#approved-obsolete-table-retirement-amendment--2026-09-10)
+owning finalization amendment (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/final-validation.md`)
 freezes the full removed/renamed inventory and proof/review obligations. No operator database
 application or local tracker cleanup is authorized.
 
@@ -8833,7 +8618,7 @@ its independent archive half is disposable.
 
 ## Phase 2.6.9 durable archive capture claims — 2026-09-11
 
-The operator approved the [capture-claim amendment](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/final-validation.md#approved-capture-claim-amendment--2026-09-11).
+The operator approved the capture-claim amendment (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/final-validation.md`).
 A version apply validates reviewed membership and freezes complete private sources, safe display
 sections and retained attachment identities inside the claiming authority transaction. Temporary
 `pendingCaptures` reside in the existing `version_changes` record; no table, schema-floor change
@@ -8859,7 +8644,7 @@ synthetic proofs only; it does not authorize applying changes to the operator da
 
 ## Archive deletion recovery and saved-report export — 2026-09-16
 
-Operator-approved with [3.1.9.7](../plans/phase-3/3.1-finish-the-dashboard/task-9-7-finish-archive-saved-reports-version-changes-and-deletion.md#approved-execution-brief--2026-09-16).
+Operator-approved with 3.1.9.7 (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-3/3.1-finish-the-dashboard/task-9-7-finish-archive-saved-reports-version-changes-and-deletion.md`).
 This is a bounded implementation amendment to C0/D308/D223, not a completion claim or new deletion
 policy. Canonical terminal-tree admission, tombstones, permanent-key warnings, shared-file custody,
 immutable reports and the retirement of Archive execution doors remain binding.

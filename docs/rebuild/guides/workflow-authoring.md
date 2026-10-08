@@ -541,7 +541,7 @@ once end to end; every comment in it explains a choice you will face again.
    unavailable until future operator-led test design.
 5. Gate: `npm run typecheck && npm run lint && npm run test:coverage`, then
    `npm run build:manifest:check`, `npm run stores:catalog:check` (unchanged — proves you added no
-   task), `npm run roadmap:check`.
+   task).
 
 ---
 
@@ -969,7 +969,7 @@ plus focused lint, type, static and generated checks required by the owning phas
 record captures source provenance and completed acceptance evidence; it does not require a scenario
 inventory or T1b result while those suites are retired. The current suite map and retirement owner
 are the [codebase map](../reference/codebase-structure.md) and the 2026-10-02 amendment in the
-[backend layout plan](../plans/phase-3/backend-and-unit-tests.md#layout-polish--finish-the-approved-structure-before-phase-3).
+backend layout plan (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-3/backend-and-unit-tests.md`).
 
 Definition and registration guards such as `descriptor-coverage`, descriptor tuple equality,
 `workflow-layout`, `workflow-authoring-budget`, `pending-impl-bindings`, store-catalog freshness and

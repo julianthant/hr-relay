@@ -3,7 +3,7 @@
 > **This is a derived convenience view, not a source of truth.** The plan SSOT is
 > the phase docs `docs/rebuild/00`–`06` (migration order, exit criteria) and the owning
 > reference specs under `docs/rebuild/reference/`; the
-> decision changelog is `docs/rebuild/reference/decisions.md`. **Code is the source of truth for every
+> decision changelog is `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/reference/decisions.md`. **Code is the source of truth for every
 > fact in this file** — if this file ever disagrees with `src/stores/**`, `src/backend/processing/**`,
 > `src/services/**`, or `src/backend/processing/providers/**`, the code wins. Regenerate at every slice boundary, and whenever a store
 > gains, loses, or rewires a task.

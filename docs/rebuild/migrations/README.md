@@ -1,8 +1,7 @@
 # Workflow migrations
 
 These records hold workflow-specific scope, reuse decisions, scenarios, and dated verification
-evidence. Build order and admission belong to the [roadmap](../../roadmap/roadmap.md) and its
-owning phase documents. Follow the [workflow authoring guide](../guides/workflow-authoring.md)
+evidence. Follow the [workflow authoring guide](../guides/workflow-authoring.md)
 when creating or updating a record.
 
 | Record | Purpose |

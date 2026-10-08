@@ -34,7 +34,7 @@
     "npm run test:architecture",
     "npm run test:coverage",
     "npm run test:parity",
-    "docs/rebuild/reference/decisions.md D130 — the (transactionNumber, approvalStatus) receipt pair is already ratified in the rebuild"
+    "994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/reference/decisions.md D130 — the (transactionNumber, approvalStatus) receipt pair is already ratified in the rebuild"
    ]
   },
   {

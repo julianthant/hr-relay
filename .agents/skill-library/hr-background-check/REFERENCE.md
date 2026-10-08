@@ -3,8 +3,7 @@
 > Internal repository playbook selected by `hr-manage` for `background-check`, Background Check,
 > and batch background-check requests. It is not an independent operator command.
 
-**Status: proposed dashboard workflow; not implemented or runnable.** The delivery owner is
-[Phase 4.1](../../../docs/rebuild/plans/phase-4/4.1-background-check/README.md). This resource
+**Status: proposed dashboard workflow; not implemented or runnable.** This resource
 describes the intended reusable behavior and labels unverified implementation details explicitly.
 It contains no current applicant worklist, submission authorization or claim of automated acceptance.
 
@@ -171,9 +170,7 @@ Follow [guards-and-tests §10](../../../docs/rebuild/reference/guards-and-tests.
 
 Create the workflow's migration record under [migrations](../../../docs/rebuild/migrations) when its
 admitted implementation begins. Record dated, attributable dry-run/controlled-write evidence there;
-refresh this resource from the actual definition, registry, stores and tests. Update the owning
-[4.1 tasks](../../../docs/rebuild/plans/phase-4/4.1-background-check/README.md) and
-[roadmap](../../../docs/roadmap/roadmap.md), then run `npm run roadmap` and `npm run roadmap:check`.
+refresh this resource from the actual definition, registry, stores and tests.
 Individual request progress belongs in dashboard run authority/evidence, not roadmap task statuses.
 Only update store/dashboard instruction files for new invariants; offer lesson-worthy findings to
 the operator for their explicit lesson workflow.

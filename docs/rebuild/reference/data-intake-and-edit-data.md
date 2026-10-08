@@ -64,18 +64,6 @@ Data a **typed view of the run's checkpoints** edited through ref workflow-model
 
 ## 1. Canonical field registry (vocabulary lives in `src/models/fields/`, referenced here)
 
-<!-- roadmap: p2-2h -->
-
-<!-- roadmap-status: p2-2h -->
-- [x] the canonical field registry is closed at 47 ids and frozen against the RECORDED D58/D68 scan, checked in both directions (§1/§1.1, D146; `src/models/fields/registry.ts`, `src/models/fields/canonical-field-inventory.json` at legacy `4deabc5a`)
-- [x] mapping identity, the layout fingerprint, per-cell coercion, the suggestion scorer and `defineIntakeProjection`'s object-identity proof are built and bundle-safe (§2.1–§2.6, D147)
-- [x] the extraction store's two tasks (§3.1/§3.2, D149/D152), the roster store with its honest port split (§4, D163) and the normalization store including D178's `ai` arm (§4.2, D165/D178)
-- [x] OCR: one admission gate three producers cannot bypass, the generated instruction, the form registry and the classify/group scanner (§4.3–§4.11, D151–D161)
-- [x] validation, rejection, the immutable manifest and the rerun diff, on schema v11's ABORT-on-rewrite authority (§5/§5.0/§4.9, D148/D159)
-- [x] the retention-projection model end to end, unwired by design (§4.1, D164)
-- [ ] two 2h designs have no caller and both are named in place: the saved-mapping STORE (§2.3) and a descriptor that DECLARES an artifact projection (§4.1)
-> 2026-08-20 | docs-cohesion data-intake-and-edit-data | verified against `src/domain/{fields,intake,ocr}/**`, `src/stores/{extraction,roster,ocr,normalization}/**`, `src/infra/sqlite/migrations.ts:863-908`; left: the two uncalled designs
-<!-- /roadmap-status -->
 
 - [x] the canonical-EID audit gate this migration replays its fixtures through exists and is enforced — `/^10\d{6}$/` everywhere, with the loose legacy `/^\d{5,}$/` recorded as a validation bug rather than a second domain value (§1, §9.1)
 - [ ] `work-study` is not in the tree: no input schema, no intake projection, and §8's worked example is this migration's TARGET rather than a transcript
@@ -154,7 +142,6 @@ may still have non-intake fields such as file refs, selectors, options, and disc
 
 ### 1.1 Phase-2h as-built — the registry is frozen against a recorded scan (D146)
 
-<!-- roadmap: p2-2h -->
 
 `src/models/fields/registry.ts` holds the closed `CanonicalFieldId` union (47 ids) and
 `src/models/fields/cell-coercion.ts` holds the pure per-cell core. The D58/D68 scan this section
@@ -212,11 +199,9 @@ fanned out.
 
 ## 2. Operator-defined column mapping
 
-<!-- roadmap: p2-2h -->
 
 ### 2.1 The mapping object (zod-typed)
 
-<!-- roadmap: p2-2h -->
 
 ```ts
 // src/domain/intake/mapping.ts:72-83  (domain — bundle-safe, zod only) — as built
@@ -262,7 +247,6 @@ artifact id) are branded at parse time, so equally shaped strings cannot be inte
 
 ### 2.2 The UI flow (upload → map → validate → run)
 
-<!-- roadmap: p2-2i -->
 
 1. **Upload.** Operator uploads a `.csv`/`.xlsx` to `POST /api/v1/intake/files?workflow=<id>`
    (§2.7 — creation carries BYTES, so it is a route and not a command arm).
@@ -286,7 +270,7 @@ artifact id) are branded at parse time, so equally shaped strings cannot be inte
 
 **Operator-approved; implementation remains assigned to 3.1.9.6.** The operator selected the
 narrow Intake ownership amendment and spreadsheet-only scope, then approved its complete I1–I5
-[execution brief](../plans/phase-3/3.1-finish-the-dashboard/task-9-6-finish-intake-surfaces.md#approved-execution-brief--2026-09-14).
+execution brief (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-3/3.1-finish-the-dashboard/task-9-6-finish-intake-surfaces.md`).
 This amends the D170/D171/D173 interaction and confirmation boundary without changing D334's
 ordinary Run/Rerun ownership or C0's independent import identities.
 
@@ -331,7 +315,6 @@ new artifact table, SQLite migration, external HR execution or workflow activati
 
 ### 2.3 Per-source persistence — header fingerprint (recommended scheme)
 
-<!-- roadmap: p2-2h -->
 
 A recurring layout (the same weekly work-study export) should not be re-mapped each time. Reuse is
 keyed by a **header fingerprint**:
@@ -375,7 +358,6 @@ Saved at `config/column-mappings/<workflow>/<fingerprint>.json` (gitignored oper
 
 ### 2.4 Per-field coercion + loud per-cell errors
 
-<!-- roadmap: p2-2h -->
 
 Coercion is per canonical field (`field.coerce`), then the value is `field.schema.parse`d. A bad
 cell **throws a legible error naming row + column + value** — never a substituted default, never a
@@ -393,7 +375,6 @@ hint ("column 'DeptCode' bound to `effectiveDate` — all 42 rows failed date co
 
 ### 2.5 Fuzzy header auto-match — SUGGESTIONS only, never silent auto-apply
 
-<!-- roadmap: p2-2h -->
 
 The suggestion engine scores each detected header against every target field's referenced canonical
 field `aliases` + `label` (the redesigned successor of `COLUMN_PATTERNS`). It **proposes** a binding (a highlighted
@@ -406,7 +387,6 @@ asserts no code path writes `bindings` from the suggestion scorer directly.
 
 ### 2.6 Phase-2h as-built — projection, mapping and suggestions (D147)
 
-<!-- roadmap: p2-2h -->
 
 `src/domain/intake/` holds the three pieces, deliberately separate because that separation is what
 makes reuse fail closed. The whole tree is bundle-safe (no Node built-in) since the mapping grid is a
@@ -450,7 +430,6 @@ claiming two fields so the scorer cannot be made arbitrary from the registry sid
 
 ### 2.7 Phase-2i as-built — the durable session, the parser seam, and the five arms (D170)
 
-<!-- roadmap: p2-2i -->
 
 §2.2's flow is stateful across many operator actions, and D159's manifest is deliberately terminal,
 so the in-progress state gets its own durable row. Schema **v12**'s `intake_sessions` (2i-E1
@@ -523,7 +502,6 @@ is what any workflow without a projection still gets.
 
 ### 2.8 Phase-2i as-built — the first real projection, and unions resolve (D172)
 
-<!-- roadmap: p2-2i -->
 
 - [x] the intake model this square wires is workflow-GENERIC and live — the durable session (schema v12), the upload route and all six command arms (§2.7/§2.8, D170–D172); a new workflow needs only a `defineIntakeProjection` declaration on its `module.ts`
 - [ ] `work-study` has no projection because the workflow is not in the tree — `person-lookup` is the only one declared (`src/workflows/person-lookup/module.ts:43`); order 6 brings the second
@@ -580,7 +558,6 @@ satisfy the very schema the workflow validates with. The descriptor's source clo
 
 ## 3. Extraction store tasks (service store — D4)
 
-<!-- roadmap: p2-2h -->
 
 - [x] every store this workflow composes exists and is pinned: `extraction/extract-pdf-pages` → `ocr/extract-form-page` → `roster/match-spreadsheet`, plus the classify/group scanner and `cli ocr stack` (§3.2, §4.3, §4.8)
 - [x] the durability floor is in SQL, not convention — `ocr_extractions` is UNIQUE on `(source_sha256, source_page, form_type)` and ABORTs on update (schema v11, §4.9)
@@ -640,7 +617,6 @@ reads an AcroForm anywhere (§3.2, D152). `columns` carries `DetectedColumn`, so
 
 ### 3.1 Phase-2h as-built — `extraction/extract-spreadsheet` (D149)
 
-<!-- roadmap: p2-2h -->
 
 **The id is `extraction/extract-spreadsheet`, not `parse-csv`.** Ref task-contract owns the id grammar and its
 read verbs are `read|search|list|extract|match|verify`; `parse-` is not among them, and ref task-contract §3.4's
@@ -684,7 +660,6 @@ correct on its own terms — a header cell is essentially never a date.
 
 ### 3.2 Phase-2h as-built — `extraction/extract-pdf-pages`, and a correction (D152)
 
-<!-- roadmap: p2-2h -->
 
 **§3's `parse-pdf-fields` described a capability that does not exist.** It says "same shape for a
 fielded PDF (onboarding's extraction step ports here)". Reading legacy at `4deabc5a`: onboarding's
@@ -730,7 +705,6 @@ the `.xlsx` fixture is produced by `write-excel-file`, which proves a real OOXML
 
 ## 4. Roster store tasks (service store — D4)
 
-<!-- roadmap: p2-2h -->
 
 - [x] the matching half is built and scenario-pinned — `roster/match-spreadsheet` with `name-eid-conflict` reporting confidence 0, a claimed EID never overridden, and five executable scenarios (§4, D163)
 - [ ] roster INGEST as a workflow step does not exist; onboarding's graph is what this node builds, and it is the first consumer that makes the 24 h freshness budget bite
@@ -816,8 +790,6 @@ counted, logged, never an erased row and never a swallowed error. Five executabl
 
 ### 4.1 Mutable retention workbooks are serialized projections, not read-task side effects
 
-<!-- roadmap: def-search-export -->
-<!-- roadmap: cross-cutting -->
 
 - [x] the retention-workbook MODEL this migration needs is built and unit-pinned — `DurableArtifactProjectionSpec`, the one-transaction checkpoint + stable-keyed outbox commit, the blocking `RunArtifactProjector`, the `xlsx-retention` sink and the fail-closed conflict park (§4.1, D164; `src/infra/artifacts/artifact-sink-projector.ts`, `xlsx-retention-sink.ts`, 13 arms in `tests/unit/artifact-projection.test.ts`)
 - [x] the i9 document model the workflow reads is built as ONE form across two loose sections, with the section-absent arms named (§4.10, D160)
@@ -825,12 +797,6 @@ counted, logged, never an erased row and never a swallowed error. Five executabl
 - [ ] the sink writes a four-column DURABILITY layout (`stableKey`/`keyValues`/`record`/`projectedAt`), not the operator's retention columns — those land with this migration
 > 2026-08-20 | docs-cohesion data-intake-and-edit-data | verified against `src/infra/artifacts/*`, `src/core/run-executor.ts:1078` and `grep -rl "artifactProjections:" src/workflows/` (empty); left: the declaration and the real column set
 
-<!-- roadmap-status: def-search-export -->
-- [x] this doc's half of the export writers exists — `write-excel-file` behind `src/infra/artifacts/xlsx-retention-sink.ts`, with an idempotent stable-keyed upsert and a temp → fsync → atomic-replace write
-- [ ] that writer emits a durability layout for ONE sink kind; an operator-facing "export these runs to Excel" writer is not built anywhere
-- [ ] the query surface (search runs across dates, view screenshots) is not this doc's — ref frontend-backend-integration §3.6 owns it, and the screenshot evidence store is ref operator-trust §2.2
-> 2026-08-20 | docs-cohesion data-intake-and-edit-data | verified against `src/infra/artifacts/xlsx-retention-sink.ts`; left: everything operator-facing — this doc contributes only the writer
-<!-- /roadmap-status -->
 
 `i9-check` currently appends to a master retention workbook. Calling that append part of the
 `roster/match-spreadsheet` read would make task retry duplicate rows and would violate the effect
@@ -883,7 +849,6 @@ lock, and the executor's atomic-commit, blocking-failure, and cross-run resume a
 
 ### 4.2 Contact/address normalization is typed advice, not a silent fallback
 
-<!-- roadmap: p2-2h -->
 
 The old path mixes deterministic phone/state/ZIP cleanup, Census→Nominatim fallback, and optional
 LLM inference inside `services/llm/normalize-contact.ts`; provider failure collapses to `null`, which
@@ -985,7 +950,6 @@ scenario corpus — the second asserts the withheld value appears NOWHERE in the
 
 ### 4.3 Phase-2h as-built — OCR extraction admits three producers identically (D151)
 
-<!-- roadmap: p2-2h -->
 
 - [x] the three producers are admitted through ONE gate that cannot branch on the source, and an operator's hand reading fingerprints identically to the provider's (§4.3, D151; `src/domain/ocr/extraction.ts`, held by `ocr-producer-parity`)
 - [x] routes 2 and 3 are usable from a terminal today — `cli ocr forms | instruction | admit`, non-zero exit on refusal (`src/backend/transports/cli/ocr.ts`)
@@ -1069,7 +1033,6 @@ interchangeable, not merely similar.
 
 ### 4.4 Phase-2h as-built — the forms are legacy's, and reading them found two gaps (D153)
 
-<!-- roadmap: p2-2h -->
 
 Operator confirmation (2026-08-06): the rebuild handles the same forms legacy does, so the field
 sets are ported rather than redesigned. Porting them exposed **two structural gaps in D151's first
@@ -1098,7 +1061,6 @@ field at the moment of reading, by the producer that read it.
 
 ### 4.5 Phase-2h as-built — measured against the real document corpus (D154)
 
-<!-- roadmap: p2-2h -->
 
 `hr-automation/data/documents` holds the operator's real scans, and reading them corrected the form
 model twice.
@@ -1139,7 +1101,6 @@ of its own.
 
 ### 4.6 Phase-2h as-built — a two-digit year is resolved, not refused (D155)
 
-<!-- roadmap: p2-2h -->
 
 The first live run of the OCR gate over real paper — `detect-test.pdf`, read page by page through
 route 2 — reported the stack correctly (4 emergency-contact pages flagged as *not this workflow*, 3
@@ -1166,7 +1127,6 @@ the silent wrong value this rule exists to avoid.
 
 ### 4.7 Grouping cannot assume adjacency — measured on raw scanner output (D157)
 
-<!-- roadmap: p2-2h -->
 
 The open question was whether a person's pages arrive together in a real scan. Two genuine scans
 answer it, and they answer it **differently** — which is itself the finding.
@@ -1201,7 +1161,6 @@ was the same decision, and it backed the row with the roster PPS EID.
 
 ### 4.8 Phase-2h as-built — stages 1 and 2 of the scanner pipeline (D158)
 
-<!-- roadmap: p2-2h -->
 
 `src/domain/ocr/stack.ts` lands classification-consumption and grouping;
 `cli ocr stack <classified.json> <form-type>` is the operator surface.
@@ -1232,7 +1191,6 @@ is a fact about the paper the operator fed in, not a reason to hide the person w
 
 ### 4.9 Phase-2h as-built — authority schema v11, the durability floor (D159)
 
-<!-- roadmap: p2-2h -->
 
 Everything the intake and OCR pipelines produced was in-memory until here: a manifest and an
 admitted extraction survived exactly as long as the process did. Schema **v11** adds
@@ -1254,7 +1212,6 @@ fan-out. A byte-identical re-read is idempotent, so replaying a submission is sa
 
 ### 4.10 Phase-2h as-built — the i9 is ONE form across two loose sections (D160)
 
-<!-- roadmap: p2-2h -->
 
 The last form lands, and with it the two arms D158 deliberately left unwritten because no form
 needed them: a form whose data pages are SECTIONS, and the sectioned subject in grouping.
@@ -1326,7 +1283,6 @@ schema decision (the shape is shared by every consumer), left open rather than g
 
 ### 4.11 Phase-2h as-built — route 1's production adapter is transport plus provenance (D161)
 
-<!-- roadmap: p2-2h -->
 
 The first production `ocr.extract` adapter exists: `src/backend/processing/providers/gemini-ocr-extract.ts`,
 Gemini, legacy's priority-1 OCR provider. The design constraint is §4.3's, made concrete: the
@@ -1393,7 +1349,6 @@ the minted id with the run's snapshot identity.
 
 ## 5. Intake pipeline: mapped dataset → N inputs, with a pre-run rejection review
 
-<!-- roadmap: p2-2h -->
 
 The mapping (§2) + the parsed rows (§3) + any roster match (§4) compose into **N workflow inputs,
 one per valid row**, feeding the run-surface fan-out (the multi-subject `operation` coordinator +
@@ -1527,7 +1482,6 @@ ran when exclusions exist.
 
 ### 5.0 Phase-2h as-built — validation, rejection and the manifest (D148)
 
-<!-- roadmap: p2-2h -->
 
 `src/domain/intake/validate.ts` is **format-agnostic**: it takes an already-parsed cell matrix plus
 the detected columns, the confirmed bindings and the projection, and returns exactly one disposition
@@ -1838,7 +1792,6 @@ a violating fixture.
 
 ### 5.2 Phase-2i as-built — the enqueue: readiness, the manifest mint, the fan-out (D171)
 
-<!-- roadmap: p2-2i -->
 
 `enqueue-intake-manifest` is the sixth intake arm and the irreversible one: it turns a reviewed
 mapping into N real HR runs. It activates here (2i-E2) over D170's durable session, and everything
@@ -2015,8 +1968,6 @@ to the whole input.
 
 ## 6. Rerun values from a prior run (charter §12)
 
-<!-- roadmap: p2-2h -->
-<!-- roadmap: p2-2i -->
 
 **Current contract — D334/D335 (2026-09-05).** The operator-facing action is **Rerun** for failed,
 interrupted and successful runs. It opens the ordinary Run modal at Steps, defaulting to failed and
@@ -2058,7 +2009,6 @@ product authority.
 
 ### 6.1 Data source — fetch the snapshot, SSE only signals staleness
 
-<!-- roadmap: p2-2i -->
 
 **Decision: the editable checkpoint snapshot is FETCHED (request/response), not SSE-streamed; the
 per-run SSE topic is consumed only as an invalidation signal.** Justification:
@@ -2077,7 +2027,6 @@ field-level provenance `{ source, observedAt?, correctedAt?, supersedes? }`.
 
 ### 6.2 What is editable vs read-only
 
-<!-- roadmap: p2-2i -->
 
 | Run state | Edit Data |
 |---|---|
@@ -2089,7 +2038,6 @@ field-level provenance `{ source, observedAt?, correctedAt?, supersedes? }`.
 
 ### 6.3 Editing = typed field patches; editing is not freshness
 
-<!-- roadmap: p2-2i -->
 
 An edit is **not** a free-form blob write. Each editable path is explicitly declared on the
 descriptor and checked against the producing contract's output schema. Stable item/match identity,
@@ -2111,7 +2059,6 @@ the value, so a corrupt edit cannot enter the run.
 
 ### 6.4 Concurrency — edit-during-resume is fail-closed (loud), the resume wins
 
-<!-- roadmap: p2-2i -->
 
 A parked run holds no browser (D5), so normally no task executes while the operator edits. But a
 resume can be triggered concurrently (a watcher gate resolving, an operator elsewhere clicking
@@ -2137,24 +2084,6 @@ edit onto a run that has moved on. (Editing a *running* task's checkpoints is fo
 
 #### 6.4.1 As-built — the rail wiring (2i-C, 2026-08-08, D168)
 
-<!-- roadmap: p2-2i -->
-<!-- roadmap: track-b -->
-
-<!-- roadmap-status: p2-2i -->
-- [x] 2i-C, the Edit Data rail: the `context-data` wire carries the policy, `authority.version` is the generation token, drafts re-parse into the recorded scalar's type, and all five save arms plus the three consume arms are pinned (`tests/unit/edit-data.test.ts`, `edit-data-field-policy` active)
-- [x] 2i-E, the intake surface over schema v12: the durable session, the upload route, all six command arms and the first real projection (§2.7/§2.8/§5.2, D170–D172)
-- [x] 2i-F, the token-scoped phone capture surface: the fragment token, the uniform refusal, the bundler and the derived handoff ids (§5.1, D174; `capture-durability-and-scope` active)
-- [x] the rail's CAS-conflict arm — silently reported saved until B7/D253 fixed it — is now exhaustive at the discriminant and guarded (§6.4.1)
-- [ ] the phone surface has no production delivery path: the BFF serves no frontend bytes, so `/capture.html` 404s outside the dev server (§5.1, D189)
-- [ ] no workflow can receive a capture handoff — `CAPTURE_INTAKE_BINDINGS` is empty (§5.1); and saved-mapping reuse has no store, so every intake upload re-maps (§2.3)
-> 2026-08-20 | docs-cohesion data-intake-and-edit-data | verified against `src/dashboard/{app/command-result.ts,surfaces/context-rail.tsx}`, `src/domain/intake/*`, `src/domain/capture*.ts` and `src/infra/sqlite/migrations.ts:904`; left: the two delivery gaps above
-<!-- /roadmap-status -->
-
-<!-- roadmap-status: track-b -->
-- [x] B7's half of this doc is closed: the Data save's unhandled CAS `conflict` is fixed at the discriminant, not at the call site — `settleCommandResult` plus the `command-result-exhaustive` guard with a fixture carrying the exact shipped shape (D253)
-- [ ] the rest of Track B is not this doc's — ref dashboard-surfaces and ref frontend-backend-integration own the surfaces; this section owns only the Edit Data model beneath the rail
-> 2026-08-20 | docs-cohesion data-intake-and-edit-data | verified against `src/dashboard/app/command-result.ts` and the `command-result-exhaustive` guard entry in `docs/rebuild/guard-inventory.json`
-<!-- /roadmap-status -->
 
 The operator surface over the D166 core landed; where the build deviates from the sketches above,
 the as-built shape is normative:
@@ -2257,7 +2186,6 @@ three consume arms) plus the activated `edit-data-field-policy` guard.
 
 ### 6.5 Rerun is the source-bound start-plan path
 
-<!-- roadmap: p2-2i -->
 
 Rerun submits through `src/services/start/plan.ts` and the `start-run` command. The source
 coordinate and observed version bind the prefill/recovery context, while the ordinary raw input,
@@ -2407,10 +2335,10 @@ claims a port is implemented.
 ## Artifact storage model
 
 **2026-09-08 — approved, pending implementation.**
-[Side task `side/artifacts`](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/artifacts.md) consolidates the artifact naming
+Side task `side/artifacts` (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/artifacts.md`) consolidates the artifact naming
 and lifecycle decisions: `intake_sessions` plus `intake_manifests` become `imported_artifacts`,
 `ocr_extractions` becomes `extracted_artifacts`, and `artifact_outbox` plus `artifact_sink_heads`
-become `generated_artifacts`. Under the [parallel execution binding](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md), prerequisite B
+become `generated_artifacts`. Under the parallel execution binding (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md`), prerequisite B
 completes T1 and shared T2 storage; T2 publication/export then runs independently of provider accounting
 and diagnostic resolution. Existing running plans remain unchanged.
 
@@ -2449,11 +2377,11 @@ selection follows the C0 settings contract; it does not implement an otherwise a
 L/A take verified report and attachment custody before reference-aware live cleanup. Archive viewing
 uses the saved generic report, not a dependency on live import or current workflow schemas.
 
-This is the C0-admitted target contract, not a claim of implemented behavior. The [Phase 2.6 owner](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md) binds sequential prerequisites, focused development proof and final 2.6.9 acceptance. Released evidence and migrations remain immutable.
+This is the C0-admitted target contract, not a claim of implemented behavior. The Phase 2.6 owner (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md`) binds sequential prerequisites, focused development proof and final 2.6.9 acceptance. Released evidence and migrations remain immutable.
 
 ### F implementation baseline — 2026-09-09
 
 Schema47 F consolidates imported/extracted artifacts and generated queue/head/XLSX evidence. Exact historical evidence and unavailable file states are preserved; G still owns the remaining publication policy.
 
-Implementation, frozen interfaces and focused evidence: [F execution owner](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/foundation.md#f-execution-record--2026-09-09).
+Implementation, frozen interfaces and focused evidence: F execution owner (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/foundation.md`).
 This records implementation of the approved C0 contract, not a new decision or full-phase acceptance.

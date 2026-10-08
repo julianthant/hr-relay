@@ -23,42 +23,8 @@ declaration data, not test evidence. The current suite map is
 
 ## Before you start
 
-**The plan is the SSOT — read it, do not re-derive it.** It has three parts: the **tree** at
-`docs/roadmap/roadmap.md` (the machine-readable plan + the site's source + the governance rules), the
-admitted **phase docs** under `docs/rebuild/plans/` (actionable: subphase folders with overviews and optional task files), and the
-**specs** in `docs/rebuild/reference/` (not actionable; cited by slug).
+Read the assigned brief and the relevant owning reference contract before implementation.
 
-- `docs/roadmap/roadmap.md` — the plan as written, in the roadmap notation (headings = nodes,
-  `builds:`/`needs:`/`doc:` lines); `docs/roadmap/index.html` is GENERATED from it by
-  `npm run roadmap`. After `roadmap:end` its **Governance** section owns the one-plan rule, the D1
-  ownership map and D263.
-- The **phase docs** under `docs/rebuild/plans/phase-N/` record tasks, evidence, decisions and exit criteria.
-  [The plans index](../../../docs/rebuild/plans/README.md) routes every existing subphase and former
-  flat path. `/phase-plan` reads the subphase overview and writes the approved assignment into its
-  single owner: the overview for a small plan, or a linked task file for a large one. No assignment
-  is duplicated. Decimal folders cover 0.1–3.5; lettered folders cover 4A, 5A–5B and 6A–6F.
-  D326 supersedes D323/D325's split phase grammar for
-  Phases 0–3: numbered phases contain decimal parts, each part contains numbered supervisor tasks,
-  and each task contains checklist subtasks. The active order is 0.3 authority design, 1.6 authority
-  implementation, 2.6 downstream revalidation, 3.1 dashboard, 3.2 workflow authoring/read-only
-  acceptance/candidate freeze, 3.3 controlled acceptance, optional 3.4 document tools, then 3.5
-  Codex/Claude cooperation (D342). Optional 3.4 never blocks 3.5. For Phase 3, D344 uses actual
-  prerequisites/tasks `3.P.N` and independent parallel children `3.P.N.1`, `3.P.N.2`, etc.
-  From Phase 3.2 onward, the roadmap’s 2026-09-19 amendment supersedes this prerequisite-only
-  shape: tangible tasks/subtasks, explicit Parallel chips, focused checks within a phase and full
-  gates at its exit. The following older shape applies to preserved earlier assignments only.
-  Parents complete before workers launch; new plans place **Finalization** as the last numbered
-  child, requiring every worker. That sequential child combines the group, runs
-  full gates and fixes failures before downstream consumers start. Workers use D191 focused checks; explicit scoped batch exceptions retain their gate timing. The
-  operator chooses launches and integration under Authorized orchestration below. D328's numeric
-  wave members remain valid for Phase 0–2 and preserved in-flight briefs.
-  Phase 4
-  admits later workflows as 4A/4B/4C only after D319 verification and operator approval; Phase 5 is
-  readiness plus the one cutover, and Phase 6 is the desktop app. D329 retires the old 03a–03d
-  filenames and active 3c-A/3c-B labels; their historical evidence lives under `history/superseded/`.
-- `docs/rebuild/reference/decisions.md` — the decision changelog (D1–D332; **D131 is a retired gap —
-  never reuse it**). A **pointer index**, not a spec: it tells you which doc owns a contract. Never
-  implement from it.
 - `docs/rebuild/reference/` — the contracts, each doc owning its own; in prose **`ref <slug>`**:
   `charter` (the operator's vision + the non-negotiables) · `task-contract` (tasks, stores, drivers) ·
   `workflow-model` (the builder, descriptors, the run state machine) · `dashboard-surfaces` (spans,
@@ -72,20 +38,11 @@ admitted **phase docs** under `docs/rebuild/plans/` (actionable: subphase folder
 - `docs/rebuild/reference/lessons.md` — the dated lessons ledger (`ref lessons`), recording
   "X looked safe and did Y", each naming its decision. Before kernel / driver / dashboard /
   write-safety work, search by seam/decision and read the matching entries; do not append historical lessons or retrospective comments as part of ordinary execution.
-- `docs/rebuild/plans/phase-0/`–`phase-6/` — active plan-document folders. D323 maps their owning work into the visible
-  Phase 0–6 hierarchy; D329 aligns every Phase 3 filename to its decimal part. Each phase owns its
-  tasks, decisions and **exit criteria**;
-  `docs/roadmap/roadmap.md` is the summary. The old `07-master-plan.md` was dissolved into them on
-  2026-08-20 and is preserved, with a section-by-section table of where everything went, at
-  `docs/rebuild/history/superseded/2026-08-20-master-plan-dissolved.md`.
 - `docs/rebuild/guard-inventory.json` — the reviewed guard manifest. `tests/unit/architecture/`
   must match it exactly, both directions.
-- `docs/rebuild/history/` — history, organized by kind (`doc-reviews/`, `design-inputs/`,
-  `superseded/`) and indexed by its own `README.md`. Superseded by the owning docs wherever they
-  differ; never cite as normative.
 
 **A decision is not ratified until it lands in its owning doc, in the same commit that records it.**
-`reference/decisions.md` gets a one-line pointer; the owner gets the normative text.
+The owner gets the normative text.
 
 ## Commands
 
@@ -112,8 +69,6 @@ npm run build:manifest     # regenerate src/workflow-kit/validation/generated-bu
 npm run build:manifest:check # fail if the committed manifest is stale
 npm run stores:catalog     # regenerate the generated §2 task catalog in docs/rebuild/reference/stores.md
 npm run stores:catalog:check # fail if the committed catalog is stale
-npm run roadmap            # render docs/roadmap/index.html from docs/roadmap/roadmap.md (the plan, in the roadmap notation)
-npm run roadmap:check      # fail if the committed site is stale
 ```
 
 `build:manifest` recomputes every descriptor's `contractFingerprint` from its source closure. Run it
@@ -339,26 +294,8 @@ canary from `.env`, expose its value, silently substitute another target, or inf
 
 ## Authorized orchestration
 
-For newly planned parallel work, [roadmap D344](../../../docs/roadmap/roadmap.md#d344--operator-coordinated-prerequisite-groups-2026-09-08)
-supersedes automatic integration and required coordinator orchestration below. The operator launches tasks
-from accepted prerequisites and assigns the group finalizer. For Phase 3.1, the
-[2026-09-13 cadence](../../../docs/rebuild/plans/phase-3/3.1-finish-the-dashboard/README.md#execution-cadence--operator-amendment-2026-09-13)
-requires focused task/prerequisite checks, typecheck plus focused group integration, full repository
-gates only at 3.1.19 with same-session final repairs, and no independent review.
-It supersedes conflicting review/gate instructions in this reference and personal skills. Elsewhere,
-workers return independently reviewed candidates after focused checks; the finalizer owns full gates,
-fixes and accepted integration.
-Targeted peer coordination is permitted when necessary to resolve blockers, overlap or
-duplicate effort within approved boundaries. Plan changes return to the operator; no taking shared
-files, automatic merging or launching other tasks. Existing
-in-flight work outside Phase 3 keeps its ownership/gates/integration permissions. The four-worktree ceiling
-includes unrelated work; an additional lane requires explicit capacity approval.
-
-For roadmap work read [roadmap §Plan, implement, review](../../../docs/roadmap/roadmap.md#plan-implement-review-operator-amendment-2026-09-04).
-Planning, roadmap recording and execution are separate intent:
-plan-only stops; explicitly requested execution continues after required approval, persisted plan and
-verified prerequisites. No fresh root is required between those stages. Existing phase admission,
-review/gate cadence, integration permission and in-flight ownership remain binding.
+The operator launches tasks and chooses integration. Preserve in-flight ownership and follow the
+assigned brief for prerequisites, gates and review. Planning and execution remain separate intent.
 
 Use the current global workflow instructions for route, worker and model selection. Workers own
 assigned implementation, checks and fixes; the root retains consequential decisions, acceptance
