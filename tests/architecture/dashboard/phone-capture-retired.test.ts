@@ -24,7 +24,7 @@ const RETIRED_PATHS = [
   "src/domain/capture-intake.ts",
   "src/domain/capture-operator.ts",
   "src/domain/capture-surface.ts",
-  "tests/parity/helpers/capture.ts",
+  "src/domain/capture.ts",
   "src/domain/qr-code.ts",
   "src/infra/capture",
   "src/server/capture",

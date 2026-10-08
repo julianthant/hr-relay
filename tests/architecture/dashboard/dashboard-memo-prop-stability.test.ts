@@ -42,7 +42,7 @@ import { join, relative } from "node:path";
 import { REPO_ROOT, walkFiles } from "../support/helpers/guard-files.js";
 
 const APP_ROOT = "src/dashboard/app";
-const FIXTURE_ROOT = "tests/unit/architecture/fixtures";
+const FIXTURE_ROOT = "tests/architecture/dashboard/fixtures";
 
 /** The elements whose `memo` this guard protects. */
 export const MEMOIZED_ELEMENTS = ["QueuePanel", "WorkspaceRail", "LogPanel"] as const;

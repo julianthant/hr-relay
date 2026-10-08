@@ -31,7 +31,7 @@ import { REPO_ROOT, walkFiles } from "../support/helpers/guard-files.js";
 
 const SURFACE_ROOTS = ["src/dashboard/surfaces", "src/dashboard/app"] as const;
 const COMPONENT_FACTORIES = new Set(["memo", "forwardRef", "lazy"]);
-const FIXTURE_ROOT = "tests/unit/architecture/fixtures";
+const FIXTURE_ROOT = "tests/architecture/dashboard/fixtures";
 
 const isComponentName = (name: string): boolean => /^[A-Z]/.test(name);
 

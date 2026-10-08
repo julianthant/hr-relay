@@ -1,7 +1,7 @@
 /**
  * The start-plan wire has ONE owner (ref frontend-backend-integration §3.4, 2026-09-03):
  * the browser's request, the server's admission of it, and the answer are
- * three schemas in `domain/dashboard/start-plan.ts`, imported by both sides.
+ * three schemas in `models/dashboard/start-plan.ts`, imported by both sides.
  * Before this, the client held a looser "mirror" the server could drift from.
  */
 import assert from "node:assert/strict";
@@ -141,7 +141,7 @@ describe("start-plan wire contract (one shared owner)", () => {
     for (const path of ["src/dashboard/client/commands/start-commands.ts", "src/backend/runs/commands/start-plan-service.ts"]) {
       const source = readFileSync(join(REPO_ROOT, path), "utf8");
       assert.doesNotMatch(source, /const StartPlan\w*Schema\s*=/u, `${path} must import the shared owner, not redeclare it`);
-      assert.match(source, /from "[./]*domain\/dashboard\/start-plan\.js"/u, `${path} must import domain/dashboard/start-plan.ts`);
+      assert.match(source, /from "[./]*models\/dashboard\/start-plan\.js"/u, `${path} must import models/dashboard/start-plan.ts`);
     }
   });
 });
