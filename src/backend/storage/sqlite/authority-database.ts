@@ -4803,7 +4803,9 @@ export class AuthorityDatabase implements Disposable {
     const validateOperation = (input: unknown): void => {
       const identity = DeclaredActionIdentitySchema.parse(input);
       const run = readTimelineRun(this.#database, identity.runId);
-      if (run === undefined || identity.attempt !== run.envelope.attempt || identity.claimGeneration !== run.claimGeneration || identity.definitionFingerprint !== run.envelope.contractFingerprint) throw new Error("diagnostic-operation-owner-execution-mismatch");
+      if (run === undefined || identity.attempt !== run.envelope.attempt
+        || Number(identity.claimGeneration) !== Number(run.claimGeneration)
+        || identity.definitionFingerprint !== run.envelope.contractFingerprint) throw new Error("diagnostic-operation-owner-execution-mismatch");
       const definition = requireWorkflowOperationDisplaySnapshot(run.envelope.operationDisplaySnapshot, { workflowId: run.envelope.workflow, definitionFingerprint: run.envelope.contractFingerprint });
       requireOperationSourceDeclaration(definition, identity);
       if (run.envelope.parent === undefined ? identity.childInvocation !== undefined : identity.childInvocation?.parentRunId !== run.envelope.parent.runId || identity.childInvocation.edgeId !== run.envelope.parent.edgeId) throw new Error("diagnostic-operation-child-identity-mismatch");

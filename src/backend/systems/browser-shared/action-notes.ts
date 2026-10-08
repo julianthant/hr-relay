@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import type { JsonValue } from "../../../rules/validation/canonical-json.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import type { DeclaredActionOccurrence } from "../../../rules/workflow/task-provenance.js";
+import { IsoInstantSchema } from "../../../rules/identity/ids.js";
 
 export type BrowserActionKind = "opened" | "clicked" | "typed" | "selected" | "checked" | "set" | "cleared" | "pressed" | "read" | "computed" | "verified" | "branched" | "joined" | "gated" | "delegated" | "session";
 export interface BrowserAction {
@@ -139,11 +140,13 @@ export async function runDeclaredAction<T>(
     await runDeclaredAction({ id: confirmation.id, kind: "verified", targetId: confirmation.targetId }, async () => {
       if (!await confirmation.verify(result)) throw new Error("declared-action-effect-not-confirmed");
     });
-    const verification = capture.actions.at(-1)?.operation;
-    if (verification === undefined || verification.logicalActionId !== confirmation.id || verification.state !== "completed") throw new Error("declared-action-confirmation-identity-missing");
+    const verificationAction = capture.actions.at(-1);
+    const verification = verificationAction?.operation;
+    if (verificationAction === undefined || verification === undefined
+      || verification.logicalActionId !== confirmation.id || verification.state !== "completed") throw new Error("declared-action-confirmation-identity-missing");
     const bound = capture.bind({ kind: action.kind, targetId: action.targetId, declaredActionId: action.id,
       at: capture.clock.now().toISOString(), state: "confirmed",
-      confirmation: { verificationActionId: verification.logicalActionId, verificationOccurrence: verification.occurrence, verifiedAt: capture.actions.at(-1)!.at },
+      confirmation: { verificationActionId: verification.logicalActionId, verificationOccurrence: verification.occurrence, verifiedAt: IsoInstantSchema.parse(verificationAction.at) },
       ...(capture.physicalSessionId === undefined ? {} : { physicalSessionId: capture.physicalSessionId }),
       ...(observedValue === undefined ? {} : { declaredValue: observedValue }),
     });

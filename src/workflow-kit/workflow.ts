@@ -1674,8 +1674,8 @@ export function defineWorkflowDescriptor<
         ...(retainedRunProtectedBindings(currentRun).length === 0 ? {} :
           { protectedBindings: retainedRunProtectedBindings(currentRun) }) };
       const sourceBindings = spec.operationDisplay?.capability === "complete" ? spec.operationDisplay.resultSources : undefined;
-      const retainedSources: NonNullable<RunResultRecord["operationSources"]> = [];
-      const retainedLineage: NonNullable<RunResultRecord["operationLineage"]> = [];
+      const retainedSources: NonNullable<z.input<typeof RunResultRecordSchema>["operationSources"]> = [];
+      const retainedLineage: NonNullable<z.input<typeof RunResultRecordSchema>["operationLineage"]> = [];
       const readPath = (value: unknown, path: string): unknown => {
         let current = value;
         for (const segment of path.split(".")) current = current !== null && typeof current === "object" ? Reflect.get(current, segment) : undefined;
@@ -1683,9 +1683,10 @@ export function defineWorkflowDescriptor<
       };
       const sourceEvidence = z.array(TerminalDependencyEvidenceSchema).parse(evidenceInput);
       for (const binding of sourceBindings ?? []) {
-        if (binding.source.kind === "derived") {
+        const source = binding.source;
+        if (source.kind === "derived") {
           if (readPath(parsedResult, binding.path) === undefined) throw new Error("workflow-result-lineage-output-unavailable");
-          const inputs = binding.source.inputs.map((input) => {
+          const inputs = source.inputs.map((input) => {
             const dependency = sourceEvidence.find((entry) => entry.nodeId === input.source.entryId);
             const sources = dependency?.state === "resolved" ? dependency.checkpoint.operationSources
               : dependency?.state === "child-resolved" ? RunResultRecordSchema.parse(dependency.result).operationSources : undefined;
@@ -1711,14 +1712,14 @@ export function defineWorkflowDescriptor<
           continue;
         }
 
-        const dependencyOutput = outputs[binding.source.entryId];
-        const output = readPath(binding.source.kind === "child-output" ? Reflect.get(Object(dependencyOutput), "output") : dependencyOutput, binding.source.path);
+        const dependencyOutput = outputs[source.entryId];
+        const output = readPath(source.kind === "child-output" ? Reflect.get(Object(dependencyOutput), "output") : dependencyOutput, source.path);
         const resultOutput = readPath(parsedResult, binding.path);
         if (output === undefined || resultOutput === undefined || canonicalJsonStringify(output) !== canonicalJsonStringify(resultOutput)) throw new Error("workflow-result-source-value-mismatch");
-        const dependency = sourceEvidence.find((entry) => entry.nodeId === binding.source.entryId);
+        const dependency = sourceEvidence.find((entry) => entry.nodeId === source.entryId);
         const sources = dependency?.state === "resolved" ? dependency.checkpoint.operationSources
           : dependency?.state === "child-resolved" ? RunResultRecordSchema.parse(dependency.result).operationSources : undefined;
-        const candidates = sources?.filter((source) => source.path === binding.source.path) ?? [];
+        const candidates = sources?.filter((candidate) => candidate.path === source.path) ?? [];
         if (candidates.length > 1) throw new Error("workflow-result-source-ambiguous");
         if (candidates[0] !== undefined) retainedSources.push({ path: binding.path, identity: candidates[0].identity });
       }

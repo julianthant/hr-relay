@@ -166,7 +166,8 @@ export const TaskUpstreamCheckpointEvidenceSchema = z.strictObject({
   }
   const childNodes = new Set<string>();
   for (const child of evidence.children ?? []) {
-    if (childNodes.has(child.nodeId) || checkpointNodes.has(child.nodeId) || evidence.skippedGates.includes(child.nodeId)) context.addIssue({ code: "custom", message: "duplicate child upstream evidence" });
+    if (childNodes.has(child.nodeId) || checkpointNodes.has(child.nodeId)
+      || evidence.skippedGates.some((gateId) => String(gateId) === String(child.nodeId))) context.addIssue({ code: "custom", message: "duplicate child upstream evidence" });
     childNodes.add(child.nodeId);
   }
   const gateNodes = new Set<string>();

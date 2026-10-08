@@ -12,6 +12,7 @@ import {
 } from "../../../models/task/task-contract.js";
 import type { ProvenancePolicy } from "../../../models/task/task-contract.js";
 import { IsoInstantSchema } from "../../../rules/identity/ids.js";
+import type { RunId } from "../../../rules/identity/ids.js";
 import {
   DataPointSchema,
   RecordedDataPointSchema,
@@ -229,8 +230,8 @@ export function createTaskProvenanceCollector(input: TaskProvenanceCollectorInpu
     if (records.size !== child.results.length || !records.has(child.result.runId) || canonicalJsonStringify(records.get(child.result.runId)) !== canonicalJsonStringify(child.result)) throw new Error("task-child-upstream-result-mismatch");
     const expectedCheckpoints = new Set<string>();
     const facts: FactProvenance[] = [];
-    const visited = new Set<string>();
-    const visit = (runId: string): void => {
+    const visited = new Set<RunId>();
+    const visit = (runId: RunId): void => {
       if (visited.has(runId)) throw new Error("task-child-upstream-cycle");
       visited.add(runId);
       const result = records.get(runId);

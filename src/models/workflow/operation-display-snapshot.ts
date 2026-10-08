@@ -181,7 +181,7 @@ const SnapshotTaskOperationSchema = z.strictObject({
   })),
   actions: z.array(SnapshotTaskActionSchema).min(1),
 }).superRefine((operation, context) => {
-  const templates = new Set(operation.templates.map((template) => template.id));
+  const templates = new Set<string>(operation.templates.map((template) => template.id));
   const visit = (actions: readonly SnapshotTaskAction[], path: (string | number)[]): void => {
     for (const [index, action] of actions.entries()) {
       if (action.templateId !== undefined && (action.kind !== "fill-field" || !templates.has(action.templateId))) {
@@ -285,6 +285,26 @@ const SnapshotPresentationNodeSchema: z.ZodType<SnapshotPresentationNode> = z.la
   children: z.array(SnapshotPresentationNodeSchema).min(1).optional(),
 }));
 
+const SnapshotWorkflowResultOutputReferenceSchema = z.strictObject({
+  kind: z.enum(["task-output", "child-output"]),
+  entryId: NodeIdSchema,
+  path: FieldPathSchema,
+});
+
+const SnapshotWorkflowResultSourceSchema = z.strictObject({
+  path: FieldPathSchema,
+  source: z.union([
+    SnapshotWorkflowResultOutputReferenceSchema,
+    z.strictObject({
+      kind: z.literal("derived"),
+      inputs: z.array(z.strictObject({
+        id: OperationValueIdSchema,
+        source: SnapshotWorkflowResultOutputReferenceSchema,
+      })).min(1),
+    }),
+  ]),
+});
+
 /**
  * A content-addressed, strict JSON document suitable for the immutable run
  * envelope.  It has no executable display code or value-bearing config/schema
@@ -297,7 +317,7 @@ export const WorkflowOperationDisplaySnapshotSchema = z.strictObject({
   workflowId: WorkflowIdSchema,
   definitionFingerprint: FingerprintSchema,
   transforms: z.array(SnapshotWorkflowTransformSchema),
-  resultSources: z.array(z.strictObject({ path: FieldPathSchema, source: z.union([z.strictObject({ kind: z.enum(["task-output", "child-output"]), entryId: NodeIdSchema, path: FieldPathSchema }), z.strictObject({ kind: z.literal("derived"), inputs: z.array(z.strictObject({ id: OperationValueIdSchema, source: z.strictObject({ kind: z.enum(["task-output", "child-output"]), entryId: NodeIdSchema, path: FieldPathSchema }) })).min(1) })]) })).optional(),
+  resultSources: z.array(SnapshotWorkflowResultSourceSchema).optional(),
   invocations: z.array(SnapshotInvocationSchema),
   presentation: z.array(SnapshotPresentationNodeSchema),
   execution: z.array(z.strictObject({ entryId: NodeIdSchema, dependsOn: z.array(NodeIdSchema) })),
@@ -472,7 +492,9 @@ export function freezeWorkflowOperationDisplaySnapshot(input: Readonly<{
     snapshotVersion: OPERATION_DISPLAY_SNAPSHOT_VERSION,
     workflowId,
     definitionFingerprint,
-    ...(display.resultSources === undefined ? {} : { resultSources: display.resultSources }),
+    ...(display.resultSources === undefined ? {} : {
+      resultSources: z.array(SnapshotWorkflowResultSourceSchema).parse(display.resultSources),
+    }),
     transforms: display.transforms.map((transform) => SnapshotWorkflowTransformSchema.parse({
       id: transform.id,
       inputSchemaHash: deriveSchemaHash(transform.input, "input"),

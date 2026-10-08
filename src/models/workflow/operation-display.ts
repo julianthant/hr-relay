@@ -388,7 +388,7 @@ export function assertTaskOperationDeclaration(
     if (needsTarget) {
       if (action.target === undefined) throw operationError(contract, operation, `action "${action.id}" requires a semantic target`);
       const target = ElementIdSchema.parse(action.target);
-      if (operation.system === "local" || !String(target).startsWith(`${operation.system}.`)) {
+      if (!String(target).startsWith(`${operation.system}.`)) {
         throw operationError(contract, operation, `action "${action.id}" target belongs to another system`);
       }
     } else if (action.target !== undefined) {
