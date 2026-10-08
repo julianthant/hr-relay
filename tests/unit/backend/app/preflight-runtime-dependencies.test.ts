@@ -2,29 +2,9 @@ import assert from "node:assert/strict";
 import { setImmediate } from "node:timers";
 import { describe, it } from "vitest";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import {
-  buildPreflightReport,
-  createPreflightAuthority,
-  executePreflightRunner,
-  PreflightRerunCommandRequestSchema,
-  PreflightRerunCommandResultSchema,
-  PreflightReportSchema,
-  requiredPreflightChecks,
-  type PreflightDeadlineScheduler,
-} from "../../../../src/models/preflight/preflight.js";
-import {
-  RUNTIME_ENVIRONMENT_REGISTRY,
-  auditRuntimeEnvironmentInventory,
-} from "../../../../src/models/runtime/runtime-environment.js";
-import {
-  auditRuntimeDependencyCoverage,
-  PREFLIGHT_CHECKS,
-  PreflightCheckIdSchema,
-  RUNTIME_DEPENDENCIES,
-  RUNTIME_DEPENDENCY_REGISTRY,
-  RuntimeCapabilitySchema,
-  type RuntimeCapability,
-} from "../../../../src/models/runtime/runtime-dependencies.js";
+import { buildPreflightReport, createPreflightAuthority, executePreflightRunner, PreflightRerunCommandRequestSchema, PreflightRerunCommandResultSchema, PreflightReportSchema, requiredPreflightChecks, type PreflightDeadlineScheduler } from "../../../../src/models/preflight/preflight.js";
+import { RUNTIME_ENVIRONMENT_REGISTRY, auditRuntimeEnvironmentInventory } from "../../../../src/models/runtime/runtime-environment.js";
+import { auditRuntimeDependencyCoverage, PREFLIGHT_CHECKS, PreflightCheckIdSchema, RUNTIME_DEPENDENCIES, RUNTIME_DEPENDENCY_REGISTRY, RuntimeCapabilitySchema, type RuntimeCapability } from "../../../../src/models/runtime/runtime-dependencies.js";
 import { directIdentifierDisplay } from "../../../../src/rules/redaction/redaction.js";
 
 const CLOCK = manualClock(new Date("2026-08-10T12:00:00-07:00"));
@@ -114,27 +94,6 @@ describe("runtime dependency registry", () => {
       true,
     );
 
-    const wrongModelSetting = {
-      ...RUNTIME_DEPENDENCY_REGISTRY,
-      providers: RUNTIME_DEPENDENCY_REGISTRY.providers.map((provider) => provider.provider === "gemini"
-        ? { ...provider, modelsConfigKey: "openRouter" }
-        : provider),
-    };
-    assert.equal(
-      auditRuntimeDependencyCoverage(wrongModelSetting).some((violation) => violation.includes(
-        "provider gemini models config key openRouter does not match secret inventory gemini",
-      )),
-      true,
-    );
-
-    const missingCapabilityCheck = {
-      ...RUNTIME_DEPENDENCY_REGISTRY,
-      checks: RUNTIME_DEPENDENCY_REGISTRY.checks.filter(({ id }) => id !== "feature.ai-advisory.providers"),
-    };
-    const capabilityViolations = auditRuntimeDependencyCoverage(missingCapabilityCheck);
-    assert.equal(capabilityViolations.some((violation) => violation.includes("feature.ai-advisory has no registered preflight check")), true);
-    assert.equal(capabilityViolations.some((violation) => violation.includes("names missing check feature.ai-advisory.providers")), true);
-
     const mismatchedScenario = {
       ...RUNTIME_DEPENDENCY_REGISTRY,
       dependencies: RUNTIME_DEPENDENCY_REGISTRY.dependencies.map((dependency) => dependency.id === "browser.chromium"
@@ -153,19 +112,6 @@ describe("runtime dependency registry", () => {
         : check),
     };
     assert.deepEqual(auditRuntimeDependencyCoverage(missingConsumer), ["runtime dependency registry failed strict parsing"]);
-  });
-
-  it("detects provider-closure registry mutations", () => {
-    const mutation = {
-      ...RUNTIME_DEPENDENCY_REGISTRY,
-      providers: RUNTIME_DEPENDENCY_REGISTRY.providers.map((provider) => ({
-        ...provider,
-        capabilities: provider.capabilities.filter((capability) => capability !== "ai.advisory"),
-      })),
-    };
-    const violations = auditRuntimeDependencyCoverage(mutation);
-    assert.equal(violations.some((violation) => violation.includes("provider capability ai.advisory has no adapter")), true);
-    assert.equal(violations.some((violation) => violation.includes("feature feature.ai-advisory has 0 providers")), true);
   });
 
   it("rejects wrong credential ownership, aggregate-only secret coverage, and coherent provider removal", () => {
@@ -193,16 +139,16 @@ describe("runtime dependency registry", () => {
     assert.equal(secretViolations.some((violation) => violation.includes("ucpathUserId is not owned by dependency secret.ucpath-sso")), true);
     assert.equal(secretViolations.some((violation) => violation.includes("path.state cannot own secret ucpathPassword")), true);
 
-    const withoutGemini = {
+    const withoutCensus = {
       ...RUNTIME_DEPENDENCY_REGISTRY,
-      providers: RUNTIME_DEPENDENCY_REGISTRY.providers.filter(({ provider }) => provider !== "gemini"),
-      dependencies: RUNTIME_DEPENDENCY_REGISTRY.dependencies.filter(({ id }) => id !== "provider.gemini"),
+      providers: RUNTIME_DEPENDENCY_REGISTRY.providers.filter(({ provider }) => provider !== "census"),
+      dependencies: RUNTIME_DEPENDENCY_REGISTRY.dependencies.filter(({ id }) => id !== "provider.census"),
       checks: RUNTIME_DEPENDENCY_REGISTRY.checks
-        .filter(({ id }) => id !== "provider.gemini")
-        .map((check) => ({ ...check, dependencies: check.dependencies.filter((id) => id !== "provider.gemini") })),
+        .filter(({ id }) => id !== "provider.census")
+        .map((check) => ({ ...check, dependencies: check.dependencies.filter((id) => id !== "provider.census") })),
     };
     assert.equal(
-      auditRuntimeDependencyCoverage(withoutGemini).some((violation) => violation.includes("provider gemini has no adapter or explicit target disposition")),
+      auditRuntimeDependencyCoverage(withoutCensus).some((violation) => violation.includes("provider census has no adapter or explicit target disposition")),
       true,
     );
   });
@@ -270,14 +216,7 @@ describe("runtime dependency registry", () => {
       true,
     );
 
-    const wrongProviderExpansion = {
-      ...RUNTIME_DEPENDENCY_REGISTRY,
-      providers: RUNTIME_DEPENDENCY_REGISTRY.providers.filter(({ provider }) => provider !== "gemini"),
-    };
-    assert.equal(
-      auditRuntimeDependencyCoverage(wrongProviderExpansion).some((violation) => violation.includes("feature.ocr provider authority contradicts semantic expansion")),
-      true,
-    );
+
   });
 
   it("keeps validated registry exports recursively immutable", () => {
@@ -305,18 +244,7 @@ describe("runtime environment inventory", () => {
       )),
       true,
     );
-    const staleModel = {
-      ...RUNTIME_ENVIRONMENT_REGISTRY,
-      exact: RUNTIME_ENVIRONMENT_REGISTRY.exact.map((spec) => spec.key === "OCR_GEMINI_MODELS"
-        ? { key: spec.key, classification: "retired-in-target", disposition: "retired-in-target", reason: "incorrect mutation", documented: false }
-        : spec),
-    };
-    assert.equal(
-      auditRuntimeEnvironmentInventory(staleModel).some((violation) => violation.includes(
-        "migrated settings environment OCR_GEMINI_MODELS is not explicitly refused",
-      )),
-      true,
-    );
+
   });
 });
 
@@ -324,11 +252,11 @@ describe("preflight selection and reports", () => {
   it("refuses missing selected runner membership before executing any detector", () => {
     assert.throws(() => createPreflightAuthority({
       configFingerprint: CONFIG_FINGERPRINT,
-      requestedCapabilities: ["provider.gemini"],
+      requestedCapabilities: ["provider.census"],
       runners: [],
       clock: CLOCK,
       scheduler: NEVER_DEADLINE_SCHEDULER,
-    }), /no runner for selected checks: provider\.gemini/);
+    }), /no runner for selected checks: provider\.census/);
   });
 
   it("retains caller cancellation until actual detector settlement and rejects late health", async () => {
@@ -425,7 +353,7 @@ describe("preflight selection and reports", () => {
     assert.throws(() => createPreflightAuthority({
       configFingerprint: CONFIG_FINGERPRINT,
       requestedCapabilities: ["dashboard.serve"],
-      runners: [...selected, PreflightCheckIdSchema.parse("provider.gemini")].map((check) => ({
+      runners: [...selected, PreflightCheckIdSchema.parse("provider.census")].map((check) => ({
         check,
         kind: PREFLIGHT_CHECKS.find((candidate) => candidate.id === check)?.runner ?? "pure",
         async run() {
@@ -434,7 +362,7 @@ describe("preflight selection and reports", () => {
       })),
       clock: CLOCK,
       scheduler: NEVER_DEADLINE_SCHEDULER,
-    }), /extra runners: provider\.gemini/);
+    }), /extra runners: provider\.census/);
   });
 
   it("refuses duplicate detector ownership for one selected check", () => {
@@ -527,10 +455,10 @@ describe("preflight selection and reports", () => {
     let executions = 0;
     const authority = createPreflightAuthority({
       configFingerprint: CONFIG_FINGERPRINT,
-      requestedCapabilities: ["provider.gemini"],
+      requestedCapabilities: ["provider.census"],
       runners: [{
-        check: PreflightCheckIdSchema.parse("provider.gemini"),
-        kind: PREFLIGHT_CHECKS.find(({ id }) => id === "provider.gemini")?.runner ?? "pure",
+        check: PreflightCheckIdSchema.parse("provider.census"),
+        kind: PREFLIGHT_CHECKS.find(({ id }) => id === "provider.census")?.runner ?? "pure",
         async run() {
           executions += 1;
           throw new Error("injected preflight failure");
@@ -563,10 +491,10 @@ describe("preflight selection and reports", () => {
     let maximumActive = 0;
     const authority = createPreflightAuthority({
       configFingerprint: CONFIG_FINGERPRINT,
-      requestedCapabilities: ["provider.gemini"],
+      requestedCapabilities: ["provider.census"],
       runners: [{
-        check: PreflightCheckIdSchema.parse("provider.gemini"),
-        kind: PREFLIGHT_CHECKS.find(({ id }) => id === "provider.gemini")?.runner ?? "pure",
+        check: PreflightCheckIdSchema.parse("provider.census"),
+        kind: PREFLIGHT_CHECKS.find(({ id }) => id === "provider.census")?.runner ?? "pure",
         async run() {
           executions += 1;
           active += 1;
@@ -576,7 +504,7 @@ describe("preflight selection and reports", () => {
             await gate;
           }
           active -= 1;
-          return { check: "provider.gemini" as const, state: "healthy" as const, summary: "provider healthy" };
+          return { check: "provider.census" as const, state: "healthy" as const, summary: "provider healthy" };
         },
       }],
       clock: CLOCK,
@@ -596,12 +524,12 @@ describe("preflight selection and reports", () => {
   it("bounds retained command identities without evicting an earlier replay", async () => {
     const authority = createPreflightAuthority({
       configFingerprint: CONFIG_FINGERPRINT,
-      requestedCapabilities: ["provider.gemini"],
+      requestedCapabilities: ["provider.census"],
       runners: [{
-        check: PreflightCheckIdSchema.parse("provider.gemini"),
-        kind: PREFLIGHT_CHECKS.find(({ id }) => id === "provider.gemini")?.runner ?? "pure",
+        check: PreflightCheckIdSchema.parse("provider.census"),
+        kind: PREFLIGHT_CHECKS.find(({ id }) => id === "provider.census")?.runner ?? "pure",
         async run() {
-          return { check: "provider.gemini" as const, state: "healthy" as const, summary: "provider healthy" };
+          return { check: "provider.census" as const, state: "healthy" as const, summary: "provider healthy" };
         },
       }],
       clock: CLOCK,
@@ -905,28 +833,28 @@ describe("preflight selection and reports", () => {
     assert.throws(() => requiredPreflightChecks(["dashboard.serve", "dashboard.serve"]), /requested capabilities contain duplicates/);
     assert.throws(() => buildPreflightReport({
       configFingerprint: CONFIG_FINGERPRINT,
-      requestedCapabilities: ["provider.gemini"],
+      requestedCapabilities: ["provider.census"],
       observations: [{ check: "unknown.check", state: "healthy", summary: "unknown" }],
       clock: CLOCK,
     }), /unknown checks: unknown.check/);
     assert.throws(() => buildPreflightReport({
       configFingerprint: CONFIG_FINGERPRINT,
-      requestedCapabilities: ["provider.gemini"],
+      requestedCapabilities: ["provider.census"],
       observations: [
-        { check: "provider.gemini", state: "healthy", summary: "first" },
-        { check: "provider.gemini", state: "healthy", summary: "second" },
+        { check: "provider.census", state: "healthy", summary: "first" },
+        { check: "provider.census", state: "healthy", summary: "second" },
       ],
       clock: CLOCK,
-    }), /duplicate check ids: provider.gemini/);
+    }), /duplicate check ids: provider.census/);
     assert.throws(() => buildPreflightReport({
       configFingerprint: CONFIG_FINGERPRINT,
-      requestedCapabilities: ["provider.gemini"],
+      requestedCapabilities: ["provider.census"],
       observations: [],
       clock: CLOCK,
-    }), /omit selected checks: provider.gemini/);
+    }), /omit selected checks: provider.census/);
     assert.throws(() => buildPreflightReport({
       configFingerprint: CONFIG_FINGERPRINT,
-      requestedCapabilities: ["provider.gemini"],
+      requestedCapabilities: ["provider.census"],
       observations: [{ check: "filesystem.health", state: "healthy", summary: "filesystem healthy" }],
       clock: CLOCK,
     }), /unrequested checks: filesystem.health/);
@@ -944,44 +872,6 @@ describe("preflight selection and reports", () => {
     const result = resultFor(report, check);
     assert.equal(result.status, "fail");
     if (result.status === "fail") assert.deepEqual(result.blocks, [blocked]);
-  });
-
-  it("keeps provider cells optional but closes selected OCR and advisory features over their providers", () => {
-    const optionalProvider = reportFor(["provider.gemini"], new Set(["provider.gemini"]));
-    assert.equal(resultFor(optionalProvider, "provider.gemini").status, "warning");
-
-    const ocrChecks = requiredPreflightChecks(["feature.ocr"]);
-    assert.equal(ocrChecks.some((check) => check === "feature.ocr.providers"), true);
-    for (const provider of ["gemini", "groq", "mistral", "openrouter", "sambanova"]) {
-      assert.equal(ocrChecks.some((check) => check === `provider.${provider}`), true, provider);
-    }
-    const partiallyAvailable = reportFor(["feature.ocr"], new Set(["provider.gemini"]));
-    assert.equal(resultFor(partiallyAvailable, "provider.gemini").status, "warning");
-    assert.equal(resultFor(partiallyAvailable, "feature.ocr.providers").status, "pass");
-
-    const unavailable = reportFor(["feature.ocr"], new Set([
-      "feature.ocr.providers",
-      "provider.gemini",
-      "provider.groq",
-      "provider.mistral",
-      "provider.openrouter",
-      "provider.sambanova",
-    ]));
-    const featureResult = resultFor(unavailable, "feature.ocr.providers");
-    assert.equal(featureResult.status, "fail");
-    if (featureResult.status === "fail") assert.deepEqual(featureResult.blocks, ["feature.ocr"]);
-    assert.equal(resultFor(unavailable, "provider.groq").status, "warning");
-
-    assert.throws(() => reportFor(["feature.ocr"], new Set([
-      "provider.gemini",
-      "provider.groq",
-      "provider.mistral",
-      "provider.openrouter",
-      "provider.sambanova",
-    ])), /provider-set observation contradicts 0 healthy provider/);
-
-    const advisory = reportFor(["feature.ai-advisory"]);
-    assert.equal(advisory.results.every(({ status }) => status === "pass"), true);
   });
 
   it("produces a healthy report with unique selected results and no impact fields", () => {
@@ -1013,7 +903,7 @@ describe("preflight selection and reports", () => {
     assert.equal(PreflightReportSchema.safeParse({
       ...report,
       results: report.results.map((result, index) => index === 0
-        ? { status: "fail", check: result.check, summary: "bad", blocks: ["feature.ocr"], remediation: "repair" }
+        ? { status: "fail", check: result.check, summary: "bad", blocks: ["provider.census"], remediation: "repair" }
         : result),
     }).success, false);
     assert.equal(PreflightReportSchema.safeParse({

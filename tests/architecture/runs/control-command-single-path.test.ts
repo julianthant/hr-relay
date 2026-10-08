@@ -34,29 +34,14 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { afterEach, describe, it } from "vitest";
-import {
-  createCommandKernel,
-  PHASE1_ACTIVE_COMMAND_ARMS,
-  PHASE1_DEFERRED_COMMAND_ARMS,
-  type CommandKernel,
-} from "../../../src/backend/runs/commands/command-kernel.js";
-import {
-  CommandRequestSchema,
-  CommandResultSchema,
-  COMMAND_FAMILY_REGISTRY,
-} from "../../../src/rules/commands/commands.js";
+import { createCommandKernel, PHASE1_ACTIVE_COMMAND_ARMS, PHASE1_DEFERRED_COMMAND_ARMS, type CommandKernel } from "../../../src/backend/runs/commands/command-kernel.js";
+import { CommandRequestSchema, CommandResultSchema, COMMAND_FAMILY_REGISTRY } from "../../../src/rules/commands/commands.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { AuthorityDatabase, type AuthorityRepositories } from "../../support/helpers/synthetic-storage-admission.js";
 import { planStart } from "../../../src/backend/runs/start/plan.js";
 import { REPO_ROOT, walkFiles } from "../support/helpers/guard-files.js";
 import { fixtureDescriptor } from "../../support/fixtures/descriptor-fixtures.js";
-import {
-  COMMAND_FIXTURES,
-  HASH_B,
-  NOW,
-  UUID_2,
-  UUID_4,
-} from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { COMMAND_FIXTURES, HASH_B, NOW, UUID_2, UUID_4 } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN, sequentialIdFactory } from "../../support/fixtures/phase1f-run-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../../support/fixtures/intake-kernel-seams.js";
 import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../../support/fixtures/archive-fixtures.js";
@@ -89,13 +74,7 @@ const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
       entries: { ucpathPassword: { clear: true } },
     },
   },
-  {
-    commandId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", requestedAt: NOW,
-    requestedBy: "local-operator", source: "dashboard", family: "settings", type: "apply-provider-keys",
-    target: { expectedRevision: 1, sourceVersionToken: HASH_B },
-    payload: { providerSchemaHash: HASH_B, writeId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-      operations: { GROQ_API_KEY: { set: "synthetic-guard" } } },
-  },
+
   {
     commandId: "abababab-abab-4aba-8aba-abababababab", requestedAt: NOW,
     requestedBy: "local-operator", source: "dashboard", family: "storage-relocation", type: "plan-storage-relocation",
@@ -144,7 +123,7 @@ const EXPECTED_ACTIVE = {
     "inspect-intake", "confirm-intake-mapping", "correct-intake-row",
     "exclude-intake-row", "validate-intake", "enqueue-intake-manifest",
   ],
-  settings: ["apply-settings", "apply-protected-settings", "apply-provider-keys"],
+  settings: ["apply-settings", "apply-protected-settings"],
   "storage-relocation": ["plan-storage-relocation", "cancel-storage-relocation"],
   // D179 (2i-G): the D80 archive model activated — plan, apply, relaunch.
   // D308: the Archive's delete door.
@@ -230,7 +209,7 @@ function createHarness(wrap?: RepositoryWrap): GuardHarness {
     settings: {
       validateRequest: (command) => command.type === "apply-settings" && command.payload.settingsSchemaHash !== SETTINGS_SCHEMA_HASH
         ? { state: "rejected", code: "schema-mismatch", message: "guard fixture uses a noncurrent settings schema" } : undefined,
-      commitPrivate: (command) => command.type === "apply-protected-settings" || command.type === "apply-provider-keys"
+      commitPrivate: (command) => command.type === "apply-protected-settings"
         ? { state: "conflict", currentRevision: PositiveIntSchema.parse(1), message: "guard fixture has no mutable private target" } : undefined,
       reconcileReplay: () => {
         throw new Error("guard fixture has no persisted settings replay target");
@@ -322,7 +301,6 @@ describe("control-command-single-path", () => {
     const settingsAuditReaders = new Map([
       ["src/backend/runtime/settings/settings-runtime.ts", 1],
       ["src/backend/storage/maintenance/storage-relocation-plans.ts", 1],
-      ["src/backend/runs/commands/provider-key-journal.ts", 3],
       ["src/backend/storage/compatibility/d331-protected-journal.ts", 1],
       ["src/backend/storage/sqlite/backup-service.ts", 0],
     ]);

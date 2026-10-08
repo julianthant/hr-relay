@@ -4,20 +4,13 @@
  * this slice cannot yet serve is an explicit `unavailable` with its owning
  * milestone named — never a plausible placeholder.
  */
-import type { CapabilityAvailability } from "../../../rules/validation/absence.js";
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { descriptorRuntimeNodes, workflowProjections } from "../../../workflow-kit/workflow.js";
 import { runtimeTimeZone, type Clock } from "../../../rules/time/clock.js";
 import { PreflightReportSchema } from "../../../models/preflight/preflight.js";
 import { z } from "zod";
-import {
-  FrontendBootstrapWireSchema,
-  type FrontendBootstrapWire,
-  type WorkflowStartWire,
-} from "../../../models/dashboard/bootstrap.js";
-import {
-  SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID,
-} from "../../../models/dashboard/settings.js";
+import { FrontendBootstrapWireSchema, type FrontendBootstrapWire, type WorkflowStartWire } from "../../../models/dashboard/bootstrap.js";
+import { SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID } from "../../../models/dashboard/settings.js";
 import { BrowserSystemIdSchema, LOCAL_OPERATOR_ACTOR_ID, type Fingerprint } from "../../../rules/identity/ids.js";
 import type { WorkflowModuleRole } from "../../../workflow-kit/validation/module-role.js";
 import { projectStartSteps, startStepWireControl } from "../start/step-selection.js";
@@ -71,17 +64,6 @@ export interface BootstrapQueryDeps {
   readonly backupSummary: () => "current" | "stale" | "missing";
   /** The one retained report produced by the composed preflight authority. */
   readonly preflightReport: () => z.infer<typeof PreflightReportSchema>;
-  /**
-   * Whether this process composed an `ai.advisory` provider (2i-G, D178).
-   *
-   * `ai-advisory` came off the deferred table when the producer landed, so
-   * the wire now reports a real fact about THIS process rather than a
-   * milestone: composed keys make the feature available, and no key makes it
-   * `not-configured` naming the environment family to set. A feature that
-   * says "deferred" after it shipped is the same lie as one that says
-   * "available" when nothing is wired.
-   */
-  readonly advisoryAvailability: () => CapabilityAvailability;
 }
 
 const DEFERRED_FEATURES = [
@@ -210,7 +192,6 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
         feature,
         availability: { state: "unavailable", code: "deferred", reason },
       })),
-      { feature: "ai-advisory", availability: deps.advisoryAvailability() },
     ],
   });
 }

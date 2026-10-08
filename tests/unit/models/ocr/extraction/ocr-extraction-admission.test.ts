@@ -26,7 +26,7 @@ import { sha256Hex } from "../../../../../src/rules/validation/sha256.js";
 const PAGE_SHA = sha256Hex("oath-roster-page-1");
 const READ_AT = "2026-08-05T18:00:00.000Z";
 
-const PROVIDER: ExtractionSource = { kind: "provider", providerId: "gemini", modelId: "gemini-2.5-pro" };
+const PROVIDER: ExtractionSource = { kind: "provider", providerId: "deterministic", modelId: "fixture" };
 const LOCAL_AGENT: ExtractionSource = { kind: "local-agent", agentId: "codex-cli", invocation: "codex read page1.png" };
 const OPERATOR: ExtractionSource = { kind: "operator", actorId: "local-operator" };
 

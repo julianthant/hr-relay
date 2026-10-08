@@ -24,22 +24,11 @@ import { flow } from "../../../../../../src/workflow-kit/flow.js";
 import { defineServiceStore, defineTaskStoreRegistry } from "../../../../../../src/workflow-kit/task-registry.js";
 import { defineTask } from "../../../../../../src/workflow-kit/task.js";
 import { defineWorkflowDescriptor, type AnyWorkflowDescriptor } from "../../../../../../src/workflow-kit/workflow.js";
-import {
-  executeClaimedRun,
-  type RunExecutorDependencies,
-  type RunProviderWiring,
-} from "../../../../../../src/backend/runtime/execution/run-executor.js";
+import { executeClaimedRun, type RunExecutorDependencies, type RunProviderWiring } from "../../../../../../src/backend/runtime/execution/run-executor.js";
 import { defaultRuntimePaths } from "../../../../../../src/backend/app/config/runtime-paths.js";
 import { ConfigSchema } from "../../../../../../src/models/config/schema.js";
 import { defineTaskContract } from "../../../../../../src/models/task/task-contract.js";
-import {
-  FingerprintSchema,
-  IsoInstantSchema,
-  ProviderAdmissionIdSchema,
-  ScenarioIdSchema,
-  TraceIdSchema,
-  taskId,
-} from "../../../../../../src/rules/identity/ids.js";
+import { FingerprintSchema, IsoInstantSchema, ProviderAdmissionIdSchema, ScenarioIdSchema, TraceIdSchema, taskId } from "../../../../../../src/rules/identity/ids.js";
 import { isRunNodeExecutionIdentity } from "../../../../../../src/rules/providers/provider-admission.js";
 import type { RunRecord } from "../../../../../../src/models/run/record.js";
 import { deriveSchemaHash } from "../../../../../../src/models/validation/schema-bound-value.js";
@@ -49,20 +38,8 @@ import { createContentAddressedArtifactWriter } from "../../../../../../src/back
 import { createDeterministicProviderHarness } from "../../../../../../src/backend/processing/providers/deterministic-provider.js";
 import type { AuthorityDatabase } from "../../../../../../src/backend/storage/sqlite/index.js";
 import { HASH_A, NOW } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
-import {
-  QUEUED_RUN,
-  RUN_ID,
-  WORKER_ID,
-  sequentialIdFactory,
-} from "../../../../../support/fixtures/phase1f-run-fixtures.js";
-import {
-  happySessionHarness,
-  ManualScheduler,
-  openAuthorityHarness,
-  recordingEmitter,
-  recordingLogger,
-  sessionManagerFor,
-} from "../../../../../support/helpers/phase1f-executor-harness.js";
+import { QUEUED_RUN, RUN_ID, WORKER_ID, sequentialIdFactory } from "../../../../../support/fixtures/phase1f-run-fixtures.js";
+import { happySessionHarness, ManualScheduler, openAuthorityHarness, recordingEmitter, recordingLogger, sessionManagerFor } from "../../../../../support/helpers/phase1f-executor-harness.js";
 
 const disposers: (() => void)[] = [];
 afterEach(() => {
@@ -117,7 +94,7 @@ const providersOnlyContract = defineTaskContract({
   input: FixtureInput,
   output: FixtureOutput,
   errorCodes: ["provider-unavailable"] as const,
-  providers: ["ocr.extract"] as const,
+  providers: ["geocode.census"] as const,
   subject: { kind: "none", reason: "executor capability wiring fixture" },
   scenarios: [SCENARIO],
   freshness: { defaultMaxAgeMs: 0 },
@@ -153,7 +130,7 @@ const wiredContract = defineTaskContract({
   input: FixtureInput,
   output: WiredOutput,
   errorCodes: ["provider-unavailable"] as const,
-  providers: ["ocr.extract"] as const,
+  providers: ["geocode.census"] as const,
   artifacts: "content-addressed",
   subject: { kind: "none", reason: "executor capability wiring fixture" },
   scenarios: [SCENARIO],
@@ -192,7 +169,7 @@ const wiredTask = defineTask(wiredContract, {
   async run({ ctx }) {
     const ref = await ctx.artifacts.put(FIXTURE_BYTES, { mediaType: "text/plain" });
     const bytes = await byteLength(await ctx.artifacts.open(ref));
-    const response = await ctx.providers["ocr.extract"].call(PAYLOAD);
+    const response = await ctx.providers["geocode.census"].call(PAYLOAD);
     if (response.state !== "produced") {
       ctx.fail("provider-unavailable", `ocr.extract answered ${response.state}`);
     }
@@ -308,7 +285,7 @@ function seedSnapshot(database: AuthorityDatabase): void {
     ...defaults,
     providers: {
       ...defaults.providers,
-      ocrExtract: {
+      geocodeCensus: {
         timeoutMs: 30_000,
         concurrency: 2,
         requestsPerMinute: 10,
@@ -386,7 +363,7 @@ describe("executor capability wiring refusals", () => {
   });
 
   it("refuses provider admission when the run's retained config snapshot is absent", async () => {
-    const adapter = createDeterministicProviderHarness("ocr.extract", []);
+    const adapter = createDeterministicProviderHarness("geocode.census", []);
     const harness = wiringHarness(providersDescriptor, registryFor(providersOnlyTask));
     // Fully wired against the REAL repositories; only the snapshot row is
     // missing — the refusal must name the unreadable snapshot, not crash.
@@ -394,7 +371,7 @@ describe("executor capability wiring refusals", () => {
     const deps: RunExecutorDependencies = {
       ...harness.deps,
       providers: Object.freeze({
-        adapters: { "ocr.extract": adapter.adapter },
+        adapters: { "geocode.census": adapter.adapter },
         repository: database.authority.providerAdmissions,
         configSnapshots: database.authority.configSnapshots,
         idFactory: admissionIdFactory(),
@@ -415,7 +392,7 @@ describe("executor capability wiring refusals", () => {
 describe("executor capability wiring, wired", () => {
   it("mints admitted clients over the retained snapshot and injects the kernel writer", async () => {
     observed = {};
-    const adapter = createDeterministicProviderHarness("ocr.extract", [{
+    const adapter = createDeterministicProviderHarness("geocode.census", [{
       kind: "return",
       estimate: { maximumCostUsdMicros: 0 },
       outcome: {
@@ -434,7 +411,7 @@ describe("executor capability wiring, wired", () => {
     const deps: RunExecutorDependencies = {
       ...harness.deps,
       providers: Object.freeze({
-        adapters: { "ocr.extract": adapter.adapter },
+        adapters: { "geocode.census": adapter.adapter },
         repository: database.authority.providerAdmissions,
         configSnapshots: database.authority.configSnapshots,
         idFactory: admissionIds,
@@ -458,7 +435,7 @@ describe("executor capability wiring, wired", () => {
     // capability — the client added nothing and dropped nothing.
     const calls = adapter.calls();
     assert.equal(calls.length, 1);
-    assert.deepEqual(calls[0]?.request, { capability: "ocr.extract", payload: PAYLOAD });
+    assert.deepEqual(calls[0]?.request, { capability: "geocode.census", payload: PAYLOAD });
 
     // Admission settled durably in authority: the reservation was consumed and
     // the outcome recorded against the minted admission id.

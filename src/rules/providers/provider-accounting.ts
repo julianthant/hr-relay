@@ -1,9 +1,10 @@
+import { HistoricalProviderCapabilitySchema, HistoricalProviderExecutionIdentitySchema } from "../../models/providers/historical-provider-evidence.js";
 import { z } from "zod";
-import { ProviderAdmissionRecordSchema, ProviderBudgetCounterSchema, ProviderExecutionIdentitySchema } from "./provider-admission.js";
-import { FingerprintSchema, IsoInstantSchema, ProviderCapabilityIdSchema, PositiveIntSchema, ConfigSnapshotIdSchema } from "../identity/ids.js";
+import { ProviderAdmissionRecordSchema, ProviderBudgetCounterSchema } from "./provider-admission.js";
+import { FingerprintSchema, IsoInstantSchema, PositiveIntSchema, ConfigSnapshotIdSchema } from "../identity/ids.js";
 const ReferenceSchema = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,127}$/);
 export const ProviderAttributionSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("legacy-capability"), capability: ProviderCapabilityIdSchema }),
+  z.strictObject({ kind: z.literal("legacy-capability"), capability: HistoricalProviderCapabilitySchema }),
   z.strictObject({ kind: z.literal("unattributed"), reason: z.enum(["not-supplied", "historical-unknown"]) }),
   z.strictObject({ kind: z.literal("attributed"), provider: ReferenceSchema,
     credential: z.discriminatedUnion("kind", [z.strictObject({ kind: z.literal("keyless") }), z.strictObject({ kind: z.literal("generation"), reference: ReferenceSchema })]),
@@ -28,8 +29,8 @@ const TrackingSchema = z.strictObject({ startedAt: IsoInstantSchema, coverage: z
   evidence: z.enum(["legacy-reported", "caller-supplied"]),
 });
 export const GenericProviderRequestSchema = z.strictObject({
-  format: z.literal(1), kind: z.literal("generic"), requestId: z.uuid(), execution: ProviderExecutionIdentitySchema,
-  capability: ProviderCapabilityIdSchema, configSnapshotId: ConfigSnapshotIdSchema, configFingerprint: FingerprintSchema,
+  format: z.literal(1), kind: z.literal("generic"), requestId: z.uuid(), execution: HistoricalProviderExecutionIdentitySchema,
+  capability: HistoricalProviderCapabilitySchema, configSnapshotId: ConfigSnapshotIdSchema, configFingerprint: FingerprintSchema,
   requestFingerprint: FingerprintSchema, attribution: ProviderAttributionSchema,
   allocations: z.array(ProviderAllocationSchema).max(128),
   state: z.enum(["reserved", "denied", "settled", "interrupted", "lease-expired"]),

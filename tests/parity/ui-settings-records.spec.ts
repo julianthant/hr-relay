@@ -55,7 +55,6 @@ for (const theme of PARITY_THEMES) {
 
 test(`UI-A Settings desktop layout matrix @ ${theme.name}`, async ({ page }, info) => {
   const settings = fixtureSettingsDocument({
-    providers: { gemini: { models: ["model-second", "model-first"] } },
     annualDates: { FY2027: { jobEndDate: "6/30/2027", kronosDefaultEndDate: "6/30/2027", kronosDefaultStartDate: "7/1/2026" } },
   }, 2);
   await page.route("**/api/v1/settings/editable", route => route.fulfill({ json: settings }));
@@ -96,7 +95,6 @@ test(`UI-A Settings inventory after @ ${theme.name}`, {
     annotation: [{ type: "required-a11y-evidence", description: `ui-settings-records-${theme.name}.a11y.yml` }],
   }, async ({ page }, info) => {
     const settings = fixtureSettingsDocument({
-      providers: { gemini: { models: ["model-second", "model-first"] } },
       annualDates: { FY2027: { jobEndDate: "6/30/2027", kronosDefaultEndDate: "6/30/2027", kronosDefaultStartDate: "7/1/2026" } },
     }, 2);
     await page.route("**/api/v1/settings/editable", route => route.fulfill({ json: settings }));
@@ -206,7 +204,6 @@ test("UI-A Settings survives real browser zoom with reachable controls", async (
       const page = await context.newPage();
       await page.route("**/favicon.ico", route => route.fulfill({ status: 204 }));
       const settings = fixtureSettingsDocument({
-        providers: { gemini: { models: ["model-second", "model-first"] } },
         annualDates: { FY2027: { jobEndDate: "6/30/2027", kronosDefaultEndDate: "6/30/2027", kronosDefaultStartDate: "7/1/2026" } },
       }, 2);
       await page.route("**/api/v1/settings/editable", route => route.fulfill({ json: settings }));

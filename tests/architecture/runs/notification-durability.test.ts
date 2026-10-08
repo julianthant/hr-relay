@@ -22,19 +22,9 @@ import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/rules/identity/ids.js";
-import {
-  NotificationTriggerEventSchema,
-  deriveNotificationDedupeFingerprint,
-  notificationDeliverability,
-  projectNotificationTrigger,
-} from "../../../src/rules/notifications/notification-triggers.js";
-import type { NotificationRecord } from "../../../src/models/notifications/notifications.js";
+import { NotificationTriggerEventSchema, deriveNotificationDedupeFingerprint, notificationDeliverability, projectNotificationTrigger } from "../../../src/rules/notifications/notification-triggers.js";
 import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
-import {
-  createNotificationInbox,
-  type NotificationInbox,
-  type OsNotificationDelivery,
-} from "../../../src/backend/runs/notifications/inbox.js";
+import { createNotificationInbox, type NotificationInbox } from "../../../src/backend/runs/notifications/inbox.js";
 import { HASH_A, HASH_B, HASH_C, NOW, UUID_1, UUID_2, UUID_4 } from "../../support/fixtures/phase1c-contract-fixtures.js";
 
 const NEXT = "2026-07-31T17:05:00.000Z";
@@ -73,7 +63,6 @@ function openDatabase(): AuthorityDatabase {
 function inboxFor(
   database: AuthorityDatabase,
   now: string,
-  delivery?: OsNotificationDelivery,
 ): NotificationInbox {
   return createNotificationInbox({
     runReader: createTrustRunReader(database),
@@ -81,7 +70,6 @@ function inboxFor(
     clock: manualClock(new Date(now)),
     ids: sequentialIds(),
     actorId: LOCAL_OPERATOR_ACTOR_ID,
-    ...(delivery === undefined ? {} : { delivery }),
   });
 }
 
@@ -179,52 +167,6 @@ describe("notification-durability: every closed trigger commits a durable item",
 });
 
 describe("notification-durability: the durable row is committed before delivery", () => {
-  it("delivers only over a row authority can already read", async () => {
-    const database = openDatabase();
-    const observed: (NotificationRecord | undefined)[] = [];
-    const inbox = inboxFor(database, NOW, {
-      deliver: (record) => {
-        observed.push(database.authority.notifications.get(record.notificationId));
-        return Promise.resolve();
-      },
-    });
-    const report = await inbox.publish(RUN_FAILED);
-    assert.equal(report.delivery.state, "delivered");
-    assert.equal(observed.length, 1);
-    assert.equal(observed[0]?.notificationId, report.notification.notificationId);
-    assert.equal(observed[0]?.status, "unread");
-  });
-
-  /** THE arm: a failed toast may never cost the operator the inbox item. */
-  it("leaves the item durably unread when OS delivery throws", async () => {
-    const database = openDatabase();
-    let attempts = 0;
-    const inbox = inboxFor(database, NOW, {
-      deliver: () => {
-        attempts += 1;
-        return Promise.reject(new Error("no notification daemon on this session bus"));
-      },
-    });
-
-    const report = await inbox.publish(RUN_FAILED);
-    assert.equal(attempts, 1);
-    assert.equal(report.delivery.state, "failed");
-    assert.equal(
-      report.delivery.state === "failed" ? report.delivery.detail : "",
-      "no notification daemon on this session bus",
-    );
-
-    const stored = database.authority.notifications.get(report.notification.notificationId);
-    assert.ok(stored, "a failed delivery must not roll the durable row back");
-    assert.equal(stored.status, "unread");
-    assert.equal(stored.count, 1);
-    assert.equal(stored.version, 1);
-    assert.deepEqual(inbox.list(LOCAL_OPERATOR_ACTOR_ID, "unread").map(({ notificationId }) => notificationId),
-      [report.notification.notificationId]);
-    // No per-attempt delivery state was written (ref guards-and-tests §3.10).
-    assert.deepEqual(Object.keys(stored).filter((key) => key.toLowerCase().includes("deliver")), []);
-  });
-
   it("reports a missing desktop channel as no-channel, never as delivered", async () => {
     const database = openDatabase();
     const report = await inboxFor(database, NOW).publish(RUN_FAILED);
@@ -284,14 +226,7 @@ describe("notification-durability: snooze suppresses delivery and nothing else",
     assert.equal(snoozed.status, "unread", "snoozing may never flip read state");
     assert.deepEqual(snoozed.snooze, { state: "snoozed", until });
 
-    let delivered = 0;
-    const report = await inboxFor(database, NEXT, {
-      deliver: () => {
-        delivered += 1;
-        return Promise.resolve();
-      },
-    }).publish({ ...RUN_FAILED, failureId: UUID_4 });
-    assert.equal(delivered, 0);
+    const report = await inboxFor(database, NEXT).publish({ ...RUN_FAILED, failureId: UUID_4 });
     assert.deepEqual(report.delivery, { state: "suppressed-snoozed", until });
     // Still folded durably: suppression is about delivery, not about recording.
     assert.equal(report.notification.count, 2);

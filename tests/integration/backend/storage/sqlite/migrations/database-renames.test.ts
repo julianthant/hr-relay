@@ -6,6 +6,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
+import { canonicalJsonStringify } from "../../../../../../src/rules/validation/canonical-json.js";
+import { RetiredAiProviderConfigSchema } from "../../../../../../src/models/config/retired-ai-config.js";
 import { ConfigSchema } from "../../../../../../src/models/config/schema.js";
 import { manualClock } from "../../../../../../src/rules/time/clock.js";
 import { AUTHORITY_TABLE_REGISTRY } from "../../../../../../src/models/config/authority.js";
@@ -23,6 +25,12 @@ const CONFIG_SNAPSHOT = { ...UNPINNED_CONFIG_SNAPSHOT, config: ConfigSchema.pars
   paths: Object.fromEntries(Object.entries(UNPINNED_CONFIG_SNAPSHOT.config.paths)
     .map(([key, value]) => [key, value.replace(process.cwd(), "/synthetic/database-renames")])),
 }) };
+const HISTORICAL_CONFIG_SNAPSHOT = { ...CONFIG_SNAPSHOT, config: { ...CONFIG_SNAPSHOT.config,
+  providers: RetiredAiProviderConfigSchema.parse({ ...CONFIG_SNAPSHOT.config.providers,
+    ocrExtract: { timeoutMs: 120_000, concurrency: 4, requestsPerMinute: 10, dailyRequestLimit: 250, costLimitUsdMicros: 0 },
+    aiAdvisory: { timeoutMs: 90_000, concurrency: 2, requestsPerMinute: 10, dailyRequestLimit: 250, costLimitUsdMicros: 0 },
+  }),
+} };
 const clock = manualClock(new Date(NOW));
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -83,6 +91,7 @@ function fixture() {
           row.state = "terminal";
           row.record_json = JSON.stringify({ ...QUEUED_RUN, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } }, null, 2);
         }
+        if (old === "config_snapshots") row.record_json = canonicalJsonStringify(HISTORICAL_CONFIG_SNAPSHOT);
         if (old === "authority_upgrades") {
           // Seed the exact released baseline grammar with a deterministic identity.
           row.record_key = UUID_8;

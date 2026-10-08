@@ -77,9 +77,9 @@ export function settingsControlFor(key: string): SettingsControl {
 export const SettingsCatalogEntryWireSchema = z.strictObject({
   key: SettingsCatalogKeySchema,
   schema: z.string().min(1),
-  sourceClass: z.enum(["ordinary-settings", "protected-store", "provider-env", "derived-host", "runtime-isolation"]),
+  sourceClass: z.enum(["ordinary-settings", "protected-store", "derived-host", "runtime-isolation"]),
   editability: z.enum(["operator", "deployment", "derived", "machine"]),
-  sensitivity: z.enum(["ordinary", "protected-identifier", "protected-secret", "provider-key", "derived-host"]),
+  sensitivity: z.enum(["ordinary", "protected-identifier", "protected-secret", "derived-host"]),
   activationScope: z.enum(["new-runs", "next-idle", "next-use", "process"]),
 }).superRefine((row, context) => {
   if (canonicalJsonStringify(row) !== canonicalJsonStringify(settingsCatalogEntry(settingsCatalogRow(row.key)))) {

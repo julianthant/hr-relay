@@ -46,6 +46,7 @@ export const ExtractFormPage = defineTaskContract({
   input: ExtractFormPageInputSchema,
   output: AdmittedExtractionSchema,
   errorCodes: [
+    "ocr-provider-not-connected",
     "provider-unavailable",
     "incomplete-extraction",
     "unreadable-page",

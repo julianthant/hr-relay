@@ -7,7 +7,6 @@ import { ExplorerOverrideImportReceiptSchema } from "../../../../src/models/dash
  * `src/rules/redaction/redaction.ts` owns the ONE transform implementation and three
  * tables declare `(classification, transform)` per field:
  * `src/models/trust/evidence-classification.ts` (the receipt),
- * `src/models/trust/advisory.ts` (the prompt that LEAVES the process) and
  * `src/models/fields/registry.ts` (canonical intake fields). What none of them
  * answered until D183 is the question this module exists to force:
  *
@@ -66,58 +65,22 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { z } from "zod";
 import { CommandResultSchema } from "../../../../src/rules/commands/commands.js";
-import {
-  ProtectedSettingsNameSchema,
-  ProtectedSettingsPresenceSchema,
-  ProtectedSettingsReadbackSchema,
-} from "../../../../src/models/config/protected-settings.js";
-import {
-  SettingsApplyRefusalSchema,
-  SettingsApplyRejectionCodeSchema,
-  SettingsRuntimeStatusSchema,
-} from "../../../../src/models/config/settings.js";
-import {
-  ActionDescriptorWireSchema,
-} from "../../../../src/models/dashboard/actions.js";
+import { ProtectedSettingsNameSchema, ProtectedSettingsPresenceSchema, ProtectedSettingsReadbackSchema } from "../../../../src/models/config/protected-settings.js";
+import { SettingsApplyRefusalSchema, SettingsApplyRejectionCodeSchema, SettingsRuntimeStatusSchema } from "../../../../src/models/config/settings.js";
+import { ActionDescriptorWireSchema } from "../../../../src/models/dashboard/actions.js";
 import { ActivityReportSelectionSchema } from "../../../../src/models/dashboard/activity-selection.js";
 import { RunSearchIndexRecordSchema, RunSearchDeclarationSchema, RunSearchGramSchema, RunSearchActorLinkSchema } from "../../../../src/models/dashboard/search-index.js";
-import { RunAdvisoryWireSchema } from "../../../../src/models/dashboard/advisory.js";
-import {
-  SavedArchiveDeletionStatusWireSchema, SavedArchiveDetailWireSchema, SavedArchiveGroupsWireSchema, SavedArchiveIndexWireSchema,
-  SavedRuntimeVersionIndexWireSchema, SavedVersionIndexWireSchema,
-  ArchivedCaptureResourceWireSchema,
-  ArchivedRunDetailWireSchema,
-  ArchiveIndexWireSchema,
-  VersionBumpPlanWireSchema,
-} from "../../../../src/models/dashboard/archive.js";
-import {
-  ArtifactResourceWireSchema,
-  CapturePointerWireSchema,
-} from "../../../../src/models/dashboard/artifacts.js";
+import { SavedArchiveDeletionStatusWireSchema, SavedArchiveDetailWireSchema, SavedArchiveGroupsWireSchema, SavedArchiveIndexWireSchema, SavedRuntimeVersionIndexWireSchema, SavedVersionIndexWireSchema, ArchivedCaptureResourceWireSchema, ArchivedRunDetailWireSchema, ArchiveIndexWireSchema, VersionBumpPlanWireSchema } from "../../../../src/models/dashboard/archive.js";
+import { ArtifactResourceWireSchema, CapturePointerWireSchema } from "../../../../src/models/dashboard/artifacts.js";
 import { FrontendBootstrapWireSchema } from "../../../../src/models/dashboard/bootstrap.js";
 import { NativePathPickerResponseSchema } from "../../../../src/models/dashboard/native-path-picker.js";
 import { DiagnosticBundleWireSchema } from "../../../../src/models/dashboard/diagnostic-bundle.js";
-import {
-  ExplorerEditApplyResultSchema,
-  ExplorerEditValidationResultSchema,
-  ExplorerOverrideDocumentSchema,
-  ExplorerWorkflowOverrideSchema,
-  WorkflowExplorerWireSchema,
-} from "../../../../src/models/dashboard/explorer.js";
-import {
-  DashboardDayWireSchema,
-  QueueSurfaceWireSchema,
-} from "../../../../src/models/dashboard/projection.js";
-import {
-  RunDetailSectionResponseSchema,
-  RunDetailWireSchema,
-} from "../../../../src/models/dashboard/run-detail.js";
+import { ExplorerEditApplyResultSchema, ExplorerEditValidationResultSchema, ExplorerOverrideDocumentSchema, ExplorerWorkflowOverrideSchema, WorkflowExplorerWireSchema } from "../../../../src/models/dashboard/explorer.js";
+import { DashboardDayWireSchema, QueueSurfaceWireSchema } from "../../../../src/models/dashboard/projection.js";
+import { RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../../../src/models/dashboard/run-detail.js";
 import { CrossDateSearchPageSchema } from "../../../../src/models/dashboard/search.js";
 import { SettingsFactsWireSchema } from "../../../../src/models/dashboard/settings.js";
-import {
-  EditableSettingsPathSchema,
-  EditableSettingsWireSchema,
-} from "../../../../src/models/dashboard/settings-editor.js";
+import { EditableSettingsPathSchema, EditableSettingsWireSchema } from "../../../../src/models/dashboard/settings-editor.js";
 import { StorageDoctorWireSchema, StorageDoctorLatestWireSchema, ProtectedSettingsInspectionWireSchema } from "../../../../src/models/dashboard/storage.js";
 import { DashboardStreamEnvelopeSchema } from "../../../../src/models/dashboard/subscription.js";
 import { OperatorXlsxExportEvidenceSchema } from "../../../../src/models/dashboard/xlsx-export.js";
@@ -126,12 +89,8 @@ import { RerunWarningWireSchema } from "../../../../src/models/dashboard/rerun-w
 import { StartPlanWireSchema } from "../../../../src/models/dashboard/start-plan.js";
 import { IntakeSessionWireSchema } from "../../../../src/models/intake/wire.js";
 import { LedgerEntrySchema } from "../../../../src/rules/runs/ledger.js";
-import {
-  NotificationProjectionSchema,
-  NotificationTriggerEventSchema,
-} from "../../../../src/rules/notifications/notification-triggers.js";
+import { NotificationProjectionSchema, NotificationTriggerEventSchema } from "../../../../src/rules/notifications/notification-triggers.js";
 import { NotificationRecordSchema } from "../../../../src/models/notifications/notifications.js";
-import { AdvisoryPromptSchema } from "../../../../src/models/trust/advisory.js";
 import { DiagnosticBundleSchema } from "../../../../src/models/trust/diagnostic.js";
 import { RunEvidenceReceiptSchema } from "../../../../src/models/trust/evidence.js";
 import { FailureRecordSchema } from "../../../../src/models/trust/failure.js";
@@ -803,7 +762,6 @@ export const EXTRA_SURFACE_MODULES: readonly string[] = Object.freeze([
   "src/models/trust/diagnostic.ts",
   "src/models/trust/evidence.ts",
   "src/models/trust/failure.ts",
-  "src/models/trust/advisory.ts",
 ]);
 
 export function scannedSurfaceModules(): readonly string[] {
@@ -879,7 +837,6 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "wire/activity-report", egress: "operator-loopback", module: "src/models/dashboard/activity.ts", schema: ActivityReportSelectionSchema },
   { id: "wire/calendar", egress: "operator-loopback", module: "src/models/dashboard/calendar.ts", schema: CalendarWireSchema },
   { id: "wire/cross-date-search", egress: "operator-loopback", module: "src/models/dashboard/search.ts", schema: CrossDateSearchPageSchema },
-  { id: "wire/run-advisory", egress: "operator-loopback", module: "src/models/dashboard/advisory.ts", schema: RunAdvisoryWireSchema },
   { id: "wire/action-descriptor", egress: "operator-loopback", module: "src/models/dashboard/actions.ts", schema: ActionDescriptorWireSchema },
   { id: "wire/artifact-resource", egress: "operator-loopback", module: "src/models/dashboard/artifacts.ts", schema: ArtifactResourceWireSchema },
   // Declared, strict-schema-tested, and not yet served by any route. It is
@@ -920,7 +877,6 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "durable/explorer-import-receipt", egress: "durable-authority", module: "src/models/dashboard/explorer-override.ts", schema: ExplorerOverrideImportReceiptSchema },
   // Read-only historical conversion source; current writes use the two SQLite surfaces above.
   { id: "file/explorer-overrides", egress: "durable-file", module: "src/models/dashboard/explorer.ts", schema: ExplorerOverrideDocumentSchema },
-  { id: "egress/advisory-prompt", egress: "process-egress", module: "src/models/trust/advisory.ts", schema: AdvisoryPromptSchema },
   { id: "os/notification-projection", egress: "os-notification", module: "src/rules/notifications/notification-triggers.ts", schema: NotificationProjectionSchema },
   { id: "os/notification-trigger-event", egress: "os-notification", module: "src/rules/notifications/notification-triggers.ts", schema: NotificationTriggerEventSchema },
 ] satisfies readonly RedactionSurface[]);
@@ -1003,9 +959,6 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/editable-settings", path: "protectedSettings.entries.ucpathUserId.value", origin: "protected-value" },
   { surface: "wire/editable-settings", path: "protectedSettings.rows[].label", origin: "repository-authored" },
   { surface: "wire/editable-settings", path: "protectedSettings.rows[].purpose", origin: "repository-authored" },
-  { surface: "wire/editable-settings", path: "providers", origin: "protected-value" },
-  { surface: "wire/editable-settings", path: "providerKeys.activeSlots", origin: "protected-value" },
-  { surface: "wire/editable-settings", path: "providerKeys.slots", origin: "protected-value" },
   { surface: "wire/editable-settings", path: "sections[].leaves[].catalogKey", origin: "repository-authored" },
   { surface: "wire/editable-settings", path: "sections[].leaves[].control.fields[].name", origin: "repository-authored" },
   { surface: "wire/editable-settings", path: "sections[].leaves[].path", origin: "repository-authored" },
@@ -1477,11 +1430,6 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/cross-date-search", path: "results[].retryOf.reason", origin: "repository-authored" },
   { surface: "wire/cross-date-search", path: "results[].runNumber.reason", origin: "repository-authored" },
 
-  { surface: "wire/run-advisory", path: "outcome.advice.checks[].what", origin: "external-text" },
-  { surface: "wire/run-advisory", path: "outcome.advice.checks[].why", origin: "external-text" },
-  { surface: "wire/run-advisory", path: "outcome.advice.explanation", origin: "external-text" },
-  { surface: "wire/run-advisory", path: "outcome.advice.headline", origin: "external-text" },
-  { surface: "wire/run-advisory", path: "outcome.reason", origin: "repository-authored" },
 
   { surface: "wire/action-descriptor", path: "confirm.body", origin: "repository-authored" },
   { surface: "wire/action-descriptor", path: "confirm.confirmLabel", origin: "repository-authored" },
@@ -2005,8 +1953,6 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "file/ledger-entry", path: "payload.proof.value", origin: "captured-hr-value",
     exception: "the schema-bound proof the external system returned is the whole content of a filed-transaction record (ref write-safety SS6). A ledger of digests proves nothing was filed. It never leaves `.tracker/ledger/`." },
 
-  { surface: "egress/advisory-prompt", path: "answerSchema", origin: "repository-authored" },
-  { surface: "egress/advisory-prompt", path: "instruction", origin: "repository-authored" },
 
   { surface: "os/notification-projection", path: "summary", origin: "repository-authored" },
   { surface: "os/notification-projection", path: "title", origin: "repository-authored" },
@@ -2021,7 +1967,6 @@ export const SURFACE_MODULE_DISPOSITIONS: readonly SurfaceModuleDisposition[] = 
     { module: "src/models/dashboard/activity-volume.ts", state: "audited", reason: "the Activity report embeds validated host-zone boundaries calculated from selected dates" },
     { module: "src/models/dashboard/archive-export.ts", state: "no-surface", reason: "formats already-registered SavedArchiveReportWire values as JSON field rows and formula-safe CSV; declares no additional wire or durable schema" },
     { module: "src/models/dashboard/activity.ts", state: "audited", reason: "the activity report aggregates runs into counts and durations" },
-    { module: "src/models/dashboard/advisory.ts", state: "audited", reason: "the run advisory renders a third-party model's answer back to the operator" },
     { module: "src/models/dashboard/archive.ts", state: "audited", reason: "the archive index and detail re-serve retired runs; capture resources report exact-byte availability" },
     { module: "src/models/dashboard/artifacts.ts", state: "audited", reason: "artifact resources point at downloadable run output" },
     { module: "src/models/dashboard/bootstrap.ts", state: "audited", reason: "bootstrap carries the actor, the workflow registry and feature availability" },
@@ -2057,7 +2002,6 @@ export const SURFACE_MODULE_DISPOSITIONS: readonly SurfaceModuleDisposition[] = 
     { module: "src/rules/runs/ledger.ts", state: "audited", reason: "the ledger entry is the permanent on-disk record of a filed transaction" },
     { module: "src/rules/notifications/notification-triggers.ts", state: "audited", reason: "the trigger event and its projection become OS-delivered text" },
     { module: "src/models/notifications/notifications.ts", state: "audited", reason: "the durable inbox row retains the delivered title and summary" },
-    { module: "src/models/trust/advisory.ts", state: "audited", reason: "the advisory prompt is the only payload that leaves this process" },
     { module: "src/models/trust/diagnostic.ts", state: "audited", reason: "the diagnostic bundle row indexes captured attachments" },
     { module: "src/models/trust/evidence.ts", state: "audited", reason: "the evidence receipt is the durable answer to what a run read and wrote" },
     { module: "src/models/trust/failure.ts", state: "audited", reason: "the failure record is the durable answer to why a run stopped" },

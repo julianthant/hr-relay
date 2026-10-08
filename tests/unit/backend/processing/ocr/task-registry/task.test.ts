@@ -148,3 +148,11 @@ describe("OCR provider task wrapper", () => {
     assert.deepEqual(incomplete.recorded, []);
   });
 });
+
+it("propagates the disconnected OCR result through the extraction task without evidence", async () => {
+  const result = await run({ state: "unavailable", reason: { code: "adapter-unavailable", message: "OCR provider not connected" } });
+  assert.equal(result.outcome, "failure");
+  if (result.outcome !== "failure") throw new Error("expected disconnected extraction");
+  assert.deepEqual(result.failure, { code: "ocr-provider-not-connected", message: "OCR provider not connected" });
+  assert.deepEqual(result.recorded, []);
+});

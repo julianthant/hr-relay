@@ -28,7 +28,7 @@ function allowedLoopbackOrigin(host: string | undefined): string | undefined {
  *   body as `text/plain` through a simple no-CORS POST, and Hono's `c.req.json()`
  *   parses it regardless, so the media type is part of the admission.
  * - `opaque` — the route owns its media-type contract (intake bytes travel as
- *   themselves under the file's own type) or has no body at all (the advisory).
+ *   themselves under the file's own type).
  *   Origin/Host still gate it; nothing about the body is assumed here.
  */
 export type OperatorIngressBodyPolicy = "json" | "opaque";

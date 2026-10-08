@@ -83,32 +83,19 @@ export const ProviderBudgetSchema = z.strictObject({
   costLimitUsdMicros: z.number().int().nonnegative(),
 });
 
-export const ProviderModelChainSchema = z.array(z.string().min(1).max(256).regex(/^[^\s,]+$/u)).min(1).max(32).readonly();
-export const ProviderModelsSchema = z.strictObject({ models: ProviderModelChainSchema });
 
 export const ProviderBudgetConfigSchema = z.strictObject({
-  ocrExtract: ProviderBudgetSchema,
   geocodeCensus: ProviderBudgetSchema,
   geocodeNominatim: ProviderBudgetSchema,
-  aiAdvisory: ProviderBudgetSchema,
-  gemini: ProviderModelsSchema.optional(),
-  groq: ProviderModelsSchema.optional(),
-  mistral: ProviderModelsSchema.optional(),
-  openRouter: ProviderModelsSchema.optional(),
-  sambanova: ProviderModelsSchema.optional(),
 }).default({
-  ocrExtract: { timeoutMs: 120_000, concurrency: 4, requestsPerMinute: 10, dailyRequestLimit: 250, costLimitUsdMicros: 0 },
   geocodeCensus: { timeoutMs: 15_000, concurrency: 2, requestsPerMinute: 30, dailyRequestLimit: 5_000, costLimitUsdMicros: 0 },
   geocodeNominatim: { timeoutMs: 15_000, concurrency: 1, requestsPerMinute: 1, dailyRequestLimit: 1_000, costLimitUsdMicros: 0 },
-  aiAdvisory: { timeoutMs: 90_000, concurrency: 2, requestsPerMinute: 10, dailyRequestLimit: 250, costLimitUsdMicros: 0 },
 });
 
 export const PROVIDER_CAPABILITY_CONFIG_KEYS = deepFreeze({
-  "ocr.extract": "ocrExtract",
   "geocode.census": "geocodeCensus",
   "geocode.nominatim": "geocodeNominatim",
-  "ai.advisory": "aiAdvisory",
-} as const satisfies Record<ProviderCapabilityId, keyof z.output<typeof ProviderBudgetConfigSchema>>);
+} as const satisfies Record<Exclude<ProviderCapabilityId, "ocr.extract">, keyof z.output<typeof ProviderBudgetConfigSchema>>);
 
 /**
  * The absolute filesystem locations the runtime reads and writes (ref clock-config-secrets §4).
@@ -296,7 +283,7 @@ export const ConfigSchema = z.strictObject({
  */
 export function providerBudget(
   config: { readonly providers: z.output<typeof ProviderBudgetConfigSchema> },
-  capability: ProviderCapabilityId,
+  capability: Exclude<ProviderCapabilityId, "ocr.extract">,
 ): z.output<typeof ProviderBudgetSchema> {
   const key = PROVIDER_CAPABILITY_CONFIG_KEYS[capability];
   return ProviderBudgetSchema.parse(config.providers[key]);

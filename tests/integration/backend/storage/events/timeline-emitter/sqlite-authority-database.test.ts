@@ -733,7 +733,7 @@ function reserveProvider(database: AuthorityDatabase) {
   database.authority.providerAdmissions.reserve({
     admissionId: UUID_8,
     execution: { runId: RUN_ID, attempt: 1, nodeId: "searching", taskId: "ocr/extract-page" },
-    capability: "ocr.extract",
+    capability: "geocode.census",
     configSnapshotId: UUID_4,
     configFingerprint: HASH_B,
     requestFingerprint: HASH_A,

@@ -27,7 +27,7 @@ it("independent Setup consumer reads production readiness and reruns/replays the
   registerSettingsPreflightRoutes(app, { clock, preflight });
   app.get("/api/v1/bootstrap", (c) => c.json(buildBootstrap({ appVersion: "0.1.0", clock, modules: [], descriptorSetHash: fingerprint,
     settingsSchemaHash: fingerprint, projection: { generation: () => 1 }, authorityMeta: () => ({ schemaVersion: 53, authorityGeneration: 1 }),
-    backupSummary: () => "missing", preflightReport: () => preflight.readLatest(), advisoryAvailability: () => ({ state: "unavailable", code: "not-configured", reason: "Fixture" }) })));
+    backupSummary: () => "missing", preflightReport: () => preflight.readLatest(), })));
   const client = createDashboardClient({ baseUrl: "http://localhost", fetchImpl: async (url, init) => app.request(url, { ...init, headers: { ...init?.headers, host: "localhost" } }) });
   const ready = await client.readiness(); assert.ok(ready.state === "present"); assert.ok(ready.checks.every((check) => check.verdict === "pass"));
   unhealthy = true;

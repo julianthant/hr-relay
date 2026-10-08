@@ -1,3 +1,4 @@
+import { HistoricalProviderKeysCommandSchema } from "../../../rules/commands/commands-history.js";
 import { VersionChangeSchema } from "../../../models/archive/change-record.js";
 import { RuntimeVersionChangeSchema } from "../../../models/archive/runtime-version-change.js";
 import { ArchiveReportSchema } from "../../../models/archive/report.js";
@@ -31,14 +32,7 @@ import { AUTHORITY_RECORD_SCHEMA_REGISTRY } from "../sqlite/storage-records.js";
 import { SettingsCurrentRecordSchema as HistoricalSettingsCurrentRecordSchema } from "./d331-settings-current.js";
 import { ProtectedSettingsCurrentRecordSchema } from "../../../models/config/authority.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import {
-  AUTHORITY_APPLICATION_ID,
-  CURRENT_AUTHORITY_SCHEMA_VERSION,
-  NORMAL_AUTHORITY_SCHEMA_VERSION,
-  isNormalAuthoritySchemaVersion,
-  databaseStateTable,
-  SQLITE_MIGRATIONS,
-} from "../sqlite/migrations.js";
+import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, NORMAL_AUTHORITY_SCHEMA_VERSION, isNormalAuthoritySchemaVersion, databaseStateTable, SQLITE_MIGRATIONS } from "../sqlite/migrations.js";
 
 const ADMITTED_HISTORICAL_SCHEMA_VERSIONS = Object.freeze([
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
@@ -442,7 +436,7 @@ function validateHistoricalRecords(database: DatabaseSync, schemaVersion: number
     dependencies: AUTHORITY_RECORD_SCHEMA_REGISTRY.delegation_dependencies,
     delegation_manifests: AUTHORITY_RECORD_SCHEMA_REGISTRY.run_delegations,
     bulk_command_acceptances: BulkRunCommandAcceptanceRecordSchema,
-    ...(schemaVersion < 37 ? { commands: z.union([AuthorityCommandRecordSchema, PreFloorCommandSchema, HistoricalProtectedSettingsCommandSchema]) } : {}),
+    ...(schemaVersion < 37 ? { commands: z.union([AuthorityCommandRecordSchema, PreFloorCommandSchema, HistoricalProtectedSettingsCommandSchema, HistoricalProviderKeysCommandSchema]) } : {}),
     run_sessions: HistoricalRunSessionRecordSchema,
     ...(schemaVersion < 32 ? { settings_current: HistoricalSettingsCurrentRecordSchema, protected_settings_current: ProtectedSettingsCurrentRecordSchema } : {}),
   };

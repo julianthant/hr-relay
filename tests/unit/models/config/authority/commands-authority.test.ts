@@ -45,13 +45,6 @@ const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
       entries: { ucpathPassword: { clear: true } },
     },
   },
-  {
-    commandId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", requestedAt: NOW,
-    requestedBy: "local-operator", source: "dashboard", family: "settings", type: "apply-provider-keys",
-    target: { expectedRevision: 1, sourceVersionToken: HASH_A },
-    payload: { providerSchemaHash: HASH_A, writeId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-      operations: { GROQ_API_KEY: { set: "synthetic-contract" } } },
-  },
 ]);
 
 describe("authority classification and D95 command families", () => {

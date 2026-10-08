@@ -45,7 +45,6 @@ export function runtimeFixture(capabilities: readonly RuntimeCapability[]) {
     Object.fromEntries(system.routes.map(route => [route, `https://prod.example.invalid/${route}`])));
   const providerAvailability: Record<string, boolean> = {};
   for (const provider of PROVIDER_ADAPTER_SPECS) {
-    if (provider.modelsConfigKey !== undefined) Reflect.set(config.providers, provider.modelsConfigKey, {models:["synthetic-model"]});
     for (const capability of provider.capabilities) providerAvailability[`${provider.provider}/${capability}`] = true;
   }
   let record = populatedProtectedRecord();

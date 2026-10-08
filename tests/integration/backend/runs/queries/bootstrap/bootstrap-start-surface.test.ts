@@ -21,11 +21,7 @@ import { z } from "zod";
 import { flow } from "../../../../../../src/workflow-kit/flow.js";
 import { defineWorkflowDescriptor } from "../../../../../../src/workflow-kit/workflow.js";
 import { manualClock } from "../../../../../../src/rules/time/clock.js";
-import {
-  FrontendBootstrapWireSchema,
-  WorkflowBootstrapPrimitiveSchema,
-  WorkflowStartWireSchema,
-} from "../../../../../../src/models/dashboard/bootstrap.js";
+import { FrontendBootstrapWireSchema, WorkflowBootstrapPrimitiveSchema, WorkflowStartWireSchema } from "../../../../../../src/models/dashboard/bootstrap.js";
 import { EidSchema } from "../../../../../../src/rules/identity/ids.js";
 import { defineWorkflowRole } from "../../../../../../src/workflow-kit/validation/module-role.js";
 import { defineCanonicalInput } from "../../../../../../src/models/workflow/canonical-input.js";
@@ -38,12 +34,7 @@ import { WORKFLOW_DESCRIPTORS } from "../../../../../../src/workflows/descriptor
 import { FixtureReadReceipt } from "../../../../../support/fixtures/descriptor-fixtures.js";
 import { AT, makeWorld, type DashboardWorld } from "../../../../../support/helpers/backend/dashboard-harness.js";
 import { healthyDashboardPreflightReport } from "../../../../../support/fixtures/preflight-seams.js";
-import {
-  AUDITING_FORM,
-  FOLDING_FORM,
-  omissionCascadingDescriptor,
-  READING_FORM,
-} from "../../../../../support/fixtures/start-step-omission-fixtures.js";
+import { AUDITING_FORM, FOLDING_FORM, omissionCascadingDescriptor, READING_FORM } from "../../../../../support/fixtures/start-step-omission-fixtures.js";
 
 const VersionSevenInput = z.strictObject({ eid: EidSchema });
 const VersionSevenCanonicalInput = defineCanonicalInput(
@@ -110,11 +101,6 @@ function depsOf(world: DashboardWorld): BootstrapQueryDeps {
     authorityMeta: () => ({ schemaVersion: 13, authorityGeneration: 4 }),
     backupSummary: () => "current",
     preflightReport: () => healthyDashboardPreflightReport(manualClock(AT)),
-    advisoryAvailability: () => ({
-      state: "unavailable",
-      code: "not-configured",
-      reason: "no ai.advisory provider is composed in this test",
-    }),
   };
 }
 

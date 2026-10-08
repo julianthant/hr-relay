@@ -5,7 +5,7 @@
  * These schemas never admit a new command. Historical journal readability is permanent.
  */
 import { z } from "zod";
-import { CommandAuditRecordSchema, CommandEnvelopeSchema, markSettingsCommand } from "./commands.js";
+import { CommandAuditRecordSchema, CommandEnvelopeSchema, CommandResultSchema, markSettingsCommand } from "./commands.js";
 import { LEGACY_PROTECTED_SETTINGS_SCHEMA_HASH, LegacyMarkedProtectedSettingsPatchSchema } from "../../models/config/protected-settings-legacy.js";
 import { deepFreeze } from "../validation/immutability.js";
 import { ActorIdSchema, FingerprintSchema, IsoInstantSchema, NotificationIdSchema, PositiveIntSchema, RunIdSchema } from "../identity/ids.js";
@@ -75,3 +75,22 @@ export function journaledSettingsCommand(command: unknown): ReturnType<typeof ma
 export function deriveJournaledSettingsCommandFingerprint(command: unknown): string {
   return FingerprintSchema.parse(sha256Hex(`hrauto:settings-command:v1\0${canonicalJsonStringify(journaledSettingsCommand(command))}`));
 }
+
+/** Immutable, value-free provider-key journal evidence; never an executable command. */
+const HistoricalProviderKeySlotSchema = z.enum(["GEMINI_API_KEY", "GROQ_API_KEY", "MISTRAL_API_KEY", "OPEN_ROUTER_API_KEY", "SAMBANOVA_API_KEY"].flatMap(prefix => Array.from({ length: 8 }, (_, index) => index === 0 ? prefix : prefix + String(index + 1))));
+export const HistoricalProviderKeysCommandSchema = CommandEnvelopeSchema.extend({
+  family: z.literal("settings"), type: z.literal("apply-provider-keys"),
+  target: z.strictObject({ expectedRevision: PositiveIntSchema, sourceVersionToken: FingerprintSchema }),
+  payload: z.strictObject({ providerSchemaHash: FingerprintSchema, writeId: z.uuid(), operations: z.partialRecord(HistoricalProviderKeySlotSchema, z.union([z.strictObject({ set: z.literal("<set>") }), z.strictObject({ clear: z.literal(true) })])) }),
+});
+const HistoricalProviderKeyTargetSchema = z.strictObject({ family: z.literal("provider-keys"), revision: PositiveIntSchema });
+const HistoricalProviderKeysResultSchema = z.union([CommandResultSchema,
+  z.strictObject({ state: z.enum(["applied", "already-applied"]), commandId: HistoricalProviderKeysCommandSchema.shape.commandId,
+    affectedTargets: z.tuple([HistoricalProviderKeyTargetSchema]), restartRequired: z.boolean(),
+    providerRevision: PositiveIntSchema, providerReceiptId: z.uuid(), providerSourceVersionToken: FingerprintSchema,
+  }).refine(result => result.providerRevision === result.affectedTargets[0].revision, "provider revision mismatch"),
+]);
+export const HistoricalProviderKeysAuditSchema = CommandAuditRecordSchema.extend({
+  request: HistoricalProviderKeysCommandSchema, result: HistoricalProviderKeysResultSchema,
+  versionChanges: z.array(z.strictObject({ target: HistoricalProviderKeyTargetSchema, before: z.number().int().nonnegative(), after: PositiveIntSchema })),
+});

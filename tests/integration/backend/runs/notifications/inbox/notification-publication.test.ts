@@ -23,9 +23,9 @@ describe("durable notification publication", () => {
   it.each(["before", "after"])("survives process death %s publication commit", boundary => {
     const f = harness(); const initial = f.open(); initial.close();
     const script = `
-      import { AuthorityDatabase } from "../../../../../../../../src/backend/storage/sqlite/authority-database.ts";
-      import { manualClock } from "../../../../../../../../src/rules/time/clock.ts";
-      import { createNotificationInbox } from "../../../../../../../../src/backend/runs/notifications/inbox.ts";
+      import { AuthorityDatabase } from ${JSON.stringify(join(process.cwd(), "tests/support/helpers/synthetic-storage-admission.ts"))};
+      import { manualClock } from ${JSON.stringify(join(process.cwd(), "src/rules/time/clock.ts"))};
+      import { createNotificationInbox } from ${JSON.stringify(join(process.cwd(), "src/backend/runs/notifications/inbox.ts"))};
       const clock = manualClock(new Date("2026-09-14T12:00:00Z"));
       const db = AuthorityDatabase.open({path:process.argv[1],busyTimeoutMs:250,migrationOwner:"crash-proof"},clock);
       const inbox = createNotificationInbox({authority:db,clock,ids:{uuid:()=>"00000000-0000-4000-8000-000000000991"},actorId:"local-operator"});
@@ -56,14 +56,12 @@ describe("durable notification publication", () => {
       expect(db.authority.notificationPublications.latest(record.notificationId)).toBeUndefined();
     } finally { db.close(); }
   });
-  it("retains a committed source when delivery crashes and never redelivers it on restart", async () => {
-    const f = harness(); let db = f.open(); let deliveries = 0;
+  it("retains a committed source without an OS delivery channel across restart", async () => {
+    const f = harness(); let db = f.open();
     try {
-      const inbox = createNotificationInbox({ authority: db, clock: f.clock, ids: sequentialIdFactory("b"), actorId: "local-operator",
-        delivery: { deliver: async record => { deliveries += 1; expect(db.authority.notifications.get(record.notificationId)).toEqual(record); throw new Error("crash-after-commit"); } } });
-      expect((await inbox.publish(event)).delivery.state).toBe("failed");
+      const inbox = f.inbox(db);
+      expect((await inbox.publish(event)).delivery.state).toBe("no-channel");
       db.close(); db = f.open(); expect((await f.inbox(db).publish(event)).durable).toBe("existing");
-      expect(deliveries).toBe(1);
     } finally { db.close(); }
   });
 

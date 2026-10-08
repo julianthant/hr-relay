@@ -1,55 +1,23 @@
 import { createHash } from "node:crypto";
-import {
-  closeSync,
-  constants,
-  fstatSync,
-  lstatSync,
-  openSync,
-  readFileSync,
-  statSync,
-  type Stats,
-  type BigIntStats,
-} from "node:fs";
-import { parseEnv } from "node:util";
+import { readFileSync, statSync, type Stats } from "node:fs";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS, RETIRED_TEST_TARGET_ENVIRONMENT_KEYS } from "./catalog.js";
-import {
-  ProtectedStoreRecordSchema,
-  type ProtectedStoreRecord,
-} from "./protected-settings.js";
+import { ProtectedStoreRecordSchema, type ProtectedStoreRecord } from "./protected-settings.js";
 import type { Config } from "./schema.js";
 import { establishHostPrimaryDisplay, hostPrimaryDisplayEnvironment, type HostDisplayProbe } from "./host-display.js";
 import { FingerprintSchema, type Fingerprint } from "../../rules/identity/ids.js";
 import { deepFreeze } from "../../rules/validation/immutability.js";
-import { SECRET_FAMILY_SPECS } from "./provider-family-specs.js";
-export { SECRET_FAMILY_SPECS, SecretFamilySpecSchema } from "./provider-family-specs.js";
-import { ProviderKeySlotSchema } from "./provider-keys.js";
-import { parseProviderKeyHeaderRevision } from "./provider-key-header.js";
-import { normalizeProviderBootProvenance, type ProviderBootProvenance } from "./provider-boot-provenance.js";
-import { sha256Hex } from "../../rules/validation/sha256.js";
-import {
-  type ActivityPersonPseudonymDomain,
-} from "../trust/activity-person-pseudonym.js";
-import {
-  EnvironmentSecretNameSchema,
-  SecretFileNameSchema,
-  SecretNameSchema,
-} from "./secret-names.js";
-import type {
-  SecretFamilyName,
-  SecretFileName,
-  SecretName,
-} from "./secret-names.js";
+import { type ActivityPersonPseudonymDomain } from "../trust/activity-person-pseudonym.js";
+import { EnvironmentSecretNameSchema, SecretFileNameSchema, SecretNameSchema } from "./secret-names.js";
+import type { SecretFileName, SecretName } from "./secret-names.js";
 export {
   EnvironmentSecretNameSchema,
-  SecretFamilyNameSchema,
   SecretFileNameSchema,
   SecretNameSchema,
 } from "./secret-names.js";
 export type {
   EnvironmentSecretName,
-  SecretFamilyName,
   SecretFileName,
   SecretName,
 } from "./secret-names.js";
@@ -90,23 +58,6 @@ export const SECRET_FILE_SPECS = deepFreeze(SecretFileSpecSchema.array().parse([
 ]));
 type SecretSpec = z.infer<typeof SecretSpecSchema>;
 type SecretFileMetadata = Pick<Stats, "isFile" | "mode" | "size">;
-interface LocalEnvironmentAdmissionAccess {
-  readonly open: (path: string, flags: number) => number;
-  readonly inspectDescriptor: (descriptor: number) => SecretFileMetadata;
-  readonly inspectIdentity?: (descriptor: number) => BigIntStats;
-  readonly inspectPathIdentity?: (path: string) => BigIntStats;
-  readonly readBytes: (descriptor: number) => Buffer;
-  readonly close: (descriptor: number) => void;
-}
-
-const DEFAULT_LOCAL_ENVIRONMENT_ADMISSION_ACCESS: LocalEnvironmentAdmissionAccess = {
-  open: openSync,
-  inspectDescriptor: fstatSync,
-  inspectIdentity: (descriptor) => fstatSync(descriptor, { bigint: true }),
-  inspectPathIdentity: (path) => lstatSync(path, { bigint: true }),
-  readBytes: (descriptor) => readFileSync(descriptor),
-  close: closeSync,
-};
 
 export const SecretAvailabilitySchema = z.discriminatedUnion("state", [
   z.strictObject({ name: SecretNameSchema, source: SecretSourceSchema, state: z.literal("present") }),
@@ -176,24 +127,9 @@ function assertRegisteredSecretFileMetadata(
   }
 }
 
-function invalidLocalEnvironmentSyntax(line: number): never {
-  throw new SecretSourceError(
-    `local environment file has invalid syntax at line ${String(line)}`,
-  );
-}
-
 const MIGRATED_ENVIRONMENT_KEY_SET: ReadonlySet<string> = new Set(
   MIGRATED_SETTINGS_ENVIRONMENT_KEYS,
 );
-
-function isProviderEnvironmentKey(key: string): boolean {
-  return SECRET_FAMILY_SPECS.some(({ envPrefix, maximum }) => {
-    if (key === envPrefix) return true;
-    const suffix = key.slice(envPrefix.length);
-    return key.startsWith(envPrefix) && /^\d+$/u.test(suffix)
-      && Number(suffix) >= 2 && Number(suffix) <= maximum;
-  });
-}
 
 function migratedEnvironmentRefusal(key: string): SecretSourceError {
   if (RETIRED_TEST_TARGET_ENVIRONMENT_KEY_SET.has(key)) {
@@ -212,238 +148,6 @@ export function assertNoMigratedEnvironmentKeys(
   if (migrated !== undefined) throw migratedEnvironmentRefusal(migrated);
 }
 
-function assertAdmittedEnvironmentKey(key: string): void {
-  if (MIGRATED_ENVIRONMENT_KEY_SET.has(key)) throw migratedEnvironmentRefusal(key);
-  if (!isProviderEnvironmentKey(key)) {
-    throw new SecretSourceError(
-      `local environment file .env.providers contains unsupported key ${key}; only registered provider key families are allowed`,
-    );
-  }
-}
-
-/**
- * Validate the repository's closed `.env` grammar before `node:util` sees a
- * byte. `parseEnv` is deliberately permissive (it accepts unterminated quotes,
- * ignores malformed lines, and resolves duplicates last-wins), while this file
- * is the production credential admission boundary. The scanner therefore
- * consumes every meaningful byte and returns the exact unique key sequence;
- * `parseEnv` is used only afterwards to decode values, with a one-to-one key
- * check before any binding is applied.
- *
- * Supported syntax is the syntax committed in `.env.example`: blank lines,
- * comments, uppercase environment names, one assignment per line, unquoted
- * values, and single/double/backtick quoted values. Quoted values may span
- * CRLF/LF lines and retain `#`/`=`. Outside a quoted value, `#` begins a
- * comment. `export` and lowercase names are intentionally not another dialect.
- */
-export function strictlyValidateLocalEnvironment(
-  text: string,
-  collectBinding?: (name: string, source: string) => void,
-): readonly string[] {
-  const keys: string[] = [];
-  const seen = new Set<string>();
-  let index = 0;
-  let line = 1;
-
-  const atEnd = (): boolean => index >= text.length;
-  const current = (): string | undefined => text[index];
-  const skipHorizontalWhitespace = (): void => {
-    while (current() === " " || current() === "\t") index += 1;
-  };
-  const consumeLineEnding = (): boolean => {
-    if (current() === "\n") {
-      index += 1;
-      line += 1;
-      return true;
-    }
-    if (current() === "\r") {
-      if (text[index + 1] !== "\n") invalidLocalEnvironmentSyntax(line);
-      index += 2;
-      line += 1;
-      return true;
-    }
-    return false;
-  };
-  const consumeComment = (): void => {
-    while (!atEnd() && current() !== "\n" && current() !== "\r") {
-      const code = text.charCodeAt(index);
-      if (code === 0 || (code < 0x20 && current() !== "\t")) {
-        invalidLocalEnvironmentSyntax(line);
-      }
-      index += 1;
-    }
-  };
-
-  while (!atEnd()) {
-    skipHorizontalWhitespace();
-    if (consumeLineEnding()) continue;
-    if (current() === "#") {
-      consumeComment();
-      if (!atEnd()) consumeLineEnding();
-      continue;
-    }
-
-    const keyLine = line;
-    const keyStart = index;
-    const first = current();
-    if (first === undefined || !/[A-Z]/u.test(first)) invalidLocalEnvironmentSyntax(line);
-    index += 1;
-    while (current() !== undefined && /[A-Z0-9_]/u.test(current() ?? "")) index += 1;
-    const key = text.slice(keyStart, index);
-    skipHorizontalWhitespace();
-    if (current() !== "=") invalidLocalEnvironmentSyntax(line);
-    index += 1;
-    skipHorizontalWhitespace();
-
-    const quote = current();
-    if (quote === "'" || quote === "\"" || quote === "`") {
-      index += 1;
-      let closed = false;
-      while (!atEnd()) {
-        if (current() === quote) {
-          index += 1;
-          closed = true;
-          break;
-        }
-        const code = text.charCodeAt(index);
-        if (code === 0 || (code < 0x20 && current() !== "\t"
-          && current() !== "\n" && current() !== "\r")) {
-          invalidLocalEnvironmentSyntax(line);
-        }
-        if (!consumeLineEnding()) index += 1;
-      }
-      if (!closed) invalidLocalEnvironmentSyntax(keyLine);
-      skipHorizontalWhitespace();
-      if (current() === "#") consumeComment();
-      if (!atEnd() && !consumeLineEnding()) invalidLocalEnvironmentSyntax(line);
-    } else {
-      while (!atEnd() && current() !== "\n" && current() !== "\r") {
-        if (current() === "#") {
-          consumeComment();
-          break;
-        }
-        if (current() === "=") invalidLocalEnvironmentSyntax(line);
-        const code = text.charCodeAt(index);
-        if (code === 0 || (code < 0x20 && current() !== "\t")) {
-          invalidLocalEnvironmentSyntax(line);
-        }
-        index += 1;
-      }
-      if (!atEnd()) consumeLineEnding();
-    }
-
-    if (seen.has(key)) invalidLocalEnvironmentSyntax(keyLine);
-    seen.add(key);
-    keys.push(key);
-    collectBinding?.(key, text.slice(keyStart, index));
-  }
-  return Object.freeze(keys);
-}
-
-/**
- * Admit the fixed local `.env.providers` source through one descriptor, then apply only
- * bindings that the explicit parent environment did not already own.
- */
-export function admitLocalEnvironmentFile(
-  environmentFilePath: string,
-  env: NodeJS.ProcessEnv = process.env,
-  access: LocalEnvironmentAdmissionAccess = DEFAULT_LOCAL_ENVIRONMENT_ADMISSION_ACCESS,
-): ProviderBootProvenance | undefined {
-  assertNoMigratedEnvironmentKeys(env);
-  const parentSlotNames = Object.keys(env).filter(key => ProviderKeySlotSchema.safeParse(key).success);
-  let descriptor: number;
-  try {
-    descriptor = access.open(
-      environmentFilePath,
-      constants.O_RDONLY | constants.O_NOFOLLOW,
-    );
-  } catch {
-    throw new SecretSourceError("local environment file .env.providers is unavailable");
-  }
-
-  let parsed: NodeJS.Dict<string> | undefined;
-  let provenance: ProviderBootProvenance | undefined;
-  let admissionFailure: SecretSourceError | undefined;
-  try {
-    const metadata = access.inspectDescriptor(descriptor);
-    assertRegisteredSecretFileMetadata(
-      metadata,
-      "local environment file .env.providers",
-      REGISTERED_SECRET_FILE_MAXIMUM_BYTES,
-    );
-    const before = access.inspectIdentity?.(descriptor);
-    if (before !== undefined && (!before.isFile() || (before.mode & 0o777n) !== 0o600n
-      || before.uid !== BigInt(process.getuid?.() ?? -1) || before.nlink !== 1n)) {
-      throw new SecretSourceError("local environment file .env.providers identity is invalid");
-    }
-    const bytes = access.readBytes(descriptor);
-    const after = access.inspectIdentity?.(descriptor);
-    const token = (stat: BigIntStats): string => sha256Hex(
-      [stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs, stat.birthtimeNs].map(String).join(":"));
-    if (before !== undefined && (after === undefined || token(before) !== token(after)
-      || bytes.length !== Number(after.size))) throw new SecretSourceError("local environment file .env.providers changed during admission");
-    if (after !== undefined && access.inspectPathIdentity !== undefined) {
-      const named = access.inspectPathIdentity(environmentFilePath);
-      if (!named.isFile() || token(named) !== token(after)) {
-        throw new SecretSourceError("local environment file .env.providers path changed during admission");
-      }
-    }
-    if (bytes.byteLength > REGISTERED_SECRET_FILE_MAXIMUM_BYTES) {
-      throw new SecretSourceError("local environment file .env.providers exceeds its registered size limit");
-    }
-    const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-    const keys = strictlyValidateLocalEnvironment(text);
-    for (const key of keys) assertAdmittedEnvironmentKey(key);
-    parsed = parseEnv(text);
-    const parsedKeys = Object.keys(parsed);
-    const validatedKeys = new Set(keys);
-    if (parsedKeys.length !== validatedKeys.size
-      || parsedKeys.some((key) => !validatedKeys.has(key))) {
-      throw new SecretSourceError(
-        "local environment file .env.providers parser did not preserve the validated binding sequence",
-      );
-    }
-    if (after !== undefined) provenance = normalizeProviderBootProvenance({
-      parentSlotNames: ProviderKeySlotSchema.array().parse(parentSlotNames),
-      fileSlotNames: ProviderKeySlotSchema.array().parse(keys),
-      fileRevision: parseProviderKeyHeaderRevision(text),
-      fileSourceVersionToken: token(after),
-    });
-  } catch (error) {
-    admissionFailure = error instanceof SecretSourceError
-      ? error
-      : new SecretSourceError("local environment file .env.providers could not be read and parsed");
-  }
-  let closeFailure: SecretSourceError | undefined;
-  try {
-    access.close(descriptor);
-  } catch {
-    closeFailure = new SecretSourceError("local environment file .env.providers descriptor could not be closed");
-  }
-  if (admissionFailure !== undefined && closeFailure !== undefined) {
-    throw new AggregateError(
-      [admissionFailure, closeFailure],
-      "local environment file .env.providers admission and descriptor close both failed",
-    );
-  }
-  if (admissionFailure !== undefined) throw admissionFailure;
-  if (closeFailure !== undefined) throw closeFailure;
-  if (parsed === undefined) throw new SecretSourceError("local environment file .env.providers produced no parsed bindings");
-
-  const explicitParentKeys = new Set(Object.keys(env));
-  const bindings = Object.entries(parsed);
-  if (bindings.some(([, value]) => value === undefined)) {
-    throw new SecretSourceError("local environment file .env.providers produced an invalid parsed binding");
-  }
-  for (const [key, value] of bindings) {
-    if (value === undefined) {
-      throw new SecretSourceError("local environment file .env.providers produced an invalid parsed binding");
-    }
-    if (!explicitParentKeys.has(key)) env[key] = value;
-  }
-  return provenance;
-}
-
 /**
  * D341: test-target inputs are no longer protected Settings. Their retired
  * environment names are refused by name with a distinct reason so an operator
@@ -457,12 +161,6 @@ export function retiredTestTargetEnvironmentRefusal(key: string): string {
 function registeredSecretSpec(name: SecretName): SecretSpec {
   const spec = SECRET_SPECS.find((candidate) => candidate.name === name);
   if (spec === undefined) throw new SecretMissingError(`secret registry has no entry for ${name}`);
-  return spec;
-}
-
-function familySpec(name: SecretFamilyName) {
-  const spec = SECRET_FAMILY_SPECS.find((candidate) => candidate.name === name);
-  if (spec === undefined) throw new SecretMissingError(`secret-family registry has no entry for ${name}`);
   return spec;
 }
 
@@ -577,52 +275,6 @@ export function requireActivityPersonPseudonymDomain(
   throw new Error("activity-person-pseudonyms-retired");
 }
 
-export function optionalSecretFamily(name: SecretFamilyName, env: NodeJS.ProcessEnv = process.env): readonly string[] {
-  const spec = familySpec(name);
-  const values: string[] = [];
-  for (let index = 1; index <= spec.maximum; index += 1) {
-    const key = index === 1 ? spec.envPrefix : `${spec.envPrefix}${String(index)}`;
-    const value = normalizedProviderSlotValue(env[key]);
-    if (value !== undefined && value !== "") values.push(value);
-  }
-  return values;
-}
-
-function normalizedProviderSlotValue(value: string | undefined): string | undefined {
-  const normalized = value?.trim();
-  return normalized === "" ? undefined : normalized;
-}
-
-export function activeProviderKeySlots(env: Readonly<Record<string, string | undefined>> = process.env): Readonly<Partial<Record<z.infer<typeof ProviderKeySlotSchema>, string>>> {
-  const slots: Partial<Record<z.infer<typeof ProviderKeySlotSchema>, string>> = {};
-  for (const slot of ProviderKeySlotSchema.options) {
-    const value = normalizedProviderSlotValue(env[slot]);
-    if (value !== undefined) slots[slot] = value;
-  }
-  return Object.freeze(slots);
-}
-
-export function requireSecretFamily(name: SecretFamilyName, env: NodeJS.ProcessEnv = process.env): readonly [string, ...string[]] {
-  const values = optionalSecretFamily(name, env);
-  const first = values[0];
-  if (first === undefined) {
-    const spec = familySpec(name);
-    throw new SecretMissingError(`${name} is missing (${spec.envPrefix}{,2..${String(spec.maximum)}})`);
-  }
-  return [first, ...values.slice(1)];
-}
-
-/**
- * The model chain a provider family is configured to use, in priority order.
- *
- * Model ids are ordinary settings. The provider key family still comes from
- * the environment, but this accessor reads the resolved Config only.
- */
-export function providerModelChain(name: SecretFamilyName, config: Config): readonly string[] {
-  const spec = familySpec(name);
-  return config.providers[spec.modelsConfigKey]?.models ?? [];
-}
-
 function unresolvedDiagnostics(availabilities: readonly SecretAvailability[]): readonly string[] {
   return availabilities
     .filter((availability) => availability.state !== "present")
@@ -631,29 +283,10 @@ function unresolvedDiagnostics(availabilities: readonly SecretAvailability[]): r
 
 export function validateBootSecrets(
   source: ProtectedSecretSource,
-  env: NodeJS.ProcessEnv = process.env,
-): void {
+ ): void {
   const unresolved = unresolvedDiagnostics(SECRET_SPECS.filter(({ requiredAtBoot }) => requiredAtBoot)
     .map(({ name }) => inspectSecret(name, source)));
-  const missingFamilies = SECRET_FAMILY_SPECS.filter(({ requiredAtBoot }) => requiredAtBoot)
-    .filter(({ name }) => optionalSecretFamily(name, env).length === 0)
-    .map(({ envPrefix }) => envPrefix);
-  const allUnresolved = [...unresolved, ...missingFamilies.map((family) => `${family} [missing: environment family has no value]`)];
-  if (allUnresolved.length > 0) throw new SecretMissingError(`unresolved boot secrets: ${allUnresolved.join(", ")}`);
-}
-
-export function validateDescriptorSecrets(
-  names: readonly SecretName[],
-  families: readonly SecretFamilyName[],
-  source: ProtectedSecretSource,
-  env: NodeJS.ProcessEnv = process.env,
-): void {
-  const unresolved = unresolvedDiagnostics(names.map((name) => inspectSecret(name, source)));
-  const missingFamilies = families.filter((name) => optionalSecretFamily(name, env).length === 0);
-  if (unresolved.length > 0 || missingFamilies.length > 0) {
-    const diagnostics = [...unresolved, ...missingFamilies.map((family) => `${family} [missing: environment family has no value]`)];
-    throw new SecretMissingError(`unresolved descriptor secrets: ${diagnostics.join(", ")}`);
-  }
+  if (unresolved.length > 0) throw new SecretMissingError(`unresolved boot secrets: ${unresolved.join(", ")}`);
 }
 
 export function requireSecretFile(

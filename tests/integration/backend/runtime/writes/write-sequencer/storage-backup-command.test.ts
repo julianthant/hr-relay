@@ -38,7 +38,6 @@ import { rebuildRuntimeIsolation } from "../../../../../../src/backend/app/confi
 import { manualClock } from "../../../../../../src/rules/time/clock.js";
 import { AuthorityDatabase } from "../../../../../support/helpers/synthetic-storage-admission.js";
 import { composeStorageCommand } from "../../../../../support/helpers/synthetic-storage-admission.js";
-import { admitLocalEnvironmentFile } from "../../../../../../src/models/config/secrets.js";
 import { createCredentialStore } from "../../../../../support/helpers/synthetic-storage-admission.js";
 import { readSettings } from "../../../../../../src/backend/runtime/settings/settings-runtime.js";
 
@@ -267,12 +266,6 @@ describe("cli storage backup (D322)", () => {
     assert.equal(z.object({ state: z.literal("already-upgraded") }).parse(JSON.parse(repeat.output)).state, "already-upgraded");
     assert.deepEqual(readFileSync(p.authorityPath), settled);
     assert.equal(readFileSync(environmentFile, "utf8"), source);
-    for (const name of retired) {
-      writeFileSync(environmentFile, `${name}=synthetic-private\n`, { mode: 0o600 });
-      const env = {};
-      assert.throws(() => admitLocalEnvironmentFile(environmentFile, env));
-      assert.deepEqual(env, {});
-    }
     writeFileSync(environmentFile, source, { mode: 0o600 });
     assert.equal(readFileSync(environmentFile, "utf8"), source);
   });

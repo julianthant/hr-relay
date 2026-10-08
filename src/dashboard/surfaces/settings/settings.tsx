@@ -5,12 +5,10 @@ import { SpreadsheetsSettings } from "../spreadsheets/spreadsheets.js";
 import { EditableSettingsSectionIdSchema } from "../../../models/dashboard/settings-editor.js";
 import { SettingsAuthoritySection } from "./editor/settings-authorities.js";
 import { ArrowLeft, BarChart3, Workflow, CircleAlert, ClipboardCheck, Database, FolderOpen, Gauge, Keyboard as KeyboardIcon, Link2, Monitor, Settings as SettingsIcon, SlidersHorizontal, Table2 } from "lucide-react";
-import { useCallback,useEffect,useMemo,useRef,useState,type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { FrontendBootstrapWire } from "../../../models/dashboard/bootstrap.js";
-import {
-SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID
-} from "../../../models/dashboard/settings.js";
-import { Banner,Button,Dialog,DialogContent,DialogFooter,DsBodyScope,IconButton,SearchInput,SectionLabel,StatusDot,TakeoverFrame,dsFocus,dsMotion,dsIcon,dsSurface,dsText } from "../../ds/ui.js";
+import { SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID } from "../../../models/dashboard/settings.js";
+import { Banner, Button, Dialog, DialogContent, DialogFooter, DsBodyScope, IconButton, SearchInput, SectionLabel, StatusDot, TakeoverFrame, dsFocus, dsMotion, dsIcon, dsSurface, dsText } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { plural } from "../shared/status/format.js";
 import type { SettingsSaveListener, SettingsSaveProblemListener } from "./editor/settings-attempt-model.js";
@@ -19,8 +17,8 @@ import { EditableSettingsSection } from "./editor/settings-editor.js";
 import { RoutesSection } from "./routes/settings-routes.js";
 import { KeyboardSection } from "./navigation/settings-keyboard.js";
 import { PreflightSection } from "./preflight/settings-preflight.js";
-import { SETTINGS_DATA_SECTION_IDS,SETTINGS_GEAR_ID,SETTINGS_KEYBOARD_SECTION_ID,SETTINGS_PREFLIGHT_SECTION_ID,buildSettingsNav,resolveSettingsSection,type SettingsNavEntry,type SettingsNavIcon,type SettingsSection } from "./settings-model.js";
-import { storageNeedsAttention,type StorageHealthSummary } from "./storage/storage-settings-model.js";
+import { SETTINGS_DATA_SECTION_IDS, SETTINGS_GEAR_ID, SETTINGS_KEYBOARD_SECTION_ID, SETTINGS_PREFLIGHT_SECTION_ID, buildSettingsNav, resolveSettingsSection, type SettingsNavEntry, type SettingsNavIcon, type SettingsSection } from "./settings-model.js";
+import { storageNeedsAttention, type StorageHealthSummary } from "./storage/storage-settings-model.js";
 import { StorageSection } from "./storage/storage-settings.js";
 import { searchSettings, settingsSearchIndex, type SettingsSearchResult } from "./navigation/settings-search-model.js";
 import { SettingsSearchTargetContext, useSettingsSearchArrival } from "./navigation/settings-search-target-model.js";
@@ -252,10 +250,9 @@ export function SettingsPage({
   useSettingsSearchArrival(content, target, searchVisit, activeId, selectedResult?.label);
   const settingsEntries = groups.filter(group => group.id === "personal" || group.id === "advanced").flatMap(group => group.entries);
   const activeSettingsEditorSection = activeId !== undefined && settingsEntries.some(entry => entry.id === activeId);
-  const totalDirty = (workbookDraft.dirty ? 1 : 0) + editor.dirtyCount + editor.protectedEditor.dirtyCount + editor.providerEditor.dirtyCount + editor.relocationEditor.dirtyCount;
-  const providerUncertain = editor.providerEditor.save.state === "unconfirmed";
+  const totalDirty = (workbookDraft.dirty ? 1 : 0) + editor.dirtyCount + editor.protectedEditor.dirtyCount + editor.relocationEditor.dirtyCount;
   const relocationUncertain = editor.relocationEditor.uncertain;
-  const hasDirtyDraft = totalDirty > 0 || providerUncertain || relocationUncertain;
+  const hasDirtyDraft = totalDirty > 0 || relocationUncertain;
 
   useEffect(() => {
     if (!hasDirtyDraft) return undefined;
@@ -289,7 +286,6 @@ export function SettingsPage({
     setWorkbookDraft({ document: null, dirty: false });
     editor.discard();
     editor.protectedEditor.discard();
-    editor.providerEditor.discard();
     editor.relocationEditor.discard();
     setPendingExit(undefined);
     pendingExit();
@@ -391,16 +387,14 @@ export function SettingsPage({
               target.focus();
             }
           }}
-          title={relocationUncertain ? "Leave with an unconfirmed plan?" : providerUncertain ? "Leave with a pending provider write?" : "Discard unsaved settings?"}
+          title={relocationUncertain ? "Leave with an unconfirmed plan?" : "Discard unsaved settings?"}
           description={relocationUncertain
             ? `You have ${plural(totalDirty, "local edit")}. Leaving Settings discards local drafts and this browser's exact retry attempt. A submitted relocation plan may already be recorded. It does not mean folders moved; check the plan when you return.`
-            : providerUncertain
-            ? `You have ${plural(totalDirty, "local edit")}. Leaving Settings discards local drafts and this browser's retry attempt. A submitted provider write may already be stored. Any pending server write can be recovered when you return.`
             : `You have ${plural(totalDirty, "unsaved change")}. Leaving Settings discards local drafts and any pending retry identity. A write already submitted may still be stored.`}
         >
           <DialogFooter>
             <Button variant="secondary" onClick={() => setPendingExit(undefined)}>Keep editing</Button>
-            <Button variant="danger" disabled={editor.providerEditor.save.state === "saving" || editor.relocationEditor.saving} onClick={discardAndExit}>{providerUncertain || relocationUncertain ? "Leave Settings" : "Discard changes"}</Button>
+            <Button variant="danger" disabled={editor.relocationEditor.saving} onClick={discardAndExit}>{relocationUncertain ? "Leave Settings" : "Discard changes"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

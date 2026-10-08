@@ -9,42 +9,16 @@
  * before/after/source. A rule that cannot decide answers `null`/`undefined`
  * honestly rather than guessing; nothing in this module reaches a provider.
  *
- * Deliberately NOT ported: the LLM relationship fallback and the LLM
- * address-splitter (provider concerns; the `ai` advice arm lands with 2i's
- * advisory producer), and legacy's display phone format `(XXX) XXX-XXXX` —
- * this tree's canonical phone is the digits themselves
- * (`CANONICAL_FIELDS.cellPhone`, `PhoneDigitsSchema`); wire formatting
- * belongs to the consuming workflow's UCPath entry step.
+ * Canonical phones contain digits; consuming workflows own display formatting.
  */
 import { z } from "zod";
 
-/**
- * The contact fields this tree advises on. It lives here rather than in the
- * task contract because two modules outside that contract need it — the store
- * task and ref operator-trust §4.4's advisory answer schema — and a vocabulary imported
- * from a contract boundary would put the contract in both import closures.
- */
+/** Shared field vocabulary for contact rules and normalization tasks. */
 export const ContactFieldIdSchema = z.enum([
   "relationship", "cellPhone", "homePhone", "address1", "address2",
   "city", "state", "postalCode", "country",
 ]);
 export type ContactFieldId = z.infer<typeof ContactFieldIdSchema>;
-
-/**
- * What an `ai.advisory` invocation may answer for a contact (D178). It is a
- * SPARSE list on purpose: a field the model is unsure of is omitted and stays
- * with the operator as `ambiguous`, which is the honest outcome — an answer
- * for every asked field would make "the model had nothing" indistinguishable
- * from "the model guessed".
- */
-export const ContactAdviceSchema = z.strictObject({
-  fields: z.array(z.strictObject({
-    field: ContactFieldIdSchema,
-    value: z.string().min(1).max(120),
-    confidence: z.number().min(0).max(1),
-  })).min(1).max(9),
-});
-export type ContactAdvice = z.infer<typeof ContactAdviceSchema>;
 
 /** The closed rule vocabulary; a change names exactly the rule that made it. */
 export const NormalizationRuleIdSchema = z.enum([

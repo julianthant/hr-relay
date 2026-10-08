@@ -28,14 +28,10 @@ import { composeDataQueries } from "../../../app/composition/dashboard/data.js";
  */
 import { Hono } from "hono";
 
-import {
-  ArchivedCaptureReadError,
-} from "../../../runs/queries/archive.js";
+import { ArchivedCaptureReadError } from "../../../runs/queries/archive.js";
 import { staticBundleHandler } from "../static-bundle.js";
 import { operatorMutationIngressGuard, operatorOpaqueIngressGuard } from "./operator-mutation-ingress.js";
-import {
-  type RequestIdentityCheckpoint,
-} from "../request-identity.js";
+import { type RequestIdentityCheckpoint } from "../request-identity.js";
 import { failureStatus, wireError } from "./failure-status.js";
 
 export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
@@ -66,10 +62,8 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   app.use("/api/v1/start-plans", operatorMutationIngressGuard);
   app.use("/api/v1/rerun-warnings", operatorMutationIngressGuard);
   app.use("/api/v1/explorer/validate", operatorMutationIngressGuard);
-  // Intake bytes travel under the file's own media type (D170) and the advisory
-  // carries no body: Host/Origin gate both; the body contract stays the route's.
+  // Intake bytes use the file media type; Host/Origin admission still applies.
   app.use("/api/v1/intake/files", operatorOpaqueIngressGuard);
-  app.use("/api/v1/runs/:runId/advisory", operatorOpaqueIngressGuard);
 
   registerDataRoutes(app, () => deps.data ?? composeDataQueries(deps.runDetail));
   registerRunDetailRoutes(app, deps);
@@ -86,8 +80,6 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   registerIntakeRoutes(app, deps);
   registerCommandsRoutes(app, { clock: deps.bootstrap.clock, commands: deps.commands, commandJournal: deps.commandJournal,
     bulkCommandAcceptances: deps.bulkCommandAcceptances, protectedCommandAcceptedAt: deps.protectedCommandAcceptedAt,
-    readPendingProviderRequest: deps.readPendingProviderRequest,
-    providerCommandAcceptedAt: deps.providerCommandAcceptedAt,
     runtimeVersionAcceptedAt: deps.runtimeVersionAcceptedAt, intake: deps.intake });
   if (deps.staticBundle !== undefined) app.use("*", staticBundleHandler(deps.staticBundle));
 

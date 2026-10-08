@@ -1,22 +1,34 @@
-import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync, copyFileSync } from "node:fs";
 import { join } from "node:path";
 import { foundationFixture, NOW, HASH, id } from "../database-foundation/fixtures.js";
-import { GenericProviderRequestSchema, GenericProviderUsageSchema } from "../../../../src/rules/providers/provider-accounting.js";
+import { GenericProviderRequestSchema, GenericProviderUsageSchema, LegacyProviderRequestSchema } from "../../../../src/rules/providers/provider-accounting.js";
+import { ProviderAdmissionRecordSchema, ProviderBudgetCounterSchema } from "../../../../src/rules/providers/provider-admission.js";
+import { writeProviderRequest, writeProviderUsage } from "../../../../src/backend/storage/sqlite/provider-storage.js";
 import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 export { foundationFixture, NOW, HASH, id };
 export function generic(f: ReturnType<typeof foundationFixture>) {
  const scope = {id:"synthetic.shared",kind:"shared-quota"};
- const request = GenericProviderRequestSchema.parse({format:1,kind:"generic",requestId:id(41),execution:{runId:f.run.envelope.runId,attempt:1,nodeId:"searching",taskId:"ocr/extract-page"},capability:"ocr.extract",configSnapshotId:f.snapshot.configSnapshotId,configFingerprint:f.snapshot.fingerprint,requestFingerprint:HASH,attribution:{kind:"attributed",provider:"synthetic-alpha",credential:{kind:"generation",reference:"synthetic-generation/1"},model:"model-a"},allocations:[{scopeId:scope.id,meter:"requests",windowId:"day",windowStartedAt:NOW,windowEndsAt:null,upperBound:1,trackingOrigin:"tracked"}],state:"reserved",usage:[],leaseExpiresAt:"2026-09-09T12:01:00.000Z",deadlineAt:"2026-09-09T12:00:30.000Z",reason:null,version:1,createdAt:NOW,updatedAt:NOW});
+ const request = GenericProviderRequestSchema.parse({format:1,kind:"generic",requestId:id(41),execution:{runId:f.run.envelope.runId,attempt:1,nodeId:"searching",taskId:"ocr/extract-page"},capability:"geocode.census",configSnapshotId:f.snapshot.configSnapshotId,configFingerprint:f.snapshot.fingerprint,requestFingerprint:HASH,attribution:{kind:"attributed",provider:"synthetic-alpha",credential:{kind:"generation",reference:"synthetic-generation/1"},model:"model-a"},allocations:[{scopeId:scope.id,meter:"requests",windowId:"day",windowStartedAt:NOW,windowEndsAt:null,upperBound:1,trackingOrigin:"tracked"}],state:"reserved",usage:[],leaseExpiresAt:"2026-09-09T12:01:00.000Z",deadlineAt:"2026-09-09T12:00:30.000Z",reason:null,version:1,createdAt:NOW,updatedAt:NOW});
  const usage = GenericProviderUsageSchema.parse({format:1,kind:"generic",usageId:"synthetic-usage",scope,meter:"requests",tracking:{startedAt:NOW,coverage:"complete-since-start",evidence:"caller-supplied"},cumulative:{kind:"measured",value:0},windows:[{id:"day",startsAt:NOW,endsAt:null,settled:{kind:"measured",value:0},retainedUnknown:0,reserved:1,limit:{kind:"configured",value:10,provenance:"synthetic-policy"}}],version:1,createdAt:NOW,updatedAt:NOW});
  return {request,usage};
 }
-export function legacyRequest(f:ReturnType<typeof foundationFixture>, n=60, capability="ocr.extract") {
+export function legacyRequest(f:ReturnType<typeof foundationFixture>, n=60, capability="geocode.census") {
  return {admissionId:id(n),execution:{runId:f.run.envelope.runId,attempt:1,nodeId:"searching",taskId:"ocr/extract-page"},capability,configSnapshotId:f.snapshot.configSnapshotId,configFingerprint:f.snapshot.fingerprint,requestFingerprint:HASH,estimate:{maximumCostUsdMicros:0},leaseExpiresAt:"2026-09-09T12:01:00.000Z",deadlineAt:"2026-09-09T12:00:30.000Z",now:NOW};
 }
 export function historicalFixture(version:42|43) {
- const f=foundationFixture(); const admitted=f.db.authority.providerAdmissions.reserve(legacyRequest(f)); assert.equal(admitted.state,"reserved");
+ const f=foundationFixture();
+ const request=legacyRequest(f,60,"ocr.extract");
+ const record=ProviderAdmissionRecordSchema.parse({admissionId:request.admissionId,execution:request.execution,capability:request.capability,configSnapshotId:request.configSnapshotId,configFingerprint:request.configFingerprint,requestFingerprint:request.requestFingerprint,
+  budget:{timeoutMs:120_000,concurrency:4,requestsPerMinute:10,dailyRequestLimit:250,costLimitUsdMicros:0},estimate:request.estimate,reservation:{requestCount:1,maximumCostUsdMicros:0},
+  lifecycle:{state:"reserved",reservedAt:NOW,leaseExpiresAt:request.leaseExpiresAt,deadlineAt:request.deadlineAt},version:1,createdAt:NOW,updatedAt:NOW});
+ const counter=ProviderBudgetCounterSchema.parse({capability:"ocr.extract",minuteWindowStartedAt:NOW,minuteRequests:1,dayWindowStartedAt:"2026-09-09T00:00:00.000Z",dayRequests:1,dayReservedCostUsdMicros:0,activeReservations:1,version:2,createdAt:NOW,updatedAt:NOW});
+ const tracking=LegacyProviderRequestSchema.shape.tracking.parse({startedAt:NOW,coverage:"complete-since-start",evidence:"legacy-reported"});
+ const historicalSeed=new DatabaseSync(f.path);
+ try {
+  writeProviderRequest(historicalSeed,{format:1,kind:"legacy-capability",record,origin:"tracked",attribution:{kind:"legacy-capability",capability:"ocr.extract"},tracking},null);
+  writeProviderUsage(historicalSeed,{format:1,kind:"legacy-capability",record:counter,tracking,cumulative:{requests:1,chargedUsdMicros:0}},null);
+ } finally { historicalSeed.close(); }
  const path=join(f.root,"historical","state.db");mkdirSync(join(f.root,"historical"));
  for(const file of ["package.json","package-lock.json"])copyFileSync(join(process.cwd(),file),join(f.root,file));
  let raw=new DatabaseSync(path); const seed=new DatabaseSync(f.path,{readOnly:true});

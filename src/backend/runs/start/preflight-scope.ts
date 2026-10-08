@@ -22,8 +22,6 @@ export function workflowPreflightScope(descriptor: AnyWorkflowDescriptor, input:
     if (contract.id.startsWith("sharepoint/")) capabilities.add("workflow.sharepoint-download");
     for (const provider of contract.providers ?? []) {
       switch (provider) {
-        case "ocr.extract": capabilities.add("feature.ocr"); break;
-        case "ai.advisory": capabilities.add("feature.ai-advisory"); break;
         case "geocode.census": capabilities.add("provider.census"); break;
         case "geocode.nominatim": capabilities.add("provider.nominatim"); break;
       }

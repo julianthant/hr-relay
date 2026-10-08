@@ -20,10 +20,7 @@ import { z } from "zod";
 import { manualClock } from "../../../../../../src/rules/time/clock.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../../../src/models/config/protected-settings.js";
 import { PreflightReportSchema } from "../../../../../../src/models/preflight/preflight.js";
-import {
-  FrontendBootstrapWireSchema,
-  StorageHealthSummaryWireSchema,
-} from "../../../../../../src/models/dashboard/bootstrap.js";
+import { FrontendBootstrapWireSchema, StorageHealthSummaryWireSchema } from "../../../../../../src/models/dashboard/bootstrap.js";
 import { defineWorkflowRole } from "../../../../../../src/workflow-kit/validation/module-role.js";
 import { buildBootstrap, type BootstrapQueryDeps } from "../../../../../../src/backend/runs/queries/bootstrap.js";
 import { descriptorSetHash } from "../../../../../../src/backend/app/composition/dashboard/compose.js";
@@ -58,11 +55,6 @@ function depsOf(
       return { schemaVersion: 13, authorityGeneration: 4 };
     },
     backupSummary: () => storage.backup,
-    advisoryAvailability: () => ({
-      state: "unavailable",
-      code: "not-configured",
-      reason: "no ai.advisory provider is composed in this test",
-    }),
     preflightReport: () => PreflightReportSchema.parse({
       configFingerprint: "a".repeat(64),
       checkedAt: AT.toISOString(),

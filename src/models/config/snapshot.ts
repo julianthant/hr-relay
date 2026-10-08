@@ -1,10 +1,7 @@
 import { z } from "zod";
 import { ActorIdSchema, ConfigSnapshotIdSchema, FingerprintSchema, IsoInstantSchema, PositiveIntSchema } from "../../rules/identity/ids.js";
 import { ConfigLeafPathSchema } from "./provenance.js";
-import {
-  StoredConfigSchema,
-  configSnapshotAbsentLeaves,
-} from "./snapshot-generations.js";
+import { StoredConfigSchema, configSnapshotAbsentLeaves } from "./snapshot-generations.js";
 
 /**
  * The durable snapshot as it is READ. `config` is exactly the stored bytes —
@@ -46,6 +43,9 @@ export const ConfigSnapshotWriteSchema = ConfigSnapshotRecordSchema.superRefine(
       path: ["config", "capture"],
       message: `config snapshot ${record.configSnapshotId} cannot mint retired phone-capture configuration`,
     });
+  }
+  if (Object.keys(record.config.providers).some(key => !["geocodeCensus", "geocodeNominatim"].includes(key))) {
+    context.addIssue({ code: "custom", path: ["config", "providers"], message: "new config snapshots cannot mint retired AI provider configuration" });
   }
   const absent = configSnapshotAbsentLeaves(record.config);
   if (absent.length > 0) {

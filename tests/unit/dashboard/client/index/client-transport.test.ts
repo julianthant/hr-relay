@@ -7,12 +7,11 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { describe, it } from "vitest";
-import {
-  applyDashboardDayPatch,
-  createDashboardClient,
-  DashboardClientError,
-  type SubscriptionState,
-} from "../../../../../src/dashboard/client/index.js";
+import { applyDashboardDayPatch, createDashboardClient, DashboardClientError, type SubscriptionState } from "../../../../../src/dashboard/client/index.js";
+// The stream endings themselves are produced HERE, one layer under the client
+// facade: `openStream` is the only thing that decides whether a day stream ends
+// resolved, `network`-rejected or `http`-rejected, and `subscription.ts`'s
+// whole reconnect classification is written against those three answers.
 // The stream endings themselves are produced HERE, one layer under the client
 // facade: `openStream` is the only thing that decides whether a day stream ends
 // resolved, `network`-rejected or `http`-rejected, and `subscription.ts`'s
@@ -428,7 +427,6 @@ describe("typed queries and error normalization", () => {
     await assert.rejects(client.uploadIntakeFile({
       workflowId: "x", fileName: "roster.csv", mediaType: "text/csv", bytes: new Uint8Array([1, 2, 3]).buffer,
     }));
-    await assert.rejects(client.requestFailureAdvisory(RUN_ID));
     await assert.rejects(client.exportXlsx({ requestVersion:3, selection: { kind: "activity", from: "2026-08-01", to: "2026-08-28", snapshotToken:"as1.test.token" } }));
     await assert.rejects(client.validateExplorerEdit({
       draftVersion: 1,
@@ -443,7 +441,6 @@ describe("typed queries and error normalization", () => {
     assert.deepEqual(sent, [
       { path: "/api/v1/start-plans", method: "POST", origin: "http://127.0.0.1:3938", contentType: "application/json" },
       { path: "/api/v1/intake/files", method: "POST", origin: "http://127.0.0.1:3938", contentType: "text/csv" },
-      { path: `/api/v1/runs/${RUN_ID}/advisory`, method: "POST", origin: "http://127.0.0.1:3938", contentType: null },
       { path: "/api/v1/exports/xlsx", method: "POST", origin: "http://127.0.0.1:3938", contentType: "application/json" },
       { path: "/api/v1/explorer/validate", method: "POST", origin: "http://127.0.0.1:3938", contentType: "application/json" },
       { path: "/api/v1/bootstrap", method: "GET", origin: null, contentType: null },

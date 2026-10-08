@@ -311,7 +311,6 @@ const KERNEL_ONLY_COMMANDS: Readonly<Record<string, string>> = {
   "reopen-browser": "worker-browser commands target the worker pool, not a run row",
   "apply-settings": "the Settings surface owns the whole payload; a row control cannot express it",
   "apply-protected-settings": "the Settings surface owns its write-only protected payload; row actions cannot express it",
-  "apply-provider-keys": "the Settings surface owns provider slots; run row actions cannot express them",
   "plan-storage-relocation": "Settings plans a complete installation root pair; no run row owns storage location",
   "cancel-storage-relocation": "Settings cancels the current installation plan revision; no run row owns storage location",
   "inspect-intake": "the intake surface drives the whole session; its targets are intake sessions, not runs",

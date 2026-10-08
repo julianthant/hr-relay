@@ -1,17 +1,12 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import {
-  repositoryEnvironmentFilePath,
-  runSecureEnvironmentBootstrap,
-  secureEnvironmentEntrypoint,
-} from "../../../../../../scripts/dev/secure-env-bootstrap.js";
+import { runSecureEnvironmentBootstrap, secureEnvironmentEntrypoint } from "../../../../../../scripts/dev/secure-env-bootstrap.js";
 
-import { admitLocalEnvironmentFile } from "../../../../../../src/models/config/secrets.js";
 import { RuntimeAdmission } from "../../../../../../src/backend/storage/admission/admission.js";
 import { parseRelocationCommand } from "../../../../../../src/backend/app/composition/storage/relocate.js";
 
@@ -66,10 +61,9 @@ describe("secure environment bootstrap", () => {
         validateDashboardBundle: workspace => { assert.equal(workspace, REPO_ROOT); events.push("bundle"); },
         acquireAdmission: () => { events.push("authority"); return syntheticAdmission(); },
         assertEnvironment: () => { events.push("parent-environment"); },
-        admitEnvironmentFile: () => { events.push("provider-file"); },
         runCli: async () => { events.push("runner"); },
       });
-      assert.deepEqual(events, ["bundle", "authority", "parent-environment", "provider-file", "runner"]);
+      assert.deepEqual(events, ["bundle", "authority", "parent-environment", "runner"]);
     } finally { process.argv.splice(0, process.argv.length, ...original); }
   });
 
@@ -79,7 +73,6 @@ describe("secure environment bootstrap", () => {
       validateDashboardBundle: () => { events.push("bundle"); throw new Error("dashboard bundle refused"); },
       acquireAdmission: () => { throw new Error("must not acquire authority"); },
       assertEnvironment: () => { throw new Error("must not read environment"); },
-      admitEnvironmentFile: () => { throw new Error("must not open provider file"); },
       runCli: async () => { throw new Error("must not enter runner"); },
     }), /dashboard bundle refused/u);
     assert.deepEqual(events, ["bundle"]);
@@ -91,8 +84,7 @@ describe("secure environment bootstrap", () => {
       try {
         await runSecureEnvironmentBootstrap(args, {
           validateDashboardBundle: () => { throw new Error("unexpected bundle validation"); },
-          acquireAdmission: syntheticAdmission, assertEnvironment: () => undefined,
-          admitEnvironmentFile: () => undefined, runCli: async () => undefined,
+          acquireAdmission: syntheticAdmission, assertEnvironment: () => undefined, runCli: async () => undefined,
         });
       } finally { process.argv.splice(0, process.argv.length, ...original); }
     });
@@ -114,7 +106,6 @@ describe("secure environment bootstrap", () => {
           released = true;
         } }) as unknown as RuntimeAdmission,
         assertEnvironment: () => undefined,
-        admitEnvironmentFile: () => undefined,
         runCli: async () => undefined,
       });
       assert.equal(released, true);
@@ -138,67 +129,6 @@ describe("secure environment bootstrap", () => {
     assert.match(child.stdout, /RELEASED/u);
   });
 
-  it("resolves the admitted environment file from the bootstrap module when CWD changes", () => {
-    const originalDirectory = process.cwd();
-    const unrelatedDirectory = mkdtempSync(join(tmpdir(), "hrauto-bootstrap-cwd-"));
-    try {
-      process.chdir(unrelatedDirectory);
-      assert.equal(repositoryEnvironmentFilePath(), join(REPO_ROOT, ".env.providers"));
-    } finally {
-      process.chdir(originalDirectory);
-      rmSync(unrelatedDirectory, { recursive: true, force: true });
-    }
-  });
-
-  it("admits only the repository-anchored environment file before running the smoke", async () => {
-    let admittedPath: string | undefined;
-    let smokeInvocations = 0;
-
-    await runSecureEnvironmentBootstrap(["test-target-document-number"], {
-      acquireAdmission: syntheticAdmission,
-      admitEnvironmentFile: (path) => {
-        admittedPath = path;
-      },
-      runTestTargetDocumentNumberSmoke: async () => {
-        smokeInvocations += 1;
-        return 0;
-      },
-    });
-
-    assert.equal(admittedPath, join(REPO_ROOT, ".env.providers"));
-    assert.equal(smokeInvocations, 1);
-  });
-
-  it.each([true, false])("ignores the reference file when runtime provider file present=%s", async (present) => {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-provider-source-"));
-    const reference = "CEREBRAS_API_KEY=unsupported-reference\nGEMINI_API_KEY=stale-reference\n";
-    const original = [...process.argv];
-    const env: NodeJS.ProcessEnv = {};
-    let ran = false;
-    try {
-      writeFileSync(join(root, ".env"), reference, { mode: 0o600 });
-      if (present) writeFileSync(join(root, ".env.providers"), "GEMINI_API_KEY=current-fixture\n", { mode: 0o600 });
-      const launch = runSecureEnvironmentBootstrap(["cli"], {
-        acquireAdmission: syntheticAdmission,
-        assertEnvironment: () => {},
-        admitEnvironmentFile: (path) => admitLocalEnvironmentFile(join(root, basename(path)), env),
-        runCli: async () => { ran = true; },
-      });
-      if (present) {
-        await launch;
-        assert.equal(env.GEMINI_API_KEY, "current-fixture");
-      } else {
-        await assert.rejects(launch, /local environment file \.env\.providers is unavailable/u);
-        assert.deepEqual(env, {});
-      }
-      assert.equal(ran, present);
-      assert.equal(readFileSync(join(root, ".env"), "utf8"), reference);
-    } finally {
-      process.argv.splice(0, process.argv.length, ...original);
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
   it("refuses the parent environment before opening .env.providers or starting a runner", async () => {
     const events: string[] = [];
     await assert.rejects(
@@ -208,7 +138,6 @@ describe("secure environment bootstrap", () => {
           events.push("assert-parent");
           throw new Error("migrated environment refused");
         },
-        admitEnvironmentFile: () => events.push("open-env"),
         runCli: () => {
           events.push("run-cli");
           return Promise.resolve();
@@ -230,7 +159,6 @@ describe("secure environment bootstrap", () => {
       await runSecureEnvironmentBootstrap(["cli", command, operation], {
         acquireAdmission: syntheticAdmission,
         assertEnvironment: () => { throw new Error(`${command} must not read parent provider environment`); },
-        admitEnvironmentFile: () => { throw new Error(`${command} must not open provider .env.providers`); },
         runCli: async () => { events.push(...process.argv.slice(2)); },
       });
       assert.deepEqual(events, [command, operation]);
@@ -267,7 +195,6 @@ describe("secure environment bootstrap", () => {
       await runSecureEnvironmentBootstrap(["cli", "storage", "relocate", "--resume", operationId, "--json"], {
         acquireAdmission: () => { throw new Error("normal admission must not precede recovery"); },
         assertEnvironment: () => { throw new Error("relocation must not read provider environment"); },
-        admitEnvironmentFile: () => { throw new Error("relocation must not open provider file"); },
         runCli: () => { throw new Error("relocation must not enter ordinary CLI composition"); },
         runRelocation: async ({ args, admission }) => {
           assert.equal(admission, undefined);

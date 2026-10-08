@@ -1,3 +1,4 @@
+import { HistoricalProviderKeysCommandSchema, HistoricalProviderKeysAuditSchema } from "../../../rules/commands/commands-history.js";
 import { TransactionSelectionRecordSchema } from "../../../rules/write-safety/transaction-selection.js";
 import { RuntimeVersionAdoptionSchema, RuntimeVersionAuthoritySchema } from "./runtime-versions.js";
 import { RuntimeVersionChangeSchema } from "../../../models/archive/runtime-version-change.js";
@@ -20,26 +21,13 @@ import { DuoCeremonyLeaseRecordSchema } from "../../../rules/sessions/duo-ceremo
 import { RunSessionRecordSchema } from "../../../models/run/session.js";
 import { DeletedRunRecordSchema } from "../../../models/run/deleted-run.js";
 import { WorkerPoolRecordSchema } from "../../../models/run/worker-pool.js";
-import {
-  AuthorityUpgradeRecordSchema,
-  type AuthorityTableName,
-} from "../../../models/config/authority.js";
+import { AuthorityUpgradeRecordSchema, type AuthorityTableName } from "../../../models/config/authority.js";
 import { AdmittedExtractionSchema } from "../../../models/ocr/extraction.js";
-import {
-  AuthorityCommandAuditRecordSchema,
-  AuthorityCommandRecordSchema,
-  BulkParentCommandRecordSchema,
-} from "../../../rules/commands/commands.js";
+import { AuthorityCommandAuditRecordSchema, AuthorityCommandRecordSchema, BulkParentCommandRecordSchema } from "../../../rules/commands/commands.js";
 import { ConfigSnapshotRecordSchema } from "../../../models/config/snapshot.js";
 import { DelegationManifestSchema, DependencyRecordSchema } from "../../../rules/workflow/dependencies.js";
 import { GateResultRecordSchema } from "../../../models/workflow/gates.js";
-import {
-  DiagnosticBundleIdSchema,
-  FingerprintSchema,
-  IsoInstantSchema,
-  PositiveIntSchema,
-  VersionPlanIdSchema,
-} from "../../../rules/identity/ids.js";
+import { DiagnosticBundleIdSchema, FingerprintSchema, IsoInstantSchema, PositiveIntSchema, VersionPlanIdSchema } from "../../../rules/identity/ids.js";
 
 
 import { NotificationRecordSchema } from "../../../models/notifications/notifications.js";
@@ -50,19 +38,10 @@ import { RunResultRecordSchema } from "../../../models/run/result.js";
 import { StartPlanRecordSchema } from "../../../models/run/start-plan.js";
 import { WorkerLeaseRecordSchema } from "../../../models/run/worker.js";
 import { SchemaBoundCanonicalValueSchema } from "../../../models/validation/schema-bound-value.js";
-import {
-  ArchivedRunRecordSchema,
-  ArchiveRelaunchRecordSchema,
-  VersionBumpApplicationSchema,
-  VersionBumpPlanSchema,
-  versionBumpPlanFingerprint,
-} from "../../../models/archive/model.js";
+import { ArchivedRunRecordSchema, ArchiveRelaunchRecordSchema, VersionBumpApplicationSchema, VersionBumpPlanSchema, versionBumpPlanFingerprint } from "../../../models/archive/model.js";
 import { RunCheckpointRecordSchema } from "../../../models/workflow/checkpoint.js";
 import { WriteAttemptRecordSchema, WriteIntentRecordSchema } from "../../../rules/write-safety/write-safety.js";
-import {
-  DiagnosticAttachmentSchema,
-  DiagnosticBundleSchema,
-} from "../../../models/trust/diagnostic.js";
+import { DiagnosticAttachmentSchema, DiagnosticBundleSchema } from "../../../models/trust/diagnostic.js";
 import { RunEvidenceReceiptSchema } from "../../../models/trust/evidence.js";
 import { DryRunScenarioResultSchema } from "../../../models/trust/dry-run-scenario-result.js";
 import { FailureRecordSchema } from "../../../models/trust/failure.js";
@@ -231,8 +210,8 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   delegation_dependencies: DependencyRecordSchema,
   run_delegations: DelegationManifestSchema,
   // D341: pre-D341 protected commands/audits name retired entries; the frozen arm keeps them readable.
-  commands: z.union([BulkParentCommandRecordSchema, AuthorityCommandRecordSchema, PreFloorCommandSchema, HistoricalProtectedSettingsCommandSchema, HistoricalNotificationSnoozeCommandSchema]),
-  command_audits: z.union([AuthorityCommandAuditRecordSchema, PreFloorCommandAuditSchema, HistoricalProtectedSettingsAuditSchema, HistoricalNotificationSnoozeAuditSchema]),
+  commands: z.union([BulkParentCommandRecordSchema, AuthorityCommandRecordSchema, PreFloorCommandSchema, HistoricalProtectedSettingsCommandSchema, HistoricalNotificationSnoozeCommandSchema, HistoricalProviderKeysCommandSchema]),
+  command_audits: z.union([AuthorityCommandAuditRecordSchema, PreFloorCommandAuditSchema, HistoricalProtectedSettingsAuditSchema, HistoricalNotificationSnoozeAuditSchema, HistoricalProviderKeysAuditSchema]),
   notifications: NotificationRecordSchema,
   notification_publications: NotificationPublicationSchema,
   notification_health: NotificationHealthSchema,

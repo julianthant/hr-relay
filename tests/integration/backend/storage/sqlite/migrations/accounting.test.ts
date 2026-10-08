@@ -15,7 +15,7 @@ describe("P provider accounting integrity",()=>{
    if(active===0)f.db.authority.providerAdmissions.interrupt({admissionId:id(60),expectedVersion:1,code:"aborted",message:"synthetic",now:NOW});
    const g=generic(f);f.db.authority.providerAccounting.transaction(s=>{s.writeRequest(g.request,null);s.writeUsage(g.usage,null);});
    assert.doesNotThrow(()=>inspectHistoricalAuthorityInvariants(raw,49));
-   raw.exec("UPDATE provider_usage SET active_reservations=active_reservations+1,record_json=json_set(record_json,'$.record.activeReservations',active_reservations+1) WHERE capability='ocr.extract'");
+   raw.exec("UPDATE provider_usage SET active_reservations=active_reservations+1,record_json=json_set(record_json,'$.record.activeReservations',active_reservations+1) WHERE capability='geocode.census'");
    assert.throws(()=>inspectHistoricalAuthorityInvariants(raw,49),/provider-active-reservations-match/u);
   }finally{raw.close();f.dispose();}
  });
@@ -224,7 +224,7 @@ it("pairs malformed admission/refusal boundaries with valid reserve/finalize con
    [{budgets:[b,b]},/duplicate-scope-meter/u],
    [{budgets:[{...b,windows:[w,w]}]},/duplicate-window/u],
    [{budgets:[b,{...b,scope:{id:"different",kind:"shared-quota"},upperBound:2}]},/meter-bound-conflict/u],
-   [{attribution:{kind:"legacy-capability",capability:"ocr.extract"}},/generic-legacy-scope/u],
+   [{attribution:{kind:"legacy-capability",capability:"geocode.census"}},/generic-legacy-scope/u],
    [{deadlineAt:NOW},/deadline-invalid/u],
    [{budgets:[{...b,windows:[{...w,endsAt:NOW}]}]},/window-not-current/u],
   ] as const){assert.throws(()=>p.reserve({...input,...patch}),error);assert.equal(f.db.authority.providerAccounting.getRequest(input.requestId),undefined);assert.deepEqual(p.read(),[]);}

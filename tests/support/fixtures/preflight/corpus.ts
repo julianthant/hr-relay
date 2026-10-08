@@ -15,7 +15,7 @@ import { FEATURE_RUNTIME_SPECS, PROVIDER_ADAPTER_SPECS, RUNTIME_DEPENDENCIES, SY
 import { PreflightReportWireSchema } from "../../../../src/models/preflight/preflight-contract.js";
 import { runtimeFixture, populatedProtectedRecord } from "./runtime-fixture.js";
 
-const FixtureSchema = z.strictObject({ schemaVersion: z.literal(2), faults: z.array(z.strictObject({scenario:PreflightScenarioIdSchema, injection:z.string().min(1)})).length(13) });
+const FixtureSchema = z.strictObject({ schemaVersion: z.literal(2), faults: z.array(z.strictObject({scenario:PreflightScenarioIdSchema, injection:z.string().min(1)})).length(PREFLIGHT_SCENARIO_MANIFESTS.length) });
 const ExecutionSchema = z.strictObject({ scenario:PreflightScenarioIdSchema, dependency:z.string().min(1), variant:z.string().min(1), check:z.string().min(1), report:PreflightReportWireSchema,
   terminal:z.enum(["failed","partial"]), actionCount:z.literal(0), externalCommitCount:z.literal(0), evidence:z.array(z.string()), reportDigest:z.string().length(64), restored:z.literal(true) });
 export type CorpusExecution = z.infer<typeof ExecutionSchema>;

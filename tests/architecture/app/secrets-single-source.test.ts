@@ -3,22 +3,9 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it } from "vitest";
 import { SETTINGS_CATALOG } from "../../../src/models/config/catalog.js";
-import { SECRET_FAMILY_SPECS } from "../../../src/models/config/secrets.js";
-import {
-  ENVIRONMENT_SOURCE_EXTENSIONS,
-  inventoryEnvironmentAccesses,
-  type EnvironmentAccessOccurrence,
-} from "../runtime/helpers/environment-read-audit.js";
-import {
-  auditCountAllowlist,
-  gitVisibleFiles,
-  REPO_ROOT,
-  type CountAllowlist,
-} from "../support/helpers/guard-files.js";
-import {
-  auditSoleRunnerInvocation,
-  packageDeclaredExternalProductionSources,
-} from "../tooling/helpers/runner-invocation-audit.js";
+import { ENVIRONMENT_SOURCE_EXTENSIONS, inventoryEnvironmentAccesses, type EnvironmentAccessOccurrence } from "../runtime/helpers/environment-read-audit.js";
+import { auditCountAllowlist, gitVisibleFiles, REPO_ROOT, type CountAllowlist } from "../support/helpers/guard-files.js";
+import { auditSoleRunnerInvocation, packageDeclaredExternalProductionSources } from "../tooling/helpers/runner-invocation-audit.js";
 
 /**
  * Guard (roadmap §Phases at a glance · ref clock-config-secrets §5): the rebuild runtime reads `process.env` through
@@ -59,18 +46,7 @@ const CREDENTIAL_KEYS: ReadonlySet<string> = new Set(
       .filter(({ kind }) => kind === "env")
       .map(({ name }) => name)),
 );
-const CREDENTIAL_FAMILIES: readonly { readonly prefix: string; readonly maximum: number }[] =
-  SECRET_FAMILY_SPECS.map(({ envPrefix, maximum }) => ({ prefix: envPrefix, maximum }));
-
-function isCredentialKey(key: string): boolean {
-  if (CREDENTIAL_KEYS.has(key)) return true;
-  return CREDENTIAL_FAMILIES.some(({ prefix, maximum }) => {
-    if (key === prefix) return true;
-    const suffix = key.slice(prefix.length);
-    return key.startsWith(prefix) && /^\d+$/.test(suffix)
-      && Number(suffix) >= 2 && Number(suffix) <= maximum;
-  });
-}
+function isCredentialKey(key: string): boolean { return CREDENTIAL_KEYS.has(key); }
 
 /**
  * Classifies one environment access against the single-source rule. Exported so
@@ -550,7 +526,7 @@ describe("secrets single source", () => {
     const credential = auditSecretsSingleSource(
       inventoryEnvironmentAccesses(
         "src/backend/app/config/resolve.ts",
-        "export const leaked = process.env.UCPATH_PASSWORD;\nexport const pool = process.env.GEMINI_API_KEY2;\n",
+        "export const leaked = process.env.UCPATH_PASSWORD;\nexport const pool = process.env.UCPATH_USER_ID;\n",
       ),
     );
     assert.equal(credential.length, 2, credential.join("\n"));

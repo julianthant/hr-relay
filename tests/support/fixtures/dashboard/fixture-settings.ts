@@ -9,9 +9,7 @@ import { canonicalJsonStringify } from "../../../../src/rules/validation/canonic
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { initialProtectedStoreRecord } from "../../../../src/models/config/protected-settings.js";
 import { createProtectedSettingsRuntimeReader } from "../../../../src/backend/runtime/settings/settings-runtime.js";
-import {
-type SettingsFactsWire
-} from "../../../../src/models/dashboard/settings.js";
+import { type SettingsFactsWire } from "../../../../src/models/dashboard/settings.js";
 import { buildSettingsFacts } from "../../../../src/backend/runs/queries/settings.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 import { FIXTURE_NOW } from "./fixture-identity.js";
@@ -41,11 +39,11 @@ export const FIXTURE_SETTINGS_FACTS: SettingsFactsWire = buildSettingsFacts({
 
 
 /** Synthetic Settings projection built by the complete production fold. Paths have a stable fixture root. */
-export function fixtureSettingsDocument(settings: SettingsOverride = {}, revision = 1, configuredModels?: readonly string[], provider?: Pick<Parameters<typeof buildSettingsEditor>[0], "providerKeys" | "providerBoot" | "activeProviderSlots">) {
+export function fixtureSettingsDocument(settings: SettingsOverride = {}, revision = 1) {
   const clock = manualClock(new Date(FIXTURE_NOW));
   const resolve = (overrides: SettingsOverride) => {
     const resolved = resolveConfigWithProvenance(overrides, hostConfigFacts({}), clock);
-    const config = ConfigSchema.parse({ ...resolved.config, ...(configuredModels === undefined || configuredModels.length === 0 ? {} : { providers: { ...resolved.config.providers, gemini: { models: settings.providers?.gemini?.models ?? configuredModels } } }), paths: {
+    const config = ConfigSchema.parse({ ...resolved.config, paths: {
       ...resolved.config.paths,
       reportsDir: overrides.paths?.reportsDir ?? "/tmp/reports",
       downloadsDir: overrides.paths?.downloadsDir ?? "/tmp/settings-fixture/downloads",
@@ -59,7 +57,7 @@ export function fixtureSettingsDocument(settings: SettingsOverride = {}, revisio
   };
   const record = { revision: PositiveIntSchema.parse(revision), settingsSchemaHash: SETTINGS_SCHEMA_HASH, settingsFingerprint: FingerprintSchema.parse(derivePersistedSettingsFingerprint(settings)), settings };
   return buildSettingsEditor({ settings: { read: () => ({ record, runtimeStatus: { state: "current", identity: settingsRuntimeIdentity(record, resolve(settings).fingerprint) } }) },
-    protectedSettings: createProtectedSettingsRuntimeReader({ read: initialProtectedStoreRecord }), environment: {}, clock, resolve, ...provider });
+    protectedSettings: createProtectedSettingsRuntimeReader({ read: initialProtectedStoreRecord }), environment: {}, clock, resolve });
 }
 export const FIXTURE_EDITABLE_SETTINGS = fixtureSettingsDocument();
 export const FIXTURE_STORAGE_RELOCATION = {

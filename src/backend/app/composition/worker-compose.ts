@@ -57,15 +57,8 @@ import { workflowProjections } from "../../../workflow-kit/workflow.js";
 import type { WorkflowModule } from "../../../workflow-kit/workflow-definition.js";
 import type { RuntimeIsolation } from "../../../models/config/define-runtime-isolation.js";
 import { DESCRIPTORS, SERVER_REGISTRY } from "../registries/workflow-registry.js";
-import type {
-  MonotonicDeadlineHandle,
-  MonotonicDeadlineScheduler,
-} from "../../runtime/scheduling/deadline-scheduler.js";
-import {
-  poolWorkerId,
-  runWorkerLoop,
-  type WorkerLoopReport,
-} from "../../runtime/workers/worker-loop.js";
+import type { MonotonicDeadlineHandle, MonotonicDeadlineScheduler } from "../../runtime/scheduling/deadline-scheduler.js";
+import { poolWorkerId, runWorkerLoop, type WorkerLoopReport } from "../../runtime/workers/worker-loop.js";
 import type { DuoCeremonyGateFactory } from "../../runtime/gates/duo-ceremony-gate.js";
 import type { WorkerBrowserSessionFactory } from "../../runtime/workers/worker-sessions.js";
 import { createWriteSequencer } from "../../runtime/writes/write-sequencer.js";
@@ -73,25 +66,16 @@ import { createGateSourceRuntime, type GateSourcePort } from "../../runtime/gate
 import { systemClock, type Clock } from "../../../rules/time/clock.js";
 import { resolveConfigWithProvenance } from "../config/resolve.js";
 import { systemIdFactory, type IdFactory } from "../../../rules/identity/identifiers.js";
-import {
-  LOCAL_OPERATOR_ACTOR_ID,
-  PositiveIntSchema,
-  WorkflowIdSchema,
-} from "../../../rules/identity/ids.js";
+import { LOCAL_OPERATOR_ACTOR_ID, PositiveIntSchema, WorkflowIdSchema } from "../../../rules/identity/ids.js";
 import type { PositiveInt } from "../../../rules/identity/ids.js";
 import type { WorkerId, WorkflowId } from "../../../rules/identity/ids.js";
 import type { WorkerDirective, WorkerLeaseRecord } from "../../../models/run/worker.js";
-import {
-  assertNoMigratedEnvironmentKeys,
-} from "../../../models/config/secrets.js";
+import { assertNoMigratedEnvironmentKeys } from "../../../models/config/secrets.js";
 import { hostAwareResolutionEnvironment } from "../../../models/config/secrets.js";
 import { probePrimaryDisplay } from "../host/primary-display.js";
 import { createContentAddressedArtifactWriter } from "../../storage/artifacts/content-addressed-artifact-writer.js";
 import { createDiagnosticCaptureService } from "../../logs/diagnostics/diagnostic-capture.js";
-import {
-  createRunBrowserScreenshotCapture,
-  createRunDiagnosticCapture,
-} from "../../logs/diagnostics/run-diagnostic-capture.js";
+import { createRunBrowserScreenshotCapture, createRunDiagnosticCapture } from "../../logs/diagnostics/run-diagnostic-capture.js";
 import { withCurrentSettings, createCredentialSecretSource, readSettings, requireCurrentSettings } from "../../runtime/settings/settings-runtime.js";
 import { createTimelineEmitter } from "../../storage/events/timeline-emitter.js";
 import { createNoteJsonlWriter } from "../../storage/events/note-jsonl-writer.js";
@@ -100,10 +84,7 @@ import { pruneEventStreams } from "../../storage/events/jsonl-streams.js";
 
 import { createTimeoutDeadlineScheduler } from "../../runtime/scheduling/timeout-deadline-scheduler.js";
 import { AuthorityDatabase } from "../../storage/sqlite/index.js";
-import {
-  acquireRuntimeProcessLock,
-  type ProcessIdentityObserver,
-} from "../../storage/sqlite/runtime-process-locks.js";
+import { acquireRuntimeProcessLock, type ProcessIdentityObserver } from "../../storage/sqlite/runtime-process-locks.js";
 import { taskStoreRegistry } from "../registries/task-registry.js";
 
 /**
@@ -125,20 +106,6 @@ export const WORKER_HEARTBEAT_INTERVAL_MS = 5_000;
 export const WORKER_CLAIM_STALE_AFTER_MS = 60_000;
 export const WORKER_SWEEP_INTERVAL_MS = 30_000;
 
-/**
- * Ref data-intake-and-edit-data §4.11 (D161): neither repo's `.env` names an OCR model chain, so the
- * composition root names the model EXPLICITLY with provenance — legacy
- * `provider-limits.ts` priority-1 tier-1 — rather than minting a default
- * inside the secrets reader. An operator `OCR_GEMINI_MODELS` chain, when
- * present, takes precedence below.
- */
-
-/**
- * The one real timer behind the kernel's scheduler port. It MOVED to
- * `src/infra/scheduling/` at D178 — the dashboard process needs it too, for
- * ref operator-trust §4.4's admitted advisory — and is re-exported here so every existing
- * caller keeps its import.
- */
 export { createTimeoutDeadlineScheduler };
 
 /** Structured stdout logging for the worker CLI process (never `console.*`). */

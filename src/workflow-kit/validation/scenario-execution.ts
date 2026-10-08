@@ -126,14 +126,6 @@ export const DECLARED_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSchem
     scenarioId: "normalization/contact/ambiguous",
     file: "tests/scenario/normalization-contact.scenario.test.ts",
   },
-  {
-    scenarioId: "normalization/contact/ai-advice",
-    file: "tests/scenario/normalization-contact.scenario.test.ts",
-  },
-  {
-    scenarioId: "normalization/contact/ai-withheld-field",
-    file: "tests/scenario/normalization-contact.scenario.test.ts",
-  },
   { scenarioId: "roster/match/exact-eid", file: "tests/scenario/roster-match.scenario.test.ts" },
   { scenarioId: "roster/match/name-only", file: "tests/scenario/roster-match.scenario.test.ts" },
   { scenarioId: "roster/match/ambiguous", file: "tests/scenario/roster-match.scenario.test.ts" },

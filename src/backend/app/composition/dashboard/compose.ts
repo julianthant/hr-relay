@@ -28,11 +28,6 @@ import { composeDataQueries } from "./data.js";
 export { dataOriginViewsOf } from "./run-detail-descriptors.js";
 export { readGateParks } from "./notifications.js";
 import { createCredentialStore } from "../../../storage/configuration/credential-store.js";
-import { createProviderKeyStore } from "../../../storage/configuration/provider-key-store.js";
-import { normalizeProviderBootProvenance, providerBootProvenance, type ProviderBootProvenance } from "../../../../models/config/provider-boot-provenance.js";
-import { createProviderKeyJournal } from "../../../runs/commands/provider-key-journal.js";
-import { providerMarkedFingerprint } from "../../../runs/commands/provider-key-projection.js";
-import { retainedRunProtectedBindings } from "../../../../models/write-safety/protected-input.js";
 import { ActorIdSchema } from "../../../../rules/identity/ids.js";
 import { hostConfigFacts } from "../../../../models/config/host-display.js";
 /**
@@ -66,42 +61,18 @@ import { hostConfigFacts } from "../../../../models/config/host-display.js";
  *   supervisor refuses to do.
  */
 import { spawn as spawnChildProcess } from "node:child_process";
-import {
-  closeSync,
-  constants,
-  existsSync,
-  fchmodSync,
-  fstatSync,
-  lstatSync,
-  mkdirSync,
-  openSync,
-  readdirSync,
-  readFileSync,
-} from "node:fs";
+import { closeSync, constants, existsSync, fchmodSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { openStaticBundle } from "../../../transports/http/static-bundle.js";
 import { z } from "zod";
 import type { RuntimeIsolation } from "../../../../models/config/define-runtime-isolation.js";
-import {
-  DESCRIPTORS,
-  INTAKE_PROJECTIONS,
-  SERVER_REGISTRY,
-} from "../../registries/workflow-registry.js";
+import { DESCRIPTORS, INTAKE_PROJECTIONS, SERVER_REGISTRY } from "../../registries/workflow-registry.js";
 import { historicalStepProofDescriptorOf } from "../../registries/step-proof-modules.js";
-import {
-  createCommandKernel,
-  type WorkerPoolRuntimeAdoption,
-  type WriteResolutionExecutor,
-} from "../../../runs/commands/command-kernel.js";
+import { createCommandKernel, type WorkerPoolRuntimeAdoption, type WriteResolutionExecutor } from "../../../runs/commands/command-kernel.js";
 import { createWorkerPoolRuntimeExecutor } from "../../../runtime/workers/worker-loop.js";
 import type { MonotonicDeadlineScheduler } from "../../../runtime/scheduling/deadline-scheduler.js";
 import { isLiveWorker } from "../../../../models/run/worker.js";
-import {
-  createDashboardWorkerProcessSupervisor,
-  type DashboardWorkerProcessSupervisor,
-  type WorkerCliLaunchSpec,
-  type WorkerProcessSpawner,
-} from "../../../runtime/workers/worker-supervisor.js";
+import { createDashboardWorkerProcessSupervisor, type DashboardWorkerProcessSupervisor, type WorkerCliLaunchSpec, type WorkerProcessSpawner } from "../../../runtime/workers/worker-supervisor.js";
 import { RunRecordService, runContinuationPort } from "../../../runs/lifecycle/run-record-service.js";
 import { createRuntimeVersionChanges } from "../../../runs/archive/archive-runtime-version-changes.js";
 import { createStorageRelocationPlanReader } from "../../../storage/maintenance/storage-relocation-plans.js";
@@ -110,30 +81,13 @@ import type { Clock } from "../../../../rules/time/clock.js";
 import { systemClock } from "../../../../rules/time/clock.js";
 import { resolveConfigWithProvenance } from "../../config/resolve.js";
 import { systemIdFactory, type IdFactory } from "../../../../rules/identity/identifiers.js";
-import {
-  FingerprintSchema,
-  IsoInstantSchema,
-  LOCAL_OPERATOR_ACTOR_ID,
-  ProviderAdmissionIdSchema,
-  type Fingerprint,
-} from "../../../../rules/identity/ids.js";
-import {
-  assertNoMigratedEnvironmentKeys,
-  hostAwareResolutionEnvironment,
-  workerBootstrapEnvironment,
-} from "../../../../models/config/secrets.js";
+import { FingerprintSchema, IsoInstantSchema, LOCAL_OPERATOR_ACTOR_ID, type Fingerprint } from "../../../../rules/identity/ids.js";
+import { assertNoMigratedEnvironmentKeys, hostAwareResolutionEnvironment, workerBootstrapEnvironment } from "../../../../models/config/secrets.js";
 import { probePrimaryDisplay } from "../../host/primary-display.js";
 import { sha256Hex } from "../../../../rules/validation/sha256.js";
 import { createPreflightAuthority } from "../../../../models/preflight/preflight.js";
-import {
-  BackupServiceStateWireSchema,
-  type BackupServiceStateWire,
-} from "../../../../models/dashboard/storage.js";
-import {
-  AuthorityDatabase,
-  AuthorityHealthPreflightRunner,
-  summarizeBackupHealth,
-} from "../../../storage/sqlite/index.js";
+import { BackupServiceStateWireSchema, type BackupServiceStateWire } from "../../../../models/dashboard/storage.js";
+import { AuthorityDatabase, AuthorityHealthPreflightRunner, summarizeBackupHealth } from "../../../storage/sqlite/index.js";
 import { acquireRuntimeProcessLock } from "../../../storage/sqlite/runtime-process-locks.js";
 import { pruneEventStreams } from "../../../storage/events/jsonl-streams.js";
 import { createTransactionHistory } from "../../../storage/sqlite/transaction-history.js";
@@ -155,13 +109,7 @@ import { createDashboardApp } from "../../../transports/http/routes/api.js";
 import { createSoloRequestIdentityCheckpoint } from "../../../transports/http/request-identity.js";
 import { DASHBOARD_LAUNCH_NONCE_ENV } from "../../../transports/http/frontend-owner.js";
 import { startDashboardHttpServer, type DashboardHttpServer } from "../../../transports/http/http-server.js";
-import { createAdvisoryProviderClient } from "../../../runs/start/provider-admission.js";
-import { produceFailureTriageAdvisory } from "../../../logs/trust/advisory.js";
-import { createGeminiAdvisoryAdapter } from "../../../processing/providers/gemini-advisory.js";
-import { createProviderPool } from "../../../processing/providers/provider-pool.js";
 import { createTimeoutDeadlineScheduler } from "../../../runtime/scheduling/timeout-deadline-scheduler.js";
-import { optionalSecretFamily, providerModelChain } from "../../../../models/config/secrets.js";
-import type { AdvisoryQueryDeps } from "../../../runs/queries/advisory.js";
 import { createArchiveSnapshotSource } from "../../../runs/queries/archive-snapshot.js";
 
 import { createDashboardPreflightRunners } from "../../preflight/dashboard-runners.js";
@@ -184,7 +132,6 @@ export interface DashboardComposeInput {
   readonly ids?: IdFactory;
   /** Where package.json and the state root resolve from. */
   readonly repoRoot?: string;
-  readonly providerBoot?: ProviderBootProvenance;
   /**
    * Who serves the frontend bytes (ref frontend-backend-integration §6.9). `vite-dev` — the
    * default and the development path — leaves that to the Vite dev server on the
@@ -226,12 +173,6 @@ export interface DashboardComposeInput {
 
 const PackageVersionSchema = z.strictObject({ version: z.string().min(1) }).loose();
 
-/**
- * The advisory model this root names when the operator's `.env` declares no
- * chain — the same explicit-with-provenance rule `OCR_GEMINI_MODEL_ID` follows
- * (legacy `provider-limits.ts` priority-1 tier-1), never a default minted
- * inside the secrets reader.
- */
 
 /**
  * D218: maximum polling delay for committed timeline events from other processes.
@@ -565,9 +506,6 @@ async function composeDashboardRuntimeStartup(
   });
   database.registerRuntimeVersionWorkflows(DESCRIPTORS.map((descriptor) => descriptor.id));
   const protectedSettingsAuthority = createCredentialStore({ admission, stateRoot });
-  const providerKeysAuthority = createProviderKeyStore({ admission, envPath: join(repoRoot, ".env.providers"),
-    journal: createProviderKeyJournal(database), markedFingerprint: providerMarkedFingerprint });
-  const providerBoot = input.providerBoot === undefined ? providerBootProvenance() : normalizeProviderBootProvenance(input.providerBoot);
   const protectedSecrets = createCredentialSecretSource(protectedSettingsAuthority);
   const bootConfig = (() => {
     const persistedSettings = database.withAuthorityTransaction((repositories) => readBootSettings(repositories));
@@ -579,7 +517,7 @@ async function composeDashboardRuntimeStartup(
   const { persistedSettings, resolved } = bootConfig;
   const storageRelocationPlans = createStorageRelocationPlanReader({ authority: database, admission, workspace: repoRoot });
   const settingsBoundary = composeSettings({ database, hostFacts, clock, active: activeSettingsRuntimeIdentity,
-    environment: env, credentials: protectedSettingsAuthority, providerKeys: providerKeysAuthority, providerBoot,
+    environment: env, credentials: protectedSettingsAuthority,
     runtimeStoragePair, storageRelocationPlans });
 
   const now = clock.now().toISOString();
@@ -883,66 +821,9 @@ async function composeDashboardRuntimeStartup(
 
   const intake = composeIntake({ database, artifacts, parser: intakeParser, projections: intakeProjections, descriptors, clock, ids });
 
-  /**
-   * Ref operator-trust §4.4's advisory (2i-G, D178). The pool composes from the SAME
-   * `geminiApiKeys` family and model chain the OCR pool uses, because they
-   * are the same keys — but the capability, and therefore the budget, is its
-   * own. No key composes NO adapter and no seam: the route then refuses by
-   * name, and the bootstrap wire says `not-configured` with the environment
-   * variable to set. A composed-but-empty advisory would be worse than none.
-   */
-  const advisoryKeys = optionalSecretFamily("geminiApiKeys", env);
-  const advisoryModels = providerModelChain("geminiApiKeys", resolved.config);
-  const advisoryChildren = advisoryModels
-    .flatMap((modelId) => advisoryKeys.map((apiKey, keyIndex) => ({
-      label: `gemini-key${String(keyIndex + 1)}/${modelId}`,
-      adapter: createGeminiAdvisoryAdapter({ apiKey, modelId, clock }),
-    })));
-  const advisoryScheduler = createTimeoutDeadlineScheduler(clock);
-  const advisory: AdvisoryQueryDeps | undefined = advisoryChildren.length === 0
-    ? undefined
-    : {
-      runReader: lifecycle,
-      authority: {
-        getFailureForRun: (runId) => database.authority.failures.listByRun(runId).at(-1),
-      },
-      advise: (run, failure) => {
-        // The SUBJECT run's own retained config identity (D116's discipline),
-        // read back from authority rather than recomputed from this process's
-        // current config — the run was budgeted under what it stored.
-        const snapshot = database.authority.configSnapshots.get(run.envelope.configSnapshotId);
-        if (snapshot === undefined) {
-          throw new Error(
-            `run ${run.envelope.runId} retained config snapshot ${run.envelope.configSnapshotId}`
-            + " is absent from authority; the failure advisory cannot bind an identity it cannot read",
-          );
-        }
-        const client = createAdvisoryProviderClient({
-          runId: run.envelope.runId,
-          attempt: run.envelope.attempt,
-          surface: "failure-triage",
-          configSnapshotId: snapshot.configSnapshotId,
-          configFingerprint: snapshot.fingerprint,
-          configSnapshot: snapshot,
-          runSignal: new AbortController().signal,
-          adapters: { "ai.advisory": createProviderPool("ai.advisory", advisoryChildren) },
-          repository: database.authority.providerAdmissions,
-          accounting: database.authority.providerAccounting,
-          clock,
-          idFactory: { next: () => ProviderAdmissionIdSchema.parse(ids.uuid()) },
-          deadlineScheduler: advisoryScheduler,
-        });
-        return produceFailureTriageAdvisory({ clock, client }, failure, retainedRunProtectedBindings(run).length > 0);
-      },
-    };
-
   const shell = composeShell({ database, projection, activity, clock, timeZone, ids, artifacts, descriptors, runLogsHub,
     appVersion, descriptorSetHash: setHash, backfillGaps: backfillGapNotifier,
     preflightReport: () => preflightAuthority.readLatest(), backupSummary: readBackupSummary,
-    advisoryAvailability: () => (advisory === undefined
-      ? { state: "unavailable", code: "not-configured",
-        reason: "no GEMINI_API_KEY is set, so no ai.advisory provider is composed in this process" }
-      : { state: "available" }),
   });
   const { hub } = shell;
   startupCleanups.push(() => hub.close());
@@ -982,8 +863,6 @@ async function composeDashboardRuntimeStartup(
     commands,
     commandJournal: database.authority.commands,
     protectedCommandAcceptedAt: (commandId) => protectedSettingsAuthority.acceptedAt(commandId),
-    readPendingProviderRequest: (identity) => providerKeysAuthority.readPendingRequest(identity),
-    providerCommandAcceptedAt: (commandId, writeId) => providerKeysAuthority.pendingAcceptedAt(commandId, writeId),
     runtimeVersionAcceptedAt: (commandId) => database.readRuntimeVersionIndex().changes
       .find(change => change.applicationCommandId === commandId)?.applicationRequest?.requestedAt,
     bulkCommandAcceptances: {
@@ -996,7 +875,6 @@ async function composeDashboardRuntimeStartup(
     ...composeStorage({ admission, repoRoot, stateRoot, backupDirectory, clock, serviceState: () => backupServiceState }),
     ...explorerBoundary.routes,
     activity,
-    ...(advisory === undefined ? {} : { advisory }),
   });
 
   const startHttpServer = input.httpServerStarter ?? startDashboardHttpServer;

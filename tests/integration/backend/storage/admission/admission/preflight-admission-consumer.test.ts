@@ -49,7 +49,7 @@ function harness() {
   let probes=0;
   const preflight=composeRuntimePreflight({ admission: RuntimeAdmission.syntheticRoots(join(repoRoot, rebuildRuntimeIsolation.stateRoot), join(repoRoot, rebuildRuntimeIsolation.artifactRoot)),database,clock,repoRoot,isolation:rebuildRuntimeIsolation,descriptors,
     descriptorSetHash:personLookupDescriptor.contractFingerprint,protectedSecrets:f.input.protectedSecrets,environment:{},
-    runnerFactory:input=>createRuntimePreflightRunners({...input,browserExecutablePath:()=>f.executable,dashboard:f.input.dashboard}).map(runner=>({...runner,run(context){probes++;return runner.run(context);}}))});
+    runnerFactory:input=>createRuntimePreflightRunners({...input,browserExecutablePath:()=>f.executable,dashboard:f.input.dashboard,providerAvailability:f.input.providerAvailability}).map(runner=>({...runner,run(context){probes++;return runner.run(context);}}))});
   let publications = 0;
   const lifecycle = new RunRecordService({ database, clock, ids: sequentialIdFactory("b"), publishQueued: run => { publications += 1; createTimelineEmitter({repository:database.authority.timelineEvents,clock}).emit(runQueuedSpanEvent({run,actorId:ActorIdSchema.parse("local-operator"),title:"Synthetic Setup admission proof"})); },
     admitQueuedRun: run => preflight.admission.assertReady(preflight.runScope(run.envelope)) });
@@ -119,9 +119,10 @@ it("production worker process composition refuses preflight before spawn and adm
 
 it("an unavailable optional executable provider leaves real unrelated admission usable; stale config refuses before probes",async()=>{
   const h=harness();const scope=h.preflight.currentScope(h.ingress.workflowId);
-  const optional={...scope,requestedCapabilities:[...scope.requestedCapabilities,"provider.groq" as const]};
+  Reflect.set(h.f.input.providerAvailability, "census/geocode.census", false);
+  const optional={...scope,requestedCapabilities:[...scope.requestedCapabilities,"provider.census" as const]};
   const report=await h.preflight.admission.prepare(optional,signal());
-  assert.equal(report.results.find(check=>check.check==="provider.groq")?.status,"warning");h.preflight.admission.assertReady(optional);
+  assert.equal(report.results.find(check=>check.check==="provider.census")?.status,"warning");h.preflight.admission.assertReady(optional);
   const probes=h.probes;
   await assert.rejects(h.preflight.admission.prepare({...scope,configFingerprint:"f".repeat(64) as typeof scope.configFingerprint},signal()));assert.equal(h.probes,probes);
   await h.plans.prepare?.(h.ingress,signal());assert.equal(h.kernel.execute(h.command(h.plans.plan(h.ingress))).state,"applied");assert.equal(h.publications,1);

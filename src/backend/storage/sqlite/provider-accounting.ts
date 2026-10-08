@@ -1,12 +1,14 @@
+import { ProviderExecutionIdentitySchema } from "../../../rules/providers/provider-admission.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { IsoInstantSchema } from "../../../rules/identity/ids.js";
-import { GenericProviderRequestSchema, GenericProviderUsageSchema } from "../../../rules/providers/provider-accounting.js";
+import { GenericProviderRequestSchema, GenericProviderUsageSchema, ProviderAttributionSchema } from "../../../rules/providers/provider-accounting.js";
 import type { ProviderAccountingStorage } from "../../../workflow-kit/provider-accounting.js";
 import { ProviderUsageStorageSchema, type ProviderRequestStorage, type ProviderUsageStorage } from "../../../rules/providers/provider-accounting.js";
 import { ProviderRequestStorageSchema } from "../../../rules/providers/provider-accounting.js";
 import { readProviderRequest, readProviderUsage, writeProviderRequest, writeProviderUsage } from "./provider-storage.js";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
+import { HistoricalProviderCapabilitySchema } from "../../../models/providers/historical-provider-evidence.js";
 import type { ProviderAdmissionRepository } from "../../../workflow-kit/providers.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { providerBudget, type ProviderBudget } from "../../../models/config/schema.js";
@@ -14,22 +16,7 @@ import { ConfigSnapshotRecordSchema, type ConfigSnapshotRecord } from "../../../
 import { ProviderCapabilityIdSchema, ProviderAdmissionIdSchema } from "../../../rules/identity/ids.js";
 import type { RunRecord } from "../../../models/run/record.js";
 import type { TableName, AuthorityTableName } from "../../../models/config/authority.js";
-import {
-  ProviderAdmissionDenyRequestSchema,
-  ProviderAdmissionInterruptRequestSchema,
-  ProviderAdmissionMutationOutcomeSchema,
-  ProviderAdmissionRecordSchema,
-  ProviderAdmissionReserveOutcomeSchema,
-  ProviderAdmissionReserveRequestSchema,
-  ProviderAdmissionSettleRequestSchema,
-  ProviderAdmissionSweepOutcomeSchema,
-  ProviderAdmissionSweepRequestSchema,
-  ProviderBudgetCounterSchema,
-  ProviderUnavailableReasonSchema,
-  isRunNodeExecutionIdentity,
-  type ProviderAdmissionRecord,
-  type ProviderBudgetCounter,
-} from "../../../rules/providers/provider-admission.js";
+import { ProviderAdmissionDenyRequestSchema, ProviderAdmissionInterruptRequestSchema, ProviderAdmissionMutationOutcomeSchema, ProviderAdmissionRecordSchema, ProviderAdmissionReserveOutcomeSchema, ProviderAdmissionReserveRequestSchema, ProviderAdmissionSettleRequestSchema, ProviderAdmissionSweepOutcomeSchema, ProviderAdmissionSweepRequestSchema, ProviderBudgetCounterSchema, ProviderUnavailableReasonSchema, isRunNodeExecutionIdentity, type ProviderAdmissionRecord, type ProviderBudgetCounter } from "../../../rules/providers/provider-admission.js";
 interface ProviderAccountingPorts {
   database: DatabaseSync;
   transaction<T>(work: () => T): T;
@@ -61,7 +48,7 @@ export class SqliteProviderAccounting {
   #readProviderCounter(capability: string): ProviderBudgetCounter | undefined {
     return this.#readRecord(
       "provider_usage",
-      ProviderCapabilityIdSchema.parse(capability),
+      HistoricalProviderCapabilitySchema.parse(capability),
       ProviderBudgetCounterSchema,
     );
   }
@@ -172,7 +159,7 @@ export class SqliteProviderAccounting {
     }
   }
 
-  #createProviderCounter(capability: z.infer<typeof ProviderCapabilityIdSchema>, now: string): ProviderBudgetCounter {
+  #createProviderCounter(capability: z.infer<typeof HistoricalProviderCapabilitySchema>, now: string): ProviderBudgetCounter {
     const record = ProviderBudgetCounterSchema.parse({
       capability,
       minuteWindowStartedAt: fixedUtcMinuteStart(now),
@@ -252,7 +239,7 @@ export class SqliteProviderAccounting {
     return { counter: updated, expired: Object.freeze(expired) };
   }
 
-  #prepareProviderCounter(capability: z.infer<typeof ProviderCapabilityIdSchema>, now: string): ProviderBudgetCounter {
+  #prepareProviderCounter(capability: z.infer<typeof HistoricalProviderCapabilitySchema>, now: string): ProviderBudgetCounter {
     const initial = this.#readProviderCounter(capability) ?? this.#createProviderCounter(capability, now);
     const expired = this.#expireProviderLeases(initial, now).counter;
     return this.#rollProviderCounter(expired, now);
@@ -594,7 +581,7 @@ const GenericBudgetSchema = z.strictObject({
 });
 const GenericReserveSchema = z.strictObject(GenericProviderRequestSchema.shape).pick({
   requestId:true,execution:true,capability:true,configSnapshotId:true,configFingerprint:true,requestFingerprint:true,attribution:true,
-}).extend({now:IsoInstantSchema,leaseExpiresAt:IsoInstantSchema,deadlineAt:IsoInstantSchema,budgets:z.array(GenericBudgetSchema).min(1).max(128)});
+}).extend({attribution:z.union([ProviderAttributionSchema.options[0].extend({capability:ProviderCapabilityIdSchema.exclude(["ocr.extract"])}),ProviderAttributionSchema.options[1],ProviderAttributionSchema.options[2]]),execution:ProviderExecutionIdentitySchema,capability:ProviderCapabilityIdSchema.exclude(["ocr.extract"]),now:IsoInstantSchema,leaseExpiresAt:IsoInstantSchema,deadlineAt:IsoInstantSchema,budgets:z.array(GenericBudgetSchema).min(1).max(128)});
 const GenericFinishSchema = z.strictObject({
   requestId:z.uuid(),expectedVersion:z.number().int().positive(),now:IsoInstantSchema,
   state:z.enum(["settled","interrupted","lease-expired"]),
