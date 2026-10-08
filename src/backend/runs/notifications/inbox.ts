@@ -1,59 +1,19 @@
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import type { RunExistence } from "../../../models/config/authority.js";
-/**
- * Ref dashboard-surfaces §2.6 / §10.4 (D79b) and ref operator-trust §6 — the durable, actor-keyed inbox.
- *
- * **The ordering is the whole contract.** A notification is a durable record
- * first and a desktop delivery second: the row is committed to authority
- * BEFORE any OS delivery is attempted, and a delivery that fails may never roll
- * the row back, flip its status, or decrement its count. An operator who missed
- * the toast has to still find an unread item — that, not the toast, is the
- * alert. `publish` therefore has no arm in which a delivery outcome reaches the
- * durable write, and the delivery call is made only after the transaction has
- * returned.
- *
- * The fold is the repeat path (ref operator-trust §6.1, D134): one row per
- * `(actorId, dedupeFingerprint)`, `count` incremented, `lastSeenAt` advanced,
- * `status` back to `unread` because a repeat is news again. This is derived
- * operator-facing state and is deliberately NOT the ledger's immutability —
- * nothing here can touch a filed transaction record.
- *
- * Snooze suppresses DELIVERY only. It never changes read state, and it never
- * prevents the durable write.
- */
+/** Durable actor-keyed inbox; repeats become unread and snooze preserves durable publication. */
 import { z } from "zod";
 import type { Clock } from "../../../rules/time/clock.js";
 import type { IdFactory } from "../../../rules/identity/identifiers.js";
 import { ActorIdSchema, FingerprintSchema, IsoInstantSchema, NotificationIdSchema } from "../../../rules/identity/ids.js";
-import {
-  NotificationDeliverabilitySchema,
-  NotificationTriggerEventSchema,
-  notificationDeliverability,
-  projectNotificationTrigger,
-} from "../../../rules/notifications/notification-triggers.js";
-import {
-  NotificationRecordSchema,
-  type NotificationRecord,
-} from "../../../models/notifications/notifications.js";
+import { NotificationDeliverabilitySchema, NotificationTriggerEventSchema, notificationDeliverability, projectNotificationTrigger } from "../../../rules/notifications/notification-triggers.js";
+import { NotificationRecordSchema, type NotificationRecord } from "../../../models/notifications/notifications.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 
-/**
- * The OS delivery seam. It is allowed to fail, and the only thing the inbox
- * does with that failure is REPORT it — ref guards-and-tests §3.10 explicitly says no
- * per-attempt delivery state is required, and storing one would invite a retry
- * loop that mutates the record the operator is reading.
- */
-export interface OsNotificationDelivery {
-  deliver(record: NotificationRecord): Promise<void>;
-}
-
 export const NotificationDeliveryOutcomeSchema = z.discriminatedUnion("state", [
-  z.strictObject({ state: z.literal("delivered") }),
   z.strictObject({ state: z.literal("suppressed-snoozed"), until: IsoInstantSchema }),
   z.strictObject({ state: z.literal("no-channel") }),
   z.strictObject({ state: z.literal("not-requested-existing") }),
-  z.strictObject({ state: z.literal("failed"), detail: z.string().min(1) }),
 ]);
 
 export const NotificationPublishReportSchema = z.strictObject({
@@ -92,8 +52,6 @@ export interface NotificationInboxDependencies {
   readonly clock: Clock;
   readonly ids: IdFactory;
   readonly actorId: string;
-  /** Absent means "no desktop channel configured", never "delivery succeeded". */
-  readonly delivery?: OsNotificationDelivery;
 }
 
 export function createNotificationInbox(
@@ -208,27 +166,15 @@ export function createNotificationInbox(
         });
       }
 
-      /* ── phase 2: best-effort delivery, over an already-committed row ──── */
+      /* Publish channel status after the durable transaction. */
       const deliverability = NotificationDeliverabilitySchema.parse(
         notificationDeliverability(notification, seenAt),
       );
       let delivery: z.infer<typeof NotificationDeliveryOutcomeSchema>;
       if (deliverability.state === "suppressed-snoozed") {
         delivery = { state: "suppressed-snoozed", until: deliverability.until };
-      } else if (notification.channel === "inbox" || dependencies.delivery === undefined) {
-        delivery = { state: "no-channel" };
       } else {
-        try {
-          await dependencies.delivery.deliver(notification);
-          delivery = { state: "delivered" };
-        } catch (error) {
-          // Reported, never swallowed into success — and deliberately never
-          // written back onto the row. The unread item IS the surviving alert.
-          delivery = {
-            state: "failed",
-            detail: error instanceof Error ? error.message : `desktop delivery threw ${String(error)}`,
-          };
-        }
+        delivery = { state: "no-channel" };
       }
 
       return NotificationPublishReportSchema.parse({ notification, durable, delivery });
