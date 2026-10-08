@@ -6,7 +6,7 @@ import { describe, it } from "vitest";
 import ts from "typescript";
 import { walkFiles } from "../support/helpers/guard-files.js";
 
-const REPO_ROOT = resolve(import.meta.dirname, "../../../..");
+const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 
 function isContractSource(path: string): boolean {
   return path.startsWith("src/") && path.includes("/contracts/") && path.endsWith(".ts");

@@ -27,7 +27,7 @@ import {
   LegacySelectorPortMapSchema,
 } from "./helpers/legacy-selector-port-map-audit.js";
 
-const REPO_ROOT = resolve(import.meta.dirname, "../../../..");
+const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 
 function readJson(path: string): unknown {
   return JSON.parse(readFileSync(resolve(REPO_ROOT, path), "utf8"));

@@ -5,7 +5,7 @@ import { dirname, resolve } from "node:path";
 import { describe, it } from "vitest";
 import { auditTaskDriverBoundary } from "../dashboard/helpers/ui-boundary-audit.js";
 
-const REPO_ROOT = resolve(import.meta.dirname, "../../../..");
+const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 
 describe("task to system-driver boundary", () => {
   it("keeps Playwright and raw locator operations inside driver/session owners", () => {
@@ -126,11 +126,11 @@ describe("task to system-driver boundary", () => {
       mkdirSync(dirname(task), { recursive: true });
       mkdirSync(dirname(driver), { recursive: true });
       writeFileSync(task, 'import { helper } from "../helper.js";\nexport const bad = helper;\n');
-      writeFileSync(helper, 'export { helper } from "../../systems/ucpath/driver/interpreter.js";\n');
+      writeFileSync(helper, 'export { helper } from "../../backend/systems/ucpath/driver/interpreter.js";\n');
       writeFileSync(driver, "export const helper = true;\n");
       assert.match(
         auditTaskDriverBoundary(root).join("\n"),
-        /src\/backend\/workflow-tasks\/person-lookup\/tasks\/bad\.ts: import graph reaches private raw-browser owner src\/backend\/systems\/ucpath\/driver\/interpreter\.ts/u,
+        /src\/workflows\/person-lookup\/tasks\/bad\.ts: import graph reaches private raw-browser owner src\/backend\/systems\/ucpath\/driver\/interpreter\.ts/u,
       );
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -157,11 +157,11 @@ it("requires declared installation locator ownership and preserves raw aliases, 
   try {
     mkdirSync(dirname(path), { recursive: true }); mkdirSync(dirname(owner), { recursive: true });
     writeFileSync(owner, 'export type RuntimeLocator = { installationId: string; generation: number; stateRoot: string; artifactRoot: string };');
-    writeFileSync(path, 'import type { RuntimeLocator } from "../infra/runtime-control/installation.js"; export function read(input: { locator: RuntimeLocator }) { const locator = input.locator; const context = { locator }; return context.locator; }');
+    writeFileSync(path, 'import type { RuntimeLocator } from "../backend/storage/admission/installation.js"; export function read(input: { locator: RuntimeLocator }) { const locator = input.locator; const context = { locator }; return context.locator; }');
     assert.deepEqual(auditTaskDriverBoundary(root), []);
-    writeFileSync(path, 'import type { RuntimeLocator as InstallationRecord } from "../infra/runtime-control/installation.js"; type InstallationLease = Readonly<{ locator: InstallationRecord }>; class RuntimeAdmission { constructor(private lease: InstallationLease) {} get locator(): InstallationRecord { return this.lease.locator; } readInstallationContext() { const locator = this.locator; return { locator }; } } export const read = (admission: RuntimeAdmission) => admission.readInstallationContext().locator;');
+    writeFileSync(path, 'import type { RuntimeLocator as InstallationRecord } from "../backend/storage/admission/installation.js"; type InstallationLease = Readonly<{ locator: InstallationRecord }>; class RuntimeAdmission { constructor(private lease: InstallationLease) {} get locator(): InstallationRecord { return this.lease.locator; } readInstallationContext() { const locator = this.locator; return { locator }; } } export const read = (admission: RuntimeAdmission) => admission.readInstallationContext().locator;');
     assert.deepEqual(auditTaskDriverBoundary(root), []);
-    writeFileSync(path, 'import type { RuntimeLocator } from "../infra/runtime-control/installation.js"; export function read(input: { locator: RuntimeLocator }) { const { locator } = input; return locator; }');
+    writeFileSync(path, 'import type { RuntimeLocator } from "../backend/storage/admission/installation.js"; export function read(input: { locator: RuntimeLocator }) { const { locator } = input; return locator; }');
     assert.deepEqual(auditTaskDriverBoundary(root), []);
     for (const source of [
       'type RuntimeLocator = { installationId: string; generation: number; stateRoot: string; artifactRoot: string }; export const read = (input: { locator: RuntimeLocator }) => input.locator;',
@@ -172,7 +172,7 @@ it("requires declared installation locator ownership and preserves raw aliases, 
       'export const read = (input: unknown) => input.locator;',
       'export const read = () => missing.locator;',
       'export const read = (input: { locator: { installationId: string; generation: number; stateRoot: string; artifactRoot: string } }) => input.locator;',
-      'import type { RuntimeLocator } from "../infra/runtime-control/installation.js"; export const read = (input: { locator: RuntimeLocator & (() => void) }) => input.locator;',
+      'import type { RuntimeLocator } from "../backend/storage/admission/installation.js"; export const read = (input: { locator: RuntimeLocator & (() => void) }) => input.locator;',
     ]) { writeFileSync(path, source); assert.match(auditTaskDriverBoundary(root).join("\n"), /raw browser member \.locator|computed raw browser member locator|extracted raw browser member locator/u); }
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -182,10 +182,11 @@ it("allows only the declared durable archive callback and rejects browser, any, 
   const path = resolve(root, "src/core/kernel.ts");
   try {
     mkdirSync(dirname(path), { recursive: true });
-    mkdirSync(resolve(root, "src/backend/runs/archive"), { recursive: true });
+    mkdirSync(resolve(root, "src/backend/runs/lifecycle"), { recursive: true });
+    mkdirSync(resolve(root, "src/backend/runs/commands"), { recursive: true });
     writeFileSync(resolve(root, "src/backend/runs/commands/command-application.ts"), 'export interface CommandApplication { commit?: () => void }');
-    writeFileSync(resolve(root, "src/backend/runs/archive/archive-terminal-runs.ts"), 'export function publishManualArchive(input: unknown): void { void input; }');
-    const imports = 'import type { CommandApplication } from "../backend/runs/command-application.js"; import { publishManualArchive } from "../backend/runs/archive/archive-terminal-runs.js";';
+    writeFileSync(resolve(root, "src/backend/runs/lifecycle/archive-terminal-runs.ts"), 'export function publishManualArchive(input: unknown): void { void input; }');
+    const imports = 'import type { CommandApplication } from "../backend/runs/commands/command-application.js"; import { publishManualArchive } from "../backend/runs/lifecycle/archive-terminal-runs.js";';
     writeFileSync(path, imports + 'export function prepare(): CommandApplication { return { commit: () => publishManualArchive("verified") }; }');
     assert.deepEqual(auditTaskDriverBoundary(root), []);
     for (const source of [
@@ -210,6 +211,6 @@ it("preserves capability-validating driver commits while rejecting raw methods i
     writeFileSync(driver, 'declare function assertMintedMutationCapability(input: unknown): void; export const driver = { commit(input: unknown) { assertMintedMutationCapability(input); } };');
     assert.deepEqual(auditTaskDriverBoundary(root), []);
     writeFileSync(runtime, 'export const read = (page: { locator(selector: string): unknown }) => page.locator("#raw");');
-    assert.match(auditTaskDriverBoundary(root).join("\n"), /runtime-control\/reader\.ts: raw browser member \.locator/u);
+    assert.match(auditTaskDriverBoundary(root).join("\n"), /runtime\/settings\/reader\.ts: raw browser member \.locator/u);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

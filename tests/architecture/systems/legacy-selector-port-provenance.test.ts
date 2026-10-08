@@ -17,9 +17,9 @@ import {
   parseFrozenLegacyArchitectureProvenance,
 } from "../support/helpers/frozen-legacy-architecture-provenance.js";
 
-const PORT_MAP_PATH = new URL("../../../../docs/rebuild/migrations/legacy/ports/legacy-selector-port-map.json", import.meta.url);
+const PORT_MAP_PATH = new URL("../../../docs/rebuild/migrations/legacy/ports/legacy-selector-port-map.json", import.meta.url);
 const ARCHITECTURE_PROVENANCE_PATH = new URL(
-  "../../../../docs/rebuild/migrations/legacy/ports/legacy-architecture-provenance.json",
+  "../../../docs/rebuild/migrations/legacy/ports/legacy-architecture-provenance.json",
   import.meta.url,
 );
 

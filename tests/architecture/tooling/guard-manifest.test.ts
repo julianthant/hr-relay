@@ -405,7 +405,7 @@ describe("reviewed architecture guard manifest", () => {
       "src/backend/runtime/writes/write-resolution-binding.ts",
       "src/backend/runtime/writes/write-sequencer.ts",
       "src/backend/runs/archive/archive-runtime-version-changes.ts",
-      "src/backend/runs/archive/archive-terminal-runs.ts",
+      "src/backend/runs/lifecycle/archive-terminal-runs.ts",
       "src/backend/runs/archive/archive-version-changes.ts",
       "src/backend/storage/sqlite/run-lifecycle-storage.ts",
       "src/backend/storage/maintenance/storage-relocation-plans.ts",

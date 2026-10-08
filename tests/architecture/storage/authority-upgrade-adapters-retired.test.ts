@@ -10,14 +10,14 @@ import ts from "typescript";
 import { walkFiles } from "../support/helpers/guard-files.js";
 
 /** D332.9: expired settings imports are absent; supported recovery remains stopped. */
-const REPO_ROOT = resolve(import.meta.dirname, "../../../..");
+const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 
 const STORAGE_COMPOSE = "src/backend/app/composition/storage-compose.ts";
 const HISTORICAL_RESTORE = "src/backend/storage/maintenance/historical-restore.ts";
 const STORAGE_UPGRADE = "src/backend/storage/maintenance/upgrade.ts";
 const STORAGE_RELOCATE = "src/backend/app/composition/storage/relocate.ts";
 const STOPPED_CONVERTER = "src/backend/storage/sqlite/stopped-database-conversion.ts";
-const SECURE_BOOTSTRAP = "scripts/dev/secure-env-bootstrap.ts";
+const SECURE_BOOTSTRAP = "src/backend/app/bootstrap/secure-env-bootstrap.ts";
 const CLI = "src/cli.ts";
 
 const UPGRADE_ADAPTERS = [
@@ -229,7 +229,7 @@ function stoppedRelocationBoundary(graph: SourceGraph): readonly string[] {
     visit(block, (part) => {
       if (!ts.isCallExpression(part)) return;
       if (part.expression.kind === ts.SyntaxKind.ImportKeyword
-        && literalValue(part.arguments[0]) === "../src/backend/app/composition/storage/relocate.js") dynamicImport = true;
+        && literalValue(part.arguments[0]) === "../composition/storage/relocate.js") dynamicImport = true;
       if (ts.isIdentifier(part.expression) && part.expression.text === "parseRelocationCommand") parsedCommand = true;
       if (ts.isIdentifier(part.expression) && part.expression.text === "acquireEntrypointAdmission") acquiredAdmission = true;
       if (ts.isIdentifier(part.expression) && part.expression.text === "runOfflineStorageRelocation") invokedRelocation = true;
@@ -332,7 +332,7 @@ describe("authority-upgrade-adapters-retired", () => {
     };
     try {
       write("src/backend/app/composition/dashboard/compose.ts", 'import "./helper.js";\n');
-      write("src/backend/app/dashboard/helper.ts", 'import "../../../infra/sqlite/stopped-database-conversion.js";\n');
+      write("src/backend/app/composition/dashboard/helper.ts", 'import "../../../storage/sqlite/stopped-database-conversion.js";\n');
       write(STOPPED_CONVERTER, "export const adapter = true;\n");
       const graph = buildSourceGraph(root);
       const issues = adapterReachabilityIssues(
@@ -342,7 +342,7 @@ describe("authority-upgrade-adapters-retired", () => {
       ).join("\n");
       assert.match(
         issues,
-        /dashboard\/compose\.ts -> src\/backend\/app\/dashboard\/helper\.ts -> src\/infra\/sqlite\/stopped-database-conversion\.ts/u,
+        /dashboard\/compose\.ts -> src\/backend\/app\/composition\/dashboard\/helper\.ts -> src\/backend\/storage\/sqlite\/stopped-database-conversion\.ts/u,
       );
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -359,12 +359,12 @@ describe("authority-upgrade-adapters-retired", () => {
       sources: new Map(graph.sources).set(SECURE_BOOTSTRAP, parse(SECURE_BOOTSTRAP, body)),
       edges: graph.edges,
     });
-    const importLine = 'const { parseRelocationCommand, runOfflineStorageRelocation, StorageRelocationIncompleteError } = await import("../src/backend/app/composition/storage/relocate.js");';
+    const importLine = 'const { parseRelocationCommand, runOfflineStorageRelocation, StorageRelocationIncompleteError } = await import("../composition/storage/relocate.js");';
     assert.ok(source.includes(importLine));
     assert.match(
       stoppedRelocationBoundary(changed(source.replace(importLine, "").replace(
-        'const workspace = fileURLToPath(new URL("..", import.meta.url));',
-        `const workspace = fileURLToPath(new URL("..", import.meta.url));\n  ${importLine}`,
+        'const workspace = fileURLToPath(new URL("../../../..", import.meta.url));',
+        `const workspace = fileURLToPath(new URL("../../../..", import.meta.url));\n  ${importLine}`,
       ))).join("\n"),
       /exact cli\/storage\/relocate stopped admission branch/u,
     );

@@ -1,4 +1,4 @@
-import type { AuthorityRepositories } from "../../infra/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../backend/storage/sqlite/authority-database.js";
 export function forbidden(repositories: AuthorityRepositories) {
   const { transition: mutate } = repositories.runs;
   mutate({});

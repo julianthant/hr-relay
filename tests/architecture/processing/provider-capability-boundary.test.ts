@@ -292,7 +292,7 @@ describe("provider capability boundary", () => {
       mkdirSync(dirname(taskPath), { recursive: true });
       mkdirSync(dirname(helperPath), { recursive: true });
       mkdirSync(dirname(adapterPath), { recursive: true });
-      writeFileSync(taskPath, 'import { hidden } from "../../../../services/provider-helper.js";\nvoid hidden;\n');
+      writeFileSync(taskPath, 'import { hidden } from "../../../services/provider-helper.js";\nvoid hidden;\n');
       writeFileSync(helperPath, 'import { adapter } from "../backend/processing/providers/bad-adapter.js";\nexport const hidden = adapter;\n');
       writeFileSync(adapterPath, 'export const adapter = { capability: "ocr.extract" };\n');
       assert.match(
@@ -315,7 +315,7 @@ describe("provider capability boundary", () => {
       writeFileSync(kernelPath, "export function createAdmittedProviderClient() { return {}; }\n");
       writeFileSync(
         helperPath,
-        'import { createAdmittedProviderClient as hiddenFactory } from "../backend/runs/provider-admission.js";\nexport const hidden = hiddenFactory;\n',
+        'import { createAdmittedProviderClient as hiddenFactory } from "../backend/runs/start/provider-admission.js";\nexport const hidden = hiddenFactory;\n',
       );
       assert.match(
         auditProviderCapabilityBoundary(root).join("\n"),

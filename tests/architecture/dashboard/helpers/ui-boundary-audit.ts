@@ -107,7 +107,7 @@ function durableArchiveCommit(checker: ts.TypeChecker, node: ts.Node): boolean {
   if (!ts.isPropertyAssignment(node) || !ts.isArrowFunction(node.initializer)
     || !ts.isCallExpression(node.initializer.body)) return false;
   const call = node.initializer.body;
-  if (!declaredSymbol(checker, call.expression, "publishManualArchive", "src/backend/runs/archive/archive-terminal-runs.ts")) return false;
+  if (!declaredSymbol(checker, call.expression, "publishManualArchive", "src/backend/runs/lifecycle/archive-terminal-runs.ts")) return false;
   const object = node.parent;
   if (!ts.isObjectLiteralExpression(object)) return false;
   const contextual = checker.getContextualType(object);

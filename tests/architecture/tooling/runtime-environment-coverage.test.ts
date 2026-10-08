@@ -307,7 +307,7 @@ describe("runtime environment inventory coverage", () => {
     };
     assert.match(
       auditRuntimeEnvironmentInventory(wrongBootstrapBoundary).join("\n"),
-      /target bootstrap reader is outside the exact dashboard launcher\/Vite contract: scripts\/dev-dashboard\.ts/,
+      /target bootstrap reader is outside the exact dashboard launcher\/Vite contract: scripts\/dev\/dashboard\.ts/,
     );
   });
 
@@ -324,7 +324,7 @@ describe("runtime environment inventory coverage", () => {
     };
     assert.match(
       auditRuntimeEnvironmentInventory(wrongProcessOwnership).join("\n"),
-      /HRAUTO_DASHBOARD_LAUNCH_NONCE (?:is owned by .*; expected src\/domain\/dashboard-frontend-owner\.ts|retains forbidden active secret environment ownership)/,
+      /HRAUTO_DASHBOARD_LAUNCH_NONCE (?:is owned by .*; expected src\/models\/dashboard\/dashboard-frontend-owner\.ts|retains forbidden active secret environment ownership)/,
     );
   });
 });

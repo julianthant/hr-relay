@@ -15,7 +15,7 @@ import {
 import { walkFiles } from "../support/helpers/guard-files.js";
 
 /** D336: ordinary settings are SQLite authority; file formats survive only as frozen readers. */
-const REPO_ROOT = resolve(import.meta.dirname, "../../../..");
+const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 
 const RETIRED_RUNTIME_MODULES = new Set([
   "src/domain/config/settings-root.ts",
@@ -296,7 +296,7 @@ describe("sqlite-settings-authority", () => {
       mkdirSync(dirname(file), { recursive: true });
       writeFileSync(file, [
         'import { join } from "node:path";',
-        'import { createSettingsFileAuthority as legacy } from "../../../infra/config/settings-file.js";',
+        'import { createSettingsFileAuthority as legacy } from "../../../../infra/config/settings-file.js";',
         'export const authorityPath = join(stateRoot, "settings.json");',
         'export const createProtectedSettingsFileAuthority = legacy;',
         'export interface Repositories { protectedSettingsCurrent: unknown }',

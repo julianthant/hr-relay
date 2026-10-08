@@ -12,7 +12,7 @@ import { UCPATH_SS_SMART_HR_TRANSACTION_SCREEN } from "../../../src/models/ui/uc
 import { UCPATH_PERSON_ORG_OPERATION_ELEMENTS } from "../../../src/backend/systems/ucpath/driver/person-org-operation.js";
 import { UCPATH_UI_REGISTRY } from "../../../src/backend/systems/ucpath/driver/ui-registry.js";
 
-const REPO_ROOT = resolve(import.meta.dirname, "../../../..");
+const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 const OPERATION_PATH = resolve(REPO_ROOT, "src/backend/systems/ucpath/driver/person-org-operation.ts");
 
 const REQUIRED_PROVENANCE = Object.freeze([
