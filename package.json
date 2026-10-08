@@ -15,8 +15,6 @@
     "web:preview": "vite preview --config vite.dashboard.config.ts",
     "build:manifest": "tsx scripts/build/generate-workflow-manifest.ts",
     "build:manifest:check": "tsx scripts/build/generate-workflow-manifest.ts --check",
-    "roadmap": "tsx scripts/docs/generate-roadmap.ts",
-    "roadmap:check": "tsx scripts/docs/generate-roadmap.ts --check",
     "stores:catalog": "tsx scripts/docs/generate-store-catalog.ts",
     "stores:catalog:check": "tsx scripts/docs/generate-store-catalog.ts --check",
     "smoke:test-target-document-number": "tsx scripts/dev/secure-env-bootstrap.ts test-target-document-number",
