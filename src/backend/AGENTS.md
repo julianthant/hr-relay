@@ -7,7 +7,7 @@ task starts at the repository root.
 
 - A long-lived CLI command owns and awaits shutdown. Keep signal handlers installed throughout
   the drain, release the exact process lock, and propagate a failed stop. Shutdown does not imply
-  a backup: D322 backups are explicit-only.
+  a backup: backups are explicit-only.
 - Admit request identity once, then pass the derived actor to services. Caller-supplied identity
   fields must agree before effects; do not backfill historical actor evidence.
 - Every browser-reachable mutation passes the registered loopback Host/Origin guard before its
@@ -20,7 +20,7 @@ task starts at the repository root.
 - Archived resources first admit canonical archive membership through RunRecordService.read, then
   bind evidence to the exact immutable run/digest and frozen capture metadata. Never reconstruct
   archived evidence from current inputs or infer purge from a deadline; preserve safe download headers.
-- Boot/upgrade follows the current authority floor and D332. Old integration-lineage lessons are
+- Boot/upgrade follows the current authority floor and boot/upgrade contract. Old integration-lineage lessons are
   history, not permission to migrate an existing database during ordinary startup.
 
 Before changing a seam, search [LESSONS.md](LESSONS.md) for its evidence and traps. Read the relevant

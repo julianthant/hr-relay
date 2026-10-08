@@ -26,7 +26,7 @@ Task names, effects, and schemas are in the source and the generated store catal
   must not silently replace the staged variables. Compare exactly, with no tolerance arm.
 - Preserve the ratified assertions and reconciled date inputs in the finalization schema. A missing
   transaction number refuses before staging; never save a partial draft for manual completion.
-- Keep finalization behind the fresh UCPath filing-presence proof (D310). An asserted receipt does
+- Keep finalization behind the fresh UCPath filing-presence proof. An asserted receipt does
   not become controlled-filing evidence. `Send Back` and `Mark Complete` are not authorized by this
   store's Save operations.
 - Post-fence absence uses the transaction's verified policy. Never invent a propagation window or

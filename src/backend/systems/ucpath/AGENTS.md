@@ -11,8 +11,8 @@ HR share a system and declaration, not routes, frames, or anchors; scope each gu
 - Prove the subject through UCPath's resolved displayed name; reading the typed EID back only echoes
   input. Missing person resolution refuses before a write. Keep identity checks bound to the run.
 - Recognize both verified termination labels (`TER` and `Terminatn`); blank matches neither.
-- Sweep only Pending/Pushed Back rows. Bind the complete eligible/protected set to stable T IDs
-  (D310), re-read before staging, and uniquely join the other grid by its verified identity tuple.
+- Sweep only Pending/Pushed Back rows. Bind the complete eligible/protected set to stable T IDs,
+  re-read before staging, and uniquely join the other grid by its verified identity tuple.
   Positional DOM suffixes are never identity. Changed, missing, extra, or ambiguous rows refuse
   before fencing/clicking. Verify selected rows absent and protected rows preserved.
 - Keep the exact-set digest and v2 proof; historical observation-only receipts remain immutable.
