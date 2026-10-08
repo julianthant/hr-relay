@@ -1,34 +1,44 @@
 # Current codebase structure
 
-This is the canonical map of the 2026-10-01 candidate tree, amended 2026-10-02. It describes
-checked-in implementation homes and dependency direction; phase-plan acceptance and final test
-accounting remain with their owners. Older path diagrams and source-pinned excerpts retain their
-original revision names.
+This is the canonical map of the current checked-in implementation homes and dependency direction.
+The assigned brief owns acceptance and final test accounting. Older path diagrams and source-pinned
+excerpts retain their original revision names.
 
 ## Repository and script folders
 
 | Path | Ownership |
 | --- | --- |
-| `.agents/`, `.claude/` | Repository-local agent instructions and skill references. |
+| `AGENTS.md` | Root working instructions; nearer `AGENTS.md` files own backend, registry, system and dashboard constraints. There are no `CLAUDE.md` instruction files. |
+| `LICENSE` | MIT License, copyright 2026 julianthant. |
+| `.agents/`, `.claude/` | Repository-local skills and operating references. |
 | `config/` | Active runtime isolation and shared test-data configuration; the example is tracked and private local input remains ignored. |
 | `dist/` | Generated dashboard build output. |
-| `docs/` | Roadmap, plans, references, workflow migrations, sanitized evidence, guides and preserved history. |
+| `docs/` | Current entrypoint and reference contracts, workflow migration/provenance records, sanitized selector evidence, authoring guide and reviewed guard inventory. |
 | `duo-autopilot/` | Duo Autopilot browser support and operator guide. |
 | `node_modules/` | Local installed dependencies. |
 | `scripts/build/` | Workflow manifest generation and checks. |
 | `scripts/dev/` | Local dashboard and CLI environment entrypoints. |
-| `scripts/docs/` | Roadmap and store-catalog generators and their parsers. |
+| `scripts/docs/` | Store-catalog generator; roadmap generation and its parser/scanner/schema modules are absent. |
 | `scripts/test/` | Test runner, scoping and suite policy. |
 | `scripts/verify/` | Browser-login and test-target validation. |
 | `src/` | Application source (current directory map below). |
 | `tests/` | Current unit, integration, architecture, support, performance and type-checking tree. |
 
-There is no root `generated/`, `evidence/`, or `test-results/` folder. Generated files remain at
+Root `generated/` and `evidence/` folders are absent; ignored runner output is disposable. Generated files remain at
 their owning paths, such as the workflow manifest and store-catalog reference section. The retired
 UI-catalog generator and selector-search CLI are absent. Current commands live in root `AGENTS.md`.
-`tests/scenario/` remains retired. The operator reinstated desktop parity on 2026-10-07 as the
-presentation-freeze check. Brief 1 retains the named specs and support only; full visual closure
-belongs to a later convergence brief and is not established here.
+`tests/scenario/` remains retired. `tests/parity/` and `npm run test:parity` retain the desktop
+presentation-freeze contract. This map does not establish a gate result.
+
+The roadmap site, planning/history/findings/status/handoff folders and decision log are absent:
+`docs/roadmap/`, `docs/rebuild/plans/`, `docs/rebuild/history/`, `docs/rebuild/findings/`,
+`docs/status/`, `docs/handoffs/`, `docs/decisions/` and `docs/rebuild/reference/decisions.md`.
+`scripts/docs/generate-roadmap.ts`, `scripts/docs/roadmap/`, the `roadmap` / `roadmap:check` package
+scripts, the roadmap binding guard and its fixtures, and the generated-site interaction test are
+also absent: `tests/architecture/tooling/roadmap-doc-binding.test.ts`,
+`tests/architecture/tooling/fixtures/roadmap-binding/` and
+`tests/unit/tooling/roadmap/roadmap-ui.test.ts`. Task receipts and retained worktree evidence live outside the repository under
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/`.
 
 ## Source tree and ownership
 
@@ -106,17 +116,18 @@ tests/
 Architecture fixtures/helpers are colocated under dashboard, logs, models, runs, runtime, storage,
 support, systems and tooling owners. Unit and integration tests follow the same source-family split
 as production code. Shared fixtures, helpers and child-process entrypoints stay under
-`tests/support/`. `scenario/` remains retired. `parity/queue-authority.spec.ts` is retained under
-the operator's desktop parity reinstatement; Brief 1 retains named specs and support, without
-establishing an executable parity suite or visual acceptance. Full visual closure belongs to a later
-convergence brief. Role-derived path helpers do not imply current files or coverage. Exact test move
-counts and retirement dispositions remain with the final test ledger and its independent audit.
+`tests/support/`. `scenario/` remains retired. The desktop parity suite remains the screenshot/accessibility
+contract; its reference files are not refreshed to make wiring pass. Role-derived path helpers do
+not imply current files or coverage. Exact test move counts and retirement dispositions remain with
+the owning evidence records.
 
 Selector fixtures and live selector evidence now live under `docs/rebuild/evidence/selectors/`;
-retained semantic registries name the evidence they use, and verification/proof readers consume
-those paths. Legacy migration/provenance inventories now live under
+retained UCPath, Kuali, CRM and New Kronos semantic registries name the evidence they use.
+Architecture tests and the UCPath registry unit test consume or assert those paths, so selector
+evidence remains checked in. Legacy migration/provenance inventories now live under
 `docs/rebuild/migrations/legacy/`; architecture and migration tests read those checked-in inputs
-through their updated paths. Both relocations preserve payload bytes. These are checked-in
+through their updated paths. The frozen legacy change-accounting record has one explicitly
+revision-qualified historical decision citation; its other data remains unchanged. These are checked-in
 verification, configuration and provenance inputs; operator runtime state remains separate. The
 ignored `config/test-data.local.json` remains private local test input.
 
