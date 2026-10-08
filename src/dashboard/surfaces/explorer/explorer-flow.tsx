@@ -59,9 +59,12 @@ function ExplorerWorkflowTimeline({ steps, scenario, onScenario, sourceFor, comp
   useLayoutEffect(() => {
     const request = focusRequest.current;
     if (!request || request.anchor !== pendingFocus) return;
-    focusRequest.current = undefined;
-    document.getElementById(request.anchor)?.scrollIntoView({ block: request.block, behavior: "instant" });
-    document.getElementById(request.focus)?.focus({ preventScroll: true });
+    const frame = requestAnimationFrame(() => {
+      focusRequest.current = undefined;
+      document.getElementById(request.anchor)?.scrollIntoView({ block: request.block, behavior: "instant" });
+      document.getElementById(request.focus)?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
   }, [pendingFocus, open]);
   const closeSource = () => {
     setSource(undefined);

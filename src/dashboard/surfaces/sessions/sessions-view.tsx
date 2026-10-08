@@ -1,7 +1,7 @@
 import { IDLE_REFRESH_MS, type IdleSessionCountdown } from './session-idle-model.js';
 import { useViewState } from "../../app/navigation/view-route-model.js";
 import { SETTINGS_GEAR_ID } from "../settings/settings-model.js";
-import { useId, useRef, useState } from "react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
 import { Settings, ChevronDown, ChevronUp, Minus, Monitor, Pause, Play, Plus, RotateCw, Square, Trash2, UsersRound } from "lucide-react";
 import { ActionBarRow, Button, Dialog, DialogBody, DialogContent, DialogFooter, DialogTrigger, Field, Input, Select, Skeleton } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
@@ -54,6 +54,8 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
 }) {
   const contentId = useId();
   const toggleRef = useRef<HTMLButtonElement>(null);
+  const addTriggerRef = useRef<HTMLButtonElement>(null);
+  const addFocusOrigin = useRef<Element | null>(null);
   const [addOpen, setAddOpen] = useViewState("addWorkers", false);
   const [workflow, setWorkflow] = useViewState("workerWorkflow", workflows[0]?.id ?? "");
   const [count, setCount] = useState("1");
@@ -62,6 +64,15 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
   const selectedWorkflow = workflows.find(item => item.id === workflow) ?? workflows[0];
   const selectedWorkflowId = selectedWorkflow?.id ?? "";
   const validWorkflow = selectedWorkflow !== undefined;
+  useLayoutEffect(() => {
+    const origin = addFocusOrigin.current;
+    const trigger = addTriggerRef.current;
+    if (origin === null || addOpen || trigger === null || trigger.disabled) return;
+    addFocusOrigin.current = null;
+    const active = document.activeElement;
+    if (active !== null && active !== document.body && active.isConnected && active !== trigger && !origin.contains(active)) return;
+    trigger.focus({ preventScroll: true });
+  }, [addOpen, addLocked, data.state, validWorkflow]);
   return <section aria-label="Session Panel" className="ui-theme-scope shrink-0 border-t border-ui-stroke bg-ui-panel font-ui text-ui-primary [--ds-control-bg:var(--ui-table)] [--ds-control-bg-hover:var(--ui-hover)] [--ds-control-fg:var(--ui-primary)] [--ds-border-strong:var(--ui-stroke-control)] [--ds-focus-ring:var(--ui-info)]">
     <ActionBarRow label="Session actions" className="relative h-11 gap-3 px-3">
       <button ref={toggleRef} type="button" aria-expanded={open} aria-controls={contentId} onClick={() => onOpenChange(!open)} className="session-panel-toggle absolute inset-y-0 left-0 right-[104px] cursor-pointer focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ui-info"><span className="sr-only">Sessions</span></button>
@@ -69,7 +80,7 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
       <span className="pointer-events-none relative flex min-w-0 items-center gap-3 border-l border-ui-stroke pl-3 text-caption">{data.state === "ready" ? data.workers.length ? sessionTallies(data.workers).filter(tally => tally.count > 0).map(tally => <span key={tally.state} className="inline-flex items-center gap-1.5 whitespace-nowrap"><span aria-hidden className={cn("size-1.5 rounded-full bg-current", sessionStateColor(tally.state))} /><span className="tabular-nums">{tally.count}</span><span className="text-ui-secondary">{SESSION_STATE_LABELS[tally.state].toLocaleLowerCase()}</span></span>) : <span className="text-ui-muted">No workers</span> : <span className="text-ui-muted">{data.state === "loading" ? "Loading" : "Unavailable"}</span>}</span>
       <span className="relative z-10 ml-auto flex shrink-0 items-center gap-2">
         <Dialog open={addOpen} onOpenChange={setAddOpen}>
-          <DialogTrigger asChild><Button size="sm" variant="ghost" className="size-8 p-0" aria-label="Add workers" disabled={data.state !== "ready" || !workflows.length || addLocked} icon={<Plus aria-hidden className="size-4" />} /></DialogTrigger>
+          <DialogTrigger asChild><Button ref={addTriggerRef} size="sm" variant="ghost" className="size-8 p-0" aria-label="Add workers" disabled={data.state !== "ready" || !workflows.length || addLocked} icon={<Plus aria-hidden className="size-4" />} /></DialogTrigger>
           <DialogContent title="Add workers" description="Select a workflow and worker count." className="ui-theme-scope max-w-[20rem] overflow-visible bg-ui-panel font-ui text-ui-primary [--ds-control-bg:var(--ui-field)] [--ds-control-bg-hover:var(--ui-hover)] [--ds-control-fg:var(--ui-primary)] [--ds-border-strong:var(--ui-stroke-control)] [--ds-focus-ring:var(--ui-info)]" size="sm">
             <DialogBody><div className="grid gap-3">
               <Field label="Workflow"><Select value={selectedWorkflowId} onChange={event => setWorkflow(event.target.value)}>{workflows.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</Select></Field>
@@ -79,7 +90,7 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
                 <Button variant="secondary" aria-label="Add one worker" icon={<Plus aria-hidden className="size-3.5" />} disabled={!validCount || Number(count) >= 20} onClick={() => setCount(String(Number(count) + 1))} />
               </div></Field>
             </div></DialogBody>
-            <DialogFooter><Button variant="muted" onClick={() => setAddOpen(false)}>Cancel</Button><Button variant="outline" disabled={!validCount || !validWorkflow || data.state !== "ready" || addLocked} onClick={() => { onAdd(selectedWorkflowId, Number(count)); setAddOpen(false); onOpenChange(true); }}>Add workers</Button></DialogFooter>
+            <DialogFooter><Button variant="muted" onClick={() => setAddOpen(false)}>Cancel</Button><Button variant="outline" disabled={!validCount || !validWorkflow || data.state !== "ready" || addLocked} onClick={event => { addFocusOrigin.current = event.currentTarget.closest('[role="dialog"]'); onAdd(selectedWorkflowId, Number(count)); setAddOpen(false); onOpenChange(true); }}>Add workers</Button></DialogFooter>
           </DialogContent>
         </Dialog>
         {onSettings && <Button id={SETTINGS_GEAR_ID} size="sm" variant="ghost" className="size-8 p-0" aria-label="Settings" aria-pressed={settingsOpen} onClick={onSettings} icon={<Settings aria-hidden className="size-4" />} />}
