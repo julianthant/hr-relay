@@ -12,18 +12,9 @@ import { RerunRefusedError } from "../../../runs/start/rerun.js";
  */
 import { z } from "zod";
 import { WireErrorSchema } from "../../../../models/dashboard/primitives.js";
-import {
-  DiagnosticBundleBytesMissingError,
-  DiagnosticBundleCorruptError,
-  ProjectionDegradedError,
-  RequestIdentityRefusedError,
-  SectionUnavailableError,
-  TargetNotFoundError,
-} from "../../../runs/commands/refusals.js";
+import { DiagnosticBundleBytesMissingError, DiagnosticBundleCorruptError, ProjectionDegradedError, RequestIdentityRefusedError, SectionUnavailableError, TargetNotFoundError } from "../../../runs/commands/refusals.js";
 import { StartStepOmissionRefusedError } from "../../../runs/start/step-selection.js";
 import { errorText } from "../../../runs/lifecycle/support.js";
-import { ProviderAuditUncertainError } from "../../../runs/commands/command-kernel.js";
-import { ProviderKeyStoreUnknownError } from "../../../storage/configuration/provider-key-store.js";
 
 export type WireError = z.infer<typeof WireErrorSchema>;
 
@@ -91,12 +82,6 @@ export function failureStatus(
   }
   if (error instanceof RequestIdentityRefusedError) {
     return { status: 403, body: wireError("REQUEST_IDENTITY_REFUSED", message, false) };
-  }
-  if (error instanceof ProviderAuditUncertainError) {
-    return { status: 409, body: wireError("PROVIDER_AUDIT_UNCERTAIN", message, true) };
-  }
-  if (error instanceof ProviderKeyStoreUnknownError) {
-    return { status: 409, body: wireError("PROVIDER_STORE_UNKNOWN", message, false) };
   }
   if (error instanceof ProjectionDegradedError) {
     return { status: 500, body: wireError("PROJECTION_DEGRADED", message, true) };

@@ -13,7 +13,7 @@ import { RunRecordService } from "../../../src/backend/runs/lifecycle/run-record
 import type { Clock } from "../../../src/rules/time/clock.js";
 import { hostConfigFacts } from "../../../src/models/config/host-display.js";
 import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
-import { initialSettingsFileRecord,settingsRuntimeIdentity } from "../../../src/models/config/settings.js";
+import { initialSettingsFileRecord, settingsRuntimeIdentity } from "../../../src/models/config/settings.js";
 import { ActorIdSchema as PublicationActorIdSchema } from "../../../src/rules/identity/ids.js";
 import { defineWorkflowRole } from "../../../src/workflow-kit/validation/module-role.js";
 import { createTimelineEmitter } from "../../../src/backend/storage/events/timeline-emitter.js";
@@ -29,15 +29,15 @@ import { createDashboardApp } from "../../../src/backend/transports/http/routes/
 import { createDashboardStreamHub } from "../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
 import { createReceiptService } from "../../../src/backend/runs/trust/receipt-service.js";
 import { createItemAttemptHistoryQuery } from "../../../src/backend/runs/queries/item-attempt-history.js";
-import { archiveQueryDeps,archiveSnapshots } from "../../support/fixtures/archive-seams.js";
+import { archiveQueryDeps, archiveSnapshots } from "../../support/fixtures/archive-seams.js";
 import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../support/fixtures/dashboard-stream-seams.js";
 import { explorerQueryDeps } from "../../support/fixtures/explorer-seams.js";
-import { NO_INTAKE_PROJECTIONS,UNSTORED_CONFIG_IDENTITY,UNWIRED_INTAKE_PARSER,UNWIRED_INTAKE_SERVICE } from "../../support/fixtures/intake-kernel-seams.js";
+import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER, UNWIRED_INTAKE_SERVICE } from "../../support/fixtures/intake-kernel-seams.js";
 import { sequentialIdFactory } from "../../support/fixtures/phase1f-run-fixtures.js";
-import { healthyDashboardPreflightExecutor,healthyDashboardPreflightReport } from "../../support/fixtures/preflight-seams.js";
+import { healthyDashboardPreflightExecutor, healthyDashboardPreflightReport } from "../../support/fixtures/preflight-seams.js";
 import { sqliteRunReader } from "../../support/helpers/canonical-run-reader.js";
 import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
-import { CONFIG_FINGERPRINT,CONFIG_SNAPSHOT_ID,CONTRACT_FINGERPRINT,SEEDED_APP_VERSION } from "./seeded-identity.js";
+import { CONFIG_FINGERPRINT, CONFIG_SNAPSHOT_ID, CONTRACT_FINGERPRINT, SEEDED_APP_VERSION } from "./seeded-identity.js";
 import { uuidOf } from "./seeded-lifecycle.js";
 /** Real service composition; HTTP lifetime and disposable authority custody stay with the caller. */
 export function composeSeededServices({ database, clock, stateRoot, root, projection, spans, descriptors, runIds, selectionServices }: {
@@ -185,13 +185,6 @@ export function composeSeededServices({ database, clock, stateRoot, root, projec
       // The seeded adapter runs no backup lane; "missing" is its true state.
       backupSummary: () => "missing",
       preflightReport: () => healthyDashboardPreflightReport(clock),
-      // The parity corpus never composes a provider (D178): a reference must
-      // not depend on a key being present in the environment that captured it.
-      advisoryAvailability: () => ({
-        state: "unavailable",
-        code: "not-configured",
-        reason: "no ai.advisory provider is composed in this harness",
-      }),
     },
     projection,
     calendar: createCalendarQuery(database, clock),

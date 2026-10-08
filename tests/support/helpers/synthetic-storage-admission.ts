@@ -9,7 +9,6 @@ import { doctorAuthorityStorage as realDoctorAuthorityStorage } from "../../../s
 import { inspectDoctorPair as realInspectDoctorPair } from "../../../src/backend/storage/sqlite/storage-recovery-status.js";
 import { composeStorageCommand as realComposeStorageCommand } from "../../../src/backend/app/composition/storage-compose.js";
 import { createCredentialStore as realCreateCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
-import { createProviderKeyStore as realCreateProviderKeyStore } from "../../../src/backend/storage/configuration/provider-key-store.js";
 import { migrateTestDataFromCredentials as realMigrateTestDataFromCredentials } from "../../../src/backend/storage/configuration/credential-test-data-migration.js";
 import { composeTestDataCommand as realComposeTestDataCommand } from "../../../src/backend/app/test-data/compose.js";
 import { AuthorityBootStore as RealAuthorityBootStore } from "../../../src/backend/storage/sqlite/authority-boot.js";
@@ -30,7 +29,6 @@ export * from "../../../src/backend/storage/maintenance/upgrade.js";
 export * from "../../../src/backend/storage/maintenance/historical-restore.js";
 export * from "../../../src/backend/app/composition/storage-compose.js";
 export * from "../../../src/backend/storage/configuration/credential-store.js";
-export * from "../../../src/backend/storage/configuration/provider-key-store.js";
 export * from "../../../src/backend/storage/configuration/credential-test-data-migration.js";
 export * from "../../../src/backend/app/test-data/compose.js";
 export * from "../../../src/backend/storage/sqlite/authority-boot.js";
@@ -158,9 +156,7 @@ export function createCredentialStore(options: Omit<Parameters<typeof realCreate
   return realCreateCredentialStore({ ...options, admission: syntheticStateRoot(options.stateRoot) });
 }
 
-export function createProviderKeyStore(input: Omit<Parameters<typeof realCreateProviderKeyStore>[0],"admission">) {
-  return realCreateProviderKeyStore({ ...input, admission: syntheticStateRoot(dirname(input.envPath)) });
-}
+
 
 export async function migrateTestDataFromCredentials(input: Omit<Parameters<typeof realMigrateTestDataFromCredentials>[0],"admission">) {
   return realMigrateTestDataFromCredentials({ ...input, admission: syntheticStateRoot(input.stateRoot) });

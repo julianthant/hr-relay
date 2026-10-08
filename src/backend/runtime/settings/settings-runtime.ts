@@ -6,11 +6,7 @@ import type { Clock } from "../../../rules/time/clock.js";
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
 import { resolveConfigWithProvenance, type AdmittedRuntimeStoragePair } from "../../app/config/resolve.js";
-import {
-  SettingsRuntimeStatusSchema, SETTINGS_SCHEMA_HASH,
-  initialSettingsFileRecord, settingsRuntimeIdentity,
-  type SettingsFileRecord, type SettingsRuntimeIdentity, type SettingsRuntimeStatus,
-} from "../../../models/config/settings.js";
+import { SettingsRuntimeStatusSchema, SETTINGS_SCHEMA_HASH, initialSettingsFileRecord, settingsRuntimeIdentity, type SettingsFileRecord, type SettingsRuntimeIdentity, type SettingsRuntimeStatus } from "../../../models/config/settings.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH, protectedSettingsReadback, type ProtectedSettingsReadback, type ProtectedStoreRecord } from "../../../models/config/protected-settings.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 
@@ -43,6 +39,7 @@ export function readSettings(repositories: AuthorityRepositories): SettingsFileR
   if (audit === undefined) throw new Error(`settings revision ${String(current.revision)} has no durable audit`);
   if (canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)
     || audit.result.state !== "applied" || audit.result.commandId !== current.commandId
+    || !("settingsRevision" in audit.result) || !("settingsFingerprint" in audit.result)
     || typeof audit.result.restartRequired !== "boolean" || audit.result.settingsRevision !== current.revision
     || audit.result.settingsFingerprint !== current.settingsFingerprint
     || canonicalJsonStringify(audit.result.affectedTargets) !== canonicalJsonStringify([target])

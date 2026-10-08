@@ -23,7 +23,7 @@ import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
 import { QUEUED_RUN } from "../../fixtures/phase1f-run-fixtures.js";
 import { personLookupDescriptor } from "../registered-workflows.js";
 
-export function settingsFixture(isolateBrowser = false, configuredModels: readonly string[] = []) {
+export function settingsFixture(isolateBrowser = false) {
   const root = mkdtempSync(join(realpathSync(tmpdir()), "settings-activation-"));
   const path = join(root, "authority.sqlite");
   const clock = manualClock(new Date("2026-09-09T12:00:00.000Z"));
@@ -32,11 +32,7 @@ export function settingsFixture(isolateBrowser = false, configuredModels: readon
   const initial = readSettings(database.authority);
   const resolveSettings = (value: unknown) => {
     const result = resolveConfigWithProvenance(value, host, clock);
-    const configured = configuredModels.length === 0 ? result : (() => {
-      const models = (value as { providers?: { gemini?: { models?: readonly string[] } } }).providers?.gemini?.models ?? configuredModels;
-      const config = { ...result.config, providers: { ...result.config.providers, gemini: { models } } };
-      return { ...result, config, fingerprint: FingerprintSchema.parse(sha256Hex(canonicalJsonStringify(config))) };
-    })();
+    const configured = result;
     if (!isolateBrowser) return configured;
     // A fixed process configuration for the synthetic launch target; these roots are
     // deliberately not editable settings and never appear in the save patch.

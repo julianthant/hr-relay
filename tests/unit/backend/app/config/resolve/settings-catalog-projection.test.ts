@@ -31,7 +31,7 @@ describe("complete Settings catalog projection", () => {
     const expected = SETTINGS_CATALOG.filter(row => row.sourceClass === "ordinary-settings" && !row.key.startsWith("annualDates.")).map(row => row.key);
     assert.deepEqual(leaves.map(leaf => leaf.catalogKey).filter(key => !key.startsWith("annualDates.")).sort(), expected.sort());
     assert.deepEqual(leaves.filter(leaf => leaf.path.startsWith("annualDates.")).map(leaf => leaf.path), [`annualDates.FY${String(document.currentFiscalYear)}.jobEndDate`]);
-    assert.deepEqual([...new Set(document.catalog.map(row => row.sourceClass))].sort(), ["derived-host", "ordinary-settings", "protected-store", "provider-env", "runtime-isolation"]);
+    assert.deepEqual([...new Set(document.catalog.map(row => row.sourceClass))].sort(), ["derived-host", "ordinary-settings", "protected-store", "runtime-isolation"]);
     assert.equal(document.settingsSchemaHash, SETTINGS_SCHEMA_HASH);
     assert.equal(JSON.stringify(document).includes("currentSource"), false);
     assert.equal(JSON.stringify(document).includes("canary"), false);
@@ -62,15 +62,6 @@ describe("complete Settings catalog projection", () => {
     assert.equal((crm?.activeValue as { entry?: string } | undefined)?.entry, current.config.urls.crm.prod.entry);
     assert.equal(JSON.stringify(document).includes("retired.example.test"), false);
   });
-  it("projects provider values with their counts, missing or unknown", () => {
-    const { deps } = fixture();
-    const document = buildSettingsEditor({ ...deps, environment: { ...deps.environment, GEMINI_API_KEY: "provider-sentinel-one", GEMINI_API_KEY2: "provider-sentinel-two" } });
-    assert.deepEqual(document.providers.geminiApiKeys, { state: "present", count: 2, values: ["provider-sentinel-one", "provider-sentinel-two"] });
-    assert.deepEqual(document.providers.groqApiKeys, { state: "missing" });
-    assert.match(JSON.stringify(document), /provider-sentinel-one|provider-sentinel-two/u);
-    const env = new Proxy(deps.environment, { get: (target, key) => { if (key === "GEMINI_API_KEY") throw new Error("provider-sentinel"); return Reflect.get(target, key) as unknown; } });
-    assert.deepEqual(buildSettingsEditor({ ...deps, environment: env }).providers.geminiApiKeys, { state: "unknown" });
-  });
   for (const mutation of ["missing", "duplicate", "classification", "wrong-section", "wrong-type", "wrong-control", "wrong-current-year", "legacy-readback"] as const) {
     it(`rejects ${mutation} payloads`, () => {
       const document = fixtureSettingsDocument();
@@ -98,12 +89,9 @@ describe("complete Settings catalog projection", () => {
     });
   }
   it("shows only the current fiscal year's required date and retains stored history without exposing it", () => {
-    const document = fixtureSettingsDocument({ annualDates: { FY2027: { jobEndDate: "6/30/2027", kronosDefaultStartDate: "7/1/2026", kronosDefaultEndDate: "6/30/2027" } }, providers: { gemini: { models: ["first", "second"] } } }, 2);
-    assert.equal(document.catalog.length, 77);
-    assert.equal(document.sections.flatMap(section => section.leaves).length, 60);
-    const model = document.sections.flatMap(section => section.leaves).find(leaf => leaf.path === "providers.gemini.models");
-    assert.deepEqual(model?.settingsValue, ["first", "second"]);
-    assert.equal(model?.defaultValue, undefined);
+    const document = fixtureSettingsDocument({ annualDates: { FY2027: { jobEndDate: "6/30/2027", kronosDefaultStartDate: "7/1/2026", kronosDefaultEndDate: "6/30/2027" } } }, 2);
+    assert.equal(document.catalog.length, 65);
+    assert.equal(document.sections.flatMap(section => section.leaves).length, 53);
     assert.equal(document.currentFiscalYear, 2027);
     const annual = document.sections.flatMap(section => section.leaves).filter(leaf => leaf.path.startsWith("annualDates."));
     assert.deepEqual(annual.map(leaf => leaf.path), ["annualDates.FY2027.jobEndDate"]);

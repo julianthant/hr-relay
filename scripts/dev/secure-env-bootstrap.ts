@@ -2,7 +2,6 @@ import { pathToFileURL } from "node:url";
 import { runSecureEnvironmentBootstrap } from "../../src/backend/app/bootstrap/secure-env-bootstrap.js";
 
 export {
-  repositoryEnvironmentFilePath,
   runSecureEnvironmentBootstrap,
   secureEnvironmentEntrypoint,
 } from "../../src/backend/app/bootstrap/secure-env-bootstrap.js";

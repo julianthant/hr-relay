@@ -1,9 +1,5 @@
 import { fileURLToPath } from "node:url";
-import {
-  admitLocalEnvironmentFile,
-  assertNoMigratedEnvironmentKeys,
-} from "../../../models/config/secrets.js";
-import { publishProviderBootProvenance } from "../../../models/config/provider-boot-provenance.js";
+import { assertNoMigratedEnvironmentKeys } from "../../../models/config/secrets.js";
 import { acquireEntrypointAdmission } from "../../storage/admission/bootstrap-admission.js";
 import { inspectPendingRelocationStatus, recoverAbandonedAdmissionMutex } from "../../storage/admission/installation.js";
 import { acquireRuntimeRestoreAdmission } from "../../storage/sqlite/runtime-process-locks.js";
@@ -18,7 +14,6 @@ export type SecureEnvironmentEntrypoint = "cli" | "test-target-document-number";
 
 export interface SecureEnvironmentBootstrapDependencies {
   readonly assertEnvironment?: () => void;
-  readonly admitEnvironmentFile?: (path: string) => void;
   readonly runCli?: (admission: RuntimeAdmission) => Promise<void>;
   readonly runTestTargetDocumentNumberSmoke?: () => Promise<number>;
   readonly acquireAdmission?: (mode: "shared" | "exclusive") => RuntimeAdmission;
@@ -27,11 +22,6 @@ export interface SecureEnvironmentBootstrapDependencies {
     admission?: RuntimeAdmission }>) => Promise<Readonly<{ operationId: string; generation: number }>>;
   readonly inspectRelocationStatus?: (workspace: string) => ReturnType<typeof inspectPendingRelocationStatus>;
   readonly runAdmissionRecovery?: (workspace: string, expectedPid: number) => ReturnType<typeof recoverAbandonedAdmissionMutex>;
-}
-
-/** The one production `.env.providers`, anchored to this bootstrap rather than the caller's CWD. */
-export function repositoryEnvironmentFilePath(): string {
-  return fileURLToPath(new URL("../../../../.env.providers", import.meta.url));
 }
 
 export function secureEnvironmentEntrypoint(
@@ -112,17 +102,9 @@ export async function runSecureEnvironmentBootstrap(
     ? "exclusive" : "shared";
   const admission = (dependencies.acquireAdmission ?? ((requested) => acquireEntrypointAdmission(workspace, requested)))(mode);
   try {
-  // `storage` (D322) and `test-data` (D341) are the only entrypoints that never load `.env.providers`:
-  // neither reads a credential, and test-data must not depend on the operator's environment.
   if (!(entrypoint === "cli" && (entrypointArgs[0] === "storage" || entrypointArgs[0] === "test-data"))) {
     (dependencies.assertEnvironment ?? (() => assertNoMigratedEnvironmentKeys()))();
-    const environmentFilePath = repositoryEnvironmentFilePath();
-    if (dependencies.admitEnvironmentFile !== undefined) dependencies.admitEnvironmentFile(environmentFilePath);
-    else {
-      const provenance = admitLocalEnvironmentFile(environmentFilePath);
-      if (provenance === undefined) throw new Error("provider boot provenance missing after admission");
-      publishProviderBootProvenance(provenance);
-    }
+
   }
 
   if (entrypoint === "cli") {

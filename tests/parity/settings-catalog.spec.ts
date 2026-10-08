@@ -23,7 +23,7 @@ const scenes = [
 ] as const;
 const servers = registerReferenceServers(["server"]);
 for (const theme of PARITY_THEMES) for (const scene of scenes) test(`settings catalog ${scene.id} @ ${theme.name}`, async ({ page }) => {
-  let document = fixtureSettingsDocument({ providers: { gemini: { models: ["model-second", "model-first"] } }, annualDates: { FY2027: { jobEndDate: "6/30/2027", kronosDefaultEndDate: "6/30/2027", kronosDefaultStartDate: "7/1/2026" } } }, 2);
+  let document = fixtureSettingsDocument({ annualDates: { FY2027: { jobEndDate: "6/30/2027", kronosDefaultEndDate: "6/30/2027", kronosDefaultStartDate: "7/1/2026" } } }, 2);
   if (document.protectedSettings.state !== "available") throw new Error("fixture-credential-store-unavailable");
   document = EditableSettingsWireSchema.parse({ ...document, protectedSettings: { ...document.protectedSettings,
     entries: { ...document.protectedSettings.entries, ucpathPassword: {

@@ -12,6 +12,7 @@ import { upgradeStorage } from "../../../../../support/helpers/synthetic-storage
 const clock = manualClock(new Date("2026-09-06T12:00:00.000Z"));
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+const HISTORICAL_PROVIDER_MODEL_ENVIRONMENT_KEYS = ["OCR_GEMINI_MODEL", "OCR_GEMINI_MODELS", "OCR_GROQ_MODEL", "OCR_GROQ_MODELS", "OCR_MISTRAL_MODEL", "OCR_MISTRAL_MODELS", "OCR_OPENROUTER_MODEL", "OCR_OPENROUTER_MODELS", "OCR_SAMBANOVA_MODEL", "OCR_SAMBANOVA_MODELS"];
 const bindings = {
   HRAUTO_KUALI_TEST_URL: "https://fixture.invalid/kuali", HRAUTO_NEW_KRONOS_TEST_URL: "https://fixture.invalid/new-kronos",
   HRAUTO_CRM_TEST_URL: "https://fixture.invalid/crm", HRAUTO_ONBASE_TEST_URL: "https://fixture.invalid/onbase",
@@ -42,7 +43,7 @@ function fixture(body: string) {
 }
 describe("D332.9 expired environment import", () => {
   it("covers every former input while fresh authority and credentials remain independent", async () => {
-    assert.deepEqual([...Object.keys(bindings), ...Object.keys(RETIRED_TEST_TARGET_ENV)].sort(), [...MIGRATED_SETTINGS_ENVIRONMENT_KEYS]);
+    assert.deepEqual([...Object.keys(bindings), ...Object.keys(RETIRED_TEST_TARGET_ENV)].sort(), [...MIGRATED_SETTINGS_ENVIRONMENT_KEYS, ...HISTORICAL_PROVIDER_MODEL_ENVIRONMENT_KEYS].sort());
     const retired = { I9_USER_ID: "synthetic-retired-id", I9_PASSWORD: "synthetic-retired-password", TELEGRAM_BOT_TOKEN: "synthetic-retired-token", TELEGRAM_CHAT_ID: "synthetic-retired-chat" };
     const body = Object.entries({ ...bindings, ...retired, GEMINI_API_KEY: "synthetic-provider-never-imported" }).map(([key, value]) => `${key}=${value}`).join("\n") + "\n";
     const f = fixture(body); credentialTrap(f.root); const before = storageTree(f.root);

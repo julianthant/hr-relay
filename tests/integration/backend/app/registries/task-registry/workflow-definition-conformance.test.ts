@@ -5,10 +5,7 @@ import { composeWorkflowModule, workflowDefinitionOf, workflowEntryKinds } from 
 import { taskStoreRegistry } from "../../../../../../src/backend/app/registries/task-registry.js";
 import { compileFixtureWorkflow, everyEntryKindWorkflow, fixtureBuildManifest } from "../../../../../support/fixtures/workflow-definition-fixtures.js";
 import { workflowProjections } from "../../../../../../src/workflow-kit/workflow.js";
-import {
-  WORKFLOW_MODULES,
-  WORKFLOW_DEFINITIONS,
-} from "../../../../../../src/backend/app/registries/workflow-registry.js";
+import { WORKFLOW_MODULES, WORKFLOW_DEFINITIONS } from "../../../../../../src/backend/app/registries/workflow-registry.js";
 import { workflowDefinitionRegistry } from "../../../../../../src/workflow-kit/validation/workflow-module-audit.js";
 import { manualClock } from "../../../../../../src/rules/time/clock.js";
 import { FingerprintSchema } from "../../../../../../src/rules/identity/ids.js";
@@ -20,13 +17,7 @@ import { projectStartSteps } from "../../../../../../src/backend/runs/start/step
 import { WorkflowBootstrapPrimitiveSchema } from "../../../../../../src/models/dashboard/bootstrap.js";
 import { healthyDashboardPreflightReport } from "../../../../../support/fixtures/preflight-seams.js";
 import { explorerQueryDeps } from "../../../../../support/fixtures/explorer-seams.js";
-import {
-  AT,
-  makeWorld,
-  queuedEventOf,
-  taskEventsOf,
-  uuidOf,
-} from "../../../../../support/helpers/backend/dashboard-harness.js";
+import { AT, makeWorld, queuedEventOf, taskEventsOf, uuidOf } from "../../../../../support/helpers/backend/dashboard-harness.js";
 import { personLookupWorkflow } from "../../../../../../src/workflows/person-lookup/workflow.js";
 import { separationsDescriptor } from "../../../../../support/helpers/registered-workflows.js";
 
@@ -93,11 +84,6 @@ describe("workflow definition registry conformance", () => {
         authorityMeta: () => ({ schemaVersion: 13, authorityGeneration: 4 }),
         backupSummary: () => "current",
         preflightReport: () => healthyDashboardPreflightReport(manualClock(AT)),
-        advisoryAvailability: () => ({
-          state: "unavailable",
-          code: "not-configured",
-          reason: "no ai.advisory provider is composed in this test",
-        }),
       });
       const bootstrapWorkflows = WorkflowBootstrapPrimitiveSchema.array().parse(bootstrap.workflows);
       const starts = new Map(bootstrapWorkflows.map((workflow) => [String(workflow.id), workflow.start]));
@@ -217,11 +203,6 @@ describe("registry-wide conformance covers every explicit entry kind (D315)", ()
         authorityMeta: () => ({ schemaVersion: 13, authorityGeneration: 4 }),
         backupSummary: () => "current",
         preflightReport: () => healthyDashboardPreflightReport(manualClock(AT)),
-        advisoryAvailability: () => ({
-          state: "unavailable",
-          code: "not-configured",
-          reason: "no ai.advisory provider is composed in this test",
-        }),
       });
       const start = WorkflowBootstrapPrimitiveSchema.array().parse(bootstrap.workflows)
         .find((workflow) => String(workflow.id) === id)?.start;

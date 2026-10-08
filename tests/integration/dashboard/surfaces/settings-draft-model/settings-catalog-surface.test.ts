@@ -5,7 +5,7 @@ import { SettingsCommandRequestSchema } from "../../../../../src/rules/commands/
 import { mergeSettingsPatch, SettingsPatchSchema } from "../../../../../src/models/config/settings.js";
 import { fixtureSettingsDocument } from "../../../../support/fixtures/dashboard/fixture-settings.js";
 import { EditableSettingsWireSchema } from "../../../../../src/models/dashboard/settings-editor.js";
-import { draftError, patchFromSettingsDraft, settingInput, settingsLeaves } from "../../../../../src/dashboard/surfaces/settings/editor/settings-draft-model.js";
+import { draftError, patchFromSettingsDraft, settingsLeaves } from "../../../../../src/dashboard/surfaces/settings/editor/settings-draft-model.js";
 import { differingSettingsValues, groupDeploymentFacts, groupSettingsLeaves, settingsFactLabel } from "../../../../../src/dashboard/surfaces/settings/editor/ui-settings-records-labels.js";
 import { mountSettingsHarness, settingsAction, syntheticSettingsAuthority } from "../../../../support/helpers/dashboard/settings-harness.js";
 
@@ -44,7 +44,7 @@ describe("typed Settings catalog controls", () => {
     const pathLeaves = document.sections.find(section => section.id === "paths")?.leaves;
     const dateLeaves = document.sections.find(section => section.id === "annual-dates")?.leaves;
     assert.ok(providerLeaves); assert.ok(pathLeaves); assert.ok(dateLeaves);
-    assert.deepEqual(groupSettingsLeaves("providers", providerLeaves).map(group => group.label), ["OCR extraction", "Census geocoding", "Nominatim geocoding", "AI advisory", "Gemini", "Groq", "Mistral", "OpenRouter", "SambaNova"]);
+    assert.deepEqual(groupSettingsLeaves("providers", providerLeaves).map(group => group.label), ["Census geocoding", "Nominatim geocoding"]);
     assert.ok(groupSettingsLeaves("paths", pathLeaves).some(group => group.label === "Reports and documents"));
     assert.deepEqual(groupSettingsLeaves("annual-dates", dateLeaves).map(group => group.label), ["Job end date"]);
     assert.deepEqual(groupDeploymentFacts(document.deployment).map(group => group.label), ["Operator", "Local paths"]);
@@ -213,21 +213,20 @@ describe("typed Settings catalog controls", () => {
     const mounted = await mountSettingsHarness(authority, "derived-host"); cleanups.push(mounted.close);
     assert.match(mounted.host.textContent ?? "", /did not include|unavailable/u);
   });
-  it("preserves text, zero/nonzero integers, booleans, routes, complete budgets and ordered chains", () => {
+  it("preserves text, zero/nonzero integers, booleans, routes, complete budgets", () => {
     const document = fixtureSettingsDocument(); const leaves = settingsLeaves(document);
     for (const [path, raw, value] of [
       ["actor.label", "New label", "New label"], ["ocr.pageConcurrency", "0", 0], ["timeouts.taskMs", "42", 42_000], ["browser.headless", "false", false],
       ["paths.downloadsDir", "/tmp/new-downloads", "/tmp/new-downloads"], ["urls.kuali.prod", { entry: "https://test.example/entry" }, { entry: "https://test.example/entry" }],
-      ["providers.gemini.models", "second\nfirst", ["second", "first"]],
-      ["providers.ocrExtract", { timeoutMs: "100", concurrency: "2", requestsPerMinute: "3", dailyRequestLimit: "4", costLimitUsdMicros: "0" }, { timeoutMs: 100, concurrency: 2, requestsPerMinute: 3, dailyRequestLimit: 4, costLimitUsdMicros: 0 }],
+      ["providers.geocodeCensus", { timeoutMs: "100", concurrency: "2", requestsPerMinute: "3", dailyRequestLimit: "4", costLimitUsdMicros: "0" }, { timeoutMs: 100, concurrency: 2, requestsPerMinute: 3, dailyRequestLimit: 4, costLimitUsdMicros: 0 }],
     ] as const) {
       assert.deepEqual(patchFromSettingsDraft(leaves, { [path]: { kind: "set", raw } }), { [path]: { set: value } });
     }
-    for (const [path, raw] of [["ocr.pageConcurrency", ""], ["ocr.pageConcurrency", "1.5"], ["timeouts.taskMs", "0"], ["paths.downloadsDir", "relative"], ["providers.gemini.models", "one\n\ntwo"], ["urls.kuali.prod", { entry: "not a URL" }]] as const) {
+    for (const [path, raw] of [["ocr.pageConcurrency", ""], ["ocr.pageConcurrency", "1.5"], ["timeouts.taskMs", "0"], ["paths.downloadsDir", "relative"], ["urls.kuali.prod", { entry: "not a URL" }]] as const) {
       const leaf = leaves.find(candidate => candidate.path === path); assert.ok(leaf);
       assert.ok(draftError(leaf, { kind: "set", raw }));
     }
-    assert.equal(SettingsPatchSchema.safeParse({ "providers.ocrExtract": { set: { concurrency: 2 } } }).success, false);
+    assert.equal(SettingsPatchSchema.safeParse({ "providers.geocodeCensus": { set: { concurrency: 2 } } }).success, false);
   });
   it("binds one required job-end-date leaf to the current fiscal year and preserves older values", () => {
     const document = fixtureSettingsDocument();
@@ -315,21 +314,6 @@ describe("typed Settings catalog controls", () => {
       assert.equal(h.controller().save.state, failure === "intervening-writer" ? "unconfirmed" : "applied");
     });
   }
-  it("renders the source's field type and safe defaults, without environment provenance", async () => {
-    const h = await setup("providers");
-    assert.ok(h.host.querySelector('input[type="number"]'));
-    assert.equal(h.host.querySelector('input[type="number"]')?.getAttribute("aria-label"), "OCR extraction: Request timeout");
-    assert.ok(h.host.querySelector('ol[aria-label="Gemini model priority"]'));
-    assert.equal(h.host.querySelector("textarea"), null);
-    assert.doesNotMatch(h.host.textContent ?? "", /Environment:/u);
-    const leaf = settingsLeaves(h.authority.read()).find(candidate => candidate.path === "providers.gemini.models"); assert.ok(leaf); assert.equal(settingInput(leaf), "");
-  });
-  it("keeps an unavailable provider file explicit on Credentials", async () => {
-    const h = await setup("credentials");
-    const text = h.host.textContent ?? "";
-    assert.match(text, /Provider keys unavailable/u);
-    assert.doesNotMatch(text, /0 saved keys/u);
-  });
 });
 
 it("publishes failed reload, keeps its draft, and blocks new submissions", async () => {

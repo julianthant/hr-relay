@@ -3,20 +3,8 @@ import type { EditableSettingsLeafWire } from "../../../../models/dashboard/sett
 import type { EditorValue } from "../../../../models/dashboard/settings-editor.js";
 
 const PROVIDER_NAMES: Readonly<Record<string, string>> = Object.freeze({
-  ocrExtract: "OCR extraction",
   geocodeCensus: "Census geocoding",
   geocodeNominatim: "Nominatim geocoding",
-  aiAdvisory: "AI advisory",
-  gemini: "Gemini",
-  geminiApiKeys: "Gemini",
-  groq: "Groq",
-  groqApiKeys: "Groq",
-  mistral: "Mistral",
-  mistralApiKeys: "Mistral",
-  openRouter: "OpenRouter",
-  openRouterApiKeys: "OpenRouter",
-  sambanova: "SambaNova",
-  sambaNovaApiKeys: "SambaNova",
 });
 
 const PROVIDER_FIELDS: Readonly<Record<string, { readonly label: string; readonly unit?: string }>> = Object.freeze({

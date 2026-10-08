@@ -1,7 +1,5 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { SettingsProviderKeysWireSchema } from "../../../src/models/dashboard/settings-editor.js";
-import { PROVIDER_KEYS_SCHEMA_HASH } from "../../../src/models/config/provider-keys.js";
 import { fixtureSettingsDocument } from "../../parity/helpers/fixture-settings.js";
 import { buildSettingsNav } from "../../../src/dashboard/surfaces/settings/settings-model.js";
 import { searchSettings, settingsSearchIndex } from "../../../src/dashboard/surfaces/settings/navigation/settings-search-model.js";
@@ -40,10 +38,6 @@ describe("Settings field search", () => {
     const value = "DO_NOT_INDEX_THIS_PRIVATE_VALUE";
     const copy = structuredClone(document);
     copy.sections[0].leaves[0].effectiveValue = value;
-    copy.providerKeys = SettingsProviderKeysWireSchema.parse({ state: "available", providerSchemaHash: PROVIDER_KEYS_SCHEMA_HASH, revision: 1,
-      sourceVersionToken: "a".repeat(64), slots: { GEMINI_API_KEY: value }, activeSlots: { GEMINI_API_KEY: value },
-      parentSlotNames: [], fileSlotNamesAtBoot: ["GEMINI_API_KEY"], bootFileRevision: 1,
-      bootFileSourceVersionToken: "a".repeat(64), overriddenSlots: [], restartRequired: false });
     const safe = settingsSearchIndex(groups, copy);
     assert.ok(!safe.some(result => result.target?.startsWith("provider-keys.") || result.target?.startsWith("providers.")));
     assert.deepEqual(searchSettings(safe, "Census daily request"), []);

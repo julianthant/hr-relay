@@ -9,7 +9,6 @@ import { routePresentation } from "../routes/settings-routes-model.js";
 import { useSettingsClient } from "./settings-client.js";
 import { useSettingsPreflight } from "../preflight/settings-preflight-model.js";
 import { useProtectedSettings } from "../providers/settings-protected-model.js";
-import { useProviderKeys } from "../providers/settings-provider-model.js";
 import { useStorageRelocation } from "../general/settings-relocation-model.js";
 import { beforeEffectRefusal, checkedSettingsResult, ordinaryReadbackState, settingsSaveNotice, settingsSaveProblem, settingsRefusal, type SettingsSaveListener, type SettingsSaveNotice, type SettingsSaveProblemListener, uncertainSettingsCode, type OrdinarySettingsAttempt, type SettingsSaveState } from "./settings-attempt-model.js";
 import { blurredSettingsPath, type SettingsBlurEvent } from "./settings-autosave-model.js";
@@ -48,7 +47,6 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
     return () => { active = false; };
   }, [refresh]);
   const protectedEditor = useProtectedSettings({ actorId: input.actorId, readReady: readProblem === undefined, document: editor.state === "loaded" ? editor.document : undefined, refresh, onSaved: input.onSaved, onSaveProblem: input.onSaveProblem });
-  const providerEditor = useProviderKeys({ actorId: input.actorId, readReady: readProblem === undefined, document: editor.state === "loaded" ? editor.document : undefined, refresh });
   const relocationEditor = useStorageRelocation({ actorId: input.actorId, onSaved: input.onSaved });
   const leaves = editor.state === "loaded" ? settingsLeaves(editor.document) : [];
   const errors = Object.fromEntries(Object.entries(draft).map(([path, operation]) => {
@@ -154,7 +152,7 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
     } else if (save.state === "idle" && Object.keys(draft).some(key => path === key || path.startsWith(`${key}.`))) submit();
   };
   const reload = (): void => { void refresh().catch(() => undefined); };
-  return Object.freeze({ editor, draft, errors, save, preflight, protectedEditor, providerEditor, relocationEditor, leaves, readProblem,
+  return Object.freeze({ editor, draft, errors, save, preflight, protectedEditor, relocationEditor, leaves, readProblem,
     dirtyCount: Object.keys(draft).length, locked: save.state === "saving" || pending.current !== undefined,
     update, reset, clear, discard, submit, retry, reload, rerunPreflight, onFieldBlur });
 }

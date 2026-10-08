@@ -1,3 +1,4 @@
+import { RetiredAiProviderConfigSchema } from "../../../models/config/retired-ai-config.js";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { derivePersistedSettingsFingerprint, SETTINGS_SCHEMA_HASH } from "../../../models/config/settings.js";
@@ -24,6 +25,7 @@ const HistoricalPathsSchema = z.strictObject({
 
 const D350HistoricalSettingsSchema = z.strictObject({
   ...EditableSettingsOverrideSchema.shape,
+  providers: RetiredAiProviderConfigSchema.partial().optional(),
   paths: HistoricalPathsSchema,
   annualDates: z.record(FiscalYearKeySchema, HistoricalAnnualDateEntrySchema).optional(),
 });

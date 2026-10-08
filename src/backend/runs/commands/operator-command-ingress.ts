@@ -2,31 +2,11 @@ import { z } from "zod";
 import { HistoricalNotificationSnoozeCommandSchema } from "../../../rules/commands/commands-history.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { deriveBulkChildCommandId } from "../../../rules/commands/command-groups.js";
-import {
-  CommandIdentityConflictError,
-  BulkRunCommandRequestSchema,
-  CommandResultSchema,
-  CommandRequestSchema,
-  ProtectedSettingsCommandRequestSchema,
-  ProviderKeysRetryIntentSchema,
-  SettingsCommandRequestSchema,
-  deriveBulkRunCommandFingerprint,
-  type BulkRunCommandAcceptanceRecord,
-  type BulkRunCommandRequest,
-  type BulkRunCommandResponse,
-  type CommandResult,
-  type CommandRequest,
-} from "../../../rules/commands/commands.js";
-import {
-  SETTINGS_SCHEMA_HASH,
-  deriveRawSettingsPatchFingerprint,
-} from "../../../models/config/settings.js";
+import { CommandIdentityConflictError, BulkRunCommandRequestSchema, CommandResultSchema, CommandRequestSchema, ProtectedSettingsCommandRequestSchema, SettingsCommandRequestSchema, deriveBulkRunCommandFingerprint, type BulkRunCommandAcceptanceRecord, type BulkRunCommandRequest, type BulkRunCommandResponse, type CommandResult, type CommandRequest } from "../../../rules/commands/commands.js";
+import { SETTINGS_SCHEMA_HASH, deriveRawSettingsPatchFingerprint } from "../../../models/config/settings.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../models/config/protected-settings.js";
-import { PROVIDER_KEYS_SCHEMA_HASH } from "../../../models/config/provider-keys.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../rules/identity/ids.js";
 import { RequestIdentityRefusedError } from "./refusals.js";
-import { providerCommandFromStore } from "./provider-key-projection.js";
-import type { ProviderKeyPendingIdentity, ProviderKeyWriteRequest } from "../../storage/configuration/provider-key-store.js";
 
 function refuseForeignActorClaim(input: unknown): void {
   if (typeof input !== "object" || input === null || Array.isArray(input)) return;
@@ -102,7 +82,7 @@ function settingsLeafRefusal(
 function settingsRequestRefusal(
   commandId: string,
   code: "schema-mismatch" | "patch-fingerprint-mismatch",
-  document: "settings.json" | "protected.json" | ".env.providers",
+  document: "settings.json" | "protected.json",
 ): CommandIngressDecision {
   const message = code === "schema-mismatch"
     ? `${document} schema-mismatch`
@@ -123,8 +103,6 @@ function parseOperatorCommand(input: unknown, clock: Clock): CommandIngressDecis
       if (request.type === "apply-settings") {
         if (request.payload.settingsSchemaHash !== SETTINGS_SCHEMA_HASH) return settingsRequestRefusal(request.commandId, "schema-mismatch", "settings.json");
         if (request.payload.patchFingerprint !== deriveRawSettingsPatchFingerprint(request.payload.patch)) return settingsRequestRefusal(request.commandId, "patch-fingerprint-mismatch", "settings.json");
-      } else if (request.type === "apply-provider-keys") {
-        if (request.payload.providerSchemaHash !== PROVIDER_KEYS_SCHEMA_HASH) return settingsRequestRefusal(request.commandId, "schema-mismatch", ".env.providers");
       } else if (request.payload.protectedSchemaHash !== PROTECTED_SETTINGS_SCHEMA_HASH) {
         return settingsRequestRefusal(request.commandId, "schema-mismatch", "protected.json");
       }
@@ -191,7 +169,6 @@ export function stampOperatorCommand(
   journal: CommandJournalRead,
   protectedCommandAcceptedAt: (commandId: string) => string | undefined,
   runtimeVersionAcceptedAt?: (commandId: string) => string | undefined,
-  providerCommandAcceptedAt?: (commandId: string, writeId: string) => string | undefined,
 ): CommandRequest {
   const intent = CommandRequestSchema.parse(withOperatorProvenance(input, clock));
   const accepted = journal.get(intent.commandId);
@@ -199,8 +176,6 @@ export function stampOperatorCommand(
     ...intent,
     requestedAt: accepted?.requestedAt
       ?? (intent.family === "settings" && intent.type === "apply-protected-settings" ? protectedCommandAcceptedAt(intent.commandId) : undefined)
-      ?? (intent.family === "settings" && intent.type === "apply-provider-keys"
-        ? providerCommandAcceptedAt?.(intent.commandId, intent.payload.writeId) : undefined)
       ?? (intent.type === "apply-runtime-version" ? runtimeVersionAcceptedAt?.(intent.commandId) : undefined)
       ?? clock.now().toISOString(),
     requestedBy: LOCAL_OPERATOR_ACTOR_ID,
@@ -281,8 +256,6 @@ export function createOperatorCommandIngress(input: Readonly<{
   journal: CommandJournalRead;
   protectedCommandAcceptedAt: (commandId: string) => string | undefined;
   runtimeVersionAcceptedAt?: (commandId: string) => string | undefined;
-  readPendingProviderRequest?: (identity: ProviderKeyPendingIdentity) => ProviderKeyWriteRequest;
-  providerCommandAcceptedAt?: (commandId: string, writeId: string) => string | undefined;
   bulkAcceptances: BulkCommandAcceptanceAuthority;
 }>): OperatorCommandIngress {
   const tails = new Map<string, Promise<void>>();
@@ -322,30 +295,12 @@ export function createOperatorCommandIngress(input: Readonly<{
         }
         return serialize([`command:${historicalSnooze.data.commandId}`], () => execute(historicalSnooze.data));
       }
-      if (typeof command === "object" && command !== null && !Array.isArray(command)
-        && Object.hasOwn(command, "retry")) {
-        refuseForeignActorClaim(command);
-        const intent = ProviderKeysRetryIntentSchema.parse(command);
-        if (intent.retry.providerSchemaHash !== PROVIDER_KEYS_SCHEMA_HASH) return Promise.resolve(CommandResultSchema.parse({
-          state: "rejected", commandId: intent.retry.commandId, code: "schema-mismatch",
-          message: ".env.providers schema-mismatch",
-        }));
-        return serialize([`command:${intent.retry.commandId}`], async () => {
-          if (input.readPendingProviderRequest === undefined) throw new Error("provider-recovery-unavailable");
-          const original = input.readPendingProviderRequest({ commandId: intent.retry.commandId,
-            writeId: intent.retry.writeId, receiptId: intent.retry.pendingReceiptId });
-          if (original.requestedBy !== LOCAL_OPERATOR_ACTOR_ID || original.schemaHash !== intent.retry.providerSchemaHash) {
-            throw new RequestIdentityRefusedError("provider recovery actor or schema differs from admitted command");
-          }
-          return execute(CommandRequestSchema.parse(providerCommandFromStore(original)));
-        });
-      }
       const ingress = parseOperatorCommand(command, input.clock);
       if (ingress.state === "refused") return Promise.resolve(ingress.response);
       return serialize([`command:${ingress.request.commandId}`], async () => {
         try {
           return await execute(stampOperatorCommand(ingress.request, input.clock, input.journal, input.protectedCommandAcceptedAt,
-            input.runtimeVersionAcceptedAt, input.providerCommandAcceptedAt));
+            input.runtimeVersionAcceptedAt));
         } catch (error) {
           if (!(error instanceof CommandIdentityConflictError)) throw error;
           return CommandResultSchema.parse({ state: "rejected", commandId: ingress.request.commandId, code: "command-divergent", message: error.message });

@@ -1,14 +1,8 @@
+import { HistoricalProviderKeysCommandSchema, HistoricalProviderKeysAuditSchema } from "../../../rules/commands/commands-history.js";
 import { requireOperationSourceDeclaration } from "../../../models/dashboard/operation-structure.js";
 import { requireWorkflowOperationDisplaySnapshot } from "../../../models/workflow/operation-display-snapshot.js";
 import { selectTransactions, selectStoppedConversionTransactions, selectedHistoricalTransactionRows } from "./transaction-selection.js";
-import {
-  RuntimeVersionAdoptionSchema,
-  readRuntimeVersionAuthority as readStoredRuntimeVersionAuthority,
-  registerRuntimeVersionWorkflows as registerStoredRuntimeVersionWorkflows,
-  claimRuntimeVersionTransition as claimStoredRuntimeVersionTransition,
-  publishRuntimeVersionTransition as publishStoredRuntimeVersionTransition,
-  type RuntimeVersionAuthority,
-} from "./runtime-versions.js";
+import { RuntimeVersionAdoptionSchema, readRuntimeVersionAuthority as readStoredRuntimeVersionAuthority, registerRuntimeVersionWorkflows as registerStoredRuntimeVersionWorkflows, claimRuntimeVersionTransition as claimStoredRuntimeVersionTransition, publishRuntimeVersionTransition as publishStoredRuntimeVersionTransition, type RuntimeVersionAuthority } from "./runtime-versions.js";
 import { planRuntimeVersionTransition, RuntimeVersionScopeSchema, type RuntimeVersionState } from "../../../models/archive/runtime-version.js";
 import { reviewRuntimeVersionTransition } from "../../../models/archive/runtime-version-review.js";
 import { RuntimeVersionChangeSchema, type RuntimeVersionChange } from "../../../models/archive/runtime-version-change.js";
@@ -77,279 +71,60 @@ import { existsSync, statSync, lstatSync, openSync, closeSync, readFileSync, fst
 import { dirname, resolve, join } from "node:path";
 import { backup as sqliteBackup, DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import {
-  assertWorkflowRunResultAuthorization,
-  descriptorRuntimeNodes,
-  type AnyWorkflowDescriptor,
-} from "../../../workflow-kit/workflow.js";
+import { assertWorkflowRunResultAuthorization, descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import type { ProviderAdmissionRepository } from "../../../workflow-kit/providers.js";
-import {
-  AUTHORITY_TABLE_REGISTRY,
-  AuthorityUpgradeRecordSchema,
-  ProtectedSettingsCurrentRecordSchema,
-  AuthorityTableNameSchema,
-  ProjectionTableNameSchema,
-  type AuthorityTableName,
-  type TableName,
-  type RunRecordRefusal,
-} from "../../../models/config/authority.js";
+import { AUTHORITY_TABLE_REGISTRY, AuthorityUpgradeRecordSchema, ProtectedSettingsCurrentRecordSchema, AuthorityTableNameSchema, ProjectionTableNameSchema, type AuthorityTableName, type TableName, type RunRecordRefusal } from "../../../models/config/authority.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { systemClock, localDatePart } from "../../../rules/time/clock.js";
-import {
-  AuthorityCommandAuditRecordSchema,
-  AuthorityCommandRecordSchema,
-  StoredAuthorityCommandRecordSchema,
-  BulkParentCommandRecordSchema,
-  BulkRunCommandAcceptanceRecordSchema,
-  CommandAuditRecordSchema,
-  CommandRequestSchema,
-  StorageRelocationCommandRequestSchema,
-  RunLifecycleCommandAuditRecordSchema,
-  RunLifecycleCommandRecordSchema,
-} from "../../../rules/commands/commands.js";
-import {
-  ConfigSnapshotRecordSchema,
-  ConfigSnapshotWriteSchema,
-} from "../../../models/config/snapshot.js";
-import {
-  type ActiveRuntimeConfigRecord,
-  type RuntimeConfigClaimToken,
-} from "../../../models/config/runtime-generation.js";
-import {
-  type SettingsCurrentRecord,
-} from "../../../models/config/settings-current.js";
+import { AuthorityCommandAuditRecordSchema, AuthorityCommandRecordSchema, StoredAuthorityCommandRecordSchema, BulkParentCommandRecordSchema, BulkRunCommandAcceptanceRecordSchema, CommandAuditRecordSchema, CommandRequestSchema, StorageRelocationCommandRequestSchema, RunLifecycleCommandAuditRecordSchema, RunLifecycleCommandRecordSchema } from "../../../rules/commands/commands.js";
+import { ConfigSnapshotRecordSchema, ConfigSnapshotWriteSchema } from "../../../models/config/snapshot.js";
+import { type ActiveRuntimeConfigRecord, type RuntimeConfigClaimToken } from "../../../models/config/runtime-generation.js";
+import { type SettingsCurrentRecord } from "../../../models/config/settings-current.js";
 import { DelegationManifestSchema, DependencyRecordSchema } from "../../../rules/workflow/dependencies.js";
 import { GateResultRecordSchema } from "../../../models/workflow/gates.js";
-import {
-  ActorIdSchema,
-  ArtifactIdSchema,
-  BrowserSystemIdSchema,
-  CommandIdSchema,
-  DiagnosticBundleIdSchema,
-  FailureFingerprintSchema,
-  FingerprintSchema,
-  IsoInstantSchema,
-  ItemIdSchema,
-  LOCAL_OPERATOR_ACTOR_ID,
-  RunIdSchema,
-  RunSessionIdSchema,
-  TraceIdSchema,
-  WorkerIdSchema,
-  WorkflowIdSchema,
-  WriteIntentIdSchema,
-  type RunId,
-} from "../../../rules/identity/ids.js";
+import { ActorIdSchema, ArtifactIdSchema, BrowserSystemIdSchema, CommandIdSchema, DiagnosticBundleIdSchema, FailureFingerprintSchema, FingerprintSchema, IsoInstantSchema, ItemIdSchema, LOCAL_OPERATOR_ACTOR_ID, RunIdSchema, RunSessionIdSchema, TraceIdSchema, WorkerIdSchema, WorkflowIdSchema, WriteIntentIdSchema, type RunId } from "../../../rules/identity/ids.js";
 
 
 
 
-import {
-  nextAttemptEnvelope,
-} from "../../../models/run/envelope.js";
-import {
-  RunRecordSchema,
-  runClaim,
-  runTransitionViolation,
-  type RunRecord,
-} from "../../../models/run/record.js";
-import {
-  DeletedRunRecordSchema,
-  RunDeleteInputSchema,
-  type DeletedRunRecord,
-  type DeletedRunTableSchema,
-} from "../../../models/run/deleted-run.js";
-import {
-  RunResultRecordSchema,
-  deriveCheckpointOutputDigest,
-  deriveCheckpointProvenanceDigest,
-  type RunResultRecord,
-} from "../../../models/run/result.js";
-import {
-  TerminalAuthorizationRecordSchema,
-  type TerminalAuthorizationRecord,
-} from "../../../models/run/terminal-authorization.js";
-import {
-  StartPlanRecordSchema,
-  isStartPlanExpired,
-  type StartPlanRecord,
-} from "../../../models/run/start-plan.js";
+import { nextAttemptEnvelope } from "../../../models/run/envelope.js";
+import { RunRecordSchema, runClaim, runTransitionViolation, type RunRecord } from "../../../models/run/record.js";
+import { DeletedRunRecordSchema, RunDeleteInputSchema, type DeletedRunRecord, type DeletedRunTableSchema } from "../../../models/run/deleted-run.js";
+import { RunResultRecordSchema, deriveCheckpointOutputDigest, deriveCheckpointProvenanceDigest, type RunResultRecord } from "../../../models/run/result.js";
+import { TerminalAuthorizationRecordSchema, type TerminalAuthorizationRecord } from "../../../models/run/terminal-authorization.js";
+import { StartPlanRecordSchema, isStartPlanExpired, type StartPlanRecord } from "../../../models/run/start-plan.js";
 import { IntakePlanManifestSchema } from "../../../models/intake/manifest.js";
 import { IntakeSessionSchema } from "../../../models/intake/session.js";
 import { AdmittedExtractionSchema } from "../../../models/ocr/extraction.js";
 import { FailureRecordSchema, type FailureRecord } from "../../../models/trust/failure.js";
-import {
-  LIVE_WORKER_STATES,
-  WorkerLeaseRecordSchema,
-  isLiveWorker,
-  type WorkerLeaseRecord,
-} from "../../../models/run/worker.js";
-import {
-  DuoCeremonyLeaseAcquireRequestSchema,
-  DuoCeremonyLeaseRecordSchema,
-  DuoCeremonyLeaseReleaseOutcomeSchema,
-  DuoCeremonyLeaseTakeoverSchema,
-  isDuoCeremonyLeaseLive,
-  type DuoCeremonyLeaseAcquireRequest,
-  type DuoCeremonyLeaseRecord,
-  type DuoCeremonyLeaseReleaseOutcome,
-} from "../../../rules/sessions/duo-ceremony-lease.js";
+import { LIVE_WORKER_STATES, WorkerLeaseRecordSchema, isLiveWorker, type WorkerLeaseRecord } from "../../../models/run/worker.js";
+import { DuoCeremonyLeaseAcquireRequestSchema, DuoCeremonyLeaseRecordSchema, DuoCeremonyLeaseReleaseOutcomeSchema, DuoCeremonyLeaseTakeoverSchema, isDuoCeremonyLeaseLive, type DuoCeremonyLeaseAcquireRequest, type DuoCeremonyLeaseRecord, type DuoCeremonyLeaseReleaseOutcome } from "../../../rules/sessions/duo-ceremony-lease.js";
 import { HistoricalRunSessionRecordSchema, RunSessionRecordSchema, type RunSessionRecord } from "../../../models/run/session.js";
 import { WorkerPoolRecordSchema, workerPoolVersion, type WorkerPoolRecord } from "../../../models/run/worker-pool.js";
-import {
-  isDuoCeremonyLeaseToken,
-  mintDuoCeremonyLeaseToken,
-  retireDuoCeremonyLeaseToken,
-  type DuoCeremonyLeaseToken,
-} from "../../../workflow-kit/duo-ceremony-lease.js";
-import {
-  RunClaimOutcomeSchema,
-  RunClaimRequestSchema,
-  RunClaimSweepOutcomeSchema,
-  RunClaimSweepRequestSchema,
-  RunClaimTokenSchema,
-  RunHeartbeatOutcomeSchema,
-  RunHeartbeatRequestSchema,
-  RunItemQuerySchema,
-  RunPresentationRequestSchema,
-  RunInjectPatchesRequestSchema,
-  RunPriorityBumpRequestSchema,
-  RunRequeueRequestSchema,
-  RunResumeRequestSchema,
-  RunTransitionRequestSchema,
-  RunUpdateOutcomeSchema,
-  StartPlanConsumeOutcomeSchema,
-  StartPlanConsumeRequestSchema,
-  WorkerControlRequestSchema,
-  WorkerLifecycleRequestSchema,
-  WorkerPoolPlanOutcomeSchema,
-  WorkerPoolPlanRequestSchema,
-  WorkerStartOutcomeSchema,
-  WorkerStartRequestSchema,
-  WorkerSweepRequestSchema,
-  WorkerUpdateOutcomeSchema,
-  type RunClaimOutcome,
-  type RunHeartbeatOutcome,
-  type RunUpdateOutcome,
-  type StartPlanConsumeOutcome,
-  type WorkerPoolPlanOutcome,
-  type WorkerStartOutcome,
-  type WorkerUpdateOutcome,
-} from "./run-store-contracts.js";
-import {
-  FailureTerminalizationReportSchema,
-  FailureTerminalizationRequestSchema,
-  SuccessTerminalizationReportSchema,
-  SuccessTerminalizationRequestSchema,
-  SuccessTerminalizationReplayInputSchema,
-  type FailureTerminalizationReport,
-  type FailureTerminalizationStorageStep,
-  type SuccessTerminalizationReport,
-  type SuccessTerminalizationStorageStep,
-} from "./run-terminal-contracts.js";
-import {
-  RunCheckpointRecordSchema,
-  checkpointLookupKey,
-  checkpointRecordKey,
-  type RunCheckpointRecord,
-} from "../../../models/workflow/checkpoint.js";
+import { isDuoCeremonyLeaseToken, mintDuoCeremonyLeaseToken, retireDuoCeremonyLeaseToken, type DuoCeremonyLeaseToken } from "../../../workflow-kit/duo-ceremony-lease.js";
+import { RunClaimOutcomeSchema, RunClaimRequestSchema, RunClaimSweepOutcomeSchema, RunClaimSweepRequestSchema, RunClaimTokenSchema, RunHeartbeatOutcomeSchema, RunHeartbeatRequestSchema, RunItemQuerySchema, RunPresentationRequestSchema, RunInjectPatchesRequestSchema, RunPriorityBumpRequestSchema, RunRequeueRequestSchema, RunResumeRequestSchema, RunTransitionRequestSchema, RunUpdateOutcomeSchema, StartPlanConsumeOutcomeSchema, StartPlanConsumeRequestSchema, WorkerControlRequestSchema, WorkerLifecycleRequestSchema, WorkerPoolPlanOutcomeSchema, WorkerPoolPlanRequestSchema, WorkerStartOutcomeSchema, WorkerStartRequestSchema, WorkerSweepRequestSchema, WorkerUpdateOutcomeSchema, type RunClaimOutcome, type RunHeartbeatOutcome, type RunUpdateOutcome, type StartPlanConsumeOutcome, type WorkerPoolPlanOutcome, type WorkerStartOutcome, type WorkerUpdateOutcome } from "./run-store-contracts.js";
+import { FailureTerminalizationReportSchema, FailureTerminalizationRequestSchema, SuccessTerminalizationReportSchema, SuccessTerminalizationRequestSchema, SuccessTerminalizationReplayInputSchema, type FailureTerminalizationReport, type FailureTerminalizationStorageStep, type SuccessTerminalizationReport, type SuccessTerminalizationStorageStep } from "./run-terminal-contracts.js";
+import { RunCheckpointRecordSchema, checkpointLookupKey, checkpointRecordKey, type RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import { AtomicOutboxRecordSchema } from "../../../models/notifications/outbox.js";
-import {
-  NotificationFoldRequestSchema,
-  NotificationRecordOutcomeSchema,
-  NotificationRecordSchema,
-  NotificationStateRequestSchema,
-  requireMutableNotification,
-  type NotificationRecord,
-  type NotificationRecordOutcome,
-} from "../../../models/notifications/notifications.js";
+import { NotificationFoldRequestSchema, NotificationRecordOutcomeSchema, NotificationRecordSchema, NotificationStateRequestSchema, requireMutableNotification, type NotificationRecord, type NotificationRecordOutcome } from "../../../models/notifications/notifications.js";
 
 
-import {
-  DiagnosticBundleSchema,
-  type DiagnosticBundle,
-} from "../../../models/trust/diagnostic.js";
-import {
-  RunEvidenceReceiptSchema,
-  type RunEvidenceReceipt,
-} from "../../../models/trust/evidence.js";
-import {
-  DryRunScenarioResultSchema,
-  type DryRunScenarioResult,
-} from "../../../models/trust/dry-run-scenario-result.js";
-import {
-  type ActivityPersonPseudonymDomain,
-  type ActivityPersonPseudonymEvidence,
-} from "../../../models/trust/activity-person-pseudonym.js";
-import {
-  type ActivityPersonPseudonymBackfillOutcome,
-} from "../../../models/trust/activity-person-pseudonym-backfill.js";
+import { DiagnosticBundleSchema, type DiagnosticBundle } from "../../../models/trust/diagnostic.js";
+import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../../models/trust/evidence.js";
+import { DryRunScenarioResultSchema, type DryRunScenarioResult } from "../../../models/trust/dry-run-scenario-result.js";
+import { type ActivityPersonPseudonymDomain, type ActivityPersonPseudonymEvidence } from "../../../models/trust/activity-person-pseudonym.js";
+import { type ActivityPersonPseudonymBackfillOutcome } from "../../../models/trust/activity-person-pseudonym-backfill.js";
 import { DryRunWriteSafetyCountsSchema } from "../../../models/trust/dry-run-scenario.js";
 
 
 
 
-import {
-  IdempotencyKeySchema,
-  WriteAttemptRecordSchema,
-  WriteIntentRecordSchema,
-  type WriteAttemptRecord,
-  type WriteIntentRecord,
-} from "../../../rules/write-safety/write-safety.js";
-import {
-  AUTHORITY_APPLICATION_ID,
-  CURRENT_AUTHORITY_SCHEMA_VERSION,
-  NORMAL_AUTHORITY_SCHEMA_VERSION,
-  isNormalAuthoritySchemaVersion,
-  databaseStateTable,
-  databaseUpgradesTable,
-  DATABASE_TABLE_RENAMES,
-  INTEGRATED_AUTHORITY_TABLES_BY_VERSION,
-  POST_FLOOR_AUTHORITY_TABLES_BY_VERSION,
-  SQLITE_MIGRATIONS,
-  UPGRADE_FLOOR_SCHEMA_VERSION,
-  auditMigrationTableCoverage,
-  requiresStoppedSystemAuthorityUpgrade,
-  tableClassification,
-} from "./migrations.js";
-import {
-  AuthorityCopyInspectionSchema,
-  SpanAuthorityReadSnapshotSchema,
-  SpanAuthorityRunRootSchema,
-  SpanAuthorityRunResolutionSchema,
-  type AuthorityCopyInspection,
-  type SpanAuthorityReadSnapshot,
-  type SpanAuthorityRunRoot,
-  type SpanAuthorityRunResolution,
-} from "./recovery-contracts.js";
-import {
-  ArchivedRunStorageRecordSchema,
-  AUTHORITY_RECORD_SCHEMA_REGISTRY,
-  DiagnosticAttachmentStorageRecordSchema,
-  VersionBumpApplicationStorageRecordSchema,
-  VersionPlanConsumeRequestSchema,
-  VersionPlanStorageRecordSchema,
-  type ArchivedRunStorageRecord,
-  type ArtifactOutboxStorageRecord,
-  type ArtifactSinkHeadRecord,
-  type DiagnosticAttachmentStorageRecord,
-  type VersionBumpApplicationStorageRecord,
-  type VersionPlanConsumeOutcome,
-  type VersionPlanStorageRecord,
-} from "./storage-records.js";
-import {
-  AtomicWriteCommitInputSchema,
-  AtomicWriteCommitReportSchema,
-  PermanentWriteResolutionSchema,
-  WriteFenceInputSchema,
-  WriteIntentParkRequestSchema,
-  WriteIntentReopenRequestSchema,
-  WriteIntentRetrySettlementRequestSchema,
-  WriteRefenceInputSchema,
-  type AtomicWriteCommitReport,
-  type AtomicWriteCommitStorageStep,
-  type PermanentWriteResolution,
-} from "./write-commit-contracts.js";
+import { IdempotencyKeySchema, WriteAttemptRecordSchema, WriteIntentRecordSchema, type WriteAttemptRecord, type WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
+import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, NORMAL_AUTHORITY_SCHEMA_VERSION, isNormalAuthoritySchemaVersion, databaseStateTable, databaseUpgradesTable, DATABASE_TABLE_RENAMES, INTEGRATED_AUTHORITY_TABLES_BY_VERSION, POST_FLOOR_AUTHORITY_TABLES_BY_VERSION, SQLITE_MIGRATIONS, UPGRADE_FLOOR_SCHEMA_VERSION, auditMigrationTableCoverage, requiresStoppedSystemAuthorityUpgrade, tableClassification } from "./migrations.js";
+import { AuthorityCopyInspectionSchema, SpanAuthorityReadSnapshotSchema, SpanAuthorityRunRootSchema, SpanAuthorityRunResolutionSchema, type AuthorityCopyInspection, type SpanAuthorityReadSnapshot, type SpanAuthorityRunRoot, type SpanAuthorityRunResolution } from "./recovery-contracts.js";
+import { ArchivedRunStorageRecordSchema, AUTHORITY_RECORD_SCHEMA_REGISTRY, DiagnosticAttachmentStorageRecordSchema, VersionBumpApplicationStorageRecordSchema, VersionPlanConsumeRequestSchema, VersionPlanStorageRecordSchema, type ArchivedRunStorageRecord, type ArtifactOutboxStorageRecord, type ArtifactSinkHeadRecord, type DiagnosticAttachmentStorageRecord, type VersionBumpApplicationStorageRecord, type VersionPlanConsumeOutcome, type VersionPlanStorageRecord } from "./storage-records.js";
+import { AtomicWriteCommitInputSchema, AtomicWriteCommitReportSchema, PermanentWriteResolutionSchema, WriteFenceInputSchema, WriteIntentParkRequestSchema, WriteIntentReopenRequestSchema, WriteIntentRetrySettlementRequestSchema, WriteRefenceInputSchema, type AtomicWriteCommitReport, type AtomicWriteCommitStorageStep, type PermanentWriteResolution } from "./write-commit-contracts.js";
 
 export const AuthorityDatabaseOpenModeSchema = z.enum([
   "read-write",
@@ -418,9 +193,8 @@ type CommandRepository = Readonly<{
   getBulk(commandId: string): z.infer<typeof BulkRunCommandAcceptanceRecordSchema> | undefined;
   parentId(commandId: string): string | null | undefined;
   get(commandId: string): z.infer<typeof CommandRequestSchema> | z.infer<typeof HistoricalNotificationSnoozeCommandSchema> | undefined;
-  getSettingsHistory(commandId: string): z.infer<typeof CommandRequestSchema> | z.infer<typeof PreFloorSettingsCommandSchema> | z.infer<typeof HistoricalProtectedSettingsCommandSchema> | undefined;
+  getSettingsHistory(commandId: string): z.infer<typeof CommandRequestSchema> | z.infer<typeof PreFloorSettingsCommandSchema> | z.infer<typeof HistoricalProtectedSettingsCommandSchema> | z.infer<typeof HistoricalProviderKeysCommandSchema> | undefined;
   findProtectedSettingsCommandIdByWriteId(input: unknown): string | undefined;
-  listProviderSettingsCommands(): readonly z.infer<typeof CommandRequestSchema>[];
   listStorageRelocationCommands(): readonly z.infer<typeof StorageRelocationCommandRequestSchema>[];
 }>;
 
@@ -434,7 +208,7 @@ type CommandAuditRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<z.infer<typeof CommandAuditRecordSchema>>;
   get(auditId: string): z.infer<typeof CommandAuditRecordSchema> | z.infer<typeof HistoricalNotificationSnoozeAuditSchema> | undefined;
   findByCommand(commandId: string): z.infer<typeof CommandAuditRecordSchema> | z.infer<typeof HistoricalNotificationSnoozeAuditSchema> | undefined;
-  findSettingsHistory(commandId: string): z.infer<typeof CommandAuditRecordSchema> | z.infer<typeof HistoricalSettingsAuditSchema> | z.infer<typeof HistoricalProtectedSettingsAuditSchema> | undefined;
+  findSettingsHistory(commandId: string): z.infer<typeof CommandAuditRecordSchema> | z.infer<typeof HistoricalSettingsAuditSchema> | z.infer<typeof HistoricalProtectedSettingsAuditSchema> | z.infer<typeof HistoricalProviderKeysAuditSchema> | undefined;
 }>;
 
 type RunLifecycleJournalRepository = Readonly<{
@@ -1877,7 +1651,7 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, presentTables?: 
     ...(presentTables?.has("bulk_command_acceptances") === true ? {
       bulk_command_acceptances: BulkRunCommandAcceptanceRecordSchema,
     } : {}),
-    ...(readIntPragma(database, "user_version") < 37 ? { commands: z.union([AuthorityCommandRecordSchema, PreFloorCommandSchema, HistoricalProtectedSettingsCommandSchema]) } : {}),
+    ...(readIntPragma(database, "user_version") < 37 ? { commands: z.union([AuthorityCommandRecordSchema, PreFloorCommandSchema, HistoricalProtectedSettingsCommandSchema, HistoricalProviderKeysCommandSchema]) } : {}),
     ...(presentTables?.has("tasks") === true ? { tasks: RunRecordSchema } : {}),
     ...(presentTables?.has("run_sessions") === true ? { run_sessions: HistoricalRunSessionRecordSchema } : {}),
     ...(presentTables?.has("protected_settings_current") === true
@@ -5553,7 +5327,7 @@ export class AuthorityDatabase implements Disposable {
           if (record !== undefined && "kind" in record) throw new CommandIdentityConflictError();
           return record;
         },
-        getSettingsHistory: (commandId: string) => this.#readRecord("commands", commandId, z.union([CommandRequestSchema, PreFloorSettingsCommandSchema, HistoricalProtectedSettingsCommandSchema])),
+        getSettingsHistory: (commandId: string) => this.#readRecord("commands", commandId, z.union([CommandRequestSchema, PreFloorSettingsCommandSchema, HistoricalProtectedSettingsCommandSchema, HistoricalProviderKeysCommandSchema])),
         findProtectedSettingsCommandIdByWriteId: (input: unknown) => {
           const { writeId, excludingCommandId } = ProtectedSettingsWriteIdLookupSchema.parse(input);
           const row = this.#database.prepare(`
@@ -5569,11 +5343,6 @@ export class AuthorityDatabase implements Disposable {
             ? undefined
             : CommandIdSchema.parse(RecordKeyRowSchema.parse(row).record_key);
         },
-        listProviderSettingsCommands: () => this.#database.prepare(`
-          SELECT record_json FROM commands
-          WHERE family = 'settings' AND json_extract(record_json, '$.type') = 'apply-provider-keys'
-          ORDER BY rowid
-        `).all().map(row => parseJsonRecord(CommandRequestSchema, JsonRowSchema.parse(row).record_json)),
         listStorageRelocationCommands: () => this.#database.prepare(`
           SELECT record_json FROM commands WHERE family = 'storage-relocation' ORDER BY rowid
         `).all().map(row => parseJsonRecord(StorageRelocationCommandRequestSchema, JsonRowSchema.parse(row).record_json)),
@@ -5622,7 +5391,7 @@ export class AuthorityDatabase implements Disposable {
           const rows = this.#database.prepare("SELECT record_json FROM command_audits WHERE command_id=? ORDER BY record_key").all(commandId);
           if (rows.length > 1) throw new Error("historical settings command has ambiguous audits");
           const row = rows[0];
-          return row === undefined ? undefined : parseJsonRecord(z.union([CommandAuditRecordSchema, HistoricalSettingsAuditSchema, HistoricalProtectedSettingsAuditSchema]), JsonRowSchema.parse(row).record_json);
+          return row === undefined ? undefined : parseJsonRecord(z.union([CommandAuditRecordSchema, HistoricalSettingsAuditSchema, HistoricalProtectedSettingsAuditSchema, HistoricalProviderKeysAuditSchema]), JsonRowSchema.parse(row).record_json);
         },
         findByCommand: (commandId: string) => {
           const rows = this.#database.prepare(`

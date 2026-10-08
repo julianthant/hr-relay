@@ -5,27 +5,11 @@ import ts from "typescript";
 import { describe, it } from "vitest";
 import { z } from "zod";
 import type { JSONSchema } from "zod/v4/core";
-import {
-  ConfigSchema,
-  PROVIDER_CAPABILITY_CONFIG_KEYS,
-  SettingsOverrideSchema,
-} from "../../../src/models/config/schema.js";
+import { ConfigSchema, PROVIDER_CAPABILITY_CONFIG_KEYS, SettingsOverrideSchema } from "../../../src/models/config/schema.js";
 import { ProtectedValueSchemas } from "../../../src/models/config/protected-settings.js";
-import {
-  SECRET_FAMILY_SPECS,
-  SECRET_FILE_SPECS,
-  SECRET_SPECS,
-} from "../../../src/models/config/secrets.js";
+import { SECRET_FILE_SPECS, SECRET_SPECS } from "../../../src/models/config/secrets.js";
 import { RUNTIME_DEPENDENCY_REGISTRY } from "../../../src/models/runtime/runtime-dependencies.js";
-import {
-  MIGRATED_SETTINGS_ENVIRONMENT_KEYS,
-  RETIRED_TEST_TARGET_ENVIRONMENT_KEYS,
-  SETTINGS_CATALOG,
-  SettingsCatalogRowSchema,
-  SettingsCatalogSchema,
-  settingsCatalogRow,
-  ordinarySettingsObject,
-} from "../../../src/models/config/catalog.js";
+import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS, RETIRED_TEST_TARGET_ENVIRONMENT_KEYS, SETTINGS_CATALOG, SettingsCatalogRowSchema, SettingsCatalogSchema, settingsCatalogRow, ordinarySettingsObject } from "../../../src/models/config/catalog.js";
 import { gitVisibleFiles, REPO_ROOT, repoRelative } from "../support/helpers/guard-files.js";
 
 interface ReaderCatalogRow {
@@ -95,7 +79,6 @@ function readerRules(rows: readonly ReaderCatalogRow[]): readonly ReaderRule[] {
   const settingsReadback = rows.filter((row) =>
     (row.sourceClass === "ordinary-settings" && row.defaultKind !== "runtime-path")
     || (row.sourceClass === "runtime-isolation" && row.defaultKind === "contract")
-    || row.sourceClass === "provider-env"
   ).map(({ key }) => key);
   // D341 moved the next-start canaries out of the catalog entirely; the
   // protected runtime reader owns the whole next-use presence/readback surface.
@@ -112,8 +95,6 @@ function readerRules(rows: readonly ReaderCatalogRow[]): readonly ReaderRule[] {
     { declaration: "defaultRuntimePaths", keys: rows.filter(({ defaultKind }) => defaultKind === "runtime-path").map(({ key }) => key) },
     { declaration: "providerBudget", keys: Object.values(PROVIDER_CAPABILITY_CONFIG_KEYS).map((key) => `providers.${key}`) },
     { declaration: "optionalSecret", keys: SECRET_SPECS.map(({ name }) => name) },
-    { declaration: "optionalSecretFamily", keys: SECRET_FAMILY_SPECS.map(({ name }) => name) },
-    { declaration: "providerModelChain", keys: SECRET_FAMILY_SPECS.map(({ modelsConfigKey }) => `providers.${modelsConfigKey}.models`) },
     { declaration: "requireSecretFile", keys: SECRET_FILE_SPECS.flatMap(({ name, configPath }) => [name, configPath]) },
     { declaration: "RUNTIME_DEPENDENCY_REGISTRY", keys: dependencySecretNames },
     { declaration: "establishHostPrimaryDisplay", keys: rows.filter(({ sourceClass }) => sourceClass === "derived-host").map(({ key }) => key) },
@@ -189,7 +170,7 @@ describe("D331 settings catalog", () => {
     assert.deepEqual(coverageViolations(leaves), []);
     assert.deepEqual(coverageViolations([...leaves, "uncatalogued.setting"]), ["uncatalogued.setting"]);
     assert.deepEqual(coverageViolations(leaves.filter((leaf) => leaf !== "actor.label")), ["actor.label"]);
-    const external = [...SECRET_SPECS, ...SECRET_FAMILY_SPECS, ...SECRET_FILE_SPECS]
+    const external = [...SECRET_SPECS, ...SECRET_FILE_SPECS]
       .map((spec) => spec.name);
     assert.deepEqual(SETTINGS_CATALOG.filter((row) => !["ordinary-settings", "runtime-isolation", "derived-host"].includes(row.sourceClass))
       .map((row) => row.key).filter((key) => key !== "activityPersonPseudonym").sort(),
@@ -211,14 +192,13 @@ describe("D331 settings catalog", () => {
     assert.equal(SettingsOverrideSchema.safeParse({ urls: { kuali: { test: { entry: "https://example.invalid" } } } }).success, true);
     assert.throws(() => ordinarySettingsObject("actor", z.strictObject({ id: z.string() })), /actor.label is missing/u);
   });
-  it("P1 pins the 77-row closed registry and refuses a missing or duplicated row", () => {
-    assert.equal(SETTINGS_CATALOG.length, 77);
+  it("P1 pins the 65-row closed registry and refuses a missing or duplicated row", () => {
+    assert.equal(SETTINGS_CATALOG.length, 65);
     assert.deepEqual(Object.fromEntries([
-      "ordinary-settings", "protected-store", "provider-env", "derived-host", "runtime-isolation",
+      "ordinary-settings", "protected-store", "derived-host", "runtime-isolation",
     ].map((sourceClass) => [sourceClass, SETTINGS_CATALOG.filter((row) => row.sourceClass === sourceClass).length])), {
-      "ordinary-settings": 62,
+      "ordinary-settings": 55,
       "protected-store": 5,
-      "provider-env": 5,
       "derived-host": 1,
       "runtime-isolation": 4,
     });

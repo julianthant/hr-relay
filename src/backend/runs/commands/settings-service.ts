@@ -5,32 +5,13 @@ import { ProtectedSettingsCommandRequestSchema, deriveSettingsCommandFingerprint
 import { ResolvedConfigSchema, type ResolvedConfig } from "../../app/config/resolve.js";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
 import { ProtectedSettingsApplyInputSchema, protectedSettingsReadback } from "../../../models/config/protected-settings.js";
-import {
-  SETTINGS_SCHEMA_HASH, SettingsApplyRefusalSchema, deriveSettingsPatchFingerprint,
-  derivePersistedSettingsFingerprint, mergeSettingsPatch, containsRetiredTestRoutePatch,
-  type SettingsFileRecord,
-} from "../../../models/config/settings.js";
+import { SETTINGS_SCHEMA_HASH, SettingsApplyRefusalSchema, deriveSettingsPatchFingerprint, derivePersistedSettingsFingerprint, mergeSettingsPatch, containsRetiredTestRoutePatch, type SettingsFileRecord } from "../../../models/config/settings.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 import { z } from "zod";
-import { ProviderKeyStoreConflictError, type createProviderKeyStore } from "../../storage/configuration/provider-key-store.js";
-import { providerStoreRequest } from "./provider-key-projection.js";
 import { OrdinaryPathValidationError, validateOrdinaryPathChanges } from "./ordinary-path-validator.js";
 
 const VALIDATED_PATHS = new Set(["paths.browserProfileRoot", "paths.duoCredential", "paths.duoExtensionDir"]);
-const MODEL_PATHS = ["gemini", "groq", "mistral", "openRouter", "sambanova"] as const;
-
-function sameModelMembership(current: readonly string[], next: readonly string[]): boolean {
-  if (current.length !== next.length) return false;
-  const counts = new Map<string, number>();
-  for (const model of current) counts.set(model, (counts.get(model) ?? 0) + 1);
-  for (const model of next) {
-    const remaining = counts.get(model);
-    if (remaining === undefined || remaining === 0) return false;
-    counts.set(model, remaining - 1);
-  }
-  return true;
-}
 
 function protectedInput(command: SettingsCommand) {
   const request = ProtectedSettingsCommandRequestSchema.parse(command);
@@ -62,27 +43,13 @@ function ordinaryRequestRefusal(command: Extract<SettingsCommand, { type: "apply
 export function createSettingsApplicationExecutor(
   resolveCandidate: (settings: SettingsFileRecord["settings"]) => ResolvedConfig,
   credentials: CredentialStore,
-  provider?: Readonly<{ store: ReturnType<typeof createProviderKeyStore>; bootKnown: boolean;
-    restartRequired(slots: Readonly<Record<string, string>>): boolean }>,
 ): SettingsApplicationExecutor {
   return Object.freeze({
     validateRequest(command: SettingsCommand) {
       if (command.type === "apply-settings") return ordinaryRequestRefusal(command);
       return undefined;
     },
-    commitPrivate(command: Extract<SettingsCommand, { type: "apply-protected-settings" | "apply-provider-keys" }>) {
-      if (command.type === "apply-provider-keys") {
-        if (provider === undefined) throw new Error("provider-key-store-unavailable");
-        if (!provider.bootKnown) throw new Error("provider-boot-provenance-unavailable");
-        try { provider.store.apply(providerStoreRequest(command)); }
-        catch (error) {
-          if (error instanceof ProviderKeyStoreConflictError) return SettingsApplyRefusalSchema.parse({
-            state: "conflict", currentRevision: error.currentRevision, message: "provider key source changed; reload saved keys",
-          });
-          throw error;
-        }
-        return undefined;
-      }
+    commitPrivate(command: Extract<SettingsCommand, { type: "apply-protected-settings" }>) {
       const outcome = credentials.apply(protectedInput(command));
       return outcome.state === "applied" ? undefined : outcome;
     },
@@ -96,16 +63,6 @@ export function createSettingsApplicationExecutor(
       let resolved: ResolvedConfig;
       try {
         const currentConfig = ResolvedConfigSchema.parse(resolveCandidate(current.settings));
-        for (const providerName of MODEL_PATHS) {
-          const path = `providers.${providerName}.models`;
-          const operation = command.payload.patch[path];
-          if (operation === undefined) continue;
-          const configured = currentConfig.config.providers[providerName]?.models ?? [];
-          if ("clear" in operation || !sameModelMembership(configured, operation.set as readonly string[])) {
-            return SettingsApplyRefusalSchema.parse({ state: "rejected", code: "invalid-value",
-              message: `${path}: model priority may only reorder configured models` });
-          }
-        }
         settings = mergeSettingsPatch(current.settings, command.payload.patch);
         resolved = ResolvedConfigSchema.parse(resolveCandidate(settings));
         if (sha256Hex(canonicalJsonStringify(resolved.config)) !== resolved.fingerprint) {
@@ -138,20 +95,10 @@ export function createSettingsApplicationExecutor(
       // The kernel journals the audit and saved row before committing this same transaction.
       return { state: "applied", revision, settings, restartRequired: false, settingsFingerprint };
     },
-    reconcileReplay(command: Extract<SettingsCommand, { type: "apply-protected-settings" | "apply-provider-keys" }>) {
-      if (command.type === "apply-provider-keys") {
-        if (provider === undefined) throw new Error("provider-key-store-unavailable");
-        const result = provider.store.apply(providerStoreRequest(command));
-        return { state: "applied", revision: result.revision, receiptId: result.receiptId,
-          sourceVersionToken: result.sourceVersionToken, restartRequired: provider.restartRequired(result.slots) };
-      }
+    reconcileReplay(command: Extract<SettingsCommand, { type: "apply-protected-settings" }>) {
       const outcome = credentials.verifyReplay(protectedInput(command));
       if (outcome.state !== "applied") throw new Error("credential-replay-refused");
       return protectedSettingsReadback(outcome.record);
-    },
-    confirmProvider(command: Extract<SettingsCommand, { type: "apply-provider-keys" }>) {
-      if (provider === undefined) throw new Error("provider-key-store-unavailable");
-      provider.store.confirmCommitted(command.commandId, command.payload.writeId);
     },
   });
 }

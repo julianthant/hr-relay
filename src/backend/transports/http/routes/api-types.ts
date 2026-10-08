@@ -11,7 +11,6 @@ import type { Hono } from "hono";
 import type { DashboardCommandService } from "../../../runs/commands/command-service.js";
 import type { BulkCommandAcceptanceAuthority } from "../../../runs/commands/operator-command-ingress.js";
 import type { CommandRequest } from "../../../../rules/commands/commands.js";
-import type { ProviderKeyPendingIdentity, ProviderKeyWriteRequest } from "../../../storage/configuration/provider-key-store.js";
 import type { StartPlanService } from "../../../runs/commands/start-plan-service.js";
 import type { RunQueueProjection } from "../../../runs/projections/run-queue-projection.js";
 import type { StaticBundle } from "../static-bundle.js";
@@ -29,8 +28,6 @@ export interface DashboardAppDeps extends TrustRouteDeps, ShellRouteDeps, Settin
   readonly commandJournal: { get(commandId: string): CommandRequest | import("../../../../rules/commands/commands-history.js").HistoricalNotificationSnoozeCommand | undefined };
   readonly bulkCommandAcceptances: BulkCommandAcceptanceAuthority;
   readonly protectedCommandAcceptedAt: (commandId: string) => string | undefined;
-  readonly readPendingProviderRequest?: (identity: ProviderKeyPendingIdentity) => ProviderKeyWriteRequest;
-  readonly providerCommandAcceptedAt?: (commandId: string, writeId: string) => string | undefined;
   readonly runtimeVersionAcceptedAt?: (commandId: string) => string | undefined;
   readonly startPlans: StartPlanService;
   readonly staticBundle?: StaticBundle;

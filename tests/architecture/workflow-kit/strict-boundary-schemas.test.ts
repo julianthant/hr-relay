@@ -11,48 +11,17 @@ import { join } from "node:path";
 import ts from "typescript";
 import { describe, it } from "vitest";
 import { z } from "zod";
-import {
-  SeparationsKualiFinalizationTestTargetResolutionSchema,
-  TEST_TARGET_REGISTRY,
-  TestTargetRegistrySchema,
-} from "../../../src/backend/app/registries/test-target-registry.js";
+import { SeparationsKualiFinalizationTestTargetResolutionSchema, TEST_TARGET_REGISTRY, TestTargetRegistrySchema } from "../../../src/backend/app/registries/test-target-registry.js";
 import { AUTHORITY_TABLE_REGISTRY, AuthorityTableRegistrySchema, TableSpecSchema } from "../../../src/models/config/authority.js";
 import { RebuildArtifactRootSchema } from "../../../src/models/config/define-runtime-isolation.js";
 import { ArtifactPutMetadataSchema, ArtifactRefSchema } from "../../../src/models/artifacts/artifacts.js";
 import { BoundaryFailureSchema } from "../../../src/models/failures/boundary-failure.js";
 import { TerminalDependencyEvidenceSchema } from "../../../src/backend/runs/lifecycle/run-result.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
-import {
-  BulkRunCommandRequestSchema,
-  COMMAND_FAMILY_REGISTRY,
-  CommandAuditRecordSchema,
-  CommandEnvelopeSchema,
-  CommandFamilyRegistrySchema,
-  CommandFamilySpecSchema,
-  CommandRequestSchema,
-  CommandResultSchema,
-  CommandTargetReferenceSchema,
-  GateCommandRequestSchema,
-  IntakeCommandRequestSchema,
-  NotificationCommandRequestSchema,
-  RunCommandRequestSchema,
-  SettingsCommandRequestSchema,
-  StartCommandRequestSchema,
-  VersionArchiveCommandRequestSchema,
-  WorkerBrowserCommandRequestSchema,
-} from "../../../src/rules/commands/commands.js";
-import {
-  ResolvedConfigSchema,
-  resolveConfigWithProvenance,
-} from "../../../src/backend/app/config/resolve.js";
+import { BulkRunCommandRequestSchema, COMMAND_FAMILY_REGISTRY, CommandAuditRecordSchema, CommandEnvelopeSchema, CommandFamilyRegistrySchema, CommandFamilySpecSchema, CommandRequestSchema, CommandResultSchema, CommandTargetReferenceSchema, GateCommandRequestSchema, IntakeCommandRequestSchema, NotificationCommandRequestSchema, RunCommandRequestSchema, SettingsCommandRequestSchema, StartCommandRequestSchema, VersionArchiveCommandRequestSchema, WorkerBrowserCommandRequestSchema } from "../../../src/rules/commands/commands.js";
+import { ResolvedConfigSchema, resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
 import { defaultRuntimePaths } from "../../../src/backend/app/config/runtime-paths.js";
-import {
-  ConfigSchema,
-  EditableSettingsOverrideSchema,
-  ProviderBudgetConfigSchema,
-  ProviderBudgetSchema,
-  SettingsOverrideSchema,
-} from "../../../src/models/config/schema.js";
+import { ConfigSchema, EditableSettingsOverrideSchema, ProviderBudgetConfigSchema, ProviderBudgetSchema, SettingsOverrideSchema } from "../../../src/models/config/schema.js";
 import { ConfigSnapshotRecordSchema } from "../../../src/models/config/snapshot.js";
 import { ArtifactRefWireSchema, ArtifactResourceWireSchema, CapturePointerWireSchema } from "../../../src/models/dashboard/artifacts.js";
 import { FrontendBootstrapWireSchema } from "../../../src/models/dashboard/bootstrap.js";
@@ -65,295 +34,52 @@ import { GateResultRecordSchema } from "../../../src/models/workflow/gates.js";
 import { LedgerEntryPayloadSchema, LedgerEntrySchema, LedgerOutboxPayloadSchema, WriteCommittedSpanOutboxPayloadSchema } from "../../../src/rules/runs/ledger.js";
 import { NotificationRecordSchema } from "../../../src/models/notifications/notifications.js";
 import { AtomicOutboxPayloadSchema, AtomicOutboxRecordSchema } from "../../../src/models/notifications/outbox.js";
-import {
-  ProviderAdmissionDenyRequestSchema,
-  ProviderAdmissionInterruptRequestSchema,
-  ProviderAdmissionLifecycleSchema,
-  ProviderAdmissionMutationOutcomeSchema,
-  ProviderAdmissionRecordSchema,
-  ProviderAdmissionReserveOutcomeSchema,
-  ProviderAdmissionReserveRequestSchema,
-  ProviderAdmissionSettleRequestSchema,
-  ProviderAdmissionSweepOutcomeSchema,
-  ProviderAdmissionSweepRequestSchema,
-  ProviderBudgetCounterSchema,
-  ProviderBudgetReservationSchema,
-  ProviderCostEstimateSchema,
-  ProviderExecutionIdentitySchema,
-  ProviderMeasuredUsageSchema,
-  ProviderUnavailableReasonSchema,
-  RedactedProviderEvidenceSchema,
-} from "../../../src/rules/providers/provider-admission.js";
-import {
-  ProviderAdapterOutcomeSchema,
-  ProviderRequestEnvelopeSchema,
-  ProviderResponseEnvelopeSchema,
-} from "../../../src/models/providers/providers.js";
-import {
-  ProviderDenialDispositionSchema,
-  ProviderDenialRunContextSchema,
-} from "../../../src/backend/runs/start/provider-admission.js";
-import {
-  buildPreflightReport,
-  PreflightObservationSchema,
-  PreflightReportSchema,
-  PreflightResultSchema,
-  requiredPreflightChecks,
-} from "../../../src/models/preflight/preflight.js";
+import { ProviderAdmissionDenyRequestSchema, ProviderAdmissionInterruptRequestSchema, ProviderAdmissionLifecycleSchema, ProviderAdmissionMutationOutcomeSchema, ProviderAdmissionRecordSchema, ProviderAdmissionReserveOutcomeSchema, ProviderAdmissionReserveRequestSchema, ProviderAdmissionSettleRequestSchema, ProviderAdmissionSweepOutcomeSchema, ProviderAdmissionSweepRequestSchema, ProviderBudgetCounterSchema, ProviderBudgetReservationSchema, ProviderCostEstimateSchema, ProviderExecutionIdentitySchema, ProviderMeasuredUsageSchema, ProviderUnavailableReasonSchema, RedactedProviderEvidenceSchema } from "../../../src/rules/providers/provider-admission.js";
+import { ProviderAdapterOutcomeSchema, ProviderRequestEnvelopeSchema, ProviderResponseEnvelopeSchema } from "../../../src/models/providers/providers.js";
+import { ProviderDenialDispositionSchema, ProviderDenialRunContextSchema } from "../../../src/backend/runs/start/provider-admission.js";
+import { buildPreflightReport, PreflightObservationSchema, PreflightReportSchema, PreflightResultSchema, requiredPreflightChecks } from "../../../src/models/preflight/preflight.js";
 import { ClassifiedDiagnosticValueSchema, RedactionResultSchema } from "../../../src/rules/redaction/redaction.js";
 import { RUNTIME_DEPENDENCY_REGISTRY, RuntimeDependencyRegistrySchema } from "../../../src/models/runtime/runtime-dependencies.js";
 import { RUNTIME_ENVIRONMENT_REGISTRY, RuntimeEnvironmentRegistrySchema } from "../../../src/models/runtime/runtime-environment.js";
 import { SchemaBoundCanonicalValueSchema } from "../../../src/models/validation/schema-bound-value.js";
-import {
-  NotRunTerminalDependencySchema,
-  ResolvedTerminalDependencySchema,
-  RunResultRecordSchema,
-  TerminalDependencyRecordSchema,
-  TerminalNotRunReasonSchema,
-  deriveCheckpointOutputDigest,
-  deriveCheckpointProvenanceDigest,
-  deriveRunResultDigest,
-  deriveTerminalDependencyDigest,
-} from "../../../src/models/run/result.js";
-import {
-  FailureTerminalAuthorizationRecordSchema,
-  SuccessTerminalAuthorizationRecordSchema,
-  TerminalAuthorizationRecordSchema,
-  TerminalizationClaimSchema,
-} from "../../../src/models/run/terminal-authorization.js";
+import { NotRunTerminalDependencySchema, ResolvedTerminalDependencySchema, RunResultRecordSchema, TerminalDependencyRecordSchema, TerminalNotRunReasonSchema, deriveCheckpointOutputDigest, deriveCheckpointProvenanceDigest, deriveRunResultDigest, deriveTerminalDependencyDigest } from "../../../src/models/run/result.js";
+import { FailureTerminalAuthorizationRecordSchema, SuccessTerminalAuthorizationRecordSchema, TerminalAuthorizationRecordSchema, TerminalizationClaimSchema } from "../../../src/models/run/terminal-authorization.js";
 import { HistoricalTerminalOutboxRecordSchema } from "../../../src/models/run/completion-history.js";
-import {
-  DataPointSchema,
-  RecordedDataPointSchema,
-  TaskExecutionIdentitySchema,
-  TaskProvenanceResultSchema,
-  TaskUpstreamCheckpointEvidenceSchema,
-} from "../../../src/rules/workflow/task-provenance.js";
-import {
-  GraphCoveragePointSchema,
-  ScenarioCoverageClaimSchema,
-} from "../../../src/workflow-kit/validation/scenario-coverage.js";
-import {
-  ApproveContextSchema,
-  ApprovedDocumentSchema,
-  CompletionConsumptionSpecSchema,
-  CompletionProgramSampleSchema,
-  ExtractedFieldSchema,
-  MemberPlanEntrySchema,
-  PreviewRecordSchema,
-} from "../../../src/models/workflow/completion.js";
-import {
-  FileAcceptSpecSchema,
-  InputParserSpecSchema,
-  ParsedInputEntrySchema,
-  SurfaceFieldSchema,
-  TextTemplateSchema,
-  UploadFieldSpecSchema,
-  UploadedFileSchema,
-  WorkflowSurfacesSchema,
-} from "../../../src/models/workflow/ingress.js";
-import {
-  DetailProjectionSpecRuntimeSchema,
-  DurableArtifactProjectionSpecRuntimeSchema,
-  GateProjectionDefinitionSchema,
-  StepProjectionSchema,
-  SurfaceShapeSchema,
-  VerdictDefinitionSchema,
-  WorkflowActionPolicySchema,
-  WorkflowCapabilitiesSchema,
-} from "../../../src/models/workflow/presentation.js";
-import {
-  BUILD_MANIFEST,
-  BuildManifestSchema,
-  SourceHashSchema,
-} from "../../../src/workflow-kit/validation/build-manifest.js";
-import {
-  CheckpointExpectationSchema,
-  CheckpointMissReasonSchema,
-  FactProvenanceSchema,
-  FreshnessOverrideSchema,
-  RunCheckpointRecordSchema,
-} from "../../../src/models/workflow/checkpoint.js";
-import {
-  ChildVisibilitySchema,
-  DelegationManifestRefSchema,
-  DelegationPolicySchema,
-  GraphNodeKindSchema,
-  ParallelBranchSpecSchema,
-  childRunOutcomeSchema,
-} from "../../../src/models/workflow/graph.js";
-import {
-  TimecardDateRangeSchema,
-  TimecardMonthDaySchema,
-  VisibleTimecardMonthDaysSchema,
-} from "../../../src/rules/time/timecard-period.js";
-import {
-  IdleRefreshCadenceSchema,
-  LoginResultSchema,
-  RetryPolicySchema,
-  SessionNeedSchema,
-} from "../../../src/models/sessions/session.js";
-import {
-  FreshnessPolicySchema,
-  ProvenancePolicySchema,
-  SubjectBindingSpecSchema,
-  TaskEffectSchema,
-} from "../../../src/models/task/task-contract.js";
-import {
-  UiVerificationEvidenceManifestSchema,
-  UiVerificationScenarioSchema,
-} from "../../../src/models/ui/contracts.js";
-import {
-  CRM_ONBOARDING_DISPLAYED_EID,
-  CrmOnboardingDatesReadSchema,
-  CrmOnboardingRecordReadSchema,
-  CrmSubjectBindingSchema,
-} from "../../../src/models/ui/crm-onboarding.js";
-import {
-  ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE,
-  ActivityPersonPseudonymSecretReferenceSchema,
-  SECRET_FAMILY_SPECS,
-  SECRET_FILE_SPECS,
-  SECRET_SPECS,
-  ProtectedSecretSourceSchema,
-  SecretFamilySpecSchema,
-  SecretFileSpecSchema,
-  SecretAvailabilitySchema,
-  SecretSpecSchema,
-} from "../../../src/models/config/secrets.js";
-import {
-  ActivityPersonPseudonymEvidenceSchema,
-  ActivityPersonPseudonymGenerationBindingSchema,
-} from "../../../src/models/trust/activity-person-pseudonym.js";
-import {
-  ActivityPersonPseudonymBackfillOutcomeSchema,
-  ActivityPersonPseudonymBackfillReportSchema,
-  ActivityPersonPseudonymBackfillRequestSchema,
-  CurrentSeparationsPseudonymSourceResultSchema,
-} from "../../../src/models/trust/activity-person-pseudonym-backfill.js";
+import { DataPointSchema, RecordedDataPointSchema, TaskExecutionIdentitySchema, TaskProvenanceResultSchema, TaskUpstreamCheckpointEvidenceSchema } from "../../../src/rules/workflow/task-provenance.js";
+import { GraphCoveragePointSchema, ScenarioCoverageClaimSchema } from "../../../src/workflow-kit/validation/scenario-coverage.js";
+import { ApproveContextSchema, ApprovedDocumentSchema, CompletionConsumptionSpecSchema, CompletionProgramSampleSchema, ExtractedFieldSchema, MemberPlanEntrySchema, PreviewRecordSchema } from "../../../src/models/workflow/completion.js";
+import { FileAcceptSpecSchema, InputParserSpecSchema, ParsedInputEntrySchema, SurfaceFieldSchema, TextTemplateSchema, UploadFieldSpecSchema, UploadedFileSchema, WorkflowSurfacesSchema } from "../../../src/models/workflow/ingress.js";
+import { DetailProjectionSpecRuntimeSchema, DurableArtifactProjectionSpecRuntimeSchema, GateProjectionDefinitionSchema, StepProjectionSchema, SurfaceShapeSchema, VerdictDefinitionSchema, WorkflowActionPolicySchema, WorkflowCapabilitiesSchema } from "../../../src/models/workflow/presentation.js";
+import { BUILD_MANIFEST, BuildManifestSchema, SourceHashSchema } from "../../../src/workflow-kit/validation/build-manifest.js";
+import { CheckpointExpectationSchema, CheckpointMissReasonSchema, FactProvenanceSchema, FreshnessOverrideSchema, RunCheckpointRecordSchema } from "../../../src/models/workflow/checkpoint.js";
+import { ChildVisibilitySchema, DelegationManifestRefSchema, DelegationPolicySchema, GraphNodeKindSchema, ParallelBranchSpecSchema, childRunOutcomeSchema } from "../../../src/models/workflow/graph.js";
+import { TimecardDateRangeSchema, TimecardMonthDaySchema, VisibleTimecardMonthDaysSchema } from "../../../src/rules/time/timecard-period.js";
+import { IdleRefreshCadenceSchema, LoginResultSchema, RetryPolicySchema, SessionNeedSchema } from "../../../src/models/sessions/session.js";
+import { FreshnessPolicySchema, ProvenancePolicySchema, SubjectBindingSpecSchema, TaskEffectSchema } from "../../../src/models/task/task-contract.js";
+import { UiVerificationEvidenceManifestSchema, UiVerificationScenarioSchema } from "../../../src/models/ui/contracts.js";
+import { CRM_ONBOARDING_DISPLAYED_EID, CrmOnboardingDatesReadSchema, CrmOnboardingRecordReadSchema, CrmSubjectBindingSchema } from "../../../src/models/ui/crm-onboarding.js";
+import { ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE, ActivityPersonPseudonymSecretReferenceSchema, SECRET_FILE_SPECS, SECRET_SPECS, ProtectedSecretSourceSchema, SecretFileSpecSchema, SecretAvailabilitySchema, SecretSpecSchema } from "../../../src/models/config/secrets.js";
+import { ActivityPersonPseudonymEvidenceSchema, ActivityPersonPseudonymGenerationBindingSchema } from "../../../src/models/trust/activity-person-pseudonym.js";
+import { ActivityPersonPseudonymBackfillOutcomeSchema, ActivityPersonPseudonymBackfillReportSchema, ActivityPersonPseudonymBackfillRequestSchema, CurrentSeparationsPseudonymSourceResultSchema } from "../../../src/models/trust/activity-person-pseudonym-backfill.js";
 import { DiagnosticBundleSchema } from "../../../src/models/trust/diagnostic.js";
-import {
-  ActionEvidenceSchema,
-  DecisionEvidenceSchema,
-  EvidenceFactSchema,
-  ReuseEvidenceSchema,
-  RunEvidenceReceiptSchema,
-  UncertaintyEvidenceSchema,
-  VerificationEvidenceSchema,
-} from "../../../src/models/trust/evidence.js";
+import { ActionEvidenceSchema, DecisionEvidenceSchema, EvidenceFactSchema, ReuseEvidenceSchema, RunEvidenceReceiptSchema, UncertaintyEvidenceSchema, VerificationEvidenceSchema } from "../../../src/models/trust/evidence.js";
 import { FailureRecordSchema } from "../../../src/models/trust/failure.js";
 import { FixRecordSchema, KnowledgeRecordSchema } from "../../../src/models/trust/knowledge.js";
 import { PREFLIGHT_SCENARIO_MANIFESTS } from "../../../src/models/trust/preflight-scenarios.js";
 import { ScenarioManifestSchema } from "../../../src/models/trust/scenario.js";
 import { DryRunScenarioResultSchema } from "../../../src/models/trust/dry-run-scenario-result.js";
-import {
-  AbsentEvidenceSchema,
-  IdempotencyKeySchema,
-  NegativeSettlementDecisionSchema,
-  NegativeSettlementEvaluationInputSchema,
-  NegativeSettlementPolicySchema,
-  PresentProofReferenceSchema,
-  RecoveryProbeVerdictSchema,
-  SubjectEvidenceSchema,
-  SubjectProofSchema,
-  TransactionOutcomeSchema,
-  UNSCOPED_COMMIT_REASON_REGISTRY,
-  UnscopedBindingProofSchema,
-  UnscopedCommitReasonSpecSchema,
-  WriteAttemptRecordSchema,
-  WriteBindingProofSchema,
-  WriteIntentRecordSchema,
-} from "../../../src/rules/write-safety/write-safety.js";
-import {
-  ArtifactOutboxStorageRecordSchema,
-  AtomicWriteCommitInputSchema,
-  AtomicWriteCommitReportSchema,
-  AtomicWriteCommitStorageStepSchema,
-  AuthorityBackupManifestSchema,
-  AuthorityBackupRequestSchema,
-  AuthorityBackupRunReportSchema,
-  AuthorityBackupServiceOptionsSchema,
-  AuthorityBootReportSchema,
-  AuthorityCopyInspectionSchema,
-  AuthorityDatabaseOptionsSchema,
-  AuthorityInvariantResultSchema,
-  AuthorityMetaSchema,
-  AuthorityPendingCountsSchema,
-  AuthoritySchemaInspectionSchema,
-  BackupHealthSchema,
-  BackupVerificationSchema,
-  ImmutableInsertDispositionSchema,
-  OfflineRestoreOptionsSchema,
-  OfflineRestoreReportSchema,
-  OfflineRestoreRequestSchema,
-  OpaqueAuthorityRecordSchema,
-  ProjectionStorageRecordSchema,
-  PermanentWriteResolutionSchema,
-  RecoveryProcessLockStateSchema,
-  RecoveryRuntimeLockSnapshotSchema,
-  RecoveryStopProofStoreOptionsSchema,
-  RestoreCandidateSchema,
-  SqliteStorageRecordIdSchema,
-  StoppedSystemProofSchema,
-  StoppedSystemProofIssueRequestSchema,
-  StorageDoctorOptionsSchema,
-  StorageDoctorReportSchema,
-  StorageHealthCauseSchema,
-  VersionPlanStorageRecordSchema,
-  WriteFenceInputSchema,
-  FailureTerminalizationReportSchema,
-  FailureTerminalizationRequestSchema,
-  FailureTerminalizationStorageStepSchema,
-  SuccessTerminalizationReportSchema,
-  SuccessTerminalizationRequestSchema,
-  SuccessTerminalizationStorageStepSchema,
-} from "../../../src/backend/storage/sqlite/index.js";
+import { AbsentEvidenceSchema, IdempotencyKeySchema, NegativeSettlementDecisionSchema, NegativeSettlementEvaluationInputSchema, NegativeSettlementPolicySchema, PresentProofReferenceSchema, RecoveryProbeVerdictSchema, SubjectEvidenceSchema, SubjectProofSchema, TransactionOutcomeSchema, UNSCOPED_COMMIT_REASON_REGISTRY, UnscopedBindingProofSchema, UnscopedCommitReasonSpecSchema, WriteAttemptRecordSchema, WriteBindingProofSchema, WriteIntentRecordSchema } from "../../../src/rules/write-safety/write-safety.js";
+import { ArtifactOutboxStorageRecordSchema, AtomicWriteCommitInputSchema, AtomicWriteCommitReportSchema, AtomicWriteCommitStorageStepSchema, AuthorityBackupManifestSchema, AuthorityBackupRequestSchema, AuthorityBackupRunReportSchema, AuthorityBackupServiceOptionsSchema, AuthorityBootReportSchema, AuthorityCopyInspectionSchema, AuthorityDatabaseOptionsSchema, AuthorityInvariantResultSchema, AuthorityMetaSchema, AuthorityPendingCountsSchema, AuthoritySchemaInspectionSchema, BackupHealthSchema, BackupVerificationSchema, ImmutableInsertDispositionSchema, OfflineRestoreOptionsSchema, OfflineRestoreReportSchema, OfflineRestoreRequestSchema, OpaqueAuthorityRecordSchema, ProjectionStorageRecordSchema, PermanentWriteResolutionSchema, RecoveryProcessLockStateSchema, RecoveryRuntimeLockSnapshotSchema, RecoveryStopProofStoreOptionsSchema, RestoreCandidateSchema, SqliteStorageRecordIdSchema, StoppedSystemProofSchema, StoppedSystemProofIssueRequestSchema, StorageDoctorOptionsSchema, StorageDoctorReportSchema, StorageHealthCauseSchema, VersionPlanStorageRecordSchema, WriteFenceInputSchema, FailureTerminalizationReportSchema, FailureTerminalizationRequestSchema, FailureTerminalizationStorageStepSchema, SuccessTerminalizationReportSchema, SuccessTerminalizationRequestSchema, SuccessTerminalizationStorageStepSchema } from "../../../src/backend/storage/sqlite/index.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../src/backend/storage/sqlite/migrations.js";
 import { CRM_UI_REGISTRY } from "../../../src/backend/systems/crm/driver/ui-registry.js";
 import { UCPATH_UI_REGISTRY } from "../../../src/backend/systems/ucpath/driver/ui-registry.js";
-import {
-  ABSENCE_1,
-  ABSENCE_2,
-  ATOMIC_WRITE_COMMIT,
-  COMMAND_FIXTURES,
-  COMMITTED_OUTCOME,
-  CONFIG_SNAPSHOT,
-  DELEGATION_MANIFEST,
-  DEPENDENCY_RECORD,
-  GATE_RESULT,
-  IDEMPOTENCY_KEY,
-  IDEMPOTENCY_KEY_DIGEST,
-  LEDGER_OUTBOX_RECORD,
-  LEDGER_OUTBOX_PAYLOAD,
-  LEDGER_PAYLOAD,
-  NOTIFICATION,
-  SPAN_OUTBOX_PAYLOAD,
-  SPAN_OUTBOX_RECORD,
-  SUBJECT_EVIDENCE,
-  SUBJECT_PROOF,
-  UNSCOPED_PROOF,
-  WRITE_ATTEMPT,
-  WRITE_INTENT_ATTEMPTING,
-} from "../../support/fixtures/phase1c-contract-fixtures.js";
-import {
-  ARCHIVE_RELAUNCH,
-  ARCHIVED_RUN,
-  VERSION_BUMP_APPLICATION,
-  VERSION_BUMP_PLAN,
-  VERSION_PLAN_ROW,
-} from "../../support/fixtures/archive-fixtures.js";
-import {
-  ArchivedRunRecordSchema,
-  ArchiveRelaunchRecordSchema,
-  VersionBumpApplicationSchema,
-  VersionBumpPlanSchema,
-} from "../../../src/models/archive/model.js";
+import { ABSENCE_1, ABSENCE_2, ATOMIC_WRITE_COMMIT, COMMAND_FIXTURES, COMMITTED_OUTCOME, CONFIG_SNAPSHOT, DELEGATION_MANIFEST, DEPENDENCY_RECORD, GATE_RESULT, IDEMPOTENCY_KEY, IDEMPOTENCY_KEY_DIGEST, LEDGER_OUTBOX_RECORD, LEDGER_OUTBOX_PAYLOAD, LEDGER_PAYLOAD, NOTIFICATION, SPAN_OUTBOX_PAYLOAD, SPAN_OUTBOX_RECORD, SUBJECT_EVIDENCE, SUBJECT_PROOF, UNSCOPED_PROOF, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { ARCHIVE_RELAUNCH, ARCHIVED_RUN, VERSION_BUMP_APPLICATION, VERSION_BUMP_PLAN, VERSION_PLAN_ROW } from "../../support/fixtures/archive-fixtures.js";
+import { ArchivedRunRecordSchema, ArchiveRelaunchRecordSchema, VersionBumpApplicationSchema, VersionBumpPlanSchema } from "../../../src/models/archive/model.js";
 import { QUEUED_RUN } from "../../support/fixtures/phase1f-run-fixtures.js";
 import { CURRENT_SEPARATIONS_RESULT } from "../../support/fixtures/integration/activity-person-pseudonym-fixtures.js";
 import { gitVisibleFiles, REPO_ROOT } from "../support/helpers/guard-files.js";
-import {
-  ActivityPersonPseudonymBackfillCommandOutcomeSchema,
-} from "../../../src/backend/app/composition/activity-person-pseudonym-backfill-compose.js";
+import { ActivityPersonPseudonymBackfillCommandOutcomeSchema } from "../../../src/backend/app/composition/activity-person-pseudonym-backfill-compose.js";
 
 const STABLE_RECORD_ID = `${"c".repeat(64)}#oath-signature#1`;
 const PREVIEW_RECORD = {
@@ -1173,14 +899,14 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "ProviderAdmissionReserveRequest", schema: ProviderAdmissionReserveRequestSchema, fixtures: [{
     admissionId: UUID_8,
     execution: { runId: UUID_1, attempt: 1, nodeId: "searching", taskId: "ocr/extract-page" },
-    capability: "ocr.extract", configSnapshotId: UUID_4, configFingerprint: HASH_A,
+    capability: "geocode.census", configSnapshotId: UUID_4, configFingerprint: HASH_A,
     requestFingerprint: HASH_B, estimate: { maximumCostUsdMicros: 0 },
     leaseExpiresAt: LATER, deadlineAt: LATER, now: NOW,
   }] },
   { name: "ProviderAdmissionDenyRequest", schema: ProviderAdmissionDenyRequestSchema, fixtures: [{
     admissionId: UUID_8,
     execution: { runId: UUID_1, attempt: 1, nodeId: "searching", taskId: "ocr/extract-page" },
-    capability: "ocr.extract", configSnapshotId: UUID_4, configFingerprint: HASH_A,
+    capability: "geocode.census", configSnapshotId: UUID_4, configFingerprint: HASH_A,
     requestFingerprint: HASH_B, estimate: { maximumCostUsdMicros: 0 },
     reason: { code: "aborted", message: "run aborted" }, now: NOW,
   }] },
@@ -1381,7 +1107,6 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "CrmOnboardingRecordRead", schema: CrmOnboardingRecordReadSchema, fixtures: [CRM_RECORD_READ] },
   { name: "CrmOnboardingDatesRead", schema: CrmOnboardingDatesReadSchema, fixtures: [CRM_DATES_READ] },
   { name: "SecretSpec", schema: SecretSpecSchema, fixtures: [SECRET_SPECS[0]] },
-  { name: "SecretFamilySpec", schema: SecretFamilySpecSchema, fixtures: [SECRET_FAMILY_SPECS[0]] },
   { name: "SecretFileSpec", schema: SecretFileSpecSchema, fixtures: [SECRET_FILE_SPECS[0]] },
   { name: "SecretAvailability", schema: SecretAvailabilitySchema, fixtures: [{ name: "ucpathPassword", source: "protected-store", state: "unknown", diagnostic: "registered source could not be read" }] },
   { name: "ProtectedSecretSource", schema: ProtectedSecretSourceSchema, fixtures: [{ read: () => ({}) }] },

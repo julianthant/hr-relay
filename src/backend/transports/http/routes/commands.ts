@@ -1,4 +1,4 @@
-import { BulkRunCommandRequestSchema, CommandRequestSchema, ProviderKeysRetryIntentSchema } from "../../../../rules/commands/commands.js";
+import { BulkRunCommandRequestSchema, CommandRequestSchema } from "../../../../rules/commands/commands.js";
 import { HistoricalNotificationSnoozeCommandSchema } from "../../../../rules/commands/commands-history.js";
 import { createOperatorCommandIngress } from "../../../runs/commands/operator-command-ingress.js";
 import { assertRequestActor } from "../request-identity.js";
@@ -11,8 +11,6 @@ export function registerCommandsRoutes(app: DashboardApp, deps: CommandsRouteDep
     clock: deps.clock,
     journal: deps.commandJournal,
     protectedCommandAcceptedAt: deps.protectedCommandAcceptedAt,
-    readPendingProviderRequest: deps.readPendingProviderRequest,
-    providerCommandAcceptedAt: deps.providerCommandAcceptedAt,
     runtimeVersionAcceptedAt: deps.runtimeVersionAcceptedAt,
     bulkAcceptances: deps.bulkCommandAcceptances,
   });
@@ -23,8 +21,6 @@ export function registerCommandsRoutes(app: DashboardApp, deps: CommandsRouteDep
     if (command.success) assertRequestActor(c.get("requestActorId"), command.data.requestedBy);
     const historicalSnooze = HistoricalNotificationSnoozeCommandSchema.safeParse(body);
     if (historicalSnooze.success) assertRequestActor(c.get("requestActorId"), historicalSnooze.data.requestedBy);
-    const retry = ProviderKeysRetryIntentSchema.safeParse(body);
-    if (retry.success) assertRequestActor(c.get("requestActorId"), retry.data.requestedBy);
     const result = await operatorCommands.submit(body, async (accepted) => {
       // Warm the seams a synchronous authority transaction cannot await. Today
       // that is exactly the intake parse (D170); every other family is a no-op.

@@ -7,15 +7,7 @@ export const EnvironmentSecretNameSchema = z.enum([
   "sharepointOnboardingRosterUrl",
 ]);
 export const SecretNameSchema = EnvironmentSecretNameSchema;
-export const SecretFamilyNameSchema = z.enum([
-  "geminiApiKeys",
-  "groqApiKeys",
-  "mistralApiKeys",
-  "openRouterApiKeys",
-  "sambaNovaApiKeys",
-]);
 export const SecretFileNameSchema = z.enum(["duoWebauthnCredential"]);
 export type SecretName = z.infer<typeof SecretNameSchema>;
 export type EnvironmentSecretName = z.infer<typeof EnvironmentSecretNameSchema>;
-export type SecretFamilyName = z.infer<typeof SecretFamilyNameSchema>;
 export type SecretFileName = z.infer<typeof SecretFileNameSchema>;

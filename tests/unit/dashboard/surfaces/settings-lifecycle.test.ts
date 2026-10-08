@@ -3,22 +3,17 @@ import { describe, it } from "vitest";
 import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { readBootSettings, readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
-import { ProviderKeyStoreConflictError, type createProviderKeyStore } from "../../../../src/backend/storage/configuration/provider-key-store.js";
 import { selectNewRunIdentity, selectRunSettings } from "../../../../src/backend/runs/settings/run-settings.js";
 import { SettingsCurrentRecordSchema } from "../../../../src/models/config/settings-current.js";
 import { SETTINGS_SCHEMA_HASH, derivePersistedSettingsFingerprint, deriveSettingsPatchFingerprint, initialSettingsFileRecord } from "../../../../src/models/config/settings.js";
-import { PROVIDER_KEYS_SCHEMA_HASH } from "../../../../src/models/config/provider-keys.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
 import type { CredentialStore } from "../../../../src/models/config/credential-store.js";
-import { EditableSettingsWireSchema } from "../../../../src/models/dashboard/settings-editor.js";
-import { CommandAuditRecordSchema, CommandResultSchema, ProviderKeysCommandRequestSchema, SettingsCommandRequestSchema, deriveSettingsCommandFingerprint } from "../../../../src/rules/commands/commands.js";
+import { CommandAuditRecordSchema, CommandResultSchema, SettingsCommandRequestSchema, deriveSettingsCommandFingerprint } from "../../../../src/rules/commands/commands.js";
 import { ordinaryReadbackState } from "../../../../src/dashboard/surfaces/settings/editor/settings-attempt-model.js";
-import { providerReadbackState } from "../../../../src/dashboard/surfaces/settings/providers/settings-provider-model.js";
 import { fixtureSettingsDocument } from "../../../support/fixtures/dashboard/fixture-settings.js";
 
 const ID = "11111111-1111-4111-8111-111111111111";
 const WRITE_ID = "22222222-2222-4222-8222-222222222222";
-const RECEIPT_ID = "33333333-3333-4333-8333-333333333333";
 const TOKEN_A = "a".repeat(64);
 const TOKEN_B = "b".repeat(64);
 const TOKEN_C = "c".repeat(64);
@@ -162,24 +157,6 @@ describe("accepted Settings readback", () => {
     assert.equal(ordinaryReadbackState(command, result, fixtureSettingsDocument({ actor: { label: "Mismatch" } }, 2)), "unresolved");
     assert.equal(ordinaryReadbackState(command, CommandResultSchema.parse({ ...result, commandId: WRITE_ID }), fixtureSettingsDocument({}, 3)), "unresolved");
   });
-  it("requires an exact provider receipt; equal-revision token changes stay unresolved", () => {
-    const command = ProviderKeysCommandRequestSchema.parse({ commandId: ID, requestedAt: "2026-10-02T12:00:00.000Z",
-      requestedBy: "local-operator", source: "settings-surface", family: "settings", type: "apply-provider-keys",
-      target: { expectedRevision: 1, sourceVersionToken: TOKEN_A }, payload: { providerSchemaHash: PROVIDER_KEYS_SCHEMA_HASH,
-        writeId: WRITE_ID, operations: { GEMINI_API_KEY: { set: "accepted" } } } });
-    const base = fixtureSettingsDocument();
-    const provider = (revision: number, sourceVersionToken: string, value: string) => EditableSettingsWireSchema.parse({ ...base,
-      providerKeys: { state: "available", providerSchemaHash: PROVIDER_KEYS_SCHEMA_HASH, revision, sourceVersionToken,
-        slots: { GEMINI_API_KEY: value }, activeSlots: {}, parentSlotNames: [], fileSlotNamesAtBoot: [],
-        bootFileRevision: 1, bootFileSourceVersionToken: TOKEN_A, overriddenSlots: [], restartRequired: true } });
-    const result = CommandResultSchema.parse({ state: "applied", commandId: ID,
-      affectedTargets: [{ family: "provider-keys", revision: 2 }], restartRequired: true,
-      providerRevision: 2, providerReceiptId: RECEIPT_ID, providerSourceVersionToken: TOKEN_B });
-    assert.equal(providerReadbackState(command, result, provider(2, TOKEN_B, "accepted")), "confirmed");
-    assert.equal(providerReadbackState(command, result, provider(3, TOKEN_C, "later")), "superseded");
-    assert.equal(providerReadbackState(command, result, provider(2, TOKEN_C, "later")), "unresolved");
-    assert.equal(providerReadbackState(command, CommandResultSchema.parse({ ...result, commandId: WRITE_ID }), provider(3, TOKEN_C, "later")), "unresolved");
-  });
 });
 
 it("keeps request validation before private reads and maps independent-store uncertainty", () => {
@@ -199,13 +176,5 @@ it("keeps request validation before private reads and maps independent-store unc
   assert.deepEqual(executor.commitPrivate(protectedCommand), { state: "rejected", code: "authority-uncertain",
     message: "private authority uncertain" });
   assert.equal(privateCommits, 1);
-  const provider = { apply: () => { throw new ProviderKeyStoreConflictError(4, TOKEN_C); } } as unknown as ReturnType<typeof createProviderKeyStore>;
-  const providerExecutor = createSettingsApplicationExecutor(() => { throw new Error("unused resolver"); }, credentials,
-    { store: provider, bootKnown: true, restartRequired: () => false });
-  const providerCommand = ProviderKeysCommandRequestSchema.parse({ commandId: ID, requestedAt: "2026-10-02T12:00:00.000Z",
-    requestedBy: "local-operator", source: "settings-surface", family: "settings", type: "apply-provider-keys",
-    target: { expectedRevision: 1, sourceVersionToken: TOKEN_A }, payload: { providerSchemaHash: PROVIDER_KEYS_SCHEMA_HASH,
-      writeId: WRITE_ID, operations: { GEMINI_API_KEY: { set: "synthetic" } } } });
-  assert.deepEqual(providerExecutor.commitPrivate(providerCommand), { state: "conflict", currentRevision: 4,
-    message: "provider key source changed; reload saved keys" });
+
 });

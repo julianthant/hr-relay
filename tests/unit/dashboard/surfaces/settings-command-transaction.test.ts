@@ -8,18 +8,14 @@ import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/
 import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import type { CredentialStore } from "../../../../src/models/config/credential-store.js";
-import type { createProviderKeyStore } from "../../../../src/backend/storage/configuration/provider-key-store.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint, initialSettingsFileRecord } from "../../../../src/models/config/settings.js";
-import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema, ProtectedStoreRecordSchema,
-  type ProtectedStoreRecord } from "../../../../src/models/config/protected-settings.js";
-import { PROVIDER_KEYS_SCHEMA_HASH } from "../../../../src/models/config/provider-keys.js";
+import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema, ProtectedStoreRecordSchema, type ProtectedStoreRecord } from "../../../../src/models/config/protected-settings.js";
 import { CommandAuditRecordSchema, CommandRequestSchema, type CommandRequest } from "../../../../src/rules/commands/commands.js";
 import { SettingsCurrentRecordSchema } from "../../../../src/models/config/settings-current.js";
 import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
 import { ActiveRuntimeConfigActivationSchema, ActiveRuntimeConfigRecordSchema } from "../../../../src/models/config/runtime-generation.js";
 
 const NOW = "2026-10-02T12:00:00.000Z";
-const TOKEN = "a".repeat(64);
 const IDS = ["11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222",
   "33333333-3333-4333-8333-333333333333", "44444444-4444-4444-8444-444444444444"];
 type State = { commands: Map<string, CommandRequest>; audits: Map<string, z.infer<typeof CommandAuditRecordSchema>>;
@@ -29,7 +25,6 @@ type State = { commands: Map<string, CommandRequest>; audits: Map<string, z.infe
 function fixture(failAt?: "audit" | "insert") {
   let durable: State = { commands: new Map(), audits: new Map(), snapshots: new Map() };
   let privateCommits = 0;
-  let providerCommits = 0;
   let privateRecord: ProtectedStoreRecord | undefined;
   let nextId = 1;
   const clock = manualClock(new Date(NOW));
@@ -84,11 +79,8 @@ function fixture(failAt?: "audit" | "insert") {
     return { state: "applied", record: privateRecord }; },
   verifyReplay: () => { if (privateRecord === undefined) throw new Error("missing private commit");
     return { state: "applied", record: privateRecord }; } } as unknown as CredentialStore;
-  const providerStore = { apply: () => { providerCommits += 1;
-    return { revision: 2, sourceVersionToken: TOKEN, receiptId: IDS[3], slots: {} }; } } as unknown as ReturnType<typeof createProviderKeyStore>;
   const settings = createSettingsApplicationExecutor(
-    value => resolveConfigWithProvenance(value, { primaryDisplay: null }, clock), credentials,
-    { store: providerStore, bootKnown: true, restartRequired: () => false });
+    value => resolveConfigWithProvenance(value, { primaryDisplay: null }, clock), credentials);
   const execute = (command: unknown) => executeSettingsCommand({ authority, clock,
     ids: { uuid: () => IDS[nextId++ % IDS.length] }, settings }, command);
   const ordinary = (expectedRevision = 1, commandId = IDS[0]) => {
@@ -98,7 +90,7 @@ function fixture(failAt?: "audit" | "insert") {
       payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } };
   };
   return { execute, ordinary, authority, durable: () => durable,
-    privateCommits: () => privateCommits, providerCommits: () => providerCommits,
+    privateCommits: () => privateCommits,
     loseCurrent: () => { durable.current = undefined; } };
 }
 
@@ -133,7 +125,7 @@ it("rolls back ordinary snapshot and activation if audit insertion fails", () =>
   assert.equal(f.durable().active, undefined);
 });
 
-it("maps protected and provider private commits followed by SQL failure to distinct uncertainty", () => {
+it("maps protected private commits followed by SQL failure to uncertainty", () => {
   const protectedFixture = fixture("audit");
   const protectedRequest = { family: "settings", type: "apply-protected-settings", commandId: IDS[0],
     requestedAt: NOW, requestedBy: "local-operator", source: "settings-surface", target: { expectedRevision: 1 },
@@ -142,13 +134,5 @@ it("maps protected and provider private commits followed by SQL failure to disti
   assert.throws(() => protectedFixture.execute(protectedRequest), /credential-audit-uncertain/u);
   assert.equal(protectedFixture.privateCommits(), 1);
   assert.equal(protectedFixture.durable().commands.size, 0);
-  const providerFixture = fixture("audit");
-  const providerRequest = { family: "settings", type: "apply-provider-keys", commandId: IDS[0],
-    requestedAt: NOW, requestedBy: "local-operator", source: "settings-surface",
-    target: { expectedRevision: 1, sourceVersionToken: TOKEN },
-    payload: { providerSchemaHash: PROVIDER_KEYS_SCHEMA_HASH, writeId: IDS[1],
-      operations: { GEMINI_API_KEY: { set: "synthetic-value" } } } };
-  assert.throws(() => providerFixture.execute(providerRequest), /provider.*audit.*uncertain/iu);
-  assert.equal(providerFixture.providerCommits(), 2);
-  assert.equal(providerFixture.durable().commands.size, 0);
+
 });
