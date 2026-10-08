@@ -8,7 +8,7 @@ import {
 import { descriptorSetHash } from "../../../src/backend/app/composition/dashboard/compose.js";
 import { projectStartSteps,startStepWireControl } from "../../../src/backend/runs/start/step-selection.js";
 import { personLookupDescriptor,personLookupModule } from "../../support/helpers/registered-workflows.js";
-import { at,CONTRACT_FINGERPRINT,FIXTURE_APP_VERSION,FIXTURE_DESCRIPTOR_HASH,FIXTURE_NOW,WORKFLOW_ID } from "./fixture-identity.js";
+import { at,CONTRACT_FINGERPRINT,FIXTURE_APP_VERSION,FIXTURE_NOW,WORKFLOW_ID } from "./fixture-identity.js";
 
 
 /* ── bootstrap ───────────────────────────────────────────────────────────── */
@@ -16,7 +16,7 @@ import { at,CONTRACT_FINGERPRINT,FIXTURE_APP_VERSION,FIXTURE_DESCRIPTOR_HASH,FIX
 export const FIXTURE_BOOTSTRAP: FrontendBootstrapWire = FrontendBootstrapWireSchema.parse({
   wireVersion: 1,
   appVersion: FIXTURE_APP_VERSION,
-  descriptorHash: FIXTURE_DESCRIPTOR_HASH,
+  descriptorHash: descriptorSetHash([CONTRACT_FINGERPRINT]),
   settingsSchemaHash: descriptorSetHash(["settings-schema"]),
   protectedSchemaHash: descriptorSetHash(["protected-settings-schema"]),
   projectionGeneration: 1,

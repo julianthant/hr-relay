@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { attachShellA11y } from "./helpers/shell-proof.js";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import { build, preview, type PreviewServer } from "vite";
 import react from "@vitejs/plugin-react";
@@ -21,6 +21,7 @@ let output: string;
 let baseUrl: string;
 test.describe.configure({ mode: "default" });
 test.beforeAll(async () => {
+  await mkdir(resolve(".tracker/visual-baseline"), { recursive: true });
   output = await mkdtemp(resolve(".tracker/visual-baseline/account-component-"));
   const root = resolve("tests/parity/fixtures/account");
   await build({ configFile: false, root, plugins: [react(), tailwindcss()], logLevel: "warn", build: { outDir: output, emptyOutDir: true } });

@@ -1,3 +1,4 @@
+import { PARITY_WORKFLOW_COMPOSITION } from "../../../../parity/helpers/workflow-composition.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
@@ -40,7 +41,7 @@ function workflowButton(name: string): HTMLButtonElement {
   return found;
 }
 async function click(node: HTMLElement) { await act(async () => node.click()); await settle(); }
-async function mount(search: string, overrides: Partial<DashboardClient> = {}, panelMode: "icon" | "sidebar" = "icon") {
+async function mount(search: string, overrides: Partial<DashboardClient> = {}, panelMode: "icon" | "sidebar" = "icon", workflowComposition = PARITY_WORKFLOW_COMPOSITION) {
   window.history.replaceState(null, "", `/${search}`);
   localStorage.setItem("hr-dashboard.workflow-panel", panelMode);
   const { app } = createFixtureBff();
@@ -50,7 +51,7 @@ async function mount(search: string, overrides: Partial<DashboardClient> = {}, p
     ...overrides,
   };
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
-  await act(async () => root?.render(createElement(DashboardClientProvider,{client,children:createElement(DashboardApp)})));
+  await act(async () => root?.render(createElement(DashboardClientProvider,{client,children:createElement(DashboardApp, { workflowComposition })})));
   await settle();
 }
 function selectedTab() { return document.querySelector('[role="tab"][aria-selected="true"]')?.textContent; }
@@ -282,7 +283,7 @@ it("a served detail failure stays a failure and an empty workflow catalog states
   assert.match(document.body.textContent??"",/Detail transport failed/);
 });
 it("an empty catalog is not a fabricated workflow queue",async()=>{
-  await mount("",{bootstrap:async()=>({...FIXTURE_BOOTSTRAP,workflows:[]})});
+  await mount("?sessionsPreview=empty",{bootstrap:async()=>({...FIXTURE_BOOTSTRAP,workflows:[]})}, "icon", workflows => ({ ...PARITY_WORKFLOW_COMPOSITION(workflows), catalogIncludesMocks: false, servedDay: true }));
   assert.match(document.body.textContent??"",/No workflows available/);
 });
 it("same-run refresh keeps the verified detail visible and does not invent a history place",async()=>{

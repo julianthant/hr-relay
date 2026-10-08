@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolve } from "node:path";
 import { Hono } from "hono";
-import { writeDashboardBuildIdentity } from "../../../../../../../src/backend/app/composition/dashboard/build-identity.js";
+import { writeDashboardBuildIdentity, assertDashboardBuildCurrent, PARITY_BUILD_COMMAND } from "../../../../../../../src/backend/app/composition/dashboard/build-identity.js";
 import { afterEach, describe, it } from "vitest";
 import type { ActorId } from "../../../../../../../src/rules/identity/ids.js";
 import {
@@ -23,7 +23,7 @@ import {
 type TestDashboardEnv = { Variables: { requestActorId: ActorId } };
 
 const roots: string[] = [];
-const REPO_ROOT = resolve(import.meta.dirname, "../../../../../../../../../../..");
+const REPO_ROOT = resolve(import.meta.dirname, "../../../../../../..");
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
@@ -129,6 +129,14 @@ describe("static bundle over a real temp bundle", () => {
     writeDashboardBuildIdentity({ repoRoot: REPO_ROOT, distDir: dist });
     writeFileSync(join(dist, "assets", "app.abc123.js"), "changed after build");
     await assert.rejects(openStaticBundle(dist, REPO_ROOT), /bundle bytes changed after build/u);
+  });
+
+  it("rejects parity composition for production and product composition for parity", async () => {
+    const { dist } = scaffold();
+    assert.throws(() => assertDashboardBuildCurrent({ repoRoot: REPO_ROOT, distDir: dist, buildScript: PARITY_BUILD_COMMAND }), /required composition/u);
+    writeDashboardBuildIdentity({ repoRoot: REPO_ROOT, distDir: dist, buildScript: PARITY_BUILD_COMMAND });
+    assert.equal(assertDashboardBuildCurrent({ repoRoot: REPO_ROOT, distDir: dist, buildScript: PARITY_BUILD_COMMAND }).buildScript, PARITY_BUILD_COMMAND);
+    await assert.rejects(openStaticBundle(dist, REPO_ROOT), /required composition/u);
   });
 
   it("serves bundle bytes with exact headers, falls back to the SPA, and keeps API precedence", async () => {

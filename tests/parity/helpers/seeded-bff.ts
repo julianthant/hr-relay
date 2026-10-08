@@ -14,7 +14,7 @@ import { createTransactionHistory } from "../../../src/backend/storage/sqlite/tr
 import { descriptorSetHash } from "../../../src/backend/app/composition/dashboard/compose.js";
 import { createRunQueueProjection } from "../../../src/backend/runs/projections/run-queue-projection.js";
 import { type DashboardApp } from "../../../src/backend/transports/http/routes/api.js";
-import { seedSyntheticRuntimeConfig } from "../../support/fixtures/operator-command-fixtures.js";
+import { seedInitialSettingsRuntimeConfig } from "../../support/fixtures/operator-command-fixtures.js";
 import { sqliteRunReader } from "../../support/helpers/canonical-run-reader.js";
 import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
 import { assertServedBundle,type ParityBundleProof } from "./bundle.js";
@@ -138,7 +138,7 @@ export async function startSeededServer(
     clock,
   );
 
-  seedSyntheticRuntimeConfig(database);
+  seedInitialSettingsRuntimeConfig(database, clock);
   const descriptors = {
     resolve: (workflowId: string) => (workflowId === WORKFLOW_ID ? personLookupDescriptor : undefined),
   };

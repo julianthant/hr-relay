@@ -22,6 +22,7 @@
     "tests/**/*",
     "scripts/**/*",
     "vitest.config.ts",
-    "vite.dashboard.config.ts"
+    "vite.dashboard.config.ts",
+    "vite.parity.config.ts"
   ]
 }

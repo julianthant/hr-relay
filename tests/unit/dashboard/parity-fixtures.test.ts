@@ -77,14 +77,14 @@ describe("intake fixture corpus", () => {
     expect(codes).toContain("cross-field");
   });
 
-  it("redacts a rejected cell by its canonical field's declared transform", () => {
+  it("retains the complete rejected cell in local evidence", () => {
     const validation = FIXTURE_INTAKE_VALIDATED.validation;
     if (validation.state !== "validated") throw new Error("the validated fixture is not validated");
     const coercion = validation.rejected.find((reject) => reject.kind === "cell-coercion");
     expect(coercion).toBeDefined();
-    // `eid` declares `last4`, so the durable manifest — and this reference —
-    // never carries the whole identifier.
-    expect(coercion?.kind === "cell-coercion" ? coercion.raw.state : undefined).toBe("transformed");
+    expect(coercion?.kind === "cell-coercion" ? coercion.raw : undefined).toEqual({
+      state: "allowed", classification: "direct-identifier", transform: "allow", value: "10-4567",
+    });
   });
 });
 

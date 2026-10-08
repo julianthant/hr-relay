@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { PARITY_WORKFLOW_COMPOSITION } from "../../parity/helpers/workflow-composition.js";
 import assert from 'node:assert/strict';
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -21,7 +22,7 @@ afterEach(async () => {
 });
 async function settle() { await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); }); }
 
-async function mount(options: { boot?: Promise<Response>; bootFailure?: boolean; delayDay?: boolean } = {}) {
+async function mount(options: { boot?: Promise<Response>; bootFailure?: boolean; delayDay?: boolean; product?: boolean; search?: string } = {}) {
   const { app } = createFixtureBff();
   const streams: ReadableStreamDefaultController<Uint8Array>[] = [];
   const requests: { url: string; resume?: string | null }[] = [];
@@ -51,10 +52,10 @@ async function mount(options: { boot?: Promise<Response>; bootFailure?: boolean;
     assert(open, 'no request after fixture disposal');
     return app.request(url, init);
   } });
-  window.history.replaceState(null, '', `/?day=${FIXTURE_DAY_WIRE.day}`);
+  window.history.replaceState(null, '', `/?day=${FIXTURE_DAY_WIRE.day}${options.search ? `&${options.search}` : ""}`);
   localStorage.setItem('hr-dashboard.workflow-panel', 'sidebar');
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
-  await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp) })));
+  await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, options.product ? {} : { workflowComposition: PARITY_WORKFLOW_COMPOSITION }) })));
   await settle(); disposers.push(() => { open = false; });
   return { host, requests, streams,
     deliver: async (day: DashboardDayWire, index = streams.length - 1) => { await act(async () => snapshot(streams[index], day)); await settle(); },
@@ -68,6 +69,20 @@ function withTitle(title: string, cursor: string, revision: number): DashboardDa
 }
 
 describe('real mounted dashboard through the typed mock transport', () => {
+  it('uses only mock workflow data in the product even when bootstrap registers served workflows', async () => {
+    const h = await mount({ product: true });
+    assert.equal(h.streams.length, 0);
+    assert.equal(h.requests.some(request => request.url.includes('/events/v1?')), false);
+    assert.match(h.host.textContent ?? '', /Person Lookup/u);
+    assert(h.host.querySelector('[data-parity-ready="true"]'));
+  });
+  it('keeps an unknown launch workflow in the explicit unavailable destination', async () => {
+    const view = encodeURIComponent(JSON.stringify({ launchWorkflow: 'unregistered-workflow' }));
+    const h = await mount({ product: true, search: `start=1&view=${view}` });
+    assert.match(h.host.textContent ?? '', /Destination unavailable/u);
+    assert.match(h.host.textContent ?? '', /This launch workflow is not registered/u);
+    assert.equal(h.streams.length, 0);
+  });
   it('keeps slow bootstrap in loading geometry until a parsed response arrives', async () => {
     let resolve!: (response: Response) => void;
     const boot = new Promise<Response>(done => { resolve = done; });

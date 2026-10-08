@@ -1,3 +1,4 @@
+import { PARITY_WORKFLOW_COMPOSITION } from "../../../../parity/helpers/workflow-composition.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
@@ -39,7 +40,7 @@ async function mount(overrides: Partial<DashboardClient> = {}) {
     ...overrides,
   };
   const host=document.createElement("div"); document.body.append(host); root=createRoot(host);
-  await act(async () => root?.render(createElement(DashboardClientProvider,{client,children:createElement(DashboardApp)})));
+  await act(async () => root?.render(createElement(DashboardClientProvider,{client,children:createElement(DashboardApp, { workflowComposition: PARITY_WORKFLOW_COMPOSITION })})));
   await settle();
 }
 for (const launch of ["external button", "keyboard shortcut"] as const) {

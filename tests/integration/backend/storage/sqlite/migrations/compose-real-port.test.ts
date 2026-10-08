@@ -1279,6 +1279,8 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-built-bundle-"));
     copyRuntimePackageFixture(repoRoot);
     cpSync(join(process.cwd(), "src"), join(repoRoot, "src"), { recursive: true });
+    mkdirSync(join(repoRoot, "config"), { recursive: true });
+    copyFileSync(join(process.cwd(), "config", "dashboard-workflow-sources.json"), join(repoRoot, "config", "dashboard-workflow-sources.json"));
     copyFileSync(join(process.cwd(), "vite.dashboard.config.ts"), join(repoRoot, "vite.dashboard.config.ts"));
     copyFileSync(join(process.cwd(), "tsconfig.json"), join(repoRoot, "tsconfig.json"));
     cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));

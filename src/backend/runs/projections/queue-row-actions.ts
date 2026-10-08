@@ -198,7 +198,7 @@ function placementOf(command: ServedCommand): ActionDescriptorWire["placement"] 
   // `rename` is menu-only in the demo and here, for the reason the footer set
   // exists: the footer is the FREQUENT subset. Naming a run is a thing an
   // operator does once, to one run, on purpose.
-  if (command === "rename" || command === "delete") return ["menu"];
+  if (command === "rename") return ["menu"];
   return ["footer", "menu"];
 }
 
@@ -286,7 +286,7 @@ function describe(command: ServedCommand, facts: QueueRowActionFacts): unknown {
       return {
         ...base,
         key: "delete",
-        label: "Permanently delete",
+        label: facts.memberCount > 0 ? "Delete group" : "Delete run",
         intent: "destructive",
         icon: "delete",
         confirm: {
@@ -353,10 +353,7 @@ export function queueRowActions(
     ? [ActionDescriptorWireSchema.parse({ key: "rerun", label: "Rerun", kind: "navigation",
       navigate: { kind: "rerun", expectedVersion: facts.rowRevision },
       intent: "primary", icon: "retry", placement: ["footer", "menu", "data"] })] : [];
-  const archive = TERMINAL_QUEUE_STATUSES.has(facts.status) && !facts.isChild
-    ? [ActionDescriptorWireSchema.parse({ key: "archive", command: "archive", kind: "command",
-      expectedVersion: facts.rowRevision, label: "Archive", intent: "neutral", icon: "archive", placement: ["footer", "menu"] })] : [];
-  return [...rerun, ...archive, ...SERVED_ORDER
+  return [...rerun, ...SERVED_ORDER
     .filter((command) => policyEnables(policy, command, facts) && KERNEL_ADMITS[command](facts))
     .map((command) => ActionDescriptorWireSchema.parse(describe(command, facts)))];
 }

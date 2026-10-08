@@ -31,7 +31,7 @@ describe("DCF2 shell and queue structural fidelity", () => {
     );
     assert.match(
       OVERLAY,
-      /bottom-\[var\(--ds-toast-inset-bottom,var\(--ds-space-loose\)\)\]/u,
+      /bottom-\[var\(--ds-toast-inset-bottom,16px\)\]/u,
       "the fixed toast viewport must consume the shell-owned floor",
     );
   });

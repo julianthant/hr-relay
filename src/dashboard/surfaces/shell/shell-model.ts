@@ -41,7 +41,7 @@ export function parseWorkflows(workflows: readonly unknown[]): WorkflowBootstrap
 
 const SELECTED_WORKFLOW_STORAGE_KEY = "hr-dashboard.selected-workflow";
 
-export function useSelectedWorkflow(workflows: readonly WorkflowBootstrapPrimitive[]): {
+export function useSelectedWorkflow(workflows: readonly { readonly id: string }[]): {
   selectedWorkflowId: string;
   setSelectedWorkflowId: (workflowId: string) => void;
 } {

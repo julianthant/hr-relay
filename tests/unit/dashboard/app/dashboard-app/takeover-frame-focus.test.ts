@@ -1,3 +1,4 @@
+import { PARITY_WORKFLOW_COMPOSITION } from "../../../../parity/helpers/workflow-composition.js";
 import { FIXTURE_EDITABLE_SETTINGS } from "../../../../parity/helpers/fixture-settings.js";
 // @vitest-environment jsdom
 /**
@@ -219,7 +220,7 @@ function appClient(): DashboardClient {
 
 async function mountDashboard(search: string): Promise<void> {
   window.history.replaceState(null, "", `/${search}`);
-  await mountSurface(appClient(), createElement(DashboardApp));
+  await mountSurface(appClient(), createElement(DashboardApp, { workflowComposition: PARITY_WORKFLOW_COMPOSITION }));
   await act(async () => {
     await Promise.resolve();
     await Promise.resolve();
@@ -227,7 +228,7 @@ async function mountDashboard(search: string): Promise<void> {
 }
 
 async function mountDashboardAtCurrentHistoryEntry(): Promise<void> {
-  await mountSurface(appClient(), createElement(DashboardApp));
+  await mountSurface(appClient(), createElement(DashboardApp, { workflowComposition: PARITY_WORKFLOW_COMPOSITION }));
   await act(async () => {
     await Promise.resolve();
     await Promise.resolve();

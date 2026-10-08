@@ -1,3 +1,4 @@
+import { servedFixtureSources } from "../../../../parity/helpers/workflow-composition.js";
 import { buildWorkflowCatalog } from "../../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 // @vitest-environment jsdom
 /**
@@ -309,7 +310,7 @@ async function openDialog(
     children: createElement(RunStartDialog, {
       open: true,
       onOpenChange: next => closed.push(next),
-      catalog: buildWorkflowCatalog(catalogue.workflows, false),
+      catalog: buildWorkflowCatalog(catalogue.workflows, false, servedFixtureSources(catalogue.workflows)),
       panelWorkflowId: catalogue.panelWorkflowId,
       actorId: ACTOR_ID,
       onApplied,

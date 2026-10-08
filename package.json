@@ -21,7 +21,7 @@
     "stores:catalog:check": "tsx scripts/docs/generate-store-catalog.ts --check",
     "smoke:test-target-document-number": "tsx scripts/dev/secure-env-bootstrap.ts test-target-document-number",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src tests scripts vitest.config.ts vite.dashboard.config.ts --max-warnings 0",
+    "lint": "eslint src tests scripts vitest.config.ts vite.dashboard.config.ts vite.parity.config.ts --max-warnings 0",
     "test": "tsx scripts/test/runner.ts run",
     "test:unit": "tsx scripts/test/runner.ts unit",
     "test:integration": "tsx scripts/test/runner.ts integration",

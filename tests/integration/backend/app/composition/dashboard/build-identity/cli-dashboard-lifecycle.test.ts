@@ -137,6 +137,8 @@ function createScratchRepoRoot(): string {
     cpSync(join(REPO_ROOT, file), join(root, file));
   }
   cpSync(join(REPO_ROOT, "src"), join(root, "src"), { recursive: true });
+  mkdirSync(join(root, "config"), { recursive: true });
+  cpSync(join(REPO_ROOT, "config", "dashboard-workflow-sources.json"), join(root, "config", "dashboard-workflow-sources.json"));
   const bundleRoot = join(root, "dist", "dashboard");
   mkdirSync(join(bundleRoot, "assets"), { recursive: true });
   writeFileSync(join(bundleRoot, "index.html"), '<!doctype html><html><body><script type="module" src="/assets/app.js"></script></body></html>\n');

@@ -1,3 +1,4 @@
+import { productWorkflowComposition, workflowSource, type WorkflowComposition } from "./workflow-sources.js";
 import { runDisplayId } from "../surfaces/shared/status/run-display-model.js";
 import type { NavbarSearchResult } from "../surfaces/shell/search/navbar-view-model.js";
 import { ViewNavigationProvider } from "./navigation/view-navigation.js";
@@ -117,7 +118,7 @@ function servedActions(surface: QueueSurfaceWire | undefined): readonly ActionDe
 }
 
 
-export function DashboardApp() {
+export function DashboardApp({ workflowComposition = productWorkflowComposition }: { workflowComposition?: (workflows: readonly import("../surfaces/run-start/run-start.js").RunStartWorkflow[]) => WorkflowComposition } = {}) {
   const bootstrap = useBootstrap();
   const onPopstate = useRef<PopstateRouteHandler | undefined>(undefined);
   const [route, setRoute, nativeHistory] = useRoute(onPopstate);
@@ -170,6 +171,7 @@ export function DashboardApp() {
       ) : (
         <ViewNavigationProvider route={route} setRoute={setRoute}><LoadedApp
           boot={boot}
+          workflowComposition={workflowComposition}
           route={route}
           setRoute={setRoute}
           onPopstateRef={onPopstate}
@@ -233,6 +235,7 @@ function BootGate({ bootstrap }: { bootstrap: ReturnType<typeof useBootstrap> })
 
 
 interface LoadedAppProps {
+  workflowComposition: (workflows: readonly import("../surfaces/run-start/run-start.js").RunStartWorkflow[]) => WorkflowComposition;
   boot: FrontendBootstrapWire;
   route: AppRouteState;
   setRoute: RouteSetter;
@@ -262,6 +265,7 @@ interface LoadedAppProps {
 
 
 function LoadedApp({
+  workflowComposition: composeWorkflows,
   boot,
   route,
   setRoute,
@@ -298,26 +302,34 @@ function LoadedApp({
   const day = dateSelection.state === "valid" ? dateSelection.day : dateSelection.requested;
   const dateError = dateSelection.state === "valid" ? undefined : dateSelection.reason === "future"
     ? `Date ${day} is after Today (${today}).` : `Invalid date: ${day || "(empty)"}.`;
-  const { day: dayResource } = useDashboardDay(dateSelection.state === "valid" ? day : undefined, nowIso);
+  const workflows = useMemo(() => parseWorkflows(boot.workflows), [boot.workflows]);
+  const workflowComposition = useMemo(() => composeWorkflows(launchWorkflows(workflows)), [composeWorkflows, workflows]);
+  const workflowCatalog = useMemo(() => buildWorkflowCatalog(launchWorkflows(workflows), workflowComposition.catalogIncludesMocks ?? true, workflowComposition.sources), [workflows, workflowComposition]);
+  const hasServedWorkflows = workflowComposition.servedDay ?? Object.values(workflowComposition.sources).includes("served");
+  const { day: dayResource } = useDashboardDay(hasServedWorkflows && dateSelection.state === "valid" ? day : undefined, nowIso);
 
   const dayWire = dayResource.state === "loaded" && dayResource.value.day === day ? dayResource.value : undefined;
   const [commandResults, setCommandResults] = useState<readonly CommandResultFeedEntry[]>([]);
 
-  const workflows = useMemo(() => parseWorkflows(boot.workflows), [boot.workflows]);
-  const workflowCatalog = useMemo(() => buildWorkflowCatalog(launchWorkflows(workflows)), [workflows]);
-  const { selectedWorkflowId: chosenWorkflowId, setSelectedWorkflowId: setActiveWorkflowId } = useSelectedWorkflow(workflows);
-  const previewQueue = useQueuePreview(dayWire?.queueSurfaces, day);
+  const { selectedWorkflowId: chosenWorkflowId, setSelectedWorkflowId: setActiveWorkflowId } = useSelectedWorkflow(workflows.some(flow => workflowSource(flow.id, workflowComposition.sources) === "served")
+    ? workflows.filter(flow => workflowSource(flow.id, workflowComposition.sources) === "served") : workflowCatalog);
+  const workflowSurfaces = useMemo(() => dayWire?.queueSurfaces.filter(row => workflowSource(row.workflowId, workflowComposition.sources) === "served"), [dayWire, workflowComposition]);
+  const previewQueue = useQueuePreview(workflowSurfaces, day);
   const selectedRow = previewQueue.rows.find(row => String(row.runId) === route.run);
   const activeWorkflowId = selectedRow?.workflowId ?? route.view?.workflow ?? chosenWorkflowId;
   const launch = useRunLaunch(route.start, DASHBOARD_MAIN_REGION_ID);
-  const [railPreview, setRailPreview] = useViewState("preview", null);
-  const [mockRuns, setMockRuns] = useState<readonly MockRun[]>(seedMockRuns);
+  const [requestedPreview, setRailPreview] = useViewState("preview", null);
+  const routeWorkflowId = requestedPreview ?? activeWorkflowId;
+  const railPreview = requestedPreview && !workflowCatalog.some(flow => flow.id === requestedPreview) ? requestedPreview
+    : routeWorkflowId && workflowComposition.sourceForRoute(routeWorkflowId, requestedPreview !== null) === "mock" ? routeWorkflowId : null;
+  const [allMockRuns, setMockRuns] = useState<readonly MockRun[]>(seedMockRuns);
+  const mockRuns = useMemo(() => allMockRuns.filter(run => workflowComposition.sourceForRoute(run.workflowId, true) === "mock"), [allMockRuns, workflowComposition]);
   // The route selection clears after the removal commits; a run deleted here is not an unavailable destination.
   const [deletedMockRuns, setDeletedMockRuns] = useState<ReadonlySet<string>>(() => new Set());
   const launchWorkflow = route.view?.launchWorkflow;
   const launchSource = route.view?.launchSource;
-  const mockLaunch = useMemo(() => route.start && launchWorkflow && MOCK_WORKFLOWS.some(flow => flow.id === launchWorkflow) ? { workflowId: mockWorkflow(launchWorkflow).id,
-    source: launchSource ? mockRuns.find(run => run.id === launchSource) : undefined } : null, [route.start, launchWorkflow, launchSource, mockRuns]);
+  const mockLaunch = useMemo(() => route.start && launchWorkflow && MOCK_WORKFLOWS.some(flow => flow.id === launchWorkflow) && workflowComposition.sourceForRoute(launchWorkflow, true) === "mock" ? { workflowId: mockWorkflow(launchWorkflow).id,
+    source: launchSource ? mockRuns.find(run => run.id === launchSource) : undefined } : null, [route.start, launchWorkflow, launchSource, mockRuns, workflowComposition]);
   const setMockLaunch = useCallback((next: { workflowId: MockWorkflowId; source?: MockRun } | null) => setRoute(current => ({ ...current, start: next !== null,
     view: { ...current.view, launchWorkflow: next?.workflowId, launchSource: next?.source?.id, launchStage: next ? next.source ? "Steps" : "Input" : undefined, launchCustomize: next ? false : undefined } })), [setRoute]);
   const rememberLauncher = launch.rememberLauncher;
@@ -945,7 +957,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
     onMinimisePanel: () => {},
     // A preview queue is not the served queue; its rows must not move the hidden served selection.
     visibleRunIds: railPreview ? [] : keyboardOrder,
-    workflowIds: workflows.map(workflow => String(workflow.id)), onWorkflow: selectWorkflow,
+    workflowIds: workflowCatalog.map(workflow => workflow.id), onWorkflow: selectWorkflow,
     attentionRunIds: railPreview ? [] : keyboardAttention,
     selectedRunId: route.run,
     onSelectRun: selectRun,
@@ -968,7 +980,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
     () => new Map(workflowCatalog.map((workflow) => [workflow.id, workflow.label])),
     [workflowCatalog],
   );
-  const ready = dayResource.state === "loaded" || dayResource.state === "failed";
+  const ready = !hasServedWorkflows || dayResource.state === "loaded" || dayResource.state === "failed";
   // One resolution of "which takeover owns the main region", so the JSX below
   // cannot disagree with a link that carries more than one key.
   const takeover = activeTakeover(route);
@@ -1019,7 +1031,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
   const railRows = useMemo(() => mockRuns.filter(run => run.workflowId === railPreview), [mockRuns, railPreview]);
   const previewCounts = useMemo(() => mockWorkflowCounts(mockRuns), [mockRuns]);
   const railQueueRows = useMemo(() => mockQueueView(railRows, filter, sort), [railRows, filter, sort]);
-  const railRow = railRows.find(run => run.id === railRun);
+  const railRow = railRows.find(run => run.id === railRun) ?? (railRun === undefined ? railRows.find(run => run.id === `mock:${railPreview}:sample`) ?? railRows[0] : undefined);
   const setLaunchOpen = launch.setOpen;
   const closeMockLaunch = useCallback(() => setMockLaunch(null), [setMockLaunch]);
   const completeReview = (id: string, action: MockReviewAction) => {
@@ -1052,9 +1064,9 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
   const notificationMinute = Math.floor(Date.parse(nowIso) / 60000);
   const notifications = useMemo(() => notificationPreviewState(notificationScenario, {
     day, nowIso: new Date(Math.max(notificationMinute * 60000, ...Object.values(mockNotificationTimes).map(Date.parse))).toISOString(),
-    rows: dayWire ? previewQueue.rows : undefined, runs: mockRuns, workflowLabel: workflowLabelOf, eventTimes: mockNotificationTimes,
+    rows: !hasServedWorkflows || dayWire ? previewQueue.rows : undefined, runs: mockRuns, workflowLabel: workflowLabelOf, eventTimes: mockNotificationTimes,
     unavailable: dateError ?? (dayResource.state === "failed" ? dayResource.error.message : undefined),
-  }), [notificationScenario, day, notificationMinute, dayWire, previewQueue.rows, mockRuns, workflowLabelOf, dateError, dayResource, mockNotificationTimes]);
+  }), [notificationScenario, day, notificationMinute, dayWire, previewQueue.rows, mockRuns, workflowLabelOf, dateError, dayResource, mockNotificationTimes, hasServedWorkflows]);
   const notificationContext = useRef({ day, rows: previewQueue.rows, runs: mockRuns });
   notificationContext.current = { day, rows: previewQueue.rows, runs: mockRuns };
   const openNotification = useCallback((destination: NotificationDestination, opened: () => void, refused: (message: string) => void) => {
@@ -1127,7 +1139,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
         target.focus({ preventScroll: true });
       }} className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[1000] focus:rounded-lg focus:bg-ui-panel focus:px-4 focus:py-2 focus:text-ui-primary focus:outline-2 focus:outline-ui-info">Skip to content</a>
       <div className="dashboard-workspace relative flex min-h-0 min-w-0 flex-1 flex-col">
-      <WorkspaceRail workflows={workflowCatalog} counts={dayWire?.workflowCounts} previewCounts={previewCounts} active={activeWorkflowId} preview={railPreview}
+      <WorkspaceRail workflows={workflowCatalog} counts={dayWire?.workflowCounts.filter(count => workflowSource(count.workflowId, workflowComposition.sources) === "served")} previewCounts={previewCounts} active={activeWorkflowId} preview={railPreview}
         onSelect={onRailSelect} onPreview={onRailPreview} settingsOpen={settingsOpen} notifications={notifications} onOpenNotification={openNotification} searchData={searchData} onSearch={onSearch} />
 
       <main

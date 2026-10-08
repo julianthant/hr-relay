@@ -1,3 +1,4 @@
+import { servedFixtureSources } from "../../../../parity/helpers/workflow-composition.js";
 import { buildWorkflowCatalog } from "../../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 // @vitest-environment jsdom
 import { requireLifecycleApplied } from "../../../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -53,7 +54,7 @@ async function mount(h: Harness, source: RunRecord, client: DashboardClient = h.
   const workflows = [h.workflow]; const sourceRef = { runId: source.envelope.runId, expectedVersion: source.version };
   function Launcher() { const controller = useRunLaunch(false, "launch-main"); return createElement("main", { id: "launch-main", tabIndex: -1 },
     createElement("button", { onClick: () => controller.openRerun(sourceRef) }, "Rerun source"),
-    createElement(ToastProvider, { children: createElement(RunLaunchHost, { controller, catalog: buildWorkflowCatalog(workflows, false), panelWorkflowId: h.descriptor.id, actorId: "local-operator", onOpenIntake: () => { throw new Error("unexpected intake"); } }) })); }
+    createElement(ToastProvider, { children: createElement(RunLaunchHost, { controller, catalog: buildWorkflowCatalog(workflows, false, servedFixtureSources(workflows)), panelWorkflowId: h.descriptor.id, actorId: "local-operator", onOpenIntake: () => { throw new Error("unexpected intake"); } }) })); }
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(Launcher) })));
   button("Rerun source").focus(); await press("Rerun source");
@@ -146,7 +147,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     h.world.probeResults.push({ ...absence, evidence: { ...absence.evidence,
       idempotencyKeyDigest: deriveIdempotencyKeyDigest("ucpath", "10812346|fixture-termination") } });
     assert.equal((await h.execute(other)).state, "done");
-    await mount(h, source); await press("Continue"); await press("Confirm"); await press("Copy Employee ID");
+    await mount(h, source); await press("Continue"); await press("Confirm"); assert.equal(field("Employee ID").value, "10812345");
     await fill(field("Employee ID"), "10812346"); await press("Continue"); await act(async () => checkbox("Dry run").click()); await press("Continue");
     assert.ok(document.querySelector('[aria-label="Repeat transaction warning"]'));
     assert.equal(h.finalCommands.length, 0); assert.equal(h.queueRoots.length, 2);
@@ -160,7 +161,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     const h = setup(); const source = await h.completeSource(); let release: () => void = () => { throw new Error("release not initialized"); };
     const pending = new Promise<void>((resolve) => { release = resolve; });
     const client = { ...h.client, executeCommand: async (input: unknown) => { const result = await h.client.executeCommand(input); await pending; return result; } };
-    await mount(h, source, client); await press("Continue"); await press("Confirm"); await press("Copy Employee ID");
+    await mount(h, source, client); await press("Continue"); await press("Confirm"); assert.equal(field("Employee ID").value, "10812345");
     await press("Continue"); await act(async () => checkbox("Dry run").click()); await press("Continue");
     await act(async () => { button("Start dry run").click(); button("Start dry run").click(); });
     assert.equal(h.finalCommands.length, 1); assert.equal(h.queueRoots.length, 2);
