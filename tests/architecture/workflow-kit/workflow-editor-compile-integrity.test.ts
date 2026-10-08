@@ -431,13 +431,21 @@ describe("the Phase B safe-edit protocol cannot become a code-authoring path", (
       ["held", "held", "held", "held", "held"],
     );
 
-    const brokenDeps = { ...deps, listScenarioSources: () => [] };
-    const brokenWire = buildWorkflowExplorer(brokenDeps);
-    const brokenWorkflow = brokenWire.workflows[0];
-    assert.ok(brokenWorkflow !== undefined);
+    const absentCorpusDeps = { ...deps, listScenarioSources: () => [] };
+    const absentCorpusWire = buildWorkflowExplorer(absentCorpusDeps);
+    const absentCorpusWorkflow = absentCorpusWire.workflows[0];
+    assert.ok(absentCorpusWorkflow !== undefined);
+    assert.ok(absentCorpusWorkflow.scenarios.every(({ source }) => source.state === "unresolved"));
+    const absentCorpusAttestation = buildExplorerCompileAttestation(absentCorpusDeps, absentCorpusWorkflow);
+    assert.deepEqual(absentCorpusAttestation.checks.scenario, {
+      state: "held",
+      scope: "registered-declaration-equivalence",
+      registrations: absentCorpusWorkflow.scenarios.map(({ scenarioId }) => ({ scenarioId })),
+    });
+
     assert.throws(
-      () => buildExplorerCompileAttestation(brokenDeps, brokenWorkflow),
-      /compile attestation.*scenario.*unresolved/u,
+      () => buildExplorerCompileAttestation(absentCorpusDeps, { ...absentCorpusWorkflow, scenarios: [] }),
+      /served scenario registrations differ from the descriptor\/task union/u,
     );
   });
 
@@ -448,7 +456,7 @@ describe("the Phase B safe-edit protocol cannot become a code-authoring path", (
       "canonicalDescriptorJson",
       "canonicalExpressionSchema",
       "runtime-registry-round-trip",
-      "registered-source-resolution",
+      "registered-declaration-equivalence",
       "must-change",
     ]) {
       assert.ok(protocolSource.includes(token), `Explorer source brief protocol omits ${token}`);
