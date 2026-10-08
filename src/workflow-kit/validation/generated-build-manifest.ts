@@ -15,7 +15,7 @@ export const GENERATED_BUILD_MANIFEST = {
   },
   "workflows": [
     {
-      "fingerprint": "59e58ad92144b78e6700fe3ec2ca080b0197f959ce0ae58986b8526386743a49",
+      "fingerprint": "782fd42b072e4ee9f22130822276519a81c4d104cc8129ae3ac4794a005d5611",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -203,11 +203,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/redaction/redaction-policy.ts",
-          "sha256": "e5886e8a0578838d3afd2606c3af8b07a2fb88c780ccda31036cac85707d34ab"
+          "sha256": "ed823f54dde5047b13266ef2be0077fb41354de30c5ef450ccaa483a5275bdb7"
         },
         {
           "path": "src/rules/redaction/redaction.ts",
-          "sha256": "acb33bd253af947fbf07f732e1d03a218c73be58ebe168e92bd6437a34e38c28"
+          "sha256": "fed557936422b2951cd2f7d595e2329f4700c1eeb8fd6e89aca981ce343a623d"
         },
         {
           "path": "src/rules/sessions/duo-ceremony-lease.ts",
@@ -293,7 +293,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "person-lookup"
     },
     {
-      "fingerprint": "54a86318f7dc528c47a5c3a136bc0f4145fba3f039b3036d5a6e5cd67fa883e6",
+      "fingerprint": "0511f49ef42601436a59d9af0d407109bc20a54c612105c030a2d94aadceefcd",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -605,11 +605,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/redaction/redaction-policy.ts",
-          "sha256": "e5886e8a0578838d3afd2606c3af8b07a2fb88c780ccda31036cac85707d34ab"
+          "sha256": "ed823f54dde5047b13266ef2be0077fb41354de30c5ef450ccaa483a5275bdb7"
         },
         {
           "path": "src/rules/redaction/redaction.ts",
-          "sha256": "acb33bd253af947fbf07f732e1d03a218c73be58ebe168e92bd6437a34e38c28"
+          "sha256": "fed557936422b2951cd2f7d595e2329f4700c1eeb8fd6e89aca981ce343a623d"
         },
         {
           "path": "src/rules/separations/department-option.ts",
@@ -743,7 +743,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations"
     },
     {
-      "fingerprint": "2a22d834edc1da97c1ea3447e7f2f31f79143e0b5321b0717be13244eb37dc6d",
+      "fingerprint": "67b0ac0c2f87092e3aa4d449c9a06cd61175fe8d63985073e7c3e470239dbeec",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -1055,11 +1055,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/redaction/redaction-policy.ts",
-          "sha256": "e5886e8a0578838d3afd2606c3af8b07a2fb88c780ccda31036cac85707d34ab"
+          "sha256": "ed823f54dde5047b13266ef2be0077fb41354de30c5ef450ccaa483a5275bdb7"
         },
         {
           "path": "src/rules/redaction/redaction.ts",
-          "sha256": "acb33bd253af947fbf07f732e1d03a218c73be58ebe168e92bd6437a34e38c28"
+          "sha256": "fed557936422b2951cd2f7d595e2329f4700c1eeb8fd6e89aca981ce343a623d"
         },
         {
           "path": "src/rules/separations/department-option.ts",
@@ -1197,7 +1197,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-identity-check"
     },
     {
-      "fingerprint": "c97369067295341a10e32e1597fd4a68ce07ffc5e14b972a68f58432937573aa",
+      "fingerprint": "e5319fb9bc8385cb7b944d661c357a720611a09fe7b31797e06b2e6c75f3a90f",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -1509,11 +1509,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/redaction/redaction-policy.ts",
-          "sha256": "e5886e8a0578838d3afd2606c3af8b07a2fb88c780ccda31036cac85707d34ab"
+          "sha256": "ed823f54dde5047b13266ef2be0077fb41354de30c5ef450ccaa483a5275bdb7"
         },
         {
           "path": "src/rules/redaction/redaction.ts",
-          "sha256": "acb33bd253af947fbf07f732e1d03a218c73be58ebe168e92bd6437a34e38c28"
+          "sha256": "fed557936422b2951cd2f7d595e2329f4700c1eeb8fd6e89aca981ce343a623d"
         },
         {
           "path": "src/rules/separations/department-option.ts",
@@ -1651,7 +1651,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-kronos-timecard"
     },
     {
-      "fingerprint": "33e3441d1c791e07d8449e76987eb8706c051bba9e264632fe1054fe60fdd79b",
+      "fingerprint": "c375fa6d6905aa9c9ef6baa373c14c76867c91ea81252c9e7847ad4e5d4ac007",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -1963,11 +1963,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/redaction/redaction-policy.ts",
-          "sha256": "e5886e8a0578838d3afd2606c3af8b07a2fb88c780ccda31036cac85707d34ab"
+          "sha256": "ed823f54dde5047b13266ef2be0077fb41354de30c5ef450ccaa483a5275bdb7"
         },
         {
           "path": "src/rules/redaction/redaction.ts",
-          "sha256": "acb33bd253af947fbf07f732e1d03a218c73be58ebe168e92bd6437a34e38c28"
+          "sha256": "fed557936422b2951cd2f7d595e2329f4700c1eeb8fd6e89aca981ce343a623d"
         },
         {
           "path": "src/rules/separations/department-option.ts",
@@ -2105,7 +2105,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-kuali-finalization"
     },
     {
-      "fingerprint": "6e851137a390d7245975103e9292a9930c26e65c14de21b1f40b907a7011ae47",
+      "fingerprint": "88732c5ed821e8363ae7646b9ff31b33989a633c068e2ed989c74035935b2e60",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -2417,11 +2417,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/redaction/redaction-policy.ts",
-          "sha256": "e5886e8a0578838d3afd2606c3af8b07a2fb88c780ccda31036cac85707d34ab"
+          "sha256": "ed823f54dde5047b13266ef2be0077fb41354de30c5ef450ccaa483a5275bdb7"
         },
         {
           "path": "src/rules/redaction/redaction.ts",
-          "sha256": "acb33bd253af947fbf07f732e1d03a218c73be58ebe168e92bd6437a34e38c28"
+          "sha256": "fed557936422b2951cd2f7d595e2329f4700c1eeb8fd6e89aca981ce343a623d"
         },
         {
           "path": "src/rules/separations/department-option.ts",
@@ -2559,7 +2559,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-kuali-read"
     },
     {
-      "fingerprint": "73fab555c0e16ad70812144b01185f5ec7a6839b2f3df8167fd4bd38481a2772",
+      "fingerprint": "4b52ec2a4ae5c645c42711970b7f7b9066ed692c3b579e5b1467a6df39cee0f4",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -2871,11 +2871,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/redaction/redaction-policy.ts",
-          "sha256": "e5886e8a0578838d3afd2606c3af8b07a2fb88c780ccda31036cac85707d34ab"
+          "sha256": "ed823f54dde5047b13266ef2be0077fb41354de30c5ef450ccaa483a5275bdb7"
         },
         {
           "path": "src/rules/redaction/redaction.ts",
-          "sha256": "acb33bd253af947fbf07f732e1d03a218c73be58ebe168e92bd6437a34e38c28"
+          "sha256": "fed557936422b2951cd2f7d595e2329f4700c1eeb8fd6e89aca981ce343a623d"
         },
         {
           "path": "src/rules/separations/department-option.ts",
@@ -3015,7 +3015,7 @@ export const GENERATED_BUILD_MANIFEST = {
   ],
   "tasks": [
     {
-      "fingerprint": "191a028ac8aac99668592841a76e4467d4820d8dfdda9090cd4cc8d7671fc054",
+      "fingerprint": "649176653d7a609178298969c3ee451b8259793ba6d52bffdcc8b0323a1dc5a8",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -3183,11 +3183,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/redaction/redaction-policy.ts",
-          "sha256": "e5886e8a0578838d3afd2606c3af8b07a2fb88c780ccda31036cac85707d34ab"
+          "sha256": "ed823f54dde5047b13266ef2be0077fb41354de30c5ef450ccaa483a5275bdb7"
         },
         {
           "path": "src/rules/redaction/redaction.ts",
-          "sha256": "acb33bd253af947fbf07f732e1d03a218c73be58ebe168e92bd6437a34e38c28"
+          "sha256": "fed557936422b2951cd2f7d595e2329f4700c1eeb8fd6e89aca981ce343a623d"
         },
         {
           "path": "src/rules/sessions/duo-ceremony-lease.ts",
@@ -3249,7 +3249,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "crm/read-onboarding-dates"
     },
     {
-      "fingerprint": "9a9decc08e77add44ed069f856c848b330275028e01d71d1df3fa7d54102ce05",
+      "fingerprint": "eae3bd82017381cdd6fa828e77d2114460b77e5c83c22985b87dd29fb87ad876",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -3417,11 +3417,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/redaction/redaction-policy.ts",
-          "sha256": "e5886e8a0578838d3afd2606c3af8b07a2fb88c780ccda31036cac85707d34ab"
+          "sha256": "ed823f54dde5047b13266ef2be0077fb41354de30c5ef450ccaa483a5275bdb7"
         },
         {
           "path": "src/rules/redaction/redaction.ts",
-          "sha256": "acb33bd253af947fbf07f732e1d03a218c73be58ebe168e92bd6437a34e38c28"
+          "sha256": "fed557936422b2951cd2f7d595e2329f4700c1eeb8fd6e89aca981ce343a623d"
         },
         {
           "path": "src/rules/sessions/duo-ceremony-lease.ts",
@@ -3637,7 +3637,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "extraction/extract-pdf-pages"
     },
     {
-      "fingerprint": "5073752a32a8890244d27e205838f8d84ac4b51b755fd9a042cf7365998a1ae5",
+      "fingerprint": "832058e8121c53374367526f61ba1af3a127529161875959bcafc4f9ca8d872b",
       "sources": [
         {
           "path": "src/backend/processing/extraction/tasks/extract-spreadsheet.ts",
@@ -3781,11 +3781,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/redaction/redaction-policy.ts",
-          "sha256": "e5886e8a0578838d3afd2606c3af8b07a2fb88c780ccda31036cac85707d34ab"
+          "sha256": "ed823f54dde5047b13266ef2be0077fb41354de30c5ef450ccaa483a5275bdb7"
         },
         {
           "path": "src/rules/redaction/redaction.ts",
-          "sha256": "acb33bd253af947fbf07f732e1d03a218c73be58ebe168e92bd6437a34e38c28"
+          "sha256": "fed557936422b2951cd2f7d595e2329f4700c1eeb8fd6e89aca981ce343a623d"
         },
         {
           "path": "src/rules/validation/canonical-json.ts",
@@ -5323,7 +5323,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/verify-separation-finalization"
     },
     {
-      "fingerprint": "20ae131606231b4c4c47fa9c508adf8f50b67163a2fc8feb7646a1c823c779ab",
+      "fingerprint": "147cf4c17d9aeb80b331576852f6d307ea4220204452ba17ef186be70c86aacb",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -5499,11 +5499,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/redaction/redaction-policy.ts",
-          "sha256": "e5886e8a0578838d3afd2606c3af8b07a2fb88c780ccda31036cac85707d34ab"
+          "sha256": "ed823f54dde5047b13266ef2be0077fb41354de30c5ef450ccaa483a5275bdb7"
         },
         {
           "path": "src/rules/redaction/redaction.ts",
-          "sha256": "acb33bd253af947fbf07f732e1d03a218c73be58ebe168e92bd6437a34e38c28"
+          "sha256": "fed557936422b2951cd2f7d595e2329f4700c1eeb8fd6e89aca981ce343a623d"
         },
         {
           "path": "src/rules/sessions/duo-ceremony-lease.ts",
@@ -5569,7 +5569,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "new-kronos/read-separation-timecard"
     },
     {
-      "fingerprint": "563c0d00581dd5fe2da1ce6a928990f7c210f86c10ce6dc5ab555efe65aa368d",
+      "fingerprint": "742b23816e57d96a687f60cf62778c8c8e999836eb969bed1cecd2775ce8cd17",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -5745,11 +5745,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/redaction/redaction-policy.ts",
-          "sha256": "e5886e8a0578838d3afd2606c3af8b07a2fb88c780ccda31036cac85707d34ab"
+          "sha256": "ed823f54dde5047b13266ef2be0077fb41354de30c5ef450ccaa483a5275bdb7"
         },
         {
           "path": "src/rules/redaction/redaction.ts",
-          "sha256": "acb33bd253af947fbf07f732e1d03a218c73be58ebe168e92bd6437a34e38c28"
+          "sha256": "fed557936422b2951cd2f7d595e2329f4700c1eeb8fd6e89aca981ce343a623d"
         },
         {
           "path": "src/rules/sessions/duo-ceremony-lease.ts",
@@ -5815,7 +5815,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "new-kronos/search-employee"
     },
     {
-      "fingerprint": "987dc42f08045896513f9ee0f30b51cc56374f0bbc539104a6a0f938fd2c1164",
+      "fingerprint": "071d57a59668dedf8b47bb3a55da949bfeec03f66759fb1e7700ba74e33e817f",
       "sources": [
         {
           "path": "src/backend/processing/normalization/tasks/read-contact-advice.ts",
@@ -5951,11 +5951,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/redaction/redaction-policy.ts",
-          "sha256": "e5886e8a0578838d3afd2606c3af8b07a2fb88c780ccda31036cac85707d34ab"
+          "sha256": "ed823f54dde5047b13266ef2be0077fb41354de30c5ef450ccaa483a5275bdb7"
         },
         {
           "path": "src/rules/redaction/redaction.ts",
-          "sha256": "acb33bd253af947fbf07f732e1d03a218c73be58ebe168e92bd6437a34e38c28"
+          "sha256": "fed557936422b2951cd2f7d595e2329f4700c1eeb8fd6e89aca981ce343a623d"
         },
         {
           "path": "src/rules/validation/canonical-json.ts",
@@ -5997,7 +5997,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "normalization/read-contact-advice"
     },
     {
-      "fingerprint": "134e5a17382365ff1db7a1573173bf06d8cd04e00cce838a39a7fd3b633385ab",
+      "fingerprint": "86e8457f19d07d6c002c0a30e6ce4d6822b08a36e15a15e49ecb677479e6bb3e",
       "sources": [
         {
           "path": "src/backend/processing/ocr/tasks/extract-form-page.ts",
@@ -6133,11 +6133,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/redaction/redaction-policy.ts",
-          "sha256": "e5886e8a0578838d3afd2606c3af8b07a2fb88c780ccda31036cac85707d34ab"
+          "sha256": "ed823f54dde5047b13266ef2be0077fb41354de30c5ef450ccaa483a5275bdb7"
         },
         {
           "path": "src/rules/redaction/redaction.ts",
-          "sha256": "acb33bd253af947fbf07f732e1d03a218c73be58ebe168e92bd6437a34e38c28"
+          "sha256": "fed557936422b2951cd2f7d595e2329f4700c1eeb8fd6e89aca981ce343a623d"
         },
         {
           "path": "src/rules/validation/canonical-json.ts",
@@ -6179,7 +6179,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ocr/extract-form-page"
     },
     {
-      "fingerprint": "d508e05e4c9498282d78ffe4eda383af0c04c971e8ec99e4dae4342c2a839de2",
+      "fingerprint": "2f79aaac949cdd6d8312bdef8459c76848266a7e2393607766b89f3296b9e62b",
       "sources": [
         {
           "path": "src/backend/processing/roster/tasks/match-spreadsheet.ts",
@@ -6335,11 +6335,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/redaction/redaction-policy.ts",
-          "sha256": "e5886e8a0578838d3afd2606c3af8b07a2fb88c780ccda31036cac85707d34ab"
+          "sha256": "ed823f54dde5047b13266ef2be0077fb41354de30c5ef450ccaa483a5275bdb7"
         },
         {
           "path": "src/rules/redaction/redaction.ts",
-          "sha256": "acb33bd253af947fbf07f732e1d03a218c73be58ebe168e92bd6437a34e38c28"
+          "sha256": "fed557936422b2951cd2f7d595e2329f4700c1eeb8fd6e89aca981ce343a623d"
         },
         {
           "path": "src/rules/validation/canonical-json.ts",
@@ -6381,7 +6381,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "roster/match-spreadsheet"
     },
     {
-      "fingerprint": "1590fbefb840a4065ee53dd14777490c52194492be49393fc7c0080bad43e4c8",
+      "fingerprint": "b5bb1d36a9b8e75eea41487e24223185f6695827a8cda91f1893480f7e0ea236",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -6601,11 +6601,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/redaction/redaction-policy.ts",
-          "sha256": "e5886e8a0578838d3afd2606c3af8b07a2fb88c780ccda31036cac85707d34ab"
+          "sha256": "ed823f54dde5047b13266ef2be0077fb41354de30c5ef450ccaa483a5275bdb7"
         },
         {
           "path": "src/rules/redaction/redaction.ts",
-          "sha256": "acb33bd253af947fbf07f732e1d03a218c73be58ebe168e92bd6437a34e38c28"
+          "sha256": "fed557936422b2951cd2f7d595e2329f4700c1eeb8fd6e89aca981ce343a623d"
         },
         {
           "path": "src/rules/separations/termination-receipt.ts",
@@ -6687,7 +6687,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/create-termination"
     },
     {
-      "fingerprint": "2a79985d56571ed8ba30cf5a96733a124f9da5be6b3b3cb9533ec2fbb0ab9439",
+      "fingerprint": "23018764593ece03cc4d4cf158dea0cfb69fd1e9c4305fa2b0b3bae5214dbd68",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -6907,11 +6907,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/redaction/redaction-policy.ts",
-          "sha256": "e5886e8a0578838d3afd2606c3af8b07a2fb88c780ccda31036cac85707d34ab"
+          "sha256": "ed823f54dde5047b13266ef2be0077fb41354de30c5ef450ccaa483a5275bdb7"
         },
         {
           "path": "src/rules/redaction/redaction.ts",
-          "sha256": "acb33bd253af947fbf07f732e1d03a218c73be58ebe168e92bd6437a34e38c28"
+          "sha256": "fed557936422b2951cd2f7d595e2329f4700c1eeb8fd6e89aca981ce343a623d"
         },
         {
           "path": "src/rules/separations/termination-receipt.ts",
@@ -6993,7 +6993,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/delete-pending-terminations"
     },
     {
-      "fingerprint": "d6ca30b1b33209f81ceed83c0f1e96c85f48d001a019e150c51b8a9bb4dd696e",
+      "fingerprint": "70e3479bf8f81e5b306a28b5b6c3ea7973646008ca00d2ad66418fb8042d801a",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -7213,11 +7213,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/redaction/redaction-policy.ts",
-          "sha256": "e5886e8a0578838d3afd2606c3af8b07a2fb88c780ccda31036cac85707d34ab"
+          "sha256": "ed823f54dde5047b13266ef2be0077fb41354de30c5ef450ccaa483a5275bdb7"
         },
         {
           "path": "src/rules/redaction/redaction.ts",
-          "sha256": "acb33bd253af947fbf07f732e1d03a218c73be58ebe168e92bd6437a34e38c28"
+          "sha256": "fed557936422b2951cd2f7d595e2329f4700c1eeb8fd6e89aca981ce343a623d"
         },
         {
           "path": "src/rules/separations/termination-receipt.ts",
@@ -7299,7 +7299,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/match-existing-termination"
     },
     {
-      "fingerprint": "40f29d887de4a6db026ffb34360c65f345e41fecb1de436627cfa9ff29d4dc63",
+      "fingerprint": "1d084ab44c77250056578c9ac0daa052590106f1256a53f6bf895edf75033965",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -7519,11 +7519,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/redaction/redaction-policy.ts",
-          "sha256": "e5886e8a0578838d3afd2606c3af8b07a2fb88c780ccda31036cac85707d34ab"
+          "sha256": "ed823f54dde5047b13266ef2be0077fb41354de30c5ef450ccaa483a5275bdb7"
         },
         {
           "path": "src/rules/redaction/redaction.ts",
-          "sha256": "acb33bd253af947fbf07f732e1d03a218c73be58ebe168e92bd6437a34e38c28"
+          "sha256": "fed557936422b2951cd2f7d595e2329f4700c1eeb8fd6e89aca981ce343a623d"
         },
         {
           "path": "src/rules/separations/termination-receipt.ts",
@@ -7605,7 +7605,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/match-pending-terminations"
     },
     {
-      "fingerprint": "357851aab35d317677e441509b5152083b1465e963d944e266f015da1932abc1",
+      "fingerprint": "1fe9ce90f1fb40781eec7cef2154a3225ce3c9945b5976dacb100598d87a0cd4",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -7829,11 +7829,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/redaction/redaction-policy.ts",
-          "sha256": "e5886e8a0578838d3afd2606c3af8b07a2fb88c780ccda31036cac85707d34ab"
+          "sha256": "ed823f54dde5047b13266ef2be0077fb41354de30c5ef450ccaa483a5275bdb7"
         },
         {
           "path": "src/rules/redaction/redaction.ts",
-          "sha256": "acb33bd253af947fbf07f732e1d03a218c73be58ebe168e92bd6437a34e38c28"
+          "sha256": "fed557936422b2951cd2f7d595e2329f4700c1eeb8fd6e89aca981ce343a623d"
         },
         {
           "path": "src/rules/separations/termination-receipt.ts",
@@ -7915,7 +7915,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/read-job-summary"
     },
     {
-      "fingerprint": "5392a645839e9a59c201eb1f7cdfb6e9d2b8d5fe55a0fd992c18318995d3bebe",
+      "fingerprint": "9bfd17f4ac9d6308e6da4873bcb20a87fb36c0761d35b9559332e2e2655251f3",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -8139,11 +8139,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/redaction/redaction-policy.ts",
-          "sha256": "e5886e8a0578838d3afd2606c3af8b07a2fb88c780ccda31036cac85707d34ab"
+          "sha256": "ed823f54dde5047b13266ef2be0077fb41354de30c5ef450ccaa483a5275bdb7"
         },
         {
           "path": "src/rules/redaction/redaction.ts",
-          "sha256": "acb33bd253af947fbf07f732e1d03a218c73be58ebe168e92bd6437a34e38c28"
+          "sha256": "fed557936422b2951cd2f7d595e2329f4700c1eeb8fd6e89aca981ce343a623d"
         },
         {
           "path": "src/rules/separations/termination-receipt.ts",
@@ -8225,7 +8225,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/read-pending-termination-set"
     },
     {
-      "fingerprint": "f39baf58f8c9086b76e702213eb31b31e7222e5dd872d52a02bbc4cf26a042d2",
+      "fingerprint": "7737fa61fde43fbe56e46b798cdda94c5e3a26f3abc783f28e45b704ce17fcd5",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -8445,11 +8445,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/redaction/redaction-policy.ts",
-          "sha256": "e5886e8a0578838d3afd2606c3af8b07a2fb88c780ccda31036cac85707d34ab"
+          "sha256": "ed823f54dde5047b13266ef2be0077fb41354de30c5ef450ccaa483a5275bdb7"
         },
         {
           "path": "src/rules/redaction/redaction.ts",
-          "sha256": "acb33bd253af947fbf07f732e1d03a218c73be58ebe168e92bd6437a34e38c28"
+          "sha256": "fed557936422b2951cd2f7d595e2329f4700c1eeb8fd6e89aca981ce343a623d"
         },
         {
           "path": "src/rules/separations/termination-receipt.ts",
@@ -8531,7 +8531,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/search-person-org"
     },
     {
-      "fingerprint": "80f27a4fd8ad56761098e709dee9d97a2b61e5c42d5405fa24bdf04ddbe4c9c1",
+      "fingerprint": "b5c6e1de3fe2c0567d3ed085d64528611b8bce9cfd02c2175c6418cb4d4a3858",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -8755,11 +8755,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/redaction/redaction-policy.ts",
-          "sha256": "e5886e8a0578838d3afd2606c3af8b07a2fb88c780ccda31036cac85707d34ab"
+          "sha256": "ed823f54dde5047b13266ef2be0077fb41354de30c5ef450ccaa483a5275bdb7"
         },
         {
           "path": "src/rules/redaction/redaction.ts",
-          "sha256": "acb33bd253af947fbf07f732e1d03a218c73be58ebe168e92bd6437a34e38c28"
+          "sha256": "fed557936422b2951cd2f7d595e2329f4700c1eeb8fd6e89aca981ce343a623d"
         },
         {
           "path": "src/rules/separations/termination-receipt.ts",
@@ -8841,7 +8841,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/stage-pending-termination-sweep"
     },
     {
-      "fingerprint": "f0516fefa48d8bdebbbd320665bbef1b82ea9d6594a362d6cc134f71439927ec",
+      "fingerprint": "c21669269c45c03c3dec84051914bc8cc9146766d8891f2b1d49e02c5fe1fff4",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -9065,11 +9065,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/redaction/redaction-policy.ts",
-          "sha256": "e5886e8a0578838d3afd2606c3af8b07a2fb88c780ccda31036cac85707d34ab"
+          "sha256": "ed823f54dde5047b13266ef2be0077fb41354de30c5ef450ccaa483a5275bdb7"
         },
         {
           "path": "src/rules/redaction/redaction.ts",
-          "sha256": "acb33bd253af947fbf07f732e1d03a218c73be58ebe168e92bd6437a34e38c28"
+          "sha256": "fed557936422b2951cd2f7d595e2329f4700c1eeb8fd6e89aca981ce343a623d"
         },
         {
           "path": "src/rules/separations/termination-receipt.ts",
@@ -9151,7 +9151,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/stage-termination"
     },
     {
-      "fingerprint": "f47640a69e73c44ee6e700cfa1ea722b251648740595f1789dd4adbaa7272dd0",
+      "fingerprint": "415ce17ec1942b2c3208d6a28a9ea71a841a3b803ae8a54539b86ee2b71bb67a",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -9375,11 +9375,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/redaction/redaction-policy.ts",
-          "sha256": "e5886e8a0578838d3afd2606c3af8b07a2fb88c780ccda31036cac85707d34ab"
+          "sha256": "ed823f54dde5047b13266ef2be0077fb41354de30c5ef450ccaa483a5275bdb7"
         },
         {
           "path": "src/rules/redaction/redaction.ts",
-          "sha256": "acb33bd253af947fbf07f732e1d03a218c73be58ebe168e92bd6437a34e38c28"
+          "sha256": "fed557936422b2951cd2f7d595e2329f4700c1eeb8fd6e89aca981ce343a623d"
         },
         {
           "path": "src/rules/separations/termination-receipt.ts",
@@ -9461,7 +9461,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/verify-pending-terminations-cleared"
     },
     {
-      "fingerprint": "048e43a09fb2c6a86d924f5827127cdc114bc055025b307f397eecd4f3899acb",
+      "fingerprint": "43a20cd744c0e67c117fe42abf051ca21286f26885d5d004f581b7b9e393ef6c",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -9685,11 +9685,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/redaction/redaction-policy.ts",
-          "sha256": "e5886e8a0578838d3afd2606c3af8b07a2fb88c780ccda31036cac85707d34ab"
+          "sha256": "ed823f54dde5047b13266ef2be0077fb41354de30c5ef450ccaa483a5275bdb7"
         },
         {
           "path": "src/rules/redaction/redaction.ts",
-          "sha256": "acb33bd253af947fbf07f732e1d03a218c73be58ebe168e92bd6437a34e38c28"
+          "sha256": "fed557936422b2951cd2f7d595e2329f4700c1eeb8fd6e89aca981ce343a623d"
         },
         {
           "path": "src/rules/separations/termination-receipt.ts",
@@ -9771,7 +9771,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/verify-termination"
     },
     {
-      "fingerprint": "24454a0b49b6314c7a9ecac43f5beb8d25f5ea095bd8a6c703b4dc162df4abd8",
+      "fingerprint": "9ccdef2ae170e2b494f6015ed0385fa3c470efb409d741a22e3ca88d3ad86ce5",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -9995,11 +9995,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/redaction/redaction-policy.ts",
-          "sha256": "e5886e8a0578838d3afd2606c3af8b07a2fb88c780ccda31036cac85707d34ab"
+          "sha256": "ed823f54dde5047b13266ef2be0077fb41354de30c5ef450ccaa483a5275bdb7"
         },
         {
           "path": "src/rules/redaction/redaction.ts",
-          "sha256": "acb33bd253af947fbf07f732e1d03a218c73be58ebe168e92bd6437a34e38c28"
+          "sha256": "fed557936422b2951cd2f7d595e2329f4700c1eeb8fd6e89aca981ce343a623d"
         },
         {
           "path": "src/rules/separations/termination-receipt.ts",
@@ -10081,7 +10081,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/verify-termination-filing-present"
     },
     {
-      "fingerprint": "87fbbc6010e1e76adc727dabc8302c488fc9b5408957b780199747889e11a8a8",
+      "fingerprint": "67dc2a82894e9ae70c70a2b2fa515648e01799bc818143a5102432d50ec404e3",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -10209,11 +10209,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/redaction/redaction-policy.ts",
-          "sha256": "e5886e8a0578838d3afd2606c3af8b07a2fb88c780ccda31036cac85707d34ab"
+          "sha256": "ed823f54dde5047b13266ef2be0077fb41354de30c5ef450ccaa483a5275bdb7"
         },
         {
           "path": "src/rules/redaction/redaction.ts",
-          "sha256": "acb33bd253af947fbf07f732e1d03a218c73be58ebe168e92bd6437a34e38c28"
+          "sha256": "fed557936422b2951cd2f7d595e2329f4700c1eeb8fd6e89aca981ce343a623d"
         },
         {
           "path": "src/rules/validation/canonical-json.ts",
@@ -10611,7 +10611,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "workflow:separations/match-department-option"
     },
     {
-      "fingerprint": "206fdf982a2115e4aeeafaeffbaad03005bfd7893ceeafd005cb4cbc812274f8",
+      "fingerprint": "4f6507dae2a7fa55bfe2ad8b17d9754ce4df6c13978487d9dad3ebc9839c74d1",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -10751,11 +10751,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/redaction/redaction-policy.ts",
-          "sha256": "e5886e8a0578838d3afd2606c3af8b07a2fb88c780ccda31036cac85707d34ab"
+          "sha256": "ed823f54dde5047b13266ef2be0077fb41354de30c5ef450ccaa483a5275bdb7"
         },
         {
           "path": "src/rules/redaction/redaction.ts",
-          "sha256": "acb33bd253af947fbf07f732e1d03a218c73be58ebe168e92bd6437a34e38c28"
+          "sha256": "fed557936422b2951cd2f7d595e2329f4700c1eeb8fd6e89aca981ce343a623d"
         },
         {
           "path": "src/rules/separations/identity-evidence.ts",
@@ -10813,7 +10813,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "workflow:separations/match-identity"
     },
     {
-      "fingerprint": "a11a511ba48d44afc01af06a9d23f1f91a98b9590330ae77f0127403248ee15d",
+      "fingerprint": "95979ba28275405705f8ac609542511fd4420becd3c99445a861e53caf587acf",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -10953,11 +10953,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/redaction/redaction-policy.ts",
-          "sha256": "e5886e8a0578838d3afd2606c3af8b07a2fb88c780ccda31036cac85707d34ab"
+          "sha256": "ed823f54dde5047b13266ef2be0077fb41354de30c5ef450ccaa483a5275bdb7"
         },
         {
           "path": "src/rules/redaction/redaction.ts",
-          "sha256": "acb33bd253af947fbf07f732e1d03a218c73be58ebe168e92bd6437a34e38c28"
+          "sha256": "fed557936422b2951cd2f7d595e2329f4700c1eeb8fd6e89aca981ce343a623d"
         },
         {
           "path": "src/rules/separations/identity-evidence.ts",
@@ -11529,7 +11529,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "workflow:separations/read-separation-plan"
     },
     {
-      "fingerprint": "502eac0e85c05225d693505425bacc15bb0c12f410a9121834affd44620c0ad8",
+      "fingerprint": "4f78b53d9aeee7b0be2ab5f7632219c5c55de060177a90c1264d8f54d2ed213d",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -11661,11 +11661,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/redaction/redaction-policy.ts",
-          "sha256": "e5886e8a0578838d3afd2606c3af8b07a2fb88c780ccda31036cac85707d34ab"
+          "sha256": "ed823f54dde5047b13266ef2be0077fb41354de30c5ef450ccaa483a5275bdb7"
         },
         {
           "path": "src/rules/redaction/redaction.ts",
-          "sha256": "acb33bd253af947fbf07f732e1d03a218c73be58ebe168e92bd6437a34e38c28"
+          "sha256": "fed557936422b2951cd2f7d595e2329f4700c1eeb8fd6e89aca981ce343a623d"
         },
         {
           "path": "src/rules/separations/identity-approval.ts",
@@ -11727,7 +11727,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "workflow:separations/verify-identity-approval"
     },
     {
-      "fingerprint": "6b1909492674144ab0bbb3eefa9979c04c6d5194399d5cd7c6a08aa0e92f0bd2",
+      "fingerprint": "528516ef7cc0bad9c71aaad97529ef10e0bc738fcdeb8277d7a4acfb3b84757e",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -11855,11 +11855,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/redaction/redaction-policy.ts",
-          "sha256": "e5886e8a0578838d3afd2606c3af8b07a2fb88c780ccda31036cac85707d34ab"
+          "sha256": "ed823f54dde5047b13266ef2be0077fb41354de30c5ef450ccaa483a5275bdb7"
         },
         {
           "path": "src/rules/redaction/redaction.ts",
-          "sha256": "acb33bd253af947fbf07f732e1d03a218c73be58ebe168e92bd6437a34e38c28"
+          "sha256": "fed557936422b2951cd2f7d595e2329f4700c1eeb8fd6e89aca981ce343a623d"
         },
         {
           "path": "src/rules/separations/termination-receipt.ts",

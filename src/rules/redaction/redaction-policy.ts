@@ -41,3 +41,11 @@ export function refineEvidenceTransformPair(
     });
   }
 }
+
+/** Local evidence retains complete supplied values; provider transforms remain closed. */
+export function refineLocalEvidenceTransformPair(
+  field: Readonly<{ classification: DataClassification; transform: EvidenceTransform }>,
+  context: z.RefinementCtx,
+): void {
+  if (field.transform !== "allow") refineEvidenceTransformPair(field, context);
+}

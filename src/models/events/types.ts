@@ -39,7 +39,7 @@ import { OperationInputLineageSchema, OperationChildResultIdentitySchema } from 
 import { z } from "zod";
 import { ConfirmedActionEventSchema } from "./confirmed-action.js";
 import { DiagnosticSafetyVersionSchema } from "../trust/failure.js";
-import { DataClassificationSchema, refineEvidenceTransformPair } from "../../rules/redaction/redaction-policy.js";
+import { DataClassificationSchema, refineLocalEvidenceTransformPair } from "../../rules/redaction/redaction-policy.js";
 import { RunRecoveryModeSchema } from "../run/envelope.js";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -299,7 +299,7 @@ const RedactedSpanValueSchema = z.discriminatedUnion("transform", [
     value: JsonValueWireSchema,
     rawValue: JsonValueWireSchema.optional(),
   }),
-]).superRefine(refineEvidenceTransformPair);
+]).superRefine(refineLocalEvidenceTransformPair);
 
 /** One recorded point; see `src/backend/logs/span-emitter.ts` for why it carries no `system`. */
 export const ObservedDataPointWireSchema = z.strictObject({

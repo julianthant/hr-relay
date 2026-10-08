@@ -5,19 +5,11 @@ import {
   DataClassificationSchema,
   EvidenceTransformSchema,
   evidenceTransformAllowed,
-  refineEvidenceTransformPair,
+  refineLocalEvidenceTransformPair,
 } from "./redaction-policy.js";
 import { sha256Hex } from "../validation/sha256.js";
 
 export { DataClassificationSchema, EvidenceTransformSchema, evidenceTransformAllowed } from "./redaction-policy.js";
-
-/** Local records may retain full supplied values; provider transforms remain closed. */
-function refineLocalEvidenceTransformPair(
-  field: Readonly<{ classification: z.infer<typeof DataClassificationSchema>; transform: z.infer<typeof EvidenceTransformSchema> }>,
-  context: z.RefinementCtx,
-): void {
-  if (field.transform !== "allow") refineEvidenceTransformPair(field, context);
-}
 
 export const ClassifiedDiagnosticValueSchema = z.strictObject({
   key: z.string().regex(/^[a-z][A-Za-z0-9]*$/),
