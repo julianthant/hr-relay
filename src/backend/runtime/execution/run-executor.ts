@@ -48,18 +48,10 @@ import { TaskError, wrapUnhandledTaskError } from "../../../workflow-kit/errors.
 import type { ProviderAdmissionRepository, ProviderClient } from "../../../workflow-kit/providers.js";
 import type { AnyTask, TaskLogger, ConfirmedTaskActions } from "../../../workflow-kit/task.js";
 import type { TaskStoreRegistry } from "../../../workflow-kit/task-registry.js";
-import {
-  descriptorRuntimeNodes,
-  workflowTerminalResultExecution,
-  type AnyWorkflowDescriptor,
-} from "../../../workflow-kit/workflow.js";
+import { descriptorRuntimeNodes, workflowTerminalResultExecution, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { JsonValueSchema, canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { JsonValue } from "../../../rules/validation/canonical-json.js";
-import {
-  TransactionDryRunPreviewSchema,
-  TransactionOutcomeSchema,
-  type TransactionDryRunPreview,
-} from "../../../rules/write-safety/write-safety-primitives.js";
+import { TransactionDryRunPreviewSchema, TransactionOutcomeSchema, type TransactionDryRunPreview } from "../../../rules/write-safety/write-safety-primitives.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import type { AnyReadTaskContract } from "../../../models/task/task-contract.js";
 import type { GateResultRecord } from "../../../models/workflow/gates.js";
@@ -69,55 +61,18 @@ import type { ConfirmedActionPublisher } from "../../logs/confirmed-action-publi
 import { createConfirmedInvocation } from "../../logs/confirmed-invocation.js";
 import { publishConfirmedSubmit } from "../../logs/confirmed-submit.js";
 import { drainBrowserActionNotes } from "../../logs/browser-action-drain.js";
-import {
-  withBrowserActionBinding,
-  withBrowserActionNotes,
-  type BrowserAction,
-  type BrowserActionBinder,
-} from "../../systems/browser-shared/action-notes.js";
-import {
-  GateIdSchema,
-  IsoInstantSchema,
-  NodeIdSchema,
-  ProviderCapabilityIdSchema,
-  TaskIdSchema,
-} from "../../../rules/identity/ids.js";
+import { withBrowserActionBinding, withBrowserActionNotes, type BrowserAction, type BrowserActionBinder } from "../../systems/browser-shared/action-notes.js";
+import { GateIdSchema, IsoInstantSchema, NodeIdSchema, ProviderCapabilityIdSchema, TaskIdSchema } from "../../../rules/identity/ids.js";
 import type { Fingerprint, IsoInstant, NodeId, ProviderCapabilityId } from "../../../rules/identity/ids.js";
-import {
-  RunLifecycleSchema,
-  RunRecordSchema,
-  runClaim,
-  type RunLifecycle,
-  type RunRecord,
-} from "../../../models/run/record.js";
-import type {
-  RunResultRecord,
-  TerminalDependencyEvidence,
-} from "../../../models/run/result.js";
+import { RunLifecycleSchema, RunRecordSchema, runClaim, type RunLifecycle, type RunRecord } from "../../../models/run/record.js";
+import type { RunResultRecord, TerminalDependencyEvidence } from "../../../models/run/result.js";
 import type { SessionNeed } from "../../../models/sessions/session.js";
 import { FailureRecordSchema, type FailureRecord } from "../../../models/trust/failure.js";
-import {
-  BUILD_MANIFEST,
-  resolveTaskImplFingerprint,
-} from "../../../workflow-kit/validation/build-manifest.js";
-import {
-  auditCheckpointFreshness,
-  CheckpointExpectationSchema,
-  loadCheckpoint,
-  migrateCanonicalInputSnapshot,
-  RunCheckpointRecordSchema,
-  type CanonicalInputSnapshotMigration,
-  type CheckpointMigration,
-  type CheckpointPatch,
-  type ReplayedCheckpoint,
-  type RunCheckpointRecord,
-} from "../../../models/workflow/checkpoint.js";
+import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../../workflow-kit/validation/build-manifest.js";
+import { auditCheckpointFreshness, CheckpointExpectationSchema, loadCheckpoint, migrateCanonicalInputSnapshot, RunCheckpointRecordSchema, type CanonicalInputSnapshotMigration, type CheckpointMigration, type CheckpointPatch, type ReplayedCheckpoint, type RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import { applyCheckpointPatches } from "../checkpoints/checkpoint-patch.js";
 import { deriveArtifactProjectionRows } from "../../../models/workflow/artifact-projection.js";
-import {
-  childRunOutcomeSchema,
-  DelegationManifestRefSchema,
-} from "../../../models/workflow/graph.js";
+import { childRunOutcomeSchema, DelegationManifestRefSchema } from "../../../models/workflow/graph.js";
 import type { RuntimeFlowNode, RuntimeScope } from "../../../models/workflow/graph.js";
 import { evaluateNodeCondition } from "../../../models/workflow/node-condition.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
@@ -126,28 +81,12 @@ import { requireWorkflowOperationDisplaySnapshot } from "../../../models/workflo
 import { jsonLeafPaths } from "../../runs/provenance/task-provenance.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 import { RunClaimTokenSchema, type RunClaimToken } from "../../storage/sqlite/run-store-contracts.js";
-import {
-  WriteIntentParkCodeSchema,
-  type WriteIntentParkCode,
-} from "../../storage/sqlite/write-commit-contracts.js";
+import { WriteIntentParkCodeSchema, type WriteIntentParkCode } from "../../storage/sqlite/write-commit-contracts.js";
 import type { MonotonicDeadlineScheduler } from "../scheduling/deadline-scheduler.js";
-import {
-  createAdmittedProviderClient,
-  type ProviderAdapterRegistry,
-  type ProviderAdmissionClientDependencies,
-  type ProviderAdmissionIdFactory,
-} from "../../runs/start/provider-admission.js";
-import {
-  buildEntryValidationFailureRecord,
-  buildNodeFailureRecord,
-} from "./run-failure.js";
+import { createAdmittedProviderClient, type ProviderAdapterRegistry, type ProviderAdmissionClientDependencies, type ProviderAdmissionIdFactory } from "../../runs/start/provider-admission.js";
+import { buildEntryValidationFailureRecord, buildNodeFailureRecord } from "./run-failure.js";
 import { buildRunPreviewResult, buildRunResult } from "../../runs/lifecycle/run-result.js";
-import {
-  ExecutorSpanEventSchema,
-  runSpanPath,
-  taskSpanPath,
-  type SpanEmitter,
-} from "../../logs/span-emitter.js";
+import { ExecutorSpanEventSchema, runSpanPath, taskSpanPath, type SpanEmitter } from "../../logs/span-emitter.js";
 import { redactObservedDataPoints } from "../../logs/observed-data.js";
 import { createTaskProvenanceCollector } from "../../runs/provenance/task-provenance.js";
 import { RunResultRecordSchema } from "../../../models/run/result.js";
@@ -315,7 +254,6 @@ function admittedClientFor(
     case "ocr.extract": return createAdmittedProviderClient(capability, dependencies);
     case "geocode.census": return createAdmittedProviderClient(capability, dependencies);
     case "geocode.nominatim": return createAdmittedProviderClient(capability, dependencies);
-    case "ai.advisory": return createAdmittedProviderClient(capability, dependencies);
   }
 }
 

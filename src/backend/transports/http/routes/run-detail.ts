@@ -1,6 +1,5 @@
 import { resolveOperationSource } from "../../../runs/queries/operation-source.js";
 import { readRunDetail } from "../../../runs/queries/run-detail.js";
-import { buildRunAdvisory } from "../../../runs/queries/advisory.js";
 import { SectionUnavailableError } from "../../../runs/commands/refusals.js";
 import { ItemAttemptHistoryRequestSchema } from "../../../../models/dashboard/item-attempt-history.js";
 
@@ -24,21 +23,6 @@ export function registerRunDetailRoutes(app: DashboardApp, deps: RunDetailRouteD
       ...(cursor === undefined ? {} : { cursor }),
     });
     return c.json(query.read(c.req.param("runId"), request));
-  });
-  /**
-   * Ref operator-trust §4.4's on-demand failure advisory (D178). It is a POST because it
-   * SPENDS a provider budget — a GET the surface could prefetch would make a
-   * model call every time an operator opened a failed run — and it is
-   * deliberately NOT part of the command family: it journals nothing, changes
-   * nothing, and returns advice the operator may ignore.
-   */
-  app.post("/api/v1/runs/:runId/advisory", async (c) => {
-    if (deps.advisory === undefined) {
-      throw new SectionUnavailableError(
-        "the failure advisory is not available: no ai.advisory provider is composed",
-      );
-    }
-    return c.json(await buildRunAdvisory(deps.advisory, c.req.param("runId")));
   });
 
 }

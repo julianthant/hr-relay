@@ -55,7 +55,7 @@ function scriptedClient(capability: string, response: unknown, calls: string[], 
 
 async function runAdvice(
   contact: Record<string, string>,
-  options: Readonly<{ geocode?: boolean; ai?: boolean; census?: unknown; nominatim?: unknown }>,
+  options: Readonly<{ geocode?: boolean; census?: unknown; nominatim?: unknown }>,
 ): Promise<TaskResult<NormalizeContactOutput, Readonly<{
   calls: string[];
   requests: unknown[];
@@ -69,7 +69,6 @@ async function runAdvice(
     providers: {
       "geocode.census": scriptedClient("geocode.census", options.census ?? unused, calls, requests),
       "geocode.nominatim": scriptedClient("geocode.nominatim", options.nominatim ?? unused, calls, requests),
-      "ai.advisory": scriptedClient("ai.advisory", unused, calls, requests),
     },
     recordData: (point: unknown) => { recorded.push(point); },
     fail: (code: string, message: string) => {
@@ -82,7 +81,6 @@ async function runAdvice(
       input: NormalizeContactInputSchema.parse({
         contact,
         geocode: options.geocode ?? false,
-        ai: options.ai ?? false,
         readAt: READ_AT,
       }),
       ctx: ctx as never,
@@ -169,8 +167,8 @@ describe("normalization task wrapper", () => {
     }
   });
 
-  it("keeps sensitive relationship text ambiguous without sending it to AI", async () => {
-    const withheld = await runAdvice({ relationship: "acquaintance from work" }, { ai: true });
+  it("keeps sensitive relationship text ambiguous for operator review", async () => {
+    const withheld = await runAdvice({ relationship: "acquaintance from work" }, {});
     if (withheld.outcome !== "success") throw new Error(`expected ambiguous advice, received ${withheld.failure.code}`);
     assert.deepEqual(withheld.calls, []);
     assert.deepEqual(withheld.requests, []);

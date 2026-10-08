@@ -79,17 +79,6 @@ export const FIXTURE_BOOTSTRAP: FrontendBootstrapWire = FrontendBootstrapWireSch
   ],
   featureAvailability: [
     { feature: "ocr", availability: { state: "unavailable", code: "deferred", reason: "OCR review lands in 2h" } },
-    // D178: the advisory SHIPPED, so the fixture mirrors what a real process
-    // with no key composed says — `not-configured` naming the family — rather
-    // than a `deferred` milestone the server no longer produces.
-    {
-      feature: "ai-advisory",
-      availability: {
-        state: "unavailable",
-        code: "not-configured",
-        reason: "no GEMINI_API_KEY is set, so no ai.advisory provider is composed in this process",
-      },
-    },
     { feature: "archive", availability: { state: "unavailable", code: "deferred", reason: "archive lands in 2i" } },
     { feature: "workflow-editor", availability: { state: "unavailable", code: "deferred", reason: "the editor lands in a later phase" } },
   ],

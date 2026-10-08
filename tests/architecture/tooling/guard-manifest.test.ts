@@ -222,6 +222,18 @@ describe("reviewed architecture guard manifest", () => {
     );
     assert.ok(retired.length > 0, "retirements must stay recorded");
     for (const entry of retired) {
+      if (entry.name === "ai-advisory-no-authority") {
+        assert.equal(entry.file, "tests/architecture/processing/ai-advisory-no-authority.test.ts");
+        assert.equal(entry.retiredBy, "brief-R");
+        assert.equal(entry.replacementRequired, false);
+        assert.equal(entry.reason, "Brief R removes the advisory route, model, query and all AI provider adapters. Deciding evidence: evidence-R-removals/resume/executor/removed-tests.json; historical identities parse only and active admission rejects ai.advisory.");
+        for (const removed of [entry.file, "src/backend/logs/trust/advisory.ts", "src/backend/runs/queries/advisory.ts", "src/models/dashboard/advisory.ts", "src/models/trust/advisory.ts", "src/backend/processing/providers/gemini-advisory.ts"]) {
+          assert.equal(existsSync(join(REPO_ROOT, removed)), false, removed);
+        }
+        assert.equal(readFileSync(join(REPO_ROOT, "src/backend/transports/http/routes/run-detail.ts"), "utf8").includes('"/api/v1/runs/:runId/advisory"'), false);
+        assert.ok(entry.invariant.trim().length > 40, entry.name);
+        continue;
+      }
       assert.match(entry.retiredBy ?? "", /^D\d+$/, `${entry.name} must name the deciding decision`);
       assert.ok(entry.invariant.trim().length > 40, `${entry.name} must explain where its invariant went`);
       assert.equal(entry.replacementRequired, true, entry.name);

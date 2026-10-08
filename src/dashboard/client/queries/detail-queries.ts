@@ -1,25 +1,10 @@
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { OperationSourceRequestSchema, OperationSourceResponseSchema, type OperationSourceRequest, type OperationSourceResponse } from "../../../models/dashboard/operation-structure.js";
-import { RunAdvisoryWireSchema,type RunAdvisoryWire } from "../../../models/dashboard/advisory.js";
-import {
-  ItemAttemptHistoryResponseSchema,
-  type ItemAttemptHistoryResponse,
-} from "../../../models/dashboard/item-attempt-history.js";
-import {
-DiagnosticBundleWireSchema,
-type DiagnosticBundleWire,
-} from "../../../models/dashboard/diagnostic-bundle.js";
-import {
-RunDetailSectionResponseSchema,
-RunDetailWireSchema,
-type RunDetailSectionResponse,
-type RunDetailWire,
-} from "../../../models/dashboard/run-detail.js";
-import { ArtifactIdSchema,DiagnosticBundleIdSchema } from "../../../rules/identity/ids.js";
-import {
-DashboardClientError,
-diagnosticBundleIdentityError
-} from "../errors.js";
+import { ItemAttemptHistoryResponseSchema, type ItemAttemptHistoryResponse } from "../../../models/dashboard/item-attempt-history.js";
+import { DiagnosticBundleWireSchema, type DiagnosticBundleWire } from "../../../models/dashboard/diagnostic-bundle.js";
+import { RunDetailSectionResponseSchema, RunDetailWireSchema, type RunDetailSectionResponse, type RunDetailWire } from "../../../models/dashboard/run-detail.js";
+import { ArtifactIdSchema, DiagnosticBundleIdSchema } from "../../../rules/identity/ids.js";
+import { DashboardClientError, diagnosticBundleIdentityError } from "../errors.js";
 import { parseOrThrow } from "./query-parse.js";
 import type { DashboardTransport } from "../transport.js";
 
@@ -58,16 +43,6 @@ export interface DetailQueries {
   /** One verified capture ref's DCA1 byte resource. */
   artifactUrl(artifactId: string): string;
 
-  /**
-   * Ref operator-trust §4.4's on-demand failure advisory (2i-G, D178).
-   *
-   * It is a METHOD an operator action calls, never a section the panel
-   * prefetches: it spends a provider budget, so nothing may invoke it as a
-   * side effect of opening a run. The three §4.4 outcomes all arrive as a
-   * `200` document — `unavailable` and `invalid-response` are answers, not
-   * transport faults — so only a real fault throws.
-   */
-  requestFailureAdvisory(runId: string): Promise<RunAdvisoryWire>;
 }
 
 export function createDetailQueries(transport: DashboardTransport): DetailQueries { return Object.freeze({
@@ -180,12 +155,5 @@ export function createDetailQueries(transport: DashboardTransport): DetailQuerie
       return transport.resolveUrl(`/artifacts/v1/${encodeURIComponent(parsedArtifactId)}`);
     },
 
-    async requestFailureAdvisory(runId: string): Promise<RunAdvisoryWire> {
-      const path = `/api/v1/runs/${encodeURIComponent(runId)}/advisory`;
-      return parseOrThrow(
-        RunAdvisoryWireSchema,
-        `POST ${path}`,
-        await transport.requestJson(path, { method: "POST" }),
-      );
-    }
+
 }); }

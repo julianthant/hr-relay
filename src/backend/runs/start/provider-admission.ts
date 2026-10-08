@@ -1,37 +1,14 @@
 import type { ProviderAccountingStorage } from "../../../workflow-kit/provider-accounting.js";
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import type {
-  ProviderAdapter,
-  ProviderAdmissionRepository,
-  ProviderClient,
-} from "../../../workflow-kit/providers.js";
+import type { ProviderAdapter, ProviderAdmissionRepository, ProviderClient } from "../../../workflow-kit/providers.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { providerBudget } from "../../../models/config/schema.js";
 import { ConfigSnapshotRecordSchema } from "../../../models/config/snapshot.js";
-import {
-  ConfigSnapshotIdSchema,
-  FingerprintSchema,
-  ProviderAdmissionIdSchema,
-  ProviderCapabilityIdSchema,
-  type ProviderAdmissionId,
-  type ProviderCapabilityId,
-} from "../../../rules/identity/ids.js";
-import {
-  ProviderAdmissionDenyRequestSchema,
-  ProviderAdmissionReserveRequestSchema,
-  ProviderAdvisoryExecutionIdentitySchema,
-  ProviderCostEstimateSchema,
-  ProviderExecutionIdentitySchema,
-  ProviderUnavailableReasonSchema,
-  type ProviderUnavailableReason,
-} from "../../../rules/providers/provider-admission.js";
-import {
-  ProviderAdapterOutcomeSchema,
-  ProviderRequestEnvelopeSchema,
-  ProviderResponseEnvelopeSchema,
-} from "../../../models/providers/providers.js";
+import { ConfigSnapshotIdSchema, FingerprintSchema, ProviderAdmissionIdSchema, ProviderCapabilityIdSchema, type ProviderAdmissionId, type ProviderCapabilityId } from "../../../rules/identity/ids.js";
+import { ProviderAdmissionDenyRequestSchema, ProviderAdmissionReserveRequestSchema, ProviderCostEstimateSchema, ProviderExecutionIdentitySchema, ProviderUnavailableReasonSchema, type ProviderUnavailableReason } from "../../../rules/providers/provider-admission.js";
+import { ProviderAdapterOutcomeSchema, ProviderRequestEnvelopeSchema, ProviderResponseEnvelopeSchema } from "../../../models/providers/providers.js";
 import type { SchemaBoundCanonicalValue } from "../../../models/validation/schema-bound-value.js";
 import { RunRequeueRequestSchema } from "../../storage/sqlite/run-store-contracts.js";
 import type { MonotonicDeadlineScheduler } from "../../runtime/scheduling/deadline-scheduler.js";
@@ -40,7 +17,6 @@ export type ProviderAdapterRegistry = Readonly<{
   "ocr.extract"?: ProviderAdapter<"ocr.extract">;
   "geocode.census"?: ProviderAdapter<"geocode.census">;
   "geocode.nominatim"?: ProviderAdapter<"geocode.nominatim">;
-  "ai.advisory"?: ProviderAdapter<"ai.advisory">;
 }>;
 
 export interface ProviderAdmissionIdFactory {
@@ -84,7 +60,6 @@ function adapterFor(
     case "ocr.extract": return registry[capability];
     case "geocode.census": return registry[capability];
     case "geocode.nominatim": return registry[capability];
-    case "ai.advisory": return registry[capability];
   }
 }
 
@@ -116,10 +91,6 @@ export function createAdmittedProviderClient(
   capability: "geocode.nominatim",
   dependencies: ProviderAdmissionClientDependencies,
 ): ProviderClient<"geocode.nominatim">;
-export function createAdmittedProviderClient(
-  capability: "ai.advisory",
-  dependencies: ProviderAdmissionClientDependencies,
-): ProviderClient<"ai.advisory">;
 export function createAdmittedProviderClient(
   capabilityInput: ProviderCapabilityId,
   dependencies: ProviderAdmissionClientDependencies,
@@ -340,55 +311,6 @@ export function createAdmittedProviderClient(
         dependencies.runSignal.removeEventListener("abort", onRunAbort);
       }
     },
-  });
-}
-
-/**
- * The ONE way an operator-surface advisory obtains an admitted client (D178).
- *
- * Ref operator-trust §4.4's advisory is on-demand and presentation-lane: there is no
- * claimed run, no node and no task context to inherit an execution identity
- * from. The identity it binds instead is the SUBJECT run's — its id, its
- * retained attempt, and its own stored config snapshot, read from authority by
- * the caller and never recomputed from current config (D116's discipline). The
- * surface names what was asked, which is what makes `provider_admissions` a
- * truthful record of who spent the budget.
- *
- * It lives here so `createAdmittedProviderClient` keeps exactly two callers:
- * a composition root that minted its own client would be a second admission
- * path in everything but name.
- */
-export function createAdvisoryProviderClient(dependencies: Readonly<{
-  runId: unknown;
-  attempt: unknown;
-  surface: unknown;
-  configSnapshotId: unknown;
-  configFingerprint: unknown;
-  configSnapshot: unknown;
-  runSignal: AbortSignal;
-  adapters: ProviderAdapterRegistry;
-  repository: ProviderAdmissionRepository;
-  accounting?: ProviderAccountingStorage;
-  clock: Clock;
-  idFactory: ProviderAdmissionIdFactory;
-  deadlineScheduler: MonotonicDeadlineScheduler;
-}>): ProviderClient<"ai.advisory"> {
-  return createAdmittedProviderClient("ai.advisory", {
-    execution: ProviderAdvisoryExecutionIdentitySchema.parse({
-      runId: dependencies.runId,
-      attempt: dependencies.attempt,
-      surface: dependencies.surface,
-    }),
-    configSnapshotId: dependencies.configSnapshotId,
-    configFingerprint: dependencies.configFingerprint,
-    configSnapshot: dependencies.configSnapshot,
-    runSignal: dependencies.runSignal,
-    adapters: dependencies.adapters,
-    repository: dependencies.repository,
-    ...(dependencies.accounting===undefined?{}:{accounting:dependencies.accounting}),
-    clock: dependencies.clock,
-    idFactory: dependencies.idFactory,
-    deadlineScheduler: dependencies.deadlineScheduler,
   });
 }
 

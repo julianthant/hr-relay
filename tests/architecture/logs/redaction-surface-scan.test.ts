@@ -1,3 +1,4 @@
+import { MAXIMAL_FAILURE } from "../../support/fixtures/advisory-prompt-fixtures.js";
 import { historicalArchiveAuthority } from "../../support/helpers/integration/historical-archive-authority.js";
 import { sqliteRunReader } from "../../support/helpers/canonical-run-reader.js";
 /**
@@ -59,55 +60,20 @@ import { ExplorerPresentationLabelSchema } from "../../../src/models/dashboard/e
 import { AtomicOutboxRecordSchema } from "../../../src/models/notifications/outbox.js";
 import { SpanAuthorityReconciliationWireSchema } from "../../../src/models/dashboard/storage.js";
 import { redactDiagnosticFields, redactValue } from "../../../src/rules/redaction/redaction.js";
-import {
-  NotificationTriggerEventSchema,
-  projectNotificationTrigger,
-} from "../../../src/rules/notifications/notification-triggers.js";
-import { buildFailureTriagePrompt } from "../../../src/models/trust/advisory.js";
+import { NotificationTriggerEventSchema, projectNotificationTrigger } from "../../../src/rules/notifications/notification-triggers.js";
 import { FailureRecordSchema } from "../../../src/models/trust/failure.js";
 import { buildRunEvidenceReceipt } from "../../../src/backend/runs/provenance/evidence-receipt.js";
 import { LedgerEntrySchema } from "../../../src/rules/runs/ledger.js";
 import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
-import {
-  VerifiedArtifactSourceMissingError,
-  type ServerVerifiedArtifactReader,
-} from "../../../src/backend/storage/artifacts/server-verified-artifact-reader.js";
+import { VerifiedArtifactSourceMissingError, type ServerVerifiedArtifactReader } from "../../../src/backend/storage/artifacts/server-verified-artifact-reader.js";
 import { buildArchivedCaptureResource } from "../../../src/backend/runs/queries/archive.js";
 import { ArtifactBytesCorruptError, IndexedArtifactBytesMissingError } from "../../../src/backend/runs/queries/artifact-bytes.js";
 import { ARCHIVED_RUN_WITH_SECTIONS, VERSION_BUMP_APPLICATION, VERSION_PLAN_ROW } from "../../support/fixtures/archive-fixtures.js";
 import { personLookupQueuedRun } from "../../support/helpers/phase1f-executor-harness.js";
-import {
-  LEDGER_OUTBOX_PAYLOAD,
-  NOW,
-  UUID_1,
-  UUID_6,
-} from "../../support/fixtures/phase1c-contract-fixtures.js";
-import { MAXIMAL_FAILURE } from "../../support/fixtures/integration/advisory-fixtures.js";
-import {
-  EXIT_RUN_ID,
-  seedPersonLookupExitRun,
-} from "../../support/fixtures/receipt-run-fixtures.js";
+import { LEDGER_OUTBOX_PAYLOAD, NOW, UUID_1, UUID_6 } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { EXIT_RUN_ID, seedPersonLookupExitRun } from "../../support/fixtures/receipt-run-fixtures.js";
 import { REPO_ROOT } from "../support/helpers/guard-files.js";
-import {
-  ALL_CANARY_NAMES,
-  auditD331ServedLeafDispositions,
-  auditRedactedProducers,
-  auditSurfaceOrigins,
-  canariesIn,
-  decidableLeaves,
-  D331_SERVED_LEAF_DISPOSITIONS,
-  REDACTED_NAME_WAIVERS,
-  REDACTION_CANARIES,
-  REDACTION_SURFACES,
-  redactedProducerSites,
-  SURFACE_LEAF_ORIGINS,
-  SURFACE_MODULE_DISPOSITIONS,
-  scannedSurfaceModules,
-  surfaceLeaves,
-  UNIVERSAL_CANARY_NAMES,
-  type RedactionSurface,
-  type SurfaceLeafOrigin,
-} from "./helpers/redaction-surface-audit.js";
+import { ALL_CANARY_NAMES, auditD331ServedLeafDispositions, auditRedactedProducers, auditSurfaceOrigins, canariesIn, decidableLeaves, D331_SERVED_LEAF_DISPOSITIONS, REDACTED_NAME_WAIVERS, REDACTION_CANARIES, REDACTION_SURFACES, redactedProducerSites, SURFACE_LEAF_ORIGINS, SURFACE_MODULE_DISPOSITIONS, scannedSurfaceModules, surfaceLeaves, UNIVERSAL_CANARY_NAMES, type RedactionSurface, type SurfaceLeafOrigin } from "./helpers/redaction-surface-audit.js";
 import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
 
 /* ── the modules whose exported wire schemas must be covered ─────────────── */
@@ -115,7 +81,6 @@ import { personLookupDescriptor } from "../../support/helpers/registered-workflo
 const WIRE_SCHEMA_MODULES = [
   "../../../src/models/dashboard/actions.js",
   "../../../src/models/dashboard/activity.js",
-  "../../../src/models/dashboard/advisory.js",
   "../../../src/models/dashboard/archive.js",
   "../../../src/models/dashboard/artifacts.js",
   "../../../src/models/dashboard/bootstrap.js",
@@ -206,7 +171,7 @@ describe("redaction surface scan — the declaration audit (ref guards-and-tests
     const audited = REDACTION_SURFACES.flatMap((surface) => decidableLeaves(surface.schema));
     assert.ok(audited.length >= 200, "the audit walked almost no leaves");
     const egressClasses = new Set(REDACTION_SURFACES.map(({ egress }) => egress));
-    assert.equal(egressClasses.size, 5, "every remaining egress class must have at least one registered surface");
+    assert.deepEqual([...egressClasses].sort(), ["durable-authority", "durable-file", "operator-loopback", "os-notification"], "every remaining egress class must have at least one registered surface");
   });
 
   it("retains full supplied person identifiers in span/authority diagnostic messages", () => {
@@ -732,25 +697,6 @@ describe("redaction surface scan — the canary sweep (ref clock-config-secrets 
     const planted = canariesIn(canonicalJsonStringify(CANARY_FAILURE));
     for (const name of ["personName", "ssn", "dob", "cookie", "storageState", "credentialPath", "privateKey", "emplId"] as const) {
       assert.ok(planted.includes(name), `the ${name} canary never reached the failure record`);
-    }
-  });
-
-  it("drops every planted sentinel from the advisory prompt that leaves the process", () => {
-    const prompt = buildFailureTriagePrompt(CANARY_FAILURE);
-    const serialized = canonicalJsonStringify(prompt);
-    const leaked = canariesIn(serialized);
-    assert.deepEqual(
-      leaked,
-      [],
-      `the advisory prompt is the only payload that leaves this machine and it carried ${leaked.join(", ")}`,
-    );
-
-    // D178's other half: a dropped leaf still APPEARS, as its redacted arm.
-    // Silence would tell the model the fact does not exist, which is a
-    // different — and false — statement from "withheld by policy".
-    const withheld = prompt.facts.filter(({ state }) => state === "redacted").map(({ key }) => key);
-    for (const key of ["summary", "causeChain.summary", "remediation.message", "page.urlRedacted", "subject.observed.displayRedacted"]) {
-      assert.ok(withheld.includes(key), `${key} must appear in the prompt as a withheld fact`);
     }
   });
 

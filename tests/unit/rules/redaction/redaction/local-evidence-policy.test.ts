@@ -1,10 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import {
-  DataClassificationSchema, retainLocalEvidenceValue, redactDiagnosticFields,
-  redactValue, RedactedValueSchema, directIdentifierDisplay,
-} from "../../../../../src/rules/redaction/redaction.js";
-import { AdvisoryPromptSchema, buildAdvisoryFacts, buildAdvisoryPrompt } from "../../../../../src/models/trust/advisory.js";
+import { DataClassificationSchema, retainLocalEvidenceValue, redactDiagnosticFields, redactValue, RedactedValueSchema, directIdentifierDisplay } from "../../../../../src/rules/redaction/redaction.js";
 import { NotificationTriggerEventSchema } from "../../../../../src/rules/notifications/notification-triggers.js";
 
 describe("local evidence and external disclosure boundaries", () => {
@@ -24,15 +20,8 @@ describe("local evidence and external disclosure boundaries", () => {
         state: "redacted", classification, transform: "drop",
       });
       assert.throws(() => redactValue(classification, "allow", "SYNTHETIC_PRIVATE_VALUE"), /forbidden/u);
-      const fact = { key: "supplied", ...retainLocalEvidenceValue(classification, "drop", "SYNTHETIC_PRIVATE_VALUE") };
-      assert.throws(() => buildAdvisoryPrompt("failure-triage", [fact]), /forbidden/u);
     }
-    const facts = buildAdvisoryFacts("failure-triage", { summary: "SYNTHETIC_PRIVATE_VALUE" });
-    assert.deepEqual(facts, [{ key: "summary", state: "redacted", classification: "sensitive-hr", transform: "drop" }]);
-    const valid = buildAdvisoryPrompt("failure-triage", facts);
-    assert.equal(AdvisoryPromptSchema.safeParse({ ...valid, facts: [
-      { key: "supplied", ...retainLocalEvidenceValue("secret", "drop", "SYNTHETIC_PRIVATE_VALUE") },
-    ] }).success, false);
+
   });
 
   it("does not add a captured-value channel to OS notifications", () => {

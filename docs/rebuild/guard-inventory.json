@@ -205,10 +205,12 @@
     {
       "name": "ai-advisory-no-authority",
       "file": "tests/architecture/processing/ai-advisory-no-authority.test.ts",
-      "status": "active",
+      "status": "retired",
+      "retiredBy": "brief-R",
       "owner": "docs/rebuild/reference/operator-trust.md",
       "invariant": "D178 (ref operator-trust \u00a74.4): optional AI assistance reads the evidence and never becomes it. ZERO AUTHORITY EDGE \u2014 the advisory closure's VALUE-import graph (domain/trust/advisory, domain/dashboard/advisory, backend/logs/trust/advisory, backend/processing/providers/gemini-advisory, backend/runs/dashboard/queries/advisory) may not reach any authority writer (the backend/storage/sqlite repositories, the command kernel, terminal authorization, the write sequencer/recovery, the receipt writer, run-failure, the diagnostic/knowledge/notification services, the ledger, the command services, either composition root, or control), and no command-family module (domain/commands, backend/runs/command-kernel, backend/runs/dashboard/commands/**) may import an advisory module \u2014 so an advisory value cannot cross into a command payload from either direction. A type-only import of a record SHAPE is deliberately not a path to that record's writer. The ONE permitted durable neighbour is D112 provider admission, at the composition root only. DECLARED REDACTION \u2014 every leaf a maximal FailureRecord presents carries a declaration and every declaration is exercised by it (both directions), no declaration pairs a classification with a transform redaction.ts forbids, only `safe-diagnostic` may leave as a VALUE, and an undeclared leaf refuses BY NAME rather than being dropped. ADVICE SHAPE \u2014 the closed advice schema exposes exactly headline/explanation/checks/confidence and strictly refuses retryability, a remediation kind, a run reference or a command. ROUTE \u2014 the advisory is its own POST /api/v1/runs/:runId/advisory, is never a run-detail section (a section would spend a provider budget on panel open), and no command-service module reaches the advisory query. Every arm runs against a violating fixture as well as the real subject.",
-      "replacementRequired": true
+      "replacementRequired": false,
+      "reason": "Brief R removes the advisory route, model, query and all AI provider adapters. Deciding evidence: evidence-R-removals/resume/executor/removed-tests.json; historical identities parse only and active admission rejects ai.advisory."
     },
     {
       "name": "archive-invariants",

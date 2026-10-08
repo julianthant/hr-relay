@@ -1,44 +1,7 @@
-/**
- * `normalization/normalize-contact` — ref data-intake-and-edit-data §4.2's typed-advice contract.
- *
- * Legacy's `normalize-contact.ts` mixed deterministic cleanup, geocoder
- * fallback, and LLM inference, and a provider failure collapsed to `null` —
- * indistinguishable from "nothing needed changing." This contract makes
- * every arm distinct: deterministic rules run first and each change names
- * its rule id; geocoder advice is individually observed with its instant;
- * provider exhaustion is the `advisory-unavailable` disposition, never an
- * empty change list; and a field the rules cannot decide is `ambiguous` for
- * the operator — never a guess. Nothing here APPLIES advice: the review
- * gate shows before/after/source, and accepted changes become operator-
- * correction provenance (ref data-intake-and-edit-data §4.2).
- *
- * As-built deviations from the §4.2 sketch, recorded under D165 and D178:
- * - the `ai` source arm landed at D178 behind its own `ai` input flag, and it
- *   is NARROWER than legacy's LLM fallback by construction: a field may be
- *   asked about only when its canonical classification permits the `allow`
- *   transform, so `relationship` (`sensitive-hr`) is never sent and stays
- *   `ambiguous` for the operator — the declared classification decides, not
- *   the usefulness of the answer;
- * - `before` uses the canonical field's OWN classification/redaction
- *   transform (`redactValue`), so a durable checkpoint never carries a raw
- *   direct-identifier address line;
- * - the provider policy is the input's `geocode` flag plus the declared
- *   census-before-nominatim order pinned by this contract's scenarios — the
- *   caller opts into geocode advice, the task owns the sequencing.
- */
+/** Contact normalization advice retains its rule/provider provenance for operator review. */
 import { z } from "zod";
-import {
-  AiModelIdSchema,
-  AiProviderIdSchema,
-  IsoInstantSchema,
-  ProviderCapabilityIdSchema,
-  taskId,
-} from "../../../rules/identity/ids.js";
-import {
-  CanonicalRelationshipSchema,
-  ContactFieldIdSchema,
-  NormalizationRuleIdSchema,
-} from "../../../rules/normalization/contact-rules.js";
+import { IsoInstantSchema, ProviderCapabilityIdSchema, taskId } from "../../../rules/identity/ids.js";
+import { CanonicalRelationshipSchema, ContactFieldIdSchema, NormalizationRuleIdSchema } from "../../../rules/normalization/contact-rules.js";
 import { GeocodeConfidenceSchema } from "../../../rules/normalization/geocode.js";
 import { ProviderUnavailableReasonSchema } from "../../../rules/providers/provider-admission.js";
 import { DataClassificationSchema } from "../../../rules/redaction/redaction.js";
@@ -99,17 +62,6 @@ export const NormalizationChangeSchema = z.strictObject({
       observedAt: IsoInstantSchema,
       confidence: GeocodeConfidenceSchema,
     }),
-    /**
-     * D178 unparks the `ai` arm ref data-intake-and-edit-data §4.2 sketched. `confidence` is the
-     * MODEL's own number and is labelled as such on the review gate — it is
-     * not a verdict, and an ai-sourced change can never be auto-applied.
-     */
-    z.strictObject({
-      kind: z.literal("ai"),
-      provider: AiProviderIdSchema,
-      model: AiModelIdSchema,
-      confidence: z.number().min(0).max(1),
-    }),
   ]),
 });
 export type NormalizationChange = z.infer<typeof NormalizationChangeSchema>;
@@ -143,14 +95,6 @@ export const NormalizeContactInputSchema = z.strictObject({
   contact: ContactFieldsInputSchema,
   /** The caller's declared provider policy: no flag, no remote reads. */
   geocode: z.boolean(),
-  /**
-   * The second declared provider policy (D178): ask an `ai.advisory` provider
-   * about the fields the deterministic rules could not decide. It is separate
-   * from `geocode` because the two spend different budgets against different
-   * remote systems, and a caller that wants address verification has not
-   * thereby consented to a model reading the record.
-   */
-  ai: z.boolean(),
   /** When the contact is being read — replay resolves rules identically. */
   readAt: IsoInstantSchema,
 });
@@ -168,7 +112,7 @@ export const NormalizeContact = defineTaskContract({
   input: NormalizeContactInputSchema,
   output: NormalizeContactOutputSchema,
   errorCodes: ["empty-contact"],
-  providers: ["geocode.census", "geocode.nominatim", "ai.advisory"] as const,
+  providers: ["geocode.census", "geocode.nominatim"] as const,
   subject: { kind: "none", reason: "pure per-record normalization advice resolves no person" },
   freshness: {
     // Provider-derived facts age; a day-old geocode observation must not ride
@@ -182,8 +126,6 @@ export const NormalizeContact = defineTaskContract({
     "normalization/contact/nominatim-fallback",
     "normalization/contact/advisory-unavailable",
     "normalization/contact/ambiguous",
-    "normalization/contact/ai-advice",
-    "normalization/contact/ai-withheld-field",
   ],
   example: {
     normalized: { cellPhone: "8585551212", state: "CA", postalCode: "92093" },

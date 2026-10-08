@@ -1033,18 +1033,23 @@
         "service:llm"
       ],
       "disposition": {
-        "kind": "open",
+        "kind": "retired",
         "milestone": "workflow-admission-backlog",
-        "reason": "2i-G (D178) landed the zero-authority advisory edge — per-leaf declared redaction, the answer schema travelling with the question, typed exhaustion, and a durable footprint that is only the D112 admission row — with exactly TWO declared surfaces: failure-triage and contact-normalization. Legacy's run summary, record sanity check and selector suggestion have no producer and no surface arm (D178), and AdvisorySurfaceIdSchema is closed. Ref workflow-model §1.6.3 calls these adapters OPTIONAL with deterministic explain/rules/catalog primary, so this closes as a build-or-retire decision at non-workflow capability closure."
+        "evidence": [
+          "docs/rebuild/guard-inventory.json",
+          "src/rules/commands/commands-history.ts",
+          "tests/integration/backend/runs/start/provider-admission/retired-evidence.test.ts"
+        ],
+        "reason": "Brief R retires AI advisory production and provider adapters. Historical marked evidence remains readable; active command and admission schemas reject new retired work."
       },
       "ownerMilestone": "workflow-admission-backlog",
       "verificationEvidence": [
         "legacy-source-present:src/services/llm",
-        "src/domain/trust/advisory.ts",
-        "src/backend/logs/trust/advisory.ts",
-        "tests/architecture/ai-advisory-no-authority.test.ts"
+        "docs/rebuild/guard-inventory.json",
+        "src/rules/commands/commands-history.ts",
+        "tests/integration/backend/runs/start/provider-admission/retired-evidence.test.ts"
       ],
-      "status": "open"
+      "status": "retired"
     },
     {
       "id": "legacy-service-matching",
@@ -1090,8 +1095,8 @@
           "src/domain/ocr/instruction.ts",
           "src/domain/ocr/stack.ts",
           "src/backend/transports/cli/ocr.ts",
-          "src/backend/processing/providers/gemini-ocr-extract.ts",
-          "src/backend/processing/ocr/tasks/extract-form-page.ts"
+          "src/backend/processing/ocr/tasks/extract-form-page.ts",
+          "src/workflow-kit/providers.ts"
         ]
       },
       "ownerMilestone": "2h",
@@ -1100,7 +1105,8 @@
         "src/domain/ocr/extraction.ts",
         "src/backend/transports/cli/ocr.ts",
         "tests/unit/domain/ocr/ocr-extraction-admission.test.ts",
-        "tests/scenario/ocr-extraction.scenario.test.ts"
+        "tests/scenario/ocr-extraction.scenario.test.ts",
+        "tests/unit/backend/processing/ocr/task-registry/disconnected-client.test.ts"
       ],
       "status": "implemented"
     },
@@ -1376,20 +1382,23 @@
         "tool:src/scripts/ops/triage-failure.ts"
       ],
       "disposition": {
-        "kind": "replaced",
+        "kind": "retired",
         "milestone": "2i",
-        "replacement": "src/backend/logs/trust/advisory.ts",
-        "differencesAccepted": "Legacy triage was an ops SCRIPT that read a run and prompted a model. The rebuild's failure triage is a dashboard POST behind an explicit button — never a run-detail section, which would spend a provider budget every time an operator opened a failed run — assembled from the failure record's leaves each through the one redactValue under a declared (classification, transform) pair, admitted under D112 against the SUBJECT run, and rendered with provider/model/template/digest plus the standing 'not evidence, changes nothing' sentence. `summary` and `causeChain.summary` are sensitive-hr/drop because they are error.message verbatim. There is no CLI path."
+        "evidence": [
+          "docs/rebuild/guard-inventory.json",
+          "src/rules/commands/commands-history.ts",
+          "tests/integration/backend/runs/start/provider-admission/retired-evidence.test.ts"
+        ],
+        "reason": "Brief R retires AI advisory production and provider adapters. Historical marked evidence remains readable; active command and admission schemas reject new retired work."
       },
       "ownerMilestone": "2i",
       "verificationEvidence": [
         "legacy-source-present:src/scripts/ops/triage-failure.ts",
-        "src/backend/logs/trust/advisory.ts",
-        "src/backend/runs/dashboard/queries/advisory.ts",
-        "src/dashboard/surfaces/advisory.tsx",
-        "tests/architecture/ai-advisory-no-authority.test.ts"
+        "docs/rebuild/guard-inventory.json",
+        "src/rules/commands/commands-history.ts",
+        "tests/integration/backend/runs/start/provider-admission/retired-evidence.test.ts"
       ],
-      "status": "implemented"
+      "status": "retired"
     },
     {
       "id": "legacy-tool-selectors-catalog",
