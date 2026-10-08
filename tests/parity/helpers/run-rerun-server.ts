@@ -33,6 +33,7 @@ export async function startRunRerunServer() {
     ledger: createTransactionHistory(database.authority), descriptors: { resolve: (id) => id === h.descriptor.id ? h.descriptor : undefined },
     authority: {
       listNotifications: (actorId) => database.authority.notifications.listByActor(actorId),
+      listNotificationCheckpoints: (workflowId, itemId, nodeId, attempt) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt),
       listLiveWorkerLeases: () => database.authority.workerLeases.listLive(), getWorkerLease: (id) => database.authority.workerLeases.get(id),
       listWorkerPools: () => database.authority.workerPools.list(), listRunBatches: () => database.authority.runSessions.list(),
       getRunBatch: (id) => database.authority.runSessions.get(id), getFailure: (id) => database.authority.failures.get(id),

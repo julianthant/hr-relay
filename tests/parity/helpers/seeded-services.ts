@@ -1,3 +1,5 @@
+import { createRunLogStreamStore } from "../../../src/backend/logs/run-log-stream.js";
+import { RunLogsStreamHub } from "../../../src/backend/transports/http/subscriptions/run-logs-stream.js";
 import { composeActivity } from "../../../src/backend/app/composition/dashboard/activity.js";
 import { syntheticStateRoot } from "../../support/helpers/synthetic-storage-admission.js";
 import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
@@ -150,7 +152,13 @@ export function composeSeededServices({ database, clock, stateRoot, root, projec
   });
   const hub = createDashboardStreamHub({ projection, backfillGaps: UNOBSERVED_BACKFILL_GAP_NOTIFIER });
 
+  const runLogsHub = new RunLogsStreamHub({ projection, store: createRunLogStreamStore(stateRoot),
+    readRun: runId => {
+      const existence = runReader.read(runId);
+      return existence.state === "present" ? { disposition: existence.disposition, run: existence.run } : undefined;
+    } });
   const app = createDashboardApp({
+    runLogsHub,
     requestIdentity: createSoloRequestIdentityCheckpoint({
       id: "local-operator",
       label: "Local operator",
@@ -246,5 +254,5 @@ export function composeSeededServices({ database, clock, stateRoot, root, projec
   });
 
 
-return { app, hub };
+return { app, hub, runLogsHub };
 }

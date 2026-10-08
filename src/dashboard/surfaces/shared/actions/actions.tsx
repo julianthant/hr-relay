@@ -165,6 +165,7 @@ export function CommandResultFeed({
 }
 
 const ICONS: Record<ActionIconKey, ReactNode> = {
+  archive: undefined,
   retry: <RotateCcw aria-hidden className={dsIcon.md} />,
   cancel: <X aria-hidden className={dsIcon.md} />,
   bump: <ChevronsUp aria-hidden className={dsIcon.md} />,

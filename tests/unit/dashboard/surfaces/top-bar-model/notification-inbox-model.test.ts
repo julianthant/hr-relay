@@ -56,7 +56,7 @@ describe("notification inbox model", () => {
 });
 
 it("counts unread snoozed rows independently and uses the actual channel", () => {
-  const row = NotificationWireSchema.parse({ ...ORDINARY, state: "snoozed", readState: "unread" });
+  const row = NotificationWireSchema.parse({ ...ORDINARY, state: "snoozed", readState: "unread", snoozedUntil: "2026-08-25T18:01:00.000Z" });
   assert.equal(notificationInboxView([row], "unread").shown.length, 1);
   assert.equal(notificationInboxView([row], "inbox").shown.length, 1);
   assert.equal(notificationInboxView([row], "ping").shown.length, 0);

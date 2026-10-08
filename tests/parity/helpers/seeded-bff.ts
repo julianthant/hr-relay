@@ -152,6 +152,7 @@ export async function startSeededServer(
     ledger: createTransactionHistory(database.authority),
     authority: {
       listNotifications: (actorId: string) => database.authority.notifications.listByActor(actorId),
+      listNotificationCheckpoints: (workflowId, itemId, nodeId, attempt) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt),
       listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
       getWorkerLease: (workerId: string) => database.authority.workerLeases.get(workerId),
       listWorkerPools: () => database.authority.workerPools.list(),
@@ -190,7 +191,7 @@ export async function startSeededServer(
   let selectionServices:Awaited<ReturnType<NonNullable<typeof input.prepareSelection>>>|undefined;
   try {selectionServices=await input.prepareSelection?.({database,clock,root});}
   catch(error) {database.close();rmSync(root,{recursive:true,force:true});throw error;}
-  const { app, hub } = composeSeededServices({database,clock,stateRoot,root,projection,spans,descriptors,runIds,selectionServices});
+  const { app, hub, runLogsHub } = composeSeededServices({database,clock,stateRoot,root,projection,spans,descriptors,runIds,selectionServices});
 
   const server: Server = createServer((req, res) => {
     void (async (): Promise<void> => {
@@ -234,6 +235,7 @@ export async function startSeededServer(
         server.close((error) => (error === undefined ? resolvePromise() : rejectPromise(error)));
       });
       hub.close();
+      runLogsHub.close();
       database.close();
       rmSync(root, { recursive: true, force: true });
     },
