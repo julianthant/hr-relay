@@ -38,14 +38,6 @@
       "injection": "orphan-process"
     },
     {
-      "scenario": "preflight/ocr-provider-unavailable",
-      "injection": "ocr-provider-unavailable"
-    },
-    {
-      "scenario": "preflight/ai-provider-unavailable",
-      "injection": "ai-provider-unavailable"
-    },
-    {
       "scenario": "preflight/endpoint-prod",
       "injection": "endpoint-prod"
     },

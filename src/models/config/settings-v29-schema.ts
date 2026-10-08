@@ -2,7 +2,6 @@
 // Retained for reading historical command records; never admits a new settings write.
 import { z } from "zod";
 import { LocalOperatorActorSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../rules/identity/ids.js";
-import type { ProviderCapabilityId } from "../../rules/identity/ids.js";
 import { deepFreeze } from "../../rules/validation/immutability.js";
 
 const UrlSchema = z.url();
@@ -101,7 +100,7 @@ export const PROVIDER_CAPABILITY_CONFIG_KEYS = deepFreeze({
   "geocode.census": "geocodeCensus",
   "geocode.nominatim": "geocodeNominatim",
   "ai.advisory": "aiAdvisory",
-} as const satisfies Record<ProviderCapabilityId, keyof z.output<typeof ProviderBudgetConfigSchema>>);
+} as const);
 
 /**
  * The absolute filesystem locations the runtime reads and writes (ref clock-config-secrets §4).

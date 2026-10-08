@@ -1,6 +1,6 @@
 /**
  * The Census and Nominatim `geocode.*` adapters — transport plus provenance
- * only, exactly like the gemini adapter (D161): every rule about WHAT a
+ * only: every rule about WHAT a
  * geocoded answer may change lives above, in the normalization task and the
  * domain street guard.
  *
@@ -25,18 +25,8 @@
 import { z } from "zod";
 import type { ProviderAdapter, ProviderCallOptions } from "../../../workflow-kit/providers.js";
 import type { Clock } from "../../../rules/time/clock.js";
-import {
-  censusConfidence,
-  confidenceFromImportance,
-  GeocodeOutcomeSchema,
-  GeocodeRequestSchema,
-} from "../../../rules/normalization/geocode.js";
-import {
-  ProviderAdapterOutcomeSchema,
-  ProviderRequestEnvelopeSchema,
-  type ProviderAdapterOutcome,
-  type ProviderRequestEnvelope,
-} from "../../../models/providers/providers.js";
+import { censusConfidence, confidenceFromImportance, GeocodeOutcomeSchema, GeocodeRequestSchema } from "../../../rules/normalization/geocode.js";
+import { ProviderAdapterOutcomeSchema, ProviderRequestEnvelopeSchema, type ProviderAdapterOutcome, type ProviderRequestEnvelope } from "../../../models/providers/providers.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 
 const CENSUS_BASE = "https://geocoding.geo.census.gov/geocoder/locations";

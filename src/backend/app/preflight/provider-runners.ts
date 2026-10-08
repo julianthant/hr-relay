@@ -5,8 +5,7 @@ import type { RuntimePreflightRunnerInput } from "./runtime-runners.js";
 /** Executable adapter availability is supplied by the composition; keys alone never imply readiness. */
 export function createProviderPreflightRunners(input: RuntimePreflightRunnerInput): readonly PreflightRunner[] {
   const availability = (provider: (typeof PROVIDER_ADAPTER_SPECS)[number]) => {
-    const configured = provider.modelsConfigKey === undefined || input.config.providers[provider.modelsConfigKey] !== undefined;
-    return provider.capabilities.filter(capability => configured && input.providerAvailability[`${provider.provider}/${capability}`] === true);
+    return provider.capabilities.filter(capability => input.providerAvailability[`${provider.provider}/${capability}`] === true);
   };
   return requiredPreflightChecks(input.scope.requestedCapabilities).flatMap(check => {
     const provider = PROVIDER_ADAPTER_SPECS.find(candidate => check === `provider.${candidate.provider}`);

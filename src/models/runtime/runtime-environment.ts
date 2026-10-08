@@ -2,11 +2,7 @@ import { z } from "zod";
 import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS, RETIRED_TEST_TARGET_ENVIRONMENT_KEYS } from "../config/catalog.js";
 import { HOST_PRIMARY_DISPLAY_ENV } from "../config/host-display.js";
 import { deepFreeze } from "../../rules/validation/immutability.js";
-import {
-  WORKER_PROCESS_MECHANIC_KEYS,
-  SECRET_FAMILY_SPECS,
-  SECRET_SPECS,
-} from "../config/secrets.js";
+import { WORKER_PROCESS_MECHANIC_KEYS, SECRET_SPECS } from "../config/secrets.js";
 
 const EnvironmentKeySchema = z.string().regex(/^[A-Z_][A-Z0-9_]*$/);
 const EnvironmentFamilyPrefixSchema = z.string().regex(/^[A-Z][A-Z0-9_]*$/);
@@ -179,6 +175,7 @@ const TEST_ONLY_ENVIRONMENT_KEYS = [
 ] as const;
 
 const INERT_RETIRED_ENVIRONMENT_KEYS = [
+  ...PROVIDER_MODEL_ENVIRONMENT_KEYS, ...LEGACY_PROVIDER_MODEL_ENVIRONMENT_KEYS,
   "CAPTURE_NGROK", "CAPTURE_NGROK_URL", "CAPTURE_PUBLIC_URL",
   "DEBUG", "E2E_DEBUG",
   "HRAUTO_DASHBOARD_ALLOWED_ORIGINS", "HRAUTO_DASHBOARD_ALLOW_LAN",
@@ -263,13 +260,11 @@ export const RUNTIME_ENVIRONMENT_EXACT = deepFreeze(RuntimeEnvironmentExactSpecS
 ]));
 
 export const RUNTIME_ENVIRONMENT_FAMILIES = deepFreeze(RuntimeEnvironmentFamilySpecSchema.array().parse([
-  ...SECRET_FAMILY_SPECS.map(({ envPrefix, maximum }) => ({
-    prefix: envPrefix,
-    maximum,
-    classification: "secret",
-    disposition: "active",
-    owners: ["src/models/config/secrets.ts"],
-  })),
+  { prefix: "GEMINI_API_KEY", maximum: 8, classification: "test-only", disposition: "test-only", owners: ["legacy:src/services/ocr/provider-limits.ts"] },
+  { prefix: "GROQ_API_KEY", maximum: 8, classification: "test-only", disposition: "test-only", owners: ["legacy:src/services/ocr/provider-limits.ts"] },
+  { prefix: "MISTRAL_API_KEY", maximum: 8, classification: "test-only", disposition: "test-only", owners: ["legacy:src/services/ocr/provider-limits.ts"] },
+  { prefix: "OPEN_ROUTER_API_KEY", maximum: 8, classification: "test-only", disposition: "test-only", owners: ["legacy:src/services/ocr/provider-limits.ts"] },
+  { prefix: "SAMBANOVA_API_KEY", maximum: 8, classification: "test-only", disposition: "test-only", owners: ["legacy:src/services/ocr/provider-limits.ts"] },
   { prefix: "CEREBRAS_API_KEY", maximum: 8, classification: "test-only", disposition: "test-only", owners: ["legacy:scripts/ocr/probe-providers.ts"] },
   { prefix: "COHERE_API_KEY", maximum: 8, classification: "test-only", disposition: "test-only", owners: ["legacy:scripts/ocr/probe-providers.ts"] },
   { prefix: "OCRSPACE_API_KEY", maximum: 8, classification: "test-only", disposition: "test-only", owners: ["legacy:scripts/ocr/probe-providers.ts"] },
@@ -324,11 +319,11 @@ export const EXACT_ENVIRONMENT_READER_OWNERS = deepFreeze(ExactEnvironmentReader
   { key: "UCPATH_USER_ID", paths: ["legacy:src/utils/env.ts"] },
 ]));
 
-const ACTIVE_PROVIDER_FAMILIES = [
+const HISTORICAL_PROVIDER_FAMILIES = [
   "GEMINI_API_KEY", "GROQ_API_KEY", "MISTRAL_API_KEY", "OPEN_ROUTER_API_KEY", "SAMBANOVA_API_KEY",
 ] as const;
 const PROBE_PROVIDER_FAMILIES = [
-  ...ACTIVE_PROVIDER_FAMILIES, "CEREBRAS_API_KEY", "COHERE_API_KEY", "OCRSPACE_API_KEY", "ZEP_API_KEY",
+  ...HISTORICAL_PROVIDER_FAMILIES, "CEREBRAS_API_KEY", "COHERE_API_KEY", "OCRSPACE_API_KEY", "ZEP_API_KEY",
 ] as const;
 const PROVIDER_MODEL_TARGETS = [...PROVIDER_MODEL_ENVIRONMENT_KEYS, ...LEGACY_PROVIDER_MODEL_ENVIRONMENT_KEYS] as const;
 const SECRET_EXACT_TARGETS = [
@@ -373,7 +368,7 @@ function computedReader(input: ComputedReaderInput): z.input<typeof ComputedEnvi
   return { ...input, targets, operation: "read", owner: input.path };
 }
 
-const keyPoolTargets = { kind: "closed-targets", exact: [], families: ACTIVE_PROVIDER_FAMILIES } as const;
+const keyPoolTargets = { kind: "closed-targets", exact: [], families: HISTORICAL_PROVIDER_FAMILIES } as const;
 const probePoolTargets = { kind: "closed-targets", exact: [], families: PROBE_PROVIDER_FAMILIES } as const;
 
 export const COMPUTED_ENVIRONMENT_READERS = deepFreeze(ComputedEnvironmentReaderSchema.array().parse([
@@ -396,16 +391,10 @@ export const COMPUTED_ENVIRONMENT_READERS = deepFreeze(ComputedEnvironmentReader
   computedReader({ path: "legacy:src/workflows/sharepoint-download/handler.ts", enclosingSymbol: "buildSharePointListHandler", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "1471aca1b99d7410cc61adcc6d5158de7ed8e5d7d10cd02509424d750fded359", classification: "legacy-production", targets: { kind: "closed-targets", exact: ["ONBOARDING_ROSTER_URL", "SEPARATIONS_ROSTER_URL"], families: [] } }),
   computedReader({ path: "legacy:src/workflows/sharepoint-download/handler.ts", enclosingSymbol: "queueSharePointDownloadJob", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "1471aca1b99d7410cc61adcc6d5158de7ed8e5d7d10cd02509424d750fded359", classification: "legacy-production", targets: { kind: "closed-targets", exact: ["ONBOARDING_ROSTER_URL", "SEPARATIONS_ROSTER_URL"], families: [] } }),
   computedReader({ path: "legacy:src/workflows/sharepoint-download/handler.ts", enclosingSymbol: "buildSharePointRosterDownloadHandler", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "1471aca1b99d7410cc61adcc6d5158de7ed8e5d7d10cd02509424d750fded359", classification: "legacy-production", targets: { kind: "closed-targets", exact: ["ONBOARDING_ROSTER_URL", "SEPARATIONS_ROSTER_URL"], families: [] } }),
-  computedReader({ path: "src/models/config/secrets.ts", enclosingSymbol: "admitLocalEnvironmentFile", accessKind: "bulk", occurrenceCount: 3, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "bulk-pass-through", boundary: "secure-local-environment-admission", reason: "the validated and exactly parsed local source fills only bindings absent from the inherited parent environment" } }),
   computedReader({ path: "src/models/config/secrets.ts", enclosingSymbol: "assertNoMigratedEnvironmentKeys", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: RETIRED_ENVIRONMENT_KEYS, families: [] } }),
   computedReader({ path: "src/models/config/secrets.ts", enclosingSymbol: "workerBootstrapEnvironment", accessKind: "bulk", occurrenceCount: 2, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: [...RETIRED_ENVIRONMENT_KEYS, HOST_PRIMARY_DISPLAY_ENV], families: [] } }),
   computedReader({ path: "src/models/config/secrets.ts", enclosingSymbol: "workerBootstrapEnvironment", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "72b51583d255ce06b58a1fb09a91cfed0e89cd4cf7406fc6dea176093c81757c", classification: "target-accessor", targets: { kind: "closed-process-mechanics", exact: WORKER_PROCESS_MECHANIC_KEYS } }),
   computedReader({ path: "src/models/config/secrets.ts", enclosingSymbol: "hostAwareResolutionEnvironment", accessKind: "bulk", occurrenceCount: 2, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: [HOST_PRIMARY_DISPLAY_ENV], families: [] } }),
-  computedReader({ path: "src/models/config/secrets.ts", enclosingSymbol: "activeProviderKeySlots", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "6877925c7fcc32f8a69cf84394d7a439b9e4ec91ef96b5e3a27b7c880f2a2fee", classification: "target-accessor", targets: { kind: "closed-targets", exact: [], families: ACTIVE_PROVIDER_FAMILIES } }),
-  computedReader({ path: "src/models/config/secrets.ts", enclosingSymbol: "optionalSecretFamily", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "72b51583d255ce06b58a1fb09a91cfed0e89cd4cf7406fc6dea176093c81757c", classification: "target-accessor", targets: { kind: "closed-targets", exact: [], families: ACTIVE_PROVIDER_FAMILIES } }),
-  computedReader({ path: "src/models/config/secrets.ts", enclosingSymbol: "requireSecretFamily", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: [], families: ACTIVE_PROVIDER_FAMILIES } }),
-  computedReader({ path: "src/models/config/secrets.ts", enclosingSymbol: "validateBootSecrets", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: [], families: ACTIVE_PROVIDER_FAMILIES } }),
-  computedReader({ path: "src/models/config/secrets.ts", enclosingSymbol: "validateDescriptorSecrets", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: [], families: ACTIVE_PROVIDER_FAMILIES } }),
   computedReader({ path: "scripts/dev/dashboard.ts", enclosingSymbol: "<module>", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "e4db44daa6ead5a1e592c02fa32cfe50b23a07fb388949c32664a0ea298f82ea", classification: "target-bootstrap", targets: { kind: "bulk-pass-through", boundary: "dashboard-child-processes", reason: "the dashboard launcher forwards its inherited environment plus one owned nonce to the two same-runtime child processes" } }),
   computedReader({ path: "scripts/test/runner.ts", enclosingSymbol: "main", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "e4db44daa6ead5a1e592c02fa32cfe50b23a07fb388949c32664a0ea298f82ea", classification: "test-only", targets: { kind: "bulk-pass-through", boundary: "test-command-child", reason: "the batch test wrapper forwards its inherited environment with owned scratch paths to the installed Vitest child" } }),
   computedReader({ path: "scripts/verify-parity-json.ts", enclosingSymbol: "main", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "e4db44daa6ead5a1e592c02fa32cfe50b23a07fb388949c32664a0ea298f82ea", classification: "test-only", targets: { kind: "bulk-pass-through", boundary: "test-command-child", reason: "the parity wrapper forwards its inherited environment to its same-checkout Playwright child" } }),
@@ -495,12 +484,6 @@ export function auditRuntimeEnvironmentInventory(input: unknown): readonly strin
   for (const key of RETIRED_TEST_TARGET_ENVIRONMENT_KEYS) {
     if (exact.get(key)?.disposition !== "migrated-refused") {
       violations.push(`retired test-target environment ${key} is not explicitly refused`);
-    }
-  }
-  for (const family of SECRET_FAMILY_SPECS) {
-    const spec = registry.families.find(({ prefix }) => prefix === family.envPrefix);
-    if (spec?.disposition !== "active" || spec.classification !== "secret" || spec.maximum !== family.maximum) {
-      violations.push(`secret family ${family.envPrefix} does not match environment inventory`);
     }
   }
 

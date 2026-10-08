@@ -214,7 +214,7 @@ export function buildPreflightReport(input: BuildPreflightReportInput): z.infer<
     const featureObservation = byCheck.get(feature.check);
     if (featureObservation === undefined || (featureObservation.state === "healthy") !== shouldBeHealthy) {
       throw new Error(
-        `${feature.feature} provider-set observation contradicts ${String(healthyProviders)} healthy provider observation(s)`,
+        `${String(feature.feature)} provider-set observation contradicts ${String(healthyProviders)} healthy provider observation(s)`,
       );
     }
   }

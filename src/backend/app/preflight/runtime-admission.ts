@@ -8,7 +8,7 @@ import { configSnapshotAbsentLeaves, executionConfigFromStored } from "../../../
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { createPreflightAdmission, PreflightAdmissionRefusal, PreflightAdmissionScopeSchema, type PreflightAdmissionScope } from "../../../rules/preflight/preflight-admission.js";
-import { optionalSecretFamily, providerModelChain, protectedSecretRevision, type ProtectedSecretSource } from "../../../models/config/secrets.js";
+import { protectedSecretRevision, type ProtectedSecretSource } from "../../../models/config/secrets.js";
 import type { InstanceSelection, RunEnvelope } from "../../../models/run/envelope.js";
 import { AuthorityHealthPreflightRunner, type AuthorityDatabase } from "../../storage/sqlite/index.js";
 import { requireRuntimeAdmission, type RuntimeAdmission } from "../../storage/admission/admission.js";
@@ -44,10 +44,9 @@ export function composeRuntimePreflight(input: Readonly<{
     },
     runners: scope => {
       const config = readConfig(scope);
-      const gemini = optionalSecretFamily("geminiApiKeys", input.environment).length > 0 && providerModelChain("geminiApiKeys", config).length > 0;
       return (input.runnerFactory ?? createRuntimePreflightRunners)({
         scope, config, protectedSecrets: input.protectedSecrets,
-        providerAvailability: { "gemini/ocr.extract": gemini, "gemini/ai.advisory": false, "census/geocode.census": true, "nominatim/geocode.nominatim": true },
+        providerAvailability: { "census/geocode.census": true, "nominatim/geocode.nominatim": true },
         dashboard: {
           repoRoot: input.repoRoot, stateRoot, artifactRoot: runtimeAdmission.artifactRoot,
           backendPort: input.isolation.backendPort, frontendPort: input.isolation.frontendPort,

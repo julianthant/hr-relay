@@ -3,15 +3,7 @@ import { describe, it } from "vitest";
 import { configLeafPaths } from "../../../src/backend/app/config/resolve.js";
 import { defaultRuntimePaths } from "../../../src/backend/app/config/runtime-paths.js";
 import { ConfigSchema } from "../../../src/models/config/schema.js";
-import {
-  CONFIG_SNAPSHOT_GENERATIONS,
-  CURRENT_CONFIG_SNAPSHOT_GENERATION,
-  POST_BASELINE_CONFIG_LEAVES,
-  StoredConfigSchema,
-  auditConfigSnapshotGenerations,
-  configLeafDigest,
-  configSnapshotGeneration,
-} from "../../../src/models/config/snapshot-generations.js";
+import { CONFIG_SNAPSHOT_GENERATIONS, CURRENT_CONFIG_SNAPSHOT_GENERATION, POST_BASELINE_CONFIG_LEAVES, StoredConfigSchema, auditConfigSnapshotGenerations, configLeafDigest, configSnapshotGeneration } from "../../../src/models/config/snapshot-generations.js";
 
 function currentLeafPaths(): readonly string[] {
   return configLeafPaths(ConfigSchema.parse({ paths: defaultRuntimePaths() }));
@@ -25,7 +17,7 @@ describe("durable config-leaf generations", () => {
     const stored = StoredConfigSchema.parse(historical);
     assert.deepEqual(stored, historical);
     assert.equal(configSnapshotGeneration(stored), 4);
-    assert.equal(configSnapshotGeneration(StoredConfigSchema.parse(current)), 5);
+    assert.equal(configSnapshotGeneration(StoredConfigSchema.parse(current)), 6);
     assert.deepEqual(CONFIG_SNAPSHOT_GENERATIONS[4]?.retired, ["operator.timekeeperName"]);
     assert.deepEqual(auditConfigSnapshotGenerations(currentLeafPaths()), []);
     const unretired = auditConfigSnapshotGenerations(currentLeafPaths().filter((leaf) => leaf !== "timeouts.sessionAcquireMs"));

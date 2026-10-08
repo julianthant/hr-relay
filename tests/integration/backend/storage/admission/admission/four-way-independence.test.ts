@@ -32,8 +32,8 @@ const artifacts=(f:Fixture)=>createContentAddressedArtifactWriter({admission: Ru
 const flows={
  async P(f:Fixture){
   const value={schemaHash:FingerprintSchema.parse(HASH),value:{synthetic:true}};
-  const adapter=createDeterministicProviderHarness("ocr.extract",[{kind:"return",estimate:{maximumCostUsdMicros:0},outcome:{response:{state:"produced",value},usage:{requestCount:1,costUsdMicros:0},evidence:{summary:"synthetic",capturedAt:IsoInstantSchema.parse(NOW)}}}]);
-  const client=createAdmittedProviderClient("ocr.extract",{execution:{runId:f.run.envelope.runId,attempt:1,nodeId:"searching",taskId:"ocr/extract-page"},configSnapshotId:f.snapshot.configSnapshotId,configFingerprint:f.snapshot.fingerprint,configSnapshot:f.snapshot,runSignal:new AbortController().signal,adapters:{"ocr.extract":adapter.adapter},repository:f.db.authority.providerAdmissions,accounting:f.db.authority.providerAccounting,clock:f.clock,idFactory:{next:()=>ProviderAdmissionIdSchema.parse(id(60))},deadlineScheduler:scheduler});
+  const adapter=createDeterministicProviderHarness("geocode.census",[{kind:"return",estimate:{maximumCostUsdMicros:0},outcome:{response:{state:"produced",value},usage:{requestCount:1,costUsdMicros:0},evidence:{summary:"synthetic",capturedAt:IsoInstantSchema.parse(NOW)}}}]);
+  const client=createAdmittedProviderClient("geocode.census",{execution:{runId:f.run.envelope.runId,attempt:1,nodeId:"searching",taskId:"ocr/extract-page"},configSnapshotId:f.snapshot.configSnapshotId,configFingerprint:f.snapshot.fingerprint,configSnapshot:f.snapshot,runSignal:new AbortController().signal,adapters:{"geocode.census":adapter.adapter},repository:f.db.authority.providerAdmissions,accounting:f.db.authority.providerAccounting,clock:f.clock,idFactory:{next:()=>ProviderAdmissionIdSchema.parse(id(60))},deadlineScheduler:scheduler});
   assert.deepEqual(await client.call(value),{state:"produced",value});assert.equal(adapter.calls().length,1);
   assert.equal(f.db.authority.providerAdmissions.get(id(60))?.lifecycle.state,"settled");
  },

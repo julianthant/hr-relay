@@ -4,6 +4,7 @@ import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js
 import { deepFreeze } from "../../rules/validation/immutability.js";
 import { ConfigLeafPathSchema, configLeafPaths } from "./provenance.js";
 import { ConfigSchema } from "./schema.js";
+import { RetiredAiProviderConfigSchema, currentProviderConfig } from "./retired-ai-config.js";
 import { ConfigSchema as HistoricalConfigSchema } from "./settings-v29-schema.js";
 
 /**
@@ -100,9 +101,16 @@ export const CONFIG_SNAPSHOT_GENERATIONS = deepFreeze([
     retired: ["operator.timekeeperName"],
     leafDigest: "abc8a7ce0b5709985f29fcf4e7aca584adfa306c32d78caf80e87c7a3e715aec",
   },
+  {
+    generation: 6,
+    decision: "brief-R",
+    introduced: [],
+    retired: ["providers.ocrExtract.timeoutMs", "providers.ocrExtract.concurrency", "providers.ocrExtract.requestsPerMinute", "providers.ocrExtract.dailyRequestLimit", "providers.ocrExtract.costLimitUsdMicros", "providers.aiAdvisory.timeoutMs", "providers.aiAdvisory.concurrency", "providers.aiAdvisory.requestsPerMinute", "providers.aiAdvisory.dailyRequestLimit", "providers.aiAdvisory.costLimitUsdMicros"],
+    leafDigest: "45dfe5269085dcb63d9f43462335f8b44e1a275f0d49ef55415e1e44eb0dcd7f",
+  },
 ] as const satisfies readonly ConfigSnapshotGeneration[]);
 
-export const CURRENT_CONFIG_SNAPSHOT_GENERATION = 5;
+export const CURRENT_CONFIG_SNAPSHOT_GENERATION = 6;
 
 /**
  * The leaves introduced after the baseline generation — precisely the leaves a
@@ -153,7 +161,7 @@ const CurrentStoredConfigSchema = z.strictObject({
   concurrency: ConfigSchema.shape.concurrency.unwrap(),
   daemon: ConfigSchema.shape.daemon.unwrap(),
   features: ConfigSchema.shape.features.unwrap(),
-  providers: ConfigSchema.shape.providers.unwrap(),
+  providers: z.union([ConfigSchema.shape.providers.unwrap(), RetiredAiProviderConfigSchema]),
 });
 
 /** Parse-only compatibility for immutable snapshots written before D294. */
@@ -198,6 +206,7 @@ const ExecutionConfigFromStoredSchema = StoredConfigSchema.transform((config) =>
     ...Object.fromEntries(
       Object.entries(storedWithoutUrls).filter(([key]) => key !== "capture" && key !== "operator"),
     ),
+    providers: currentProviderConfig(config.providers),
     urls: Object.fromEntries(Object.entries(urls).map(([system, endpoints]) => [
       system, { prod: endpoints.prod },
     ])),

@@ -12,7 +12,6 @@ import { PreflightAdmissionScopeSchema } from "../../../../../../src/rules/prefl
 import { createPreflightAuthority, executePreflightRunner } from "../../../../../../src/models/preflight/preflight.js";
 import { FEATURE_RUNTIME_SPECS, PROVIDER_ADAPTER_SPECS, PreflightCheckIdSchema, RUNTIME_DEPENDENCIES, SYSTEM_RUNTIME_SPECS, type RuntimeCapability } from "../../../../../../src/models/runtime/runtime-dependencies.js";
 import { createRuntimePreflightRunners, type RuntimePreflightRunnerInput } from "../../../../../../src/backend/app/preflight/runtime-runners.js";
-import { PreflightReportWireSchema } from "../../../../../../src/models/preflight/preflight-contract.js";
 import { createWorkflowPreflightRunners } from "../../../../../../src/backend/app/preflight/workflow-runners.js";
 import { createTimeoutDeadlineScheduler } from "../../../../../../src/backend/runtime/scheduling/timeout-deadline-scheduler.js";
 
@@ -139,44 +138,18 @@ describe("executable provider readiness", () => {
   }).refresh(new AbortController().signal);
   for (const provider of PROVIDER_ADAPTER_SPECS) it(`does not mistake ${provider.provider} configuration for an executable adapter`, async () => {
     const f = fixture([`provider.${provider.provider}`]);
-    if (provider.modelsConfigKey !== undefined) Reflect.set(f.config.providers, provider.modelsConfigKey, { models: ["synthetic-model"] });
     assert.equal((await report(f)).results[0]?.status, "warning");
     for (const capability of provider.capabilities) Reflect.set(f.input.providerAvailability, `${provider.provider}/${capability}`, true);
     assert.equal((await report(f)).results[0]?.status, "pass");
-    if (provider.modelsConfigKey !== undefined) {
-      Reflect.deleteProperty(f.config.providers, provider.modelsConfigKey);
-      assert.equal((await report(f)).results[0]?.status, "warning");
-    }
+
   });
-  for (const feature of FEATURE_RUNTIME_SPECS) it(`expands every executable provider for ${feature.feature}`, async () => {
+  for (const feature of FEATURE_RUNTIME_SPECS) it(`expands every executable provider for ${String(feature.feature)}`, async () => {
     for (const provider of PROVIDER_ADAPTER_SPECS.filter(candidate => candidate.capabilities.includes(feature.providerCapability))) {
       const f = fixture([feature.feature]);
-      if (provider.modelsConfigKey !== undefined) Reflect.set(f.config.providers, provider.modelsConfigKey, { models: ["synthetic-model"] });
       assert.equal((await report(f)).results.find(result => result.check === feature.check)?.status, "fail");
       Reflect.set(f.input.providerAvailability, `${provider.provider}/${feature.providerCapability}`, true);
       assert.equal((await report(f)).results.find(result => result.check === feature.check)?.status, "pass");
     }
-  });
-  it("reports and admits OCR separately from unavailable AI in the same scope", async () => {
-    const f = fixture(["feature.ocr", "feature.ai-advisory"]);
-    f.config.providers.gemini = { models: ["synthetic-model"] };
-    Reflect.set(f.input.providerAvailability, "gemini/ocr.extract", true);
-    Reflect.set(f.input.providerAvailability, "gemini/ai.advisory", false);
-    const mixed = await report(f);
-    assert.equal(mixed.results.find(result => result.check === "feature.ocr.providers")?.status, "pass");
-    assert.equal(mixed.results.find(result => result.check === "feature.ai-advisory.providers")?.status, "fail");
-    assert.deepEqual(mixed.results.find(result => result.check === "provider.gemini"), { status: "pass", check: "provider.gemini", summary: "gemini: executable ocr.extract available.", availableFor: ["feature.ocr"] });
-    const forged = structuredClone(mixed);
-    const cell = forged.results.find(result => result.check === "provider.gemini"); assert.ok(cell?.status === "pass");
-    cell.availableFor = ["feature.ocr", "feature.ai-advisory"];
-    assert.equal(PreflightReportWireSchema.safeParse(forged).success, false);
-    cell.availableFor = ["feature.ocr", "feature.ocr"];
-    assert.equal(PreflightReportWireSchema.safeParse(forged).success, false);
-    const standalone = fixture(["provider.census"]);
-    Reflect.set(standalone.input.providerAvailability, "census/geocode.census", true);
-    const invalid = structuredClone(await report(standalone));
-    Reflect.set(invalid.results[0] as object, "availableFor", ["feature.ocr"]);
-    assert.equal(PreflightReportWireSchema.safeParse(invalid).success, false);
   });
 });
 

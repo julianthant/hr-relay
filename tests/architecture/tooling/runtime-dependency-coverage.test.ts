@@ -2,26 +2,8 @@ import assert from "node:assert/strict";
 import ts from "typescript";
 import { describe, it } from "vitest";
 import { BrowserSystemIdSchema } from "../../../src/rules/identity/ids.js";
-import { SETTINGS_CATALOG } from "../../../src/models/config/catalog.js";
-import {
-  auditRuntimeDependencyCoverage,
-  PREFLIGHT_CHECKS,
-  PROVIDER_ADAPTER_SPECS,
-  ProviderIdSchema,
-  RUNTIME_DEPENDENCY_REGISTRY,
-  RuntimeCapabilitySchema,
-  SYSTEM_RUNTIME_SPECS,
-} from "../../../src/models/runtime/runtime-dependencies.js";
-import {
-  isRegisteredEnvironmentKey,
-  RUNTIME_ENVIRONMENT_EXACT,
-  RUNTIME_ENVIRONMENT_FAMILIES,
-} from "../../../src/models/runtime/runtime-environment.js";
-import { SECRET_FAMILY_SPECS } from "../../../src/models/config/secrets.js";
-import {
-  FROZEN_LEGACY_ARCHITECTURE_PROVENANCE,
-  frozenLegacyPaths,
-} from "../support/helpers/frozen-legacy-architecture-provenance.js";
+import { auditRuntimeDependencyCoverage, PREFLIGHT_CHECKS, ProviderIdSchema, RUNTIME_DEPENDENCY_REGISTRY, RuntimeCapabilitySchema, SYSTEM_RUNTIME_SPECS } from "../../../src/models/runtime/runtime-dependencies.js";
+import { FROZEN_LEGACY_ARCHITECTURE_PROVENANCE, frozenLegacyPaths } from "../support/helpers/frozen-legacy-architecture-provenance.js";
 
 /**
  * Guard (ref guards-and-tests §3.12 — D68): the rebuild's closed runtime-dependency sets
@@ -116,60 +98,6 @@ describe("runtime dependency coverage", () => {
       assert.equal(checkIds.has(`endpoint.${system}.test`), false,
         `${system}: retired test endpoint preflight check must stay absent`);
     }
-  });
-
-  it("matches the legacy vision-provider inventory and closes each provider over its settings model chain", () => {
-    const provider = FROZEN_LEGACY_ARCHITECTURE_PROVENANCE.runtime.visionProvider;
-    const legacy = unionMembers(provider.text, provider.path, "VisionProviderId");
-    const visionProviders = PROVIDER_ADAPTER_SPECS
-      .filter(({ capabilities }) => capabilities.includes("ocr.extract"))
-      .map(({ provider }) => provider)
-      .sort();
-    assert.deepEqual(
-      visionProviders,
-      legacy,
-      "vision-provider inventory drifted; owner src/models/runtime/runtime-dependencies.ts (PROVIDER_ADAPTER_SPECS) vs src/services/ocr/provider-limits.ts",
-    );
-
-    const families = new Map(SECRET_FAMILY_SPECS.map((family) => [family.name, family]));
-    const catalogModelKeys = new Set(SETTINGS_CATALOG
-      .filter(({ key }) => /^providers\.(?:gemini|groq|mistral|openRouter|sambanova)\.models$/u.test(key))
-      .map(({ key }) => key));
-
-    for (const provider of PROVIDER_ADAPTER_SPECS) {
-      const capability = `provider.${provider.provider}`;
-      assert.equal(
-        RUNTIME_CAPABILITY_IDS.has(capability),
-        true,
-        `${provider.provider}: no runtime capability`,
-      );
-      if (provider.secretFamily === undefined) {
-        assert.equal(provider.modelsConfigKey, undefined, `${provider.provider}: models config without a secret family`);
-        continue;
-      }
-      const family = families.get(provider.secretFamily);
-      assert.ok(family, `${provider.provider}: unknown secret family ${provider.secretFamily}`);
-      assert.equal(
-        RUNTIME_ENVIRONMENT_FAMILIES.some(({ prefix, disposition }) =>
-          prefix === family.envPrefix && disposition === "active"),
-        true,
-        `${provider.provider}: ${family.envPrefix} is not an active environment family`,
-      );
-      assert.equal(provider.modelsConfigKey, family.modelsConfigKey,
-        `${provider.provider}: model settings key differs from its secret-family inventory`);
-      assert.equal(catalogModelKeys.has(`providers.${family.modelsConfigKey}.models`), true,
-        `${provider.provider}: provider model chain has no settings catalog row`);
-      assert.equal(isRegisteredEnvironmentKey(family.envPrefix), true, family.envPrefix);
-    }
-
-    const claimed = new Set(PROVIDER_ADAPTER_SPECS.flatMap(({ modelsConfigKey }) =>
-      modelsConfigKey === undefined ? [] : [`providers.${modelsConfigKey}.models`]));
-    assert.deepEqual([...catalogModelKeys].filter((key) => !claimed.has(key)), []);
-    assert.deepEqual(
-      RUNTIME_ENVIRONMENT_EXACT.filter((spec) =>
-        spec.disposition === "active" && spec.channel === "provider-model"),
-      [],
-    );
   });
 
   it("gives every runtime capability a blocking-or-optional preflight path", () => {

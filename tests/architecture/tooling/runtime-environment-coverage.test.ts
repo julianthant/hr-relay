@@ -1,28 +1,10 @@
 import assert from "node:assert/strict";
-import { ProviderKeySlotSchema } from "../../../src/models/config/provider-keys.js";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, it } from "vitest";
-import {
-  auditRuntimeEnvironmentInventory,
-  COMPUTED_ENVIRONMENT_READERS,
-  EXACT_ENVIRONMENT_READER_OWNERS,
-  isRegisteredEnvironmentKey,
-  RUNTIME_ENVIRONMENT_EXACT,
-  RUNTIME_ENVIRONMENT_FAMILIES,
-  RUNTIME_ENVIRONMENT_REGISTRY,
-  runtimeEnvironmentFamilyForKey,
-} from "../../../src/models/runtime/runtime-environment.js";
-import {
-  ENVIRONMENT_SOURCE_EXTENSIONS,
-  inventoryEnvironmentAccesses,
-  type EnvironmentAccessOccurrence,
-} from "../runtime/helpers/environment-read-audit.js";
-import {
-  gitVisibleFiles,
-  isLegacyPath,
-  REPO_ROOT,
-} from "../support/helpers/guard-files.js";
+import { auditRuntimeEnvironmentInventory, COMPUTED_ENVIRONMENT_READERS, EXACT_ENVIRONMENT_READER_OWNERS, isRegisteredEnvironmentKey, RUNTIME_ENVIRONMENT_EXACT, RUNTIME_ENVIRONMENT_FAMILIES, RUNTIME_ENVIRONMENT_REGISTRY, runtimeEnvironmentFamilyForKey } from "../../../src/models/runtime/runtime-environment.js";
+import { ENVIRONMENT_SOURCE_EXTENSIONS, inventoryEnvironmentAccesses, type EnvironmentAccessOccurrence } from "../runtime/helpers/environment-read-audit.js";
+import { gitVisibleFiles, isLegacyPath, REPO_ROOT } from "../support/helpers/guard-files.js";
 
 interface ExampleEnvironmentInventory {
   readonly keys: readonly string[];
@@ -177,19 +159,6 @@ function auditOccurrences(occurrences: readonly EnvironmentAccessOccurrence[]): 
 }
 
 describe("runtime environment inventory coverage", () => {
-  it("limits activeProviderKeySlots to exactly the supported provider pool slots", () => {
-    const reader = COMPUTED_ENVIRONMENT_READERS.find(candidate =>
-      candidate.path === "src/models/config/secrets.ts" && candidate.enclosingSymbol === "activeProviderKeySlots");
-    assert.ok(reader);
-    assert.equal(reader.occurrenceCount, 1);
-    assert.equal(reader.targets.kind, "closed-targets");
-    assert.ok(reader.targets.kind === "closed-targets");
-    assert.deepEqual(reader.targets.exact, []);
-    const slots = RUNTIME_ENVIRONMENT_FAMILIES.filter(family => reader.targets.kind === "closed-targets"
-      && reader.targets.families.includes(family.prefix)).flatMap(family =>
-      Array.from({ length: family.maximum }, (_, index) => index === 0 ? family.prefix : `${family.prefix}${index + 1}`));
-    assert.deepEqual([...slots].sort(), [...ProviderKeySlotSchema.options].sort());
-  });
 
   it("strictly validates the closed registry and every repository occurrence", () => {
     assert.deepEqual(auditRuntimeEnvironmentInventory(RUNTIME_ENVIRONMENT_REGISTRY), []);

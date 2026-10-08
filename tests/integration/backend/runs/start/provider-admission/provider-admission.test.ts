@@ -5,35 +5,15 @@ import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import type { ProviderAdapter } from "../../../../../../src/workflow-kit/providers.js";
 import type { ProviderAdapterOutcome } from "../../../../../../src/models/providers/providers.js";
-import {
-  ProviderOutcomeUncertainError,
-  createAdmittedProviderClient,
-  providerDenialDisposition,
-  type MonotonicDeadlineScheduler,
-} from "../../../../../../src/backend/runs/start/provider-admission.js";
+import { ProviderOutcomeUncertainError, createAdmittedProviderClient, providerDenialDisposition, type MonotonicDeadlineScheduler } from "../../../../../../src/backend/runs/start/provider-admission.js";
 import { manualClock } from "../../../../../../src/rules/time/clock.js";
 import { defaultRuntimePaths } from "../../../../../../src/backend/app/config/runtime-paths.js";
 import { ConfigSchema, type ProviderBudget } from "../../../../../../src/models/config/schema.js";
-import {
-  ConfigSnapshotIdSchema,
-  FingerprintSchema,
-  IsoInstantSchema,
-  ProviderAdmissionIdSchema,
-} from "../../../../../../src/rules/identity/ids.js";
+import { ConfigSnapshotIdSchema, FingerprintSchema, IsoInstantSchema, ProviderAdmissionIdSchema } from "../../../../../../src/rules/identity/ids.js";
 import { AuthorityDatabase } from "../../../../../support/helpers/synthetic-storage-admission.js";
 import { createDeterministicProviderHarness } from "../../../../../../src/backend/processing/providers/deterministic-provider.js";
-import {
-  HASH_A,
-  HASH_B,
-  NOW,
-  UUID_4,
-} from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
-import {
-  QUEUED_RUN,
-  RUN_ID,
-  WORKER_ID,
-  WORKFLOW_ID,
-} from "../../../../../support/fixtures/phase1f-run-fixtures.js";
+import { HASH_A, HASH_B, NOW, UUID_4 } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
+import { QUEUED_RUN, RUN_ID, WORKER_ID, WORKFLOW_ID } from "../../../../../support/fixtures/phase1f-run-fixtures.js";
 
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
@@ -58,7 +38,7 @@ function configWithBudget(budget: ProviderBudget) {
   const defaults = ConfigSchema.parse({ paths: defaultRuntimePaths() });
   return ConfigSchema.parse({
     ...defaults,
-    providers: { ...defaults.providers, ocrExtract: budget },
+    providers: { ...defaults.providers, geocodeCensus: budget },
   });
 }
 
@@ -116,7 +96,7 @@ function reserveInput(id: number, now: string, maximumCostUsdMicros = 0) {
   return {
     admissionId: admissionId(id),
     execution: { runId: RUN_ID, attempt: 1, nodeId: NODE_ID, taskId: TASK_ID },
-    capability: "ocr.extract" as const,
+    capability: "geocode.census" as const,
     configSnapshotId: SNAPSHOT_ID,
     configFingerprint: CONFIG_FINGERPRINT,
     requestFingerprint: REQUEST_FINGERPRINT,
@@ -209,7 +189,7 @@ describe("durable provider admission repository", () => {
     });
     assert.equal(swept.expired.length, 1);
     assert.equal(swept.expired[0]?.lifecycle.state, "lease-expired");
-    const counter = reopened.authority.providerAdmissions.getCounter("ocr.extract");
+    const counter = reopened.authority.providerAdmissions.getCounter("geocode.census");
     assert.equal(counter?.activeReservations, 0);
     assert.equal(counter?.dayReservedCostUsdMicros, 70);
   });
@@ -245,7 +225,7 @@ describe("durable provider admission repository", () => {
     });
     assert.equal(database.authority.providerAdmissions.reserve(reserveInput(31, NOW, 70)).state, "reserved");
     settle(database, 31, NOW, 20);
-    assert.equal(database.authority.providerAdmissions.getCounter("ocr.extract")?.dayReservedCostUsdMicros, 20);
+    assert.equal(database.authority.providerAdmissions.getCounter("geocode.census")?.dayReservedCostUsdMicros, 20);
     assert.equal(database.authority.providerAdmissions.reserve(reserveInput(32, NOW, 80)).state, "reserved");
     database.authority.providerAdmissions.interrupt({
       admissionId: admissionId(32),
@@ -254,7 +234,7 @@ describe("durable provider admission repository", () => {
       message: "actual cost exceeded estimate",
       now: NOW,
     });
-    const counter = database.authority.providerAdmissions.getCounter("ocr.extract");
+    const counter = database.authority.providerAdmissions.getCounter("geocode.census");
     assert.equal(counter?.dayReservedCostUsdMicros, 100);
     assert.equal(counter?.blockedByAdmissionId, admissionId(32));
     const blocked = database.authority.providerAdmissions.reserve(reserveInput(33, NOW, 0));
@@ -281,7 +261,7 @@ class ManualDeadlineScheduler implements MonotonicDeadlineScheduler {
 
 describe("admitted provider client", () => {
   function clientFixture(
-    adapter: ProviderAdapter<"ocr.extract">,
+    adapter: ProviderAdapter<"geocode.census">,
     repositoryOverride?: AuthorityDatabase["authority"]["providerAdmissions"],
     runSignal = new AbortController().signal,
   ) {
@@ -292,13 +272,13 @@ describe("admitted provider client", () => {
     });
     const scheduler = new ManualDeadlineScheduler();
     const id = admissionId(91);
-    const client = createAdmittedProviderClient("ocr.extract", {
+    const client = createAdmittedProviderClient("geocode.census", {
       execution: { runId: RUN_ID, attempt: 1, nodeId: NODE_ID, taskId: TASK_ID },
       configSnapshotId: SNAPSHOT_ID,
       configFingerprint: CONFIG_FINGERPRINT,
       configSnapshot: setupResult.snapshot,
       runSignal,
-      adapters: { "ocr.extract": adapter },
+      adapters: { "geocode.census": adapter },
       repository: repositoryOverride ?? setupResult.database.authority.providerAdmissions,
       clock: setupResult.clock,
       idFactory: { next: () => id },
@@ -308,7 +288,7 @@ describe("admitted provider client", () => {
   }
 
   it("settles produced output before returning it and maps retryable denial without sleeping", async () => {
-    const harness = createDeterministicProviderHarness("ocr.extract", [{
+    const harness = createDeterministicProviderHarness("geocode.census", [{
       kind: "return",
       estimate: { maximumCostUsdMicros: 20 },
       outcome: {
@@ -340,8 +320,8 @@ describe("admitted provider client", () => {
   });
 
   it("returns timeout even when an adapter ignores abort and durably releases the reservation", async () => {
-    const adapter: ProviderAdapter<"ocr.extract"> = Object.freeze({
-      capability: "ocr.extract",
+    const adapter: ProviderAdapter<"geocode.census"> = Object.freeze({
+      capability: "geocode.census",
       estimate: () => ({ maximumCostUsdMicros: 10 }),
       invoke: async () => new Promise<ProviderAdapterOutcome>(() => undefined),
     });
@@ -353,11 +333,11 @@ describe("admitted provider client", () => {
     if (outcome.state !== "unavailable") throw new Error("expected unavailable timeout");
     assert.equal(outcome.reason.code, "timeout");
     assert.equal(fixture.database.authority.providerAdmissions.get(fixture.id)?.lifecycle.state, "interrupted");
-    assert.equal(fixture.database.authority.providerAdmissions.getCounter("ocr.extract")?.activeReservations, 0);
+    assert.equal(fixture.database.authority.providerAdmissions.getCounter("geocode.census")?.activeReservations, 0);
   });
 
   it("performs zero adapter invocations for pre-abort and durable capacity denial", async () => {
-    const harness = createDeterministicProviderHarness("ocr.extract", [{
+    const harness = createDeterministicProviderHarness("geocode.census", [{
       kind: "throw", estimate: { maximumCostUsdMicros: 0 }, message: "must not invoke",
     }]);
     const preAbort = new AbortController();
@@ -370,7 +350,7 @@ describe("admitted provider client", () => {
     assert.equal(harness.calls().length, 0);
     assert.equal(aborted.database.authority.providerAdmissions.get(aborted.id)?.lifecycle.state, "denied");
 
-    const capacityHarness = createDeterministicProviderHarness("ocr.extract", [{
+    const capacityHarness = createDeterministicProviderHarness("geocode.census", [{
       kind: "throw", estimate: { maximumCostUsdMicros: 0 }, message: "must not invoke",
     }]);
     const capacity = clientFixture(capacityHarness.adapter);
@@ -383,8 +363,8 @@ describe("admitted provider client", () => {
   });
 
   it("returns aborted when a mid-call adapter ignores its composed signal", async () => {
-    const adapter: ProviderAdapter<"ocr.extract"> = Object.freeze({
-      capability: "ocr.extract",
+    const adapter: ProviderAdapter<"geocode.census"> = Object.freeze({
+      capability: "geocode.census",
       estimate: () => ({ maximumCostUsdMicros: 10 }),
       invoke: async () => new Promise<ProviderAdapterOutcome>(() => undefined),
     });
@@ -402,7 +382,7 @@ describe("admitted provider client", () => {
   });
 
   it("never returns remote data when durable settlement fails", async () => {
-    const harness = createDeterministicProviderHarness("ocr.extract", [{
+    const harness = createDeterministicProviderHarness("geocode.census", [{
       kind: "return",
       estimate: { maximumCostUsdMicros: 0 },
       outcome: {
@@ -421,13 +401,13 @@ describe("admitted provider client", () => {
       settle: () => { throw new Error("injected settlement failure"); },
     };
     const scheduler = new ManualDeadlineScheduler();
-    const client = createAdmittedProviderClient("ocr.extract", {
+    const client = createAdmittedProviderClient("geocode.census", {
       execution: { runId: RUN_ID, attempt: 1, nodeId: NODE_ID, taskId: TASK_ID },
       configSnapshotId: SNAPSHOT_ID,
       configFingerprint: CONFIG_FINGERPRINT,
       configSnapshot: setupResult.snapshot,
       runSignal: new AbortController().signal,
-      adapters: { "ocr.extract": harness.adapter },
+      adapters: { "geocode.census": harness.adapter },
       repository,
       clock: setupResult.clock,
       idFactory: { next: () => admissionId(92) },
@@ -437,8 +417,8 @@ describe("admitted provider client", () => {
   });
 
   it("durably interrupts an adapter that throws synchronously before returning a promise", async () => {
-    const adapter: ProviderAdapter<"ocr.extract"> = {
-      capability: "ocr.extract",
+    const adapter: ProviderAdapter<"geocode.census"> = {
+      capability: "geocode.census",
       estimate: () => ({ maximumCostUsdMicros: 9 }),
       invoke() { throw new Error("synchronous adapter failure"); },
     };
@@ -450,11 +430,11 @@ describe("admitted provider client", () => {
     const admission = fixture.database.authority.providerAdmissions.get(fixture.id);
     assert.equal(admission?.lifecycle.state, "interrupted");
     if (admission?.lifecycle.state === "interrupted") assert.equal(admission.lifecycle.code, "adapter-error");
-    assert.equal(fixture.database.authority.providerAdmissions.getCounter("ocr.extract")?.activeReservations, 0);
+    assert.equal(fixture.database.authority.providerAdmissions.getCounter("geocode.census")?.activeReservations, 0);
   });
 
   it("settles a strict adapter-unavailable outcome instead of treating it as produced", async () => {
-    const harness = createDeterministicProviderHarness("ocr.extract", [{
+    const harness = createDeterministicProviderHarness("geocode.census", [{
       kind: "return",
       estimate: { maximumCostUsdMicros: 3 },
       outcome: {
@@ -473,7 +453,7 @@ describe("admitted provider client", () => {
   });
 
   it("fails loud and blocks admission when measured cost exceeds the conservative estimate", async () => {
-    const harness = createDeterministicProviderHarness("ocr.extract", [{
+    const harness = createDeterministicProviderHarness("geocode.census", [{
       kind: "return",
       estimate: { maximumCostUsdMicros: 1 },
       outcome: {
@@ -486,15 +466,15 @@ describe("admitted provider client", () => {
     await assert.rejects(fixture.client.call(PAYLOAD), /breached its conservative maximum cost estimate/);
     const admission = fixture.database.authority.providerAdmissions.get(fixture.id);
     assert.equal(admission?.lifecycle.state, "interrupted");
-    assert.equal(fixture.database.authority.providerAdmissions.getCounter("ocr.extract")?.blockedByAdmissionId, fixture.id);
+    assert.equal(fixture.database.authority.providerAdmissions.getCounter("geocode.census")?.blockedByAdmissionId, fixture.id);
   });
 
   it("strictly rejects malformed adapter outcomes and records full-reservation interruption", async () => {
-    const valid = createDeterministicProviderHarness("ocr.extract", [{
+    const valid = createDeterministicProviderHarness("geocode.census", [{
       kind: "throw", estimate: { maximumCostUsdMicros: 5 }, message: "unused",
     }]).adapter;
-    const proxyTarget: ProviderAdapter<"ocr.extract"> = {
-      capability: "ocr.extract",
+    const proxyTarget: ProviderAdapter<"geocode.census"> = {
+      capability: "geocode.census",
       estimate: (request) => valid.estimate(request),
       invoke: (request, options) => valid.invoke(request, options),
     };

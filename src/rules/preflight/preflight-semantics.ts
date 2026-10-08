@@ -14,8 +14,6 @@ export const RuntimeCapabilitySchema = z.enum([
   "executor.run",
   "workflow.kuali-fill",
   "workflow.sharepoint-download",
-  "feature.ocr",
-  "feature.ai-advisory",
   "system.ucpath.prod",
   "system.crm.prod",
   "system.onbase.prod",
@@ -25,7 +23,6 @@ export const RuntimeCapabilitySchema = z.enum([
   "system.new-kronos.prod",
   "system.old-kronos.prod",
   "system.sharepoint.prod",
-  "provider.gemini", "provider.groq", "provider.mistral", "provider.openrouter", "provider.sambanova",
   "provider.census", "provider.nominatim",
 ]);
 
@@ -45,13 +42,7 @@ const PreflightCheckSemanticExpectationSchema = z.strictObject({
 });
 export type PreflightCheckSemanticExpectation = z.infer<typeof PreflightCheckSemanticExpectationSchema>;
 
-const ProviderCapabilities = [
-  "provider.gemini",
-  "provider.groq",
-  "provider.mistral",
-  "provider.openrouter",
-  "provider.sambanova",
-] as const satisfies readonly RuntimeCapability[];
+
 
 const SystemIds = [
   "ucpath",
@@ -108,31 +99,18 @@ export const PREFLIGHT_CHECK_EXPECTATIONS = deepFreeze(PreflightCheckSemanticExp
   expectation("secrets.timekeeper", ["workflow.kuali-fill"], ["workflow.kuali-fill"]),
   expectation("secrets.sharepoint-roster", ["workflow.sharepoint-download", "system.sharepoint.prod"], ["workflow.sharepoint-download", "system.sharepoint.prod"]),
   expectation("process.orphans", ["dashboard.serve"], []),
-  expectation("feature.ocr.providers", ["feature.ocr"], ["feature.ocr"]),
-  expectation("feature.ai-advisory.providers", ["feature.ai-advisory"], ["feature.ai-advisory"]),
   ...systemExpectations(),
   ...providerExpectations(),
 ]));
 
-export const PreflightProviderFeaturesSchema = z.array(z.enum(["feature.ocr", "feature.ai-advisory"])).min(1).max(2);
+export const PreflightProviderFeaturesSchema = z.array(z.never()).min(1).max(2);
 
 const FeatureProviderExpansionSchema = z.strictObject({
-  feature: z.enum(["feature.ocr", "feature.ai-advisory"]),
+  feature: z.never(),
   providerChecks: PreflightCheckIdSchema.array().min(1),
   minimumHealthyProviders: z.number().int().positive(),
 });
-export const PREFLIGHT_FEATURE_PROVIDER_EXPANSIONS = deepFreeze(FeatureProviderExpansionSchema.array().parse([
-  {
-    feature: "feature.ocr",
-    providerChecks: ProviderCapabilities.map((capability) => PreflightCheckIdSchema.parse(capability)),
-    minimumHealthyProviders: 1,
-  },
-  {
-    feature: "feature.ai-advisory",
-    providerChecks: ProviderCapabilities.map((capability) => PreflightCheckIdSchema.parse(capability)),
-    minimumHealthyProviders: 1,
-  },
-]));
+export const PREFLIGHT_FEATURE_PROVIDER_EXPANSIONS = deepFreeze(FeatureProviderExpansionSchema.array().parse([]));
 
 function duplicateValues(values: readonly string[]): readonly string[] {
   const seen = new Set<string>();
@@ -172,9 +150,9 @@ export function mandatoryCapabilitiesForPreflightCheck(
   return expectation.mandatoryFor.filter((capability) => requestedCapabilities.includes(capability));
 }
 
-export function providerChecksForFeature(feature: "feature.ocr" | "feature.ai-advisory"): readonly PreflightCheckId[] {
+export function providerChecksForFeature(feature: never): readonly PreflightCheckId[] {
   const expansion = PREFLIGHT_FEATURE_PROVIDER_EXPANSIONS.find((candidate) => candidate.feature === feature);
-  if (expansion === undefined) throw new Error(`preflight feature ${feature} has no provider expansion`);
+  if (expansion === undefined) throw new Error(`preflight feature ${String(feature)} has no provider expansion`);
   return expansion.providerChecks;
 }
 
@@ -182,7 +160,7 @@ interface PreflightResultSemanticView {
   readonly status: "pass" | "warning" | "fail";
   readonly check: PreflightCheckId;
   readonly blocks?: readonly RuntimeCapability[];
-  readonly availableFor?: readonly ("feature.ocr" | "feature.ai-advisory")[];
+  readonly availableFor?: readonly (never)[];
 }
 
 interface PreflightReportSemanticView {
@@ -270,12 +248,12 @@ export function validatePreflightReportSemantics(report: PreflightReportSemantic
       .map((check) => resultByCheck.get(check))
       .filter((result): result is PreflightResultSemanticView => result !== undefined);
     const healthyProviders = providerResults.filter(result => result.status === "pass" && providerSupportsFeature(result.availableFor, expansion.feature)).length;
-    const featureResult = resultByCheck.get(PreflightCheckIdSchema.parse(`${expansion.feature}.providers`));
+    const featureResult = resultByCheck.get(PreflightCheckIdSchema.parse(`${String(expansion.feature)}.providers`));
     if (featureResult !== undefined && (featureResult.status === "pass") !== (healthyProviders >= expansion.minimumHealthyProviders)) {
       issue(
         context,
         ["results"],
-        `${expansion.feature} provider-set result contradicts ${String(healthyProviders)} healthy provider result(s)`,
+        `${String(expansion.feature)} provider-set result contradicts ${String(healthyProviders)} healthy provider result(s)`,
       );
     }
   }
@@ -284,8 +262,8 @@ export function validatePreflightReportSemantics(report: PreflightReportSemantic
 /** An unqualified provider pass retains its existing meaning: every declared feature is available.
  * A partial provider pass explicitly narrows that promise; it never certifies an omitted feature. */
 export function providerSupportsFeature(
-  availableFor: readonly ("feature.ocr" | "feature.ai-advisory")[] | undefined,
-  feature: "feature.ocr" | "feature.ai-advisory",
+  availableFor: readonly (never)[] | undefined,
+  feature: never,
 ): boolean {
   return availableFor === undefined || availableFor.includes(feature);
 }
@@ -303,7 +281,7 @@ interface RuntimeDependencySemanticView {
 }
 
 interface RuntimeFeatureSemanticView {
-  readonly feature: "feature.ocr" | "feature.ai-advisory";
+  readonly feature: never;
   readonly check: PreflightCheckId;
   readonly minimumHealthyProviders: number;
   readonly providerCapability: string;
@@ -358,25 +336,25 @@ export function auditPreflightSemanticRegistry(registry: PreflightSemanticRegist
   for (const expansion of PREFLIGHT_FEATURE_PROVIDER_EXPANSIONS) {
     const feature = registry.features.find((candidate) => candidate.feature === expansion.feature);
     if (feature === undefined) {
-      violations.push(`preflight registry omits semantic feature ${expansion.feature}`);
+      violations.push(`preflight registry omits semantic feature ${String(expansion.feature)}`);
       continue;
     }
-    if (feature.check !== `${expansion.feature}.providers`) {
-      violations.push(`preflight feature ${expansion.feature} check contradicts semantic feature check`);
+    if (feature.check !== `${String(expansion.feature)}.providers`) {
+      violations.push(`preflight feature ${String(expansion.feature)} check contradicts semantic feature check`);
     }
     if (feature.minimumHealthyProviders !== expansion.minimumHealthyProviders) {
-      violations.push(`preflight feature ${expansion.feature} minimum healthy providers contradicts semantic expectation`);
+      violations.push(`preflight feature ${String(expansion.feature)} minimum healthy providers contradicts semantic expectation`);
     }
     const providerChecks = registry.providers
       .filter((provider) => provider.capabilities.includes(feature.providerCapability))
       .map((provider) => PreflightCheckIdSchema.parse(`provider.${provider.provider}`));
     if (!sameOrderedValues(providerChecks, expansion.providerChecks)) {
-      violations.push(`preflight feature ${expansion.feature} provider authority contradicts semantic expansion`);
+      violations.push(`preflight feature ${String(expansion.feature)} provider authority contradicts semantic expansion`);
     }
   }
   for (const feature of registry.features) {
     if (!PREFLIGHT_FEATURE_PROVIDER_EXPANSIONS.some((expectation) => expectation.feature === feature.feature)) {
-      violations.push(`preflight registry names unmodeled semantic feature ${feature.feature}`);
+      violations.push(`preflight registry names unmodeled semantic feature ${String(feature.feature)}`);
     }
   }
   return violations;

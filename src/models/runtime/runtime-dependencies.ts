@@ -1,33 +1,11 @@
 import { z } from "zod";
-import { SETTINGS_CATALOG } from "../config/catalog.js";
 import { CONFIG_ROUTE_KEYS } from "../config/schema.js";
 import { deepFreeze } from "../../rules/validation/immutability.js";
-import {
-  RUNTIME_ENVIRONMENT_REGISTRY,
-  RuntimeEnvironmentRegistrySchema,
-  auditRuntimeEnvironmentInventory,
-} from "./runtime-environment.js";
-import {
-  BrowserSystemIdSchema,
-  ProviderCapabilityIdSchema,
-  ScenarioIdSchema,
-} from "../../rules/identity/ids.js";
-import {
-  SECRET_FAMILY_SPECS,
-  SECRET_FILE_SPECS,
-  SECRET_SPECS,
-  SecretFamilyNameSchema,
-  SecretFileNameSchema,
-  SecretNameSchema,
-} from "../config/secrets.js";
-import {
-  PREFLIGHT_SCENARIO_MANIFESTS,
-  PreflightScenarioIdSchema,
-} from "../trust/preflight-scenarios.js";
-import {
-  PreflightCheckIdSchema,
-  RuntimeCapabilitySchema,
-} from "../preflight/preflight-contract.js";
+import { RUNTIME_ENVIRONMENT_REGISTRY, RuntimeEnvironmentRegistrySchema, auditRuntimeEnvironmentInventory } from "./runtime-environment.js";
+import { BrowserSystemIdSchema, ProviderCapabilityIdSchema, ScenarioIdSchema } from "../../rules/identity/ids.js";
+import { SECRET_FILE_SPECS, SECRET_SPECS, SecretFileNameSchema, SecretNameSchema } from "../config/secrets.js";
+import { PREFLIGHT_SCENARIO_MANIFESTS, PreflightScenarioIdSchema } from "../trust/preflight-scenarios.js";
+import { PreflightCheckIdSchema, RuntimeCapabilitySchema } from "../preflight/preflight-contract.js";
 import { auditPreflightSemanticRegistry } from "../../rules/preflight/preflight-semantics.js";
 import { directIdentifierDisplay } from "../../rules/redaction/redaction.js";
 
@@ -132,29 +110,21 @@ export const SYSTEM_RUNTIME_SPECS = deepFreeze(SystemRuntimeSpecSchema.array().p
   { system: "sharepoint", configKey: "sharepoint", routes: ["entry"], credential: "sharepoint-url", consumer: "system-driver" },
 ]));
 
-export const ProviderIdSchema = z.enum(["gemini", "groq", "mistral", "openrouter", "sambanova", "census", "nominatim"]);
-const ProviderModelsConfigKeySchema = z.enum(["gemini", "groq", "mistral", "openRouter", "sambanova"]);
+export const ProviderIdSchema = z.enum(["census", "nominatim"]);
 
 export const ProviderAdapterSpecSchema = z.strictObject({
   provider: ProviderIdSchema,
   capabilities: z.array(ProviderCapabilityIdSchema).min(1),
   endpoint: z.url(),
-  secretFamily: SecretFamilyNameSchema.optional(),
-  modelsConfigKey: ProviderModelsConfigKeySchema.optional(),
   consumer: RuntimeConsumerIdSchema,
 });
 
 export const PROVIDER_ADAPTER_SPECS = deepFreeze(ProviderAdapterSpecSchema.array().parse([
-  { provider: "gemini", capabilities: ["ocr.extract", "ai.advisory"], endpoint: "https://generativelanguage.googleapis.com/v1beta", secretFamily: "geminiApiKeys", modelsConfigKey: "gemini", consumer: "provider-adapter" },
-  { provider: "groq", capabilities: ["ocr.extract", "ai.advisory"], endpoint: "https://api.groq.com/openai/v1/chat/completions", secretFamily: "groqApiKeys", modelsConfigKey: "groq", consumer: "provider-adapter" },
-  { provider: "mistral", capabilities: ["ocr.extract", "ai.advisory"], endpoint: "https://api.mistral.ai/v1/chat/completions", secretFamily: "mistralApiKeys", modelsConfigKey: "mistral", consumer: "provider-adapter" },
-  { provider: "openrouter", capabilities: ["ocr.extract", "ai.advisory"], endpoint: "https://openrouter.ai/api/v1/chat/completions", secretFamily: "openRouterApiKeys", modelsConfigKey: "openRouter", consumer: "provider-adapter" },
-  { provider: "sambanova", capabilities: ["ocr.extract", "ai.advisory"], endpoint: "https://api.sambanova.ai/v1/chat/completions", secretFamily: "sambaNovaApiKeys", modelsConfigKey: "sambanova", consumer: "provider-adapter" },
   { provider: "census", capabilities: ["geocode.census"], endpoint: "https://geocoding.geo.census.gov/geocoder/locations", consumer: "provider-adapter" },
   { provider: "nominatim", capabilities: ["geocode.nominatim"], endpoint: "https://nominatim.openstreetmap.org/search", consumer: "provider-adapter" },
 ]));
 
-const ProviderBackedFeatureCapabilitySchema = z.enum(["feature.ocr", "feature.ai-advisory"]);
+const ProviderBackedFeatureCapabilitySchema = z.never();
 
 export const FeatureRuntimeSpecSchema = z.strictObject({
   feature: ProviderBackedFeatureCapabilitySchema,
@@ -167,28 +137,7 @@ export const FeatureRuntimeSpecSchema = z.strictObject({
   justification: z.string().min(1),
 });
 
-export const FEATURE_RUNTIME_SPECS = deepFreeze(FeatureRuntimeSpecSchema.array().parse([
-  {
-    feature: "feature.ocr",
-    providerCapability: "ocr.extract",
-    dependency: "feature.ocr-provider-set",
-    check: "feature.ocr.providers",
-    minimumHealthyProviders: 1,
-    consumer: "workflow-enqueue",
-    scenario: "preflight/ocr-provider-unavailable",
-    justification: "OCR execution requires at least one registered extraction provider, while each provider cell remains globally optional.",
-  },
-  {
-    feature: "feature.ai-advisory",
-    providerCapability: "ai.advisory",
-    dependency: "feature.ai-advisory-provider-set",
-    check: "feature.ai-advisory.providers",
-    minimumHealthyProviders: 1,
-    consumer: "workflow-enqueue",
-    scenario: "preflight/ai-provider-unavailable",
-    justification: "A descriptor selecting advisory AI requires at least one registered advisory provider, without making AI a dashboard boot prerequisite.",
-  },
-]));
+export const FEATURE_RUNTIME_SPECS = deepFreeze(FeatureRuntimeSpecSchema.array().parse([]));
 
 export const RuntimeDependencySpecSchema = z.strictObject({
   id: RuntimeDependencyIdSchema,
@@ -200,7 +149,6 @@ export const RuntimeDependencySpecSchema = z.strictObject({
   scenario: PreflightScenarioIdSchema,
   justification: z.string().min(1),
   secretNames: z.array(SecretNameSchema).optional(),
-  secretFamilies: z.array(SecretFamilyNameSchema).optional(),
   secretFiles: z.array(SecretFileNameSchema).optional(),
 });
 
@@ -218,7 +166,7 @@ function endpointDependencies() {
 }
 
 function providerDependencies() {
-  return PROVIDER_ADAPTER_SPECS.map(({ provider, consumer, secretFamily }) => ({
+  return PROVIDER_ADAPTER_SPECS.map(({ provider, consumer }) => ({
     id: `provider.${provider}`,
     kind: "provider",
     requirement: "optional",
@@ -227,7 +175,6 @@ function providerDependencies() {
     consumer,
     scenario: "preflight/provider-unavailable",
     justification: `${provider} is an optional provider cell and becomes relevant only through an explicitly selected provider-backed feature`,
-    ...(secretFamily === undefined ? {} : { secretFamilies: [secretFamily] }),
   }));
 }
 
@@ -358,7 +305,7 @@ export const RuntimeDependencyRegistrySchema = z.strictObject({
   scenarios: z.array(ScenarioIdSchema).min(1),
   systems: z.array(SystemRuntimeSpecSchema).min(1),
   providers: z.array(ProviderAdapterSpecSchema).min(1),
-  features: z.array(FeatureRuntimeSpecSchema).min(1),
+  features: z.array(FeatureRuntimeSpecSchema),
   dependencies: z.array(RuntimeDependencySpecSchema).min(1),
   checks: z.array(PreflightCheckSpecSchema).min(1),
 });
@@ -381,10 +328,6 @@ function duplicateValues(values: readonly string[]): readonly string[] {
     seen.add(value);
     return false;
   }))];
-}
-
-function sameMembers(left: readonly string[], right: readonly string[]): boolean {
-  return left.length === right.length && left.every((value) => right.includes(value));
 }
 
 export function auditRuntimeDependencyCoverage(input: unknown): readonly string[] {
@@ -469,46 +412,14 @@ export function auditRuntimeDependencyCoverage(input: unknown): readonly string[
     if (!providersById.has(provider)) violations.push(`provider ${provider} has no adapter or explicit target disposition`);
   }
   for (const capability of ProviderCapabilityIdSchema.options) {
-    if (!providerCapabilities.has(capability)) violations.push(`provider capability ${capability} has no adapter`);
+    if (capability !== "ocr.extract" && !providerCapabilities.has(capability)) violations.push(`provider capability ${capability} has no adapter`);
   }
-  for (const provider of registry.providers) {
-    unique(provider.capabilities, `provider ${provider.provider} capabilities`);
-    const family = provider.secretFamily === undefined
-      ? undefined
-      : SECRET_FAMILY_SPECS.find(({ name }) => name === provider.secretFamily);
-    if (family === undefined && provider.secretFamily !== undefined) {
-      violations.push(`provider ${provider.provider} names unknown secret family ${provider.secretFamily}`);
-    } else if (family !== undefined) {
-      if (provider.modelsConfigKey !== family.modelsConfigKey) {
-        violations.push(`provider ${provider.provider} models config key ${String(provider.modelsConfigKey)} does not match secret inventory ${family.modelsConfigKey}`);
-      }
-      const catalogKey = `providers.${family.modelsConfigKey}.models`;
-      if (!SETTINGS_CATALOG.some((row) => row.key === catalogKey
-        && row.sourceClass === "ordinary-settings")) {
-        violations.push(`provider ${provider.provider} models config ${catalogKey} has no ordinary settings catalog row`);
-      }
-    }
-    const needsModelInventory = provider.capabilities.some((capability) => capability === "ocr.extract" || capability === "ai.advisory");
-    if (needsModelInventory && (family === undefined || provider.modelsConfigKey === undefined)) {
-      violations.push(`provider ${provider.provider} has no key-family/models-config inventory`);
-    }
-    if (!needsModelInventory && (provider.secretFamily !== undefined || provider.modelsConfigKey !== undefined)) {
-      violations.push(`provider ${provider.provider} has unexpected keyed-model metadata`);
-    }
-  }
-  unique(
-    registry.providers.flatMap(({ modelsConfigKey }) => modelsConfigKey === undefined ? [] : [modelsConfigKey]),
-    "provider models config inventory",
-  );
+  for (const provider of registry.providers) { unique(provider.capabilities, `provider ${provider.provider} capabilities`); }
 
-  const featureByCapability = new Map(registry.features.map((feature) => [feature.feature, feature]));
-  for (const feature of ProviderBackedFeatureCapabilitySchema.options) {
-    if (!featureByCapability.has(feature)) violations.push(`provider-backed feature ${feature} has no runtime spec`);
-  }
   for (const feature of registry.features) {
     const providers = registry.providers.filter(({ capabilities }) => capabilities.includes(feature.providerCapability));
     if (providers.length < feature.minimumHealthyProviders) {
-      violations.push(`feature ${feature.feature} has ${String(providers.length)} providers for ${feature.providerCapability}, needs ${String(feature.minimumHealthyProviders)}`);
+      violations.push(`feature ${String(feature.feature)} has ${String(providers.length)} providers for ${feature.providerCapability}, needs ${String(feature.minimumHealthyProviders)}`);
     }
     const check = registry.checks.find(({ id }) => id === feature.check);
     const expectedDependencies = providers.map(({ provider }) => RuntimeDependencyIdSchema.parse(`provider.${provider}`));
@@ -537,7 +448,6 @@ export function auditRuntimeDependencyCoverage(input: unknown): readonly string[
   for (const dependency of registry.dependencies) {
     unique(dependency.capabilities, `dependency ${dependency.id} capabilities`);
     unique(dependency.secretNames ?? [], `dependency ${dependency.id} secret names`);
-    unique(dependency.secretFamilies ?? [], `dependency ${dependency.id} secret families`);
     unique(dependency.secretFiles ?? [], `dependency ${dependency.id} secret files`);
     if (!registeredConsumers.has(dependency.consumer)) violations.push(`dependency ${dependency.id} names missing consumer ${dependency.consumer}`);
     const check = checks.get(dependency.check);
@@ -600,10 +510,8 @@ export function auditRuntimeDependencyCoverage(input: unknown): readonly string[
     duoWebauthnCredential: "browser.duo-extension",
   } as const satisfies Record<z.infer<typeof SecretFileNameSchema>, string>;
   const referencedSecretNames = registry.dependencies.flatMap(({ secretNames }) => secretNames ?? []);
-  const referencedSecretFamilies = registry.dependencies.flatMap(({ secretFamilies }) => secretFamilies ?? []);
   const referencedSecretFiles = registry.dependencies.flatMap(({ secretFiles }) => secretFiles ?? []);
   unique(referencedSecretNames, "runtime secret-name references");
-  unique(referencedSecretFamilies, "runtime secret-family references");
   unique(referencedSecretFiles, "runtime secret-file references");
   for (const secret of SECRET_SPECS) {
     if (!referencedSecretNames.includes(secret.name)) violations.push(`secret ${secret.name} has no runtime dependency consumer`);
@@ -611,9 +519,6 @@ export function auditRuntimeDependencyCoverage(input: unknown): readonly string[
     if (!dependencies.get(RuntimeDependencyIdSchema.parse(owner))?.secretNames?.includes(secret.name)) {
       violations.push(`secret ${secret.name} is not owned by dependency ${owner}`);
     }
-  }
-  for (const family of SECRET_FAMILY_SPECS) {
-    if (!referencedSecretFamilies.includes(family.name)) violations.push(`secret family ${family.name} has no runtime dependency consumer`);
   }
   for (const secretFile of SECRET_FILE_SPECS) {
     if (!referencedSecretFiles.includes(secretFile.name)) violations.push(`secret file ${secretFile.name} has no runtime dependency consumer`);
@@ -632,14 +537,6 @@ export function auditRuntimeDependencyCoverage(input: unknown): readonly string[
       if (secretFileDependencyByName[secretFile] !== dependency.id) {
         violations.push(`dependency ${dependency.id} cannot own secret file ${secretFile}`);
       }
-    }
-  }
-  for (const provider of registry.providers) {
-    const dependency = dependencies.get(RuntimeDependencyIdSchema.parse(`provider.${provider.provider}`));
-    const dependencyFamilies = dependency?.secretFamilies ?? [];
-    const expectedFamilies = provider.secretFamily === undefined ? [] : [provider.secretFamily];
-    if (!sameMembers(dependencyFamilies, expectedFamilies)) {
-      violations.push(`provider ${provider.provider} dependency secret families do not match its adapter inventory`);
     }
   }
   for (const dependency of registry.dependencies.filter(({ id }) => id.startsWith("provider."))) {

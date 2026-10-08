@@ -53,13 +53,6 @@ const PROVIDER_CLIENT_TYPE_OWNERS: ReadonlySet<string> = new Set([
   "src/workflow-kit/providers.ts",
   "src/backend/runs/start/provider-admission.ts",
   "src/backend/runtime/execution/run-executor.ts",
-  // D178. Ref operator-trust §4.4's advisory is the first provider consumer OUTSIDE a run
-  // task: a task receives its clients through `ctx.providers` and never names
-  // the type, but an on-demand operator advisory has no task context to
-  // inherit. It still obtains its client from the kernel
-  // (`createAdvisoryProviderClient`) — this entry lets it declare what it was
-  // handed, not mint one.
-  "src/backend/logs/trust/advisory.ts",
 ]);
 const ADMITTED_CLIENT_MINT_CALLERS: ReadonlySet<string> = new Set([
   "src/backend/runs/start/provider-admission.ts",
@@ -73,13 +66,6 @@ const ADMITTED_CLIENT_MINT_CALLERS: ReadonlySet<string> = new Set([
 const ADMISSION_MODULE_IMPORTERS: ReadonlySet<string> = new Set([
   "src/backend/runtime/execution/run-executor.ts",
   "src/backend/app/composition/worker-compose.ts",
-  // D178. The dashboard process became a second admitted-provider consumer
-  // when ref operator-trust §4.4's on-demand advisory landed: it composes the pool and
-  // mints the client through the kernel's `createAdvisoryProviderClient`,
-  // exactly as the worker root does for a run. A composition root is the ONE
-  // place this may happen — the query it hands the closure to names no
-  // provider type at all.
-  "src/backend/app/composition/dashboard/compose.ts",
 ]);
 
 export function auditProviderCapabilityBoundary(root: string): readonly string[] {
@@ -181,11 +167,11 @@ describe("provider capability boundary", () => {
     const fixture = readFileSync(resolve(REPO_ROOT, "tests/types/task-contracts.typecheck.ts"), "utf8");
     assert.match(fixture, /provider clients are narrowed to the declared capability/u);
     assert.match(fixture, /ctx\.providers\["ocr\.extract"\]/u);
-    assert.deepEqual(Object.keys(PROVIDER_CAPABILITY_CONFIG_KEYS).sort(), [...ProviderCapabilityIdSchema.options].sort());
-    assert.equal(new Set(Object.values(PROVIDER_CAPABILITY_CONFIG_KEYS)).size, ProviderCapabilityIdSchema.options.length);
+    assert.deepEqual(Object.keys(PROVIDER_CAPABILITY_CONFIG_KEYS).sort(), ProviderCapabilityIdSchema.options.filter(capability => capability !== "ocr.extract").sort());
+    assert.equal(new Set(Object.values(PROVIDER_CAPABILITY_CONFIG_KEYS)).size, ProviderCapabilityIdSchema.options.length - 1);
     const config = ConfigSchema.parse({ paths: defaultRuntimePaths() });
     for (const capability of ProviderCapabilityIdSchema.options) {
-      assert.doesNotThrow(() => providerBudget(config, capability));
+      if (capability !== "ocr.extract") assert.doesNotThrow(() => providerBudget(config, capability));
       assert.equal(createDeterministicProviderHarness(capability, [{
         kind: "throw",
         estimate: { maximumCostUsdMicros: 0 },
@@ -196,16 +182,9 @@ describe("provider capability boundary", () => {
       gitVisibleFiles(["src/backend/processing/providers"]).map((path) => relative(REPO_ROOT, path).replaceAll("\\", "/")),
       [
         "src/backend/processing/providers/deterministic-provider.ts",
-        "src/backend/processing/providers/gemini-advisory.ts",
-        "src/backend/processing/providers/gemini-ocr-extract.ts",
-        "src/backend/processing/providers/gemini-transport.ts",
         "src/backend/processing/providers/geocode-adapters.ts",
-        "src/backend/processing/providers/provider-pool.ts",
       ].sort(),
-      "the deterministic harness, the D161 gemini ocr.extract adapter, the D178 gemini ai.advisory"
-        + " adapter and the transport half they share, the D165 census/nominatim geocode adapters,"
-        + " and the D165 rotation pool; a new production adapter joins this list deliberately, in"
-        + " the same commit that reviews it",
+      "the deterministic harness and Census/Nominatim adapters are the complete provider modules",
     );
     assert.deepEqual(
       gitVisibleFiles(["src/backend/app/host/local-vite-probe.ts"])
@@ -237,20 +216,10 @@ describe("provider capability boundary", () => {
     // drifted apart silently: four declared providers have no adapter at all.
     // Reconciling them both ways makes adding a fifth a deliberate act.
     const BUILT_PROVIDER_ADAPTERS: Readonly<Record<string, readonly string[]>> = {
-      gemini: [
-        "src/backend/processing/providers/gemini-ocr-extract.ts",
-        "src/backend/processing/providers/gemini-advisory.ts",
-        "src/backend/processing/providers/gemini-transport.ts",
-      ],
       census: ["src/backend/processing/providers/geocode-adapters.ts"],
       nominatim: ["src/backend/processing/providers/geocode-adapters.ts"],
     };
-    const DECLARED_WITHOUT_ADAPTER: Readonly<Record<string, string>> = {
-      groq: "Legacy OCR/LLM key family carried forward as ENV inventory only; D161 built the gemini adapter alone and the pool rotates gemini keys. A groq adapter is a 2h-shaped piece of work nobody has scheduled.",
-      mistral: "Same as groq — declared endpoint plus key family, no adapter module.",
-      openrouter: "Same as groq — declared endpoint plus key family, no adapter module.",
-      sambanova: "Same as groq — declared endpoint plus key family, no adapter module.",
-    };
+    const DECLARED_WITHOUT_ADAPTER: Readonly<Record<string, string>> = {};
     for (const provider of ProviderIdSchema.options) {
       const built = BUILT_PROVIDER_ADAPTERS[provider];
       const declaredOnly = DECLARED_WITHOUT_ADAPTER[provider];

@@ -12,11 +12,8 @@ import type { RunRecord } from "../../../../models/run/record.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../rules/validation/sha256.js";
 import { ProviderAdmissionIdSchema } from "../../../../rules/identity/ids.js";
-import { optionalSecretFamily, providerModelChain } from "../../../../models/config/secrets.js";
 import { PlaywrightWorkerSessionFactory } from "../../../runtime/browser/browser-session-factory.js";
-import { createGeminiOcrExtractAdapter } from "../../../processing/providers/gemini-ocr-extract.js";
 import { createCensusGeocodeAdapter, createNominatimGeocodeAdapter } from "../../../processing/providers/geocode-adapters.js";
-import { createProviderPool } from "../../../processing/providers/provider-pool.js";
 import type { AuthorityRepositories } from "../../../storage/sqlite/authority-database.js";
 import { composeDuoCeremonyGateFactory, type DuoCeremonyGateFactory } from "../../../runtime/gates/duo-ceremony-gate.js";
 import type { MonotonicDeadlineScheduler } from "../../../runtime/scheduling/deadline-scheduler.js";
@@ -31,15 +28,12 @@ export function createRunResourcesFactory(input:Readonly<{
  environment:Readonly<Record<string,string|undefined>>;sessionFactory?:WorkerBrowserSessionFactory;duoCeremony?:DuoCeremonyGateFactory;
 }>) {
  const compose=(config:Config):WorkerRunResources=>{
-  const keys=optionalSecretFamily("geminiApiKeys",input.environment);
-  const models=providerModelChain("geminiApiKeys",config);
-  const children=models.flatMap(modelId=>keys.map((apiKey,index)=>({label:`gemini-key${String(index+1)}/${modelId}`,adapter:createGeminiOcrExtractAdapter({apiKey,modelId,artifacts:input.artifacts,clock:input.clock})})));
   return Object.freeze({
    sessionFactory:input.sessionFactory??new PlaywrightWorkerSessionFactory({config,protectedSecrets:input.protectedSecrets,isolation:input.isolation,clock:input.clock,scheduler:input.scheduler,newSessionId:()=>input.ids.uuid()}),
    duoCeremony:input.duoCeremony??composeDuoCeremonyGateFactory({config,leases:input.authority.duoCeremonyLeases,clock:input.clock,scheduler:input.scheduler}),
    taskDeadlineMs:config.timeouts.taskMs,sessionAcquireMs:config.timeouts.sessionAcquireMs,
    defaultBrowserMode:config.browser.headless?"headless":"headed",
-   providers:{adapters:Object.freeze({...children.length===0?{}:{"ocr.extract":createProviderPool("ocr.extract",children)},"geocode.census":createCensusGeocodeAdapter({clock:input.clock}),"geocode.nominatim":createNominatimGeocodeAdapter({clock:input.clock})}),
+   providers:{adapters:Object.freeze({"geocode.census":createCensusGeocodeAdapter({clock:input.clock}),"geocode.nominatim":createNominatimGeocodeAdapter({clock:input.clock})}),
     repository:input.authority.providerAdmissions,accounting:input.authority.providerAccounting,configSnapshots:input.authority.configSnapshots,idFactory:{next:()=>ProviderAdmissionIdSchema.parse(input.ids.uuid())}},
   });
  };

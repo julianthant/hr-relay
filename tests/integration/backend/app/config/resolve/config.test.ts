@@ -1266,7 +1266,7 @@ describe("strict config resolution", () => {
       daemon: { idleMs: 120_000 },
       features: { debugScreenshots: true },
       providers: {
-        ocrExtract: {
+        geocodeCensus: {
           timeoutMs: 30_000,
           concurrency: 2,
           requestsPerMinute: 5,
@@ -1281,7 +1281,7 @@ describe("strict config resolution", () => {
       "annualDates.FY2027.jobEndDate", "display.screenWidth",
       "performance.navigationRetries", "ocr.secondOpinionMax",
       "browserHealth.maxAutoRefresh", "browser.headless", "concurrency.defaultWorkers",
-      "daemon.idleMs", "features.debugScreenshots", "providers.ocrExtract.timeoutMs",
+      "daemon.idleMs", "features.debugScreenshots", "providers.geocodeCensus.timeoutMs",
     ]) {
       assert.equal(resolved.provenance[path], "settings", path);
     }
@@ -1565,7 +1565,7 @@ describe("strict config resolution", () => {
     const settings = { concurrency: { defaultWorkers: 2 } };
     const facts = hostConfigFacts({});
     const before = resolveConfigWithProvenance(settings, facts, CLOCK);
-    assert.equal(MIGRATED_SETTINGS_ENVIRONMENT_KEYS.length, 50);
+    assert.equal(MIGRATED_SETTINGS_ENVIRONMENT_KEYS.length, 40);
     try {
       for (const key of MIGRATED_SETTINGS_ENVIRONMENT_KEYS) vi.stubEnv(key, "hostile-migrated-value");
       assert.deepEqual(resolveConfigWithProvenance(settings, facts, CLOCK), before);
