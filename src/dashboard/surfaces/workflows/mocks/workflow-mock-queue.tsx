@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useCallback, useMemo, useRef, useState } from "react";
 import { ArrowUpRight, GitBranch, ListChecks } from "lucide-react";
 import { Button, Dialog, DialogContent, DialogBody, DialogFooter, IconButton, Popover, PopoverContent, PopoverTrigger, dsFocus } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
@@ -17,6 +17,8 @@ import { WorkflowMockReview } from "./workflow-review.js";
 import { documentSourcePages } from "./workflow-document-model.js";
 import { mockDeletionCopy, mockDeletionIds } from "./workflow-mock-model.js";
 
+const mockWorkflowLabelOf = (workflowId: string): string => mockWorkflow(workflowId).label;
+
 export function WorkflowMockQueue({ label, runs, allRuns, selected, onSelect, onRetry, onDelete, day, nowIso, sort, filter }: {
   label: string; runs: readonly MockRun[]; selected?: string; onSelect: (id: string) => void;
   day: string; nowIso: string; sort: QueueSortKey; filter?: QueueFilterScope;
@@ -28,23 +30,33 @@ export function WorkflowMockQueue({ label, runs, allRuns, selected, onSelect, on
   const deleteLauncher = useRef<HTMLElement | null>(null);
   const surfaces = useMemo(() => mockQueueSurfaces(runs, day), [runs, day]);
   const ids = useMemo(() => new Map(runs.map(run => [mockQueueId(run.id), run.id])), [runs]);
-  const focusRemainingRow = () => {
-    const target = queueRoot.current?.querySelector<HTMLElement>("[data-demo-row-id]") ?? queueRoot.current?.querySelector<HTMLElement>('[aria-label="Queue"]');
-    if (target) { if (!target.hasAttribute("tabindex")) target.tabIndex = -1; target.focus(); }
-  };
-  return <div ref={queueRoot} className="flex min-h-0 min-w-0 flex-1 flex-col [&>section]:flex-1"><QueuePanel surfaces={surfaces} panelLabel={label} header={false} day={day} sort={sort} filter={filter}
-    state={{ selectedRunId: selected ? mockQueueId(selected) : undefined, openWells: new Set(), panelWorkflowId: runs[0]?.workflowId, nowIso }}
-    handlers={{ onSelect: id => {
+  const queueState = useMemo(() => ({
+    selectedRunId: selected ? mockQueueId(selected) : undefined,
+    openWells: new Set<string>(),
+    panelWorkflowId: runs[0]?.workflowId,
+    nowIso,
+  }), [selected, runs, nowIso]);
+  const queueHandlers = useMemo(() => ({
+    onSelect: (id: string) => {
       const target = ids.get(id);
       if (!target) throw new Error(`MOCK_QUEUE_RUN_UNKNOWN: ${id}`);
       onSelect(target);
-    }, onPreviewAction: (action, targets) => {
+    },
+    onPreviewAction: (action: "retry" | "delete", targets: readonly string[]) => {
       const id = ids.get(targets[0]);
       const run = allRuns.find(item => item.id === id);
       if (!run) throw new Error("MOCK_QUEUE_ACTION_TARGET_MISSING");
       if (action === "retry") onRetry(run.id);
       else if (action === "delete") { deleteLauncher.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setPendingDelete(run); }
-    } }} workflowLabelOf={id => mockWorkflow(id).label} />
+    },
+  }), [ids, allRuns, onRetry, onSelect]);
+  const focusRemainingRow = () => {
+    const target = queueRoot.current?.querySelector<HTMLElement>("[data-demo-row-id]") ?? queueRoot.current?.querySelector<HTMLElement>('[aria-label="Queue"]');
+    if (target) { if (!target.hasAttribute("tabindex")) target.tabIndex = -1; target.focus(); }
+  };
+  return <div ref={queueRoot} className="flex min-h-0 min-w-0 flex-1 flex-col [&>section]:flex-1"><QueuePanel surfaces={surfaces} panelLabel={label} header={false} day={day} sort={sort} filter={filter}
+    state={queueState}
+    handlers={queueHandlers} workflowLabelOf={mockWorkflowLabelOf} />
     <Dialog open={!!pendingDelete} onOpenChange={open => { if (!open) setPendingDelete(undefined); }}>
       <DialogContent title={`Delete ${pendingDelete?.subject ?? "run"}?`} size="sm" onCloseAutoFocus={event => {
         event.preventDefault();
@@ -90,11 +102,9 @@ export function WorkflowMockLog({ run, runs, onRerun, onApprove, onChange, onDis
     }));
   }, [hasRecords, workflowId, draft, run]);
   const { steps, timeline } = recordsVisible ? { steps: [], timeline: [] } : mockRunLog(run);
-  const linked = runs.filter(item => item.parentId === run.id || item.id === run.parentId || item.id === run.sourceId || item.id === run.ocrRunId || item.ocrRunId === run.id);
-  return <LogPanel title={run.subject} steps={steps} timeline={timeline} context={queueRunHeader(surface, mockWorkflow(run.workflowId).label, nowIso)}
-      onReview={hasRecords ? () => setRecordsVisible(true) : undefined}
-      status={<StatusBadge status={dsStatusOf(mockQueueStatus(run))} presentation="queue" />}
-      toolbar={<span className="flex items-center gap-2">
+  const linked = useMemo(() => runs.filter(item => item.parentId === run.id || item.id === run.parentId || item.id === run.sourceId || item.id === run.ocrRunId || item.ocrRunId === run.id), [runs, run]);
+  const openRecords = useCallback(() => setRecordsVisible(true), [setRecordsVisible]);
+  const toolbar = useMemo(() => <span className="flex items-center gap-2">
         {hasRecords && <Button ref={recordsButton} size="sm" variant={recordsVisible ? "secondary" : "outline"} aria-pressed={recordsVisible} aria-controls={recordsVisible ? `records-${mockQueueId(run.id)}` : undefined} icon={<ListChecks aria-hidden className="size-4" />} onClick={() => setRecordsVisible(!recordsVisible)}>Records {reviewRecords(run).length}</Button>}
         {run.workflowId !== "ocr" && run.ocrRunId && <Button size="sm" onClick={() => onSelect(run.ocrRunId!)}>Open OCR</Button>}
         {mockWorkflow(run.workflowId).runnable && !(run.workflowId === "ocr" && run.parentId) && run.role !== "person" && <Button size="sm" onClick={onRerun}>Rerun</Button>}
@@ -109,7 +119,11 @@ export function WorkflowMockLog({ run, runs, onRerun, onApprove, onChange, onDis
             </li>)}</ul>
           </PopoverContent>
         </Popover>}
-      </span>}
+      </span>, [hasRecords, recordsVisible, recordsButton, run, linked, linksOpen, setLinksOpen, setRecordsVisible, onSelect, onRerun]);
+  return <LogPanel title={run.subject} steps={steps} timeline={timeline} context={queueRunHeader(surface, mockWorkflow(run.workflowId).label, nowIso)}
+      onReview={hasRecords ? openRecords : undefined}
+      status={<StatusBadge status={dsStatusOf(mockQueueStatus(run))} presentation="queue" />}
+      toolbar={toolbar}
       content={recordsVisible ? <div id={`records-${mockQueueId(run.id)}`} className="flex min-h-0 min-w-0 flex-1">
         <WorkflowMockReview key={run.id} approvalError={mockApprovalError(run)} run={run} sourcePages={sourcePages} onChange={onChange} onApprove={mockNeedsReview(run) ? onApprove : undefined} onDiscard={mockNeedsReview(run) || run.workflowId === "ocr" && !run.parentId && !run.discarded ? onDiscard : undefined} onRestore={onRestore} />
       </div> : undefined} />;

@@ -12,6 +12,12 @@ function dateValue(value: string | undefined): CalendarDate | null {
   try { return parseDate(value); } catch { return null; }
 }
 
+/** A supplied bound is configuration, not a draft: absent stays absent, unreadable refuses. */
+function boundValue(bound: "min" | "max", value: string | undefined): CalendarDate | undefined {
+  if (value === undefined) return undefined;
+  try { return parseDate(value); } catch { throw new Error(`DS_DATE_BOUND_INVALID: ${bound}="${value}" is not a calendar date`); }
+}
+
 function textDateValue(value: string): CalendarDate | null {
   const match = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/u.exec(value);
   if (match === null) return null;
@@ -78,7 +84,7 @@ export function DateInput({ name, label, value, onChange, min, max, inline = fal
   };
   const leaveIncompleteYear = () => { if (pendingYear !== null && partial !== null && value !== partial.text) onChange(partial.text); };
   return <I18nProvider locale="en-US"><Popover open={calendarOpen} onOpenChange={setOpen}><PopoverAnchor asChild><HeroDatePicker isOpen={calendarOpen} onOpenChange={setOpen}
-    shouldForceLeadingZeros name={textEntry ? undefined : name} value={pendingYear ?? selected} onChange={setDate} onBlur={leaveIncompleteYear} minValue={dateValue(min) ?? undefined} maxValue={dateValue(max) ?? undefined}
+    shouldForceLeadingZeros name={textEntry ? undefined : name} value={pendingYear ?? selected} onChange={setDate} onBlur={leaveIncompleteYear} minValue={boundValue("min", min)} maxValue={boundValue("max", max)}
     isInvalid={(value !== "" && selected === null) || undefined} isDisabled={disabled} isRequired={required}
     className={cn("ds-date-picker min-w-0", inline && "ds-date-picker--inline", textEntry && "ds-date-picker--text", className)}>
     <Label className={cn("ds-date-label", (textEntry || hideLabel) && "sr-only")}>{label}</Label>
@@ -88,7 +94,7 @@ export function DateInput({ name, label, value, onChange, min, max, inline = fal
     </DateField.Group>
     </HeroDatePicker></PopoverAnchor>
     <PopoverContent id={id} title={pickerLabel} hideTitle hideClose align={hideLabel ? "end" : "start"} className={cn("date-picker__popover ds-calendar-popover !w-auto !max-w-[calc(100vw-24px)] [&>div]:p-0", dsLayer.modal)}>
-      <Calendar label={pickerLabel} value={selected} onChange={setDate} minValue={dateValue(min) ?? undefined} maxValue={dateValue(max) ?? undefined} autoFocus />
+      <Calendar label={pickerLabel} value={selected} onChange={setDate} minValue={boundValue("min", min)} maxValue={boundValue("max", max)} autoFocus />
       {typeof footer === "function" ? footer(next => setDate(dateValue(next))) : footer}
     </PopoverContent>
   </Popover></I18nProvider>;
@@ -139,8 +145,8 @@ export function DateRangeInput({ label, value, onChange, onEdit, fromLabel = "St
   };
   const from = useMemo(() => dateValue(draft.from), [draft.from]);
   const to = useMemo(() => dateValue(draft.to), [draft.to]);
-  const minimum = dateValue(min), maximum = dateValue(max);
-  const invalid = (from !== null && to !== null && from.compare(to) > 0) || [from, to].some(date => date !== null && ((minimum !== null && date.compare(minimum) < 0) || (maximum !== null && date.compare(maximum) > 0)));
+  const minimum = boundValue("min", min), maximum = boundValue("max", max);
+  const invalid = (from !== null && to !== null && from.compare(to) > 0) || [from, to].some(date => date !== null && ((minimum !== undefined && date.compare(minimum) < 0) || (maximum !== undefined && date.compare(maximum) > 0)));
   const changeEndpoint = (key: "from" | "to", date: CalendarDate | null) => {
     onEdit?.();
     const next = { ...draft, [key]: date?.toString() ?? "" };
@@ -148,7 +154,7 @@ export function DateRangeInput({ label, value, onChange, onEdit, fromLabel = "St
     const start = dateValue(next.from), end = dateValue(next.to);
     if (variant === "toolbar" && (!start || !end)) return;
     if (start && end && start.compare(end) > 0) return;
-    if ([start, end].some(day => day !== null && ((minimum !== null && day.compare(minimum) < 0) || (maximum !== null && day.compare(maximum) > 0)))) return;
+    if ([start, end].some(day => day !== null && ((minimum !== undefined && day.compare(minimum) < 0) || (maximum !== undefined && day.compare(maximum) > 0)))) return;
     onChange(next);
   };
   const selected = from && to && from.compare(to) <= 0 ? { start: from, end: to } : null;
@@ -159,7 +165,7 @@ export function DateRangeInput({ label, value, onChange, onEdit, fromLabel = "St
           changeOpen(next ? key : null);
         }}
           shouldForceLeadingZeros value={endpoint} isDisabled={disabled} isRequired={variant === "toolbar"} isInvalid={invalid || (draft[key] !== "" && endpoint === null) || undefined}
-          minValue={key === "to" ? from ?? minimum ?? undefined : minimum ?? undefined} maxValue={key === "from" ? to ?? maximum ?? undefined : maximum ?? undefined}
+          minValue={key === "to" ? from ?? minimum : minimum} maxValue={key === "from" ? to ?? maximum : maximum}
           onChange={date => changeEndpoint(key, date)}>
           <Label className={cn("ds-date-label", variant === "toolbar" && "sr-only")}>{endpointLabel}</Label>
           <DateField.Group fullWidth>
@@ -172,7 +178,7 @@ export function DateRangeInput({ label, value, onChange, onEdit, fromLabel = "St
       })}
     </div></PopoverAnchor>
     <PopoverContent id={id} title={label} hideTitle hideClose align="center" className={cn("date-picker__popover ds-calendar-popover !w-auto !max-w-[calc(100vw-24px)] [&>div]:p-0", dsLayer.modal)}>
-      <RangeCalendar label={label} value={selected} focusedValue={from ?? to ?? undefined} minValue={dateValue(min) ?? undefined} maxValue={dateValue(max) ?? undefined} disabled={disabled}
+      <RangeCalendar label={label} value={selected} focusedValue={from ?? to ?? undefined} minValue={minimum} maxValue={maximum} disabled={disabled}
         onChange={dates => { const next = { from: dates.start.toString(), to: dates.end.toString() }; setDraft(next); onChange(next); changeOpen(null); }} />
     </PopoverContent>
   </Popover></I18nProvider>;
