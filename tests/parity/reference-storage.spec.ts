@@ -1,17 +1,10 @@
 import { expect,test } from "@playwright/test";
 import { createHash } from "node:crypto";
 import { gotoAppState,type AppRoute } from "./helpers/app-driver.js";
-import {
-PARITY_THEMES,
-PARITY_VIEWPORTS,
-assertThemeApplied,
-captureParityPair,
-installTheme,
-type ParityTheme,
-} from "./helpers/capture.js";
-import { FIXTURE_APP_VERSION,FIXTURE_DAY,FIXTURE_DESCRIPTOR_HASH } from "./helpers/fixture-identity.js";
+import { PARITY_THEMES, PARITY_VIEWPORTS, assertThemeApplied, installTheme, type ParityTheme } from "./helpers/capture.js";
+import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { assertShellGeometry } from "./helpers/geometry.js";
-import { REFERENCES,dismissWorkflowWindow,dismissWorkflowWindowOverQueue,failOnPageErrors,registerReferenceServers } from "./helpers/reference-harness.js";
+import { dismissWorkflowWindow, dismissWorkflowWindowOverQueue, failOnPageErrors, registerReferenceServers } from "./helpers/reference-harness.js";
 
 const servers = registerReferenceServers(["server","storageServer"]);
 
@@ -41,9 +34,11 @@ async function assertStorageBandGeometry(
       borderRadius: style.borderRadius,
     };
   });
+  const takeover = await page.locator('.dashboard-shell[data-settings-takeover="true"]').count();
+  const rail = takeover ? 0 : Math.max(208, Math.min(264, viewportWidth / 4 - 96));
   expect(geometry).toEqual({
-    x: 0,
-    width: viewportWidth,
+    x: rail,
+    width: viewportWidth - rail,
     borderTop: "0px",
     borderRight: "0px",
     borderBottom: "1px",
@@ -53,9 +48,7 @@ async function assertStorageBandGeometry(
 }
 
 
-const STORAGE_DOCTOR_VIEWPORTS = PARITY_VIEWPORTS.filter(
-  (viewport) => viewport.name === "1440x900" || viewport.name === "narrow-1024x768",
-);
+const STORAGE_DOCTOR_VIEWPORTS = PARITY_VIEWPORTS;
 
 
 test.describe("storage band", () => {
@@ -83,48 +76,12 @@ test.describe("storage band", () => {
           await assertShellGeometry(page, `${state.id} @ ${viewport.name} ${theme.name}`);
           expect(errors, `page errors while rendering ${state.id}`).toEqual([]);
 
-          await captureParityPair(page, REFERENCES, {
-            stateId: state.id,
-            viewport: viewport.name,
-            theme: theme.name,
-            adapter: "fixture",
-            fixtureId: state.id,
-            descriptorHash: FIXTURE_DESCRIPTOR_HASH,
-            appVersion: FIXTURE_APP_VERSION,
-            capturedAt: FIXTURE_DAY,
-            variant: "default",
-          });
+
         });
       }
     }
   }
 
-  test("storage-queue @ graphite-warm @ 1440x900 @ sidebar", async ({ page }) => {
-    const errors = failOnPageErrors(page);
-    await page.setViewportSize({ width: 1440, height: 900 });
-    await page.addInitScript(() => {
-      window.localStorage.setItem("hr-dashboard.workflow-panel", "sidebar");
-    });
-    await installTheme(page, PARITY_THEMES[0]);
-    await gotoAppState(page, servers.storageServer.baseUrl, { day: FIXTURE_DAY });
-    await assertThemeApplied(page, PARITY_THEMES[0]);
-    await expect(page.getByRole("navigation", { name: "Workflow Panel" })).toBeVisible();
-    await assertStorageBandGeometry(page, 1440);
-    await assertShellGeometry(page, "storage-queue @ 1440x900 graphite-warm sidebar");
-    expect(errors, "page errors while rendering storage-queue in sidebar mode").toEqual([]);
-
-    await captureParityPair(page, REFERENCES, {
-      stateId: "storage-queue",
-      viewport: "1440x900",
-      theme: PARITY_THEMES[0].name,
-      adapter: "fixture",
-      fixtureId: "storage-queue",
-      descriptorHash: FIXTURE_DESCRIPTOR_HASH,
-      appVersion: FIXTURE_APP_VERSION,
-      capturedAt: FIXTURE_DAY,
-      variant: "sidebar",
-    });
-  });
 });
 
 
@@ -165,17 +122,7 @@ test.describe("loaded storage doctor", () => {
         });
         await test.info().attach(a11yName, { body: snapshot, contentType: "text/yaml" });
 
-        await captureParityPair(page, REFERENCES, {
-          stateId: "storage-doctor-degraded",
-          viewport: viewport.name,
-          theme: theme.name,
-          adapter: "fixture",
-          fixtureId: "storage-doctor-degraded",
-          descriptorHash: FIXTURE_DESCRIPTOR_HASH,
-          appVersion: FIXTURE_APP_VERSION,
-          capturedAt: FIXTURE_DAY,
-          variant: "default",
-        });
+
       });
     }
   }

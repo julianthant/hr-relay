@@ -1,3 +1,5 @@
+import { installFrozenMonotonic } from "./helpers/app-driver.js";
+
 import { expect, test } from "@playwright/test";
 import { MOCK_WORKFLOWS } from "../../src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.js";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
@@ -14,7 +16,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     page.on("pageerror", error => errors.push(error.message));
     page.on("request", request => { if (request.method() !== "GET" || /\/api\/v1\/explorer/u.test(new URL(request.url()).pathname)) writes.push(request.url()); });
     try {
-      await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 }); await installTheme(page, theme);
+      await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 }); await installFrozenMonotonic(page); await installTheme(page, theme);
       await page.goto(`${server.baseUrl}/?explore=fixture-ui-explorer`);
       const surface = page.getByRole("region", { name: "Workflow explorer preview", exact: true });
       for (const flow of MOCK_WORKFLOWS) {
@@ -22,7 +24,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         await expect(surface.getByRole("list", { name: "Workflow steps", exact: true })).toBeVisible();
         await expect(surface.locator("li[data-step-number]:visible")).not.toHaveCount(0);
         await expect(page.locator('[data-slot="select-content"]')).toBeHidden();
-        await info.attach(`explorer-${flow.id}-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
       if (flow.id === "work-study") await attachShellA11y(page, info, `explorer-${flow.id}-${theme.attribute}-${width}.a11y.yml`);
         expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
       }
@@ -45,7 +47,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     const errors: string[] = [], writes: string[] = [];
     page.on("pageerror", error => errors.push(error.message)); page.on("request", request => { if (request.method() !== "GET") writes.push(request.url()); });
     try {
-      await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 }); await installTheme(page, theme);
+      await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 }); await installFrozenMonotonic(page); await installTheme(page, theme);
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
       const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
       const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
@@ -85,7 +87,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await record.getByRole("checkbox", { name: "Same address as employee", exact: true }).click();
       await expect(record.getByRole("textbox", { name: "Street", exact: true })).toBeVisible();
       await expect(pageImage).toHaveAttribute("src", sourceUrl!);
-      await info.attach(`contact-review-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
       await attachShellA11y(page, info, `contact-review-${theme.attribute}-${width}.a11y.yml`);
       await drawer.getByRole("button", { name: "Approve records", exact: true }).click();
       await expect(record.getByRole("textbox")).toHaveCount(0);
@@ -95,7 +97,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(logs).toContainText("Sam Lee"); await expect(logs).toContainText("10000009");
       await expect(logs.getByRole("tab")).toHaveCount(0); await expect(logs.getByRole("navigation", { name: "Run timeline", exact: true }).getByRole("button", { name: /^Result/u })).toHaveCount(0);
       await expect(logs.getByRole("button", { name: /^Records/u })).toHaveCount(0);
-      await info.attach(`contact-person-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
       await rail.getByRole("button", { name: "Oath Upload", exact: true }).click();
       await logs.getByRole("button", { name: "Open OCR", exact: true }).click();
       await logs.getByRole("button", { name: /^Records \d+$/u }).click();
@@ -131,7 +133,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(i9.getByRole("img")).toHaveAttribute("src", /i9-1.*\.webp$/u);
       await expect(drawer.getByRole("button", { name: "Approve records", exact: true })).toBeEnabled();
       await expect(drawer).not.toContainText("Fictional extracted records");
-      await info.attach(`report-I-9-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
       expect(errors).toEqual([]); expect(writes).toEqual([]);
     } finally { await server.close(); }
@@ -142,7 +144,7 @@ for (const theme of PARITY_THEMES) test(`delegated OCR form workspaces @ ${theme
   ensureParityBundle(); const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   const writes: string[] = []; page.on("request", request => { if (request.method() !== "GET") writes.push(request.url()); });
   try {
-    await page.setViewportSize({ width: 1440, height: 1000 }); await installTheme(page, theme); await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
+    await page.setViewportSize({ width: 1440, height: 1000 }); await installFrozenMonotonic(page); await installTheme(page, theme); await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
     const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
     const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
     for (const [label, field] of [["Oath Upload", "Officer signed"], ["Emergency Contact", "Contact name"], ["OnBase", "Contact name"], ["I-9 Check", "Section 2 page"]]) {
@@ -157,7 +159,7 @@ for (const theme of PARITY_THEMES) test(`delegated OCR form workspaces @ ${theme
       await record.getByRole("textbox", { name: "First name", exact: true }).fill("Taylor");
       await expect(drawer.getByRole("heading", { name: "Taylor Lee", exact: true })).toBeVisible();
       await expect(drawer.getByRole("button", { name: "Approve records", exact: true })).toBeEnabled();
-      await info.attach(`ocr-${label}-${theme.attribute}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
       if (label === "Oath Upload") await attachShellA11y(page, info, `ocr-${label}-${theme.attribute}.a11y.yml`);
       await logs.getByRole("button", { name: /^Records \d+$/u }).click(); await expect(logs.getByRole("button", { name: /^Records \d+$/u })).toBeFocused();
     }
@@ -171,7 +173,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     const errors: string[] = [], writes: string[] = [];
     page.on("pageerror", error => errors.push(error.message)); page.on("request", request => { if (request.method() !== "GET") writes.push(request.url()); });
     try {
-      await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 }); await installTheme(page, theme);
+      await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 }); await installFrozenMonotonic(page); await installTheme(page, theme);
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
       const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
       const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
@@ -204,7 +206,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(first.getByRole("textbox", { name: "Contact name", exact: true })).toHaveValue("Alex Lee");
       await expect(added.getByRole("textbox", { name: "Contact name", exact: true })).toHaveValue("Sam Chen");
       await expect(added.getByRole("textbox", { name: "Employee ID", exact: true })).toHaveValue("10001234");
-      await info.attach(`focused-records-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
       await attachShellA11y(page, info, `focused-records-${theme.attribute}-${width}.a11y.yml`);
       await drawer.getByRole("button", { name: "Approve records", exact: true }).click();
       await expect(added.getByRole("textbox")).toHaveCount(0);
@@ -237,7 +239,7 @@ for (const theme of PARITY_THEMES) test(`every local workflow uses canonical que
   const errors: string[] = [], writes: string[] = [];
   page.on("pageerror", error => errors.push(error.message)); page.on("request", request => { if (request.method() !== "GET") writes.push(request.url()); });
   try {
-    await page.setViewportSize({ width: 1440, height: 1000 }); await installTheme(page, theme);
+    await page.setViewportSize({ width: 1440, height: 1000 }); await installFrozenMonotonic(page); await installTheme(page, theme);
     await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
     const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
     const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
@@ -249,7 +251,7 @@ for (const theme of PARITY_THEMES) test(`every local workflow uses canonical que
       await expect(logs.getByRole("tab", { name: "Result", exact: true })).toHaveCount(0);
       await expect(logs.getByRole("tab", { name: /^Linked runs/u })).toHaveCount(0);
       await expect(logs).not.toContainText("Fictional workflow preview");
-      await info.attach(`canonical-${flow.id}-${theme.attribute}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
       if (flow.id === "onboarding") await attachShellA11y(page, info, `canonical-${flow.id}-${theme.attribute}.a11y.yml`);
     }
     await page.goto(`${server.baseUrl}/?day=invalid-day`);

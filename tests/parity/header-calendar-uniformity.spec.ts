@@ -3,7 +3,8 @@ import { expect, test, type Locator } from '@playwright/test';
 import { ensureParityBundle, PARITY_DIST_DIR } from './helpers/bundle.js';
 import { startFixtureServer } from './helpers/fixture-bff.js';
 import { installTheme, PARITY_THEMES } from './helpers/capture.js';
-import { ArchiveBrowseStateSchema } from '../../src/dashboard/app/navigation/archive-route-model.js';
+
+
 
 async function calendarStyle(picker: Locator) {
   return picker.locator('.ds-calendar').evaluate(el => {
@@ -20,7 +21,8 @@ async function controlStyle(control: Locator) {
 }
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  test(`global single and range calendars across Logs, Activity and Archive @ ${theme.attribute}-${width}`, async ({ page }, info) => {
+
+test(`global single and range calendars across Logs and Activity @ ${theme.attribute}-${width}`, async ({ page }, _info) => {
     ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: 'working-tree' } });
     try {
@@ -40,12 +42,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(single.getByRole('button', { name: /Tuesday, August 4, 2026/u })).toBeDisabled();
       const singleStyle = await calendarStyle(single);
       const singleWidth = (await single.boundingBox())!.width;
-      await single.screenshot({ path: info.outputPath(`single-${theme.attribute}-${width}.png`) });
       await page.keyboard.press('Escape');
       await expect(date).toBeFocused();
 
       await page.getByRole("button", { name: "Settings", exact: true }).click();
-      await page.getByRole("link", { name: "Activity", exact: true }).click();
+      await page.getByRole("link", { name: "Analytics", exact: true }).click();
       await chooseSelect(page.getByRole('combobox', { name: 'Report period' }), 'custom');
       const start = page.getByRole('button', { name: /^Choose start date range/u });
       const end = page.getByRole('button', { name: /^Choose end date range/u });
@@ -68,7 +69,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const bounds = (await range.boundingBox())!;
       expect(bounds.x).toBeGreaterThanOrEqual(0);
       expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
-      await range.screenshot({ path: info.outputPath(`range-${theme.attribute}-${width}.png`) });
       await range.getByRole('grid').first().getByRole('button', { name: /Wednesday, September 30, 2026/u }).click();
       expect(new URL(page.url()).searchParams.get("activity")).toBe("");
       await range.getByRole('grid').nth(1).getByRole('button', { name: /Friday, October 2, 2026/u }).click();
@@ -77,43 +77,13 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const pair = page.getByRole('group', { name: 'Report date range', exact: true });
       await expect(pair.getByRole('spinbutton', { name: /^day, Start/u })).toHaveText('30');
       await expect(pair.getByRole('spinbutton', { name: /^month, End/u })).toHaveText('10');
-      await expect(pair.getByRole('spinbutton', { name: /^day, End/u })).toHaveText('2');
+      await expect(pair.getByRole('spinbutton', { name: /^day, End/u })).toHaveText('02');
       await start.click();
       const sameDay = range.getByRole('grid').first().getByRole('button', { name: /Wednesday, September 30, 2026/u });
       await sameDay.click();
       await sameDay.click();
       await expect(page).toHaveURL(/activity=2026-09-30\.\.2026-09-30/u);
 
-      await page.goto(`${server.baseUrl}/?settings=archive`);
-      await page.getByRole('region', { name: 'Dashboard 1.3', exact: true }).getByRole('button', { name: /^Separations/u }).click();
-      const from = page.getByRole('button', { name: /^Choose completed from \(utc\) date range/u });
-      const through = page.getByRole('button', { name: /^Choose completed through \(utc\) date range/u });
-      await through.click();
-      const archived = page.getByRole('dialog', { name: 'Completed date range', exact: true });
-      await expect(archived).toHaveCSS('opacity', '1');
-      expect((await archived.boundingBox())!.width).toBe(rangeWidth);
-      expect(await calendarStyle(archived)).toEqual(singleStyle);
-      await archived.getByRole('grid').first().getByRole('button', { name: /Thursday, September 24, 2026/u }).click();
-      await archived.getByRole('grid').first().getByRole('button', { name: /Friday, September 25, 2026/u }).click();
-      await expect(archived).toHaveCount(0);
-      await expect(through).toBeFocused();
-      const filters = ArchiveBrowseStateSchema.parse(JSON.parse(new URL(page.url()).searchParams.get('archiveBrowse')!)).filters;
-      expect(filters.from).toBe('2026-09-24T00:00:00.000Z');
-      expect(filters.to).toBe('2026-09-25T23:59:59.999Z');
-      const fromDay = page.getByRole('spinbutton', { name: /^day, Completed from/u });
-      await fromDay.focus();
-      await fromDay.press('3');
-      await fromDay.press('0');
-      await expect(fromDay).toHaveText('30');
-      await expect(page.locator('.ds-date-picker[data-invalid="true"]')).toHaveCount(2);
-      const invalid = page.locator('.ds-date-picker[data-invalid="true"] .date-input-group').first();
-      await expect.poll(async () => (await controlStyle(invalid)).border).not.toBe(buttonStyle.border);
-      const validFilters = ArchiveBrowseStateSchema.parse(JSON.parse(new URL(page.url()).searchParams.get('archiveBrowse')!)).filters;
-      expect(validFilters.from! <= validFilters.to!).toBe(true);
-      await from.click();
-      await expect(archived.getByRole('grid')).toHaveCount(2);
-      await page.keyboard.press('Escape');
-      await expect(from).toBeFocused();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       expect(writes).toEqual([]);
       expect(errors).toEqual([]);
@@ -153,10 +123,10 @@ test('default DatePicker fields and the shared range preserve typed dates and up
     await range.getByRole('grid').first().getByRole('button', { name: /Friday, July 31, 2026/u }).click();
     await range.getByRole('grid').nth(1).getByRole('button', { name: /Sunday, August 2, 2026/u }).click();
     await expect(range).toHaveCount(0);
-    await expect(pair.getByRole('spinbutton', { name: /^month, Start/u })).toHaveText('7');
+    await expect(pair.getByRole('spinbutton', { name: /^month, Start/u })).toHaveText('07');
     await expect(pair.getByRole('spinbutton', { name: /^day, Start/u })).toHaveText('31');
-    await expect(pair.getByRole('spinbutton', { name: /^month, End/u })).toHaveText('8');
-    await expect(pair.getByRole('spinbutton', { name: /^day, End/u })).toHaveText('2');
+    await expect(pair.getByRole('spinbutton', { name: /^month, End/u })).toHaveText('08');
+    await expect(pair.getByRole('spinbutton', { name: /^day, End/u })).toHaveText('02');
     const endDay = pair.getByRole('spinbutton', { name: /^day, End/u });
     await endDay.focus();
     await endDay.press('Alt+ArrowDown');

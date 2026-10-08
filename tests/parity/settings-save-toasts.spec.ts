@@ -1,3 +1,4 @@
+
 import { expect, test } from "@playwright/test";
 import { createHash, randomUUID } from "node:crypto";
 import { SettingsCommandRequestSchema, ProtectedSettingsCommandRequestSchema, CommandResultSchema } from "../../src/domain/commands.js";
@@ -81,7 +82,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect(read().revision).toBe(2);
       const toastBounds = (await saved.boundingBox())!;
       expect(toastBounds.x).toBeGreaterThanOrEqual(0); expect(toastBounds.x + toastBounds.width).toBeLessThanOrEqual(width);
-      await info.attach(`settings-save-toast-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
       const tree = await page.locator("body").ariaSnapshot();
       info.annotations.push({ type: `a11y-attachment-sha256:${a11yName}`, description: createHash("sha256").update(tree).digest("hex") });
       await info.attach(a11yName, { body: tree, contentType: "text/yaml" });

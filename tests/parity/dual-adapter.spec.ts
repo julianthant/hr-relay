@@ -15,18 +15,25 @@
  * "the queue rendered these particular words".
  */
 import { expect,test } from "@playwright/test";
+import { DashboardDayWireSchema } from "../../src/domain/dashboard/projection.js";
 import { RunDetailSectionResponseSchema } from "../../src/domain/dashboard/run-detail.js";
 import { gotoAppState } from "./helpers/app-driver.js";
 import { PARITY_DIST_DIR,ensureParityBundle } from "./helpers/bundle.js";
 import { readA11yTree } from "./helpers/capture.js";
 import { startFixtureServer,type FixtureServer } from "./helpers/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
-import { FIXTURE_IDS } from "./helpers/fixture-queue.js";
+import { FIXTURE_DAY_WIRE, FIXTURE_IDS } from "./helpers/fixture-queue.js";
 import { startSeededServer,type SeededServer } from "./helpers/seeded-bff.js";
 import { SEEDED_DAY } from "./helpers/seeded-identity.js";
 
 let fixture: FixtureServer;
 let seeded: SeededServer;
+let groupFixture: FixtureServer | undefined;
+
+test.afterEach(async () => {
+  await groupFixture?.close();
+  groupFixture = undefined;
+});
 
 test.beforeAll(async () => {
   ensureParityBundle();
@@ -66,7 +73,7 @@ const ROLE_PAIRS: readonly { id: string; fixtureRun?: string; seededRun?: string
   { id: "open-gate-run", fixtureRun: FIXTURE_IDS.openGateRun, seededRun: "openGateRun" },
   { id: "running-run", fixtureRun: FIXTURE_IDS.runningRun, seededRun: "runningRun" },
   { id: "done-run", fixtureRun: FIXTURE_IDS.doneRun, seededRun: "doneRun" },
-  { id: "group-run", fixtureRun: FIXTURE_IDS.groupOf13, seededRun: "groupRun" },
+  { id: "group-run", fixtureRun: FIXTURE_IDS.groupOf3, seededRun: "groupRun" },
   /*
     W2. The pair that matters most for this slice: the fixture adapter AUTHORS
     the parked-write section while the seeded one DERIVES it from a real fenced
@@ -91,17 +98,39 @@ for (const pair of ROLE_PAIRS) {
       await page.route(`${fixture.baseUrl}/api/v1/runs/${pair.fixtureRun}/identity-gate`, route => route.fulfill({ json: gate }));
     }
 
+    let fixtureBase = fixture.baseUrl;
+    if (pair.id === "group-run") {
+      const response = await page.request.get(`${seeded.baseUrl}/api/v1/dashboard?day=${SEEDED_DAY}`);
+      expect(response.ok()).toBe(true);
+      const day = DashboardDayWireSchema.parse(await response.json());
+      const group = day.queueSurfaces.find(row => String(row.runId) === seeded.runIds.groupRun);
+      if (!group) throw new Error("seeded group projection missing");
+      if (group.surfaceKind !== "operation") throw new Error("seeded group is not an operation");
+      expect(group.memberRunIds).toHaveLength(3);
+      // HTTP and SSE must serve the same optional-message branch.
+      groupFixture = await startFixtureServer({
+        distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" },
+        dayWire: { ...FIXTURE_DAY_WIRE, queueSurfaces: FIXTURE_DAY_WIRE.queueSurfaces.map(row => String(row.runId) === pair.fixtureRun ? { ...row, liveMessage: group.liveMessage } : row) },
+      });
+      fixtureBase = groupFixture.baseUrl;
+    }
+
     // The tab is PINNED. Left to their defaults the two adapters can legitimately
     // open different tabs — a done run opens on Receipt, but the seeded backend
     // advertises no receipt section for its done run, so it opens on Logs. That
     // is a difference in what the two backends serve, not in how the components
     // behave, and comparing it would be comparing two different screens.
-    await gotoAppState(page, fixture.baseUrl, {
+    await gotoAppState(page, fixtureBase, {
       day: FIXTURE_DAY,
-      ...(pair.fixtureRun === undefined ? {} : { run: pair.fixtureRun, section: "logs" }),
+      ...(pair.fixtureRun === undefined ? {} : { run: pair.fixtureRun, section: "logs", ...(pair.id === "group-run" ? { logPreview: "selected" as const } : {}) }),
     });
+    if (pair.id === "group-run") {
+      await expect(page.getByRole("region", { name: "Queue", exact: true }).getByRole("button", { name: "New-hire lookups — batch 3 — running", exact: true })).toHaveAttribute("aria-pressed", "true");
+      await expect(page.getByRole("heading", { name: "New-hire lookups — batch 3", exact: true })).toBeVisible();
+      await expect(page.getByRole("region", { name: "Run status", exact: true })).toBeVisible();
+    }
     const fixtureTree = await readA11yTree(page);
-    if (pair.id === "open-gate-run") await expect(page.locator("[data-panel-decision]").getByText("Unavailable", { exact: true })).toBeVisible();
+    if (pair.id === "open-gate-run") await expect(page.getByRole("region", { name: "Selected run logs", exact: true }).getByRole("article", { name: "Confirm the employee match", exact: true })).toBeVisible();
 
     const seededRunId = pair.seededRun === undefined ? undefined : seeded.runIds[pair.seededRun];
     if (pair.seededRun !== undefined && seededRunId === undefined) {
@@ -109,10 +138,15 @@ for (const pair of ROLE_PAIRS) {
     }
     await gotoAppState(page, seeded.baseUrl, {
       day: SEEDED_DAY,
-      ...(seededRunId === undefined ? {} : { run: seededRunId, section: "logs" }),
+      ...(seededRunId === undefined ? {} : { run: seededRunId, section: "logs", ...(pair.id === "group-run" ? { logPreview: "selected" as const } : {}) }),
     });
+    if (pair.id === "group-run") {
+      await expect(page.getByRole("region", { name: "Queue", exact: true }).getByRole("button", { name: "Onboarding packet — 3 people — queued", exact: true })).toHaveAttribute("aria-pressed", "true");
+      await expect(page.getByRole("heading", { name: "Onboarding packet — 3 people", exact: true })).toBeVisible();
+      await expect(page.getByRole("region", { name: "Run status", exact: true })).toBeVisible();
+    }
     const seededTree = await readA11yTree(page);
-    if (pair.id === "open-gate-run") await expect(page.locator("[data-panel-decision]").getByText("Unavailable", { exact: true })).toBeVisible();
+    if (pair.id === "open-gate-run") await expect(page.getByRole("region", { name: "Selected run logs", exact: true }).getByRole("article", { name: "Confirm the employee match", exact: true })).toBeVisible();
     await test.info().attach("fixture-tree", { body: fixtureTree, contentType: "text/plain" });
     await test.info().attach("seeded-tree", { body: seededTree, contentType: "text/plain" });
 

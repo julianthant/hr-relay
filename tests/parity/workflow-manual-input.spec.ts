@@ -1,3 +1,5 @@
+import { installFrozenMonotonic } from "./helpers/app-driver.js";
+
 import { expect, test, type Locator } from "@playwright/test";
 import { createHash } from "node:crypto";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
@@ -20,7 +22,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     page.on("pageerror", error => errors.push(error.message));
     page.on("request", request => { if (request.method() !== "GET") writes.push(request.url()); });
     try {
-      await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 }); await installTheme(page, theme);
+      await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 }); await installFrozenMonotonic(page); await installTheme(page, theme);
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
       const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
       const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
@@ -44,7 +46,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await manual.getByRole("textbox", { name: "Signed date", exact: true }).fill("10/06/2026");
       const privateUrl = page.url();
       expect(privateUrl).not.toContain("10000022"); expect(privateUrl).not.toContain("Onboarding%20complete");
-      await info.attach(`manual-step-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
       await advance(dialog);
       await expect(dialog).toContainText("Manual reading");
       await dialog.getByRole("button", { name: "Start preview", exact: true }).click();
@@ -86,7 +88,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await review.getByRole("checkbox", { name: "Officer signed", exact: true }).check();
       await expect(review.getByRole("button", { name: "Approve records", exact: true })).toBeEnabled();
       await expect(review).not.toContainText("not confirmed by a UCPath lookup");
-      await info.attach(`manual-input-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
       const a11y = await review.ariaSnapshot();
       await info.attach(a11yName, { body: a11y, contentType: "text/yaml" });
       info.annotations.push({ type: `a11y-attachment-sha256:${a11yName}`, description: createHash("sha256").update(a11y).digest("hex") });

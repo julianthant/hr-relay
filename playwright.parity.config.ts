@@ -1,6 +1,6 @@
 /**
  * The ref frontend-backend-integration §7 parity lane: seeded backend (or fixture BFF) + built React +
- * headless Chromium, both themes, reference viewports, screenshot + a11y
+ * headless Chromium, default theme at 1280×720, key-state screenshot + a11y
  * snapshot pairs. Run with `npm run test:parity`.
  *
  * Every reference is an EXPECTATION. `updateSnapshots: "none"` means a missing
@@ -66,6 +66,7 @@ export default defineConfig({
   snapshotPathTemplate: "{testDir}/references/{arg}{ext}",
   use: {
     browserName: "chromium",
+    viewport: { width: 1280, height: 720 },
     isMobile: false,
     hasTouch: false,
     headless: true,

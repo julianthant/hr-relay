@@ -1,5 +1,7 @@
+import { attachShellA11y } from "./helpers/shell-proof.js";
+
 import { expect, test } from '@playwright/test';
-import { createHash } from 'node:crypto';
+
 import { ensureParityBundle, PARITY_DIST_DIR } from './helpers/bundle.js';
 import { installTheme, PARITY_THEMES } from './helpers/capture.js';
 import { startFixtureServer } from './helpers/fixture-bff.js';
@@ -12,15 +14,10 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: 'working-tree' } });
     const errors: string[] = [], writes: string[] = [], catalogRequests: string[] = [];
-    const capture = async (name: string) => {
-      const stem = `${name}-${theme.attribute}-${width}`;
-      await info.attach(`${stem}.png`, { body: await page.screenshot(), contentType: 'image/png' });
-      const tree = await page.locator('body').ariaSnapshot();
-      info.annotations.push({ type: `a11y-attachment-sha256:${stem}.a11y.yml`, description: createHash('sha256').update(tree).digest('hex') });
-      await info.attach(`${stem}.a11y.yml`, { body: tree, contentType: 'text/yaml' });
-    };
+
     page.on('pageerror', error => errors.push(error.message));
     page.on('request', request => { if (request.method() !== 'GET') writes.push(request.url()); if (request.url().includes('/api/v1/ui-catalog')) catalogRequests.push(request.url()); });
+    const captureSemanticEvidence = async (name: string) => { await attachShellA11y(page, info, `${name}-${theme.attribute}-${width}.a11y.yml`); };
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 }); await installTheme(page, theme);
       for (const [seed, label] of [[5, 'Review'], [6, 'Resolve'], [4, 'View failure']] as const) {
@@ -42,11 +39,12 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           return target.getAttribute('role') === 'group' && !target.closest('.sr-only') && bounds.width > 100 && bounds.height > 20
             && bounds.top >= viewport.top && bounds.top < viewport.bottom && getComputedStyle(target).outlineStyle === 'solid';
         })).toBe(true);
+        if (seed === 5) await captureSemanticEvidence('review-jump');
         await panel.getByRole('button', { name: 'Go to latest action', exact: true }).click();
         expect(await page.evaluate(() => window.scrollY)).toBe(0); await expect(header).toBeVisible();
         await expect.poll(() => logViewport.evaluate(element => Math.abs(element.scrollHeight - element.clientHeight - element.scrollTop))).toBeLessThanOrEqual(1);
         await jump.click();
-        if (seed === 5) await capture('review-jump');
+
       }
       await page.getByRole('button', { name: 'Add workers', exact: true }).click();
       const dialog = page.getByRole('dialog', { name: 'Add workers', exact: true }); await expect(dialog).toBeVisible();
@@ -60,7 +58,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect(appearance.buttons[0]?.fill).not.toBe(appearance.buttons[1]?.fill);
       await dialog.getByRole('combobox', { name: 'Workflow', exact: true }).click(); await expect(page.getByRole('listbox')).toBeVisible();
       await page.keyboard.press('Escape'); await expect(dialog).toBeVisible(); await expect(page.getByRole('listbox')).toHaveCount(0);
-      await expect(add).toBeEnabled(); await capture('workers');
+      await expect(add).toBeEnabled(); await captureSemanticEvidence('workers');
       await cancel.click();
       await page.goto(`${server.baseUrl}/?settings=general`);
       await page.getByRole('button', { name: 'Continue with ChatGPT', exact: true }).click();
@@ -74,7 +72,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(page.getByRole('textbox', { name: 'Employment date', exact: true })).toHaveValue('04/27/2026');
       await expect(page.getByRole('textbox', { name: 'Date signed', exact: true })).toHaveValue('04/23/2026');
       await expect(page.getByRole('img', { name: /Source page 1 of single-oath/ })).toBeVisible();
-      await capture('ocr-dates');
+
+      await captureSemanticEvidence('ocr-dates');
       await page.clock.install();
       await page.goto(`${server.baseUrl}/?day=2026-08-03`); await page.getByRole('button', { name: 'Sessions', exact: true }).click();
       const idle = page.getByRole('article', { name: 'Worker 4 · Person Lookup', exact: true }); await expect(idle).toBeVisible();
@@ -85,7 +84,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(idle).not.toContainText('Idle sessions refreshed'); await expect(ring).toHaveAccessibleName(/^Session refresh in 4:5\d/);
       const date = page.getByRole('group', { name: 'Log date controls', exact: true });
       await expect(date.getByRole('spinbutton', { name: /month/ })).toHaveText('08'); await expect(date.getByRole('spinbutton', { name: /day/ })).toHaveText('03'); await expect(date.getByRole('spinbutton', { name: /year/ })).toHaveText('2026');
-      await capture('idle');
+
+      await captureSemanticEvidence('idle');
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true); expect(errors).toEqual([]); expect(writes).toEqual([]);
     } finally { await server.close(); }
   });

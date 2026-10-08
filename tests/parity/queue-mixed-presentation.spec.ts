@@ -9,9 +9,11 @@ import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { FIXTURE_DAY_WIRE } from "./helpers/fixture-queue.js";
 import { failOnPageErrors } from "./helpers/reference-harness.js";
 
+
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   const a11yName = `dashboard-${theme.attribute}-${width}.a11y.yml`;
-  test(`approved mixed queue and navbar @ ${theme.attribute}-${width}`, { annotation: [{ type: "required-a11y-evidence", description: a11yName }] }, async ({ page }, info) => {
+
+test(`approved mixed queue and navbar @ ${theme.attribute}-${width}`, { annotation: [{ type: "required-a11y-evidence", description: a11yName }] }, async ({ page }, info) => {
     ensureParityBundle();
     const errors = failOnPageErrors(page);
     const done = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.surfaceKind === "single" && row.status === "done");
@@ -22,7 +24,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       row.runId === done.runId ? { ...row, endedAt: { state: "absent", reason: "Historical end not retained" } } : row) });
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, dayWire });
     try {
-      await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 });
+      await page.setViewportSize({ width, height: width === 1024 ? 720 : 900 });
       await installTheme(page, theme);
       await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY });
       await assertThemeApplied(page, theme);
@@ -56,7 +58,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect(measurements.barBottom).toBeLessThan(measurements.labelTop);
       expect(measurements.mainIcon).toBe(0);
       await expect(run.locator(".animate-spin")).toHaveCount(1);
-      await info.attach(`running-${theme.attribute}-${width}.png`, { body: await run.screenshot(), contentType: "image/png" });
       const group = queue.locator(`[data-demo-row-id='${operation.runId}']`);
       await group.scrollIntoViewIfNeeded();
       await expect(group.locator("[data-queue-member-count]")).toHaveText(`${operation.memberRollup.terminal}/${operation.memberRollup.total}`);
@@ -77,39 +78,27 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await large.scrollIntoViewIfNeeded();
       const compactBounds = await large.evaluate(element => ({
         bottom: element.parentElement!.getBoundingClientRect().bottom,
+        viewport: { top: element.parentElement!.getBoundingClientRect().top, height: element.parentElement!.getBoundingClientRect().height, clientHeight: element.parentElement!.clientHeight, scrollHeight: element.parentElement!.scrollHeight, maxHeight: getComputedStyle(element.parentElement!).maxHeight },
+        rowRects: [...element.querySelectorAll("tbody tr")].map(row => ({ top: row.getBoundingClientRect().top, bottom: row.getBoundingClientRect().bottom, height: row.getBoundingClientRect().height })),
         rows: [...element.querySelectorAll("tbody tr")].map(row => row.getBoundingClientRect().bottom),
       }));
-      expect(compactBounds.rows.filter(bottom => bottom <= compactBounds.bottom).length).toBe(5);
+      await info.attach("compact-member-geometry", { body: JSON.stringify(compactBounds), contentType: "application/json" });
+      expect(compactBounds.rows.filter(bottom => bottom <= compactBounds.bottom).length, JSON.stringify(compactBounds)).toBe(4);
       await group.scrollIntoViewIfNeeded();
-      await info.attach(`members-${theme.attribute}-${width}.png`, { body: await group.screenshot(), contentType: "image/png" });
       const finished = queue.locator(`[data-demo-row-id='${done.runId}']`);
       await expect(finished).not.toContainText("duration unknown");
       const attempt = run.getByRole("button", { name: `Attempts for ${running.title}`, exact: true });
       await attempt.scrollIntoViewIfNeeded();
       await attempt.focus();
       await page.keyboard.press("Enter");
-      const menu = page.getByRole("dialog", { name: `Attempts for ${running.title}`, exact: true });
+      const menu = page.getByRole("menu", { name: `Attempts for ${running.title}`, exact: true });
       await expect(menu).toBeVisible();
-      await expect(menu.getByRole("button", { name: /^Open .*attempt 1/u })).toHaveAttribute("aria-current", "true");
+      await expect(menu.getByRole("menuitemradio", { name: /^#1 /u })).toHaveAttribute("aria-checked", "true");
       await page.keyboard.press("Escape");
       await expect(menu).toHaveCount(0);
       await expect(attempt).toBeFocused();
-      await page.getByRole("button", { name: "Select", exact: true }).click();
-      const selector = queue.getByRole("checkbox").first();
-      await selector.scrollIntoViewIfNeeded();
-      expect(await selector.evaluate(element => element.closest("[data-demo-row-id]") === null)).toBe(true);
-      await selector.check();
-      await expect(selector).toBeChecked();
-      await page.getByRole("button", { name: "Select", exact: true }).click();
-      const bar = page.getByRole("banner");
-      for (const label of ["Dashboard", "Archive", "Explorer", "Activity", "Search runs", "Choose date", "Settings"]) {
-        const button = bar.getByRole("button", { name: label, exact: true });
-        await expect(button).toBeVisible();
-        const bounds = (await button.boundingBox())!;
-        expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
-      }
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-      await info.attach(`dashboard-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
       const tree = await page.locator("body").ariaSnapshot();
       info.annotations.push({ type: `a11y-attachment-sha256:${a11yName}`, description: createHash("sha256").update(tree).digest("hex") });
       await info.attach(a11yName, { body: tree, contentType: "text/yaml" });

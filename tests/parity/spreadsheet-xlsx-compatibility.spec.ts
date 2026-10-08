@@ -1,5 +1,7 @@
+import { attachShellA11y } from "./helpers/shell-proof.js";
+
 import { expect, test } from '@playwright/test';
-import { createHash } from 'node:crypto';
+
 import { readFile } from 'node:fs/promises';
 import { importSpreadsheet } from '../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
 import { ensureParityBundle, PARITY_DIST_DIR } from './helpers/bundle.js';
@@ -16,13 +18,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     const errors: string[] = [], writes: string[] = [];
     page.on('pageerror', error => errors.push(error.message));
     page.on('request', request => { if (request.method() !== 'GET') writes.push(request.url()); });
-    const capture = async (name: string) => {
-      const stem = `${name}-${theme.attribute}-${width}`;
-      await info.attach(`${stem}.png`, { body: await page.screenshot(), contentType: 'image/png' });
-      const tree = await page.locator('body').ariaSnapshot();
-      info.annotations.push({ type: `a11y-attachment-sha256:${stem}.a11y.yml`, description: createHash('sha256').update(tree).digest('hex') });
-      await info.attach(`${stem}.a11y.yml`, { body: tree, contentType: 'text/yaml' });
-    };
+
+    const captureSemanticEvidence = async (name: string) => { await attachShellA11y(page, info, `${name}-${theme.attribute}-${width}.a11y.yml`); };
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 }); await installTheme(page, theme);
       await page.goto(`${server.baseUrl}/?settings=performance`);
@@ -31,7 +28,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(personal.getByRole('link')).toHaveText(['General', 'Credentials']);
       await expect(advanced.getByRole('link')).toHaveText(['Performance', 'Paths', 'Routes']);
       await expect(page.getByRole('textbox', { name: 'Task', exact: true })).toBeVisible();
-      await capture('advanced-settings');
+
+      await captureSemanticEvidence('advanced-settings');
       await advanced.getByRole('link', { name: 'Paths', exact: true }).click();
       await expect(page).toHaveURL(/settings=paths/u); await expect(page.getByRole('heading', { name: 'Paths', exact: true })).toBeVisible();
       await advanced.getByRole('link', { name: 'Routes', exact: true }).click();
@@ -53,7 +51,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await dialog.getByRole('button', { name: 'Notes Sheet to import', exact: true }).click();
       await expect(page.getByRole('menuitemradio', { name: 'Roster', exact: true })).toBeVisible();
       await page.getByRole('menuitemradio', { name: 'Roster', exact: true }).click();
-      await capture('xlsx-columns');
+
+      await captureSemanticEvidence('xlsx-columns');
       await dialog.getByRole('button', { name: 'Import selected columns', exact: true }).click();
       const editor = page.getByRole('region', { name: 'Spreadsheet editor', exact: true });
       await expect(editor.getByRole('textbox', { name: 'B2', exact: true })).toHaveValue('10000001');
@@ -71,7 +70,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect(workbook.sheets).toHaveLength(1); expect(workbook.sheets[0].rows).toHaveLength(3);
       expect(workbook.sheets[0].rows[1].cells[0].value).toBe('Jordan Updated');
       expect(workbook.sheets[0].rows[1].cells[1].background).toBe('#ffff00');
-      await capture('xlsx-imported');
+
+      await captureSemanticEvidence('xlsx-imported');
       await editor.getByRole('button', { name: 'Spreadsheets', exact: true }).click();
       await page.getByRole('table', { name: 'Registered spreadsheets', exact: true }).getByRole('button', { name: 'color-filtered-roster.xlsx', exact: true }).click();
       await expect(editor.getByRole('textbox', { name: 'A2', exact: true })).toHaveValue('Jordan Updated');

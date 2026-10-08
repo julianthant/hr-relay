@@ -1,3 +1,4 @@
+
 import { expect, test } from "@playwright/test";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
@@ -106,7 +107,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           };
         })).toEqual({ bordered: true, rounded: true, opaque: true });
       }
-      await info.attach(`action-panel-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
       await attachShellA11y(page, info, actionEvidence);
       await expect(page.getByRole("group", { name: "Frequent queue filters", exact: true })).toHaveCount(0);
       await expect(logs.getByRole("button", { name: /^Choose date/u })).toBeVisible();
@@ -160,7 +161,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(page.getByRole("region", { name: "Settings", exact: true })).not.toContainText("No completed checks in this server session");
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
       expect(errors).toEqual([]); expect(writes).toEqual([]);
-      await info.attach(`permanent-shell-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
       await attachShellA11y(page, info, settingsEvidence);
     } finally { await server.close(); }
   });

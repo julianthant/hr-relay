@@ -1,3 +1,4 @@
+
 import { expect, test } from "@playwright/test";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
@@ -66,7 +67,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1280, 1440, 1920])
         await page.setViewportSize({ width: 900, height: 600 });
         await checkFooters();
         expect((await page.locator('[data-app-root]').boundingBox())!.width).toBe(1024);
-        await info.attach(`queue-footer-floor-${theme.attribute}.png`, { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
+
         await attachShellA11y(page, info, floorEvidence);
         await page.setViewportSize({ width, height: 900 });
         await page.evaluate(() => scrollTo(0, 0));
@@ -84,7 +85,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1280, 1440, 1920])
       await expect(source.getByRole('button', { name: 'Retry', exact: true })).toBeVisible();
       await expect(source.getByRole('button', { name: 'Delete', exact: true })).toBeVisible();
       await source.click({ button: 'right' }); await expect(page.getByRole('menu')).toHaveCount(0);
-      await info.attach(`queue-footer-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: 'image/png' });
+
       await attachShellA11y(page, info, evidence);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       expect(errors).toEqual([]); expect(writes).toEqual([]);

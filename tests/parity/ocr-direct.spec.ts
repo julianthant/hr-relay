@@ -1,3 +1,5 @@
+import { installFrozenMonotonic } from "./helpers/app-driver.js";
+
 import { createHash } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
@@ -15,7 +17,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     page.on("pageerror", error => errors.push(error.message));
     page.on("request", request => { if (request.method() !== "GET") writes.push(request.url()); });
     try {
-      await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 }); await installTheme(page, theme);
+      await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 }); await installFrozenMonotonic(page); await installTheme(page, theme);
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
       const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
       const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
@@ -35,7 +37,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           expect(rosterBounds.x + rosterBounds.width).toBeLessThan(formBounds.x);
           const inputName = `${name}-input`;
           const inputTree = await dialog.ariaSnapshot();
-          await info.attach(`${inputName}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
           await info.attach(`${inputName}.a11y.yml`, { body: inputTree, contentType: "text/yaml" });
           info.annotations.push({ type: "required-a11y-evidence", description: `${inputName}.a11y.yml` }, { type: `a11y-attachment-sha256:${inputName}.a11y.yml`, description: createHash("sha256").update(inputTree).digest("hex") });
           await dialog.getByRole("button", { name: "Oath Form type", exact: true }).click();
@@ -89,7 +91,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           await expect(page.getByText("Review restored", { exact: true })).toBeVisible();
           await expect(records.getByRole("textbox", { name: "Contact name", exact: true })).toHaveValue("Alex Rivera");
           const a11y = await records.ariaSnapshot();
-          await info.attach(`${name}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
           await info.attach(`${name}.a11y.yml`, { body: a11y, contentType: "text/yaml" });
           info.annotations.push({ type: `a11y-attachment-sha256:${name}.a11y.yml`, description: createHash("sha256").update(a11y).digest("hex") });
         }

@@ -5,5 +5,5 @@ export const SETUP_SCENES:readonly {id:SetupScene;selected:boolean;expected:stri
   {id:"secret-missing",selected:true,expected:"UCPath sign-in"},
   {id:"optional-warning",selected:false,expected:"Unfinished processes"},
   {id:"unavailable",selected:true,expected:"Readiness unavailable"},
-  {id:"stale",selected:false,expected:"Readiness unavailable"},
+  {id:"stale",selected:false,expected:"Previous result"},
 ];

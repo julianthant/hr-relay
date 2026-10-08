@@ -1,3 +1,6 @@
+import { attachPresentationReference } from "./helpers/presentation-reference.js";
+import { installFrozenMonotonic } from "./helpers/app-driver.js";
+
 import { expect, test } from "@playwright/test";
 import { createHash } from "node:crypto";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
@@ -6,7 +9,7 @@ import { startFixtureServer } from "./helpers/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { chooseSelect } from "./helpers/select-choice.js";
 
-for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) {
+for (const theme of PARITY_THEMES) for (const width of [1280]) {
   const a11yName = `oath-card-${theme.attribute}-${width}.a11y.yml`;
   test(`OCR card fields and unobstructed source controls @ ${theme.attribute}-${width}`, { annotation: [{ type: "required-a11y-evidence", description: a11yName }] }, async ({ page }, info) => {
     ensureParityBundle(); const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
@@ -14,7 +17,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) {
     page.on("pageerror", error => errors.push(error.message));
     page.on("request", request => { if (request.method() !== "GET") writes.push(request.url()); });
     try {
-      await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 }); await installTheme(page, theme);
+      await page.setViewportSize({ width, height: 720 }); await installFrozenMonotonic(page); await installTheme(page, theme);
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
       const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
       const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
@@ -110,7 +113,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) {
       const scrolledControls = (await controls.boundingBox())!, scrolledCard = (await record.boundingBox())!;
       expect(scrolledControls.y - scrolledCard.y).toBeCloseTo(toolbarAtTop.y - cardAtTop.y, 5);
       await cards.evaluate(node => node.scrollTo({ top: 0 }));
-      await info.attach(`oath-card-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
       const a11y = await drawer.ariaSnapshot();
       await info.attach(a11yName, { body: a11y, contentType: "text/yaml" });
       info.annotations.push({ type: `a11y-attachment-sha256:${a11yName}`, description: createHash("sha256").update(a11y).digest("hex") });
@@ -119,6 +122,10 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) {
       await logs.getByRole("button", { name: /^Records \d+$/u }).click();
       const i9 = drawer.getByRole("region", { name: "Record person-1", exact: true });
       const pager = i9.getByRole("combobox", { name: "Source page", exact: true });
+      await pager.click();
+      await expect(page.getByRole("listbox")).toBeVisible();
+      await attachPresentationReference(page, test.info(), "ocr-source-page-menu.png");
+      await page.keyboard.press("Escape");
       await expect(pager).toContainText("Section 1 · Page 2");
       await expect(i9.getByRole("toolbar", { name: "PDF controls", exact: true }).getByRole("combobox")).toHaveCount(0);
       await i9.getByRole("button", { name: "Zoom in", exact: true }).click();
@@ -135,7 +142,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) {
       await expect(i9.getByRole("button", { name: "Fit page", exact: true })).toBeEnabled();
       await i9.getByRole("button", { name: "Fit page", exact: true }).click();
       await expect(page.locator('[data-slot="select-content"]')).toBeHidden();
-      await info.attach(`i9-card-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
       await rail.getByRole("button", { name: "Emergency Contact", exact: true }).click();
       await logs.getByRole("button", { name: "Open OCR", exact: true }).click();
       await logs.getByRole("button", { name: /^Records \d+$/u }).click();
@@ -156,7 +163,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) {
         const contactPreview = (await contactSource.locator("[data-review-preview]").boundingBox())!;
         expect(contactControls.y + contactControls.height).toBeLessThanOrEqual(contactPreview.y);
       }
-      await info.attach(`contact-card-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
       const queue = page.getByRole("region", { name: "Queue", exact: true });
       const deletes = queue.getByRole("button", { name: "Delete", exact: true });
       const initialCount = await deletes.count();

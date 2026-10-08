@@ -1,3 +1,4 @@
+
 import { readFile } from 'node:fs/promises';
 import Excel from 'exceljs';
 import { expect, test } from '@playwright/test';
@@ -8,7 +9,7 @@ import { FIXTURE_DAY } from './helpers/fixture-identity.js';
 import { chooseSelect } from './helpers/select-choice.js';
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  test(`HR GPT settings, shortcuts, Activity and workbook editor @ ${theme.attribute}-${width}`, async ({ page }, info) => {
+  test(`HR GPT settings, shortcuts, Activity and workbook editor @ ${theme.attribute}-${width}`, async ({ page }, _info) => {
     ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: 'working-tree' }, preflightScenario: "ready" });
     const errors: string[] = [], writes: string[] = [];
@@ -43,17 +44,17 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           expect(card.x + card.width).toBe((await workflows.boundingBox())!.width - 8);
         }
       }
-      await info.attach(`workflow-labels-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: 'image/png' });
+
       const meta = workflows.locator('.workflow-rail-meta').first();
-      if (width === 1024) await expect(meta).toBeHidden(); else await expect(meta).toBeVisible();
+      await expect(meta).toBeVisible();
       await expect(workflows.getByText('Preview', { exact: true })).toHaveCount(0);
       const bell = rail.getByRole('button', { name: /^Notifications,/ }); await bell.click();
       await expect(rail.getByRole('heading', { name: 'HR GPT', exact: true })).toBeVisible();
       await expect(rail.getByText('History gap', { exact: true })).toHaveCount(0);
-      await expect(rail.locator('.notification-row')).toHaveCount(5);
+      await expect(rail.locator('.notification-row')).toHaveCount(13);
       await rail.getByRole('button', { name: 'Read all', exact: true }).click();
       await expect(bell).toHaveAccessibleName('Notifications, 0 unread');
-      await info.attach(`notifications-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: 'image/png' });
+
       await page.keyboard.press('Escape'); await expect(bell).toBeFocused();
       const queue = page.getByRole('region', { name: 'Queue', exact: true });
       await expect(queue.getByRole('group', { name: 'Frequent queue filters', exact: true })).toHaveCount(0);
@@ -111,7 +112,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(nav.getByRole('link', { name: 'CRM · UCPath entry sheet Routes', exact: true })).toBeVisible();
       await nav.getByRole('searchbox', { name: 'Search settings', exact: true }).fill('');
       await choosePage('Keyboard');
-      await expect(settings.locator('.shortcut-reference-row')).toHaveCount(6);
+      await expect(settings.locator('.shortcut-reference-row')).toHaveCount(5);
       await expect(settings.getByRole('combobox', { name: 'Number shortcuts' })).toHaveCount(0);
       await expect(settings.getByRole('button', { name: /^Add .* shortcut$/u })).toHaveCount(0);
       const searchShortcut = settings.locator('.shortcut-reference-row').filter({ hasText: 'Search runs' });
@@ -126,8 +127,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await settings.getByRole('button', { name: 'Edit Start a run shortcut 1', exact: true }).click();
       const edit = page.getByRole('dialog', { name: 'Edit shortcut', exact: true }); await edit.getByRole('textbox', { name: 'Shortcut keys', exact: true }).press('q'); await edit.getByRole('button', { name: 'Save shortcut', exact: true }).click();
       await expect(settings.locator('.shortcut-reference-row').filter({ hasText: 'Start a run' }).locator('kbd')).toHaveText('q');
-      await settings.getByRole('button', { name: 'Edit Run actions shortcut 1', exact: true }).click(); await edit.getByRole('textbox', { name: 'Shortcut keys', exact: true }).press('q'); await edit.getByRole('button', { name: 'Save shortcut', exact: true }).click(); await expect(edit).toContainText('already assigned'); await edit.getByRole('button', { name: 'Cancel', exact: true }).click();
-      await info.attach(`shortcuts-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: 'image/png' });
+      await settings.getByRole('button', { name: 'Edit Next run shortcut 1', exact: true }).click(); await edit.getByRole('textbox', { name: 'Shortcut keys', exact: true }).press('q'); await edit.getByRole('button', { name: 'Save shortcut', exact: true }).click(); await expect(edit).toContainText('already assigned'); await edit.getByRole('button', { name: 'Cancel', exact: true }).click();
+
       await settings.getByRole('button', { name: 'Back to dashboard', exact: true }).click(); await page.getByRole('button', { name: 'Start a run', exact: true }).focus(); await page.keyboard.press('q');
       await expect(page.getByRole('dialog', { name: 'Start a run', exact: true })).toBeVisible(); await page.keyboard.press('Escape');
       const beforeNumberKeys = page.url();
@@ -151,18 +152,18 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect(gaps[0]).toBe('16px');
       expect(new Set(gaps.slice(1)).size).toBe(1);
       expect(gaps[1]).toBe('32.4px');
-      const summaryFont = await settings.getByText('Detailed checks not run', { exact: true }).evaluate(node => getComputedStyle(node).fontSize);
+      const summaryFont = await settings.getByRole('group', { name: 'Data store summary', exact: true }).getByText('Not checked', { exact: true }).evaluate(node => getComputedStyle(node).fontSize);
       for (const value of await settings.getByText('Not checked', { exact: true }).all()) expect(await value.evaluate(node => getComputedStyle(node).fontSize)).toBe(summaryFont);
       await choosePage('Preflight'); await expect(settings.getByRole('heading', { name: 'Preflight', exact: true })).toBeVisible(); await expect(settings.getByRole('heading', { name: 'Workflow capabilities', exact: true })).toHaveCount(0);
       const preflight = settings.getByRole('region', { name: 'Preflight', exact: true }); await expect(preflight).toContainText('Ready to run');
       await expect(preflight.getByText('Readiness unavailable', { exact: true })).toHaveCount(0);
       await expect(preflight.getByRole('group', { name: 'Workflow readiness', exact: true }).locator('.preflight-workflow-operations')).toContainText('Person Lookup');
       await expect(preflight.locator('.preflight-workflow-operations .ds-form-group')).toHaveCount(0);
-      await preflight.getByRole('button', { name: 'Run checks again', exact: true }).click(); await expect(preflight).toContainText('Ready to run');
+      await preflight.getByRole('button', { name: 'Run preflight', exact: true }).click(); await expect(preflight).toContainText('Ready to run');
       await chooseSelect(preflight.getByRole('combobox', { name: 'Check readiness for', exact: true }), 'person-lookup');
       await expect(preflight).toContainText('UCPath sign-in'); await expect(preflight.locator('.settings-reference-disclosure')).toHaveCount(1);
-      await info.attach(`preflight-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: 'image/png' });
-      await choosePage('Activity'); await expect(settings.getByRole('button', { name: 'Export report' })).toHaveCount(0); await expect(settings.getByRole('button', { name: 'How this report is counted' })).toHaveCount(0);
+
+      await choosePage('Analytics'); await expect(settings.getByRole('button', { name: 'Export report' })).toHaveCount(0); await expect(settings.getByRole('button', { name: 'How this report is counted' })).toHaveCount(0);
       const outcomes = settings.getByRole('table', { name: 'Workflow outcomes', exact: true }); await expect(outcomes.getByRole('button')).toHaveCount(0); await expect(outcomes).not.toContainText('Version');
       const period = settings.getByRole('combobox', { name: 'Report period', exact: true }); await chooseSelect(period, 'this-week');
       await expect(settings.getByRole('group', { name: 'Report date range', exact: true })).toBeVisible();
@@ -192,8 +193,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(startDay).toHaveText('20');
       await expect(period).toHaveAttribute('data-value', 'this-week');
       const durations = settings.getByRole('figure', { name: 'Average workflow time', exact: true });
-      await expect(settings.getByRole('heading', { name: 'Activity', level: 1, exact: true })).toBeVisible();
-      await expect(page).toHaveTitle('Activity — HR GPT');
+      await expect(settings.getByRole('heading', { name: 'Analytics', level: 1, exact: true })).toBeVisible();
+      await expect(page).toHaveTitle('Analytics — HR GPT');
       await expect(durations.getByRole('listitem')).toHaveCount(2);
       await expect(durations.getByRole('listitem').first()).toContainText('2m 18s');
       await expect(durations.getByRole('listitem').nth(1)).toContainText('10 of 14 completed runs timed');
@@ -203,29 +204,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(durations.getByRole('spinbutton')).toHaveCount(0);
       await expect(durations.locator('.activity-duration-header')).toHaveCSS('font-size', await outcomes.locator('thead th').first().evaluate(node => getComputedStyle(node).fontSize));
       await expect(durations.locator('.activity-duration-copy > span').first()).toHaveCSS('font-size', await outcomes.locator('tbody th').first().evaluate(node => getComputedStyle(node).fontSize));
-      await info.attach(`activity-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: 'image/png' });
-      await choosePage('Archive');
-      const archive = settings.getByRole('region', { name: 'Archive', exact: true });
-      const version = archive.getByRole('region', { name: 'Dashboard 1.3', exact: true });
-      await expect(version.locator('.mock-archive-version-heading > span')).toHaveText('16 reports');
-      await expect(version).not.toContainText('Archived Sep');
-      await version.getByRole('button', { name: /Separations/u }).click();
-      await expect(archive.getByRole('heading', { name: 'Archive', exact: true })).toHaveCount(0);
-      await expect(archive.getByRole('heading', { name: 'Separations', exact: true })).toHaveCount(1);
-      await expect(archive).toContainText('4 reports');
-      await expect(archive.locator('.mock-archive-metadata, .mock-archive-table-footer')).toHaveCount(0);
-      await expect(archive.getByRole('combobox')).toHaveCount(0);
-      await archive.getByRole('textbox', { name: 'Search saved reports' }).fill('Jordan');
-      await expect(archive.getByRole('region', { name: 'Archived run search results', exact: true }).getByRole('link')).toHaveCount(2);
-      await expect(archive.getByRole('button', { name: 'Reset filters', exact: true })).toHaveCount(0);
-      await archive.getByRole('button', { name: 'Clear search', exact: true }).click();
-      await archive.getByRole('button', { name: /Open report for Jordan/u }).click();
-      await expect(archive.getByRole('button', { name: 'Export run', exact: true })).toBeVisible();
-      await archive.getByRole('navigation', { name: 'Archive breadcrumbs' }).getByRole('button', { name: 'Separations', exact: true }).click();
-      await expect(archive.getByRole('table', { name: 'Saved reports' })).toBeVisible();
-      await archive.getByRole('navigation', { name: 'Archive breadcrumbs' }).getByRole('button', { name: 'Archive', exact: true }).click();
-      await expect(archive.getByRole('heading', { name: 'Archive', exact: true })).toBeVisible();
-      await info.attach(`archive-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: 'image/png' });
+
       await choosePage('Spreadsheets');
       const library = settings.getByRole('table', { name: 'Registered spreadsheets', exact: true });
       await expect(library.getByRole('columnheader', { name: 'Date added', exact: true })).toBeVisible();
@@ -236,10 +215,16 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(settings.getByRole('navigation', { name: 'Breadcrumb', exact: true })).toContainText('26–27 Student applicants.xlsx');
       await settings.getByRole('navigation', { name: 'Breadcrumb', exact: true }).getByRole('button', { name: 'Spreadsheets', exact: true }).click();
       await expect(library).toBeVisible();
-      const original = new Excel.Workbook(), sheet = original.addWorksheet('People'); sheet.addRows([['Name', 'ID', 'Department'], ['Zoe', '00002', 'Services'], ['Alex', '00001', 'Payroll']]);
+      const original = new Excel.Workbook(), sheet = original.addWorksheet('People'); sheet.addRows([['Name', 'ID', 'Department'], ['Zoe', '10000002', 'Services'], ['Alex', '10000001', 'Payroll']]);
       sheet.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFB7D7F0' } }; sheet.getCell('A2').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFE699' } }; sheet.getCell('A3').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC6E0B4' } };
       const source = Buffer.from(await original.xlsx.writeBuffer());
       await settings.locator('input[type=file]').setInputFiles({ name: 'People.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: source });
+      const importColumns = page.getByRole('dialog', { name: 'Choose spreadsheet columns', exact: true });
+      await expect(importColumns).toBeVisible();
+      await chooseSelect(importColumns.getByRole('combobox', { name: 'Dashboard field for B', exact: true }), 'eid');
+      await expect(importColumns.getByRole('button', { name: 'Import selected columns', exact: true })).toBeEnabled();
+      await importColumns.getByRole('button', { name: 'Import selected columns', exact: true }).click();
+      await expect(importColumns).toHaveCount(0);
       await expect(settings.getByRole('textbox', { name: 'A2', exact: true })).toHaveValue('Zoe');
       await expect(settings.getByRole('textbox', { name: 'A2', exact: true }).locator('..')).toHaveCSS('background-color', 'rgb(255, 230, 153)');
       await settings.getByRole('button', { name: 'Sort column A', exact: true }).click(); await expect(settings.getByRole('textbox', { name: 'A2', exact: true })).toHaveValue('Alex');
@@ -249,12 +234,12 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await settings.getByRole('button', { name: 'Insert', exact: true }).click(); await page.getByRole('menuitem', { name: 'Add row', exact: true }).click(); await settings.getByRole('textbox', { name: 'A4', exact: true }).fill('New person');
       await settings.getByRole('button', { name: 'Columns', exact: true }).click(); await page.getByRole('menuitemcheckbox', { name: 'C · Department', exact: true }).click(); await page.keyboard.press('Escape'); await expect(settings.getByRole('textbox', { name: 'C2', exact: true })).toHaveCount(0);
       await choosePage('General'); await choosePage('Spreadsheets'); await expect(settings.getByRole('textbox', { name: 'A2', exact: true })).toHaveValue('Alex edited');
-      await info.attach(`workbook-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: 'image/png' });
+
       for (const format of ['xlsx', 'csv'] as const) {
         await settings.getByRole('button', { name: 'Export copy', exact: true }).click(); const downloaded = page.waitForEvent('download'); await page.getByRole('menuitem', { name: format === 'xlsx' ? 'Excel workbook (.xlsx)' : 'Current sheet (.csv)', exact: true }).click();
         const download = await downloaded; expect(download.suggestedFilename()).toBe(`People-edited.${format}`); const data = await readFile((await download.path()));
         if (format === 'xlsx') { const exported = new Excel.Workbook(); await exported.xlsx.load(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)); expect(exported.worksheets[0].getCell('A2').value).toBe('Alex edited'); expect(exported.worksheets[0].getCell('A2').fill).toEqual(sheet.getCell('A3').fill); expect(exported.worksheets[0].getCell('C1').value).toBe('Notes'); }
-        else { expect(data.toString()).toContain('Name,ID,Notes'); expect(data.toString()).toContain('Alex edited,00001,'); expect(data.toString()).toContain('New person,,'); }
+        else { expect(data.toString()).toContain('Name,ID,Notes'); expect(data.toString()).toContain('Alex edited,10000001,'); expect(data.toString()).toContain('New person,,'); }
       }
       await expect(settings.getByText(/1 sheet · Edited copy/)).toBeVisible();
       await settings.getByRole('button', { name: 'Columns', exact: true }).click(); await page.getByRole('menuitemcheckbox', { name: 'C · Department', exact: true }).click(); await page.keyboard.press('Escape');

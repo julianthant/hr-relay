@@ -1,3 +1,4 @@
+
 import { expect, test, type Page } from "@playwright/test";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { assertThemeApplied, installTheme, PARITY_THEMES } from "./helpers/capture.js";
@@ -15,7 +16,7 @@ async function expectSearchCorners(page: Page) {
 }
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  test(`Shared square search fields @ ${theme.attribute}-${width}`, async ({ page }, info) => {
+  test(`Shared square search fields @ ${theme.attribute}-${width}`, async ({ page }, _info) => {
     ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, preflightScenario: "ready" });
     const errors: string[] = [], writes: string[] = [];
@@ -24,7 +25,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 });
       await installTheme(page, theme);
-      for (const section of ["keyboard", "ui-catalog", "archive", "routes", "spreadsheets"]) {
+      for (const section of ["keyboard", "routes", "spreadsheets"]) {
         await page.goto(`${server.baseUrl}/?settings=${section}&day=${FIXTURE_DAY}`);
         await expect(page.getByRole("searchbox", { name: "Search settings", exact: true })).toBeVisible();
         await expect(page.locator('.ds-search-field [data-slot="search-field-group"]:visible')).toHaveCount(2);
@@ -37,10 +38,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           await page.getByRole("button", { name: "Clear search", exact: true }).click();
           await expect(search).toHaveValue("");
           await expect(search).toBeFocused();
-          await expect(page.locator(".shortcut-reference-row")).toHaveCount(6);
-        }
-        if (section === "keyboard" || section === "ui-catalog") {
-          await info.attach(`search-${section}-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+          await expect(page.locator(".shortcut-reference-row")).toHaveCount(5);
         }
       }
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);

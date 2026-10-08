@@ -1,3 +1,5 @@
+import { installFrozenMonotonic } from "./helpers/app-driver.js";
+
 import { createHash } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
@@ -19,7 +21,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     page.on("pageerror", error => errors.push(error.message));
     page.on("request", request => { if (request.method() !== "GET") writes.push(request.url()); });
     try {
-      await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 }); await installTheme(page, theme);
+      await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 }); await installFrozenMonotonic(page); await installTheme(page, theme);
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
       const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
       const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
@@ -56,7 +58,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         await expect(dialog).toContainText(extraction ? "4 / 4 included" : "3 / 4 included");
         if (extraction) {
           const a11y = await dialog.ariaSnapshot();
-          await info.attach(`${planName}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
           await info.attach(`${planName}.a11y.yml`, { body: a11y, contentType: "text/yaml" });
           info.annotations.push({ type: `a11y-attachment-sha256:${planName}.a11y.yml`, description: createHash("sha256").update(a11y).digest("hex") });
         }
@@ -75,7 +77,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           await expect(review.getByRole("textbox", { name: "Employee ID", exact: true })).toHaveValue("");
           await expect(review.getByRole("button", { name: "Approve records", exact: true })).toBeDisabled();
           const a11y = await review.ariaSnapshot();
-          await info.attach(`${reviewName}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
           await info.attach(`${reviewName}.a11y.yml`, { body: a11y, contentType: "text/yaml" });
           info.annotations.push({ type: `a11y-attachment-sha256:${reviewName}.a11y.yml`, description: createHash("sha256").update(a11y).digest("hex") });
           for (const [label, value] of [["Employee ID", "10000022"], ["First name", "Sam"], ["Last name", "Rivera"], ["Contact name", "Alex Rivera"], ["Cell phone", "2025550101"]]) await review.getByRole("textbox", { name: label, exact: true }).fill(value);

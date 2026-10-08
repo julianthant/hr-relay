@@ -10,9 +10,11 @@ import { StorageDoctorWireSchema } from "../../src/domain/dashboard/storage.js";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
+
 for (const theme of PARITY_THEMES) for (const viewport of [{width: 1024, height: 720}, {width: 1440, height: 900}]) {
   const a11yName = `recovered-${theme.name}-${String(viewport.width)}x${String(viewport.height)}.a11y.yml`;
-  test(`real storage recovery @ ${theme.name} @ ${String(viewport.width)}x${String(viewport.height)}`, {annotation: [{type: "required-a11y-evidence", description: a11yName}]}, async ({page}) => {
+
+test(`real storage recovery @ ${theme.name} @ ${String(viewport.width)}x${String(viewport.height)}`, {annotation: [{type: "required-a11y-evidence", description: a11yName}]}, async ({page}) => {
     ensureParityBundle();
     const target = await storageRecoveryTarget();
     const errors = failOnPageErrors(page);
@@ -37,7 +39,6 @@ for (const theme of PARITY_THEMES) for (const viewport of [{width: 1024, height:
       const ucpathPassword = page.locator(".diagnostic-check-entry").filter({hasText: "UCPath password"});
       await expect(ucpathPassword).toContainText("Present");
       await expect(page.getByRole("button", {name: "Storage recovery instructions"})).toHaveCount(0);
-      await test.info().attach("interrupted-checks.png", {body: await page.screenshot(), contentType: "image/png"});
       await test.info().attach("interrupted-doctor.json", {body: JSON.stringify(wire, null, 2), contentType: "application/json"});
       expect(errors).toEqual([]);
       await page.goto(`${target.baseUrl}/storage-proof-paused.html`);
@@ -65,7 +66,6 @@ for (const theme of PARITY_THEMES) for (const viewport of [{width: 1024, height:
       expect(body).not.toContain("SYNTHETIC_STORAGE_PROOF_NEVER_REAL");
       test.info().annotations.push({type: `a11y-attachment-sha256:${a11yName}`, description: createHash("sha256").update(body).digest("hex")});
       await test.info().attach(a11yName, {body, contentType: "text/yaml"});
-      await test.info().attach("recovered.png", {body: await page.screenshot(), contentType: "image/png"});
       await test.info().attach("real-route-proof.json", {body: JSON.stringify({provenance: target.provenance(), before: wire,
         restored: JSON.parse(restored.output) as unknown, after, requests: target.requests}, null, 2), contentType: "application/json"});
     } finally { await target.dispose(); }

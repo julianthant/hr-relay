@@ -1,4 +1,6 @@
+
 import { expect, test, type Locator } from "@playwright/test";
+import { createHash } from "node:crypto";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "./helpers/fixture-bff.js";
@@ -19,6 +21,18 @@ function contrastRatio(foreground: string, background: string): number {
   return (values[1] + .05) / (values[0] + .05);
 }
 
+async function paintedBackground(node: Locator): Promise<string> {
+  return node.evaluate(element => {
+    let current: Element | null = element;
+    while (current) {
+      const color = getComputedStyle(current).backgroundColor;
+      if (color !== "rgba(0, 0, 0, 0)") return color;
+      current = current.parentElement;
+    }
+    throw new Error("palette-opaque-ancestor-missing");
+  });
+}
+
 async function checkAliases(node: Locator) {
   const mismatches = await node.evaluate(element => {
     const style = getComputedStyle(element);
@@ -35,8 +49,14 @@ async function checkAliases(node: Locator) {
   expect(mismatches).toEqual([]);
 }
 
+async function attachTree(node: Locator, name: string) {
+  const tree = await node.ariaSnapshot();
+  test.info().annotations.push({ type: `a11y-attachment-sha256:${name}`, description: createHash("sha256").update(tree).digest("hex") });
+  await test.info().attach(name, { body: tree, contentType: "text/yaml" });
+}
+
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  test(`one neutral dashboard palette @ ${theme.attribute} ${width}`, async ({ page }) => {
+  test(`one neutral dashboard palette @ ${theme.attribute} ${width}`, { annotation: ["logs", "explorer", "activity", "settings", "dialog"].map(name => ({ type: "required-a11y-evidence", description: `palette-${name}-${theme.attribute}-${width}.a11y.yml` })) }, async ({ page }) => {
     ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
@@ -50,14 +70,15 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       for (const [name, path] of [
         ["logs", `/?day=${FIXTURE_DAY}&run=${FIXTURE_IDS.doneRun}`],
         ["explorer", "/?explore=fixture-ui-explorer"], ["activity", "/?activity="],
-        ["archive", "/?archive="], ["settings", "/?settings="],
+        ["settings", "/?settings="],
       ]) {
         await page.goto(server.baseUrl + path);
         const root = page.locator("[data-app-root]");
+        await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
         await expect(root).toHaveCSS("background-color", palette.canvas);
         await checkAliases(root);
         await checkAliases(page.locator("body"));
-        await expect(page.getByRole("banner")).toHaveCSS("background-color", palette.panel);
+        await expect(page.getByRole("complementary", { name: "Workspace", includeHidden: true })).toHaveCSS("background-color", palette.panel);
         if (name === "logs") {
           const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
           await expect(logs).toBeVisible();
@@ -65,17 +86,14 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           await expect(logs.getByRole("region", { name: "Run logs", exact: true }).locator("..")).toHaveCSS("background-color", palette.panel);
           await expect(logs.getByRole("navigation", { name: "Run timeline", exact: true })).toHaveCSS("background-color", palette.panel);
           await expect(logs.locator(".bg-ui-table").first()).toHaveCSS("background-color", palette.table);
-          await expect(logs.locator("header").first()).toHaveCSS("background-color", palette.panel);
+          await expect(logs.locator("header").first()).toHaveCSS("background-color", palette.table);
         } else if (name === "explorer" || name === "activity") {
-          await expect(page.getByRole("region", { name: name === "explorer" ? "Workflow explorer preview" : "Activity report", exact: true })).toHaveCSS("background-color", palette.canvas);
+          expect(await paintedBackground(page.getByRole("region", { name: name === "explorer" ? "Workflow explorer preview" : "Analytics report", exact: true }))).toBe(palette.canvas);
         } else if (name === "settings") {
-          await expect(page.getByRole("region", { name: "Settings", exact: true })).toHaveCSS("background-color", palette.canvas);
-        } else {
-          await expect(page.getByRole("button", { name: "Archive", exact: true })).toHaveAttribute("aria-pressed", "true");
-          await expect(page.getByRole("region", { name: "Version not recorded archives", exact: true })).toBeVisible();
+          expect(await paintedBackground(page.getByRole("region", { name: "Settings", exact: true }))).toBe(palette.canvas);
         }
         const sessions = page.getByRole("region", { name: "Session Panel", exact: true });
-        await sessions.getByRole("button", { name: "Sessions", exact: true }).click();
+        await page.getByRole("button", { name: "Sessions", exact: true }).click();
         const strip = sessions.locator("[data-session-strip]");
         await expect(strip.locator("..")).toHaveCSS("background-color", palette.canvas);
         await expect(sessions.getByRole("article").first()).toHaveCSS("background-color", palette.panel);
@@ -83,8 +101,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         await checkAliases(sessions);
         await page.mouse.move(0, 0);
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-        await test.info().attach(`palette-${name}-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
-        await test.info().attach(`palette-${name}-${theme.attribute}-${width}.a11y.yml`, { body: await root.ariaSnapshot(), contentType: "text/yaml" });
+
+        await attachTree(page.locator("body"), `palette-${name}-${theme.attribute}-${width}.a11y.yml`);
       }
       const add = page.getByRole("region", { name: "Session Panel", exact: true }).getByRole("button", { name: "Add workers", exact: true });
       await add.click();
@@ -96,15 +114,15 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         const style = getComputedStyle(element);
         return { foreground: style.color, background: style.backgroundColor, border: style.borderTopColor };
       });
-      expect(contrastRatio(inputColors.foreground, inputColors.background)).toBeGreaterThanOrEqual(4.5);
-      expect(contrastRatio(inputColors.border, inputColors.background)).toBeGreaterThanOrEqual(3);
+      expect(contrastRatio(inputColors.foreground, await paintedBackground(input))).toBeGreaterThanOrEqual(4.5);
+      expect(contrastRatio(inputColors.border, await paintedBackground(input))).toBeGreaterThanOrEqual(3);
       const buttonColors = await dialog.getByRole("button", { name: "Add workers", exact: true }).evaluate(element => {
         const style = getComputedStyle(element);
         return { foreground: style.color, background: style.backgroundColor };
       });
-      expect(contrastRatio(buttonColors.foreground, buttonColors.background)).toBeGreaterThanOrEqual(4.5);
-      await test.info().attach(`palette-dialog-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
-      await test.info().attach(`palette-dialog-${theme.attribute}-${width}.a11y.yml`, { body: await dialog.ariaSnapshot(), contentType: "text/yaml" });
+      expect(contrastRatio(buttonColors.foreground, await paintedBackground(dialog.getByRole("button", { name: "Add workers", exact: true })))).toBeGreaterThanOrEqual(4.5);
+
+      await attachTree(page.locator("body"), `palette-dialog-${theme.attribute}-${width}.a11y.yml`);
       expect(writes).toEqual([]);
     } finally { await server.close(); }
   });

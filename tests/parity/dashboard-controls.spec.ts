@@ -1,3 +1,4 @@
+
 import { expect, test, type Locator } from "@playwright/test";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { assertThemeApplied, installTheme, PARITY_THEMES } from "./helpers/capture.js";
@@ -13,7 +14,7 @@ async function markerError(tabs: Locator): Promise<number> {
 }
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  test(`Tabs, spreadsheet controls and Activity dates remain uniform @ ${theme.attribute}-${width}`, async ({ page }, info) => {
+  test(`Tabs, spreadsheet controls and Activity dates remain uniform @ ${theme.attribute}-${width}`, async ({ page }, _info) => {
     ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [], writes: string[] = [];
@@ -27,7 +28,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.goto(`${server.baseUrl}/?settings=spreadsheets`);
       const settings = page.getByRole("region", { name: "Settings", exact: true });
       const navigation = settings.getByRole("navigation", { name: "Settings sections" });
-      for (const [section, label] of [["Spreadsheets", "Spreadsheet settings"], ["UI catalog", "Catalog views"]]) {
+      for (const [section, label] of [["Spreadsheets", "Spreadsheet settings"]]) {
         await navigation.getByRole("link", { name: section, exact: true }).click();
         const tabs = settings.getByRole("tablist", { name: label, exact: true });
         const first = tabs.getByRole("tab").first(), second = tabs.getByRole("tab").nth(1);
@@ -51,7 +52,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         await first.click();
         await expect(marker).toHaveCSS("transition-duration", "0s");
         await expect.poll(() => markerError(tabs)).toBeLessThanOrEqual(1);
-        await info.attach(`tabs-${section.replace(/\s+/gu, "-")}-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
         await page.emulateMedia({ reducedMotion: "no-preference" });
       }
       await navigation.getByRole("link", { name: "Spreadsheets", exact: true }).click();
@@ -82,7 +83,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const add = page.getByRole("dialog", { name: "Add column", exact: true });
       await add.getByRole("textbox", { name: "Column title" }).fill("Review note");
       await add.getByRole("button", { name: "Add column", exact: true }).click();
+      await editor.getByRole("button", { name: "Next spreadsheet columns", exact: true }).click();
       await expect(editor.getByRole("textbox", { name: "AC1", exact: true })).toHaveValue("Review note");
+      await editor.getByRole("button", { name: "Previous spreadsheet columns", exact: true }).click();
       const search = editor.getByRole("searchbox", { name: "Search spreadsheet cells", exact: true });
       await search.fill("Jordan"); await expect(editor.locator(".spreadsheet-grid tbody tr")).toHaveCount(1);
       await editor.getByRole("button", { name: "Clear search", exact: true }).click();
@@ -91,9 +94,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const download = page.waitForEvent("download");
       await page.getByRole("menuitem", { name: "Excel workbook (.xlsx)", exact: true }).click();
       expect((await download).suggestedFilename()).toMatch(/\.xlsx$/u);
-      await info.attach(`editor-controls-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
 
-      await navigation.getByRole("link", { name: "Activity", exact: true }).click();
+
+      await navigation.getByRole("link", { name: "Analytics", exact: true }).click();
       const period = settings.getByRole("combobox", { name: "Report period", exact: true });
       const range = settings.getByRole("group", { name: "Report date range", exact: true });
       await expect(range.getByRole("spinbutton")).toHaveCount(6);
@@ -112,7 +115,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await calendar.click();
       await expect(page.getByRole("dialog", { name: "Select report dates", exact: true }).getByRole("grid")).toHaveCount(2);
       await page.keyboard.press("Escape"); await expect(calendar).toBeFocused();
-      await info.attach(`activity-date-controls-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       await assertThemeApplied(page, theme);
       expect(errors).toEqual([]); expect(writes).toEqual([]);

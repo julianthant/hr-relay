@@ -1,10 +1,13 @@
+
 import { expect, test } from '@playwright/test';
+import { createHash } from 'node:crypto';
 import { ensureParityBundle, PARITY_DIST_DIR } from './helpers/bundle.js';
 import { installTheme, PARITY_THEMES } from './helpers/capture.js';
 import { startFixtureServer } from './helpers/fixture-bff.js';
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  test(`Workflow duration chart retains measurement and loading geometry @ ${theme.attribute} ${width}`, async ({ page }, info) => {
+  const evidenceName = `duration-${theme.attribute}-${width}.a11y.yml`;
+  test(`Workflow duration chart retains measurement and loading geometry @ ${theme.attribute} ${width}`, { annotation: [{ type: "required-a11y-evidence", description: evidenceName }] }, async ({ page }, info) => {
     ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: 'working-tree' } });
     const errors: string[] = [];
@@ -31,8 +34,10 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(page.getByRole('heading', { name: 'Time saved', exact: true })).toHaveCount(0);
       await expect(page.getByRole('table', { name: 'Manual work baselines', exact: true })).toHaveCount(0);
       const loaded = (await chart.locator('.activity-duration-chart').boundingBox())!;
-      await info.attach(`duration-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: 'image/png' });
-      await info.attach(`duration-${theme.attribute}-${width}.yml`, { body: await chart.ariaSnapshot(), contentType: 'text/yaml' });
+
+      const tree = await page.locator("body").ariaSnapshot();
+      info.annotations.push({ type: `a11y-attachment-sha256:${evidenceName}`, description: createHash("sha256").update(tree).digest("hex") });
+      await info.attach(evidenceName, { body: tree, contentType: 'text/yaml' });
 
       await page.goto(`${server.baseUrl}/?settings=activity&activityPreview=loading`);
       const skeleton = page.locator('.activity-duration-chart');

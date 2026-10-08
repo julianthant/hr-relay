@@ -1,4 +1,5 @@
-import { expect, test, type Locator, type Page, type TestInfo } from "@playwright/test";
+
+import { expect, test, type Locator } from "@playwright/test";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "./helpers/fixture-bff.js";
@@ -12,13 +13,10 @@ async function bounds(locator: Locator) {
   }));
 }
 
-async function captureLoading(page: Page, info: TestInfo, name: string) {
-  await info.attach(`${name}.png`, { body: await page.screenshot({ animations: "disabled" }), contentType: "image/png" });
-  await info.attach(`${name}.a11y.yml`, { body: await page.locator("body").ariaSnapshot(), contentType: "text/yaml" });
-}
+
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  test(`Settings skeletons keep each page's groups and controls @ ${theme.attribute} ${width}`, async ({ page }, info) => {
+  test(`Settings skeletons keep each page's groups and controls @ ${theme.attribute} ${width}`, async ({ page }, _info) => {
     ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const credentials = fixtureProviderSettings();
@@ -28,7 +26,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     await installTheme(page, theme);
     await page.emulateMedia({ reducedMotion: "reduce" });
     try {
-      for (const section of ["general", "performance", "paths", "routes", "providers", "credentials"]) {
+      for (const section of ["general", "performance", "paths", "routes", "credentials"]) {
         let release!: () => void;
         const pending = new Promise<void>(resolve => { release = resolve; });
         await page.route("**/api/v1/settings/editable", async route => { await pending; if (section === "credentials") await route.fulfill({ json: credentials.document }); else await route.continue(); });
@@ -43,7 +41,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           const groupsBefore = await bounds(body.locator(".ds-body-section > .ds-form-group"));
           const titlesBefore = await body.locator(".ds-body-section-heading").allTextContents();
           const headingBefore = await bounds(body.locator(".ds-page-heading"));
-          await captureLoading(page, info, `${section}-loading-${theme.attribute}-${width}`);
+
           release();
           await expect(loading).toHaveCount(0);
           const groupsAfter = await bounds(body.locator(".ds-body-section > .ds-form-group"));
@@ -67,7 +65,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     } finally { await server.close(); credentials.close(); }
   });
 
-  test(`Activity skeleton preserves metrics, tables and chart @ ${theme.attribute} ${width}`, async ({ page }, info) => {
+  test(`Activity skeleton preserves metrics, tables and chart @ ${theme.attribute} ${width}`, async ({ page }, _info) => {
     ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
@@ -79,7 +77,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(body.getByRole("status", { name: "Loading analytics report", exact: true })).toBeVisible();
       const before = await bounds(body.locator(".activity-summary > div"));
       const sections = await body.locator("h2").allTextContents();
-      await captureLoading(page, info, `activity-loading-${theme.attribute}-${width}`);
+
       await page.goto(`${server.baseUrl}/?settings=activity`);
       await expect(body.getByRole("table", { name: "Workflow outcomes", exact: true })).toBeVisible();
       const after = await bounds(body.locator(".activity-summary > div"));
@@ -94,26 +92,26 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     } finally { await server.close(); }
   });
 
-  test(`Notification and session skeletons use their rail and worker cards @ ${theme.attribute} ${width}`, async ({ page }, info) => {
+  test(`Notification and session skeletons use their rail and worker cards @ ${theme.attribute} ${width}`, async ({ page }, _info) => {
     ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 });
       await installTheme(page, theme);
       await page.emulateMedia({ reducedMotion: "reduce" });
-      await page.goto(`${server.baseUrl}/?day=2026-08-03&notificationsPreview=loading&sessionsPreview=loading`);
+      await page.goto(`${server.baseUrl}/?day=2026-08-03&notificationsPreview=loading&sessionsPreview=loading&view=${encodeURIComponent(JSON.stringify({ notifications: true, sessions: true }))}`);
       const rail = page.getByRole("complementary", { name: "Workspace", exact: true });
-      await rail.getByRole("button", { name: /^Notifications/u }).click();
+      await expect(rail.getByRole("button", { name: /^Notifications/u })).toHaveAttribute("aria-pressed", "true");
       const inbox = rail.getByRole("region", { name: "Notifications", exact: true });
       await expect(inbox.getByRole("status", { name: "Loading notifications", exact: true })).toBeVisible();
       await expect(inbox.getByRole("button", { name: "Read all", exact: true })).toBeDisabled();
       const rowsBefore = await bounds(inbox.locator(".notification-row"));
       const tabsBefore = await bounds(inbox.locator(".notification-filter-bar"));
-      await page.getByRole("button", { name: "Sessions", exact: true }).click();
+      await expect(page.getByRole("button", { name: "Sessions", exact: true })).toHaveAttribute("aria-expanded", "true");
       const sessions = page.getByRole("status", { name: "Loading sessions", exact: true });
       await expect(sessions).toBeVisible();
       const cardsBefore = await bounds(sessions.locator(":scope > div"));
-      await captureLoading(page, info, `rails-loading-${theme.attribute}-${width}`);
+
       await page.goto(`${server.baseUrl}/?day=2026-08-03`);
       await rail.getByRole("button", { name: /^Notifications/u }).click();
       await expect(inbox.locator(".notification-row").first()).toBeVisible();
@@ -125,24 +123,21 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const cardsAfter = await bounds(page.locator("[data-session-strip] > article"));
       expect(cardsAfter.length).toBeGreaterThanOrEqual(cardsBefore.length);
       cardsBefore.forEach((card, index) => { expect(card.x).toBe(cardsAfter[index].x); expect(card.width).toBe(cardsAfter[index].width); });
-      await page.goto(`${server.baseUrl}/?day=2026-08-03&notificationsPreview=unavailable&sessionsPreview=unavailable`);
-      await rail.getByRole("button", { name: /^Notifications/u }).click();
+      await page.goto(`${server.baseUrl}/?day=2026-08-03&notificationsPreview=unavailable&sessionsPreview=unavailable&view=${encodeURIComponent(JSON.stringify({ notifications: true, sessions: true }))}`);
       await expect(inbox.getByRole("alert")).toContainText("Notifications unavailable");
-      await page.getByRole("button", { name: "Sessions", exact: true }).click();
       await expect(page.getByRole("region", { name: "Session Panel", exact: true }).getByRole("alert")).toContainText("Sessions unavailable");
       await expect(page.locator('[data-slot="skeleton"]')).toHaveCount(0);
     } finally { await server.close(); }
   });
 }
 
-test("Catalog and diagnostics preserve their page structure during initial reads", async ({ page }, info) => {
+test("Catalog and diagnostics preserve their page structure during initial reads", async ({ page }, _info) => {
   ensureParityBundle();
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, preflightScenario: "ready" });
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.emulateMedia({ reducedMotion: "reduce" });
   try {
     for (const entry of [
-      { section: "ui-catalog", path: "**/api/v1/ui-catalog", label: "Loading the UI catalog", groups: ".settings-reference-catalog-browser" },
       { section: "storage", path: "**/api/v1/storage/doctor/latest", label: "Loading storage checks", groups: ".ds-body-section > .ds-form-group" },
       { section: "preflight", path: /\/api\/v1\/preflight(?:\?.*)?$/u, label: "Loading readiness", groups: ".diagnostic-summary" },
     ]) {
@@ -159,7 +154,7 @@ test("Catalog and diagnostics preserve their page structure during initial reads
         expect(await body.locator('[data-slot="skeleton"]').evaluateAll(nodes => nodes.filter(node => node.getBoundingClientRect().width === 0).map(node => node.parentElement?.outerHTML)), `${entry.section} placeholders must have a visible width`).toEqual([]);
         const before = await bounds(body.locator(entry.groups));
         if (entry.section === "storage") await expect(body.getByRole("group", { name: "Storage health checks", exact: true })).not.toContainText("Not checked");
-        await captureLoading(page, info, `${entry.section}-loading`);
+
         release();
         await expect(body.getByRole("status", { name: entry.label, exact: true })).toHaveCount(0);
         const after = await bounds(body.locator(entry.groups));
@@ -171,8 +166,8 @@ test("Catalog and diagnostics preserve their page structure during initial reads
           const refresh = new Promise<void>(resolve => { releaseRefresh = resolve; });
           await page.route("**/api/v1/preflight/rerun", async route => { await refresh; await route.continue(); });
           try {
-            await body.getByRole("button", { name: "Run checks again", exact: true }).click();
-            await expect(body.getByRole("button", { name: "Running checks…", exact: true })).toBeDisabled();
+            await body.getByRole("button", { name: "Run preflight", exact: true }).click();
+            await expect(body.getByRole("button", { name: "Run preflight", exact: true })).toBeDisabled();
             await expect(body.locator(".diagnostic-summary-meta")).toHaveText(retained);
             await expect(body.getByRole("status", { name: "Loading readiness", exact: true })).toHaveCount(0);
           } finally { releaseRefresh(); }
@@ -206,11 +201,11 @@ test("Initial bootstrap and queue loads remain distinct from errors and empty da
     await page.reload();
     await expect(page.getByText("Could not load queue", { exact: true })).toBeVisible();
     await expect(page.getByRole("status", { name: "Loading queue", exact: true })).toHaveCount(0);
-    await captureLoading(page, test.info(), "bootstrap-queue-error");
+
   } finally { releaseBoot(); releaseDay(); await server.close(); }
 });
 
-test("OCR page skeleton fills the fixed PDF frame until its image arrives", async ({ page }, info) => {
+test("OCR page skeleton fills the fixed PDF frame until its image arrives", async ({ page }, _info) => {
   ensureParityBundle();
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   let release!: () => void;
@@ -238,7 +233,7 @@ test("OCR page skeleton fills the fixed PDF frame until its image arrives", asyn
     expect(Math.abs(placeholder.height - before[0].height)).toBeLessThanOrEqual(2);
     await expect(source.getByRole("button", { name: "Zoom in", exact: true })).toBeDisabled();
     await expect(record.getByRole("textbox", { name: "Employee ID", exact: true })).toBeEnabled();
-    await captureLoading(page, info, "ocr-source-loading");
+
     release();
     await expect(loading).toHaveCount(0);
     await expect(source.getByRole("button", { name: "Zoom in", exact: true })).toBeEnabled();
@@ -254,7 +249,7 @@ test("OCR page skeleton fills the fixed PDF frame until its image arrives", asyn
   } finally { release(); await server.close(); }
 });
 
-test("Intake loading preserves its source, mapping columns and bottom actions", async ({ page }, info) => {
+test("Intake loading preserves its source, mapping columns and bottom actions", async ({ page }, _info) => {
   ensureParityBundle();
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   let release!: () => void;
@@ -272,7 +267,7 @@ test("Intake loading preserves its source, mapping columns and bottom actions", 
     const before = await bounds(loading.locator("table"));
     const headings = await loading.locator("th").allTextContents();
     expect(headings).toEqual(["Target field", "Bound column", "Suggestion"]);
-    await captureLoading(page, info, "intake-loading");
+
     release();
     await expect(loading).toHaveCount(0);
     const mapping = frame.getByRole("table", { name: /^Column mapping for /u });

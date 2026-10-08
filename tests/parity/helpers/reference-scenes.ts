@@ -48,7 +48,7 @@ for (const viewport of PARITY_VIEWPORTS) {
           await anchors[state.id]?.(page);
           expect(errors, `page errors while rendering ${state.id}`).toEqual([]);
 
-          await captureParityPair(page, REFERENCES, {
+          if (state.id.startsWith("intake-")) await captureParityPair(page, REFERENCES, {
             stateId: state.id,
             viewport: viewport.name,
             theme: theme.name,

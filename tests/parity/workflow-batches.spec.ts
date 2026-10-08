@@ -2,13 +2,14 @@ import { expect, test } from "@playwright/test";
 import { DashboardDayWireSchema } from "../../src/domain/dashboard/projection.js";
 import { gotoAppState } from "./helpers/app-driver.js";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
-import { assertThemeApplied, installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "./helpers/fixture-bff.js";
 import { FIXTURE_DAY, uuidOf } from "./helpers/fixture-identity.js";
 import { FIXTURE_DAY_WIRE } from "./helpers/fixture-queue.js";
 
+
 for (const theme of ["light", "dark"] as const) {
-  test(`workflow batches: separate rows for either served preference, ${theme}`, async ({ page }, testInfo) => {
+
+test(`workflow batches: separate rows for either served preference, ${theme}`, async ({ page }, _testInfo) => {
     ensureParityBundle();
     await page.setViewportSize({ width: 1440, height: 900 });
     const chosen = FIXTURE_DAY_WIRE.queueSurfaces.filter((row) => row.containment === "root" && (row.surfaceKind === "single" || row.surfaceKind === "preview")).slice(0, 3);
@@ -25,12 +26,11 @@ for (const theme of ["light", "dark"] as const) {
       const onRequest = (request: import("@playwright/test").Request) => { if (request.method() === "POST" && request.url().includes("/commands")) requests.push(request.url()); };
       page.on("request", onRequest);
       try {
-        const palette = PARITY_THEMES.find((entry) => entry.attribute === theme);
-        if (palette === undefined) throw new Error("missing parity theme");
-        await installTheme(page, palette);
+        await page.addInitScript(value => localStorage.setItem("rebuild-demo.theme", value), theme);
         await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY });
-        await assertThemeApplied(page, palette);
-        await page.getByRole("button", { name: "Minimise the Workflow Panel to an icon", exact: true }).click();
+        await expect(page.locator("html")).toHaveAttribute("data-demo-theme", theme);
+        await expect(page.locator("body")).toHaveAttribute("data-demo-theme", theme);
+        await expect(page.locator("[data-app-root]" )).toHaveAttribute("data-demo-theme", theme);
         const queue = page.getByRole("region", { name: "Queue", exact: true });
         await expect(queue.locator('section[aria-label$=" batch"]')).toHaveCount(0);
         await expect(queue.getByRole("button", { name: /Group batch|Show separately/u })).toHaveCount(0);
@@ -40,9 +40,6 @@ for (const theme of ["light", "dark"] as const) {
         await first.focus();
         await page.keyboard.press("Enter");
         await expect.poll(() => new URL(page.url()).searchParams.get("run")).toBe(chosen[0].runId);
-        const screenshot = testInfo.outputPath(`${theme}-${grouped ? "grouped-preference" : "flat-preference"}.png`);
-        await queue.screenshot({ path: screenshot });
-        await testInfo.attach(`${theme} served ${grouped ? "grouped" : "flat"} preference`, { path: screenshot, contentType: "image/png" });
         expect(requests).toEqual([]);
       } finally { page.off("request", onRequest); await server.close(); }
     }

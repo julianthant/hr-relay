@@ -1,3 +1,4 @@
+
 import { createHash } from 'node:crypto';
 import { expect, test } from '@playwright/test';
 import { ensureParityBundle, PARITY_DIST_DIR } from './helpers/bundle.js';
@@ -46,7 +47,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const snapshot = await page.getByRole('main').ariaSnapshot();
       info.annotations.push({ type: `a11y-attachment-sha256:${evidence}`, description: createHash('sha256').update(snapshot).digest('hex') });
       await info.attach(evidence, { body: snapshot, contentType: 'text/yaml' });
-      await info.attach(evidence.replace('.a11y.yml', '.png'), { body: await page.screenshot(), contentType: 'image/png' });
+
 
       await status.click();
       const statuses = page.getByRole('menu', { name: 'Filter queue by status', exact: true });

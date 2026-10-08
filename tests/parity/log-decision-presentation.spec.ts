@@ -8,9 +8,10 @@ import { startFixtureServer } from "./helpers/fixture-bff.js";
 import { FIXTURE_IDS } from "./helpers/fixture-queue.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 
+
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   const evidence = `log-decisions-${theme.attribute}-${width}.a11y.yml`;
-  test(`approved log decisions and viewer @ ${theme.attribute} ${width}`, { annotation: [{ type: "required-a11y-evidence", description: evidence }] }, async ({ page }) => {
+  test(`approved log decisions and viewer @ ${theme.attribute} ${width}`, { annotation: [{ type: "required-a11y-evidence", description: evidence }] }, async ({ page }, _info) => {
     ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [], effects: string[] = [];
@@ -37,6 +38,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           }
           await expect(block.getByRole("alert")).toHaveCount(0);
         } else await expect(surface).toContainText(example.entry.message);
+
       }
       await chooseScenario( "parked");
       await surface.locator(".log-decision").scrollIntoViewIfNeeded();
@@ -55,6 +57,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const result = surface.getByText("Termination confirmed. Transaction SIM-042 is present. Continued to Finalize Kuali document.", { exact: true });
       await expect(result).toBeFocused();
       expect(await result.evaluate(node => node.closest("article"))).toBeNull();
+
       await chooseScenario( "review-candidates");
       await surface.getByRole("button", { name: "Choose employee", exact: true }).click();
       form = page.getByRole("dialog", { name: "Choose employee", exact: true });
@@ -62,6 +65,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await form.getByRole("radio", { name: /DEMO-2196/u }).check();
       await form.getByRole("button", { name: "Continue run", exact: true }).click();
       await expect(surface).toContainText("Selected DEMO-2196.");
+
       await chooseScenario( "review-fields");
       await surface.getByRole("button", { name: "Enter date", exact: true }).click();
       form = page.getByRole("dialog", { name: "Enter date", exact: true });
@@ -79,6 +83,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       }
       await form.getByRole("button", { name: "Continue run", exact: true }).click();
       await expect(surface).toContainText("Last day worked: 2026-09-25.");
+
       await chooseScenario( "failure-prepared");
       await surface.locator(".log-decision").scrollIntoViewIfNeeded();
       const failure = surface.getByRole("article", { name: "File termination", exact: true });
@@ -91,7 +96,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(stages.nth(3)).toHaveAttribute("aria-label", /Failed/u);
       await expect(stages.nth(4)).toBeDisabled();
       await expect(surface.getByRole("navigation", { name: "Run timeline", exact: true })).not.toContainText("Upcoming");
-      await test.info().attach(`log-failure-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
       const trigger = failure.getByRole("button", { name: /^Enlarge screenshot captured at/u }).first();
       await trigger.click();
       await expect(page.getByRole("dialog", { name: "UCPath · Failed action", exact: true })).toBeVisible();
@@ -115,7 +120,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(viewer.locator(".log-image-viewport")).toHaveCount(2);
       await chooseSelect(viewer.getByRole("combobox", { name: "Comparison capture", exact: true }), "2");
       await expect(viewer.locator(".log-pane-title").nth(1)).toContainText("Kronos");
-      await test.info().attach(`log-viewer-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
       await page.mouse.click(8, 300);
       await expect(viewer).toHaveCount(0);
       await expect(trigger).toBeFocused();

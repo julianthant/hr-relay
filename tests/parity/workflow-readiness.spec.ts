@@ -1,3 +1,5 @@
+import { installFrozenMonotonic } from "./helpers/app-driver.js";
+
 import { expect, test } from '@playwright/test';
 import { SettingsFactsWireSchema } from '../../src/domain/dashboard/settings.js';
 import { ensureParityBundle, PARITY_DIST_DIR } from './helpers/bundle.js';
@@ -19,7 +21,7 @@ const facts = SettingsFactsWireSchema.parse({
 });
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  test(`Workflow readiness groups real operations and preserves requirements @ ${theme.attribute}-${width}`, async ({ page }, info) => {
+  test(`Workflow readiness groups real operations and preserves requirements @ ${theme.attribute}-${width}`, async ({ page }, _info) => {
     ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: 'working-tree' }, preflightScenario: 'ready' });
     const errors: string[] = [], writes: string[] = [];
@@ -27,7 +29,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     page.on('request', request => { if (request.method() !== 'GET') writes.push(new URL(request.url()).pathname); });
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 });
-      await installTheme(page, theme);
+      await installFrozenMonotonic(page); await installTheme(page, theme);
       await page.route('**/api/v1/settings/facts', route => route.fulfill({ json: facts }));
       await page.goto(`${server.baseUrl}/?settings=preflight`);
       const surface = page.getByRole('region', { name: 'Preflight', exact: true });
@@ -76,7 +78,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect(await id.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       await first.scrollIntoViewIfNeeded();
-      await info.attach(`readiness-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: 'image/png' });
+
       await chooseSelect(surface.getByRole('combobox', { name: 'Check readiness for', exact: true }), 'person-lookup');
       await expect(group.getByRole('heading', { name: 'Requirements', exact: true })).toBeVisible();
       await expect(group.getByRole('group', { name: 'Workflow requirements', exact: true })).toContainText('UCPath sign-in');
@@ -85,7 +87,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(group).toContainText('Passed');
       expect(errors).toEqual([]); expect(writes).toEqual([]);
       await group.scrollIntoViewIfNeeded();
-      await info.attach(`requirements-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: 'image/png' });
+
     } finally { await server.close(); }
   });
 }

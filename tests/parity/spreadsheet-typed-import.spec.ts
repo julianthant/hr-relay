@@ -1,10 +1,13 @@
+
 import { expect, test } from '@playwright/test';
+import { createHash } from 'node:crypto';
 import { ensureParityBundle, PARITY_DIST_DIR } from './helpers/bundle.js';
 import { installTheme, PARITY_THEMES } from './helpers/capture.js';
 import { startFixtureServer } from './helpers/fixture-bff.js';
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  test(`typed spreadsheet mapping and retained edits @ ${theme.attribute}-${width}`, async ({ page }, info) => {
+  const evidenceName = `typed-import-${theme.attribute}-${width}.a11y.yml`;
+  test(`typed spreadsheet mapping and retained edits @ ${theme.attribute}-${width}`, { annotation: [{ type: "required-a11y-evidence", description: evidenceName }] }, async ({ page }, info) => {
     ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: 'working-tree' } });
     const errors: string[] = [], writes: string[] = [];
@@ -30,8 +33,10 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await eid.click(); await page.getByRole('option', { name: 'Employee ID', exact: true }).click();
       await eid.focus(); await eid.press('ArrowDown'); await expect(page.getByRole('listbox')).toBeVisible(); await page.keyboard.press('Escape'); await expect(eid).toBeFocused();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-      await info.attach(`typed-import-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: 'image/png' });
-      await info.attach(`typed-import-${theme.attribute}-${width}.yml`, { body: await dialog.ariaSnapshot(), contentType: 'text/yaml' });
+
+      const tree = await page.locator("body").ariaSnapshot();
+      info.annotations.push({ type: `a11y-attachment-sha256:${evidenceName}`, description: createHash("sha256").update(tree).digest("hex") });
+      await info.attach(evidenceName, { body: tree, contentType: 'text/yaml' });
       await submit.click();
       const editor = page.getByRole('region', { name: 'Spreadsheet editor', exact: true });
       await expect(editor.getByRole('textbox', { name: 'A1', exact: true })).toHaveValue('Legal Name');

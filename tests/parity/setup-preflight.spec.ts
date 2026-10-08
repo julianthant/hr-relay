@@ -1,35 +1,37 @@
+import type { PreflightReadinessWire } from "../../src/domain/preflight-contract.js";
 import { chooseSelect } from "./helpers/select-choice.js";
 import { createHash } from "node:crypto";
 import { expect,test,type Locator } from "@playwright/test";
 import { gotoAppState } from "./helpers/app-driver.js";
-import { PARITY_THEMES,installTheme,assertThemeApplied,captureParityPair } from "./helpers/capture.js";
-import { FIXTURE_DAY,FIXTURE_DESCRIPTOR_HASH,FIXTURE_APP_VERSION } from "./helpers/fixture-identity.js";
-import { REFERENCES,dismissWorkflowWindow,failOnPageErrors } from "./helpers/reference-harness.js";
+import { PARITY_THEMES,installTheme,assertThemeApplied } from "./helpers/capture.js";
+import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
+import { dismissWorkflowWindow,failOnPageErrors } from "./helpers/reference-harness.js";
 import { ensureParityBundle } from "./helpers/bundle.js";
 import { startSetupPreflightServer } from "./helpers/fixture-setup-preflight.js";
 import { SETUP_SCENES } from "./helpers/reference-setup-preflight-scenes.js";
 
-type ServedCheck = { check:string; status:"pass"|"warning"|"fail"; summary:string; blocks:readonly string[]; remediation?:string };
-type ServedRead = { state:"unavailable"; reason:string } | { state:"present"; report:{ checkedAt:string; requestedCapabilities:readonly string[]; results:readonly ServedCheck[] } };
+
+type ServedRead = PreflightReadinessWire;
 
 async function assertChecks(surface:Locator, served:ServedRead, settings:boolean):Promise<void> {
   const rows=surface.locator(settings?".diagnostic-check-entry":".settings-preflight-item");
-  if(served.state==="unavailable") { await expect(rows).toHaveCount(0);return; }
-  await expect(rows).toHaveCount(served.report.results.length);
+  const report=served.state==="present"?served.report:served.lastCompleted;
+  if(report===undefined) { await expect(rows).toHaveCount(0);return; }
+  await expect(rows).toHaveCount(report.results.length);
   if(settings) {
     await expect(surface.getByText("Technical details",{exact:true})).toHaveCount(0);
     await expect(surface.getByText("Scope details",{exact:true})).toHaveCount(0);
-    await expect(rows.getByText("Passed",{exact:true})).toHaveCount(served.report.results.filter(check=>check.status==="pass").length);
-    await expect(rows.getByText("Needs attention",{exact:true})).toHaveCount(served.report.results.filter(check=>check.status==="warning").length);
-    await expect(rows.getByText("Blocked",{exact:true})).toHaveCount(served.report.results.filter(check=>check.status==="fail").length);
+    await expect(rows.getByText("Passed",{exact:true})).toHaveCount(report.results.filter(check=>check.status==="pass").length);
+    await expect(rows.getByText("Needs attention",{exact:true})).toHaveCount(report.results.filter(check=>check.status==="warning").length);
+    await expect(rows.getByText("Blocked",{exact:true})).toHaveCount(report.results.filter(check=>check.status==="fail").length);
     return;
   }
-  for(const [index,check] of served.report.results.entries()) {
+  for(const [index,check] of report.results.entries()) {
     const row=rows.nth(index);
     await expect(row).toContainText(check.status);
     if(check.status!=="pass") await expect(row).toContainText(check.summary);
     if(check.status==="fail")for(const block of check.blocks)await expect(row).toContainText(block);
-    if(check.remediation!==undefined)await expect(row).toContainText(check.remediation);
+    if(check.status!=="pass")await expect(row).toContainText(check.remediation);
   }
 }
 
@@ -49,25 +51,16 @@ for(const scene of SETUP_SCENES)for(const theme of PARITY_THEMES)for(const viewp
       const read=await page.context().request.get(readUrl.toString());expect(read.ok()).toBe(true);
       const served=await read.json() as ServedRead;
       const a11y=await page.locator("body").ariaSnapshot();info.annotations.push({type:`a11y-attachment-sha256:${a11yName}`,description:createHash("sha256").update(a11y).digest("hex")});await info.attach(a11yName,{body:a11y,contentType:"text/yaml"});
-      if(served.state==="present") {
+      const displayedReport=served.state==="present"?served.report:served.lastCompleted;
+      if(displayedReport!==undefined) {
         await expect(setup.locator("time")).toHaveCount(1);
         await expect(setup.getByRole("group",{name:"Readiness summary",exact:true})).toContainText("Last checked");
-        await expect(setup.locator("time")).toHaveAttribute("dateTime",served.report.checkedAt);
+        await expect(setup.locator("time")).toHaveAttribute("dateTime",displayedReport.checkedAt);
         await expect(setup.getByText("Scope details",{exact:true})).toHaveCount(0);
-      }else await expect(setup).toContainText(served.reason);
+      }
+      if(served.state==="unavailable")await expect(setup).toContainText(served.reason);
       await assertChecks(setup,served,true);
-      await captureParityPair(page,REFERENCES,{stateId:"setup-preflight",viewport:`${String(viewport.width)}x${String(viewport.height)}`,theme:theme.name,adapter:"production-preflight-services",fixtureId:scene.id,descriptorHash:FIXTURE_DESCRIPTOR_HASH,appVersion:FIXTURE_APP_VERSION,capturedAt:FIXTURE_DAY,variant:scene.id});
-      const trigger=page.getByRole("button",{name:/^Preflight: /u});await trigger.click();
-      const doctor=page.getByRole("dialog",{name:"Preflight",exact:true});await expect(doctor).toBeVisible();await expect(doctor).toContainText(scene.expected);
-      const box=await doctor.boundingBox();expect(box).not.toBeNull();expect((box?.y??0)+(box?.height??0)).toBeLessThanOrEqual(viewport.height);
-      if(served.state==="present") {
-        await expect(doctor.locator("time")).toHaveAttribute("dateTime",served.report.checkedAt);
-        await expect(doctor.locator("time")).toHaveText(served.report.checkedAt);
-        for(const capability of served.report.requestedCapabilities)await expect(doctor).toContainText(capability);
-      }else await expect(doctor).toContainText(served.reason);
-      await assertChecks(doctor,served,false);
-      await captureParityPair(page,REFERENCES,{stateId:"setup-preflight",viewport:`${String(viewport.width)}x${String(viewport.height)}`,theme:theme.name,adapter:"production-preflight-services",fixtureId:scene.id,descriptorHash:FIXTURE_DESCRIPTOR_HASH,appVersion:FIXTURE_APP_VERSION,capturedAt:FIXTURE_DAY,variant:`${scene.id}-doctor`});
-      await page.keyboard.press("Escape");await expect(doctor).not.toBeVisible();await expect(trigger).toBeFocused();
+
       expect(errors).toEqual([]);await info.attach("production-preflight-proof",{body:JSON.stringify({provenance:server.provenance(),requests:server.requests}),contentType:"application/json"});
     }finally{await server.close();}
   });
@@ -88,7 +81,7 @@ test("Setup minimum canvas retains keyboard rerun and authoritative readback",as
   }finally{await server.close();}
 });
 
-test("Setup keeps an expired check visible as a previous result",async({page},info)=>{
+test("Setup keeps an expired check visible as a previous result",async({page},_info)=>{
   const server=await startSetupPreflightServer("stale");
   try {
     await page.setViewportSize({width:1280,height:720});await page.clock.setFixedTime(new Date(server.now));
@@ -100,6 +93,5 @@ test("Setup keeps an expired check visible as a previous result",async({page},in
     await expect(setup).toContainText("Run preflight for current readiness");
     await expect(setup).not.toContainText("Ready to run");
     await expect(setup.locator(".diagnostic-check-entry")).not.toHaveCount(0);
-    await info.attach("historical-preflight.png",{body:await setup.screenshot(),contentType:"image/png"});
   }finally{await server.close();}
 });

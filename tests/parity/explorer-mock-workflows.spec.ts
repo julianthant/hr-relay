@@ -1,3 +1,4 @@
+
 import { chooseSelect } from "./helpers/select-choice.js";
 import { createHash } from "node:crypto";
 import { expect, test } from "@playwright/test";
@@ -21,10 +22,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const surface = page.getByRole("region", { name: "Workflow explorer preview", exact: true });
       const workflows = surface.getByRole("combobox", { name: "Explorer workflow", exact: true });
       await workflows.click();
-      await expect(page.locator('[data-slot="select-content"][data-open]').getByRole("option")).toHaveText(["Separations", "Onboarding", "Emergency Contact", "Person Lookup", "I-9 Lookup", "Work-Study", "Kronos Pay Rule", "OCR", "Oath Signature", "Oath Upload", "OnBase", "I-9 Check", "CRM Doc Download", "SharePoint Download", "Old Kronos Reports"]);
+      await expect(page.locator('[data-slot="select-content"][data-open]').getByRole("option")).toHaveText(["Person Lookup", "I-9 Lookup", "Separations", "I-9 Check", "Onboarding", "Oath Signature", "Oath Upload", "Emergency Contact", "Work-Study", "Kronos Pay Rule", "OCR", "CRM Doc Download", "SharePoint Download", "OnBase", "Old Kronos Reports"]);
       await page.keyboard.press("Escape");
       await workflows.focus();
       await chooseSelect(workflows, "fixture-onboarding");
+
       await expect(workflows).toBeFocused();
       await expect(workflows).toHaveAttribute("data-value", "fixture-onboarding");
       await expect(surface.getByRole("heading", { name: "Onboarding", exact: true })).toHaveCount(0);
@@ -36,18 +38,22 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(surface.locator("#explorer-step-1")).toContainText("I-9");
       await expect(surface.locator("#explorer-step-2")).toContainText("Choose the hire type");
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-      await test.info().attach(`onboarding-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
       await expect(surface.getByRole("button", { name: "Preview paths", exact: true })).toHaveCount(0);
       const person = surface.getByRole("combobox", { name: "Person search result preview" });
       await person.focus();
       await expect(person).toBeFocused();
       await chooseSelect(person, "review");
+
       await expect(surface.locator("#explorer-step-7")).toBeHidden();
       await expect(surface.getByText("Pause for identity approval. No I-9 profile or hire is filed.", { exact: true })).toBeVisible();
       await chooseSelect(person, "none");
+
       await chooseSelect(surface.getByRole("combobox", { name: "Hire type preview" }), "rehire");
+
       await expect(surface.locator("#explorer-step-7")).toBeHidden();
       await chooseSelect(person, "matched");
+
       await expect(surface.locator("#explorer-step-7")).toContainText("Skip I-9 creation");
       await expect(surface.locator("#explorer-step-8")).toContainText("UC_CONC_HIRE");
       await surface.getByRole("button", { name: "Show source for Compensation rate", exact: true }).click();
@@ -57,8 +63,10 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await surface.getByRole("button", { name: "Return to filled field" }).click();
       await expect(surface.getByRole("button", { name: "Show source for Compensation rate", exact: true })).toBeFocused();
       await chooseSelect(surface.getByRole("combobox", { name: "Hire rehearsal preview" }), "dry");
+
       await expect(surface.locator("#explorer-step-10")).toBeHidden();
       await chooseSelect(workflows, "fixture-emergency-contact");
+
       await expect(workflows).toHaveAttribute("data-value", "fixture-emergency-contact");
       await expect(surface.getByRole("heading", { name: "Emergency Contact", exact: true })).toHaveCount(0);
       await expect(surface.locator("li[data-step-number]")).toHaveCount(11);
@@ -66,7 +74,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(surface.locator("#explorer-step-1")).toContainText("UCPath");
       await expect(surface.locator("#explorer-step-1")).toContainText("Authentication waits until the contact packet is reviewed.");
       await expect(surface.locator("#explorer-step-2")).toContainText("Extract the contact packet");
-      await test.info().attach(`emergency-contact-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
       const snapshot = await surface.ariaSnapshot();
       test.info().annotations.push({ type: `a11y-attachment-sha256:${evidence}`, description: createHash("sha256").update(snapshot).digest("hex") });
       await test.info().attach(evidence, { body: snapshot, contentType: "text/yaml" });
@@ -75,31 +83,40 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await review.focus();
       await expect(review).toBeFocused();
       await chooseSelect(review, "pending");
+
       await expect(surface.locator("#explorer-step-4")).toBeHidden();
       await expect(surface.locator("#explorer-step-5")).toBeHidden();
       await chooseSelect(review, "approved");
+
       const identity = surface.getByRole("combobox", { name: "Contact identity preview" });
       await chooseSelect(identity, "mismatch");
+
       await expect(surface.locator("#explorer-step-6")).toBeHidden();
       await chooseSelect(identity, "verified");
+
       const existing = surface.getByRole("combobox", { name: "Existing contact preview" });
       await chooseSelect(existing, "exact");
+
       await expect(surface.locator("#explorer-step-8")).toHaveCount(0);
       await expect(surface.locator("#explorer-step-10")).toHaveCount(0);
       await expect(surface.locator("#explorer-step-11")).toBeVisible();
       await chooseSelect(existing, "fuzzy");
+
       await expect(surface.locator("#explorer-step-7")).toContainText("Demote the existing");
       await chooseSelect(surface.getByRole("combobox", { name: "Contact address preview" }), "manual");
+
       const address = surface.getByRole("button", { name: "Show source for Street · city · state · postal code · country", exact: true });
       await address.click();
       await expect(surface.getByRole("dialog")).toContainText("Emergency Contact Form");
       await page.keyboard.press("Escape");
       await expect(address).toBeFocused();
       await chooseSelect(surface.getByRole("combobox", { name: "Contact rehearsal preview" }), "dry");
+
       await expect(surface.locator("#explorer-step-10")).toHaveCount(0);
       await expect(surface.locator("#explorer-step-7")).not.toContainText("Demote the existing");
       await expect(surface.locator("#explorer-step-11")).toBeVisible();
       await chooseSelect(workflows, "fixture-separations");
+
       await expect(surface.locator("li[data-step-number]")).toHaveCount(22);
       await expect(surface.getByRole("combobox", { name: "Identity check preview" })).toHaveAttribute("data-value", "verified");
       await expect(workflows).toHaveAttribute("data-value", "fixture-separations");

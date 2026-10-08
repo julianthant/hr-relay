@@ -1,3 +1,4 @@
+
 import { expect, test } from "@playwright/test";
 import { FIXTURE_START_PICKER_BOOTSTRAP, FIXTURE_START_PICKER_DAY_WIRE, FIXTURE_START_PICKER_DESCRIPTOR_HASH } from "./helpers/fixture-start.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
@@ -5,7 +6,7 @@ import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { startFixtureServer } from "./helpers/fixture-bff.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 
-for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) test(`grouped run picker stays mounted @ ${theme.attribute}-${width}`, async ({ page }, info) => {
+for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) test(`grouped run picker stays mounted @ ${theme.attribute}-${width}`, async ({ page }, _info) => {
   ensureParityBundle();
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, profile: { bootstrap: FIXTURE_START_PICKER_BOOTSTRAP, day: FIXTURE_START_PICKER_DAY_WIRE, descriptorHash: FIXTURE_START_PICKER_DESCRIPTOR_HASH } });
   try {
@@ -19,7 +20,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) test(`group
     const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
     const picker = dialog.getByRole("navigation", { name: "Workflow", exact: true });
     await expect(picker.getByRole("button")).toHaveCount(15);
-    await expect(picker.getByRole("button", { name: "OCR", exact: true })).toBeDisabled();
+    await expect(picker.getByRole("button", { name: "OCR", exact: true })).toBeEnabled();
     await expect(picker.getByRole("button", { name: "I-9 Lookup", exact: true })).toBeDisabled();
     await expect(picker.getByRole("heading")).toHaveText(["Search", "Separations", "Onboarding", "Work Study", "Payroll", "Utils", "OnBase", "Timekeeping"]);
     await expect(picker.locator("button span").filter({ hasText: /^pl$|^sp$/u })).toHaveCount(0);
@@ -39,10 +40,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) test(`group
     await search.fill("oath");
     await expect(picker.getByRole("button")).toHaveCount(2);
     await picker.getByRole("button", { name: "Oath Signature", exact: true }).click();
-    await expect(search).toHaveValue("oath");
+    await expect(search).toHaveValue("");
     const input = dialog.getByRole("textbox", { name: "Employee IDs", exact: true }); await input.fill("10000001");
     await picker.getByRole("button", { name: "Oath Signature", exact: true }).click();
     await expect(input).toHaveValue("10000001");
+    await search.fill("oath");
     await dialog.getByRole("button", { name: "Clear search", exact: true }).click();
     await expect(search).toHaveValue(""); await expect(search).toBeFocused();
     await picker.getByRole("button", { name: "Onboarding", exact: true }).click();
@@ -53,8 +55,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) test(`group
     expect(await picker.evaluate((element, original) => element === original, originalPicker)).toBe(true);
     await expect(flags).not.toBeChecked();
     await picker.getByRole("button", { name: "I-9 Check", exact: true }).click();
+    await dialog.getByRole("button", { name: "1 Input", exact: true }).click();
     await expect(dialog.locator('input[type="file"]')).toHaveValue("");
-    await info.attach(`run-picker-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
     const metrics = await picker.evaluate(nav => {
       const heading = nav.querySelector("h3")!, row = nav.querySelector("button")!, headingText = heading.getBoundingClientRect().left + parseFloat(getComputedStyle(heading).paddingLeft) + 14 + 8;
       return { textAligned: Math.abs(row.querySelector("span")!.getBoundingClientRect().left - headingText) < 1, rowHeight: row.getBoundingClientRect().height };
@@ -65,8 +68,14 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) test(`group
     for (const label of ["OCR", "I-9 Lookup"]) {
       await rail.getByRole("button", { name: label, exact: true }).click();
       await page.getByRole("button", { name: "Start a run", exact: true }).click();
-      await expect(picker.getByRole("button", { name: label, exact: true })).toBeDisabled();
-      await expect(picker.locator('[aria-current="page"]')).toHaveAccessibleName("Person Lookup");
+      if (label === "OCR") {
+        await expect(picker.getByRole("button", { name: label, exact: true })).toBeEnabled();
+        await expect(picker.locator('[aria-current="page"]')).toHaveAccessibleName("OCR");
+        await expect(dialog.locator('input[type="file"]')).toHaveCount(1);
+      } else {
+        await expect(picker.getByRole("button", { name: label, exact: true })).toBeDisabled();
+        await expect(picker.locator('[aria-current="page"]')).toHaveAccessibleName("Person Lookup");
+      }
       await page.keyboard.press("Escape");
     }
     expect(errors).toEqual([]); expect(writes).toEqual([]);

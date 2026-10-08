@@ -17,5 +17,5 @@ export const ANCHORS: SceneAnchors = {
     // DCC3's server-listed editor resolves the blank route to General. Waiting
     // on its real form control prevents a loading/no-renderer arm from being
     // deliberately re-frozen as the editable Settings reference.
-    await expect(page.getByRole("textbox", { name: "Operator label" })).toBeVisible();
+    await expect(page.getByRole("group", { name: "Job end date*", exact: true })).toBeVisible();
   }};

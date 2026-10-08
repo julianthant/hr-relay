@@ -26,7 +26,7 @@ for (const theme of PARITY_THEMES) test(`Setup repair and launch share admission
     });
     expect(rejected.status()).toBe(409); expect(h.runs()).toEqual([]); expect(h.publications).toBe(0); expect(h.mintedRunIdentities).toBe(0);
     h.repair();
-    const recheck = setup.getByRole("button", { name: "Run checks again", exact: true }); await recheck.focus(); await page.keyboard.press("Enter");
+    const recheck = setup.getByRole("button", { name: "Run preflight", exact: true }); await recheck.focus(); await page.keyboard.press("Enter");
     await expect(setup.getByText("Blocked", { exact: true })).toHaveCount(0);
     await expect(setup.locator("time")).toHaveAttribute("datetime", server.now);
     expect(server.requests.some(request => request.path === "/api/v1/preflight/rerun" && request.status === 200)).toBe(true);

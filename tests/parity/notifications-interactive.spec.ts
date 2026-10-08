@@ -1,3 +1,4 @@
+
 import { expect, test } from "@playwright/test";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
@@ -7,7 +8,7 @@ import { FIXTURE_IDS } from "./helpers/fixture-queue.js";
 import { mockQueueId } from "../../src/dashboard/surfaces/workflows/mocks/workflow-queue-model.js";
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  test(`notification destinations, approval and new run updates @ ${theme.attribute}-${width}`, async ({ page }, info) => {
+  test(`notification destinations, approval and new run updates @ ${theme.attribute}-${width}`, async ({ page }, _info) => {
     ensureParityBundle(); const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [], writes: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
@@ -30,7 +31,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await inbox.getByRole("button", { name: "Filter notifications by category", exact: true }).click();
       await page.getByRole("menuitemradio", { name: "Needs you", exact: true }).click();
       await expect(inbox.locator(".notification-row")).toHaveCount(11);
-      await info.attach(`notification-inbox-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
       const contact = inbox.locator(".notification-row").filter({ has: page.getByRole("button", { name: "emergency-contacts.pdf", exact: true }) });
       await contact.getByRole("button", { name: "Review records", exact: true }).focus(); await page.keyboard.press("Enter");
       await expect(inbox).toHaveCount(0);
@@ -39,7 +40,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect.poll(async () => { const box = await drawer.boundingBox(); return box ? box.x + box.width : Infinity; }).toBeLessThanOrEqual(width);
       await expect(logs.getByRole("heading", { level: 2, includeHidden: true })).toHaveText("emergency-contacts.pdf");
       await expect(drawer.getByRole("heading", { name: "Jordan Lee", exact: true })).toBeFocused();
-      await info.attach(`notification-review-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
       await drawer.getByRole("region", { name: "Record person-1", exact: true }).getByRole("textbox", { name: "Cell phone", exact: true }).fill("619-555-0199");
       await bell.click(); await contact.getByRole("button", { name: "Review records", exact: true }).click();
       await expect(drawer.getByRole("heading", { name: "Jordan Lee", exact: true })).toBeFocused();
@@ -66,10 +67,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect(new URL(page.url()).searchParams.get("run")).toBe(FIXTURE_IDS.doneRun);
       await expect(logs.getByRole("heading", { level: 2 })).toHaveText("EID 10001573");
       await expect(page.locator(`[data-demo-row-id="${FIXTURE_IDS.doneRun}"] [data-demo-row-title]`)).toBeInViewport();
-      await bell.click(); await inbox.getByRole("button", { name: "Open archive", exact: true }).click();
-      await expect(page.getByRole("region", { name: "Archive", exact: true })).toBeVisible();
-      expect(new URL(page.url()).searchParams.get("archive")).toBe("");
-      await page.getByRole("button", { name: "Back to dashboard", exact: true }).click();
       await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Onboarding", exact: true }).click();
       await page.getByRole("button", { name: "Start a run", exact: true }).click();
       const launcher = page.getByRole("dialog", { name: "Start a run", exact: true });
@@ -82,12 +79,12 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(created).toContainText("Completed"); await expect(created).toContainText("Just now"); await created.getByRole("button", { name: "notification.hire@example.com", exact: true }).click();
       await expect(logs.getByRole("heading", { level: 2 })).toHaveText("notification.hire@example.com");
       await expect(bell).toHaveAccessibleName("Notifications, 0 unread");
-      await info.attach(`notification-created-run-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
       expect(errors).toEqual([]); expect(writes).toEqual([]);
     } finally { await server.close(); }
   });
-  test(`every mock notification reveals its queue row @ ${theme.attribute}-${width}`, async ({ page }, info) => {
+  test(`every mock notification reveals its queue row @ ${theme.attribute}-${width}`, async ({ page }, _info) => {
     ensureParityBundle(); const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [], writes: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
@@ -120,7 +117,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         expect((await page.locator("#dashboard-main-region").boundingBox())!.y).toBe(0);
         await expect(bell).toBeInViewport();
       }
-      await info.attach(`notification-queue-row-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
       for (const [subject, id, count] of [
         ["single-oath.pdf", "mock:oath-signature:sample:ocr", 1],
         ["multiple-oath.pdf", "mock:oath-upload:sample:ocr", 4],
@@ -143,10 +140,10 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         if (subject === "detect-test.pdf") await expect(review).toContainText("3 selected for approval");
       }
       await bell.click();
-      await expect(inbox.locator(".notification-row")).toHaveCount(14);
+      await expect(inbox.locator(".notification-row")).toHaveCount(13);
       await expect(inbox.getByRole("button", { name: "sick-hours.pdf", exact: true })).toHaveCount(0);
       await expect(bell).toHaveAccessibleName("Notifications, 0 unread");
-      await info.attach(`notification-linked-documents-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
       expect(errors).toEqual([]); expect(writes).toEqual([]);
     } finally { await server.close(); }

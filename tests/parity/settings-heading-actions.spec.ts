@@ -1,3 +1,4 @@
+
 import { chooseSelect } from "./helpers/select-choice.js";
 import { expect, test, type Locator } from "@playwright/test";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
@@ -19,7 +20,7 @@ async function assertHeadingActions(surface: Locator): Promise<void> {
 }
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  test(`Settings actions center on title-only and described headings @ ${theme.attribute} ${width}`, async ({ page }, info) => {
+  test(`Settings actions center on title-only and described headings @ ${theme.attribute} ${width}`, async ({ page }, _info) => {
     ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [];
@@ -31,18 +32,13 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const settings = page.getByRole("region", { name: "Settings", exact: true });
       const body = settings.locator(".settings-tab-body");
       const navigation = settings.getByRole("navigation", { name: "Settings sections", exact: true });
-      for (const name of ["Spreadsheets", "Archive", "Explorer", "Storage checks", "Preflight"]) {
+      for (const name of ["Spreadsheets", "Explorer", "Storage checks", "Preflight"]) {
         await navigation.getByRole("link", { name, exact: true }).click();
         await expect(body.locator(".ds-page-heading-title").first()).toHaveText(name);
         await expect(body.locator(".ds-page-heading-actions").first()).toBeVisible();
         await assertHeadingActions(body);
-        if (name === "Archive") {
-          await expect(body.locator(".ds-page-heading-description")).toHaveCount(0);
-          await body.getByRole("region", { name: "Dashboard 1.3", exact: true }).getByRole("button", { name: /^Separations/u }).click();
-          await expect(body.locator(".ds-page-heading-title")).toHaveText("Separations");
-          await assertHeadingActions(body);
-        } else await expect(body.locator(".ds-page-heading-description").first()).toBeVisible();
-        await info.attach(`settings-${name.replace(/\s+/gu, "-").toLowerCase()}-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+        await expect(body.locator(".ds-page-heading-description").first()).toBeVisible();
+
       }
       expect(errors).toEqual([]);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -87,7 +83,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(run).toBeEnabled();
       await assertHeadingActions(surface);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-      await test.info().attach(`storage-heading-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
     } finally { await server.close(); }
   });
 
@@ -102,7 +98,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const surface = page.getByRole("region", { name: "Preflight", exact: true });
       const heading = surface.locator(".ds-page-heading");
       const scope = heading.getByRole("combobox", { name: "Check readiness for", exact: true });
-      const rerun = heading.getByRole("button", { name: "Run checks again", exact: true });
+      const rerun = heading.getByRole("button", { name: "Run preflight", exact: true });
       await expect(scope).toBeVisible();
       await chooseSelect(scope, server.scope);
       await expect(surface).toContainText("Readiness unavailable");
@@ -113,7 +109,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.route("**/api/v1/preflight/rerun", async route => { await pending; await route.continue(); });
       await rerun.focus();
       await page.keyboard.press("Enter");
-      const running = heading.getByRole("button", { name: "Running checks…", exact: true });
+      const running = heading.getByRole("button", { name: "Run preflight", exact: true });
       await expect(running).toBeDisabled();
       release!();
       const summary = surface.getByRole("group", { name: "Readiness summary", exact: true });
@@ -133,7 +129,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const copy = summary.locator(".ds-result-row-copy"), count = summary.locator(".ds-result-row-side");
       await expect(copy.locator(".ds-field-description")).toHaveCount(0);
       await expect(count).toContainText("Last checked");
-      await expect(count.locator("time")).toHaveText(/^[A-Z][a-z]{2}, [A-Z][a-z]{2} \d{1,2} \d{1,2}:\d{2} [AP]M$/u);
+      await expect(count.locator("time")).toHaveText("08/03/2026 10:05 AM");
       await expect(summary).not.toContainText("returned checks");
       const copyBounds = (await copy.boundingBox())!, countBounds = (await count.boundingBox())!;
       expect(countBounds.x).toBeGreaterThan(copyBounds.x + copyBounds.width);
@@ -141,7 +137,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await assertHeadingActions(surface);
       expect(server.requests.some(request => request.method === "POST" && request.path === "/api/v1/preflight/rerun" && request.status === 200)).toBe(true);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-      await test.info().attach(`preflight-heading-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
     } finally { await server.close(); }
   });
 }

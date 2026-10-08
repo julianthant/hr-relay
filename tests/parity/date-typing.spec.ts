@@ -1,3 +1,4 @@
+
 import { createHash } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
@@ -47,7 +48,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.keyboard.press("Escape");
       await expect(month).toHaveText("04"); await expect(day).toHaveText("27"); await expect(year).toHaveText("2026");
       const a11y = await page.ariaSnapshot();
-      await info.attach(`${name}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
       await info.attach(`${name}.a11y.yml`, { body: a11y, contentType: "text/yaml" });
       info.annotations.push({ type: `a11y-attachment-sha256:${name}.a11y.yml`, description: createHash("sha256").update(a11y).digest("hex") });
       expect(errors).toEqual([]);

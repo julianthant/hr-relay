@@ -16,7 +16,7 @@ test.describe("queue member presentation", () => {
   test("member outcomes and exact selection remain without local checked controls", async ({ page }) => {
     const errors = failOnPageErrors(page);
     await page.setViewportSize({ width: 1440, height: 900 });
-    await installTheme(page, PARITY_THEMES[1]);
+    await installTheme(page, PARITY_THEMES[0]);
     await gotoAppState(page, servers.server.baseUrl, { day: FIXTURE_DAY });
     await dismissWorkflowWindow(page);
 

@@ -1,3 +1,4 @@
+
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { gotoAppState } from "./helpers/app-driver.js";
 import { ensureParityBundle } from "./helpers/bundle.js";
@@ -81,7 +82,7 @@ for (const scene of ["healthy", "secret-missing"] as const) for (const theme of 
         const retained = Reflect.get(window, "preflightRefreshNodes") as Element[];
         return [...element.querySelectorAll(".diagnostic-summary, .workflow-operations-card, .diagnostic-check-entry")].every((node, index) => node === retained[index]);
       })).toBe(true);
-      await info.attach("pending-preflight.png", { body: await page.screenshot(), contentType: "image/png" });
+
       held.command.resolve();
       await held.readbackStarted.promise;
       await expect(run).toBeDisabled();

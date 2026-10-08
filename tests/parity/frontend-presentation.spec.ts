@@ -1,3 +1,4 @@
+
 import { chooseSelect } from "./helpers/select-choice.js";
 import { createHash } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
@@ -32,9 +33,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(performanceLink).toHaveCSS('color', colors.color);
       expect(colors.radius).toBe('10px');
       const selectedBounds = (await general.boundingBox())!;
-      const otherBounds = (await performanceLink.boundingBox())!;
-      expect(selectedBounds.height).toBe(32);
-      expect(otherBounds.y - selectedBounds.y - selectedBounds.height).toBe(2);
+      const otherBounds = (await sidebar.getByRole("link", { name: "Credentials", exact: true }).boundingBox())!;
+      expect(selectedBounds.height).toBe(36);
+      expect(otherBounds.y - selectedBounds.y - selectedBounds.height).toBe(4);
       await expect(sidebar.getByText('Personal', { exact: true })).toHaveCSS('font-size', '14px');
       await expect(page.locator('.ds-body-section-heading').first()).toHaveCSS('font-weight', '400');
       await expect(page.locator('.ds-body-section-heading').first()).toHaveCSS('font-size', '14px');
@@ -44,7 +45,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const headingStyle = await body.locator('.ds-page-heading-title').first().evaluate(node => {
         const style = getComputedStyle(node); return { size: style.fontSize, weight: style.fontWeight, line: style.lineHeight };
       });
-      for (const [path, title] of [["/?activity=", "Activity"], ["/?explore=fixture-ui-explorer", "Explorer"], ["/?archive=", "Archive"]]) {
+      for (const [path, title] of [["/?activity=", "Analytics"], ["/?explore=fixture-ui-explorer", "Explorer"]]) {
         await page.goto(`${server.baseUrl}${path}`);
         await expect(page.getByRole("region", { name: "Settings", exact: true })).toBeVisible();
         await expect(body.getByRole("heading", { name: title, exact: true })).toBeVisible();
@@ -56,22 +57,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         })).toEqual(headingStyle);
         await expect(body.locator('.operations-toolbar')).toHaveCount(0);
         expect(await page.evaluate(() => getComputedStyle(document.documentElement).zoom)).toBe('1');
-        expect((await page.getByRole('banner').boundingBox())!.height).toBe(48);
-        if (title === "Archive") {
-          await expect(page.getByRole("textbox", { name: "Search saved reports" })).toHaveCount(1);
-          await expect(body.getByText(/^\d+ matching reports$/u)).toHaveCount(0);
-          await page.getByRole('region', { name: 'Dashboard 1.3', exact: true }).getByRole('button', { name: /^Separations/u }).click();
-          const search = page.getByRole("textbox", { name: "Search saved reports" });
-          await search.focus();
-          await expect(search).toHaveCSS('outline-style', 'none');
-          await expect(search.locator('..')).toHaveAttribute('data-slot', 'search-field-group');
-          await expect(search.locator('..')).toHaveAttribute('data-focus-within', 'true');
-          await expect(search.locator('..')).not.toHaveCSS('box-shadow', 'none');
-          await search.fill("Jordan");
-          await expect(page.locator('tbody tr')).toHaveCount(1);
-          await page.getByRole("button", { name: "Clear search", exact: true }).click();
-          await expect(page.locator('tbody tr')).toHaveCount(4);
-        }
+        expect((await page.locator('.settings-nav-header').boundingBox())!.height).toBe(32);
         if (title === "Explorer") {
           const heading = body.locator('.ds-page-heading').first();
           const workflow = heading.getByRole('combobox', { name: 'Explorer workflow', exact: true });
@@ -98,31 +84,21 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await installTheme(page, theme);
       const requests = surfaceRequests(page);
       await page.goto(`${server.baseUrl}/?activity=`);
-      const surface = page.getByRole("region", { name: "Activity report", exact: true });
-      const metrics = surface.getByLabel("Activity summary");
+      const surface = page.getByRole("region", { name: "Analytics report", exact: true });
+      const metrics = surface.getByLabel("Analytics summary");
       await expect(metrics).toContainText("38");
       await expect(metrics).toContainText("34 measured · 4 unmeasured");
       await expect(surface.getByRole("row", { name: "Separations 24 3 2 29" })).toBeVisible();
-      const separation = surface.getByRole("button", { name: "Separations", exact: true });
-      await expect(separation).toHaveAttribute("aria-expanded", "true");
-      const version = surface.getByRole("row", { name: "Version 2.1", exact: true });
-      await expect(version).toBeVisible();
-      await separation.focus();
-      await separation.press("Enter");
-      await expect(version).toBeHidden();
-      await separation.press("Space");
-      await expect(version).toBeVisible();
-      await surface.getByRole("button", { name: "Person lookup", exact: true }).click();
-      await expect(surface.getByRole("row", { name: "Version 2.0", exact: true })).toBeVisible();
+      await expect(surface.getByRole("row", { name: "Person lookup 14 1 0 15", exact: true })).toBeVisible();
       await expect(surface).toContainText("35 of 38 completed");
       const performance = surface.getByRole("table", { name: "Run performance", exact: true });
       await expect(performance.getByRole("row", { name: /Completion rate/ })).toContainText("95%");
       await expect(performance.getByRole("row", { name: /Longest run/ })).toContainText("4m 41s");
-      await expect(performance.getByRole("row", { name: /Total measured runtime/ })).toContainText("1h 21m");
+      await expect(performance.getByRole("row", { name: /Total measured runtime/ })).toContainText("1h 17m");
       await expect(performance.getByRole("row", { name: /Most common failure/ })).toContainText("Document read timeout");
       const chart = surface.getByRole("group", { name: /runs? across.*interval/ });
       await expect(chart).toBeVisible();
-      await expect(surface.getByRole("heading", { name: "Activity", exact: true })).toBeVisible();
+      await expect(surface.getByRole("heading", { name: "Analytics", exact: true })).toBeVisible();
       await expect(surface.getByRole("group", { name: "Activity actions", exact: true })).toHaveCount(0);
       const outcomes = surface.getByRole("table", { name: "Workflow outcomes", exact: true });
       await expect(outcomes.locator('..')).toHaveCSS('border-radius', '12.6px');
@@ -164,7 +140,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         const bar = bars.nth(index);
         await bar.hover();
         const tooltip = chart.getByRole("tooltip");
-        await expect(tooltip).toHaveText(`Sep ${day}${count} runs`);
+        await expect(tooltip).toHaveText(`09/${day}/2026${count} runs`);
         const tipBounds = (await tooltip.boundingBox())!;
         const barBounds = (await bar.boundingBox())!;
         const plotBounds = (await chart.boundingBox())!;
@@ -178,7 +154,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await chooseSelect(surface.getByRole("combobox", { name: "Report period" }), "today");
       await expect(bars).toHaveCount(24);
       await bars.first().focus();
-      await expect(chart.getByRole("tooltip")).toContainText("Sep 26");
+      await expect(chart.getByRole("tooltip")).toContainText("09/26/2026");
       await expect(chart.getByRole("tooltip")).toContainText("0 runs");
       const solo = (await bars.first().boundingBox())!;
       const soloTip = (await chart.getByRole("tooltip").boundingBox())!;
@@ -188,13 +164,13 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await chooseSelect(surface.getByRole("combobox", { name: "Report period" }), "this-week");
       await expect(bars).toHaveCount(7);
       await bars.nth(3).focus();
-      await expect(chart.getByRole("tooltip")).toHaveText("Sep 237 runs");
+      await expect(chart.getByRole("tooltip")).toHaveText("09/23/20267 runs");
       await page.keyboard.press("ArrowRight");
       await expect(bars.nth(4)).toBeFocused();
-      await expect(chart.getByRole("tooltip")).toHaveText("Sep 246 runs");
+      await expect(chart.getByRole("tooltip")).toHaveText("09/24/20266 runs");
       await page.keyboard.press("Home");
       await expect(bars.first()).toBeFocused();
-      await expect(chart.getByRole("tooltip")).toHaveText("Sep 200 runs");
+      await expect(chart.getByRole("tooltip")).toHaveText("09/20/20260 runs");
       await page.keyboard.press("Escape");
       await expect(chart.getByRole("tooltip")).toHaveCount(0);
       await chooseSelect(surface.getByRole("combobox", { name: "Report period" }), "last-3-months");
@@ -207,39 +183,38 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(chart.getByRole("tooltip")).toContainText("0 runs");
       await chooseSelect(surface.getByRole("combobox", { name: "Report period" }), "this-week");
       await surface.getByRole("heading", { name: "Workflow outcomes", exact: true }).click();
-      await expect(surface.getByRole("heading", { name: "Activity", exact: true })).toHaveCount(1);
+      await expect(surface.getByRole("heading", { name: "Analytics", exact: true })).toHaveCount(1);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       expect(await metrics.evaluate(node => getComputedStyle(node).gridTemplateColumns.split(" ").length)).toBe(4);
       expect((await metrics.boundingBox())!.height).toBeLessThan(130);
       const snapshot = await surface.ariaSnapshot();
       test.info().annotations.push({ type: `a11y-attachment-sha256:${evidence}`, description: createHash("sha256").update(snapshot).digest("hex") });
       await test.info().attach(evidence, { body: snapshot, contentType: "text/yaml" });
-      await test.info().attach(evidence.replace(".a11y.yml", ".png"), { body: await page.screenshot(), contentType: "image/png" });
-      await chooseSelect(surface.getByRole("combobox", { name: "Activity sample data" }), "incomplete");
+
+      await page.goto(`${server.baseUrl}/?activity=&view=${encodeURIComponent(JSON.stringify({ activityPreview: "incomplete" }))}`);
       await expect(surface).toContainText("Volume unavailable");
-      await expect(surface.getByLabel("Activity summary")).toContainText("Unavailable");
+      await expect(surface.getByLabel("Analytics summary")).toContainText("Unavailable");
       await expect(surface).toContainText("Readback verifiedUnavailable");
       await expect(performance.getByRole("row", { name: /Longest run/ })).toContainText("Unavailable");
       await expect(performance.getByRole("row", { name: /Total measured runtime/ })).toContainText("Unavailable");
       await expect(performance.getByRole("row", { name: /Most common failure/ })).toContainText("Unavailable");
-      await chooseSelect(surface.getByRole("combobox", { name: "Activity sample data" }), "empty");
+      await page.goto(`${server.baseUrl}/?activity=&view=${encodeURIComponent(JSON.stringify({ activityPreview: "empty" }))}`);
       await expect(surface).toContainText("No workflow activity in this period");
       await expect(surface).toContainText("No runs in this period");
       await expect(performance.getByRole("row", { name: /Completion rate/ })).toContainText("No finished runs");
       await expect(performance.getByRole("row", { name: /Total measured runtime/ })).toContainText("0s");
       await expect(performance.getByRole("row", { name: /Most common failure/ })).toContainText("No failures");
-      await chooseSelect(surface.getByRole("combobox", { name: "Activity sample data" }), "loading");
-      const loading = surface.getByRole("status", { name: "Loading activity report" });
+      await page.goto(`${server.baseUrl}/?activity=&view=${encodeURIComponent(JSON.stringify({ activityPreview: "loading" }))}`);
+      const loading = surface.getByRole("status", { name: "Loading analytics report" });
       await expect(loading).toBeVisible();
-      await expect(loading).toHaveText("");
-      await expect(surface.getByRole("button", { name: "Export report", exact: true })).toBeDisabled();
-      await chooseSelect(surface.getByRole("combobox", { name: "Activity sample data" }), "unavailable");
-      await expect(surface.getByRole("alert")).toContainText("Activity unavailable");
-      await chooseSelect(surface.getByRole("combobox", { name: "Activity sample data" }), "normal");
-      await surface.getByRole("button", { name: "Export report", exact: true }).click();
-      await page.getByRole("menuitem", { name: "CSV", exact: true }).click();
-      await expect(surface.getByRole("status")).toHaveText("Export is not connected yet.");
-      await page.keyboard.press("Escape");
+      await expect(loading).toHaveAttribute("aria-busy", "true");
+      await expect(loading).toContainText("Workflow outcomes");
+      await expect(loading).toContainText("Run performance");
+      await expect(surface.getByRole("button", { name: "Export report", exact: true })).toHaveCount(0);
+      await page.goto(`${server.baseUrl}/?activity=&view=${encodeURIComponent(JSON.stringify({ activityPreview: "unavailable" }))}`);
+      await expect(surface.getByRole("alert")).toContainText("Analytics unavailable");
+      await page.goto(`${server.baseUrl}/?activity=&view=${encodeURIComponent(JSON.stringify({ activityPreview: "normal" }))}`);
+      await expect(surface.getByLabel("Analytics summary")).toContainText("38");
       expect(requests).toEqual([]);
     } finally { await server.close(); }
   });
@@ -254,19 +229,23 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const requests = surfaceRequests(page);
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&run=${FIXTURE_IDS.doneRun}`);
       const surface = page.getByRole("region", { name: "Selected run logs", exact: true });
-      await expect(surface.getByRole("heading", { name: "Person Lookup · EID 10001573", exact: true })).toBeVisible();
+      const setLogScenario = async (scenario: string) => {
+        const url = new URL(page.url()); url.searchParams.set("logPreview", scenario);
+        await page.goto(url.toString());
+      };
+      await expect(surface.getByRole("heading", { name: "EID 10001573", exact: true })).toBeVisible();
       await page.locator(`[data-demo-row-id="${FIXTURE_IDS.runningRun}"]`).click();
-      await expect(surface.getByRole("heading", { name: "Person Lookup · Battistessa, Johnnie", exact: true })).toBeVisible();
-      await expect(surface.getByRole("combobox", { name: "Logs sample data" })).toHaveAttribute("data-value", "preview");
+      await expect(surface.getByRole("heading", { name: "Battistessa, Johnnie", exact: true })).toBeVisible();
+      await expect(surface.getByRole("combobox", { name: "Logs sample data" })).toHaveCount(0);
       await expect(surface).toContainText("Waiting for UCPath search results for Battistessa, Johnnie.");
       await expect(surface).not.toContainText("Alex Morgan");
-      await chooseSelect(surface.getByRole("combobox", { name: "Logs sample data" }), "selected");
+      await setLogScenario("selected");
       await expect(surface).toContainText("Searching UCPath for Battistessa, Johnnie");
       await expect(surface.getByRole("navigation", { name: "Run timeline", exact: true }).getByRole("button")).toHaveCount(4);
       await page.locator(`[data-demo-row-id="${FIXTURE_IDS.failedRun}"]`).click();
-      await expect(surface.getByRole("heading", { name: "Person Lookup · EID 10555001", exact: true })).toBeVisible();
+      await expect(surface.getByRole("heading", { name: "EID 10555001", exact: true })).toBeVisible();
       await expect(surface).not.toContainText("Searching UCPath for Battistessa, Johnnie");
-      await expect(surface.getByRole("combobox", { name: "Logs sample data" })).toHaveAttribute("data-value", "preview");
+      await expect(surface.getByRole("combobox", { name: "Logs sample data" })).toHaveCount(0);
       const defaultFailure = surface.getByRole("article", { name: "Search CRM employee record", exact: true });
       await expect(defaultFailure).toBeInViewport();
       await expect(defaultFailure).toContainText("The CRM Search button could not be clicked.");
@@ -311,14 +290,14 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(defaultParked).toBeInViewport();
       await expect(defaultParked).toContainText("Write parked");
       await expect(defaultParked.getByRole("button", { name: "Check result", exact: true })).toBeVisible();
-      await expect(surface.getByRole("heading", { name: "Separations sample · EID 10777012", exact: true })).toBeVisible();
+      await expect(surface.getByRole("heading", { name: "EID 10777012", exact: true })).toBeVisible();
       await selectedTimeline.getByRole("button", { name: /^Read request/u }).click();
       await expect(surface.getByRole("heading", { name: "Find the Kuali action", exact: true })).toBeFocused();
       await selectedTimeline.getByRole("button", { name: /^File termination/u }).click();
       await expect(defaultParked).toBeInViewport();
       await expect(surface).not.toContainText("Employee match approved.");
-      await chooseSelect(surface.getByRole("combobox", { name: "Logs sample data" }), "separation");
-      await expect(surface.getByRole("heading", { name: "Separations · Alex Morgan", exact: true })).toBeVisible();
+      await setLogScenario("separation");
+      await expect(surface.getByRole("heading", { name: "Alex Morgan", exact: true })).toBeVisible();
       await expect(surface.locator("header").first().locator(":scope > span.text-caption")).toHaveCount(0);
       await expect(surface.getByRole("heading", { name: "Reconcile dates", exact: true })).toHaveCount(0);
       await expect(surface.locator('[data-log-field="compute"]')).toHaveCount(0);
@@ -349,9 +328,22 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
         expect(bounds.y + bounds.height).toBeLessThanOrEqual(width === 1024 ? 720 : 1000);
       }
-      await test.info().attach(`logs-timeline-hover-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
       await page.mouse.move(0, 0);
+      await expect(page.getByRole("tooltip")).toHaveCount(0);
+      const hoverScrollLeft = await timeline.evaluate(node => node.scrollLeft);
+      await timeline.evaluate(node => { node.scrollLeft = 0; });
+      await expect.poll(() => timeline.evaluate(node => node.scrollLeft)).toBe(0);
+      await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+      await test.info().attach("timeline-keyboard-scroll", { body: JSON.stringify({ hoverScrollLeft, keyboardScrollLeft: await timeline.evaluate(node => node.scrollLeft), width }), contentType: "application/json" });
       await timeline.getByRole("button").first().focus();
+      await expect(timeline.getByRole("button").first()).toBeFocused();
+      await expect(page.getByRole("tooltip")).toContainText("Build separation plan");
+      await page.keyboard.press("Tab");
+      await expect(timeline.getByRole("button").nth(1)).toBeFocused();
+      await expect(page.getByRole("tooltip")).toContainText("Read Workforce Job Summary");
+      await page.keyboard.press("Shift+Tab");
+      await expect(timeline.getByRole("button").first()).toBeFocused();
       await expect(page.getByRole("tooltip")).toContainText("Build separation plan");
       await page.keyboard.press("Escape");
       await expect(page.getByRole("tooltip")).toHaveCount(0);
@@ -360,7 +352,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const snapshot = await surface.ariaSnapshot();
       test.info().annotations.push({ type: `a11y-attachment-sha256:${logsEvidence}`, description: createHash("sha256").update(snapshot).digest("hex") });
       await test.info().attach(logsEvidence, { body: snapshot, contentType: "text/yaml" });
-      await test.info().attach(logsEvidence.replace(".a11y.yml", ".png"), { body: await page.screenshot(), contentType: "image/png" });
+
       await surface.getByRole("searchbox", { name: "Search logs" }).fill("termination filed");
       await expect(surface.getByRole("heading", { name: "Verify termination", exact: true })).toBeVisible();
       const shot = surface.getByRole("button", { name: "Enlarge screenshot captured at 09:32:43" });
@@ -401,7 +393,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.keyboard.press("Enter");
       await expect(surface.getByRole("heading", { name: "Read pending terminations", exact: true })).toBeFocused();
       await expect(surface.getByRole("searchbox", { name: "Search logs" })).toHaveValue("");
-      await chooseSelect(surface.getByRole("combobox", { name: "Logs sample data" }), "reading");
+      await setLogScenario("reading");
       await expect(surface.locator("header").first()).toContainText("In progress");
       await expect(timeline.getByRole("button", { name: /^Read timecard.*In progress/ })).toBeEnabled();
       await timeline.getByRole("button", { name: /^Read timecard/ }).focus();
@@ -409,11 +401,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(page.getByRole("tooltip")).not.toContainText("16s");
       await expect(page.getByRole("tooltip")).not.toContainText("28s");
       await expect(timeline.getByRole("button", { name: /^File termination.*Upcoming/ })).toBeDisabled();
-      await chooseSelect(surface.getByRole("combobox", { name: "Logs sample data" }), "waiting");
+      await setLogScenario("waiting");
       await expect(timeline).toContainText("Waiting");
-      await chooseSelect(surface.getByRole("combobox", { name: "Logs sample data" }), "failed");
+      await setLogScenario("failed");
       await expect(timeline.getByRole("button", { name: /^Finalize document.*Failed/ })).toBeEnabled();
-      await chooseSelect(surface.getByRole("combobox", { name: "Logs sample data" }), "empty");
+      await setLogScenario("empty");
       await expect(surface.getByRole("heading", { name: "No actions yet" })).toBeVisible();
       await expect(surface.getByRole("button", { name: "Copy logs" })).toBeDisabled();
       await expect(timeline.getByRole("button", { disabled: true })).toHaveCount(5);
@@ -445,7 +437,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(toggle).toHaveAttribute("aria-expanded", "false");
       await expect(panel.getByRole("article")).toHaveCount(0);
       const barBox = (await bar.boundingBox())!;
-      expect((await toggle.boundingBox())!.width).toBe(barBox.width);
+      expect((await toggle.boundingBox())!.width).toBe(barBox.width - 104);
       await bar.click({ position: { x: barBox.width / 2, y: barBox.height / 2 } });
       await expect(toggle).toHaveAttribute("aria-expanded", "true");
       const countsBox = (await bar.getByText("running", { exact: true }).boundingBox())!;
@@ -461,13 +453,13 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(toggle).toHaveAttribute("aria-expanded", "true");
       await expect(panel.getByRole("article")).toHaveCount(4);
       const first = panel.getByRole("article", { name: "Worker 1 · Separations", exact: true });
-      const second = panel.getByRole("article", { name: "Worker 2 · Person lookup", exact: true });
+      const second = panel.getByRole("article", { name: "Worker 2 · Person Lookup", exact: true });
       await expect(first.getByRole("heading", { name: "Separations", exact: true })).toBeVisible();
       await expect(panel.getByRole("heading", { name: /^Worker/ })).toHaveCount(0);
       await expect(panel).not.toContainText("Worker 1");
       await expect(panel).not.toContainText("Sample data");
       await expect(panel.getByRole("combobox")).toHaveCount(0);
-      const idle = panel.getByRole("article", { name: "Worker 4 · Person lookup", exact: true });
+      const idle = panel.getByRole("article", { name: "Worker 4 · Person Lookup", exact: true });
       await expect(idle).toContainText("Ready for the next run");
       const emptyBar = idle.getByRole("img", { name: "No run in progress", exact: true });
       await expect(emptyBar).toBeVisible();
@@ -499,7 +491,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const snapshot = await panel.ariaSnapshot();
       test.info().annotations.push({ type: `a11y-attachment-sha256:${sessionsEvidence}`, description: createHash("sha256").update(snapshot).digest("hex") });
       await test.info().attach(sessionsEvidence, { body: snapshot, contentType: "text/yaml" });
-      await test.info().attach(sessionsEvidence.replace(".a11y.yml", ".png"), { body: await page.screenshot(), contentType: "image/png" });
+
       await first.getByRole("button", { name: "Pause", exact: true }).click();
       await expect(first).toContainText("Paused");
       await expect(first.locator('[data-session-node="separation-12"]')).toHaveAttribute("title", "Read the timecard · paused");
@@ -510,7 +502,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(second).toContainText("No run assigned");
       await expect(second.getByRole("img", { name: "No run in progress", exact: true })).toBeVisible();
       await expect(panel).not.toContainText("Worker stopped");
-      await expect(panel.getByRole("status")).toHaveCount(0);
+      await expect(panel.getByRole("status")).toHaveText(["Resume confirmed", "Stop confirmed"]);
       await second.getByRole("button", { name: "Remove worker", exact: true }).click();
       await expect(second).toHaveCount(0);
       await expect(panel.getByRole("article")).toHaveCount(3);
@@ -545,7 +537,10 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(workerCount).toHaveValue("7");
       expect((await dialog.boundingBox())!.width).toBeLessThanOrEqual(320);
       expect(await dialog.locator(".grid").evaluate(node => getComputedStyle(node).rowGap)).toBe("12px");
-      await expect(workerCount).not.toHaveAttribute("max", /.+/u);
+      await expect(workerCount).toHaveAttribute("max", "20");
+      await workerCount.fill("20");
+      await expect(increase).toBeDisabled();
+      await workerCount.fill("7");
       await expect(dialog).not.toContainText("Up to 6");
       await page.keyboard.press("Escape");
       await expect(add).toBeFocused();
@@ -563,14 +558,17 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await dialog.getByRole("spinbutton", { name: "Workers", exact: true }).fill("12");
       await expect(dialog).toHaveCSS("opacity", "1");
       await expect(dialog).toHaveCSS("background-color", theme.attribute === "dark" ? "rgb(34, 34, 34)" : "rgb(255, 255, 255)");
-      await test.info().attach(`sessions-add-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
       const addSnapshot = await dialog.ariaSnapshot();
       test.info().annotations.push({ type: `a11y-attachment-sha256:${sessionsAddEvidence}`, description: createHash("sha256").update(addSnapshot).digest("hex") });
       await test.info().attach(sessionsAddEvidence, { body: addSnapshot, contentType: "text/yaml" });
       await dialog.getByRole("button", { name: "Add workers", exact: true }).click();
+      await expect(dialog).toHaveCount(0);
       await expect(panel.getByRole("article")).toHaveCount(12);
-      await expect(panel.getByRole("heading", { name: "Person lookup", exact: true })).toHaveCount(12);
-      await expect(panel.locator("[data-session-node]")).toHaveCount(48);
+      await expect(panel.getByRole("heading", { name: "Person Lookup", exact: true })).toHaveCount(12);
+      await expect(panel.locator("[data-session-node]")).toHaveCount(0);
+      await expect(panel.getByText("Starting", { exact: true })).toHaveCount(12);
+      await expect(panel.getByText("No run assigned", { exact: true })).toHaveCount(12);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       await expect(add).toBeFocused();
       await showScenario("loading");
@@ -605,6 +603,8 @@ test("Activity dates stay visible with a centered two-month calendar; edits sele
   ensureParityBundle();
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   try {
+    await installTheme(page, PARITY_THEMES[0]);
+    await page.setViewportSize({ width: 1440, height: 900 });
     const requests = surfaceRequests(page);
     await page.goto(`${server.baseUrl}/?activity=`);
     const period = page.getByRole("combobox", { name: "Report period" });
@@ -636,7 +636,7 @@ test("Activity dates stay visible with a centered two-month calendar; edits sele
     await page.keyboard.press("Escape");
     await expect(end).toBeFocused();
     await end.click();
-    const outside = (await page.getByRole("heading", { name: "Activity", exact: true }).boundingBox())!;
+    const outside = (await page.getByRole("heading", { name: "Analytics", exact: true }).boundingBox())!;
     await page.mouse.click(outside.x + outside.width / 2, outside.y + outside.height / 2);
     await expect(calendar).toHaveCount(0);
     await expect(end).toBeFocused();
@@ -650,13 +650,13 @@ test("Activity dates stay visible with a centered two-month calendar; edits sele
     await expect(fields.getByRole("spinbutton", { name: /^day, Start/u })).toHaveText("25");
     await expect(fields.getByRole("spinbutton", { name: /^day, End/u })).toHaveText("26");
     await expect(period).toHaveAttribute("data-value", "custom");
-    await expect(page.getByLabel("Activity summary")).toContainText("of 18 runs");
+    await expect(page.getByLabel("Analytics summary")).toContainText("of 18 runs");
     await chooseSelect(period, "today");
     await expect(start).toBeVisible();
     await expect(end).toBeVisible();
     await expect(fields.getByRole("spinbutton", { name: /^day, Start/u })).toHaveText("26");
     await expect(fields.getByRole("spinbutton", { name: /^day, End/u })).toHaveText("26");
-    await expect(page.getByLabel("Activity summary")).toContainText("of 9 runs");
+    await expect(page.getByLabel("Analytics summary")).toContainText("of 9 runs");
     expect(requests).toEqual([]);
   } finally { await server.close(); }
 });

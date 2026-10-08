@@ -1,3 +1,4 @@
+
 import { expect, test } from "@playwright/test";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
@@ -7,7 +8,7 @@ import { StorageDoctorWireSchema } from "../../src/domain/dashboard/storage.js";
 import { ProtectedSettingsNameSchema } from "../../src/domain/config/protected-settings.js";
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  test(`Storage keeps its card layout without run history @ ${theme.attribute} ${width}`, async ({ page }, info) => {
+  test(`Storage keeps its card layout without run history @ ${theme.attribute} ${width}`, async ({ page }, _info) => {
     ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [];
@@ -60,7 +61,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         expect((await row.boundingBox())!.height).toBeLessThan(280);
       }
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-      await info.attach(`storage-summary-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
       const details = recovery.getByRole("button", { name: "Diagnostic details", exact: true });
       await expect(details).toHaveAttribute("aria-expanded", "false");
       await details.focus();
@@ -76,7 +77,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await primary.getByRole("button", { name: "Update history", exact: true }).click();
       await expect(surface.locator(".diagnostic-storage-updates")).toContainText("Update completed");
       await expect(surface.locator(".diagnostic-storage-updates time")).toHaveAttribute("dateTime", interrupted.checkedAt);
-      await info.attach(`storage-expanded-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
       await run.click();
       await expect(recovery).toContainText("No unfinished storage operations.");
       await expect(primary).not.toContainText("Interrupted");

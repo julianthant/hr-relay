@@ -1,3 +1,4 @@
+
 import { expect, test, type Locator } from "@playwright/test";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { assertThemeApplied, installTheme, PARITY_THEMES } from "./helpers/capture.js";
@@ -11,7 +12,7 @@ async function typography(control: Locator) {
 }
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  test(`Spreadsheets matches Settings controls and Archive omits the matching count @ ${theme.attribute} ${width}`, async ({ page }, info) => {
+  test(`Spreadsheets matches Settings controls @ ${theme.attribute} ${width}`, async ({ page }, _info) => {
     ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
@@ -22,10 +23,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const titleStyle = await typography(storageHeading.getByRole('heading'));
       const actionStyle = await typography(storageHeading.getByRole('button'));
       const actionHeight = (await storageHeading.getByRole('button').boundingBox())!.height;
-      await page.goto(`${server.baseUrl}/?settings=ui-catalog`);
-      const catalogTabs = page.getByRole('tablist', { name: 'Catalog views' });
-      const tabStyle = await typography(catalogTabs.getByRole('tab', { selected: true }));
-      const tabHeight = (await catalogTabs.getByRole('tab', { selected: true }).boundingBox())!.height;
       await page.goto(`${server.baseUrl}/?settings=spreadsheets`);
       const surface = page.getByRole('region', { name: 'Spreadsheets', exact: true });
       const heading = surface.locator('.ds-page-heading');
@@ -42,8 +39,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const tabs = surface.getByRole('tablist', { name: 'Spreadsheet settings' });
       const registered = tabs.getByRole('tab', { name: /^Registered spreadsheets/u });
       const types = tabs.getByRole('tab', { name: /^Spreadsheet types/u });
-      expect(await typography(registered)).toEqual(tabStyle);
-      expect((await registered.boundingBox())!.height).toBe(tabHeight);
       await expect(registered).toHaveCSS('border-bottom-width', '2px');
       await expect(registered).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       await registered.focus();
@@ -66,17 +61,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect((await chooser).isMultiple()).toBe(false);
       await assertThemeApplied(page, theme);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-      await info.attach(`spreadsheets-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: 'image/png' });
-      await page.goto(`${server.baseUrl}/?settings=archive`);
-      const archive = page.getByRole('region', { name: 'Archive', exact: true });
-      await expect(archive.getByText(/^\d+ matching reports$/u)).toHaveCount(0);
-      await expect(archive.getByRole('region', { name: 'Dashboard 1.3', exact: true })).toContainText('16 reports');
-      await archive.getByRole('textbox', { name: 'Search saved reports', exact: true }).fill('Jordan');
-      await expect(archive.getByRole('region', { name: 'Archived run search results', exact: true }).getByRole('link')).toHaveCount(2);
-      await archive.getByRole('button', { name: 'Clear search', exact: true }).click();
-      await expect(archive.getByRole('region', { name: 'Dashboard 1.3', exact: true })).toContainText('16 reports');
-      await expect(archive.getByRole('button', { name: 'Reset filters', exact: true })).toHaveCount(0);
-      await info.attach(`archive-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: 'image/png' });
+
     } finally { await server.close(); }
   });
 }

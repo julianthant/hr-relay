@@ -1,9 +1,17 @@
-import { createHash } from "node:crypto";
+import { FIXTURE_DAY_WIRE, FIXTURE_IDS } from "./helpers/fixture-queue.js";
+import { seedMockRuns } from "../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
+import { attachShellA11y } from "./helpers/shell-proof.js";
+
+
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "./helpers/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
+
+async function captureSemanticEvidence(page: Page, info: TestInfo, name: string) {
+  await attachShellA11y(page, info, `${name}.a11y.yml`);
+}
 
 function contrastRatio(foreground: string, background: string): number {
   const luminance = (color: string) => {
@@ -27,12 +35,7 @@ function disconnectedRequests(page: Page) {
   });
   return requests;
 }
-async function capture(page: Page, info: TestInfo, name: string) {
-  await info.attach(`${name}.png`, { body: await page.screenshot(), contentType: "image/png" });
-  const tree = await page.locator("body").ariaSnapshot();
-  info.annotations.push({ type: `a11y-attachment-sha256:${name}.a11y.yml`, description: createHash("sha256").update(tree).digest("hex") });
-  await info.attach(`${name}.a11y.yml`, { body: tree, contentType: "text/yaml" });
-}
+
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   const size = `${theme.attribute}-${width}`;
@@ -49,14 +52,15 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(page.getByRole("button", { name: /^(Back|Forward)$/u })).toHaveCount(0);
       await expect(bar).not.toContainText("RRSS HR");
       await expect(bar.locator("svg.lucide-shield-check")).toHaveCount(0);
-      expect((await bar.boundingBox())!.width).toBe(264);
+      const railWidth = Math.max(208, Math.min(264, width / 4 - 96));
+      expect((await bar.boundingBox())!.width).toBe(railWidth);
       expect((await bar.locator(".workspace-rail-header").boundingBox())!.height).toBe(64);
       for (const label of ["Notifications, 3 unread", "Search runs"]) {
         const control = bar.getByRole("button", { name: label, exact: true });
         await expect(control).toBeVisible();
         const bounds = (await control.boundingBox())!;
         expect(bounds.x).toBeGreaterThanOrEqual(0);
-        expect(bounds.x + bounds.width).toBeLessThanOrEqual(264);
+        expect(bounds.x + bounds.width).toBeLessThanOrEqual(railWidth);
       }
       const trigger = bar.getByRole("button", { name: "Search runs", exact: true });
       await expect(trigger).toHaveAttribute("aria-expanded", "false");
@@ -65,9 +69,10 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(bar.getByRole('navigation', { name: 'Main navigation' })).toHaveCount(0);
       await expect(bar.getByRole("button", { name: /preflight/iu })).toHaveCount(0);
       await page.getByRole("button", { name: "Settings", exact: true }).click();
-      await page.getByRole("link", { name: "Activity", exact: true }).click();
-      await expect(page.getByRole("link", { name: "Activity", exact: true })).toHaveAttribute("aria-current", "page");
-      await capture(page, info, `navbar-${size}`);
+      await page.getByRole("link", { name: "Analytics", exact: true }).click();
+      await expect(page.getByRole("link", { name: "Analytics", exact: true })).toHaveAttribute("aria-current", "page");
+
+      await captureSemanticEvidence(page, info, `navbar-${size}`);
       await page.getByRole("link", { name: "Explorer", exact: true }).click();
       await expect(page.getByRole("region", { name: "Workflow explorer preview" })).toBeVisible();
       await page.getByRole("button", { name: "Back to dashboard", exact: true }).click();
@@ -87,20 +92,26 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const modalBounds = (await search.boundingBox())!;
       expect(Math.abs(modalBounds.x + modalBounds.width / 2 - width / 2)).toBeLessThanOrEqual(1);
       expect(Math.abs(modalBounds.y + modalBounds.height / 2 - (width === 1024 ? 720 : 1000) / 2)).toBeLessThanOrEqual(1);
-      await input.fill("JORDAN waiting");
-      await expect(search.getByRole("listbox", { name: "Search results" }).getByRole("option")).toHaveCount(1);
-      await input.press("ArrowDown");
-      const result = search.getByRole("option", { name: /Jordan Lee/ });
+      await input.fill("NGUYEN review");
+      await expect(search.getByRole("listbox", { name: "Search results" }).getByRole("option")).toHaveCount(2);
+      const result = search.locator(`[role="option"][id$="-${FIXTURE_IDS.openGateRun}"]`);
+      await expect(result).toContainText("Blirea, Glaundi");
+      const resultIndex = await search.getByRole("option").evaluateAll((options, runId) => options.findIndex(option => option.id.endsWith(`-${runId}`)), FIXTURE_IDS.openGateRun);
+      expect(resultIndex).toBeGreaterThanOrEqual(0);
+      await input.press("Home");
+      for (let index = 0; index < resultIndex; index += 1) await input.press("ArrowDown");
       await expect(result).toHaveAttribute('data-selected', 'true');
       await expect(input).toBeFocused();
       await expect(input).toHaveAttribute('aria-activedescendant', (await result.getAttribute('id'))!);
       await input.press("Enter");
-      await expect(search.getByRole("status")).toHaveText("Run navigation is not connected yet.");
-      expect(page.url()).toBe(beforeSearch);
+      await expect(search).toHaveCount(0);
+      expect(new URL(page.url()).searchParams.get("run")).toBe(FIXTURE_IDS.openGateRun);
+      expect(page.url()).not.toBe(beforeSearch);
+      await trigger.click();
       await input.fill("not in the sample");
       await expect(search).toContainText("No runs match your search.");
       await input.fill("");
-      await expect(search.getByRole("listbox", { name: "Search results" }).getByRole("option")).toHaveCount(3);
+      await expect(search.getByRole("listbox", { name: "Search results" }).getByRole("option")).toHaveCount(FIXTURE_DAY_WIRE.queueSurfaces.length + seedMockRuns().length);
       const options = search.getByRole('option');
       await input.press('End');
       await expect(options.last()).toHaveAttribute('aria-selected', 'true');
@@ -111,23 +122,24 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(options.last()).toHaveAttribute('aria-selected', 'true');
       await input.press('Home');
       await expect(options.first()).toHaveAttribute('aria-selected', 'true');
-      await capture(page, info, `navbar-search-${size}`);
+
+      await captureSemanticEvidence(page, info, `navbar-search-${size}`);
       await page.keyboard.press("Escape");
       await expect(trigger).toBeFocused();
       await expect(trigger).toHaveAttribute('aria-expanded', 'false');
       await expect(search).toHaveCount(0);
       await trigger.click();
       await expect(input).toBeFocused();
-      await input.fill('Jordan');
+      await input.fill('Nguyen');
       await search.getByRole('button', { name: 'Clear search', exact: true }).click();
       await expect(input).toHaveValue('');
       await expect(input).toBeFocused();
-      await expect(search.getByRole('option')).toHaveCount(3);
+      await expect(search.getByRole('option')).toHaveCount(FIXTURE_DAY_WIRE.queueSurfaces.length + seedMockRuns().length);
       await page.keyboard.press('Escape');
       await expect(trigger).toBeFocused();
       const date = page.locator(".dashboard-log-date").getByRole("button", { name: /^Choose date/u });
       const dateField = page.locator(".dashboard-log-date").getByRole("group", { name: /^Dashboard date/u });
-      await expect(dateField.getByRole("spinbutton", { name: /^day/u })).toHaveText("3");
+      await expect(dateField.getByRole("spinbutton", { name: /^day/u })).toHaveText("03");
       await expect(bar.getByRole("button", { name: /^(Previous|Next) day$/u })).toHaveCount(0);
       await date.click();
       const calendar = page.getByRole("dialog", { name: "Choose date", exact: true });
@@ -137,21 +149,22 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await selected.press("ArrowLeft");
       await expect(calendar.getByRole("button", { name: /Sunday, August 2, 2026/u })).toBeFocused();
       await page.keyboard.press("Enter");
-      await expect(dateField.getByRole("spinbutton", { name: /^day/u })).toHaveText("2");
+      await expect(dateField.getByRole("spinbutton", { name: /^day/u })).toHaveText("02");
       await expect(page).toHaveURL(/day=2026-08-02/u);
       await date.click();
       await calendar.getByRole("button", { name: "Previous month", exact: true }).click();
       await expect(calendar.getByRole("button", { name: "July 2026, year selector", exact: true })).toBeVisible();
       expect(await calendar.locator("[data-slot='calendar-cell'][tabindex='0']").count()).toBe(1);
-      await capture(page, info, `navbar-calendar-${size}`);
+
+      await captureSemanticEvidence(page, info, `navbar-calendar-${size}`);
       await calendar.getByRole("button", { name: /Monday, July 20, 2026/u }).click();
-      await expect(dateField.getByRole("spinbutton", { name: /^month/u })).toHaveText("7");
+      await expect(dateField.getByRole("spinbutton", { name: /^month/u })).toHaveText("07");
       await expect(dateField.getByRole("spinbutton", { name: /^day/u })).toHaveText("20");
       await expect(bar.getByTitle("Run count unavailable", { exact: true })).toHaveCount(0);
       await date.click();
       await calendar.getByRole("button", { name: "Today", exact: true }).click();
-      await expect(dateField.getByRole("spinbutton", { name: /^month/u })).toHaveText("8");
-      await expect(dateField.getByRole("spinbutton", { name: /^day/u })).toHaveText("3");
+      await expect(dateField.getByRole("spinbutton", { name: /^month/u })).toHaveText("08");
+      await expect(dateField.getByRole("spinbutton", { name: /^day/u })).toHaveText("03");
       await page.getByRole("button", { name: "Settings", exact: true }).click();
       await page.getByRole("navigation", { name: "Settings sections" }).getByRole("link", { name: "General", exact: true }).click();
       const themeSwitch = page.getByRole("switch", { name: /^Dark theme/u });
@@ -184,12 +197,12 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(bell()).toHaveAttribute("aria-pressed", "true");
       await expect(page.getByRole("navigation", { name: "Settings sections" })).toBeHidden();
       const bounds = (await inbox.boundingBox())!;
-      expect(bounds.width).toBe(263);
+      expect(bounds.width).toBe(Math.max(208, Math.min(264, width / 4 - 96)) - 1);
       expect(bounds.y).toBeGreaterThanOrEqual(0);
       expect(bounds.y + bounds.height).toBeLessThanOrEqual(width === 1024 ? 720 : 1000);
       await expect(inbox.getByRole("button", { name: /Snooze|Enable/u })).toHaveCount(0);
       const rows = inbox.locator(".notification-row");
-      await expect(rows).toHaveCount(14);
+      await expect(rows).toHaveCount(13);
       await expect(inbox.getByRole("tab")).toHaveCount(2);
       for (const tab of await inbox.getByRole("tab").all()) {
         expect((await tab.boundingBox())!.height).toBe(28);
@@ -206,11 +219,12 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(categoryFilter).toHaveAttribute("data-filtered", "false");
       expect(await rows.first().evaluate(node => parseFloat(getComputedStyle(node).borderRadius))).toBeGreaterThan(0);
       await expect(inbox.getByText("Person Lookup", { exact: true }).first()).toBeVisible();
-      await capture(page, info, `notifications-normal-${size}`);
+
+      await captureSemanticEvidence(page, info, `notifications-normal-${size}`);
       await expect(inbox.getByText("History gap", { exact: true })).toHaveCount(0);
       await inbox.getByRole("button", { name: "Mark read: Run failed", exact: true }).click();
       await expect(bell()).toHaveAccessibleName("Notifications, 2 unread");
-      await expect(rows).toHaveCount(14);
+      await expect(rows).toHaveCount(13);
       await inbox.getByRole("tab", { name: "Unread", exact: true }).click();
       await expect(rows).toHaveCount(2);
       await inbox.getByRole("tab", { name: "All", exact: true }).click();
@@ -228,7 +242,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.getByRole("menuitemradio", { name: "All updates", exact: true }).click();
       await expect(categoryFilter).toHaveAttribute("data-filtered", "false");
       await inbox.getByRole("tab", { name: "All", exact: true }).click();
-      await expect(rows).toHaveCount(14);
+      await expect(rows).toHaveCount(13);
       await inbox.getByRole("button", { name: "Open log", exact: true }).first().click();
       await expect(inbox).toHaveCount(0);
       await expect(page.getByRole("region", { name: "Selected run logs", exact: true }).getByRole("heading", { level: 2 })).toHaveText("EID 10555001");
@@ -256,22 +270,24 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await installTheme(page, theme);
       const requests = disconnectedRequests(page);
       for (const scenario of ["empty", "loading", "unavailable"] as const) {
-        await page.goto(`${server.baseUrl}/?notificationsPreview=${scenario}`);
+        await page.goto(`${server.baseUrl}/?notificationsPreview=${scenario}&view=${encodeURIComponent(JSON.stringify({ notifications: true }))}`);
         const name = scenario === "empty" ? "Notifications, 0 unread" : scenario === "loading" ? "Notifications loading" : "Notifications unavailable";
-        await page.getByRole("button", { name, exact: true }).click();
+        await expect(page.getByRole("button", { name, exact: true })).toHaveAttribute("aria-pressed", "true");
         const inbox = page.locator(".notification-rail");
         if (scenario === "empty") await expect(inbox).toContainText("No notifications");
         else if (scenario === "loading") await expect(inbox.getByRole("status", { name: "Loading notifications", exact: true })).toHaveText("");
         else await expect(inbox.getByRole("alert")).toContainText("Notification data could not be loaded.");
         await expect(inbox.getByRole("button", { name: /^(?:Mark read:|Snooze:)/ })).toHaveCount(0);
-        await capture(page, info, `notifications-${scenario}-${size}`);
+        await captureSemanticEvidence(page, info, `notifications-${scenario}-${size}`);
+
       }
       await page.goto(`${server.baseUrl}/?notificationsPreview=ping`);
       const ping = page.locator('[data-slot="toast"]');
       await expect(ping).toBeVisible();
       await expect(ping).toHaveCSS("background-color", theme.attribute === "dark" ? "rgb(34, 34, 34)" : "rgb(255, 255, 255)");
       await expect(ping).toContainText("EID 10001573");
-      await capture(page, info, `notification-ping-${size}`);
+
+      await captureSemanticEvidence(page, info, `notification-ping-${size}`);
       await ping.getByRole("button", { name: "Open notifications", exact: true }).click();
       await expect(ping).toHaveCount(0);
       await expect(page.locator(".notification-rail")).toBeVisible();

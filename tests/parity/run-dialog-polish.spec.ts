@@ -1,3 +1,4 @@
+
 import { expect, test } from "@playwright/test";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
@@ -7,7 +8,7 @@ import { FIXTURE_IDS } from "./helpers/fixture-queue.js";
 import { FIXTURE_START_PICKER_BOOTSTRAP, FIXTURE_START_PICKER_DAY_WIRE, FIXTURE_START_PICKER_DESCRIPTOR_HASH } from "./helpers/fixture-start.js";
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  test(`Run and Cancel dialogs retain focus and served identity @ ${theme.attribute}-${width}`, async ({ page }, info) => {
+  test(`Run and Cancel dialogs retain focus and served identity @ ${theme.attribute}-${width}`, async ({ page }, _info) => {
     ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, profile: {
       bootstrap: FIXTURE_START_PICKER_BOOTSTRAP, day: FIXTURE_START_PICKER_DAY_WIRE, descriptorHash: FIXTURE_START_PICKER_DESCRIPTOR_HASH,
@@ -53,7 +54,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(input).toHaveValue("10873698");
       await run.getByRole("button", { name: "Continue", exact: true }).click();
       await expect(run.getByRole("list", { name: "Run configuration path" }).locator('[aria-current="step"]')).toHaveText(/Options/u);
-      await info.attach(`run-options-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
       await page.keyboard.press("Escape");
       await expect(run).toHaveCount(0); await expect(start).toBeFocused();
 
@@ -70,7 +71,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(confirmation.locator(".command-confirm-reference")).toHaveText(`${traceOf(5)} · revision 5`);
       await expect(confirmation).toContainText("Cancelling is final");
       await expect(confirmation.getByRole("button", { name: "Cancel the run", exact: true })).toBeEnabled();
-      await info.attach(`cancel-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
       await page.keyboard.press("Escape");
       await expect(confirmation).toHaveCount(0); await expect(cancel).toBeFocused();
       await cancel.click(); await keep.click();

@@ -1,3 +1,5 @@
+import { installFrozenMonotonic } from "./helpers/app-driver.js";
+
 import { expect, test } from "@playwright/test";
 import { OCR_DOCUMENT_FIXTURES } from "../../src/dashboard/surfaces/workflows/mocks/workflow-document-model.js";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
@@ -19,7 +21,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     page.on("pageerror", error => errors.push(error.message));
     page.on("request", request => { if (request.method() !== "GET") writes.push(request.url()); });
     try {
-      await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 }); await installTheme(page, theme);
+      await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 }); await installFrozenMonotonic(page); await installTheme(page, theme);
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
       const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
       await rail.getByRole("button", { name: "OCR", exact: true }).click();
@@ -31,7 +33,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect(Math.abs(queueBox.y + queueBox.height - logsBox.y - logsBox.height)).toBeLessThan(1);
       const aliases = await queue.locator("span[title]").allTextContents();
       expect(aliases.filter(value => /^OCR\d{8}$/u.test(value))).toHaveLength(5);
-      await info.attach(`ocr-queue-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
       await attachShellA11y(page, info, queueEvidence);
       for (const doc of OCR_DOCUMENT_FIXTURES) {
         await queue.getByRole("button", { name: new RegExp(`^${doc.name.replaceAll(".", "\\.")} —`, "u") }).click();
@@ -75,7 +77,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         }
         await expect(editor.getByRole("button", { name: "Approve records", exact: true })).toBeInViewport();
         await expect(page.locator('[data-slot="select-content"]:visible')).toHaveCount(0);
-        await info.attach(`ocr-${doc.name}-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
         await attachShellA11y(page, info, documentEvidence(doc.name));
         const overflow = await editor.evaluate(node => {
           const bounds = node.getBoundingClientRect();
@@ -121,7 +123,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(pdf.getByRole("button", { name: "Choose PDFs", exact: true })).toBeVisible();
       await expect(launcher).not.toContainText("The ticket waits for all signers");
       await expect(launcher).toHaveCSS("opacity", "1");
-      await info.attach(`run-pdf-inputs-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
       await attachShellA11y(page, info, inputEvidence);
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
       expect(errors).toEqual([]); expect(writes).toEqual([]);
