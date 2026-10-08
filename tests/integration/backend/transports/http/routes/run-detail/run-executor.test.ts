@@ -1,10 +1,12 @@
-import { plan1Parent, plan1Workflows, plan1Stores, Plan1CanonicalInput, Plan1Input } from "../../../../../../support/fixtures/plan1-operation-workflows.js";
+import { plan1Parent, plan1Workflows, plan1Stores, Plan1CanonicalInput, Plan1Input, Plan1Output } from "../../../../../../support/fixtures/plan1-operation-workflows.js";
 import { CONFIG_SNAPSHOT } from "../../../../../../support/fixtures/phase1c-contract-fixtures.js";
 const PLAN1_CONFIG_ID = "00000000-0000-4000-8000-000000000c01";
 import { canonicalJsonStringify } from "../../../../../../../src/rules/validation/canonical-json.js";
 import { RunResultRecordSchema } from "../../../../../../../src/models/run/result.js";
 import { sha256Hex } from "../../../../../../../src/rules/validation/sha256.js";
 import { Hono } from "hono";
+import type { DashboardApp } from "../../../../../../../src/backend/transports/http/routes/api-types.js";
+import { JsonValueSchema } from "../../../../../../../src/rules/validation/canonical-json.js";
 import { registerRunDetailRoutes } from "../../../../../../../src/backend/transports/http/routes/run-detail.js";
 import { resolveOperationSource } from "../../../../../../../src/backend/runs/queries/operation-source.js";
 import { DatabaseSync } from "node:sqlite";
@@ -453,9 +455,9 @@ describe("complete operation display action binding", () => {
     const completed = actions[1]?.operation;
     assert.ok(completed);
     const { value: _value, ...identity } = completed;
-    const deps = { stateRoot, runReader: testRunService(database), descriptors: { resolve: () => undefined },
+    const deps = { stateRoot, runReader: testRunService(database, clock), descriptors: { resolve: () => undefined },
       projection: { runLogSnapshot: () => ({ entries: [] }) } } as unknown as RunDetailQueryDeps;
-    const app = new Hono();
+    const app: DashboardApp = new Hono();
     registerRunDetailRoutes(app, { runDetail: deps });
     const request = { identity };
     const url = (input: unknown) => `/api/v1/runs/${UUID_5}/operation-source?request=${encodeURIComponent(JSON.stringify(input))}`;
@@ -1743,7 +1745,7 @@ it("executes two canonical children and a nested child, preserving every derived
     const sequence = ++number;
     return buildQueuedRun({ descriptor: compiled.descriptor, appVersion: "0.1.0", runId: `00000000-0000-4000-8000-${String(sequence).padStart(12, "0")}`,
       itemId: itemId ?? `00000000-0000-4000-8001-${String(sequence).padStart(12, "0")}`, traceId: `fp-170000-${String(sequence).padStart(4, "0")}`,
-      rawInput: value, canonicalInput: { schemaHash: deriveSchemaHash(Plan1CanonicalInput, "output"), value: Plan1Input.parse(value) }, ingressSchemaHash: deriveSchemaHash(Plan1Input, "input"),
+      rawInput: JsonValueSchema.parse(value), canonicalInput: { schemaHash: deriveSchemaHash(Plan1CanonicalInput, "output"), value: Plan1Input.parse(value) }, ingressSchemaHash: deriveSchemaHash(Plan1Input, "input"),
       configFingerprint: fingerprint, configSnapshotId: PLAN1_CONFIG_ID, resolvedInstance: {}, shape: parent === undefined ? "single" : "operation-member", priority: "bulk", dryRun: false,
       attempt: 1, runNumber: sequence, now: clock.now().toISOString(), ...(parent === undefined ? {} : { parent }) });
   };
@@ -1779,7 +1781,7 @@ it("executes two canonical children and a nested child, preserving every derived
   assert.deepEqual(consumed.value.producer.inputs?.map((input) => [input.inputId, input.state, input.identities.length]), [["left", "retained", 2], ["right", "retained", 1], ["label", "definition-source", 0]]);
   const identity = consumed.value.producer.inputs?.[0]?.identities[0];
   assert.ok(identity);
-  const deps = { stateRoot, runReader: testRunService(database), canonical: { database }, descriptors: { resolve: () => undefined }, projection: { runLogSnapshot: () => ({ entries: [] }) } } as unknown as RunDetailQueryDeps;
+  const deps = { stateRoot, runReader: testRunService(database, clock), canonical: { database }, descriptors: { resolve: () => undefined }, projection: { runLogSnapshot: () => ({ entries: [] }) } } as unknown as RunDetailQueryDeps;
   const found = resolveOperationSource(deps, root.envelope.runId, { identity });
   assert.equal(found.state, "found");
   assert.throws(() => resolveOperationSource(deps, identity.runId, { identity: (() => { const { value: _value, ...identity } = consumed; return identity; })() }), /child-not-authorized/u);
@@ -1818,7 +1820,7 @@ it("executes two canonical children and a nested child, preserving every derived
       assert.equal((await executeClaimedRun({ ...harness.deps, descriptor: plan1Workflows[0].descriptor, taskNotes: writer }, { ...correctedClaim, signal: SIGNAL })).state, "done");
       const correctedResult = database.authority.runResults.get(corrected.envelope.runId);
       assert.equal(correctedResult?.operationLineage?.[0]?.inputs[0]?.state, "unavailable");
-      assert.equal(correctedResult?.result.value.disposition, "operator-corrected/same");
+      assert.equal(Plan1Output.parse(correctedResult?.result.value).disposition, "operator-corrected/same");
       assert.ok(!correctedResult?.dependencies.some((dependency) => dependency.state === "resolved" && dependency.nodeId === "first" && dependency.operationSources?.some((source) => source.path === "disposition")));
 
     }

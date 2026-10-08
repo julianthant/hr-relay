@@ -1,3 +1,4 @@
+import { IsoInstantSchema } from "../../../../../src/rules/identity/ids.js";
 import { tabsFor, defaultTabFor } from "../../../../../src/dashboard/surfaces/run-detail/log-panel-model.js";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
@@ -307,6 +308,6 @@ describe("observed log presentation fold", () => {
 describe("retired run inspection surfaces", () => {
   it("omits receipt and opens terminal runs on Logs, including old advertised receipt", () => {
     assert.deepEqual(tabsFor({ availableSections: ["logs", "receipt", "context-data", "context-attempts"] }), ["logs"]);
-    assert.equal(defaultTabFor({ availableSections: ["logs", "receipt"], outcome: { state: "terminal", result: "done", completedAt: "2026-09-29T12:00:00.000Z" } }), "logs");
+    assert.equal(defaultTabFor({ availableSections: ["logs", "receipt"], outcome: { state: "terminal", result: "verified-done", completedAt: IsoInstantSchema.parse("2026-09-29T12:00:00.000Z") } }), "logs");
   });
 });

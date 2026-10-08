@@ -3,6 +3,8 @@ import { describe, it } from "vitest";
 import { createDeclaredActionBinder } from "../../../../../../src/backend/runtime/writes/operation-action-binding.js";
 import { DeclaredActionIdentitySchema } from "../../../../../../src/models/workflow/operation-action-identity.js";
 import { freezeWorkflowOperationDisplaySnapshot } from "../../../../../../src/models/workflow/operation-display-snapshot.js";
+import { OperationActionIdSchema } from "../../../../../../src/models/workflow/operation-display.js";
+import { PositiveIntSchema, IsoInstantSchema } from "../../../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../../../src/rules/time/clock.js";
 import { runDeclaredAction, withBrowserActionBinding, withBrowserActionNotes, type BrowserAction } from "../../../../../../src/backend/systems/browser-shared/action-notes.js";
 import { plan1Parent, plan1Contract } from "../../../../../support/fixtures/plan1-operation-workflows.js";
@@ -19,7 +21,7 @@ function fixture() {
   const binder = createDeclaredActionBinder({ snapshot, runId: "00000000-0000-4000-8000-000000000001", attempt: 2, claimGeneration: 3, taskAttempt: 4, nodeId: invocation.entryId, taskId: plan1Contract.id, contractRole: "task", parsedInput: { emplId: "10800000", text: "fixture", mode: "ok" }, protectedBindings: [] });
   const action = (id: string, state: BrowserAction["state"], confirmation?: BrowserAction["confirmation"], session = "00000000-0000-4000-8000-000000000002") => binder({ kind: id === "save" ? "clicked" : "verified", targetId: id === "save" ? "save" : id === "check-save" ? "saved" : "other", declaredActionId: id, state, at: "2026-09-29T12:00:00.000Z", physicalSessionId: session, ...(confirmation === undefined ? {} : { confirmation }) });
   const complete = (id: string, session?: string) => { action(id, "started", undefined, session); return action(id, "completed", undefined, session); };
-  const proof = { verificationActionId: "check-save", verificationOccurrence: 1, verifiedAt: "2026-09-29T12:00:00.000Z" };
+  const proof = { verificationActionId: OperationActionIdSchema.parse("check-save"), verificationOccurrence: PositiveIntSchema.parse(1), verifiedAt: IsoInstantSchema.parse("2026-09-29T12:00:00.000Z") };
   return { binder, action, complete, proof };
 }
 
@@ -37,7 +39,7 @@ describe("exact expected-effect confirmation", () => {
   });
   it("refuses unrelated, stale, duplicate and cross-session verification", () => {
     const unrelated = fixture(); unrelated.complete("save"); unrelated.complete("other-check");
-    assert.throws(() => unrelated.action("save", "confirmed", { ...unrelated.proof, verificationActionId: "other-check" }), /confirmation-mismatch/u);
+    assert.throws(() => unrelated.action("save", "confirmed", { ...unrelated.proof, verificationActionId: OperationActionIdSchema.parse("other-check") }), /confirmation-mismatch/u);
     const stale = fixture(); stale.complete("check-save"); stale.complete("save");
     assert.throws(() => stale.action("save", "confirmed", stale.proof), /confirmation-mismatch/u);
     const duplicate = fixture(); duplicate.complete("save"); duplicate.complete("check-save"); duplicate.action("save", "confirmed", duplicate.proof);

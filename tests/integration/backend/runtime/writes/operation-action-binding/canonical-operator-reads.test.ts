@@ -3,7 +3,7 @@ import { freezeWorkflowOperationDisplaySnapshot } from "../../../../../../src/mo
 import { createDeclaredActionBinder } from "../../../../../../src/backend/runtime/writes/operation-action-binding.js";
 import { createNoteJsonlWriter } from "../../../../../../src/backend/storage/events/note-jsonl-writer.js";
 import { resolveOperationSource } from "../../../../../../src/backend/runs/queries/operation-source.js";
-import { archivedRunContentDigest, type ArchivedRunRecord } from "../../../../../../src/models/archive/model.js";
+import { archivedRunContentDigest, ArchivedRunRecordSchema, type ArchivedRunRecord } from "../../../../../../src/models/archive/model.js";
 import { historicalArchiveAuthority } from "../../../../../support/helpers/integration/historical-archive-authority.js";
 import { createRunLifecycleStorage } from "../../../../../../src/backend/storage/sqlite/run-lifecycle-storage.js";
 import { createCommandKernel } from "../../../../../../src/backend/runs/commands/command-kernel.js";
@@ -28,6 +28,7 @@ import { createArchiveSnapshotSource } from "../../../../../../src/backend/runs/
 import { deriveArchivedRunRecord } from "../../../../../../src/backend/runs/archive/archive-service.js";
 import { archivedRunReferenceFingerprint } from "../../../../../../src/models/archive/model.js";
 import { archiveQueryDeps } from "../../../../../support/fixtures/archive-seams.js";
+import { NonNegativeIntSchema, FingerprintSchema } from "../../../../../../src/rules/identity/ids.js";
 import { VERSION_PLAN_ROW, VERSION_BUMP_APPLICATION } from "../../../../../support/fixtures/archive-fixtures.js";
 import { sqliteRunReader } from "../../../../../support/helpers/canonical-run-reader.js";
 import { AT, DAY, makeWorld, queuedEventOf, runRecordOf, uuidOf } from "../../../../../support/helpers/backend/dashboard-harness.js";
@@ -378,7 +379,7 @@ it("freezes all exact local action observations across pages, reopens archive au
   const definition = freezeWorkflowOperationDisplaySnapshot({ workflowId: plan1Leaf.descriptor.id, definitionFingerprint: plan1Leaf.descriptor.contractFingerprint, display: plan1Leaf.descriptor.operationDisplay });
   assert.ok(definition);
   const base = runRecordOf({ seed: 819 });
-  const run = { ...base, claimGeneration: 1, envelope: { ...base.envelope, workflow: plan1Leaf.descriptor.id, contractFingerprint: plan1Leaf.descriptor.contractFingerprint, operationDisplayCapability: "complete" as const, operationDisplaySnapshot: definition } };
+  const run = { ...base, claimGeneration: NonNegativeIntSchema.parse(1), envelope: { ...base.envelope, workflow: plan1Leaf.descriptor.id, contractFingerprint: plan1Leaf.descriptor.contractFingerprint, operationDisplayCapability: "complete" as const, operationDisplaySnapshot: definition } };
   f.database.authority.runs.enqueue(run);
   const binder = createDeclaredActionBinder({ snapshot: definition, runId: run.envelope.runId, attempt: 1, claimGeneration: 1, taskAttempt: 1, nodeId: "first", taskId: plan1Contract.id, contractRole: "task", parsedInput: { emplId: "10800000", text: "same", mode: "ok" }, protectedBindings: [] });
   const writer = createNoteJsonlWriter({ stateRoot: f.world.stateRoot, clock: f.clock, pid: 4242 });
@@ -412,10 +413,11 @@ it("freezes all exact local action observations across pages, reopens archive au
   const held = reopened.authority.archivedRuns.get(run.envelope.runId);
   assert.ok(held);
   const withArchive = (record: ArchivedRunRecord): RunDetailQueryDeps => ({ ...deps, canonical: { ...deps.canonical, database: { ...reopened, withAuthorityReadSnapshot: (work: () => unknown) => work(), authority: { ...reopened.authority, runResults: reopened.authority.runResults, archivedRuns: { get: () => record } } } } } as unknown as RunDetailQueryDeps);
-  assert.throws(() => resolveOperationSource(withArchive({ ...held, contentDigest: "0".repeat(64) }), run.envelope.runId, { identity }), /archive-digest/u);
+  assert.throws(() => resolveOperationSource(withArchive({ ...held, contentDigest: FingerprintSchema.parse("0".repeat(64)) }), run.envelope.runId, { identity }), /archive-digest/u);
   const { contentDigest: _digest, ...content } = held;
   const { operationStructure: _structure, ...oldLogs } = frozen.sections.logs.value;
+  assert.ok(content.sections);
   const historic = { ...content, sections: { ...content.sections, logs: { state: "present" as const, value: oldLogs } } };
-  const absent = { ...historic, contentDigest: archivedRunContentDigest(historic) } as ArchivedRunRecord;
+  const absent = ArchivedRunRecordSchema.parse({ ...historic, contentDigest: archivedRunContentDigest(historic) });
   assert.equal(resolveOperationSource(withArchive(absent), run.envelope.runId, { identity }).state, "unavailable");
 });

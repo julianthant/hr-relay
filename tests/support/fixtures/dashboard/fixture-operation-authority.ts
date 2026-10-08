@@ -20,7 +20,8 @@ import { createTimelineEmitter } from "../../../../src/backend/storage/events/ti
 import { createNoteJsonlWriter } from "../../../../src/backend/storage/events/note-jsonl-writer.js";
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
 import { buildQueuedRun } from "../../../../src/backend/runs/start/enqueue.js";
-import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
+import { canonicalJsonStringify, JsonValueSchema } from "../../../../src/rules/validation/canonical-json.js";
+import { DeclaredActionIdentitySchema } from "../../../../src/models/workflow/operation-action-identity.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import type { RunParent } from "../../../../src/models/run/envelope.js";
@@ -71,14 +72,14 @@ export async function startOperationAuthorityServer(mode: "local" | "browser" | 
     const number = ++sequence;
     return buildQueuedRun({ descriptor: compiled.descriptor, appVersion: "0.1.0", runId: `00000000-0000-4000-8000-${String(number).padStart(12, "0")}`,
       itemId: itemId ?? `00000000-0000-4000-8001-${String(number).padStart(12, "0")}`, traceId: `fp-170000-${String(number).padStart(4, "0")}`,
-      rawInput: value, canonicalInput: { schemaHash: deriveSchemaHash(Plan1CanonicalInput, "output"), value: Plan1Input.parse(value) }, ingressSchemaHash: deriveSchemaHash(Plan1Input, "input"),
+      rawInput: JsonValueSchema.parse(value), canonicalInput: { schemaHash: deriveSchemaHash(Plan1CanonicalInput, "output"), value: Plan1Input.parse(value) }, ingressSchemaHash: deriveSchemaHash(Plan1Input, "input"),
       configFingerprint: fingerprint, configSnapshotId, resolvedInstance: separation ? { kuali: "prod", ucpath: "prod" } : mode === "browser" ? { ucpath: "prod" } : {}, shape: parent === undefined ? "single" : "operation-member", priority: "bulk", dryRun: true,
       attempt: 1, runNumber: number, now: clock.now().toISOString(), ...(parent === undefined ? {} : { parent }) });
   };
   const signal = new AbortController().signal;
   const execute = async (run: ReturnType<typeof createRun>, compiled: typeof plan1Parent) => {
     database.authority.runs.enqueue(run);
-    deps.emitter.emit(runQueuedSpanEvent({ run, actorId: LOCAL_OPERATOR_ACTOR_ID, title: compiled.descriptor.label }));
+    createTimelineEmitter({ repository: database.authority.timelineEvents, clock }).emit(runQueuedSpanEvent({ run, actorId: LOCAL_OPERATOR_ACTOR_ID, title: compiled.descriptor.label }));
     const claim = database.authority.runs.claimNext({ workflow: compiled.descriptor.id, workerId: `fixture-worker-${sequence}`, now: clock.now().toISOString() });
     if (claim.state !== "claimed" || claim.run.envelope.runId !== run.envelope.runId || claim.run.lifecycle.state !== "claimed") throw new Error("operation-fixture-claim-mismatch");
     const outcome = await executeClaimedRun({ ...deps, descriptor: compiled.descriptor, childRuns }, { run: claim.run,
@@ -116,7 +117,7 @@ export async function startOperationAuthorityServer(mode: "local" | "browser" | 
     await artifacts.ready;
     const service = createDiagnosticCaptureService({ artifacts, authority: database.authority, clock, ids: sequentialIdFactory("d") });
     const screenshot = await native.screenshot();
-    await service.capture({ trigger: "operator-request", requestedBy: "local-operator", runId: run.envelope.runId, operation,
+    await service.capture({ trigger: "operator-request", requestedBy: "local-operator", runId: run.envelope.runId, operation: DeclaredActionIdentitySchema.parse(operation),
       configFingerprint: fingerprint, descriptorFingerprint: run.envelope.contractFingerprint, fields: [],
       attachments: [{ kind: "screenshot", mediaType: "image/png", sensitivity: "redacted", ...screenshot }] });
     captures = { authority: database.authority.diagnosticBundles, artifactReader: createServerVerifiedArtifactReader({ admission }) };
@@ -133,7 +134,7 @@ export async function startOperationAuthorityServer(mode: "local" | "browser" | 
   const explorer = composeExplorer({ database, clock, descriptorSetHash: hash });
   const app: DashboardApp = new Hono();
   app.onError((error, c) => { const failure = failureStatus(error); return c.json(failure.body, failure.status); });
-  app.use("*", async (c, next) => { c.set("requestActorId", "local-operator"); await next(); });
+  app.use("*", async (c, next) => { c.set("requestActorId", LOCAL_OPERATOR_ACTOR_ID); await next(); });
   registerExplorerRoutes(app, { ...explorer.routes, explorer: { ...explorer.routes.explorer, modules, buildManifest: fixtureBuildManifest(modules.map((module) => module.descriptor.id)) } });
   registerRunDetailRoutes(app, { runDetail: detailDeps });
   registerTrustRoutes(app, { runDetail: detailDeps, ...(captures === undefined ? {} : { diagnosticBundles: { ...captures, runReader: reader } }) });

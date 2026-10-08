@@ -308,6 +308,7 @@ function authorityWithoutFinalizationCheckpoint(
       timelineEvents: authority.timelineEvents,
       runs: authority.runs,
       gateResults: authority.gateResults,
+      runResults: authority.runResults,
       artifactOutbox: authority.artifactOutbox,
       runCheckpoints: {
         insert: (input) => authority.runCheckpoints.insert(input),

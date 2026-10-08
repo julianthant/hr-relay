@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
+import { DeclaredActionOccurrenceSchema } from "../../../../../../src/rules/workflow/task-provenance.js";
 import { manualClock } from "../../../../../../src/rules/time/clock.js";
 import { recordBrowserAction, runDeclaredAction, recordDeclaredActionNotRun, withBrowserActionBinding, withBrowserActionSession, withBrowserActionNotes, type BrowserAction } from "../../../../../../src/backend/systems/browser-shared/action-notes.js";
 
@@ -10,7 +11,7 @@ describe("browser action notes", () => {
       let drained: readonly BrowserAction[] = [];
       let occurrence = 0;
       const operation = withBrowserActionNotes(clock, () => withBrowserActionBinding((action) => ({ ...action,
-        operation: { runId: "00000000-0000-4000-8000-000000000001", definitionFingerprint: "a".repeat(64), nodeId: "fixture", taskId: "fixture", attempt: 2, claimGeneration: 3, taskAttempt: 4, invocationId: "fixture", occurrencePath: ["fixture"], logicalActionId: action.declaredActionId!, occurrence: ++occurrence, logicalSessionId: "fixture", state: action.state },
+        operation: DeclaredActionOccurrenceSchema.parse({ runId: "00000000-0000-4000-8000-000000000001", definitionFingerprint: "a".repeat(64), nodeId: "fixture", taskId: "ucpath/fixture", attempt: 2, claimGeneration: 3, taskAttempt: 4, invocationId: "fixture", occurrencePath: ["fixture"], logicalActionId: action.declaredActionId!, occurrence: ++occurrence, logicalSessionId: "fixture", state: action.state, ...(action.confirmation === undefined ? {} : { confirmation: action.confirmation }) }),
       }), () => runDeclaredAction({ id: "save", kind: "clicked", targetId: "fixture.save" }, async () => "protected-result", undefined,
         verify === undefined ? undefined : { id: "verify-save", targetId: "fixture.saved", verify })), (actions) => { drained = actions; });
       try { await operation; } catch (error) { return { drained, error }; }

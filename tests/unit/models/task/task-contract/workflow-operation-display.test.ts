@@ -934,6 +934,7 @@ describe("exact pure transformation inputs", () => {
       ], presentation: [ { id: "left-node", kind: "operation", invocationId: "left-operation" }, { id: "right-node", kind: "operation", invocationId: "right-operation" }, ...base.presentation ] } });
     if (display.capability !== "complete") throw new Error("fixture display incomplete");
     const snapshot = freezeWorkflowOperationDisplaySnapshot({ workflowId: DISPLAY_FORWARD_ID, definitionFingerprint: FingerprintSchema.parse("a".repeat(64)), display });
+    if (snapshot === undefined) throw new Error("fixture operation snapshot missing");
     const identity = (nodeId: string) => DeclaredActionIdentitySchema.parse({ runId: "aaaaaaaa-0001-4000-8000-000100000000", definitionFingerprint: "a".repeat(64),
       nodeId, taskId: SearchPersonOrg.id, attempt: 1, claimGeneration: 1, taskAttempt: 1, invocationId: `${nodeId}-operation`, occurrencePath: [nodeId], logicalActionId: "read-selection",
       occurrence: 1, logicalSessionId: operation.session.id, physicalSessionId: "aaaaaaaa-0002-4000-8000-000200000000", state: "completed" });
@@ -941,7 +942,7 @@ describe("exact pure transformation inputs", () => {
     const create = () => createDeclaredActionBinder({ snapshot, runId: identity("left").runId, attempt: 1, claimGeneration: 1, taskAttempt: 1,
       nodeId: "search", taskId: SearchPersonOrg.id, contractRole: "task", parsedInput: { kind: "by-eid", emplId: "10800000" }, protectedBindings: [], sources,
       transforms: display.transforms, runInput: { firstEid: "10800000", secondEid: "10800001" }, outputs: { left: { selection: { status: "resolved" } }, right: { selection: { status: "resolved" } } } });
-    const action = { kind: "typed" as const, targetId: "ucpath.person-org.eid-input", value: "10800000", physicalSessionId: identity("left").physicalSessionId };
+    const action = { kind: "typed" as const, at: "2026-08-03T09:00:00.000Z", targetId: "ucpath.person-org.eid-input", value: "10800000", physicalSessionId: identity("left").physicalSessionId };
     const observed = create()(action).operation?.value?.producer;
     expect(observed?.kind).toBe("transformation");
     if (observed?.kind !== "transformation") throw new Error("fixture producer missing");
@@ -995,7 +996,7 @@ it("compiles a sealed transaction probe role and refuses missing, mismatched, du
   const probe = defineTaskContract({ ...probeSpec, operation: declaration("probe-operation") });
   const wrong = defineTaskContract({ ...wrongSpec, operation: declaration("wrong-operation") });
   const reads = [{ entryId: "write", role: "probe" as const, contract: probe }];
-  const build = (transactionReads: typeof reads) => compileWorkflow(defineWorkflow({ ...outerWorkflow(DISPLAY_FORWARD_ID, undefined), operationDisplay: { capability: "complete", version: 1, transactionReads,
+  const build = (transactionReads: { entryId: string; role: "probe"; contract: typeof probe | typeof wrong }[]) => compileWorkflow(defineWorkflow({ ...outerWorkflow(DISPLAY_FORWARD_ID, undefined), operationDisplay: { capability: "complete", version: 1, transactionReads,
     invocations: (["probe", "prepare", "commit"] as const).map((contractRole) => ({ id: `${contractRole}-invocation`, entryId: "write", contractRole, occurrencePath: ["write", contractRole] })),
     presentation: (["probe", "prepare", "commit"] as const).map((role) => ({ id: `${role}-node`, kind: "operation" as const, invocationId: `${role}-invocation` })) },
     steps: ({ transaction, result }) => {

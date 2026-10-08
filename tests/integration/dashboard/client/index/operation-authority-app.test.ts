@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { afterAll, beforeAll, describe, it } from "vitest";
 import { startOperationAuthorityServer } from "../../../../support/fixtures/dashboard/fixture-operation-authority.js";
 import { RunDetailSectionResponseSchema } from "../../../../../src/models/dashboard/run-detail.js";
+import { DeclaredActionIdentitySchema } from "../../../../../src/models/workflow/operation-action-identity.js";
 import { OperationSourceResponseSchema } from "../../../../../src/models/dashboard/operation-structure.js";
 
 let server: Awaited<ReturnType<typeof startOperationAuthorityServer>>;
@@ -71,8 +72,8 @@ describe("executable operation app authority", () => {
         { ...identity, physicalSessionId: "00000000-0000-4000-8000-000000000099" },
         { ...identity, confirmation: { ...identity.confirmation, verifiedAt: "2026-08-03T09:00:01.000Z" } },
       ]) {
-        await assert.rejects(capture.prepare({ ...request, operation }), /diagnostic-operation-exact-occurrence-not-retained/u);
-        assert.throws(() => browser.database.authority.diagnosticBundles.insert({ ...bundle, operation }), /diagnostic-operation-exact-occurrence-not-retained/u);
+        await assert.rejects(capture.prepare({ ...request, operation: DeclaredActionIdentitySchema.parse(operation) }), /diagnostic-operation-exact-occurrence-not-retained/u);
+        assert.throws(() => browser.database.authority.diagnosticBundles.insert({ ...bundle, operation: DeclaredActionIdentitySchema.parse(operation) }), /diagnostic-operation-exact-occurrence-not-retained/u);
       }
       for (const item of confirmed) {
         const proof = item.occurrence.confirmation;

@@ -124,7 +124,7 @@ describe("Activity consumes the served summary boundary", () => {
     const root = createRoot(host);
     const draw = async (range: string) => { await act(async () => {
       root.render(createElement(DashboardClientProvider, { client, children: createElement(ActivityReport, {
-        range, today: "2026-09-10", queueRows: [], actorId: "synthetic", appVersion: "0.1.0", onRange: () => undefined,
+        range, onRange: () => undefined,
       }) }));
     }); };
     try {
@@ -213,10 +213,6 @@ describe("Activity consumes the served summary boundary", () => {
           client,
           children: createElement(ActivityReport, {
             range: "2026-09-08..2026-09-09",
-            today: "2026-09-10",
-            queueRows: [],
-            actorId: "synthetic",
-            appVersion: "0.1.0",
             onRange: () => undefined,
           }),
         }));
@@ -269,10 +265,6 @@ describe("Activity consumes the served summary boundary", () => {
           client,
           children: createElement(ActivityReport, {
             range: "2026-09-06..2026-09-09",
-            today: "2026-09-09",
-            queueRows: [],
-            actorId: "synthetic",
-            appVersion: "0.1.0",
             onRange: (next) => { changes.push(next); },
           }),
         }));
