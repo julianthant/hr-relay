@@ -1,0 +1,123 @@
+# visual-baseline-workflows-explorer-fixture-person-lookup-dark--graphite-warm--1280x720
+# adapter: fixture
+# fixture: visual-baseline-workflows.spec.ts:mounted Logs and all Explorer workflows @ dark
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#dashboard-settings-content"
+- main:
+  - region "Settings":
+    - navigation "Settings sections":
+      - heading "Settings" [level=2]
+      - button "Back to dashboard"
+      - group:
+        - searchbox "Search settings"
+      - text: Personal
+      - link "General":
+        - /url: "?settings=general"
+      - link "Credentials":
+        - /url: "?settings=credentials"
+      - text: Advanced
+      - link "Performance":
+        - /url: "?settings=performance"
+      - link "Paths":
+        - /url: "?settings=paths"
+      - link "Routes":
+        - /url: "?settings=routes"
+      - text: Data
+      - link "Spreadsheets":
+        - /url: "?settings=spreadsheets"
+      - link "Explorer":
+        - /url: "?settings=explorer"
+      - link "Analytics":
+        - /url: "?settings=activity"
+      - text: Status
+      - link "Storage checks":
+        - /url: "?settings=storage"
+      - link "Preflight":
+        - /url: "?settings=preflight"
+      - text: Help
+      - link "Keyboard":
+        - /url: "?settings=keyboard"
+    - region "Workflow explorer preview":
+      - heading "Explorer" [level=1]
+      - paragraph: Browse workflows, their steps and field sources. Fictional preview data.
+      - combobox "Explorer workflow": Person Lookup
+      - list "Workflow steps":
+        - listitem:
+          - heading "Person Lookup" [level=2]
+          - text: You
+          - paragraph: Searches Person Org by EID/name or matches a legal identity in HR-Tasks, with an optional CRM cross-check on either mode. It writes nothing, anywhere — so every run of it is already a rehearsal.
+          - text: Lookup path
+          - combobox "Lookup path preview": Search
+          - text: CRM cross-check
+          - combobox "CRM cross-check preview": Enabled
+          - text: Search identifier
+          - combobox "Search identifier preview": Name
+          - text: Caller CRM dates
+          - combobox "Caller CRM dates preview": Not requested
+        - listitem:
+          - heading "Searching" [level=2]
+          - text: UCPath
+          - paragraph: Search UCPath's Person Org Summary for the typed EID or name and narrow to a single person.
+          - group:
+            - strong: Search criteria
+            - text: Fill
+            - button "Show source for Employee ID": Employee ID 10000001
+            - button "Show source for Name": Name Jordan Lee
+            - button "Show source for Campus": Campus SDCMP
+          - text: Search Person Organizational Summary
+          - group:
+            - strong: UCPath person
+            - text: Read Employee ID 10000001 Name Jordan Lee Department HDH Job title Student assistant Job record 0 HR status Active
+        - listitem:
+          - heading "Cross-verification" [level=2]
+          - text: CRM
+          - paragraph: Match the UCPath person against the CRM onboarding record, so a name collision cannot resolve to the wrong person.
+          - paragraph: "Condition: Search mode and CRM check is enabled."
+          - group:
+            - strong: Cross-verification
+            - text: Read and process CRM match Confirmed
+          - text: Find the onboarding record in CRM
+          - group:
+            - strong: Identity cross-check
+            - text: Read UCPath name Jordan Lee CRM name Jordan Lee Campus email jordan.lee@example.com Start date 08/03/2026 Match Confirmed
+        - listitem:
+          - heading "Active status" [level=2]
+          - text: UCPath
+          - paragraph: Read the HR status. A separated person is a successful lookup with a negative answer, never a failure.
+          - group:
+            - strong: Active status
+            - text: Read and process Termination date None
+          - text: Open Workforce Job Summary
+          - group:
+            - strong: Employment status
+            - text: Read HR status Active Start date 08/03/2026 End date — Termination reason — Found in UCPath Yes
+      - paragraph: Fictional workflow path complete. No external system contacted.
+- region "Session Panel":
+  - group "Session actions":
+    - button "Sessions"
+    - text: 2 running 1 starting 1 idle
+    - button "Add workers"
+    - button "Settings" [pressed]
+- region "Notifications"
+- listbox:
+  - group:
+    - option "Person Lookup" [selected]
+    - option "I-9 Lookup"
+    - option "Separations"
+    - option "I-9 Check"
+    - option "Onboarding"
+    - option "Oath Signature"
+    - option "Oath Upload"
+    - option "Emergency Contact"
+    - option "Work-Study"
+    - option "Kronos Pay Rule"
+    - option "OCR"
+    - option "CRM Doc Download"
+    - option "SharePoint Download"
+    - option "OnBase"
+    - option "Old Kronos Reports"

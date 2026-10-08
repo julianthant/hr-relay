@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { createDashboardClient } from "../../../../../src/dashboard/client/index.js";
-import { FIXTURE_STORAGE_RELOCATION } from "../../../../support/fixtures/dashboard/fixture-settings.js";
+import { FIXTURE_STORAGE_RELOCATION } from "../../../../parity/helpers/fixture-settings.js";
 import { StorageRelocationCommandRequestSchema, StorageRelocationPlanViewSchema } from "../../../../../src/rules/commands/commands.js";
-import { planRelocationCommand } from "../../../../../src/dashboard/surfaces/settings-relocation-model.js";
+import { planRelocationCommand } from "../../../../../src/dashboard/surfaces/settings/general/settings-relocation-model.js";
 
 describe("Settings editor client", () => {
   it("asks the BFF for the server-listed editable inventory", async () => {

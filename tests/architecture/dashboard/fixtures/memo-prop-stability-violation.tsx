@@ -13,7 +13,7 @@
 export function Bad({ dayWire, route, setRoute, navHistory, detailValue }: any) {
   return (
     <div>
-      <TopBar
+      <WorkspaceRail
         daySurfaces={dayWire?.queueSurfaces ?? []}
         onDay={(next) => setRoute({ ...route, day: next })}
         nav={{ canBack: navHistory.length > 0, onBack: () => travel("back") }}

@@ -41,7 +41,7 @@ export const FIXTURE_SETTINGS_FACTS: SettingsFactsWire = buildSettingsFacts({
 
 
 /** Synthetic Settings projection built by the complete production fold. Paths have a stable fixture root. */
-export function fixtureSettingsDocument(settings: SettingsOverride = {}, revision = 1, configuredModels?: readonly string[]) {
+export function fixtureSettingsDocument(settings: SettingsOverride = {}, revision = 1, configuredModels?: readonly string[], provider?: Pick<Parameters<typeof buildSettingsEditor>[0], "providerKeys" | "providerBoot" | "activeProviderSlots">) {
   const clock = manualClock(new Date(FIXTURE_NOW));
   const resolve = (overrides: SettingsOverride) => {
     const resolved = resolveConfigWithProvenance(overrides, hostConfigFacts({}), clock);
@@ -59,7 +59,7 @@ export function fixtureSettingsDocument(settings: SettingsOverride = {}, revisio
   };
   const record = { revision: PositiveIntSchema.parse(revision), settingsSchemaHash: SETTINGS_SCHEMA_HASH, settingsFingerprint: FingerprintSchema.parse(derivePersistedSettingsFingerprint(settings)), settings };
   return buildSettingsEditor({ settings: { read: () => ({ record, runtimeStatus: { state: "current", identity: settingsRuntimeIdentity(record, resolve(settings).fingerprint) } }) },
-    protectedSettings: createProtectedSettingsRuntimeReader({ read: initialProtectedStoreRecord }), environment: {}, clock, resolve });
+    protectedSettings: createProtectedSettingsRuntimeReader({ read: initialProtectedStoreRecord }), environment: {}, clock, resolve, ...provider });
 }
 export const FIXTURE_EDITABLE_SETTINGS = fixtureSettingsDocument();
 export const FIXTURE_STORAGE_RELOCATION = {

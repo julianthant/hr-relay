@@ -18,24 +18,29 @@ import { systemClock } from "../../../../rules/time/clock.js";
 
 export const DASHBOARD_BUILD_IDENTITY_FILE = "dashboard-build-identity.json";
 export const DASHBOARD_BUILD_COMMAND = "npm run web:build";
+export const PARITY_BUILD_COMMAND = "npm exec vite -- build --config vite.parity.config.ts";
+export type DashboardBuildCommand = typeof DASHBOARD_BUILD_COMMAND | typeof PARITY_BUILD_COMMAND;
 
 const Sha256Schema = z.string().regex(/^[0-9a-f]{64}$/u);
 export const DashboardBuildIdentitySchema = z.strictObject({
   stampVersion: z.literal(1),
   inputDigest: Sha256Schema,
   outputDigest: Sha256Schema,
-  buildScript: z.literal(DASHBOARD_BUILD_COMMAND),
+  buildScript: z.enum([DASHBOARD_BUILD_COMMAND, PARITY_BUILD_COMMAND]),
   builtAt: z.string().datetime({ offset: true }),
 });
 export type DashboardBuildIdentity = z.infer<typeof DashboardBuildIdentitySchema>;
 
 const INPUT_ROOTS = ["src"] as const;
 const INPUT_FILES = [
+  "config/dashboard-workflow-sources.json",
   "vite.dashboard.config.ts",
   "tsconfig.json",
   "package.json",
   "package-lock.json",
 ] as const;
+
+const PARITY_INPUT_FILES = ["vite.parity.config.ts", "tests/parity/app-entry.tsx", "tests/parity/helpers/workflow-composition.ts"] as const;
 
 function filesUnder(root: string, into: string[]): void {
   const info = lstatSync(root);
@@ -59,11 +64,11 @@ function digestFiles(base: string, files: readonly string[]): string {
   return hash.digest("hex");
 }
 
-export function computeDashboardBuildInputDigest(repoRoot: string): string {
+export function computeDashboardBuildInputDigest(repoRoot: string, buildScript: DashboardBuildCommand = DASHBOARD_BUILD_COMMAND): string {
   const root = resolve(repoRoot);
   const files: string[] = [];
   for (const inputRoot of INPUT_ROOTS) filesUnder(join(root, inputRoot), files);
-  for (const inputFile of INPUT_FILES) {
+  for (const inputFile of [...INPUT_FILES, ...(buildScript === PARITY_BUILD_COMMAND ? PARITY_INPUT_FILES : [])]) {
     const path = join(root, inputFile);
     if (!lstatSync(path).isFile()) throw new Error(`dashboard build input is not a regular file: ${inputFile}`);
     files.push(path);
@@ -119,12 +124,12 @@ export function readDashboardBuildIdentity(distDir: string): DashboardBuildIdent
   return DashboardBuildIdentitySchema.parse(parsed);
 }
 
-export function writeDashboardBuildIdentity(input: Readonly<{ repoRoot: string; distDir: string }>): DashboardBuildIdentity {
+export function writeDashboardBuildIdentity(input: Readonly<{ repoRoot: string; distDir: string; buildScript?: DashboardBuildCommand }>): DashboardBuildIdentity {
   const identity = DashboardBuildIdentitySchema.parse({
     stampVersion: 1,
-    inputDigest: computeDashboardBuildInputDigest(input.repoRoot),
+    inputDigest: computeDashboardBuildInputDigest(input.repoRoot, input.buildScript),
     outputDigest: computeDashboardBuildOutputDigest(input.distDir),
-    buildScript: DASHBOARD_BUILD_COMMAND,
+    buildScript: input.buildScript ?? DASHBOARD_BUILD_COMMAND,
     builtAt: systemClock.now().toISOString(),
   });
   const path = dashboardBuildIdentityPath(input.distDir);
@@ -149,11 +154,12 @@ export type DashboardBuildState =
   | Readonly<{ state: "current"; identity: DashboardBuildIdentity }>
   | Readonly<{ state: "stale"; reason: string }>;
 
-export function dashboardBuildState(input: Readonly<{ distDir: string; repoRoot: string }>): DashboardBuildState {
+export function dashboardBuildState(input: Readonly<{ distDir: string; repoRoot: string; buildScript?: DashboardBuildCommand }>): DashboardBuildState {
   try {
     const identity = readDashboardBuildIdentity(input.distDir);
     if (identity === undefined) return { state: "stale", reason: `missing ${DASHBOARD_BUILD_IDENTITY_FILE}` };
-    const inputDigest = computeDashboardBuildInputDigest(input.repoRoot);
+    if (identity.buildScript !== (input.buildScript ?? DASHBOARD_BUILD_COMMAND)) return { state: "stale", reason: "bundle build command does not match the required composition" };
+    const inputDigest = computeDashboardBuildInputDigest(input.repoRoot, input.buildScript);
     if (identity.inputDigest !== inputDigest) return { state: "stale", reason: "bundle inputs changed after build" };
     const outputDigest = computeDashboardBuildOutputDigest(input.distDir);
     if (identity.outputDigest !== outputDigest) return { state: "stale", reason: "bundle bytes changed after build" };
@@ -164,8 +170,8 @@ export function dashboardBuildState(input: Readonly<{ distDir: string; repoRoot:
   }
 }
 
-export function assertDashboardBuildCurrent(input: Readonly<{ distDir: string; repoRoot: string }>): DashboardBuildIdentity {
+export function assertDashboardBuildCurrent(input: Readonly<{ distDir: string; repoRoot: string; buildScript?: DashboardBuildCommand }>): DashboardBuildIdentity {
   const result = dashboardBuildState(input);
   if (result.state === "current") return result.identity;
-  throw new Error(`dashboard bundle refused: ${result.reason}; run \`${DASHBOARD_BUILD_COMMAND}\``);
+  throw new Error(`dashboard bundle refused: ${result.reason}; run \`${input.buildScript ?? DASHBOARD_BUILD_COMMAND}\``);
 }

@@ -19,7 +19,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { CommandRejectionCodeSchema, CommandResultSchema } from "../../../../../src/rules/commands/commands.js";
-import { commandFailureToast, settleCommandResult } from "../../../../../src/dashboard/app/command-result.js";
+import { commandFailureToast, settleCommandResult } from "../../../../../src/dashboard/app/commands/command-result.js";
 
 const COMMAND_ID = "0f3b6d5a-2e5a-4b8f-9a4e-1c2d3e4f5a6b";
 const RUN_ID = "8a1c9d2e-3f4b-4c5d-8e9f-0a1b2c3d4e5f";

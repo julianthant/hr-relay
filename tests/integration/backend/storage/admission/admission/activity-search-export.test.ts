@@ -30,11 +30,11 @@ import { CrossDateSearchResultSchema } from "../../../../../../src/models/dashbo
 import { composeOperatorXlsxWorkbook } from "../../../../../../src/backend/runs/exports/operator-xlsx-workbook.js";
 import { exportSearchMetadata } from "../../../../../../src/backend/runs/exports/search-metadata-export.js";
 import { spreadsheetCsvRow } from "../../../../../../src/backend/runs/exports/spreadsheet-csv.js";
-import { createActivityQueries } from "../../../../../../src/dashboard/client/activity-queries.js";
+import { createActivityQueries } from "../../../../../../src/dashboard/client/queries/activity-queries.js";
 import { createDashboardTransport } from "../../../../../../src/dashboard/client/transport.js";
-import { verifySelectionDownload } from "../../../../../../src/dashboard/client/selection-download.js";
+import { verifySelectionDownload } from "../../../../../../src/dashboard/client/queries/selection-download.js";
 import { DashboardClientError } from "../../../../../../src/dashboard/client/errors.js";
-import { activityPresetRange, type ActivityRangePreset } from "../../../../../../src/dashboard/surfaces/activity-model.js";
+import { activityPresetRange, type ActivityRangePreset } from "../../../../../../src/dashboard/surfaces/activity/activity-model.js";
 import { runRecordOf } from "../../../../../support/helpers/backend/dashboard-harness.js";
 
 const cleanup:(()=>void)[]=[];

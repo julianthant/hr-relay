@@ -1,0 +1,113 @@
+# baseline-shell-analytics-order-menu--graphite-warm--1280x720
+# adapter: fixture
+# fixture: mounted-mock-shell
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#dashboard-settings-content"
+- main:
+  - region "Settings":
+    - navigation "Settings sections":
+      - heading "Settings" [level=2]
+      - button "Back to dashboard"
+      - group:
+        - searchbox "Search settings"
+      - text: Personal
+      - link "General":
+        - /url: "?settings=general"
+      - link "Credentials":
+        - /url: "?settings=credentials"
+      - text: Advanced
+      - link "Performance":
+        - /url: "?settings=performance"
+      - link "Paths":
+        - /url: "?settings=paths"
+      - link "Routes":
+        - /url: "?settings=routes"
+      - text: Data
+      - link "Spreadsheets":
+        - /url: "?settings=spreadsheets"
+      - link "Explorer":
+        - /url: "?settings=explorer"
+      - link "Analytics":
+        - /url: "?settings=activity"
+      - text: Status
+      - link "Storage checks":
+        - /url: "?settings=storage"
+      - link "Preflight":
+        - /url: "?settings=preflight"
+      - text: Help
+      - link "Keyboard":
+        - /url: "?settings=keyboard"
+    - region "Analytics report":
+      - navigation "Analytics breadcrumbs":
+        - list:
+          - listitem:
+            - button "Analytics"
+          - listitem: Separations run times
+      - heading "Analytics" [level=1]
+      - paragraph: Run outcomes, volume and performance.
+      - combobox "Report period": This week
+      - group "Report date range":
+        - text: Start*
+        - group "Start*":
+          - spinbutton "month, Start*": "09"
+          - spinbutton "day, Start*": "20"
+          - spinbutton "year, Start*": "2026"
+          - button "Choose start date range Start*"
+        - text: End*
+        - group "End*":
+          - spinbutton "month, End*": "09"
+          - spinbutton "day, End*": "26"
+          - spinbutton "year, End*": "2026"
+          - button "Choose end date range End*"
+      - region "Analytics runs":
+        - heading "Separations run times" [level=2]
+        - status: 4 of 24 completed runs with recorded duration
+        - group "Run filters":
+          - group:
+            - searchbox "Search runs": Jordan
+            - button "Clear search"
+          - combobox "Run order" [expanded]: "Duration: longest first"
+          - listbox:
+            - group:
+              - option "Default order"
+              - 'option "Name: A–Z"'
+              - 'option "Name: Z–A"'
+              - 'option "Duration: longest first" [selected]'
+              - 'option "Duration: shortest first"'
+        - table "Separations run times":
+          - rowgroup:
+            - row "Name Duration":
+              - columnheader "Name"
+              - columnheader "Duration"
+          - rowgroup:
+            - row "Open logs for Jordan Lee, SP15854702 4m 41s":
+              - cell "Open logs for Jordan Lee, SP15854702":
+                - button "Open logs for Jordan Lee, SP15854702": Jordan Lee SP15854702
+              - cell "4m 41s"
+            - row "Open logs for Jordan Lee, SP23041076 2m 14s":
+              - cell "Open logs for Jordan Lee, SP23041076":
+                - button "Open logs for Jordan Lee, SP23041076": Jordan Lee SP23041076
+              - cell "2m 14s"
+            - row "Open logs for Jordan Lee, SP09982396 2m 14s":
+              - cell "Open logs for Jordan Lee, SP09982396":
+                - button "Open logs for Jordan Lee, SP09982396": Jordan Lee SP09982396
+              - cell "2m 14s"
+            - row "Open logs for Jordan Lee, SP33009545 2m 14s":
+              - cell "Open logs for Jordan Lee, SP33009545":
+                - button "Open logs for Jordan Lee, SP33009545": Jordan Lee SP33009545
+              - cell "2m 14s"
+        - text: 1–4 of 4
+        - button "Previous" [disabled]
+        - button "Next" [disabled]
+- region "Session Panel":
+  - group "Session actions":
+    - button "Sessions"
+    - text: 2 running 1 starting 1 idle
+    - button "Add workers"
+    - button "Settings" [pressed]
+- region "Notifications"

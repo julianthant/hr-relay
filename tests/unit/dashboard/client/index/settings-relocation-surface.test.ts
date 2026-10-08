@@ -3,13 +3,14 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it } from "vitest";
+import type { SettingsSaveNotice } from "../../../../../src/dashboard/surfaces/settings/editor/settings-attempt-model.js";
 import type { DashboardClient } from "../../../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../../../src/dashboard/state/client-context.js";
-import { StorageRelocationRows } from "../../../../../src/dashboard/surfaces/settings-relocation.js";
-import { SettingsPageWithToast } from "../../../../support/fixtures/dashboard/settings-page-with-toast.js";
-import { FIXTURE_EDITABLE_SETTINGS } from "../../../../support/fixtures/dashboard/fixture-settings.js";
+import { StorageRelocationRows } from "../../../../../src/dashboard/surfaces/settings/general/settings-relocation.js";
+import { SettingsPage } from "../../../../../src/dashboard/surfaces/settings/settings.js";
+import { FIXTURE_EDITABLE_SETTINGS } from "../../../../parity/helpers/fixture-settings.js";
 import { StorageHealthSummaryWireSchema } from "../../../../../src/models/dashboard/bootstrap.js";
-import { useStorageRelocation, cancelRelocationCommand, desiredRelocationPair, planRelocationCommand } from "../../../../../src/dashboard/surfaces/settings-relocation-model.js";
+import { useStorageRelocation, cancelRelocationCommand, desiredRelocationPair, planRelocationCommand } from "../../../../../src/dashboard/surfaces/settings/general/settings-relocation-model.js";
 import { StorageRelocationCommandRequestSchema, StorageRelocationPlanViewSchema, type StorageRelocationPlanView } from "../../../../../src/rules/commands/commands.js";
 import { SettingsCommandRequestSchema } from "../../../../../src/rules/commands/commands.js";
 
@@ -23,13 +24,14 @@ let currentController: ReturnType<typeof useStorageRelocation> | undefined;
 afterEach(() => { if (root !== undefined) act(() => root?.unmount()); host?.remove(); root = undefined; host = undefined; currentController = undefined; });
 
 async function mount(client: DashboardClient) {
+  const notices: SettingsSaveNotice[] = [];
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   let controller: ReturnType<typeof useStorageRelocation> | undefined;
-  function Surface() { controller = useStorageRelocation({ actorId: "local-operator" }); currentController = controller; return createElement(StorageRelocationRows, { editor: controller }); }
+  function Surface() { controller = useStorageRelocation({ actorId: "local-operator", onSaved: notice => notices.push(notice) }); currentController = controller; return createElement(StorageRelocationRows, { editor: controller }); }
   await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(Surface) })); });
   await act(async () => undefined);
   if (controller === undefined) throw new Error("relocation-controller-missing");
-  return { controller: () => { if (controller === undefined) throw new Error("relocation-controller-missing"); return controller; }, host };
+  return { notices, controller: () => { if (controller === undefined) throw new Error("relocation-controller-missing"); return controller; }, host };
 }
 async function edit(label: string, value: string) {
   if (currentController === undefined) throw new Error(`missing ${label} controller`);
@@ -65,6 +67,7 @@ describe("storage relocation Paths controls", () => {
     await act(async () => { change.click(); await Promise.resolve(); });
     await idle();
     assert.equal(commands.length, 0);
+    assert.deepEqual(surface.notices, []);
     assert.equal(surface.controller().dirtyCount, 0);
     selection = "selected";
     await act(async () => { change.click(); await Promise.resolve(); });
@@ -74,6 +77,7 @@ describe("storage relocation Paths controls", () => {
     if (planned.type !== "plan-storage-relocation") throw new Error("expected plan");
     assert.deepEqual(planned.payload.desiredPair, { stateRoot: "/tmp/picked-state", artifactRoot: SOURCE.artifactRoot });
     assert.equal(view.sourcePair.stateRoot, SOURCE.stateRoot);
+    assert.deepEqual(surface.notices, [{ title: "Saved location plan" }]);
   });
 
   it("shows the exact pending CLI command with selectable fallback and transient copy feedback", async () => {
@@ -264,7 +268,7 @@ describe("storage relocation Paths controls", () => {
     const client = { storageRelocationPlans: () => Promise.resolve(INITIAL), applyStorageRelocation: (input: unknown) => { commands.push(input); throw new Error("unexpected write"); } } as unknown as DashboardClient;
     const surface = await mount(client);
     await edit("Artifact folder", "relative");
-    assert.ok(surface.host.querySelector('button[aria-label="Actions for Artifact folder"]'));
+    assert.equal(surface.host.querySelector('button[aria-label="Actions for Artifact folder"]'), null);
     await act(async () => surface.controller().reset("artifactRoot"));
     await idle();
     assert.equal(commands.length, 0);
@@ -297,7 +301,7 @@ describe("storage relocation Paths controls", () => {
     } as unknown as DashboardClient;
     host = document.createElement("div"); document.body.append(host); root = createRoot(host);
     const storage = StorageHealthSummaryWireSchema.parse({ authority: "healthy", backup: "current", checkedAt: "2026-09-26T12:00:00.000Z" });
-    await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(SettingsPageWithToast, {
+    await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(SettingsPage, { onClose: () => undefined,
       storage, sections: [], workflowLabels: new Map(), section: "paths", actorId: "local-operator", descriptorFingerprint: "d".repeat(64),
       preflight: [], onSection: () => undefined, onExitGuardChange: next => { guard = next; },
     }) })); });
@@ -328,7 +332,7 @@ describe("storage relocation Paths controls", () => {
     } as unknown as DashboardClient;
     host = document.createElement("div"); document.body.append(host); root = createRoot(host);
     const storage = StorageHealthSummaryWireSchema.parse({ authority: "healthy", backup: "current", checkedAt: "2026-09-26T12:00:00.000Z" });
-    await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(SettingsPageWithToast, {
+    await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(SettingsPage, { onClose: () => undefined,
       storage, sections: [], workflowLabels: new Map(), section: "paths", actorId: "local-operator", descriptorFingerprint: "d".repeat(64),
       preflight: [], onSection: () => undefined, onExitGuardChange: () => undefined,
     }) })));

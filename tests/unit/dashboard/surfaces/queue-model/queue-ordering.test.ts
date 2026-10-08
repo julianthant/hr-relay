@@ -22,7 +22,7 @@ import {
   groupQueueAttempts,
   sortQueueBand,
   visibleRunIds,
-} from "../../../../../src/dashboard/surfaces/queue-model.js";
+} from "../../../../../src/dashboard/surfaces/queue/queue-model.js";
 
 const HASH_A = "a".repeat(64);
 const HASH_B = "b".repeat(64);

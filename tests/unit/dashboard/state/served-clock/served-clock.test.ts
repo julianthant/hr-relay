@@ -16,7 +16,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { deriveServedNow } from "../../../../../src/dashboard/state/served-clock.js";
-import { elapsedSecondsBetween, fmtActionClock, fmtClock, fmtElapsed, runTiming } from "../../../../../src/dashboard/surfaces/format.js";
+import { elapsedSecondsBetween, fmtActionClock, fmtClock, fmtElapsed, runTiming } from "../../../../../src/dashboard/surfaces/shared/status/format.js";
 import { isTerminalQueueStatus } from "../../../../../src/models/dashboard/projection.js";
 
 /** The proof's own numbers: the tab loaded at 15:03:32, the run started at 15:12:17. */

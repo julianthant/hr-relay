@@ -6,18 +6,19 @@
  */
 import type { CapabilityAvailability } from "../../../rules/validation/absence.js";
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
-import { workflowProjections } from "../../../workflow-kit/workflow.js";
+import { descriptorRuntimeNodes, workflowProjections } from "../../../workflow-kit/workflow.js";
 import { runtimeTimeZone, type Clock } from "../../../rules/time/clock.js";
 import { PreflightReportSchema } from "../../../models/preflight/preflight.js";
 import { z } from "zod";
 import {
   FrontendBootstrapWireSchema,
   type FrontendBootstrapWire,
+  type WorkflowStartWire,
 } from "../../../models/dashboard/bootstrap.js";
 import {
   SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID,
 } from "../../../models/dashboard/settings.js";
-import { LOCAL_OPERATOR_ACTOR_ID, type Fingerprint } from "../../../rules/identity/ids.js";
+import { BrowserSystemIdSchema, LOCAL_OPERATOR_ACTOR_ID, type Fingerprint } from "../../../rules/identity/ids.js";
 import type { WorkflowModuleRole } from "../../../workflow-kit/validation/module-role.js";
 import { projectStartSteps, startStepWireControl } from "../start/step-selection.js";
 import type { RunQueueProjection } from "../projections/run-queue-projection.js";
@@ -89,6 +90,22 @@ const DEFERRED_FEATURES = [
   ["workflow-editor", "the editor is a Phase-3 surface"],
 ] as const;
 
+export function projectWorkflowStartSteps(descriptor: AnyWorkflowDescriptor): WorkflowStartWire["steps"] {
+  const nodes = descriptorRuntimeNodes(descriptor);
+  return projectStartSteps(descriptor).map(step => {
+    const category = descriptor.timeline.find(entry => String(entry.key) === step.key);
+    if (category === undefined) throw new Error("START_STEP_TIMELINE_UNAVAILABLE");
+    const members = nodes.filter(node => category.nodes.some(member => member.id === node.id));
+    return {
+      key: step.key, label: step.label,
+      systems: BrowserSystemIdSchema.options.filter(system => members.some(node => node.kind === "task"
+        ? node.uses.id.startsWith(`${system}/`)
+        : node.kind === "transaction" && (node.prepare.uses.id.startsWith(`${system}/`) || node.commit.uses.id.startsWith(`${system}/`)))),
+      includedByDefault: step.includedByDefault, control: startStepWireControl(step.control),
+    };
+  });
+}
+
 export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire {
   const preflight = PreflightReportSchema.parse(deps.preflightReport());
   let storageAuthority: "healthy" | "unavailable" = "healthy";
@@ -151,17 +168,9 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
       start: {
         ...(descriptor.summary === undefined ? {} : { summary: descriptor.summary }),
         enqueue: descriptor.enqueue,
-        // C96 — the descriptor's own version, verbatim, for the modal footer's
-        // `{label} v{n}`. It is the same integer the run envelope and every
-        // archived row carry, so the footer names the shape the planner is
-        // about to enqueue rather than a second opinion about it.
+        // The modal's Options and Confirm facts use the envelope's descriptor version.
         version: descriptor.version,
-        steps: projectStartSteps(descriptor).map((step) => ({
-          key: step.key,
-          label: step.label,
-          includedByDefault: step.includedByDefault,
-          control: startStepWireControl(step.control),
-        })),
+        steps: projectWorkflowStartSteps(descriptor),
         ...(descriptor.surfaces.inputRun === undefined
           ? {}
           : { inputRun: descriptor.surfaces.inputRun }),

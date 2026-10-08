@@ -1,0 +1,132 @@
+# baseline-settings-routes-default--graphite-warm--1280x720
+# adapter: fixture-bff
+# fixture: current-mounted-settings
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#dashboard-settings-content"
+- main:
+  - region "Settings":
+    - navigation "Settings sections":
+      - heading "Settings" [level=2]
+      - button "Back to dashboard"
+      - group:
+        - searchbox "Search settings"
+      - text: Personal
+      - link "General":
+        - /url: "?settings=general"
+      - link "Credentials":
+        - /url: "?settings=credentials"
+      - text: Advanced
+      - link "Performance":
+        - /url: "?settings=performance"
+      - link "Paths":
+        - /url: "?settings=paths"
+      - link "Routes":
+        - /url: "?settings=routes"
+      - text: Data
+      - link "Spreadsheets":
+        - /url: "?settings=spreadsheets"
+      - link "Explorer":
+        - /url: "?settings=explorer"
+      - link "Analytics":
+        - /url: "?settings=activity"
+      - text: Status
+      - link "Storage checks":
+        - /url: "?settings=storage"
+      - link "Preflight":
+        - /url: "?settings=preflight"
+      - text: Help
+      - link "Keyboard":
+        - /url: "?settings=keyboard"
+    - heading "Routes" [level=1]
+    - paragraph: Production destinations, organized by system.
+    - group:
+      - searchbox "Find a system or route"
+    - heading "CRM 5 URLs" [level=2]
+    - group "CRM":
+      - text: Entry (required)
+      - paragraph: Open the HR CRM workspace
+      - textbox "Entry (required)": https://crm.ucsd.edu/hr
+      - text: Onboarding search (required)
+      - paragraph: Find an onboarding record
+      - textbox "Onboarding search (required)": https://act-crm.my.site.com/hr/ONB_SearchOnboardings
+      - text: UCPath entry sheet (required)
+      - paragraph: Open the entry sheet
+      - textbox "UCPath entry sheet (required)": https://act-crm.my.site.com/hr/ONB_PPSEntrySheet
+      - text: Onboarding history (required)
+      - paragraph: Review earlier onboarding activity
+      - textbox "Onboarding history (required)": https://act-crm.my.site.com/hr/ONB_ShowOnboardingHistory
+      - text: iDocs viewer (required)
+      - paragraph: View stored onboarding documents
+      - textbox "iDocs viewer (required)": https://act-idocs.ucsd.edu
+    - heading "Kuali 1 URL" [level=2]
+    - group "Kuali":
+      - text: Entry (required)
+      - paragraph: Open the Kuali workspace
+      - textbox "Entry (required)": https://ucsd.kualibuild.com/build/space/5e47518b90adda9474c14adb
+    - heading "New Kronos 1 URL" [level=2]
+    - group "New Kronos":
+      - text: Entry (required)
+      - paragraph: Open Workforce Dimensions
+      - textbox "Entry (required)": https://ucsd-sso.prd.mykronos.com/wfd/home
+    - heading "OnBase 1 URL" [level=2]
+    - group "OnBase":
+      - text: Entry (required)
+      - paragraph: Open the document workspace
+      - textbox "Entry (required)": https://ucsd.hylandcloud.com/251ids/NavPanel.aspx
+    - heading "UCPath 5 URLs" [level=2]
+    - group "UCPath":
+      - text: Login (required)
+      - paragraph: Open UCPath sign in
+      - textbox "Login (required)": https://ucpath.ucsd.edu
+      - text: SmartHR (required)
+      - paragraph: Open the hiring task area
+      - textbox "SmartHR (required)": https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/NUI_FRAMEWORK.PT_AGSTARTPAGE_NUI.GBL?CONTEXTIDPARAMS=TEMPLATE_ID%3aPTPPNAVCOL&scname=ADMN_UC_ADMIN_LOC_HIRE_NAVCOLL&PanelCollapsible=Y&PTPPB_GROUPLET_ID=UC_HIRE_TASKS_TILE_FL&CRefName=UC_HIRE_TASKS_TILE_FL&AJAXTRANSFER=Y
+      - text: Job summary (required)
+      - paragraph: Review job details
+      - textbox "Job summary (required)": https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/ADMINISTER_WORKFORCE_(GBL).WF_JOB_SUMMARY.GBL
+      - text: Personal data (required)
+      - paragraph: Review person data
+      - textbox "Personal data (required)": https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/ADMINISTER_WORKFORCE_(GBL).EMERGENCY_CONTACT.GBL?NavColl=true&uc_deep_link=1
+      - text: Person profile (required)
+      - paragraph: Open the person profile
+      - textbox "Person profile (required)": https://ucphrprdpub.universityofcalifornia.edu/psp/ucphrprd/EMPLOYEE/HRMS/c/SETUP_PROFILE_MANAGEMENT.JPM_PERSON_PROFILE.GBL
+    - heading "I-9 2 URLs" [level=2]
+    - group "I-9":
+      - text: Entry (required)
+      - paragraph: Open I-9 Complete
+      - textbox "Entry (required)": https://i9complete.ucop.edu
+      - text: Application (required)
+      - paragraph: Open the I-9 application
+      - textbox "Application (required)": https://wwwe.i9complete.com
+    - heading "Old Kronos 1 URL" [level=2]
+    - group "Old Kronos":
+      - text: Entry (required)
+      - paragraph: Open Workforce Central
+      - textbox "Entry (required)": https://ucsd.kronos.net/wfcstatic/applications/navigator/html5/dist/container/index.html?version=8.1.18.502#/
+    - heading "ServiceNow 1 URL" [level=2]
+    - group "ServiceNow":
+      - text: Entry (required)
+      - paragraph: Open the HR service request page
+      - textbox "Entry (required)": https://support.ucsd.edu/esc?id=sc_cat_item&table=sc_cat_item&sys_id=d8af3ae8db4fe510b3187d84f39619bf
+    - heading "SharePoint 2 URLs" [level=2]
+    - group "SharePoint":
+      - text: Entry (required)
+      - paragraph: Open UC San Diego SharePoint
+      - textbox "Entry (required)": https://ucsdcloud.sharepoint.com
+      - text: SharePoint onboarding roster URL
+      - paragraph: Download the onboarding roster.
+      - textbox "SharePoint onboarding roster URL":
+        - /placeholder: Enter value
+      - button "Show SharePoint onboarding roster URL"
+- region "Session Panel":
+  - group "Session actions":
+    - button "Sessions"
+    - text: 2 running 1 starting 1 idle
+    - button "Add workers"
+    - button "Settings" [pressed]
+- region "Notifications"

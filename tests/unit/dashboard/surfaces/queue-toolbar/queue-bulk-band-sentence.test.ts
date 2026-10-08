@@ -22,8 +22,8 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it } from "vitest";
 import { BulkRunCommandResponseSchema } from "../../../../../src/rules/commands/commands.js";
-import { QueueToolbar } from "../../../../../src/dashboard/surfaces/queue-toolbar.js";
-import type { BulkVerbPlan } from "../../../../../src/dashboard/app/bulk-dispatch.js";
+import { QueueToolbar } from "../../../../../src/dashboard/surfaces/queue/queue-toolbar.js";
+import type { BulkVerbPlan } from "../../../../../src/dashboard/app/commands/bulk-dispatch.js";
 
 const noop = (): void => undefined;
 

@@ -1,0 +1,133 @@
+# baseline-settings-preflight-healthy--graphite-warm--1280x720
+# adapter: fixture-bff
+# fixture: current-mounted-settings
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#dashboard-settings-content"
+- main:
+  - region "Settings":
+    - navigation "Settings sections":
+      - heading "Settings" [level=2]
+      - button "Back to dashboard"
+      - group:
+        - searchbox "Search settings"
+      - text: Personal
+      - link "General":
+        - /url: "?settings=general"
+      - link "Credentials":
+        - /url: "?settings=credentials"
+      - text: Advanced
+      - link "Performance":
+        - /url: "?settings=performance"
+      - link "Paths":
+        - /url: "?settings=paths"
+      - link "Routes":
+        - /url: "?settings=routes"
+      - text: Data
+      - link "Spreadsheets":
+        - /url: "?settings=spreadsheets"
+      - link "Explorer":
+        - /url: "?settings=explorer"
+      - link "Analytics":
+        - /url: "?settings=activity"
+      - text: Status
+      - link "Storage checks":
+        - /url: "?settings=storage"
+      - link "Preflight":
+        - /url: "?settings=preflight"
+      - text: Help
+      - link "Keyboard":
+        - /url: "?settings=keyboard"
+    - region "Preflight":
+      - heading "Preflight" [level=1]
+      - paragraph: Readiness for the dashboard and its workflows.
+      - text: Check readiness for
+      - combobox "Check readiness for": Dashboard
+      - button "Run preflight"
+      - heading "Status" [level=2]
+      - group "Readiness summary":
+        - img "Done"
+        - text: Ready to run Last checked
+        - time: 08/03/2026 10:05 AM
+      - heading "Workflow readiness" [level=2]
+      - group "Workflow readiness":
+        - heading "Supported operations" [level=3]
+        - button "About workflow operations"
+        - button "Person Lookup 3 available" [expanded]
+        - term:
+          - text: Typed start
+          - button "What Typed start means"
+        - definition: Available
+        - definition: typed input
+        - term:
+          - text: Dry run
+          - button "What Dry run means"
+        - definition: Not applicable
+        - definition: writes to no system of record
+        - term:
+          - text: Edit Data
+          - button "What Edit Data means"
+        - definition: Available
+        - definition: 3 correctable fields
+        - term:
+          - text: Review panel
+          - button "What Review panel means"
+        - definition: Not applicable
+        - definition: read from the queue
+        - term:
+          - text: Operator gates
+          - button "What Operator gates means"
+        - definition: Not applicable
+        - definition: parks on no operator gate
+        - term:
+          - text: Systems
+          - button "What Systems means"
+        - definition: Available
+        - definition: crm, ucpath
+        - text: Where a dry run stops
+        - paragraph: "Nothing to stop at: this graph commits to no system of record, so a rehearsal of it is an ordinary run."
+      - heading "Runtime" [level=2]
+      - paragraph: Compatibility, browser tools, storage, and local resources.
+      - group "Runtime":
+        - list:
+          - listitem:
+            - text: Runtime compatibility
+            - paragraph: Checks Node.js and installed dependencies for this release.
+            - img "Done"
+            - text: Passed
+          - listitem:
+            - text: Runtime settings
+            - paragraph: Checks current configuration validity.
+            - img "Done"
+            - text: Passed
+          - listitem:
+            - text: Files and disk space
+            - paragraph: Checks required directories and free space.
+            - img "Done"
+            - text: Passed
+          - listitem:
+            - text: Data store readiness
+            - paragraph: Checks the data store and run records for this scope.
+            - img "Done"
+            - text: Passed
+          - listitem:
+            - text: Network ports
+            - paragraph: Checks the dashboard's reserved ports.
+            - img "Done"
+            - text: Passed
+          - listitem:
+            - text: Unfinished processes
+            - paragraph: Checks for stale processes or worker leases.
+            - img "Done"
+            - text: Passed
+- region "Session Panel":
+  - group "Session actions":
+    - button "Sessions"
+    - text: 2 running 1 starting 1 idle
+    - button "Add workers"
+    - button "Settings" [pressed]
+- region "Notifications"

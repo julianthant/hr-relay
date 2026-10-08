@@ -79,6 +79,6 @@ describe("DCA3/D292 capture client", () => {
   it("builds only exact DCA1 artifact byte URLs", () => {
     const client = clientReturning(SECTION);
     assert.equal(client.artifactUrl(ARTIFACT), `http://fixture.test/artifacts/v1/${ARTIFACT}`);
-    assert.throws(() => client.artifactUrl("../../../latest"), /uuid|invalid/iu);
+    assert.throws(() => client.artifactUrl("../../latest"), /uuid|invalid/iu);
   });
 });

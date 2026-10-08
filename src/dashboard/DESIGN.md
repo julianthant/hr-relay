@@ -19,7 +19,7 @@ Three adaptations for a reader in THIS tree (a third was undisclosed until Track
   - "one import (`demo-ui.tsx`)" is `src/dashboard/ds/ui.tsx` here (not `ui.ts` — the barrel is a
     `.tsx` file). The rule is unchanged: surfaces import the barrel, never `ds/*` directly.
   - the guards this document says are enforced live in
-    `tests/architecture/helpers/ratchet-arms.ts` as the `frontend-tailwind-compliance` arm,
+    `tests/unit/architecture/helpers/ratchet-arms.ts` as the `frontend-tailwind-compliance` arm,
     not in a file of their own. Precisely: legacy's arm ran four checks (reduced-motion coverage,
     the z-index scale, image loading discipline, palette/hex); this port dropped three and shipped
     only palette/hex, and this document went on asserting "guard enforced" for the reduced-motion
@@ -63,14 +63,10 @@ the macOS system UI font (San Francisco) through the dashboard sans token.
     under `src/dashboard`), and the dirty `ValueField` is a real controlled field.
 -->
 
-**Current visual acceptance (2026-10-02).** This brief and the retained demo remain design
-references. The parity suite and reference corpus were retired; historical visual receipts do not
-prove current acceptance. Future visual-test design is operator-led, and this note does not claim a
-refreeze or new visual acceptance.
-
-**Current Logs theme scope (2026-09-30).** Logs is the first surface using the reusable Tailwind v4
-palette and type scale. See [DASHBOARD-THEME.md](ds/DASHBOARD-THEME.md) for its tokens and incremental
-adoption guidance; `.ui-theme-scope` keeps the new palette opt-in for existing DS controls.
+**Shared dashboard palette (2026-10-01).** The semantic palette and Tailwind mappings live in
+`ds/theme/dashboard-theme.css`. `ds/theme/tokens.css` maps DS, content-body, Settings and shadcn neutral aliases to
+that palette across the dashboard. `.ui-theme-scope` groups presentation utilities; it no longer gates
+the palette. See [DASHBOARD-THEME.md](ds/theme/DASHBOARD-THEME.md) for current values and seams.
 
 # Rebuild demo — design brief
 
@@ -163,9 +159,11 @@ import { Panel, PanelHeader, Button, StatusPill, dsText } from "../demo-ui";
 - **One import**: `demo-ui.tsx`. Never import from `ds/*` directly.
 - **Compose primitives.** If a primitive is missing a variant you need, add it
   *in the primitive*, so every surface inherits it. Never fork one locally.
+- **Align peer controls.** Buttons, pickers and inputs sharing a control row use the same height.
 - **Never write a literal value** for colour, size, radius, shadow or duration.
-  If a token is missing, add it to `ds/tokens.css` — that file is the only place
-  a raw value may appear.
+  Shared semantic palette values belong in `ds/theme/dashboard-theme.css`; DS tokens
+  and component geometry belong in `ds/theme/tokens.css`. See
+  [DASHBOARD-THEME.md](ds/theme/DASHBOARD-THEME.md) for palette roles and aliases.
 - The specimen page `DemoUiKit.tsx` shows every primitive in every state. Skim
   it before choosing a component.
 
@@ -191,8 +189,9 @@ are demonstrated together in the Forms section of the current kit page.
 
 ## Tokens — what to reach for
 
-All tokens are CSS custom properties in `ds/tokens.css`; `ds/tokens.ts` exports
-the class names you type. Use `bg-[var(--ds-…)]` / `text-[color:var(--ds-…)]` /
+Shared semantic colors and Tailwind mappings live in `ds/theme/dashboard-theme.css`;
+DS component tokens are CSS custom properties in `ds/theme/tokens.css`. `ds/theme/tokens.ts`
+exports the class names you type. Use `bg-[var(--ds-…)]` / `text-[color:var(--ds-…)]` /
 `border-[color:var(--ds-…)]` when you need one directly.
 
 ### Surface (depth = surface + hairline, never shadow)
@@ -290,9 +289,10 @@ the outlined toolbar peers — the loudness belongs to the fill, not to a hue.
 
 Two compositions of one product, selected by a `data-demo-theme` attribute:
 **`dark` — Graphite Warm** (warm near-black, depth from surface + hairline) and
-**`light` — Paper Ink** (tinted page, white cards, depth from a shadow). Each is
-authored as its own block in `ds/tokens.css`; neither is a lightening of the
-other, and four of the five hues are re-picked between them.
+**`light` — Paper Ink** (tinted page, white cards, depth from a shadow). The
+shared semantic palette is authored in `ds/theme/dashboard-theme.css`; DS component
+tokens remain in `ds/theme/tokens.css`. Neither theme is a lightening of the other,
+and four of the five hues are re-picked between them.
 
 `useDemoTheme()` (exported from `demo-ui`) owns the selection, persists it, and
 stamps the attribute on **`<html>`, `<body>` and the demo's root container**.
@@ -393,7 +393,7 @@ the component; do not re-draw the pattern.
 | **Cards read ACROSS, not down** — two readings of the SAME thing | `CompareGrid` + `CompareCard` | `CardBase` pins the bottom edge and nothing above it, which is right for cards each describing their own thing. It is not enough for two identity candidates or a pair of compared readings, because the operator reads HORIZONTALLY — name against name, EID against EID, reason against reason. These share the ROW tracks (`grid-template-rows: subgrid`), so a track is as tall as the tallest cell across the band. **Every card renders the same number of children in the same order**, one per track; a card with nothing for a track renders it EMPTY, because that empty cell holds the space its neighbour needs. Columns are `auto-fit`, so N is never two — three candidates wrap into a second band with its own tracks. |
 | **A sub-selection** — a choice that shapes a run before it starts | `StartChoiceControl` | Rendered from what the workflow's descriptor DECLARES (`DemoWorkflowRef.start`), never from what a component knows about that workflow. In Run Options, the operator's 2026-09-01 ruling makes fixed and editable values share the same field shell; a fixed value is a disabled native select with its reason on screen. An option that exists in the target system but is not wired is offered **disabled with its reason** — hiding it teaches the operator the product has never heard of it. A workflow that declares none shows none: no empty scaffolding. |
 | **A wrapping row of peer facts** | `ChipRow` | Chips are of wildly unequal width, so a `flex-wrap` row ends each line wherever its last chip stopped and orphans one on line two — four facts then read as three-plus-one. `ChipRow` lays them on a `--ds-w-chip-cell` track, so every line ends on the SAME edge and the wrap reads as a second row of a table. A row mixing a chip with a sentence or a button is not this. |
-| **An object's own commands** | `ContextMenu` | Right-click the object; never a `⋯`, which is a control whose only job is to admit there are more controls and which costs a slot on every row. The items come from the object's served `actions[]` at the `menu` placement, so a command the surface did not send is unreachable rather than hidden. **Keyboard parity is not optional**: the platform's Menu / Shift+F10 key opens it (the browser dispatches `contextmenu` on the focused element), and a shell binds one shortcut through `openContextMenuFor()` — in this demo that is `m`, registered in `DEMO_SHORTCUTS`. |
+| **Queue row commands** | `FooterActions` / outcome actions | Row commands stay in the visible footer and applicable outcome controls. The operator retired queue ContextMenu, double-click, Shift+F10/Menu and `m` entry points on 2026-10-06. Served descriptors still determine available commands; preview Retry/Delete remain local. Generic ContextMenu specimens remain in the UI kit. |
 | **A recorded value** — something the run OBSERVED | `ValueField` / `LockedValue` | A value the operator may correct is drawn as a **field at rest** (control border, inset surface, pencil) — never a bare `<input>` with a transparent border, which is invisible until hovered or already edited. One the operator may **not** correct is flat text with a lock and no box: the pair is told apart by SHAPE, not by a badge and never by colour. Do not make everything look like a field to be consistent — "you may change this" against "you may not" is load-bearing. Dirty is a fill and a border, never ink, and is always paired with a word. |
 
 A dialog's quiet left-hand note goes in `DialogFooter`'s `meta` slot, not a
@@ -477,6 +477,8 @@ Two things this rule does **not** license:
   long queue, and an unnamed table is a mystery to a screen reader.
 - **One primary and at most one danger action per surface.** Actions go
   right-aligned in a footer, primary last, so the eye ends on the verb.
+- **Paired actions have distinct treatments.** Cancel uses the subdued filled `muted` variant; its neighboring action retains its outlined, primary or destructive treatment. Peer toolbar controls retain their existing style. Dialog footers inherit the dialog’s bottom corner radii, including when dropdowns need visible overflow.
+- **Calendar dates use MM/DD/YYYY.** Pad month and day and use four-digit years. Preserve ISO values in route, storage and transport contracts. Date-only values keep their calendar day; timestamps use the appropriate local or report timezone. Calendar month/year headings and hourly chart labels describe periods rather than complete dates. Unknown OCR dates require normalization or correction, never a guessed century.
 - **Every dialog footer is the same footer**, in this order:
   `meta (quiet, left) · Back? · Cancel · [primary]`. Put the quiet note in
   `DialogFooter`'s `meta` prop. The dismiss verb is **`Cancel`** when the
@@ -500,10 +502,11 @@ Two things this rule does **not** license:
   with `overflow-wrap:anywhere`, while the right-side status cluster moves to a
   second line before it can clip or ellipsize the subject. The status glyph
   remains aligned to the first title line.
-- **A row footer's facts WRAP; they never truncate.** `time · #run · trace ·
-  timing` is a wrapping provenance line with the controls as a sibling pinned
-  top-right — so a run with a queue note takes a second line instead of cutting
-  its trace id to `1…`. A row with little to say stays one line high.
+- **Queue footers stay on one line.** Time, attempt, compact run ID, duration and
+  24px action targets center vertically without wrapping. The queue keeps a 376px
+  minimum while the workflow rail yields from 264px to 208px. An unusually long
+  compact ID may ellipsize; its tooltip retains the exact trace. Below the desktop
+  canvas floor the page scrolls rather than compressing queue rows.
 - **Member status changes order and ink, never row shape.** Failed, waiting,
   parked and warning members sort ahead of routine members but keep the same
   one-line `status · name · detail · EID` tracks. The mini-table's summary strip
@@ -549,7 +552,7 @@ register*, or *this just became your problem* — nothing moves for delight.
 
 ### The token set — five classes, and there is no sixth
 
-`ds/tokens.ts` exports the names; `ds/tokens.css` owns the values. **Never type
+`ds/theme/tokens.ts` exports the names; `ds/theme/tokens.css` owns the values. **Never type
 a duration or an easing.** Every one of these is a TRANSITION, never a
 key-frame, and that is what makes the language *interruptible*: a transition
 re-targets from wherever it currently is the moment its end value changes, so
@@ -677,25 +680,11 @@ This demo is asserted through the accessibility tree, so a missing label is a
   `aria-invalid` and announces the error via `role="alert"`. Never hand-roll it.
 - Dialog and Drawer are Radix: focus enters on open, **returns to the trigger on
   close**, Escape dismisses, the rest of the page is hidden from assistive tech.
-- Toasts: `role="status"`, except `danger` which is `role="alert"` and **never
-  auto-dismisses** — a failed write is acknowledged by a human. Because it never
-  dismisses, a `danger` toast **recedes to a one-line chip** after a few seconds
-  rather than sitting on top of the panel underneath it forever: same tint, same
-  icon, still naming the failure, still dismissible, and back to the full card on
-  hover or a press (the timer never fires while the pointer is over it or focus
-  is inside it, and an operator who expands it keeps it expanded). The alert
-  persists; only its footprint recedes. **While a Dialog
-  or Drawer is open the toast viewport steps aside** (bottom-right → bottom-left,
-  away from the footer's action gutter) **and goes inert** (cards
-  `pointer-events: none`, their controls disabled), so a persistent toast can
-  never swallow a click meant for the decision the operator is making. It stays
-  fully visible and becomes live again when the modal closes.
-  **A dialog built on any OTHER primitive must call `useDsModalPresence()`** from
-  a component that mounts only while it is open — the registry is what makes the
-  step-aside happen, and a dialog that skips it is one a persistent `danger`
-  toast can still click-block. A **Popover** or **ContextMenu** registers as a
-  `layer` instead: it makes the cards inert and moves NOTHING (see the rule
-  below).
+- Toasts use the shadcn Base UI card composition. Ordinary notifications announce status; errors
+  announce alerts and never auto-dismiss. Title, detail and recovery action remain visible together.
+  The stack stays at the bottom right above Sessions. While a dialog, drawer, popover or menu is open,
+  cards become inert and their controls are disabled; closing the overlay restores interaction.
+  Custom overlays must register their mounted presence with the shared DS layer registry.
 
 ### The decision notice and the toast stack are in DIFFERENT coordinate spaces
 
@@ -721,10 +710,8 @@ cleared by a CONSTANT, `--ds-toast-inset-bottom`, built from the bars and bands
 the shell has parked at the bottom. A gap that is always there is predictable;
 one that appears when some other element does is the defect.
 
-**The toast viewport moves for exactly one thing: an open Dialog or Drawer**,
-whose footer's right-hand gutter holds the primary action. A Popover moves
-nothing — it is the most frequently opened surface in the product, and a stack
-that teleports on every ⓘ is the same defect wearing a different trigger.
+**Overlays never move the toast viewport.** Opening a dialog, drawer, popover or menu makes
+its cards inert and disables their controls. Closing the overlay restores interaction at the same anchor.
 - Contrast is WCAG AA minimum, including text on a solid status fill (which is
   why the loud statuses use dark ink on a bright fill).
 - Colour is never the only differentiator, anywhere.
@@ -768,15 +755,15 @@ that teleports on every ⓘ is the same defect wearing a different trigger.
 
 | File | What it is |
 |---|---|
-| `ds/tokens.css` | every value in the system — the only place a literal may live |
-| `ds/tokens.ts` | the class names builders type (`dsText`, `dsLayer`, `dsFocus`, …) |
-| `ds/theme.ts` | `useDemoTheme()` — the dark/light pair and where it is stamped |
-| `ds/primitives-core.tsx` | Button, IconButton, Badge, CountBadge, Chip, Kbd, Spinner, Skeleton, Separator |
-| `ds/primitives-status.tsx` | the eight statuses + StatusPill / StatusDot / StatusIcon |
-| `ds/primitives-layout.tsx` | Panel, Card, **CardBody `grow`**, **CardBase**, **CompareGrid / CompareCard**, Banner, **Refusal**, **MetaLine**, **BulletList**, **ChipRow**, EmptyState, Tabs, Well, FloatingSurface |
-| `ds/primitives-form.tsx` | Field, Input, Textarea, Select, Checkbox, RadioGroup, Switch, SearchInput, **ValueField**, **LockedValue** |
-| `ds/primitives-overlay.tsx` | Dialog, Drawer, **Popover**, **ContextMenu** (+ `openContextMenuFor`), Tooltip, Toast |
-| `ds/primitives-data.tsx` | Table, ProgressBar, TimelineSteps, KeyValueList |
+| `ds/theme/tokens.css` | every value in the system — the only place a literal may live |
+| `ds/theme/tokens.ts` | the class names builders type (`dsText`, `dsLayer`, `dsFocus`, …) |
+| `ds/theme/theme.ts` | `useDemoTheme()` — the dark/light pair and where it is stamped |
+| `ds/primitives/primitives-core.tsx` | Button, IconButton, Badge, CountBadge, Chip, Kbd, Spinner, Skeleton, Separator |
+| `ds/primitives/primitives-status.tsx` | the eight statuses + StatusPill / StatusDot / StatusIcon |
+| `ds/primitives/primitives-layout.tsx` | Panel, Card, **CardBody `grow`**, **CardBase**, **CompareGrid / CompareCard**, Banner, **Refusal**, **MetaLine**, **BulletList**, **ChipRow**, EmptyState, Tabs, Well, FloatingSurface |
+| `ds/primitives/primitives-form.tsx` | Field, Input, Textarea, Select, Checkbox, RadioGroup, Switch, SearchInput, **ValueField**, **LockedValue** |
+| `ds/primitives/primitives-overlay.tsx` | Dialog, Drawer, **Popover**, **ContextMenu** (+ `openContextMenuFor`), Tooltip, Toast |
+| `ds/primitives/primitives-data.tsx` | Table, ProgressBar, TimelineSteps, KeyValueList |
 | `demo-ui.tsx` | **the barrel — import from here** |
 | `DemoUiKit.tsx` | the specimen page: every primitive, every state |
 | `kit.html` + `kit-entry.tsx` | standalone mount for the specimen page |

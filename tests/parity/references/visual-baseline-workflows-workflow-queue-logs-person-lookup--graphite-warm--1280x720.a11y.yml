@@ -1,0 +1,197 @@
+# visual-baseline-workflows-workflow-queue-logs-person-lookup--graphite-warm--1280x720
+# adapter: fixture
+# fixture: visual-baseline-workflows.spec.ts:mounted Logs and all Explorer workflows @ dark
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#dashboard-main-region"
+- complementary "Workspace":
+  - heading "HR GPT" [level=2]
+  - button "Notifications, 3 unread"
+  - button "Search runs"
+  - navigation "Workflows":
+    - heading "Search" [level=3]
+    - list:
+      - listitem:
+        - button "Person Lookup": Person Lookup 5 · 14
+      - listitem:
+        - button "I-9 Lookup": I-9 Lookup 0 · 1
+    - heading "Separations" [level=3]
+    - list:
+      - listitem:
+        - button "Separations": Separations 0 · 1
+      - listitem:
+        - button "I-9 Check": I-9 Check 1 · 1
+    - heading "Onboarding" [level=3]
+    - list:
+      - listitem:
+        - button "Onboarding": Onboarding 0 · 1
+      - listitem:
+        - button "Oath Signature": Oath Signature 1 · 1
+      - listitem:
+        - button "Oath Upload": Oath Upload 1 · 1
+      - listitem:
+        - button "Emergency Contact": Emergency Contact 1 · 1
+    - heading "Work Study" [level=3]
+    - list:
+      - listitem:
+        - button "Work-Study": Work-Study 0 · 1
+    - heading "Payroll" [level=3]
+    - list:
+      - listitem:
+        - button "Kronos Pay Rule": Kronos Pay Rule 0 · 1
+    - heading "Utils" [level=3]
+    - list:
+      - listitem:
+        - button "OCR": OCR 0 · 5
+      - listitem:
+        - button "CRM Doc Download": CRM Doc Download 0 · 1
+      - listitem:
+        - button "SharePoint Download": SharePoint Download 0 · 1
+    - heading "OnBase" [level=3]
+    - list:
+      - listitem:
+        - button "OnBase": OnBase 1 · 1
+    - heading "Timekeeping" [level=3]
+    - list:
+      - listitem:
+        - button "Old Kronos Reports": Old Kronos Reports 0 · 1
+- main:
+  - heading "Person Lookup queue" [level=1]
+  - region "Queue":
+    - text: "Finished 1 08/03/2026: 1 verified"
+    - button "10000001 — done" [pressed]:
+      - text: 10000001 Done 9:10 AM
+      - button "Attempts for 10000001": "#1"
+      - text: PL81893311 56s
+      - button "Retry"
+      - button "Delete"
+  - region "Action panel":
+    - group "Action panel controls":
+      - button "Start a run"
+      - button "Filter queue by status": Status
+      - combobox "Sort the queue": Newest first
+      - button "Attention first" [pressed]
+    - group "Log date controls":
+      - text: Dashboard date*
+      - group "Dashboard date*":
+        - spinbutton "month, Dashboard date*": "08"
+        - spinbutton "day, Dashboard date*": "03"
+        - spinbutton "year, Dashboard date*": "2026"
+        - button "Choose date Dashboard date*"
+  - region "Selected run logs":
+    - heading "10000001" [level=2]
+    - text: Done
+    - button "Rerun"
+    - navigation "Run timeline":
+      - list:
+        - listitem:
+          - button "Search for person · Completed · 09:10:00 · 36s": Search for person 36s
+        - listitem:
+          - button "Cross-check identity · Skipped · 09:10:36": Cross-check identity Skipped
+        - listitem:
+          - button "Read employment status · Completed · 09:10:36 · 20s": Read employment status 20s
+        - listitem:
+          - button "Read CRM dates · Skipped · 09:10:56": Read CRM dates Skipped
+    - region "Run logs":
+      - region "Search for person":
+        - time: 09:10:00
+        - heading "Search for person" [level=3]
+        - text: UCPath
+        - heading "Search criteria" [level=4]
+        - time: 09:10:00
+        - term: Employee ID
+        - definition: "10000001"
+        - time: 09:10:00
+        - term: Name
+        - definition: Jordan Lee
+        - time: 09:10:00
+        - term: Campus
+        - definition: SDCMP
+        - time: 09:10:00
+        - text: Search Person Organizational Summary
+        - heading "UCPath person" [level=4]
+        - time: 09:10:00
+        - term: Employee ID
+        - definition: "10000001"
+        - time: 09:10:00
+        - term: Name
+        - definition: Jordan Lee
+        - time: 09:10:00
+        - term: Department
+        - definition: HDH
+        - time: 09:10:00
+        - term: Job title
+        - definition: Student assistant
+        - time: 09:10:00
+        - term: Job record
+        - definition: "0"
+        - time: 09:10:00
+        - term: HR status
+        - definition: Active
+      - region "Cross-check identity":
+        - time: 09:10:36
+        - heading "Cross-check identity" [level=3]
+        - text: CRM
+        - time: 09:10:36
+        - paragraph: Step omitted for this input or selected mode.
+      - region "Read employment status":
+        - time: 09:10:36
+        - heading "Read employment status" [level=3]
+        - text: UCPath
+        - time: 09:10:36
+        - text: Open Workforce Job Summary
+        - heading "Employment status" [level=4]
+        - time: 09:10:36
+        - term: HR status
+        - definition: Active
+        - time: 09:10:36
+        - term: Start date
+        - definition: 08/03/2026
+        - time: 09:10:36
+        - term: End date
+        - definition: —
+        - time: 09:10:36
+        - term: Termination reason
+        - definition: —
+        - time: 09:10:36
+        - term: Found in UCPath
+        - definition: "Yes"
+        - heading "Active status" [level=4]
+        - time: 09:10:36
+        - term: Termination date
+        - definition: None
+      - region "Read CRM dates":
+        - time: 09:10:56
+        - heading "Read CRM dates" [level=3]
+        - text: CRM
+        - time: 09:10:56
+        - paragraph: Step omitted for this input or selected mode.
+        - time: 09:10:56
+        - term: Employee ID
+        - definition: "10000001"
+        - time: 09:10:56
+        - term: Employee
+        - definition: Jordan Lee
+        - time: 09:10:56
+        - term: Department
+        - definition: HDH
+        - time: 09:10:56
+        - term: HR status
+        - definition: Active
+    - group:
+      - searchbox "Search logs"
+    - status: 23 actions
+    - status
+    - button "Copy logs"
+    - button "Go to latest action"
+- region "Session Panel":
+  - group "Session actions":
+    - button "Sessions"
+    - text: 2 running 1 starting 1 idle
+    - button "Add workers"
+    - button "Settings"
+- region "Notifications"

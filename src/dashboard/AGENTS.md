@@ -9,24 +9,24 @@ and `lib/**`, never app/surfaces/client/state.
 
 Use `/ui`. Read [DESIGN.md](DESIGN.md) and open the specimen (`npm run web` →
 `http://localhost:5174/kit.html`) before choosing primitives. Read [PARITY.md](PARITY.md) before
-changing a ruled deviation; its decisions remain current while parity-suite receipts are historical.
-Search [LESSONS.md](LESSONS.md) by the surface/decision and read matching entries. Requested
-lessons go there.
+changing a ruled deviation or judging reference parity. Search [LESSONS.md](LESSONS.md) by the
+surface/decision and read matching entries. Requested lessons go there.
 
 ## Boundaries
 
 - `app/`: shell, route state, keys, dispatch. `surfaces/`: operator surfaces and their models.
   `ds/`: tokens/primitives and the one `ui.tsx` barrel. `client/`: BFF transport and wire.
   `state/`: resource hooks. `lib/`: framework-free helpers. `kit/`: specimen page.
-- `surfaces/*.tsx` and `app/*.tsx` export components only; hooks, folds, object constants, and
+- `surfaces/**/*.tsx` and `app/**/*.tsx` export components only; hooks, folds, object constants, and
   vocabulary belong in sibling `*-model.ts` files. Type-only exports and private helpers are fine.
   The DS barrel is the deliberate exception. See the Fast Refresh architecture guard and
   `docs/rebuild/reference/frontend-backend-integration.md` §8 item 14.
 - D294 retired mobile/phone document Capture Mode. Do not restore its entry, UI, transport, or
-  routes. Diagnostic screenshots, Capture tiles, Archive, and spreadsheet intake remain. Run data rail and
-  Receipt tab are retired; internal transaction proof and required run controls remain.
+  routes. Diagnostic screenshots, Capture tiles and spreadsheet intake remain. The end-user Archive
+  page, Run data rail and Receipt tab are retired; legacy Archive URLs show only a removal notice.
+  Internal transaction proof, stored history and required run controls remain.
 - Use served authority and the shared command/refusal models; do not invent availability, identity,
-  status, or write success in the browser. Preserve route-owned Archive views and exact run joins.
+  status, or write success in the browser. Preserve exact run joins.
 
 ## Verification
 

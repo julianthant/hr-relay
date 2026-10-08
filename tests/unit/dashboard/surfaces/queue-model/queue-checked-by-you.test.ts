@@ -4,12 +4,12 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { FIXTURE_DAY_WIRE } from "../../../../support/fixtures/dashboard/fixture-day.js";
+import { FIXTURE_DAY_WIRE } from "../../../../parity/helpers/fixture-day.js";
 import {
   checkedByYouCount,
   toggleCheckedByYou,
   type MemberSurfaceWire,
-} from "../../../../../src/dashboard/surfaces/queue-model.js";
+} from "../../../../../src/dashboard/surfaces/queue/queue-model.js";
 
 const members = FIXTURE_DAY_WIRE.queueSurfaces.filter(
   (surface): surface is MemberSurfaceWire => surface.surfaceKind === "member",

@@ -1,64 +1,88 @@
-import { Bell, Check, CheckCheck, ChevronDown, CircleAlert, Clock3, Info, Mail, ShieldAlert, X } from "lucide-react";
-import { useLayoutEffect, useRef } from "react";
-import { Popover, PopoverClose, PopoverContent, PopoverTrigger, Skeleton, dsFocus } from "../../ds/ui.js";
+import { Tabs } from "@heroui/react/tabs";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "../../ds/primitives/dropdown-menu.js";
+import { CheckCheck, CircleAlert, Mail, ListFilter } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { Button, Skeleton, dsFocus, useToasts } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
-import { NOTIFICATION_VIEW_FILTERS, notificationView, type NotificationControl, type NotificationFilter, type NotificationItem, type NotificationsState } from "./notifications-view-model.js";
+import { LoadingRegion, SkeletonText } from "../shared/loading/loading.js";
+import { notificationView, type NotificationCategory, type NotificationControl, type NotificationFilter, type NotificationItem, type NotificationsState } from "./notifications-view-model.js";
 
-const iconButton = cn("inline-flex size-7.5 shrink-0 items-center justify-center rounded-md text-ui-secondary hover:bg-ui-hover hover:text-ui-primary", dsFocus);
+const iconButton = cn("inline-flex size-7 shrink-0 items-center justify-center rounded-lg text-ui-secondary hover:bg-ui-hover hover:text-ui-primary", dsFocus);
+
+function NotificationsSkeleton() {
+  return <LoadingRegion label="Loading notifications"><div aria-hidden>{[0, 1, 2].map(index => <div key={index} className="notification-row rounded-lg px-3 py-3">
+    <div className="flex items-start gap-2"><Skeleton className="mt-1.5 size-1.5 shrink-0 rounded-full" /><div className="min-w-0 flex-1">
+      <div className="min-h-6 text-body"><SkeletonText className="w-3/4" /></div><div className="mt-1 text-caption"><SkeletonText className="w-full" /></div>
+      <div className="mt-1 text-caption"><SkeletonText className="w-full" /><SkeletonText className="w-4/5" /></div><div className="mt-2 text-caption"><SkeletonText className="w-3/4" /></div>
+    </div><div className="flex size-7 shrink-0 items-center justify-center"><Skeleton className="size-3.5" /></div></div>
+    <div className="ml-3.5 mt-1 flex h-6 items-center px-1"><SkeletonText className="w-20 text-caption" /></div>
+  </div>)}</div></LoadingRegion>;
+}
 
 function NotificationRow({ item, onControl, onOpen }: { item: NotificationItem; onControl: (id: string, control: NotificationControl) => void; onOpen: (item: NotificationItem) => void }) {
-  const tone = item.tone === "danger" ? "text-ui-danger" : item.tone === "warning" ? "text-ui-warning" : item.tone === "positive" ? "text-ui-positive" : "text-ui-info";
-  return <li className="px-4 py-3">
-    <details className="group">
-      <summary className={cn("flex cursor-pointer list-none items-start gap-2 rounded text-body [&::-webkit-details-marker]:hidden", dsFocus)}>
-        <span className={cn("mt-0.5 shrink-0", tone)}>{item.tone === "danger" ? <CircleAlert aria-hidden className="size-3.5" /> : item.tone === "warning" ? <Clock3 aria-hidden className="size-3.5" /> : item.tone === "positive" ? <Check aria-hidden className="size-3.5" /> : <Info aria-hidden className="size-3.5" />}</span>
-        <span className={cn("min-w-0 flex-1 text-ui-primary", !item.read && "font-semibold")}>{item.title}{!item.read && <span aria-label="Unread" className="ml-1.5 inline-block size-1.5 rounded-full bg-ui-info align-middle" />}</span><span className="shrink-0 pt-px text-caption text-ui-muted">{item.age}</span><ChevronDown aria-hidden className="mt-0.5 size-3.5 shrink-0 text-ui-muted group-open:rotate-180" />
-      </summary>
-      <p className="mb-1 ml-5.5 mt-2 text-body text-ui-secondary">{item.detail}</p>
-    </details>
-    <p className="mb-0 ml-5.5 mt-1 text-body text-ui-secondary">{item.workflow} · {item.subject}</p>
-    <div className="ml-5.5 mt-1.5 flex items-center gap-1">
-      <button type="button" className={cn("mr-auto rounded py-1 text-body font-medium text-ui-info hover:underline", dsFocus)} onClick={() => onOpen(item)}>{item.action}</button>
-      <button type="button" aria-label={`${item.read ? "Mark unread" : "Mark read"}: ${item.title}`} title={item.read ? "Mark unread" : "Mark read"} className={iconButton} onClick={() => onControl(item.id, "read")}>{item.read ? <Mail aria-hidden className="size-3.5" /> : <CheckCheck aria-hidden className="size-3.5" />}</button>
-      <button type="button" aria-label={`${item.snoozed ? "Unsnooze" : "Snooze"}: ${item.title}`} title={item.snoozed ? "Unsnooze" : "Snooze"} aria-pressed={item.snoozed} className={cn(iconButton, item.snoozed && "bg-ui-table text-ui-info")} onClick={() => onControl(item.id, "snooze")}><Clock3 aria-hidden className="size-3.5" /></button>
+  const urgent = item.tone === "danger" || item.tone === "warning";
+  return <li className="notification-row group rounded-lg px-3 py-3 hover:bg-ui-hover focus-within:bg-ui-hover">
+    <div className="flex items-start gap-2"><span aria-hidden className={cn("mt-1.5 size-1.5 shrink-0 rounded-full", item.tone === "danger" ? "bg-ui-danger" : item.tone === "warning" ? "bg-ui-warning" : !item.read ? "bg-ui-info" : "bg-ui-stroke")} />
+      <div className="min-w-0 flex-1"><button type="button" className={cn("block min-h-6 w-full break-words text-left text-body text-ui-primary", dsFocus)} onClick={() => onOpen(item)}>{item.subject}</button>
+        <p className={cn("mb-0 mt-1 text-caption", urgent ? item.tone === "danger" ? "text-ui-danger" : "text-ui-warning" : "text-ui-secondary")}>{item.title}</p>
+        <p className="mb-0 mt-1 break-words text-caption text-ui-muted">{item.detail}</p>
+        <div className="mt-2 flex items-center gap-2 text-caption text-ui-muted"><span className="truncate">{item.workflow}</span>{item.age && <><span aria-hidden>·</span><span className="shrink-0">{item.age}</span></>}</div>
+      </div><button type="button" aria-label={`${item.read ? "Mark unread" : "Mark read"}: ${item.title}`} title={item.read ? "Mark unread" : "Mark read"} className={iconButton} onClick={() => onControl(item.id, item.read ? "unread" : "read")}>{item.read ? <Mail aria-hidden className="size-3.5" /> : <CheckCheck aria-hidden className="size-3.5" />}</button>
     </div>
+    <Button variant="ghost" size="sm" className="ml-3.5 mt-1 h-6 px-1 text-ui-info" onClick={() => onOpen(item)}>{item.action}</Button>
   </li>;
 }
 
-export function NotificationsView({ state, filter, onFilter, open, onOpenChange, onControl, onOpen, notice, desktopStatus, onEnable }: {
+export function NotificationsView({ state, filter, onFilter, category, onCategory, onControl, onReadAll, onOpen, notice }: {
   state: NotificationsState; filter: NotificationFilter; onFilter: (filter: NotificationFilter) => void;
-  open: boolean; onOpenChange: (open: boolean) => void; onControl: (id: string, control: NotificationControl) => void;
-  onOpen: (item: NotificationItem) => void; notice: string; desktopStatus: string; onEnable: () => void;
+  category: NotificationCategory; onCategory: (category: NotificationCategory) => void;
+  onControl: (id: string, control: NotificationControl) => void; onReadAll: () => void;
+  onOpen: (item: NotificationItem) => void; notice: string; onEnable?: () => void;
 }) {
-  const view = notificationView(state, filter);
+  const view = notificationView(state, filter, category);
   const surface = useRef<HTMLDivElement>(null);
-  const pendingFocus = useRef<HTMLElement | null>(null);
-  useLayoutEffect(() => {
-    const focused = pendingFocus.current;
-    if (focused !== null && !focused.isConnected) {
-      surface.current?.querySelector<HTMLButtonElement>(`[data-notification-filter="${filter}"]`)?.focus();
-      pendingFocus.current = null;
-    }
-  }, [state, filter]);
+  const restoreFocus = (focused: Element | null) => window.requestAnimationFrame(() => {
+    if (focused instanceof HTMLElement && (!focused.isConnected || focused.matches(":disabled"))) surface.current?.querySelector<HTMLButtonElement>(`[data-notification-filter="${filter}"]`)?.focus();
+  });
   const control = (id: string, action: NotificationControl) => {
     const focused = document.activeElement;
-    pendingFocus.current = focused instanceof HTMLElement ? focused : null;
     onControl(id, action);
+    restoreFocus(focused);
   };
-  return <Popover open={open} onOpenChange={onOpenChange}>
-    <PopoverTrigger asChild><button type="button" aria-label={view.unread === undefined ? state.state === "loading" ? "Notifications loading" : "Notifications unavailable" : `Notifications, ${view.unread} unread`} title="Notifications" className={cn(iconButton, "relative", open && "bg-ui-table text-ui-primary")}><Bell aria-hidden className="size-4" />{view.unread !== undefined && view.unread > 0 && <span aria-hidden className="absolute right-1.5 top-1 size-1.5 rounded-full border border-ui-panel bg-ui-info" />}{state.state === "unavailable" && <span aria-hidden className="absolute right-1 top-1 size-1.5 rounded-full bg-ui-warning" />}</button></PopoverTrigger>
-    <PopoverContent title="Notifications" hideTitle align="end" surfaceRef={surface} className="ui-theme-scope flex max-h-[min(36rem,calc(100dvh-7rem))] w-92.5 flex-col overflow-hidden border-ui-stroke-control bg-ui-panel font-ui text-ui-primary [&>div:last-child]:flex [&>div:last-child]:min-h-0 [&>div:last-child]:flex-col [&>div:last-child]:p-0">
-      <div className="flex shrink-0 items-center gap-2 px-4 pb-2 pt-3"><h2 className="m-0 text-heading text-ui-primary">Notifications</h2><span className="text-caption text-ui-muted">{view.unread === undefined ? state.state === "loading" ? "Loading" : "Unavailable" : `${view.unread} unread`}</span><PopoverClose asChild><button type="button" aria-label="Close notifications" className={cn(iconButton, "ml-auto")}><X aria-hidden className="size-4" /></button></PopoverClose></div>
-      <div role="group" aria-label="Notification filters" className="flex shrink-0 gap-0.5 border-b border-ui-stroke px-3 pb-2">{NOTIFICATION_VIEW_FILTERS.map(item => <button type="button" key={item.id} data-notification-filter={item.id} aria-pressed={filter === item.id} onClick={() => onFilter(item.id)} className={cn("rounded px-2 py-1.5 text-body hover:bg-ui-hover", dsFocus, filter === item.id ? "bg-ui-table font-medium text-ui-primary" : "text-ui-secondary")}>{item.label}</button>)}</div>
-      <div className="min-h-0 overflow-y-auto overscroll-contain">
-        {view.pinned.map(item => <details key={item.id} className="mx-3 my-2.5 rounded-md border border-ui-stroke bg-ui-table px-3 py-2 text-body text-ui-primary"><summary className={cn("flex cursor-pointer list-none items-center gap-2 rounded font-medium [&::-webkit-details-marker]:hidden", dsFocus)}><ShieldAlert aria-hidden className="size-3.5 text-ui-warning" /><span>{item.title}</span><span className="ml-auto text-caption font-normal text-ui-muted">Pinned</span></summary><p className="mb-0 mt-2 text-body font-normal text-ui-secondary">{item.detail}</p></details>)}
-        {state.state === "loading" ? <div role="status" aria-label="Loading notifications" className="space-y-4 p-4">{[0, 1, 2].map(index => <div key={index} className="space-y-2"><Skeleton className="h-3 w-3/4" /><Skeleton className="h-3 w-1/2" /></div>)}</div> : state.state === "unavailable" ? <div role="alert" className="px-4 py-8 text-center"><CircleAlert aria-hidden className="mx-auto mb-2 size-5 text-ui-warning" /><p className="m-0 text-heading text-ui-primary">Notifications unavailable</p><p className="mb-0 mt-2 text-body text-ui-secondary">{state.reason}</p></div> : <>
-          <ul aria-label="Notifications" className="m-0 list-none divide-y divide-ui-stroke p-0">{view.shown.map(item => <NotificationRow key={item.id} item={item} onControl={control} onOpen={onOpen} />)}</ul>
-          {view.shown.length === 0 && <div className="px-4 py-8 text-center"><Bell aria-hidden className="mx-auto mb-2 size-5 text-ui-muted" /><p className="m-0 text-heading text-ui-primary">{filter === "all" ? "No notifications" : filter === "unread" ? "All caught up" : filter === "attention" ? "Nothing needs attention" : "Nothing snoozed"}</p><p className="mb-0 mt-2 text-body text-ui-secondary">{view.pinned.length > 0 ? "Pinned notices remain above." : "New updates will appear here."}</p></div>}
+  const unread = state.state === "ready" ? state.items.filter(item => !item.read) : [];
+  return <section ref={surface} role="region" aria-label="Notifications" className="notification-rail ui-theme-scope flex min-h-0 flex-1 flex-col overflow-hidden font-ui text-ui-primary">
+    <div className="flex items-center justify-between gap-2 px-4 pb-3"><span className="text-caption text-ui-muted">Notifications{view.unread !== undefined && ` · ${view.unread} unread`}</span>
+      <button type="button" disabled={!unread.length} className={cn("min-h-6 text-caption text-ui-secondary hover:text-ui-primary disabled:opacity-40", dsFocus)} onClick={() => { const focused = document.activeElement; onReadAll(); restoreFocus(focused); }}>Read all</button>
+    </div>
+    <Tabs selectedKey={filter === "unread" ? "unread" : "all"} onSelectionChange={key => onFilter(key as NotificationFilter)} variant="secondary" className="notification-tabs">
+      <div className="notification-filter-bar">
+        <Tabs.ListContainer><Tabs.List aria-label="Notification filters">
+          <Tabs.Tab id="all" data-notification-filter="all">All<Tabs.Indicator /></Tabs.Tab>
+          <Tabs.Tab id="unread" data-notification-filter="unread">Unread<Tabs.Indicator /></Tabs.Tab>
+        </Tabs.List></Tabs.ListContainer>
+        <DropdownMenu><DropdownMenuTrigger asChild><Button size="sm" variant="ghost" className="notification-category-filter" data-filtered={category !== "all"} aria-label="Filter notifications by category" title={category === "all" ? "All updates" : category === "attention" ? "Needs you" : "Failed"} icon={<ListFilter className="size-3.5" data-icon="inline-start" />} /></DropdownMenuTrigger>
+          <DropdownMenuContent aria-label="Notification categories" align="end"><DropdownMenuGroup><DropdownMenuRadioGroup value={category} onValueChange={value => onCategory(value as NotificationCategory)}>
+            <DropdownMenuRadioItem value="all">All updates</DropdownMenuRadioItem><DropdownMenuRadioItem value="attention">Needs you</DropdownMenuRadioItem><DropdownMenuRadioItem value="failed">Failed</DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup></DropdownMenuGroup></DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+      {(["all", "unread"] as const).map(tab => <Tabs.Panel key={tab} id={tab} className="notification-tab-panel">
+      <div className="rail-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3">
+        {state.state === "loading" ? <NotificationsSkeleton /> : state.state === "unavailable" ? <div role="alert" className="py-8 text-center"><CircleAlert aria-hidden className="mx-auto mb-2 size-5 text-ui-warning" /><p className="m-0 text-body">Notifications unavailable</p><p className="mb-0 mt-2 text-caption text-ui-secondary">{state.reason}</p></div> : <>
+          <ul aria-label="Notification updates" className="m-0 list-none p-0">{view.shown.map(item => <NotificationRow key={item.id} item={item} onControl={control} onOpen={onOpen} />)}</ul>
+          {view.shown.length === 0 && <p className="py-6 text-center text-body text-ui-secondary">{state.state === "ready" && state.items.length === 0 ? "No notifications" : category === "failed" ? "No failures" : category === "attention" ? "Nothing needs attention" : filter === "unread" ? "All caught up" : "No notifications"}</p>}
         </>}
       </div>
-      {notice && <p role="status" className="m-0 shrink-0 border-t border-ui-stroke px-4 py-2 text-body text-ui-secondary">{notice}</p>}
-      <footer className="flex shrink-0 items-center justify-between border-t border-ui-stroke bg-ui-table px-4 py-2.5"><span className="text-body text-ui-secondary">{desktopStatus}</span><button type="button" className={cn("rounded-md border border-ui-stroke-control bg-ui-panel px-2.5 py-1 text-body font-medium text-ui-primary hover:bg-ui-hover", dsFocus)} onClick={onEnable}>Enable</button></footer>
-    </PopoverContent>
-  </Popover>;
+      </Tabs.Panel>)}
+    </Tabs>
+      {notice && <p role="status" className="m-0 border-t border-ui-stroke px-3 py-3 text-caption text-ui-secondary">{notice}</p>}
+
+  </section>;
+}
+
+export function NotificationPing({ item, onOpen }: { item: NotificationItem; onClose: () => void; onOpen: () => void }) {
+  const { toast } = useToasts();
+  const sent = useRef(false);
+  useEffect(() => { if (sent.current) return; sent.current = true; toast({ tone: "success", title: item.title, description: `${item.subject} · ${item.workflow}`, action: { label: "Open notifications", onAction: onOpen } }); }, [item, onOpen, toast]);
+  return null;
 }

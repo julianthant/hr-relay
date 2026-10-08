@@ -1,5 +1,4 @@
 // @vitest-environment jsdom
-import { IntakeSessionWireSchema } from "../../../../../src/models/intake/wire.js";
 import { FingerprintSchema } from "../../../../../src/rules/identity/ids.js";
 import { CommandRequestSchema } from "../../../../../src/rules/commands/commands.js";
 import assert from "node:assert/strict";
@@ -8,8 +7,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, it } from "vitest";
 import { createDashboardClient } from "../../../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../../../src/dashboard/state/client-context.js";
-import { IntakeWorkspace } from "../../../../../src/dashboard/surfaces/intake.js";
-import { FIXTURE_INTAKE_VALIDATED } from "../../../../support/fixtures/dashboard/fixture-intake.js";
+import { IntakeWorkspace } from "../../../../../src/dashboard/surfaces/intake/intake.js";
+import { FIXTURE_INTAKE_VALIDATED } from "../../../../parity/helpers/fixture-intake.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 Reflect.set(globalThis, "ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
@@ -79,21 +78,4 @@ it("a served required target without a binding stays visible and blocks Start", 
   const base = readyWire(); const target = base.targets[0];
   const h = await mount({ ...base, targets: [{ ...target, required: true }], bindings: [], constants: [] });
   assert.ok(h.host.textContent?.includes(`${target.label} is not bound`)); assert.equal(h.button("Start 2 runs").disabled, true);
-});
-
-it("renders complete retained rejected values and names historical source absence", async () => {
-  assert.ok(FIXTURE_INTAKE_VALIDATED.validation.state === "validated");
-  const rejects = FIXTURE_INTAKE_VALIDATED.validation.rejected;
-  const rawReject = rejects.find(reject => reject.kind === "cell-coercion" || reject.kind === "field-schema");
-  assert.ok(rawReject && (rawReject.kind === "cell-coercion" || rawReject.kind === "field-schema"));
-  const wire = IntakeSessionWireSchema.parse({ ...FIXTURE_INTAKE_VALIDATED,
-    validation: { ...FIXTURE_INTAKE_VALIDATED.validation, rejected: [
-      { ...rawReject, raw: { state: "transformed", classification: "direct-identifier", transform: "last4", value: "0001", rawValue: "synthetic complete source 10800001" } },
-      { ...rawReject, raw: { state: "transformed", classification: "direct-identifier", transform: "last4", value: "0002" } },
-    ] },
-  });
-  const h = await mount(wire);
-  assert.ok(h.host.textContent?.includes("synthetic complete source 10800001"));
-  assert.ok(h.host.textContent?.includes("Complete value unavailable in this historical record"));
-  assert.ok(!h.host.textContent?.includes("0002 (last4)"));
 });

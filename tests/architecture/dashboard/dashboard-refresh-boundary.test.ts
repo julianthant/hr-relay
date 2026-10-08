@@ -25,9 +25,9 @@
  */
 import { describe, expect, it } from "vitest";
 import ts from "typescript";
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";
-import { REPO_ROOT } from "../support/helpers/guard-files.js";
+import { REPO_ROOT, walkFiles } from "../support/helpers/guard-files.js";
 
 const SURFACE_ROOTS = ["src/dashboard/surfaces", "src/dashboard/app"] as const;
 const COMPONENT_FACTORIES = new Set(["memo", "forwardRef", "lazy"]);
@@ -107,16 +107,15 @@ export function refreshBoundaryViolations(fileName: string, text: string): strin
 }
 
 function surfaceFiles(): string[] {
-  return SURFACE_ROOTS.flatMap((root) =>
-    readdirSync(join(REPO_ROOT, root))
-      .filter((f) => f.endsWith(".tsx"))
-      .map((f) => join(root, f)));
+  return SURFACE_ROOTS.flatMap(root => walkFiles(join(REPO_ROOT, root), { extensions: [".tsx"] }).map(file => relative(REPO_ROOT, file)));
 }
 
 describe("dashboard refresh boundary (ref frontend-backend-integration §8.14)", () => {
   it("every surface and app module exports components only", () => {
     const files = surfaceFiles();
     expect(files.length).toBeGreaterThan(20);
+    expect(files).toContain("src/dashboard/surfaces/settings/preflight/settings-preflight.tsx");
+    expect(files).toContain("src/dashboard/surfaces/run-detail/log-panel.tsx");
     const report = files.flatMap((file) => {
       const violations = refreshBoundaryViolations(file, readFileSync(join(REPO_ROOT, file), "utf8"));
       return violations.map((v) => `${relative(REPO_ROOT, join(REPO_ROOT, file))}: ${v}`);

@@ -23,13 +23,13 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { FIXTURE_DAY_WIRE } from "../../../../support/fixtures/dashboard/fixture-day.js";
+import { FIXTURE_DAY_WIRE } from "../../../../parity/helpers/fixture-day.js";
 import { QueueSurfaceWireSchema } from "../../../../../src/models/dashboard/projection.js";
 import {
   rowInfoFacts,
   type OperationSurfaceWire,
   type QueueSurfaceWire,
-} from "../../../../../src/dashboard/surfaces/queue-model.js";
+} from "../../../../../src/dashboard/surfaces/queue/queue-model.js";
 
 const [base] = FIXTURE_DAY_WIRE.queueSurfaces;
 if (base === undefined) throw new Error("the parity day fixture must serve at least one queue surface");

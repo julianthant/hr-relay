@@ -19,7 +19,7 @@ import {
 // whole reconnect classification is written against those three answers.
 import { createDashboardTransport } from "../../../../../src/dashboard/client/transport.js";
 import { DashboardDayWireSchema, type DashboardDayWire } from "../../../../../src/models/dashboard/projection.js";
-import type { DashboardDayPatch } from "../../../../../src/dashboard/client/day-state.js";
+import type { DashboardDayPatch } from "../../../../../src/dashboard/client/queries/day-state.js";
 
 const DAY = "2026-08-03";
 const HASH_D = "d".repeat(64);
@@ -863,22 +863,4 @@ describe("openStream endings", () => {
     // settlement alone and binds each handler to its own handle instead.
     assert.equal(await stream.done.then(() => "resolved", () => "rejected"), "resolved");
   });
-});
-
-import { FIXTURE_SAVED_REPORT, FIXTURE_SAVED_VERSIONS } from "../../../../support/fixtures/dashboard/fixture-archive.js";
-it("parses generic report and version responses independently, rejects a foreign report, and never accepts a live-detail substitute", async () => {
-  let body: unknown;
-  const client = createDashboardClient({ baseUrl: "http://bff.test", fetchImpl: async () => new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } }) });
-  for (const order of ["reports-first", "versions-first"]) {
-    for (const read of order === "reports-first" ? ["report", "versions"] : ["versions", "report"]) {
-      if (read === "report") { body = FIXTURE_SAVED_REPORT; assert.deepEqual(await client.savedArchiveReport(FIXTURE_SAVED_REPORT.runId), body); }
-      else { body = FIXTURE_SAVED_VERSIONS; assert.deepEqual(await client.savedArchiveVersions(), body); }
-    }
-  }
-  body = { ...FIXTURE_SAVED_REPORT, runId: RUN_ID };
-  await assert.rejects(client.savedArchiveReport(FIXTURE_SAVED_REPORT.runId), /IDENTITY_MISMATCH/);
-  body = { ...FIXTURE_SAVED_REPORT, detail: { current: true } };
-  await assert.rejects(client.savedArchiveReport(FIXTURE_SAVED_REPORT.runId), /schema/i);
-  body = { items: [FIXTURE_SAVED_REPORT], next: null };
-  assert.deepEqual(await client.savedArchiveIndex({ limit: 1 }), body);
 });

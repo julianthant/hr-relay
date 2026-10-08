@@ -1,4 +1,4 @@
-import { FIXTURE_EDITABLE_SETTINGS } from "../../../../support/fixtures/dashboard/fixture-settings.js";
+import { FIXTURE_EDITABLE_SETTINGS } from "../../../../parity/helpers/fixture-settings.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
@@ -11,8 +11,8 @@ import {
 import { StorageHealthSummaryWireSchema } from "../../../../../src/models/dashboard/bootstrap.js";
 import type { DashboardClient } from "../../../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../../../src/dashboard/state/client-context.js";
-import { SettingsPageWithToast } from "../../../../support/fixtures/dashboard/settings-page-with-toast.js";
-import { PROVIDER_KEYS_SCHEMA_HASH } from "../../../../../src/models/config/provider-keys.js";
+import { SettingsPage } from "../../../../../src/dashboard/surfaces/settings/settings.js";
+import { settingInput } from "../../../../../src/dashboard/surfaces/settings/editor/settings-draft-model.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
@@ -43,47 +43,41 @@ function overlayButton(name: string): HTMLButtonElement {
 }
 
 describe("editable Settings surface", () => {
-  it("guards provider drafts and explains an unconfirmed write before leaving", async () => {
-    const providerDocument = EditableSettingsWireSchema.parse({ ...DOCUMENT,
-      providerKeys: { state: "available", providerSchemaHash: PROVIDER_KEYS_SCHEMA_HASH, revision: 1,
-        sourceVersionToken: "a".repeat(64), slots: { GEMINI_API_KEY: "synthetic-saved" },
-        activeSlots: { GEMINI_API_KEY: "synthetic-saved" }, parentSlotNames: [], fileSlotNamesAtBoot: ["GEMINI_API_KEY"],
-        bootFileRevision: 1, bootFileSourceVersionToken: "a".repeat(64), overriddenSlots: [], restartRequired: false },
-    });
+  it("guards retained workflow credentials before leaving after an unconfirmed write", async () => {
     let guard: ((proceed: () => void) => void) | undefined;
     let exited = 0;
-    const client = { editableSettings: () => Promise.resolve(providerDocument),
-      applyProviderKeys: () => Promise.reject(new Error("synthetic-uncertain")),
+    const client = { editableSettings: () => Promise.resolve(DOCUMENT),
+      applyProtectedSettings: () => Promise.reject(new Error("synthetic-uncertain")),
     } as unknown as DashboardClient;
     host = document.createElement("div"); document.body.append(host);
     await act(async () => { root = createRoot(host!); root.render(createElement(DashboardClientProvider, { client,
-      children: createElement(SettingsPageWithToast, { storage: STORAGE, sections: [],
+      children: createElement(SettingsPage, { onClose: () => undefined, storage: STORAGE, sections: [],
         workflowLabels: new Map<string, string>(), section: "credentials", actorId: "local-operator",
         descriptorFingerprint: "d".repeat(64), preflight: [], onSection: () => undefined,
         onExitGuardChange: next => { guard = next; } }),
     })); });
     await act(async () => undefined);
-    await act(async () => button("Add key").click());
-    assert.ok(guard);
-    await act(async () => guard?.(() => { exited += 1; }));
-    assert.equal(exited, 0);
-    assert.match(document.body.textContent ?? "", /Discard unsaved settings\?/u);
-    await act(async () => overlayButton("Keep editing").click());
-    assert.equal(exited, 0);
-    const input = [...host.querySelectorAll<HTMLInputElement>("input")].find(candidate => candidate.placeholder === "Enter API key" && candidate.value === "");
+    const input = host.querySelector<HTMLInputElement>('input[name="ucpathUserId"]');
     assert.ok(input);
     await act(async () => { // eslint-disable-next-line @typescript-eslint/unbound-method
       const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
       if (setter === undefined) throw new Error("input setter unavailable");
       Reflect.apply(setter, input, ["synthetic-local"]); input.dispatchEvent(new Event("input", { bubbles: true })); });
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 1250)); });
+    assert.ok(guard);
     await act(async () => guard?.(() => { exited += 1; }));
-    assert.match(document.body.textContent ?? "", /Leave with a pending provider write\?/u);
-    assert.match(document.body.textContent ?? "", /A submitted provider write may already be stored/u);
-    assert.match(document.body.textContent ?? "", /can be recovered when you return/u);
+    assert.equal(exited, 0);
+    assert.match(document.body.textContent ?? "", /Discard unsaved settings\?/u);
+    await act(async () => overlayButton("Keep editing").click());
+    assert.equal(input.value, "synthetic-local");
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 1250)); });
+    assert.match(host.textContent ?? "", /could not be confirmed/u);
+    await act(async () => guard?.(() => { exited += 1; }));
+    assert.match(document.body.textContent ?? "", /A write already submitted may still be stored/u);
     assert.equal(exited, 0);
     await act(async () => overlayButton("Keep editing").click());
     assert.equal(exited, 0);
+    assert.equal(input.value, "synthetic-local");
+    assert.doesNotMatch(host.textContent ?? "", /Provider keys|Add key/u);
   });
   it("refuses a malformed server settings inventory instead of retyping, relocating, or contradicting its runtime identity", () => {
     const textLeafWithNumberPath = {
@@ -125,7 +119,7 @@ describe("editable Settings surface", () => {
     assert.ok(duplicateSectionResult.error.issues.some((issue) => issue.message.includes("repeats section general")));
   });
 
-  it("autosaves one atomic leaf-operation draft after a settled edit", async () => {
+  it("autosaves one atomic leaf-operation draft when the exit dialog takes focus", async () => {
     const applied: unknown[] = [];
     let closeCount = 0;
     let exitGuard: ((proceed: () => void) => void) | undefined;
@@ -142,11 +136,11 @@ describe("editable Settings surface", () => {
       root = createRoot(host as HTMLElement);
       root.render(createElement(DashboardClientProvider, {
         client,
-        children: createElement(SettingsPageWithToast, {
+        children: createElement(SettingsPage, { onClose: () => undefined,
           storage: STORAGE,
           sections: [],
           workflowLabels: new Map<string, string>(),
-          section: "general",
+          section: "performance",
           actorId: "local-operator",
           descriptorFingerprint: "d".repeat(64),
           preflight: [],
@@ -159,27 +153,26 @@ describe("editable Settings surface", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-28T18:00:00.000Z"));
 
-    const width = host.querySelector('[data-settings-path="display.screenWidth"] input');
-    const height = host.querySelector('[data-settings-path="display.screenHeight"] input');
-    assert.ok(width instanceof HTMLInputElement);
-    assert.ok(height instanceof HTMLInputElement);
-    assert.equal(height.disabled, false);
-    await act(async () => { width.focus(); });
-    assert.equal(document.activeElement, width, "the editable control accepts keyboard focus");
+    const navigation = host.querySelector('[data-settings-path="timeouts.navigationMs"] input');
+    assert.ok(navigation instanceof HTMLInputElement);
+    assert.equal(navigation.disabled, false);
+    await act(async () => { navigation.focus(); });
+    assert.equal(document.activeElement, navigation, "the editable control accepts keyboard focus");
     await act(async () => {
       // React's controlled-input tracker requires the native setter bypass here.
       const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
       if (descriptor?.set === undefined) throw new Error("HTML input value setter is unavailable");
       // eslint-disable-next-line @typescript-eslint/unbound-method
-      Reflect.apply(descriptor.set, width, ["1980"]);
-      width.dispatchEvent(new Event("input", { bubbles: true }));
-      width.dispatchEvent(new Event("change", { bubbles: true }));
+      Reflect.apply(descriptor.set, navigation, ["111"]);
+      navigation.dispatchEvent(new Event("input", { bubbles: true }));
+      navigation.dispatchEvent(new Event("change", { bubbles: true }));
     });
-    assert.ok([...host.querySelectorAll<HTMLButtonElement>("button")].some(button => button.textContent === "Undo"), "the retained draft has an in-row undo action");
+    assert.equal([...host.querySelectorAll<HTMLButtonElement>("button")].some(button => button.textContent === "Undo"), false, "the retained draft has no visible undo button");
     if (exitGuard === undefined) throw new Error("Settings exit guard was not registered");
     await act(async () => { exitGuard?.(() => { closeCount += 1; }); });
     assert.equal(closeCount, 0, "a dirty page cannot navigate away without a choice");
     assert.match(document.body.textContent ?? "", /Discard unsaved settings\?/u);
+    assert.equal(applied.length, 1, "leaving the edited input flushes its valid draft");
     const beforeUnload = new Event("beforeunload", { cancelable: true });
     window.dispatchEvent(beforeUnload);
     assert.equal(beforeUnload.defaultPrevented, true, "a dirty draft protects against browser unload");
@@ -193,10 +186,9 @@ describe("editable Settings surface", () => {
     const command = applied[0] as { target: { expectedRevision: number }; payload: { patch: unknown } };
     assert.equal(command.target.expectedRevision, 1);
     assert.deepEqual(command.payload.patch, {
-      "display.screenHeight": { set: 1440 },
-      "display.screenWidth": { set: 1980 },
+      "timeouts.navigationMs": { set: 111000 },
     });
-    assert.equal((applied[0] as { requestedAt: string }).requestedAt, "2026-08-28T18:00:00.700Z");
+    assert.equal((applied[0] as { requestedAt: string }).requestedAt, "2026-08-28T18:00:00.000Z");
   });
 
   it("refuses a cleared zero-allowed OCR field instead of converting it to zero", async () => {
@@ -216,7 +208,7 @@ describe("editable Settings surface", () => {
       root = createRoot(host as HTMLElement);
       root.render(createElement(DashboardClientProvider, {
         client,
-        children: createElement(SettingsPageWithToast, {
+        children: createElement(SettingsPage, { onClose: () => undefined,
           storage: STORAGE,
           sections: [],
           workflowLabels: new Map<string, string>(),
@@ -254,7 +246,7 @@ describe("editable Settings surface", () => {
     assert.equal(closeCount, 1, "explicit discard is the only dirty-draft exit");
   });
 
-  it("retains a partial required job-end date in the text draft and never submits it", async () => {
+  it("uses the shared segmented job-end date picker and keeps incomplete edits unsent", async () => {
     const applied: unknown[] = [];
     const client = {
       editableSettings: () => Promise.resolve(DOCUMENT),
@@ -264,7 +256,7 @@ describe("editable Settings surface", () => {
     document.body.append(host);
     await act(async () => {
       root = createRoot(host as HTMLElement);
-      root.render(createElement(DashboardClientProvider, { client, children: createElement(SettingsPageWithToast, {
+      root.render(createElement(DashboardClientProvider, { client, children: createElement(SettingsPage, { onClose: () => undefined,
         storage: STORAGE, sections: [], workflowLabels: new Map<string, string>(), section: "general", actorId: "local-operator",
         descriptorFingerprint: "d".repeat(64), preflight: [], onSection: () => undefined,
       }) }));
@@ -272,26 +264,18 @@ describe("editable Settings surface", () => {
     await act(async () => undefined);
     vi.useFakeTimers();
     const datePath = `annualDates.FY${String(DOCUMENT.currentFiscalYear)}.jobEndDate`;
-    const input = host.querySelector(`[data-settings-path="${datePath}"] input`);
-    if (!(input instanceof HTMLInputElement)) throw new Error("missing current job-end-date input");
-    assert.equal(input.required, true);
-    assert.equal(input.type, "text", "the partial-date editor remains text based so invalid drafts stay visible");
-    await act(async () => {
-      const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
-      if (descriptor?.set === undefined) throw new Error("HTML input value setter is unavailable");
-      // eslint-disable-next-line @typescript-eslint/unbound-method
-      Reflect.apply(descriptor.set, input, ["6/"]);
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-      input.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+    assert.equal(host.querySelector('[data-settings-path="display.viewport"]'), null);
+    assert.equal(host.querySelector('input[name="display.screenWidth"], input[name="display.screenHeight"]'), null);
+    const date = host.querySelector(`[data-settings-path="${datePath}"] .ds-date-picker`);
+    assert.ok(date);
+    assert.equal(date.querySelectorAll('.ds-date-text-input').length, 0);
+    const segments = date.querySelectorAll<HTMLElement>('[role="spinbutton"]');
+    assert.equal(segments.length, 3);
+    const month = segments[0]; assert.ok(month);
+    await act(async () => { month.focus(); month.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace", bubbles: true })); month.dispatchEvent(new KeyboardEvent("keyup", { key: "Backspace", bubbles: true })); });
     await act(async () => { await vi.advanceTimersByTimeAsync(701); });
-    assert.equal(input.value, "6/");
-    assert.equal(applied.length, 0, "an invalid partial date stays in the local draft without a command");
-    const undo = [...host.querySelectorAll<HTMLButtonElement>(`[data-settings-path="${datePath}"] button`)].find(button => button.textContent === "Undo");
-    assert.ok(undo);
-    await act(async () => { undo.click(); });
-    assert.notEqual(input.value, "6/");
-    assert.equal(applied.length, 0);
+    assert.equal(applied.length, 0, "incomplete date edits cannot produce a settings command");
+    assert.ok(date.querySelector('button[aria-label="Choose job end date"]'));
   });
 
   it("autosaves valid production routes after 700 ms but retains invalid partial URLs", async () => {
@@ -309,7 +293,7 @@ describe("editable Settings surface", () => {
       root = createRoot(host as HTMLElement);
       root.render(createElement(DashboardClientProvider, {
         client,
-        children: createElement(SettingsPageWithToast, {
+        children: createElement(SettingsPage, { onClose: () => undefined,
           storage: STORAGE,
           sections: [],
           workflowLabels: new Map<string, string>(),
@@ -326,6 +310,10 @@ describe("editable Settings surface", () => {
     assert.doesNotMatch(host.textContent ?? "", /Test routes/u);
     const input = host.querySelector('[data-settings-path="urls.crm.prod"] input');
     if (!(input instanceof HTMLInputElement)) throw new Error("missing CRM route input");
+    const crm = DOCUMENT.sections.flatMap(section => section.leaves).find(leaf => leaf.path === "urls.crm.prod");
+    assert.ok(crm);
+    const original = settingInput(crm);
+    assert.notEqual(typeof original, "string");
     vi.useFakeTimers();
     // eslint-disable-next-line @typescript-eslint/unbound-method
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
@@ -344,7 +332,10 @@ describe("editable Settings surface", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(1); });
     assert.equal(applied.length, 1);
     assert.doesNotMatch(host.textContent ?? "", /Save routes/u);
-    const command = applied[0] as { payload: { patch: Record<string, { set: { entry: string } }> } };
+    const command = applied[0] as { payload: { patch: Record<string, { set: Record<string, string> }> } };
     assert.equal(command.payload.patch["urls.crm.prod"]?.set.entry, "https://crm.example.test/new");
+    assert.equal(typeof original, "object");
+    if (typeof original === "string") throw new Error("CRM route values are not an object");
+    assert.deepEqual(command.payload.patch["urls.crm.prod"]?.set, { ...original, entry: "https://crm.example.test/new" }, "editing one row retains the other four URLs");
   });
 });

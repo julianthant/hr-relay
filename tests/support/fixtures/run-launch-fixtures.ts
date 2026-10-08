@@ -7,8 +7,8 @@ import { EidSchema } from "../../../src/rules/identity/ids.js";
 import { defineCanonicalInput } from "../../../src/models/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS, type EnqueuePolicy } from "../../../src/models/workflow/presentation.js";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
-import { createRunLaunchService } from "../../../src/dashboard/app/run-launch-model.js";
-import type { RunStartWorkflow } from "../../../src/dashboard/surfaces/run-start.js";
+import { createRunLaunchService } from "../../../src/dashboard/surfaces/run-start/run-launch-model.js";
+import type { RunStartWorkflow } from "../../../src/dashboard/surfaces/run-start/run-start.js";
 import { projectStartSteps, startStepWireControl } from "../../../src/backend/runs/start/step-selection.js";
 import { readRerunValues } from "../../../src/backend/runs/start/rerun-values.js";
 import { registerQueueRoutes } from "../../../src/backend/transports/http/routes/queue.js";
@@ -47,13 +47,13 @@ export function launchDescriptor(enqueue: EnqueuePolicy = "reject-active") {
       }).build({ schema: sourceBoundReadContract.output, dependsOn: ["read"], derive: ({ outputs }) => outputs.read }),
   });
 }
-export function launchHarness(enqueue: EnqueuePolicy = "reject-active") {
+export function launchHarness(enqueue: EnqueuePolicy = "reject-active", initializeRuntime?: Parameters<typeof sourceBoundHarness>[2]) {
   const h = sourceBoundHarness(launchDescriptor(enqueue), (world) => {
     const reads = sourceBoundReadStores(world); const writes = buildWriteFixtureRegistry(world);
     return defineTaskStoreRegistry([...reads.stores, ...writes.stores], {
       scenarioIds: [...reads.corpus.scenarioIds, ...writes.corpus.scenarioIds], tasks: [...reads.corpus.tasks, ...writes.corpus.tasks],
     });
-  });
+  }, initializeRuntime);
   const descriptor = h.descriptor;
   if (descriptor.surfaces.inputRun === undefined) throw new Error("launch fixture requires typed input");
   const workflow: RunStartWorkflow = { workflowId: descriptor.id, label: descriptor.label, categoryId: descriptor.category,

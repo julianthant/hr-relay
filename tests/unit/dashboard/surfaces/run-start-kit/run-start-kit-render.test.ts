@@ -27,9 +27,9 @@ import {
   LockedFact,
   PlanPreview,
   StartChoiceControl,
-} from "../../../../../src/dashboard/surfaces/run-start-kit.js";
-import { ENQUEUE_POLICY_REASON } from "../../../../../src/dashboard/surfaces/run-start-model.js";
-import { fmtClock } from "../../../../../src/dashboard/surfaces/format.js";
+} from "../../../../../src/dashboard/surfaces/run-start/run-start-kit.js";
+import { ENQUEUE_POLICY_REASON } from "../../../../../src/dashboard/surfaces/run-start/run-start-model.js";
+import { fmtClock } from "../../../../../src/dashboard/surfaces/shared/status/format.js";
 import { CommandResultSchema, type CommandResult } from "../../../../../src/rules/commands/commands.js";
 import { StartPlanWireSchema as StartPlanResponseSchema, type StartPlanWire as StartPlanResponse } from "../../../../../src/models/dashboard/start-plan.js";
 
@@ -123,7 +123,8 @@ describe("a locked value states its reason ON SCREEN (C48 / C81, D272 item 9)", 
       1,
       "a screen reader reads this locked value's reason more than once",
     );
-    assert.match(markup, /<select[^>]*disabled=""/u, "the locked fact does not share the field control shell");
+    assert.doesNotMatch(markup, /<select/u, "a fixed fact must not offer a dropdown");
+    assert.ok(textOf(markup).includes("Refuse overlapping subject runs"), "the fixed value disappeared");
   });
 
   it("is the SAME component behind the sub-selection, so the two cannot drift", () => {

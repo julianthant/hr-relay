@@ -131,6 +131,10 @@ describe("bootstrap start-surface block", () => {
       );
       expect([...served.keys()].sort())
         .toEqual(WORKFLOW_DESCRIPTORS.map((d) => String(d.id)).sort());
+      const systemsByStep: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
+        "person-lookup": { searching: ["ucpath"], "cross-verify": ["crm"], "active-status": [], "crm-dates": ["crm"] },
+        separations: { "kuali-extraction": ["kuali"], "identity-check": ["ucpath"], "job-summary": ["ucpath"], "kronos-timecard": ["new-kronos"], "ucpath-transaction": ["ucpath"], "kuali-finalization": ["ucpath", "kuali"] },
+      };
       for (const descriptor of WORKFLOW_DESCRIPTORS) {
         expect(served.get(String(descriptor.id)), String(descriptor.id)).toEqual({
           ...(descriptor.summary === undefined ? {} : { summary: descriptor.summary }),
@@ -145,6 +149,7 @@ describe("bootstrap start-surface block", () => {
             key: step.key,
             label: step.label,
             includedByDefault: step.includedByDefault,
+            systems: systemsByStep[String(descriptor.id)]?.[step.key],
             // Reconstructed inline ON PURPOSE: the server maps this union
             // through `startStepWireControl`, and a test that called the same
             // helper would be the producer agreeing with itself. The three
@@ -211,18 +216,21 @@ describe("bootstrap start-surface block", () => {
           key: "reading",
           label: "Reading",
           includedByDefault: true,
+          systems: ["ucpath"],
           control: { state: "omittable", form: READING_FORM, forces: ["folding"] },
         },
         {
           key: "folding",
           label: "Folding",
           includedByDefault: true,
+          systems: ["ucpath"],
           control: { state: "omittable", form: FOLDING_FORM, forces: [] },
         },
         {
           key: "auditing",
           label: "Auditing",
           includedByDefault: true,
+          systems: ["ucpath"],
           control: { state: "omittable", form: AUDITING_FORM, forces: [] },
         },
       ]);

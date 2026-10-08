@@ -1,0 +1,203 @@
+# visual-baseline-workflows-workflow-queue-logs-old-kronos-reports--graphite-warm--1280x720
+# adapter: fixture
+# fixture: visual-baseline-workflows.spec.ts:mounted Logs and all Explorer workflows @ dark
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#dashboard-main-region"
+- complementary "Workspace":
+  - heading "HR GPT" [level=2]
+  - button "Notifications, 3 unread"
+  - button "Search runs"
+  - navigation "Workflows":
+    - heading "Search" [level=3]
+    - list:
+      - listitem:
+        - button "Person Lookup": Person Lookup 5 · 14
+      - listitem:
+        - button "I-9 Lookup": I-9 Lookup 0 · 1
+    - heading "Separations" [level=3]
+    - list:
+      - listitem:
+        - button "Separations": Separations 0 · 1
+      - listitem:
+        - button "I-9 Check": I-9 Check 1 · 1
+    - heading "Onboarding" [level=3]
+    - list:
+      - listitem:
+        - button "Onboarding": Onboarding 0 · 1
+      - listitem:
+        - button "Oath Signature": Oath Signature 1 · 1
+      - listitem:
+        - button "Oath Upload": Oath Upload 1 · 1
+      - listitem:
+        - button "Emergency Contact": Emergency Contact 1 · 1
+    - heading "Work Study" [level=3]
+    - list:
+      - listitem:
+        - button "Work-Study": Work-Study 0 · 1
+    - heading "Payroll" [level=3]
+    - list:
+      - listitem:
+        - button "Kronos Pay Rule": Kronos Pay Rule 0 · 1
+    - heading "Utils" [level=3]
+    - list:
+      - listitem:
+        - button "OCR": OCR 0 · 5
+      - listitem:
+        - button "CRM Doc Download": CRM Doc Download 0 · 1
+      - listitem:
+        - button "SharePoint Download": SharePoint Download 0 · 1
+    - heading "OnBase" [level=3]
+    - list:
+      - listitem:
+        - button "OnBase": OnBase 1 · 1
+    - heading "Timekeeping" [level=3]
+    - list:
+      - listitem:
+        - button "Old Kronos Reports": Old Kronos Reports 0 · 1
+- main:
+  - heading "Old Kronos Reports queue" [level=1]
+  - region "Queue":
+    - text: "Finished 1 08/03/2026: 1 verified"
+    - button "10000001 — done" [pressed]:
+      - text: 10000001 Done 9:10 AM
+      - button "Attempts for 10000001": "#1"
+      - text: OKR18682486 2m 4s
+      - button "Retry"
+      - button "Delete"
+  - region "Action panel":
+    - group "Action panel controls":
+      - button "Start a run"
+      - button "Filter queue by status": Status
+      - combobox "Sort the queue": Newest first
+      - button "Attention first" [pressed]
+    - group "Log date controls":
+      - text: Dashboard date*
+      - group "Dashboard date*":
+        - spinbutton "month, Dashboard date*": "08"
+        - spinbutton "day, Dashboard date*": "03"
+        - spinbutton "year, Dashboard date*": "2026"
+        - button "Choose date Dashboard date*"
+  - region "Selected run logs":
+    - heading "10000001" [level=2]
+    - text: Done
+    - button "Rerun"
+    - navigation "Run timeline":
+      - list:
+        - listitem:
+          - button "Find employee · Completed · 09:10:00 · 36s": Find employee 36s
+        - listitem:
+          - button "Read employee name · Completed · 09:10:36 · 8s": Read employee name 8s
+        - listitem:
+          - button "Download Time Detail report · Completed · 09:10:44 · 1m 20s": Download Time Detail report 1m 20s
+    - region "Run logs":
+      - region "Find employee":
+        - time: 09:10:00
+        - heading "Find employee" [level=3]
+        - text: Old Kronos
+        - heading "Workforce Central search" [level=4]
+        - time: 09:10:00
+        - term: Employee ID
+        - definition: "10000001"
+        - time: 09:10:00
+        - text: Search employees
+        - heading "Search result" [level=4]
+        - time: 09:10:00
+        - term: Found
+        - definition: "Yes"
+        - time: 09:10:00
+        - term: Matching rows
+        - definition: "1"
+      - region "Read employee name":
+        - time: 09:10:36
+        - heading "Read employee name" [level=3]
+        - text: Old Kronos
+        - heading "Selected employee" [level=4]
+        - time: 09:10:36
+        - term: Employee ID
+        - definition: "10000001"
+        - time: 09:10:36
+        - term: Employee name
+        - definition: Jordan Lee
+      - region "Download Time Detail report":
+        - time: 09:10:44
+        - heading "Download Time Detail report" [level=3]
+        - text: Old Kronos
+        - time: 09:10:44
+        - text: Reports → Time Detail
+        - heading "Report options" [level=4]
+        - time: 09:10:44
+        - term: Start date
+        - definition: 01/01/2017
+        - time: 09:10:44
+        - term: End date
+        - definition: 01/31/2026
+        - time: 09:10:44
+        - term: Employees
+        - definition: "10000001"
+        - time: 09:10:44
+        - text: Run report and download PDF
+        - heading "PDF validation" [level=4]
+        - time: 09:10:44
+        - term: Report
+        - definition: Time Detail
+        - time: 09:10:44
+        - term: Employee ID
+        - definition: "10000001"
+        - time: 09:10:44
+        - term: Employee name
+        - definition: Jordan Lee
+        - time: 09:10:44
+        - term: Identity match
+        - definition: Confirmed
+        - time: 09:10:44
+        - term: Contains data
+        - definition: "Yes"
+        - heading "Tracker outcome" [level=4]
+        - time: 09:10:44
+        - term: File
+        - definition: Time Detail_Jordan Lee (10000001).pdf
+        - time: 09:10:44
+        - term: Status
+        - definition: Done
+        - heading "Downloading" [level=4]
+        - time: 09:10:44
+        - term: Files saved
+        - definition: 10000001-Time-Detail.pdf
+        - time: 09:10:44
+        - term: Tracker row
+        - definition: 10000001 · PDF identity matched
+        - time: 09:10:44
+        - paragraph: "Readback: nonempty PDF with matching employee identity; local workbook append."
+        - time: 09:12:04
+        - term: Employee
+        - definition: Jordan Lee
+        - time: 09:12:04
+        - term: Employee ID
+        - definition: "10000001"
+        - time: 09:12:04
+        - term: Report
+        - definition: Time Detail_Jordan Lee (10000001).pdf
+        - time: 09:12:04
+        - term: Report start
+        - definition: 01/01/2017
+        - time: 09:12:04
+        - term: Report end
+        - definition: 01/31/2026
+    - group:
+      - searchbox "Search logs"
+    - status: 26 actions
+    - status
+    - button "Copy logs"
+    - button "Go to latest action"
+- region "Session Panel":
+  - group "Session actions":
+    - button "Sessions"
+    - text: 2 running 1 starting 1 idle
+    - button "Add workers"
+    - button "Settings"
+- region "Notifications"

@@ -1,3 +1,4 @@
+import type { DashboardBuildCommand } from "./build-identity.js";
 import { createPreflightReportService } from "../../../runtime/preflight/report-service.js";
 import { composeRuntimePreflight, type RuntimePreflight } from "../../preflight/runtime-admission.js";
 import type { RuntimePreflightRunnerFactory } from "../../preflight/runtime-runners.js";
@@ -191,6 +192,7 @@ export interface DashboardComposeInput {
    * this process and refuses to start without a built `index.html`.
    */
   readonly frontend?: DashboardFrontendMode;
+  readonly frontendBuildScript?: DashboardBuildCommand;
   readonly startPlanTtlMs?: number;
   /**
    * Test-only ingress bind override: `0` asks the OS for an ephemeral port,
@@ -515,7 +517,7 @@ async function composeDashboardRuntimeStartup(
   // development path, declared at the schema rather than as a literal fallback.
   const frontend = DashboardFrontendModeSchema.default("vite-dev").parse(input.frontend);
   const staticBundle = frontend === "built-bundle"
-    ? await openStaticBundle(join(repoRoot, "dist", "dashboard"), repoRoot)
+    ? await openStaticBundle(join(repoRoot, "dist", "dashboard"), repoRoot, input.frontendBuildScript)
     : undefined;
 
   // D324: the production environment carries the host's primary display as the `display` default.

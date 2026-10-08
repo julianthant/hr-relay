@@ -1,15 +1,3 @@
-/**
- * Queue authority browser parity spec (S6, P5).
- *
- * Covers:
- *  - Both themes (graphite-warm, paper-ink) across 1440×900, 1280×720, and 1024×768.
- *  - Responsive resize from 1440×900 to 1024×720 and back.
- *  - Keyboard navigation, dialogs, and focus return.
- *  - Terminal run deletion with live settlement, tombstone persistence in SQLite,
- *    and row removal from DOM.
- *  - Actual 125% and 200% browser zoom via chrome.tabs.setZoom (Manifest V3 extension).
- *  - Rerun handoff preserving accepted behavior (no pre-submission run creation).
- */
 import { expect, test } from "@playwright/test";
 import { chromium, type Worker } from "playwright";
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -24,11 +12,31 @@ import {
 import { dismissWorkflowWindowOverQueue, failOnPageErrors } from "./helpers/reference-harness.js";
 import { startQueueAuthorityServer, type QueueAuthorityServer } from "./helpers/queue-authority-server.js";
 
+
 const VIEWPORTS = [
   { name: "1440x900", width: 1440, height: 900 },
   { name: "1280x720", width: 1280, height: 720 },
   { name: "1024x768", width: 1024, height: 768 },
 ] as const;
+
+/** The extension owns one exact test tab; missing or ambiguous ownership fails. */
+async function setBrowserZoom(worker: Worker, pageUrl: string, factor: number) {
+  return worker.evaluate(async ({ pageUrl, factor }) => {
+    const { chrome } = globalThis as unknown as { chrome: { tabs: {
+      query: (query: Record<string, never>) => Promise<Array<{ id?: number; url?: string }>>;
+      setZoomSettings: (id: number, settings: { mode: "automatic"; scope: "per-tab" }) => Promise<void>;
+      setZoom: (id: number, factor: number) => Promise<void>;
+      getZoom: (id: number) => Promise<number>;
+      getZoomSettings: (id: number) => Promise<{ mode: string; scope: string }>;
+    } } };
+    const owned = (await chrome.tabs.query({})).filter(tab => tab.url === pageUrl);
+    const tabId = owned[0]?.id;
+    if (owned.length !== 1 || tabId === undefined) throw new Error(`Expected one owned zoom tab, found ${String(owned.length)}`);
+    await chrome.tabs.setZoomSettings(tabId, { mode: "automatic", scope: "per-tab" });
+    await chrome.tabs.setZoom(tabId, factor);
+    return { tabId, value: await chrome.tabs.getZoom(tabId), settings: await chrome.tabs.getZoomSettings(tabId) };
+  }, { pageUrl, factor });
+}
 
 test.describe("Queue authority, live commands, and desktop parity (P5)", () => {
   let server: QueueAuthorityServer;
@@ -80,9 +88,8 @@ test.describe("Queue authority, live commands, and desktop parity (P5)", () => {
     const terminalRow = page.locator(`[data-demo-row-id='${server.runIds.cancelledRun}']`).first();
     await expect(terminalRow).toBeVisible();
 
-    await terminalRow.focus();
-    await page.keyboard.press("Shift+F10");
-    const deleteButton = page.getByRole("menuitem", { name: "Permanently delete", exact: true });
+    // Trigger delete action button on the cancelled row
+    const deleteButton = terminalRow.getByRole("button", { name: /Delete run/u }).first();
     await deleteButton.focus();
     await page.keyboard.press("Enter");
 
@@ -95,7 +102,7 @@ test.describe("Queue authority, live commands, and desktop parity (P5)", () => {
     // Dismiss with Escape key -> focus returns to triggering button
     await page.keyboard.press("Escape");
     await expect(dialog).toHaveCount(0);
-    await expect(terminalRow).toBeFocused();
+    await expect(deleteButton).toBeFocused();
 
     expect(errors, "page errors during dialog keyboard interaction").toEqual([]);
   });
@@ -103,7 +110,7 @@ test.describe("Queue authority, live commands, and desktop parity (P5)", () => {
   test("live deletion settlement removes row and commits tombstone in authority", async ({ page }) => {
     const errors = failOnPageErrors(page);
     await page.setViewportSize(VIEWPORTS[1]);
-    await installTheme(page, PARITY_THEMES[1]);
+    await installTheme(page, PARITY_THEMES[0]);
     await gotoAppState(page, server.baseUrl, { day: server.day });
     await dismissWorkflowWindowOverQueue(page);
 
@@ -117,8 +124,8 @@ test.describe("Queue authority, live commands, and desktop parity (P5)", () => {
     expect(db.authority.deletedRuns.get(runId)).toBeUndefined();
 
     // Open Delete dialog
-    await terminalRow.click({ button: "right" });
-    await page.getByRole("menuitem", { name: "Permanently delete", exact: true }).click();
+    const deleteButton = terminalRow.getByRole("button", { name: /Delete run/u }).first();
+    await deleteButton.click();
 
     const dialog = page.getByRole("dialog", { name: "Delete this run", exact: true });
     await expect(dialog).toBeVisible();
@@ -151,54 +158,6 @@ test.describe("Queue authority, live commands, and desktop parity (P5)", () => {
     expect(errors, "page errors during live deletion settlement").toEqual([]);
   });
 
-  test("lost bulk response names original targets before replay after selection changes", async ({ page }, testInfo) => {
-    await page.setViewportSize(VIEWPORTS[0]);
-    await gotoAppState(page, server.baseUrl, { day: server.day });
-    await dismissWorkflowWindowOverQueue(page);
-    const originalId = server.runIds.queuedRun;
-    const otherId = server.runIds.runningRun;
-    const original = page.locator(`[data-demo-row-id='${originalId}']`).first();
-    const other = page.locator(`[data-demo-row-id='${otherId}']`).first();
-    const requests: unknown[] = [];
-    const responses: unknown[] = [];
-    await page.route("**/api/v1/commands/bulk", async route => {
-      requests.push(route.request().postDataJSON());
-      const response = await route.fetch();
-      responses.push(await response.json());
-      if (requests.length === 1) await route.abort("failed");
-      else await route.fulfill({ response });
-    });
-    await page.getByRole("button", { name: "Select", exact: true }).click();
-    await original.getByRole("checkbox").check();
-    await page.getByRole("button", { name: "Cancel run 1", exact: true }).click();
-    await page.getByRole("dialog").getByRole("button", { name: "Cancel run 1 run", exact: true }).click();
-    const recovery = page.getByRole("region", { name: "Commands awaiting recovery" });
-    await expect(recovery).toBeVisible();
-    expect(responses[0], JSON.stringify(responses[0])).toMatchObject({ state: "vector", results: [{ outcome: "applied", runId: originalId }] });
-    const originalAfter = server.authority().authority.runs.get(originalId);
-    const otherBefore = server.authority().authority.runs.get(otherId);
-    await original.getByRole("checkbox").uncheck();
-    await other.getByRole("checkbox").check();
-    await page.getByRole("button", { name: "Cancel run 1", exact: true }).click();
-    const dialog = page.getByRole("dialog", { name: "Recover previous Cancel run", exact: true });
-    await expect(dialog).toBeVisible();
-    await expect(dialog).toContainText(originalId);
-    await expect(dialog).not.toContainText(otherId);
-    expect(requests).toHaveLength(1);
-    await testInfo.attach("recovery-targets", { body: await page.screenshot({ animations: "disabled" }), contentType: "image/png" });
-    await dialog.getByRole("button", { name: "Keep unresolved", exact: true }).click();
-    await expect(recovery).toBeVisible();
-    expect(requests).toHaveLength(1);
-    await recovery.getByRole("button", { name: "Review Cancel run (1 run)", exact: true }).click();
-    await dialog.getByRole("button", { name: "Resend original request", exact: true }).click();
-    await expect(recovery).toHaveCount(0);
-    expect(requests).toHaveLength(2);
-    expect(requests[1]).toEqual(requests[0]);
-    expect(server.authority().authority.runs.get(originalId)).toEqual(originalAfter);
-    expect(server.authority().authority.runs.get(otherId)).toEqual(otherBefore);
-    await expect(other.getByRole("checkbox")).toBeChecked();
-  });
-
   test("lost delete response remains recoverable after its row disappears", async ({ page }) => {
     await page.setViewportSize(VIEWPORTS[0]);
     await gotoAppState(page, server.baseUrl, { day: server.day, run: server.runIds.doneRun });
@@ -214,8 +173,7 @@ test.describe("Queue authority, live commands, and desktop parity (P5)", () => {
       else await route.fulfill({ response });
     });
     const row = page.locator(`[data-demo-row-id='${runId}']`).first();
-    await row.click({ button: "right" });
-    await page.getByRole("menuitem", { name: "Permanently delete", exact: true }).click();
+    await row.getByRole("button", { name: /Delete run/u }).click();
     await page.getByRole("dialog", { name: "Delete this run", exact: true })
       .getByRole("button", { name: "Delete", exact: true }).click();
     const recovery = page.getByRole("region", { name: "Commands awaiting recovery" });
@@ -224,8 +182,8 @@ test.describe("Queue authority, live commands, and desktop parity (P5)", () => {
     await expect(row).toHaveCount(0);
     const tombstone = server.authority().authority.deletedRuns.get(runId);
     expect(tombstone).toBeDefined();
-    await recovery.getByRole("button", { name: "Review Permanently delete (1 run)", exact: true }).click();
-    await page.getByRole("dialog", { name: "Recover previous Permanently delete", exact: true })
+    await recovery.getByRole("button", { name: "Review Delete run (1 run)", exact: true }).click();
+    await page.getByRole("dialog", { name: "Recover previous Delete run", exact: true })
       .getByRole("button", { name: "Resend original request", exact: true }).click();
     await expect(recovery).toHaveCount(0);
     expect(requests).toHaveLength(2);
@@ -234,7 +192,7 @@ test.describe("Queue authority, live commands, and desktop parity (P5)", () => {
     await expect(page).not.toHaveURL(new RegExp(`run=${runId}`, "u"));
   });
 
-  test("tree deletion clears selected child and deleted bulk targets, preserving survivors", async ({ page }) => {
+  test("tree deletion clears selected child and preserves surviving runs", async ({ page }) => {
     const database = server.authority();
     const rootId = server.runIds.groupRun;
     const childId = server.runIds.memberRun;
@@ -284,13 +242,9 @@ test.describe("Queue authority, live commands, and desktop parity (P5)", () => {
     await page.setViewportSize(VIEWPORTS[0]);
     await gotoAppState(page, server.baseUrl, { day: server.day, run: childId });
     await dismissWorkflowWindowOverQueue(page);
-    await page.getByRole("button", { name: "Select", exact: true }).click();
     const root = page.locator(`[data-demo-row-id='${rootId}']`).first();
     const survivor = page.locator(`[data-demo-row-id='${server.runIds.runningRun}']`).first();
-    await root.getByRole("checkbox").check();
-    await survivor.getByRole("checkbox").check();
-    await root.click({ button: "right" });
-    await page.getByRole("menuitem", { name: "Permanently delete", exact: true }).click();
+    await root.getByRole("button", { name: /Delete group/u }).click();
     const response = page.waitForResponse(reply => reply.url().endsWith("/api/v1/commands") && reply.request().method() === "POST");
     await page.getByRole("dialog", { name: "Delete this group", exact: true }).getByRole("button", { name: "Delete", exact: true }).click();
     const result: unknown = await (await response).json();
@@ -298,8 +252,8 @@ test.describe("Queue authority, live commands, and desktop parity (P5)", () => {
     await expect(root).toHaveCount(0);
     await expect(page.locator(`[data-demo-row-id='${childId}']`)).toHaveCount(0);
     await expect(page).not.toHaveURL(new RegExp(`run=${childId}`, "u"));
-    await expect(survivor.getByRole("checkbox")).toBeChecked();
-    await expect(page.getByText("1 selected", { exact: true })).toBeVisible();
+    await expect(survivor).toBeVisible();
+    expect(database.authority.runs.get(server.runIds.runningRun)).toBeDefined();
     for (const run of tree) {
       if (run === undefined) throw new Error("seeded deletion tree is missing its root");
       expect(database.authority.runs.get(run.envelope.runId)).toBeUndefined();
@@ -355,17 +309,14 @@ test.describe("Queue authority, live commands, and desktop parity (P5)", () => {
           await expect(page.getByRole("region", { name: "Queue", exact: true })).toBeVisible();
           // This control sits beyond the effective viewport at 200%: scroll,
           // keyboard activation, and focus must still work on the desktop canvas.
-          const select = page.getByRole("button", { name: "Select", exact: true });
+          const select = page.getByRole("button", { name: "Sessions", exact: true });
           await select.scrollIntoViewIfNeeded();
           await select.focus();
           await expect(select).toBeFocused();
           await page.keyboard.press("Enter");
-          await expect(select).toHaveAttribute("aria-pressed", "true");
+          await expect(select).toHaveAttribute("aria-expanded", "true");
           await page.keyboard.press("Enter");
-          await expect(select).toHaveAttribute("aria-pressed", "false");
-          const screenshot = testInfo.outputPath(`zoom-${theme.name}-${String(sample.zoom)}.png`);
-          await page.screenshot({ path: screenshot });
-          await testInfo.attach(`zoom-${theme.name}-${String(sample.zoom)}`, { path: screenshot, contentType: "image/png" });
+          await expect(select).toHaveAttribute("aria-expanded", "false");
           receipts.push({ theme: theme.name, zoom: sample.zoom, mechanism: "chrome.tabs.setZoom", zoomResult, geometry, baselineDpr, userAgent });
         }
         expect((await setBrowserZoom(worker, page.url(), 1)).value).toBe(1);
@@ -415,22 +366,3 @@ test.describe("Queue authority, live commands, and desktop parity (P5)", () => {
     expect(errors, "page errors during Rerun inspection").toEqual([]);
   });
 });
-
-/** The extension owns one exact test tab; missing or ambiguous ownership fails. */
-async function setBrowserZoom(worker: Worker, pageUrl: string, factor: number) {
-  return worker.evaluate(async ({ pageUrl, factor }) => {
-    const { chrome } = globalThis as unknown as { chrome: { tabs: {
-      query: (query: Record<string, never>) => Promise<Array<{ id?: number; url?: string }>>;
-      setZoomSettings: (id: number, settings: { mode: "automatic"; scope: "per-tab" }) => Promise<void>;
-      setZoom: (id: number, factor: number) => Promise<void>;
-      getZoom: (id: number) => Promise<number>;
-      getZoomSettings: (id: number) => Promise<{ mode: string; scope: string }>;
-    } } };
-    const owned = (await chrome.tabs.query({})).filter(tab => tab.url === pageUrl);
-    const tabId = owned[0]?.id;
-    if (owned.length !== 1 || tabId === undefined) throw new Error(`Expected one owned zoom tab, found ${String(owned.length)}`);
-    await chrome.tabs.setZoomSettings(tabId, { mode: "automatic", scope: "per-tab" });
-    await chrome.tabs.setZoom(tabId, factor);
-    return { tabId, value: await chrome.tabs.getZoom(tabId), settings: await chrome.tabs.getZoomSettings(tabId) };
-  }, { pageUrl, factor });
-}

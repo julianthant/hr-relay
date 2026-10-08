@@ -4,6 +4,7 @@ export type SessionNode = Readonly<{ id: string; label: string; state: "complete
 export type SessionWorker = Readonly<{
   id: string;
   label: string;
+  workflowId: string;
   workflow: string;
   subject?: string;
   action: string;

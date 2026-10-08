@@ -1,4 +1,5 @@
-import { FIXTURE_EDITABLE_SETTINGS } from "../../../../support/fixtures/dashboard/fixture-settings.js";
+import { PARITY_WORKFLOW_COMPOSITION } from "../../../../parity/helpers/workflow-composition.js";
+import { FIXTURE_EDITABLE_SETTINGS } from "../../../../parity/helpers/fixture-settings.js";
 // @vitest-environment jsdom
 /**
  * ENTERING a takeover moves focus into it — the open half of a pair this tree
@@ -17,8 +18,10 @@ import { FIXTURE_EDITABLE_SETTINGS } from "../../../../support/fixtures/dashboar
  * `TakeoverFrame` (D275 item 2 — ONE shared wrapper, kept as the accessibility
  * and motion convention) now owns it. The generic claims below test that one
  * owner; the adoption test proves the last adopter, intake, actually crosses
- * the boundary and keeps its truthful first control. Three claims, and each
- * was run against a mutation of the exact line it pins:
+ * the boundary and keeps its truthful first control. The UI catalog was the
+ * other one until D295 made it a Settings SECTION — it owns no frame of its
+ * own now, which is what the case below its adoption test pins instead.
+ * Three claims, and each was run against a mutation of the exact line it pins:
  *
  * 1. **The frame takes focus on mount.** Deleting the `node.focus(...)` call
  *    turns the first two tests red.
@@ -61,9 +64,9 @@ import {
   restoreDashboardTakeoverFocus,
 } from "../../../../../src/dashboard/app/dashboard-app-model.js";
 import type { DashboardClient } from "../../../../../src/dashboard/client/index.js";
-import { TakeoverFrame } from "../../../../../src/dashboard/ds/primitives-layout.js";
+import { TakeoverFrame } from "../../../../../src/dashboard/ds/primitives/primitives-layout.js";
 import { DashboardClientProvider } from "../../../../../src/dashboard/state/client-context.js";
-import { IntakeWorkspace } from "../../../../../src/dashboard/surfaces/intake.js";
+import { IntakeWorkspace } from "../../../../../src/dashboard/surfaces/intake/intake.js";
 
 class MeasurementFreeResizeObserver {
   observe(): void {}
@@ -124,6 +127,7 @@ const APP_DAY = DashboardDayWireSchema.parse({
   workerPools: [],
   notifications: [],
 });
+
 const EDITABLE_SETTINGS = FIXTURE_EDITABLE_SETTINGS;
 const CALENDAR = ({ month, day }: { month: string; day: string }) => CalendarWireSchema.parse({
   month,
@@ -216,7 +220,7 @@ function appClient(): DashboardClient {
 
 async function mountDashboard(search: string): Promise<void> {
   window.history.replaceState(null, "", `/${search}`);
-  await mountSurface(appClient(), createElement(DashboardApp));
+  await mountSurface(appClient(), createElement(DashboardApp, { workflowComposition: PARITY_WORKFLOW_COMPOSITION }));
   await act(async () => {
     await Promise.resolve();
     await Promise.resolve();
@@ -224,7 +228,7 @@ async function mountDashboard(search: string): Promise<void> {
 }
 
 async function mountDashboardAtCurrentHistoryEntry(): Promise<void> {
-  await mountSurface(appClient(), createElement(DashboardApp));
+  await mountSurface(appClient(), createElement(DashboardApp, { workflowComposition: PARITY_WORKFLOW_COMPOSITION }));
   await act(async () => {
     await Promise.resolve();
     await Promise.resolve();
@@ -259,12 +263,6 @@ function buttonNamed(label: string): HTMLButtonElement {
   return button;
 }
 
-function buttonWithAriaPrefix(prefix: string): HTMLButtonElement {
-  const button = [...document.querySelectorAll("button")].find((candidate) => candidate.getAttribute("aria-label")?.startsWith(prefix));
-  assert.ok(button instanceof HTMLButtonElement, `no button aria-label starts with "${prefix}"`);
-  return button;
-}
-
 async function press(button: HTMLButtonElement): Promise<void> {
   await act(async () => {
     button.focus();
@@ -273,15 +271,15 @@ async function press(button: HTMLButtonElement): Promise<void> {
   });
 }
 
-async function setInputValue(input: HTMLInputElement, value: string): Promise<void> {
-  await act(async () => {
-    const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
-    if (descriptor?.set === undefined) throw new Error("HTML input value setter is unavailable");
-    // eslint-disable-next-line @typescript-eslint/unbound-method
-    Reflect.apply(descriptor.set, input, [value]);
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-    input.dispatchEvent(new Event("change", { bubbles: true }));
-  });
+async function dirtyBrowserSettings(): Promise<{ input: HTMLInputElement; value: boolean }> {
+  const row = document.querySelector('[data-settings-path="browser.headless"]');
+  const input = row?.querySelector('[role="switch"]');
+  const control = row?.querySelector(".ds-switch-control");
+  assert.ok(input instanceof HTMLInputElement && control instanceof HTMLElement, "Settings browser switch did not mount");
+  const value = !input.checked;
+  await act(async () => control.click());
+  assert.equal(input.checked, value);
+  return { input, value };
 }
 
 /**
@@ -381,7 +379,25 @@ describe("the two remaining takeovers use the shared focus boundary (UF-FU-1)", 
     assert.equal(first.textContent?.trim(), "Close");
   });
 
+  it("the retired UI catalog URL shows an explicit removal notice without mounting its reader", async () => {
+    await mountDashboard("?settings=ui-catalog");
 
+    const frame = frameOf("Settings");
+    assert.equal(document.activeElement, frame);
+    assert.equal(
+      document.querySelector('section[aria-label="UI catalog"]'),
+      null,
+      "the catalog must no longer mount a frame of its own",
+    );
+    assert.match(frame.textContent ?? "", /UI catalog removed/u);
+    assert.equal([...frame.querySelectorAll("a")].some(link => link.textContent?.trim() === "UI catalog"), false);
+    assert.equal(takeFirstTab(frame).getAttribute("aria-label"), "Back to dashboard");
+    assert.equal(
+      document.querySelector('[aria-label="Close the UI catalog"]'),
+      null,
+      "a section may not carry a second exit from the page that contains it",
+    );
+  });
 });
 
 describe("closing a route-backed takeover restores its toolbar door", () => {
@@ -429,11 +445,24 @@ describe("closing a route-backed takeover restores its toolbar door", () => {
 });
 
 describe("Settings exits share the page-owned draft guard", () => {
-  it("retains the same draft across Settings sections, restores cancelled-dialog focus and exits to main", async () => {
+  it("retains the same draft across catalog subroutes, restores cancelled-dialog focus and exits to gear", async () => {
     await mountDashboard("?settings=general");
-    const input = document.querySelector("input");
-    assert.ok(input instanceof HTMLInputElement);
-    await setInputValue(input, "Draft through Settings sections");
+    const { input, value } = await dirtyBrowserSettings();
+    const frame = frameOf("Settings");
+    const themeRow = [...document.querySelectorAll<HTMLElement>(".ds-switch-row")].find(row => row.textContent?.includes("Dark theme"));
+    const themeSwitch = themeRow?.querySelector("input");
+    const themeControl = themeRow?.querySelector(".ds-switch-control");
+    assert.ok(themeSwitch instanceof HTMLInputElement && themeControl instanceof HTMLElement);
+    const initialTheme = themeSwitch.checked;
+    await act(async () => themeControl.click());
+    assert.equal(themeSwitch.checked, !initialTheme);
+    const notifications = document.querySelector(".rail-notification-toggle");
+    assert.ok(notifications instanceof HTMLButtonElement);
+    assert.match(notifications.getAttribute("aria-label") ?? "", /^Notifications, \d+ unread$/u);
+    await press(notifications);
+    assert.equal(frameOf("Settings"), frame, "opening notifications preserves the runtime draft owner");
+    assert.equal(input.checked, value, "browser appearance and notification controls preserve runtime edits");
+    await press(notifications);
     const sectionLink = (label: string): HTMLAnchorElement => {
       const link = [...document.querySelectorAll("nav[aria-label='Settings sections'] a")]
         .find(candidate => candidate.textContent?.trim() === label);
@@ -445,7 +474,7 @@ describe("Settings exits share the page-owned draft guard", () => {
     await act(async () => sectionLink("Keyboard").click());
     assert.match(window.location.search, /settings=keyboard/u);
     assert.equal(document.querySelectorAll('section[aria-label="Settings"]').length, 1);
-    const dashboard = buttonNamed("Dashboard");
+    const dashboard = buttonNamed("Back to dashboard");
     await press(dashboard);
     await press(buttonNamed("Keep editing"));
     assert.equal(document.activeElement, dashboard, "cancelling the shell exit restores focus to its persistent navigation control");
@@ -458,24 +487,22 @@ describe("Settings exits share the page-owned draft guard", () => {
     assert.equal(document.querySelector('[role="dialog"]'), null, "Escape closes the pending dirty-exit dialog");
     assert.equal(document.activeElement, dashboard, "Escape restores focus to the persistent navigation control");
     await act(async () => sectionLink("General").click());
-    const restored = document.querySelector("input");
+    const restored = document.querySelector('[data-settings-path="browser.headless"] [role="switch"]');
     assert.ok(restored instanceof HTMLInputElement);
-    assert.equal(restored.value, "Draft through Settings sections");
-    await press(buttonNamed("Dashboard"));
+    assert.equal(restored.checked, value);
+    await press(buttonNamed("Back to dashboard"));
     await press(buttonNamed("Discard changes"));
     assert.equal(document.querySelector('section[aria-label="Settings"]'), null);
-    assert.equal(window.location.search.includes("settings"), false);
-    assert.equal(document.activeElement?.id, "dashboard-main-region");
+    assert.equal(window.location.search.includes("catalog"), false);
+    assert.equal(document.activeElement?.id, "settings-gear");
   });
 
-  it("requires a discard before persistent TopBar navigation unmounts a dirty Settings draft", async () => {
+  it("requires a discard before persistent rail navigation unmounts a dirty Settings draft", async () => {
     await mountDashboard("?settings=display");
-    const input = document.querySelector("input");
-    assert.ok(input instanceof HTMLInputElement, "Settings editable input did not mount");
-    await setInputValue(input, "Edited operator");
+    await dirtyBrowserSettings();
 
-    await press(buttonNamed("Dashboard"));
-    assert.ok(frameOf("Settings"), "a dirty TopBar navigation must leave Settings mounted for confirmation");
+    await press(buttonNamed("Back to dashboard"));
+    assert.ok(frameOf("Settings"), "a dirty rail navigation must leave Settings mounted for confirmation");
     assert.match(document.body.textContent ?? "", /Discard unsaved settings\?/u);
     const discard = buttonNamed("Discard changes");
     await press(discard);
@@ -483,9 +510,9 @@ describe("Settings exits share the page-owned draft guard", () => {
     assert.ok(document.getElementById("dashboard-main-region"));
   });
 
-  it("allows persistent TopBar navigation immediately when the Settings draft is clean", async () => {
+  it("allows persistent rail navigation immediately when the Settings draft is clean", async () => {
     await mountDashboard("?settings=display");
-    await press(buttonNamed("Dashboard"));
+    await press(buttonNamed("Back to dashboard"));
     assert.equal(document.querySelector('section[aria-label="Settings"]'), null);
     assert.equal(document.body.textContent?.includes("Discard unsaved settings?"), false);
     assert.ok(document.getElementById("dashboard-main-region"));
@@ -493,9 +520,7 @@ describe("Settings exits share the page-owned draft guard", () => {
 
   it("reconciles a dirty native popstate until the operator chooses an exit", async () => {
     await mountSettingsAtThirdHistoryEntry();
-    const input = document.querySelector("input");
-    assert.ok(input instanceof HTMLInputElement, "Settings editable input did not mount");
-    await setInputValue(input, "Edited operator");
+    await dirtyBrowserSettings();
 
     await moveHistory("back");
     assert.ok(frameOf("Settings"));
@@ -519,30 +544,28 @@ describe("Settings exits share the page-owned draft guard", () => {
     assert.equal(window.location.search, "?day=2026-08-26");
   });
 
-  it("does not mutate TopBar history until a dirty Settings exit is confirmed", async () => {
-    await mountDashboard("");
-    await press(buttonWithAriaPrefix("Previous day"));
-    await press(buttonNamed("Settings"));
-    const input = document.querySelector("input");
-    assert.ok(input instanceof HTMLInputElement, "Settings editable input did not mount");
-    await setInputValue(input, "Edited operator");
-
-    const back = buttonNamed("Back");
-    assert.equal(back.disabled, false);
-    assert.equal(buttonNamed("Forward").disabled, true);
-    await press(back);
+  it("preserves both native history entries when a dirty Settings exit is cancelled", async () => {
+    await mountSettingsAtThirdHistoryEntry();
+    await dirtyBrowserSettings();
+    const cursor = window.history.state as { hrDashboardRouteCursor: number };
+    await moveHistory("back");
     await press(buttonNamed("Keep editing"));
     assert.ok(frameOf("Settings"));
-    assert.equal(buttonNamed("Back").disabled, false, "cancelled navigation keeps the prior history cursor");
-    assert.equal(buttonNamed("Forward").disabled, true, "cancelled navigation creates no forward place");
+    assert.deepEqual(window.history.state, cursor, "cancelled navigation keeps the stable history cursor");
+    await moveHistory("back");
+    await press(buttonNamed("Discard changes"));
+    await settleHistory();
+    assert.equal(window.location.search, "?day=2026-08-26");
+    await moveHistory("forward");
+    assert.equal(window.location.search, "?settings=display", "cancelled navigation preserves the forward entry");
   });
 
-  it("accepts clean TopBar history navigation immediately", async () => {
-    await mountDashboard("");
-    await press(buttonWithAriaPrefix("Previous day"));
-    await press(buttonNamed("Settings"));
-    await press(buttonNamed("Back"));
+  it("accepts clean browser history navigation and preserves its forward destination", async () => {
+    await mountSettingsAtThirdHistoryEntry();
+    await moveHistory("back");
     assert.equal(document.querySelector('section[aria-label="Settings"]'), null);
-    assert.equal(buttonNamed("Forward").disabled, false);
+    await moveHistory("forward");
+    assert.equal(window.location.search, "?settings=display");
+    assert.ok(frameOf("Settings"));
   });
 });

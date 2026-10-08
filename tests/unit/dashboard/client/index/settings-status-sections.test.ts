@@ -1,3 +1,7 @@
+import { FIXTURE_EDITABLE_SETTINGS } from "../../../../parity/helpers/fixture-settings.js";
+import { fixturePreflightReport } from "../../../../parity/helpers/fixture-preflight-routes.js";
+import { DEFAULT_DASHBOARD_PROFILE } from "../../../../parity/helpers/fixture-profile.js";
+import { PreflightActionsProvider } from "../../../../../src/dashboard/surfaces/settings/preflight/preflight-actions.js";
 // @vitest-environment jsdom
 /**
  * D274 item 6 (ledger 3 SE40–SE42) — the Workflow capabilities Settings section, as an
@@ -34,8 +38,8 @@ import {
 } from "../../../../../src/models/dashboard/bootstrap.js";
 import type { DashboardClient } from "../../../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../../../src/dashboard/state/client-context.js";
-import { SettingsPageWithToast } from "../../../../support/fixtures/dashboard/settings-page-with-toast.js";
-import { buildSettingsNav } from "../../../../../src/dashboard/surfaces/settings-model.js";
+import { SettingsPage } from "../../../../../src/dashboard/surfaces/settings/settings.js";
+import { buildSettingsNav } from "../../../../../src/dashboard/surfaces/settings/settings-model.js";
 
 class MeasurementFreeResizeObserver {
   observe(): void {}
@@ -132,11 +136,13 @@ async function mount(
   document.body.append(host);
   const client = {
     settingsFacts,
-    editableSettings: () => Promise.reject(new Error("editable settings are outside this status-section fixture")),
+    editableSettings: () => Promise.resolve(FIXTURE_EDITABLE_SETTINGS),
+    preflightScopes: () => Promise.resolve([]),
+    readPreflight: () => Promise.resolve({ state: "present", report: { ...fixturePreflightReport(DEFAULT_DASHBOARD_PROFILE), descriptorFingerprint: "a".repeat(64) } }),
   } as unknown as DashboardClient;
   const element = createElement(DashboardClientProvider, {
     client,
-    children: createElement(SettingsPageWithToast, {
+    children: createElement(SettingsPage, { onClose: () => undefined,
       storage: HEALTHY_STORAGE,
       sections,
       workflowLabels: LABELS,
@@ -149,7 +155,7 @@ async function mount(
   });
   await act(async () => {
     root = createRoot(host as HTMLElement);
-    root.render(element);
+    root.render(createElement(PreflightActionsProvider, { actions: { actorId: "local-operator", descriptorFingerprint: "a".repeat(64), showSettings: () => undefined, showSessions: () => undefined }, children: element }));
   });
   return host.textContent ?? "";
 }
@@ -193,9 +199,13 @@ describe("System hosts wire compatibility", () => {
 });
 
 describe("Workflow capabilities (SE41/SE42)", () => {
-  it("names the served descriptor source without blanket teaching", async () => {
+  it("names the served descriptor source on demand without blanket teaching", async () => {
     const text = await mount(SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID, () => Promise.resolve(FACTS));
-    assert.ok(text.includes("Source: served workflow descriptors."), text);
+    assert.ok(!text.includes("Source: served workflow descriptors."), text);
+    const help = mounted().querySelector('button[aria-label="About workflow operations"]');
+    assert.ok(help instanceof HTMLButtonElement);
+    await act(async () => { help.click(); });
+    assert.ok(document.body.textContent?.includes("Source: served workflow descriptors."));
     assert.doesNotMatch(text, /Every cell is derived from the same descriptor/u);
   });
 
@@ -227,6 +237,7 @@ describe("Workflow capabilities (SE41/SE42)", () => {
     await mount(SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID, () => Promise.resolve(FACTS));
     assert.equal(mounted().querySelectorAll(".settings-reference-disclosure").length, 3);
     assert.equal(mounted().querySelectorAll(".settings-reference-disclosure[data-state=open]").length, 1);
+    assert.deepEqual([...mounted().querySelectorAll(".workflow-operation")].map(node => node.getAttribute("data-capability")), ["typed-start", "dry-run", "edit-data", "review-panel", "operator-gates", "browser-systems"]);
   });
 
   it("gives each workflow its own dry-run posture, including the refusal", async () => {
@@ -290,7 +301,8 @@ describe("the F11b review fixes", () => {
 describe("the async arms (D275 item 4)", () => {
   it("says facts are loading instead of drawing an empty matrix", async () => {
     const text = await mount(SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID, pending);
-    assert.ok(text.includes("Loading deployment facts"), text);
+    assert.ok(mounted().querySelector('[role="status"][aria-label="Loading workflow operations"]'));
+    assert.ok(mounted().querySelector('[data-slot="skeleton"]'));
     assert.ok(!text.includes("Where a dry run stops"), text);
   });
 

@@ -1,0 +1,239 @@
+# visual-baseline-workflows-workflow-queue-logs-kronos-pay-rule--graphite-warm--1280x720
+# adapter: fixture
+# fixture: visual-baseline-workflows.spec.ts:mounted Logs and all Explorer workflows @ dark
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#dashboard-main-region"
+- complementary "Workspace":
+  - heading "HR GPT" [level=2]
+  - button "Notifications, 3 unread"
+  - button "Search runs"
+  - navigation "Workflows":
+    - heading "Search" [level=3]
+    - list:
+      - listitem:
+        - button "Person Lookup": Person Lookup 5 · 14
+      - listitem:
+        - button "I-9 Lookup": I-9 Lookup 0 · 1
+    - heading "Separations" [level=3]
+    - list:
+      - listitem:
+        - button "Separations": Separations 0 · 1
+      - listitem:
+        - button "I-9 Check": I-9 Check 1 · 1
+    - heading "Onboarding" [level=3]
+    - list:
+      - listitem:
+        - button "Onboarding": Onboarding 0 · 1
+      - listitem:
+        - button "Oath Signature": Oath Signature 1 · 1
+      - listitem:
+        - button "Oath Upload": Oath Upload 1 · 1
+      - listitem:
+        - button "Emergency Contact": Emergency Contact 1 · 1
+    - heading "Work Study" [level=3]
+    - list:
+      - listitem:
+        - button "Work-Study": Work-Study 0 · 1
+    - heading "Payroll" [level=3]
+    - list:
+      - listitem:
+        - button "Kronos Pay Rule": Kronos Pay Rule 0 · 1
+    - heading "Utils" [level=3]
+    - list:
+      - listitem:
+        - button "OCR": OCR 0 · 5
+      - listitem:
+        - button "CRM Doc Download": CRM Doc Download 0 · 1
+      - listitem:
+        - button "SharePoint Download": SharePoint Download 0 · 1
+    - heading "OnBase" [level=3]
+    - list:
+      - listitem:
+        - button "OnBase": OnBase 1 · 1
+    - heading "Timekeeping" [level=3]
+    - list:
+      - listitem:
+        - button "Old Kronos Reports": Old Kronos Reports 0 · 1
+- main:
+  - heading "Kronos Pay Rule queue" [level=1]
+  - region "Queue":
+    - text: "Finished 1 08/03/2026: 1 verified"
+    - button "10000001 — done" [pressed]:
+      - text: 10000001 Done 9:10 AM
+      - button "Attempts for 10000001": "#1"
+      - text: KPR46512388 3m 32s
+      - button "Retry"
+      - button "Delete"
+  - region "Action panel":
+    - group "Action panel controls":
+      - button "Start a run"
+      - button "Filter queue by status": Status
+      - combobox "Sort the queue": Newest first
+      - button "Attention first" [pressed]
+    - group "Log date controls":
+      - text: Dashboard date*
+      - group "Dashboard date*":
+        - spinbutton "month, Dashboard date*": "08"
+        - spinbutton "day, Dashboard date*": "03"
+        - spinbutton "year, Dashboard date*": "2026"
+        - button "Choose date Dashboard date*"
+  - region "Selected run logs":
+    - heading "10000001" [level=2]
+    - text: Done
+    - button "Rerun"
+    - navigation "Run timeline":
+      - list:
+        - listitem:
+          - button "Read OT election · Completed · 09:10:00 · 8s": Read OT election 8s
+        - listitem:
+          - button "Determine pay-rule change · Completed · 09:10:08 · 8s": Determine pay-rule change 8s
+        - listitem:
+          - button "Sign in to New Kronos · Completed · 09:10:16 · 20s": Sign in to New Kronos 20s
+        - listitem:
+          - button "Update pay rule · Completed · 09:10:36 · 2m 56s": Update pay rule 2m 56s
+    - region "Run logs":
+      - region "Read OT election":
+        - time: 09:10:00
+        - heading "Read OT election" [level=3]
+        - heading "OT Elections Tracker" [level=4]
+        - time: 09:10:00
+        - term: Employee
+        - definition: Jordan Lee
+        - time: 09:10:00
+        - term: Employee ID
+        - definition: "10000001"
+        - time: 09:10:00
+        - term: Union code
+        - definition: SX
+        - time: 09:10:00
+        - term: Current pay rule
+        - definition: DEMO-CT-BASE
+        - time: 09:10:00
+        - term: Current election
+        - definition: Compensatory time
+        - time: 09:10:00
+        - term: New election
+        - definition: Cash
+      - region "Determine pay-rule change":
+        - time: 09:10:08
+        - heading "Determine pay-rule change" [level=3]
+        - heading "Election decision" [level=4]
+        - time: 09:10:08
+        - term: Old code
+        - definition: CT
+        - time: 09:10:08
+        - term: New code
+        - definition: OT
+        - time: 09:10:08
+        - term: Current pay rule
+        - definition: DEMO-CT-BASE
+        - time: 09:10:08
+        - term: New pay rule
+        - definition: DEMO-OT-BASE
+        - time: 09:10:08
+        - term: Effective date
+        - definition: 07/01/2026
+        - heading "Determine action" [level=4]
+        - time: 09:10:08
+        - term: Target pay rule
+        - definition: DEMO-OT-BASE
+      - region "Sign in to New Kronos":
+        - time: 09:10:16
+        - heading "Sign in to New Kronos" [level=3]
+        - text: New Kronos
+        - time: 09:10:16
+        - text: Open New Kronos
+        - heading "Session" [level=4]
+        - time: 09:10:16
+        - term: System
+        - definition: New Kronos
+        - time: 09:10:16
+        - term: Authentication
+        - definition: Authenticated
+        - time: 09:10:16
+        - term: Identity
+        - definition: Demo operator
+      - region "Update pay rule":
+        - time: 09:10:36
+        - heading "Update pay rule" [level=3]
+        - text: New Kronos
+        - time: 09:10:36
+        - text: Open People → timekeeper workspace
+        - heading "Employee search" [level=4]
+        - time: 09:10:36
+        - term: Employee ID
+        - definition: "10000001"
+        - time: 09:10:36
+        - text: Search and open the employee
+        - heading "Displayed identity" [level=4]
+        - time: 09:10:36
+        - term: Employee ID
+        - definition: "10000001"
+        - time: 09:10:36
+        - term: Employee
+        - definition: Jordan Lee
+        - time: 09:10:36
+        - text: Job Assignment
+        - heading "Pay rule assignment" [level=4]
+        - time: 09:10:36
+        - term: Pay rule
+        - definition: DEMO-OT-BASE
+        - time: 09:10:36
+        - term: Effective date
+        - definition: 07/01/2026
+        - time: 09:10:36
+        - text: Save pay rule
+        - heading "Saved assignment" [level=4]
+        - time: 09:10:36
+        - term: Pay rule
+        - definition: DEMO-OT-BASE
+        - time: 09:10:36
+        - term: Effective date
+        - definition: 07/01/2026
+        - time: 09:10:36
+        - paragraph: Employee ID, rule and effective date re-read.
+        - heading "Update pay rule" [level=4]
+        - time: 09:10:36
+        - term: Shown EID
+        - definition: "10000001"
+        - time: 09:10:36
+        - paragraph: "Readback: code re-read in the committed grid cell; date re-read in the committed grid cell."
+        - time: 09:13:32
+        - term: Employee ID
+        - definition: "10000001"
+        - time: 09:13:32
+        - term: Union code
+        - definition: SX
+        - time: 09:13:32
+        - term: Current pay rule
+        - definition: DEMO-CT-BASE
+        - time: 09:13:32
+        - term: New pay rule
+        - definition: DEMO-OT-BASE
+        - time: 09:13:32
+        - term: Old code
+        - definition: CT
+        - time: 09:13:32
+        - term: New code
+        - definition: OT
+        - time: 09:13:32
+        - term: Effective date
+        - definition: 07/01/2026
+    - group:
+      - searchbox "Search logs"
+    - status: 37 actions
+    - status
+    - button "Copy logs"
+    - button "Go to latest action"
+- region "Session Panel":
+  - group "Session actions":
+    - button "Sessions"
+    - text: 2 running 1 starting 1 idle
+    - button "Add workers"
+    - button "Settings"
+- region "Notifications"

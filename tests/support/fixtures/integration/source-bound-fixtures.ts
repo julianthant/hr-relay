@@ -4,7 +4,7 @@ import type { TaskStoreRegistry } from "../../../../src/workflow-kit/task-regist
 import type { WriteFixtureWorld } from "../write-sequencer-fixtures.js";
 import type { AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
@@ -13,7 +13,7 @@ import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run
 import { createWriteSequencer } from "../../../../src/backend/runtime/writes/write-sequencer.js";
 import { createWriteResolutionExecutor, createWriteRecoveryService } from "../../../../src/backend/runtime/writes/write-recovery.js";
 import { withBoundRunConfigFingerprint } from "../../../../src/backend/runtime/workers/worker-sessions.js";
-import { manualClock } from "../../../../src/rules/time/clock.js";
+import { manualClock, type Clock } from "../../../../src/rules/time/clock.js";
 import { ActorIdSchema, WorkerIdSchema } from "../../../../src/rules/identity/ids.js";
 import type { StartPlanWire } from "../../../../src/models/dashboard/start-plan.js";
 import type { RunRecord } from "../../../../src/models/run/record.js";
@@ -22,18 +22,20 @@ import { createStartPlanService } from "../../../../src/backend/runs/commands/st
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../intake-kernel-seams.js";
 import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../archive-fixtures.js";
-import { HASH_B, UUID_4, NOW } from "../phase1c-contract-fixtures.js";
+import { NOW } from "../phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../phase1f-run-fixtures.js";
 import { ManualScheduler, recordingEmitter, recordingLogger } from "../../helpers/phase1f-executor-harness.js";
 import { seedSyntheticRuntimeConfig, singleAppliedRunId } from "../operator-command-fixtures.js";
 import { writeFixtureDescriptor, createWriteFixtureWorld, buildWriteFixtureRegistry, writeFixtureSessions,
   writeFixtureSessionManager, WRITE_FIXTURE_IMPL_FINGERPRINT, WRITE_FIXTURE_EID } from "../write-sequencer-fixtures.js";
 
-export function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = writeFixtureDescriptor, customStores?: (world: WriteFixtureWorld) => TaskStoreRegistry) {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-source-bound-"));
+export function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = writeFixtureDescriptor, customStores?: (world: WriteFixtureWorld) => TaskStoreRegistry, initializeRuntime: (database: AuthorityDatabase, clock: Clock) => void = seedSyntheticRuntimeConfig) {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-source-bound-")));
   const clock = manualClock(new Date(NOW));
   const database = AuthorityDatabase.open({ path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "repeat-proof" }, clock);
-  seedSyntheticRuntimeConfig(database);
+  initializeRuntime(database, clock);
+  const activeConfig = database.authority.runtimeConfig.get();
+  assert.ok(activeConfig);
   const descriptors = { resolve: (workflow: string) => workflow === descriptor.id ? descriptor : undefined };
   const ids = sequentialIdFactory("c");
   const planIds = sequentialIdFactory("b");
@@ -53,7 +55,7 @@ export function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = writeFixt
     workerRuntime: { planWorkerCount: unused, spawnWorker: unused, refreshBrowser: unused, reopenBrowser: unused },
   });
   const planner = createStartPlanService({ authority: database, authorityRead: database, descriptors, clock,
-    ids: planIds, planTtlMs: 600_000, configFingerprint: HASH_B, configSnapshotId: UUID_4, plannedBy: "local-operator" });
+    ids: planIds, planTtlMs: 600_000, configFingerprint: activeConfig.configFingerprint, configSnapshotId: activeConfig.configSnapshotId, plannedBy: "local-operator" });
   const world = createWriteFixtureWorld();
   const stores = customStores === undefined ? buildWriteFixtureRegistry(world) : customStores(world);
   const sessions = writeFixtureSessions(world);

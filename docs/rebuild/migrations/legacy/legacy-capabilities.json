@@ -700,7 +700,7 @@
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/hub.ts",
         "src/backend/transports/dashboard/subscriptions/dashboard-stream.ts",
-        "src/dashboard/client/subscription.ts"
+        "src/dashboard/client/subscriptions/subscription.ts"
       ],
       "status": "implemented"
     },

@@ -20,7 +20,7 @@
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import { ActionDescriptorWireSchema } from "../../../../../src/models/dashboard/actions.js";
-import { bannerPills, parkResolutions } from "../../../../../src/dashboard/surfaces/actions-model.js";
+import { bannerPills, parkResolutions } from "../../../../../src/dashboard/surfaces/shared/actions/actions-model.js";
 
 /**
  * A parked run's banner as the `parked-write` section projects it: the two

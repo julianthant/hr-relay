@@ -16,7 +16,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { DashboardClientError } from "../../../../../src/dashboard/client/errors.js";
-import { subscribeDashboardDay, type SubscriptionState } from "../../../../../src/dashboard/client/subscription.js";
+import { subscribeDashboardDay, type SubscriptionState } from "../../../../../src/dashboard/client/subscriptions/subscription.js";
 import type { DashboardTransport, SseMessage, StreamHandle } from "../../../../../src/dashboard/client/transport.js";
 import { DashboardDayWireSchema, type DashboardDayWire } from "../../../../../src/models/dashboard/projection.js";
 

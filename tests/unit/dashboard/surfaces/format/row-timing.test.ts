@@ -11,7 +11,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { isTerminalQueueStatus } from "../../../../../src/models/dashboard/projection.js";
-import { runTiming } from "../../../../../src/dashboard/surfaces/format.js";
+import { runTiming } from "../../../../../src/dashboard/surfaces/shared/status/format.js";
 
 const STARTED = "2026-08-04T07:06:26.828Z";
 /** The live exit run's real terminal instant: 14m 33s after it was enqueued. */

@@ -19,6 +19,78 @@
       "direction": "declared-unserved",
       "decision": "D184",
       "note": "Ref dashboard-surfaces §1.1's Evidence rail. `buildRunDetail` serves `context.evidenceFacts: 0` with the comment that the evidence service is a later slice, so no composition can populate this arm; the 2g receipt section serves the trust content that exists today."
+    },
+    {
+      "binding": "route:GET /artifacts/v1/:artifactId",
+      "direction": "served-unconsumed",
+      "decision": "D184",
+      "note": "Brief 2b approved retirement leaves the old run-capture browser consumer deleted. See report-2b-reports.md#resume-retired-archiveartifact-consumers (base 74b0e326f; 3d0b0d17c wiring-only boundary); future authorized consumer adapter: src/dashboard/surfaces/run-detail/logs/log-screenshots-model.ts. The client artifactUrl resolver remains callable; no mounted source invokes it."
+    },
+    {
+      "binding": "route:GET /api/v1/archive/reports/:runId/files/:digest",
+      "direction": "served-unconsumed",
+      "decision": "D184",
+      "note": "Brief 2b approved retirement leaves the old Archive browser consumer deleted. See report-2b-reports.md#resume-retired-archiveartifact-consumers (base 74b0e326f; 3d0b0d17c wiring-only boundary); future authorized consumer adapter: src/dashboard/surfaces/archive/archive-model.ts. Backend route remains served; the retired Archive query client has no replacement caller."
+    },
+    {
+      "binding": "route:GET /artifacts/v1/archive/:runId/files/:digest",
+      "direction": "served-unconsumed",
+      "decision": "D184",
+      "note": "Brief 2b approved retirement leaves the old Archive browser consumer deleted. See report-2b-reports.md#resume-retired-archiveartifact-consumers (base 74b0e326f; 3d0b0d17c wiring-only boundary); future authorized consumer adapter: src/dashboard/surfaces/archive/archive-model.ts. Backend route remains served; the retired Archive query client has no replacement caller."
+    },
+    {
+      "binding": "route:GET /api/v1/archive/versions",
+      "direction": "served-unconsumed",
+      "decision": "D184",
+      "note": "Brief 2b approved retirement leaves the old Archive browser consumer deleted. See report-2b-reports.md#resume-retired-archiveartifact-consumers (base 74b0e326f; 3d0b0d17c wiring-only boundary); future authorized consumer adapter: src/dashboard/surfaces/archive/archive-model.ts. Backend route remains served; the retired Archive query client has no replacement caller."
+    },
+    {
+      "binding": "route:GET /api/v1/archive/runtime-versions",
+      "direction": "served-unconsumed",
+      "decision": "D184",
+      "note": "Brief 2b approved retirement leaves the old Archive browser consumer deleted. See report-2b-reports.md#resume-retired-archiveartifact-consumers (base 74b0e326f; 3d0b0d17c wiring-only boundary); future authorized consumer adapter: src/dashboard/surfaces/archive/archive-model.ts. Backend route remains served; the retired Archive query client has no replacement caller."
+    },
+    {
+      "binding": "route:GET /api/v1/archive/groups",
+      "direction": "served-unconsumed",
+      "decision": "D184",
+      "note": "Brief 2b approved retirement leaves the old Archive browser consumer deleted. See report-2b-reports.md#resume-retired-archiveartifact-consumers (base 74b0e326f; 3d0b0d17c wiring-only boundary); future authorized consumer adapter: src/dashboard/surfaces/archive/archive-model.ts. Backend route remains served; the retired Archive query client has no replacement caller."
+    },
+    {
+      "binding": "route:GET /api/v1/archive/reports",
+      "direction": "served-unconsumed",
+      "decision": "D184",
+      "note": "Brief 2b approved retirement leaves the old Archive browser consumer deleted. See report-2b-reports.md#resume-retired-archiveartifact-consumers (base 74b0e326f; 3d0b0d17c wiring-only boundary); future authorized consumer adapter: src/dashboard/surfaces/archive/archive-model.ts. Backend route remains served; the retired Archive query client has no replacement caller."
+    },
+    {
+      "binding": "route:GET /api/v1/archive/reports/:runId",
+      "direction": "served-unconsumed",
+      "decision": "D184",
+      "note": "Brief 2b approved retirement leaves the old Archive browser consumer deleted. See report-2b-reports.md#resume-retired-archiveartifact-consumers (base 74b0e326f; 3d0b0d17c wiring-only boundary); future authorized consumer adapter: src/dashboard/surfaces/archive/archive-model.ts. Backend route remains served; the retired Archive query client has no replacement caller."
+    },
+    {
+      "binding": "route:GET /api/v1/archive",
+      "direction": "served-unconsumed",
+      "decision": "D184",
+      "note": "Brief 2b approved retirement leaves the old Archive browser consumer deleted. See report-2b-reports.md#resume-retired-archiveartifact-consumers (base 74b0e326f; 3d0b0d17c wiring-only boundary); future authorized consumer adapter: src/dashboard/surfaces/archive/archive-model.ts. Backend route remains served; the retired Archive query client has no replacement caller."
+    },
+    {
+      "binding": "route:GET /api/v1/archive/:runId/captures/:artifactId/resource",
+      "direction": "served-unconsumed",
+      "decision": "D184",
+      "note": "Brief 2b approved retirement leaves the old Archive browser consumer deleted. See report-2b-reports.md#resume-retired-archiveartifact-consumers (base 74b0e326f; 3d0b0d17c wiring-only boundary); future authorized consumer adapter: src/dashboard/surfaces/archive/archive-model.ts. Backend route remains served; the retired Archive query client has no replacement caller."
+    },
+    {
+      "binding": "route:GET /api/v1/archive/:runId",
+      "direction": "served-unconsumed",
+      "decision": "D184",
+      "note": "Brief 2b approved retirement leaves the old Archive browser consumer deleted. See report-2b-reports.md#resume-retired-archiveartifact-consumers (base 74b0e326f; 3d0b0d17c wiring-only boundary); future authorized consumer adapter: src/dashboard/surfaces/archive/archive-model.ts. Backend route remains served; the retired Archive query client has no replacement caller."
+    },
+    {
+      "binding": "route:GET /artifacts/v1/archive/:runId/:artifactId",
+      "direction": "served-unconsumed",
+      "decision": "D184",
+      "note": "Brief 2b approved retirement leaves the old Archive browser consumer deleted. See report-2b-reports.md#resume-retired-archiveartifact-consumers (base 74b0e326f; 3d0b0d17c wiring-only boundary); future authorized consumer adapter: src/dashboard/surfaces/archive/archive-model.ts. Backend route remains served; the retired Archive query client has no replacement caller."
     }
   ]
 }

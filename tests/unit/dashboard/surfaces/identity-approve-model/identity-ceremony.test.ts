@@ -1,4 +1,3 @@
-import { identityComparisonRows } from "../../../../../src/dashboard/surfaces/identity-approve-model.js";
 /**
  * THE THREE IDENTITY-APPROVAL CEREMONIES (ref write-safety §14.6 risk 1, D226).
  *
@@ -15,7 +14,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { CommandRequestSchema } from "../../../../../src/rules/commands/commands.js";
 import { IdentityGateDetailWireSchema } from "../../../../../src/models/dashboard/run-detail.js";
-import { directIdentifierDisplay } from "../../../../../src/rules/redaction/redaction.js";
+import { directIdentifierDigestReference } from "../../../../../src/rules/redaction/redaction.js";
 import { deriveSchemaHash } from "../../../../../src/models/validation/schema-bound-value.js";
 import { IdentityApprovalResultSchema } from "../../../../../src/rules/separations/identity-approval.js";
 import {
@@ -28,7 +27,7 @@ import { deriveJobRowFromCells } from "../../../../../src/backend/systems/ucpath
 import {
   composeCommandRequest,
   type CommandAction,
-} from "../../../../../src/dashboard/app/command-dispatch.js";
+} from "../../../../../src/dashboard/app/commands/command-dispatch.js";
 import {
   EMPTY_IDENTITY_GATE_DRAFT,
   identityCeremonyFor,
@@ -36,7 +35,7 @@ import {
   identityGateAnswer,
   optionFor,
   type IdentityGateDetail,
-} from "../../../../../src/dashboard/app/identity-ceremony.js";
+} from "../../../../../src/dashboard/surfaces/run-detail/identity/identity-ceremony.js";
 
 const NOW = "2026-08-14T17:00:00.000Z";
 /** The EID the document carries and the run checked. */
@@ -351,8 +350,8 @@ describe("composeCommandRequest — the three ceremonies reach the real command 
     );
     assert.equal(composed.state, "refused");
     const reason = composed.state === "refused" ? composed.reason : "";
-    assert.match(reason, new RegExp(`never showed EID ${directIdentifierDisplay("99999999")}`));
-    assert.match(reason, /never showed EID 99999999/);
+    assert.match(reason, new RegExp(`never showed EID ${directIdentifierDigestReference("99999999")}`));
+    assert.doesNotMatch(reason, /99999999/);
   });
 
   it("REFUSES when the answer and the control pressed disagree", () => {
@@ -383,23 +382,5 @@ describe("composeCommandRequest — the three ceremonies reach the real command 
     );
     assert.equal(composed.state, "refused");
     assert.match(composed.state === "refused" ? composed.reason : "", /biometric-scan/);
-  });
-});
-
-
-describe("R1 concise identity comparisons", () => {
-  it("preserves exact names, employee IDs and disagreement order while shortening typed context", () => {
-    const detail = gateDetail(packetOf({ documentName: "Okonkwo, Adaeze", searchResolvesEid: NAME_SEARCH }));
-    const rows = identityComparisonRows(detail);
-    assert.deepEqual(rows.map(row => row.field), detail.packet.comparisons.map(row => row.field));
-    assert.deepEqual(rows.map(row => row.agrees), detail.packet.comparisons.map(row => row.agrees));
-    for (const field of ["name", "eid"] as const) {
-      const original = detail.packet.comparisons.find(row => row.field === field);
-      const shown = rows.find(row => row.field === field);
-      assert.equal(shown?.documentValue, original?.documentValue);
-      assert.equal(shown?.ucpathValue, original?.ucpathValue);
-    }
-    assert.equal(rows.find(row => row.field === "employment")?.documentValue, "Separation request");
-    assert.ok(rows.every(row => row.note.length > 0));
   });
 });

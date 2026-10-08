@@ -19,8 +19,8 @@ import {
   sessionMembershipForWorker,
   sessionPoolGroupFor,
   workerBrowserView,
-} from "../../../../../src/dashboard/surfaces/shell-model.js";
-import { FIXTURE_DAY_WIRE, uuidOf } from "../../../../support/fixtures/dashboard/fixture-day.js";
+} from "../../../../../src/dashboard/surfaces/shell/shell-model.js";
+import { FIXTURE_DAY_WIRE, uuidOf } from "../../../../parity/helpers/fixture-day.js";
 
 const SESSION_ID = uuidOf(700);
 

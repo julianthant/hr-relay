@@ -1,4 +1,8 @@
 import assert from "node:assert/strict";
+import { initialSettingsFileRecord } from "../../../src/models/config/settings.js";
+import { hostConfigFacts } from "../../../src/models/config/host-display.js";
+import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
+import type { Clock } from "../../../src/rules/time/clock.js";
 import type { CommandResult } from "../../../src/rules/commands/commands.js";
 import type { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { CONFIG_SNAPSHOT, HASH_A, HASH_B, NOW, UUID_4 } from "./phase1c-contract-fixtures.js";
@@ -15,6 +19,19 @@ export function seedSyntheticRuntimeConfig(database: AuthorityDatabase): void {
     configFingerprint: snapshot.fingerprint,
     activatedAt: NOW,
   });
+  assert.equal(active.generation, 1);
+}
+
+/** Initial settings and runtime activation share the same resolved document. */
+export function seedInitialSettingsRuntimeConfig(database: AuthorityDatabase, clock: Clock): void {
+  const record = initialSettingsFileRecord();
+  const resolved = resolveConfigWithProvenance(record.settings, hostConfigFacts({}), clock);
+  const snapshot = { ...CONFIG_SNAPSHOT, configSnapshotId: UUID_4, config: resolved.config,
+    fingerprint: resolved.fingerprint, provenance: resolved.provenance, capturedAt: clock.now().toISOString() };
+  assert.equal(database.authority.configSnapshots.insert(snapshot).state, "inserted");
+  const active = database.authority.runtimeConfig.activate({ settingsRevision: record.revision,
+    settingsFingerprint: record.settingsFingerprint, configSnapshotId: snapshot.configSnapshotId,
+    configFingerprint: snapshot.fingerprint, activatedAt: clock.now().toISOString() });
   assert.equal(active.generation, 1);
 }
 

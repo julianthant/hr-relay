@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { createDashboardClient } from "../../../../../src/dashboard/client/index.js";
-import { createPreflightReadinessResource, preflightReadinessResource } from "../../../../../src/dashboard/client/preflight-state.js";
+import { createPreflightReadinessResource, preflightReadinessResource } from "../../../../../src/dashboard/client/queries/preflight-state.js";
 import { buildPreflightReport, requiredPreflightChecks } from "../../../../../src/models/preflight/preflight.js";
 import { manualClock } from "../../../../../src/rules/time/clock.js";
 import type { PreflightReadinessWire } from "../../../../../src/models/preflight/preflight-contract.js";
@@ -92,11 +92,28 @@ it("keeps the last report visible only as history during a rerun and after trans
   const resource = createPreflightReadinessResource(client, identity);
   await resource.read();
   const attempt = resource.rerun(command);
-  assert.deepEqual(resource.snapshot(), { state: "running", lastCompleted: report });
+  assert.deepEqual(resource.snapshot(), { state: "running", lastCompleted: report, previous: { state: "present", report } });
   pending.reject(new Error("network failed"));
   await attempt;
   const failed = resource.snapshot();
   assert.equal(failed.state, "unavailable");
   if (failed.state !== "unavailable") throw new Error("failed rerun accepted");
   assert.deepEqual(failed.lastCompleted, report);
+});
+
+it("overlapping refreshes retain the original unavailable reason and discard late observations", async () => {
+  const first = Promise.withResolvers<Response>(), second = Promise.withResolvers<Response>();
+  const previous = { state: "unavailable" as const, reason: "Settings changed; re-check readiness.", lastCompleted: report };
+  let reads = 0;
+  const client = createDashboardClient({ baseUrl: "http://localhost", fetchImpl: () => {
+    reads += 1;
+    return reads === 1 ? Promise.resolve(response(previous)) : reads === 2 ? first.promise : second.promise;
+  } });
+  const resource = createPreflightReadinessResource(client, identity);
+  await resource.read();
+  const older = resource.read(), newer = resource.read();
+  assert.deepEqual(resource.snapshot(), { state: "running", lastCompleted: report, previous });
+  second.resolve(response({ state: "unavailable", reason: "New read failed" })); await newer;
+  first.resolve(response({ state: "present", report })); await older;
+  assert.deepEqual(resource.snapshot(), { state: "unavailable", reason: "New read failed", lastCompleted: report });
 });

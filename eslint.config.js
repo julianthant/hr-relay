@@ -83,7 +83,7 @@ export default ts.config(
   // typecheck-only island. Keep the list exact; arbitrary repository roots are
   // not a lint target.
   {
-    files: ["vitest.config.ts", "vite.dashboard.config.ts"],
+    files: ["vitest.config.ts", "vite.dashboard.config.ts", "vite.parity.config.ts"],
     plugins: { "unused-imports": unusedImports },
     languageOptions: { globals: { ...globals.node } },
     rules: { ...unusedImportsRules, ...typeAwareTuning },

@@ -1,54 +1,58 @@
+import type { WorkflowCatalogEntry } from "../surfaces/workflows/workflow-catalog-model.js";
 import type { ComponentProps,ReactNode } from "react";
 import {
 type FrontendBootstrapWire
 } from "../../models/dashboard/bootstrap.js";
-import { ActivityReport } from "../surfaces/activity.js";
-import { ARCHIVE_INDEX } from "../surfaces/archive-model.js";
-import { RuntimeArchiveWorkspace as ArchiveWorkspace } from "../surfaces/archive-runtime.js";
-import { WorkflowExplorerPreview } from "../surfaces/explorer-preview.js";
-import { IntakeWorkspace } from "../surfaces/intake.js";
-import { SettingsPage } from "../surfaces/settings.js";
+import { ActivityReport } from "../surfaces/activity/activity.js";
+import { WorkflowExplorer } from "../surfaces/explorer/explorer.js";
+import { IntakeWorkspace } from "../surfaces/intake/intake.js";
+import { AppearanceSettings } from "../surfaces/settings/general/appearance-settings.js";
+import type { DemoTheme } from "../ds/ui.js";
+import { SettingsPage } from "../surfaces/settings/settings.js";
 import {
 RUN_START_DOOR_ID,
 type DashboardTakeoverCloseFocusTargetId
 } from "./dashboard-app-model.js";
-import type { SettingsExitGuard } from "./navigation-model.js";
+import { SETTINGS_GEAR_ID } from "../surfaces/settings/settings-model.js";
+import type { SettingsExitGuard } from "./navigation/navigation-model.js";
+import type { RouteSetter } from "./navigation/view-route-model.js";
 import {
 activeTakeover,
 routeWithoutTakeovers,
 type AppRouteState
-} from "./url-state.js";
-export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSections,workflowLabels,activeWorkflowId,
- workflowLabelOf,supportsDryRun,today,queueRows,closeTakeoverTo,onSettingsExitGuardChange,children}: {
- takeover: ReturnType<typeof activeTakeover>; route: AppRouteState; setRoute: (next: AppRouteState, mode?: "push" | "replace") => void;
+} from "./navigation/url-state.js";
+export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSections,workflowLabels,workflowCatalog,activeWorkflowId,
+ workflowLabelOf,supportsDryRun,closeTakeoverTo,onSettingsExitGuardChange,onSettingsSaved,onSettingsSaveProblem,theme,onToggleTheme,children}: {
+ takeover: ReturnType<typeof activeTakeover>; route: AppRouteState; setRoute: RouteSetter;
  boot: FrontendBootstrapWire; settingsSections: ComponentProps<typeof SettingsPage>["sections"];
- workflowLabels: ReadonlyMap<string,string>; activeWorkflowId: string; workflowLabelOf: (id: string) => string;
- supportsDryRun: boolean; today: string; queueRows: ComponentProps<typeof ActivityReport>["queueRows"];
+ workflowCatalog: readonly WorkflowCatalogEntry[]; workflowLabels: ReadonlyMap<string,string>; activeWorkflowId: string; workflowLabelOf: (id: string) => string;
+ supportsDryRun: boolean;
  closeTakeoverTo: (target: DashboardTakeoverCloseFocusTargetId,next: AppRouteState) => void;
- onSettingsExitGuardChange: (guard: SettingsExitGuard | undefined) => void; children: ReactNode;
-}) {return (takeover === "settings" ? (
-            /*
-              Settings REPLACES the queue (D272 item 1 / D274 item 5). It was a
-              dialog, which gave the one page an operator opens most often no
-              place in history and no back path — and the demo's own container
-              is a page for exactly that reason.
-
-              NO WRAPPER (UF-SET-1/4/5). All four demo-covered takeovers mount
-              their own `TakeoverFrame`, whose JSDoc owns the why — geometry,
-              arrival and focus, decided once. The demo's switch
-              (`1ec1d870 RebuildDemo.tsx:656-678`) hands its pages straight to
-              the shell column with nothing between them and it.
-            */
+ onSettingsSaved?: ComponentProps<typeof SettingsPage>["onSaved"];
+ onSettingsSaveProblem?: ComponentProps<typeof SettingsPage>["onSaveProblem"];
+ onSettingsExitGuardChange: (guard: SettingsExitGuard | undefined) => void; theme: DemoTheme; onToggleTheme: () => void; children: ReactNode;
+}) {
+ const dataSection = takeover === "settings" ? route.settings
+   : takeover === "explore" ? "explorer" : takeover === "archive" || takeover === "activity" ? takeover : undefined;
+ const dataContent = dataSection === "activity" ? <ActivityReport range={route.activity ?? ""} onRange={next => setRoute(current => ({ ...current, settings: "activity", activity: next }))} />
+ : dataSection === "explorer" ? <WorkflowExplorer catalog={workflowCatalog} /> : undefined;
+ return (takeover === "settings" || takeover === "archive" || dataContent !== undefined ? (
             <SettingsPage
-              storage={boot.storage}
+              storage={boot.storage} appearance={<AppearanceSettings theme={theme} onToggleTheme={onToggleTheme} />}
               sections={settingsSections}
               workflowLabels={workflowLabels}
-              section={route.settings ?? ""}
+              section={route.settings ?? dataSection ?? ""}
+              searchTarget={route.settingsTarget}
+              dataContent={dataContent}
               actorId={boot.actor.id}
               descriptorFingerprint={boot.descriptorHash}
               preflight={boot.preflight ?? []}
-              onSection={(next) => setRoute({ ...route, settings: next })}
+              onSection={(next, settingsTarget) => setRoute({ ...routeWithoutTakeovers(route), settings: next, settingsTarget,
+                ...(next === "activity" ? { activity: "" } : next === "explorer" ? { explore: activeWorkflowId } : {}) })}
+              onClose={() => closeTakeoverTo(SETTINGS_GEAR_ID, routeWithoutTakeovers(route))}
               onExitGuardChange={onSettingsExitGuardChange}
+              onSaved={onSettingsSaved}
+              onSaveProblem={onSettingsSaveProblem}
             />
           ) : takeover === "intake" && route.intake !== undefined ? (
             /* UF-FU-1: the surface owns the same full-bleed `TakeoverFrame`
@@ -72,77 +76,5 @@ export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSection
                 routeWithoutTakeovers(route),
               )}
               onEnqueued={() => setRoute(routeWithoutTakeovers(route))}
-            />
-          ) : takeover === "archive" ? (
-            /*
-              The Archive replaces the queue whole. It is the opposite view of
-              the same world — what has LEFT the live surfaces — so showing it
-              beside a live queue would invite exactly the comparison D80 says
-              is not available: an archived run and a current one ran different
-              code.
-
-              NO WRAPPER — see the Settings arm above (UF-AR-3).
-            */
-            <ArchiveWorkspace
-              selection={route.archive ?? ARCHIVE_INDEX}
-              view={route.archiveView ?? "runs"}
-              folder={route.archiveDashboard === undefined || route.archiveWorkflow === undefined
-                ? null : { dashboardKey: route.archiveDashboard, workflow: route.archiveWorkflow }}
-              actorId={boot.actor.id}
-              browse={route.archiveBrowse}
-              browseInvalid={route.archiveBrowseInvalid}
-              onBrowse={(browse, mode) => setRoute({ ...route, archiveBrowse: browse, archiveBrowseInvalid: undefined }, mode)}
-              onSelection={(next) => setRoute({ ...route, archive: next, archiveBrowse: { ...route.archiveBrowse, filters: route.archiveBrowse?.filters ?? {}, section: undefined } })}
-              onView={(next) => setRoute({ ...route, archiveView: next })}
-              onFolder={(folder) => setRoute({ ...route, archive: ARCHIVE_INDEX,
-                archiveDashboard: folder?.dashboardKey, archiveWorkflow: folder?.workflow, archiveBrowse: { filters: {} } })}
-            />
-          ) : takeover === "activity" ? (
-            /*
-              No `onClose`: the report carries no back button (the demo's own
-              rule — the product switcher above it holds the Activity entry
-              that got you here, so a second door would be a duplicate). It
-              does carry the actor and the app version, because a report
-              leaves the operator's screen and its footer says who made it.
-
-              NO WRAPPER — see the Settings arm above (UF-AC-2).
-            */
-            <ActivityReport
-              range={route.activity ?? ""}
-              today={today}
-              actorId={boot.actor.id}
-              appVersion={boot.appVersion}
-              /*
-                The report's Who column resolves a sampled run id against the
-                rows the shell ALREADY holds — no second fetch, so the report
-                and the queue cannot name the same run two ways. These are
-                the day's rows and the report spans a range, so a sampled run
-                from another day is simply not here and names itself by id.
-              */
-              queueRows={queueRows}
-              onRange={(next) => setRoute({ ...route, activity: next })}
-            />
-          ) : takeover === "explore" ? (
-            /*
-              The explorer takes over for the same reason intake does: it is a
-              different task, and a half-visible queue behind a reference view
-              is the modal this deliberately is not. It carries no session, so
-              closing it simply drops the key.
-
-              NO WRAPPER — see the Settings arm above (UF-EX-2).
-            */
-            <WorkflowExplorerPreview
-              workflowId={route.explore ?? activeWorkflowId}
-              onWorkflow={(next) => setRoute({ ...route, explore: next })}
-              onVersionRegistry={() => setRoute({
-                ...route,
-                intake: undefined,
-                archive: ARCHIVE_INDEX,
-                archiveView: "versions",
-                archiveDashboard: undefined,
-                archiveWorkflow: undefined,
-                activity: undefined,
-                explore: undefined,
-              })}
             />
           ) : children);}

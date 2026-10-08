@@ -3,9 +3,9 @@ import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it } from "vitest";
-import { BodySection, Disclosure, DsBodyScope, FormGroup, PageHeading, ResultRow } from "../../../../../src/dashboard/ds/primitives-layout.js";
-import { Field, SearchInput, SecretField, UnitField } from "../../../../../src/dashboard/ds/primitives-form.js";
-import { RankedList } from "../../../../../src/dashboard/ds/primitives-data.js";
+import { BodySection, Disclosure, DsBodyScope, FormGroup, PageHeading, ResultRow } from "../../../../../src/dashboard/ds/primitives/primitives-layout.js";
+import { Field, SearchInput, SecretField, UnitField } from "../../../../../src/dashboard/ds/primitives/primitives-form.js";
+import { RankedList } from "../../../../../src/dashboard/ds/primitives/primitives-data.js";
 
 describe("shared body and field primitives", () => {
   it("scopes the content heading and grouped rows without changing their public labels", () => {
@@ -41,7 +41,7 @@ describe("shared body and field primitives", () => {
     assert.match(labels[0]?.[1] ?? "", /ds-text-meta/u);
     assert.match(labels[1]?.[1] ?? "", /ds-text-meta/u);
 
-    const css = readFileSync(new URL("../../../../../src/dashboard/ds/tokens.css", import.meta.url), "utf8");
+    const css = readFileSync(new URL("../../../../../src/dashboard/ds/theme/tokens.css", import.meta.url), "utf8");
     assert.match(css, /\.ds-body-scope\s+\.ds-field-label\s*\{/u);
     assert.doesNotMatch(css, /(?:^|\n)\s*\.ds-field-label\s*\{/u);
   });
@@ -124,7 +124,7 @@ describe("shared body and field primitives", () => {
   it("exposes body section, wide rows and compact or stretching units through shared primitives", () => {
     const html = renderToStaticMarkup(
       createElement(DsBodyScope, null,
-        createElement(BodySection, { title: "Runtime", children: undefined },
+        createElement(BodySection, { title: "Runtime", description: "Browser tools and local resources.", children: undefined },
           createElement(FormGroup, { label: "Runtime", children: undefined },
             createElement(Field, { label: "Standard", orientation: "horizontal", children: undefined },
               createElement(UnitField, { unit: "seconds", defaultValue: "45" }),
@@ -139,6 +139,7 @@ describe("shared body and field primitives", () => {
     );
     assert.match(html, /class="ds-body-section"/u);
     assert.match(html, /class="ds-body-section-heading">Runtime<\/h2>/u);
+    assert.match(html, /<h2[^>]*>Runtime<\/h2><p class="ds-body-section-description">Browser tools and local resources\.<\/p><div role="group" aria-label="Runtime"/u);
     assert.equal([...html.matchAll(/data-control-width="wide"/gu)].length, 2);
     assert.match(html, /data-body-width="compact"/u);
     assert.match(html, /data-body-width="stretch"/u);
@@ -159,7 +160,7 @@ describe("shared body and field primitives", () => {
     assert.match(html, /ds-disclosure-body/u);
     assert.match(html, /Fallback keys/u);
     assert.match(html, /Secondary connections/u);
-    const css = readFileSync(new URL("../../../../../src/dashboard/ds/tokens.css", import.meta.url), "utf8");
+    const css = readFileSync(new URL("../../../../../src/dashboard/ds/theme/tokens.css", import.meta.url), "utf8");
     assert.match(css, /\.ds-disclosure-body \.ds-disclosure-trigger > svg:first-child \{ order: 3; \}/u);
     assert.match(html, /ds-disclosure-body-meta">2/u);
     assert.match(html, /Key details/u);

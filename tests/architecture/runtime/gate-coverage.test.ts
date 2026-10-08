@@ -37,6 +37,7 @@ const AUTHORED_ROOTS = ["src", "tests", "scripts"] as const;
 const EXPECTED_ROOT_TYPESCRIPT_CONFIG_FILES = [
   "vitest.config.ts",
   "vite.dashboard.config.ts",
+  "vite.parity.config.ts",
 ] as const;
 
 /** Root TS inputs are explicit tsconfig entries, never a broad lint glob. */
@@ -46,7 +47,7 @@ const rootTypeScriptConfigFiles = tsconfig.include
 
 const EXACT_GATE_COMMANDS = {
   typecheck: "tsc --noEmit",
-  lint: "eslint src tests scripts vitest.config.ts vite.dashboard.config.ts --max-warnings 0",
+  lint: "eslint src tests scripts vitest.config.ts vite.dashboard.config.ts vite.parity.config.ts --max-warnings 0",
   test: "tsx scripts/test/runner.ts run",
   "test:coverage": "tsx scripts/test/runner.ts run --coverage && tsx scripts/test/suite-size.ts",
 } as const;

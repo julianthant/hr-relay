@@ -27,12 +27,12 @@ import {
 } from "../../../../../src/rules/separations/identity-evidence.js";
 import type { IdentityEvidencePacket } from "../../../../../src/rules/separations/identity-evidence.js";
 import { deriveJobRowFromCells } from "../../../../../src/backend/systems/ucpath/driver/person-org-operation.js";
-import { attentionRunIds } from "../../../../../src/dashboard/surfaces/queue-model.js";
-import { nextAttention, stepSelection } from "../../../../../src/dashboard/app/global-keys.js";
+import { attentionRunIds } from "../../../../../src/dashboard/surfaces/queue/queue-model.js";
+import { nextAttention, stepSelection } from "../../../../../src/dashboard/app/navigation/global-keys.js";
 import {
   composeCommandRequest,
   type CommandAction,
-} from "../../../../../src/dashboard/app/command-dispatch.js";
+} from "../../../../../src/dashboard/app/commands/command-dispatch.js";
 import { noSeparationWritePlan } from "../../../../../src/rules/separations/write-plan.js";
 
 const HASH_A = "a".repeat(64);
@@ -46,7 +46,7 @@ const runId = (n: number): string =>
 
 function surface(input: Record<string, unknown>) {
   return QueueSurfaceWireSchema.parse({
-    itemId: runId(9),
+    itemId: input.runId ?? runId(9),
     workflowId: "person-lookup",
     traceId: "pl-120000-1111",
     attempt: 1,
@@ -180,6 +180,13 @@ describe("composeCommandRequest — the run family", () => {
         { runId: runId(1), expectedVersion: 3 },
         CONTEXT,
       );
+      if (verb === "retry") {
+        assert.equal(composed.state, "refused");
+        if (composed.state !== "refused") assert.fail("retry must require the source-bound Rerun review");
+        assert.match(composed.reason, /Open Rerun to review steps and values/u);
+        assert.equal("request" in composed, false);
+        return;
+      }
       assert.equal(composed.state, "ready");
       if (composed.state !== "ready") return;
       // Parsed through the KERNEL's own schema — the client refuses a malformed

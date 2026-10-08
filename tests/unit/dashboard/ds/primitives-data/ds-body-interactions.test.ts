@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import { act, createElement, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it } from "vitest";
-import { RankedList, type DsRankedItem } from "../../../../../src/dashboard/ds/primitives-data.js";
-import { Checkbox, RadioGroup, SecretField } from "../../../../../src/dashboard/ds/primitives-form.js";
-import { Disclosure, DsBodyScope } from "../../../../../src/dashboard/ds/primitives-layout.js";
+import { RankedList, type DsRankedItem } from "../../../../../src/dashboard/ds/primitives/primitives-data.js";
+import { Checkbox, RadioGroup, SecretField } from "../../../../../src/dashboard/ds/primitives/primitives-form.js";
+import { Disclosure, DsBodyScope } from "../../../../../src/dashboard/ds/primitives/primitives-layout.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 let root: Root | undefined;

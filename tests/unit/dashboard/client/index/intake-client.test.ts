@@ -15,7 +15,7 @@ import { createDashboardClient, DashboardClientError } from "../../../../../src/
 import {
   FIXTURE_INTAKE_IDS,
   FIXTURE_INTAKE_MAPPING,
-} from "../../../../support/fixtures/dashboard/fixture-intake.js";
+} from "../../../../parity/helpers/fixture-intake.js";
 
 interface Call {
   readonly url: string;

@@ -16,8 +16,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "vitest";
-import { toastAppliedCommandResult } from "../../../../../src/dashboard/surfaces/actions-model.js";
-import { commandFailureToast, settleCommandResult } from "../../../../../src/dashboard/app/command-result.js";
+import { toastAppliedCommandResult } from "../../../../../src/dashboard/surfaces/shared/actions/actions-model.js";
+import { commandFailureToast, settleCommandResult } from "../../../../../src/dashboard/app/commands/command-result.js";
 import { CommandResultSchema } from "../../../../../src/rules/commands/commands.js";
 
 const COMMAND_ID = "1a000000-0000-4000-8000-000000000001";
@@ -32,7 +32,7 @@ const DASHBOARD_APP = new URL("../../../../../src/dashboard/app/dashboard-app.ts
 function dispatchCommandChain(): string {
   const source = readFileSync(DASHBOARD_APP, "utf8");
   const opens = source.indexOf("client.executeCommand(requestToExecute)");
-  const closes = source.indexOf("[boot.actor.id, client, sections, toast, dayWire", opens);
+  const closes = source.indexOf("[boot.actor.id, client, toast, dayWire", opens);
   if (opens === -1 || closes === -1) {
     throw new Error(
       "dashboard-app.tsx no longer contains dispatchCommand's executeCommand chain between its "

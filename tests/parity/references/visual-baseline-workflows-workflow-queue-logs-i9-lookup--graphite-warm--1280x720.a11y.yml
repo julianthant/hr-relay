@@ -1,0 +1,142 @@
+# visual-baseline-workflows-workflow-queue-logs-i9-lookup--graphite-warm--1280x720
+# adapter: fixture
+# fixture: visual-baseline-workflows.spec.ts:mounted Logs and all Explorer workflows @ dark
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#dashboard-main-region"
+- complementary "Workspace":
+  - heading "HR GPT" [level=2]
+  - button "Notifications, 3 unread"
+  - button "Search runs"
+  - navigation "Workflows":
+    - heading "Search" [level=3]
+    - list:
+      - listitem:
+        - button "Person Lookup": Person Lookup 5 · 14
+      - listitem:
+        - button "I-9 Lookup": I-9 Lookup 0 · 1
+    - heading "Separations" [level=3]
+    - list:
+      - listitem:
+        - button "Separations": Separations 0 · 1
+      - listitem:
+        - button "I-9 Check": I-9 Check 1 · 1
+    - heading "Onboarding" [level=3]
+    - list:
+      - listitem:
+        - button "Onboarding": Onboarding 0 · 1
+      - listitem:
+        - button "Oath Signature": Oath Signature 1 · 1
+      - listitem:
+        - button "Oath Upload": Oath Upload 1 · 1
+      - listitem:
+        - button "Emergency Contact": Emergency Contact 1 · 1
+    - heading "Work Study" [level=3]
+    - list:
+      - listitem:
+        - button "Work-Study": Work-Study 0 · 1
+    - heading "Payroll" [level=3]
+    - list:
+      - listitem:
+        - button "Kronos Pay Rule": Kronos Pay Rule 0 · 1
+    - heading "Utils" [level=3]
+    - list:
+      - listitem:
+        - button "OCR": OCR 0 · 5
+      - listitem:
+        - button "CRM Doc Download": CRM Doc Download 0 · 1
+      - listitem:
+        - button "SharePoint Download": SharePoint Download 0 · 1
+    - heading "OnBase" [level=3]
+    - list:
+      - listitem:
+        - button "OnBase": OnBase 1 · 1
+    - heading "Timekeeping" [level=3]
+    - list:
+      - listitem:
+        - button "Old Kronos Reports": Old Kronos Reports 0 · 1
+- main:
+  - heading "I-9 Lookup queue" [level=1]
+  - region "Queue":
+    - text: "Finished 1 08/03/2026: 1 verified"
+    - button "Lee, Jordan — done" [pressed]:
+      - text: Lee, Jordan Done 9:10 AM
+      - button "Attempts for Lee, Jordan": "#1"
+      - text: I9L23406114 36s
+      - button "Retry"
+      - button "Delete"
+  - region "Action panel":
+    - group "Action panel controls":
+      - button "Start a run"
+      - button "Filter queue by status": Status
+      - combobox "Sort the queue": Newest first
+      - button "Attention first" [pressed]
+    - group "Log date controls":
+      - text: Dashboard date*
+      - group "Dashboard date*":
+        - spinbutton "month, Dashboard date*": "08"
+        - spinbutton "day, Dashboard date*": "03"
+        - spinbutton "year, Dashboard date*": "2026"
+        - button "Choose date Dashboard date*"
+  - region "Selected run logs":
+    - heading "Lee, Jordan" [level=2]
+    - text: Done
+    - button "Linked runs (1)"
+    - navigation "Run timeline":
+      - list:
+        - listitem:
+          - button "Read Section 2 signer · Completed · 09:10:00 · 36s": Read Section 2 signer 36s
+    - region "Run logs":
+      - region "Read Section 2 signer":
+        - time: 09:10:00
+        - heading "Read Section 2 signer" [level=3]
+        - text: I-9 Complete
+        - heading "Portal person search" [level=4]
+        - time: 09:10:00
+        - term: Last name
+        - definition: Lee
+        - time: 09:10:00
+        - term: First name
+        - definition: Jordan
+        - time: 09:10:00
+        - term: SSN
+        - definition: •••-••-0001
+        - time: 09:10:00
+        - text: Search and open the matching profile
+        - heading "Section 2" [level=4]
+        - time: 09:10:00
+        - term: I-9 status
+        - definition: Section 2 complete
+        - time: 09:10:00
+        - term: Authorized official signer
+        - definition: Alex Morgan
+        - time: 09:10:00
+        - term: Profile ID
+        - definition: DEMO-I9-001
+        - heading "Lookup" [level=4]
+        - time: 09:10:00
+        - term: Official signer
+        - definition: Alex Morgan
+        - time: 09:10:36
+        - term: Authorized official signer
+        - definition: Jamie Morgan
+        - time: 09:10:36
+        - term: I-9 status
+        - definition: Section 2 complete
+    - group:
+      - searchbox "Search logs"
+    - status: 10 actions
+    - status
+    - button "Copy logs"
+    - button "Go to latest action"
+- region "Session Panel":
+  - group "Session actions":
+    - button "Sessions"
+    - text: 2 running 1 starting 1 idle
+    - button "Add workers"
+    - button "Settings"
+- region "Notifications"

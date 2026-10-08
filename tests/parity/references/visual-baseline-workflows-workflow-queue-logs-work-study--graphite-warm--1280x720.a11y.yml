@@ -1,0 +1,193 @@
+# visual-baseline-workflows-workflow-queue-logs-work-study--graphite-warm--1280x720
+# adapter: fixture
+# fixture: visual-baseline-workflows.spec.ts:mounted Logs and all Explorer workflows @ dark
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#dashboard-main-region"
+- complementary "Workspace":
+  - heading "HR GPT" [level=2]
+  - button "Notifications, 3 unread"
+  - button "Search runs"
+  - navigation "Workflows":
+    - heading "Search" [level=3]
+    - list:
+      - listitem:
+        - button "Person Lookup": Person Lookup 5 · 14
+      - listitem:
+        - button "I-9 Lookup": I-9 Lookup 0 · 1
+    - heading "Separations" [level=3]
+    - list:
+      - listitem:
+        - button "Separations": Separations 0 · 1
+      - listitem:
+        - button "I-9 Check": I-9 Check 1 · 1
+    - heading "Onboarding" [level=3]
+    - list:
+      - listitem:
+        - button "Onboarding": Onboarding 0 · 1
+      - listitem:
+        - button "Oath Signature": Oath Signature 1 · 1
+      - listitem:
+        - button "Oath Upload": Oath Upload 1 · 1
+      - listitem:
+        - button "Emergency Contact": Emergency Contact 1 · 1
+    - heading "Work Study" [level=3]
+    - list:
+      - listitem:
+        - button "Work-Study": Work-Study 0 · 1
+    - heading "Payroll" [level=3]
+    - list:
+      - listitem:
+        - button "Kronos Pay Rule": Kronos Pay Rule 0 · 1
+    - heading "Utils" [level=3]
+    - list:
+      - listitem:
+        - button "OCR": OCR 0 · 5
+      - listitem:
+        - button "CRM Doc Download": CRM Doc Download 0 · 1
+      - listitem:
+        - button "SharePoint Download": SharePoint Download 0 · 1
+    - heading "OnBase" [level=3]
+    - list:
+      - listitem:
+        - button "OnBase": OnBase 1 · 1
+    - heading "Timekeeping" [level=3]
+    - list:
+      - listitem:
+        - button "Old Kronos Reports": Old Kronos Reports 0 · 1
+- main:
+  - heading "Work-Study queue" [level=1]
+  - region "Queue":
+    - text: "Finished 1 08/03/2026: 1 verified"
+    - button "10000001 — done" [pressed]:
+      - text: 10000001 Done 9:10 AM
+      - button "Attempts for 10000001": "#1"
+      - text: WS84802309 5m 28s
+      - button "Retry"
+      - button "Delete"
+  - region "Action panel":
+    - group "Action panel controls":
+      - button "Start a run"
+      - button "Filter queue by status": Status
+      - combobox "Sort the queue": Newest first
+      - button "Attention first" [pressed]
+    - group "Log date controls":
+      - text: Dashboard date*
+      - group "Dashboard date*":
+        - spinbutton "month, Dashboard date*": "08"
+        - spinbutton "day, Dashboard date*": "03"
+        - spinbutton "year, Dashboard date*": "2026"
+        - button "Choose date Dashboard date*"
+  - region "Selected run logs":
+    - heading "10000001" [level=2]
+    - text: Done
+    - button "Rerun"
+    - navigation "Run timeline":
+      - list:
+        - listitem:
+          - button "Sign in to UCPath · Completed · 09:10:00 · 20s": Sign in to UCPath 20s
+        - listitem:
+          - button "Submit work-study transaction · Completed · 09:10:20 · 5m 8s": Submit work-study transaction 5m 8s
+    - region "Run logs":
+      - region "Sign in to UCPath":
+        - time: 09:10:00
+        - heading "Sign in to UCPath" [level=3]
+        - text: UCPath
+        - time: 09:10:00
+        - text: Open UCPath
+        - heading "Session" [level=4]
+        - time: 09:10:00
+        - term: System
+        - definition: UCPath
+        - time: 09:10:00
+        - term: Authentication
+        - definition: Authenticated
+        - time: 09:10:00
+        - term: Identity
+        - definition: Demo operator
+        - heading "UCPath auth" [level=4]
+        - time: 09:10:00
+        - term: Employee ID
+        - definition: "10000001"
+      - region "Submit work-study transaction":
+        - time: 09:10:20
+        - heading "Submit work-study transaction" [level=3]
+        - text: UCPath
+        - time: 09:10:20
+        - text: HR Tasks → PayPath/Additional Pay → PayPath Actions
+        - heading "Employee search" [level=4]
+        - time: 09:10:20
+        - term: Employee ID
+        - definition: "10000001"
+        - time: 09:10:20
+        - text: Search
+        - heading "Employee header" [level=4]
+        - time: 09:10:20
+        - term: Employee
+        - definition: Jordan Lee
+        - heading "Position Data" [level=4]
+        - time: 09:10:20
+        - term: Effective date
+        - definition: 08/03/2026
+        - time: 09:10:20
+        - term: Position change reason
+        - definition: JRL
+        - time: 09:10:20
+        - term: Position pool
+        - definition: F
+        - time: 09:10:20
+        - text: Job Data
+        - heading "Job Data comments" [level=4]
+        - time: 09:10:20
+        - term: Comments
+        - definition: Updated pool id to F per work study award 08/03/2026
+        - time: 09:10:20
+        - text: Additional Pay Data
+        - heading "Initiator comments" [level=4]
+        - time: 09:10:20
+        - term: Comments
+        - definition: Updated pool id to F per work study award 08/03/2026
+        - time: 09:10:20
+        - text: Save and Submit
+        - heading "Transaction outcome" [level=4]
+        - time: 09:10:20
+        - term: Outcome
+        - definition: Submitted
+        - heading "Transaction" [level=4]
+        - time: 09:10:20
+        - term: Change reason
+        - definition: JRL
+        - time: 09:10:20
+        - term: Job Data comments
+        - definition: Updated pool id to F per work study award 08/03/2026
+        - time: 09:10:20
+        - term: Initiator comments
+        - definition: Updated pool id to F per work study award 08/03/2026
+        - time: 09:10:20
+        - paragraph: "Readback: staged form readback and submission confirmation."
+        - time: 09:15:28
+        - term: Employee
+        - definition: Jordan Lee
+        - time: 09:15:28
+        - term: Employee ID
+        - definition: "10000001"
+        - time: 09:15:28
+        - term: Effective date
+        - definition: 08/03/2026
+    - group:
+      - searchbox "Search logs"
+    - status: 25 actions
+    - status
+    - button "Copy logs"
+    - button "Go to latest action"
+- region "Session Panel":
+  - group "Session actions":
+    - button "Sessions"
+    - text: 2 running 1 starting 1 idle
+    - button "Add workers"
+    - button "Settings"
+- region "Notifications"

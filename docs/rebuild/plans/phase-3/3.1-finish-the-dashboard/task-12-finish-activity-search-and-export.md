@@ -511,3 +511,28 @@ zero-worker assignment is unchanged historically; this separately approved prese
 uses one Sol worker under the current coordinator. Focused Phase 3.1 cadence applies, with no
 independent review or automatic integration. The operator retains product integration choice.
 Evidence: `/Users/julianhein/Projects/hr-automation-rebuild-evidence/archive-explorer-activity-2026-09-26/implementation/activity/`.
+
+### Frontend-only presentation implementation — 2026-10-01
+
+`ActivityReport` supplies local samples through `ActivityViewState` to the production `ActivityView`.
+The shared `ActionBar`/`ActionBarRow` matches Queue and Explorer. The report uses equal-width columns,
+a framed workflow table, and shared `RecordTable` views for confirmed transactions and evidence;
+evidence sits below transactions in the left column. Four headline metrics stay on one row, using
+20px values and reduced padding at 1024px and 27px at wider desktop widths. The median note stays
+concise; the counting popover retains its terminal-run scope.
+
+The right column places an adaptive volume chart above a Run performance table. Bars use 75% of each
+interval and are opaque; plot height adapts between 160px and 224px with available width, and the
+active bucket's highlighted tooltip anchors and clamps to the plot. Daily, hourly, long-range and
+empty states retain their interval semantics and keyboard access. Loading shows skeletons with an
+accessible status and no visible caption. The performance rows report finished-run completion,
+longest measured duration, total measured runtime and most common failure. Sample values are
+fictional (95%, 4m 41s, 1h 21m and Document read timeout in two runs).
+
+The presentation contract includes `longestSeconds`, `totalSeconds` and nullable failure rows. Null
+means unavailable; an empty failure list means no failures. An empty period has zero measured runtime
+and no finished-run rate. Do not replace unknown values with zero or fabricate metrics. Gate age,
+operator wait and retry recovery were not added; they require explicit aggregation and denominators.
+No people, wait or retry values were fabricated.
+CSV/XLSX actions remain visibly unconnected and issue no request. Backend data validation, search,
+authority and exports remain deferred to separately approved work; the full task is not complete.

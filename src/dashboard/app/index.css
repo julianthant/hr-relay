@@ -21,7 +21,7 @@
 
 @import "@heroui/styles";
 @import "tailwindcss";
-@import "../ds/dashboard-theme.css";
+@import "../ds/theme/dashboard-theme.css";
 @import "@heroui/styles";
 
 @custom-variant dark (&:is(.dark *));
@@ -218,7 +218,7 @@
   border-radius: 0;
   background: transparent;
 }
-.settings-editor, .routes-page { display: flex; min-width: 0; flex-direction: column; gap: var(--ds-space-page); }
+.settings-editor, .routes-page { display: flex; min-width: 0; flex-direction: column; gap: var(--ds-space-page-heading-content); }
 .settings-group-heading {
   display: flex;
   align-items: center;
@@ -334,34 +334,34 @@
 }
 .routes-page-search {
   width: 100%;
-  border-radius: var(--ds-radius-pill);
 }
 .routes-page-list {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-body-section-gap);
 }
 .routes-page-system {
   min-width: 0;
 }
 .routes-section-heading { display: flex; width: 100%; align-items: baseline; justify-content: space-between; gap: var(--ds-space-base); }
 .routes-section-heading > span:last-child { color: var(--ds-fg-muted); font-size: var(--ds-text-body-description); font-weight: 400; }
-.routes-page-system-fields {
-  border-top: 1px solid var(--ds-border);
+.routes-page-system-fields > * + * {
+  border-top: var(--ds-border-w) solid var(--ds-border-subtle);
 }
 .routes-page-field {
   min-width: 0;
-  padding: var(--ds-space-base) var(--ds-space-loose);
-  border-bottom: 1px solid var(--ds-border);
+  padding-inline: 0;
 }
 .routes-page-error {
   margin: 0;
-  padding: var(--ds-space-base) var(--ds-space-loose);
+  padding-block: var(--ds-space-base);
   color: var(--ds-danger);
 }
 .routes-page-system-actions {
   display: flex;
   justify-content: flex-end;
   gap: var(--ds-space-tight);
-  padding: var(--ds-space-tight) var(--ds-space-loose);
+  padding-block: var(--ds-space-tight);
 }
 .settings-fact-row {
   display: grid;
@@ -421,33 +421,6 @@
   margin: var(--ds-space-base) 0 0;
   color: var(--ds-fg-muted);
 }
-.settings-provider-disclosure-content {
-  border-top: var(--ds-border-w) solid var(--ds-border-subtle);
-}
-.settings-provider-disclosure-content > .ds-body-row + .ds-body-row {
-  border-top: var(--ds-border-w) solid var(--ds-border-subtle);
-}
-.settings-credentials-page .settings-provider-add {
-  display: flex;
-  justify-content: flex-end;
-  min-height: var(--ds-h-md);
-  align-items: center;
-  border-top: var(--ds-border-w) solid var(--ds-border-subtle);
-  padding-block: var(--ds-space-cozy);
-  padding-inline: var(--ds-space-body-group-inline);
-}
-.settings-credentials-page .settings-provider-add button {
-  padding-inline: var(--ds-space-cozy);
-}
-.settings-provider-empty {
-  margin: 0;
-  padding-block: var(--ds-space-base);
-  color: var(--ds-fg-muted);
-}
-.settings-provider-note {
-  margin: var(--ds-space-base) 0 0;
-  color: var(--ds-fg-muted);
-}
 .settings-row {
   display: flex;
   min-width: 0;
@@ -484,7 +457,7 @@
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: var(--ds-space-body-section-gap);
+  gap: var(--ds-space-page-heading-content);
 }
 .settings-compact-form {
   display: flex;
@@ -506,24 +479,6 @@
 .settings-path-picker-error { margin: var(--ds-space-tight) 0 0; color: var(--ds-danger); font-size: var(--ds-text-body-description); }
 .settings-compact-actions { display: flex; flex-direction: column; align-items: stretch; }
 .settings-compact-row > p,
-.settings-viewport-row > p { margin: 0 0 var(--ds-space-base); font-size: var(--ds-text-body-description); }
-.settings-viewport-row > .ds-body-row { width: 100%; }
-.settings-viewport-pair {
-  display: grid;
-  width: 100%;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--ds-space-cozy);
-}
-.settings-viewport-control {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: var(--ds-space-tight);
-  color: var(--ds-fg-secondary);
-  font-size: var(--ds-text-body-description);
-}
-.settings-viewport-control .ds-unit-field { width: 100%; }
-.settings-viewport-error { color: var(--ds-danger); }
 .settings-performance-disclosure-content { border-top: 1px solid var(--ds-border-subtle); }
 .settings-performance-disclosure-content > .settings-performance-row + .settings-performance-row { border-top: 1px solid var(--ds-border-subtle); }
 .settings-performance-row .settings-compact-control > .ds-unit-field { flex: 0 1 var(--ds-w-body-unit); }

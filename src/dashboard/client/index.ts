@@ -1,4 +1,4 @@
-import { invalidatePreflightReadiness } from "./preflight-state.js";
+import { invalidatePreflightReadiness } from "./queries/preflight-state.js";
 /**
  * The ONE typed dashboard client (ref frontend-backend-integration §0.2/§2): query, subscription,
  * command, error normalization, schema parsing, and reconnect all live behind
@@ -11,12 +11,12 @@ import {
   subscribeDashboardDay,
   type DashboardDaySubscription,
   type DashboardDaySubscriptionDeps,
-} from "./subscription.js";
+} from "./subscriptions/subscription.js";
 import { createDashboardTransport, type FetchLike } from "./transport.js";
 
 export { DashboardClientError } from "./errors.js";
-export { applyDashboardDayPatch } from "./day-state.js";
-export type { SubscriptionState } from "./subscription.js";
+export { applyDashboardDayPatch } from "./queries/day-state.js";
+export type { SubscriptionState } from "./subscriptions/subscription.js";
 export type { StartPlanResponse } from "./commands.js";
 export type { OperatorXlsxClientDownload } from "./commands.js";
 export type { OperatorXlsxExportRequest } from "../../models/dashboard/xlsx-export.js";
@@ -57,8 +57,8 @@ export function createDashboardClient(input: Readonly<{
   return client;
 }
 
-export type { NotificationQueries } from "./notification-queries.js";
+export type { NotificationQueries } from "./queries/notification-queries.js";
 
-export type { RerunQueries } from "./rerun-queries.js";
+export type { RerunQueries } from "./queries/rerun-queries.js";
 
-export { StartPlanRefusalError } from "./start-commands.js";
+export { StartPlanRefusalError } from "./commands/start-commands.js";

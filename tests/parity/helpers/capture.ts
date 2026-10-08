@@ -29,14 +29,10 @@ export type { CaptureMetadata } from "./reference-store.js";
 
 export const PARITY_VIEWPORTS = Object.freeze([
   { name: "1280x720", width: 1280, height: 720 },
-  { name: "1440x900", width: 1440, height: 900 },
-  /** the one narrow supported width (ref frontend-backend-integration §7.1) */
-  { name: "narrow-1024x768", width: 1024, height: 768 },
 ] as const);
 
 export const PARITY_THEMES = Object.freeze([
   { name: "graphite-warm", attribute: "dark" },
-  { name: "paper-ink", attribute: "light" },
 ] as const);
 
 export type ParityViewport = (typeof PARITY_VIEWPORTS)[number];

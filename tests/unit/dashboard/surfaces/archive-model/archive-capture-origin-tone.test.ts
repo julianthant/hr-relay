@@ -11,7 +11,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { ArchivedCaptureTileSchema } from "../../../../../src/models/archive/sections.js";
-import { ARCHIVED_CAPTURE_ORIGIN_TONE } from "../../../../../src/dashboard/surfaces/archive-model.js";
+import { ARCHIVED_CAPTURE_ORIGIN_TONE } from "../../../../../src/dashboard/surfaces/archive/archive-model.js";
 
 describe("ARCHIVED_CAPTURE_ORIGIN_TONE", () => {
   it("covers the served origin vocabulary exactly, both directions", () => {

@@ -22,7 +22,7 @@ import {
   workflowCategoryLabel,
   workflowHarnessOfName,
   type WorkflowCategoryGroup,
-} from "../../../../../src/dashboard/surfaces/workflow-category.js";
+} from "../../../../../src/dashboard/surfaces/workflows/workflow-category.js";
 
 interface Entry {
   readonly id: string;

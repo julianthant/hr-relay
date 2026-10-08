@@ -1,3 +1,5 @@
+import { servedFixtureSources } from "../../../../parity/helpers/workflow-composition.js";
+import { buildWorkflowCatalog } from "../../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 // @vitest-environment jsdom
 /**
  * THE RUN MODAL, PRESSED — the half of D272 items 8 and 9 that no fold can hold.
@@ -35,10 +37,6 @@ import assert from "node:assert/strict";
 import { act, createElement, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it } from "vitest";
-import {
-  FIXTURE_INTAKE_IDS,
-  FIXTURE_INTAKE_MAPPING,
-} from "../../../../support/fixtures/dashboard/fixture-intake.js";
 import { DashboardClientProvider } from "../../../../../src/dashboard/state/client-context.js";
 import type { DashboardClient } from "../../../../../src/dashboard/client/index.js";
 import {
@@ -47,10 +45,10 @@ import {
   type StartPlanWire as StartPlanResponse,
 } from "../../../../../src/models/dashboard/start-plan.js";
 import { CommandResultSchema, type CommandResult } from "../../../../../src/rules/commands/commands.js";
-import { parseWorkflows } from "../../../../../src/dashboard/surfaces/shell-model.js";
-import { RunStartDialog, type RunStartWorkflow } from "../../../../../src/dashboard/surfaces/run-start.js";
-import { START_DOOR_ABSENCE } from "../../../../../src/dashboard/surfaces/run-start-model.js";
-import { FIXTURE_BOOTSTRAP, FIXTURE_START_PICKER_BOOTSTRAP } from "../../../../support/fixtures/dashboard/fixture-day.js";
+import { parseWorkflows } from "../../../../../src/dashboard/surfaces/shell/shell-model.js";
+import { RunStartDialog, type RunStartWorkflow } from "../../../../../src/dashboard/surfaces/run-start/run-start.js";
+import { START_DOOR_ABSENCE } from "../../../../../src/dashboard/surfaces/run-start/run-start-model.js";
+import { FIXTURE_BOOTSTRAP, FIXTURE_START_PICKER_BOOTSTRAP } from "../../../../parity/helpers/fixture-day.js";
 
 /**
  * The two browser APIs Radix's overlay layers ask for that jsdom does not
@@ -122,14 +120,6 @@ const WORKFLOWS: readonly RunStartWorkflow[] = parseWorkflows(FIXTURE_BOOTSTRAP.
     };
   },
 );
-
-/**
- * The workflow's own served label, and the session the fixture upload opens —
- * both read off the SAME fixtures the corpus and the workspace read, so a case
- * here cannot pass against a shape neither ever produces (D298).
- */
-const WORKFLOW_LABEL = WORKFLOWS.find((entry) => entry.workflowId === WORKFLOW_ID)?.label ?? WORKFLOW_ID;
-const INTAKE_SESSION_ID = FIXTURE_INTAKE_IDS.mapping;
 
 /** parsed through the real wire schema, so a fixture cannot outlive its contract */
 function planResponse(startPlanId: string): StartPlanResponse {
@@ -303,6 +293,7 @@ function typeInto(node: HTMLTextAreaElement | HTMLSelectElement | HTMLInputEleme
  * workflow AND the session the drop opened, because the dialog now uploads
  * before it hands over.
  */
+const closed: boolean[] = [];
 const intakeHandoffs: { workflowId: string; intakeSessionId: string }[] = [];
 
 async function openDialog(
@@ -313,13 +304,13 @@ async function openDialog(
   },
   onApplied: (workflowId: string) => void = () => undefined,
 ): Promise<OpenDialog> {
-  intakeHandoffs.length = 0;
+  intakeHandoffs.length = 0; closed.length = 0;
   await render(createElement(DashboardClientProvider, {
     client,
     children: createElement(RunStartDialog, {
       open: true,
-      onOpenChange: () => undefined,
-      workflows: catalogue.workflows,
+      onOpenChange: next => closed.push(next),
+      catalog: buildWorkflowCatalog(catalogue.workflows, false, servedFixtureSources(catalogue.workflows)),
       panelWorkflowId: catalogue.panelWorkflowId,
       actorId: ACTOR_ID,
       onApplied,
@@ -342,10 +333,11 @@ async function openDialog(
   };
 
   const press = async (name: string): Promise<void> => {
-    const visibleMatches = buttons().filter((button) => (button.textContent ?? "").trim() === name);
+    const action = name === "Continue" && buttons().some(button => button.textContent?.trim() === "Preview plan") ? "Preview plan" : name;
+    const visibleMatches = buttons().filter((button) => (button.textContent ?? "").trim() === action);
     const matches = visibleMatches.length > 0
       ? visibleMatches
-      : buttons().filter((button) => buttonName(button) === name);
+      : buttons().filter((button) => buttonName(button) === (name === "Continue" && buttons().some(entry => entry.textContent?.trim() === "Preview plan") ? "Preview plan" : name));
     const only = matches[0];
     if (matches.length !== 1 || only === undefined) {
       throw new Error(
@@ -375,27 +367,13 @@ async function openDialog(
    * emits — the same association a screen reader follows. Naming the control
    * keeps the test stable if another select joins the Options screen later.
    */
-  const choosePriority = async (next: string): Promise<void> => {
-    const label = [...document.body.querySelectorAll("label")]
-      .find((candidate) => (candidate.textContent ?? "").trim() === "Priority");
-    if (label === undefined) throw new Error("the run-control rail drew no Priority field");
-    const select = document.getElementById(label.htmlFor);
-    if (!(select instanceof HTMLSelectElement)) {
-      throw new Error(`the Priority label names ${label.htmlFor}, which is not a select`);
-    }
-    await act(async () => {
-      typeInto(select, next);
-    });
+  const chooseRadio = async (name: string, value: string) => {
+    const radio = document.querySelector<HTMLInputElement>(`input[type="radio"][name^="${name}-"][value="${value}"]`);
+    assert.ok(radio, `missing ${name}: ${value}`);
+    await act(async () => radio.click());
   };
-
-  const chooseBrowserMode = async (next: string): Promise<void> => {
-    const label = [...document.body.querySelectorAll("label")]
-      .find((candidate) => (candidate.textContent ?? "").trim() === "Browser mode");
-    if (label === undefined) throw new Error("the run-control rail drew no Browser mode field");
-    const select = document.getElementById(label.htmlFor);
-    if (!(select instanceof HTMLSelectElement)) throw new Error(`the Browser mode label names ${label.htmlFor}, which is not a select`);
-    await act(async () => { typeInto(select, next); });
-  };
+  const choosePriority = (value: string) => chooseRadio("Priority", value);
+  const chooseBrowserMode = (value: string) => chooseRadio("Browser mode", value);
 
   /**
    * Drop a file on the spreadsheet arm's zone (D298).
@@ -434,6 +412,13 @@ async function openDialog(
       throw new Error(`expected exactly one control labelled "${label}", found ${String(found.length)}`);
     }
     const control = document.getElementById(only.htmlFor);
+    if (control instanceof HTMLButtonElement && control.getAttribute("role") === "combobox") {
+      await act(async () => control.click());
+      const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(node => node.dataset.value === next);
+      assert.ok(option, `the "${label}" choice has no option ${next}`);
+      await act(async () => option.click());
+      return;
+    }
     if (!(control instanceof HTMLInputElement
       || control instanceof HTMLSelectElement
       || control instanceof HTMLTextAreaElement)) {
@@ -448,7 +433,7 @@ async function openDialog(
   };
 
   const disabled = (name: string): boolean => {
-    const found = buttons().filter((button) => buttonName(button) === name);
+    const found = buttons().filter((button) => buttonName(button) === (name === "Continue" && buttons().some(entry => entry.textContent?.trim() === "Preview plan") ? "Preview plan" : name));
     const only = found[0];
     if (found.length !== 1 || only === undefined) {
       throw new Error(`expected exactly one control named "${name}", found ${String(found.length)}`);
@@ -479,21 +464,21 @@ async function openDialog(
  * this file is compared before it reaches an assertion for that reason.
  */
 function planIsDrawn(): boolean {
-  return document.body.querySelector("ul[aria-label='Runs this start will create']") !== null;
+  return document.body.querySelector("#run-start-confirm") !== null;
 }
 
 /** the whole happy path, up to a settled `applied` banner */
 async function reachResult(): Promise<OpenDialog> {
   const dialog = await openDialog(stubClient({
     submitStartPlan: async () => planResponse("5a000000-0000-4000-8000-000000000001"),
-    executeCommand: async () => APPLIED,
+    executeCommand: async () => CONFLICT,
   }));
   await dialog.type(TYPED);
-  await dialog.press("Next");
+  await dialog.press("Continue");
   assert.equal(dialog.stage(), "Options");
-  await dialog.press("Next");
+  await dialog.press("Continue");
   assert.equal(dialog.stage(), "Confirm");
-  await dialog.press("Start run");
+  await dialog.press("Start 1 run");
   assert.equal(dialog.stage(), "Confirm");
   return dialog;
 }
@@ -508,11 +493,14 @@ it("reveals the launched workflow after an applied start", async () => {
   });
   const dialog = await openDialog(client, undefined, (workflowId) => revealed.push(workflowId));
   await dialog.type(TYPED);
-  await dialog.press("Next");
-  await dialog.press("Next");
+  await dialog.press("Continue");
+  await dialog.press("Continue");
   assert.deepEqual(revealed, []);
-  await dialog.press("Start run");
+  await dialog.press("Start 1 run");
   assert.deepEqual(revealed, [WORKFLOW_ID]);
+  assert.deepEqual(closed, [false], "a confirmed start must dismiss the modal");
+  assert.equal(window.sessionStorage.length, 0, "an applied submission must clear durable recovery");
+  assert.ok(!dialog.text().includes("Start applied"));
 });
 
 it("keeps the current view after a refused start", async () => {
@@ -522,9 +510,9 @@ it("keeps the current view after a refused start", async () => {
     executeCommand: async () => CONFLICT,
   }), undefined, (workflowId) => revealed.push(workflowId));
   await dialog.type(TYPED);
-  await dialog.press("Next");
-  await dialog.press("Next");
-  await dialog.press("Start run");
+  await dialog.press("Continue");
+  await dialog.press("Continue");
+  await dialog.press("Start 1 run");
   assert.deepEqual(revealed, []);
 });
 
@@ -545,8 +533,8 @@ describe("a settlement that arrives after the request moved is DROPPED", () => {
     }));
 
     await dialog.type(TYPED);
-    await dialog.press("Next");
-    await dialog.press("Next");
+    await dialog.press("Continue");
+    await dialog.press("Continue");
     const settlePlan = release;
     assert.ok(settlePlan !== undefined, "the dialog never called submitStartPlan");
 
@@ -576,9 +564,9 @@ describe("a settlement that arrives after the request moved is DROPPED", () => {
     }));
 
     await dialog.type(TYPED);
-    await dialog.press("Next");
-    await dialog.press("Next");
-    await dialog.press("Start run");
+    await dialog.press("Continue");
+    await dialog.press("Continue");
+    await dialog.press("Start 1 run");
     const settleCommand = release;
     assert.ok(settleCommand !== undefined, "the dialog never called executeCommand");
 
@@ -607,9 +595,9 @@ describe("C109 — a plan outlives nothing that shaped it, in the dialog", () =>
       submitStartPlan: async () => planResponse("5a000000-0000-4000-8000-000000000001"),
     }));
     await dialog.type(TYPED);
-    await dialog.press("Next");
+    await dialog.press("Continue");
     assert.equal(dialog.stage(), "Options");
-    await dialog.press("Next");
+    await dialog.press("Continue");
     assert.ok(planIsDrawn(), "the plan never rendered");
 
     await dialog.press("Back");
@@ -621,13 +609,13 @@ describe("C109 — a plan outlives nothing that shaped it, in the dialog", () =>
 
   it("drops a settled result banner when the typed text moves under it", async () => {
     const dialog = await reachResult();
-    assert.ok(dialog.text().includes("Start applied"));
+    assert.ok(dialog.text().includes("The start plan moved under this form"));
 
     await dialog.press("Back");
     await dialog.press("Back");
     await dialog.type("10873698; Battistessa, Johnnie");
 
-    assert.ok(!dialog.text().includes("Start applied"), "a settled banner stood over an edited request");
+    assert.ok(!dialog.text().includes("The start plan moved under this form"), "a settled banner stood over an edited request");
     assert.equal(dialog.stage(), "Input");
   });
 });
@@ -643,32 +631,31 @@ describe("D293 keeps D285 and removes only per-start destination", () => {
     }));
 
     await dialog.type(TYPED);
-    await dialog.press("Next");
+    await dialog.press("Continue");
     assert.equal(dialog.stage(), "Options");
     assert.ok(dialog.text().includes("Customize steps"));
     assert.ok(!dialog.text().includes("Destination"));
     assert.ok(!dialog.text().includes("Test instance"));
-    assert.equal(
-      document.body.querySelectorAll("select").length,
-      4,
-      "Options must align two locked values, Priority, and Browser mode; D340 retires the mobile workflow select",
-    );
-    const selectedWorkflow = document.body.querySelector('button[aria-current="true"]');
+    assert.equal(document.querySelectorAll('input[type="radio"][name^="Priority-"]').length, 2);
+    assert.equal(document.querySelectorAll('input[type="radio"][name^="Browser mode-"]').length, 2);
+    assert.ok(dialog.text().includes("Active policy"));
+    assert.ok(dialog.text().includes("Fixed by the selected workflow."));
+    const selectedWorkflow = document.body.querySelector('nav[aria-label="Workflow"] button[aria-current="page"]');
     const workflow = WORKFLOWS.find((candidate) => candidate.workflowId === WORKFLOW_ID);
     assert.ok(workflow !== undefined);
     assert.ok(selectedWorkflow?.textContent?.includes(workflow.label), "the desktop picker must identify the selected workflow");
     assert.equal(
       document.body.querySelectorAll("select:disabled").length,
-      2,
-      "the fixed workflow values must remain visibly and semantically locked",
+      0,
+      "fixed workflow facts must not draw disabled dropdowns",
     );
 
     await dialog.press("Customize steps");
-    await dialog.press("Next");
+    await dialog.press("Continue");
     assert.equal(dialog.stage(), "Steps");
     assert.ok(dialog.text().includes("CRM Dates"), "the optional D285 step disappeared");
     await dialog.press("CRM Dates");
-    await dialog.press("Next");
+    await dialog.press("Continue");
     assert.equal(dialog.stage(), "Confirm");
     assert.ok(!dialog.text().includes("Destination"));
     assert.ok(!dialog.text().includes("Test instance"));
@@ -698,28 +685,21 @@ describe("browser presentation is an immutable Run Options choice", () => {
       return planResponse("5a000000-0000-4000-8000-000000000001");
     } }));
     await dialog.type(TYPED);
-    await dialog.press("Next");
-    const modeLabel = [...document.body.querySelectorAll("label")]
-      .find((candidate) => (candidate.textContent ?? "").trim() === "Browser mode");
-    assert.ok(modeLabel !== undefined, "Options drew no Browser mode label");
-    const mode = document.getElementById(modeLabel.htmlFor);
-    assert.ok(mode instanceof HTMLSelectElement, "Browser mode label did not name a select");
-    assert.equal(mode.value, "headed");
-    assert.deepEqual([...mode.options].map(option => [option.value, option.text]), [
-      ["headless", "Headless"],
-      ["headed", "Headed"],
-    ]);
-    const screenshotControl = buttons().find(button => buttonName(button) === "Capture browser screenshots");
+    await dialog.press("Continue");
+    const modes = [...document.querySelectorAll<HTMLInputElement>('input[type="radio"][name^="Browser mode-"]')];
+    assert.deepEqual(modes.map(mode => mode.value), ["headed", "headless"]);
+    assert.equal(modes.find(mode => mode.value === "headed")?.checked, true);
+    const screenshotControl = buttons().find(button => buttonName(button) === "Capture screenshots");
     assert.ok(screenshotControl !== undefined, "Options drew no screenshot capture control");
     assert.equal(screenshotControl.getAttribute("data-state"), "checked", "screenshot capture must default on");
     await dialog.chooseBrowserMode("headless");
-    await dialog.press("Capture browser screenshots");
-    await dialog.press("Next");
+    await dialog.press("Capture screenshots");
+    await dialog.press("Continue");
     const request = StartPlanSubmissionSchema.parse(submitted);
     assert.equal(request.browserMode, "headless");
     assert.equal(request.captureBrowserScreenshots, false);
-    assert.ok(dialog.text().includes("Browser: Headless"));
-    assert.ok(dialog.text().includes("Browser screenshots: Off"));
+    assert.ok(dialog.text().includes("Headless · screenshots off"));
+    assert.ok([...document.querySelectorAll("dt")].some(label => label.textContent === "Browser"));
   });
 });
 
@@ -734,8 +714,8 @@ describe("the compact confirmation keeps the exact input basis", () => {
       submitStartPlan: async () => planResponse("5a000000-0000-4000-8000-000000000001"),
     }));
     await dialog.type(TYPED);
-    await dialog.press("Next");
-    await dialog.press("Next");
+    await dialog.press("Continue");
+    await dialog.press("Continue");
     assert.equal(dialog.stage(), "Confirm");
     assert.ok(dialog.text().includes(TYPED));
   });
@@ -765,9 +745,9 @@ describe("every exit from a settled banner returns the form to Input", () => {
       executeCommand: async () => CONFLICT,
     }));
     await dialog.type(TYPED);
-    await dialog.press("Next");
-    await dialog.press("Next");
-    await dialog.press("Start run");
+    await dialog.press("Continue");
+    await dialog.press("Continue");
+    await dialog.press("Start 1 run");
     assert.ok(dialog.text().includes("The start plan moved under this form"));
 
     await dialog.press("Reload the form");
@@ -782,125 +762,49 @@ describe("every exit from a settled banner returns the form to Input", () => {
 
 // ---------------------------------------------------------------------------
 
-describe("D296 — the spreadsheet method is the intake workspace's one door", () => {
-  it("offers both methods for a spreadsheet-capable workflow, and typed is the default", async () => {
-    // The mutation: derive the method set from anything but the served
-    // `spreadsheetIntake` — a workflow-id check, or a constant pair. Person
-    // Lookup is the only registered module with an intake projection, so a
-    // hardcoded pair passes here and offers a dead door on every other
-    // workflow the picker serves.
+describe("spreadsheet registration stays outside Run", () => {
+  it("keeps typed Input as the start method without import tabs", async () => {
     const dialog = await openDialog(stubClient({}));
-
-    const tabs = [...document.body.querySelectorAll('[role="tab"]')];
-    assert.deepEqual(
-      tabs.map((tab) => (tab.textContent ?? "").trim()),
-      ["Type values", "Import a spreadsheet"],
-    );
-    assert.deepEqual(tabs.map((tab) => tab.getAttribute("aria-selected")), ["true", "false"]);
-    // Typed is the default arm, so the box the operator types into is drawn
-    // and the stage rail is the full three-stage path.
+    assert.equal(document.querySelectorAll('[role="tab"]').length, 0);
     assert.equal(dialog.stage(), "Input");
-    assert.ok(dialog.text().includes("Next"));
-  });
-
-  it("the spreadsheet arm collapses the rail to Input and IS the dropzone", async () => {
-    // The mutation: leave `runStartStages` keyed on `customizeSteps` alone.
-    // The rail then numbers Options and Confirm for an arm that reaches
-    // neither, and `Next` sits under a stage that has no next.
-    const dialog = await openDialog(stubClient({}));
-    await dialog.press("Import a spreadsheet");
-
-    assert.equal(dialog.stage(), "Input");
-    assert.equal(
-      document.body.querySelectorAll('[aria-label="Run configuration path"] li').length,
-      1,
-      "the handoff arm numbered stages it cannot reach",
-    );
-    // D298 — the panel is the zone, not a paragraph about it. The real
-    // `<input type="file">` is the claim: a div with a drop handler would
-    // leave the keyboard and the screen reader with no way in.
-    assert.ok(
-      document.body.querySelector('input[type="file"]') instanceof HTMLInputElement,
-      "the spreadsheet arm drew no file input",
-    );
-    assert.ok(
-      dialog.text().includes(`Drop a spreadsheet of people for ${WORKFLOW_LABEL}`),
-      "the zone did not name the workflow the columns will be mapped onto",
-    );
-    // The two controls that retired with the explanatory panel.
-    assert.ok(!dialog.text().includes("Open the intake"), "the deleted handoff primary is still drawn");
-    assert.ok(!dialog.text().includes("Next"), "the handoff arm still offers a stage to advance to");
-  });
-
-  it("a dropped file is uploaded, and the handoff carries the workflow AND the new session", async () => {
-    // The mutation: hand `onOpenIntake` the panel's workflow, or route to the
-    // retired `new` sentinel instead of the session the upload just opened.
-    // The first maps the operator's file onto a workflow they did not choose;
-    // the second lands them on an address that no longer resolves.
-    const uploads: string[] = [];
-    const dialog = await openDialog(stubClient({
-      uploadIntakeFile: async (request) => {
-        uploads.push(request.fileName);
-        return { state: "created", session: FIXTURE_INTAKE_MAPPING };
-      },
-    }));
-    await dialog.press("Import a spreadsheet");
-    await dialog.drop(new File(["a,b\n1,2\n"], "roster.csv", { type: "text/csv" }));
-
-    assert.deepEqual(uploads, ["roster.csv"]);
-    assert.deepEqual(intakeHandoffs, [{ workflowId: WORKFLOW_ID, intakeSessionId: INTAKE_SESSION_ID }]);
-  });
-
-  it("a REFUSED upload prints the server's own code and opens no session", async () => {
-    // The mutation: treat `state: "refused"` as a session — or swallow it and
-    // route anyway. Either sends the operator to a workspace for a file the
-    // server never accepted, which is the silent substitution this program
-    // bans: "the check failed" must not read as "the check passed".
-    const dialog = await openDialog(stubClient({
-      uploadIntakeFile: async () => ({
-        state: "refused",
-        code: "MEDIA_TYPE_UNSUPPORTED",
-        message: "roster.pdf is application/pdf; intake reads .csv and .xlsx",
-      }),
-    }));
-    await dialog.press("Import a spreadsheet");
-    await dialog.drop(new File(["%PDF-1.4"], "roster.pdf", { type: "application/pdf" }));
-
-    const text = dialog.text();
-    assert.ok(text.includes("MEDIA_TYPE_UNSUPPORTED"), "the refusal dropped the server's code");
-    assert.ok(text.includes("intake reads .csv and .xlsx"), "the refusal dropped the server's sentence");
-    assert.ok(text.includes("no session was opened"), "the refusal did not say what was NOT done");
-    assert.deepEqual(intakeHandoffs, [], "a refused file still handed the operator over");
-  });
-
-  it("a transport failure says the file never landed, and opens no session", async () => {
-    // The mutation: `.catch(() => undefined)` on the upload. The zone then
-    // goes idle with nothing on screen, which is indistinguishable from a
-    // dropped file the page ignored.
-    const dialog = await openDialog(stubClient({
-      uploadIntakeFile: async () => { throw new Error("fetch failed"); },
-    }));
-    await dialog.press("Import a spreadsheet");
-    await dialog.drop(new File(["a,b\n"], "roster.csv", { type: "text/csv" }));
-
-    assert.ok(dialog.text().includes("fetch failed"), "the transport failure was swallowed");
-    assert.deepEqual(intakeHandoffs, [], "a failed upload still handed the operator over");
-  });
-
-  it("the typed arm comes back with its box and its full path", async () => {
-    // The mutation: derive the rail from `method` state rather than from the
-    // arm actually rendered. A tab press that does not restore the path leaves
-    // the operator on a one-stage rail with a box they cannot advance from.
-    const dialog = await openDialog(stubClient({}));
-    await dialog.press("Import a spreadsheet");
-    await dialog.press("Type values");
-
-    assert.equal(
-      document.body.querySelectorAll('[aria-label="Run configuration path"] li').length,
-      3,
-    );
     assert.equal(dialog.typedInput().value, "");
-    assert.ok(dialog.text().includes("Next"));
+  });
+  it("keeps the full run path and offers no upload that could enqueue spreadsheet rows", async () => {
+    await openDialog(stubClient({}));
+    assert.equal(document.querySelectorAll('[aria-label="Run configuration path"] li').length, 3);
+    assert.equal(document.querySelectorAll('input[type="file"]').length, 0);
+    assert.deepEqual(intakeHandoffs, []);
+  });
+  it("a served intake capability does not restore the retired upload action", async () => {
+    let uploads = 0;
+    const dialog = await openDialog(stubClient({ uploadIntakeFile: async () => { uploads++; throw new Error("unexpected intake"); } }));
+    await dialog.type(TYPED); await dialog.press("Continue");
+    assert.ok(!dialog.text().includes("Import a spreadsheet"));
+    assert.equal(uploads, 0); assert.deepEqual(intakeHandoffs, []);
+  });
+  it("describes workbook reference use and excludes it from the live request", async () => {
+    let submission: unknown;
+    const dialog = await openDialog(stubClient({ submitStartPlan: async input => { submission = input; return planResponse("5a000000-0000-4000-8000-000000000001"); } }));
+    await dialog.type(TYPED); await dialog.press("Continue");
+    assert.ok(dialog.text().includes("Workbook · Optional"));
+    assert.ok(dialog.text().includes("Choose an already imported workbook for reference or results."));
+    await dialog.press("Continue");
+    const request = StartPlanSubmissionSchema.parse(submission);
+    assert.equal(request.submissions.length, 1); assert.equal(Object.hasOwn(request, "workbookId"), false);
+  });
+  it("keeps mock registration from becoming a prerequisite for a live start", async () => {
+    const dialog = await openDialog(stubClient({ submitStartPlan: async () => planResponse("5a000000-0000-4000-8000-000000000001") }));
+    await dialog.type(TYPED); await dialog.press("Continue"); await dialog.press("Continue");
+    assert.equal(dialog.stage(), "Confirm"); assert.equal(dialog.disabled("Start 1 run"), false);
+    assert.equal([...document.querySelectorAll("dt")].some(label => label.textContent === "Workbook"), false);
+    assert.ok(!dialog.text().includes("Import spreadsheet"));
+  });
+  it("returning from Options preserves typed input and the complete path", async () => {
+    const dialog = await openDialog(stubClient({}));
+    await dialog.type(TYPED); await dialog.press("Continue"); await dialog.press("Back");
+    assert.equal(dialog.stage(), "Input"); assert.equal(dialog.typedInput().value, TYPED);
+    assert.equal(document.querySelectorAll('[aria-label="Run configuration path"] li').length, 3);
+    assert.equal(document.querySelectorAll('input[type="file"]').length, 0);
   });
 });
 
@@ -975,9 +879,9 @@ function separationsPlan(omittedSteps?: readonly string[]): StartPlanResponse {
 async function openSteps(client: DashboardClient, typed: string = DOCUMENT): Promise<OpenDialog> {
   const dialog = await openDialog(client, SEPARATIONS);
   await dialog.type(typed);
-  await dialog.press("Next");
+  await dialog.press("Continue");
   await dialog.press("Customize steps");
-  await dialog.press("Next");
+  await dialog.press("Continue");
   assert.equal(dialog.stage(), "Steps");
   return dialog;
 }
@@ -995,7 +899,7 @@ describe("an omittable step draws its own form when it is left out (D307)", () =
     // the DECLARED help line, verbatim — a form drawn without it would leave
     // the operator guessing what the fact means
     assert.ok(dialog.text().includes("The employee's last physical day of work, MM/DD/YYYY"));
-    assert.ok(dialog.text().includes("5 of 6 included"));
+    assert.ok(dialog.text().includes("5 / 6 included"));
   });
 
   it("says so when the omitted step asks for nothing at all", async () => {
@@ -1016,12 +920,15 @@ describe("an omittable step draws its own form when it is left out (D307)", () =
       .find((candidate) => (candidate.textContent ?? "").trim() === "Approval status");
     assert.ok(label !== undefined, "the enum field drew no label");
     const select = document.getElementById(label.htmlFor);
-    assert.ok(select instanceof HTMLSelectElement);
-    assert.equal(select.value, "", "an approval status was chosen for the operator");
-    assert.deepEqual(
-      [...select.options].map((option) => option.value),
-      ["", "Approved", "Manually Processed", "Pending"],
-    );
+    assert.ok(select instanceof HTMLButtonElement && select.getAttribute("role") === "combobox");
+    assert.equal(select.dataset.value, "", "an approval status was chosen for the operator");
+    await act(async () => select.click());
+    const options = [...document.querySelectorAll<HTMLElement>('[role="option"]')];
+    assert.deepEqual(options.map(option => option.dataset.value), ["", "Approved", "Manually Processed", "Pending"]);
+    assert.equal(options.filter(option => option.getAttribute("aria-selected") === "true").length, 1);
+    assert.equal(options.find(option => option.getAttribute("aria-selected") === "true")?.dataset.value, "");
+    await act(async () => select.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+
   });
 });
 
@@ -1039,7 +946,7 @@ describe("Confirm is not reachable while an omitted step's form does not parse (
     await dialog.press("Kronos timecard");
     await dialog.fill("Last day worked", "6/30/2026");
     await dialog.fill("Separation date", "07/01/2026");
-    await dialog.press("Next");
+    await dialog.press("Continue");
 
     assert.equal(dialog.stage(), "Steps", "an unparsable fact reached Confirm");
     assert.equal(asked, 0, "the dialog asked the server for a plan it knew would be refused");
@@ -1047,7 +954,7 @@ describe("Confirm is not reachable while an omitted step's form does not parse (
     assert.ok(dialog.text().includes("Fill in the facts"), "the footer never said why Next did nothing");
 
     await dialog.fill("Last day worked", "06/30/2026");
-    await dialog.press("Next");
+    await dialog.press("Continue");
     assert.equal(dialog.stage(), "Confirm");
     assert.equal(asked, 1);
   });
@@ -1069,7 +976,7 @@ describe("the request carries the operator's omissions (D307)", () => {
     await dialog.fill("Separation date", "07/01/2026");
     await dialog.fill("UCPath transaction number", "T1234567");
     await dialog.fill("Approval status", "Approved");
-    await dialog.press("Next");
+    await dialog.press("Continue");
     assert.equal(dialog.stage(), "Confirm");
 
     const request = StartPlanSubmissionSchema.parse(submitted);
@@ -1090,7 +997,7 @@ describe("the request carries the operator's omissions (D307)", () => {
     assert.ok(confirmed.includes("Separation date: 07/01/2026"));
     assert.ok(confirmed.includes("UCPath transaction number: T1234567"));
     assert.ok(confirmed.includes("Approval status: Approved"));
-    assert.ok(confirmed.includes("4 of 6 included"));
+    assert.ok(confirmed.includes("4 / 6 included"));
   });
 
   it("sends no omissions at all when the operator omitted nothing", async () => {
@@ -1101,7 +1008,7 @@ describe("the request carries the operator's omissions (D307)", () => {
         return separationsPlan();
       },
     }));
-    await dialog.press("Next");
+    await dialog.press("Continue");
     const request = StartPlanSubmissionSchema.parse(submitted);
     assert.equal(request.stepOmissions, undefined, "an empty omission list still rode the wire");
   });
@@ -1117,13 +1024,13 @@ describe("a plan that omits a different set cannot be started (D307)", () => {
     await dialog.press("Kronos timecard");
     await dialog.fill("Last day worked", "06/30/2026");
     await dialog.fill("Separation date", "07/01/2026");
-    await dialog.press("Next");
+    await dialog.press("Continue");
     assert.equal(dialog.stage(), "Confirm");
 
     assert.ok(dialog.text().includes("This plan does not describe the steps you omitted"));
     assert.ok(dialog.text().includes("kronos-timecard"));
     assert.ok(dialog.text().includes("kuali-finalization"));
-    assert.equal(dialog.disabled("Start run"), true, "a plan for a different run was startable");
+    assert.equal(dialog.disabled("Start 1 run"), true, "a plan for a different run was startable");
   });
 
   it("starts when the plan names exactly the set the dialog sent", async () => {
@@ -1133,9 +1040,9 @@ describe("a plan that omits a different set cannot be started (D307)", () => {
     await dialog.press("Kronos timecard");
     await dialog.fill("Last day worked", "06/30/2026");
     await dialog.fill("Separation date", "07/01/2026");
-    await dialog.press("Next");
+    await dialog.press("Continue");
     assert.ok(!dialog.text().includes("This plan does not describe"));
-    assert.equal(dialog.disabled("Start run"), false);
+    assert.equal(dialog.disabled("Start 1 run"), false);
   });
 });
 
@@ -1188,35 +1095,35 @@ describe("a forced step is unchecked and LOCKED while the choice that forces it 
       },
     }), CASCADING_SEPARATIONS);
     await dialog.type(DOCUMENT);
-    await dialog.press("Next");
+    await dialog.press("Continue");
     await dialog.press("Customize steps");
-    await dialog.press("Next");
+    await dialog.press("Continue");
 
     // named BEFORE the press, so the choice is not a surprise
     assert.ok(dialog.text().includes("Also omits: UCPath transaction"));
     assert.equal(dialog.disabled("UCPath transaction"), false);
 
     await dialog.press("Kronos timecard");
-    assert.ok(dialog.text().includes("4 of 6 included"), dialog.text());
+    assert.ok(dialog.text().includes("4 / 6 included"), dialog.text());
     assert.equal(dialog.disabled("UCPath transaction"), true, "the forced row stayed pressable");
     assert.ok(dialog.text().includes("Omitted with Kronos timecard."));
 
     // pressing the locked row changes nothing
     await dialog.press("UCPath transaction");
-    assert.ok(dialog.text().includes("4 of 6 included"));
+    assert.ok(dialog.text().includes("4 / 6 included"));
 
     await dialog.fill("Last day worked", "06/30/2026");
     await dialog.fill("Separation date", "07/01/2026");
     await dialog.fill("UCPath transaction number", "T1234567");
     await dialog.fill("Approval status", "Manually Processed");
-    await dialog.press("Next");
+    await dialog.press("Continue");
     assert.equal(dialog.stage(), "Confirm");
     const request = StartPlanSubmissionSchema.parse(submitted);
     assert.deepEqual(request.stepOmissions?.map(({ step }) => step), ["kronos-timecard", "ucpath-transaction"]);
 
     await dialog.press("Back");
     await dialog.press("Kronos timecard");
-    assert.ok(dialog.text().includes("6 of 6 included"), "undoing the choice left the forced step out");
+    assert.ok(dialog.text().includes("6 / 6 included"), "undoing the choice left the forced step out");
     assert.equal(dialog.disabled("UCPath transaction"), false);
   });
 });

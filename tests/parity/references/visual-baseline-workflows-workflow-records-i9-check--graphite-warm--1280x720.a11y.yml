@@ -1,0 +1,488 @@
+# visual-baseline-workflows-workflow-records-i9-check--graphite-warm--1280x720
+# adapter: fixture
+# fixture: visual-baseline-workflows.spec.ts:mounted Logs and all Explorer workflows @ dark
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#dashboard-main-region"
+- complementary "Workspace":
+  - heading "HR GPT" [level=2]
+  - button "Notifications, 3 unread"
+  - button "Search runs"
+  - navigation "Workflows":
+    - heading "Search" [level=3]
+    - list:
+      - listitem:
+        - button "Person Lookup": Person Lookup 5 · 14
+      - listitem:
+        - button "I-9 Lookup": I-9 Lookup 0 · 1
+    - heading "Separations" [level=3]
+    - list:
+      - listitem:
+        - button "Separations": Separations 0 · 1
+      - listitem:
+        - button "I-9 Check": I-9 Check 1 · 1
+    - heading "Onboarding" [level=3]
+    - list:
+      - listitem:
+        - button "Onboarding": Onboarding 0 · 1
+      - listitem:
+        - button "Oath Signature": Oath Signature 1 · 1
+      - listitem:
+        - button "Oath Upload": Oath Upload 1 · 1
+      - listitem:
+        - button "Emergency Contact": Emergency Contact 1 · 1
+    - heading "Work Study" [level=3]
+    - list:
+      - listitem:
+        - button "Work-Study": Work-Study 0 · 1
+    - heading "Payroll" [level=3]
+    - list:
+      - listitem:
+        - button "Kronos Pay Rule": Kronos Pay Rule 0 · 1
+    - heading "Utils" [level=3]
+    - list:
+      - listitem:
+        - button "OCR": OCR 0 · 5
+      - listitem:
+        - button "CRM Doc Download": CRM Doc Download 0 · 1
+      - listitem:
+        - button "SharePoint Download": SharePoint Download 0 · 1
+    - heading "OnBase" [level=3]
+    - list:
+      - listitem:
+        - button "OnBase": OnBase 1 · 1
+    - heading "Timekeeping" [level=3]
+    - list:
+      - listitem:
+        - button "Old Kronos Reports": Old Kronos Reports 0 · 1
+- main:
+  - heading "OCR queue" [level=1]
+  - region "Queue":
+    - text: Needs you 5
+    - button "single-oath.pdf — review · 53m 48s":
+      - text: single-oath.pdf Review 1 of 1 records ready for approval 9:10 AM
+      - button "Attempts for single-oath.pdf": "#1"
+      - text: OCR01566240 55m 0s
+      - button "Retry"
+      - button "Delete"
+    - button "multiple-oath.pdf — review · 53m 48s":
+      - text: multiple-oath.pdf Review 4 of 4 records ready for approval 9:10 AM
+      - button "Attempts for multiple-oath.pdf": "#1"
+      - text: OCR04609235 55m 0s
+      - button "Retry"
+      - button "Delete"
+    - button "emergency-contacts.pdf — review · 53m 48s":
+      - text: emergency-contacts.pdf Review 3 of 3 records ready for approval 9:10 AM
+      - button "Attempts for emergency-contacts.pdf": "#1"
+      - text: OCR63559370 55m 0s
+      - button "Retry"
+      - button "Delete"
+    - button "detect-test.pdf — review · 52m 52s":
+      - text: detect-test.pdf 1 Review 3 of 4 records ready for approval 9:10 AM
+      - button "Attempts for detect-test.pdf": "#1"
+      - text: OCR28298759 55m 0s
+      - button "Retry"
+      - button "Delete"
+    - button "i9.pdf — review · 53m 48s" [pressed]:
+      - text: i9.pdf Review 2 of 2 records ready for approval 9:10 AM
+      - button "Attempts for i9.pdf": "#1"
+      - text: OCR61877231 55m 0s
+      - button "Retry"
+      - button "Delete"
+  - region "Action panel":
+    - group "Action panel controls":
+      - button "Start a run"
+      - button "Filter queue by status": Status
+      - combobox "Sort the queue": Newest first
+      - button "Attention first" [pressed]
+    - group "Log date controls":
+      - text: Dashboard date*
+      - group "Dashboard date*":
+        - spinbutton "month, Dashboard date*": "08"
+        - spinbutton "day, Dashboard date*": "03"
+        - spinbutton "year, Dashboard date*": "2026"
+        - button "Choose date Dashboard date*"
+  - region "Selected run logs":
+    - heading "i9.pdf" [level=2]
+    - text: Review
+    - button "Records 2" [pressed]
+    - button "Linked runs (1)"
+    - region "OCR records":
+      - region "Record person-1":
+        - region "Source PDF":
+          - combobox "Source page": Section 1 · Page 2
+          - toolbar "PDF controls":
+            - button "Zoom out"
+            - button "Zoom in"
+            - button "Fit page" [disabled]
+          - img "Source page 2 of i9.pdf"
+        - group "Record selection":
+          - checkbox "Include Jordan Lee" [checked]
+          - text: Include
+          - heading "Jordan Lee" [level=3]
+        - heading "Employee" [level=4]
+        - group "Employee":
+          - text: Employee ID
+          - textbox "Employee ID": "10000001"
+          - text: First name
+          - textbox "First name": Jordan
+          - text: Last name
+          - textbox "Last name": Lee
+        - heading "Section 1" [level=4]
+        - group "Section 1":
+          - text: Middle initial
+          - textbox "Middle initial"
+          - text: Other last names
+          - textbox "Other last names"
+          - text: Street
+          - textbox "Street": 100 Example Street
+          - text: Apartment
+          - textbox "Apartment"
+          - text: City
+          - textbox "City": San Diego
+          - text: State
+          - textbox "State": CA
+          - text: ZIP
+          - textbox "ZIP": "92101"
+          - text: Date of birth
+          - textbox "Date of birth":
+            - /placeholder: MM/DD/YYYY
+            - text: 01/01/1990
+          - text: Social Security number
+          - textbox "Social Security number": 000-00-0000
+          - text: Email address
+          - textbox "Email address": jordan.lee@example.com
+          - text: Telephone number
+          - textbox "Telephone number": (202) 555-0101
+          - text: Citizenship status
+          - textbox "Citizenship status": Citizen of the United States
+          - text: Alien / USCIS number
+          - textbox "Alien / USCIS number"
+          - text: Form I-94 admission number
+          - textbox "Form I-94 admission number"
+          - text: Foreign passport number
+          - textbox "Foreign passport number"
+          - text: Country of issuance
+          - textbox "Country of issuance"
+          - text: Work authorization expiration
+          - textbox "Work authorization expiration":
+            - /placeholder: MM/DD/YYYY
+          - checkbox "Employee signed" [checked]
+          - text: Employee signed Employee signature date
+          - textbox "Employee signature date":
+            - /placeholder: MM/DD/YYYY
+            - text: 04/23/2026
+          - checkbox "Preparer or translator used"
+          - text: Preparer or translator used
+          - checkbox "Preparer signed"
+          - text: Preparer signed Preparer signature date
+          - textbox "Preparer signature date":
+            - /placeholder: MM/DD/YYYY
+          - text: Preparer first name
+          - textbox "Preparer first name"
+          - text: Preparer last name
+          - textbox "Preparer last name"
+          - text: Preparer street
+          - textbox "Preparer street"
+          - text: Preparer city
+          - textbox "Preparer city"
+          - text: Preparer state
+          - textbox "Preparer state"
+          - text: Preparer ZIP
+          - textbox "Preparer ZIP"
+        - heading "Source pages" [level=4]
+        - group "Source pages":
+          - text: Section 1 page
+          - textbox "Section 1 page": "2"
+          - text: Section 2 page
+          - textbox "Section 2 page": "1"
+        - heading "List A" [level=4]
+        - group "List A":
+          - text: List A document title
+          - textbox "List A document title": US Passport
+          - text: List A issuing authority
+          - textbox "List A issuing authority": USA
+          - text: List A document number
+          - textbox "List A document number": "000000000"
+          - text: List A expiration date
+          - textbox "List A expiration date": 04/23/2036
+        - heading "List B" [level=4]
+        - group "List B":
+          - text: List B document title
+          - textbox "List B document title"
+          - text: List B issuing authority
+          - textbox "List B issuing authority"
+          - text: List B document number
+          - textbox "List B document number"
+          - text: List B expiration date
+          - textbox "List B expiration date"
+        - heading "List C" [level=4]
+        - group "List C":
+          - text: List C document title
+          - textbox "List C document title"
+          - text: List C issuing authority
+          - textbox "List C issuing authority"
+          - text: List C document number
+          - textbox "List C document number"
+          - text: List C expiration date
+          - textbox "List C expiration date"
+        - heading "List A" [level=4]
+        - group "List A":
+          - text: List A document 2 title
+          - textbox "List A document 2 title"
+          - text: List A document 2 issuing authority
+          - textbox "List A document 2 issuing authority"
+          - text: List A document 2 number
+          - textbox "List A document 2 number"
+          - text: List A document 2 expiration date
+          - textbox "List A document 2 expiration date"
+          - text: List A document 3 title
+          - textbox "List A document 3 title"
+          - text: List A document 3 issuing authority
+          - textbox "List A document 3 issuing authority"
+          - text: List A document 3 number
+          - textbox "List A document 3 number"
+          - text: List A document 3 expiration date
+          - textbox "List A document 3 expiration date"
+        - heading "Section 2" [level=4]
+        - group "Section 2":
+          - text: Additional information
+          - textbox "Additional information"
+          - text: First day of employment
+          - textbox "First day of employment":
+            - /placeholder: MM/DD/YYYY
+            - text: 04/27/2026
+          - checkbox "Employer signed" [checked]
+          - text: Employer signed Employer signature date
+          - textbox "Employer signature date":
+            - /placeholder: MM/DD/YYYY
+            - text: 04/23/2026
+          - text: Employer title
+          - textbox "Employer title": HR Representative
+          - text: Employer last name
+          - textbox "Employer last name": Morgan
+          - text: Employer first name
+          - textbox "Employer first name": Alex
+          - text: Business name
+          - textbox "Business name": UC San Diego
+          - text: Business street
+          - textbox "Business street": 9500 Gilman Drive
+          - text: Business city
+          - textbox "Business city": La Jolla
+          - text: Business state
+          - textbox "Business state": CA
+          - text: Business ZIP
+          - textbox "Business ZIP": "92093"
+          - text: Rehire date
+          - textbox "Rehire date":
+            - /placeholder: MM/DD/YYYY
+          - text: New name
+          - textbox "New name"
+          - text: Reverification document title
+          - textbox "Reverification document title"
+          - text: Reverification document number
+          - textbox "Reverification document number"
+          - text: Reverification expiration
+          - textbox "Reverification expiration":
+            - /placeholder: MM/DD/YYYY
+          - checkbox "Reverification signed"
+          - text: Reverification signed Reverification signature date
+          - textbox "Reverification signature date":
+            - /placeholder: MM/DD/YYYY
+      - region "Record person-2":
+        - region "Source PDF":
+          - combobox "Source page": Section 1 · Page 4
+          - toolbar "PDF controls":
+            - button "Zoom out" [disabled]
+            - button "Zoom in" [disabled]
+            - button "Fit page" [disabled]
+          - img "Source page 4 of i9.pdf"
+          - status "Loading source PDF"
+        - group "Record selection":
+          - checkbox "Include Casey Rivera" [checked]
+          - text: Include
+          - heading "Casey Rivera" [level=3]
+        - heading "Employee" [level=4]
+        - group "Employee":
+          - text: Employee ID
+          - textbox "Employee ID": "10000002"
+          - text: First name
+          - textbox "First name": Casey
+          - text: Last name
+          - textbox "Last name": Rivera
+        - heading "Section 1" [level=4]
+        - group "Section 1":
+          - text: Middle initial
+          - textbox "Middle initial"
+          - text: Other last names
+          - textbox "Other last names"
+          - text: Street
+          - textbox "Street": 100 Example Street
+          - text: Apartment
+          - textbox "Apartment"
+          - text: City
+          - textbox "City": San Diego
+          - text: State
+          - textbox "State": CA
+          - text: ZIP
+          - textbox "ZIP": "92101"
+          - text: Date of birth
+          - textbox "Date of birth":
+            - /placeholder: MM/DD/YYYY
+            - text: 01/01/1990
+          - text: Social Security number
+          - textbox "Social Security number": 000-00-0000
+          - text: Email address
+          - textbox "Email address": casey.rivera@example.com
+          - text: Telephone number
+          - textbox "Telephone number": (202) 555-0101
+          - text: Citizenship status
+          - textbox "Citizenship status": Citizen of the United States
+          - text: Alien / USCIS number
+          - textbox "Alien / USCIS number"
+          - text: Form I-94 admission number
+          - textbox "Form I-94 admission number"
+          - text: Foreign passport number
+          - textbox "Foreign passport number"
+          - text: Country of issuance
+          - textbox "Country of issuance"
+          - text: Work authorization expiration
+          - textbox "Work authorization expiration":
+            - /placeholder: MM/DD/YYYY
+          - checkbox "Employee signed" [checked]
+          - text: Employee signed Employee signature date
+          - textbox "Employee signature date":
+            - /placeholder: MM/DD/YYYY
+            - text: 04/23/2026
+          - checkbox "Preparer or translator used"
+          - text: Preparer or translator used
+          - checkbox "Preparer signed"
+          - text: Preparer signed Preparer signature date
+          - textbox "Preparer signature date":
+            - /placeholder: MM/DD/YYYY
+          - text: Preparer first name
+          - textbox "Preparer first name"
+          - text: Preparer last name
+          - textbox "Preparer last name"
+          - text: Preparer street
+          - textbox "Preparer street"
+          - text: Preparer city
+          - textbox "Preparer city"
+          - text: Preparer state
+          - textbox "Preparer state"
+          - text: Preparer ZIP
+          - textbox "Preparer ZIP"
+        - heading "Source pages" [level=4]
+        - group "Source pages":
+          - text: Section 1 page
+          - textbox "Section 1 page": "4"
+          - text: Section 2 page
+          - textbox "Section 2 page": "3"
+        - heading "List A" [level=4]
+        - group "List A":
+          - text: List A document title
+          - textbox "List A document title": US Passport
+          - text: List A issuing authority
+          - textbox "List A issuing authority": USA
+          - text: List A document number
+          - textbox "List A document number": "000000000"
+          - text: List A expiration date
+          - textbox "List A expiration date": 04/23/2036
+        - heading "List B" [level=4]
+        - group "List B":
+          - text: List B document title
+          - textbox "List B document title"
+          - text: List B issuing authority
+          - textbox "List B issuing authority"
+          - text: List B document number
+          - textbox "List B document number"
+          - text: List B expiration date
+          - textbox "List B expiration date"
+        - heading "List C" [level=4]
+        - group "List C":
+          - text: List C document title
+          - textbox "List C document title"
+          - text: List C issuing authority
+          - textbox "List C issuing authority"
+          - text: List C document number
+          - textbox "List C document number"
+          - text: List C expiration date
+          - textbox "List C expiration date"
+        - heading "List A" [level=4]
+        - group "List A":
+          - text: List A document 2 title
+          - textbox "List A document 2 title"
+          - text: List A document 2 issuing authority
+          - textbox "List A document 2 issuing authority"
+          - text: List A document 2 number
+          - textbox "List A document 2 number"
+          - text: List A document 2 expiration date
+          - textbox "List A document 2 expiration date"
+          - text: List A document 3 title
+          - textbox "List A document 3 title"
+          - text: List A document 3 issuing authority
+          - textbox "List A document 3 issuing authority"
+          - text: List A document 3 number
+          - textbox "List A document 3 number"
+          - text: List A document 3 expiration date
+          - textbox "List A document 3 expiration date"
+        - heading "Section 2" [level=4]
+        - group "Section 2":
+          - text: Additional information
+          - textbox "Additional information"
+          - text: First day of employment
+          - textbox "First day of employment":
+            - /placeholder: MM/DD/YYYY
+            - text: 04/27/2026
+          - checkbox "Employer signed" [checked]
+          - text: Employer signed Employer signature date
+          - textbox "Employer signature date":
+            - /placeholder: MM/DD/YYYY
+            - text: 04/23/2026
+          - text: Employer title
+          - textbox "Employer title": HR Representative
+          - text: Employer last name
+          - textbox "Employer last name": Morgan
+          - text: Employer first name
+          - textbox "Employer first name": Alex
+          - text: Business name
+          - textbox "Business name": UC San Diego
+          - text: Business street
+          - textbox "Business street": 9500 Gilman Drive
+          - text: Business city
+          - textbox "Business city": La Jolla
+          - text: Business state
+          - textbox "Business state": CA
+          - text: Business ZIP
+          - textbox "Business ZIP": "92093"
+          - text: Rehire date
+          - textbox "Rehire date":
+            - /placeholder: MM/DD/YYYY
+          - text: New name
+          - textbox "New name"
+          - text: Reverification document title
+          - textbox "Reverification document title"
+          - text: Reverification document number
+          - textbox "Reverification document number"
+          - text: Reverification expiration
+          - textbox "Reverification expiration":
+            - /placeholder: MM/DD/YYYY
+          - checkbox "Reverification signed"
+          - text: Reverification signed Reverification signature date
+          - textbox "Reverification signature date":
+            - /placeholder: MM/DD/YYYY
+      - text: 2 selected for approval
+      - button "Add record"
+      - button "Discard"
+      - button "Approve records"
+- region "Session Panel":
+  - group "Session actions":
+    - button "Sessions"
+    - text: 2 running 1 starting 1 idle
+    - button "Add workers"
+    - button "Settings"
+- region "Notifications"
