@@ -59,7 +59,7 @@ const TWO_CHANGE_PATCH = {
 } as const;
 
 const COMPILE_ATTESTATION = {
-  attestationVersion: 1,
+  attestationVersion: 2,
   workflowId: "person-lookup",
   descriptorVersion: 1,
   contractFingerprint: "a".repeat(64),
@@ -81,8 +81,8 @@ const COMPILE_ATTESTATION = {
     },
     scenario: {
       state: "held",
-      scope: "registered-source-resolution",
-      registrations: [{ scenarioId: "person-lookup/found", sourcePath: "tests/scenario/person-lookup.scenario.test.ts" }],
+      scope: "registered-declaration-equivalence",
+      registrations: [{ scenarioId: "person-lookup/found" }],
     },
   },
 } as const;
@@ -256,9 +256,30 @@ describe("Explorer safe-edit protocol", () => {
 
   it("requires all five exact compile-attestation arms and a canonical closed source patch", () => {
     const attestation = COMPILE_ATTESTATION;
+    assert.equal(ExplorerCompileAttestationSchema.safeParse(attestation).success, true);
     assert.equal(ExplorerCompileAttestationSchema.safeParse({
       ...attestation,
       checks: { ...attestation.checks, scenario: undefined },
+    }).success, false);
+    assert.equal(ExplorerCompileAttestationSchema.safeParse({
+      ...attestation,
+      checks: {
+        ...attestation.checks,
+        scenario: {
+          ...attestation.checks.scenario,
+          registrations: [{ ...attestation.checks.scenario.registrations[0], sourcePath: "tests/scenario/person-lookup.scenario.test.ts" }],
+        },
+      },
+    }).success, false);
+    assert.equal(ExplorerCompileAttestationSchema.safeParse({
+      ...attestation,
+      checks: {
+        ...attestation.checks,
+        scenario: {
+          ...attestation.checks.scenario,
+          registrations: [...attestation.checks.scenario.registrations, ...attestation.checks.scenario.registrations],
+        },
+      },
     }).success, false);
 
     const brief = ENQUEUE_CODE_CHANGE_BRIEF;

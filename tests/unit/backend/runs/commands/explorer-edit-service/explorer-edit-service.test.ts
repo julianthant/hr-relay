@@ -213,7 +213,7 @@ describe("Explorer edit service", () => {
     assert.match(result.message, /enqueue-policy.*no effective source change/u);
   });
 
-  it("fails validation when exact scenario source attestation cannot be made", () => {
+  it("validates an Explorer edit when registered scenarios have no executable sources", () => {
     const query = explorerQueryDeps(CLOCK, HASH);
     const descriptor = query.modules.find(({ descriptor }) => String(descriptor.id) === "person-lookup")?.descriptor;
     assert.ok(descriptor !== undefined);
@@ -224,14 +224,22 @@ describe("Explorer edit service", () => {
         readAll: () => [],
       },
     });
-    assert.throws(() => edit.validate({
+    const result = edit.validate({
       draftVersion: 1,
       workflowId: descriptor.id,
       baseDescriptorVersion: descriptor.version,
       baseContractFingerprint: descriptor.contractFingerprint,
       baseOverrideRevision: 0,
       changes: [{ kind: "workflow-label", value: "People search" }],
-    }), /compile attestation.*scenario.*unresolved/u);
+    });
+    assert.equal(result.state, "ready-to-apply");
+    if (result.state !== "ready-to-apply") return;
+    assert.equal(result.compileAttestation.attestationVersion, 2);
+    assert.deepEqual(result.compileAttestation.checks.scenario, {
+      state: "held",
+      scope: "registered-declaration-equivalence",
+      registrations: result.impactedScenarios.map((scenarioId) => ({ scenarioId })),
+    });
   });
 
 
