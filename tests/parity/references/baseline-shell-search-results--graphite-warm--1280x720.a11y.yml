@@ -1,0 +1,218 @@
+# baseline-shell-search-results--graphite-warm--1280x720
+# adapter: fixture
+# fixture: mounted-mock-shell
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- region "Notifications"
+- dialog "Search runs":
+  - banner:
+    - heading "Search runs" [level=2]
+    - paragraph: Search recent runs by name, workflow or status.
+    - button "Close"
+  - text: Search runs
+  - group:
+    - combobox "Search runs" [expanded]
+  - listbox "Search results":
+    - group "Recent runs":
+      - option "EID 10873698 Queued Person Lookup · 08/03/2026" [selected]:
+        - strong: EID 10873698
+        - text: Queued Person Lookup · 08/03/2026
+      - option "Battistessa, Johnnie Running Person Lookup · 08/03/2026":
+        - strong: Battistessa, Johnnie
+        - text: Running Person Lookup · 08/03/2026
+      - option "EID 10001573 Done Person Lookup · 08/03/2026":
+        - strong: EID 10001573
+        - text: Done Person Lookup · 08/03/2026
+      - option "EID 10555001 Failed Person Lookup · 08/03/2026":
+        - strong: EID 10555001
+        - text: Failed Person Lookup · 08/03/2026
+      - option "Blirea, Glaundi Review Person Lookup · 08/03/2026":
+        - strong: Blirea, Glaundi
+        - text: Review Person Lookup · 08/03/2026
+      - option "EID 10777012 Write parked Person Lookup · 08/03/2026":
+        - strong: EID 10777012
+        - text: Write parked Person Lookup · 08/03/2026
+      - option "EID 10222009 Cancelled Person Lookup · 08/03/2026":
+        - strong: EID 10222009
+        - text: Cancelled Person Lookup · 08/03/2026
+      - option "EID 10333015 Done with warnings Person Lookup · 08/03/2026":
+        - strong: EID 10333015
+        - text: Done with warnings Person Lookup · 08/03/2026
+      - option "EID 10873698 Queued Person Lookup · 08/03/2026":
+        - strong: EID 10873698
+        - text: Queued Person Lookup · 08/03/2026
+      - option "Weekly HDH roster check (1) Running Person Lookup · 08/03/2026":
+        - strong: Weekly HDH roster check (1)
+        - text: Running Person Lookup · 08/03/2026
+      - option "EID 10611004 Running Person Lookup · 08/03/2026":
+        - strong: EID 10611004
+        - text: Running Person Lookup · 08/03/2026
+      - option "New-hire lookups — batch 3 Running Person Lookup · 08/03/2026":
+        - strong: New-hire lookups — batch 3
+        - text: Running Person Lookup · 08/03/2026
+      - option "Alvarez, Maria Done Person Lookup · 08/03/2026":
+        - strong: Alvarez, Maria
+        - text: Done Person Lookup · 08/03/2026
+      - option "EID 10480021 Running Person Lookup · 08/03/2026":
+        - strong: EID 10480021
+        - text: Running Person Lookup · 08/03/2026
+      - option "Okafor, Chinedu Queued Person Lookup · 08/03/2026":
+        - strong: Okafor, Chinedu
+        - text: Queued Person Lookup · 08/03/2026
+      - option "Rehire eligibility sweep Review Person Lookup · 08/03/2026":
+        - strong: Rehire eligibility sweep
+        - text: Review Person Lookup · 08/03/2026
+      - option "EID 10120933 Done Person Lookup · 08/03/2026":
+        - strong: EID 10120933
+        - text: Done Person Lookup · 08/03/2026
+      - option "EID 10577410 Done Person Lookup · 08/03/2026":
+        - strong: EID 10577410
+        - text: Done Person Lookup · 08/03/2026
+      - option "Tran, Bao Failed Person Lookup · 08/03/2026":
+        - strong: Tran, Bao
+        - text: Failed Person Lookup · 08/03/2026
+      - option "Blirea, Glaundi Review Person Lookup · 08/03/2026":
+        - strong: Blirea, Glaundi
+        - text: Review Person Lookup · 08/03/2026
+      - option "Onboarding cohort — July stragglers Done Person Lookup · 08/03/2026":
+        - strong: Onboarding cohort — July stragglers
+        - text: Done Person Lookup · 08/03/2026
+      - option "EID 10300100 Done Person Lookup · 08/03/2026":
+        - strong: EID 10300100
+        - text: Done Person Lookup · 08/03/2026
+      - option "EID 10300101 Done Person Lookup · 08/03/2026":
+        - strong: EID 10300101
+        - text: Done Person Lookup · 08/03/2026
+      - option "EID 10300102 Done Person Lookup · 08/03/2026":
+        - strong: EID 10300102
+        - text: Done Person Lookup · 08/03/2026
+      - option "EID 10300103 Done Person Lookup · 08/03/2026":
+        - strong: EID 10300103
+        - text: Done Person Lookup · 08/03/2026
+      - option "EID 10300104 Done Person Lookup · 08/03/2026":
+        - strong: EID 10300104
+        - text: Done Person Lookup · 08/03/2026
+      - option "EID 10300105 Done Person Lookup · 08/03/2026":
+        - strong: EID 10300105
+        - text: Done Person Lookup · 08/03/2026
+      - option "EID 10300106 Done Person Lookup · 08/03/2026":
+        - strong: EID 10300106
+        - text: Done Person Lookup · 08/03/2026
+      - option "EID 10300107 Done Person Lookup · 08/03/2026":
+        - strong: EID 10300107
+        - text: Done Person Lookup · 08/03/2026
+      - option "EID 10300108 Done Person Lookup · 08/03/2026":
+        - strong: EID 10300108
+        - text: Done Person Lookup · 08/03/2026
+      - option "EID 10300109 Done Person Lookup · 08/03/2026":
+        - strong: EID 10300109
+        - text: Done Person Lookup · 08/03/2026
+      - option "EID 10300110 Done Person Lookup · 08/03/2026":
+        - strong: EID 10300110
+        - text: Done Person Lookup · 08/03/2026
+      - option "EID 10300111 Done Person Lookup · 08/03/2026":
+        - strong: EID 10300111
+        - text: Done Person Lookup · 08/03/2026
+      - option "Separation audit — August Done with warnings Person Lookup · 08/03/2026":
+        - strong: Separation audit — August
+        - text: Done with warnings Person Lookup · 08/03/2026
+      - option "EID 10410200 Done Person Lookup · 08/03/2026":
+        - strong: EID 10410200
+        - text: Done Person Lookup · 08/03/2026
+      - option "EID 10410201 Done Person Lookup · 08/03/2026":
+        - strong: EID 10410201
+        - text: Done Person Lookup · 08/03/2026
+      - option "EID 10410202 Done Person Lookup · 08/03/2026":
+        - strong: EID 10410202
+        - text: Done Person Lookup · 08/03/2026
+      - option "EID 10410203 Done Person Lookup · 08/03/2026":
+        - strong: EID 10410203
+        - text: Done Person Lookup · 08/03/2026
+      - option "EID 10410204 Done Person Lookup · 08/03/2026":
+        - strong: EID 10410204
+        - text: Done Person Lookup · 08/03/2026
+      - option "EID 10410205 Done Person Lookup · 08/03/2026":
+        - strong: EID 10410205
+        - text: Done Person Lookup · 08/03/2026
+      - option "EID 10410206 Done Person Lookup · 08/03/2026":
+        - strong: EID 10410206
+        - text: Done Person Lookup · 08/03/2026
+      - option "EID 10410207 Done Person Lookup · 08/03/2026":
+        - strong: EID 10410207
+        - text: Done Person Lookup · 08/03/2026
+      - option "EID 10410208 Done Person Lookup · 08/03/2026":
+        - strong: EID 10410208
+        - text: Done Person Lookup · 08/03/2026
+      - option "Castillo, Ren Failed Person Lookup · 08/03/2026":
+        - strong: Castillo, Ren
+        - text: Failed Person Lookup · 08/03/2026
+      - option "EID 10990031 Failed Person Lookup · 08/03/2026":
+        - strong: EID 10990031
+        - text: Failed Person Lookup · 08/03/2026
+      - option "EID 10990032 Cancelled Person Lookup · 08/03/2026":
+        - strong: EID 10990032
+        - text: Cancelled Person Lookup · 08/03/2026
+      - option "Haddad, Lina Running Person Lookup · 08/03/2026":
+        - strong: Haddad, Lina
+        - text: Running Person Lookup · 08/03/2026
+      - option "48216 Completed Separations · 08/03/2026":
+        - strong: "48216"
+        - text: Completed Separations · 08/03/2026
+      - option "jordan.lee@example.com Completed Onboarding · 08/03/2026":
+        - strong: jordan.lee@example.com
+        - text: Completed Onboarding · 08/03/2026
+      - option "10000001 Completed Person Lookup · 08/03/2026":
+        - strong: "10000001"
+        - text: Completed Person Lookup · 08/03/2026
+      - option "Lee, Jordan Completed I-9 Lookup · 08/03/2026":
+        - strong: Lee, Jordan
+        - text: Completed I-9 Lookup · 08/03/2026
+      - option "10000001 Completed Work-Study · 08/03/2026":
+        - strong: "10000001"
+        - text: Completed Work-Study · 08/03/2026
+      - option "10000001 Completed Kronos Pay Rule · 08/03/2026":
+        - strong: "10000001"
+        - text: Completed Kronos Pay Rule · 08/03/2026
+      - option "single-oath.pdf Waiting for OCR Oath Signature · 08/03/2026":
+        - strong: single-oath.pdf
+        - text: Waiting for OCR Oath Signature · 08/03/2026
+      - option "single-oath.pdf Needs review OCR · 08/03/2026":
+        - strong: single-oath.pdf
+        - text: Needs review OCR · 08/03/2026
+      - option "multiple-oath.pdf Waiting for OCR Oath Upload · 08/03/2026":
+        - strong: multiple-oath.pdf
+        - text: Waiting for OCR Oath Upload · 08/03/2026
+      - option "multiple-oath.pdf Needs review OCR · 08/03/2026":
+        - strong: multiple-oath.pdf
+        - text: Needs review OCR · 08/03/2026
+      - option "emergency-contacts.pdf Waiting for OCR Emergency Contact · 08/03/2026":
+        - strong: emergency-contacts.pdf
+        - text: Waiting for OCR Emergency Contact · 08/03/2026
+      - option "emergency-contacts.pdf Needs review OCR · 08/03/2026":
+        - strong: emergency-contacts.pdf
+        - text: Needs review OCR · 08/03/2026
+      - option "detect-test.pdf Waiting for OCR OnBase · 08/03/2026":
+        - strong: detect-test.pdf
+        - text: Waiting for OCR OnBase · 08/03/2026
+      - option "detect-test.pdf Needs review OCR · 08/03/2026":
+        - strong: detect-test.pdf
+        - text: Needs review OCR · 08/03/2026
+      - option "i9.pdf Waiting for OCR I-9 Check · 08/03/2026":
+        - strong: i9.pdf
+        - text: Waiting for OCR I-9 Check · 08/03/2026
+      - option "i9.pdf Needs review OCR · 08/03/2026":
+        - strong: i9.pdf
+        - text: Needs review OCR · 08/03/2026
+      - option "10000001 Completed CRM Doc Download · 08/03/2026":
+        - strong: "10000001"
+        - text: Completed CRM Doc Download · 08/03/2026
+      - option "Onboarding Roster Completed SharePoint Download · 08/03/2026":
+        - strong: Onboarding Roster
+        - text: Completed SharePoint Download · 08/03/2026
+      - option "10000001 Completed Old Kronos Reports · 08/03/2026":
+        - strong: "10000001"
+        - text: Completed Old Kronos Reports · 08/03/2026
+  - status: 66 runs

@@ -1,0 +1,165 @@
+# visual-baseline-workflows-explorer-fixture-onbase-dark--graphite-warm--1280x720
+# adapter: fixture
+# fixture: visual-baseline-workflows.spec.ts:mounted Logs and all Explorer workflows @ dark
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#dashboard-settings-content"
+- main:
+  - region "Settings":
+    - navigation "Settings sections":
+      - heading "Settings" [level=2]
+      - button "Back to dashboard"
+      - group:
+        - searchbox "Search settings"
+      - text: Personal
+      - link "General":
+        - /url: "?settings=general"
+      - link "Credentials":
+        - /url: "?settings=credentials"
+      - text: Advanced
+      - link "Performance":
+        - /url: "?settings=performance"
+      - link "Paths":
+        - /url: "?settings=paths"
+      - link "Routes":
+        - /url: "?settings=routes"
+      - text: Data
+      - link "Spreadsheets":
+        - /url: "?settings=spreadsheets"
+      - link "Explorer":
+        - /url: "?settings=explorer"
+      - link "Analytics":
+        - /url: "?settings=activity"
+      - text: Status
+      - link "Storage checks":
+        - /url: "?settings=storage"
+      - link "Preflight":
+        - /url: "?settings=preflight"
+      - text: Help
+      - link "Keyboard":
+        - /url: "?settings=keyboard"
+    - region "Workflow explorer preview":
+      - heading "Explorer" [level=1]
+      - paragraph: Browse workflows, their steps and field sources. Fictional preview data.
+      - combobox "Explorer workflow": OnBase
+      - list "Workflow steps":
+        - listitem:
+          - heading "OnBase" [level=2]
+          - text: You
+          - paragraph: Reads each person off the scanned pages, waits for your approval, then files their page into OnBase. Several uploaded files MERGE into one document, so three PDFs become one import rather than three runs.
+          - text: Record review
+          - combobox "Record review preview": Approved records
+          - text: Employee Lookup keyset
+          - combobox "Employee Lookup keyset preview": Employee found
+          - text: Execution path
+          - combobox "Execution path preview": Illustrate completion
+        - listitem:
+          - heading "OCR extraction" [level=2]
+          - text: OCR
+          - paragraph: Delegate the merged document to an OCR review, which keeps its own row in the OCR panel.
+          - text: Delegate to OCR; preserve its separate outcome.
+          - group:
+            - strong: OCR extraction
+            - text: Read and process People found 1
+        - listitem:
+          - heading "Your review" [level=2]
+          - text: Local
+          - paragraph: Approve who the pages belong to before anything is filed under their name.
+        - listitem:
+          - heading "Member fan-out" [level=2]
+          - text: OnBase
+          - paragraph: Enqueue one import run per approved person, each carrying its own page of the merged document.
+        - listitem:
+          - heading "Authenticate" [level=2]
+          - text: OnBase
+          - paragraph: Reach an authenticated OnBase session on the Import Document screen.
+          - text: Open OnBase
+          - group:
+            - strong: Session
+            - text: Read System OnBase Authentication Authenticated Identity Demo operator
+        - listitem:
+          - heading "Prepare import" [level=2]
+          - text: OnBase
+          - paragraph: Select the declared document type, which is what decides the keyword set the import has to fill.
+          - text: Open Import Document
+          - group:
+            - strong: Import settings
+            - text: Fill
+            - button "Show source for Document type": Document type Emergency Contact
+            - button "Show source for File type": File type PDF (.pdf)
+            - button "Show source for Keyset": Keyset Employee Lookup
+          - group:
+            - strong: Source document
+            - text: Read PDF emergency-contact.pdf Source page 1
+          - text: Attach the person's page and verify the Document Queue
+        - listitem:
+          - heading "Fill keywords" [level=2]
+          - text: OnBase
+          - paragraph: Run the Employee Lookup and fill every required keyword. The autofilled UCPath ID must equal the one this run carries, and a blank required keyword throws before the import.
+          - group:
+            - strong: Fill keywords
+            - text: Read and process
+            - button "Show source for Document type": Document type Emergency Contact
+            - button "Show source for Employee ID": Employee ID 10000001
+          - text: "Verify: re-read on the form before the import commits. Open Employee Lookup"
+          - group:
+            - strong: Lookup criteria
+            - text: Fill
+            - button "Show source for UCPath ID": UCPath ID 10000001
+          - text: Find → Select Employee
+          - group:
+            - strong: Autofilled keywords
+            - text: Read UCPath ID 10000001 Last name Lee First name Jordan Department name Housing Dining Hospitality Department code DEMO-DEPT-001 Vice Chancellor Student Affairs Vice Chancellor code DEMO-VC-001
+          - group:
+            - strong: Document name
+            - text: Fill
+            - button "Show source for Document name": Document name EMERGENCY CONTACT INFORMATION
+          - group:
+            - strong: Required keyword check
+            - text: Read Keyset autofill Yes Employee ID match Confirmed Missing required keywords 0
+        - listitem:
+          - heading "Import" [level=2]
+          - text: OnBase
+          - paragraph: Commit the import. THE write of this workflow, and it is irreversible — the document now exists under the person's record.
+          - group:
+            - strong: Import
+            - text: Fill and verify
+            - button "Show source for Imported document": Imported document DEMO-ONBASE-001 · source page 1
+          - text: "Verify: document id re-read from the person's OnBase record. Import document"
+          - group:
+            - strong: Import confirmation
+            - text: Read Document ID DEMO-ONBASE-001 Document type Emergency Contact UCPath ID 10000001 Source page 1
+          - text: Imported document re-read under the employee record.
+        - listitem:
+          - heading "Rollup" [level=2]
+          - text: Local
+          - paragraph: Close the packet once every import is terminal.
+      - paragraph: Fictional workflow path complete. No external system contacted.
+- region "Session Panel":
+  - group "Session actions":
+    - button "Sessions"
+    - text: 2 running 1 starting 1 idle
+    - button "Add workers"
+    - button "Settings" [pressed]
+- region "Notifications"
+- listbox:
+  - group:
+    - option "Person Lookup"
+    - option "I-9 Lookup"
+    - option "Separations"
+    - option "I-9 Check"
+    - option "Onboarding"
+    - option "Oath Signature"
+    - option "Oath Upload"
+    - option "Emergency Contact"
+    - option "Work-Study"
+    - option "Kronos Pay Rule"
+    - option "OCR"
+    - option "CRM Doc Download"
+    - option "SharePoint Download"
+    - option "OnBase" [selected]
+    - option "Old Kronos Reports"

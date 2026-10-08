@@ -1,27 +1,64 @@
 # intake-mapping--graphite-warm--1280x720
 # adapter: fixture
 # fixture: intake-mapping
-# descriptorHash: a5c0a1468cbf7269c171cf526c0b38ab557e0b7ff6e450bb9464f306b2a8a2c2
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
 
-- banner:
-  - heading "HR Automation" [level=1]
-  - button "Back" [disabled]
-  - button "Forward" [disabled]
-  - button "Dashboard"
-  - button "Archive"
-  - button "Explorer"
-  - button "Activity"
-  - button "Search runs across dates": Search runs… /
-  - button "Previous day — Sun, Aug 2"
-  - button "Pick a day — showing Mon, Aug 3, 14 rows": Mon, Aug 3 14
-  - button "No later day" [disabled]
-  - 'button "Preflight: unavailable"'
-  - button "Notifications — 1 unread"
-  - button "Switch to Paper Ink"
-  - button "Settings"
+- link "Skip to content":
+  - /url: "#dashboard-main-region"
+- complementary "Workspace":
+  - heading "HR GPT" [level=2]
+  - button "Notifications, 3 unread"
+  - button "Search runs"
+  - navigation "Workflows":
+    - heading "Search" [level=3]
+    - list:
+      - listitem:
+        - button "Person Lookup": Person Lookup 5 · 14
+      - listitem:
+        - button "I-9 Lookup": I-9 Lookup 0 · 1
+    - heading "Separations" [level=3]
+    - list:
+      - listitem:
+        - button "Separations": Separations 0 · 1
+      - listitem:
+        - button "I-9 Check": I-9 Check 1 · 1
+    - heading "Onboarding" [level=3]
+    - list:
+      - listitem:
+        - button "Onboarding": Onboarding 0 · 1
+      - listitem:
+        - button "Oath Signature": Oath Signature 1 · 1
+      - listitem:
+        - button "Oath Upload": Oath Upload 1 · 1
+      - listitem:
+        - button "Emergency Contact": Emergency Contact 1 · 1
+    - heading "Work Study" [level=3]
+    - list:
+      - listitem:
+        - button "Work-Study": Work-Study 0 · 1
+    - heading "Payroll" [level=3]
+    - list:
+      - listitem:
+        - button "Kronos Pay Rule": Kronos Pay Rule 0 · 1
+    - heading "Utils" [level=3]
+    - list:
+      - listitem:
+        - button "OCR": OCR 0 · 5
+      - listitem:
+        - button "CRM Doc Download": CRM Doc Download 0 · 1
+      - listitem:
+        - button "SharePoint Download": SharePoint Download 0 · 1
+    - heading "OnBase" [level=3]
+    - list:
+      - listitem:
+        - button "OnBase": OnBase 1 · 1
+    - heading "Timekeeping" [level=3]
+    - list:
+      - listitem:
+        - button "Old Kronos Reports": Old Kronos Reports 0 · 1
 - main:
   - region "Spreadsheet intake":
     - heading "Spreadsheet intake" [level=2]
@@ -29,15 +66,7 @@
     - button "Close"
     - region "Source file":
       - text: Source file cohort-7-onboarding.csv sha 3c9a71e07 rows read4 columnsuploaded 10:01 AM mapping Header row
-      - combobox "Header row":
-        - option "row 3 · confidence 1.00 — UCPath ID · Employee Name · Department · Start Date" [selected]
-        - option "row 6 · confidence 0.74 — 10-4567 · Okafor, Chidi · Campus Recreation · 07/21/2026"
-        - option "row 7 · confidence 0.70 — 10554120 · Ramirez, Sofia · Student Health · 07/21/2026"
-        - option "row 5 · confidence 0.64 — 10001573 · Blirea, Glaundi · Housing Dining Hospitality · 07/14/2026"
-        - option "row 1 · confidence 0.63 — Onboarding roster — Cohort 7"
-        - option "row 4 · confidence 0.51 — 10873698 · Battistessa, Johnnie · Housing Dining Hospitality · 07/14/2026"
-        - option "row 8 · confidence 0.51 — 10873698 · Battistessa, Johnnie · Housing Dining Hospitality · 08/04/2026"
-        - option "row 9 · confidence 0.36 — Facilities Management · 08/04/2026"
+      - combobox "Header row": row 3 · confidence 1.00 — UCPath ID · Employee Name · Department · Start Date
       - paragraph: Chosen by ranking, and changeable — every column below is read relative to it.
     - tablist "Intake stage":
       - tab "Mapping 1" [selected]
@@ -52,26 +81,16 @@
             - columnheader "Bound column"
             - columnheader "Suggestion"
         - rowgroup:
-          - row "Employee ID (EID) emplIdcanonical eid UCPath ID 10873698 · 10001573 · 10-4567 no proposal":
+          - row "Employee ID (EID) emplIdcanonical eid 10873698 · 10001573 · 10-4567 no proposal":
             - cell "Employee ID (EID) emplIdcanonical eid"
-            - cell "UCPath ID 10873698 · 10001573 · 10-4567":
-              - combobox "Source column for Employee ID (EID)":
-                - option "— unbound —"
-                - option "UCPath ID" [selected]
-                - option "Employee Name"
-                - option "Department"
-                - option "Start Date"
+            - cell "10873698 · 10001573 · 10-4567":
+              - combobox "Source column for Employee ID (EID)": UCPath ID
               - text: 10873698 · 10001573 · 10-4567
             - cell "no proposal"
-          - row "Full Name namecanonical fullName — unbound — Employee Name Bind Employee Name known header, its values parse (1.00)":
+          - row "Full Name namecanonical fullName Employee Name Bind Employee Name known header, its values parse (1.00)":
             - cell "Full Name namecanonical fullName"
-            - cell "— unbound —":
-              - combobox "Source column for Full Name":
-                - option "— unbound —" [selected]
-                - option "UCPath ID"
-                - option "Employee Name"
-                - option "Department"
-                - option "Start Date"
+            - cell:
+              - combobox "Source column for Full Name": — unbound —
             - cell "Employee Name Bind Employee Name known header, its values parse (1.00)":
               - text: Employee Name
               - button "Bind Employee Name": Use it
@@ -81,7 +100,9 @@
     - button "Validate"
     - button "Start runs" [disabled]
 - region "Session Panel":
-  - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
-  - button "Add workers"
-  - text: app 0.1
-  - status: Live
+  - group "Session actions":
+    - button "Sessions"
+    - text: 2 running 1 starting 1 idle
+    - button "Add workers"
+    - button "Settings"
+- region "Notifications"

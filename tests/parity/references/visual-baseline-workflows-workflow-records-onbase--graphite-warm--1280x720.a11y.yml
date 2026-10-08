@@ -1,0 +1,453 @@
+# visual-baseline-workflows-workflow-records-onbase--graphite-warm--1280x720
+# adapter: fixture
+# fixture: visual-baseline-workflows.spec.ts:mounted Logs and all Explorer workflows @ dark
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#dashboard-main-region"
+- complementary "Workspace":
+  - heading "HR GPT" [level=2]
+  - button "Notifications, 3 unread"
+  - button "Search runs"
+  - navigation "Workflows":
+    - heading "Search" [level=3]
+    - list:
+      - listitem:
+        - button "Person Lookup": Person Lookup 5 · 14
+      - listitem:
+        - button "I-9 Lookup": I-9 Lookup 0 · 1
+    - heading "Separations" [level=3]
+    - list:
+      - listitem:
+        - button "Separations": Separations 0 · 1
+      - listitem:
+        - button "I-9 Check": I-9 Check 1 · 1
+    - heading "Onboarding" [level=3]
+    - list:
+      - listitem:
+        - button "Onboarding": Onboarding 0 · 1
+      - listitem:
+        - button "Oath Signature": Oath Signature 1 · 1
+      - listitem:
+        - button "Oath Upload": Oath Upload 1 · 1
+      - listitem:
+        - button "Emergency Contact": Emergency Contact 1 · 1
+    - heading "Work Study" [level=3]
+    - list:
+      - listitem:
+        - button "Work-Study": Work-Study 0 · 1
+    - heading "Payroll" [level=3]
+    - list:
+      - listitem:
+        - button "Kronos Pay Rule": Kronos Pay Rule 0 · 1
+    - heading "Utils" [level=3]
+    - list:
+      - listitem:
+        - button "OCR": OCR 0 · 5
+      - listitem:
+        - button "CRM Doc Download": CRM Doc Download 0 · 1
+      - listitem:
+        - button "SharePoint Download": SharePoint Download 0 · 1
+    - heading "OnBase" [level=3]
+    - list:
+      - listitem:
+        - button "OnBase": OnBase 1 · 1
+    - heading "Timekeeping" [level=3]
+    - list:
+      - listitem:
+        - button "Old Kronos Reports": Old Kronos Reports 0 · 1
+- main:
+  - heading "OCR queue" [level=1]
+  - region "Queue":
+    - text: Needs you 5
+    - button "single-oath.pdf — review · 53m 48s":
+      - text: single-oath.pdf Review 1 of 1 records ready for approval 9:10 AM
+      - button "Attempts for single-oath.pdf": "#1"
+      - text: OCR01566240 55m 0s
+      - button "Retry"
+      - button "Delete"
+    - button "multiple-oath.pdf — review · 53m 48s":
+      - text: multiple-oath.pdf Review 4 of 4 records ready for approval 9:10 AM
+      - button "Attempts for multiple-oath.pdf": "#1"
+      - text: OCR04609235 55m 0s
+      - button "Retry"
+      - button "Delete"
+    - button "emergency-contacts.pdf — review · 53m 48s":
+      - text: emergency-contacts.pdf Review 3 of 3 records ready for approval 9:10 AM
+      - button "Attempts for emergency-contacts.pdf": "#1"
+      - text: OCR63559370 55m 0s
+      - button "Retry"
+      - button "Delete"
+    - button "detect-test.pdf — review · 52m 52s" [pressed]:
+      - text: detect-test.pdf 1 Review 3 of 4 records ready for approval 9:10 AM
+      - button "Attempts for detect-test.pdf": "#1"
+      - text: OCR28298759 55m 0s
+      - button "Retry"
+      - button "Delete"
+    - button "i9.pdf — review · 53m 48s":
+      - text: i9.pdf Review 2 of 2 records ready for approval 9:10 AM
+      - button "Attempts for i9.pdf": "#1"
+      - text: OCR61877231 55m 0s
+      - button "Retry"
+      - button "Delete"
+  - region "Action panel":
+    - group "Action panel controls":
+      - button "Start a run"
+      - button "Filter queue by status": Status
+      - combobox "Sort the queue": Newest first
+      - button "Attention first" [pressed]
+    - group "Log date controls":
+      - text: Dashboard date*
+      - group "Dashboard date*":
+        - spinbutton "month, Dashboard date*": "08"
+        - spinbutton "day, Dashboard date*": "03"
+        - spinbutton "year, Dashboard date*": "2026"
+        - button "Choose date Dashboard date*"
+  - region "Selected run logs":
+    - heading "detect-test.pdf" [level=2]
+    - text: Review
+    - button "Records 4" [pressed]
+    - button "Linked runs (3)"
+    - region "OCR records":
+      - region "Record person-1":
+        - region "Source PDF":
+          - text: Page 1
+          - toolbar "PDF controls":
+            - button "Zoom out"
+            - button "Zoom in"
+            - button "Fit page" [disabled]
+          - img "Source page 1 of detect-test.pdf"
+        - group "Record selection":
+          - checkbox "Include Jordan Lee" [checked]
+          - text: Include
+          - heading "Jordan Lee" [level=3]
+        - heading "Employee" [level=4]
+        - group "Employee":
+          - text: Employee ID
+          - textbox "Employee ID": "10000001"
+          - text: First name
+          - textbox "First name": Jordan
+          - text: Last name
+          - textbox "Last name": Lee
+          - text: Employee name
+          - textbox "Employee name": Jordan Lee
+          - text: Date completed
+          - textbox "Date completed":
+            - /placeholder: MM/DD/YYYY
+            - text: 04/23/2026
+          - text: PID
+          - textbox "PID": A00000001
+          - text: Job title
+          - textbox "Job title": Student Assistant
+          - text: Work location
+          - textbox "Work location": Campus Services
+          - text: Mail code
+          - textbox "Mail code"
+          - text: Supervisor
+          - textbox "Supervisor": Alex Morgan
+          - text: Work email
+          - textbox "Work email": jordan.lee@example.com
+          - text: Personal email
+          - textbox "Personal email"
+          - text: Employee home phone
+          - textbox "Employee home phone"
+          - text: Employee cell phone
+          - textbox "Employee cell phone": (202) 555-0101
+        - heading "Employee address" [level=4]
+        - group "Employee address":
+          - text: Employee street
+          - textbox "Employee street": 100 Example Street
+          - text: Employee city
+          - textbox "Employee city": San Diego
+          - text: Employee state
+          - textbox "Employee state": CA
+          - text: Employee ZIP
+          - textbox "Employee ZIP": "92101"
+          - text: Employee country
+          - textbox "Employee country": USA
+        - heading "Emergency contact" [level=4]
+        - group "Emergency contact":
+          - text: Contact name
+          - textbox "Contact name": Alex Lee
+          - text: Relationship
+          - combobox "Relationship": Sibling
+          - checkbox "Primary contact" [checked]
+          - text: Primary contact
+          - checkbox "Same address as employee" [checked]
+          - text: Same address as employee Cell phone
+          - textbox "Cell phone": (202) 555-0102
+          - text: Home phone
+          - textbox "Home phone"
+          - text: Work phone
+          - textbox "Work phone"
+          - text: Street
+          - textbox "Street": 100 Example Street
+          - text: City
+          - textbox "City": San Diego
+          - text: State
+          - textbox "State": CA
+          - text: ZIP
+          - textbox "ZIP": "92101"
+          - text: Country
+          - textbox "Country": USA
+      - region "Record person-2":
+        - region "Source PDF":
+          - text: Page 2
+          - toolbar "PDF controls":
+            - button "Zoom out"
+            - button "Zoom in"
+            - button "Fit page" [disabled]
+          - img "Source page 2 of detect-test.pdf"
+        - group "Record selection":
+          - checkbox "Include Casey Rivera"
+          - text: Include
+          - heading "Casey Rivera" [level=3]
+          - status:
+            - paragraph: Employee ID is obscured on the source page.
+        - heading "Employee" [level=4]
+        - group "Employee":
+          - text: Employee ID
+          - textbox "Employee ID"
+          - text: First name
+          - textbox "First name": Casey
+          - text: Last name
+          - textbox "Last name": Rivera
+          - text: Employee name
+          - textbox "Employee name": Casey Rivera
+          - text: Date completed
+          - textbox "Date completed":
+            - /placeholder: MM/DD/YYYY
+            - text: 04/23/2026
+          - text: PID
+          - textbox "PID": A00000002
+          - text: Job title
+          - textbox "Job title": Student Assistant
+          - text: Work location
+          - textbox "Work location": Campus Services
+          - text: Mail code
+          - textbox "Mail code"
+          - text: Supervisor
+          - textbox "Supervisor": Alex Morgan
+          - text: Work email
+          - textbox "Work email": casey.rivera@example.com
+          - text: Personal email
+          - textbox "Personal email"
+          - text: Employee home phone
+          - textbox "Employee home phone"
+          - text: Employee cell phone
+          - textbox "Employee cell phone": (202) 555-0101
+        - heading "Employee address" [level=4]
+        - group "Employee address":
+          - text: Employee street
+          - textbox "Employee street": 100 Example Street
+          - text: Employee city
+          - textbox "Employee city": San Diego
+          - text: Employee state
+          - textbox "Employee state": CA
+          - text: Employee ZIP
+          - textbox "Employee ZIP": "92101"
+          - text: Employee country
+          - textbox "Employee country": USA
+        - heading "Emergency contact" [level=4]
+        - group "Emergency contact":
+          - text: Contact name
+          - textbox "Contact name": Alex Rivera
+          - text: Relationship
+          - combobox "Relationship": Parent
+          - checkbox "Primary contact" [checked]
+          - text: Primary contact
+          - checkbox "Same address as employee"
+          - text: Same address as employee Cell phone
+          - textbox "Cell phone": (202) 555-0102
+          - text: Home phone
+          - textbox "Home phone"
+          - text: Work phone
+          - textbox "Work phone"
+          - text: Street
+          - textbox "Street": 100 Example Street
+          - text: City
+          - textbox "City": San Diego
+          - text: State
+          - textbox "State": CA
+          - text: ZIP
+          - textbox "ZIP": "92101"
+          - text: Country
+          - textbox "Country": USA
+      - region "Record person-4":
+        - region "Source PDF":
+          - text: Page 4
+          - toolbar "PDF controls":
+            - button "Zoom out" [disabled]
+            - button "Zoom in" [disabled]
+            - button "Fit page" [disabled]
+          - img "Source page 4 of detect-test.pdf"
+          - status "Loading source PDF"
+        - group "Record selection":
+          - checkbox "Include Taylor Nguyen" [checked]
+          - text: Include
+          - heading "Taylor Nguyen" [level=3]
+        - heading "Employee" [level=4]
+        - group "Employee":
+          - text: Employee ID
+          - textbox "Employee ID": "10000004"
+          - text: First name
+          - textbox "First name": Taylor
+          - text: Last name
+          - textbox "Last name": Nguyen
+          - text: Employee name
+          - textbox "Employee name": Taylor Nguyen
+          - text: Date completed
+          - textbox "Date completed":
+            - /placeholder: MM/DD/YYYY
+            - text: 04/23/2026
+          - text: PID
+          - textbox "PID": A00000004
+          - text: Job title
+          - textbox "Job title": Student Assistant
+          - text: Work location
+          - textbox "Work location": Campus Services
+          - text: Mail code
+          - textbox "Mail code"
+          - text: Supervisor
+          - textbox "Supervisor": Alex Morgan
+          - text: Work email
+          - textbox "Work email": taylor.nguyen@example.com
+          - text: Personal email
+          - textbox "Personal email"
+          - text: Employee home phone
+          - textbox "Employee home phone"
+          - text: Employee cell phone
+          - textbox "Employee cell phone": (202) 555-0101
+        - heading "Employee address" [level=4]
+        - group "Employee address":
+          - text: Employee street
+          - textbox "Employee street": 100 Example Street
+          - text: Employee city
+          - textbox "Employee city": San Diego
+          - text: Employee state
+          - textbox "Employee state": CA
+          - text: Employee ZIP
+          - textbox "Employee ZIP": "92101"
+          - text: Employee country
+          - textbox "Employee country": USA
+        - heading "Emergency contact" [level=4]
+        - group "Emergency contact":
+          - text: Contact name
+          - textbox "Contact name": Alex Nguyen
+          - text: Relationship
+          - combobox "Relationship": Parent
+          - checkbox "Primary contact" [checked]
+          - text: Primary contact
+          - checkbox "Same address as employee"
+          - text: Same address as employee Cell phone
+          - textbox "Cell phone": (202) 555-0102
+          - text: Home phone
+          - textbox "Home phone"
+          - text: Work phone
+          - textbox "Work phone"
+          - text: Street
+          - textbox "Street": 100 Example Street
+          - text: City
+          - textbox "City": San Diego
+          - text: State
+          - textbox "State": CA
+          - text: ZIP
+          - textbox "ZIP": "92101"
+          - text: Country
+          - textbox "Country": USA
+      - region "Record person-6":
+        - region "Source PDF":
+          - text: Page 6
+          - toolbar "PDF controls":
+            - button "Zoom out" [disabled]
+            - button "Zoom in" [disabled]
+            - button "Fit page" [disabled]
+          - img "Source page 6 of detect-test.pdf"
+          - status "Loading source PDF"
+        - group "Record selection":
+          - checkbox "Include Riley Park" [checked]
+          - text: Include
+          - heading "Riley Park" [level=3]
+        - heading "Employee" [level=4]
+        - group "Employee":
+          - text: Employee ID
+          - textbox "Employee ID": "10000006"
+          - text: First name
+          - textbox "First name": Riley
+          - text: Last name
+          - textbox "Last name": Park
+          - text: Employee name
+          - textbox "Employee name": Riley Park
+          - text: Date completed
+          - textbox "Date completed":
+            - /placeholder: MM/DD/YYYY
+            - text: 04/23/2026
+          - text: PID
+          - textbox "PID": A00000006
+          - text: Job title
+          - textbox "Job title": Student Assistant
+          - text: Work location
+          - textbox "Work location": Campus Services
+          - text: Mail code
+          - textbox "Mail code"
+          - text: Supervisor
+          - textbox "Supervisor": Alex Morgan
+          - text: Work email
+          - textbox "Work email": riley.park@example.com
+          - text: Personal email
+          - textbox "Personal email"
+          - text: Employee home phone
+          - textbox "Employee home phone"
+          - text: Employee cell phone
+          - textbox "Employee cell phone": (202) 555-0101
+        - heading "Employee address" [level=4]
+        - group "Employee address":
+          - text: Employee street
+          - textbox "Employee street": 100 Example Street
+          - text: Employee city
+          - textbox "Employee city": San Diego
+          - text: Employee state
+          - textbox "Employee state": CA
+          - text: Employee ZIP
+          - textbox "Employee ZIP": "92101"
+          - text: Employee country
+          - textbox "Employee country": USA
+        - heading "Emergency contact" [level=4]
+        - group "Emergency contact":
+          - text: Contact name
+          - textbox "Contact name": Alex Park
+          - text: Relationship
+          - combobox "Relationship": Parent
+          - checkbox "Primary contact" [checked]
+          - text: Primary contact
+          - checkbox "Same address as employee"
+          - text: Same address as employee Cell phone
+          - textbox "Cell phone": (202) 555-0102
+          - text: Home phone
+          - textbox "Home phone"
+          - text: Work phone
+          - textbox "Work phone"
+          - text: Street
+          - textbox "Street": 100 Example Street
+          - text: City
+          - textbox "City": San Diego
+          - text: State
+          - textbox "State": CA
+          - text: ZIP
+          - textbox "ZIP": "92101"
+          - text: Country
+          - textbox "Country": USA
+      - text: 3 selected for approval
+      - button "Add record"
+      - button "Discard"
+      - button "Approve records"
+- region "Session Panel":
+  - group "Session actions":
+    - button "Sessions"
+    - text: 2 running 1 starting 1 idle
+    - button "Add workers"
+    - button "Settings"
+- region "Notifications"

@@ -1,0 +1,147 @@
+# visual-baseline-workflows-explorer-fixture-i9-check-dark--graphite-warm--1280x720
+# adapter: fixture
+# fixture: visual-baseline-workflows.spec.ts:mounted Logs and all Explorer workflows @ dark
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#dashboard-settings-content"
+- main:
+  - region "Settings":
+    - navigation "Settings sections":
+      - heading "Settings" [level=2]
+      - button "Back to dashboard"
+      - group:
+        - searchbox "Search settings"
+      - text: Personal
+      - link "General":
+        - /url: "?settings=general"
+      - link "Credentials":
+        - /url: "?settings=credentials"
+      - text: Advanced
+      - link "Performance":
+        - /url: "?settings=performance"
+      - link "Paths":
+        - /url: "?settings=paths"
+      - link "Routes":
+        - /url: "?settings=routes"
+      - text: Data
+      - link "Spreadsheets":
+        - /url: "?settings=spreadsheets"
+      - link "Explorer":
+        - /url: "?settings=explorer"
+      - link "Analytics":
+        - /url: "?settings=activity"
+      - text: Status
+      - link "Storage checks":
+        - /url: "?settings=storage"
+      - link "Preflight":
+        - /url: "?settings=preflight"
+      - text: Help
+      - link "Keyboard":
+        - /url: "?settings=keyboard"
+    - region "Workflow explorer preview":
+      - heading "Explorer" [level=1]
+      - paragraph: Browse workflows, their steps and field sources. Fictional preview data.
+      - combobox "Explorer workflow": I-9 Check
+      - list "Workflow steps":
+        - listitem:
+          - heading "I-9 Check" [level=2]
+          - text: You
+          - paragraph: Reads each person off a retention scan, searches UCPath for them, and appends a local retention tracker. Its review completes itself — there is nothing to approve — and no live HR system is ever mutated, which is pinned by an import guard rather than by convention.
+          - text: Packet identity
+          - combobox "Packet identity preview": Section 1 and Section 2 paired
+        - listitem:
+          - heading "OCR extraction" [level=2]
+          - text: OCR
+          - paragraph: Extract and pair the I-9 pages.
+          - text: Delegate to OCR; preserve its separate outcome.
+          - group:
+            - strong: OCR extraction
+            - text: Read and process People found 1
+        - listitem:
+          - heading "Roster match" [level=2]
+          - text: OCR
+          - paragraph: Match each read person against the roster, so an EID comes off paper before anybody is searched for.
+          - group:
+            - strong: Roster match
+            - text: Read and process Roster rows matched 1 / 1
+        - listitem:
+          - heading "Member fan-out" [level=2]
+          - text: UCPath
+          - paragraph: Enqueue one check per person the moment the review completes — not when you approve it, because there is no approval. A page with no name to search on becomes a failed member with no task behind it.
+        - listitem:
+          - heading "Person match" [level=2]
+          - text: UCPath
+          - paragraph: Search UCPath for this person on the scan's identifiers. A unique hit here skips the fuller lookup below.
+          - group:
+            - strong: Person match
+            - text: Read and process Matched EID 10000001
+          - group:
+            - strong: Paired I-9 identity
+            - text: Read Employee Jordan Lee Section 1 page 1 Section 2 page 2 Hire date from I-9 08/03/2026
+          - group:
+            - strong: UCPath person search
+            - text: Fill
+            - button "Show source for Name": Name Jordan Lee
+            - button "Show source for Employee ID": Employee ID 10000001
+          - group:
+            - strong: Search result
+            - text: Read Matched Employee ID 10000001 Candidates 1 Found in UCPath Yes
+        - listitem:
+          - heading "Person lookup" [level=2]
+          - text: UCPath
+          - paragraph: Corroborate against the hire date when the search did not settle it. An ambiguous outcome stamps no found/not-found answer at all.
+          - paragraph: "Condition: the person search did not resolve a unique EID."
+          - group:
+            - strong: Person lookup
+            - text: Read and process Start date 08/03/2026
+          - group:
+            - strong: Employment evidence
+            - text: Read Employee ID 10000001 UCPath hire date 08/03/2026 I-9 hire date 08/03/2026 Hire date match Confirmed
+        - listitem:
+          - heading "Retention tracker" [level=2]
+          - text: OCR
+          - paragraph: Append this person's row to the master retention tracker on disk. No HR system is touched.
+          - group:
+            - strong: Retention tracker
+            - text: File output I-9 separation date Not separated Retention row 10000001 · Section 1 page 1 · Section 2 page 2
+          - text: "Verify: the row re-read from the tracker file."
+          - group:
+            - strong: Action History match
+            - text: Read Employee ID 10000001 PPS ID DEMO-PPS-001 Separation date Not separated
+          - group:
+            - strong: Retention tracker row
+            - text: Read Employee Jordan Lee Employee ID 10000001 PPS ID DEMO-PPS-001 Section 1 present Yes Section 2 present Yes Found in UCPath Yes
+          - text: Append retention tracker row
+        - listitem:
+          - heading "Rollup" [level=2]
+          - text: Local
+          - paragraph: Close the scan once every person is terminal.
+      - paragraph: Fictional workflow path complete. No external system contacted.
+- region "Session Panel":
+  - group "Session actions":
+    - button "Sessions"
+    - text: 2 running 1 starting 1 idle
+    - button "Add workers"
+    - button "Settings" [pressed]
+- region "Notifications"
+- listbox:
+  - group:
+    - option "Person Lookup"
+    - option "I-9 Lookup"
+    - option "Separations"
+    - option "I-9 Check" [selected]
+    - option "Onboarding"
+    - option "Oath Signature"
+    - option "Oath Upload"
+    - option "Emergency Contact"
+    - option "Work-Study"
+    - option "Kronos Pay Rule"
+    - option "OCR"
+    - option "CRM Doc Download"
+    - option "SharePoint Download"
+    - option "OnBase"
+    - option "Old Kronos Reports"

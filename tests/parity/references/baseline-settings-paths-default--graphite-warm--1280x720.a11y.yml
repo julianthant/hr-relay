@@ -1,0 +1,95 @@
+# baseline-settings-paths-default--graphite-warm--1280x720
+# adapter: fixture-bff
+# fixture: current-mounted-settings
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#dashboard-settings-content"
+- main:
+  - region "Settings":
+    - navigation "Settings sections":
+      - heading "Settings" [level=2]
+      - button "Back to dashboard"
+      - group:
+        - searchbox "Search settings"
+      - text: Personal
+      - link "General":
+        - /url: "?settings=general"
+      - link "Credentials":
+        - /url: "?settings=credentials"
+      - text: Advanced
+      - link "Performance":
+        - /url: "?settings=performance"
+      - link "Paths":
+        - /url: "?settings=paths"
+      - link "Routes":
+        - /url: "?settings=routes"
+      - text: Data
+      - link "Spreadsheets":
+        - /url: "?settings=spreadsheets"
+      - link "Explorer":
+        - /url: "?settings=explorer"
+      - link "Analytics":
+        - /url: "?settings=activity"
+      - text: Status
+      - link "Storage checks":
+        - /url: "?settings=storage"
+      - link "Preflight":
+        - /url: "?settings=preflight"
+      - text: Help
+      - link "Keyboard":
+        - /url: "?settings=keyboard"
+    - heading "Paths" [level=1]
+    - paragraph: Workflow files and runtime locations.
+    - heading "Runtime locations" [level=2]
+    - group "Runtime locations":
+      - text: Runtime state folder
+      - paragraph: Persistent settings and run data.
+      - text: /tmp/settings-fixture/state
+      - button "Change Runtime state folder": Change
+      - text: Artifact folder
+      - paragraph: Run evidence and generated artifacts.
+      - text: /tmp/settings-fixture/artifacts
+      - button "Change Artifact folder": Change
+      - text: Browser profile folder
+      - paragraph: Fresh folder for browser sessions in new runs.
+      - text: /tmp/settings-fixture/auth
+      - button "Change Browser profile folder": Change
+      - text: Duo credential file
+      - paragraph: Existing private Duo credential file; independent of the profile folder.
+      - text: /tmp/settings-fixture/auth/duo-webauthn.json
+      - button "Change Duo credential file": Change
+      - text: Duo extension folder
+      - paragraph: Unpacked Duo browser extension for new runs.
+      - text: /tmp/settings-fixture/duo-autopilot
+      - button "Change Duo extension folder": Change
+    - heading "Generated files" [level=2]
+    - group "Generated files":
+      - text: Reports directory
+      - paragraph: Where generated reports are written.
+      - text: /tmp/reports
+      - button "Change Reports directory": Change
+      - text: Downloads directory
+      - paragraph: Where browser downloads are kept.
+      - text: /tmp/settings-fixture/downloads
+      - button "Change Downloads directory": Change
+    - heading "Workflow documents" [level=2]
+    - group "Workflow documents":
+      - text: Onboarding documents
+      - paragraph: Folder containing onboarding documents.
+      - text: /tmp/settings-fixture/onboarding
+      - button "Change Onboarding documents": Change
+      - text: I-9 check tracker
+      - paragraph: Workbook used to track I-9 checks.
+      - text: /tmp/settings-fixture/i9.xlsx
+      - button "Change I-9 check tracker": Change
+- region "Session Panel":
+  - group "Session actions":
+    - button "Sessions"
+    - text: 2 running 1 starting 1 idle
+    - button "Add workers"
+    - button "Settings" [pressed]
+- region "Notifications"

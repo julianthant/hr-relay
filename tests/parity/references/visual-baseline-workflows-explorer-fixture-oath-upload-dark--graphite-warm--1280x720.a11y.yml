@@ -1,0 +1,122 @@
+# visual-baseline-workflows-explorer-fixture-oath-upload-dark--graphite-warm--1280x720
+# adapter: fixture
+# fixture: visual-baseline-workflows.spec.ts:mounted Logs and all Explorer workflows @ dark
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#dashboard-settings-content"
+- main:
+  - region "Settings":
+    - navigation "Settings sections":
+      - heading "Settings" [level=2]
+      - button "Back to dashboard"
+      - group:
+        - searchbox "Search settings"
+      - text: Personal
+      - link "General":
+        - /url: "?settings=general"
+      - link "Credentials":
+        - /url: "?settings=credentials"
+      - text: Advanced
+      - link "Performance":
+        - /url: "?settings=performance"
+      - link "Paths":
+        - /url: "?settings=paths"
+      - link "Routes":
+        - /url: "?settings=routes"
+      - text: Data
+      - link "Spreadsheets":
+        - /url: "?settings=spreadsheets"
+      - link "Explorer":
+        - /url: "?settings=explorer"
+      - link "Analytics":
+        - /url: "?settings=activity"
+      - text: Status
+      - link "Storage checks":
+        - /url: "?settings=storage"
+      - link "Preflight":
+        - /url: "?settings=preflight"
+      - text: Help
+      - link "Keyboard":
+        - /url: "?settings=keyboard"
+    - region "Workflow explorer preview":
+      - heading "Explorer" [level=1]
+      - paragraph: Browse workflows, their steps and field sources. Fictional preview data.
+      - combobox "Explorer workflow": Oath Upload
+      - list "Workflow steps":
+        - listitem:
+          - heading "Oath Upload" [level=2]
+          - text: You
+          - paragraph: "ONE row walks the whole signed document: OCR prep, your approval, waiting for the signers, then a single ServiceNow ticket. Its signers are linked runs in the Oath Signature panel, never members of this row."
+          - text: Processing mode
+          - combobox "Processing mode preview": Full process
+          - text: Record review
+          - combobox "Record review preview": Approved records
+          - text: Linked signatures
+          - combobox "Linked signatures preview": All succeeded
+          - text: Execution path
+          - combobox "Execution path preview": Illustrate completion
+        - listitem:
+          - heading "OCR prep" [level=2]
+          - text: OCR
+          - paragraph: Delegate the signed document to an OCR review, which keeps its own row in the OCR panel.
+          - text: Delegate to OCR; preserve its separate outcome.
+          - group:
+            - strong: OCR prep
+            - text: Read and process Signed oaths found 1
+        - listitem:
+          - heading "Your review" [level=2]
+          - text: Local
+          - paragraph: Approve the document. Nothing is filed and no signature is chased until you do; a discard files nothing at all.
+        - listitem:
+          - heading "Wait signatures" [level=2]
+          - text: UCPath
+          - paragraph: Wait for every linked Oath Signature row to finish. This row signs nothing — and one missing, failed or cancelled signer throws here rather than filing a ticket for a document that is not signed.
+          - group:
+            - strong: Wait signatures
+            - text: Read and process Signatures complete 1 / 1
+          - group:
+            - strong: Linked signature outcomes
+            - text: Read Signers 1 Succeeded 1 Failed 0 Cancelled 0
+          - text: Every linked signer must succeed before the ticket form opens.
+        - listitem:
+          - heading "File ticket" [level=2]
+          - text: ServiceNow
+          - paragraph: File exactly one ServiceNow ticket for the document with the PDF attached — once per document, never once per signer. A prior submit with no recorded ticket number stops the run instead of filing a second.
+          - group:
+            - strong: File ticket
+            - text: Fill and verify
+            - button "Show source for ServiceNow ticket": ServiceNow ticket DEMO-HR-001
+          - text: "Verify: ticket number read back off the created ticket. Submit HR inquiry"
+          - group:
+            - strong: Ticket confirmation
+            - text: Read HR ticket number DEMO-HR-001 Filed Yes PDF oaths.pdf
+          - text: Ticket number re-read from the submitted request.
+      - paragraph: Fictional workflow path complete. No external system contacted.
+- region "Session Panel":
+  - group "Session actions":
+    - button "Sessions"
+    - text: 2 running 1 starting 1 idle
+    - button "Add workers"
+    - button "Settings" [pressed]
+- region "Notifications"
+- listbox:
+  - group:
+    - option "Person Lookup"
+    - option "I-9 Lookup"
+    - option "Separations"
+    - option "I-9 Check"
+    - option "Onboarding"
+    - option "Oath Signature"
+    - option "Oath Upload" [selected]
+    - option "Emergency Contact"
+    - option "Work-Study"
+    - option "Kronos Pay Rule"
+    - option "OCR"
+    - option "CRM Doc Download"
+    - option "SharePoint Download"
+    - option "OnBase"
+    - option "Old Kronos Reports"

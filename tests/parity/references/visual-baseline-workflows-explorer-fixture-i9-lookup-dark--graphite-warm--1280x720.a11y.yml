@@ -1,0 +1,97 @@
+# visual-baseline-workflows-explorer-fixture-i9-lookup-dark--graphite-warm--1280x720
+# adapter: fixture
+# fixture: visual-baseline-workflows.spec.ts:mounted Logs and all Explorer workflows @ dark
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#dashboard-settings-content"
+- main:
+  - region "Settings":
+    - navigation "Settings sections":
+      - heading "Settings" [level=2]
+      - button "Back to dashboard"
+      - group:
+        - searchbox "Search settings"
+      - text: Personal
+      - link "General":
+        - /url: "?settings=general"
+      - link "Credentials":
+        - /url: "?settings=credentials"
+      - text: Advanced
+      - link "Performance":
+        - /url: "?settings=performance"
+      - link "Paths":
+        - /url: "?settings=paths"
+      - link "Routes":
+        - /url: "?settings=routes"
+      - text: Data
+      - link "Spreadsheets":
+        - /url: "?settings=spreadsheets"
+      - link "Explorer":
+        - /url: "?settings=explorer"
+      - link "Analytics":
+        - /url: "?settings=activity"
+      - text: Status
+      - link "Storage checks":
+        - /url: "?settings=storage"
+      - link "Preflight":
+        - /url: "?settings=preflight"
+      - text: Help
+      - link "Keyboard":
+        - /url: "?settings=keyboard"
+    - region "Workflow explorer preview":
+      - heading "Explorer" [level=1]
+      - paragraph: Browse workflows, their steps and field sources. Fictional preview data.
+      - combobox "Explorer workflow": I-9 Lookup
+      - list "Workflow steps":
+        - listitem:
+          - heading "I-9 Lookup" [level=2]
+          - text: You
+          - paragraph: "One read of the I-9 portal for one person: whether a profile exists, whether it is signed, and who the authorized representative was. Enrichment inside a parent's run; it writes nothing."
+          - text: Portal result
+          - combobox "Portal result preview": Profile found
+        - listitem:
+          - heading "Lookup" [level=2]
+          - text: I-9
+          - paragraph: Find the person's I-9 record and read its state. A person with no profile is a completed lookup with a negative answer, never a failure — and a portal that cannot be reached says so rather than reporting 'not found'.
+          - group:
+            - strong: Lookup
+            - text: Read and process Official signer Alex Morgan
+          - group:
+            - strong: Portal person search
+            - text: Fill
+            - button "Show source for Last name": Last name Lee
+            - button "Show source for First name": First name Jordan
+            - button "Show source for SSN": SSN •••-••-0001
+          - text: Search and open the matching profile
+          - group:
+            - strong: Section 2
+            - text: Read I-9 status Section 2 complete Authorized official signer Alex Morgan Profile ID DEMO-I9-001
+      - paragraph: Fictional workflow path complete. No external system contacted.
+- region "Session Panel":
+  - group "Session actions":
+    - button "Sessions"
+    - text: 2 running 1 starting 1 idle
+    - button "Add workers"
+    - button "Settings" [pressed]
+- region "Notifications"
+- listbox:
+  - group:
+    - option "Person Lookup"
+    - option "I-9 Lookup" [selected]
+    - option "Separations"
+    - option "I-9 Check"
+    - option "Onboarding"
+    - option "Oath Signature"
+    - option "Oath Upload"
+    - option "Emergency Contact"
+    - option "Work-Study"
+    - option "Kronos Pay Rule"
+    - option "OCR"
+    - option "CRM Doc Download"
+    - option "SharePoint Download"
+    - option "OnBase"
+    - option "Old Kronos Reports"

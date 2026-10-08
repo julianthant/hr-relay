@@ -1,0 +1,390 @@
+# visual-baseline-workflows-workflow-queue-logs-separations--graphite-warm--1280x720
+# adapter: fixture
+# fixture: visual-baseline-workflows.spec.ts:mounted Logs and all Explorer workflows @ dark
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#dashboard-main-region"
+- complementary "Workspace":
+  - heading "HR GPT" [level=2]
+  - button "Notifications, 3 unread"
+  - button "Search runs"
+  - navigation "Workflows":
+    - heading "Search" [level=3]
+    - list:
+      - listitem:
+        - button "Person Lookup": Person Lookup 5 · 14
+      - listitem:
+        - button "I-9 Lookup": I-9 Lookup 0 · 1
+    - heading "Separations" [level=3]
+    - list:
+      - listitem:
+        - button "Separations": Separations 0 · 1
+      - listitem:
+        - button "I-9 Check": I-9 Check 1 · 1
+    - heading "Onboarding" [level=3]
+    - list:
+      - listitem:
+        - button "Onboarding": Onboarding 0 · 1
+      - listitem:
+        - button "Oath Signature": Oath Signature 1 · 1
+      - listitem:
+        - button "Oath Upload": Oath Upload 1 · 1
+      - listitem:
+        - button "Emergency Contact": Emergency Contact 1 · 1
+    - heading "Work Study" [level=3]
+    - list:
+      - listitem:
+        - button "Work-Study": Work-Study 0 · 1
+    - heading "Payroll" [level=3]
+    - list:
+      - listitem:
+        - button "Kronos Pay Rule": Kronos Pay Rule 0 · 1
+    - heading "Utils" [level=3]
+    - list:
+      - listitem:
+        - button "OCR": OCR 0 · 5
+      - listitem:
+        - button "CRM Doc Download": CRM Doc Download 0 · 1
+      - listitem:
+        - button "SharePoint Download": SharePoint Download 0 · 1
+    - heading "OnBase" [level=3]
+    - list:
+      - listitem:
+        - button "OnBase": OnBase 1 · 1
+    - heading "Timekeeping" [level=3]
+    - list:
+      - listitem:
+        - button "Old Kronos Reports": Old Kronos Reports 0 · 1
+- main:
+  - heading "Separations queue" [level=1]
+  - region "Queue":
+    - text: "Finished 1 08/03/2026: 1 verified"
+    - button "48216 — done" [pressed]:
+      - text: 48216 Done 9:10 AM
+      - button "Attempts for 48216": "#1"
+      - text: SP86524935 5m 28s
+      - button "Retry"
+      - button "Delete"
+  - region "Action panel":
+    - group "Action panel controls":
+      - button "Start a run"
+      - button "Filter queue by status": Status
+      - combobox "Sort the queue": Newest first
+      - button "Attention first" [pressed]
+    - group "Log date controls":
+      - text: Dashboard date*
+      - group "Dashboard date*":
+        - spinbutton "month, Dashboard date*": "08"
+        - spinbutton "day, Dashboard date*": "03"
+        - spinbutton "year, Dashboard date*": "2026"
+        - button "Choose date Dashboard date*"
+  - region "Selected run logs":
+    - heading "48216" [level=2]
+    - text: Done
+    - button "Rerun"
+    - navigation "Run timeline":
+      - list:
+        - listitem:
+          - button "Read Kuali document · Completed · 09:10:00 · 36s": Read Kuali document 36s
+        - listitem:
+          - button "Verify employee identity · Completed · 09:10:36 · 36s": Verify employee identity 36s
+        - listitem:
+          - button "Read job summary · Completed · 09:11:12 · 36s": Read job summary 36s
+        - listitem:
+          - button "Read timecard · Completed · 09:11:48 · 56s": Read timecard 56s
+        - listitem:
+          - button "Check pending termination · Completed · 09:12:44 · 20s": Check pending termination 20s
+        - listitem:
+          - button "Submit termination · Completed · 09:13:04 · 1m 48s": Submit termination 1m 48s
+        - listitem:
+          - button "Finalize Kuali document · Completed · 09:14:52 · 36s": Finalize Kuali document 36s
+    - region "Run logs":
+      - region "Read Kuali document":
+        - time: 09:10:00
+        - heading "Read Kuali document" [level=3]
+        - text: Kuali
+        - time: 09:10:00
+        - text: Open the RRSS separation document
+        - heading "Separation request" [level=4]
+        - time: 09:10:00
+        - term: Kuali ID
+        - definition: "48216"
+        - time: 09:10:00
+        - term: Employee
+        - definition: Jordan Lee
+        - time: 09:10:00
+        - term: Employee ID
+        - definition: "10000001"
+        - time: 09:10:00
+        - term: Termination type
+        - definition: Voluntary
+        - time: 09:10:00
+        - term: Last day worked
+        - definition: 08/02/2026
+        - time: 09:10:00
+        - term: Separation date
+        - definition: 08/02/2026
+        - time: 09:10:00
+        - term: Department
+        - definition: HDH
+        - time: 09:10:00
+        - term: Comments
+        - definition: Appointment ended
+        - heading "Transaction choice" [level=4]
+        - time: 09:10:00
+        - term: Template
+        - definition: UC_VOL_TERM
+        - time: 09:10:00
+        - term: Effective date
+        - definition: 08/03/2026
+        - time: 09:10:00
+        - term: Date rule
+        - definition: Separation date + 1 day
+        - heading "Kuali extraction" [level=4]
+        - time: 09:10:00
+        - term: Document number
+        - definition: "48216"
+      - region "Verify employee identity":
+        - time: 09:10:36
+        - heading "Verify employee identity" [level=3]
+        - text: UCPath
+        - heading "Person search" [level=4]
+        - time: 09:10:36
+        - term: Employee ID
+        - definition: "10000001"
+        - time: 09:10:36
+        - text: Search UCPath
+        - heading "Resolved identity" [level=4]
+        - time: 09:10:36
+        - term: Employee
+        - definition: Jordan Lee
+        - time: 09:10:36
+        - term: Employee ID
+        - definition: "10000001"
+        - time: 09:10:36
+        - term: Job record
+        - definition: "0"
+        - time: 09:10:36
+        - term: Match
+        - definition: Confirmed
+        - heading "Identity check" [level=4]
+        - time: 09:10:36
+        - term: Name
+        - definition: Jordan Lee
+      - region "Read job summary":
+        - time: 09:11:12
+        - heading "Read job summary" [level=3]
+        - text: UCPath
+        - time: 09:11:12
+        - text: Open Workforce Job Summary
+        - heading "Active job" [level=4]
+        - time: 09:11:12
+        - term: Position number
+        - definition: DEMO-POS-001
+        - time: 09:11:12
+        - term: Department
+        - definition: HDH
+        - time: 09:11:12
+        - term: Payroll title code
+        - definition: DEMO-JOB-001
+        - time: 09:11:12
+        - term: Payroll title
+        - definition: Student assistant
+        - time: 09:11:12
+        - term: Job record
+        - definition: "0"
+        - heading "Kuali job fields" [level=4]
+        - time: 09:11:12
+        - term: Department
+        - definition: HDH
+        - time: 09:11:12
+        - term: Payroll title code
+        - definition: DEMO-JOB-001
+        - time: 09:11:12
+        - term: Payroll title
+        - definition: Student assistant
+        - heading "Job summary" [level=4]
+        - time: 09:11:12
+        - term: Position
+        - definition: DEMO-POS-001
+        - time: 09:11:12
+        - term: Job code
+        - definition: DEMO-JOB-001
+      - region "Read timecard":
+        - time: 09:11:48
+        - heading "Read timecard" [level=3]
+        - text: New Kronos
+        - heading "Timecard search" [level=4]
+        - time: 09:11:48
+        - term: Employee ID
+        - definition: "10000001"
+        - time: 09:11:48
+        - term: Date range
+        - definition: 05/04/2026 – 08/02/2026
+        - time: 09:11:48
+        - text: Open the employee timecard
+        - heading "Timekeeping reconciliation" [level=4]
+        - time: 09:11:48
+        - term: Last physical punch
+        - definition: 08/02/2026
+        - time: 09:11:48
+        - term: Sick days
+        - definition: None
+        - time: 09:11:48
+        - term: Holiday days
+        - definition: None
+        - time: 09:11:48
+        - term: Last date worked
+        - definition: 08/02/2026
+        - heading "Kuali timekeeper" [level=4]
+        - time: 09:11:48
+        - term: Timekeeper
+        - definition: Demo operator
+        - heading "Kronos search" [level=4]
+        - time: 09:11:48
+        - term: Last punch
+        - definition: 08/02/2026
+        - time: 09:11:48
+        - term: Sick dates in window
+        - definition: None
+        - time: 09:11:48
+        - term: Holiday dates
+        - definition: None
+      - region "Check pending termination":
+        - time: 09:12:44
+        - heading "Check pending termination" [level=3]
+        - text: UCPath
+        - time: 09:12:44
+        - text: Search SS Smart HR transactions
+        - heading "Existing termination" [level=4]
+        - time: 09:12:44
+        - term: Employee ID
+        - definition: "10000001"
+        - time: 09:12:44
+        - term: Job record
+        - definition: "0"
+        - time: 09:12:44
+        - term: Existing termination
+        - definition: None in separation window
+        - time: 09:12:44
+        - term: Pending termination
+        - definition: None
+        - time: 09:12:44
+        - term: Approval status
+        - definition: —
+        - time: 09:12:44
+        - term: Transaction ID
+        - definition: —
+      - region "Submit termination":
+        - time: 09:13:04
+        - heading "Submit termination" [level=3]
+        - text: UCPath
+        - time: 09:13:04
+        - text: Open Smart HR Transactions
+        - heading "Termination template" [level=4]
+        - time: 09:13:04
+        - term: Template
+        - definition: UC_VOL_TERM
+        - time: 09:13:04
+        - term: Employee ID
+        - definition: "10000001"
+        - time: 09:13:04
+        - term: Job record
+        - definition: "0"
+        - time: 09:13:04
+        - term: Effective date
+        - definition: 08/03/2026
+        - time: 09:13:04
+        - text: Create Transaction
+        - heading "Termination data" [level=4]
+        - time: 09:13:04
+        - term: Action
+        - definition: Termination
+        - time: 09:13:04
+        - term: Reason
+        - definition: Voluntary termination
+        - time: 09:13:04
+        - term: Last date worked
+        - definition: 08/02/2026
+        - time: 09:13:04
+        - text: Save and Submit
+        - heading "Termination confirmation" [level=4]
+        - time: 09:13:04
+        - term: Transaction number
+        - definition: DEMO-TXN-001
+        - time: 09:13:04
+        - term: Employee
+        - definition: Jordan Lee
+        - time: 09:13:04
+        - term: Effective date
+        - definition: 08/03/2026
+        - time: 09:13:04
+        - paragraph: Confirmation number and submitted job record agree.
+        - heading "UCPath transaction" [level=4]
+        - time: 09:13:04
+        - term: Separation date
+        - definition: 08/02/2026
+        - time: 09:13:04
+        - paragraph: "Readback: confirmation number + post-submit screenshot; read back from the job row after submit; read off the confirmation page."
+      - region "Finalize Kuali document":
+        - time: 09:14:52
+        - heading "Finalize Kuali document" [level=3]
+        - text: Kuali
+        - heading "Kuali completion" [level=4]
+        - time: 09:14:52
+        - term: Transaction number
+        - definition: DEMO-TXN-001
+        - time: 09:14:52
+        - term: Termination effective date
+        - definition: 08/03/2026
+        - time: 09:14:52
+        - term: Timekeeper
+        - definition: Demo operator
+        - time: 09:14:52
+        - term: Comments
+        - definition: UCPath termination verified · DEMO-TXN-001
+        - time: 09:14:52
+        - text: Save and finalize the RRSS document
+        - heading "Final document" [level=4]
+        - time: 09:14:52
+        - term: Document status
+        - definition: Final
+        - time: 09:14:52
+        - term: Kuali ID
+        - definition: "48216"
+        - time: 09:14:52
+        - paragraph: Final status re-read from the document.
+        - time: 09:14:52
+        - paragraph: "Readback: document re-read as Final; field re-read on the finalized document."
+        - time: 09:15:28
+        - term: Kuali ID
+        - definition: "48216"
+        - time: 09:15:28
+        - term: Employee
+        - definition: Jordan Lee
+        - time: 09:15:28
+        - term: Employee ID
+        - definition: "48216"
+        - time: 09:15:28
+        - term: Last day worked
+        - definition: 08/02/2026
+        - time: 09:15:28
+        - term: Separation date
+        - definition: 08/02/2026
+    - group:
+      - searchbox "Search logs"
+    - status: 79 actions
+    - status
+    - button "Copy logs"
+    - button "Go to latest action"
+- region "Session Panel":
+  - group "Session actions":
+    - button "Sessions"
+    - text: 2 running 1 starting 1 idle
+    - button "Add workers"
+    - button "Settings"
+- region "Notifications"

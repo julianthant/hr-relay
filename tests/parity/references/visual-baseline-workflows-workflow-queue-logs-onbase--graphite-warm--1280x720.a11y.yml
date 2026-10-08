@@ -1,0 +1,128 @@
+# visual-baseline-workflows-workflow-queue-logs-onbase--graphite-warm--1280x720
+# adapter: fixture
+# fixture: visual-baseline-workflows.spec.ts:mounted Logs and all Explorer workflows @ dark
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#dashboard-main-region"
+- complementary "Workspace":
+  - heading "HR GPT" [level=2]
+  - button "Notifications, 3 unread"
+  - button "Search runs"
+  - navigation "Workflows":
+    - heading "Search" [level=3]
+    - list:
+      - listitem:
+        - button "Person Lookup": Person Lookup 5 · 14
+      - listitem:
+        - button "I-9 Lookup": I-9 Lookup 0 · 1
+    - heading "Separations" [level=3]
+    - list:
+      - listitem:
+        - button "Separations": Separations 0 · 1
+      - listitem:
+        - button "I-9 Check": I-9 Check 1 · 1
+    - heading "Onboarding" [level=3]
+    - list:
+      - listitem:
+        - button "Onboarding": Onboarding 0 · 1
+      - listitem:
+        - button "Oath Signature": Oath Signature 1 · 1
+      - listitem:
+        - button "Oath Upload": Oath Upload 1 · 1
+      - listitem:
+        - button "Emergency Contact": Emergency Contact 1 · 1
+    - heading "Work Study" [level=3]
+    - list:
+      - listitem:
+        - button "Work-Study": Work-Study 0 · 1
+    - heading "Payroll" [level=3]
+    - list:
+      - listitem:
+        - button "Kronos Pay Rule": Kronos Pay Rule 0 · 1
+    - heading "Utils" [level=3]
+    - list:
+      - listitem:
+        - button "OCR": OCR 0 · 5
+      - listitem:
+        - button "CRM Doc Download": CRM Doc Download 0 · 1
+      - listitem:
+        - button "SharePoint Download": SharePoint Download 0 · 1
+    - heading "OnBase" [level=3]
+    - list:
+      - listitem:
+        - button "OnBase": OnBase 1 · 1
+    - heading "Timekeeping" [level=3]
+    - list:
+      - listitem:
+        - button "Old Kronos Reports": Old Kronos Reports 0 · 1
+- main:
+  - heading "OnBase queue" [level=1]
+  - region "Queue":
+    - text: Active 1
+    - button "detect-test.pdf — running" [pressed]:
+      - text: detect-test.pdf Running Read emergency contact 0 / 3 steps 9:10 AM
+      - button "Attempts for detect-test.pdf": "#1"
+      - text: ONB23385648 55m 0s
+      - button "Retry"
+      - button "Delete"
+  - region "Action panel":
+    - group "Action panel controls":
+      - button "Start a run"
+      - button "Filter queue by status": Status
+      - combobox "Sort the queue": Newest first
+      - button "Attention first" [pressed]
+    - group "Log date controls":
+      - text: Dashboard date*
+      - group "Dashboard date*":
+        - spinbutton "month, Dashboard date*": "08"
+        - spinbutton "day, Dashboard date*": "03"
+        - spinbutton "year, Dashboard date*": "2026"
+        - button "Choose date Dashboard date*"
+  - region "Selected run logs":
+    - heading "detect-test.pdf" [level=2]
+    - text: Running
+    - button "Open OCR"
+    - button "Rerun"
+    - button "Linked runs (1)"
+    - navigation "Run timeline":
+      - list:
+        - listitem:
+          - button "Read emergency contact · Waiting · 09:10:00": Read emergency contact Waiting
+        - listitem:
+          - button "Start approved people · Upcoming · 09:10:00": Start approved people
+        - listitem:
+          - button "Collect person outcomes · Upcoming · 09:10:00": Collect person outcomes
+    - region "Run logs":
+      - region "Read emergency contact":
+        - time: 09:10:00
+        - heading "Read emergency contact" [level=3]
+        - text: OCR
+        - time: 09:10:00
+        - paragraph: Read the predefined document fields into OCR Records; downstream work waits for approval.
+      - region "Start approved people":
+        - time: 09:10:00
+        - heading "Start approved people" [level=3]
+        - time: 09:10:00
+        - paragraph: Waiting for extracted records to be approved.
+      - region "Collect person outcomes":
+        - time: 09:10:00
+        - heading "Collect person outcomes" [level=3]
+        - time: 09:10:00
+        - paragraph: Waiting for extracted records to be approved.
+    - group:
+      - searchbox "Search logs"
+    - status: 3 actions
+    - status
+    - button "Copy logs"
+    - button "Go to latest action"
+- region "Session Panel":
+  - group "Session actions":
+    - button "Sessions"
+    - text: 2 running 1 starting 1 idle
+    - button "Add workers"
+    - button "Settings"
+- region "Notifications"

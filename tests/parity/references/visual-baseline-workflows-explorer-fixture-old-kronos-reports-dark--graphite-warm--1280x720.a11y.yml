@@ -1,0 +1,121 @@
+# visual-baseline-workflows-explorer-fixture-old-kronos-reports-dark--graphite-warm--1280x720
+# adapter: fixture
+# fixture: visual-baseline-workflows.spec.ts:mounted Logs and all Explorer workflows @ dark
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#dashboard-settings-content"
+- main:
+  - region "Settings":
+    - navigation "Settings sections":
+      - heading "Settings" [level=2]
+      - button "Back to dashboard"
+      - group:
+        - searchbox "Search settings"
+      - text: Personal
+      - link "General":
+        - /url: "?settings=general"
+      - link "Credentials":
+        - /url: "?settings=credentials"
+      - text: Advanced
+      - link "Performance":
+        - /url: "?settings=performance"
+      - link "Paths":
+        - /url: "?settings=paths"
+      - link "Routes":
+        - /url: "?settings=routes"
+      - text: Data
+      - link "Spreadsheets":
+        - /url: "?settings=spreadsheets"
+      - link "Explorer":
+        - /url: "?settings=explorer"
+      - link "Analytics":
+        - /url: "?settings=activity"
+      - text: Status
+      - link "Storage checks":
+        - /url: "?settings=storage"
+      - link "Preflight":
+        - /url: "?settings=preflight"
+      - text: Help
+      - link "Keyboard":
+        - /url: "?settings=keyboard"
+    - region "Workflow explorer preview":
+      - heading "Explorer" [level=1]
+      - paragraph: Browse workflows, their steps and field sources. Fictional preview data.
+      - combobox "Explorer workflow": Old Kronos Reports
+      - list "Workflow steps":
+        - listitem:
+          - heading "Old Kronos Reports" [level=2]
+          - text: You
+          - paragraph: Search Workforce Central by employee ID, read the employee name, download Time Detail for the selected date range, validate the PDF identity and append the local tracker outcome.
+          - text: Report validation
+          - combobox "Report validation preview": PDF identity matches
+        - listitem:
+          - heading "Searching" [level=2]
+          - text: Kronos
+          - paragraph: Search the legacy Workforce Central employee list by Employee ID.
+          - group:
+            - strong: Workforce Central search
+            - text: Fill
+            - button "Show source for Employee ID": Employee ID 10000001
+          - text: Search employees
+          - group:
+            - strong: Search result
+            - text: Read Found Yes Matching rows 1
+        - listitem:
+          - heading "Extracting" [level=2]
+          - text: Kronos
+          - paragraph: Read the matched employee name before opening Reports.
+          - group:
+            - strong: Selected employee
+            - text: Read Employee ID 10000001 Employee name Jordan Lee
+        - listitem:
+          - heading "Downloading" [level=2]
+          - text: Kronos
+          - paragraph: Run Time Detail for the configured date range, validate data and employee identity, remove an empty or mismatched PDF, and append the tracker outcome.
+          - group:
+            - strong: Downloading
+            - text: File output Files saved 10000001-Time-Detail.pdf Tracker row 10000001 · PDF identity matched
+          - text: "Verify: nonempty PDF with matching employee identity; local workbook append. Reports → Time Detail"
+          - group:
+            - strong: Report options
+            - text: Fill
+            - button "Show source for Start date": Start date 01/01/2017
+            - button "Show source for End date": End date 01/31/2026
+            - button "Show source for Employees": Employees 10000001
+          - text: Run report and download PDF
+          - group:
+            - strong: PDF validation
+            - text: Read Report Time Detail Employee ID 10000001 Employee name Jordan Lee Identity match Confirmed Contains data Yes
+          - group:
+            - strong: Tracker outcome
+            - text: Read File Time Detail_Jordan Lee (10000001).pdf Status Done
+          - text: Retain the matching Time Detail PDF and append Done to the tracker.
+      - paragraph: Fictional workflow path complete. No external system contacted.
+- region "Session Panel":
+  - group "Session actions":
+    - button "Sessions"
+    - text: 2 running 1 starting 1 idle
+    - button "Add workers"
+    - button "Settings" [pressed]
+- region "Notifications"
+- listbox:
+  - group:
+    - option "Person Lookup"
+    - option "I-9 Lookup"
+    - option "Separations"
+    - option "I-9 Check"
+    - option "Onboarding"
+    - option "Oath Signature"
+    - option "Oath Upload"
+    - option "Emergency Contact"
+    - option "Work-Study"
+    - option "Kronos Pay Rule"
+    - option "OCR"
+    - option "CRM Doc Download"
+    - option "SharePoint Download"
+    - option "OnBase"
+    - option "Old Kronos Reports" [selected]

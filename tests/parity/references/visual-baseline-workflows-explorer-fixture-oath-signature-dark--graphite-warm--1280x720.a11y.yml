@@ -1,0 +1,138 @@
+# visual-baseline-workflows-explorer-fixture-oath-signature-dark--graphite-warm--1280x720
+# adapter: fixture
+# fixture: visual-baseline-workflows.spec.ts:mounted Logs and all Explorer workflows @ dark
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#dashboard-settings-content"
+- main:
+  - region "Settings":
+    - navigation "Settings sections":
+      - heading "Settings" [level=2]
+      - button "Back to dashboard"
+      - group:
+        - searchbox "Search settings"
+      - text: Personal
+      - link "General":
+        - /url: "?settings=general"
+      - link "Credentials":
+        - /url: "?settings=credentials"
+      - text: Advanced
+      - link "Performance":
+        - /url: "?settings=performance"
+      - link "Paths":
+        - /url: "?settings=paths"
+      - link "Routes":
+        - /url: "?settings=routes"
+      - text: Data
+      - link "Spreadsheets":
+        - /url: "?settings=spreadsheets"
+      - link "Explorer":
+        - /url: "?settings=explorer"
+      - link "Analytics":
+        - /url: "?settings=activity"
+      - text: Status
+      - link "Storage checks":
+        - /url: "?settings=storage"
+      - link "Preflight":
+        - /url: "?settings=preflight"
+      - text: Help
+      - link "Keyboard":
+        - /url: "?settings=keyboard"
+    - region "Workflow explorer preview":
+      - heading "Explorer" [level=1]
+      - paragraph: Browse workflows, their steps and field sources. Fictional preview data.
+      - combobox "Explorer workflow": Oath Signature
+      - list "Workflow steps":
+        - listitem:
+          - heading "Oath Signature" [level=2]
+          - text: You
+          - paragraph: Reads every signer off an oath packet, waits for your approval, then signs each person's oath in UCPath on its own row. No ServiceNow ticket — signing only.
+          - text: Input path
+          - combobox "Input path preview": Employee IDs
+          - text: Record review
+          - combobox "Record review preview": Approved records
+          - text: Saved oath
+          - combobox "Saved oath preview": No saved oath
+          - text: Execution path
+          - combobox "Execution path preview": Illustrate completion
+        - listitem:
+          - heading "CRM verify" [level=2]
+          - text: CRM
+          - paragraph: Confirm the signer against their CRM onboarding record before anything is signed in their name. No record, or an unsigned one, skips the signing outright.
+          - group:
+            - strong: CRM identity search
+            - text: Fill
+            - button "Show source for Employee ID": Employee ID 10000001
+            - button "Show source for Employee": Employee Jordan Lee
+          - text: Open the onboarding record and history
+          - group:
+            - strong: Oath eligibility
+            - text: Read CRM onboarding Record found Process stage Onboarding complete First day of service 08/03/2026 Signed date 08/03/2026
+        - listitem:
+          - heading "UCPath auth" [level=2]
+          - text: UCPath
+          - paragraph: Reach an authenticated UCPath session and land on the signer's Person Profile.
+          - paragraph: "Condition: the CRM check did not skip this signer."
+          - group:
+            - strong: UCPath auth
+            - text: Read and process Employee ID 10000001
+          - text: Open UCPath
+          - group:
+            - strong: Session
+            - text: Read System UCPath Authentication Authenticated Identity Demo operator
+        - listitem:
+          - heading "Sign oath" [level=2]
+          - text: UCPath
+          - paragraph: Add the oath signature date row and save. A profile that already carries an oath is skipped rather than signed twice.
+          - group:
+            - strong: Sign oath
+            - text: Fill and verify Already has oath No
+            - button "Show source for Oath signature": Oath signature 08/03/2026
+          - text: "Verify: signature date re-read off the profile after save. Open Person Profiles"
+          - group:
+            - strong: Profile search
+            - text: Fill
+            - button "Show source for Employee ID": Employee ID 10000001
+          - text: Search
+          - group:
+            - strong: Profile and existing oath
+            - text: Read Employee Jordan Lee Existing oath None
+          - text: Add New Oath Signature Date
+          - group:
+            - strong: Oath date
+            - text: Fill
+            - button "Show source for Signature date": Signature date 08/03/2026
+          - text: OK · stage oath row Save · commit oath
+          - group:
+            - strong: Saved oath
+            - text: Read Signature date 08/03/2026 Signature time 09:18 AM
+          - text: Saved date re-read from the person's profile.
+      - paragraph: Fictional workflow path complete. No external system contacted.
+- region "Session Panel":
+  - group "Session actions":
+    - button "Sessions"
+    - text: 2 running 1 starting 1 idle
+    - button "Add workers"
+    - button "Settings" [pressed]
+- region "Notifications"
+- listbox:
+  - group:
+    - option "Person Lookup"
+    - option "I-9 Lookup"
+    - option "Separations"
+    - option "I-9 Check"
+    - option "Onboarding"
+    - option "Oath Signature" [selected]
+    - option "Oath Upload"
+    - option "Emergency Contact"
+    - option "Work-Study"
+    - option "Kronos Pay Rule"
+    - option "OCR"
+    - option "CRM Doc Download"
+    - option "SharePoint Download"
+    - option "OnBase"
+    - option "Old Kronos Reports"
