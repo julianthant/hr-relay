@@ -4,7 +4,7 @@ import type { AuthorityRepositories } from "../../storage/sqlite/authority-datab
  *
  * Validation always starts from the live, factory-built Explorer projection.
  * That projection has already traversed the registered descriptor, graph,
- * contracts, UI registry and scenario corpus and parsed the resulting strict
+ * contracts, UI registry and scenario declarations and parsed the resulting strict
  * wire. Presentation overrides never become a second executable graph.
  */
 import {
@@ -144,11 +144,6 @@ export function buildExplorerCompileAttestation(
   if (!sameStrings(servedScenarios, projectedScenarios)) {
     violations.push("served scenario registrations differ from the descriptor/task union");
   }
-  for (const scenario of workflow.scenarios) {
-    if (scenario.source.state !== "resolved") {
-      violations.push(`scenario ${String(scenario.scenarioId)} source is unresolved: ${scenario.source.reason}`);
-    }
-  }
   for (const [name, source] of [["descriptor", workflow.sources.descriptor], ["module", workflow.sources.module]] as const) {
     if (source.state !== "resolved") {
       violations.push(`${name} source is unresolved: ${source.reason}`);
@@ -169,14 +164,9 @@ export function buildExplorerCompileAttestation(
     );
   }
 
-  const scenarioRegistrations = workflow.scenarios.map((scenario) => {
-    if (scenario.source.state !== "resolved") {
-      throw new Error(`Explorer compile attestation lost scenario ${String(scenario.scenarioId)} source after audit`);
-    }
-    return { scenarioId: scenario.scenarioId, sourcePath: scenario.source.path };
-  });
+  const scenarioRegistrations = workflow.scenarios.map(({ scenarioId }) => ({ scenarioId }));
   return ExplorerCompileAttestationSchema.parse({
-    attestationVersion: 1,
+    attestationVersion: 2,
     workflowId: workflow.id,
     descriptorVersion: workflow.version,
     contractFingerprint: workflow.contractFingerprint,
@@ -209,7 +199,7 @@ export function buildExplorerCompileAttestation(
       },
       scenario: {
         state: "held",
-        scope: "registered-source-resolution",
+        scope: "registered-declaration-equivalence",
         registrations: scenarioRegistrations,
       },
     },

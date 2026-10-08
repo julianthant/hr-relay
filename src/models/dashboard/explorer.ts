@@ -807,7 +807,7 @@ export const ExplorerSemanticDiffEntrySchema = z.strictObject({
  * source-authored gate family to run again.
  */
 export const ExplorerCompileAttestationSchema = z.strictObject({
-  attestationVersion: z.literal(1),
+  attestationVersion: z.literal(2),
   workflowId: WorkflowIdSchema,
   descriptorVersion: z.number().int().positive(),
   contractFingerprint: FingerprintSchema,
@@ -841,10 +841,9 @@ export const ExplorerCompileAttestationSchema = z.strictObject({
     }),
     scenario: z.strictObject({
       state: z.literal("held"),
-      scope: z.literal("registered-source-resolution"),
+      scope: z.literal("registered-declaration-equivalence"),
       registrations: z.array(z.strictObject({
         scenarioId: ScenarioIdSchema,
-        sourcePath: SourcePathSchema,
       })).min(1),
     }),
   }),
