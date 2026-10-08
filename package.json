@@ -82,6 +82,11 @@
     "read-excel-file": "^9.3.5",
     "tailwind-merge": "3.5.0",
     "write-excel-file": "^4.1.1",
-    "zod": "^4.3.6"
+    "zod": "^4.3.6",
+    "@base-ui/react": "^1.8.0",
+    "cmdk": "^1.1.1",
+    "exceljs": "4.4.0",
+    "jszip": "3.10.2",
+    "saxes": "6.0.0"
   }
 }
