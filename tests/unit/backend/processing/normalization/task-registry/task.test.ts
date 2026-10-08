@@ -146,6 +146,40 @@ describe("normalization task wrapper", () => {
     assert.deepEqual(result.output.disposition, { kind: "complete" });
   });
 
+  it("uses Nominatim after unavailable Census advice and records the fallback observation", async () => {
+    const result = await runAdvice({
+      address1: "123 Fixture Rd",
+      city: "Oldtown",
+      state: "CA",
+      postalCode: "90001",
+    }, { geocode: true, census: UNAVAILABLE, nominatim: {
+      state: "produced",
+      value: { schemaHash: "cd".repeat(32), value: {
+        state: "resolved", street: "123 Fixture Rd", city: "Fallback City", stateCode: "CA",
+        zip: "90002", matchedAddress: "123 FIXTURE RD, FALLBACK CITY, CA, 90002", confidence: "approximate",
+      } },
+    } });
+    if (result.outcome !== "success") throw new Error(`expected fallback advice, received ${result.failure.code}`);
+
+    assert.deepEqual(result.calls, ["geocode.census", "geocode.nominatim"]);
+    assert.deepEqual(result.requests.map((request) => GeocodeProviderRequestSchema.parse(request).value), [
+      { street: "123 Fixture Rd", city: "Oldtown", state: "CA", zip: "90001" },
+      { street: "123 Fixture Rd", city: "Oldtown", state: "CA", zip: "90001" },
+    ]);
+    assert.deepEqual(result.output.normalized, {
+      address1: "123 Fixture Rd", city: "Fallback City", state: "CA", postalCode: "90002",
+    });
+    assert.deepEqual(result.output.disposition, { kind: "complete" });
+    assert.deepEqual(result.output.changes.map(({ field, after, source }) => ({ field, after, source })), [
+      { field: "city", after: "Fallback City", source: { kind: "nominatim", observedAt: READ_AT, confidence: "approximate" } },
+      { field: "postalCode", after: "90002", source: { kind: "nominatim", observedAt: READ_AT, confidence: "approximate" } },
+    ]);
+    const recorded = z.array(RecordedFactSchema).parse(result.recorded[0]);
+    assert.deepEqual(recorded.find(({ field }) => field === "normalized")?.value, result.output.normalized);
+    assert.deepEqual(recorded.find(({ field }) => field === "changes")?.value, result.output.changes);
+    assert.deepEqual(recorded.find(({ field }) => field === "disposition")?.value, { kind: "complete" });
+  });
+
   it("keeps exhausted geocoder advice explicit instead of returning an empty success", async () => {
     const result = await runAdvice({
       address1: "123 Fixture Rd",
