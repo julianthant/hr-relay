@@ -30,7 +30,7 @@ export const UiRoleSchema = z.enum([
 ]);
 export const UiEffectSchema = z.enum(["observe", "navigate", "prepare", "external-commit"]);
 export const UiEvidenceReferenceSchema = z.string().regex(
-  /^(?:docs\/rebuild\/evidence\/selectors|tests\/unit\/fixtures\/ui)\/[a-z0-9/_.-]+\.json$/,
+  /^(?:docs\/rebuild\/evidence\/selectors|tests\/support\/fixtures\/ui)\/[a-z0-9/_.-]+\.json$/,
   "UI evidence refs must be checked-in sanitized JSON manifests",
 );
 export const UiSourceLinkSchema = z.string().regex(
