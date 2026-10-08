@@ -21,7 +21,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { z } from "zod";
 import { descriptorRuntimeNodes } from "../../../../../src/workflow-kit/workflow.js";
-import { DESCRIPTORS } from "../../../../../src/workflow-kit/validation/workflow-module-audit.js";
+import { DESCRIPTORS } from "../../../../../src/backend/app/registries/workflow-registry.js";
 import { describeProofShape } from "../../../../../src/models/validation/proof-shape.js";
 import { ProofContractWireSchema } from "../../../../../src/models/dashboard/run-detail.js";
 

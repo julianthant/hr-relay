@@ -24,12 +24,29 @@ function confirms(result: CommandResult, document: EditableSettingsWire, command
     || document.providerKeys.state !== "available" || result.providerRevision !== document.providerKeys.revision
     || result.providerSourceVersionToken !== document.providerKeys.sourceVersionToken
     || result.providerReceiptId === undefined || result.affectedTargets.length !== 1
-    || result.affectedTargets[0]?.family !== "provider-keys") return false;
+    || result.affectedTargets[0]?.family !== "provider-keys"
+    || result.affectedTargets[0]?.revision !== result.providerRevision) return false;
   return operations === undefined || Object.entries(operations).every(([slot, operation]) => {
     if (operation === undefined) return false;
     const saved = document.providerKeys.state === "available" ? document.providerKeys.slots[slot] : undefined;
     return "set" in operation ? saved === operation.set : saved === undefined;
   });
+}
+
+function acceptedReceipt(result: CommandResult, command: Command): boolean {
+  return (result.state === "applied" || result.state === "already-applied")
+    && result.commandId === command.commandId
+    && result.providerRevision === command.target.expectedRevision + 1
+    && result.providerReceiptId !== undefined && result.providerSourceVersionToken !== undefined
+    && result.affectedTargets.length === 1
+    && result.affectedTargets[0]?.family === "provider-keys"
+    && result.affectedTargets[0]?.revision === result.providerRevision;
+}
+export function providerReadbackState(command: Command, result: CommandResult, document: EditableSettingsWire): "confirmed" | "superseded" | "unresolved" {
+  if ((result.state !== "applied" && result.state !== "already-applied")
+    || !acceptedReceipt(result, command) || result.providerRevision === undefined) return "unresolved";
+  if (document.providerKeys.state === "available" && document.providerKeys.revision > result.providerRevision) return "superseded";
+  return confirms(result, document, command.commandId, command.payload.operations) ? "confirmed" : "unresolved";
 }
 
 export function useProviderKeys(input: {
@@ -90,9 +107,13 @@ export function useProviderKeys(input: {
         return;
       }
       const document = await input.refresh();
-      if ((result.state !== "applied" && result.state !== "already-applied")
-        || !confirms(result, document, command.commandId, command.payload.operations)
-        || result.providerRevision !== command.target.expectedRevision + 1) throw new Error("provider-readback-unconfirmed");
+      const readback = providerReadbackState(command, result, document);
+      if (readback === "superseded") {
+        pending.current = undefined;
+        setSave({ state: "conflict", message: "Your provider write was accepted, then newer keys replaced it. Current saved values are shown beside your retained edit. Review before submitting again." });
+        return;
+      }
+      if (readback !== "confirmed") throw new Error("provider-readback-unconfirmed");
       pending.current = undefined; setDraft({}); setSave({ state: "applied", replayed: result.state === "already-applied" });
     } catch (error) {
       const refused = beforeEffectRefusal(error) || error instanceof DashboardClientError && error.kind === "http"

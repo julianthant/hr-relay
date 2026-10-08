@@ -23,7 +23,7 @@ import type { DashboardApp } from "../../../src/backend/transports/http/routes/a
 import { startDashboardHttpServer } from "../../../src/backend/transports/http/http-server.js";
 import type { ExplorerQueryDeps } from "../../../src/backend/runs/queries/explorer.js";
 import { buildWorkflowExplorer } from "../../../src/backend/runs/queries/explorer.js";
-import { WORKFLOW_MODULES } from "../../../src/workflow-kit/validation/workflow-module-audit.js";
+import { WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-registry.js";
 import { sequentialIdFactory } from "../../support/fixtures/phase1f-run-fixtures.js";
 import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../../support/fixtures/archive-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../../support/fixtures/intake-kernel-seams.js";

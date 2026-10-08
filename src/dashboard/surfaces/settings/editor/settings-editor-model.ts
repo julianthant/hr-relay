@@ -11,9 +11,9 @@ import { useSettingsPreflight } from "../preflight/settings-preflight-model.js";
 import { useProtectedSettings } from "../providers/settings-protected-model.js";
 import { useProviderKeys } from "../providers/settings-provider-model.js";
 import { useStorageRelocation } from "../general/settings-relocation-model.js";
-import { beforeEffectRefusal, checkedSettingsResult, settingsSaveNotice, settingsSaveProblem, settingsRefusal, type SettingsSaveListener, type SettingsSaveNotice, type SettingsSaveProblemListener, uncertainSettingsCode, type OrdinarySettingsAttempt, type SettingsSaveState } from "./settings-attempt-model.js";
+import { beforeEffectRefusal, checkedSettingsResult, ordinaryReadbackState, settingsSaveNotice, settingsSaveProblem, settingsRefusal, type SettingsSaveListener, type SettingsSaveNotice, type SettingsSaveProblemListener, uncertainSettingsCode, type OrdinarySettingsAttempt, type SettingsSaveState } from "./settings-attempt-model.js";
 import { blurredSettingsPath, type SettingsBlurEvent } from "./settings-autosave-model.js";
-import { coupledSettingsLeaves, draftError, ordinaryReadbackConfirms, patchFromSettingsDraft, settingInput, settingsLeaves, type SettingsDraft, type SettingsDraftInput } from "./settings-draft-model.js";
+import { coupledSettingsLeaves, draftError, patchFromSettingsDraft, settingInput, settingsLeaves, type SettingsDraft, type SettingsDraftInput } from "./settings-draft-model.js";
 
 export type EditableSettingsState = { readonly state: "loading" } | { readonly state: "failed"; readonly message: string } | { readonly state: "loaded"; readonly document: EditableSettingsWire };
 export type { SettingsSaveState } from "./settings-attempt-model.js";
@@ -110,7 +110,13 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
       }
       if (result.state !== "applied" && result.state !== "already-applied") throw new Error("settings-result-unconfirmed");
       const document = await refresh();
-      if (document.revision !== result.settingsRevision || document.settingsFingerprint !== result.settingsFingerprint || !ordinaryReadbackConfirms(document, command.payload.patch)) throw new Error("settings-readback-unconfirmed");
+      const readback = ordinaryReadbackState(command, result, document);
+      if (readback === "superseded") {
+        pending.current = undefined;
+        complete({ state: "conflict", message: "Your settings write was accepted, then newer settings replaced it. Current saved values are shown beside your retained edit. Review before submitting again." });
+        return;
+      }
+      if (readback !== "confirmed") throw new Error("settings-readback-unconfirmed");
       pending.current = undefined; setDraft({}); complete({ state: "applied", replayed: result.state === "already-applied" });
       notice = settingsSaveNotice(leaves.filter(leaf => leaf.path in command.payload.patch).map(leaf => leaf.path.startsWith("urls.") ? `${routePresentation(leaf).name} routes` : settingTitle(leaf)), result.state === "already-applied", document.runtimeStatus.state === "restart-required");
     } catch (error) {
