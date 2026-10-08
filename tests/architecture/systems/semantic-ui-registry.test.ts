@@ -33,6 +33,21 @@ function readJson(path: string): unknown {
   return JSON.parse(readFileSync(resolve(REPO_ROOT, path), "utf8"));
 }
 
+/** Maps frozen selector references to current fixture inputs. */
+function currentEvidenceRef(frozenRef: string): string {
+  const suffix = /^evidence\/ui\/(.+)$/.exec(frozenRef)?.[1];
+  if (suffix === undefined) throw new Error(`frozen evidence ref is not a legacy evidence/ui path: ${frozenRef}`);
+  return `docs/rebuild/evidence/selectors/${suffix}`;
+}
+
+function currentEvidence(evidence: { verifiedAt: string; fixtureEvidenceRef: string; liveReadOnlyEvidenceRef: string }) {
+  return {
+    verifiedAt: evidence.verifiedAt,
+    fixtureEvidenceRef: currentEvidenceRef(evidence.fixtureEvidenceRef),
+    liveReadOnlyEvidenceRef: currentEvidenceRef(evidence.liveReadOnlyEvidenceRef),
+  };
+}
+
 function evidenceBindingInput(): unknown {
   const portMap = LegacySelectorPortMapSchema.parse(readJson("docs/rebuild/migrations/legacy/ports/legacy-selector-port-map.json"));
   const portBindings: unknown[] = [];
@@ -46,7 +61,7 @@ function evidenceBindingInput(): unknown {
         ...("canonicalBindings" in entry
           ? { canonicalBindings: entry.canonicalBindings }
           : { canonicalId: entry.canonicalId }),
-        evidence: entry.evidence,
+        evidence: currentEvidence(entry.evidence),
       });
     }
     if (entry.disposition === "driver-internal") {
@@ -91,7 +106,7 @@ function crmEvidenceBindingInput(): unknown {
         disposition: entry.disposition,
         semanticKind: entry.semanticKind,
         canonicalId: entry.canonicalId,
-        evidence: entry.evidence,
+        evidence: currentEvidence(entry.evidence),
       }];
     }),
   };
@@ -115,7 +130,7 @@ function newKronosEvidenceBindingInput(): unknown {
         disposition: entry.disposition,
         semanticKind: entry.semanticKind,
         canonicalId: entry.canonicalId,
-        evidence: entry.evidence,
+        evidence: currentEvidence(entry.evidence),
       }];
     }),
   };
@@ -201,8 +216,8 @@ describe("semantic UI registry architecture", () => {
     assert.equal(publishedElementIds.every((id) => !CandidateProposalIdSchema.safeParse(id).success), true);
     for (const entry of portMap.entries) {
       if (entry.disposition !== "ported") continue;
-      UiVerificationEvidenceManifestSchema.parse(readJson(entry.evidence.fixtureEvidenceRef));
-      UiVerificationEvidenceManifestSchema.parse(readJson(entry.evidence.liveReadOnlyEvidenceRef));
+      UiVerificationEvidenceManifestSchema.parse(readJson(currentEvidenceRef(entry.evidence.fixtureEvidenceRef)));
+      UiVerificationEvidenceManifestSchema.parse(readJson(currentEvidenceRef(entry.evidence.liveReadOnlyEvidenceRef)));
     }
   });
 
