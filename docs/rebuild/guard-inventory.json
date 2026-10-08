@@ -687,6 +687,14 @@
       "replacementRequired": true
     },
     {
+      "name": "dashboard-presentation-inventory",
+      "file": "tests/unit/architecture/dashboard-presentation-inventory.test.ts",
+      "status": "active",
+      "owner": "/Users/julianhein/Projects/hr-automation-rebuild-evidence/convergence-20261007/brief-0b-visual-baseline.md",
+      "invariant": "The frozen set is every .tsx under src/dashboard/surfaces/** and src/dashboard/ds/**, all stylesheet files under src/dashboard/**, every supported token source in src/dashboard/ds/theme/** except its runtime theme.ts, and token-named design-token files in the supported source formats. The current exact set is stored in tests/unit/architecture/fixtures/dashboard-presentation-file-set.json (96 components, 12 stylesheets, and src/dashboard/ds/theme/tokens.ts; 109 files total). Added or removed presentation paths fail with an actionable message requiring operator approval before adding or removing a component and citing the visual-baseline brief; content edits to frozen paths remain legal.",
+      "replacementRequired": true
+    },
+    {
       "name": "command-result-exhaustive",
       "file": "tests/unit/architecture/command-result-exhaustive.test.ts",
       "status": "active",
