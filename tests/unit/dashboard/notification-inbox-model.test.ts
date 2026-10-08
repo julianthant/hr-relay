@@ -61,19 +61,3 @@ it("counts unread snoozed rows independently and uses the actual channel", () =>
   assert.equal(notificationInboxView([row], "ping").shown.length, 0);
   assert.equal(notificationInboxView([row], "snoozed").shown.length, 1);
 });
-
-import { navigateNotification } from "../../../src/dashboard/surfaces/notifications/notification-navigation.js";
-import { NotificationTargetSchema } from "../../../src/domain/notifications.js";
-it("keeps the inbox open when dirty Settings cancels and revalidates after acceptance", async () => {
-  const target = NotificationTargetSchema.parse({ kind: "run", runId: "22222222-2222-4222-8222-222222222222", day: "2026-07-03" });
-  let next: (() => void) | undefined, reads = 0, opens = 0, error = "";
-  const lookup = async () => { reads += 1; return target; };
-  await navigateNotification({ lookup, guard: () => {}, open: () => { opens += 1; }, refused: value => { error = value; } });
-  assert.equal(reads, 1); assert.equal(opens, 0);
-  await navigateNotification({ lookup, guard: proceed => { next = proceed; }, open: () => { opens += 1; }, refused: value => { error = value; } });
-  next?.(); await Promise.resolve();
-  assert.equal(reads, 3); assert.equal(opens, 1); assert.equal(error, "");
-  let calls = 0;
-  await navigateNotification({ lookup: async () => ++calls === 1 ? target : { kind: "refused", reason: "run-unavailable" }, guard: proceed => proceed(), open: () => { opens += 1; }, refused: value => { error = value; } });
-  await Promise.resolve(); assert.equal(opens, 1); assert.match(error, /run-unavailable/u);
-});

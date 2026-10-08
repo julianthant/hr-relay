@@ -56,7 +56,6 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it } from "vitest";
 import { FrontendBootstrapWireSchema } from "../../../src/domain/dashboard/bootstrap.js";
 import { CalendarWireSchema } from "../../../src/domain/dashboard/calendar.js";
-import { UiCatalogWireSchema } from "../../../src/domain/dashboard/explorer.js";
 import { DashboardDayWireSchema } from "../../../src/domain/dashboard/projection.js";
 import { DashboardApp } from "../../../src/dashboard/app/dashboard-app.js";
 import {
@@ -127,12 +126,7 @@ const APP_DAY = DashboardDayWireSchema.parse({
   workerPools: [],
   notifications: [],
 });
-const EMPTY_UI_CATALOG = UiCatalogWireSchema.parse({
-  wireVersion: 1,
-  sourcePath: "generated/ui-catalog.json",
-  schemaVersion: 1,
-  entries: [],
-});
+
 const EDITABLE_SETTINGS = FIXTURE_EDITABLE_SETTINGS;
 const CALENDAR = ({ month, day }: { month: string; day: string }) => CalendarWireSchema.parse({
   month,
@@ -206,7 +200,6 @@ function appClient(): DashboardClient {
       input.onState({ state: "live" });
       return { close: () => undefined };
     },
-    uiCatalog: () => Promise.resolve(EMPTY_UI_CATALOG),
     calendar: (input: Parameters<DashboardClient["calendar"]>[0]) => Promise.resolve(CALENDAR(input)),
     // D298 — `?intake=` is always a session id, so mounting the takeover
     // always reads one. Left in flight: the door this suite restores is
@@ -277,15 +270,15 @@ async function press(button: HTMLButtonElement): Promise<void> {
   });
 }
 
-async function setInputValue(input: HTMLInputElement, value: string): Promise<void> {
-  await act(async () => {
-    const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
-    if (descriptor?.set === undefined) throw new Error("HTML input value setter is unavailable");
-    // eslint-disable-next-line @typescript-eslint/unbound-method
-    Reflect.apply(descriptor.set, input, [value]);
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-    input.dispatchEvent(new Event("change", { bubbles: true }));
-  });
+async function dirtyBrowserSettings(): Promise<{ input: HTMLInputElement; value: boolean }> {
+  const row = document.querySelector('[data-settings-path="browser.headless"]');
+  const input = row?.querySelector('[role="switch"]');
+  const control = row?.querySelector(".ds-switch-control");
+  assert.ok(input instanceof HTMLInputElement && control instanceof HTMLElement, "Settings browser switch did not mount");
+  const value = !input.checked;
+  await act(async () => control.click());
+  assert.equal(input.checked, value);
+  return { input, value };
 }
 
 /**
@@ -451,11 +444,9 @@ describe("closing a route-backed takeover restores its toolbar door", () => {
 });
 
 describe("Settings exits share the page-owned draft guard", () => {
-  it("retains the same draft across catalog subroutes, restores cancelled-dialog focus and exits to main", async () => {
+  it("retains the same draft across catalog subroutes, restores cancelled-dialog focus and exits to gear", async () => {
     await mountDashboard("?settings=general");
-    const input = document.querySelector('input[aria-label="Browser viewport width"]');
-    assert.ok(input instanceof HTMLInputElement);
-    await setInputValue(input, "2048");
+    const { input, value } = await dirtyBrowserSettings();
     const frame = frameOf("Settings");
     const themeRow = [...document.querySelectorAll<HTMLElement>(".ds-switch-row")].find(row => row.textContent?.includes("Dark theme"));
     const themeSwitch = themeRow?.querySelector("input");
@@ -464,10 +455,13 @@ describe("Settings exits share the page-owned draft guard", () => {
     const initialTheme = themeSwitch.checked;
     await act(async () => themeControl.click());
     assert.equal(themeSwitch.checked, !initialTheme);
-    await press(buttonNamed("Notifications, 4 unread"));
+    const notifications = document.querySelector(".rail-notification-toggle");
+    assert.ok(notifications instanceof HTMLButtonElement);
+    assert.match(notifications.getAttribute("aria-label") ?? "", /^Notifications, \d+ unread$/u);
+    await press(notifications);
     assert.equal(frameOf("Settings"), frame, "opening notifications preserves the runtime draft owner");
-    assert.equal(input.value, "2048", "browser appearance and notification controls preserve runtime edits");
-    await press(buttonNamed("Notifications, 4 unread"));
+    assert.equal(input.checked, value, "browser appearance and notification controls preserve runtime edits");
+    await press(notifications);
     const sectionLink = (label: string): HTMLAnchorElement => {
       const link = [...document.querySelectorAll("nav[aria-label='Settings sections'] a")]
         .find(candidate => candidate.textContent?.trim() === label);
@@ -479,7 +473,7 @@ describe("Settings exits share the page-owned draft guard", () => {
     await act(async () => sectionLink("Keyboard").click());
     assert.match(window.location.search, /settings=keyboard/u);
     assert.equal(document.querySelectorAll('section[aria-label="Settings"]').length, 1);
-    const dashboard = buttonNamed("Back to workflows");
+    const dashboard = buttonNamed("Back to dashboard");
     await press(dashboard);
     await press(buttonNamed("Keep editing"));
     assert.equal(document.activeElement, dashboard, "cancelling the shell exit restores focus to its persistent navigation control");
@@ -492,23 +486,21 @@ describe("Settings exits share the page-owned draft guard", () => {
     assert.equal(document.querySelector('[role="dialog"]'), null, "Escape closes the pending dirty-exit dialog");
     assert.equal(document.activeElement, dashboard, "Escape restores focus to the persistent navigation control");
     await act(async () => sectionLink("General").click());
-    const restored = document.querySelector('input[aria-label="Browser viewport width"]');
+    const restored = document.querySelector('[data-settings-path="browser.headless"] [role="switch"]');
     assert.ok(restored instanceof HTMLInputElement);
-    assert.equal(restored.value, "2048");
-    await press(buttonNamed("Back to workflows"));
+    assert.equal(restored.checked, value);
+    await press(buttonNamed("Back to dashboard"));
     await press(buttonNamed("Discard changes"));
     assert.equal(document.querySelector('section[aria-label="Settings"]'), null);
     assert.equal(window.location.search.includes("catalog"), false);
-    assert.equal(document.activeElement?.id, "dashboard-main-region");
+    assert.equal(document.activeElement?.id, "settings-gear");
   });
 
   it("requires a discard before persistent rail navigation unmounts a dirty Settings draft", async () => {
     await mountDashboard("?settings=display");
-    const input = document.querySelector('input[aria-label="Browser viewport width"]');
-    assert.ok(input instanceof HTMLInputElement, "Settings editable input did not mount");
-    await setInputValue(input, "2048");
+    await dirtyBrowserSettings();
 
-    await press(buttonNamed("Back to workflows"));
+    await press(buttonNamed("Back to dashboard"));
     assert.ok(frameOf("Settings"), "a dirty rail navigation must leave Settings mounted for confirmation");
     assert.match(document.body.textContent ?? "", /Discard unsaved settings\?/u);
     const discard = buttonNamed("Discard changes");
@@ -519,7 +511,7 @@ describe("Settings exits share the page-owned draft guard", () => {
 
   it("allows persistent rail navigation immediately when the Settings draft is clean", async () => {
     await mountDashboard("?settings=display");
-    await press(buttonNamed("Back to workflows"));
+    await press(buttonNamed("Back to dashboard"));
     assert.equal(document.querySelector('section[aria-label="Settings"]'), null);
     assert.equal(document.body.textContent?.includes("Discard unsaved settings?"), false);
     assert.ok(document.getElementById("dashboard-main-region"));
@@ -527,9 +519,7 @@ describe("Settings exits share the page-owned draft guard", () => {
 
   it("reconciles a dirty native popstate until the operator chooses an exit", async () => {
     await mountSettingsAtThirdHistoryEntry();
-    const input = document.querySelector('input[aria-label="Browser viewport width"]');
-    assert.ok(input instanceof HTMLInputElement, "Settings editable input did not mount");
-    await setInputValue(input, "2048");
+    await dirtyBrowserSettings();
 
     await moveHistory("back");
     assert.ok(frameOf("Settings"));
@@ -555,9 +545,7 @@ describe("Settings exits share the page-owned draft guard", () => {
 
   it("preserves both native history entries when a dirty Settings exit is cancelled", async () => {
     await mountSettingsAtThirdHistoryEntry();
-    const input = document.querySelector('input[aria-label="Browser viewport width"]');
-    assert.ok(input instanceof HTMLInputElement, "Settings editable input did not mount");
-    await setInputValue(input, "2048");
+    await dirtyBrowserSettings();
     const cursor = window.history.state as { hrDashboardRouteCursor: number };
     await moveHistory("back");
     await press(buttonNamed("Keep editing"));

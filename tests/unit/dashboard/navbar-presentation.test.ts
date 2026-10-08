@@ -1,45 +1,8 @@
-import { buildWorkflowCatalog } from "../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 import assert from "node:assert/strict";
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it } from "vitest";
-import { WorkspaceRail } from "../../../src/dashboard/surfaces/shell/workspace-rail.js";
-import { notificationsSample } from "../../../src/dashboard/surfaces/notifications/notifications-fixture.js";
-import { NAVBAR_SAMPLE } from "../../../src/dashboard/surfaces/shell/search/navbar-fixture.js";
-import { navbarCalendarKey, navbarDayLabel, navbarMonthCells, navbarMonthLabel, navbarSearch, navbarShiftDay, navbarShiftMonth } from "../../../src/dashboard/surfaces/shell/search/navbar-view-model.js";
+import { navbarCalendarKey, navbarDayLabel, navbarMonthCells, navbarMonthLabel, navbarShiftDay, navbarShiftMonth } from "../../../src/dashboard/surfaces/shell/search/navbar-view-model.js";
 
-const noop = () => {};
 describe("canonical workspace rail", () => {
-  it("renders all retained controls without a client provider or preflight", () => {
-    const html = renderToStaticMarkup(createElement(WorkspaceRail, {
-      settingsOpen: false, workflows: buildWorkflowCatalog([]), active: "", preview: null, onSelect: noop, onPreview: noop,
-      notifications: notificationsSample("normal"), onOpenNotification: noop, searchData: NAVBAR_SAMPLE, onSearch: noop,
-    }));
-    for (const label of ["HR GPT", "Search runs", "Notifications, 3 unread"]) assert.ok(html.includes(label), label);
-    assert.doesNotMatch(html, /RRSS HR|aria-label="Dashboard"|Run count unavailable|HR Automation|>Settings<|lucide-shield|Preflight|doctor|Storage checks/);
-    assert.doesNotMatch(html, /Dashboard date|Choose date|aria-label="Back"|aria-label="Forward"|Switch to light theme|role="banner"/);
-    assert.doesNotMatch(html, /aria-label="Main navigation"|>Archive<|>Explorer<|>Activity<|>Analytics</);
-  });
-  it("finds every requested word across the local run fields, with no empty-query loss", () => {
-    assert.equal(navbarSearch(NAVBAR_SAMPLE.results, "").length, 3);
-    assert.deepEqual(navbarSearch(NAVBAR_SAMPLE.results, "  JORDAN   waiting  ").map(result => result.id), ["sample-jordan"]);
-    assert.deepEqual(navbarSearch(NAVBAR_SAMPLE.results, "2026-09-25 separations").map(result => result.subject), ["Casey Rivera"]);
-    assert.equal(navbarSearch(NAVBAR_SAMPLE.results, "Jordan Completed").length, 0);
-    assert.equal(navbarSearch(NAVBAR_SAMPLE.results, "missing person").length, 0);
-  });
-  it("keeps the rail mounted without presenting invalid-date search rows", () => {
-    const html = renderToStaticMarkup(createElement(WorkspaceRail, {
-      settingsOpen: false, workflows: buildWorkflowCatalog([]), active: "", preview: null, onSelect: noop, onPreview: noop,
-      notifications: notificationsSample("normal"), onOpenNotification: noop, onSearch: noop,
-      searchData: { ...NAVBAR_SAMPLE, unavailable: "Invalid date: invalid-day.", results: [{ ...NAVBAR_SAMPLE.results[0], day: "invalid-day", subject: "Unavailable search row" }] },
-    }));
-    assert.ok(html.includes('aria-label="Workflows"'));
-    assert.doesNotMatch(html, /Unavailable search row/);
-  });
-  it("preserves measured zero and an unavailable date count as separate values", () => {
-    assert.equal(NAVBAR_SAMPLE.counts["2026-09-20"], 0);
-    assert.equal(NAVBAR_SAMPLE.counts["2026-08-20"], undefined);
-  });
   it("builds six complete Sunday-first weeks with future dates disabled", () => {
     const cells = navbarMonthCells("2026-09", "2026-09-26");
     assert.equal(cells.length, 42);

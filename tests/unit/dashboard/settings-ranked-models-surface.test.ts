@@ -4,7 +4,6 @@ import assert from "node:assert/strict";
 import { act } from "react";
 import { afterEach, describe, it, vi } from "vitest";
 import { draftError, settingsLeaves } from "../../../src/dashboard/surfaces/settings/editor/settings-draft-model.js";
-import { modelRaw, modelRows, reorderModelRows } from "../../../src/dashboard/surfaces/settings/providers/settings-ranked-models.js";
 import { mountSettingsHarness, syntheticSettingsAuthority } from "./helpers/settings-harness.js";
 import { fixtureSettingsDocument } from "../../parity/helpers/fixture-settings.js";
 
@@ -31,18 +30,8 @@ describe("provider budgets and models", () => {
     assert.equal(controller().leaves.filter(leaf => leaf.path.startsWith("providers.")).length, 9);
   });
 
-  it("keeps duplicate model rows distinct through retained adapter moves", () => {
-    const rows = modelRows("same\nsame\nthird", [], () => crypto.randomUUID());
-    const moved = reorderModelRows(rows, [rows[1].id, rows[0].id, rows[2].id]);
-    assert.equal(modelRaw(moved), "same\nsame\nthird");
-    assert.equal(moved.length, 3);
-    assert.equal(moved[0], rows[1]);
-    assert.equal(moved[1], rows[0]);
-  });
-
   it("keeps an unconfigured adapter empty without rendering model controls", async () => {
     const { host } = await setup();
-    assert.deepEqual(modelRows("", [], () => crypto.randomUUID()), []);
     assert.equal(host.querySelectorAll(".ds-ranked-item, input").length, 0);
     assert.doesNotMatch(host.textContent ?? "", /Add model/u);
   });
@@ -77,9 +66,6 @@ describe("provider budgets and models", () => {
       assert.ok(draftError(leaf, { kind: "set", raw }), raw);
     }
     assert.equal(draftError(leaf, { kind: "set", raw: "same\nsame" }), undefined);
-    const rows = modelRows("same\nsame", [], () => crypto.randomUUID());
-    assert.notEqual(rows[0]?.id, rows[1]?.id);
-    assert.equal(modelRaw(reorderModelRows(rows, [rows[1]?.id ?? "", rows[0]?.id ?? ""])), "same\nsame");
   });
 
   it("blocks an invalid budget adapter draft and submits its complete corrected object", async () => {

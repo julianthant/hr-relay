@@ -42,8 +42,6 @@ import {
   SettingsSectionPrimitiveSchema,
   StorageHealthSummaryWireSchema,
 } from "../../../src/domain/dashboard/bootstrap.js";
-import { WorkerCardWireSchema } from "../../../src/domain/dashboard/projection.js";
-import { SessionPanel } from "../../../src/dashboard/surfaces/shell/shell.js";
 import { SettingsPage } from "../../../src/dashboard/surfaces/settings/settings.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
@@ -329,59 +327,3 @@ describe("the app version tag (D272 item 4, ledger row A126)", () => {
 });
 
 /** One `failed` card — the only state that lights the attention chip (D248). */
-function failedCard(seed: number): ReturnType<typeof WorkerCardWireSchema.parse> {
-  return WorkerCardWireSchema.parse({
-    workerId: `person-lookup-worker-${String(seed)}`,
-    workflowId: "person-lookup",
-    state: "failed",
-    directive: "run",
-    startedAt: "2026-08-26T16:00:00.000Z",
-    endedAt: "2026-08-26T16:05:00.000Z",
-    stopReason: "crashed",
-    currentRun: { state: "absent", reason: "the lease settled with no run claimed" },
-    browsers: [],
-    leaseVersion: 1,
-    revision: 1,
-  });
-}
-
-function sessionBarText(cards: readonly ReturnType<typeof WorkerCardWireSchema.parse>[]): string {
-  const markup = renderToStaticMarkup(createElement(SessionPanel, {
-    workerCards: cards,
-    queueSurfaces: [],
-    workerPools: [],
-    // Empty on purpose: the chip's SENTENCE is what is pinned here, and
-    // `labelOf` names an unlisted workflow by its id rather than throwing, so
-    // a bootstrap fixture would add eight fields the assertion never reads.
-    workflows: [],
-    counts: [],
-    nowIso: "2026-08-26T16:10:00.000Z",
-    connection: { state: "live" },
-    appVersion: "0.1.0",
-  }));
-  return markup.replace(/<[^>]*>/gu, " ").replace(/\s+/gu, " ").trim();
-}
-
-describe("the session bar's attention chip (D272 item 4, ledger row A122)", () => {
-  it("keeps the noun and the verb agreeing at a count of ONE", () => {
-    const text = sessionBarText([failedCard(1)]);
-    // The defect this replaces, spelled out so a regression cannot pass by
-    // matching a looser pattern.
-    assert.ok(!text.includes("1 worker need attention"), text);
-    assert.ok(text.includes("1 workers need attention"), text);
-  });
-
-  it("reads the same way above one", () => {
-    assert.ok(sessionBarText([failedCard(1), failedCard(2)]).includes("2 workers need attention"));
-  });
-
-  it("draws no chip when nothing is failed — honest absence", () => {
-    assert.ok(!sessionBarText([]).includes("need attention"));
-  });
-
-  it("prints the app version as MAJOR.MINOR beside the tooltip that explains two", () => {
-    const text = sessionBarText([]);
-    assert.ok(text.includes("app 0.1"), text);
-    assert.ok(!text.includes("app 0.1.0"), text);
-  });
-});

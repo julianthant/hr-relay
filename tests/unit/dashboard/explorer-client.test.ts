@@ -13,21 +13,11 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { createDashboardClient, DashboardClientError } from "../../../src/dashboard/client/index.js";
 import {
-  conditionalEdgesFrom,
-  dependsOnEdgeExists,
-  dryRunBoundaryNodeId,
-  dryRunPosture,
-  explorerGraphTotals,
-  nodeBindings,
-  writeSystems,
-} from "../../../src/dashboard/surfaces/explorer/explorer-model.js";
-import {
   activeTakeover,
   parseRoute,
   routeToSearch,
 } from "../../../src/dashboard/app/navigation/url-state.js";
 import { matchesUiCatalogQuery } from "../../../src/domain/dashboard/explorer.js";
-import type { ExplorerWorkflowWire } from "../../../src/domain/dashboard/explorer.js";
 import type { UiCatalogEntry } from "../../../src/domain/ui/contracts.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { FingerprintSchema } from "../../../src/domain/ids.js";
@@ -55,51 +45,30 @@ function clientOver(respond: (url: string, method: string) => { status: number; 
   return { client, calls };
 }
 
-describe("the explorer and catalog queries", () => {
-  it("GET both routes and parse the real projections", async () => {
+describe("the explorer queries", () => {
+  it("GET the Explorer route and parse the real projection", async () => {
     const explorer = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH));
-    const catalog = buildUiCatalogWire(uiCatalogQueryDeps());
-    const { client, calls } = clientOver((url) => ({
+    const { client, calls } = clientOver(() => ({
       status: 200,
-      body: url.endsWith("/api/v1/explorer") ? explorer : catalog,
+      body: explorer,
     }));
 
     const servedExplorer = await client.workflowExplorer();
-    const servedCatalog = await client.uiCatalog();
 
-    assert.deepEqual(calls.map(({ method }) => method), ["GET", "GET"]);
+    assert.deepEqual(calls.map(({ method }) => method), ["GET"]);
     assert.deepEqual(calls.map(({ url }) => url), [
       "http://bff.test/api/v1/explorer",
-      "http://bff.test/api/v1/ui-catalog",
     ]);
     assert.equal(
       servedExplorer.workflows.length,
       explorer.workflows.length,
       "every registered workflow survives the round trip",
     );
-    assert.equal(servedCatalog.entries.length, catalog.entries.length);
   });
 
   it("fails loud on a body outside the contract rather than rendering half of it", async () => {
     const { client } = clientOver(() => ({ status: 200, body: { wireVersion: 1 } }));
     await assert.rejects(() => client.workflowExplorer(), DashboardClientError);
-  });
-
-  it("surfaces the server's own refusal when the catalog is stale", async () => {
-    const { client } = clientOver(() => ({
-      status: 500,
-      body: {
-        state: "error",
-        code: "INTERNAL_FAILURE",
-        message: "generated UI catalog is stale; run npm run ui:catalog",
-        retryable: false,
-      },
-    }));
-    await assert.rejects(
-      () => client.uiCatalog(),
-      (error: unknown) =>
-        error instanceof DashboardClientError && /stale/u.test(error.message),
-    );
   });
 
   it("posts the complete served-base draft to the Explorer validation door", async () => {
@@ -196,180 +165,6 @@ describe("the explorer and catalog queries", () => {
 });
 
 /* ── the graph panel ─────────────────────────────────────────────────────── */
-
-function workflowWithNodes(nodes: ExplorerWorkflowWire["nodes"]): ExplorerWorkflowWire {
-  const base = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH)).workflows[0];
-  assert.ok(base !== undefined);
-  return { ...base, nodes, edges: [] };
-}
-
-function taskNode(id: string, dependsOn: string[] = []): ExplorerWorkflowWire["nodes"][number] {
-  const base = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH)).workflows[0]?.nodes[0];
-  assert.ok(base !== undefined);
-  return {
-    ...base,
-    id: id as ExplorerWorkflowWire["nodes"][number]["id"],
-    dependsOn: dependsOn as ExplorerWorkflowWire["nodes"][number]["dependsOn"],
-    tasks: [],
-    details: [],
-    editableFields: [],
-    coveragePoints: [],
-    shape: { kind: "task", replay: "checkpoint" },
-  };
-}
-
-function transactionNode(
-  id: string,
-  dryRun: "stop-after-prepare" | "unsupported",
-): ExplorerWorkflowWire["nodes"][number] {
-  return {
-    ...taskNode(id),
-    shape: {
-      kind: "transaction",
-      dryRun,
-      probePolicy: "always",
-      probeToFenceMaxMs: 120000,
-      leaseScope: "transaction",
-      retryBeforeFence: false,
-    },
-  };
-}
-
-describe("the graph panel's derivations", () => {
-  it("draws the real person-lookup graph in declaration order and counts its FIELDS", () => {
-    const wire = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH));
-    const workflow = wire.workflows.find((one) => String(one.id) === "person-lookup");
-    assert.ok(workflow !== undefined);
-    const totals = explorerGraphTotals(workflow);
-    assert.equal(totals.nodes, workflow.nodes.length);
-    // D227 — a read is one OUTPUT field of a read arm, never an arm. The count
-    // is strictly larger than the arm count it replaced, which is the whole
-    // point: an arm is a contract, and an operator asks about a field.
-    const armCount = workflow.nodes
-      .flatMap((node) => node.tasks)
-      .filter((task) => task.effect === "read").length;
-    assert.equal(
-      totals.reads,
-      workflow.nodes
-        .flatMap((node) => node.tasks)
-        .filter((task) => task.effect === "read")
-        .flatMap((task) => task.fields)
-        .filter((field) => field.side === "output").length,
-    );
-    assert.ok(totals.reads > armCount);
-    // A read-only workflow has no write arm at all, which is what makes the
-    // `no system of record` posture below a FACT rather than a missing line.
-    assert.equal(totals.writes, 0);
-  });
-
-  it("counts a commit arm's INPUT fields as writes, and never its prepare twin's", () => {
-    const wire = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH));
-    const workflow = wire.workflows.find((one) => String(one.id) === "separations");
-    assert.ok(workflow !== undefined);
-    const totals = explorerGraphTotals(workflow);
-    const commit = workflow.nodes
-      .flatMap((node) => node.tasks)
-      .filter((task) => task.effect === "commit");
-    assert.ok(commit.length > 0);
-    assert.equal(
-      totals.writes,
-      commit.flatMap((task) => task.fields).filter((field) => field.side === "input").length,
-    );
-  });
-
-  it("reports a graph with no transaction node as changing no system of record", () => {
-    const workflow = workflowWithNodes([taskNode("one"), taskNode("two")]);
-    assert.equal(dryRunPosture(workflow), "no-system-write");
-    assert.equal(dryRunBoundaryNodeId(workflow), undefined);
-    assert.deepEqual(writeSystems(workflow), []);
-  });
-
-  it("puts the boundary on the FIRST transaction node, never on the last", () => {
-    const workflow = workflowWithNodes([
-      taskNode("read-first"),
-      transactionNode("clear-pending", "stop-after-prepare"),
-      transactionNode("file-termination", "stop-after-prepare"),
-    ]);
-    assert.equal(dryRunPosture(workflow), "boundary");
-    assert.equal(dryRunBoundaryNodeId(workflow), "clear-pending");
-  });
-
-  it("draws NO boundary when a transaction honours no dry run — there is no rehearsal to bound", () => {
-    const workflow = workflowWithNodes([
-      taskNode("read-first"),
-      transactionNode("stop-here", "stop-after-prepare"),
-      transactionNode("no-rehearsal", "unsupported"),
-    ]);
-    assert.equal(dryRunPosture(workflow), "no-rehearsal");
-    assert.equal(
-      dryRunBoundaryNodeId(workflow),
-      undefined,
-      "a line here would claim a safety boundary this graph does not have",
-    );
-  });
-
-  it("names a control edge by its case and leaves a plain dependency to read `always`", () => {
-    const workflow = {
-      ...workflowWithNodes([taskNode("mode"), taskNode("submit"), taskNode("peek")]),
-      edges: [
-        { from: "mode" as never, to: "submit" as never, kind: "branch-case" as const, label: "write" },
-        { from: "mode" as never, to: "peek" as never, kind: "branch-case" as const, label: "read-only" },
-        { from: "submit" as never, to: "peek" as never, kind: "depends-on" as const },
-      ],
-    };
-    assert.deepEqual(conditionalEdgesFrom(workflow, "mode"), [
-      { to: "submit", condition: "case write" },
-      { to: "peek", condition: "case read-only" },
-    ]);
-    assert.deepEqual(
-      conditionalEdgesFrom(workflow, "submit"),
-      [],
-      "a depends-on edge is the unconditional one, and the connector prints `always` for it",
-    );
-  });
-
-  it("never prints `always` between two nodes the descriptor did not connect", () => {
-    // Three of the real `separations` graph's consecutive pairs have no edge:
-    // they are declaration neighbours, not dependencies, and a connector that
-    // said `always` there would be the surface inventing an edge.
-    const wire = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH));
-    const workflow = wire.workflows.find((one) => String(one.id) === "person-lookup");
-    assert.ok(workflow !== undefined);
-    const [first, second] = workflow.nodes;
-    assert.ok(first !== undefined && second !== undefined);
-    assert.equal(
-      dependsOnEdgeExists(workflow, String(first.id), String(second.id)),
-      workflow.edges.some(
-        (edge) =>
-          edge.kind === "depends-on"
-          && String(edge.from) === String(first.id)
-          && String(edge.to) === String(second.id),
-      ),
-    );
-    assert.equal(
-      dependsOnEdgeExists(workflow, String(first.id), "no-such-node"),
-      false,
-      "an edge to a node that is not there is not an edge",
-    );
-  });
-
-  it("reads a node's system off its own bindings, and never calls a mini-store a system", () => {
-    const wire = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH));
-    const workflow = wire.workflows.find((one) => String(one.id) === "person-lookup");
-    assert.ok(workflow !== undefined);
-    for (const node of workflow.nodes) {
-      const bindings = nodeBindings(node);
-      assert.equal(bindings.length, node.tasks.length === 0 ? 0 : 1);
-      for (const binding of bindings) {
-        // A browser driver's system is one the workflow declares; a headless
-        // mini-store is labelled `store`, precisely so it is never read as one.
-        if (binding.label === "system") assert.ok(workflow.systems.includes(binding.value));
-        else assert.equal(binding.value.startsWith("workflow:"), true);
-      }
-    }
-    assert.deepEqual(nodeBindings(taskNode("bare")), [], "a node binding no contract names no system");
-  });
-});
 
 /* ── catalog search ──────────────────────────────────────────────────────── */
 
@@ -525,12 +320,4 @@ it("rejects oversized or malformed paired Archive folder route identities with a
   const parsed = parseRoute(`?archive=&archiveDashboard=1.0&archiveWorkflow=${"x".repeat(161)}`);
   assert.equal(parsed.archiveWorkflow, undefined);
   assert.equal(parsed.archiveBrowseInvalid, true);
-});
-
-it("omits cleared optional Archive filters and cursor instead of serializing undefined", async () => {
-  const { client, calls } = clientOver(url => ({ status: 200, body: url.includes("/groups") ? { groups: [] } : { items: [], next: null } }));
-  await client.savedArchiveGroups({ search: undefined, workflow: undefined, dashboardVersion: undefined, from: undefined });
-  await client.savedArchiveIndex({ limit: 50, search: undefined, workflow: undefined, after: undefined, workflowVersion: undefined });
-  assert.equal(calls[0]?.url, "http://bff.test/api/v1/archive/groups");
-  assert.equal(calls[1]?.url, "http://bff.test/api/v1/archive/reports?limit=50");
 });

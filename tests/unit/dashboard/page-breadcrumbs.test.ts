@@ -1,12 +1,9 @@
 // @vitest-environment jsdom
 import assert from 'node:assert/strict';
-import { act, createElement, useState } from 'react';
+import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, it, vi } from 'vitest';
-import { PageBreadcrumbs, ToastProvider } from '../../../src/dashboard/ds/ui.js';
-import { MockArchiveWorkspace } from '../../../src/dashboard/surfaces/archive/archive-mock.js';
-import { MOCK_ARCHIVE_RUNS } from '../../../src/dashboard/surfaces/archive/archive-mock-model.js';
-import type { ArchiveBrowseState } from '../../../src/dashboard/app/navigation/archive-route-model.js';
+import { PageBreadcrumbs } from '../../../src/dashboard/ds/ui.js';
 import { ActivityBreadcrumbs } from '../../../src/dashboard/surfaces/activity/activity-drilldown.js';
 import { activitySample, ACTIVITY_SAMPLE_RANGE } from '../../../src/dashboard/surfaces/activity/activity-fixture.js';
 
@@ -52,39 +49,5 @@ it('returns from exact Analytics logs to the same filtered page, or directly to 
     assert.deepEqual(onSelection.mock.calls[0], [{ ...selection, run: undefined }]);
     await act(async () => parents[0].click());
     assert.deepEqual(onSelection.mock.calls[1], [null]);
-  } finally { await act(async () => root.unmount()); host.remove(); }
-});
-
-it('navigates Archive report tabs through discrete history writes while retaining report and filter context', async () => {
-  const run = MOCK_ARCHIVE_RUNS.find(row => row.number === 48231); assert(run);
-  const writes: { browse: ArchiveBrowseState; mode: 'push' | 'replace' }[] = [];
-  const exit = vi.fn();
-  function Report() {
-    const [browse, setBrowse] = useState<ArchiveBrowseState>({ filters: { search: 'Cameron' } });
-    return createElement(ToastProvider, { children: createElement(MockArchiveWorkspace, {
-      catalog: [], selection: run!.id, view: 'runs',
-      folder: { dashboardKey: run!.dashboard, workflow: run!.workflow }, browse,
-      onBrowse: (next, mode = 'push') => { writes.push({ browse: next, mode }); setBrowse(next); },
-      onSelection: exit, onView: exit, onFolder: exit, onOpenReport: exit,
-    }) });
-  }
-  const host = document.createElement('div'); document.body.append(host);
-  const root = createRoot(host);
-  try {
-    await act(async () => root.render(createElement(Report)));
-    const tab = (label: string) => {
-      const target = [...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(button => button.textContent?.startsWith(label));
-      assert(target); return target;
-    };
-    await act(async () => { tab('Saved settings').focus(); tab('Saved settings').click(); });
-    assert.equal(tab('Saved settings').getAttribute('aria-selected'), 'true');
-    await act(async () => { tab('Retained files').focus(); tab('Retained files').click(); });
-    assert.equal(tab('Retained files').getAttribute('aria-selected'), 'true');
-    assert.deepEqual(writes, [
-      { browse: { filters: { search: 'Cameron' }, section: 3 }, mode: 'push' },
-      { browse: { filters: { search: 'Cameron' }, section: 4 }, mode: 'push' },
-    ]);
-    assert.match(host.querySelector('h1')?.textContent ?? '', /Cameron Davis/u);
-    assert.equal(exit.mock.calls.length, 0);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });

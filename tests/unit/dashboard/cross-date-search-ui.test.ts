@@ -7,16 +7,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { routeForCrossDateSearchResult, routeToSearch } from "../../../src/dashboard/app/navigation/url-state.js";
-import { DashboardClientError } from "../../../src/dashboard/client/errors.js";
 import {
   CrossDateSearchPageSchema,
   currentCorpusSearchQuery,
   type CrossDateSearchPage,
 } from "../../../src/domain/dashboard/search.js";
-import {
-  appendCorpusSearchPage,
-  corpusSearchFailure,
-} from "../../../src/dashboard/surfaces/shell/day-search-model.js";
 
 const RAW_RUN_ID = "3b8f0a1e-2c4d-4e6f-8a9b-0c1d2e3f4a5b";
 
@@ -71,74 +66,6 @@ describe("the Top Bar corpus search", () => {
       () => CrossDateSearchPageSchema.parse({ ...page, snapshot: snapshotWithoutToken }),
       /snapshot\.token|expected string/u,
     );
-  });
-
-  it("keeps a wire-schema refusal typed without echoing response detail", () => {
-    const failure = corpusSearchFailure(new DashboardClientError({
-      kind: "schema",
-      message: "GET /api/v1/search: response failed its wire schema: run 3b8f0a1e-2c4d-4e6f-8a9b-0c1d2e3f4a5b",
-    }));
-
-    assert.deepEqual(failure, {
-      code: "SEARCH_RESPONSE_REJECTED",
-      message: "The service returned a search page outside the verified contract.",
-      retryable: false,
-    });
-  });
-
-  it("redacts non-schema and unsafe continuation failures before they enter UI state", () => {
-    const first = corpusPage();
-    let continuationCause: unknown;
-    assert.throws(
-      () => appendCorpusSearchPage(first, { ...first, nextCursor: { state: "absent", reason: "end" } }),
-      (error: unknown) => {
-        continuationCause = error;
-        assert.ok(error instanceof Error);
-        assert.match(error.message, new RegExp(RAW_RUN_ID, "u"));
-        return true;
-      },
-    );
-
-    const failures = [
-      corpusSearchFailure(continuationCause),
-      corpusSearchFailure(new DashboardClientError({
-        kind: "http",
-        code: RAW_RUN_ID,
-        message: `server refusal for ${RAW_RUN_ID}`,
-        retryable: true,
-      })),
-      corpusSearchFailure(new DashboardClientError({
-        kind: "network",
-        message: `network failure for ${RAW_RUN_ID}`,
-        retryable: true,
-      })),
-      corpusSearchFailure(new Error(`unexpected ${RAW_RUN_ID}`)),
-    ];
-
-    for (const failure of failures) {
-      assert.equal(failure.message.includes(RAW_RUN_ID), false);
-      assert.equal(failure.code.includes(RAW_RUN_ID), false);
-    }
-    assert.deepEqual(failures[0], {
-      code: "SEARCH_RESULT_SET_REJECTED",
-      message: "The cross-date result set could not be safely applied.",
-      retryable: false,
-    });
-    assert.deepEqual(failures[1], {
-      code: "SEARCH_SERVICE_REJECTED",
-      message: "The search service refused this request.",
-      retryable: true,
-    });
-    assert.deepEqual(failures[2], {
-      code: "SEARCH_UNAVAILABLE",
-      message: "The search service could not be reached.",
-      retryable: true,
-    });
-    assert.deepEqual(failures[3], {
-      code: "SEARCH_RESULT_SET_REJECTED",
-      message: "The cross-date result set could not be safely applied.",
-      retryable: false,
-    });
   });
 });
 

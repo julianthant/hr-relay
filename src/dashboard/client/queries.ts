@@ -2,8 +2,6 @@ import { createRerunQueries, type RerunQueries } from "./queries/rerun-queries.j
 import { createNotificationQueries, type NotificationQueries } from "./queries/notification-queries.js";
 import type { ActivityQueries } from "./queries/activity-queries.js";
 import { createActivityQueries } from "./queries/activity-queries.js";
-import type { ArchiveQueries } from "./queries/archive-queries.js";
-import { createArchiveQueries } from "./queries/archive-queries.js";
 import type { DetailQueries } from "./queries/detail-queries.js";
 import { createDetailQueries } from "./queries/detail-queries.js";
 import type { ExplorerQueries } from "./queries/explorer-queries.js";
@@ -23,13 +21,11 @@ import { createStorageQueries } from "./queries/storage-queries.js";
 import type { DashboardTransport } from "./transport.js";
 
 
-export interface DashboardQueries extends RerunQueries, NotificationQueries, ShellQueries, QueueQueries, DetailQueries, StorageQueries, SettingsQueries, PreflightQueries, IntakeQueries, ExplorerQueries, ArchiveQueries, ActivityQueries {}
+export interface DashboardQueries extends RerunQueries, NotificationQueries, ShellQueries, QueueQueries, DetailQueries, StorageQueries, SettingsQueries, PreflightQueries, IntakeQueries, ExplorerQueries, ActivityQueries {}
 
-export function createDashboardQueries(transport: DashboardTransport): DashboardQueries {return Object.freeze({...createRerunQueries(transport),...createNotificationQueries(transport),...createShellQueries(transport),...createQueueQueries(transport),...createDetailQueries(transport),...createStorageQueries(transport),...createSettingsQueries(transport),...createPreflightQueries(transport),...createIntakeQueries(transport),...createExplorerQueries(transport),...createArchiveQueries(transport),...createActivityQueries(transport)});}
+export function createDashboardQueries(transport: DashboardTransport): DashboardQueries {return Object.freeze({...createRerunQueries(transport),...createNotificationQueries(transport),...createShellQueries(transport),...createQueueQueries(transport),...createDetailQueries(transport),...createStorageQueries(transport),...createSettingsQueries(transport),...createPreflightQueries(transport),...createIntakeQueries(transport),...createExplorerQueries(transport),...createActivityQueries(transport)});}
 export { createActivityQueries } from "./queries/activity-queries.js";
 export type { ActivityQueries } from "./queries/activity-queries.js";
-export { createArchiveQueries } from "./queries/archive-queries.js";
-export type { ArchiveQueries } from "./queries/archive-queries.js";
 export { createDetailQueries } from "./queries/detail-queries.js";
 export type { DetailQueries } from "./queries/detail-queries.js";
 export { createExplorerQueries } from "./queries/explorer-queries.js";

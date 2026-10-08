@@ -46,9 +46,6 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
-import { ArchivedRunDetailWireSchema } from "../../../src/domain/dashboard/archive.js";
-import { FIXTURE_ARCHIVE_EVIDENCE_CAPTURE, FIXTURE_ARCHIVE_EVIDENCE_RUN } from "../../parity/helpers/fixture-archive-evidence.js";
-import { savedArchiveBrowserRouteReferences, archiveBrowserRouteReferences, type ArchiveBrowserProbe } from "./helpers/archive-browser-route-references.js";
 import { CAPTURE_RUN_A, CAPTURE_RUN_B, CAPTURE_ARTIFACT_A, CAPTURE_ARTIFACT_B, CAPTURE_BASE_URL, captureDetail, captureImage, captureButton, pressCaptureControl, mountCaptureApp } from "../dashboard/fixtures/run-captures-app-fixture.js";
 import { runCaptureBrowserRouteReferences, type RunCaptureBrowserProbe } from "./helpers/run-capture-browser-route-references.js";
 import { ActionCommandKeySchema } from "../../../src/domain/dashboard/actions.js";
@@ -114,55 +111,15 @@ const CLIENT_ROOTS = ["src/dashboard/client"];
 
 const MANIFEST = readPendingWireBindings();
 
-const ARCHIVE_ROUTE = "/artifacts/v1/archive/:runId/:artifactId";
 const GENERIC_ROUTE = "/artifacts/v1/:artifactId";
 const ARCHIVE_ORPHAN = 'src/server/dashboard/routes/api.ts serves GET /artifacts/v1/archive/:runId/:artifactId and no client under src/dashboard/client calls it. Either wire a caller or add {"binding": "route:GET /artifacts/v1/archive/:runId/:artifactId", "direction": "served-unconsumed", …} to config/pending-wire-bindings.json naming the consumer that will';
 const GENERIC_ORPHAN = 'src/server/dashboard/routes/api.ts serves GET /artifacts/v1/:artifactId and no client under src/dashboard/client calls it. Either wire a caller or add {"binding": "route:GET /artifacts/v1/:artifactId", "direction": "served-unconsumed", …} to config/pending-wire-bindings.json naming the consumer that will';
 
 async function scannedAndSavedReferences() {
-  return [...clientRouteReferences(CLIENT_ROOTS.map(root => join(REPO_ROOT, root))), ...await savedArchiveBrowserRouteReferences()];
+  return clientRouteReferences(CLIENT_ROOTS.map(root => join(REPO_ROOT, root)));
 }
 
-function archiveProbe(runId: string = FIXTURE_ARCHIVE_EVIDENCE_RUN.runId, artifactId: string = FIXTURE_ARCHIVE_EVIDENCE_CAPTURE.artifactId): ArchiveBrowserProbe {
-  const seed = FIXTURE_ARCHIVE_EVIDENCE_RUN;
-  if (seed.sections.state !== "present") throw new Error("the Archive guard fixture requires frozen sections");
-  const detail = ArchivedRunDetailWireSchema.parse({
-    ...seed, runId, row: { ...seed.row, runId },
-    detail: { ...seed.detail, runId, header: { ...seed.detail.header, runId } },
-    evidence: { ...seed.evidence, artifactIds: [artifactId] },
-    sections: { state: "present", value: { ...seed.sections.value,
-      captures: { state: "present", value: [{ ...FIXTURE_ARCHIVE_EVIDENCE_CAPTURE, artifactId }] },
-    } },
-  });
-  return { detail, response: { runId, artifactId,
-    resource: { state: "available", downloadUrl: `/artifacts/v1/archive/${runId}/${artifactId}` },
-  } };
-}
-
-/** Observation failures remain fatal AND the same accounting still reports orphan routes. */
-async function auditArchiveBrowser(probe: ArchiveBrowserProbe, accounting: {
-  readonly routes?: readonly ServedRoute[];
-  readonly references?: readonly ClientRouteReference[];
-  readonly pending?: readonly PendingWireBinding[];
-} = {}) {
-  const routes = accounting.routes ?? servedRoutes(dashboardRouteSource());
-  const scanned = accounting.references ?? await scannedAndSavedReferences();
-  const observation = await archiveBrowserRouteReferences(probe).then(
-    (references) => ({ state: "observed", references }) as const,
-    (error: unknown) => ({ state: "refused", error }) as const,
-  );
-  const references = [...scanned, ...(observation.state === "observed" ? observation.references : [])];
-  const problems = routeConnectivityProblems({
-    routes, references, pending: accounting.pending ?? MANIFEST, apiRoutesFile: API_ROUTES_FILE, clientRoots: CLIENT_ROOTS,
-  });
-  return { observation, references, problems: [
-    ...(observation.state === "refused"
-      ? [observation.error instanceof Error ? observation.error.message : "Archive browser observation threw a non-Error value"] : []),
-    ...problems,
-  ] };
-}
-
-function withoutNativeSinks(selector: string): NonNullable<ArchiveBrowserProbe["beforeObservation"]> {
+function withoutNativeSinks(selector: string): NonNullable<RunCaptureBrowserProbe["beforeObservation"]> {
   return (dialog) => {
     const nodes = [...dialog.querySelectorAll(selector)];
     assert.ok(nodes.length > 0, "the native-sink negative control found no real sink to remove");
@@ -208,7 +165,7 @@ function assertRefusedRunCapture(result: Awaited<ReturnType<typeof auditRunCaptu
   assert.equal(result.references.some(({ path }) => routeMatches(GENERIC_ROUTE, path)), false);
 }
 
-function changedNativeAttribute(selector: string, attribute: string, value: string): NonNullable<ArchiveBrowserProbe["beforeObservation"]> {
+function changedNativeAttribute(selector: string, attribute: string, value: string): NonNullable<RunCaptureBrowserProbe["beforeObservation"]> {
   return (dialog) => {
     const node = dialog.querySelector(selector);
     assert.ok(node instanceof HTMLElement, "the attribute negative control found no native sink");
@@ -217,14 +174,6 @@ function changedNativeAttribute(selector: string, attribute: string, value: stri
     node.setAttribute(attribute, value);
     return () => { node.setAttribute(attribute, before); };
   };
-}
-
-function assertRefusedArchive(result: Awaited<ReturnType<typeof auditArchiveBrowser>>, message: RegExp): void {
-  assert.equal(result.observation.state, "refused", "the invalid browser observation was credited");
-  assert.match(result.problems[0], message);
-  assert.deepEqual(result.problems.slice(1), [GENERIC_ORPHAN, ARCHIVE_ORPHAN]);
-  assert.equal(result.references.some(({ path }) => routeMatches(ARCHIVE_ROUTE, path)), false,
-    "a refused observation still supplied an Archive reference");
 }
 
 function bindingsFor(prefix: string): readonly PendingWireBinding[] {
@@ -623,9 +572,7 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
     const references = await scannedAndSavedReferences();
     assert.ok(references.length > 10, "client path extraction found almost nothing; the scan is broken");
 
-    const archive = await auditArchiveBrowser(archiveProbe(), { routes, references });
-    assert.equal(archive.observation.state, "observed", archive.problems.join("\n"));
-    const { problems } = await auditRunCaptureBrowser(runCaptureProbe(), { routes, references: archive.references });
+    const { problems } = await auditRunCaptureBrowser(runCaptureProbe(), { routes, references });
     assert.deepEqual(problems, [], `wire connectivity — routes:\n  ${problems.join("\n  ")}`);
   });
 
@@ -745,153 +692,6 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
       `config/pending-wire-bindings.json declares route:GET ${GENERIC_ROUTE} unconsumed, but a client now calls it`, ARCHIVE_ORPHAN]);
   });
 
-  it("A8 credits the actual mounted Archive parent native sinks and leaves the generic route open", async () => {
-    const beforeAct = Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT");
-    const result = await auditArchiveBrowser(archiveProbe());
-    assert.equal(result.observation.state, "observed", result.problems.join("\n"));
-    if (result.observation.state !== "observed") throw new Error("the Archive observation was refused");
-    assert.deepEqual(result.observation.references.map(({ path }) => path), [
-      "/artifacts/v1/archive/99999999-0009-4000-8000-999900000009/aa11bb22-000a-4000-8000-aa11bb22000a",
-      "/artifacts/v1/archive/99999999-0009-4000-8000-999900000009/aa11bb22-000a-4000-8000-aa11bb22000a",
-    ]);
-    assert.deepEqual(result.problems, [GENERIC_ORPHAN]);
-    assert.deepEqual(Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT"), beforeAct);
-  });
-
-  it("A8 follows a second distinct run/capture pair instead of a fixture URL constant", async () => {
-    const result = await auditArchiveBrowser(archiveProbe(
-      "00000000-0000-4000-8000-00000000a001", "00000000-0000-4000-8000-00000000a002",
-    ));
-    assert.equal(result.observation.state, "observed", result.problems.join("\n"));
-    if (result.observation.state !== "observed") throw new Error("the second Archive pair was refused");
-    assert.deepEqual(result.observation.references, [
-      { file: "src/dashboard/surfaces/archive/archive.tsx", path: "/artifacts/v1/archive/00000000-0000-4000-8000-00000000a001/00000000-0000-4000-8000-00000000a002" },
-      { file: "src/dashboard/surfaces/archive/archive.tsx", path: "/artifacts/v1/archive/00000000-0000-4000-8000-00000000a001/00000000-0000-4000-8000-00000000a002" },
-    ]);
-    assert.deepEqual(result.problems, [GENERIC_ORPHAN]);
-  });
-
-  for (const [name, selector, message] of [
-    ["download", "a[download]", /missing native download href sink/u],
-    ["image", "img[src]", /missing native image src sink/u],
-    ["both", "a[download], img[src]", /missing native download href sink/u],
-  ] as const) {
-    it(`A8 removing the actual ${name} sinks retains the named observation failure and orphan route`, async () => {
-      const result = await auditArchiveBrowser({ ...archiveProbe(), beforeObservation: withoutNativeSinks(selector) });
-      assertRefusedArchive(result, message);
-    });
-  }
-
-  it("A8 an unused URL builder cannot substitute for removed native consumers", async () => {
-    const unusedBuilder = () => "/artifacts/v1/archive/99999999-0009-4000-8000-999900000009/aa11bb22-000a-4000-8000-aa11bb22000a";
-    assert.equal(typeof unusedBuilder, "function"); // Deliberately never called or passed to the collector.
-    const result = await auditArchiveBrowser({ ...archiveProbe(), beforeObservation: withoutNativeSinks("a[download], img[src]") });
-    assertRefusedArchive(result, /missing native download href sink/u);
-  });
-
-  for (const [name, selector, attribute, value] of [
-    ["foreign href", "a[download]", "href", "https://foreign.invalid/artifacts/v1/archive/99999999-0009-4000-8000-999900000009/aa11bb22-000a-4000-8000-aa11bb22000a"],
-    ["mismatched src", "img[src]", "src", "/artifacts/v1/archive/99999999-0009-4000-8000-999900000009/00000000-0000-4000-8000-00000000a002"],
-    ["generic href", "a[download]", "href", "/artifacts/v1/aa11bb22-000a-4000-8000-aa11bb22000a"],
-  ] as const) {
-    it(`A8 rejects an observed ${name} through the strict same-pair schema`, async () => {
-      const result = await auditArchiveBrowser({ ...archiveProbe(),
-        beforeObservation: changedNativeAttribute(selector, attribute, value),
-      });
-      assertRefusedArchive(result, /an archived capture download must name its exact runId and artifactId/u);
-    });
-  }
-
-  it("A8 rejects a foreign URL through the real resource response parser", async () => {
-    const probe = archiveProbe();
-    const result = await auditArchiveBrowser({ ...probe, response: {
-      runId: probe.detail.runId, artifactId: FIXTURE_ARCHIVE_EVIDENCE_CAPTURE.artifactId,
-      resource: { state: "available", downloadUrl: "https://foreign.invalid/artifact" },
-    } });
-    assertRefusedArchive(result, /Archive browser resource parse failed/u);
-  });
-
-  for (const foreign of ["runId", "artifactId"] as const) {
-    it(`A8 rejects a schema-valid foreign ${foreign} returned to the mounted parent`, async () => {
-      const probe = archiveProbe();
-      const runId = foreign === "runId" ? "00000000-0000-4000-8000-00000000a001" : probe.detail.runId;
-      const artifactId = foreign === "artifactId" ? "00000000-0000-4000-8000-00000000a002" : FIXTURE_ARCHIVE_EVIDENCE_CAPTURE.artifactId;
-      const result = await auditArchiveBrowser({ ...probe, response: {
-        runId, artifactId, resource: { state: "available", downloadUrl: `/artifacts/v1/archive/${runId}/${artifactId}` },
-      } });
-      assertRefusedArchive(result, /ARCHIVE_CAPTURE_RESOURCE_IDENTITY_MISMATCH/u);
-      assert.match(result.problems[0], new RegExp(`${probe.detail.runId}/${FIXTURE_ARCHIVE_EVIDENCE_CAPTURE.artifactId}`, "u"));
-      assert.doesNotMatch(result.problems[0], new RegExp(foreign === "runId" ? runId : artifactId, "u"));
-    });
-  }
-
-  for (const location of ["root", "resource"] as const) {
-    it(`A8 the real parser refuses extra ${location} wire keys`, async () => {
-      const probe = archiveProbe();
-      const result = await auditArchiveBrowser({ ...probe, response: {
-        runId: probe.detail.runId, artifactId: FIXTURE_ARCHIVE_EVIDENCE_CAPTURE.artifactId,
-        ...(location === "root" ? { unexpected: "A8" } : {}),
-        resource: { state: "available",
-          downloadUrl: "/artifacts/v1/archive/99999999-0009-4000-8000-999900000009/aa11bb22-000a-4000-8000-aa11bb22000a",
-          ...(location === "resource" ? { unexpected: "A8" } : {}),
-        },
-      } });
-      assertRefusedArchive(result, /Archive browser resource parse failed/u);
-    });
-  }
-
-  it("A8 a generic one-ID reference cannot satisfy the two-ID Archive route", async () => {
-    const references = await scannedAndSavedReferences();
-    const generic = { file: "A8 synthetic generic-only control", path: "/artifacts/v1/aa11bb22-000a-4000-8000-aa11bb22000a" };
-    assert.equal(routeMatches(GENERIC_ROUTE, generic.path), true);
-    assert.equal(routeMatches(ARCHIVE_ROUTE, generic.path), false);
-    const result = await auditArchiveBrowser({ ...archiveProbe(), beforeObservation: withoutNativeSinks("a[download], img[src]") },
-      { references: [...references, generic] });
-    assert.equal(result.observation.state, "refused");
-    assert.match(result.problems[0], /missing native download href sink/u);
-    assert.deepEqual(result.problems.slice(1), [ARCHIVE_ORPHAN]);
-  });
-
-  it("A8 observed consumers still fail accounting when their server route is missing", async () => {
-    const routes = servedRoutes(dashboardRouteSource());
-    const result = await auditArchiveBrowser(archiveProbe(), { routes: routes.filter(({ path }) => path !== ARCHIVE_ROUTE) });
-    assert.equal(result.observation.state, "observed");
-    const missing = "src/dashboard/surfaces/archive.tsx calls /artifacts/v1/archive/99999999-0009-4000-8000-999900000009/aa11bb22-000a-4000-8000-aa11bb22000a, which src/server/dashboard/routes/api.ts does not register";
-    assert.deepEqual(result.problems, [missing, missing, GENERIC_ORPHAN]);
-  });
-
-  it("A8 a pending entry for a now-consumed Archive route is stale", async () => {
-    const pending = [...MANIFEST, PendingWireBindingSchema.parse({ binding: "route:GET /artifacts/v1/archive/:runId/:artifactId",
-      direction: "served-unconsumed", decision: "D223", note: "A8 negative control, not a persisted exception or consumer waiver.",
-    })];
-    const result = await auditArchiveBrowser(archiveProbe(), { pending });
-    assert.equal(result.observation.state, "observed");
-    assert.deepEqual(result.problems, [
-      GENERIC_ORPHAN,
-      "config/pending-wire-bindings.json declares route:GET /artifacts/v1/archive/:runId/:artifactId unconsumed, but a client now calls it",
-    ]);
-  });
-
-  it("A8 a pending entry for a deleted server route still fails", async () => {
-    const pending = [...MANIFEST, PendingWireBindingSchema.parse({ binding: "route:GET /api/v1/a8-deleted",
-      direction: "served-unconsumed", decision: "D223", note: "A8 negative control, never written to the real pending manifest.",
-    })];
-    const result = await auditArchiveBrowser(archiveProbe(), { pending });
-    assert.equal(result.observation.state, "observed");
-    assert.deepEqual(result.problems, [GENERIC_ORPHAN,
-      "config/pending-wire-bindings.json declares route:GET /api/v1/a8-deleted, which src/server/dashboard/routes/api.ts does not serve",
-    ]);
-  });
-
-  it("A8 observation exceptions remain fatal and cleanup restores the mounted environment", async () => {
-    const beforeAct = Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT");
-    const beforeChildren = [...document.body.childNodes];
-    const result = await auditArchiveBrowser({ ...archiveProbe(), beforeObservation: () => { throw new Error("A8 observation sentinel"); } });
-    assertRefusedArchive(result, /A8 observation sentinel/u);
-    assert.deepEqual(Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT"), beforeAct);
-    assert.deepEqual([...document.body.childNodes], beforeChildren);
-  });
-
   /*
    * The negative controls. Each arm above is run against a synthesized
    * violation through the SAME entry point, for the reason `ratchet-arms`
@@ -1005,9 +805,4 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
       );
     }
   });
-});
-
-it("V refuses missing or foreign native saved-file sinks", async () => {
-  await assert.rejects(savedArchiveBrowserRouteReferences(withoutNativeSinks("a[href]")), /no exact native download sink/);
-  await assert.rejects(savedArchiveBrowserRouteReferences(changedNativeAttribute('section[aria-label="Retained attachments"] a[download][href]', "href", "/artifacts/v1/archive/foreign/files/foreign")), /saved-file-download-identity-mismatch/);
 });

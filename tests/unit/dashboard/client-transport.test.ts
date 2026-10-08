@@ -864,21 +864,3 @@ describe("openStream endings", () => {
     assert.equal(await stream.done.then(() => "resolved", () => "rejected"), "resolved");
   });
 });
-
-import { FIXTURE_SAVED_REPORT, FIXTURE_SAVED_VERSIONS } from "../../parity/helpers/fixture-archive.js";
-it("parses generic report and version responses independently, rejects a foreign report, and never accepts a live-detail substitute", async () => {
-  let body: unknown;
-  const client = createDashboardClient({ baseUrl: "http://bff.test", fetchImpl: async () => new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } }) });
-  for (const order of ["reports-first", "versions-first"]) {
-    for (const read of order === "reports-first" ? ["report", "versions"] : ["versions", "report"]) {
-      if (read === "report") { body = FIXTURE_SAVED_REPORT; assert.deepEqual(await client.savedArchiveReport(FIXTURE_SAVED_REPORT.runId), body); }
-      else { body = FIXTURE_SAVED_VERSIONS; assert.deepEqual(await client.savedArchiveVersions(), body); }
-    }
-  }
-  body = { ...FIXTURE_SAVED_REPORT, runId: RUN_ID };
-  await assert.rejects(client.savedArchiveReport(FIXTURE_SAVED_REPORT.runId), /IDENTITY_MISMATCH/);
-  body = { ...FIXTURE_SAVED_REPORT, detail: { current: true } };
-  await assert.rejects(client.savedArchiveReport(FIXTURE_SAVED_REPORT.runId), /schema/i);
-  body = { items: [FIXTURE_SAVED_REPORT], next: null };
-  assert.deepEqual(await client.savedArchiveIndex({ limit: 1 }), body);
-});

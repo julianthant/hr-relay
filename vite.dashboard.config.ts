@@ -66,7 +66,7 @@ export default defineConfig({
     outDir: "../../dist/dashboard",
     emptyOutDir: true,
     /**
-     * The dashboard, DS specimen and isolated Logs preview share one build.
+     * The dashboard and DS specimen share one build.
      *
      * `index.html` is the operator dashboard. `kit.html` is the design-system specimen page (ledger 3 UK146–UK157). It
      * is an entry for the same closure reason read the other way round: what it
@@ -81,8 +81,6 @@ export default defineConfig({
       input: {
         index: resolve(import.meta.dirname, "src/dashboard/index.html"),
         kit: resolve(import.meta.dirname, "src/dashboard/kit.html"),
-        logs: resolve(import.meta.dirname, "src/dashboard/logs.html"),
-        review: resolve(import.meta.dirname, "src/dashboard/review.html"),
       },
     },
     manifest: true,
