@@ -141,6 +141,7 @@ describe("frontend-only Explorer mock workflows", () => {
     await click("Show source for Street · city · state · postal code · country");
     assert.match(document.querySelector('[role="dialog"]')?.textContent ?? "", /Emergency Contact Form/);
     await click("Close field source");
+    await act(async () => { await new Promise<void>((resolve) => requestAnimationFrame(() => resolve())); });
     assert.equal(document.activeElement, button("Show source for Street · city · state · postal code · country"));
   });
 });
