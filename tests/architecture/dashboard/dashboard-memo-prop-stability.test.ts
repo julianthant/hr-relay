@@ -6,26 +6,18 @@
  * `Object.is`, so ONE prop slot that mints a fresh reference every render turns
  * the whole wrapper into pure overhead — the panel re-renders exactly as often
  * as before, every gate stays green, and nothing on any surface looks wrong.
- * That is the failure mode this guard exists for: it is invisible to the type
- * checker, invisible to the unit lane (this tree renders no React there — the
- * D237/D238 lesson), and invisible to the parity corpus, which photographs a
- * settled screen and cannot see how many times it was drawn.
  *
- * The rule: inside a prop expression of one of those three elements, in
- * `src/dashboard/app/*.tsx`, there may be no object literal, array literal,
- * arrow function, function expression or `new` — the five constructs that are
- * PROVABLY a new reference on every evaluation. Every one of them shipped in
- * `dashboard-app.tsx` before D4: an inline `nav={{…}}`, an inline
- * `handlers={{…}}` holding five closures, `dayWire?.queueSurfaces ?? []`, an
- * inline `onDay={(next) => …}`.
+ * The rule: inside a prop expression of one of those three elements, in any
+ * dashboard `.tsx` module that renders one, there may be no object literal,
+ * array literal, arrow function, function expression or `new` — the five
+ * constructs that are PROVABLY a new reference on every evaluation. Every
+ * caller is in scope, the workflow mocks included: a mock is the surface the
+ * operator reads to approve a workflow, so a fresh prop there is the same defect.
  *
  * **What this guard deliberately does NOT claim.** It says nothing about a
  * CALL in a prop slot (`workflowLabelOf(activeWorkflowId)`), because a call is
  * not provably unstable — it may return a primitive, or the very same
- * reference each time, and only its body can say which. Judging calls would
- * mean either an allowlist that rots or a refusal of honest primitive-returning
- * helpers. So the guard holds the half that can be decided from the syntax
- * alone and states the other half here rather than pretending to cover it.
+ * reference each time, and only its body can say which.
  *
  * A JSX SPREAD is judged through, not at: `{...(cond ? {} : { filter: x })}`
  * spreads keys into props, so the literal is a container that is destructured
@@ -41,7 +33,7 @@ import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { REPO_ROOT, walkFiles } from "../support/helpers/guard-files.js";
 
-const APP_ROOT = "src/dashboard/app";
+const CALLER_ROOTS = ["src/dashboard"] as const;
 const FIXTURE_ROOT = "tests/architecture/dashboard/fixtures";
 
 /** The elements whose `memo` this guard protects. */
@@ -130,14 +122,16 @@ export function memoPropStabilityViolations(fileName: string, text: string): str
   return out;
 }
 
-function appFiles(): string[] {
-  return walkFiles(join(REPO_ROOT, APP_ROOT), { extensions: [".tsx"] }).map((file) => relative(REPO_ROOT, file));
+function callerFiles(): string[] {
+  return CALLER_ROOTS.flatMap(root => walkFiles(join(REPO_ROOT, root), { extensions: [".tsx"] }).map(file => relative(REPO_ROOT, file)));
 }
 
 describe("dashboard memo prop stability (Track D D4, ref frontend-backend-integration §7.4)", () => {
   it("the three memoized panels are handed no provably-fresh prop", () => {
-    const files = appFiles();
+    const files = callerFiles();
     expect(files.length).toBeGreaterThan(0);
+    expect(files).toContain("src/dashboard/surfaces/workflows/mocks/workflow-mock-queue.tsx");
+    expect(files).toContain("src/dashboard/app/dashboard-app.tsx");
     const report = files.flatMap((file) =>
       memoPropStabilityViolations(file, readFileSync(join(REPO_ROOT, file), "utf8"))
         .map((violation) => `${file}: ${violation}`));
