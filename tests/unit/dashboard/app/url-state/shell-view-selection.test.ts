@@ -1,8 +1,8 @@
 /**
  * UF-SET-2 — a takeover the Top Bar's switcher does not name presses NOTHING.
  *
- * The defect this pins: `shellView` folded `settings` and `intake` onto
- * `"queue"`, so `ShellViewSwitcher`'s `aria-pressed={view === candidate}`
+ * The defect this pins: `shellView` folded `settings` and `intake` (and, until
+ * D295 moved it inside Settings, the UI catalog) onto `"queue"`, so `ShellViewSwitcher`'s `aria-pressed={view === candidate}`
  * lit `Dashboard` at the same moment the gear was lit — two simultaneous
  * "you are here" claims with a takeover covering the dashboard, and only one of
  * them true. The demo has never done this (legacy `1ec1d870`
@@ -14,8 +14,8 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { activeTakeover, shellViewOf, type ActiveTakeover } from "../../../../../src/dashboard/app/url-state.js";
-import { SHELL_VIEWS, type ShellViewSelection } from "../../../../../src/dashboard/surfaces/top-bar-model.js";
+import { activeTakeover, shellViewOf, type ActiveTakeover } from "../../../../../src/dashboard/app/navigation/url-state.js";
+import { SHELL_VIEWS, type ShellViewSelection } from "../../../../../src/dashboard/surfaces/shell/top-bar-model.js";
 
 const BASE = { start: false } as const;
 
@@ -28,7 +28,7 @@ const BASE = { start: false } as const;
 const SEGMENT_OF = {
   settings: "none",
   intake: "none",
-  archive: "archive",
+  archive: "none",
   explore: "explorer",
   activity: "activity",
   none: "queue",
@@ -46,7 +46,7 @@ describe("the Top Bar switcher's pressed segment", () => {
   });
 
   it("presses the segment that owns the main region for the three it does name", () => {
-    assert.equal(shellViewOf(activeTakeover({ ...BASE, archive: "index" })), "archive");
+    assert.equal(shellViewOf(activeTakeover({ ...BASE, archive: "index" })), "none", "the retired Archive notice has no switcher segment");
     assert.equal(shellViewOf(activeTakeover({ ...BASE, explore: "separations" })), "explorer");
     assert.equal(shellViewOf(activeTakeover({ ...BASE, activity: "" })), "activity");
   });
@@ -60,7 +60,7 @@ describe("the Top Bar switcher's pressed segment", () => {
     // that actually renders — `settings` outranks `archive`, so the switcher
     // presses nothing even though `?archive=` is present.
     assert.equal(shellViewOf(activeTakeover({ ...BASE, settings: "", archive: "index" })), "none");
-    assert.equal(shellViewOf(activeTakeover({ ...BASE, archive: "index", explore: "separations" })), "archive");
+    assert.equal(shellViewOf(activeTakeover({ ...BASE, archive: "index", explore: "separations" })), "none");
   });
 
   /**

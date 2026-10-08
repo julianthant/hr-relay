@@ -12,7 +12,7 @@ import {
   QueueSurfaceWireSchema,
   type QueueSurfaceWire,
 } from "../../../../../src/models/dashboard/projection.js";
-import { QueuePanel, QueueRow } from "../../../../../src/dashboard/surfaces/queue.js";
+import { QueuePanel, QueueRow } from "../../../../../src/dashboard/surfaces/queue/queue.js";
 import {
   partition,
   queueBatches,
@@ -22,7 +22,7 @@ import {
   sortQueueBand,
   groupQueueAttempts,
   visibleRunIds,
-} from "../../../../../src/dashboard/surfaces/queue-model.js";
+} from "../../../../../src/dashboard/surfaces/queue/queue-model.js";
 import {
   FIXTURE_DAY,
   FIXTURE_DAY_WIRE,

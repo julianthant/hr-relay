@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { Hono } from "hono";
 import { createDashboardClient, StartPlanRefusalError } from "../../../../../src/dashboard/client/index.js";
-import { createRunLaunchService } from "../../../../../src/dashboard/app/run-launch-model.js";
+import { createRunLaunchService } from "../../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { readRerunValues } from "../../../../../src/backend/runs/start/rerun-values.js";
 import { registerDataRoutes } from "../../../../../src/backend/transports/http/routes/data.js";
 import { registerQueueRoutes } from "../../../../../src/backend/transports/http/routes/queue.js";

@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import type { EditableSettingsLeafWire } from "../../../../../src/models/dashboard/settings-editor.js";
-import { fixtureSettingsDocument } from "../../../../support/fixtures/dashboard/fixture-settings.js";
-import { draftError, patchFromSettingsDraft, settingInput, settingsSectionGroups, valueFromSettingInput } from "../../../../../src/dashboard/surfaces/settings-draft-model.js";
-import { settingNote, settingTitle } from "../../../../../src/dashboard/surfaces/settings-presentation.js";
-import { performancePresentation, performanceSectionGroups } from "../../../../../src/dashboard/surfaces/settings-performance-model.js";
+import { fixtureSettingsDocument } from "../../../../parity/helpers/fixture-settings.js";
+import { draftError, patchFromSettingsDraft, settingInput, settingsSectionGroups, valueFromSettingInput } from "../../../../../src/dashboard/surfaces/settings/editor/settings-draft-model.js";
+import { settingNote, settingTitle } from "../../../../../src/dashboard/surfaces/settings/settings-presentation.js";
+import { performancePresentation, performanceSectionGroups } from "../../../../../src/dashboard/surfaces/settings/general/settings-performance-model.js";
 
 const performance = fixtureSettingsDocument().sections.find(section => section.id === "performance");
 if (performance === undefined) throw new Error("performance fixture section missing");

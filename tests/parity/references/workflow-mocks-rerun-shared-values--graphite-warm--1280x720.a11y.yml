@@ -1,0 +1,38 @@
+# workflow-mocks-rerun-shared-values--graphite-warm--1280x720
+# adapter: fixture
+# fixture: workflow-mocks.spec.ts:all workflow previews, Run and Rerun @ dark-1280
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- region "Notifications"
+- dialog "Rerun":
+  - banner:
+    - heading "Rerun" [level=2]
+    - paragraph: Onboarding · Workflow preview
+    - button "Close"
+  - list "Run configuration path":
+    - listitem:
+      - button "1 Steps": Steps
+    - listitem:
+      - button "2 Values": Values
+    - listitem:
+      - button "3 Options" [disabled]: Options
+    - listitem:
+      - button "4 Confirm" [disabled]: Confirm
+  - heading "Values for the new run" [level=3]
+  - paragraph: Each entry starts one run.
+  - region "Values":
+    - text: Emails
+    - textbox "Emails":
+      - /placeholder: jordan.lee@example.com, sam.rivera@example.com
+      - text: jordan.lee@example.com
+    - paragraph: Separate values with a comma or a new line.
+    - list "Parsed inputs":
+      - listitem: 1 jordan.lee@example.com
+  - contentinfo:
+    - text: Source run · new runOnboarding
+    - button "Back"
+    - button "Cancel"
+    - button "Continue"

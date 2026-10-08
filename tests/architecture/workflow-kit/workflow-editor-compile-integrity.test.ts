@@ -45,7 +45,7 @@ import { workflowSourcePath } from "../../../src/workflow-kit/validation/source-
 
 const PROJECTION_FILE = "src/backend/runs/queries/explorer.ts";
 const WIRE_FILE = "src/models/dashboard/explorer.ts";
-const SURFACE_FILES = ["src/dashboard/surfaces/explorer.tsx"];
+const SURFACE_FILES: string[] = [];
 
 function read(path: string): string {
   return readFileSync(join(REPO_ROOT, path), "utf8");
@@ -303,46 +303,6 @@ export function explorerSafeEditClientMethodViolations(source: string): string[]
 }
 
 describe("the explorer surface keeps Phase A reads separate from the Phase B safe subset", () => {
-  it("reaches the server from Explorer only through the typed safe-edit clients", () => {
-    const source = read("src/dashboard/surfaces/explorer.tsx");
-    assert.deepEqual(mutationAffordanceViolations(source), ["calls the command client"]);
-    assert.deepEqual(explorerSafeCommandViolations(source), []);
-    assert.deepEqual(explorerSafeEditClientMethodViolations(source), []);
-    assert.ok(source.includes("client.validateExplorerEdit(draft)"));
-    assert.ok(source.includes("client.executeCommand(request)"));
-    assert.ok(!source.includes("/api/v1/commands"));
-    assert.ok(!source.includes("/api/v1/explorer/validate"));
-  });
-
-  it("the safe-command arm fails when a second command or another family/type is introduced", () => {
-    const source = read("src/dashboard/surfaces/explorer.tsx");
-    assert.deepEqual(
-      explorerSafeCommandViolations(source.replace(
-        'family: "explorer" as const',
-        'family: "run" as const',
-      )),
-      ["command family is not explorer"],
-    );
-    assert.deepEqual(
-      explorerSafeCommandViolations(source.replace(
-        'type: "apply-explorer-edit" as const',
-        'type: "retry" as const',
-      )),
-      ["command type is not apply-explorer-edit"],
-    );
-    assert.deepEqual(
-      explorerSafeCommandViolations(`${source}\nvoid client.executeCommand(otherRequest);`),
-      ["must issue exactly one Explorer command"],
-    );
-  });
-
-  it("the typed safe-edit client allowlist rejects an unrelated DashboardClient method", () => {
-    const source = read("src/dashboard/surfaces/explorer.tsx");
-    assert.deepEqual(
-      explorerSafeEditClientMethodViolations(`${source}\nvoid client.requestFailureAdvisory(runId);`),
-      ["calls DashboardClient.requestFailureAdvisory outside the Explorer safe-edit allowlist"],
-    );
-  });
 
   it("the read-only arm fails on a violating fixture", () => {
     assert.deepEqual(

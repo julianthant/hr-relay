@@ -42,19 +42,17 @@ import {
   SettingsSectionPrimitiveSchema,
   StorageHealthSummaryWireSchema,
 } from "../../../../../src/models/dashboard/bootstrap.js";
-import { WorkerCardWireSchema } from "../../../../../src/models/dashboard/projection.js";
-import { SessionPanel } from "../../../../../src/dashboard/surfaces/shell.js";
-import { SettingsPageWithToast } from "../../../../support/fixtures/dashboard/settings-page-with-toast.js";
+import { SettingsPage } from "../../../../../src/dashboard/surfaces/settings/settings.js";
 import { DashboardClientProvider } from "../../../../../src/dashboard/state/client-context.js";
 import type { DashboardClient } from "../../../../../src/dashboard/client/index.js";
-import { appVersionTag, fmtAppVersion } from "../../../../../src/dashboard/surfaces/format.js";
+import { appVersionTag, fmtAppVersion } from "../../../../../src/dashboard/surfaces/shared/status/format.js";
 import {
   activeTakeover,
   parseRoute,
   routeAdvancesHistory,
   routeToSearch,
   type AppRouteState,
-} from "../../../../../src/dashboard/app/url-state.js";
+} from "../../../../../src/dashboard/app/navigation/url-state.js";
 import {
   DASHBOARD_MAIN_REGION_ID,
   SETTINGS_GEAR_ID,
@@ -63,7 +61,7 @@ import {
   resolveSettingsSection,
   settingsCloseFocusTargetId,
   type SettingsSection,
-} from "../../../../../src/dashboard/surfaces/settings-model.js";
+} from "../../../../../src/dashboard/surfaces/settings/settings-model.js";
 
 /** Parsed, so a case cannot express a section the bootstrap would refuse. */
 function section(id: string, label: string): SettingsSection {
@@ -112,6 +110,7 @@ describe("the settings route (D272 item 1)", () => {
       archive: "",
       activity: "",
       explore: "person-lookup",
+      catalog: "",
     };
     assert.equal(activeTakeover(layered), "settings");
     // and the ranking below it is unchanged
@@ -121,30 +120,30 @@ describe("the settings route (D272 item 1)", () => {
 });
 
 describe("the settings page's nav (D274 item 5)", () => {
-  it("puts every served section under Status and offers the Keyboard help entry", () => {
+  it("puts every served section under Status and always offers the Help keyboard entry", () => {
     const groups = buildSettingsNav([STORAGE]);
-    assert.deepEqual(groups.map((group) => group.heading), ["Personal", "Status", "Help"]);
-    assert.deepEqual(groups[1]?.entries.map((entry) => entry.id), ["storage", "preflight"]);
-    assert.equal(groups[1]?.entries[0]?.source, "served");
-    assert.equal(groups[1]?.entries[1]?.source, "client");
+    assert.deepEqual(groups.map((group) => group.heading), ["Personal", "Advanced", "Data", "Status", "Help"]);
+    assert.deepEqual(groups.find(group => group.id === "status")?.entries.map((entry) => entry.id), ["storage", "preflight"]);
+    assert.equal(groups.find(group => group.id === "status")?.entries[0]?.source, "served");
+    assert.equal(groups.find(group => group.id === "status")?.entries[1]?.source, "client");
     assert.deepEqual(
-      groups[2]?.entries.map((entry) => entry.id),
+      groups.find(group => group.id === "help")?.entries.map((entry) => entry.id),
       [SETTINGS_KEYBOARD_SECTION_ID],
     );
-    // The keyboard legend is client-owned because its content comes from this
-    // bundle's bindings rather than a served settings section.
-    assert.deepEqual(groups[2]?.entries.map((entry) => entry.source), ["client"]);
+    // The keyboard legend is not a SERVED section: it is a fact about THIS bundle's bindings.
+    // The UI catalog entry is retired (2026-10-06 developer-controls retirement).
+    assert.deepEqual(groups.find(group => group.id === "help")?.entries.map((entry) => entry.source), ["client"]);
   });
 
   it("keeps Preflight available when no status section is served", () => {
     const groups = buildSettingsNav([]);
-    assert.deepEqual(groups.map((group) => group.heading), ["Personal", "Status", "Help"]);
-    assert.deepEqual(groups[1]?.entries.map((entry) => entry.id), ["preflight"]);
+    assert.deepEqual(groups.map((group) => group.heading), ["Personal", "Advanced", "Data", "Status", "Help"]);
+    assert.deepEqual(groups.find(group => group.id === "status")?.entries.map((entry) => entry.id), ["preflight"]);
   });
 
   it("gives a served section this build cannot render its own glyph", () => {
     const groups = buildSettingsNav([STORAGE, section("budgets", "Budgets")]);
-    assert.deepEqual(groups[1]?.entries.map((entry) => entry.icon), ["storage", "preflight", "unrendered"]);
+    assert.deepEqual(groups.find(group => group.id === "status")?.entries.map((entry) => entry.icon), ["storage", "preflight", "unrendered"]);
   });
 });
 
@@ -203,6 +202,7 @@ describe("history push on re-press (unit F4b finding 2)", () => {
     archive: undefined,
     activity: undefined,
     explore: undefined,
+    catalog: undefined,
   };
 
   it("does NOT advance history when the next route serialises to the current search", () => {
@@ -226,7 +226,7 @@ describe("history push on re-press (unit F4b finding 2)", () => {
 describe("the settings nav renders real navigation, not buttons (unit F4b finding 4)", () => {
   const markup = renderToStaticMarkup(createElement(DashboardClientProvider, {
     client: STATIC_SETTINGS_CLIENT,
-    children: createElement(SettingsPageWithToast, {
+    children: createElement(SettingsPage, { onClose: () => undefined,
       storage: HEALTHY_STORAGE,
       sections: [STORAGE],
     // Opened on Keyboard rather than Storage, so this render never reaches
@@ -274,7 +274,7 @@ describe("curly quotes around a section name (unit F4b finding 3)", () => {
     assert.equal(resolution.state, "unknown");
     const markup = renderToStaticMarkup(createElement(DashboardClientProvider, {
       client: STATIC_SETTINGS_CLIENT,
-      children: createElement(SettingsPageWithToast, {
+      children: createElement(SettingsPage, { onClose: () => undefined,
         storage: HEALTHY_STORAGE,
         sections: [STORAGE],
       section: "budgets",
@@ -292,7 +292,7 @@ describe("curly quotes around a section name (unit F4b finding 3)", () => {
   it("quotes an unrendered served section's id with curly quotes, not &quot;", () => {
     const markup = renderToStaticMarkup(createElement(DashboardClientProvider, {
       client: STATIC_SETTINGS_CLIENT,
-      children: createElement(SettingsPageWithToast, {
+      children: createElement(SettingsPage, { onClose: () => undefined,
         storage: HEALTHY_STORAGE,
         sections: [STORAGE, section("budgets", "Budgets")],
       section: "budgets",
@@ -327,59 +327,3 @@ describe("the app version tag (D272 item 4, ledger row A126)", () => {
 });
 
 /** One `failed` card — the only state that lights the attention chip (D248). */
-function failedCard(seed: number): ReturnType<typeof WorkerCardWireSchema.parse> {
-  return WorkerCardWireSchema.parse({
-    workerId: `person-lookup-worker-${String(seed)}`,
-    workflowId: "person-lookup",
-    state: "failed",
-    directive: "run",
-    startedAt: "2026-08-26T16:00:00.000Z",
-    endedAt: "2026-08-26T16:05:00.000Z",
-    stopReason: "crashed",
-    currentRun: { state: "absent", reason: "the lease settled with no run claimed" },
-    browsers: [],
-    leaseVersion: 1,
-    revision: 1,
-  });
-}
-
-function sessionBarText(cards: readonly ReturnType<typeof WorkerCardWireSchema.parse>[]): string {
-  const markup = renderToStaticMarkup(createElement(SessionPanel, {
-    workerCards: cards,
-    queueSurfaces: [],
-    workerPools: [],
-    // Empty on purpose: the chip's SENTENCE is what is pinned here, and
-    // `labelOf` names an unlisted workflow by its id rather than throwing, so
-    // a bootstrap fixture would add eight fields the assertion never reads.
-    workflows: [],
-    counts: [],
-    nowIso: "2026-08-26T16:10:00.000Z",
-    connection: { state: "live" },
-    appVersion: "0.1.0",
-  }));
-  return markup.replace(/<[^>]*>/gu, " ").replace(/\s+/gu, " ").trim();
-}
-
-describe("the session bar's attention chip (D272 item 4, ledger row A122)", () => {
-  it("keeps the noun and the verb agreeing at a count of ONE", () => {
-    const text = sessionBarText([failedCard(1)]);
-    // The defect this replaces, spelled out so a regression cannot pass by
-    // matching a looser pattern.
-    assert.ok(!text.includes("1 worker need attention"), text);
-    assert.ok(text.includes("1 workers need attention"), text);
-  });
-
-  it("reads the same way above one", () => {
-    assert.ok(sessionBarText([failedCard(1), failedCard(2)]).includes("2 workers need attention"));
-  });
-
-  it("draws no chip when nothing is failed — honest absence", () => {
-    assert.ok(!sessionBarText([]).includes("need attention"));
-  });
-
-  it("prints the app version as MAJOR.MINOR beside the tooltip that explains two", () => {
-    const text = sessionBarText([]);
-    assert.ok(text.includes("app 0.1"), text);
-    assert.ok(!text.includes("app 0.1.0"), text);
-  });
-});

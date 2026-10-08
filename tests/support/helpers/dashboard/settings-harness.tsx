@@ -1,3 +1,4 @@
+import type { SettingsSaveNotice, SettingsSaveProblem } from "../../../../src/dashboard/surfaces/settings/editor/settings-attempt-model.js";
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
@@ -28,10 +29,10 @@ import { composeSettings } from "../../../../src/backend/app/composition/dashboa
 import { buildSettingsEditor } from "../../../../src/backend/runs/queries/settings-editor.js";
 import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
-import { useEditableSettings } from "../../../../src/dashboard/surfaces/settings-editor-model.js";
-import { EditableSettingsSection } from "../../../../src/dashboard/surfaces/settings-editor.js";
-import { SettingsAuthoritySection } from "../../../../src/dashboard/surfaces/settings-authorities.js";
-import { RoutesSection } from "../../../../src/dashboard/surfaces/settings-routes.js";
+import { useEditableSettings } from "../../../../src/dashboard/surfaces/settings/editor/settings-editor-model.js";
+import { EditableSettingsSection } from "../../../../src/dashboard/surfaces/settings/editor/settings-editor.js";
+import { SettingsAuthoritySection } from "../../../../src/dashboard/surfaces/settings/editor/settings-authorities.js";
+import { RoutesSection } from "../../../../src/dashboard/surfaces/settings/routes/settings-routes.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 export function syntheticSettingsAuthority(options: { providerFile?: string; parentSlots?: NodeJS.ProcessEnv; providerHooks?: ProviderKeyStoreHooks; configuredModels?: readonly string[] } = {}) {
@@ -82,6 +83,8 @@ export function syntheticSettingsAuthority(options: { providerFile?: string; par
 }
 export async function mountSettingsHarness(authority: ReturnType<typeof syntheticSettingsAuthority>, section = "general", readDocument: (() => unknown) | undefined = undefined) {
   const commands: unknown[] = [];
+  const notices: SettingsSaveNotice[] = [];
+  const problems: SettingsSaveProblem[] = [];
   const ports = {
     response: (): Response | undefined => undefined,
     read: (): unknown => readDocument?.() ?? authority.read(),
@@ -102,14 +105,14 @@ export async function mountSettingsHarness(authority: ReturnType<typeof syntheti
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   let editor: ReturnType<typeof useEditableSettings> | undefined;
   function Harness({ sectionId }: { sectionId: string }) {
-    editor = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: "d".repeat(64) });
+    editor = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: "d".repeat(64), onSaved: notice => notices.push(notice), onSaveProblem: notice => problems.push(notice) });
     if (sectionId === "routes") return createElement(RoutesSection, { editor });
     return ["credentials", "protected-store", "provider-env", "runtime-isolation"].includes(sectionId)
       ? createElement(SettingsAuthoritySection, { editor, sectionId }) : createElement(EditableSettingsSection, { editor, sectionId });
   }
   const render = async (sectionId: string): Promise<void> => { await act(async () => { root.render(createElement(DashboardClientProvider, { client, children: createElement(Harness, { sectionId }) })); }); };
   await render(section);
-  return { host, commands, ports, client, render, controller: () => { if (editor === undefined) throw new Error("settings-not-mounted"); return editor; },
+  return { host, commands, notices, problems, ports, client, render, controller: () => { if (editor === undefined) throw new Error("settings-not-mounted"); return editor; },
     close: () => { act(() => root.unmount()); host.remove(); } };
 }
 export async function settingsAction(action: () => void): Promise<void> { await act(async () => { action(); }); }

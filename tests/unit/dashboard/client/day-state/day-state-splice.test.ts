@@ -20,7 +20,7 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { applyDashboardDayPatch, type DashboardDayPatch } from "../../../../../src/dashboard/client/day-state.js";
+import { applyDashboardDayPatch, type DashboardDayPatch } from "../../../../../src/dashboard/client/queries/day-state.js";
 import { DashboardClientError } from "../../../../../src/dashboard/client/errors.js";
 import { DashboardDayWireSchema, type DashboardDayWire } from "../../../../../src/models/dashboard/projection.js";
 

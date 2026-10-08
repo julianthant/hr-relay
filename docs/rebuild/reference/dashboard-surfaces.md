@@ -17,7 +17,7 @@ Verification details stay in a secondary disclosure; exact source jumps open it 
 An operator gate without a supported resolution packet remains held and names that unavailable
 ceremony. The shared renderer does not invent a generic approve command or decision payload.
 
-## Frontend-first Logs amendment — 2026-09-30
+## Frontend-only dashboard presentation amendment — 2026-10-01
 
 The September 30 frontend-first Logs scope is a projection using the shared `LogFeed` and isolated
 `logs.html` mock preview. For observed operation records, it projects only existing confirmed read,
@@ -30,10 +30,237 @@ existing identity, resolve, and failure blocks plus related backend and test wor
 retired; their internal contracts remain authoritative. The reusable palette and type scale are in
 the [Dashboard theme guide](../../../src/dashboard/ds/DASHBOARD-THEME.md).
 
-The run-panel header omits Rerun and the Logs view omits the completed dry-run/partial strip.
-Filled values use plain blue text without an input-like container.
-Screenshots appear at the end of their associated step, without a separate Captures section or
-empty-capture placeholder. The timeline keeps its step segments and omits its start/working-time footer.
+`ActivityReport` supplies fictional data to `ActivityView` through `ActivityViewState`; `WorkflowExplorer`
+supplies `ExplorerTimeline`; the run panel mounts `LogSample` through `LogPanel`, `LogFeed` and
+`LogTimeline`; and `SessionPanel` feeds `SessionsView` through `SessionsViewState`. Local fictional
+producers supply the detailed design examples while backend services and contracts remain
+available. Logs defaults to a visibly labelled fictional history matched to the selected subject and
+status. The Person Lookup example has UCPath/CRM searches, identity review, employment status and
+appointment-date checks, with action-associated captures and explicit sample durations. Review and
+failure selections open at their inline decision while retaining earlier action history and timeline
+jumps. Completed substeps retain their durations; only the affected substep changes state. Local
+match approval, rejection and search retry update the sample timeline and append ordinary log events.
+A blocked-write row selects a separately labelled Separations sample, rather than inventing a write
+operation in Person Lookup. The selector's **Selected run · queue facts** view renders only the served
+subject, status, attempt, current message and pipeline, without inferred actions, captures or durations.
+A queue selection resets the sample selection and local decisions. The selector retains all approved
+examples. The queue occupies its full left container. Its launch, status and sort controls share the 48px Action panel above Logs with the date picker. The 2026-10-03 operator revision moves Explorer, Archive and Activity into
+Settings → Data. Their separate operations toolbars are removed. Each page uses the same
+`DsBodyScope` content cap, `PageHeading`, spacing and scroll pane as the other Settings pages;
+its actions remain in its content. Settings replaces the dashboard workspace with its own 264px sidebar, heading and settings search. It has no workflow notification or run-search controls; Back to dashboard uses the Settings draft guard. Legacy data-page links remain addressable inside
+Settings, including archive folders, report sections and Activity ranges. Settings drafts survive
+section changes. Spreadsheets lives in Data and uses the same content cap and spacing as the other Settings pages. Global browser/CSS zoom stays at its original 100% sizing.
+Activity's report sections stack in one full-width column at every desktop width. Explorer replaces
+its workflow sidebar and search with a right-aligned workflow dropdown beside its heading. Expand all,
+Collapse all, Version registry and the action legend control are removed. The selected-workflow
+intro strip and Preview paths button are removed; per-form branch selectors, disclosures and source
+returns remain available. Switching workflows resets transient timeline
+state while retaining dropdown focus. Storage checks and Preflight place their actions and scope
+selector beside their headings, with check freshness and unavailable states in the content below.
+Archive search uses the shared HeroUI SearchField with one focus surface. The version overview and report folders offer search fields; the overview also has workflow and outcome filters. Explorer has no back control or `onBack` prop;
+shell navigation exits it.
+
+The 2026-10-04 operator revision uses HeroUI SearchField for every shared search, including its
+search icon and clear control. The Navbar field remains 460px wide and centered at wide desktop
+sizes, with space-aware sizing at the 1024px desktop floor. Clicking it, pressing Enter/Space or using
+`/` opens a centered search dialog with an editable HeroUI SearchField and keyboard-selectable
+Command results. Dismissal restores focus to the Navbar field. Result navigation retains its explicit
+disconnected notice. Status, export and choice menus use shadcn Base UI DropdownMenu; value controls use its Base UI Select composition. Both keep keyboard navigation and focus restoration. Popups inside dialogs portal into the owning dialog. Escape dismisses an inner Base UI popup before its enclosing dialog or drawer. Overlays register only while mounted. RRSS HR and the date count are removed. Back/Forward history controls remain separate in the shortened Navbar. The visible search shortcut hint is omitted; `/` remains available. Select items sit inside their padded SelectGroup. Menus use 6px outer insets and 8px item text insets. The editable date and calendar sit in the header above Logs and select the dashboard day.
+
+The workspace rail is permanent, yielding from 264px at 1440px to 208px at and below 1216px, with a left-aligned HR GPT heading. Its header owns the HeroUI notification toggle and run-search icon. Notifications replaces the workflow list while preserving the heading, queue and Logs. Settings replaces the workspace with a separate 264px sidebar, a Settings heading and settings search; notifications and run search are absent there. The Navbar and undo/redo controls are removed. Theme preference lives in General → Appearance, outside runtime settings drafts. Workflow scrolling retains keyboard and wheel access with its scrollbar hidden. Selected workflows change only their highlight. Workflow rows have no leading icons or Preview labels; category icons sit beside category headings. The rail uses 8px outer and row insets. Active/all counts are hidden at the supported 1024px desktop width. The queue uses a rounded bordered container with a 30% track and 376px minimum. Queue footers keep time, attempt, compact ID, duration and actions on one line; unusually long compact IDs may ellipsize with the exact trace in a tooltip. Start a run, Status, Sort, Attention and the date picker occupy the rounded bordered 48px Action panel above Logs, with 12px canvas gutters. Status and Sort have thin bordered surfaces. Attention is an independent toggle, excluded from the sort menu: when enabled, rows group by status; Newest, Oldest and Longest sort the entire queue without group headings. Frequent status filters permit multiple selections. Expanding Sessions shortens the workspace; its plus and Settings controls are adjacent. Served workflow selection remains persisted. Additional layout workflow labels open fictional queues/logs without entering the served launch catalog. Notifications use HeroUI All/Unread tabs plus a category dropdown for All updates, Needs you and Failed; read state does not resolve pending run actions. History-gap pins, Snooze and desktop-delivery controls are removed from this preview. Toasts use shadcn Base UI cards above Sessions; command details show the subject and time without the local actor ID. Errors persist until acknowledgment. Archive removes its retained-history subtitle. Activity uses its ordinary Settings heading, a left-aligned period with both dates always visible, manual edits selecting Custom, and matching control typography, a default outcomes table without version disclosures, and no Export or information control. Average workflow time compares measured completed-run durations on a shared zero-based bar chart, with exact values and timing coverage. Existing volume, outcomes and performance facts retain their supplied-data boundaries. Explorer, Storage checks and Preflight retain their heading actions and diagnostics. Workflow capabilities are part of Preflight. Keyboard settings use compact rows with editable key pills, pencil/delete controls and search; Add controls and Run/workflow number-key navigation are retired; preferences persist locally and drive the actual handlers.
+
+Settings navigation uses closely spaced 32px rows with 10px rounded highlights. Selected and
+unselected labels/icons use primary foreground; muted group labels use 14px type. Section headings
+and field labels use smaller regular-weight type. Activity workflow rows expand to show supplied
+version details; headers and numeric cells use regular weight in a rounded opaque table. Log decision
+frames, headers and bodies remain opaque; comparisons use a bordered table with a muted header and
+opaque difference highlights. Log title bars and comparison table headers use fills distinct from their surrounding bodies. Queue-backed log headers render the same StatusBadge presentation as their selected queue rows.
+
+The Action panel keeps Start a run, the labelled status filter and sort together on the left, with the date picker on the right. The status menu groups Quick filters, In progress and Finished with status icons and counts.
+Frequent All/Needs you/Running filters use HeroUI Tabs with a blue underline, normal-weight labels and separate counts. The selected content is an associated tabpanel; a status chosen outside these three filters receives a labelled additional tab. The status and sort triggers use quiet neutral controls within the Action panel, retaining the grouped, padded Base UI popups. Double-click,
+right-click and Shift+F10 open the row menu, whose Select item enters selection and includes that
+row. Selection replaces the filter header with a visible-row checkbox, count, Delete/Archive/Retry
+and an X exit. Escape exits selection and restores row focus. There is no toolbar Select, Done or
+Clear control. The workflow rail remains visible independently of queue selection.
+
+These new queue menu and selection actions are explicitly local mocks. Each record retains authored
+mock settings; Retry reuses the exact settings object to add a queued attempt, with fresh identities
+and pending steps, without opening Rerun or issuing a command. Original attempts remain in history.
+Archive retains the removed local records; Delete removes them. The local queue filters/counts fold
+the latest mock attempt per item, while the Workflow Panel retains served day counts; the Navbar date count is removed.
+Reload or a changed day/source resets local changes. This is not a reconstruction of a runtime launch
+envelope or proof of live Retry/Archive/Delete contracts. Existing served row-footer commands and
+command-recovery feedback retain their wiring and assurances.
+
+Run input follows the approved Design 1 frame: a concise descriptor-derived input label, parser
+guidance and a framed Parsed input list with ordered entries and per-entry run counts. The existing
+Examples strip is removed; descriptor examples retain their validation contract. The Run dialog uses a 920px maximum width, a 540px desktop height, a darker 208px workflow rail, an ordered path, and contrasting header/footer surfaces. Input, Options, Steps, Values and Confirm remain scrollable inside the frame. Selected workflows use a highlight without heavier typography. Cancel confirmation retains the served title, consequence copy, target and revision; it presents the subject in a distinct identity block and initially focuses the safe action. Parsing, source binding and live launch contracts remain unchanged. The final visible log step has no bottom divider, including when a scroll spacer follows it.
+
+Activity keeps four metrics in one row and stacks report sections in one full-width column. The workflow table is framed;
+`RecordTable` renders confirmed transactions and evidence coverage with shared `text-body` values
+(12px / 18px, weight 400). The adaptive chart and Run performance table follow below. Chart bars occupy 75% of each interval and are opaque; plot height adapts from 160px to
+224px. Range and granularity preserve interval semantics, explicit zero/empty states, responsive
+geometry and axis labels. Anchored, clamped tooltips and Arrow/Home/End/Escape bucket navigation remain.
+Loading shows skeletons and an accessible status without a visible caption. Performance rows are
+finished-run completion, longest measured run, total measured runtime and most common failure. Null
+duration/failure values remain unavailable; an empty failure list means “No failures”; an empty period
+has zero runtime and no finished-run rate.
+
+Explorer retains workflow sources, branch previews and comments, with no registered-definition
+fallback or client request. Its fictional workflow list contains Separations, Onboarding and Emergency
+Contact. Onboarding illustrates CRM intake, person matching, I-9 reuse/creation and new/concurrent
+hire filing; Emergency Contact illustrates packet review, per-person fan-out, identity checks,
+duplicate handling, address/phone entry and save/readback. Review, mismatch, duplicate and dry-run
+choices control the hypothetical path and reset when changing workflows. The copied concepts are
+source-pinned to legacy `9bb973672666b9267569a22d3fa0af722e4c5e87`; the browser has no legacy runtime
+dependency. Each workflow begins with its declared browser systems, matching Separations. Onboarding puts
+Hire type in its own second step; all eleven steps, source links and preview stops follow that order. Emergency
+Contact names UCPath first and authenticates only after packet review. These chips declare session
+needs; they do not report launched or authenticated sessions.
+
+Archive's mounted presentation follows the original-layout fictional mock in D348 below. Its retained
+transport and commands remain unmounted. Loading, empty and failed resources remain distinct.
+
+The 2026-10-03 calendar instruction selects two shared HeroUI compositions from the supplied
+Calendar, RangeCalendar and DatePicker references: the default DatePicker with Calendar for every
+single date, and the documented two-month RangeCalendar for every range. Preserve HeroUI's default
+calendar geometry, editable date segments, suffix calendar icon, year selector and keyboard behavior.
+Date fields use the surrounding DS buttons' radius, border, height and neutral colors, including hover;
+the dashboard date has its own exterior above Logs, separate from Navbar history controls. Keep visible focus
+and invalid states. Both calendars use the same product palette. The shared popup host retains Radix focus and layer
+handling so date fields also work inside Run dialogs. Surface-specific calendar styling and old date buttons are removed.
+Dashboard and form dates use DatePicker. Activity, Archive and Search ranges use DateRangeInput; either
+endpoint opens the same centered range picker and completing the second date updates both values
+and closes it. Activity's Start/End fields stay visible for every period; manual edits select Custom.
+Range pickers have no footer or Cancel/Apply controls. Text-entry dates preserve their required format and invalid drafts; Archive
+preserves inclusive UTC day boundaries and open-ended range filters. Invalid range drafts remain
+visibly invalid without publishing a reversed route; keyboard dismissal restores the originating field.
+
+Logs keeps its approved field tables, click rows, search/copy/latest controls
+and action-associated screenshots. Its Completed header is hidden while unfinished and failure states remain.
+`LogScreenshots` consumes presentation capture metadata (`kind`: fields, form, browser or person;
+system, label, capture time and declared dimensions). Unclassified retained captures keep a generic
+screenshot label. Filled-field groups show their supplied fields; Submit/Save captures show the complete
+form; person checks show the candidate record. A Kuali action contains only Kuali captures. The local
+sample supplies 16 fictional captures, including complete tall forms and verified result pages.
+The operator approved the revised log blocks and image workspace on 2026-10-02. Single capture
+previews use a 128px image area and at most 360px width; browser groups use three compact 96px
+image areas with at most 900px group width. Multiple forms use two preview columns capped at 760px
+group width. Forms preview their top and open at readable
+width with scrolling. The viewer offers Fit width, Whole image and 100%, zoom, quarter-turn rotation,
+keyboard navigation and two-capture comparison. Multiple captures appear in a left thumbnail sidebar.
+The viewer preserves capture order, names the selected system and action, bounds Previous/Next,
+and returns focus to its trigger after Escape, Close or outside dismissal. Missing bytes and dimension
+mismatches have distinct explicit alerts; Retry reloads the affected capture without replacing evidence.
+Dimension validation uses the detached decoded source, independently of preview layout; a genuine
+declared-size mismatch or decode failure still refuses the capture.
+Capture classifications and viewer grouping remain frontend presentation inputs, not a backend wire
+or capture producer.
+
+The local sample includes all 33 approved failure, review, parked-write, other-state and screenshot
+examples. Blocks use neutral borders, distinct header/body/action bands and the established system
+font and type scale. Review is blue, Write parked yellow and Failed red. The timestamp stays in the
+surrounding log. Necessary yellow notices are indented and fit their content. Failures lead with the
+problem, attempted action, last completed action when relevant, failed field/value and all browser
+captures. Only values needed to continue receive inputs; generic Details, Evidence, Reference and
+external-action controls are absent. Date corrections use the shared DateInput and calendar. The first
+Escape closes an open calendar while retaining its continuation dialog. Same-run outcomes append
+ordinary log entries outside the block; local continuation retains its screenshots. These controls
+change fictional examples only; connected resolution and failure authority remain deferred.
+The compact timeline is directly above the logs: equal-width 10px bars, small state dots and labels, and
+explicit fictional durations. Selected queue context retains its supplied pipeline states, including gray
+skipped/cancelled stages, and shows only supplied durations; missing completed durations have no
+visible placeholder. A decision retains its complete sample pipeline and earlier completed
+states and durations. Later stages remain gray and unavailable for jumping, without visible “Upcoming”
+text; only the affected stage
+and substep change state/color. Completed, active and failed bars are solid, waiting is hatched and
+upcoming is outlined. Hover/focus reveals named substeps and measured durations; unfinished steps disclose state
+without an invented duration. Hover does not change the background; green bars darken to 90% brightness. A stage
+click clears search, scrolls to its confirmed-action heading and moves focus there. Computations, connected
+identity/resolve/failure UI, run controls/status strip, tab band, capture gallery, elapsed-time footer and
+persistent timeline disclosures stay removed. Logs does not mount run-detail, section or capture requests;
+its header, timeline and content use panel fill, with opaque table fills.
+
+Activity export remains a visible placeholder. A separately scoped backend producer must validate
+authoritative projections and feed these same components while preserving approved layouts and
+interactions. Activity query/export authority and Logs failure/resolve wiring remain deferred. Migrate
+old connected-UI tests intentionally; synthetic samples are never live authority. The reusable palette
+and type scale are in the [Dashboard theme guide](../../../src/dashboard/ds/theme/DASHBOARD-THEME.md).
+
+Sessions cards place the workflow/subject header first, the systems grid next, and the current action
+with its node timeline after that; elapsed time and controls finish the card. The grid has at most two
+columns of 32px tiles: one or an odd final system fills its row, while two systems share the row.
+Active cards stay below 250px tall. Each timeline segment represents a supplied node, and its
+completed/total count comes from that node array. The entire Sessions bar toggles by mouse and keyboard
+and shows nonzero state counts (or “No workers”); Add workers is an independent secondary action. Worker
+commands are accessible icon-only controls. Idle cards can be removed; active cards cannot. Removal
+preserves peer cards and returns focus to the bar. No worker-stopped strip appears. Scenarios come from
+the `sessionsPreview` URL parameter, not a visible selector. The 320px dialog groups workflow selection and an editable
+positive whole-number count with increment/decrement controls; there is no fixed worker-count cap.
+An idle worker without a timeline shows “Ready for the next run” above a full-width empty gray bar
+with the accessible label “No run in progress.” Pause/resume/retry/stop controls change fixtures only;
+App no longer passes worker cards, pools, clock, connection/version or worker command dispatch to the
+UI. The former connected SessionPanel and timeline renderer are retired. Backend worker/browser
+authority remains a separate wiring task.
+
+`WorkspaceRail` supplies local `NavbarData` to the icon-triggered search dialog and local
+`NotificationsState` to the inline `NotificationsView`. Search and notification examples derive from current queue and local preview records; selecting
+a result opens its exact run or OCR Records destination through the shared history owner. Refused
+destinations retain the query and an explicit message. Delivery and read receipts remain session-local;
+these interactions invoke no HR command or OS delivery path. The shared DatePicker above Logs retains the route-owned date, limits and Today action.
+
+The notification rail keeps a compact header and filter row fixed while its single list scrolls.
+History-gap pins are absent from both the list and unread count; the normal fixture has three unread
+updates. Read state is independent of pending run actions. Removing a filtered row restores focus to
+the active filter. Escape closes the notification view and focuses the bell, including after Read all
+becomes disabled. Empty, loading, unavailable and toast examples remain distinct. Snooze remains retired.
+The shared
+semantic palette is authored in `src/dashboard/ds/theme/dashboard-theme.css`; DS, body, Settings and shadcn
+neutral aliases resolve through `src/dashboard/ds/theme/tokens.css`. Current values and presentation seams
+are in the [Dashboard theme guide](../../../src/dashboard/ds/theme/DASHBOARD-THEME.md).
+
+The approved mixed queue presentation retains the existing system title font and monospaced gray
+footer band, with 14px top padding. Regular rows have no leading status or information icon. Bulk
+selectors sit outside the card. The footer's `#N` opens the exact logical item's attempt menu; selecting
+an attempt opens that run without adding another row. Served mode, warning and completion labels
+remain. Running puts its blue spinner and text inside the label. Review uses a blue label and message;
+Failed uses the compact danger label and message; Write parked retains yellow. Running progress has
+one segment per supplied pipeline step, with the action label and completed/total **steps** below it.
+Tooltips retain supplied state, duration and execution count. Terminal duration is omitted when no end
+instant was retained; measured zero remains visible.
+
+Operation rows show a boxed finished/total counter beside their status and an aligned Name/Status
+member table. Member status icons, attention ordering and exact run selection remain. Local checked marks, their controls and tally are retired. The compact table fits five complete rows and expands to twenty; unloaded members remain a
+distinct state. Workflow-batch items render separately even when the served session prefers grouping;
+no grouping control or grouping command is offered. Logical retry identity remains item-scoped, and
+keyboard traversal follows the visible status bands. Bands retain uppercase labels, circular counts and
+horizontal rules. This presentation changes neither served status/actions nor backend publication.
+
+
+The 2026-10-05 frontend organization and navigation amendment groups components, pure models,
+feature styles and producers under cohesive `surfaces/` directories. `app/navigation/` is the single
+history owner; `app/commands/`, client query/command/subscription implementations and DS
+primitives/theme are separate groups. Public client facades and `ds/ui.tsx` remain stable.
+Component-only export and memo-prop guards recurse through nested features and retain explicit
+membership checks. The dashboard README owns the folder map and change-placement guidance.
+
+A bounded schema-validated `view` query contains page and view coordinates: workflow/run selection,
+queue filters/sort/disclosures, launcher stages, notification views, worker selection, spreadsheet
+viewer/import stages, OCR source pages, Explorer disclosures/field sources and version-review stages. Same-event
+updates create one native history entry; typed search replaces it. Existing Settings draft guards
+and native cursor restoration remain the only navigation authority. Private values, files, OCR
+corrections, credentials, command outcomes and read receipts remain outside URLs. Drafts survive
+history in the running page; reload does not manufacture missing session data. Transient menus,
+focus, validation and zoom stay local. Unknown destinations and source addresses are explicit.
+Explorer initial/restored details events do not create history entries. Settings retains each
+section's reading position during navigation. Run search indexes exact current queue/preview IDs
+and their displayed aliases; cross-day service search remains unwired. Notification evidence wraps.
+
+The separate proposal showcase contains the six audit additions and four further examples in
+context; it changes no product authority. Current review, scripts and browser evidence are retained
+under `frontend-audit-20261005`, with the updated operator report at
+`frontend-audit-20261004/dashboard-review.md`. Focused checks do not claim the inherited broad test
+failures, type diagnostics or Phase 3.1.19 frozen-reference/exit obligations have passed.
 
 
 **What this doc is.** The contract for everything the operator SEES and for every mechanism that
@@ -354,6 +581,25 @@ cross-referenced rather than re-litigated.
 10. Add non-byte capture viewer and archivable-run list; B leaves capture inert, C asks action on counts alone.
 
 ### D348 — dashboard and workflow runtime versions (2026-09-24)
+
+**Mounted presentation amendment — 2026-10-03:** the operator rejected the Focus Archive
+redesign and requested a polished mock of the original Archive. The app's Archive takeover now
+mounts a local fictional dataset instead of the Archive read/command client. Preserve the original
+dashboard-version groups, full-width workflow folders, filter strip and complete report with section
+navigation. The shared compact operations toolbar replaces the separate Current/version-history header rows;
+it holds search, matching count, subtle dashboard version, mock identification and Plan a bump.
+Archive navigation is the only Archive label. Reports open as full pages. Dashboard version,
+workflow version, archived date, outcome and retained-file count live once in Workflow details;
+the separate report metadata strip is removed. Workflow fields join Workflow details without
+duplicating Subject fields. The separate Fields navigation entry is removed. Steps becomes Logs,
+using the shared LogPanel, timeline, action/field rows, saved failure blocks, screenshot workspace,
+search, copy and latest-action controls. Historical logs offer no continuation commands. Old Fields
+section links open Workflow details; remaining section identities stay stable.
+Plan a bump keeps the original selected-workflow /
+all-workflow modal and inline review. Downloads contain fictional local records and files; completing
+bump review changes no runtime version. Backend authority and its retained implementation below are
+unchanged and unmounted; reconnecting and proving them is separate future work. The mounted mock
+must remain visibly identified, route-owned and free of Archive queries or commands.
 
 The operator approved an Archive redesign with independent **dashboard** and **workflow** runtime
 version counters. Both use `major.minor` display and durable run identity. They are distinct from
@@ -1485,10 +1731,10 @@ same way still fails.
 - [x] D67/D95/D283/D351/D352 — twelve closed target families over 40 actions, one idempotent actor-stamped envelope, one exhaustive dispatcher, one durable command journal (`src/domain/commands.ts`, `src/core/command-kernel.ts`)
 - [x] the Phase-1 arm partition is checked against the D95 registry in BOTH directions at module load — an action neither list carries, or both, throws before any command can dispatch (`command-kernel.ts`)
 - [x] D233/D234 — CAS on every run verb, `bump` included; `hide`/`unhide` are retired from the whole stack
-- [x] D253 — `CommandResultSchema` has three arms and TWO are refusals; every dashboard module settles through the one exhaustive fold (`src/dashboard/app/command-result.ts`, guarded by `command-result-exhaustive`)
+- [x] D253 — `CommandResultSchema` has three arms and TWO are refusals; every dashboard module settles through the one exhaustive fold (`src/dashboard/app/commands/command-result.ts`, guarded by `command-result-exhaustive`)
 - [x] D109 — a descriptor-driven start consumes a server-issued `start_plan`, revalidated and consumed in the same transaction that creates the runs
 - [!] `supersede-active` is implemented in the kernel, unanticipated by the planner, and reported to the operator as unimplemented — three sites, two answers (below)
-> 2026-08-20 | docs-dash-surfaces 5.1b | verified against src/domain/commands.ts, src/domain/dashboard/actions.ts, src/core/{command-kernel,run-fan-out}.ts, src/services/start/plan.ts and src/dashboard/app/command-result.ts; left: the `supersede-active` split, filed rather than fixed here
+> 2026-08-20 | docs-dash-surfaces 5.1b | verified against src/domain/commands.ts, src/domain/dashboard/actions.ts, src/core/{command-kernel,run-fan-out}.ts, src/services/start/plan.ts and src/dashboard/app/commands/command-result.ts; left: the `supersede-active` split, filed rather than fixed here
 <!-- /roadmap-status -->
 
 The dashboard, CLI, recovery code, workflow editor, notification inbox, gate resolvers and capture
@@ -1586,7 +1832,7 @@ section read *"`run`'s `edit-checkpoint` arm plus the `intake`, `settings`, `ver
 treats a CAS conflict as success — which is exactly what the Context rail's Data save and the
 notification bell did, closing the editor and reporting a correction *saved* that the kernel had
 refused. Every module under `src/dashboard/**` therefore settles through ONE exhaustive fold,
-`settleCommandResult` (`src/dashboard/app/command-result.ts`), whose `switch` over the discriminant
+`settleCommandResult` (`src/dashboard/app/commands/command-result.ts`), whose `switch` over the discriminant
 makes a fourth arm a compile error; `command-result-exhaustive` refuses any dashboard module that
 names one refusal arm without the other. The two refusals stay distinguishable in the SENTENCE,
 because the operator does different things about them: a conflict names the server's version and
@@ -1946,7 +2192,7 @@ byte verification every manifest received when it was written — while the doct
 [--json]`, exit 0 only when authority and span/authority reconciliation are healthy AND a verified current backup exists)
 re-verifies backup BYTES on demand; an unparseable manifest reads `missing` on the summary (its
 closed enum's fail-safe arm) and `invalid`, named, on the doctor. Settings itself
-(`src/dashboard/surfaces/settings.tsx`, the top-bar gear with an attention dot) renders the
+(`src/dashboard/surfaces/settings/settings.tsx`, the top-bar gear with an attention dot) renders the
 sections the SERVER serves (`settingsSections`, today exactly `storage`) — §5's mandate "expose
 age/health in Settings" remains read-only. DCC1 activated the backend `apply-settings` authority
 and DCC3 landed its bounded resolver-owned editing controls; `{#def-settings}` keeps the broader
@@ -3788,11 +4034,12 @@ knows no workflow. Everything workflow-shaped reaches it as a declaration — `s
 (the parser spec, placeholder, constants and examples), `input`, `summary` and `enqueue`, four
 fields on the descriptor.
 
-**What it shows.** Four rows, in the demo's own order: the workflow-setup block (the descriptor's
+**What it shows.** The workflow-setup block (the descriptor's
 own `summary` sentence, drawn as prose and omitted entirely when the descriptor declares none), the
-typed box with its derived value-noun, separator phrase and parser sentence, the `Examples` row of
-buttons that fill the box with **exact** text, and *What this will create* — the proposed run(s) the
-server planned, never a client-side guess. Beside them the shared settings: queue behaviour,
+typed box with its derived value-noun, separator phrase and parser sentence, an ordered Parsed input
+list, and *What this will create* — the proposed run(s) the server planned, never a client-side guess.
+The presentation amendment above removes the Examples strip while retaining descriptor validation.
+Beside them the shared settings: queue behaviour,
 priority and dry run. Destination is not a decision this form owns.
 
 **What it commands.** `POST /api/v1/start-plans` to plan; the `start` command family, consuming the
@@ -3815,8 +4062,8 @@ owns capacity selection, the three-worker cap, replay and post-enqueue uncertain
   `allow-parallel` and get `reject-active`. The declared value is drawn read-only with its reason,
   over a label table that states what the planner DOES rather than what the arm's name suggests
   (D251).
-- **No fabricated example.** Absent `examples[]` renders no row. Nothing invents a sample
-  identifier.
+- **No example controls.** Descriptor examples remain validated data; the modal does not render
+  an Examples strip or invent a sample identifier.
 
 **D293 — preserve the Options and conditional Steps screens; remove only per-start destination
 (2026-08-31; final operator correction, implemented and integration-proven).** D284 keeps its later sole
@@ -3964,6 +4211,11 @@ preserving D313's modal authority, D308 deletion, and every write-safety fence.
    is unchanged by that; what changed is that a workflow needing two identifiers is now a graph
    problem rather than a second box. `ref workflow-model` and `docs/rebuild/migrations/separations.md` own
    the derivation; this section owns only the consequence for the box.
+
+**2026-10-02 presentation amendment:** the approved Run/Rerun design and
+[spreadsheet registration](#run-rerun-and-spreadsheet-presentation-amendment--2026-10-02)
+replace D296/D298's spreadsheet entry inside Run. The served intake capability and backend contracts
+remain; the Settings registry is explicitly mocked.
 
 **D296 — the launcher has TWO methods, and the second one is the intake's only door
 (2026-09-01).** A workflow whose MODULE declares an intake projection is spreadsheet-capable — the
@@ -5197,7 +5449,7 @@ endpoint, the action-descriptor rule (§8.5) and the parity references.
 - [ ] D9's `rejected` containment arm is not on the wire; `ContainmentSchema` serves `root | member | linked` and the row model's `rejected` arm is not on it
 - [ ] D13's `Re-upload` is not in `ActionCommandKeySchema`; the failure summary half is built and served
 - [ ] every group-row fact (D5 collapse, D11's well, D14's group-of-one, `memberPreview`, the rollup) is drawn from fixtures — no `operation` run has ever been minted (§9.10)
-> 2026-08-20 | docs-dash-surfaces 5.1c | verified against src/domain/dashboard/projection.ts, src/server/dashboard/projectors/{queue-row-actions,run-subject-title}.ts, src/domain/dashboard/actions.ts, src/dashboard/surfaces/{queue,queue-toolbar,queue-model,run-identity-model}*, src/dashboard/ds/tokens.css; left: the group shape's producer and D16's operator call
+> 2026-08-20 | docs-dash-surfaces 5.1c | verified against src/domain/dashboard/projection.ts, src/server/dashboard/projectors/{queue-row-actions,run-subject-title}.ts, src/domain/dashboard/actions.ts, src/dashboard/surfaces/{queue,queue-toolbar,queue-model,run-identity-model}*, src/dashboard/ds/theme/tokens.css; left: the group shape's producer and D16's operator call
 <!-- /roadmap-status -->
 
 ### 9.3 Run detail — open and follow a run
@@ -5548,7 +5800,7 @@ follow key on the day wire and the parity references.
 - [ ] `context-evidence` is fetched whenever advertised and handed to nothing; no consumer exists
 - [ ] no parity reference photographs the categorical strip — the run-detail fixture serves no `steps`
 - [ ] D17's per-member receipt table: `receipt.tsx` renders no member rollup
-> 2026-08-20 | docs-dash-surfaces 5.1c | verified against src/server/dashboard/queries/run-detail.ts, src/domain/dashboard/run-detail.ts, src/base/workflow.ts, src/dashboard/surfaces/{log-panel,log-panel-model,receipt}*, src/dashboard/state/use-run-detail.ts; left: four declared-unservable sections and the categorical strip's missing reference
+> 2026-08-20 | docs-dash-surfaces 5.1c | verified against src/server/dashboard/queries/run-detail.ts, src/domain/dashboard/run-detail.ts, src/base/workflow.ts, src/dashboard/surfaces/{log-panel,log-panel-model,receipt}*, src/dashboard/surfaces/run-detail/use-run-detail.ts; left: four declared-unservable sections and the categorical strip's missing reference
 <!-- /roadmap-status -->
 
 #### 9.3.1 The Context rail — Data, Edit Data, provenance
@@ -5837,7 +6089,7 @@ contract is that a read surface must not wear an editor's affordances.
 **They are TAKEOVERS, and precedence is resolved in ONE place.** Each replaces the main region
 rather than dimming it, for §9.7.1's reason — a half-visible queue behind a reference view is the
 modal it deliberately is not. A link may carry any combination of keys, so `activeTakeover`
-(`src/dashboard/app/url-state.ts:129-142`) states the winner rather than leaving it to whichever
+(`src/dashboard/app/navigation/url-state.ts:129-142`) states the winner rather than leaving it to whichever
 JSX branch is tested first: **`intake` → `archive` → `activity` → `explore` → `catalog`**. The
 operator's in-progress WORK outranks the two places they navigate to and stay, and those outrank the
 two things they look UP; the workflow-scoped reference outranks the system-scoped one. Writing any
@@ -5862,7 +6114,7 @@ parity references for all three.
 - [~] D186 — D283/DCC close only the Explorer's strict existing-workflow label/icon/category subset; broader authoring/policy work remains deferred with its named trigger (`{#def-explorer-edit}`, §9.5.3)
 - [ ] D189/D294 — the production BFF serves no frontend bytes, so `dashboard:prod` cannot serve the ordinary built local dashboard (`{#def-byte-path}`)
 - [ ] the per-archived-run storage delta is unmeasured: no production database has archived a run (§9.5.1)
-> 2026-08-21 | docs-dash-surfaces 5.1d | verified against src/dashboard/surfaces/{archive,activity,explorer,ui-catalog,intake,settings,top-bar}*, src/dashboard/phone/**, src/dashboard/app/url-state.ts, src/server/dashboard/queries/{archive,explorer,storage}.ts, src/services/archive/archive-service.ts; left: the two deferrals and three named deviations above
+> 2026-08-21 | docs-dash-surfaces 5.1d | verified against src/dashboard/surfaces/{archive,activity,explorer,ui-catalog,intake,settings,top-bar}*, src/dashboard/phone/**, src/dashboard/app/navigation/url-state.ts, src/server/dashboard/queries/{archive,explorer,storage}.ts, src/services/archive/archive-service.ts; left: the two deferrals and three named deviations above
 <!-- /roadmap-status -->
 
 #### 9.5.1 The Archive — a record that needs no old code to read (D80)
@@ -6736,6 +6988,54 @@ parity references for all three.
 
 #### 9.7.1 The intake workspace (2i-E3, D173)
 
+##### Run, Rerun and spreadsheet presentation amendment — 2026-10-02
+
+The operator approved Design 1 with subsequent control, step-row and spreadsheet revisions.
+The 2026-10-04 operator direction requires the approved Design 1 presentation exactly.
+Run and Rerun share an 880×628 desktop frame, 190px rail, 73px header, 54px stage bar and
+57px footer. Run has a workflow rail; Rerun has a source rail. Run follows Input → Options → Confirm;
+Customize steps inserts Steps after Options. Rerun follows Steps → Values → Options → Confirm.
+Input uses an 88px textarea and compact parsed rows. Reached stages can be revisited without losing
+the draft; later stages require the existing validation. Options use 36px workbook and segmented
+controls, with three columns for checkbox options. Workflow version appears in Options and Confirm;
+the footer shows the input count and workflow, or the source/new-run context.
+Checkboxes align with their titles; prior step outcomes use compact status labels beside the title.
+The source-history note stays at the bottom of the Rerun rail. Date popovers anchor to the input field.
+Peer controls in a row use the same height. The 2026-10-04 operator revision makes spreadsheet Settings
+use the shared Settings PageHeading, ordinary buttons with 14px icons, and underline tabs. It retains
+the existing theme and blue spreadsheet accent.
+Options use styled workbook choices, segmented priority/browser controls and compact fixed facts.
+Rerun pre-fills only available, declared input identifiers from the source, retaining copy attribution
+until edited. Dates and other previous values remain explicit copy actions. Real descriptor fields,
+step membership, omission dependencies and server validation remain authoritative; sample prototype
+step counts do not replace them. Step system labels come from the served task namespace projection.
+Rerun keeps source-bound values and repeat-write confirmation. A confirmed applied start closes the
+dialog and emits a toast; unknown or refused submissions retain recovery.
+
+Spreadsheet registration is separate, at Settings → Spreadsheets, organized by spreadsheet type.
+The initial type is Roster. Registered files, type definitions and per-sheet column mappings are
+inspectable; search covers multiple mapped fields, including names and identifiers. Spreadsheets uses the ordinary Settings content cap, with contained horizontal table scrolling when columns exceed that space. The search note stays on one line. Roster field groups are
+separate sections with distinct Field and Source column headings; the type card keeps one description.
+Registered files open the shared editable viewer with the approved fictional records; the table border
+follows its content rather than unused vertical space. The import
+dialog has Mapping/Preview views, a 148px sheet rail, 32px mapping controls and the shared calendar
+where a date is requested. Import closes directly to a success/failure toast, without a Ready page.
+Reference use and generating an updated copy are the intended defaults, not per-import toggles.
+Importing a roster does not start people from its rows.
+
+The registry and Run attachment choices remain session-only fictional spreadsheet data. They do not
+persist registration, attach a workbook to a live run or start people from its rows. The same library-to-viewer flow
+at Settings → Data → Spreadsheets parses real XLSX/CSV files, retains imported XLSX
+fills and theme colors, edits values, adds rows/columns, sorts and controls visible columns. Export
+creates a new XLSX/CSV copy without changing the original. XLSX includes every sheet; CSV includes
+the current sheet. Exports include all rows and only visible columns. Formula cells use saved values,
+without recalculation; font and text styling are outside the editor's color-preservation contract.
+Partial exports keep the dirty draft guard when other sheets or hidden-column edits remain. Empty,
+malformed, oversized or unsupported-color files report explicit errors. Workbook parsing is lazy.
+Run/Rerun retain their existing live plan/start authority. D296/D298's Run-modal spreadsheet entry is
+superseded for this presentation; existing intake schemas, services and durable-session contracts are
+not retired by the mock registry. Full dashboard acceptance and reference refreezing remain 3.1.19.
+
 **2026-09-14 approved presentation amendment:**
 [3.1.9.6](../plans/phase-3/3.1-finish-the-dashboard/task-9-6-finish-intake-surfaces.md#approved-execution-brief--2026-09-14)
 extracts the existing spreadsheet upload component from the Run modal, preserving that entry and
@@ -6881,7 +7181,7 @@ phone selects the light theme and spends no new colour. The palette budget, the 
 the tailwind ratchet are unchanged, and no operator surface moves. **Two vocabularies, one fact:**
 the attribute VALUE is `light` — stamped on both `<html>` and `<body>` of `capture.html:2, 22`, with
 `<meta name="color-scheme" content="light">` beside it — and `Paper Ink` is that palette's product
-NAME (`DEMO_THEME_LABEL`, `src/dashboard/ds/theme.ts:45-48`, and the word the parity references
+NAME (`DEMO_THEME_LABEL`, `src/dashboard/ds/theme/theme.ts:45-48`, and the word the parity references
 carry). A reader who greps for `paper-ink` in the phone entry finds nothing and should not conclude
 the theme is unset.
 
@@ -7266,8 +7566,10 @@ surface did not send is unreachable rather than hidden.
 **The Workflow Panel has three modes**, persisted and cycled with `w`: **floating** (default — a
 window over the panel region, costing no column; Escape or an outside click dismisses it to `icon`),
 **icon** (nothing drawn over the content; the launcher carries the current workflow's 2-char code and
-the day's whole `Needs you` count across every panel), and **sidebar** (docked, 200px, always
-visible). Which panel you are in stays readable in all three because the Queue Panel is titled by its
+the day's whole `Needs you` count across every panel), and **sidebar** (docked, 280px, always
+visible). Floating and docked modes share the 280px width token. The dashboard's panel launcher and
+Start a run stay fixed in the full-width toolbar; docking changes only the content below it.
+Which panel you are in stays readable in all three because the Queue Panel is titled by its
 workflow. **One scrolling region per panel**: a panel's scroll track runs its full height, and a
 header, an outcome line or a tab bar that must stay put is a *sticky* block inside that one region,
 never a band stacked outside it. Queue rows are fixed at `--ds-h-row` — no surface invents a row
@@ -7277,12 +7579,672 @@ render.
 
 #### D347 — Workflow rail selection and heading · 2026-09-24
 
-The Workflow Panel persists the last selected workflow ID as a local browser preference. On load,
-use it only if the current bootstrap serves that ID; otherwise select the first served workflow.
-Selecting another workflow updates the preference, including when the operator leaves and returns to
-the dashboard. The rail shows category headings, workflow labels, the selected marker and each
-workflow's `active │ all` count pair. It has no `active │ all` column heading. The toolbar keeps
-its day-wide active count; the Status Bar and queue still consume the served projection.
+The selected served workflow ID persists as a local browser preference. On load, use it only when
+bootstrap serves that ID; otherwise select the first served workflow. The 2026-10-04 operator amendment
+makes the rail permanent, with a left-aligned HR GPT heading that stays unchanged in
+notifications. Its left edge aligns with the category icons; the run-search glyph's right edge aligns
+with row counts, preserving the search button's full target. It has no floating/minimized modes or
+display-mode shortcuts. Category icons sit beside their headings. Rail outer insets and row-card edges
+remain 8px; workflow names align with category text by reserving the 14px category icon and its 8px gap.
+Workflow rows have no
+leading icons or Preview badges; active/all metadata disappears at the narrow supported desktop width.
+Layout-preview workflows never enter the served launch catalog or persisted workflow preference.
+The 2026-10-04 workflow-mock amendment copies contracts for all 15 rail workflows from
+`legacy:hr-automation@9bb973672666b9267569a22d3fa0af722e4c5e87`. Unserved workflows have local
+queues, logs and Run/Rerun previews in the approved compact frame; served launches retain their
+existing descriptor, command and recovery authority. The served picker hands off preview choices
+without placing their IDs in a start-plan request. Local preview transport remains separate from served launch authority.
+Typed inputs, PDF preparation, form types, roster selection, dry-run terminals and kernel step order
+follow the copied sources. I-9 Lookup remains delegated; SharePoint offers the configured Onboarding
+Roster; OnBase combines PDFs. Its local document-type dropdown offers Oath, I-9 Section 1,
+I-9 Section 2 and Emergency Contact, without an unavailable-types disclosure. The selected type
+continues through Confirm, OCR review, approved person imports and Rerun; I-9 previews show only
+the selected section. These are frontend preview choices; runtime document admission is unchanged.
+Full Oath Upload waits for review
+and independent Oath Signature runs before its ServiceNow ticket; upload-only skips both. The OCR
+panel owns delegated record editing and approval. I-9 Check uses configured Action History and
+appends again on rerun. Local PDF duplicate checks compare content hashes. Source histories remain
+unchanged when a rerun is added. Work-Study and Old Kronos Reports use their kernel input schemas;
+the old dashboard had no public typed Run registration for either. Labels use Employee IDs and
+Kuali ID, and the workflow rail omits the trailing composition summary. The source digest inventory
+and focused verification are retained in `workflow-mocks-20261004` under the evidence root.
+Settings page actions center vertically on the complete title/description block. A title-only heading
+keeps its action inline. The healthy storage summary keeps its availability label on the left and
+report timestamp on the right. An absent detailed report remains explicitly not checked, and degraded
+storage retains its check freshness beside the failure. The summary has a visible Status heading;
+the primary check card has a Data store and recovery heading, using the shared section typography.
+The 2026-10-05 storage presentation amendment keeps the existing card-row layout with 13 checks
+visible in Storage health, Work in progress and Connections. Run history is removed from this page
+at the operator's request; the doctor wire and runtime checks remain unchanged. Work counters use
+Pending actions, Changes awaiting confirmation, Assigned work, Provider tasks and Pending outputs;
+nonzero counts remain neutral. Connection rows retain each setting's present, absent, unknown or
+unavailable state. Storage updates show readable stage names and dates rather than schema version
+numbers. Healthy checks omit internal schema, generation and page metadata. Exact failure causes
+remain in a contextual Diagnostic details disclosure beside the relevant check or group; there is
+no page-wide technical bucket. Unavailable checks never become passing or zero-count results.
+Failed refreshes retain the last completed report and timestamp, with a short failure notice and
+optional exact error. Current bootstrap degradation remains prominent, and a degraded doctor report
+also prevents an available summary. Doctor and recovery authority are unchanged.
+Focused verification belongs to `storage-health-polish-20261005`, with restored headings verified
+in `storage-section-headings-20261005`; full frozen parity remains at 3.1.19.
+Preflight uses the same compact Status section: readiness label and dot on the left, Last checked
+with the served report date and local time on the right. The returned-check count, redundant summary
+description and standalone Checked timestamp are retired.
+Loading labels, refused scopes and explicit previous-result warnings preserve the served readiness
+and freshness distinctions. Compact Preflight dialogs retain their report timestamps. Focused evidence
+is retained in `preflight-summary-card-20261005`.
+The Preflight refresh amendment labels the action Run preflight throughout Settings and the compact
+dialog. A pending refresh retains the mounted report, timestamp, check rows and workflow disclosure
+state through both the command and authoritative readback. Progress replaces the readiness label
+inside the existing Status card; it does not add a previous-result banner or replace the page with
+skeletons. Existing historical warnings remain in place while refreshing. Pending evidence never
+claims current readiness, and failed readback retains explicitly historical evidence. Focused evidence
+is retained in `preflight-refresh-20261005`; freshness, identity isolation and command authority remain
+unchanged. Full frozen-reference and repository gates remain with 3.1.19.
+The 2026-10-06 ChatGPT account amendment retires the Provider budgets & models page and provider
+API-key controls from the frontend. General places the account card before Appearance; thirteen
+Settings pages remain. Legacy `providers` and `provider-env` links open General, and search points
+to `chatgpt.account`. UCPath and workflow protected controls remain. The memory-only preview port
+connects the sample account directly from Continue with ChatGPT, requesting plan use without an
+intermediate dialog. Sign-out clears it without collecting credentials, storing tokens or contacting
+OpenAI. Real consent and plan eligibility belong to the replacement adapter. Loading, expired, unavailable,
+plan-disabled and usage-limit states remain distinct; pending locks and failed actions preserve
+confirmed state. `ChatGptAccountContext` is the replacement seam for backend OAuth/session/consent
+authority. Existing backend provider contracts are retained; UI retirement does not migrate them.
+Evidence is `chatgpt-settings-20261005` and `chatgpt-direct-10003539`; phase-exit gates remain deferred.
+
+The later 2026-10-06 developer-controls amendment removes Browser viewport from General, its
+loading placeholders and Settings search. The backend retains worker viewport configuration.
+Plan a bump and its dialog are retired from mounted mock and retained runtime Archive; legacy
+version-stage URLs render ordinary browsing and issue no version command. Existing report version
+metadata, exact-run search, tabs, retained files and export remain. Developer-controlled version
+publication occurs outside the end-user frontend. Backend review, archival scope, active-run blockers
+and immutable historical reports are unchanged; UI retirement does not authorize a runtime migration.
+Evidence is `frontend-controls-removal-10003539`; phase-exit gates remain deferred.
+
+The later 2026-10-06 Archive-page amendment retires the entire end-user Archive page, superseding
+its preceding mock browsing and queue-archive presentation. Twelve Settings pages remain. The
+application no longer imports or mounts the Archive page, offers its Settings/shell search destinations,
+captures queue snapshots for it, or publishes a fictional Archive notification shortcut. Queue
+preview menus retain Retry and Delete. Legacy `settings=archive` and `archive` URLs, including old
+report/version-stage coordinates, show an explicit removal notice with a guarded dashboard return;
+other unknown Settings requests retain their failure state. Stored-data read failures remain visible.
+Completed runs retain the existing day/status queue filters and Logs.
+
+Stored backend history, historical readers and transport contracts remain intact and unmounted.
+This presentation change does not implement a unified cross-day/cross-version run query, migrate
+existing records, change active-run upgrade compatibility, or supersede D348's backend authority.
+Those wiring and lifecycle changes require their own owner before runtime adoption. Evidence is
+`archive-page-retirement-10003539`; frozen phase-exit gates remain deferred.
+
+Loading placeholders follow each mounted page's existing geometry. General, Paths, Performance,
+Routes and Credentials retain their headings, group order, row spacing and control
+widths. Activity keeps its metric cards, tables and chart frame; the UI catalog retains its two-column
+browser. Storage and Preflight keep their titled summary and check rows. Notifications, Sessions,
+queue, Logs and spreadsheet intake use placeholders for their own cards, columns and fixed actions.
+OCR source images fill the fitted PDF frame while loading, with zoom disabled until the image arrives
+and extracted fields remaining editable. Unknown data uses representative rows without inventing
+values or readiness. Existing reports remain visible during refresh; failed and empty states stay
+distinct. The shared DS Skeleton uses a quiet pulse, disabled for reduced motion, and loading regions
+announce one status while decorative placeholders remain hidden from assistive technology. Synchronous
+local previews do not add artificial delays. Focused evidence is retained in `page-skeletons-20261005`;
+full repository and frozen-reference gates remain with 3.1.19.
+Queue row footers center the provenance block and action targets vertically, including wrapped
+metadata. Retry and Delete keep their shared 24px targets. Archive is available in the row context
+menu, including local workflow and OCR queues. Local Archive captures the source snapshot without
+changing its status or approving records; unfinished runs remain not completed. Workflow snapshots
+retain corrected fields, record selection, original inputs/settings, linked identities and their
+current Logs. Archiving delegated OCR removes and retains its parent and dependent subtree together.
+Queue previews retain their source row, pipeline and original preview settings. These snapshots appear
+in the existing Archive folders, details, Logs and exports for the current browser session; reload
+restores seeded mocks. Served runtime commands remain descriptor-authoritative. Focus returns to a
+remaining queue row or its heading. Focused evidence belongs to `queue-footer-archive-20261005`.
+Settings search arrival cues extend across a full-width row's card padding, with the card clipping its
+corners. Focus and centering remain on the exact requested control. Shared underline tabs begin at the
+left edge of their rail and use one interruptible 220ms transform transition between pointer-selected
+tabs. Keyboard selection and reduced motion update immediately. Spreadsheet toolbar and footer controls
+share the body control height; explanatory footer and sorting notes are retired. Archive folder counts
+sit immediately beside search, with completed-date filters at the right. Activity keeps the period at the
+left and both calendars at the right, without visible endpoint prefixes; accessible Start/End labels,
+preset synchronization and manual-edit Custom selection remain.
+The Run picker amendment reuses the permanent rail's category icons, heading order, text indent,
+row height and selection surface. Its shared searchable catalog includes every registered entry.
+Unavailable direct launches remain visible with a reason and a disabled control. Served direct launch remains the descriptor's declared typed-input capability; local previews carry
+an explicit `runnable` flag. I-9 Lookup is delegation-only in the pinned legacy kernel. OCR is excluded
+from direct launch by the current operator choice, although the pinned legacy upload registry offered
+standalone preparation. Both have a Parent only label in Run and remain available in the workflow panel
+and Explorer for their delegated records.
+Work-Study and Old Kronos retain the already admitted schema-backed previews. Picker choices stay
+inside the launcher, without updating dashboard selection or recreating the modal or navigation.
+Search text and scroll survive a change; selecting the current entry preserves its draft. A different
+workflow resets only that workflow's form. Local preview controls render within that form; memoized
+navigation and omission folds avoid unrelated work. Choosing a served entry always returns to the
+served planner and command door. Preview submission closes the same launcher and updates only the
+local queue. Rerun source binding, request invalidation, recovery and focus return remain authoritative.
+
+The 2026-10-05 workflow catalog amendment composes one frontend catalog at the app boundary from
+served launch declarations and the complete local preview registry. The workflow panel, Run/Rerun,
+Add workers, Explorer, Archive workflow filter and workflow-label lookups consume this same catalog.
+Served registrations replace preview launch authority by ID; their exact start declarations and
+refusals remain authoritative. New served IDs enter every selector without another local list.
+Duplicate registrations fail explicitly. Membership and action availability are separate: OCR and
+I-9 Lookup remain visible but disabled for direct launch. Source-bound Rerun cannot change its source
+workflow. Add workers remains a local presentation producer and supports every registered workflow,
+using that registration's label and system requirements without claiming a run or inventing a UCPath
+browser. Archive retains additional historical workflow identities for saved reports. Explorer lists
+new registrations without a copied graph as unavailable previews. Preview IDs never enter served
+start-plan or worker-command transport. Future backend wiring replaces the boundary producer rather
+than individual selector inventories. Focused evidence is `workflow-catalog-20261005`.
+
+The 2026-10-05 mock launch layout amendment shares Options, step-list and confirmation components
+with the served Person Lookup and Separations forms. Options places Customize steps, supported Dry run
+and Capture screenshots first, followed by workflow-specific fields and paired Priority/Browser mode
+controls. Bulk is the operator label for the local background queue setting; its stored meaning is
+unchanged. Workers, hire type, oath modes, rosters and date inputs retain their workflow contracts.
+Upload-only customization excludes OCR/signature waits. Turning customization off restores the full
+current-mode step selection; an empty selected set cannot advance. Steps retain system labels,
+included counts and source outcomes on rerun. Confirm uses the served summary-card and aligned
+definition-list geometry. The redundant Workflow plan disclosure is removed from Run and Rerun
+confirmation; optional selection and source outcomes remain in Steps, with execution outcomes in Logs.
+Run counts describe root runs, including combined OnBase documents, without counting OCR children.
+The shared footer retains separate provenance and action groups with matching icons and Preview plan
+navigation. All 15 rail contracts are inspected; OCR and I-9 Lookup remain delegation-only. Focused
+evidence belongs to `mock-run-layout-20261005`. Served planning, omissions, recovery and commands are
+unchanged; local preview submission remains browser-only.
+
+The workflow-component amendment extends these local producers with contract-specific read/fill
+results, OCR record review, manual identity provenance, selected-person fan-out, discard and linked
+run navigation. PDF parent rows delegate to a separate OCR row, which owns records and approval;
+person rows consume approved input snapshots and own their kernel steps. Full Oath Upload links
+to separate Oath Signature rows. The current operator amendment gates I-9 intake at OCR approval
+before creating person rows; this supersedes the copied legacy automatic I-9 intake path in local
+previews only. Completed I-9 retention results and person outcomes stay in Logs. CRM and I-9
+verification values cannot be edited. Source transcriptions and all identities are fictional;
+uploading a PDF does not invoke OCR or contact an external system in these previews.
+Explorer includes all 15 rail workflows with field provenance and conditional paths. The copied
+legacy demo graphs correct Work-Study pool F/reason JRL and comments, configured SharePoint
+navigation/download, and Old Kronos Time Detail validation against the pinned kernel modules.
+Onboarding dry runs stage and abandon the I-9 form, then stage Smart HR without submitting.
+The source digest inventory and verification are retained in `workflow-components-20261004`.
+The Records layout amendment reuses the canonical `QueuePanel` and `QueueRow` for every local
+workflow. Preparation and person runs keep independent rows. Local presentation identities are
+stable across edits, sorting and filtering and carry no runtime command descriptors. Results are
+log steps with timeline entries; the separate Result and Linked runs tabs are retired. A named,
+keyboard-accessible icon beside Rerun opens parent, child and rerun-source navigation.
+The OCR-only Records amendment removes the Logs/Records tab switcher from local workflow runs.
+Logs remain the main detail surface; only OCR exposes a Records action in its header. That action
+toggles the entire log-panel body while retaining its header. The review body has two columns:
+a PDF-page image on the left and every extracted response field on the right, including blanks.
+Each pane scrolls independently; document zoom, fit and I-9 page selection stay within the panel.
+Record selection, inclusion and a fixed approval footer belong to the editor. Other workflows offer a direct link to their OCR run and have
+no record editor or record collection. Approved downstream inputs are copied snapshots, not editable
+records. OCR cannot approve without its exact delegating parent and target; invalid, unselected and
+unknown identities cannot fan out. Approval locks OCR edits. Discard and Undo retain corrections and
+update the waiting parent. Source page images and CRM/I-9 verification evidence remain immutable. System checks stay in Logs;
+all extracted data is editable before approval. Raw OCR date spellings and unfamiliar relationship
+values remain visible for correction. The image-URL input is separate from response fields;
+local fixtures supply fixed synthetic pages, never a document generated from corrected values.
+I-9 retention outcomes appear only in downstream Logs, never as completed writes in pending OCR
+records. Add record focuses Employee ID; opening Records and approving focus the record heading.
+Toggling back restores Logs without changing corrected data. Linked-run navigation stays beside Rerun. Informational mock
+paragraphs are retired. The palette and canonical queue, button and input primitives remain unchanged.
+Focused unit, dark/light 1024/1440 interaction, keyboard, overflow and screenshot evidence is retained
+in `ocr-review-20261004` and `ocr-inline-review-20261005`. Active mock queue cards show their current
+step beneath progress bars. The redundant Result timeline stage is retired; outcome values remain
+in the final real log step. These are local frontend previews; served authority is unchanged. Full frozen
+parity and phase-exit gates remain owned by 3.1.19.
+
+The 2026-10-05 document-polish amendment adds one delegated OCR queue row for each of the five
+OCR-eligible operator-supplied PDFs under `legacy:data/documents`: single oath, multiple oaths,
+emergency contacts, I-9 and detect-test. Sick hours uses Kuali data and is excluded from OCR.
+The fixture catalog contains 14 response records, 443 editable fields and 19 immutable page images.
+Printed form layouts and page counts inform the previews; employee values and signatures are
+replaced with fictional data before raster assets enter the repository. Original PDFs remain outside
+the rebuild, with source PDF hashes retained for provenance. I-9 scan geometry is normalized to its
+first form pair; Section 1 is page 2 and Section 2 is page 1, repeated on pages 4/3 for the second
+fictional person. Page controls label both the section and original page number. Detect-test reviews
+its four emergency-contact pages (1, 2, 4 and 6); its unrelated oath pages are not converted into
+contact records. Blank fields, raw date spellings, additional List A document slots and an unresolved
+identity remain editable. A user upload with the same filename cannot claim a catalog image.
+These fixtures do not admit new runtime OCR forms or routing.
+
+The inline log body scrolls through one large card per record. Each card holds a PDF column (60%)
+and compact editable fields (40%), with an Include checkbox. PDF and fields move together in one
+vertical scroll area; record switching and separate field scrolling are retired. The fields column
+uses a compact selection card with its checkbox directly beside the person name, followed by one
+card per response field group, with each group title above its card. Oaths have three cards:
+selection, Employee and Oath. Inclusion keeps
+its accessible action name without a repeated visible Include label. Warnings and invalid-identity
+messages stay in the selection card. Adjacent boolean fields share a wrapping row; notes support
+multiline editing, and long fields use the full form width without changing response-field order or
+membership. Page labels/selectors and zoom/fit controls share a compact row above the source image.
+Controls remain outside the image viewport and never cover document text. The frame follows the source image's aspect
+ratio; magnified images pan inside it without resizing the card or moving its controls. Selecting a
+different source page restores the fitted view. The repeated filename header and internal group
+dividers are retired.
+Local queue panels omit the repeated workflow heading; the selected sidebar entry supplies that
+context. Empty queues retain their workflow-specific message. The existing shell-wide search is
+the run-search entry point. The replacement history/search and upgrade-review prototype is rejected;
+no additional search bar, update status or update-review UI is admitted. Existing statuses remain
+unchanged; Write parked still means an uncertain write awaiting proof, not generic update incompatibility.
+One fixed footer shows the valid selection count, Add record, Discard and Approve records. Adding a
+record scrolls to its Employee ID; approval preserves field corrections, copies only eligible selected
+records to downstream previews and locks the source response. Run PDF and roster inputs share a
+two-column row. Served Run confirmation retains counts, refusal and governing data while retiring
+the accepted-entry disclosure and its plan metadata.
+
+Queue footers show a stable workflow code and eight decimal digits. This is a presentation alias;
+full run IDs, routing, commands and served trace IDs remain unchanged, with the exact trace in the tooltip.
+Local workflow rows expose canonical Retry and Delete icons. Retry opens the root workflow's bound
+rerun form; the I-9 Lookup preview follows its explicit document OCR parent to the runnable
+parent, never launching independently. Delete confirms removal of the document root and its
+descendants so OCR cannot become orphaned; an individual lookup deletes only its own subtree.
+Keyboard focus returns to the action on cancel and a remaining queue row after deletion. Local
+actions issue no BFF command. Focused verification and source/asset inventories are retained in
+`ocr-document-polish-20261005`, `ocr-stacked-review-20261005`, `ocr-card-polish-20261005` and
+`ocr-field-cards-20261005`;
+frozen references and full gates remain owned by 3.1.19.
+
+The workflow-detail amendment uses one pure operation catalog for local Logs, Explorer fields and
+timeline substeps, copied from the pinned legacy workflow actions and system helpers. It includes
+authentication, navigation, form fills, readbacks, downloads, submission boundaries and conditional
+outcomes. Onboarding distinguishes the complete new-hire tab walk from concurrent-hire identity
+checks, legal-name readback and dry-run draft cancellation. Only OCR retains editable records and
+approval; historical source fields remain distinct from approved downstream snapshots. Explorer
+avoids repeated summary fields and keeps source inspection. Synthetic substep durations produce
+coherent step and queue timestamps; they are not measured execution data. Every workflow rail row
+shows active and total counts at both desktop widths, derived from its own served or local queue.
+Counts update after local approval, fan-out and discard. Run headings contain only the subject name,
+email or filename. Detailed source inventory and focused verification are retained in
+`workflow-completeness-20261004`; served commands and runtime authority remain unchanged.
+
+Scenario selectors belong outside the product screens, in `review.html`.
+Its controls select Logs, Activity and notification scenarios without changing runtime authority.
+
+The queue occupies its full rounded bordered left container, with a 30% track and 376px minimum.
+The 2026-10-06 operator amendment lets the workflow rail yield from 264px at 1440px to 208px at
+and below 1216px; Settings retains its 264px sidebar. The Action panel uses a 144px date field below
+450px of panel width so its four controls remain separate from the date. Queue footers keep time, attempt, compact run
+ID, elapsed and shared 24px actions on one centered line, superseding wrapped provenance metadata.
+Unusually long compact IDs may ellipsize with the exact trace retained in a tooltip. The 1024×720
+canvas floor and scrolling below it remain. Focused dark/light desktop and resize proof belongs to
+`queue-responsive-10003539`; frozen-reference and phase-exit gates remain with 3.1.19.
+Start a run, bordered Status and Sort controls, an independent Attention toggle and the shared date
+picker occupy the 48px Action panel above Logs. Attention groups runs by status; other sorts order the
+whole queue without group headers. The same order drives keyboard traversal. The All/Needs you/Running
+quick-filter row is retired. Status dropdown items allow combined selections; selecting All resets
+those selections. The sort menu excludes Attention. Logs remains a separate bordered container with
+12px canvas gutters, and its title uses the run title alone.
+
+The navbar and undo/redo controls are retired. The rail owns run search and notifications. Notifications
+uses compact 28px HeroUI All/Unread tabs with a selected underline and a separate 28px category menu
+control for All updates, Needs you and Failed. The category control has one 14px filter icon and marks
+an active category with the info color. Read
+state and category filters intersect without resolving a run's urgency. Rows use rounded hover/focus
+surfaces, omit History gap and restore focus when dismissed.
+
+The 2026-10-05 notification interaction amendment links each local update to an exact available queue
+run, OCR preview or Archive index. Subjects and workflow labels come from that destination. All rows
+expose their action, including completed updates and Archive. Opening a run selects its Logs and
+clears queue selection/status filters; OCR review opens the inline Records body. Missing targets
+and changed days refuse visibly instead of opening another run. Opening marks an update read only
+after navigation succeeds. Explicit read/unread controls and Read all are idempotent and do not resolve
+urgency. Category and All/Unread selections survive inbox dismissal. Read all includes hidden updates
+and restores keyboard focus when the unread list empties.
+
+The queue-link amendment derives updates from each available failed, completed, review, parked or
+partial top-level queue row, including operation groups. Member rows remain represented by their group.
+All five seeded OCR documents have direct Records actions, with review counts supplied by their queue
+projection. Existing additional examples begin read; the normal scenario retains three unread updates.
+Opening an update reveals and selects its exact queue card by scrolling only the queue pane, leaving
+the workspace header and log controls fixed. Stable run/day identities preserve read overrides when
+rows reorder or statuses change. Deleted rows and documents disappear from the source-derived inbox.
+Evidence is retained under `notifications-queue-links-20261005`.
+
+OCR approval/discard updates the same notification; newly created local previews add exact run links.
+Approved records remain locked. Local event ages use the shared served clock, and read overrides are
+scoped to the exact run and day. These read flags remain local while the dashboard is mounted; this
+amendment does not implement backend publication, persistence or desktop delivery. Loading, unavailable
+and empty data remain distinct. Focused source, interaction, transport-isolation and dark/light desktop
+evidence is retained under `notifications-interactive-20261005`; 3.1.19 retains full and frozen gates.
+
+Settings opens from the Sessions gear
+beside the plus button. The Sessions toggle excludes that right-hand action region, including its
+background. The toggle hover fill fades smoothly at that boundary and uses the shared opacity transition
+with reduced-motion support. Settings replaces the dashboard with a 264px reference sidebar, Settings heading, search
+and grouped navigation. The header/search/Personal gaps are each 16px. It contains no run-search or
+notification button. Path Change buttons use the shared ordinary button radius. Storage summary and
+row status values use the same description font size and weight. Dashboard page and section headings
+place their descriptions 4px below the title. Described sections leave 12px before their card or table;
+page headings leave 16px before the next content block. `BodySection` owns section descriptions without
+surface-specific negative margins. Workflow readiness uses the same tight title-to-subheading relation
+and 12px before its operations cards. Separate diagnostic groups retain their existing section gap.
+
+Routes uses a plain system heading and URL count above one shared form card per system. All URL rows
+remain visible, with labels and descriptions at the left, URL controls at the right and inset dividers
+between rows. System disclosures and individual URL cards are removed. Route labels, descriptions,
+required controls, system search, validation,
+debounced saves, complete object patches and the protected SharePoint roster authority remain unchanged.
+
+Data → Spreadsheets uses the ordinary Settings content cap. Registered rows have a Date added column;
+clicking any row opens its workbook directly, with no arrow column or separate viewer/drop zone.
+A shadcn Breadcrumb returns from the editable viewer to the library with its draft guard and row focus.
+Imports and new workbooks join that same local library. Edited copies retain exact library identity,
+including duplicate filenames; registration survives section navigation but remains local to the page.
+The shared grid supports search, sorting, row/column additions, visibility and copy export. XLSX copies
+preserve supported cell fills; CSV contains values from the current sheet. Formula cells use stored
+values without recalculation. Exporting only some columns or sheets does not clear unsaved changes.
+Back to dashboard and navigation away retain the Settings draft guard, including edited workbook copies.
+
+General uses the shared segmented calendar picker while preserving the served US date value. Theme
+preference lives in General → Appearance independently of runtime settings drafts. Workflow operations
+and dry-run boundaries are integrated into Preflight's workflow-readiness group and selected scope;
+they have no second page heading or separate search. The 2026-10-04 Workflow readiness redesign separates
+returned requirements from supported operations. Compact workflow disclosures show descriptor-derived
+available/unbuilt counts, the six served capabilities in a two-column definition list, and the exact dry-run
+boundary. The first workflow opens by default. Available, Not applicable and Not built retain distinct words;
+capability support does not claim runtime readiness. The empty table header, nested group frame and inline
+source footer are removed. Descriptor source and capability meanings remain available through info controls.
+Long details and unknown workflow IDs wrap in full. Theme tokens, scope filtering, report freshness,
+credential remedies and distinct loading/empty/refusal states remain authoritative.
+Old capability URLs resolve to Preflight. Runtime
+readiness remains the verified server report. The synthetic review server explicitly supplies a complete
+report and re-check/readback routes; production failures and unavailable readiness stay distinct.
+Keyboard settings use compact reference rows with key pills and aligned pencil/delete controls; cleared
+bindings can be reassigned with the pencil. Add controls and Run/workflow number-key navigation are retired. Existing
+local shortcut preferences remain readable; their old number-mode field has no effect. Editable bindings
+remain locally persisted and drive run search and queue shortcuts.
+All dashboard search fields use the UI catalog's 12px corners through the shared search-radius token.
+Settings navigation, Keyboard, Archive and the compact Run workflow filter have no local radius
+override. Their sizes, theme colors and Run/Rerun flow remain unchanged.
+Search fields have a quiet neutral focus border instead of a bright halo, and a 14px clear icon in a
+24px control appears only while the field contains text. Settings sidebar search lists matching pages
+and individual controls with their parent page. The index uses served catalog metadata and existing
+presentation labels, never current values or secrets. Selecting a field carries its exact
+`settingsTarget` beside `settings`, opens any containing disclosure, centers it in the content pane,
+and shows a 1.4-second fading arrival cue. Reduced motion uses immediate scrolling and a temporary
+static cue. Repeated selection, reload and history retain the target; unavailable targets are stated.
+Local search results remain available after navigation, and Settings draft/exit authority is unchanged.
+
+Archive version groups show report counts instead of archived dates. Folder and report views use the same
+breadcrumb → focused heading/actions → controls/table structure as the spreadsheet viewer. They omit the
+second Archive heading, duplicate version/count metadata, redundant scope dropdowns, table count footer,
+and overview matching-report count.
+Archive and Spreadsheets share the `TableList`/`TableToolbar` data-library pattern: 280px search at the
+left, optional filters and a summary, a 12px gap, and one framed table with matching header
+and cell spacing. The overview search, workflow and outcome filters share one horizontal row at both
+supported desktop widths; the two filters divide the remaining toolbar width equally. Wide tables
+scroll inside their frame.
+Folder report counts sit beside search; date filters align at the right. Settings page actions center vertically against the title and
+any description; title-only headings keep actions inline. The workflow-export button is retired from
+the mounted Archive; saved-run export and version-bump actions remain beside the focused title.
+Archive's version-bump dialog separates selection from review. Review change replaces the scope
+cards with a current/new version table on step two; unchanged dashboard versions are explicit.
+Back preserves the workflow draft and invalidates apply eligibility until reviewed again. Both
+steps retain the dialog geometry, with body scrolling and fixed footer actions. Step headings
+receive keyboard focus. The mounted preview remains local; its Apply closes the dialog without
+version or run writes. The retained runtime sibling shares the layout while preserving served
+scope/version/revision matching, blockers and the original interrupted-transfer request.
+Search and completed-date filters retain their
+route state and date boundaries. The unmounted runtime export implementation remains retained.
+Archive's mounted search lists exact archived runs across every dashboard version and workflow,
+including current-session local snapshots. A nonempty query replaces workflow folders or the scoped
+run table with title/context links. Every query word must match the public record metadata, saved
+field/settings values or retained filenames; exact identities and prefixes rank first. Explicit
+workflow, outcome and date filters still apply, while a folder's implicit scope does not constrain
+search. Each link names one report and clears the folder route atomically when opened. The query
+survives report navigation and reload; the Archive breadcrumb restores results. Arrow keys move
+between the search field and result links, Enter opens the selected run, and report headings receive
+focus. Reset filters is retired; the clear icon clears only the query. This remains a local mock,
+not evidence of connected Archive transport. Focused evidence: `archive-search-records-20261005`.
+Activity dates stay visible for every period, with the same typography and control exterior as the
+period control. Presets synchronize both dates; manual endpoint edits select Custom, including incomplete
+drafts that retain the applied report range. Average workflow time replaces Time saved, manual baselines
+and estimated savings. A horizontal bar chart uses one zero-based elapsed-time scale, ranks longer
+averages first, and prints the exact duration and measured/completed-run coverage beside each workflow.
+The arithmetic mean uses only measured successful runs in the selected period. Per-workflow successful
+timing totals and measured/unmeasured counts remain explicit producer inputs; failed and unfinished
+runs never enter the average. Untimed workflows remain visible as Not timed, measured zero stays 0s,
+and an empty period has its own message. Invalid timing inputs fail visibly. Loading uses the same
+chart columns, row heights and axis frame. Elapsed time is not labelled hands-on time; live timing
+remains a wiring obligation. The Preflight summary shows Last checked followed by the served report's
+local date and time, including retained previous results. Readiness freshness and rerun authority are
+unchanged. Focused evidence for these amendments is retained in `workflow-duration-20261005`.
+
+The 2026-10-06 wiring-preparation amendment groups General and Credentials under Personal,
+Performance, Paths and Routes under Advanced, and retains the existing Data, Status and Help groups.
+All eleven page IDs, search destinations, editor lifecycle and draft guards remain unchanged.
+XLSX value-copy import ignores worksheet and table filter rules, including unsupported table
+color-filter metadata, so every retained record is available for column mapping. Parsing uses a
+private copy; source bytes remain immutable. Values, supported cell fills and other sheets survive;
+malformed table XML still fails visibly. Typed field validation and physical import exclusion are
+unchanged. The component intent and acceptance table belongs to frontend-backend-integration §5;
+backend matching, durable storage and workflow updates remain deferred. Focused evidence is
+`frontend-wiring-prep-10003539`.
+
+The 2026-10-05 frontend reliability amendment implements the operator's six audit priorities only
+in browser code and fictional producers. Spreadsheet parsing and export run in disposable workers;
+the existing 20 MB and 100,000-cell limits remain. The viewer mounts at most 50 data rows and 20
+columns, with full-sheet search and native-history column paging. Indexed rows avoid repeated position
+scans; queue grouping is memoized independently of clock ticks. This does not claim a queue DOM bound
+or a complete memory profile.
+Before registration, real CSV/XLSX uploads open a per-sheet column review with at most 20 column
+controls mounted. The operator selects columns and edits labels; blank or duplicate selected labels
+and an entirely empty selection block confirmation. Confirmation physically projects every retained
+row onto those columns and omits sheets with no selected columns. Excluded data is absent from the
+registered copy and exports, while selected types and fills remain intact. Closing and reopening
+retains the pending review; cancellation creates no library entry. Sheet/page/view coordinates use
+the existing history owner, while pending files, labels and choices stay in Settings memory.
+Workbook-scoped Undo/Redo retains up to 50 immutable versions, preserving supported value types,
+fills, row identities and other sheets. Cell typing coalesces per focus session; sorting, visibility
+and structural edits are reversible. A new edit clears Redo. Export establishes the clean-copy
+reference only for a complete copy. Unrelated text inputs retain native text Undo. History remains
+local to the mounted editor; private values and history do not enter URLs or browser storage.
+Worker controls use a replaceable frontend command port with pending, confirmed, refused and
+uncertain outcomes. Only a matching confirmed command changes the fictional worker state. Duplicate
+activation is blocked; uncertain recovery checks the original command identity without resubmission.
+Normal, refused and uncertain fixtures exercise this lifecycle without worker-service transport.
+Settings keeps Saving, Saved, refusal and uncertainty feedback visible until a subsequent edit or
+outcome changes it. Restart-required is shown only when the readback distinguishes saved and active
+revisions; existing exact-attempt recovery is unchanged. Unsaved changes text is omitted. Ordinary
+typed edits save after 700 ms without another edit; credentials use 1200 ms. Leaving the edited field
+flushes a valid idle draft immediately, while moving between date segments or credential controls in
+one field does not. Invalid drafts keep inline validation and send no command. Confirmed typed edits also emit one existing
+success toast per acknowledged attempt. A single setting uses its public field label; a batch uses
+Saved settings. No typed value or credential is repeated. Matching result identity and refreshed
+readback are required before notification; pending, invalid, refused, conflicting and unconfirmed
+writes never emit success. Refused saves emit one danger toast per attempt; conflicts and unconfirmed
+writes emit one warning toast, preserving the draft and existing exact-attempt recovery. Notifications
+never repeat typed values or raw server diagnostics. An exact replay says Already saved. Section navigation and refresh do not
+repeat a toast. Keyboard edits notify after browser preference storage succeeds. Spreadsheet column
+mappings and type registration notify after local registration; cell edits remain drafts until export,
+whose confirmation says Spreadsheet copy exported. Location-plan confirmation names the saved plan
+without claiming a folder move. Success toasts retain the shared dismiss and expiry behavior;
+persistent save/restart/refusal feedback remains available after expiry. Focused evidence is
+`save-toasts-10003539` and `settings-save-result-10003539`.
+
+The audit-decision amendment (operator direction, 2026-10-06) starts every Run and Rerun launch
+with Dry run off; Dry run is an explicit choice that is never preset by input method or workflow.
+A completed standalone OCR run keeps editable Records with Add record and Discard and no downstream
+approval; durable persistence and revision binding for those edits remain backend wiring work.
+Analytics duration tiles (median, longest, total measured runtime and their coverage) use the
+successful completed-run population, matching the workflow averages. Volume-bar accessible names
+keep the exact interval and time zone so repeated local hours stay distinct. Preview sign-in steps stay
+included while a required form action on the same system remains. Evidence is
+`frontend-audit-fixes-10003539`.
+Successful timing is computed from unique completed root-run records, excluding delegated children,
+failed and unfinished runs. Missing measurements and measured zero remain distinct; measured plus
+unmeasured coverage must equal the completed-run count. No server aggregate or backend authority is
+changed. Current presentation tests repair moved-path and selector contracts without dropping their
+data, identity, focus or privacy assertions. Inherited obsolete contracts and full phase-exit gates
+remain explicit. Evidence is retained in `frontend-reliability-20261005`; richer run headers and
+Activity drilldowns remain proposals outside this batch.
+
+The frontend readiness amendment completes the operator's five frontend-only follow-ups. Sanitized
+Explorer templates preserve readonly segments and exact string/boolean/null conditions through the
+canonical display renderer. Missing required display values remain errors. Mounted dashboard tests
+exercise slow bootstrap/first snapshot, startup failure, stale events and cursor-preserving reconnect
+through the real typed client. Existing Settings and worker-port tests retain refusal and uncertain
+outcome/readback coverage; no runtime backend change or product fault-control panel is introduced.
+Settings controls use stable field names. UCPath credential autocomplete is scoped; unrelated
+configuration disables autocomplete. Keyboard selection and password reveal remain available, and
+member buttons expose their selected state. Preflight compact and full views share direct remedy
+destinations; unknown failed checks still offer Settings.
+Queue selection redraws only affected item/member families while changed rows, handlers, clock and
+bulk state remain observable. Large loaded Queue and Log lists defer offscreen layout without removing
+records from DOM, search, copy or exact-step focus. Log filtering avoids a repeated quadratic hidden-step
+scan. The real-component production fixture measures render/interaction time and heap cleanup with
+complete synthetic populations. These optimizations do not bound DOM memory; backend paging remains
+required. The current mounted-producer checklist in ref frontend-backend-integration §5 distinguishes
+local mocks from retained, unmounted runtime clients and records IDs, outcomes, paging, events and
+reload semantics. Evidence is retained in `frontend-readiness-20261005`. Inherited broad contract/type
+failures and frozen phase-exit verification remain explicit obligations.
+
+The subsequent 2026-10-05 run-header/Analytics amendment implements the operator-approved compact
+proposal. Subject headings retain their prominence. The later frontend-polish amendment removes the
+workflow, short run ID, attempt and elapsed context line from the header. A single contextual Review, Resolve or View failure action navigates to a visible unresolved
+decision or failure, clearing log search and visibly focusing the exact decision card inside the log
+scroller. Failures without a decision retain step navigation. OCR Review opens its existing editable
+Records body through the native-history owner; approval remains a separate explicit action. It performs
+no decision or command. The 2026-10-06 correction is verified in `log-header-actions-10003539`.
+The adjacent Review status badge is omitted only when that Review action is present; Records bodies
+retain their status and tools.
+
+The 2026-10-06 manual-input amendment removes Notes from every OCR review shape. PDF launch and rerun options distinguish OCR delegation from extraction.
+Turning off Extract with OCR still creates the linked OCR child and waiting parent, but skips roster
+loading, extraction and automatic identity matching. Review opens immediately with one blank record;
+the operator can add records, enter values, select source pages and approve explicitly. No extracted
+person count or identity is inferred from the fixture. Manual Employee IDs remain operator supplied,
+not verified lookup evidence. The selected document type controls the manual field shape even when
+a stored source fixture has a different type or I-9 section. Approved records are copied immutably
+into independent downstream runs.
+
+Preview step controls keep form-fill, save and submit actions included. A reading step can use entered
+values instead; mixed read/form steps retain their form action and offer manual values for the read
+portion. Automatic dependency gates retain approval and linked-outcome ordering without presenting an
+optional checkbox. Required form actions are included again when opening a rerun, while retained
+manual facts and OCR mode belong to the private draft. Person-specific reading facts are limited to
+one person; mismatched manual Employee IDs refuse approval. Entered reading values replace downstream
+preview inputs and appear as operator-entered log evidence; they cannot certify a submitted receipt.
+Source-page route coordinates include the exact run and record, preventing cross-run page collisions.
+These are frontend preview semantics. Served Person Lookup and Separations retain descriptor-owned
+capabilities, including existing D307 omissions; new manual reading capabilities require the owning
+backend contract before they can replace served required steps. No executor or backend schema is
+changed. Evidence is `manual-ocr-review-10003539`; frozen parity and phase-exit gates remain with 3.1.19.
+
+The subsequent launch-plan amendment presents one selectable document-reading step, such as
+Read emergency contact, with OCR underneath like other step system labels. Checking it extracts
+predefined document fields into OCR Records. Unchecking it retains the linked OCR child and parent
+approval gate but opens blank Records immediately. Delegation and approval remain internal ordering
+constraints rather than separate checklist rows. Emergency Contact counts four steps with extraction
+and three of four without it. Typed launches and upload-only mode add no document read. The parent
+workflow/document type fixes the field shape; a differently typed fixture cannot substitute another
+form. OCR is directly runnable, with a form-type choice and Records but no downstream approval.
+Only I-9 Lookup and SharePoint Download are parent-only. Delegated OCR retries retain their parent;
+standalone OCR retries and deletion remain independent. Roster and document-type choices share
+one row. Direct OCR offers Oath, Emergency Contact, OnBase Emergency Contact and I-9; Verify is not
+a document choice. Notes are absent from generated and fixture-backed OCR records. Manually
+entered Employee IDs retain manual provenance without an unverified-lookup warning. IDs must start
+with 10 and contain eight digits; invalid format still blocks approval. Unknown records and other
+approval requirements remain explicit.
+
+Shared priority help defines Interactive as work the operator is waiting on and Bulk as background
+batches; Interactive takes queue priority without changing scheduling authority. ChoicePicker
+chevrons use the 14px design-system icon size. The shared date picker retains month/day through every
+year digit by round-tripping a four-digit year and preserving parsed date identity during partial
+edits. Display remains MM/DD/YYYY while ISO transport remains unchanged. Completed local approval,
+discard, restore, run/rerun creation and deletion use the shared value-free confirmation toast.
+Passive success-toast bodies allow pointer events through to underlying controls; their dismiss
+buttons remain interactive. Action/error toasts retain interaction. Refused approvals produce no
+success notice; real wiring must wait for matching acknowledgment. Settings removes inline Undo
+controls and leaves text editing to native keyboard undo. Ctrl+Z/Cmd+Z reverts an unsaved date or
+folder selection within its field. OCR removes Undo discard; Ctrl+Z/Cmd+Z
+restores a discarded review only while focus is inside its Records surface. Discard and restore
+retain the focused record heading; editable fields keep native undo. Approval is never undone by
+this shortcut.
+Invalid date links retain the shell and date error. Search reports the same unavailability and
+presents no invalid-date rows; choosing a valid date restores the queue without a reload.
+This is frontend-only; evidence is `ocr-read-actions-10003539`.
+
+The report's visible name is Analytics across navigation, search, headings, browser titles, back links
+and loading announcements. Existing Activity route identifiers remain supported. Completed,
+Outstanding and Failed totals open one context-aware exact-run list, bounded to 20 rows per page.
+Average workflow time opens the same measured successful root-run population used by that average;
+untimed successes are excluded from that list and remain included in the completed total. Selecting
+a row opens its exact logs with the same compact header. Report and row facts share one local producer
+and one presentation seam; backend aggregation and transport remain unwired.
+Metric, workflow, page and run coordinates belong to the existing bounded history owner. Reload,
+Back/Forward and breadcrumb parents preserve exact selection/page. Changing the period clears the drilldown
+atomically; Back restores the previous range and selection. Empty lists, unknown destinations and
+missing measurements remain explicit. Review fixtures retain their selected scenario across history
+and reload. The amendment adds no processing/wait breakdown, extra summary cards or automatic approval.
+Evidence is retained in `headers-activity-20261005`; frozen parity and full phase-exit gates remain
+with 3.1.19.
+
+The subsequent 2026-10-05 navigation amendment standardizes page hierarchy on the shared
+`PageBreadcrumbs` component from the public design-system barrel. Analytics, Archive and spreadsheet
+children place the trail before the page heading. The later frontend-polish amendment restores the
+Settings rail's guarded Back to dashboard button. Available parents are keyboard-reachable controls; the current destination
+is passive text with `aria-current="page"`. Archive version labels without a separate destination remain
+context, rather than inventing a route. Long labels wrap within the available width. Standalone page
+Back controls are omitted from child pages; wizard Back controls remain step navigation, and modal dismissal remains
+separate from page hierarchy. Parent controls invoke the existing route owners, preserving exact
+Analytics metric/workflow/page selection, Archive folder/search scope and native Back/Forward history.
+Settings and spreadsheet draft-exit guards and focus return retain their existing authority.
+Backend contracts and transport are unchanged. Evidence is retained in `breadcrumbs-20261005`;
+frozen visual/a11y references and full phase-exit gates remain with 3.1.19.
+
+The 2026-10-05 Analytics scope amendment names workflow timing views directly, for example
+“Separations run times,” in the section heading, breadcrumb and accessible table name. Completion
+and timing eligibility are stated once beside the count. Workflow-scoped lists omit the redundant
+Workflow column; completed, timed and failed lists omit their already-known terminal Status column.
+Outstanding lists retain Status because running and waiting differ. Cross-workflow lists retain
+Workflow. Thus workflow timing uses only Name and Duration without changing the measured population,
+row identity, exact log access, pagination or URL/history owner. Full verification/status evidence
+remains in the selected run's logs. Evidence is `analytics-context-20261005`; backend reporting and
+frozen phase-exit gates remain deferred.
+
+The Analytics filter-bar amendment replaces sortable headers with passive Name and Duration headings.
+A compact bar above the table uses the shared toolbar SearchInput and Select for name/run-ID search
+and default, alphabetical or duration ordering. Search matches all case-insensitive terms across
+subject and exact IDs, within the selected metric/workflow population, before ordering and the
+20-row page slice. The count shows matched and total runs; a no-match search remains clearable.
+Unknown durations stay last in either direction, and identity ties remain stable. Controls reset
+to page zero and preserve focus. Optional bounded `activityBrowse.query` and existing sort coordinates
+restore through reload, pagination, exact logs, breadcrumbs and Back/Forward. Typing replaces the
+current history entry; picker and clear actions retain discrete navigation. Previous sorted routes
+resolve to the picker selection. The shared toolbar search variant matches Select height without
+changing default search consumers. Backend reporting is unchanged. Evidence is
+`analytics-filter-20261005`; frozen phase-exit gates remain deferred to 3.1.19.
+
+
+The 2026-10-05 frontend-polish amendment restores the Settings rail heading on the left and a separate
+small back-arrow button on the right, with Back to dashboard as the button's accessible name,
+while retaining child-page breadcrumbs. Archive report sections use the existing underline tabs
+instead of a sidebar, including retained runtime reports. Section changes push discrete entries
+through the existing route owner; reload and Back/Forward restore each tab. Exact logs and retained
+files keep their resource owners.
+The spreadsheet viewer puts Export beside its heading and column mapping inside Workbook actions.
+A single toolbar groups Sheet/Columns and Insert/Undo/Redo; Insert explicitly offers Add row and
+Add column. One footer reports row/column ranges and the focused cell, with paging only when needed.
+Search, cell edits, history, visibility, export and unsaved-copy exits retain their behavior.
+Run headers omit workflow, short ID, attempt and elapsed metadata but keep subject, status and the
+navigation-only evidence action. Review decision headings use the standard body-sized card title.
+The final operator amendment removes Source presentation from rerun while preserving its full-width
+form and original-source lineage. Local preview forms own their routed stages; the served launcher
+must not reconcile or invalidate a preview's Steps, Values or Confirm stage. PDF input groups show
+retained selections, Choose PDFs and per-file removal; roster selection follows below. PDF magic
+validation, asynchronous reading locks and source history remain intact. Backend contracts are
+unchanged. Evidence is `frontend-polish-20261005` and `frontend-final-20261005`; frozen phase-exit gates remain with 3.1.19.
+
+Local queue selection mode and Select menu items are retired. End-user Archive actions and the
+queue row context menu are retired; visible footer/outcome commands remain. Delete asks first,
+with its served confirmation retained. Member check marks
+are retired; the final log step has no divider. Command toasts show subject and clock without the local
+actor ID. Run/Rerun follows the approved Design 1 proportions, controls and flows exactly, as
+required on 2026-10-04; §9.7.1 owns the presentation measurements and source-value behavior.
+Served launch authority remains unchanged.
+
 
 #### The Session Panel is the demo's strip, and its pool controls live behind `+` (D305)
 
@@ -7495,7 +8457,7 @@ read contract and §7 the parity lane.
 - [x] D195 — the panel region is a grid, so the no-run-open case cannot leave ~950px of empty black
 - [!] the drawn word for `waiting` is `Review`; D12/D18/D22/D23 all say `Waiting on you` — reconcile under `{#separations-compiled-acceptance}` before freeze
 - [ ] re-calibration on the SSE `health` heartbeat, deferred with its trigger named (D189's exposed path)
-> 2026-08-20 | docs-dash-surfaces 5.1c | verified against src/dashboard/surfaces/{shell,shell-model,workflow-category,status}*, src/dashboard/ds/{primitives-status.tsx,tokens.css}, src/dashboard/state/served-clock.ts, src/dashboard/app/{dashboard-app,global-keys}*, src/dashboard/surfaces/layout-metrics.ts; left: the heartbeat instant and one vocabulary call
+> 2026-08-20 | docs-dash-surfaces 5.1c | verified against src/dashboard/surfaces/{shell,shell-model,workflow-category,status}*, src/dashboard/ds/{primitives-status.tsx,tokens.css}, src/dashboard/state/served-clock.ts, src/dashboard/app/{dashboard-app,global-keys}*, src/dashboard/surfaces/queue/layout-metrics.ts; left: the heartbeat instant and one vocabulary call
 <!-- /roadmap-status -->
 
 ### 9.10 The delegation and row model (row-model D5–D24)
@@ -7677,7 +8639,30 @@ dropped, and this table is how a citation to the old flat list resolves.
 - [ ] D9's `rejected` containment arm is not on the wire (`ContainmentSchema` serves `root | member | linked`)
 - [ ] D13's `Re-upload` verb, and the OCR/packet surfaces D7/D8/D10/D17 describe (§9.3)
 - [!] D16's "no confirmation dialog" against the built confirm-first dialog — reconcile before `{#separations-compiled-acceptance}` closes
-> 2026-08-21 | docs-dash-surfaces 5.1c | verified against src/core/command-kernel.ts (`shape: "single"` at every enqueue), src/domain/dashboard/projection.ts (`ContainmentSchema`), src/dashboard/surfaces/{queue,queue-model}*, src/dashboard/ds/tokens.css; left: the producer for every group-shaped fact in this section
+> 2026-08-21 | docs-dash-surfaces 5.1c | verified against src/core/command-kernel.ts (`shape: "single"` at every enqueue), src/domain/dashboard/projection.ts (`ContainmentSchema`), src/dashboard/surfaces/{queue,queue-model}*, src/dashboard/ds/theme/tokens.css; left: the producer for every group-shaped fact in this section
+
+## Typed spreadsheet mappings and queue menu retirement — 2026-10-06
+
+The operator replaced imported free-text labels with catalog dropdowns. The frontend catalog reuses
+canonical intake IDs and explicitly names roster-only fields under `roster.*`. Known headers and
+unambiguous employee/transaction values suggest assignments; numeric I-9 IDs and email ownership
+are not guessed from value shape alone. The header row is detected and selectable. Kept columns
+require known, unique fields per sheet and valid nonblank values; unmapped columns must be assigned
+or deselected. Employee IDs are eight digits starting with 10, transaction numbers start with T,
+and I-9 profile IDs contain six or seven digits. Missing future roster values remain allowed.
+
+The imported copy excludes preamble and deselected data while preserving raw headers, typed cells,
+fills, row IDs and stable source-column bindings. Saved edits/mapping changes retain library identity.
+Inserted columns start unmapped. Frontend read/write helpers address stable fields and refuse invalid
+patches before changing any cell. Library persistence, OCR matching/person-lookup fallback and
+workflow roster writes remain backend work. These presentation constraints do not amend canonical
+backend coercion, transaction authority or schema migration policy.
+
+Queue right-click, double-click, Menu/Shift+F10 and `m` menu entry points are removed. Visible footer
+and outcome actions preserve served descriptor authority and preview behavior. Saved keyboard
+preferences discard only their retired menu binding. Generic ContextMenu components remain in the
+UI kit. Focused evidence is `spreadsheet-field-mapping-10003539`; frozen phase-exit gates remain with
+3.1.19.
 
 ## Run completion storage
 

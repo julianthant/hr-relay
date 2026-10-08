@@ -1,0 +1,485 @@
+# workflow-mocks-linked-runs-dialog--graphite-warm--1280x720
+# adapter: fixture
+# fixture: workflow-mocks.spec.ts:all workflow previews, Run and Rerun @ dark-1280
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#dashboard-main-region"
+- complementary "Workspace":
+  - heading "HR GPT" [level=2]
+  - button "Notifications, 5 unread"
+  - button "Search runs"
+  - navigation "Workflows":
+    - heading "Search" [level=3]
+    - list:
+      - listitem:
+        - button "Person Lookup": Person Lookup 0 · 1
+      - listitem:
+        - button "I-9 Lookup": I-9 Lookup 0 · 1
+    - heading "Separations" [level=3]
+    - list:
+      - listitem:
+        - button "Separations": Separations 0 · 0
+      - listitem:
+        - button "I-9 Check": I-9 Check 1 · 1
+    - heading "Onboarding" [level=3]
+    - list:
+      - listitem:
+        - button "Onboarding": Onboarding 0 · 3
+      - listitem:
+        - button "Oath Signature": Oath Signature 1 · 1
+      - listitem:
+        - button "Oath Upload": Oath Upload 1 · 1
+      - listitem:
+        - button "Emergency Contact": Emergency Contact 1 · 1
+    - heading "Work Study" [level=3]
+    - list:
+      - listitem:
+        - button "Work-Study": Work-Study 0 · 1
+    - heading "Payroll" [level=3]
+    - list:
+      - listitem:
+        - button "Kronos Pay Rule": Kronos Pay Rule 0 · 1
+    - heading "Utils" [level=3]
+    - list:
+      - listitem:
+        - button "OCR": OCR 0 · 5
+      - listitem:
+        - button "CRM Doc Download": CRM Doc Download 0 · 1
+      - listitem:
+        - button "SharePoint Download": SharePoint Download 0 · 1
+    - heading "OnBase" [level=3]
+    - list:
+      - listitem:
+        - button "OnBase": OnBase 1 · 1
+    - heading "Timekeeping" [level=3]
+    - list:
+      - listitem:
+        - button "Old Kronos Reports": Old Kronos Reports 0 · 1
+- main:
+  - heading "Onboarding queue" [level=1]
+  - region "Queue":
+    - text: "Finished 3 08/03/2026: 3 verified"
+    - button "jordan.lee@example.com — done" [pressed]:
+      - text: jordan.lee@example.com Done 9:10 AM
+      - button "Attempts for jordan.lee@example.com": "#1"
+      - text: ONB81512304 13m 24s
+      - button "Retry"
+      - button "Delete"
+    - button "jordan.lee@example.com — done":
+      - text: jordan.lee@example.com Done 9:10 AM
+      - button "Attempts for jordan.lee@example.com": "#1"
+      - text: ONB20339973 13m 24s
+      - button "Retry"
+      - button "Delete"
+    - button "jordan.lee@example.com — done":
+      - text: jordan.lee@example.com Done 9:10 AM
+      - button "Attempts for jordan.lee@example.com": "#1"
+      - text: ONB74536255 13m 44s
+      - button "Retry"
+      - button "Delete"
+  - region "Action panel":
+    - group "Action panel controls":
+      - button "Start a run"
+      - button "Filter queue by status": Status
+      - combobox "Sort the queue": Newest first
+      - button "Attention first" [pressed]
+    - group "Log date controls":
+      - text: Dashboard date*
+      - group "Dashboard date*":
+        - spinbutton "month, Dashboard date*": "08"
+        - spinbutton "day, Dashboard date*": "03"
+        - spinbutton "year, Dashboard date*": "2026"
+        - button "Choose date Dashboard date*"
+  - region "Selected run logs":
+    - heading "jordan.lee@example.com" [level=2]
+    - text: Done
+    - button "Rerun"
+    - button "Linked runs (1)" [expanded]
+    - navigation "Run timeline":
+      - list:
+        - listitem:
+          - button "Sign in to CRM · Skipped · 09:10:00": Sign in to CRM Skipped
+        - listitem:
+          - button "Find onboarding record · Completed · 09:10:00 · 36s": Find onboarding record 36s
+        - listitem:
+          - button "Read entry sheet · Completed · 09:10:36 · 36s": Read entry sheet 36s
+        - listitem:
+          - button "Download onboarding documents · Completed · 09:11:12 · 56s": Download onboarding documents 56s
+        - listitem:
+          - button "Sign in to UCPath · Completed · 09:12:08 · 20s": Sign in to UCPath 20s
+        - listitem:
+          - button "Match existing person · Completed · 09:12:28 · 36s": Match existing person 36s
+        - listitem:
+          - button "Create I-9 profile · Completed · 09:13:04 · 1m 20s": Create I-9 profile 1m 20s
+        - listitem:
+          - button "Submit hire · Completed · 09:14:24 · 9m 0s": Submit hire 9m 0s
+    - region "Run logs":
+      - region "Sign in to CRM":
+        - time: 09:10:00
+        - heading "Sign in to CRM" [level=3]
+        - text: CRM
+        - time: 09:10:00
+        - paragraph: Step omitted for this input or selected mode.
+      - region "Find onboarding record":
+        - time: 09:10:00
+        - heading "Find onboarding record" [level=3]
+        - text: CRM
+        - heading "CRM search" [level=4]
+        - time: 09:10:00
+        - term: Email
+        - definition: jordan.lee@example.com
+        - time: 09:10:00
+        - text: Search and select the latest onboarding record
+        - heading "CRM record" [level=4]
+        - time: 09:10:00
+        - term: Email
+        - definition: jordan.lee@example.com
+        - time: 09:10:00
+        - term: Department number
+        - definition: DEMO-DEPT-001
+        - time: 09:10:00
+        - term: Recruitment number
+        - definition: DEMO-REC-001
+      - region "Read entry sheet":
+        - time: 09:10:36
+        - heading "Read entry sheet" [level=3]
+        - text: CRM
+        - time: 09:10:36
+        - text: Open the UCPath entry sheet
+        - heading "Identity and contact" [level=4]
+        - time: 09:10:36
+        - term: First name
+        - definition: Jordan
+        - time: 09:10:36
+        - term: Middle name
+        - definition: —
+        - time: 09:10:36
+        - term: Last name
+        - definition: Lee
+        - time: 09:10:36
+        - term: Preferred first name
+        - definition: Jordan
+        - time: 09:10:36
+        - term: Preferred last name
+        - definition: Lee
+        - time: 09:10:36
+        - term: Date of birth
+        - definition: 01/15/2005
+        - time: 09:10:36
+        - term: SSN
+        - definition: •••-••-0001
+        - time: 09:10:36
+        - term: Email
+        - definition: jordan.lee@example.com
+        - time: 09:10:36
+        - term: Phone
+        - definition: (202) 555-0101
+        - time: 09:10:36
+        - term: Street
+        - definition: 100 Example Street
+        - time: 09:10:36
+        - term: City
+        - definition: San Diego
+        - time: 09:10:36
+        - term: State
+        - definition: CA
+        - time: 09:10:36
+        - term: ZIP
+        - definition: "92101"
+        - heading "Appointment" [level=4]
+        - time: 09:10:36
+        - term: Position number
+        - definition: DEMO-POS-001
+        - time: 09:10:36
+        - term: Wage
+        - definition: $17.75 per hour
+        - time: 09:10:36
+        - term: Appointment
+        - definition: Casual/Restricted 5
+        - time: 09:10:36
+        - term: Employee classification
+        - definition: "5"
+        - time: 09:10:36
+        - term: Effective date
+        - definition: 08/03/2026
+        - time: 09:10:36
+        - term: Expected job end date
+        - definition: 06/30/2027
+        - time: 09:10:36
+        - paragraph: Required fields validated; CRM empty placeholders normalized.
+      - region "Download onboarding documents":
+        - time: 09:11:12
+        - heading "Download onboarding documents" [level=3]
+        - text: CRM
+        - time: 09:11:12
+        - text: Open the record's iDocs viewer
+        - heading "Document inventory" [level=4]
+        - time: 09:11:12
+        - term: Documents
+        - definition: "2"
+        - time: 09:11:12
+        - term: Selected PDFs
+        - definition: entry-sheet.pdf, onboarding-packet.pdf
+        - time: 09:11:12
+        - text: Download each selected PDF
+        - heading "Downloaded files" [level=4]
+        - time: 09:11:12
+        - term: Folder
+        - definition: Jordan Lee
+        - time: 09:11:12
+        - term: Files
+        - definition: entry-sheet.pdf, onboarding-packet.pdf
+        - time: 09:11:12
+        - paragraph: Each file exists in the download folder.
+        - heading "PDF download" [level=4]
+        - time: 09:11:12
+        - term: Onboarding documents
+        - definition: entry-sheet.pdf, onboarding-packet.pdf
+        - time: 09:11:12
+        - paragraph: "Readback: each file re-read from the download folder."
+      - region "Sign in to UCPath":
+        - time: 09:12:08
+        - heading "Sign in to UCPath" [level=3]
+        - text: UCPath
+        - time: 09:12:08
+        - text: Open UCPath
+        - heading "Session" [level=4]
+        - time: 09:12:08
+        - term: System
+        - definition: UCPath
+        - time: 09:12:08
+        - term: Authentication
+        - definition: Authenticated
+        - time: 09:12:08
+        - term: Identity
+        - definition: Demo operator
+      - region "Match existing person":
+        - time: 09:12:28
+        - heading "Match existing person" [level=3]
+        - text: UCPath
+        - heading "UCPath person search" [level=4]
+        - time: 09:12:28
+        - term: Name
+        - definition: Jordan Lee
+        - time: 09:12:28
+        - term: Date of birth
+        - definition: 01/15/2005
+        - time: 09:12:28
+        - term: SSN
+        - definition: •••-••-0001
+        - time: 09:12:28
+        - text: Search for an existing person
+        - heading "Hire decision" [level=4]
+        - time: 09:12:28
+        - term: Hire type
+        - definition: New hire
+        - time: 09:12:28
+        - term: Existing employee
+        - definition: No match
+        - time: 09:12:28
+        - term: Existing hire transaction
+        - definition: None
+        - heading "Person search" [level=4]
+        - time: 09:12:28
+        - term: Employee ID
+        - definition: "10000001"
+      - region "Create I-9 profile":
+        - time: 09:13:04
+        - heading "Create I-9 profile" [level=3]
+        - text: I-9 Complete
+        - time: 09:13:04
+        - text: Search the I-9 portal for an existing profile
+        - heading "Existing profile" [level=4]
+        - time: 09:13:04
+        - term: Employee
+        - definition: Jordan Lee
+        - time: 09:13:04
+        - term: Existing I-9 profile
+        - definition: None
+        - heading "Employee profile" [level=4]
+        - time: 09:13:04
+        - term: First name
+        - definition: Jordan
+        - time: 09:13:04
+        - term: Last name
+        - definition: Lee
+        - time: 09:13:04
+        - term: Email
+        - definition: jordan.lee@example.com
+        - time: 09:13:04
+        - term: Date of birth
+        - definition: 01/15/2005
+        - time: 09:13:04
+        - term: Hire date
+        - definition: 08/03/2026
+        - time: 09:13:04
+        - text: Save & Continue
+        - heading "I-9 profile confirmation" [level=4]
+        - time: 09:13:04
+        - term: Profile ID
+        - definition: DEMO-I9-001
+        - time: 09:13:04
+        - paragraph: Profile ID re-read from the portal.
+        - heading "I-9 creation" [level=4]
+        - time: 09:13:04
+        - term: I-9 profile
+        - definition: DEMO-I9-001
+        - time: 09:13:04
+        - paragraph: "Readback: profile id read back off the portal."
+      - region "Submit hire":
+        - time: 09:14:24
+        - heading "Submit hire" [level=3]
+        - text: UCPath
+        - time: 09:14:24
+        - text: HR Tasks → Smart HR Templates → Smart HR Transactions
+        - heading "Hire template" [level=4]
+        - time: 09:14:24
+        - term: Template
+        - definition: UC_FULL_HIRE
+        - time: 09:14:24
+        - term: Effective date
+        - definition: 08/03/2026
+        - time: 09:14:24
+        - text: Create Transaction
+        - heading "Transaction reason" [level=4]
+        - time: 09:14:24
+        - term: Reason
+        - definition: Hire - No Prior UC Affiliation
+        - heading "Personal Data" [level=4]
+        - time: 09:14:24
+        - term: First name
+        - definition: Jordan
+        - time: 09:14:24
+        - term: Middle name
+        - definition: —
+        - time: 09:14:24
+        - term: Last name
+        - definition: Lee
+        - time: 09:14:24
+        - term: Preferred first name
+        - definition: Jordan
+        - time: 09:14:24
+        - term: Preferred middle name
+        - definition: —
+        - time: 09:14:24
+        - term: Preferred last name
+        - definition: Lee
+        - time: 09:14:24
+        - term: Date of birth
+        - definition: 01/15/2005
+        - time: 09:14:24
+        - term: SSN
+        - definition: •••-••-0001
+        - time: 09:14:24
+        - term: Street
+        - definition: 100 Example Street
+        - time: 09:14:24
+        - term: City
+        - definition: San Diego
+        - time: 09:14:24
+        - term: State
+        - definition: CA
+        - time: 09:14:24
+        - term: ZIP
+        - definition: "92101"
+        - time: 09:14:24
+        - term: Phone
+        - definition: (202) 555-0101
+        - time: 09:14:24
+        - term: Email
+        - definition: jordan.lee@example.com
+        - time: 09:14:24
+        - term: Tracker Profile ID
+        - definition: DEMO-I9-001
+        - heading "Personal Data comments" [level=4]
+        - time: 09:14:24
+        - term: Comments
+        - definition: "New Dining Student Hire Effective 08/03/2026. Job number #DEMO-REC-001."
+        - time: 09:14:24
+        - text: Job Data
+        - heading "Job Data" [level=4]
+        - time: 09:14:24
+        - term: Position number
+        - definition: DEMO-POS-001
+        - time: 09:14:24
+        - term: Employee classification
+        - definition: "5"
+        - time: 09:14:24
+        - term: Compensation rate code
+        - definition: UCHRLY
+        - time: 09:14:24
+        - term: Compensation rate
+        - definition: $17.75 per hour
+        - time: 09:14:24
+        - term: Expected job end date
+        - definition: 06/30/2027
+        - time: 09:14:24
+        - text: Earns Dist
+        - time: 09:14:24
+        - text: Employee Experience
+        - heading "Initiator comments" [level=4]
+        - time: 09:14:24
+        - term: Comments
+        - definition: "New Dining Student Hire Effective 08/03/2026. Job number #DEMO-REC-001."
+        - time: 09:14:24
+        - text: Return to Personal Data
+        - heading "Submit readiness" [level=4]
+        - time: 09:14:24
+        - term: Save and Submit
+        - definition: Enabled
+        - time: 09:14:24
+        - text: Save and Submit
+        - heading "Hire confirmation" [level=4]
+        - time: 09:14:24
+        - term: Transaction number
+        - definition: DEMO-TXN-001
+        - time: 09:14:24
+        - term: Employee
+        - definition: Jordan Lee
+        - time: 09:14:24
+        - term: Position number
+        - definition: DEMO-POS-001
+        - time: 09:14:24
+        - paragraph: Filed transaction receipt re-read.
+        - heading "SmartHR transaction" [level=4]
+        - time: 09:14:24
+        - term: Wage
+        - definition: $17.75 per hour
+        - time: 09:14:24
+        - paragraph: "Readback: read back from the job row after submit; read off the confirmation page."
+        - time: 09:23:24
+        - term: Email
+        - definition: jordan.lee@example.com
+        - time: 09:23:24
+        - term: Position number
+        - definition: DEMO-POS-001
+        - time: 09:23:24
+        - term: Wage
+        - definition: $17.75 per hour
+        - time: 09:23:24
+        - term: Effective date
+        - definition: 08/03/2026
+    - group:
+      - searchbox "Search logs"
+    - status: 104 actions
+    - status
+    - button "Copy logs"
+    - button "Go to latest action"
+- region "Session Panel":
+  - group "Session actions":
+    - button "Sessions"
+    - text: 2 running 1 starting 1 idle
+    - button "Add workers"
+    - button "Settings"
+- region "Notifications"
+- dialog "Linked runs":
+  - banner:
+    - paragraph: Linked runs
+    - button "Close"
+  - list:
+    - listitem:
+      - button "jordan.lee@example.com Rerun source · Completed"

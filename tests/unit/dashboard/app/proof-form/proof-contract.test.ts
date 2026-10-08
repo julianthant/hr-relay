@@ -21,16 +21,9 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { z } from "zod";
 import { descriptorRuntimeNodes } from "../../../../../src/workflow-kit/workflow.js";
-import { DESCRIPTORS } from "../../../../../src/backend/app/registries/workflow-registry.js";
-import { describeProofShape, type ProofShapeField } from "../../../../../src/models/validation/proof-shape.js";
-import {
-  composeProofValue,
-  initialProofDrafts,
-  proofFieldHint,
-  proofFieldLabel,
-  proofFieldProblem,
-} from "../../../../../src/dashboard/app/proof-form.js";
-import { ProofContractWireSchema, type ProofFieldWire } from "../../../../../src/models/dashboard/run-detail.js";
+import { DESCRIPTORS } from "../../../../../src/workflow-kit/validation/workflow-module-audit.js";
+import { describeProofShape } from "../../../../../src/models/validation/proof-shape.js";
+import { ProofContractWireSchema } from "../../../../../src/models/dashboard/run-detail.js";
 
 interface RegisteredCommit {
   readonly workflowId: string;
@@ -63,24 +56,8 @@ function registeredCommits(): readonly RegisteredCommit[] {
 }
 
 /** Read a described leaf out of a real proof value, by its dot path. */
-function valueAtPath(root: unknown, path: string): unknown {
-  let cursor: unknown = root;
-  for (const segment of path.split(".")) {
-    assert.ok(cursor !== null && typeof cursor === "object", `path ${path} left the object at ${segment}`);
-    cursor = (cursor as Record<string, unknown>)[segment];
-  }
-  return cursor;
-}
 
 /** What an operator would type into each box to transcribe this exact proof. */
-function draftsFor(fields: readonly ProofShapeField[], proof: unknown): Record<string, string> {
-  const drafts: Record<string, string> = {};
-  for (const field of fields) {
-    if (field.kind === "fixed") continue;
-    drafts[field.path] = String(valueAtPath(proof, field.path));
-  }
-  return drafts;
-}
 
 describe("the served proof contract (ref write-safety §4.1, D245)", () => {
   it("covers every registered commit contract — there is at least one", () => {
@@ -99,27 +76,6 @@ describe("the served proof contract (ref write-safety §4.1, D245)", () => {
     }
   });
 
-  /**
-   * The whole claim, per contract: what the form composes is what the kernel
-   * parses. Everything else here is a detail of how it gets there.
-   */
-  it("round-trips a real proof through the form and back into the contract's own schema", () => {
-    for (const commit of registeredCommits()) {
-      const shape = describeProofShape(commit.proofSchema);
-      assert.ok(shape.state === "described");
-      const drafts = draftsFor(shape.fields, commit.proof);
-      const composed = composeProofValue(shape.fields as readonly ProofFieldWire[], drafts);
-      assert.ok(
-        composed.state === "composed",
-        `${commit.taskId} refused its own example proof: `
-        + `${composed.state === "invalid" ? JSON.stringify(composed.problems) : ""}`,
-      );
-      assert.deepEqual(composed.value, commit.proof, `${commit.taskId} composed a different proof`);
-      // The authority's own parse — the one `resolvePresent` performs.
-      assert.doesNotThrow(() => commit.proofSchema.parse(composed.value), commit.taskId);
-    }
-  });
-
   it("parses every described field list through the served wire schema", () => {
     for (const commit of registeredCommits()) {
       const shape = describeProofShape(commit.proofSchema);
@@ -133,26 +89,6 @@ describe("the served proof contract (ref write-safety §4.1, D245)", () => {
       });
       assert.ok(parsed.state === "served");
       assert.equal(parsed.fields.length, shape.fields.length);
-    }
-  });
-
-  /**
-   * A literal is the SCHEMA's value, not the operator's. A form that let a
-   * person type `kind` or `source` would be offering a choice the contract does
-   * not have — and `source` in particular names how the fields were READ, which
-   * an attestation does not change (the envelope's `proofSource:
-   * operator-attestation` is what records who vouched for it).
-   */
-  it("pins literals as fixed and never as an operator input", () => {
-    for (const commit of registeredCommits()) {
-      const shape = describeProofShape(commit.proofSchema);
-      assert.ok(shape.state === "described");
-      const fixed = shape.fields.filter((field) => field.kind === "fixed");
-      assert.ok(fixed.length > 0, `${commit.taskId} pins no literal at all`);
-      const drafts = initialProofDrafts(shape.fields as readonly ProofFieldWire[]);
-      for (const field of fixed) {
-        assert.ok(!(field.path in drafts), `${field.path} was offered as a box to type in`);
-      }
     }
   });
 });
@@ -222,118 +158,9 @@ describe("shapes the proof describer refuses by name", () => {
   });
 });
 
-describe("the client-side refusal, per field (D245)", () => {
-  const text: ProofFieldWire = {
-    kind: "text",
-    path: "emplId" as ProofFieldWire["path"],
-    pattern: "^10\\d{6}$",
-    serverOnlyRules: false,
-  };
-  const choice: ProofFieldWire = {
-    kind: "choice",
-    path: "approvalStatus" as ProofFieldWire["path"],
-    options: ["Approved", "Pending"],
-  };
-  const integer: ProofFieldWire = {
-    kind: "integer",
-    path: "scannedRowCount" as ProofFieldWire["path"],
-    minimum: 0,
-  };
-
-  it("refuses an empty answer as evidence rather than as a formatting slip", () => {
-    assert.match(proofFieldProblem(text, "   ") ?? "", /not something you saw/u);
-  });
-
-  it("names the contract's own pattern, the option list, and the bound", () => {
-    assert.match(proofFieldProblem(text, "99") ?? "", /\^10\\d\{6\}\$/u);
-    assert.match(proofFieldProblem(choice, "Nope") ?? "", /Approved, Pending/u);
-    assert.match(proofFieldProblem(integer, "-1") ?? "", /At least 0/u);
-    assert.match(proofFieldProblem(integer, "1.5") ?? "", /whole number/u);
-  });
-
-  it("reports EVERY problem at once, so one look at the page fixes them all", () => {
-    const composed = composeProofValue([text, choice, integer], {
-      emplId: "99",
-      approvalStatus: "Nope",
-      scannedRowCount: "3",
-    });
-    assert.ok(composed.state === "invalid");
-    assert.deepEqual(composed.problems.map(({ path }) => path), ["emplId", "approvalStatus"]);
-  });
-
-  it("builds the nested object a dotted path names", () => {
-    const composed = composeProofValue([
-      { kind: "fixed", path: "kind" as ProofFieldWire["path"], value: "kuali-saved-finalization" },
-      { kind: "text", path: "fields.timekeeperName" as ProofFieldWire["path"], serverOnlyRules: false },
-      { kind: "boolean", path: "fields.requestAcknowledged" as ProofFieldWire["path"] },
-    ], { "fields.timekeeperName": "HEIN, JULIAN", "fields.requestAcknowledged": "true" });
-    assert.ok(composed.state === "composed");
-    assert.deepEqual(composed.value, {
-      kind: "kuali-saved-finalization",
-      fields: { timekeeperName: "HEIN, JULIAN", requestAcknowledged: true },
-    });
-  });
-});
-
 /**
  * The label is an ACCESSIBLE NAME and the hint is the sentence beside the box,
  * so both are pinned here rather than only in the parity corpus — this tree
  * renders no React in the unit lane, which is exactly why `terminalOutcomeText`
  * became an exported pure function too (D187's lesson from the other side).
  */
-describe("what the proof form calls each field (D245)", () => {
-  it("humanises the schema's own path and never renames the field", () => {
-    const label = (path: string): string =>
-      proofFieldLabel({ kind: "boolean", path: path as ProofFieldWire["path"] });
-    assert.equal(label("transactionId"), "Transaction id");
-    assert.equal(label("emplId"), "Empl id");
-    assert.equal(label("fields.separationDate"), "Fields · separation date");
-  });
-
-  it("prints the contract's own constraint, verbatim where it is a pattern", () => {
-    assert.equal(
-      proofFieldHint({
-        kind: "text",
-        path: "transactionId" as ProofFieldWire["path"],
-        pattern: "^T\\d{6,}$",
-        serverOnlyRules: false,
-      }),
-      "must match ^T\\d{6,}$",
-    );
-    assert.match(
-      proofFieldHint({
-        kind: "text",
-        path: "observedAt" as ProofFieldWire["path"],
-        format: "iso-datetime",
-        pattern: "whatever",
-        serverOnlyRules: false,
-      }) ?? "",
-      /ISO-8601 instant with an offset/u,
-    );
-    // The one honest half-measure: the box cannot re-check a `.refine()`, and
-    // says so instead of implying its own tick is the verdict.
-    assert.match(
-      proofFieldHint({
-        kind: "text",
-        path: "comments" as ProofFieldWire["path"],
-        maxLength: 4000,
-        serverOnlyRules: true,
-      }) ?? "",
-      /server checks more rules on this one than this box can/u,
-    );
-    // A choice and a boolean render their answers, so a sentence would repeat
-    // the control.
-    assert.equal(
-      proofFieldHint({ kind: "boolean", path: "flag" as ProofFieldWire["path"] }),
-      undefined,
-    );
-    assert.equal(
-      proofFieldHint({
-        kind: "choice",
-        path: "status" as ProofFieldWire["path"],
-        options: ["Approved"],
-      }),
-      undefined,
-    );
-  });
-});

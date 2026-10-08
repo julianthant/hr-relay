@@ -20,7 +20,7 @@ import {
   FIXTURE_INTAKE_MAPPING,
   FIXTURE_INTAKE_RERUN,
   FIXTURE_INTAKE_VALIDATED,
-} from "../../../../support/fixtures/dashboard/fixture-intake.js";
+} from "../../../../parity/helpers/fixture-intake.js";
 import { RowRejectSchema } from "../../../../../src/models/intake/manifest.js";
 import { IntakeRowCorrectionSchema } from "../../../../../src/models/intake/session.js";
 import { SuggestionSchema } from "../../../../../src/models/intake/suggestions.js";
@@ -49,7 +49,7 @@ import {
   sourceLabel,
   startRunsLabel,
   suggestionProposalText,
-} from "../../../../../src/dashboard/surfaces/intake-model.js";
+} from "../../../../../src/dashboard/surfaces/intake/intake-model.js";
 
 describe("IN95 / IN99–IN122 — rejection review uses the demo's one vocabulary and one eligibility door", () => {
   it("pins every visible label in the table, editors, review acknowledgement and Well summaries", () => {

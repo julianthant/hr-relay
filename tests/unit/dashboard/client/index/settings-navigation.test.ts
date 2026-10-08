@@ -3,12 +3,12 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it } from "vitest";
-import { fixtureSettingsDocument } from "../../../../support/fixtures/dashboard/fixture-settings.js";
+import { fixtureSettingsDocument } from "../../../../parity/helpers/fixture-settings.js";
 import { SettingsSectionPrimitiveSchema, StorageHealthSummaryWireSchema } from "../../../../../src/models/dashboard/bootstrap.js";
 import type { DashboardClient } from "../../../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../../../src/dashboard/state/client-context.js";
-import { buildSettingsNav, resolveSettingsSection } from "../../../../../src/dashboard/surfaces/settings-model.js";
-import { SettingsPageWithToast } from "../../../../support/fixtures/dashboard/settings-page-with-toast.js";
+import { buildSettingsNav, resolveSettingsSection } from "../../../../../src/dashboard/surfaces/settings/settings-model.js";
+import { SettingsPage } from "../../../../../src/dashboard/surfaces/settings/settings.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 class MeasurementFreeResizeObserver {
@@ -48,7 +48,7 @@ async function mountFailedRead(section: string): Promise<HTMLElement> {
   } as unknown as DashboardClient;
   const element = createElement(DashboardClientProvider, {
     client,
-    children: createElement(SettingsPageWithToast, {
+    children: createElement(SettingsPage, { onClose: () => undefined,
       storage: STORAGE,
       sections: servedStatusSections,
       workflowLabels: new Map(),
@@ -71,20 +71,24 @@ describe("canonical Settings navigation", () => {
   const document = fixtureSettingsDocument();
   const groups = buildSettingsNav(servedStatusSections, document);
 
-  it("serves the approved 10 pages under the three shared groups", () => {
+  it("serves the approved 11 pages under the five shared groups", () => {
     assert.deepEqual(groups.map(group => [group.heading, group.entries.map(entry => entry.id)]), [
-      ["Personal", ["general", "performance", "paths", "routes", "providers", "credentials"]],
-      ["Status", ["storage", "preflight", "workflow-capabilities"]],
+      ["Personal", ["general", "credentials"]],
+      ["Advanced", ["performance", "paths", "routes"]],
+      ["Data", ["spreadsheets", "explorer", "activity"]],
+      ["Status", ["storage", "preflight"]],
       ["Help", ["keyboard"]],
     ]);
-    assert.equal(groups.flatMap(group => group.entries).length, 10);
+    assert.equal(groups.flatMap(group => group.entries).length, 11);
   });
 
   it("keeps the approved navigation while the editable settings projection is unavailable", () => {
     const unavailableGroups = buildSettingsNav(servedStatusSections);
     assert.deepEqual(unavailableGroups.map(group => [group.heading, group.entries.map(entry => entry.id)]), [
-      ["Personal", ["general", "performance", "paths", "routes", "providers", "credentials"]],
-      ["Status", ["storage", "preflight", "workflow-capabilities"]],
+      ["Personal", ["general", "credentials"]],
+      ["Advanced", ["performance", "paths", "routes"]],
+      ["Data", ["spreadsheets", "explorer", "activity"]],
+      ["Status", ["storage", "preflight"]],
       ["Help", ["keyboard"]],
     ]);
     assert.ok(unavailableGroups[0]?.entries.every(entry => entry.source === "client"));
@@ -95,28 +99,53 @@ describe("canonical Settings navigation", () => {
   it("folds legacy section URLs to their new page and keeps unknown requests explicit", () => {
     for (const [legacy, canonical] of [
       ["display", "general"], ["annual-dates", "general"], ["runtime-isolation", "paths"],
-      ["provider-env", "credentials"], ["protected-store", "credentials"],
+      ["providers", "general"], ["provider-env", "general"], ["protected-store", "credentials"],
     ] as const) {
       const resolved = resolveSettingsSection(groups, legacy);
       assert.equal(resolved.state, "open");
       if (resolved.state === "open") assert.equal(resolved.entry.id, canonical);
     }
+    assert.deepEqual(resolveSettingsSection(groups, "ui-catalog"), { state: "unknown", requested: "ui-catalog" });
     assert.deepEqual(resolveSettingsSection(groups, "observed-host"), { state: "unknown", requested: "observed-host" });
   });
 
   it("shows the read refusal without hiding tabs while an independent page is open", async () => {
     const page = await mountFailedRead("keyboard");
-    assert.equal(page.querySelectorAll('a[href^="?settings="]').length, 10);
+    assert.equal(page.querySelectorAll('a[href^="?settings="]').length, 11);
     assert.ok(page.textContent?.includes("Editable settings unavailable"), page.textContent ?? "");
     assert.ok(page.textContent?.includes("Settings could not be read."), page.textContent ?? "");
-    assert.ok(page.querySelector('button')?.textContent?.includes("Try again"));
+    assert.ok([...page.querySelectorAll("button")].some(button => button.textContent?.includes("Try again")));
   });
 
   it("reports a credential read failure instead of leaving its loading spinner", async () => {
     const page = await mountFailedRead("credentials");
     assert.ok(page.textContent?.includes("Credentials unavailable"), page.textContent ?? "");
     assert.ok(page.textContent?.includes("Settings could not be read."), page.textContent ?? "");
-    assert.ok(page.querySelector('button')?.textContent?.includes("Try again"));
+    assert.ok([...page.querySelectorAll("button")].some(button => button.textContent?.includes("Try again")));
     assert.ok(!page.textContent?.includes("Reading settings authorities"), page.textContent ?? "");
+  });
+
+  it("names the retired Archive destination without hiding a stored-data failure or rendering Archive", async () => {
+    const page = await mountFailedRead("archive");
+    assert.match(page.textContent ?? "", /Archive page removed/u);
+    assert.match(page.textContent ?? "", /Existing stored run data has not been deleted/u);
+    assert.match(page.textContent ?? "", /Editable settings unavailable/u);
+    assert.equal(page.querySelector('a[href="?settings=archive"]'), null);
+    assert.equal(page.querySelector('[aria-label="Archive"]'), null);
+  });
+
+  it("reports unavailable field search when the catalog read fails instead of claiming no matches", async () => {
+    const page = await mountFailedRead("keyboard");
+    const search = page.querySelector<HTMLInputElement>('input[aria-label="Search settings"]');
+    assert.ok(search);
+    await act(async () => {
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      if (setter === undefined) throw new Error("input setter unavailable");
+      Reflect.apply(setter, search, ["backoff"]);
+      search.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    assert.ok(page.textContent?.includes("Settings fields unavailable"));
+    assert.ok(!page.textContent?.includes("No settings found"));
   });
 });

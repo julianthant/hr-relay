@@ -4,10 +4,10 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it } from "vitest";
 import type { DashboardClient } from "../../../../../src/dashboard/client/index.js";
-import { createSettingsQueries } from "../../../../../src/dashboard/client/settings-queries.js";
+import { createSettingsQueries } from "../../../../../src/dashboard/client/queries/settings-queries.js";
 import { createDashboardTransport } from "../../../../../src/dashboard/client/transport.js";
 import { DashboardClientProvider } from "../../../../../src/dashboard/state/client-context.js";
-import { SettingsPathPicker } from "../../../../../src/dashboard/surfaces/settings-path-picker.js";
+import { SettingsPathPicker } from "../../../../../src/dashboard/surfaces/settings/general/settings-path-picker.js";
 import { NativePathPickerRequestSchema, type NativePathPickerResponse } from "../../../../../src/models/dashboard/native-path-picker.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);

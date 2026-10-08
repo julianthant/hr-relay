@@ -1,0 +1,143 @@
+# visual-baseline-workflows-explorer-fixture-emergency-contact-dark--graphite-warm--1280x720
+# adapter: fixture
+# fixture: visual-baseline-workflows.spec.ts:mounted Logs and all Explorer workflows @ dark
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#dashboard-settings-content"
+- main:
+  - region "Settings":
+    - navigation "Settings sections":
+      - heading "Settings" [level=2]
+      - button "Back to dashboard"
+      - group:
+        - searchbox "Search settings"
+      - text: Personal
+      - link "General":
+        - /url: "?settings=general"
+      - link "Credentials":
+        - /url: "?settings=credentials"
+      - text: Advanced
+      - link "Performance":
+        - /url: "?settings=performance"
+      - link "Paths":
+        - /url: "?settings=paths"
+      - link "Routes":
+        - /url: "?settings=routes"
+      - text: Data
+      - link "Spreadsheets":
+        - /url: "?settings=spreadsheets"
+      - link "Explorer":
+        - /url: "?settings=explorer"
+      - link "Analytics":
+        - /url: "?settings=activity"
+      - text: Status
+      - link "Storage checks":
+        - /url: "?settings=storage"
+      - link "Preflight":
+        - /url: "?settings=preflight"
+      - text: Help
+      - link "Keyboard":
+        - /url: "?settings=keyboard"
+    - region "Workflow explorer preview":
+      - heading "Explorer" [level=1]
+      - paragraph: Browse workflows, their steps and field sources. Fictional preview data.
+      - combobox "Explorer workflow": Emergency Contact
+      - list "Workflow steps":
+        - listitem:
+          - heading "Open browser sessions" [level=2]
+          - text: UCPath
+          - paragraph: Authentication waits until the contact packet is reviewed.
+        - listitem:
+          - heading "Extract the contact packet" [level=2]
+          - text: OCR Delegate the scanned packet to OCR review
+          - group:
+            - strong: Emergency Contact Form
+            - text: Read only Source page Page carrying this contact block Employee ID · name Scanned form Contact name Scanned form Relationship Scanned form Cell · home · work phone Scanned form Contact address · employee address Scanned form
+          - text: Exclude pages without a contact block; flag uncertain fields
+        - listitem:
+          - heading "Review the extracted contacts" [level=2]
+          - text: You Contact review
+          - combobox "Contact review preview": Contacts approved
+          - text: Use only the approved contact records
+        - listitem:
+          - heading "Fan out approved people" [level=2]
+          - text: Local Enqueue one per-person fill for each approved record
+          - paragraph: Each person keeps a separate outcome. The packet waits for all people to become terminal.
+        - listitem:
+          - heading "Open the employee contact page" [level=2]
+          - text: UCPath Authenticate the per-person session after packet review
+          - group:
+            - strong: Emergency Contacts · employee
+            - text: Fill form
+            - button "Show source for Employee ID": Employee ID Approved employee record
+          - text: Open the employee’s emergency-contact editor
+          - group:
+            - strong: Employee header
+            - text: Read only Person ID · employee name Current UCPath editor
+          - text: Contact identity
+          - combobox "Contact identity preview": Employee ID verified
+          - text: Verify the displayed Person ID against the approved record
+        - listitem:
+          - heading "Check existing contacts" [level=2]
+          - text: UCPath
+          - group:
+            - strong: Saved contacts
+            - text: Read only Contact names · primary flags Every saved contact row
+          - text: Existing contact
+          - combobox "Existing contact preview": No matching contact
+          - text: Contact rehearsal
+          - combobox "Contact rehearsal preview": Illustrate save
+          - text: No matching contact. Continue with a new contact row.
+        - listitem:
+          - heading "Prepare the contact row" [level=2]
+          - text: UCPath Keep existing saved contacts Reuse a blank contact row, or add a row when every existing row is named
+        - listitem:
+          - heading "Fill the approved contact" [level=2]
+          - text: UCPath Contact address
+          - combobox "Contact address preview": Same as employee
+          - group:
+            - strong: Emergency Contacts · contact details
+            - text: Fill form
+            - button "Show source for Primary contact": Primary contact Checked
+            - button "Show source for Relationship": Relationship Mapped UCPath relationship option
+            - button "Show source for Same address as employee": Same address as employee Checked
+            - button "Show source for Cell · home · work phone": Cell · home · work phone Approved contact phones
+            - button "Show source for Contact name": Contact name Approved contact name · entered last
+        - listitem:
+          - heading "Verify the staged contact" [level=2]
+          - text: UCPath Read back the contact name after every form postback Confirm the approved name remains present and every contact row has a name
+        - listitem:
+          - heading "Save and verify the contact" [level=2]
+          - text: UCPath Click Save Read the saved contact row back from the employee’s record Verify the contact name, relationship, primary flag and phone values
+        - listitem:
+          - heading "Roll up the packet" [level=2]
+          - text: Local Report each person’s own saved-contact proof Close the packet only after every approved person is terminal
+      - paragraph: Contact save and per-person readback illustrated
+- region "Session Panel":
+  - group "Session actions":
+    - button "Sessions"
+    - text: 2 running 1 starting 1 idle
+    - button "Add workers"
+    - button "Settings" [pressed]
+- region "Notifications"
+- listbox:
+  - group:
+    - option "Person Lookup"
+    - option "I-9 Lookup"
+    - option "Separations"
+    - option "I-9 Check"
+    - option "Onboarding"
+    - option "Oath Signature"
+    - option "Oath Upload"
+    - option "Emergency Contact" [selected]
+    - option "Work-Study"
+    - option "Kronos Pay Rule"
+    - option "OCR"
+    - option "CRM Doc Download"
+    - option "SharePoint Download"
+    - option "OnBase"
+    - option "Old Kronos Reports"

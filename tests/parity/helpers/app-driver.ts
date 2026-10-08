@@ -35,6 +35,7 @@ export interface AppRoute {
   readonly activity?: string;
   /** A settings section id; `""` opens the gear on its first section. */
   readonly settings?: string;
+  readonly logPreview?: "selected";
 }
 
 export function routeUrl(baseUrl: string, route: AppRoute): string {
@@ -50,6 +51,7 @@ export function routeUrl(baseUrl: string, route: AppRoute): string {
   if (route.settings !== undefined) url.searchParams.set("settings", route.settings);
   if (route.explore !== undefined) url.searchParams.set("explore", route.explore);
   if (route.catalog !== undefined) url.searchParams.set("catalog", route.catalog);
+  if (route.logPreview !== undefined) url.searchParams.set("logPreview", route.logPreview);
   return url.toString();
 }
 

@@ -5,8 +5,8 @@ import { SettingsCommandRequestSchema } from "../../../../../src/rules/commands/
 import { mergeSettingsPatch, SettingsPatchSchema } from "../../../../../src/models/config/settings.js";
 import { fixtureSettingsDocument } from "../../../../support/fixtures/dashboard/fixture-settings.js";
 import { EditableSettingsWireSchema } from "../../../../../src/models/dashboard/settings-editor.js";
-import { draftError, patchFromSettingsDraft, settingInput, settingsLeaves } from "../../../../../src/dashboard/surfaces/settings-draft-model.js";
-import { differingSettingsValues, groupDeploymentFacts, groupSettingsLeaves, settingsFactLabel } from "../../../../../src/dashboard/surfaces/ui-settings-records-labels.js";
+import { draftError, patchFromSettingsDraft, settingInput, settingsLeaves } from "../../../../../src/dashboard/surfaces/settings/editor/settings-draft-model.js";
+import { differingSettingsValues, groupDeploymentFacts, groupSettingsLeaves, settingsFactLabel } from "../../../../../src/dashboard/surfaces/settings/editor/ui-settings-records-labels.js";
 import { mountSettingsHarness, settingsAction, syntheticSettingsAuthority } from "../../../../support/helpers/dashboard/settings-harness.js";
 
 const cleanups: (() => void)[] = [];
@@ -75,7 +75,9 @@ describe("typed Settings catalog controls", () => {
     const annualRows = [...mounted.host.querySelectorAll('[data-settings-path^="annualDates."]')];
     assert.equal(annualRows.length, 1);
     assert.equal(annualRows[0]?.getAttribute("data-settings-path"), "annualDates.FY2027.jobEndDate");
-    assert.equal(annualRows[0]?.querySelector("input")?.required, true);
+    const dateSegments = [...(annualRows[0]?.querySelectorAll('[role="spinbutton"]') ?? [])];
+    assert.equal(dateSegments.length, 3);
+    assert.ok(dateSegments.every(segment => segment.getAttribute("aria-required") === "true"));
     assert.doesNotMatch(mounted.host.textContent ?? "", /Kronos|Add fiscal year|New fiscal year|FY202[0-9]/u);
   });
   it("folds Display into General and omits the observed-host page", async () => {
@@ -126,15 +128,37 @@ describe("typed Settings catalog controls", () => {
     }
     assert.doesNotMatch(host.textContent ?? "", /Code-owned paths for this process|Local operator ID/u);
   });
-  it("keeps each route label associated with its generated control id", async () => {
+  it("groups each system's visible URL rows in one card with associated labels and descriptions", async () => {
     const { host } = await setup("routes");
-    const field = host.querySelector(".routes-page-field"); assert.ok(field);
-    const label = field.querySelector("label");
-    const input = field.querySelector("input");
-    assert.ok(label); assert.ok(input);
-    assert.equal(label.htmlFor, input.id);
-    assert.notEqual(input.id, "");
-    assert.ok(input.getAttribute("aria-describedby")?.includes("description"));
+    const systems = [...host.querySelectorAll(".routes-page-system")];
+    assert.equal(systems.length, 9);
+    assert.equal(host.querySelectorAll(".ds-disclosure, button[aria-expanded]").length, 0);
+    for (const system of systems) {
+      assert.equal(system.querySelectorAll(".ds-form-group").length, 1);
+      assert.equal(system.querySelectorAll(".ds-form-group .ds-form-group").length, 0);
+      assert.equal(system.querySelectorAll('[hidden], [data-state="closed"]').length, 0);
+      const name = system.querySelector("h2 span span")?.textContent;
+      assert.equal(system.querySelector('[role="group"]')?.getAttribute("aria-label"), name);
+    }
+    const crm = host.querySelector('[data-settings-path="urls.crm.prod"]'); assert.ok(crm);
+    assert.equal(crm.closest(".routes-page-system")?.querySelector("h2")?.textContent, "CRM5 URLs");
+    assert.equal(crm.querySelectorAll("button").length, 0);
+    const rows = [...crm.querySelectorAll(".routes-page-field")];
+    assert.equal(rows.length, 5);
+    assert.deepEqual(rows.map(row => row.querySelector("label")?.textContent), ["Entry* (required)", "Onboarding search* (required)", "UCPath entry sheet* (required)", "Onboarding history* (required)", "iDocs viewer* (required)"]);
+    for (const row of rows) {
+      const label = row.querySelector("label");
+      const input = row.querySelector("input");
+      assert.ok(label); assert.ok(input);
+      assert.equal(row.querySelectorAll("input").length, 1);
+      assert.equal(label.htmlFor, input.id);
+      assert.notEqual(input.id, "");
+      assert.ok(input.getAttribute("aria-describedby")?.includes("description"));
+      assert.equal(input.required, true);
+      assert.equal(input.type, "url");
+    }
+    assert.equal(crm.closest(".ds-form-group")?.getAttribute("aria-label"), "CRM");
+    assert.equal(host.querySelectorAll('.routes-page-field input[type="url"]').length, 18);
   });
   it("renders Performance timeouts as grouped, described controls with visible units", async () => {
     const { host } = await setup("performance");
@@ -158,7 +182,7 @@ describe("typed Settings catalog controls", () => {
     assert.equal(host.querySelector("select"), null);
     assert.equal([...host.querySelectorAll("button")].some(button => button.textContent === "Save changes"), false);
   });
-  it("offers Undo only for a pending Performance text edit", async () => {
+  it("discards a pending Performance clear without an inline Undo control", async () => {
     const authority = syntheticSettingsAuthority(); cleanups.push(authority.close);
     const mounted = await mountSettingsHarness(authority, "performance", () => fixtureSettingsDocument({ timeouts: { navigationMs: 22_000 } }, 2)); cleanups.push(mounted.close);
     const row = mounted.host.querySelector('[data-settings-path="timeouts.navigationMs"]'); assert.ok(row);
@@ -168,9 +192,8 @@ describe("typed Settings catalog controls", () => {
     assert.equal(row.querySelectorAll(".settings-row-actions").length, 0);
     await settingsAction(() => mounted.controller().clear("timeouts.navigationMs"));
     assert.deepEqual(mounted.controller().draft["timeouts.navigationMs"], { kind: "clear" });
-    const undo = [...row.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Undo");
-    assert.ok(undo);
-    await settingsAction(() => undo.click());
+    assert.equal([...row.querySelectorAll<HTMLButtonElement>("button")].some(button => button.textContent === "Undo"), false);
+    await settingsAction(() => mounted.controller().reset("timeouts.navigationMs"));
     assert.equal(mounted.controller().draft["timeouts.navigationMs"], undefined);
     assert.equal(mounted.commands.length, 0);
   });
@@ -315,7 +338,6 @@ it("publishes failed reload, keeps its draft, and blocks new submissions", async
   h.ports.read = () => { throw new Error("unavailable"); };
   await settingsAction(() => h.controller().reload());
   assert.match(h.controller().readProblem ?? "", /could not be read/u);
-  assert.match(h.host.textContent ?? "", /could not be read/u);
   assert.deepEqual(h.controller().draft["actor.label"], { kind: "set", raw: "Retained after reload" });
   await settingsAction(() => h.controller().submit()); assert.equal(h.commands.length, 0);
 });

@@ -28,7 +28,7 @@ import {
   buildRunDetail,
   type RunDetailQueryDeps,
 } from "../../../../../../src/backend/runs/queries/run-detail.js";
-import { terminalOutcomeText } from "../../../../../../src/dashboard/surfaces/log-panel-model.js";
+import { terminalOutcomeText } from "../../../../../../src/dashboard/surfaces/run-detail/log-panel-model.js";
 import {
   makeWorld,
   queuedEventOf,

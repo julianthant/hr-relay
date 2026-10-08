@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it, vi } from "vitest";
-import { useRoute, type NativeRouteHistory, type RouteHistoryTarget } from "../../../../../src/dashboard/app/route-history-model.js";
-import { parseRoute, type AppRouteState } from "../../../../../src/dashboard/app/url-state.js";
+import { useRoute, type NativeRouteHistory, type RouteHistoryTarget } from "../../../../../src/dashboard/app/navigation/route-history-model.js";
+import { parseRoute, type AppRouteState } from "../../../../../src/dashboard/app/navigation/url-state.js";
 import { DashboardApp } from "../../../../../src/dashboard/app/dashboard-app.js";
 import { createDashboardClient, type DashboardClient } from "../../../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../../../src/dashboard/state/client-context.js";
@@ -34,7 +34,7 @@ function button(name: string): HTMLButtonElement {
   return found;
 }
 function workflowButton(name: string): HTMLButtonElement {
-  const found = [...document.querySelectorAll<HTMLButtonElement>('nav[aria-label="Workflow Panel"] button')]
+  const found = [...document.querySelectorAll<HTMLButtonElement>('nav[aria-label="Workflows"] button')]
     .find(node => node.textContent?.trim().startsWith(name));
   assert.ok(found, `workflow ${name}`);
   return found;
@@ -65,7 +65,7 @@ describe("mounted shell navigation", () => {
     await click(workflowButton("Separations"));
     assert.equal(workflowButton("Separations").getAttribute("aria-current"), "page");
     assert.ok(workflowButton("Separations").querySelector('[aria-label="0 active of 0 in Separations"]'));
-    assert.doesNotMatch(document.querySelector('nav[aria-label="Workflow Panel"]')?.textContent ?? "", /active\s*│\s*all/iu);
+    assert.doesNotMatch(document.querySelector('nav[aria-label="Workflows"]')?.textContent ?? "", /active\s*│\s*all/iu);
     assert.equal(localStorage.getItem("hr-dashboard.selected-workflow"), "separations");
     await click(button("Settings"));
     await historyMove("back");
@@ -128,40 +128,60 @@ describe("mounted shell navigation", () => {
     assert.equal(new URLSearchParams(location.search).get("run"), FIXTURE_IDS.doneRun);
     assert.equal(selectedTab(), before);
   });
-  it("repeated doors do not add a native history entry and competing keys resolve one takeover", async () => {
+  it("Settings gear toggles the surface and competing keys resolve one takeover", async () => {
     await mount("?settings=keyboard&archive=&explore=missing");
     assert.ok(document.querySelector('[aria-label="Settings"]'));
+    const cursor = Number(Reflect.get(Object(window.history.state), "hrDashboardRouteCursor"));
     await click(button("Settings"));
-    const count = window.history.length;
+    assert.equal(new URLSearchParams(location.search).has("settings"), false);
     await click(button("Settings"));
-    assert.equal(window.history.length,count);
-    await click(button("Dashboard"));
+    assert.equal(new URLSearchParams(location.search).has("settings"), true);
+    assert.equal(Reflect.get(Object(window.history.state), "hrDashboardRouteCursor"), cursor + 2);
+    await historyMove("back");
+    assert.equal(new URLSearchParams(location.search).has("settings"), false);
+    await historyMove("forward");
+    assert.equal(new URLSearchParams(location.search).has("settings"), true);
+    await click(button("Settings"));
     assert.equal(new URLSearchParams(location.search).has("archive"),false);
     assert.equal(new URLSearchParams(location.search).has("explore"),false);
   });
 });
 
-async function editWidth() {
-  const field = document.querySelector<HTMLInputElement>('input[type="number"]'); assert.ok(field);
+async function editNavigationTimeout() {
+  const field = document.querySelector<HTMLInputElement>('input[name="timeouts.navigationMs"]'); assert.ok(field);
   await act(async () => {
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value")?.set?.call(field,"1777");
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value")?.set?.call(field,"111");
     field.dispatchEvent(new Event("input",{bubbles:true}));
   });
 }
-it("keeps the Settings editor and draft across section native history", async () => {
-  await mount("?settings=display");
-  await editWidth();
-  const keyboard = [...document.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Settings sections"] a')].find(link => link.textContent?.trim() === "Keyboard"); assert.ok(keyboard);
-  await click(keyboard);
+it("keeps the Settings editor and draft across section/catalog native history", async () => {
+  await mount("?settings=performance");
+  await editNavigationTimeout();
+  const catalog = [...document.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Settings sections"] a')].find(link => link.textContent?.trim() === "UI catalog"); assert.ok(catalog);
+  await click(catalog);
   await historyMove("back");
-  assert.equal(document.querySelector<HTMLInputElement>('input[type="number"]')?.value,"1777");
+  assert.equal(document.querySelector<HTMLInputElement>('input[name="timeouts.navigationMs"]')?.value,"111");
   assert.equal(document.body.textContent?.includes("Discard unsaved settings?"),false);
-  await click(button("Archive"));
-  await click(button("Keep editing"));
-  assert.equal(document.querySelector<HTMLInputElement>('input[type="number"]')?.value,"1777");
-  await click(button("Dashboard"));
+  const analytics = document.querySelector<HTMLAnchorElement>('nav[aria-label="Settings sections"] a[href="?settings=activity"]'); assert.ok(analytics);
+  await click(analytics);
+  assert.equal(document.querySelector("h1")?.textContent, "Analytics");
+  assert.equal(document.body.textContent?.includes("Discard unsaved settings?"), false);
+  await historyMove("back");
+  assert.equal(document.querySelector<HTMLInputElement>('input[name="timeouts.navigationMs"]')?.value,"111");
+  await click(button("Settings"));
   await click(button("Discard changes"));
   assert.equal(new URLSearchParams(location.search).has("settings"),false);
+});
+it.each(["?settings=archive", "?archive=", "?archive=archive-demo-run-48216&archiveView=versions"])("keeps retired Archive URL %s explicit and returns to the queue", async search => {
+  await mount(search);
+  assert.match(document.body.textContent ?? "", /Archive page removed/u);
+  assert.equal(document.querySelector('[aria-label="Archive"]'), null);
+  assert.equal(document.querySelector('a[href="?settings=archive"]'), null);
+  assert.equal(document.querySelectorAll('nav[aria-label="Settings sections"] a').length, 11);
+  await click(button("Return to dashboard"));
+  assert.equal(parseRoute(location.search).archive, undefined);
+  assert.equal(parseRoute(location.search).settings, undefined);
+  assert.ok(document.querySelector('[data-demo-row-id]'));
 });
 it("toolbar history restores the selected tab without adding an intermediate tab entry", async () => {
   await mount(`?day=${FIXTURE_DAY_WIRE.day}&run=${FIXTURE_IDS.doneRun}&section=receipt`);

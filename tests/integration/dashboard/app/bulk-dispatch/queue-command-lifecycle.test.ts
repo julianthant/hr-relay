@@ -28,11 +28,11 @@ import {
   planBulkVerb,
   bulkResultCounts,
   type BulkCandidateRow,
-} from "../../../../../src/dashboard/app/bulk-dispatch.js";
-import { composeCommandRequest, type CommandAction } from "../../../../../src/dashboard/app/command-dispatch.js";
-import { settleCommandResult } from "../../../../../src/dashboard/app/command-result.js";
-import { commandResultFeedEntry } from "../../../../../src/dashboard/surfaces/actions-model.js";
-import type { ActionTarget } from "../../../../../src/dashboard/surfaces/actions.js";
+} from "../../../../../src/dashboard/app/commands/bulk-dispatch.js";
+import { composeCommandRequest, type CommandAction } from "../../../../../src/dashboard/app/commands/command-dispatch.js";
+import { settleCommandResult } from "../../../../../src/dashboard/app/commands/command-result.js";
+import { commandResultFeedEntry } from "../../../../../src/dashboard/surfaces/shared/actions/actions-model.js";
+import type { ActionTarget } from "../../../../../src/dashboard/surfaces/shared/actions/actions.js";
 import {
   createCommandKernel,
   type CommandKernel,

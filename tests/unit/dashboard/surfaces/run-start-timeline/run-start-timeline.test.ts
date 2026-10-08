@@ -4,7 +4,7 @@ import {
   adjacentRunStartStage,
   reconcileRunStartStage,
   runStartStages,
-} from "../../../../../src/dashboard/surfaces/run-start-timeline.js";
+} from "../../../../../src/dashboard/surfaces/run-start/run-start-timeline.js";
 
 describe("run-start timeline", () => {
   it("keeps Options in the ordinary path", () => {

@@ -26,11 +26,11 @@ import {
   archivedRelaunchHeadline,
   archivedRunHeading,
   blockerStatusOf,
-} from "../../../../../src/dashboard/surfaces/archive-model.js";
+} from "../../../../../src/dashboard/surfaces/archive/archive-model.js";
 import {
   FIXTURE_ARCHIVED_RUN,
   FIXTURE_ARCHIVE_INDEX,
-} from "../../../../support/fixtures/dashboard/fixture-archive.js";
+} from "../../../../parity/helpers/fixture-archive.js";
 
 describe("archive index facts", () => {
   it("keeps warning presence and absence distinct", () => {

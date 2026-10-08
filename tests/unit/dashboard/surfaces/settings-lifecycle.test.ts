@@ -12,8 +12,8 @@ import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/pr
 import type { CredentialStore } from "../../../../src/models/config/credential-store.js";
 import { EditableSettingsWireSchema } from "../../../../src/models/dashboard/settings-editor.js";
 import { CommandAuditRecordSchema, CommandResultSchema, ProviderKeysCommandRequestSchema, SettingsCommandRequestSchema, deriveSettingsCommandFingerprint } from "../../../../src/rules/commands/commands.js";
-import { ordinaryReadbackState } from "../../../../src/dashboard/surfaces/settings-attempt-model.js";
-import { providerReadbackState } from "../../../../src/dashboard/surfaces/settings-provider-model.js";
+import { ordinaryReadbackState } from "../../../../src/dashboard/surfaces/settings/editor/settings-attempt-model.js";
+import { providerReadbackState } from "../../../../src/dashboard/surfaces/settings/providers/settings-provider-model.js";
 import { fixtureSettingsDocument } from "../../../support/fixtures/dashboard/fixture-settings.js";
 
 const ID = "11111111-1111-4111-8111-111111111111";

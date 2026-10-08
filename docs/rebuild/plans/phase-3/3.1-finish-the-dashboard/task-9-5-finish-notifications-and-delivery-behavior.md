@@ -395,3 +395,15 @@ listener. Parity fixtures closed their owned servers/contexts. The ignored depen
 build/evidence outputs remain within the implementation checkout for finalizer cleanup. Operator
 ports 3938/5174, runtime authority, credentials and legacy state were not used. Retain this branch,
 worktree and planning ref until operator-directed 3.1.9.8 consumption and cleanup. No self-integration.
+
+### Frontend-only navbar notification presentation amendment — 2026-10-01
+
+The current `NotificationBell` supplies local `NotificationsState` to `NotificationsView`; this UI
+replacement preserves the accepted backend authority and delivery work above without claiming new
+backend integration. The 370px popover has a bounded message scroller and fixed heading, filters and
+footer. A pinned history-gap notice stays visible under every filter and has no lifecycle controls;
+read and snooze are independent, and the default four-unread count includes the pin. Filtered-row removal
+returns focus to the active filter. Empty, loading, unavailable and ping states stay distinct. Notification
+actions and desktop enablement show placeholders and make no navigation API, command, permission or OS
+delivery calls. The related 54px navbar uses the text brand **RRSS HR**, with no logo. Current implementation
+and verification evidence is in the [navbar refinement record](/Users/julianhein/Projects/hr-automation-rebuild-evidence/navbar-notifications-2026-10-01/README.md).

@@ -1,0 +1,58 @@
+# visual-baseline-overlays-rerun-separations--graphite-warm--1280x720
+# adapter: fixture
+# fixture: visual-baseline-overlays.spec.ts:mounted Separations Rerun and delete confirmation
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- region "Notifications"
+- dialog "Rerun":
+  - banner:
+    - heading "Rerun" [level=2]
+    - paragraph: Separations · Workflow preview
+    - button "Close"
+  - list "Run configuration path":
+    - listitem:
+      - button "1 Steps": Steps
+    - listitem:
+      - button "2 Values" [disabled]: Values
+    - listitem:
+      - button "3 Options" [disabled]: Options
+    - listitem:
+      - button "4 Confirm" [disabled]: Confirm
+  - heading "Choose what to run again" [level=3]
+  - text: 7 / 7 included
+  - paragraph: Select steps for the new run. Statuses show the source outcome.
+  - region "Steps":
+    - heading "Steps" [level=4]
+    - list:
+      - listitem:
+        - checkbox "Read Kuali document" [checked]
+        - text: Read Kuali document Kuali Completed
+      - listitem:
+        - checkbox "Verify employee identity" [checked]
+        - text: Verify employee identity UCPath Completed
+      - listitem:
+        - checkbox "Read job summary" [checked] [disabled]
+        - text: Read job summary Form action · required Completed
+        - checkbox "Enter reading values manually for read job summary"
+        - text: Enter reading values manually for read job summary
+      - listitem:
+        - checkbox "Read timecard" [checked] [disabled]
+        - text: Read timecard Form action · required Completed
+        - checkbox "Enter reading values manually for read timecard"
+        - text: Enter reading values manually for read timecard
+      - listitem:
+        - checkbox "Check pending termination" [checked]
+        - text: Check pending termination UCPath Completed
+      - listitem:
+        - checkbox "Submit termination" [checked] [disabled]
+        - text: Submit termination Form action · required Completed
+      - listitem:
+        - checkbox "Finalize Kuali document" [checked] [disabled]
+        - text: Finalize Kuali document Form action · required Completed
+  - contentinfo:
+    - text: Source run · new runSeparations
+    - button "Cancel"
+    - button "Continue"

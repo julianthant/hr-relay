@@ -18,15 +18,14 @@ describe("independent protected Settings surface", () => {
   it("edits the protected onboarding roster under SharePoint routes and preserves its authority", async () => {
     const h = await setup();
     await h.render("routes");
-    const sharepoint = [...h.host.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent?.includes("SharePoint"));
+    const sharepoint = h.host.querySelector('[data-settings-path="urls.sharepoint.prod"]');
     assert.ok(sharepoint);
-    await settingsAction(() => sharepoint.click());
     const label = [...h.host.querySelectorAll<HTMLLabelElement>("label")].find(node => node.textContent === "SharePoint onboarding roster URL");
     assert.ok(label);
     const input = h.host.querySelector<HTMLInputElement>(`[id="${label.htmlFor}"]`);
     assert.ok(input);
     assert.equal(input.type, "password");
-    assert.match(sharepoint.textContent ?? "", /2 URLs/u);
+    assert.equal(sharepoint.closest(".routes-page-system")?.querySelector("h2")?.textContent, "SharePoint2 URLs");
     const search = h.host.querySelector<HTMLInputElement>('input[type="search"]');
     assert.ok(search);
     await settingsAction(() => {
@@ -36,7 +35,7 @@ describe("independent protected Settings surface", () => {
       search.dispatchEvent(new Event("input", { bubbles: true }));
     });
     assert.match(h.host.textContent ?? "", /SharePoint/u);
-    assert.doesNotMatch(h.host.textContent ?? "", /CRM production/u);
+    assert.equal(h.host.querySelector('[data-settings-path="urls.crm.prod"]'), null);
     const url = "https://example.test/onboarding-roster.xlsx";
     await settingsAction(() => h.controller().protectedEditor.update("sharepointOnboardingRosterUrl", url));
     assert.equal(input.value, url);
@@ -56,6 +55,12 @@ describe("independent protected Settings surface", () => {
     assert.equal(h.host.querySelectorAll('input[type="password"]').length, 2);
     assert.doesNotMatch(h.host.textContent ?? "", /SharePoint onboarding roster URL/u);
     assert.ok([...h.host.querySelectorAll<HTMLInputElement>("input")].every(input => input.value === ""));
+    const username = h.host.querySelector<HTMLInputElement>('input[name="ucpathUserId"]');
+    const password = h.host.querySelector<HTMLInputElement>('input[name="ucpathPassword"]');
+    assert.equal(username?.autocomplete, "section-ucpath username");
+    assert.equal(password?.autocomplete, "section-ucpath new-password");
+    assert.ok(password?.closest("form"));
+    assert.ok([...h.host.querySelectorAll<HTMLInputElement>("input")].every(input => input.name));
     const values = { ucpathUserId: "synthetic-user-sentinel", ucpathPassword: "synthetic-password-sentinel", timekeeperName: "synthetic-timekeeper-sentinel", sharepointOnboardingRosterUrl: "https://example.test/synthetic-url-sentinel", activityPersonPseudonym: JSON.stringify({ keyHex: "a".repeat(64), keyGeneration: "activity-person-synthetic-sentinel" }) };
     for (const name of ProtectedSettingsNameSchema.options) {
       await settingsAction(() => h.controller().protectedEditor.update(name, "")); assert.ok(h.controller().protectedEditor.errors[name]);
@@ -170,8 +175,8 @@ describe("independent protected Settings surface", () => {
 
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { SettingsSaveFeedback } from "../../../../../src/dashboard/surfaces/settings-feedback.js";
-import type { SettingsSaveState } from "../../../../../src/dashboard/surfaces/settings-attempt-model.js";
+import { SettingsSaveFeedback } from "../../../../../src/dashboard/surfaces/settings/editor/settings-feedback.js";
+import type { SettingsSaveState } from "../../../../../src/dashboard/surfaces/settings/editor/settings-attempt-model.js";
 it.each([
   [{ state: "conflict", message: "Current revision changed" }, "Credentials changed", false],
   [{ state: "unconfirmed", message: "Readback unavailable" }, "Credentials write unconfirmed", true],
@@ -184,7 +189,7 @@ it.each([
   assert.equal(html.includes("Retry exact attempt"), retry);
 });
 
-it("shows applied feedback briefly, then clears it", async () => {
+it("retains applied feedback until the next draft changes its state", async () => {
   vi.useFakeTimers();
   const host = document.createElement("div");
   document.body.append(host);
@@ -196,8 +201,11 @@ it("shows applied feedback briefly, then clears it", async () => {
       retry: () => undefined,
     })));
     assert.match(host.textContent ?? "", /Already saved/u);
-    await act(async () => { await vi.advanceTimersByTimeAsync(2201); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
+    assert.match(host.textContent ?? "", /Already saved/u);
+    await act(async () => root.render(createElement(SettingsSaveFeedback, { save: { state: "idle" }, protectedStore: true, retry: () => undefined })));
     assert.equal(host.textContent, "");
+    assert.doesNotMatch(host.textContent ?? "", /Already saved/u);
   } finally {
     await act(async () => root.unmount());
     host.remove();

@@ -26,11 +26,10 @@ import { relative, resolve } from "node:path";
 import { describe, it } from "vitest";
 
 const DASHBOARD = resolve(import.meta.dirname, "../../../../../src/dashboard");
-const TOKENS_CSS = resolve(DASHBOARD, "ds/tokens.css");
+const TOKENS_CSS = resolve(DASHBOARD, "ds/theme/tokens.css");
 
 /** Tokens a component writes into an inline `style`, and the module that writes it. */
 const RUNTIME_DECLARED: Readonly<Record<string, string>> = {
-  "--ds-panel-head-h": "surfaces/log-panel.tsx",
   "--ds-toast-inset-bottom": "app/dashboard-app.tsx",
 };
 

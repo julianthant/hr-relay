@@ -1,7 +1,7 @@
 import { StartCommandRequestSchema } from "../../../../../src/rules/commands/commands.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
-import { readLaunchRecovery, retainLaunchFinal, dismissLaunchRecovery } from "../../../../../src/dashboard/app/run-launch-recovery.js";
+import { readLaunchRecovery, retainLaunchFinal, dismissLaunchRecovery } from "../../../../../src/dashboard/surfaces/run-start/run-launch-recovery.js";
 import { launchHarness } from "../../../../support/fixtures/run-launch-fixtures.js";
 
 const cleanup: (() => void)[] = [];

@@ -1,5 +1,5 @@
 import { CalendarQuerySchema, CalendarWireSchema } from "../../../../../../src/models/dashboard/calendar.js";
-import { serverLocalDay } from "../../../../../../src/dashboard/surfaces/date-navigation-model.js";
+import { serverLocalDay } from "../../../../../../src/dashboard/surfaces/shell/date-navigation-model.js";
 import type { FixtureDashboardProfile } from "../../../../../support/fixtures/dashboard/fixture-profile.js";
 import { Hono } from "hono";
 export function registerFixtureShellRoutes({ app, profile }: { app: Hono; profile: FixtureDashboardProfile }): void {

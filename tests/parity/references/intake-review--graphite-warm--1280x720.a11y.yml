@@ -1,0 +1,128 @@
+# intake-review--graphite-warm--1280x720
+# adapter: fixture
+# fixture: intake-review
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#dashboard-main-region"
+- complementary "Workspace":
+  - heading "HR GPT" [level=2]
+  - button "Notifications, 3 unread"
+  - button "Search runs"
+  - navigation "Workflows":
+    - heading "Search" [level=3]
+    - list:
+      - listitem:
+        - button "Person Lookup": Person Lookup 5 · 14
+      - listitem:
+        - button "I-9 Lookup": I-9 Lookup 0 · 1
+    - heading "Separations" [level=3]
+    - list:
+      - listitem:
+        - button "Separations": Separations 0 · 1
+      - listitem:
+        - button "I-9 Check": I-9 Check 1 · 1
+    - heading "Onboarding" [level=3]
+    - list:
+      - listitem:
+        - button "Onboarding": Onboarding 0 · 1
+      - listitem:
+        - button "Oath Signature": Oath Signature 1 · 1
+      - listitem:
+        - button "Oath Upload": Oath Upload 1 · 1
+      - listitem:
+        - button "Emergency Contact": Emergency Contact 1 · 1
+    - heading "Work Study" [level=3]
+    - list:
+      - listitem:
+        - button "Work-Study": Work-Study 0 · 1
+    - heading "Payroll" [level=3]
+    - list:
+      - listitem:
+        - button "Kronos Pay Rule": Kronos Pay Rule 0 · 1
+    - heading "Utils" [level=3]
+    - list:
+      - listitem:
+        - button "OCR": OCR 0 · 5
+      - listitem:
+        - button "CRM Doc Download": CRM Doc Download 0 · 1
+      - listitem:
+        - button "SharePoint Download": SharePoint Download 0 · 1
+    - heading "OnBase" [level=3]
+    - list:
+      - listitem:
+        - button "OnBase": OnBase 1 · 1
+    - heading "Timekeeping" [level=3]
+    - list:
+      - listitem:
+        - button "Old Kronos Reports": Old Kronos Reports 0 · 1
+- main:
+  - region "Spreadsheet intake":
+    - heading "Spreadsheet intake" [level=2]
+    - text: A sheet becomes N runs only after a header row, an operator-built column mapping, and a per-cell accept-or-reject on every row. mapping onto Person Lookup
+    - button "Close"
+    - region "Source file":
+      - text: Source file cohort-7-onboarding.csv sha 3c9a71e07 rows read4 columnsuploaded 10:01 AM validated Header row
+      - combobox "Header row": row 3 · confidence 1.00 — UCPath ID · Employee Name · Department · Start Date
+      - paragraph: Chosen by ranking, and changeable — every column below is read relative to it.
+    - tablist "Intake stage":
+      - tab "Mapping 2"
+      - tab "Review 4" [selected]
+      - tab "Manifest"
+      - tab "Rerun diff"
+    - tabpanel "Review 4":
+      - text: validated 10:02 AMvalues read as of 10:02 AM
+      - table "Rejected rows":
+        - rowgroup:
+          - row "Row Kind Field / column Why Resolve":
+            - columnheader "Row"
+            - columnheader "Kind"
+            - columnheader "Field / column"
+            - columnheader "Why"
+            - columnheader "Resolve"
+        - rowgroup:
+          - row "1 duplicate person — source rows 1, 5 describe the same item code duplicate-identity Exclude…":
+            - cell "1"
+            - cell "duplicate person"
+            - cell "—"
+            - cell "source rows 1, 5 describe the same item code duplicate-identity"
+            - cell "Exclude…":
+              - button "Exclude…"
+          - 'row "3 cell could not be read emplId “UCPath ID” raw: 4567 (last4) is not a UCPath EID (must be 10xxxxxx, 8 digits) (Employee ID (EID)) code cell-coercion Fix cell Exclude…"':
+            - cell "3"
+            - cell "cell could not be read"
+            - 'cell "emplId “UCPath ID” raw: 4567 (last4)"'
+            - cell "is not a UCPath EID (must be 10xxxxxx, 8 digits) (Employee ID (EID)) code cell-coercion"
+            - cell "Fix cell Exclude…":
+              - button "Fix cell"
+              - button "Exclude…"
+          - row "5 duplicate person — source rows 1, 5 describe the same item code duplicate-identity Exclude…":
+            - cell "5"
+            - cell "duplicate person"
+            - cell "—"
+            - cell "source rows 1, 5 describe the same item code duplicate-identity"
+            - cell "Exclude…":
+              - button "Exclude…"
+          - row "6 fields disagree — Invalid input code cross-field Exclude…":
+            - cell "6"
+            - cell "fields disagree"
+            - cell "—"
+            - cell "Invalid input code cross-field"
+            - cell "Exclude…":
+              - button "Exclude…"
+      - checkbox "I have read all 4 rejected rows"
+      - text: I have read all 4 rejected rows Rejection history includes corrected and excluded rows.
+    - text: "3 of 7 rows would run 4 unresolved4 in rejection history0 excluded Run is blocked: 4 unresolved source rows; rejection history has not been reviewed. header row 3fingerprint 55f5fb4b"
+    - button "Show full layout fingerprint"
+    - button "Re-validate"
+    - button "Start 3 runs" [disabled]
+- region "Session Panel":
+  - group "Session actions":
+    - button "Sessions"
+    - text: 2 running 1 starting 1 idle
+    - button "Add workers"
+    - button "Settings"
+- region "Notifications"

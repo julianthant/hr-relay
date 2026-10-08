@@ -8,7 +8,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it } from "vitest";
 import { StorageHealthSummaryWireSchema } from "../../../../../src/models/dashboard/bootstrap.js";
 import { Banner } from "../../../../../src/dashboard/ds/ui.js";
-import { StorageBanner } from "../../../../../src/dashboard/surfaces/settings.js";
+import { StorageBanner } from "../../../../../src/dashboard/surfaces/settings/settings.js";
 
 const CHECKED_AT = "2026-08-27T16:00:00.000Z";
 

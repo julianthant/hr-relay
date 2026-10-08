@@ -24,7 +24,7 @@ const RETIRED_PATHS = [
   "src/domain/capture-intake.ts",
   "src/domain/capture-operator.ts",
   "src/domain/capture-surface.ts",
-  "src/domain/capture.ts",
+  "tests/parity/helpers/capture.ts",
   "src/domain/qr-code.ts",
   "src/infra/capture",
   "src/server/capture",
@@ -85,7 +85,6 @@ function writeFixture(root: string, path: string, content: string): void {
 describe("D294 phone capture retirement", () => {
   it("keeps mobile document capture absent while diagnostic and Archive captures remain", () => {
     assert.deepEqual(phoneCaptureRetirementViolations(REPO_ROOT), []);
-    assert.ok(existsSync(join(REPO_ROOT, "src/dashboard/surfaces/run-captures.tsx")));
     assert.ok(existsSync(join(REPO_ROOT, "src/backend/runs/queries/archive.ts")));
   });
 

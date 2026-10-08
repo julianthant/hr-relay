@@ -90,6 +90,84 @@ and its exact [suite retirement](</Users/julianhein/Projects/hr-automation-rebui
 [scenario guard cases](</Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/backend-layout-polish/implementation/scenario-guard-retirement.json>)
 and [test-target guard cases](</Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/backend-layout-polish/implementation/test-target-guard-retirement.json>).
 
+**D296/D298 presentation amendment — 2026-10-02:** the approved Design 1 Run/Rerun frame uses
+aligned step checkboxes, inline prior-outcome labels, styled choices and segmented controls. Confirmed
+starts close to a toast; source binding, repeat-write warnings and unknown-submission recovery remain.
+Spreadsheet registration moves out of Run into Settings → Spreadsheets by type, initially Roster,
+with per-sheet mappings and searches across multiple named fields. Its workspace uses the available
+center width with contained table scrolling, separate field groups and a compact type card. Peer
+controls in each row share a height. The two spreadsheet Settings tabs are connected, with a sliding
+selection surface and reduced-motion support. Import closes to a toast.
+The registry and attachment choices remain session-only fictional mocks. The 2026-10-04 amendment adds a separate real XLSX/CSV editor in Settings → Data → Spreadsheets, with value editing, column visibility, sorting, new-copy exports and XLSX fill preservation. It does not wire registration or row-based launch authority. Existing live launch and backend
+intake authority remain. Owner:
+[Run, Rerun and spreadsheet presentation amendment](dashboard-surfaces.md#run-rerun-and-spreadsheet-presentation-amendment--2026-10-02).
+
+**Frontend presentation amendment — 2026-10-01:**
+The approved mixed queue keeps the gray footer, current fonts and status bands, removes regular-row
+leading/info icons, puts attempts in a footer dropdown and bulk selection outside, and uses segmented
+step progress plus an operation member table with a boxed finished/total count. Workflow-batch items
+render separately without changing publication. Review text is blue; Write parked remains yellow.
+The 2026-10-03 operator revision removes the view switcher and moves Explorer, Archive and Activity into Settings → Data.
+Their page toolbars are removed; ordinary Settings headings, content width and spacing apply.
+Activity's report sections use one column at every desktop width. Explorer replaces its workflow
+sidebar/search with a right-aligned heading dropdown and removes Expand all, Collapse all, Version
+registry and the action legend control. Individual disclosures and source returns remain available.
+Storage checks and Preflight also place their actions and scope selector beside the heading, retaining
+check status and diagnostics below.
+Global sizing remains unchanged. Spreadsheets moves into Data, uses the same Settings content cap and has no expand control.
+Logs screenshots sit beside their action and use fields/form/browser/person presentation classes,
+bounded previews and fit-width/whole-image/100% viewing. The 2026-10-02 approval adds all 33 local
+log-block examples, required-only continuation forms, ordinary follow-up logs, neutral borders,
+indented fitted notices and timestamps in the log rail. The image workspace uses a thumbnail sidebar,
+zoom, rotation and comparison, closes on outside click and retries explicit load failures. The timeline
+retains completed stages and grays future stages without visible “Upcoming” text; only the affected
+portion changes state/color. Logs defaults to a labelled fictional action history matched to the
+selected subject and status, with sample captures and durations. The separate Selected run · queue
+facts view retains only served facts. Local sample decisions update the affected timeline portion and
+append ordinary log events. Explorer adds Onboarding and Emergency Contact mocks, listing browser
+systems first as Separations does; Onboarding gives Hire type its own second step and renumbers
+source links and stops across eleven steps. Contact authentication remains after packet review. The
+2026-10-03 calendar instruction selects the supplied HeroUI default DatePicker/Calendar for single
+dates and the documented two-month RangeCalendar for every range. Both share the product palette
+and editable date fields with suffix calendar icons. Field exteriors match the shared DS buttons'
+radius, border, height and neutral colors; the dashboard date has its own exterior above Logs. Focus and invalid
+states remain visible. Calendar interiors retain HeroUI geometry; surface-specific calendar styling and old
+date buttons are removed. Either range endpoint opens the same centered picker; the second date
+commits both values without footer controls. Activity always shows both endpoints; manual edits select Custom. Archive uses
+paired report fields, compact rows and distinct loading/empty/error states. Inline image
+areas are 128px (96px for browser groups), with single previews capped at 360px. Dimension checks
+measure the decoded source independently of preview layout and retain explicit mismatch/decode errors.
+The Dashboard retains the approved compact operations toolbar. Settings Data pages place their
+controls in their standard Settings content.
+The Dashboard mounts the permanent workflow rail and a full-height rounded bordered queue container. The queue track uses 30% of the available workspace with a 244px minimum. Its frequent filters use HeroUI Tabs with an associated content panel. Start a run, grouped status/sort controls and the date share the 48px rounded bordered Action panel above the separate Logs container, with 12px canvas gutters. Double/right-click and Shift+F10 open row
+actions; Select enters bulk mode with checkbox/count/Delete/Archive/Retry/X controls and Escape exit.
+These new actions are local mocks: Retry retains the exact authored mock settings, adds a queued
+attempt and never opens Rerun or sends a runtime command. Local counts reflect the latest mock attempt;
+served rail/day counts and existing row-footer commands/recovery feedback retain their contracts.
+Run input uses the approved ordered Parsed input frame without an Examples strip; descriptor example
+validation, launch parsing and authority remain unchanged.
+The 2026-10-03 operator revision uses Archive, Explorer and Activity as Settings page headings,
+keeps Archive search and replaces Explorer's workflow browser with a heading dropdown.
+The 2026-10-04 revision uses HeroUI SearchField for editable shared searches. The workspace rail's
+Search icon opens the centered Command dialog with clear, keyboard selection and focus restoration;
+result navigation retains its disconnected notice. Status/export/choice menus use shadcn Base UI
+DropdownMenu; value controls use Base UI Select, preserving 6px outer and 8px item text padding.
+The Navbar and undo/redo controls are removed. Workflow and Settings use separate 264px sidebars.
+HR GPT heads the workflow rail, with its notification toggle and Search icon. Settings has a Settings
+heading, settings search and grouped navigation, without those workflow controls. The Sessions gear
+beside the plus button opens Settings; Back uses the draft guard. Compact notification rows preserve
+attention/read filters and omit History gap. Read state never resolves a pending action. Snooze and
+desktop-delivery controls remain retired. Theme preference lives in General → Appearance outside
+runtime drafts. General uses the same segmented calendar picker as the dashboard. The date remains
+in the 48px Action panel above Logs. Status and Sort use thin bordered surfaces. Attention is a
+separate toggle that groups the queue; the other modes sort all rows without group headings.
+Workflow selection changes the highlight alone. Queue member checked marks and controls are retired;
+served status icons remain. Run uses a shorter frame with contrasting header/footer and an ordered
+path. Cancel keeps served consequence and exact-target facts, with safe initial focus and a separate
+identity block. The final visible log step has no bottom divider. Toasts retain shadcn Base UI
+presentation. Backend authority and deferred wiring boundaries remain unchanged.
+Owner: [dashboard presentation amendment](dashboard-surfaces.md#frontend-only-dashboard-presentation-amendment--2026-10-01).
+
 **D360 — Concise resolve and failure presentation (approved 2026-09-30):**
 R1 shows identity evidence comparisons; F2 leads with write outcome and next steps. Concise code-based
 classification is separate from the retained full error. Diagnostics, follow-up and advisory move to
@@ -270,17 +348,299 @@ major's `.0`, and archives their terminal old-version runs. Nonterminal affected
 publication follows a fenced, verified and resumable transfer. Future runs stamp both versions.
 Existing code semver/descriptor identities and immutable historical reports remain distinct;
 unproven historical versions stay explicitly unknown. This supersedes D274 item 2's
-minor-archives-nothing rule for new changes. Owners:
+minor-archives-nothing rule for new changes. The 2026-10-03 presentation amendment replaces the
+mounted Archive with a polished original-layout mock using fictional local data and actions;
+the backend implementation remains retained and unmounted. Report metadata is consolidated once
+in Workflow details, without the separate strip. Workflow fields also live in details; Steps becomes
+the shared Logs panel. Archive is a Data page inside Settings, using its ordinary heading and content
+width without a separate operations toolbar. This changes presentation, not version authority. Owners:
 [dashboard-surfaces D348](dashboard-surfaces.md#d348--dashboard-and-workflow-runtime-versions-2026-09-24),
 [approved 3.1.24 task](../plans/phase-3/3.1-finish-the-dashboard/task-24-archive-runtime-versions.md).
 
 **D347 — Remember the selected workflow and simplify the rail heading (operator direction, 2026-09-24):**
-The Workflow Panel remembers the last selected workflow across page visits and refreshes in local
-browser storage. A stored ID absent from the served workflow list falls back to the first served
-workflow. Remove the rail's `active │ all` heading while keeping each workflow's `active │ all`
-count pair. The toolbar's day-wide active count, status filters, queue projection and panel
-display-mode preference remain. Owner:
+The selected served workflow persists across visits and refreshes; an absent stored ID selects the first served workflow. The 2026-10-04 amendment uses a permanent 264px rail headed HR GPT, with no workflow-name icons or Preview badges; count metadata disappears at the narrow supported width. Local layout previews have no runtime launch authority. Scenario controls move outside product screens to `review.html`. The Navbar and undo/redo controls are retired. The rail owns search and notifications. Notifications preserves HR GPT, uses HeroUI All/Unread tabs, a separate category menu and rounded row surfaces; read state does not resolve urgency. Settings has a separate sidebar of the same width, equal 16px title/search/Personal gaps and grouped navigation, without run search or notifications. The Sessions gear beside Plus opens Settings; its right-hand region does not toggle Sessions. Back retains the draft guard. Path Change buttons use ordinary shared rounding; Storage summary and row statuses share typography. Spreadsheets lives under Data with the ordinary content cap: rows have Date added, no arrow column, and open the same editable viewer directly. A shadcn Breadcrumb returns to the library with guarded drafts and restored row focus. Imports join the local library; edited copies preserve identity, supported cell fills and export behavior. Workflow operations and dry-run boundaries integrate into Preflight's selected workflow-readiness scope without a second page or search. Synthetic review reports and re-check routes do not replace production readiness authority. General uses the shared segmented calendar picker; theme is a local browser preference. Keyboard settings persist working bindings. Status and Sort have bordered surfaces. Attention is a separate toggle, absent from the sort menu: it groups rows by status; Newest, Oldest and Longest sort the entire queue without group headers. The All/Needs you/Running quick-filter row is retired; multi-select Status and keyboard traversal share the drawn queue. The queue retains its 30% track and 244px minimum, with 12px gutters and a 48px Action panel above Logs. Logs titles use the run title alone. Selection mode and Select menu items are retired; Archive applies immediately, Delete confirms, and cancellation retains served confirmation. Command toasts omit the local actor ID. Run/Rerun restores the approved Design 1 exactly: 880×628 frame, 190px workflow/source rail, compact controls, Run Input → Options → Confirm with optional Steps, and Rerun Steps → Values → Options → Confirm. Only available declared input identifiers pre-fill with source attribution; dates and other values require explicit reuse. Real descriptor fields, step membership, omission validation, repeat-write acknowledgment and submission recovery remain authoritative. Owner:
 [dashboard-surfaces §9.9](dashboard-surfaces.md#d347--workflow-rail-selection-and-heading--2026-09-24).
+The 2026-10-04 density amendment adds category-heading icons, compact shortcut rows without Run/workflow number-key navigation, equal Storage spacing, count-led Archive folder headers, explicit savings estimates and a faded Sessions hover boundary. The Activity amendment keeps both dates visible for every period, synchronizes them on preset selection and selects Custom on manual edits; incomplete drafts retain the applied report range. Time saved uses Activity's table typography, spacing and alternating rows, with compact inputs and totals in the footer.
+The 2026-10-05 notification queue-link amendment includes relevant top-level queue rows, operation groups, parked writes and all five seeded OCR documents. Review counts come from the queue projection; opening selects and reveals the exact card while scrolling only its queue pane. Stable run/day identities retain read overrides across reordering and status changes; removed destinations leave the inbox. The normal fixture retains three unread updates, with additional existing examples initially read. Evidence: `notifications-queue-links-20261005`.
+The alignment amendment aligns HR GPT with category icons and the search glyph with row counts; notifications use 28px underline tabs and a 28px category control with one 14px icon.
+Spreadsheets uses the shared Settings PageHeading, ordinary buttons with 14px icons and underline tabs while preserving its theme and blue accent. Archive omits the overview matching-report count.
+Workflow readiness uses separate requirements and compact workflow disclosures with descriptor-derived availability/gap counts, six operations in two columns and an explicit dry-run boundary. The table header, nested frame and inline source footer are retired; source and capability meanings remain available through info controls. Runtime readiness, scope, freshness, remedies and all unavailable states retain their authority.
+All dashboard search bars use the UI catalog's 12px corners through one shared token; Settings navigation, Keyboard, Archive and Run's compact workflow filter drop their local rounding overrides. Existing sizes, theme and behavior are retained.
+Archive and Spreadsheets share a compact search/filter/count toolbar and framed table with matching cell spacing. The Archive overview keeps search, workflow and outcome filters in one horizontal row at both supported desktop widths. Settings page actions center vertically against the title and any description; the Archive folder count moves into its toolbar. The mounted Archive retires Export workflow while retaining saved-run exports, date filtering and Plan a bump. Wide tables scroll within their frame; theme and authority remain unchanged. The unmounted runtime workflow-export implementation is retained.
+Routes shows each system's name and URL count above one shared form card containing all of its URL rows. Rows retain the current CRM labels, descriptions and right-hand inputs, separated by inset dividers. All systems remain expanded; system disclosures and individual URL cards are retired. Search, validation, debounced complete-object saves and protected roster authority remain unchanged.
+Heading descriptions use a shared 4px gap across dashboard pages and sections. Section descriptions leave 12px before their card or table; page headings leave 16px before the next content block. Shared `BodySection` descriptions replace local negative margins, and Workflow readiness applies the same close title/subheading relation with 12px before operation cards. Settings page actions center on the full title/description block; title-only headings keep their actions inline. Section gaps, fonts, colors and behavior remain unchanged.
+Workflow names align with category text, reserving the category icon and its gap inside each row. Row-card edges and count alignment retain their 8px insets.
+The 2026-10-05 frontend organization/navigation amendment groups dashboard features, navigation,
+commands, client implementations and DS primitives/theme while retaining public facades. One bounded
+`view` schema delegates navigation to the existing native-history/draft-guard owner. Same-event updates
+batch; search replaces; private drafts/files/commands stay outside URLs. Exact queue/mock search,
+displayed aliases, notification destinations, Settings reading position and Explorer source/disclosure
+history are connected. Recursive guards preserve membership. A separate ten-example proposal page
+is a review artifact. D347's dashboard-surfaces owner records the contract; evidence is
+`frontend-audit-20261005` and the operator's existing dashboard-review file is updated.
+
+The frontend reliability amendment implements the six accepted audit priorities: bounded spreadsheet
+rendering with worker import/export, workbook Undo/Redo, explicit worker-command outcomes, persistent
+save feedback, affected verification-contract repairs and successful root-run timing. Private history
+stays in memory; only view coordinates enter native history. Uncertain worker recovery checks the
+original command. Saved and active settings remain distinct. Backend source and authority are unchanged;
+inherited broad contract failures remain explicit. Richer headers and Activity drilldowns are proposals.
+D347's dashboard-surfaces owner records the contract; evidence is `frontend-reliability-20261005`.
+
+The 2026-10-06 log-header correction targets and visibly focuses the exact unresolved decision card
+after clearing log search, including steps with hidden headings. Failure steps without decisions keep
+step navigation. OCR Review opens the existing Records body with native Back/Forward restoration;
+approval and resolution remain explicit actions. The layout is unchanged. D347's dashboard-surfaces
+owner records this behavior; evidence is `log-header-actions-10003539`.
+
+The 2026-10-06 manual-input amendment removes Oath Notes, keeps OCR delegation with optional
+extraction, starts manual OCR review with blank records and preserves explicit approval. Preview
+reading steps accept operator facts; form-fill/save/submit actions remain included, and dependency
+waits remain automatic. Source-page coordinates bind run and record. Served descriptor capabilities
+are unchanged pending backend contract admission. D347's dashboard-surfaces owner records the
+contract; evidence is `manual-ocr-review-10003539`.
+
+The subsequent launch-plan amendment replaces the two preparation rows with one selectable document
+read labeled OCR. Extraction-off retains delegation, blank Records and explicit parent approval.
+Parent document types fix record fields. Notes and the Verify document choice are removed; roster
+and type choices share one row. Valid manually entered Employee IDs retain manual provenance
+without a warning; eight-digit IDs beginning with 10 are required. OCR can start directly without downstream approval, while
+I-9 Lookup and SharePoint Download remain parent-only. The date picker preserves MM/DD during year
+entry. Completed local review/run actions use shared confirmation toasts. Shared priority help and
+14px chevrons remain. Scheduling, approval and backend authority are unchanged. D347's
+dashboard-surfaces owner records the contract; evidence is `ocr-read-actions-10003539`. Invalid
+date links retain an explicit queue/search error instead of formatting invalid search rows; the
+date picker recovers the queue without a reload.
+
+The keyboard-undo amendment removes Settings inline Undo and OCR Undo discard controls. Settings
+text entry uses native undo; Ctrl+Z/Cmd+Z inside OCR Records restores a discarded review without
+reversing approval or intercepting editable fields. Passive success-toast bodies pass clicks through
+while their dismiss buttons remain interactive. D347's dashboard-surfaces owner records the behavior.
+
+The save-feedback amendment adds existing success toasts for confirmed typed settings, protected
+settings, saved keyboard edits, local spreadsheet registration/mappings and exported spreadsheet copies.
+One acknowledged attempt produces one value-free confirmation; failures and uncertainty retain their
+existing feedback and exact retry identity. Location plans identify the saved plan rather than a folder
+move. Persistent status and restart requirements remain after toast expiry. D347's dashboard-surfaces
+owner records the contract; evidence is `save-toasts-10003539`.
+
+The save-result amendment hides Unsaved changes text and flushes valid idle settings drafts when
+focus leaves the edited field, alongside the existing typing debounce. Date segments and credential
+controls remain one field. Refused, conflicting and unconfirmed attempts emit value-free problem
+toasts; success still requires matching acknowledgment and readback. Persistent recovery details,
+retained drafts and exact retry identity remain. D347's dashboard-surfaces owner records the contract;
+evidence is `settings-save-result-10003539`.
+
+The audit-decision amendment (operator direction, 2026-10-06) starts every launch with Dry run off,
+keeps completed standalone OCR Records editable without downstream approval, computes all Analytics
+duration tiles from successful completed runs, retains exact-interval volume-bar names and locks
+preview sign-in steps that required form actions depend on. D347's dashboard-surfaces owner records
+the contract; evidence is `frontend-audit-fixes-10003539`.
+
+The wiring-preparation amendment moves Performance, Paths and Routes to Advanced while keeping
+General and Credentials in Personal and retaining all eleven page IDs and editor authority. XLSX
+editable-copy import ignores Excel worksheet/table filter rules, including unsupported color filters;
+all records and supported fills remain available, original source bytes remain unchanged, and malformed
+XML refuses import. Frontend-backend-integration §5 records component intent, persistence boundaries
+and acceptance evidence for wiring. This does not implement backend matching or storage. D347's
+dashboard-surfaces owner records the presentation contract; evidence is `frontend-wiring-prep-10003539`.
+
+The frontend readiness follow-up preserves sanitized Explorer display types, exercises HTTP/SSE
+faults through mounted pages, shares direct Preflight remedies and completes Settings field metadata.
+Measured Queue row reuse and offscreen Queue/Log layout deferral preserve full loaded populations;
+memory remains unbounded by these changes. The current wiring checklist names mounted local producers
+separately from retained runtime transport, including identity, outcomes, paging, events and reload.
+Backend source/authority and the approved design remain unchanged. Inherited diagnostics and phase-exit
+gates remain explicit. Owners: dashboard-surfaces D347 and frontend-backend-integration §5; evidence
+is `frontend-readiness-20261005`.
+The import amendment adds per-sheet selection and labels before registration, physically removes
+excluded data from the copy, and retains private pending choices through routed review navigation.
+
+The subsequent compact-header/Analytics amendment implements the operator-approved additions with
+one navigation-only decision shortcut and one exact-run list. The later frontend-polish amendment
+removes the run-context metadata line. Review appears once in the run header when its shortcut is present. Analytics replaces the visible Activity
+page name while existing route identifiers remain valid. Matching totals, successful timing lists,
+20-row paging and exact logs share the fictional report producer. The existing history owner restores
+metric/workflow/page/run selection and clears it atomically on range change. Empty, unavailable,
+untimed and review-fixture states remain explicit. Backend reporting is unwired; full frozen gates
+remain deferred. D347's dashboard-surfaces owner records the contract; evidence is
+`headers-activity-20261005`.
+
+The navigation amendment standardizes page hierarchy on shared breadcrumbs before child-page
+headings. The later frontend-polish amendment restores the guarded Settings Back to dashboard
+button. Navigable parents use existing guarded route owners;
+the current page is passive text. Analytics retains its exact filtered page, Archive retains folder
+or search scope, and spreadsheet/Settings exits preserve unsaved-draft confirmation and focus return.
+Wizard Back and modal dismissal keep their distinct roles. Backend authority and frozen phase-exit
+gates are unchanged. D347's dashboard-surfaces owner records the contract; evidence is
+`breadcrumbs-20261005`.
+
+The Analytics scope amendment names workflow timing views in the title and breadcrumb and keeps
+only Run and Duration for a selected workflow's measured completions. Cross-workflow lists retain
+Workflow; outstanding lists retain their differing Status. Exact populations, run logs, paging and
+history remain unchanged. D347's dashboard-surfaces owner records the contract; evidence is
+`analytics-context-20261005`.
+
+The Analytics filter-bar amendment replaces sortable headers with a compact name/run-ID search and
+order picker above passive headings. Filtering and ordering apply before pagination; the matched
+count retains original population context, and unknown durations stay last. Bounded query/order
+coordinates preserve exact logs, reload, breadcrumbs and browser history; typing replaces history
+without adding an entry per character. Default DS search consumers retain their geometry. Backend
+reporting and frozen phase-exit gates remain deferred. The D347 owner records this contract; evidence
+is `analytics-filter-20261005`.
+
+The frontend-polish amendment restores the Settings rail heading with a separate guarded back-arrow button, uses routed Archive report tabs,
+separates workbook and sheet controls, and consolidates spreadsheet paging. Report tab changes push
+discrete history entries, preserving Back/Forward and reload. Run headers omit workflow,
+short ID, attempt and elapsed metadata; review titles use the standard card token. The final operator
+amendment removes Source presentation from rerun while preserving the full-width form and source lineage.
+Local preview forms own their routed stages; served stage reconciliation and plan invalidation do not change them.
+Rerun shows a PDF selection group with retained files, choose/remove actions and
+roster selection below. Existing draft guards, history, exact evidence, PDF validation and transport
+contracts remain unchanged. D347's dashboard-surfaces owner records this contract; evidence is
+`frontend-polish-20261005` and `frontend-final-20261005`. Frozen phase-exit gates remain deferred.
+
+The 2026-10-06 ChatGPT account amendment retires Provider budgets & models and provider API-key
+controls from the frontend. General exposes a memory-only sign-in preview that connects directly
+from Continue with ChatGPT without an intermediate dialog, plus sign-out and official usage management.
+Real consent and plan eligibility remain adapter-owned. Thirteen Settings pages remain; old provider links
+resolve to General. UCPath/workflow protected controls and backend provider contracts remain.
+`ChatGptAccountContext` supplies the future session/consent adapter; real OAuth, tokens and plan
+eligibility remain backend work. D347's dashboard-surfaces owner records this contract; evidence is
+`chatgpt-settings-20261005` and `chatgpt-direct-10003539`.
+
+The later 2026-10-06 developer-controls amendment retires General's Browser viewport control,
+loading layout and search target, plus Archive's Plan a bump selection/review/apply flow. Old
+version-stage links show normal Archive browsing without commands. Report version metadata and
+read/export behavior remain. Version publication stays developer-controlled outside the end-user
+frontend; backend reviewed archival semantics remain unchanged. D347's dashboard-surfaces owner
+records the contract; evidence is `frontend-controls-removal-10003539`.
+
+The later 2026-10-06 Archive-page amendment retires the page, its navigation/search destinations,
+queue preview Archive actions, local snapshot composition and fictional notification shortcut.
+Twelve Settings pages remain. Old Archive URLs show an explicit removal notice and guarded return;
+completed runs retain ordinary day/status filters and Logs. Stored backend history and unmounted
+report readers/transport contracts remain intact. Unified historical search, record migrations and
+active-run upgrade compatibility remain separate backend work; this does not change D348 authority.
+D347's dashboard-surfaces owner records the contract; evidence is `archive-page-retirement-10003539`.
+
+The 2026-10-06 OCR-controls amendment omits repeated local queue headings and places source page
+selection plus zoom/fit controls above each PDF viewport so controls cannot cover text. The operator
+rejects the replacement history/search and upgrade-review prototype; shell-wide search and existing
+status meanings remain. Write parked continues to require an uncertain write. D347's
+dashboard-surfaces owner records this presentation; evidence is `ocr-toolbar-10003539`.
+
+The Activity measurement amendment makes HR GPT min/run read-only and averages successful run durations. Only manual minutes are entered by the operator; savings use the same timed-success population, preserve missing timing, and show time increases. The explanatory Activity paragraphs are retired. The frontend audit amendment standardizes Settings actions centered on the title/description block and page heading levels, adds route-specific browser titles and keyboard bypass, sets icon/clear targets to at least 24px, and limits button transitions to explicit properties. Theme tokens and launch authority remain unchanged. The dashboard-surfaces owner contains the measurement contract.
+The workflow-mock amendment copies all 15 legacy rail contracts at `9bb973672666b9267569a22d3fa0af722e4c5e87` into local Run/Rerun, queue and log previews. Delegated lookup, configured roster selection, PDF preparation, OnBase merging, oath modes and signature waits remain distinct. Served launch authority and persisted selection remain unchanged; preview IDs never reach start-plan transport. Employee IDs and Kuali ID labels replace the earlier copy, and the trailing composition summary is removed. The workflow-component amendment adds editable fictional PDF review, manual identity provenance, selected-person fan-out, discard, independent person outcomes and linked-run navigation. Explorer covers all 15 contracts and their conditional paths. Kernel-source corrections govern Work-Study fields, SharePoint download, Time Detail validation and Onboarding dry-run staging. The Records layout amendment uses canonical queue rows, puts results inside Logs and linked-run navigation beside Rerun, and moves Records into an OCR-only header toggle without a Logs/Records tab switcher. The 2026-10-05 amendment replaces the drawer with a two-column log-panel body: fixed PDF images beside all editable extraction fields. Blank fields remain visible; system verification stays in Logs. Approval copies complete corrected inputs, locks them and resumes the parent preview. Image URLs are separate from extracted values. Active queue rows show their current step; redundant Result stages are removed while outcome values remain in the last real log step. Delegated OCR exclusively owns record corrections, selection and approval; other workflows consume immutable approved inputs and show their outcomes in Logs. Pending I-9 intake now waits for OCR approval in local previews, superseding the copied automatic intake path. Source evidence, identity provenance and Undo discard remain explicit. Served runtime authority is unchanged. Instructional mock paragraphs are retired; D347 owns the details.
+
+The Run picker uses the permanent rail's grouped navigation and every registered entry, with unavailable launches disabled and explained. Served eligibility comes from declared typed-input capability; previews have an explicit `runnable` flag. I-9 Lookup remains delegated-only, and the operator excludes OCR from direct launch despite its legacy standalone prep entry. Both retain their panels and Explorer records. Workflow choices and preview control edits stay inside the launcher; the dialog, navigation, search and scroll persist. Served choices retain planner/command authority, and source-bound Rerun, recovery and focus return remain unchanged.
+
+The 2026-10-05 workflow catalog amendment supplies the workflow panel, Run/Rerun, Add workers,
+Explorer, Archive workflow filter and label lookups from one catalog composed at the app boundary.
+Served declarations replace preview launch authority by ID and new served registrations propagate to
+all selectors. Membership remains distinct from action availability; OCR and I-9 Lookup stay visible
+with Parent only restrictions. Add workers supports all registrations through its local producer;
+unknown Explorer graphs stay unavailable and Archive retains historical identities. Served start,
+source-bound Rerun, command and recovery boundaries remain unchanged. The dashboard-surfaces owner
+contains the complete contract; evidence is `workflow-catalog-20261005`.
+
+The 2026-10-05 mock launch layout amendment reuses the served Person Lookup/Separations Options,
+step-list and confirmation components across the local workflows. Flags lead, workflow-specific fields
+retain their contracts, and Priority/Browser mode share the same geometry and labels. Step selection
+respects upload-only membership, resets when customization is disabled and blocks an empty selection.
+Confirm shows root-run counts, edited settings and omissions in the shared summary card and facts
+layout. The redundant Workflow plan disclosure is removed from Run/Rerun confirmation; step selection
+and execution outcomes remain in Steps and Logs. Footer provenance and action groups
+match served launches. Local previews remain browser-only, with OCR/I-9 Lookup delegation-only.
+D347's dashboard-surfaces owner records the contract and `mock-run-layout-20261005` evidence.
+The OnBase document-type amendment replaces the fixed Emergency Contact field and unavailable
+types with four local choices: Oath, I-9 Section 1, I-9 Section 2 and Emergency Contact. Selection
+continues through confirmation, OCR review, approved person logs and rerun. Runtime document
+admission is unchanged; focused evidence is `onbase-document-types-20261005`.
+
+Settings header actions center vertically on the title and any description; title-only headings keep actions inline. The healthy storage card places its report timestamp on the right, with availability on the left. Missing detailed reports and degraded-storage freshness remain explicit.
+
+The 2026-10-05 storage amendment keeps the existing card-row layout with 13 checks visible, with
+Status above the summary and Data store and recovery above the primary checks.
+Run history is removed from Storage checks at the operator's request. Work counts, connection
+states and update stages use plain language; healthy internal metadata is omitted. Exact failures
+remain in contextual disclosures. Unavailable states and failed-refresh retention stay explicit.
+Doctor and recovery authority are unchanged. D347's dashboard-surfaces owner records the contract
+and focused evidence.
+
+Preflight's first card follows the compact storage Status section with readiness on the left and
+Last checked with the served report's local date and time on the right. The returned-check count,
+repeated description and standalone Checked timestamp are retired. Explicit historical/unavailable
+states and compact-dialog timestamps retain their served meanings; report freshness and rerun authority are unchanged.
+The Preflight refresh amendment uses Run preflight and retains the report layout through command
+and readback. Progress appears inside the existing Status card; historical warnings persist and
+pending/failed evidence never claims current readiness. D347's dashboard-surfaces owner records the
+contract and `preflight-refresh-20261005` evidence.
+
+The Activity duration amendment replaces Time saved, editable manual baselines and estimated savings
+with a horizontal average-duration chart. It uses measured successful runs only, a shared zero origin,
+exact durations and timing coverage. Untimed, measured-zero and empty states stay distinct; loading
+matches the chart geometry. Live timing remains unwired. D347's dashboard-surfaces owner records the
+contract and `workflow-duration-20261005` evidence.
+
+The page-loading amendment replaces generic loading blocks with placeholders using each page's
+headings, groups, cards, table columns, control widths and fixed action layout. OCR images retain
+their fitted frame while loading. Known reports remain visible during refresh; unknown, failed and
+empty states stay distinct. Shared DS Skeletons respect reduced motion and loading-region status
+announcements. Synchronous previews add no artificial delay. D347's dashboard-surfaces owner records
+the contract and `page-skeletons-20261005` evidence.
+
+The queue-footer amendment centers provenance and 24px action targets and enables Archive in local
+workflow/OCR row menus. Archive retains the current source status, inputs, corrected records and
+linked subtree without approval or a fabricated completion date. Session-local snapshots join the
+existing Archive folders, details, Logs and exports; served command authority remains unchanged.
+D347's dashboard-surfaces owner records the contract and `queue-footer-archive-20261005` evidence.
+
+The 2026-10-06 queue layout amendment gives Queue a 376px minimum and lets the workflow rail
+yield from 264px to 208px; Settings remains 264px. Queue metadata and 24px actions stay on one
+line at all supported widths, with exact trace tooltips for unusually long compact IDs. The desktop
+canvas floor is preserved. D347's dashboard-surfaces owner records the contract; evidence is
+`queue-responsive-10003539`.
+
+The controls amendment extends Settings search cues through full-width row card padding. Shared tabs begin at the rail's left edge and slide one underline over 220ms for pointer selection, snapping for keyboard and reduced motion. Spreadsheet toolbar/footer controls share the body height and omit explanatory notes. Archive folder counts sit beside search; Activity calendars align right without visible Start/End prefixes. Exact-control focus, date semantics, editing and export behavior remain unchanged. D347's dashboard-surfaces owner records the presentation contract.
+
+The Archive bump amendment moves review to a second dialog step with aligned current/new versions,
+explicit unchanged dashboard state, stable geometry and fixed footer actions. Back preserves the
+selected workflow draft and invalidates apply eligibility. The mounted mock remains local; the
+retained runtime sibling preserves served review matching, blockers and exact-request recovery.
+D347's dashboard-surfaces owner records the contract and `version-review-step-20261005` evidence.
+
+The Archive search amendment retires Reset filters and replaces filtered workflow folders with exact
+saved-run links using the Settings search title/context and keyboard pattern. Queries span every
+version and workflow, including current-session snapshots, while explicit filters remain applied.
+Opening a result clears the implicit folder scope atomically, retains the query and focuses the
+report; the Archive breadcrumb returns to results. The mounted Archive remains local and its runtime
+transport stays unmounted. D347's dashboard-surfaces owner records the contract and
+`archive-search-records-20261005` evidence.
+
+Settings search lists matching pages and actual controls using their shared presentation labels and parent-page context. Search fields retain 12px corners, use a quiet neutral focus border without a bright halo, and show a small clear icon only when nonempty. Field results carry `settingsTarget` under Settings, open containing disclosures, center the control and briefly highlight it; reduced motion uses immediate scrolling and a temporary static cue. The metadata index excludes values and secrets, preserves draft/exit authority, supports repeat selection and reload/history, and states unavailable targets.
+
+The workflow-detail amendment adds legacy operation sequences and fields to local Logs and Explorer, populated timeline substeps with synthetic timings, active/total rail counts at both desktop widths, and subject-only run headings. Onboarding preserves distinct new-hire and concurrent-hire forms, wrong-person readbacks and dry-run cleanup. OCR remains the sole record editor and approval owner; D347's dashboard-surfaces owner records the contract and retained evidence.
+
+The notification interaction amendment links every local inbox action to its exact run, inline OCR Records body or Archive index. Source subjects/statuses, new-run and approval updates, run/day-scoped read state, retained filters and keyboard focus replace disconnected placeholders. Read state does not resolve urgency; missing destinations refuse visibly. Backend publication and persistence remain unwired. D347's dashboard-surfaces owner records the contract and retained evidence.
+
+The 2026-10-05 document-polish amendment adds five OCR previews, excluding sick hours: 14 editable
+records, 443 fields and 19 immutable anonymized source pages. Detect-test reviews its four emergency
+contact pages; I-9 controls label Section 1 on page 2 and Section 2 on page 1. Stacked record cards
+hold a 60/40 PDF/fields split inside one log-panel scroll area. Each card has an Include checkbox;
+one fixed footer approves eligible selections and retains Add record and Discard. The right column
+uses a selection card with its checkbox directly beside the name, followed by cards for response
+field groups, whose titles sit above their cards; oaths have selection, Employee and Oath cards. Warnings remain with selection, and
+inclusion retains its accessible name. Adjacent checkboxes share space, and long fields/notes use the
+full form width while preserving every response field and its order. Page navigation sits above
+the source; zoom/fit controls remain in the image frame's corner while magnification pans inside
+that frame without resizing the card. Corrected immutable handoff and keyboard focus remain
+explicit. Run PDF/roster fields
+share two columns; the accepted-entry disclosure is retired. Queue aliases use uppercase workflow
+codes plus eight digits while retaining command IDs and exact trace tooltips. Local Retry opens
+the parent rerun; confirmed Delete removes the linked tree and restores focus. Fixtures do not
+admit runtime OCR forms. D347's dashboard-surfaces owner records provenance, frontend boundaries
+and retained verification.
 
 **D346 — Full local operator values (operator direction, 2026-09-24):** Logs,
 Run data, archived runs and Settings show retained values in full, including

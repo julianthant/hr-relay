@@ -1,6 +1,6 @@
 import type { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
-import { ensureParityBundle, PARITY_DIST_DIR, type ParityBundleProof } from "../../integration/dashboard/client/fixtures/helpers/bundle.js";
-import { startSeededServer, type SeededServer } from "../../integration/dashboard/client/fixtures/helpers/seeded-bff.js";
+import { ensureParityBundle, PARITY_DIST_DIR, type ParityBundleProof } from "./bundle.js";
+import { startSeededServer, type SeededServer } from "./seeded-bff.js";
 
 export interface QueueAuthorityServer extends SeededServer {
   readonly authority: () => AuthorityDatabase;

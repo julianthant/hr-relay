@@ -1,0 +1,241 @@
+# explorer-preview-department-source-drawer--graphite-warm--1280x720
+# adapter: fixture
+# fixture: explorer-preview.spec.ts:complete Explorer layout and source return @ dark 1280
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#dashboard-main-region"
+- main:
+  - region "Settings":
+    - navigation "Settings sections":
+      - heading "Settings" [level=2]
+      - button "Back to dashboard"
+      - group:
+        - searchbox "Search settings"
+      - text: Personal
+      - link "General":
+        - /url: "?settings=general"
+      - link "Credentials":
+        - /url: "?settings=credentials"
+      - text: Advanced
+      - link "Performance":
+        - /url: "?settings=performance"
+      - link "Paths":
+        - /url: "?settings=paths"
+      - link "Routes":
+        - /url: "?settings=routes"
+      - text: Data
+      - link "Spreadsheets":
+        - /url: "?settings=spreadsheets"
+      - link "Explorer":
+        - /url: "?settings=explorer"
+      - link "Analytics":
+        - /url: "?settings=activity"
+      - text: Status
+      - link "Storage checks":
+        - /url: "?settings=storage"
+      - link "Preflight":
+        - /url: "?settings=preflight"
+      - text: Help
+      - link "Keyboard":
+        - /url: "?settings=keyboard"
+    - region "Workflow explorer preview":
+      - heading "Explorer" [level=1]
+      - paragraph: Browse workflows, their steps and field sources. Fictional preview data.
+      - combobox "Explorer workflow": Separations
+      - list "Workflow steps":
+        - listitem:
+          - heading "Open browser sessions" [level=2]
+          - text: Kuali Kronos UCPath
+        - listitem:
+          - heading "Find the Kuali action" [level=2]
+          - text: Kuali
+          - group:
+            - strong: Action List
+            - text: Fill form
+            - button "Show source for Document number": Document number Run input
+          - text: Click Go Read the matching action link
+        - listitem:
+          - heading "Read the separation document" [level=2]
+          - text: Kuali
+          - group:
+            - strong: RRSS Separation Request
+            - text: Read only Employee name Separation request Employee ID Separation request Employee type · student title code Separation request Division · location Separation request Termination type Separation request Last day worked · separation date Separation request Additional comments Separation request
+            - group: Timekeeper, final transactions & option lists
+          - text: Verify document number and form type
+        - listitem:
+          - heading "Build the separation plan" [level=2]
+          - text: Local Use the request’s employee name and dates to establish the timecard window.
+        - listitem:
+          - heading "Resolve the termination type" [level=2]
+          - text: Local Map the requested termination type to the UCPath template and reason.
+        - listitem:
+          - heading "Search the employee name" [level=2]
+          - text: UCPath
+          - group:
+            - strong: Person Organizational Summary
+            - text: Fill form
+            - button "Show source for Employee name": Employee name Kuali separation request
+          - text: Read all matching employees
+        - listitem:
+          - heading "Identify the separation subject" [level=2]
+          - text: Local Match the document’s employee ID against the name-search results.
+        - listitem:
+          - heading "Read Workforce Job Summary" [level=2]
+          - text: UCPath Expand employment instances when needed
+          - group:
+            - strong: Workforce Job Summary
+            - text: Read only Employee ID · name Displayed employee Employee record Each employment row HR status · effective date Each employment row Business unit · position number Each employment row Department ID · department Each employment row Job code · job title Each employment row Expected job end date Each employment row FTE · employee class Each employment row
+        - listitem:
+          - heading "Resolve active employment" [level=2]
+          - text: Local Select the active employment record. Stop if no single valid record can be established.
+        - listitem:
+          - heading "Match the department option" [level=2]
+          - text: Local Match the UCPath department to an option read from this Kuali document.
+        - listitem:
+          - heading "Find the employee timecard" [level=2]
+          - text: Kronos
+          - group:
+            - strong: Employee search
+            - text: Fill form
+            - button "Show source for Employee ID": Employee ID Resolved separation subject
+          - text: Select the matching employee
+        - listitem:
+          - heading "Read the timecard" [level=2]
+          - text: Kronos Open Go To → Timecard
+          - group:
+            - strong: Timecard range
+            - text: Fill form
+            - button "Show source for Start date · end date": Start date · end date Separation plan
+          - group:
+            - strong: Timecard
+            - text: Read only Displayed date range Verify requested window Punches · last punch date Timecard grid Sick dates · holiday dates Timecard grid Other pay codes Timecard grid
+        - listitem:
+          - heading "Reconcile the dates" [level=2]
+          - text: Local Last day worked Request + last punch Separation date Request + leave dates Termination effective date Reconciled separation date
+        - listitem:
+          - heading "Compare identity and write details" [level=2]
+          - text: Local Bind the employee, employment, dates and proposed writes to the approval evidence.
+        - listitem:
+          - heading "Resolve identity approval" [level=2]
+          - text: You Identity check
+          - combobox "Identity check preview": Verified from supplied ID
+          - text: Identity verified against the supplied employee ID.
+        - listitem:
+          - heading "Verify the approval" [level=2]
+          - text: Local Verify that the approval still matches the employee and proposed writes.
+        - listitem:
+          - heading "Read pending terminations" [level=2]
+          - text: UCPath
+          - group:
+            - strong: Transactions in Progress
+            - text: Read only
+          - text: Read result
+          - combobox "Read result preview": No pending terminations
+        - listitem:
+          - heading "Clear pending terminations" [level=2]
+          - text: UCPath No pending terminations to delete. Continue to the existing-termination check
+        - listitem:
+          - heading "File the termination" [level=2]
+          - text: UCPath Existing termination
+          - combobox "Existing termination preview": No matching termination
+          - paragraph: Match the approved employee and effective date in UCPath.
+          - group:
+            - strong: Smart HR · Template
+            - text: Fill form
+            - button "Show source for Template": Template Resolved termination type
+            - button "Show source for Transaction date": Transaction date Termination effective date
+          - text: Click Create Transaction
+          - group:
+            - strong: Smart HR · Transaction details
+            - text: Continue
+            - button "Show source for Employee ID": Employee ID Approved identity
+            - text: Press Tab to resolve employee Employee name · employee record Verify approved identity Job effective date Verify transaction date
+            - button "Show source for Action reason": Action reason Resolved reason code
+          - text: Click Continue
+          - group:
+            - strong: Smart HR · Employment information
+            - text: Continue
+            - button "Show source for Override last date worked": Override last date worked Checked
+            - button "Show source for Last date worked": Last date worked Reconciled date
+            - button "Show source for Initiator comments": Initiator comments Reconciled date explanation
+            - group:
+              - text: Exact template Leave scenario
+              - combobox "Leave scenario": No leave
+              - text: "Termination eff {terminationEffectiveDate}. Last Day Worked {lastDayWorked}. Kuali form #{documentNumber}."
+              - paragraph: No sick or holiday dates were read. No leave clause is added.
+              - paragraph: Exact wording and punctuation. Braces identify values supplied by this run. Both UCPath comment fields receive identical text.
+              - group: All leave rules
+            - button "Show source for Transaction comments": Transaction comments Same explanation
+            - group: Exact template · same text as Initiator comments
+          - text: Read back all staged values Click Save and Submit Verify the transaction number and receipt Continue with the newly filed receipt
+        - listitem:
+          - heading "Verify the termination receipt" [level=2]
+          - text: Local Verify the new receipt against the approved employee and effective date
+        - listitem:
+          - heading "Verify the current UCPath filing" [level=2]
+          - text: UCPath Find the exact transaction and verify it is still present
+        - listitem:
+          - heading "Finalize the Kuali document" [level=2]
+          - text: Kuali Check whether this exact finalization is already saved
+          - paragraph: "Already saved: verify the current values and finish. Otherwise:"
+          - group:
+            - strong: RRSS Separation Request
+            - text: Continue
+            - button "Same form · opened in step 3"
+            - button "Show source for Department": Department Matched department option
+            - button "Show source for Payroll title code · payroll title": Payroll title code · payroll title Workforce Job Summary
+            - button "Show source for Request acknowledged": Request acknowledged Checked
+            - button "Show source for Timekeeper name": Timekeeper name Configured timekeeper
+            - button "Show source for Last day worked · separation date": Last day worked · separation date Reconciled dates
+            - button "Show source for Termination effective date": Termination effective date Verified receipt date
+            - button "Show source for Termination template submitted": Termination template submitted Checked
+            - button "Show source for Transaction number": Transaction number Verified UCPath receipt
+            - button "Show source for Final pay": Final pay Workflow rule
+            - button "Show source for Timekeeper comments": Timekeeper comments Existing comments + filing details
+            - group:
+              - text: Exact template Date changes
+              - combobox "Date changes": Neither date changed
+              - text: Date source
+              - combobox "Date source": Kronos timesheet
+              - text: Existing text
+              - combobox "Existing text": No existing comments
+              - text: "Termination filed on UCPath as {transactionNumber}. Re Kuali Form #{documentNumber}. -{initials} {asOfDate}"
+              - paragraph: "Neither date changed: no date-change lines are added."
+              - paragraph: Nonempty parts are trimmed and joined with one newline. The filing line is always included.
+              - group: Template conditions & values
+          - text: Verify every staged field and preserve existing comments Click Save Reload and verify the saved document
+      - paragraph: Separation filed and Kuali document verified
+      - dialog "Department source":
+        - heading "Department" [level=2]
+        - button "Close field source"
+        - paragraph: Kuali · RRSS Separation Request
+        - heading "Read from" [level=3]
+        - paragraph: UCPath · Step 8
+        - strong: Workforce Job Summary
+        - paragraph: Department ID · department
+        - button "Go to original field"
+        - heading "Also uses" [level=3]
+        - paragraph: Kuali · Step 3
+        - strong: RRSS Separation Request
+        - paragraph: Department option list
+        - button "Go to original field"
+        - heading "Before it is filled" [level=3]
+        - list:
+          - listitem:
+            - strong: Resolve active employment · Step 9
+            - paragraph: Choose the department from the selected employment record.
+          - listitem:
+            - strong: Match the Kuali option · Step 10
+            - paragraph: Resolve that department against options read from this document.
+        - button "Back to field"
+- region "Session Panel":
+  - group "Session actions":
+    - button "Sessions"
+    - text: 2 running 1 starting 1 idle
+    - button "Add workers"
+    - button "Settings" [pressed]
+- region "Notifications"

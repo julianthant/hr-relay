@@ -18,7 +18,7 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { classifyRunShape } from "../../../../../src/dashboard/surfaces/run-identity-model.js";
+import { classifyRunShape } from "../../../../../src/dashboard/surfaces/run-detail/identity/run-identity-model.js";
 
 /** `separations` as the proof's own runs carried it, and as the explorer served it. */
 const RAN = "59830cf6a3d94b1e8f2c7d5a0b4e6913c8d2f7a15b9e3c6048d1a2f5b7c9e0d3";

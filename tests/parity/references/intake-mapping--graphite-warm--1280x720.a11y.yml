@@ -1,0 +1,108 @@
+# intake-mapping--graphite-warm--1280x720
+# adapter: fixture
+# fixture: intake-mapping
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#dashboard-main-region"
+- complementary "Workspace":
+  - heading "HR GPT" [level=2]
+  - button "Notifications, 3 unread"
+  - button "Search runs"
+  - navigation "Workflows":
+    - heading "Search" [level=3]
+    - list:
+      - listitem:
+        - button "Person Lookup": Person Lookup 5 · 14
+      - listitem:
+        - button "I-9 Lookup": I-9 Lookup 0 · 1
+    - heading "Separations" [level=3]
+    - list:
+      - listitem:
+        - button "Separations": Separations 0 · 1
+      - listitem:
+        - button "I-9 Check": I-9 Check 1 · 1
+    - heading "Onboarding" [level=3]
+    - list:
+      - listitem:
+        - button "Onboarding": Onboarding 0 · 1
+      - listitem:
+        - button "Oath Signature": Oath Signature 1 · 1
+      - listitem:
+        - button "Oath Upload": Oath Upload 1 · 1
+      - listitem:
+        - button "Emergency Contact": Emergency Contact 1 · 1
+    - heading "Work Study" [level=3]
+    - list:
+      - listitem:
+        - button "Work-Study": Work-Study 0 · 1
+    - heading "Payroll" [level=3]
+    - list:
+      - listitem:
+        - button "Kronos Pay Rule": Kronos Pay Rule 0 · 1
+    - heading "Utils" [level=3]
+    - list:
+      - listitem:
+        - button "OCR": OCR 0 · 5
+      - listitem:
+        - button "CRM Doc Download": CRM Doc Download 0 · 1
+      - listitem:
+        - button "SharePoint Download": SharePoint Download 0 · 1
+    - heading "OnBase" [level=3]
+    - list:
+      - listitem:
+        - button "OnBase": OnBase 1 · 1
+    - heading "Timekeeping" [level=3]
+    - list:
+      - listitem:
+        - button "Old Kronos Reports": Old Kronos Reports 0 · 1
+- main:
+  - region "Spreadsheet intake":
+    - heading "Spreadsheet intake" [level=2]
+    - text: A sheet becomes N runs only after a header row, an operator-built column mapping, and a per-cell accept-or-reject on every row. mapping onto Person Lookup
+    - button "Close"
+    - region "Source file":
+      - text: Source file cohort-7-onboarding.csv sha 3c9a71e07 rows read4 columnsuploaded 10:01 AM mapping Header row
+      - combobox "Header row": row 3 · confidence 1.00 — UCPath ID · Employee Name · Department · Start Date
+      - paragraph: Chosen by ranking, and changeable — every column below is read relative to it.
+    - tablist "Intake stage":
+      - tab "Mapping 1" [selected]
+      - tab "Review"
+      - tab "Manifest"
+      - tab "Rerun diff"
+    - tabpanel "Mapping 1":
+      - table "Column mapping for cohort-7-onboarding.csv":
+        - rowgroup:
+          - row "Target field Bound column Suggestion":
+            - columnheader "Target field"
+            - columnheader "Bound column"
+            - columnheader "Suggestion"
+        - rowgroup:
+          - row "Employee ID (EID) emplIdcanonical eid 10873698 · 10001573 · 10-4567 no proposal":
+            - cell "Employee ID (EID) emplIdcanonical eid"
+            - cell "10873698 · 10001573 · 10-4567":
+              - combobox "Source column for Employee ID (EID)": UCPath ID
+              - text: 10873698 · 10001573 · 10-4567
+            - cell "no proposal"
+          - row "Full Name namecanonical fullName Employee Name Bind Employee Name known header, its values parse (1.00)":
+            - cell "Full Name namecanonical fullName"
+            - cell:
+              - combobox "Source column for Full Name": — unbound —
+            - cell "Employee Name Bind Employee Name known header, its values parse (1.00)":
+              - text: Employee Name
+              - button "Bind Employee Name": Use it
+              - text: known header, its values parse (1.00)
+    - text: "Not ready — mapping has not been validated. Run is blocked: mapping has not been validated. header row 3fingerprint 55f5fb4b"
+    - button "Show full layout fingerprint"
+    - button "Validate"
+    - button "Start runs" [disabled]
+- region "Session Panel":
+  - group "Session actions":
+    - button "Sessions"
+    - text: 2 running 1 starting 1 idle
+    - button "Add workers"
+    - button "Settings"
+- region "Notifications"

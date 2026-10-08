@@ -1,138 +1,110 @@
+import { runDisplayId } from "../surfaces/shared/status/run-display-model.js";
+import type { NavbarSearchResult } from "../surfaces/shell/search/navbar-view-model.js";
+import { ViewNavigationProvider } from "./navigation/view-navigation.js";
+import { useViewState, type RouteSetter } from "./navigation/view-route-model.js";
+import { buildWorkflowCatalog, servedLaunchWorkflows } from "../surfaces/workflows/workflow-catalog-model.js";
+import { DashboardSkeleton, QueueSkeleton, RunPanelSkeleton } from "../surfaces/shared/loading/loading.js";
+import { SettingsSectionSkeleton } from "../surfaces/settings/settings-loading.js";
 import { RerunValuesRequestSchema } from "../../models/dashboard/rerun-values.js";
-import { routeWithoutTakeovers } from "./url-state.js";
-import { PreflightActionsProvider } from "../state/preflight-actions.js";
-import { routeForDay, routeForStartedRun } from "./date-state-model.js";
-import { RunLaunchHost } from "./run-launch.js";
-import { launchWorkflows, useRunLaunch } from "./run-launch-model.js";
-import { createWorkerCommandDispatch } from "./worker-command-dispatch.js";
-import { createNotificationNavigationIdentity, navigateNotification, type OpenNotification } from "../state/notification-navigation.js";
+import { routeWithoutTakeovers } from "./navigation/url-state.js";
+import { PreflightActionsProvider } from "../surfaces/settings/preflight/preflight-actions.js";
+import { resolveDateSelection, routeForStartedRun } from "./navigation/date-state-model.js";
+import { RunLaunchHost } from "../surfaces/run-start/run-launch.js";
+import { launchWorkflows, useRunLaunch } from "../surfaces/run-start/run-launch-model.js";
 import { PanelRight } from "lucide-react";
-import { useCallback,useMemo,useRef,useState,type CSSProperties } from "react";
-import { CapabilityAvailabilitySchema,type CapabilityAvailability } from "../../rules/validation/absence.js";
+import { useCallback,useEffect,useMemo,useRef,useState,type CSSProperties,type ReactNode } from "react";
 import { WorkflowBatchCommandRequestSchema } from "../../rules/commands/commands.js";
 import type { ActionDescriptorWire } from "../../models/dashboard/actions.js";
 import {
 SettingsSectionPrimitiveSchema,
 type FrontendBootstrapWire,
 } from "../../models/dashboard/bootstrap.js";
-import type { CrossDateSearchResult } from "../../models/dashboard/search.js";
-import { EmptyState,Panel,PanelBody,ToastProvider,TooltipProvider,dsIcon,useDemoTheme,useToasts } from "../ds/ui.js";
-import { cn } from "../lib/utils.js";
+import { Button,Dialog,DialogContent,DialogFooter,DatePicker,EmptyState,Panel,PanelBody,ToastProvider,TooltipProvider,dsIcon,useDemoTheme,useToasts } from "../ds/ui.js";
 import { useDashboardClient } from "../state/client-context.js";
+import { useServedNow } from "../state/served-clock.js";
 import { useBootstrap } from "../state/use-bootstrap.js";
+import { useDashboardDay } from "../state/use-dashboard-day.js";
 import {
 commandResultFeedEntry,
 toastAppliedCommandResult,
 type CommandResultFeedEntry,
-} from "../surfaces/actions-model.js";
+} from "../surfaces/shared/actions/actions-model.js";
 import {
 CommandResultFeed,
 ConfirmCommandDialog,
 type ActionTarget,
 type PendingCommand,
-} from "../surfaces/actions.js";
-import { CommandRecovery, type CommandRecoveryEntry } from "../surfaces/command-recovery.js";
-import { ARCHIVE_INDEX } from "../surfaces/archive-model.js";
-import { type DayCountWire } from "../surfaces/date-navigation-model.js";
-import { fmtClock } from "../surfaces/format.js";
-import { tabsFor,type PanelTab } from "../surfaces/log-panel-model.js";
-import { LogPanel } from "../surfaces/log-panel.js";
-import { type NotificationRowWire } from "../surfaces/notification-bell-model.js";
-import type { QueueBatch } from "../surfaces/queue-model.js";
+} from "../surfaces/shared/actions/actions.js";
+import { CommandRecovery, type CommandRecoveryEntry } from "../surfaces/shared/actions/command-recovery.js";
+import { serverLocalDay } from "../surfaces/shell/date-navigation-model.js";
+import { fmtClock } from "../surfaces/shared/status/format.js";
+import { type PanelTab } from "../surfaces/run-detail/log-panel-model.js";
+import { LogSample } from "../surfaces/run-detail/logs/log-sample.js";
+import type { QueueBatch } from "../surfaces/queue/queue-model.js";
 import {
   attentionRunIds,
   filterQueueSurfaces,
-  groupQueueAttempts,
   queueRowTitle,
-toggleCheckedByYou,
 visibleRunIds,
 type QueueSortKey,
 type QueueSurfaceWire,
-} from "../surfaces/queue-model.js";
+} from "../surfaces/queue/queue-model.js";
 import {
 ConfirmBulkCommandDialog,
-QueueToolbar,
+BulkCommandFeedback,
 type PendingBulkCommand,
-} from "../surfaces/queue-toolbar.js";
-import { QueuePanel,type QueueFilterScope,type QueueHandlers,type QueueViewState } from "../surfaces/queue.js";
-import { useRunCaptures } from "../surfaces/run-captures-model.js";
-import { RenameRunDialog,type PendingRename } from "../surfaces/run-identity.js";
-import { RunStartButton } from "../surfaces/run-start.js";
-import { SessionPanel } from "../surfaces/session-panel.js";
+} from "../surfaces/queue/queue-toolbar.js";
+import { FocusQueueHeader, FocusQueueToolbar } from '../surfaces/queue/queue-focus.js';
+import { queuePreviewCounts, useQueuePreview, type QueueMockAction } from '../surfaces/queue/queue-preview-model.js';
+import { QueuePanel,type QueueFilterScope,type QueueHandlers,type QueueViewState } from "../surfaces/queue/queue.js";
+import { RenameRunDialog,type PendingRename } from "../surfaces/run-detail/identity/run-identity.js";
+import { RunStartButton } from "../surfaces/run-start/run-start.js";
+import { SessionPanel } from "../surfaces/sessions/session-panel.js";
 import {
-DASHBOARD_MAIN_REGION_ID
-} from "../surfaces/settings-model.js";
-import { activeCount,activeStatusWords,parseWorkflows,useSelectedWorkflow,useWorkflowPanelMode,workflowStatusCounts,type StatusBucket } from "../surfaces/shell-model.js";
-import { StatusFilters,WorkflowPanelToggle,WorkflowSidebar,WorkflowWindow } from "../surfaces/shell.js";
-import { PROPOSED_STATUS,dsStatusOf } from "../surfaces/status-model.js";
-import { StorageBanner } from "../surfaces/storage-settings.js";
-import { type ShellView } from "../surfaces/top-bar-model.js";
-import { TopBar } from "../surfaces/top-bar.js";
+DASHBOARD_MAIN_REGION_ID, buildSettingsNav, resolveSettingsSection
+} from "../surfaces/settings/settings-model.js";
+import {parseWorkflows,useSelectedWorkflow,type StatusBucket } from "../surfaces/shell/shell-model.js";
+import { WorkflowMockLog, WorkflowMockQueue } from "../surfaces/workflows/mocks/workflow-mock-queue.js";
+import { MOCK_WORKFLOWS, mockWorkflow, type MockWorkflowId } from "../surfaces/workflows/mocks/workflow-mock-catalog.js";
+import { mockRunStatus, mockQueueCounts, mockWorkflowCounts, mockQueueView, mockRetrySource, mockRunsForDraft, seedMockRuns, type MockDraft, type MockRun } from "../surfaces/workflows/mocks/workflow-mock-model.js";
+import { completeMockReviewAction, type MockReviewAction } from "../surfaces/workflows/mocks/workflow-review-action-model.js";
+import { mockQueueId, mockRunDisplayId } from "../surfaces/workflows/mocks/workflow-queue-model.js";
+import { updateMockReview } from "../surfaces/workflows/mocks/workflow-review-model.js";
+import "../surfaces/shell/permanent-shell.css";
+import { PROPOSED_STATUS, dsStatusOf, statusAccessibleName } from "../surfaces/shared/status/status-model.js";
+import { StorageBanner } from "../surfaces/settings/storage/storage-settings.js";
+import { WorkspaceRail } from "../surfaces/shell/workspace-rail.js";
+import { notificationDestinationRefusal, notificationPreviewState } from "../surfaces/notifications/notifications-preview-model.js";
+import type { NotificationDestination } from "../surfaces/notifications/notifications-view-model.js";
 import {
 bulkSubjectsOf,
-bulkUnavailableIds,
 composeBulkRunCommand,
-planBulkVerbs,
 type BulkBatchOutcome,
 type BulkVerbPlan,
-} from "./bulk-dispatch.js";
+} from "./commands/bulk-dispatch.js";
 import {
 composeCommandRequest,
 type CommandAction,
-} from "./command-dispatch.js";
-import { commandFailureToast,settleCommandResult } from "./command-result.js";
+} from "./commands/command-dispatch.js";
+import { commandFailureToast,settleCommandResult } from "./commands/command-result.js";
 import {
 RUN_START_DOOR_ID
 } from "./dashboard-app-model.js";
 import { DashboardTakeovers } from "./dashboard-takeovers.js";
-import { useGlobalKeys } from "./global-keys.js";
-import { useDashboardNavigation } from "./navigation-model.js";
-import type { NativeRouteHistory,PopstateRouteHandler } from "./route-history-model.js";
-import { useRoute } from "./route-history-model.js";
-import { SHELL_PANEL_TABS, shellSelection } from "./shell-selection-model.js";
-import { useTakeoverCloseFocus } from "./takeover-focus-model.js";
+import { useGlobalKeys } from "./navigation/global-keys.js";
+import { useDashboardNavigation } from "./navigation/navigation-model.js";
+import type { NativeRouteHistory,PopstateRouteHandler } from "./navigation/route-history-model.js";
+import { useRoute } from "./navigation/route-history-model.js";
+import { SHELL_PANEL_TABS } from "./navigation/shell-selection-model.js";
+import { useTakeoverCloseFocus } from "./navigation/takeover-focus-model.js";
 import {
 activeTakeover,
 routeForCrossDateSearchResult,
-shellViewOf,
 type AppRouteState
-} from "./url-state.js";
-import { usePanelSections } from "./use-panel-sections.js";
-import { useConsumerAuthority } from "./use-consumer-authority.js";
+} from "./navigation/url-state.js";
 
 
-/**
- * THE ROW'S OWN CONTROLS, off the row (ref frontend-backend-integration §8.5).
- *
- * This was `SERVED_ACTIONS = []` — an honest constant while `QueueBaseFields`
- * carried no `actions` field and no projector built one, which meant every
- * queue row drew no command controls at all. Both halves now exist
- * (`server/dashboard/projectors/queue-row-actions.ts`), so the array is READ
- * off the surface the server sent and nothing in the tree branches on status
- * to decide what a row may do.
- *
- * A row whose served list is empty draws nothing, with no client branch: the
- * surfaces already render exactly the descriptors they are handed.
- *
- * The SECTION-level descriptors still do NOT come through here, and must not:
- * the parked write's two resolutions are read off `sections["parked-write"]` by
- * the panel's own dialog (which captures the evidence note the kernel
- * requires), and the identity gate's two `resolve-gate` actions are read off
- * `sections["identity-gate"]` beside the packet they are about. Each payload is
- * composable only where its evidence is.
- */
-/**
- * The stable empties the three `memo`'d panels are handed when the day has not
- * loaded (D4). `?? []` in a prop slot mints a fresh array on every render, so
- * under `memo` it is a prop that can never compare equal — the wrapper would
- * be pure overhead for exactly the state (still loading) where the most
- * renders happen. `dashboard-memo-prop-stability` refuses the literal form.
- */
-const NO_SURFACES: readonly QueueSurfaceWire[] = Object.freeze([]);
-
-const NO_NOTIFICATIONS: readonly NotificationRowWire[] = Object.freeze([]);
-
-const NO_DAY_COUNTS: readonly DayCountWire[] = Object.freeze([]);
+const NO_LOG_TABS: readonly PanelTab[] = Object.freeze([]);
 
 const NO_ACTION_DESCRIPTORS: readonly ActionDescriptorWire[] = Object.freeze([]);
 
@@ -150,18 +122,17 @@ export function DashboardApp() {
   const onPopstate = useRef<PopstateRouteHandler | undefined>(undefined);
   const [route, setRoute, nativeHistory] = useRoute(onPopstate);
   const { theme, toggleTheme } = useDemoTheme();
-  const panelMode = useWorkflowPanelMode();
-  const [filter, setFilter] = useState<StatusBucket>("all");
-  const [openWells, setOpenWells] = useState<ReadonlySet<string>>(() => new Set());
+  const filter = useMemo(() => (route.view?.queueFilter ?? ["all"]) as readonly StatusBucket[], [route.view?.queueFilter]);
+  const setFilter = useCallback((next: readonly StatusBucket[]) => setRoute(current => ({ ...current, view: { ...current.view, queueFilter: [...next] } })), [setRoute]);
+  const openWells = useMemo(() => new Set(route.view?.queueOpen ?? []), [route.view?.queueOpen]);
+  const setOpenWells = useCallback((next: ReadonlySet<string>) => setRoute(current => ({ ...current, view: { ...current.view, queueOpen: [...next] } })), [setRoute]);
   const tab = SHELL_PANEL_TABS.find(candidate => candidate === route.section);
   const setTab = useCallback((next: PanelTab | undefined) => setRoute({ ...route, section: next }), [route, setRoute]);
   /** the toolbar's ordering control and its select mode — client UI state, D18 */
-  const [sort, setSort] = useState<QueueSortKey>("attention");
+  const sort = route.view?.queueSort ?? "attention";
+  const setSort = useCallback((next: QueueSortKey) => setRoute(current => ({ ...current, view: { ...current.view, queueSort: next } })), [setRoute]);
   const [selectMode, setSelectMode] = useState(false);
   const [bulkIds, setBulkIds] = useState<ReadonlySet<string>>(() => new Set());
-  // Deliberately browser-local triage, not a durable run fact. Reloading the
-  // dashboard starts this set over; only the operator can see their checks.
-  const [checkedIds, setCheckedIds] = useState<ReadonlySet<string>>(() => new Set());
 
   const boot = bootstrap.state === "loaded" ? bootstrap.value : undefined;
 
@@ -194,10 +165,10 @@ export function DashboardApp() {
     >
     <TooltipProvider delayDuration={200}>
     <ToastProvider>
-      {boot === undefined ? (
+      {route.viewInvalid ? <EmptyState title="Invalid navigation link" description="The view parameters are invalid. Open the dashboard to recover." action={<Button onClick={() => setRoute({ start: false })}>Open dashboard</Button>} /> : boot === undefined ? (
         <BootGate bootstrap={bootstrap} />
       ) : (
-        <LoadedApp
+        <ViewNavigationProvider route={route} setRoute={setRoute}><LoadedApp
           boot={boot}
           route={route}
           setRoute={setRoute}
@@ -205,7 +176,6 @@ export function DashboardApp() {
           nativeHistory={nativeHistory}
           theme={theme}
           onToggleTheme={toggleTheme}
-          panelMode={panelMode}
           filter={filter}
           onFilter={setFilter}
           openWells={openWells}
@@ -218,9 +188,7 @@ export function DashboardApp() {
           onSelectMode={setSelectMode}
           bulkIds={bulkIds}
           onBulkIds={setBulkIds}
-          checkedIds={checkedIds}
-          onCheckedIds={setCheckedIds}
-        />
+        /></ViewNavigationProvider>
       )}
     </ToastProvider>
     </TooltipProvider>
@@ -253,9 +221,12 @@ function BootGate({ bootstrap }: { bootstrap: ReturnType<typeof useBootstrap> })
   return (
     <main
       data-parity-ready="loading"
-      className="flex min-h-screen items-center justify-center bg-[color:var(--ds-surface-page)]"
+      className="flex min-h-0 flex-1 flex-col bg-[color:var(--ds-surface-page)]"
     >
-      <p className="text-[color:var(--ds-fg-muted)]">Starting…</p>
+      <DashboardSkeleton settings={new URLSearchParams(window.location.search).has("settings")} settingsContent={
+        ["general", "paths", "performance", "providers", "routes", "credentials"].includes(new URLSearchParams(window.location.search).get("settings") ?? "")
+          ? <SettingsSectionSkeleton section={new URLSearchParams(window.location.search).get("settings")!} /> : undefined
+      } />
     </main>
   );
 }
@@ -264,14 +235,13 @@ function BootGate({ bootstrap }: { bootstrap: ReturnType<typeof useBootstrap> })
 interface LoadedAppProps {
   boot: FrontendBootstrapWire;
   route: AppRouteState;
-  setRoute: (next: AppRouteState) => void;
+  setRoute: RouteSetter;
   onPopstateRef: { current: PopstateRouteHandler | undefined };
   nativeHistory: NativeRouteHistory;
   theme: ReturnType<typeof useDemoTheme>["theme"];
   onToggleTheme: () => void;
-  panelMode: ReturnType<typeof useWorkflowPanelMode>;
-  filter: StatusBucket;
-  onFilter: (bucket: StatusBucket) => void;
+  filter: readonly StatusBucket[];
+  onFilter: (bucket: readonly StatusBucket[]) => void;
   openWells: ReadonlySet<string>;
   onWells: (next: ReadonlySet<string>) => void;
   tab: PanelTab | undefined;
@@ -288,8 +258,6 @@ interface LoadedAppProps {
   onSelectMode: (on: boolean) => void;
   bulkIds: ReadonlySet<string>;
   onBulkIds: (next: ReadonlySet<string>) => void;
-  checkedIds: ReadonlySet<string>;
-  onCheckedIds: (next: ReadonlySet<string>) => void;
 }
 
 
@@ -301,7 +269,6 @@ function LoadedApp({
   nativeHistory,
   theme,
   onToggleTheme,
-  panelMode,
   filter,
   onFilter,
   openWells,
@@ -314,38 +281,57 @@ function LoadedApp({
   onSelectMode,
   bulkIds,
   onBulkIds,
-  checkedIds,
-  onCheckedIds,
 }: LoadedAppProps) {
-  // Bumped by an applied Data correction: the save moved the run version, so
-  // the open detail (and, through its rowRevision, every fetched section)
-  // refetches rather than serving a CAS basis the kernel will now refuse.
-  const [detailNonce, setDetailNonce] = useState(0);
-  /** Refused command answers are local, bounded reading context; the durable
-   * audit remains the server's authority. Applied answers toast instead. */
+  /**
+   * THE clock (D256). The server's instant is the authority; the browser
+   * contributes only the monotonic time since that instant arrived, and every
+   * live elapsed on the screen — the queue row's timer, the gate-age pill, the
+   * session footer, the worker cards, the notification ages — is computed
+   * against this ONE value. Before it, `boot.serverClock.now` was frozen at
+   * page load and a parked run read `0s` for over two minutes.
+   */
+  const nowIso = useServedNow(boot.serverClock.now);
+  const servedNowRef = useRef(nowIso);
+  servedNowRef.current = nowIso;
+  const today = serverLocalDay({ ...boot.serverClock, now: nowIso });
+  const dateSelection = resolveDateSelection(route.day, today);
+  const day = dateSelection.state === "valid" ? dateSelection.day : dateSelection.requested;
+  const dateError = dateSelection.state === "valid" ? undefined : dateSelection.reason === "future"
+    ? `Date ${day} is after Today (${today}).` : `Invalid date: ${day || "(empty)"}.`;
+  const { day: dayResource } = useDashboardDay(dateSelection.state === "valid" ? day : undefined, nowIso);
+
+  const dayWire = dayResource.state === "loaded" && dayResource.value.day === day ? dayResource.value : undefined;
   const [commandResults, setCommandResults] = useState<readonly CommandResultFeedEntry[]>([]);
-  const { actorId, nowIso, today, day, dateError, dayResource, connection, dayWire, detail, refreshDay } =
-    useConsumerAuthority(boot, route, detailNonce);
-  const selection = shellSelection(route, day, dayWire, detail);
-  const detailValue = selection.state === "ready" ? selection.detail : undefined;
-  const offered = detailValue === undefined ? [] : tabsFor(detailValue);
-  const effectiveTab = selection.state === "ready" ? selection.tab : "logs";
-  const { sections } = usePanelSections(detailValue, effectiveTab);
-  const logsAdvertiseCaptures = detailValue?.captures !== undefined
-    || detailValue?.availableSections.includes("captures") === true;
-  const captures = useRunCaptures(
-    route.run,
-    detailValue,
-    activeTakeover(route) === "none"
-      && (effectiveTab === "receipt" || (effectiveTab === "logs" && logsAdvertiseCaptures)),
-  );
 
   const workflows = useMemo(() => parseWorkflows(boot.workflows), [boot.workflows]);
+  const workflowCatalog = useMemo(() => buildWorkflowCatalog(launchWorkflows(workflows)), [workflows]);
   const { selectedWorkflowId: chosenWorkflowId, setSelectedWorkflowId: setActiveWorkflowId } = useSelectedWorkflow(workflows);
-  const selectedRow = dayWire?.queueSurfaces.find(row => String(row.runId) === route.run);
-  const activeWorkflowId = selectedRow?.workflowId ?? chosenWorkflowId;
+  const previewQueue = useQueuePreview(dayWire?.queueSurfaces, day);
+  const selectedRow = previewQueue.rows.find(row => String(row.runId) === route.run);
+  const activeWorkflowId = selectedRow?.workflowId ?? route.view?.workflow ?? chosenWorkflowId;
   const launch = useRunLaunch(route.start, DASHBOARD_MAIN_REGION_ID);
-  const openStart = launch.openStart;
+  const [railPreview, setRailPreview] = useViewState("preview", null);
+  const [mockRuns, setMockRuns] = useState<readonly MockRun[]>(seedMockRuns);
+  // The route selection clears after the removal commits; a run deleted here is not an unavailable destination.
+  const [deletedMockRuns, setDeletedMockRuns] = useState<ReadonlySet<string>>(() => new Set());
+  const launchWorkflow = route.view?.launchWorkflow;
+  const launchSource = route.view?.launchSource;
+  const mockLaunch = useMemo(() => route.start && launchWorkflow && MOCK_WORKFLOWS.some(flow => flow.id === launchWorkflow) ? { workflowId: mockWorkflow(launchWorkflow).id,
+    source: launchSource ? mockRuns.find(run => run.id === launchSource) : undefined } : null, [route.start, launchWorkflow, launchSource, mockRuns]);
+  const setMockLaunch = useCallback((next: { workflowId: MockWorkflowId; source?: MockRun } | null) => setRoute(current => ({ ...current, start: next !== null,
+    view: { ...current.view, launchWorkflow: next?.workflowId, launchSource: next?.source?.id, launchStage: next ? next.source ? "Steps" : "Input" : undefined, launchCustomize: next ? false : undefined } })), [setRoute]);
+  const rememberLauncher = launch.rememberLauncher;
+  const openMockLaunch = useCallback((next: { workflowId: MockWorkflowId; source?: MockRun }) => {
+    rememberLauncher(); setMockLaunch(next);
+  }, [rememberLauncher, setMockLaunch]);
+  const [railRun, setRailRun] = useViewState("mockRun", undefined);
+  const [railReviewId, setRailReviewId] = useViewState("records", undefined);
+  const [mockNotificationTimes, setMockNotificationTimes] = useState<Readonly<Record<string, string>>>({});
+  const servedOpenStart = launch.openStart;
+  const openStart = useCallback(() => {
+    if (railPreview && mockWorkflow(railPreview).runnable) openMockLaunch({ workflowId: mockWorkflow(railPreview).id });
+    else { setRoute(current => ({ ...current, view: { ...current.view, launchServed: activeWorkflowId, launchWorkflow: undefined, launchSource: undefined, launchStage: "Input", launchCustomize: false } })); servedOpenStart(); }
+  }, [railPreview, servedOpenStart, openMockLaunch, activeWorkflowId, setRoute]);
   const openRerun = launch.openRerun;
   /**
    * The command waiting on the operator's confirmation. A descriptor that
@@ -390,72 +376,22 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
   const bulkIdsRef = useRef(bulkIds);
   bulkIdsRef.current = bulkIds;
   const client = useDashboardClient();
-  const notificationIdentity = useRef(createNotificationNavigationIdentity(route, client));
-  notificationIdentity.current.update(route, client);
   const { toast } = useToasts();
 
   const workflowLabelOf = useCallback(
-    (workflowId: string): string => workflows.find((w) => w.id === workflowId)?.label ?? workflowId,
-    [workflows],
+    (workflowId: string): string => workflowCatalog.find((w) => w.id === workflowId)?.label ?? workflowId,
+    [workflowCatalog],
   );
-  /**
-   * The fingerprint ONE workflow is served under today (§9.22 item 3).
-   *
-   * The provenance bar's shape hazard compares a run's own
-   * `contractFingerprint` against this. It used to compare against
-   * `boot.descriptorHash` — the hash of the whole descriptor SET — which a
-   * one-workflow fingerprint can never equal, so the amber "the run's SHAPE
-   * moved" chip was on for every run ever drawn. A workflow this build does
-   * not register serves no fingerprint, and that is its own verdict rather
-   * than an assumed move.
-   */
-  const workflowShapeOf = useCallback(
-    (workflowId: string): string | undefined =>
-      workflows.find((w) => w.id === workflowId)?.descriptorFingerprint,
-    [workflows],
-  );
-  /**
-   * The active workflow's served 2-char code. A workflow id the boot document
-   * does not carry has no code, and the launcher then draws NOTHING in that
-   * slot — the demo's own `WORKFLOW_CODE[active] ?? ""`. Deriving two letters
-   * from the label would put a value the server never issued beside the
-   * identity an operator selects a real HR workflow by.
-   */
-  const workflowCodeOf = useCallback(
-    (workflowId: string): string => workflows.find((w) => w.id === workflowId)?.code ?? "",
-    [workflows],
-  );
-
   const surfaces = useMemo((): readonly QueueSurfaceWire[] => {
     if (dayWire === undefined) return [];
-    const scoped = dayWire.queueSurfaces.filter((s) => s.workflowId === activeWorkflowId);
+    const scoped = previewQueue.rows.filter((s) => s.workflowId === activeWorkflowId);
     return filterQueueSurfaces(scoped, filter);
-  }, [dayWire, activeWorkflowId, filter]);
+  }, [dayWire, previewQueue.rows, activeWorkflowId, filter]);
 
-  const dayCount = dayWire?.monthCounts.find((c) => c.day === day)?.count ?? 0;
-  /**
-   * ACTIVE across every workflow today — queued + running + cancelling, off the day's OWN
-   * served `statusCounts`, which is already day-scoped across workflows. The
-   * launcher and the rail's orange column are then the same quantity at two
-   * scopes and cannot disagree (D81, R2 D3/D4).
-   */
-  const dayActive = activeCount(dayWire?.statusCounts ?? []);
-
-  /**
-   * THE STATUS BAND'S OWN SCOPE (R4-1) — the ACTIVE workflow's served
-   * per-status counts, read straight out of R2's `workflowCounts` array.
-   *
-   * The band was handed `dayWire.statusCounts`, which the projection folds
-   * across every workflow in the day, while the queue below it renders ONE
-   * workflow — so `Failed 3` could sit above a queue with no failures. The fix
-   * is a re-point, not a client-side fold: `shell.tsx:1-17` refuses counting
-   * rows here by name, and D81's one count path is the reason. `dayCount` above
-   * is deliberately left alone — the panel launcher is a DIFFERENT quantity
-   * (day-wide across workflows), exactly as the demo has it.
-   */
+  /** Local mock counts follow the latest attempt; served day/rail counts keep their own scope. */
   const scopedStatusCounts = useMemo(
-    () => workflowStatusCounts(dayWire?.workflowCounts ?? [], activeWorkflowId),
-    [dayWire, activeWorkflowId],
+    () => queuePreviewCounts(previewQueue.rows, activeWorkflowId),
+    [previewQueue.rows, activeWorkflowId],
   );
 
   /**
@@ -488,29 +424,12 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
    * cannot disagree.
    */
   const queueFilterScope = useMemo((): QueueFilterScope | undefined => {
-    if (filter === "all") return undefined;
-    if (filter === "needsYou") return { kind: "needsYou" };
-    return { kind: "status", word: PROPOSED_STATUS[dsStatusOf(filter)].label.toLowerCase() };
+    if (filter.length === 0 || filter.includes("all")) return undefined;
+    if (filter.length === 1 && filter[0] === "needsYou") return { kind: "needsYou" };
+    return { kind: "status", word: filter.map(value => value === "all" ? "all" : value === "needsYou" ? "needs you" : PROPOSED_STATUS[dsStatusOf(value)].label.toLowerCase()).join(" or ") };
   }, [filter]);
 
-  /**
-   * The first consumer of `featureAvailability` (2i-G, D178). A feature the
-   * boot document does not mention is `not-configured` with a reason naming
-   * exactly that — never a silent `available`, which is how a surface starts
-   * offering something the server never wired.
-   */
-  const advisoryAvailability = useMemo((): CapabilityAvailability => {
-    const entry = boot.featureAvailability.find(({ feature }) => feature === "ai-advisory");
-    return entry === undefined
-      ? {
-        state: "unavailable",
-        code: "not-configured",
-        reason: "this server's bootstrap document does not report the ai-advisory feature",
-      }
-      : CapabilityAvailabilitySchema.parse(entry.availability);
-  }, [boot.featureAvailability]);
-
-  const startWorkflows = useMemo(() => launchWorkflows(workflows), [workflows]);
+  const startWorkflows = useMemo(() => servedLaunchWorkflows(workflowCatalog), [workflowCatalog]);
 
   const startWorkflow = useMemo(
     () => startWorkflows.find((entry) => entry.workflowId === activeWorkflowId),
@@ -532,28 +451,13 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
       openWells,
       selectMode,
       bulkIds,
-      checkedIds,
       panelWorkflowId: activeWorkflowId,
       nowIso,
     }),
-    [route.run, openWells, selectMode, bulkIds, checkedIds, activeWorkflowId, nowIso],
+    [route.run, openWells, selectMode, bulkIds, activeWorkflowId, nowIso],
   );
 
-  /**
-   * What `Select all in view` may take: the TOP-LEVEL rows drawn on screen, in
-   * the order they are drawn. A member is acted on through its group or on its
-   * own row and is never half-selected with it, which is why it never enters
-   * this set — `visibleRunIds` includes members, so it is not the same list.
-   */
-  const selectableIds = useMemo(
-    () => groupQueueAttempts(surfaces)
-      .map((item) => item.representative)
-      .filter((surface) => surface.lineage.state !== "child")
-      .map((surface) => String(surface.runId)),
-    [surfaces],
-  );
-
-  const { nav, leaveSettings, onSettingsExitGuardChange } = useDashboardNavigation({
+  const { leaveSettings, onSettingsExitGuardChange } = useDashboardNavigation({
     route, setRoute, day, activeWorkflowId, setActiveWorkflowId, tab, onTab, dayWire,
     workflowLabelOf, onPopstateRef, nativeHistory,
   });
@@ -561,85 +465,14 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
   const selectWorkflow = useCallback((next: string): void => {
     if (next === activeWorkflowId) return;
     setActiveWorkflowId(next);
-    setRoute({ ...route, run: undefined, section: undefined });
-  }, [activeWorkflowId, route, setRoute, setActiveWorkflowId]);
+    setRoute(current => ({ ...current, run: undefined, section: undefined, view: { ...current.view, workflow: next } }));
+  }, [activeWorkflowId, setRoute, setActiveWorkflowId]);
 
   const selectRun = useCallback(
     (runId: string) => {
       leaveSettings(() => setRoute({ ...routeForCrossDateSearchResult(route, {runId, partitionDay: day}), section: "logs" }));
     },
     [route, setRoute, day, leaveSettings],
-  );
-
-  const openNotification = useCallback<OpenNotification>((id, opened, refused) => {
-    const selection = notificationIdentity.current.start();
-    void navigateNotification({ lookup: () => client.notificationTarget(id), guard: leaveSettings, refused,
-      isCurrent: () => notificationIdentity.current.isCurrent(selection),
-      open: target => {
-        const base = routeForCrossDateSearchResult(route, { runId: "", partitionDay: day });
-        if (target.kind === "storage") setRoute({ ...base, run: undefined, section: undefined, settings: "storage" });
-        else if (target.kind === "archive") setRoute({ ...base, run: undefined, section: undefined, archive: target.runId, archiveView: "runs" });
-        else setRoute({ ...base, day: target.day, run: target.runId, section: "logs" });
-        opened();
-      },
-    });
-  }, [client, leaveSettings, route, day, setRoute]);
-
-  const selectCrossDateRun = useCallback(
-    (result: CrossDateSearchResult): void => {
-      leaveSettings(() => setRoute({ ...routeForCrossDateSearchResult(route, result), section: "logs" }));
-    },
-    [route, setRoute, leaveSettings],
-  );
-
-  /**
-   * D235 — WHAT THE SELECTION CAN DO, from the rows' OWN served descriptors.
-   *
-   * The rows are taken from `surfaces` and not from `bulkIds` alone: an id in
-   * the selection whose row has left the day (a filter changed, the day rolled)
-   * has no served `actions[]`, so nothing may be sent for it against a version
-   * nobody currently serves.
-   *
-   * It used to drop out of every plan THERE — the filter below removed it and
-   * no count downstream ever mentioned it again, so `Cancel 3 · 1 skipped`
-   * could sit under `6 selected` with two rows accounted for nowhere. That is
-   * the omission this repo's fail-loud rule forbids: not sent, and not
-   * disclosed either. The WHOLE selection now travels into `planBulkVerbs`,
-   * which returns those ids as its own `unavailable` bucket, and the strip, the
-   * confirm dialog and the result band each say so in their own words.
-   */
-  const bulkCandidateRows = useMemo(
-    () =>
-      surfaces
-        .filter((surface) => bulkIds.has(String(surface.runId)))
-        .map((surface) => ({
-          runId: String(surface.runId),
-          // The SAME `displayName ?? title` fold the row itself draws, shared
-          // rather than repeated: a confirm dialog naming a run something other
-          // than the row above it is a dialog about a different run.
-          title: queueRowTitle(surface),
-          actions: surface.actions,
-        })),
-    [bulkIds, surfaces],
-  );
-
-  const bulkSelectedIds = useMemo(() => [...bulkIds], [bulkIds]);
-
-  const bulkPlans = useMemo(() => {
-    if (!selectMode || bulkIds.size === 0) return [];
-    return planBulkVerbs(bulkCandidateRows, bulkSelectedIds);
-  }, [selectMode, bulkIds, bulkCandidateRows, bulkSelectedIds]);
-
-  /**
-   * The unavailable bucket read on its OWN, because the strip needs it in the
-   * one case no plan survives to carry it: a selection whose rows have all left
-   * the day offers no verb, so `bulkPlans` is empty and there is no plan to ask.
-   * Without this the band would print "none of the 2 selected rows serves
-   * Cancel or Retry" about rows whose `actions[]` nobody ever read.
-   */
-  const bulkUnavailable = useMemo(
-    () => (selectMode && bulkIds.size > 0 ? bulkUnavailableIds(bulkCandidateRows, bulkSelectedIds) : []),
-    [selectMode, bulkIds, bulkCandidateRows, bulkSelectedIds],
   );
 
   /**
@@ -693,24 +526,11 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
         const requestedAt = answers.requestedAt ?? nowIso;
         const source = answers.source ?? "queue";
 
-        /*
-          The gate section is still handed to the composer even though the gate's
-          own controls no longer route here (D226 sends them to the ceremony
-          dialog, which is the only surface that can carry the operator's answer).
-          It stays because a `resolve-gate` descriptor arriving on THIS path is a
-          control that reached the generic dispatcher without a ceremony, and the
-          composer's refusal is far more useful with the section in hand: it names
-          the shape the server asked for instead of reporting that no gate is open.
-          No `gateAnswer` is supplied here on purpose — nothing on this path
-          authored one, and a dispatcher that minted one would be answering for
-          the human (ref write-safety §14.6 risk 1).
-        */
         const composed = composeCommandRequest(action, target, {
-          actorId: actorId,
+          actorId: boot.actor.id,
           source,
           commandId,
           requestedAt,
-          gate: sections["identity-gate"],
           ...(answers.renameAnswer === undefined ? {} : { renameAnswer: answers.renameAnswer }),
         });
         if (composed.state === "refused") {
@@ -756,22 +576,21 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
               workflowLabel: workflowLabelOf(String(surface?.workflowId ?? activeWorkflowId)),
               actionLabel: actionToSettle.label,
               clock: fmtClock(nowIso),
-              actorId: actorId,
+              actorId: boot.actor.id,
             });
             if (feedEntry === undefined) throw new Error("refused command settlement produced no feed entry");
             setCommandResults((previous) => [feedEntry, ...previous].slice(0, 4));
-            toast({ tone: "danger", title: actionToSettle.command === "archive" ? "Could not archive run" : "Nothing was recorded", description: settlement.message });
+            toast({ tone: "danger", title: "Nothing was recorded", description: settlement.message });
             return;
           }
           toastAppliedCommandResult(toast, {
             settlement,
             actionLabel: actionToSettle.label,
-            command: actionToSettle.command,
             subject: surface === undefined ? `run ${targetToSettle.runId}` : queueRowTitle(surface),
             clock: fmtClock(nowIso),
-            actorId: actorId,
+            actorId: boot.actor.id,
           });
-          if (actionToSettle.command === "delete" || actionToSettle.command === "archive") {
+          if (actionToSettle.command === "delete") {
             const deletedRunIds = new Set<string>();
             deletedRunIds.add(targetToSettle.runId);
             if ("affectedTargets" in result && Array.isArray(result.affectedTargets)) {
@@ -797,7 +616,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
               onBulkIds(remainingBulk);
             }
           }
-          setDetailNonce((nonce) => nonce + 1);
         },
       ).catch((caught: unknown) => {
         inFlightCommands.current.delete(inFlightKey);
@@ -815,10 +633,10 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
         // NOT "Nothing was recorded": the envelope is already on the wire by
         // the time anything can land here, so whether the kernel wrote the row
         // is a fact this tab does not hold (`commandFailureToast`).
-        toast(commandFailureToast({ stage: "after-dispatch", caught, command: actionToSettle.command }));
+        toast(commandFailureToast({ stage: "after-dispatch", caught }));
       });
     },
-    [actorId, client, sections, toast, dayWire, workflowLabelOf, activeWorkflowId, nowIso, setRoute, onBulkIds],
+    [boot.actor.id, client, toast, dayWire, workflowLabelOf, activeWorkflowId, nowIso, setRoute, onBulkIds],
   );
 
   /**
@@ -856,7 +674,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
         const requestedAt = retained?.requestedAt ?? nowIso;
 
         const composed = composeBulkRunCommand(plan, {
-          actorId: actorId,
+          actorId: boot.actor.id,
           source: "queue",
           commandId,
           requestedAt,
@@ -888,7 +706,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
             title: `${planToExecute.label} — ${String(response.results.length)} of ${String(response.requestedCount)} answered`,
             description: "Each run's own outcome is listed under the selection bar.",
           });
-          setDetailNonce((nonce) => nonce + 1);
         },
       ).catch((caught: unknown) => {
         inFlightCommands.current.delete(inFlightKey);
@@ -905,11 +722,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
         toast(commandFailureToast({ stage: "after-dispatch", caught }));
       });
     },
-    [actorId, client, nowIso, toast],
+    [boot.actor.id, client, nowIso, toast],
   );
-  const workerCommands = useMemo(() => createWorkerCommandDispatch(client, { actorId: actorId, source: "session-panel" }), [client, actorId]);
-  const planWorkerCount = workerCommands.plan;
-  const spawnWorker = workerCommands.spawn;
 
   /**
    * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
@@ -922,7 +736,11 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
   const runAction = useCallback(
     (action: ActionDescriptorWire, target: ActionTarget, source: "queue" | "run-detail" = "queue"): void => {
       if (action.kind === "navigation") {
-        if (action.navigate.kind === "rerun") openRerun(RerunValuesRequestSchema.parse({ runId: target.runId, expectedVersion: action.navigate.expectedVersion }));
+        if (action.navigate.kind === "rerun") {
+          const row = dayWire?.queueSurfaces.find(entry => String(entry.runId) === target.runId);
+          openRerun({ ...RerunValuesRequestSchema.parse({ runId: target.runId, expectedVersion: action.navigate.expectedVersion }),
+            ...(row === undefined ? {} : { label: row.title, traceId: String(row.traceId) }) });
+        }
         else if (action.navigate.runId !== undefined) selectRun(action.navigate.runId);
         return;
       }
@@ -1002,13 +820,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
     [runAction],
   );
 
-  const runDetailAction = useCallback(
-    (action: ActionDescriptorWire, target: ActionTarget): void => {
-      runAction(action, target, "run-detail");
-    },
-    [runAction],
-  );
-
   /**
    * THE KEYBOARD, BOUND (R2 D13/D14, R3 finding 8, R5 finding 7, R8 finding 7).
    *
@@ -1028,17 +839,51 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
    */
   const setBatchGrouping = useCallback(async (batch: QueueBatch, groupInQueue: boolean): Promise<void> => {
     const request = WorkflowBatchCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: nowIso,
-      requestedBy: actorId, source: "dashboard", family: "workflow-batch", type: "set-batch-grouping",
+      requestedBy: boot.actor.id, source: "dashboard", family: "workflow-batch", type: "set-batch-grouping",
       target: { batchId: batch.id, expectedVersion: batch.version }, payload: { groupInQueue } });
     const result = await client.executeCommand(request);
     const settlement = settleCommandResult(result);
     if (settlement.kind === "refused") throw new Error(settlement.message);
-  }, [actorId, client, nowIso]);
+  }, [boot.actor.id, client, nowIso]);
+
+  const selectionOrigin = useRef<string | null>(null);
+  const exitQueueSelection = useCallback(() => {
+    onSelectMode(false);
+    onBulkIds(new Set());
+    queueMicrotask(() => {
+      const row = selectionOrigin.current === null ? null : document.querySelector<HTMLElement>(`[data-demo-row-id="${CSS.escape(selectionOrigin.current)}"]`);
+      (row ?? document.getElementById(RUN_START_DOOR_ID))?.focus({ preventScroll: true });
+    });
+  }, [onSelectMode, onBulkIds]);
+  const [pendingDelete, setPendingDelete] = useState<readonly string[] | null>(null);
+  const applyPreviewAction = useCallback((action: Exclude<QueueMockAction, 'archive'>, ids: readonly string[]) => {
+    if (ids.length === 0) return;
+    selectionOrigin.current = ids[0] ?? null;
+    let retriedIds: readonly string[];
+    try {
+      const result = previewQueue.apply(action, ids, nowIso);
+      retriedIds = result.createdIds;
+    }
+    catch (caught) {
+      toast({ tone: 'danger', title: 'Mock action unavailable', description: caught instanceof Error ? caught.message : String(caught) });
+      return;
+    }
+    if (action === 'retry') selectionOrigin.current = retriedIds[0] ?? null;
+    exitQueueSelection();
+    toast({ tone: 'success', title: `${ids.length} ${ids.length === 1 ? 'run' : 'runs'} ${action === 'retry' ? 'queued' : 'deleted'}`, description: action === 'retry' ? 'Original settings retained.' : undefined });
+    if (route.run !== undefined && ids.includes(route.run)) setRoute({ ...route, run: action === 'retry' ? retriedIds[0] : undefined });
+  }, [previewQueue, nowIso, exitQueueSelection, toast, route, setRoute]);
+
+  const runPreviewAction = useCallback((action: Exclude<QueueMockAction, 'archive'>, ids: readonly string[]) => {
+    if (action === "delete") setPendingDelete(ids); else applyPreviewAction(action, ids);
+  }, [applyPreviewAction]);
 
   const queueHandlers = useMemo(
     (): QueueHandlers => ({
       onSetBatchGrouping: setBatchGrouping,
       onSelect: selectRun,
+      onExitSelection: exitQueueSelection,
+      onPreviewAction: runPreviewAction,
       /*
         LIVE. `actionsOf` at the call site reads the row's own served
         `actions[]`, so every control the server describes routes through
@@ -1058,7 +903,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
         else next.add(runId);
         onBulkIds(next);
       },
-      onToggleChecked: (runId) => onCheckedIds(toggleCheckedByYou(checkedIds, runId)),
       /*
         A parent can belong to ANOTHER workflow, so the jump moves the panel and
         then selects — selecting alone would open a run the queue beside it is
@@ -1082,7 +926,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
         selectRun(String(link.runId));
       },
     }),
-    [setBatchGrouping, selectRun, runQueueAction, openWells, onWells, bulkIds, onBulkIds, checkedIds, onCheckedIds, dayWire, setActiveWorkflowId],
+    [setBatchGrouping, selectRun, runQueueAction, openWells, onWells, bulkIds, onBulkIds, dayWire, setActiveWorkflowId, exitQueueSelection, runPreviewAction],
   );
 
   const keyboardOrder = useMemo(
@@ -1096,43 +940,19 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
   useGlobalKeys({
     queueVisible: activeTakeover(route) === "none" && dayWire !== undefined,
     onStartRun: openStart,
-    onCyclePanelMode: panelMode.cycleMode,
-    panelMode: panelMode.mode,
-    onMinimisePanel: () => panelMode.setMode("icon"),
-    visibleRunIds: keyboardOrder,
-    attentionRunIds: keyboardAttention,
+    onCyclePanelMode: () => {},
+    panelMode: "sidebar",
+    onMinimisePanel: () => {},
+    // A preview queue is not the served queue; its rows must not move the hidden served selection.
+    visibleRunIds: railPreview ? [] : keyboardOrder,
+    workflowIds: workflows.map(workflow => String(workflow.id)), onWorkflow: selectWorkflow,
+    attentionRunIds: railPreview ? [] : keyboardAttention,
     selectedRunId: route.run,
     onSelectRun: selectRun,
-    panelTabs: offered,
+    panelTabs: NO_LOG_TABS,
     onTab,
   });
 
-  /**
-   * THE `memo` BOUNDARY'S PROPS (D4).
-   *
-   * `TopBar` and `LogPanel` are `memo`'d, so each of these used to be written
-   * inline in a prop slot and each was a fresh reference on every render:
-   * `dayWire?.queueSurfaces ?? []` mints an array whenever the day has not
-   * loaded, `SettingsSectionPrimitiveSchema.array().parse(…)` mints one AND
-   * re-runs a zod parse on every render of the whole app, and an inline
-   * `onDay`/`nav` closes over the route. Naming them here is what makes the
-   * wrappers below real rather than decorative;
-   * `dashboard-memo-prop-stability` refuses the inline forms.
-   */
-  const daySurfaces = useMemo(
-    (): readonly QueueSurfaceWire[] => dayWire?.queueSurfaces ?? NO_SURFACES,
-    [dayWire],
-  );
-  const dayNotifications = useMemo(
-    // The boot document composes this array from zod parts, so it infers as
-    // `unknown[]` at the wire; the day payload is already parsed whole.
-    (): readonly NotificationRowWire[] => dayWire?.notifications ?? NO_NOTIFICATIONS,
-    [dayWire],
-  );
-  const dayMonthCounts = useMemo(
-    (): readonly DayCountWire[] => dayWire?.monthCounts ?? NO_DAY_COUNTS,
-    [dayWire],
-  );
   // The boot document composes this array from zod parts so it infers as
   // `unknown[]`; re-parsing is the check bootstrap's
   // own refinement makes, not a cast past one. It is done ONCE per boot
@@ -1145,79 +965,28 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
   // capability wire carries none on purpose, so one page cannot hold two names
   // for one workflow (D274 item 6).
   const workflowLabels = useMemo(
-    () => new Map(workflows.map((workflow) => [String(workflow.id), workflow.label])),
-    [workflows],
+    () => new Map(workflowCatalog.map((workflow) => [workflow.id, workflow.label])),
+    [workflowCatalog],
   );
-  const onSelectDay = useCallback(
-    (next: string): void => { if (next !== day) leaveSettings(() => setRoute(routeForDay(route, next))); },
-    [day, route, setRoute, leaveSettings],
-  );
-
-  const onToday = useCallback(() => leaveSettings(() => setRoute(routeForDay(route, undefined))), [leaveSettings, route, setRoute]);
-
-  /**
-   * The open panel's ROW and its served controls, resolved ONCE.
-   *
-   * Both used to be written inline, and the `find` ran twice per render over
-   * the whole day. Since D4's patch-splice an untouched row keeps its
-   * reference through an SSE patch, so this memo returns the SAME surface
-   * across a patch for any OTHER run — which is exactly what lets `LogPanel`'s
-   * `memo` skip a 2,000-line subtree during a bulk run.
-   */
-  const openPanelSurface = useMemo(
-    (): QueueSurfaceWire | undefined =>
-      detailValue === undefined
-        ? undefined
-        : dayWire?.queueSurfaces.find((s) => s.runId === detailValue.runId),
-    [dayWire, detailValue],
-  );
-  const openPanelActions = useMemo(() => servedActions(openPanelSurface), [openPanelSurface]);
-  const onDetailEdited = useCallback((): void => setDetailNonce((nonce) => nonce + 1), []);
-
   const ready = dayResource.state === "loaded" || dayResource.state === "failed";
   // One resolution of "which takeover owns the main region", so the JSX below
   // cannot disagree with a link that carries more than one key.
   const takeover = activeTakeover(route);
 
-  const shellView = shellViewOf(takeover);
   const closeTakeoverTo = useTakeoverCloseFocus(takeover, setRoute);
 
-  /**
-   * Switching views CLEARS the other three keys rather than layering one over
-   * another. Anything else lets a link accumulate takeovers whose precedence
-   * the operator cannot see, and leaves a closed view still in the URL.
-   */
-  const onShellView = useCallback(
-    (next: ShellView): void => {
-      const base = {
-        ...route,
-        intake: undefined,
-        archive: undefined,
-        archiveView: undefined,
-        archiveDashboard: undefined,
-        archiveWorkflow: undefined,
-        activity: undefined,
-        explore: undefined,
-        settings: undefined,
-      };
-      leaveSettings(() => {
-        if (next === "archive") setRoute({ ...base, archive: ARCHIVE_INDEX });
-        else if (next === "activity") setRoute({ ...base, activity: "" });
-        else if (next === "explorer") setRoute({ ...base, explore: activeWorkflowId });
-        else setRoute(base);
-      });
-    },
-    [route, setRoute, activeWorkflowId, leaveSettings],
-  );
+  const returnToDashboard = useCallback((): void => {
+    leaveSettings(() => setRoute(routeWithoutTakeovers(route)));
+  }, [route, setRoute, leaveSettings]);
 
   /**
    * Settings is a PLACE now (D272 item 1), so its two doors — the gear and the
    * storage band's `Storage checks` — both push a history entry and the
    * browser's own Back returns the operator to the view they left. The empty
    * value is the page's first section; every other takeover key clears for the
-   * same reason the switcher clears them.
+   * same reason each Settings destination clears them.
    */
-  const [sessionsOpen, setSessionsOpen] = useState(false);
+  const [sessionsOpen, setSessionsOpen] = useViewState("sessions", false);
   const openSettings = useCallback((): void => {
     setRoute({
       ...route,
@@ -1228,9 +997,113 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
       archiveWorkflow: undefined,
       activity: undefined,
       explore: undefined,
+      catalog: undefined,
+      catalogView: undefined,
       settings: "",
     });
   }, [route, setRoute]);
+
+  const renderQueueBody = useCallback((body: ReactNode) => (
+    <FocusQueueHeader active={filter} counts={scopedStatusCounts} onFilter={onFilter}
+      >{body}</FocusQueueHeader>
+  ), [filter, scopedStatusCounts, onFilter]);
+
+  const settingsOpen = ["settings", "archive", "activity", "explore"].includes(takeover);
+  const settingsResolution = resolveSettingsSection(buildSettingsNav(settingsSections), route.settings ?? "");
+  const pageName = takeover === "settings" ? settingsResolution.state === "open" ? settingsResolution.entry.label : "Settings"
+    : takeover === "archive" ? "Archive" : takeover === "activity" ? "Analytics" : takeover === "explore" ? "Explorer"
+    : takeover === "intake" ? "Edit Data" : route.start ? route.view?.launchSource || route.view?.launchRerun ? "Rerun" : "Run" : railPreview ? MOCK_WORKFLOWS.find(flow => flow.id === railPreview)?.label ?? "Unavailable workflow"
+    : workflows.find(workflow => workflow.id === activeWorkflowId)?.label ?? "Dashboard";
+  useEffect(() => { document.title = `${pageName} — HR GPT`; }, [pageName]);
+  const previewFlow = railPreview ? MOCK_WORKFLOWS.find(flow => flow.id === railPreview) : undefined;
+  const railRows = useMemo(() => mockRuns.filter(run => run.workflowId === railPreview), [mockRuns, railPreview]);
+  const previewCounts = useMemo(() => mockWorkflowCounts(mockRuns), [mockRuns]);
+  const railQueueRows = useMemo(() => mockQueueView(railRows, filter, sort), [railRows, filter, sort]);
+  const railRow = railRows.find(run => run.id === railRun);
+  const setLaunchOpen = launch.setOpen;
+  const closeMockLaunch = useCallback(() => setMockLaunch(null), [setMockLaunch]);
+  const completeReview = (id: string, action: MockReviewAction) => {
+    const result = completeMockReviewAction(mockRuns, id, action);
+    setMockRuns(result.runs);
+    setMockNotificationTimes(previous => ({ ...previous, [id]: nowIso }));
+    toast({ tone: "success", ...result.notice });
+  };
+  const submitMock = useCallback((id: MockWorkflowId, draft: MockDraft, sourceId?: string) => {
+    const created = mockRunsForDraft(id, draft, mockRuns.length, sourceId);
+    setMockRuns(previous => [...created, ...previous]);
+    setMockNotificationTimes(previous => ({ ...previous, ...Object.fromEntries(created.map(run => [run.id, servedNowRef.current])) }));
+    const review = draft.ocrMode === "manual" ? created.find(run => run.workflowId === "ocr") : undefined;
+    setRoute(current => ({ ...current, start: false, view: { ...current.view, preview: review ? "ocr" : id, mockRun: review?.id ?? created[0]?.id, records: review?.id, launchWorkflow: undefined, launchSource: undefined, launchStage: undefined } }));
+    setLaunchOpen(false);
+    toast({ tone: "success", title: sourceId ? "Rerun created" : "Run started", description: `${created.filter(run => !run.parentId).length} ${mockWorkflow(id).label} ${created.filter(run => !run.parentId).length === 1 ? "run" : "runs"} created.` });
+  }, [mockRuns.length, setLaunchOpen, setRoute, toast]);
+  const onRailSelect = useCallback((id: string) => { setRailPreview(null); selectWorkflow(id); }, [selectWorkflow, setRailPreview]);
+  const onRailPreview = useCallback((id: string) => {
+    const runs = mockRuns.filter(run => run.workflowId === id);
+    setRoute(current => ({ ...current, view: { ...current.view, preview: id, mockRun: (runs.find(run => run.id === `mock:${id}:sample`) ?? runs.find(run => !run.parentId) ?? runs[0])?.id, records: undefined } }));
+  }, [mockRuns, setRoute]);
+  const searchData = useMemo(() => ({ today, counts: {}, unavailable: dateError, results: dateError ? [] : [
+    ...previewQueue.rows.map(row => ({ id: String(row.runId), publicId: runDisplayId(row.runId, row.traceId), subject: row.title, workflow: workflowLabelOf(row.workflowId), day, state: statusAccessibleName(dsStatusOf(row.status)),
+      destination: { kind: "run" as const, runId: String(row.runId), day } })),
+    ...mockRuns.map(run => ({ id: run.id, publicId: mockRunDisplayId(run), subject: run.title, workflow: mockWorkflow(run.workflowId).label, day, state: mockRunStatus(run),
+      destination: { kind: "preview-run" as const, runId: run.id, day, records: run.workflowId === "ocr" && !run.approved } })),
+  ] }), [today, day, dateError, previewQueue.rows, workflowLabelOf, mockRuns]);
+  const notificationScenario = new URLSearchParams(window.location.search).get("notificationsPreview") ?? "normal";
+  const notificationMinute = Math.floor(Date.parse(nowIso) / 60000);
+  const notifications = useMemo(() => notificationPreviewState(notificationScenario, {
+    day, nowIso: new Date(Math.max(notificationMinute * 60000, ...Object.values(mockNotificationTimes).map(Date.parse))).toISOString(),
+    rows: dayWire ? previewQueue.rows : undefined, runs: mockRuns, workflowLabel: workflowLabelOf, eventTimes: mockNotificationTimes,
+    unavailable: dateError ?? (dayResource.state === "failed" ? dayResource.error.message : undefined),
+  }), [notificationScenario, day, notificationMinute, dayWire, previewQueue.rows, mockRuns, workflowLabelOf, dateError, dayResource, mockNotificationTimes]);
+  const notificationContext = useRef({ day, rows: previewQueue.rows, runs: mockRuns });
+  notificationContext.current = { day, rows: previewQueue.rows, runs: mockRuns };
+  const openNotification = useCallback((destination: NotificationDestination, opened: () => void, refused: (message: string) => void) => {
+    leaveSettings(() => {
+      const context = notificationContext.current;
+      const refusal = notificationDestinationRefusal(destination, context);
+      if (refusal) { refused(refusal); return; }
+      const next = { ...routeWithoutTakeovers(route), start: false, run: undefined, section: undefined };
+      setRailReviewId(undefined);
+      setMockLaunch(null);
+      setLaunchOpen(false);
+      exitQueueSelection();
+      onFilter(["all"]);
+      if (destination.kind === "run") {
+        const row = context.rows.find(item => item.runId === destination.runId)!;
+        setRailPreview(null); setActiveWorkflowId(row.workflowId);
+        setRoute(current => ({ ...next, day: destination.day, run: destination.runId, section: "logs", view: { ...current.view, preview: null, workflow: row.workflowId, notifications: false } }));
+      } else {
+        const run = context.runs.find(item => item.id === destination.runId)!;
+        setRailPreview(run.workflowId); setRailRun(run.id);
+        if (destination.records) setRailReviewId(run.id);
+        setRoute(current => ({ ...next, day: destination.day, view: { ...current.view, preview: run.workflowId, mockRun: run.id, records: destination.records ? run.id : undefined, notifications: false } }));
+      }
+      opened();
+      requestAnimationFrame(() => {
+        const queueId = destination.kind === "run" ? destination.runId : mockQueueId(destination.runId);
+        const row = document.querySelector<HTMLElement>(`.dashboard-queue-column [data-demo-row-id="${CSS.escape(queueId)}"]`);
+        const pane = row?.closest<HTMLElement>("[data-queue-scroll]");
+        if (row && pane) pane.scrollTo({ top: pane.scrollTop + row.getBoundingClientRect().top - pane.getBoundingClientRect().top - 12, behavior: "instant" });
+        const target = destination.kind === "preview-run" && destination.records
+          ? document.querySelector<HTMLElement>("[data-ocr-review-heading]")
+          : document.getElementById(DASHBOARD_MAIN_REGION_ID);
+        target?.focus({ preventScroll: true });
+      });
+    });
+  }, [leaveSettings, route, setRoute, setLaunchOpen, exitQueueSelection, onFilter, setActiveWorkflowId, setMockLaunch, setRailPreview, setRailReviewId, setRailRun]);
+
+  const onSearch = useCallback((result: NavbarSearchResult, opened: () => void, refused: (message: string) => void) => {
+    if (!result.destination) { refused("This run is unavailable. Refresh search and try again."); return; }
+    openNotification(result.destination, opened, refused);
+  }, [openNotification]);
+
+
+  const destinationError = railPreview && !previewFlow ? "This workflow is not registered."
+    : route.start && route.view?.launchWorkflow && !mockLaunch ? "This launch workflow is not registered."
+    : route.start && route.view?.launchSource && !mockLaunch?.source ? "The source run is no longer available."
+    : route.start && route.view?.launchServed && !startWorkflows.some(flow => flow.workflowId === route.view?.launchServed) ? "This launch workflow is not served."
+    : railRun && !mockRuns.some(run => run.id === railRun) && !deletedMockRuns.has(railRun) ? "This preview run is no longer available." : undefined;
+  if (destinationError) return <EmptyState title="Destination unavailable" description={destinationError} action={<Button onClick={() => setRoute({ start: false })}>Open dashboard</Button>} />;
 
   return (
     // NOT the theme root any more (D272 item 2): the app root moved above both
@@ -1238,42 +1111,24 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
     // fills it. `min-w-0` + `overflow-hidden` live up there with the root
     // classes the demo has (`min-h-0` was this tree's own addition and is what
     // a flex CHILD needs, which is exactly what this element now is).
-    <PreflightActionsProvider actions={{ actorId: actorId, descriptorFingerprint: boot.descriptorHash,
+    <PreflightActionsProvider actions={{ actorId: boot.actor.id, descriptorFingerprint: boot.descriptorHash,
       showSettings: section => leaveSettings(() => setRoute({ ...routeWithoutTakeovers(route), settings: section ?? "" })),
       showSessions: () => setSessionsOpen(true),
     }}>
     <div
       data-parity-ready={ready ? "true" : "loading"}
-      className={cn("flex min-h-0 min-w-0 flex-1 flex-col")}
+      className="dashboard-shell relative flex min-h-0 min-w-0 flex-1 flex-col"
+      data-settings-takeover={["settings", "archive", "activity", "explore"].includes(takeover)}
     >
-      <TopBar
-        view={shellView}
-        onView={onShellView}
-        daySurfaces={daySurfaces}
-        workflowLabelOf={workflowLabelOf}
-        onOpenRun={selectRun}
-        onOpenCrossDateResult={selectCrossDateRun}
-        notifications={dayNotifications}
-        onOpenNotification={openNotification}
-        notificationConnected={connection.state === "live" && dayWire !== undefined}
-        refreshNotifications={refreshDay}
-        actorId={actorId}
-        nowIso={nowIso}
-        storage={boot.storage}
-        settingsOpen={takeover === "settings"}
-        onOpenSettings={openSettings}
-        day={day}
-        today={today}
-        dateError={dateError}
-        onToday={onToday}
-        calendarRevision={dayWire}
-        dayState={dayResource.state === "loaded" ? "loaded" : dayResource.state === "failed" ? "failed" : "loading"}
-        monthCounts={dayMonthCounts}
-        onDay={onSelectDay}
-        theme={theme}
-        onToggleTheme={onToggleTheme}
-        nav={nav}
-      />
+      <a href={takeover === "settings" ? "#dashboard-settings-content" : `#${DASHBOARD_MAIN_REGION_ID}`} onClick={event => {
+        event.preventDefault();
+        const target = document.getElementById(takeover === "settings" ? "dashboard-settings-content" : DASHBOARD_MAIN_REGION_ID);
+        if (!target) throw new Error("DASHBOARD_SKIP_TARGET_UNAVAILABLE");
+        target.focus({ preventScroll: true });
+      }} className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[1000] focus:rounded-lg focus:bg-ui-panel focus:px-4 focus:py-2 focus:text-ui-primary focus:outline-2 focus:outline-ui-info">Skip to content</a>
+      <div className="dashboard-workspace relative flex min-h-0 min-w-0 flex-1 flex-col">
+      <WorkspaceRail workflows={workflowCatalog} counts={dayWire?.workflowCounts} previewCounts={previewCounts} active={activeWorkflowId} preview={railPreview}
+        onSelect={onRailSelect} onPreview={onRailPreview} settingsOpen={settingsOpen} notifications={notifications} onOpenNotification={openNotification} searchData={searchData} onSearch={onSearch} />
 
       <main
         id={DASHBOARD_MAIN_REGION_ID}
@@ -1315,16 +1170,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
         />
 
         <div className="flex min-h-0 flex-1">
-          {panelMode.mode === "sidebar" && dayWire !== undefined && (
-            <WorkflowSidebar
-              mode={panelMode.mode}
-              onMode={panelMode.setMode}
-              workflows={workflows}
-              counts={dayWire?.workflowCounts ?? []}
-              activeWorkflowId={activeWorkflowId}
-              onActive={selectWorkflow}
-            />
-          )}
+
 
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
 
@@ -1337,10 +1183,10 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
             takeover is the modal it deliberately is not.
           */}
           <DashboardTakeovers takeover={takeover} route={route} setRoute={setRoute} boot={boot}
-            settingsSections={settingsSections} workflowLabels={workflowLabels} activeWorkflowId={activeWorkflowId}
+            workflowCatalog={workflowCatalog} settingsSections={settingsSections} workflowLabels={workflowLabels} activeWorkflowId={activeWorkflowId}
             workflowLabelOf={workflowLabelOf} supportsDryRun={startWorkflow?.inputRun.state === "present" && startWorkflow.inputRun.surface.supportsDryRun === true}
-            today={today} queueRows={dayWire?.queueSurfaces ?? []} closeTakeoverTo={closeTakeoverTo}
-            onSettingsExitGuardChange={onSettingsExitGuardChange}>
+            closeTakeoverTo={closeTakeoverTo}
+            onSettingsExitGuardChange={onSettingsExitGuardChange} onSettingsSaved={notice => toast({ tone: "success", ...notice })} onSettingsSaveProblem={toast} theme={theme} onToggleTheme={onToggleTheme}>
           <>
           {/*
             ONE COMPOSED ACTION BAR (ref dashboard-surfaces §Shell, D18). It was two bands: a
@@ -1368,123 +1214,29 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
               else dispatchBulk(retained.plan, { recovery: retained });
             }}
           />
-          <QueueToolbar
-            className="mx-[var(--ds-shell-inset)] mt-[var(--ds-shell-inset)]"
-            sort={sort}
-            onSort={onSort}
-            selectMode={selectMode}
-            onSelectMode={(on) => {
-              onSelectMode(on);
-              if (!on) onBulkIds(new Set());
-            }}
-            selectedCount={bulkIds.size}
-            visibleIds={selectableIds}
-            onSelectAll={() => onBulkIds(new Set(selectableIds))}
-            onClearSelection={() => onBulkIds(new Set())}
-            bulkPlans={bulkPlans}
-            bulkUnavailable={bulkUnavailable}
-            onBulk={(plan) => {
-              const inFlightKey = `bulk:${plan.verb}`;
-              const existingUncertain = uncertainCommands.current.get(inFlightKey);
-              if (existingUncertain !== undefined) {
-                setPendingRecovery(inFlightKey);
-                return;
-              }
-              const commandId = crypto.randomUUID();
-              const requestedAt = nowIso;
-              setPendingBulk({ plan, commandId, requestedAt });
-            }}
-            bulkOutcome={bulkOutcome}
-            onDismissBulkOutcome={() => setBulkOutcome(null)}
-            onSelectRun={selectRun}
-            leading={dayWire === undefined ? null :
-              <WorkflowPanelToggle
-                mode={panelMode.mode}
-                onMode={panelMode.setMode}
-                activeWorkflowLabel={workflowLabelOf(activeWorkflowId)}
-                activeWorkflowCode={workflowCodeOf(activeWorkflowId)}
-                dayActive={dayActive}
-                dayActiveWords={activeStatusWords(dayWire?.statusCounts ?? [])}
-                dayCount={dayCount}
-              />
-            }
-            runStart={
-              /*
-                ONE TOOLBAR DOOR, AND IT IS THE MODAL (D296).
+          <BulkCommandFeedback bulkOutcome={bulkOutcome} onDismissBulkOutcome={() => setBulkOutcome(null)} onSelectRun={selectRun} />
 
-                This group used to carry three controls. `Import spreadsheet`
-                was a RULED deviation from the demo (D272 item 3, ledger rows
-                A174/B141) kept for one stated reason — "the demo reaches its
-                intake from INSIDE the Run Modal and this repository's
-                `RunStartSurfaces` serves no such handoff, so deleting the
-                button would make the whole intake workspace unreachable" — and
-                the same note named its own expiry: *it goes when the run modal
-                grows the handoff*. The modal has grown it. The spreadsheet
-                method's `Open the intake…` is the demo's own door, so the
-                deviation is not overruled, it is DISCHARGED, and rejected arm C
-                ("build the Run-Modal handoff first") is what landed.
-
-                `Workflow explorer` (D275 item 1, ledger 3 CA41) goes for D295's
-                reason rather than for its own: the explorer is a segment of the
-                top bar's product-view switcher, so the toolbar button was a
-                second door onto a takeover that already has one, and D275 item
-                1's actual objection was navigation that leads NOWHERE. It still
-                leads somewhere — from `Explorer`, where "where you are" is
-                answered. The `explore` route key, the deep links and the
-                surface are untouched.
-              */
-              <RunStartButton id={RUN_START_DOOR_ID} onOpen={openStart} />
-            }
-            filters={
-              dayWire === undefined ? null : <StatusFilters statusCounts={scopedStatusCounts} active={filter} onSelect={onFilter} />
-            }
-          />
 
           <CommandResultFeed
             results={commandResults}
             onDismiss={(id) => setCommandResults((previous) => previous.filter((entry) => entry.id !== id))}
             onRefreshRow={(entry) => {
               setCommandResults((previous) => previous.filter((result) => result.id !== entry.id));
-              setDetailNonce((nonce) => nonce + 1);
               selectRun(entry.targetRunId);
             }}
           />
 
-          {/*
-            THE PANEL REGION IS A GRID, AND THAT IS THE WHOLE FIX.
+          <div className="flex min-h-0 flex-1">
 
-            It was two `flex-1` children. `flex-1` on a flex child is
-            `flex-basis: 0%` plus a GROW factor, and a grow factor only
-            distributes space among children that EXIST — so with no run open
-            the second child was not rendered, nothing claimed the free space,
-            and `QueuePanel`'s own root (a flex item with no width) shrank to
-            its content. At 1440×900 that left a ~470px column of rows and ~950
-            PIXELS OF EMPTY BLACK, in the middle of the surface this product is
-            named after, at every viewport since 1i-spine.
-
-            A grid cannot fail that way: the tracks exist whether or not
-            anything is placed in them. `--ds-w-side-panel` (376px) is the same
-            resting width the context rail uses, which is the design's own
-            contract — neither side panel grows independently at wider
-            viewports, so the centre stays the largest column. Below 1180 it
-            collapses to one column and the panels stack.
-
-            Ported from the demo's own panel region, legacy
-            hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
-            `RebuildDemo.tsx:747-748`. Note this SUPERSEDES ref dashboard-surfaces's 400/470
-            table — the demo moved both side panels onto one 376px token after
-            those numbers were measured, and ref frontend-backend-integration §1 makes the demo the
-            visual oracle. Ref dashboard-surfaces §Shell is updated in the same commit.
-
-            `relative` is the positioning context for the floating Workflow
-            Panel, which is why the window now overlays the panels WITHOUT
-            covering the bars above them — it had been absolutely positioned
-            against the viewport and was clipping the status-filter row.
-          */}
-          <div className="relative min-h-0 flex-1">
-            <div className="grid h-full grid-cols-[var(--ds-w-side-panel)_minmax(0,1fr)] gap-[var(--ds-shell-inset)] p-[var(--ds-shell-inset)]">
-              {dayWire === undefined || workflows.length === 0 || !workflows.some(workflow => workflow.id === activeWorkflowId) ? (
-                <Panel className="min-h-0"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]">
+            <div className="relative min-h-0 min-w-0 flex-1">
+            <div className="dashboard-panel-columns">
+              <div className="dashboard-queue-column">
+                <h1 className="sr-only">{previewFlow?.label ?? workflowLabelOf(activeWorkflowId)} queue</h1>
+              {previewFlow && dateSelection.state === "valid" ? <WorkflowMockQueue label={previewFlow.label} runs={railQueueRows} allRuns={mockRuns} selected={railRun} onSelect={setRailRun}
+                onRetry={id => { const source = mockRetrySource(mockRuns, id); openMockLaunch({ workflowId: source.workflowId, source }); }}
+                onDelete={ids => { setDeletedMockRuns(previous => new Set([...previous, ...ids])); setMockRuns(previous => previous.filter(run => !ids.includes(run.id))); toast({ tone: "success", title: "Run deleted" }); if (railRun && ids.includes(railRun)) { setRailRun(undefined); setRailReviewId(undefined); } }}
+                day={day} nowIso={nowIso} sort={sort} filter={queueFilterScope} /> : dayWire === undefined || workflows.length === 0 || !workflows.some(workflow => workflow.id === activeWorkflowId) ? (
+                dateError === undefined && dayResource.state !== "failed" && dayWire === undefined ? <QueueSkeleton label={workflows.find(workflow => workflow.id === activeWorkflowId)?.label} /> : <Panel className="min-h-0"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]">
                   <EmptyState title={dateError !== undefined ? "Choose a valid date" : dayResource.state === "failed" ? "Could not load queue" : dayWire === undefined ? "Loading queue" : workflows.length === 0 ? "No workflows available" : "Workflow unavailable"}
                     description={dateError ?? (dayResource.state === "failed" ? dayResource.error.message : dayWire === undefined ? `Waiting for the queue for ${day}.` : workflows.length === 0 ? "This server serves no workflows. Check Settings for availability." : `Workflow ${activeWorkflowId} is not served by this build. Choose an available workflow.`)} />
                 </PanelBody></Panel>
@@ -1499,102 +1251,72 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
                 day={day}
                 isToday={day === today}
                 sort={sort}
+                renderBody={renderQueueBody}
                 {...(queueFilterScope === undefined ? {} : { filter: queueFilterScope })}
               />}
-
-            {/* NOTHING SELECTED IS A STATE, not the absence of one. It owes the
-                three things ref dashboard-surfaces §9 says an empty state owes and no more:
-                what would be here, why it is not, and what to do. It is reached
-                by switching workflows, so the reason is the switch. */}
-            {selection.state === "ready" ? (
-                <LogPanel
-                  detail={selection.detail}
-                  sections={sections}
-                  captures={captures}
-                  surface={openPanelSurface}
-                  /*
-                    The WHOLE served list, not a placement slice: the prop's
-                    contract is "every action the server served for this run"
-                    and the panel filters by placement itself. Pre-filtering
-                    here to `footer` and letting `OutcomeActionButton` filter
-                    again to `outcome` intersected the two, so only a descriptor
-                    carrying BOTH placements could ever have arrived.
-                  */
-                  actions={openPanelActions}
-                  onAction={runDetailAction}
-                  tab={effectiveTab}
-                  onTab={onTab}
-                  workflowLabel={workflowLabelOf(selection.detail.header.workflowId)}
-                  currentAppVersion={boot.appVersion}
-                  servedDescriptorHash={workflowShapeOf(selection.detail.header.workflowId)}
-                  actorId={actorId}
-                  onDetailEdited={onDetailEdited}
-                  aiAdvisory={advisoryAvailability}
-                  /* The SAME instant `viewState.nowIso` dates the queue's rows
-                     from, so a waiting run's age is one number wherever it is
-                     read. The panel used to take its own wall clock; since
-                     D256 the shared instant TICKS instead of being frozen at
-                     page load. */
-                  servedNow={nowIso}
-                />
-            ) : (
-              <Panel className="min-h-0">
-                <PanelBody className="grid place-items-center p-[var(--ds-space-page)]">
-                  <EmptyState
-                    icon={<PanelRight aria-hidden className={dsIcon.lg} />}
-                    title={selection.absence.title}
-                    description={selection.absence.description}
-                  />
-                </PanelBody>
-              </Panel>
+              </div>
+              <div className="dashboard-log-column">
+                <section aria-label="Action panel" className="dashboard-action-panel">
+          <FocusQueueToolbar
+            sort={sort}
+            onSort={onSort}
+            active={filter}
+            counts={previewFlow ? mockQueueCounts(railRows) : scopedStatusCounts}
+            onFilter={onFilter}
+            leading={null}
+            runStart={
+              <RunStartButton id={RUN_START_DOOR_ID} onOpen={openStart} />
+            }
+          />
+                <div role="group" aria-label="Log date controls" className="dashboard-log-date"><DatePicker label="Dashboard date" hideLabel triggerLabel="Choose date" required value={day} max={today}
+                  onChange={next => { if (next !== "") setRoute({ ...route, day: next, run: undefined }); }} className="w-44" footer={choose => <Button size="sm" variant="ghost" onClick={() => choose(today)}>Today</Button>} /></div>
+                </section>
+            {previewFlow && railRow && dateSelection.state === "valid" ? <WorkflowMockLog key={railRow.id} run={railRow} runs={mockRuns} day={day} nowIso={nowIso} onRerun={() => openMockLaunch({ workflowId: railRow.workflowId, source: railRow })} onApprove={() => completeReview(railRow.id, "approve")}
+              reviewOpen={railReviewId === railRow.id} onReviewOpenChange={open => setRailReviewId(open ? railRow.id : undefined)}
+              onChange={records => setMockRuns(previous => updateMockReview(previous, railRow.id, records))} onDiscard={() => completeReview(railRow.id, "discard")} onRestore={() => completeReview(railRow.id, "restore")}
+              onSelect={id => { const next = mockRuns.find(run => run.id === id); if (!next) throw new Error(`MOCK_LINKED_RUN_MISSING: ${id}`); setRoute(current => ({ ...current, view: { ...current.view, preview: next.workflowId, mockRun: next.id, records: undefined } })); }} /> : !previewFlow && route.run !== undefined && selectedRow !== undefined && dateSelection.state === "valid" ? (
+              <LogSample key={route.run} nowIso={nowIso} selection={{ row: selectedRow, workflowLabel: workflowLabelOf(selectedRow.workflowId) }} />
+            ) : dateError === undefined && dayResource.state !== "failed" && dayWire === undefined && route.run !== undefined ? <RunPanelSkeleton /> : (
+              <Panel className="min-h-0"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]"><EmptyState
+                icon={<PanelRight aria-hidden className={dsIcon.lg} />}
+                title={route.run === undefined ? "No run open" : "Run unavailable"}
+                description={route.run === undefined ? "Select a run from the queue to open its logs." : `Run ${route.run} is not in the loaded queue for ${day}. Select a run from this day.`}
+              /></PanelBody></Panel>
             )}
+              </div>
             </div>
 
-            {/* The floating window lives INSIDE the panel region, so it overlays
-                the panels and never the bars above them — and it is rendered on
-                the queue view only, as in the demo. A takeover replaces the
-                queue whole; a workflow switcher hovering over it would be
-                offering to change the scope of a surface that no longer has
-                one. */}
-            {panelMode.mode === "floating" && dayWire !== undefined && (
-              <WorkflowWindow
-                mode={panelMode.mode}
-                onMode={panelMode.setMode}
-                opened={panelMode.opened}
-                workflows={workflows}
-                counts={dayWire?.workflowCounts ?? []}
-                activeWorkflowId={activeWorkflowId}
-                onActive={selectWorkflow}
-              />
-            )}
+            </div>
           </div>
           </>
           </DashboardTakeovers>
           </div>
         </div>
       </main>
+      </div>
 
       <SessionPanel
+        catalog={workflowCatalog}
         open={sessionsOpen}
         onOpenChange={setSessionsOpen}
-        workerCards={dayWire?.workerCards ?? []}
-        queueSurfaces={dayWire?.queueSurfaces ?? []}
-        workerPools={dayWire?.workerPools ?? []}
-        workflows={workflows}
-        counts={dayWire?.workflowCounts ?? []}
-        nowIso={nowIso}
-        connection={connection}
-        appVersion={boot.appVersion}
-        workerCommands={workerCommands}
-        onPlanWorkerCount={planWorkerCount}
-        onSpawnWorker={spawnWorker}
+        settingsOpen={settingsOpen} onSettings={() => settingsOpen ? returnToDashboard() : openSettings()}
       />
 
+      <Dialog open={pendingDelete !== null} onOpenChange={next => { if (!next) setPendingDelete(null); }}>
+        <DialogContent title="Delete this run?" description="Remove this run and its child rows." size="sm">
+          <p className="text-body text-ui-primary">{previewQueue.rows.find(row => row.runId === pendingDelete?.[0])?.title}</p>
+          <DialogFooter><Button variant="secondary" onClick={() => setPendingDelete(null)}>Keep run</Button><Button variant="danger" onClick={() => { if (pendingDelete) applyPreviewAction("delete", pendingDelete); setPendingDelete(null); }}>Delete run</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
       <RunLaunchHost
         controller={launch}
-        workflows={startWorkflows}
+        catalog={workflowCatalog}
+        previewLaunch={mockLaunch ?? undefined}
+        previewRuns={mockRuns}
+        onSubmitPreview={submitMock}
+        onPreviewClose={closeMockLaunch}
         panelWorkflowId={activeWorkflowId}
-        actorId={actorId}
+        actorId={boot.actor.id}
         onApplied={(workflowId) => {
           leaveSettings(() => {
             setActiveWorkflowId(workflowId);

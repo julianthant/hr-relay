@@ -12,23 +12,18 @@
  * of the key is asserted directly.
  */
 import assert from "node:assert/strict";
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it } from "vitest";
 import { ArchiveEntryWireSchema } from "../../../../../src/models/dashboard/archive.js";
-import { ArchiveTable } from "../../../../../src/dashboard/surfaces/archive.js";
 import {
   archiveIdentityKey,
   archiveSweepFacts,
   archiveSweepName,
   archiveWorkflowCodes,
-  type ArchiveSection,
-} from "../../../../../src/dashboard/surfaces/archive-model.js";
-import { FIXTURE_ARCHIVE_INDEX } from "../../../../support/fixtures/dashboard/fixture-archive.js";
+} from "../../../../../src/dashboard/surfaces/archive/archive-model.js";
+import { FIXTURE_ARCHIVE_INDEX } from "../../../../parity/helpers/fixture-archive.js";
 
 const SWEEP = FIXTURE_ARCHIVE_INDEX.sweeps[0];
 const ENTRY = FIXTURE_ARCHIVE_INDEX.entries[0];
-const noop = (): void => undefined;
 
 describe("archiveWorkflowCodes", () => {
   it("answers the identity a sweep moved runs ONTO from the registry row", () => {
@@ -91,39 +86,6 @@ describe("archiveSweepName", () => {
     assert.notEqual(name.title, name.text);
     // the scope sentence, then the ids the codes stand in for
     assert.equal(name.title, "Single workflow — person-lookup v2 → 0.1.0");
-  });
-});
-
-describe("the sweep head draws the joined name", () => {
-  function markup(codes: ReadonlyMap<string, string>): string {
-    const section: ArchiveSection = {
-      sweep: SWEEP,
-      applicationId: SWEEP.applicationId,
-      entries: [ENTRY],
-    };
-    return renderToStaticMarkup(createElement(ArchiveTable, {
-      sections: [section],
-      codes,
-      query: { text: "", workflowId: "all", status: "all", instance: "all", sort: "when", dir: "desc" },
-      onSort: noop,
-      collapsed: new Set<string>(),
-      onToggleSection: noop,
-      selectedRunId: undefined,
-      onSelect: noop,
-    }));
-  }
-
-  it("puts the code in the cell and the scope on the title", () => {
-    const html = markup(archiveWorkflowCodes(FIXTURE_ARCHIVE_INDEX));
-    assert.equal(html.includes(">pl v2 → 0.1.0<"), true);
-    assert.equal(html.includes('title="Single workflow — person-lookup v2 → 0.1.0"'), true);
-  });
-
-  it("truncates the sweep id in the trace column", () => {
-    const html = markup(archiveWorkflowCodes(FIXTURE_ARCHIVE_INDEX));
-    assert.equal(html.includes(SWEEP.applicationId.slice(0, 8)), true);
-    // the whole id is NOT in the cell — that is what AR84's fold recovers
-    assert.equal(html.includes(`>${SWEEP.applicationId}<`), false);
   });
 });
 

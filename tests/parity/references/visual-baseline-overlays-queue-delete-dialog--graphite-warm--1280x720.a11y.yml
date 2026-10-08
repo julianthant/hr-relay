@@ -1,0 +1,17 @@
+# visual-baseline-overlays-queue-delete-dialog--graphite-warm--1280x720
+# adapter: fixture
+# fixture: visual-baseline-overlays.spec.ts:mounted Separations Rerun and delete confirmation
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- region "Notifications"
+- dialog "Delete jordan.lee@example.com?":
+  - banner:
+    - heading "Delete jordan.lee@example.com?" [level=2]
+    - button "Close"
+  - paragraph: Remove this run from the queue.
+  - contentinfo:
+    - button "Cancel"
+    - button "Delete"

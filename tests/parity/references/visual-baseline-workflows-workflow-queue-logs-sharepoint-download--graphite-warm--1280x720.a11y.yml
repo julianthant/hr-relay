@@ -1,0 +1,159 @@
+# visual-baseline-workflows-workflow-queue-logs-sharepoint-download--graphite-warm--1280x720
+# adapter: fixture
+# fixture: visual-baseline-workflows.spec.ts:mounted Logs and all Explorer workflows @ dark
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#dashboard-main-region"
+- complementary "Workspace":
+  - heading "HR GPT" [level=2]
+  - button "Notifications, 3 unread"
+  - button "Search runs"
+  - navigation "Workflows":
+    - heading "Search" [level=3]
+    - list:
+      - listitem:
+        - button "Person Lookup": Person Lookup 5 · 14
+      - listitem:
+        - button "I-9 Lookup": I-9 Lookup 0 · 1
+    - heading "Separations" [level=3]
+    - list:
+      - listitem:
+        - button "Separations": Separations 0 · 1
+      - listitem:
+        - button "I-9 Check": I-9 Check 1 · 1
+    - heading "Onboarding" [level=3]
+    - list:
+      - listitem:
+        - button "Onboarding": Onboarding 0 · 1
+      - listitem:
+        - button "Oath Signature": Oath Signature 1 · 1
+      - listitem:
+        - button "Oath Upload": Oath Upload 1 · 1
+      - listitem:
+        - button "Emergency Contact": Emergency Contact 1 · 1
+    - heading "Work Study" [level=3]
+    - list:
+      - listitem:
+        - button "Work-Study": Work-Study 0 · 1
+    - heading "Payroll" [level=3]
+    - list:
+      - listitem:
+        - button "Kronos Pay Rule": Kronos Pay Rule 0 · 1
+    - heading "Utils" [level=3]
+    - list:
+      - listitem:
+        - button "OCR": OCR 0 · 5
+      - listitem:
+        - button "CRM Doc Download": CRM Doc Download 0 · 1
+      - listitem:
+        - button "SharePoint Download": SharePoint Download 0 · 1
+    - heading "OnBase" [level=3]
+    - list:
+      - listitem:
+        - button "OnBase": OnBase 1 · 1
+    - heading "Timekeeping" [level=3]
+    - list:
+      - listitem:
+        - button "Old Kronos Reports": Old Kronos Reports 0 · 1
+- main:
+  - heading "SharePoint Download queue" [level=1]
+  - region "Queue":
+    - text: "Finished 1 08/03/2026: 1 verified"
+    - button "Onboarding Roster — done" [pressed]:
+      - text: Onboarding Roster Done 9:10 AM
+      - button "Attempts for Onboarding Roster": "#1"
+      - text: SD40731962 56s
+      - button "Retry"
+      - button "Delete"
+  - region "Action panel":
+    - group "Action panel controls":
+      - button "Start a run"
+      - button "Filter queue by status": Status
+      - combobox "Sort the queue": Newest first
+      - button "Attention first" [pressed]
+    - group "Log date controls":
+      - text: Dashboard date*
+      - group "Dashboard date*":
+        - spinbutton "month, Dashboard date*": "08"
+        - spinbutton "day, Dashboard date*": "03"
+        - spinbutton "year, Dashboard date*": "2026"
+        - button "Choose date Dashboard date*"
+  - region "Selected run logs":
+    - heading "Onboarding Roster" [level=2]
+    - text: Done
+    - button "Linked runs (1)"
+    - navigation "Run timeline":
+      - list:
+        - listitem:
+          - button "Open configured spreadsheet · Completed · 09:10:00 · 36s": Open configured spreadsheet 36s
+        - listitem:
+          - button "Download roster · Completed · 09:10:36 · 20s": Download roster 20s
+    - region "Run logs":
+      - region "Open configured spreadsheet":
+        - time: 09:10:00
+        - heading "Open configured spreadsheet" [level=3]
+        - text: SharePoint
+        - heading "Configured destination" [level=4]
+        - time: 09:10:00
+        - term: Spreadsheet
+        - definition: Onboarding Roster
+        - time: 09:10:00
+        - term: Provider
+        - definition: SharePoint
+        - time: 09:10:00
+        - text: Open Excel Online
+        - heading "Viewer" [level=4]
+        - time: 09:10:00
+        - term: Workbook
+        - definition: Onboarding Roster
+        - time: 09:10:00
+        - term: Authentication
+        - definition: Authenticated
+      - region "Download roster":
+        - time: 09:10:36
+        - heading "Download roster" [level=3]
+        - text: SharePoint
+        - time: 09:10:36
+        - text: File → Create a Copy → Download a Copy
+        - heading "Downloaded workbook" [level=4]
+        - time: 09:10:36
+        - term: Spreadsheet
+        - definition: Onboarding Roster
+        - time: 09:10:36
+        - term: Filename
+        - definition: onboarding-roster.xlsx
+        - time: 09:10:36
+        - term: Saved to
+        - definition: Roster folder
+        - time: 09:10:36
+        - term: File validation
+        - definition: Workbook readable
+        - heading "Download" [level=4]
+        - time: 09:10:36
+        - term: Roster file
+        - definition: Onboarding Roster.xlsx · local roster directory
+        - time: 09:10:36
+        - paragraph: "Readback: download save completed."
+        - time: 09:10:56
+        - term: Spreadsheet
+        - definition: Onboarding Roster
+        - time: 09:10:56
+        - term: File
+        - definition: onboarding-roster.xlsx
+    - group:
+      - searchbox "Search logs"
+    - status: 14 actions
+    - status
+    - button "Copy logs"
+    - button "Go to latest action"
+- region "Session Panel":
+  - group "Session actions":
+    - button "Sessions"
+    - text: 2 running 1 starting 1 idle
+    - button "Add workers"
+    - button "Settings"
+- region "Notifications"

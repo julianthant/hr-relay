@@ -32,6 +32,7 @@ export const DEFAULT_DASHBOARD_PROFILE: FixtureDashboardProfile = Object.freeze(
 
 export type FixtureBffOptions = Readonly<{
     profile?: FixtureDashboardProfile;
+    preflightScenario?: "ready" | "warning";
     dayWire?: DashboardDayWire;
     archiveScenario?: "evidence";
     archiveComparison?: Readonly<{ reports: readonly SavedArchiveReportWire[]; versions: SavedRuntimeVersionIndexWire }>;

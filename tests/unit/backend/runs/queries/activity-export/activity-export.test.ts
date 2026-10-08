@@ -24,7 +24,7 @@ import {
   displayStatusOf,
   displayStatusProseLabelOf,
 } from "../../../../../../src/models/dashboard/status-vocabulary.js";
-import { dsStatusOf, PROPOSED_STATUS } from "../../../../../../src/dashboard/surfaces/status-model.js";
+import { dsStatusOf, PROPOSED_STATUS } from "../../../../../../src/dashboard/surfaces/shared/status/status-model.js";
 
 const EMPTY: ActivityReportWire = ActivityReportWireSchema.parse({
   wireVersion: 1,

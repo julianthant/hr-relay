@@ -159,6 +159,7 @@ export const WorkflowStartWireSchema = z.strictObject({
     key: StepKeySchema,
     label: z.string().min(1),
     includedByDefault: z.boolean(),
+    systems: z.array(BrowserSystemIdSchema).optional(),
     /**
      * D285/D307 — the step's ONE way not to run, as a closed union.
      *

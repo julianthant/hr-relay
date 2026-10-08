@@ -2,7 +2,7 @@
  * Track D row D4 (ref frontend-backend-integration §7.4; audit finding P1) —
  * a `memo` is only as real as the props handed to it.
  *
- * `QueuePanel`, `TopBar` and `LogPanel` are `memo`'d. `memo` compares props by
+ * `QueuePanel`, `WorkspaceRail` and `LogPanel` are `memo`'d. `memo` compares props by
  * `Object.is`, so ONE prop slot that mints a fresh reference every render turns
  * the whole wrapper into pure overhead — the panel re-renders exactly as often
  * as before, every gate stays green, and nothing on any surface looks wrong.
@@ -37,15 +37,15 @@
  */
 import { describe, expect, it } from "vitest";
 import ts from "typescript";
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { REPO_ROOT } from "../support/helpers/guard-files.js";
+import { readFileSync } from "node:fs";
+import { join, relative } from "node:path";
+import { REPO_ROOT, walkFiles } from "../support/helpers/guard-files.js";
 
 const APP_ROOT = "src/dashboard/app";
-const FIXTURE_ROOT = "tests/architecture/dashboard/fixtures";
+const FIXTURE_ROOT = "tests/unit/architecture/fixtures";
 
 /** The elements whose `memo` this guard protects. */
-export const MEMOIZED_ELEMENTS = ["QueuePanel", "TopBar", "LogPanel"] as const;
+export const MEMOIZED_ELEMENTS = ["QueuePanel", "WorkspaceRail", "LogPanel"] as const;
 
 const UNSTABLE: ReadonlyArray<readonly [(node: ts.Node) => boolean, string]> = [
   [ts.isArrayLiteralExpression, "an array literal"],
@@ -131,9 +131,7 @@ export function memoPropStabilityViolations(fileName: string, text: string): str
 }
 
 function appFiles(): string[] {
-  return readdirSync(join(REPO_ROOT, APP_ROOT))
-    .filter((file) => file.endsWith(".tsx"))
-    .map((file) => join(APP_ROOT, file));
+  return walkFiles(join(REPO_ROOT, APP_ROOT), { extensions: [".tsx"] }).map((file) => relative(REPO_ROOT, file));
 }
 
 describe("dashboard memo prop stability (Track D D4, ref frontend-backend-integration §7.4)", () => {
@@ -149,7 +147,7 @@ describe("dashboard memo prop stability (Track D D4, ref frontend-backend-integr
   it("the three panels really are `memo`'d, so this guard is not protecting nothing", () => {
     for (const element of MEMOIZED_ELEMENTS) {
       const source = readFileSync(
-        join(REPO_ROOT, "src/dashboard/surfaces", `${element === "QueuePanel" ? "queue" : element === "TopBar" ? "top-bar" : "log-panel"}.tsx`),
+        join(REPO_ROOT, "src/dashboard/surfaces", element === "QueuePanel" ? "queue/queue.tsx" : element === "WorkspaceRail" ? "shell/workspace-rail.tsx" : "run-detail/log-panel.tsx"),
         "utf8",
       );
       expect(source).toContain(`export const ${element} = memo(function ${element}(`);
@@ -159,9 +157,9 @@ describe("dashboard memo prop stability (Track D D4, ref frontend-backend-integr
   it("catches the violating fixture in every way the rule can break, and passes the clean one", () => {
     const bad = readFileSync(join(REPO_ROOT, FIXTURE_ROOT, "memo-prop-stability-violation.tsx"), "utf8");
     expect(memoPropStabilityViolations("memo-prop-stability-violation.tsx", bad)).toEqual([
-      "<TopBar> `daySurfaces`: an array literal is a new reference every render, so `memo` can never compare equal",
-      "<TopBar> `onDay`: an arrow function is a new reference every render, so `memo` can never compare equal",
-      "<TopBar> `nav`: an object literal is a new reference every render, so `memo` can never compare equal",
+      "<WorkspaceRail> `daySurfaces`: an array literal is a new reference every render, so `memo` can never compare equal",
+      "<WorkspaceRail> `onDay`: an arrow function is a new reference every render, so `memo` can never compare equal",
+      "<WorkspaceRail> `nav`: an object literal is a new reference every render, so `memo` can never compare equal",
       "<QueuePanel> `handlers`: an object literal is a new reference every render, so `memo` can never compare equal",
       "<LogPanel> `onDetailEdited`: a function expression is a new reference every render, so `memo` can never compare equal",
       "<LogPanel> `surface`: a `new` expression is a new reference every render, so `memo` can never compare equal",

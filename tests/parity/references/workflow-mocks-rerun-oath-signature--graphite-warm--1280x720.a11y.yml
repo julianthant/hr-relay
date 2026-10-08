@@ -1,0 +1,58 @@
+# workflow-mocks-rerun-oath-signature--graphite-warm--1280x720
+# adapter: fixture
+# fixture: workflow-mocks.spec.ts:all workflow previews, Run and Rerun @ dark-1280
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- region "Notifications"
+- dialog "Rerun":
+  - banner:
+    - heading "Rerun" [level=2]
+    - paragraph: Oath Signature · Workflow preview
+    - button "Close"
+  - list "Run configuration path":
+    - listitem:
+      - button "1 Steps": Steps
+    - listitem:
+      - button "2 Values" [disabled]: Values
+    - listitem:
+      - button "3 Options" [disabled]: Options
+    - listitem:
+      - button "4 Confirm" [disabled]: Confirm
+  - heading "Choose what to run again" [level=3]
+  - text: 2 / 3 included
+  - paragraph: Select steps for the new run. Statuses show the source outcome.
+  - region "Steps":
+    - heading "Steps" [level=4]
+    - list:
+      - listitem:
+        - checkbox "Verify onboarding and oath date"
+        - text: Verify onboarding and oath date CRM Skipped
+        - group "Manual values for Verify onboarding and oath date":
+          - paragraph: Enter the values this step would read. Use “None” for an absent value. These values are operator supplied.
+          - text: CRM onboarding
+          - textbox "CRM onboarding": None
+          - text: Process stage
+          - textbox "Process stage": None
+          - text: First day of service
+          - textbox "First day of service":
+            - /placeholder: MM/DD/YYYY
+            - text: 10/06/2026
+          - text: Signed date
+          - textbox "Signed date":
+            - /placeholder: MM/DD/YYYY
+            - text: 10/06/2026
+      - listitem:
+        - checkbox "Sign in to UCPath" [checked] [disabled]
+        - text: Sign in to UCPath UCPath · required Completed
+      - listitem:
+        - checkbox "Sign oath" [checked] [disabled]
+        - text: Sign oath Form action · required Completed
+        - checkbox "Enter reading values manually for sign oath"
+        - text: Enter reading values manually for sign oath
+  - contentinfo:
+    - text: Source run · new runOath Signature
+    - button "Cancel"
+    - button "Continue"

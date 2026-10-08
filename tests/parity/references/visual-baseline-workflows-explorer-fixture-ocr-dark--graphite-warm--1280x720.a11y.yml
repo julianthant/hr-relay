@@ -1,0 +1,137 @@
+# visual-baseline-workflows-explorer-fixture-ocr-dark--graphite-warm--1280x720
+# adapter: fixture
+# fixture: visual-baseline-workflows.spec.ts:mounted Logs and all Explorer workflows @ dark
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#dashboard-settings-content"
+- main:
+  - region "Settings":
+    - navigation "Settings sections":
+      - heading "Settings" [level=2]
+      - button "Back to dashboard"
+      - group:
+        - searchbox "Search settings"
+      - text: Personal
+      - link "General":
+        - /url: "?settings=general"
+      - link "Credentials":
+        - /url: "?settings=credentials"
+      - text: Advanced
+      - link "Performance":
+        - /url: "?settings=performance"
+      - link "Paths":
+        - /url: "?settings=paths"
+      - link "Routes":
+        - /url: "?settings=routes"
+      - text: Data
+      - link "Spreadsheets":
+        - /url: "?settings=spreadsheets"
+      - link "Explorer":
+        - /url: "?settings=explorer"
+      - link "Analytics":
+        - /url: "?settings=activity"
+      - text: Status
+      - link "Storage checks":
+        - /url: "?settings=storage"
+      - link "Preflight":
+        - /url: "?settings=preflight"
+      - text: Help
+      - link "Keyboard":
+        - /url: "?settings=keyboard"
+    - region "Workflow explorer preview":
+      - heading "Explorer" [level=1]
+      - paragraph: Browse workflows, their steps and field sources. Fictional preview data.
+      - combobox "Explorer workflow": OCR
+      - list "Workflow steps":
+        - listitem:
+          - heading "OCR" [level=2]
+          - text: You
+          - paragraph: Splits a document, reads every form off it, matches the people to a roster, looks up whoever the roster did not settle, and stops at a review. It drives no browser and changes no system — what it produces is records for something else to act on.
+          - text: Record review
+          - combobox "Record review preview": Approved records
+          - text: Form type
+          - combobox "Form type preview": Oath
+        - listitem:
+          - heading "Split pages" [level=2]
+          - text: OCR
+          - paragraph: Cut the uploaded document into pages the declared form spec can read one at a time.
+          - group:
+            - strong: Split pages
+            - text: Read and process Pages 2
+        - listitem:
+          - heading "Read forms" [level=2]
+          - text: OCR
+          - paragraph: Run the form spec over each page, pull the fields it defines, and flag anything illegible.
+          - group:
+            - strong: Read forms
+            - text: Read and process Records read 1 Records reported 1 Completeness gaps 0
+          - group:
+            - strong: PDF pages
+            - text: Read Source PDF scan.pdf Form type Oath Pages 2
+          - text: Split pages and recognize the form blocks
+          - group:
+            - strong: Extraction summary
+            - text: Read Records extracted 1 Source pages 1–2
+          - group:
+            - strong: Extracted source fields
+            - text: Read Employee ID 10000001 First name Jordan Last name Lee Printed name Lee, Jordan Date signed 2026-08-03 Employee signed Yes Officer signed Yes
+          - paragraph: Extract printed name, Employee ID, signed date and signature flags. OCR owns corrections and approval; downstream workflows consume the approved record.
+        - listitem:
+          - heading "Roster match" [level=2]
+          - text: OCR
+          - paragraph: Match each read person against the selected roster, so an EID comes off paper rather than a search.
+          - paragraph: "Condition: a roster was selected at start."
+          - group:
+            - strong: Roster match
+            - text: Read and process Roster rows matched 1 / 1
+          - group:
+            - strong: Roster source
+            - text: Read Spreadsheet Onboarding Roster Source Registered local workbook Rows matched 1
+        - listitem:
+          - heading "Person lookup" [level=2]
+          - text: UCPath
+          - paragraph: Look up everybody the roster did not settle. The child keeps its own row in the Person Lookup panel.
+          - text: Delegate to Person Lookup; preserve its separate outcome.
+          - group:
+            - strong: Person lookup
+            - text: Read and process Active people 1 People resolved 1
+          - group:
+            - strong: Identity matching
+            - text: Read Employee Jordan Lee Employee ID 10000001 Roster match Matched UCPath match Confirmed HR status Active
+        - listitem:
+          - heading "Your review" [level=2]
+          - text: Local
+          - paragraph: Park for approval. A run something delegated releases work when you approve; a standalone run has no target, so it never reaches this node at all.
+          - paragraph: "Condition: the form spec declares an approve target."
+          - group:
+            - strong: Review selection
+            - text: Read Records 1 Approved people 1
+      - paragraph: Fictional workflow path complete. No external system contacted.
+- region "Session Panel":
+  - group "Session actions":
+    - button "Sessions"
+    - text: 2 running 1 starting 1 idle
+    - button "Add workers"
+    - button "Settings" [pressed]
+- region "Notifications"
+- listbox:
+  - group:
+    - option "Person Lookup"
+    - option "I-9 Lookup"
+    - option "Separations"
+    - option "I-9 Check"
+    - option "Onboarding"
+    - option "Oath Signature"
+    - option "Oath Upload"
+    - option "Emergency Contact"
+    - option "Work-Study"
+    - option "Kronos Pay Rule"
+    - option "OCR" [selected]
+    - option "CRM Doc Download"
+    - option "SharePoint Download"
+    - option "OnBase"
+    - option "Old Kronos Reports"

@@ -14,7 +14,7 @@ import {
   type ActivityReportWire,
 } from "../../../../../src/models/dashboard/activity.js";
 import { buildActivityVolumeBoundarySkeleton } from "../../../../../src/models/dashboard/activity-volume.js";
-import { ActivityBody } from "../../../../../src/dashboard/surfaces/activity.js";
+import { ActivityBody } from "../../../../../src/dashboard/surfaces/activity/activity.js";
 
 function report(): ActivityReportWire {
   return ActivityReportWireSchema.parse({

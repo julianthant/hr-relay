@@ -1,12 +1,12 @@
 import { ChevronDown, FileText } from "lucide-react";
-import { dsFocus } from "../../ds/ui.js";
+import { Select, dsFocus } from "../../ds/ui.js";
 import { commentTemplate, LEAVE_CONDITIONS, LEAVE_OPTIONS, type CommentChoices } from "./explorer-flow-model.js";
 
 function Choice({ label, value, options, onChange }: { label: string; value: string; options: readonly (readonly [string, string])[]; onChange: (value: string) => void }) {
   return <label className="flex min-w-0 flex-col gap-1 text-caption text-ui-secondary">
-    {label}<select className={`h-8 min-w-0 rounded-md border border-ui-stroke-control bg-ui-field px-2 text-body text-ui-primary ${dsFocus}`} value={value} onChange={(event) => onChange(event.target.value)}>
+    {label}<Select aria-label={label} className={`h-8 min-w-0 rounded-md border border-ui-stroke-control bg-ui-field px-2 text-body text-ui-primary ${dsFocus}`} value={value} onChange={(event) => onChange(event.target.value)}>
       {options.map(([id, text]) => <option key={id} value={id}>{text}</option>)}
-    </select>
+    </Select>
   </label>;
 }
 
@@ -17,7 +17,7 @@ export function ExplorerComment({ kind, choices, onChange, open, onToggle, id, r
 }) {
   const templateKind = kind === "kuali" ? "kuali" : "ucpath";
   const text = commentTemplate(templateKind, choices);
-  return <details data-disclosure={id} open={open} onToggle={(event) => onToggle(event.currentTarget.open)} className="group mx-6 mb-3 rounded-md border border-ui-stroke bg-ui-panel">
+  return <details data-disclosure={id} open={open} onToggle={(event) => { if (event.currentTarget.open !== open) onToggle(event.currentTarget.open); }} className="group mx-6 mb-3 rounded-md border border-ui-stroke bg-ui-panel">
     <summary className={`group flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-body text-ui-secondary [&::-webkit-details-marker]:hidden ${dsFocus}`}>
       <FileText aria-hidden className="size-3.5 shrink-0" />
       {kind === "duplicate" ? "Exact template · same text as Initiator comments" : "Exact template"}
@@ -35,7 +35,7 @@ export function ExplorerComment({ kind, choices, onChange, open, onToggle, id, r
       </pre>
       <p className="mt-2 text-body text-ui-secondary">{kind === "kuali" ? choices.changes === "none" ? "Neither date changed: no date-change lines are added." : "Only changed dates add a line. Existing text is preserved." : LEAVE_CONDITIONS[choices.leave]}</p>
       <p className="mt-1 text-caption text-ui-muted">{kind === "kuali" ? "Nonempty parts are trimmed and joined with one newline. The filing line is always included." : "Exact wording and punctuation. Braces identify values supplied by this run. Both UCPath comment fields receive identical text."}</p>
-      {kind !== "duplicate" && <details className="mt-3" data-disclosure={`${id}-rules`} open={rulesOpen} onToggle={(event) => onRulesToggle(event.currentTarget.open)}>
+      {kind !== "duplicate" && <details className="mt-3" data-disclosure={`${id}-rules`} open={rulesOpen} onToggle={(event) => { if (event.currentTarget.open !== rulesOpen) onRulesToggle(event.currentTarget.open); }}>
         <summary className={`cursor-pointer text-caption text-ui-secondary ${dsFocus}`}>{kind === "kuali" ? "Template conditions & values" : "All leave rules"}</summary>
         <dl className="mt-2 grid grid-cols-[8rem_minmax(0,1fr)] gap-x-3 gap-y-2 text-caption text-ui-secondary">
           {(kind === "kuali" ? [
