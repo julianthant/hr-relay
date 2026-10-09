@@ -1,781 +1,149 @@
-<!--
-PORTED, VERBATIM, from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc
-  src/dashboard/components/dev/rebuild-demo/DESIGN.md
-
-Everything below this comment is that file, byte for byte. Nothing in it was
-adapted for this repository, because the point of the document is that it is the
-SAME language: ref frontend-backend-integration §1 names the legacy rebuild-demo the visual authority for
-this tree, and ref dashboard-surfaces §9 records that this document "is binding on every surface
-built against this contract".
-
-It lives HERE, beside the code it governs, rather than only in the legacy repo,
-because a binding document nobody in this checkout can open is not binding. The
-two repositories share no module graph (D93), so this is a copy with provenance
-and never a link — if the legacy original changes, re-port it and move the hash.
-
-Three adaptations for a reader in THIS tree (a third was undisclosed until Track F named it,
-2026-08-21):
-
-  - "one import (`demo-ui.tsx`)" is `src/dashboard/ds/ui.tsx` here (not `ui.ts` — the barrel is a
-    `.tsx` file). The rule is unchanged: surfaces import the barrel, never `ds/*` directly.
-  - the guards this document says are enforced live in
-    `tests/unit/architecture/helpers/ratchet-arms.ts` as the `frontend-tailwind-compliance` arm,
-    not in a file of their own. Precisely: legacy's arm ran four checks (reduced-motion coverage,
-    the z-index scale, image loading discipline, palette/hex); this port dropped three and shipped
-    only palette/hex, and this document went on asserting "guard enforced" for the reduced-motion
-    claim in "Motion rules → Mechanics" (~:590-592) and the z-index claim in "Size, radius,
-    elevation, focus, motion" (~:253) regardless (a document claiming a guard that does
-    not run is worse than no claim — `ratchet-arms.ts`'s `frontend-tailwind-compliance` arm). Commit `5cc035b9` (2026-08-12)
-    brought the other three back: today ALL FOUR run — `motion-reduce:animate-none` pairing on the
-    four `animate-*` utilities (narrower than legacy's full "reduced-motion coverage over
-    animation": it checks the same-line Tailwind modifier, not every transition), `@keyframes`/raw
-    `animation` bans, an arbitrary `z-[…]` ban (narrower than a full "z-index scale" audit: it bans
-    one anti-pattern, it does not verify `dsLayer`'s ORDER is used correctly), and image alt/loading
-    discipline. So "guard enforced" below is currently TRUE, narrowly — read the arm's own comment
-    for the exact scope before trusting either claim at face value again.
-  - the specimen page this document repeatedly points to (`DemoUiKit.tsx` in "How to build a
-    surface" ~:132; the file-map table's `DemoUiKit.tsx`/`kit.html`/`kit-entry.tsx` rows in "Files"
-    and the "Seeing the specimen page" section, including the port-3943 command) **exists in this
-    tree under different names, opened a different way.** It is
-    `src/dashboard/kit/kit-page.tsx` (`KitPage`), mounted by `src/dashboard/kit.html` +
-    `kit/main.tsx`, and you open it on THIS repo's dev server:
-
-        npm run web
-        → http://localhost:5174/kit.html
-
-    Not the legacy port-3943 command below, and not a path under
-    `components/dev/rebuild-demo/` — this tree has no such directory. It is a real build entry
-    (`vite.dashboard.config.ts` names TWO inputs, `index` → `index.html` and `kit` → `kit.html`;
-    the third it used to name, the phone `capture.html` entry, went with D294 on 2026-08-31), so it
-    is also in `dist/dashboard` and reachable from `npm run web:preview`. Everything the sections
-    below say about it is true of it: the same seven sections, in the same order, drawn over
-    `ds/ui.tsx` itself.
-
-Current operator direction supersedes the ported typeface rule below: use
-the macOS system UI font (San Francisco) through the dashboard sans token.
-
-    This paragraph used to say the page did not exist at all — it was a real deferral, and D274
-    item 3 ("port specimen page plus parity scene") ruled it built on 2026-08-26, closing
-    `03.1-finish-the-dashboard.md` OPEN question 3 and ledger 3 UK146–UK158. Two details of the port
-    are recorded in the page's own header comment rather than here, because they are facts about
-    this tree's guards and not about the design language: the Workflow `<Select>`'s option values
-    carry a `specimen-` prefix (`dashboard-wire-boundary` forbids a registered workflow-id literal
-    under `src/dashboard`), and the dirty `ValueField` is a real controlled field.
--->
-
-**Shared dashboard palette (2026-10-01).** The semantic palette and Tailwind mappings live in
-`ds/theme/dashboard-theme.css`. `ds/theme/tokens.css` maps DS, content-body, Settings and shadcn neutral aliases to
-that palette across the dashboard. `.ui-theme-scope` groups presentation utilities; it no longer gates
-the palette. See [DASHBOARD-THEME.md](ds/theme/DASHBOARD-THEME.md) for current values and seams.
-
-# Rebuild demo — design brief
-
-**Read this before building a surface. It is binding.**
-
-D340 scopes this dashboard to desktop/laptop use. Mobile layouts and touch-specific proof are
-retired. The desktop canvas is at least 1024×720 CSS pixels; queue and detail stay side by side,
-with document scrolling below that floor. Desktop resizing, zoom and keyboard accessibility remain.
-The current contract is
-`docs/rebuild/reference/frontend-backend-integration.md` §10; it supersedes historical touch
-requirements below.
-
-> **The principle:** this is a dense, keyboard-first console for one operator who
-> files real HR transactions all day — every pixel either helps them see what
-> needs them or gets out of the way.
-
-Consequences of that one line, in order of authority:
-
-1. **Attention is the scarce resource.** Exactly two things may shout —
-   `Waiting on you` and `Failed`. Everything else recedes on a ladder.
-2. **Density beats decoration.** More true rows on screen wins over more
-   whitespace. No hero spacing, no illustrations, no marketing gloss.
-3. **Nothing may lie.** No fake progress, no "probably fine" empty state, no
-   success styling on an unverified write. This mirrors the codebase's
-   fail-loud rule at the pixel level.
-4. **Parity is ratified.** The rebuilt dashboard must still read as the same
-   product to the operator who uses it daily (`994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/history/design-inputs/2026-07-22-second-look.md`
-   §6.6). Raise quality *within* the existing language; never introduce a new one.
-5. **A surface renders what the descriptor SERVES.** Grouping comes from a
-   workflow's own `category`; what a start accepts, offers and flags comes from
-   its own `start` capability. A surface that branches on a workflow id to
-   decide what to draw is a surface that cannot serve the next workflow — and a
-   workflow that declares nothing of a kind draws nothing of it.
-6. **A professional dashboard does not explain itself.** Explanatory prose is a
-   defect unless it lives inside an **ⓘ**. See the next section — it is binding.
-
----
-
-## The product does not explain itself
-
-> **A professional dashboard does not explain itself. Explanatory prose is a
-> defect unless it lives inside an ⓘ.**
-
-The operator, verbatim: *"i feel like the dashboard right now is bloated with
-extra information like explanations and descriptions that we dont need… explaining
-what a button do with a description or things like that will bloat the frontend."*
-
-**A sentence on a surface must be a fact about the RUN in front of you.** A
-sentence that would be equally true of every run in the product is a rule of the
-product, and a rule of the product is not information — it is teaching, and it
-costs the same pixels every time it is drawn whether or not anyone needed it.
-
-Deleted on sight, wherever they appear:
-
-- a description under or beside a control saying what pressing it does
-  (`member rows appear when you approve`, `Save records these values as a
-  correction`) — the control's own label says it, and its `title` carries the
-  descriptor's `detail`;
-- a caption beside an icon that repeats the icon (`✕ Cancel group`);
-- the UI describing its own mechanics to the operator standing in it
-  (`13+ members · opened in place`, `a panel that vanishes when idle is a panel
-  you stop trusting`);
-- the product asserting its own correctness (`badges and pills all go through one
-  counting path — they cannot disagree`). If it is true, hold it with a test; if
-  it is not, the sentence is a lie in the UI.
-
-**Where it goes instead: the ⓘ.** The `Popover` behind an `IconButton size="xs"`
-(wave 4, on every queue row) is the sanctioned home for anything the demo needs
-to teach — reachable by pointer, touch and keyboard, quiet at rest, and costing
-the surface nothing until it is asked for. Put the rule there, in full.
-
-**Two exemptions, and only two.** Neither is explanation:
-
-- a **`Refusal`** — it must say what was *not* done and why, or the operator
-  cannot act on it;
-- a genuine **hazard** about this run — a stale checkpoint, a staged write, an
-  unresolved park. These are outcomes, not teaching.
-
-An **empty state** still owes three things and no more: what would be here, why
-it is not, and what to do. It does not owe a defence of the design.
-
----
-
-## How to build a surface
-
-```tsx
-import { Panel, PanelHeader, Button, StatusPill, dsText } from "../demo-ui";
-```
-
-- **One import**: `demo-ui.tsx`. Never import from `ds/*` directly.
-- **Compose primitives.** If a primitive is missing a variant you need, add it
-  *in the primitive*, so every surface inherits it. Never fork one locally.
-- **Align peer controls.** Buttons, pickers and inputs sharing a control row use the same height.
-- **Never write a literal value** for colour, size, radius, shadow or duration.
-  Shared semantic palette values belong in `ds/theme/dashboard-theme.css`; DS tokens
-  and component geometry belong in `ds/theme/tokens.css`. See
-  [DASHBOARD-THEME.md](ds/theme/DASHBOARD-THEME.md) for palette roles and aliases.
-- The specimen page `DemoUiKit.tsx` shows every primitive in every state. Skim
-  it before choosing a component.
-
-### Shared content-body primitives
-
-Use `DsBodyScope` around a content body that needs the compact form density. It
-caps the body at 828px, scopes the 27px page heading, 13.5px labels, 11.7px
-supporting copy, 32.4px controls and 62.5px rows, and leaves the app shell and
-sidebar outside that scale. Put `dsSurface.bodyPage` on the full-width main
-canvas, then keep `DsBodyScope` as its 828px content column. Compose the shared
-`PageHeading`, `FormGroup` and horizontal `Field` with the existing `Input`, `Select`, `SearchInput`, `Switch`
-and `Button`; do not add a second Settings-only control family. `UnitField`
-announces its fixed unit, `SecretField` starts masked and keeps removal separate
-from reveal (supply a stable `identity` when it can switch records; read-only
-values remain revealable but cannot be removed), `ResultRow` pairs a result
-with evidence, and `RankedList` provides keyboard and pointer reordering with a
-`disabled` state while movement is unavailable. Portalled body dialogs pass
-`className="ds-body-overlay"` to `DialogContent` so their palette follows the
-same dark/light body tokens. These are in the existing `ds/ui.tsx` barrel and
-are demonstrated together in the Forms section of the current kit page.
-
----
-
-## Tokens — what to reach for
-
-Shared semantic colors and Tailwind mappings live in `ds/theme/dashboard-theme.css`;
-DS component tokens are CSS custom properties in `ds/theme/tokens.css`. `ds/theme/tokens.ts`
-exports the class names you type. Use `bg-[var(--ds-…)]` / `text-[color:var(--ds-…)]` /
-`border-[color:var(--ds-…)]` when you need one directly.
-
-### Surface (depth = surface + hairline, never shadow)
-
-| Token | Use |
-|---|---|
-| `--ds-surface-page` | the app background, behind everything |
-| `--ds-surface-1` | the default plane: panels, cards, bars |
-| `--ds-surface-2` | inset wells, table headers, code blocks |
-| `--ds-surface-3` | hover / pressed / selected fill |
-| `--ds-surface-overlay` | dialogs, drawers, menus, tooltips |
-| `--ds-surface-scrim` | behind a modal |
-
-A `Panel` sits on the page, a `Card` sits in a Panel, a `Well` sits in a Card.
-**Anything with a shadow is floating.** If it does not float, it has no shadow.
-
-### Text
-
-`--ds-fg` (values, names) → `--ds-fg-secondary` (supporting) →
-`--ds-fg-muted` (labels, meta, units) → `--ds-fg-faint` (disabled, placeholder).
-Four steps. If you want a fifth, the surface is saying too much.
-
-### Type — seven sizes, and only these
-
-| Class | Size | Use |
-|---|---|---|
-| `dsText.display` | 20px | the one big number on a summary |
-| `dsText.section` | 16px | dialog titles, page section heads |
-| `dsText.title` | 14px | panel and card titles |
-| `dsText.ui` | 13px | control labels, row titles, nav — **the default** |
-| `dsText.body` | 12px | table cells, log lines, descriptions |
-| `dsText.meta` | 11px | timestamps, trace ids, chips, footers |
-| `dsText.micro` | 10px | count badges, kbd — plus the one ported exception below |
-| `dsText.caps` | 10px upper | group headers, column heads — never sentences |
-| `dsText.nums` | — | **every** id, count, duration, rate, amount |
-
-`micro` carries a sentence in exactly two places: the per-system note under the
-name in Settings → System hosts (`settings.tsx:559`), and the "not in the served
-workflow list — this is its id" caption in `WorkflowName`, Settings → Workflow
-capabilities (`settings.tsx:796`, pre-existing). The System hosts note is the
-demo's own token for that note (legacy `1ec1d870`
-`src/dashboard/components/dev/rebuild-demo/DemoSettings.tsx:842`), and the demo
-is the design authority for the copy and the treatment it covers, so it is
-ported rather than promoted to `meta`. The `WorkflowName` caption has no demo
-counterpart — it is not demo-backed and unruled. It does not license `micro`
-for prose anywhere else — a new sentence at 10px needs a demo line behind it or
-it is a finding.
-
-### Colour — one accent, four semantic hues, and nothing else
-
-The live palette is capped: **one accent** plus **info / success / warning /
-danger**. There is no categorical hue. `--log-cyan|teal|violet|slate` are
-retired — the first three resolve to steps on a neutral ink ramp and
-`--log-violet` resolves to the warning amber, so a log stream that used to
-paint four categorical hues on top of four status hues now paints one.
-Differentiate a category by **icon, label, type weight or a single subtle
-tint** — never by giving it a hue.
-
-#### The one exception: direction
-
-`--ds-read-*` (blue) and `--ds-write-*` (purple) colour **which way a value
-moved**, and nothing else. This is one semantic axis with two tones, not a
-category palette, and it is justified because direction is *information*: both
-the log stream and the Data ledger interleave what a run read with what it
-wrote, and the write is the line that changed the world.
-
-The rules that keep it narrow:
-
-- Used for a value's direction **only** — never a heading, a chip, a status or
-  a section label.
-- Both surfaces use the same pair, so blue means the same thing in the Data
-  ledger as in the log stream.
-- The **arrow icons stay**. Colour is never the only encoding.
-- Text and meaningful icons read `-fg` (4.5:1); rails and fills read `-mark`.
-
-Teal was rejected for writes: at 4.5:1 on Paper Ink it collapses toward the
-success green, and a write must never borrow the colour of *verified*. Amber
-was rejected: it is reserved for "a human is involved", so every write would
-shout at gate volume.
-
-**The accent is not automatically the action.** `--ds-accent` is the primary
-button's fill and `--ds-accent-mark` is the identity note. On Paper Ink they are
-the same indigo. On Graphite Warm they are NOT: its accent is amber, the same
-family as `warning`, so filling every primary button with it would make the
-primary action shout at exactly the volume reserved for `Waiting on you` — a
-rule-1 violation. There, the primary action is the highest-contrast neutral fill
-and the amber survives on marks. The **queue toolbar's `Start a run` is the one
-exception**: it uses the **`brand` button variant** (`--ds-brand-solid-*`), a
-NEUTRAL solid fill, so the product launch CTA still ends the eye's travel
-without reading as the same near-white chip as every dialog primary. It was
-info blue until 2026-09-01, when the operator called the blue obnoxious next to
-the outlined toolbar peers — the loudness belongs to the fill, not to a hue.
-
-### Themes — a togglable pair
-
-Two compositions of one product, selected by a `data-demo-theme` attribute:
-**`dark` — Graphite Warm** (warm near-black, depth from surface + hairline) and
-**`light` — Paper Ink** (tinted page, white cards, depth from a shadow). The
-shared semantic palette is authored in `ds/theme/dashboard-theme.css`; DS component
-tokens remain in `ds/theme/tokens.css`. Neither theme is a lightening of the other,
-and four of the five hues are re-picked between them.
-
-`useDemoTheme()` (exported from `demo-ui`) owns the selection, persists it, and
-stamps the attribute on **`<html>`, `<body>` and the demo's root container**.
-All three matter: the shipped dashboard hardcodes `class="dark"` on `<html>`
-*and* `<body>`, and a `.dark` ancestor re-scopes every token — so the theme
-selectors are written to outrank it on the element that carries it. Every
-overlay portals to `<body>`, which is why the body stamp is not optional.
-
-### Space — 8px rhythm
-
-`hair 2 · tight 4 · snug 6 · base 8 · cozy 12 · loose 16 · section 24 · page 32`
-Inside a control: hair/tight. Between controls: snug/base. Between groups:
-cozy/loose. Between page sections: section/page.
-
-### Size, radius, elevation, focus, motion
-
-- Heights: `--ds-h-xs 20 · sm 24 · md 28 (default) · lg 32`; `--ds-h-row 32`,
-  `--ds-h-bar 36`, `--ds-h-topbar 44`.
-- Radius: `xs 3 · sm 4 (chips) · md 6 (controls, rows) · lg 8 (cards, panels) ·
-  xl 12 (dialogs) · pill`.
-- Elevation: **0 is the default.** `ds-elev-1` raised card, `2` menu/popover,
-  `3` dialog/drawer.
-- Focus: one ring, `dsFocus` on every interactive element. Never remove it.
-- Motion: `--ds-dur-1 90ms` press · `2 140ms` default · `3 200ms` entering ·
-  `4 260ms` drawer. Easings `--ds-ease-out / -in / -standard`.
-- Layering (`dsLayer`): `sticky z-10 · menu z-20 · drawer z-30 · modal z-40 ·
-  toast z-50`. Arbitrary z-index is banned by the architecture guard.
-  **A `Popover` cannot be opened from inside a `Dialog`** — it portals at
-  `menu` (z-20) and the dialog is z-40, so it opens *behind* it: the
-  accessibility tree says it opened and the screen says nothing happened.
-  Anything disclosed from inside a dialog is disclosed **inside** the dialog.
-
----
-
-## The eight statuses — the load-bearing decision
-
-Render a status **only** via `<StatusPill>` / `<StatusDot>` from `demo-ui`.
-Never hand-roll a coloured span, never change an icon, never abbreviate a label.
-
-Each status is separated on **four independent channels** — hue, emphasis tier,
-icon and label — so colour is never doing the work alone.
-
-| Status | Hue | Tier (the non-colour cue) | Icon | Loudness |
-|---|---|---|---|---|
-| **Review** (was Waiting on you) | info blue `--ds-info-solid-*` | **solid fill**, dark ink, semibold, **no age**, word only | `UserRoundSearch` (solo/filters) | **1 — loudest** |
-| **Failed** | red `--destructive` | **solid fill**, dark ink, semibold | `TriangleAlert` | **2 — loudest** |
-| **Write parked** | amber, dashed | tint + **dashed** hairline (nothing else dashes), **no age** | `PauseCircle` | 3 |
-| **Done** (with warnings) | amber, faint tint | **word only** (`Done`) + muted grey — FYI; △ count chip beside it names the warnings | `CircleAlert` (solo/filters) | 4 |
-| **Running** | **none — neutral** | tint + **the only spinning icon** | `Loader2` | 5 |
-| **Queued** | neutral | **outline only, no fill** — nothing has happened yet | `Clock` | 6 |
-| **Cancelled** | neutral muted gray | **solid fill**, dark/light ink, semibold, **no icon, no strikethrough** — same shape as Done | `Ban` (solo only) | 7 |
-| **Done** | green `--success` | **solid fill**, dark ink, semibold, **no icon, no age** | `CheckCircle2` (solo only) | 8 — quietest of the solids |
-
-Three decisions worth knowing:
-
-- **Waiting, Write parked and Done-with-warnings all share amber on purpose.**
-  Amber means "a human is involved". Solid fill = act now; dashed = a write is
-  in doubt; faint tint = look when you can. The fill weight, not the hue, is
-  the priority signal. The warnings Done pill says the same short word as
-  verified Done; the amber tint and the △ count chip carry the qualifier.
-- **Running has no hue.** It is the most common status on screen, so a hue
-  spent there is a hue spent everywhere. Its spinner is the only moving icon in
-  the product, which is a stronger signal than a colour ever was.
-- **Cancelled is neutral, not amber and not red.** A deliberate stop is neither
-  a warning nor a failure; the solid gray pill (same shape as Done) carries it.
-- **Done is a green solid pill — word only.** Same shape as Waiting on you /
-  Failed, quieter hue. No icon on the pill (the row already leads with the
-  check), and never an age suffix. The receipt proof lives on the Receipt tab,
-  not as a second shield glyph beside the status.
-
-Every status carries two colour tokens, and they are not interchangeable:
-`--ds-status-<s>-fg` is what it is rendered as **text** (held to 4.5:1 on every
-surface), `--ds-status-<s>-mark` is the raw swatch for the **dot, rail and bar**.
-On the light theme they differ — the swatch that reads as a 6px dot fails as
-11px body text.
-
-`StatusDot` shapes by tier: filled **disc** (solid) · **ring** (dashed/tinted/
-outline) · hollow ring (ghost). Always pair a bare dot with the label somewhere
-in the row — the dot carries an accessible name, but the eye needs the word too.
-
-Always pass `age` when you have it — `StatusPill` suppresses it on Review,
-Write parked, and Done. *"Waiting on you · 10m"* used to be a priority signal;
-the timer now lives on the detail outcome bar / footer where triage needs it.
-
----
-
-## The three shapes every surface repeats
-
-These exist because twenty surfaces each invented their own version. Reach for
-the component; do not re-draw the pattern.
-
-| Shape | Component | The rule |
-|---|---|---|
-| **A refusal** — the product declined, on purpose | `Refusal` | Always carries a `code`, and says what was **not** done (`outcome`). Uses `ShieldAlert`, never `TriangleAlert`: the triangle means something broke, the shield means something was refused. A `Banner tone="danger"` is for a *failure*; a refusal is a different sentence. |
-| **A provenance line** — where this came from | `MetaLine` | ids, codes, clocks, actors, hashes — `dsText.meta` + `dsText.nums`, segments joined with ` · `, empty segments dropped. **Never `font-mono`**: that loses the tabular figures that stop a clock from jittering. |
-| **A group heading** | `SectionLabel` | Never hand-roll `cn(dsText.caps, dsFg.muted)`. |
-| **A card's bottom edge** — what must land on ONE line across a row of cards | `CardBody grow` + `CardBase` | Sibling cards in a grid stretch to the tallest, so a card whose description wraps one line further pushes its trailing control a line below its neighbour's. `CardBody grow` makes the body claim the row's slack; `CardBase` (`mt-auto`) is what actually sits on the bottom edge. Never fix this with a fixed `mt-*` on the trailing element — that is the bug, not the fix. The slack lands ABOVE the base and is left empty on purpose: a card with less to say has less to say. |
-| **Cards read ACROSS, not down** — two readings of the SAME thing | `CompareGrid` + `CompareCard` | `CardBase` pins the bottom edge and nothing above it, which is right for cards each describing their own thing. It is not enough for two identity candidates or a pair of compared readings, because the operator reads HORIZONTALLY — name against name, EID against EID, reason against reason. These share the ROW tracks (`grid-template-rows: subgrid`), so a track is as tall as the tallest cell across the band. **Every card renders the same number of children in the same order**, one per track; a card with nothing for a track renders it EMPTY, because that empty cell holds the space its neighbour needs. Columns are `auto-fit`, so N is never two — three candidates wrap into a second band with its own tracks. |
-| **A sub-selection** — a choice that shapes a run before it starts | `StartChoiceControl` | Rendered from what the workflow's descriptor DECLARES (`DemoWorkflowRef.start`), never from what a component knows about that workflow. In Run Options, the operator's 2026-09-01 ruling makes fixed and editable values share the same field shell; a fixed value is a disabled native select with its reason on screen. An option that exists in the target system but is not wired is offered **disabled with its reason** — hiding it teaches the operator the product has never heard of it. A workflow that declares none shows none: no empty scaffolding. |
-| **A wrapping row of peer facts** | `ChipRow` | Chips are of wildly unequal width, so a `flex-wrap` row ends each line wherever its last chip stopped and orphans one on line two — four facts then read as three-plus-one. `ChipRow` lays them on a `--ds-w-chip-cell` track, so every line ends on the SAME edge and the wrap reads as a second row of a table. A row mixing a chip with a sentence or a button is not this. |
-| **Queue row commands** | `FooterActions` / outcome actions | Row commands stay in the visible footer and applicable outcome controls. The operator retired queue ContextMenu, double-click, Shift+F10/Menu and `m` entry points on 2026-10-06. Served descriptors still determine available commands; preview Retry/Delete remain local. Generic ContextMenu specimens remain in the UI kit. |
-| **A recorded value** — something the run OBSERVED | `ValueField` / `LockedValue` | A value the operator may correct is drawn as a **field at rest** (control border, inset surface, pencil) — never a bare `<input>` with a transparent border, which is invisible until hovered or already edited. One the operator may **not** correct is flat text with a lock and no box: the pair is told apart by SHAPE, not by a badge and never by colour. Do not make everything look like a field to be consistent — "you may change this" against "you may not" is load-bearing. Dirty is a fill and a border, never ink, and is always paired with a word. |
-
-A dialog's quiet left-hand note goes in `DialogFooter`'s `meta` slot, not a
-hand-rolled `mr-auto` span — see the footer rule below.
-
-### A command's answer is mounted where the command is reachable from
-
-> **If a control can be pressed from anywhere on a surface, its result has to be
-> visible from anywhere on that surface — and it is keyed to the object it is
-> about.**
-
-Two ways this breaks, both of them found by pressing the button rather than by
-reading the code:
-
-- **Scoped too narrowly.** A `Relaunch` in a panel FOOTER is reachable from every
-  tab; mounting its result inside one tab panel means pressing it from any other
-  tab looks like nothing happened. The answer goes above the tab set.
-- **Not keyed to its subject.** Clearing a result when the operator CLICKS
-  another row is not enough — a search, a filter or a re-anchored selection
-  moves the subject without a click, and a stale result then sits over a
-  different object claiming to be about it. Store the result WITH the id it came
-  from and render it only on a match.
-
-The same reasoning covers a **hazard**: it belongs on the control that can cause
-it, and it escalates on the value the operator has actually typed — not on the
-value the server currently holds.
-
-### Where a thing goes: the top states, the stream explains
-
-> **The panel top carries a one-line state and its action. The substance lives
-> in the log stream, at the point where it happened.**
-
-The Log Panel is opened to read the stream. Every band stacked above it is
-subtracted from the one thing the panel is for, and a band that restates what
-the band above it already said teaches the operator to skim past both. So a
-state that needs explaining gets **one line and one control** at the top, and
-its full surface is rendered inline in the stream, at the line that produced it,
-where the lines above it are the argument for it.
-
-Two surfaces are built this way and nothing may regress them:
-
-- **A decision** (`Waiting on you` / `Write parked`) — the header's status pill,
-  the outcome line's `Review` / `Resolve`, and a dismissable floating notice
-  while the decision is out of reach. The decision itself is `InlineDecision`.
-- **A failure** — the outcome line's one sentence and its remediation verb. The
-  record itself is `InlineFailureRecord`, and a failed run **opens on the logs**
-  so it is never behind a tab.
-
-Two things this rule does **not** license:
-
-- **It is not "collapse it".** The write-state sentence (*"Nothing was written
-  to UCPath, Kronos or Kuali…"*) is the difference between a safe retry and a
-  duplicate termination. It moved into the stream because the stream is
-  **visible**; putting it behind a disclosure would not have been the same move.
-  What may sit behind a disclosure is diagnosis — the progress ledger, the cause
-  chain, the fingerprint — never what is half-done and never what is safe to do.
-- **It is not "hide it".** Whatever moves into the stream keeps a persistent,
-  undismissable route from every tab, and that route must actually travel there.
-
-## Layout rules
-
-- A screen is **Panels**. A Panel has one `PanelHeader`, an optional
-  `PanelToolbar`, exactly one scrolling `PanelBody`, and an optional
-  `PanelFooter`. Only the body scrolls.
-- **A panel has ONE scrolling region and its track runs the panel's full
-  height.** Operator: *"the scroll wheel on the side of the log panel should be
-  one piece and not separated by dividers."* A header, an outcome line and a tab
-  bar stacked OUTSIDE the scroller, with each tab body owning a scroller of its
-  own, produce a track that starts a third of the way down and stops short of
-  the floor — a segment, not a rail. Everything that must stay put goes INSIDE
-  the one region as a **sticky** block (`top-0` for the head, `bottom-0` for a
-  search bar or an action bar), not above or below it. Two consequences that
-  bite: a sticky child of that region needs the head's height to sit below it
-  (`--ds-panel-head-h`, published by the panel that owns the head), and a
-  sticky element must NOT carry the head's `z` — the head is earlier in the DOM,
-  so an equal z makes every step heading paint straight over the tab bar.
-- **Anything anchored to a panel's box, not to its content, lives OUTSIDE the
-  scroller.** An `absolute` child of a scrolling element is positioned against
-  the scrolled content and slides away with it.
-- Tables get `THead` (sticky) and a `label` — a header must survive scrolling a
-  long queue, and an unnamed table is a mystery to a screen reader.
-- **One primary and at most one danger action per surface.** Actions go
-  right-aligned in a footer, primary last, so the eye ends on the verb.
-- **Paired actions have distinct treatments.** Cancel uses the subdued filled `muted` variant; its neighboring action retains its outlined, primary or destructive treatment. Peer toolbar controls retain their existing style. Dialog footers inherit the dialog’s bottom corner radii, including when dropdowns need visible overflow.
-- **Calendar dates use MM/DD/YYYY.** Pad month and day and use four-digit years. Preserve ISO values in route, storage and transport contracts. Date-only values keep their calendar day; timestamps use the appropriate local or report timezone. Calendar month/year headings and hourly chart labels describe periods rather than complete dates. Unknown OCR dates require normalization or correction, never a guessed century.
-- **Every dialog footer is the same footer**, in this order:
-  `meta (quiet, left) · Back? · Cancel · [primary]`. Put the quiet note in
-  `DialogFooter`'s `meta` prop. The dismiss verb is **`Cancel`** when the
-  surface was building something that will not now exist, and **`Close`** when
-  it was only showing you something. Never both words in one flow.
-- **Cards in a grid end on one line.** Give every one `CardBody grow` and put
-  the trailing control, caveat or compared pair in `CardBase`. A trailing
-  element held down by a fixed `mt-*` will sit a line low the moment a sibling
-  wraps.
-- Rows are `--ds-h-row` (32px). Do not invent a row height.
-- **The shell has ONE left/right edge: `--ds-shell-inset`.** Top Bar, Queue
-  Toolbar (and its select-mode band), the panel region, and the Sessions bar
-  all hang off it. Do not reintroduce `px-base` / bare `p-3` on those bands —
-  three different insets was the jagged edge the operator called out.
-- **A queue row's rhythm is ONE grid and ONE gap.** Its body is
-  `grid-cols-[var(--ds-w-row-indent)_minmax(0,1fr)]` with a single `gap-y`: the
-  status tick sits in the leading track and every line under the title hangs off
-  the same edge because the edge is a column, not an `ml-5` retyped on each of
-  the six things that can appear there. Never add a `mt-*` to space one of them.
-  Every run, group and member uses the same wrapping header: subject text wraps
-  with `overflow-wrap:anywhere`, while the right-side status cluster moves to a
-  second line before it can clip or ellipsize the subject. The status glyph
-  remains aligned to the first title line.
-- **Queue footers stay on one line.** Time, attempt, compact run ID, duration and
-  24px action targets center vertically without wrapping. The queue keeps a 376px
-  minimum while the workflow rail yields from 264px to 208px. An unusually long
-  compact ID may ellipsize; its tooltip retains the exact trace. Below the desktop
-  canvas floor the page scrolls rather than compressing queue rows.
-- **Member status changes order and ink, never row shape.** Failed, waiting,
-  parked and warning members sort ahead of routine members but keep the same
-  one-line `status · name · detail · EID` tracks. The mini-table's summary strip
-  aligns to the status-glyph edge and pins its cross-panel route at the far
-  right. Its `Name` column heading starts at that same far-left edge and spans
-  the status + name tracks; person names themselves remain aligned after their
-  status glyphs. Tallies are icon + number only; Done, Running and Queued keep
-  their slots at zero while attention counts appear only when present. The two
-  local disclosures below the table persist together and split one row 50/50:
-  inline `Expand` and the dedicated roster route (`View all signers` for oath
-  packets).
-- **The member roster drill-in is search-first.** Its list is already complete
-  and attention-first, so it does not repeat `Attention` / `All` summary chips
-  that look like filters but change nothing. Back, the wrapping group title and
-  search share the first header row; the title yields before search moves down.
-- **Toolbars group by what a control DOES**, and the groups are separated by a
-  hairline, not by uniform gaps: where you are and what you start, then what you
-  are looking at, then how you are looking at it (right-aligned). A MODE (bulk
-  select) earns its own band while it is on rather than six more controls in the
-  bar. A filter at zero keeps its slot and its click target and gives up its
-  border, its fill and its label — an empty bucket must not look like a full one.
-- **Every control in a toolbar is `--ds-h-toolbar` tall.** It is a named token
-  rather than `--ds-h-sm` retyped per control, because a repeated literal is
-  exactly how one of thirteen came to be 30px in a row of 24. A control that
-  WRAPS others (a segmented composite) takes the height itself and its segments
-  fill it with `h-full` — a segment carrying its own height makes the box grow
-  by its padding and its border. D340 retires the coarse-pointer token override;
-  `tests/parity/toolbar-desktop-target.spec.ts` verifies the compact desktop geometry.
-
-- Truncate with `truncate` + `min-w-0` on the flex child; never wrap a person's
-  name onto two lines in a dense list.
-- Empty is a **state**: say what would be here, why it is not, and what to do —
-  `EmptyState`, in that order.
-- A count that hits zero **dims, it does not disappear** (`CountBadge`), so the
-  eye does not have to re-scan the rail.
-
----
-
-## Motion rules
-
-Motion is functional only. It answers *where did this come from*, *did my press
-register*, or *this just became your problem* — nothing moves for delight.
-
-### The token set — five classes, and there is no sixth
-
-`ds/theme/tokens.ts` exports the names; `ds/theme/tokens.css` owns the values. **Never type
-a duration or an easing.** Every one of these is a TRANSITION, never a
-key-frame, and that is what makes the language *interruptible*: a transition
-re-targets from wherever it currently is the moment its end value changes, so
-grabbing something mid-flight answers at once instead of finishing the move it
-was making.
-
-| Class | Duration | Easing | What it is for |
-|---|---|---|---|
-| `dsMotion.base` | `--ds-dur-2` 140ms | `--ds-ease-out` | colour / fill / edge, in place — hover tints, a status settling |
-| `dsMotion.fast` | `--ds-dur-1` 90ms | `--ds-ease-out` | press + hover on a **command**. A press must feel like a press |
-| `dsMotion.enter` | `--ds-dur-enter` 150ms | `--ds-ease-out` | something **arriving** — an overlay, a toast, a record just read |
-| `dsMotion.exit` | `--ds-dur-exit` 90ms | `--ds-ease-in` | something **leaving**. It goes; it does not drift |
-| `dsMotion.move` | `--ds-dur-move` 220ms | `--ds-ease-standard` | a **spatial** change — a panel reshaping, a rail collapsing |
-
-Easings: `--ds-ease-out` `cubic-bezier(0.16, 1, 0.3, 1)` · `--ds-ease-in`
-`cubic-bezier(0.4, 0, 1, 1)` · `--ds-ease-standard`
-`cubic-bezier(0.45, 0, 0.55, 1)`. **`ease-in` is only ever for leaving** —
-starting slow at the moment the eye is watching hardest is what makes an
-interface feel sluggish.
-
-`enter` and `exit` are the house pair and they are deliberately **asymmetric**
-(150 / 90): arriving has to be *read*, leaving only has to be *acknowledged*.
-
-Travel is a language too, and it **names a direction — it is never a journey**:
-`dsTravel.sm` (`--ds-travel-sm` 4px) for a popover leaving its trigger,
-`dsTravel.md` (`--ds-travel-md` 8px) for a dialog, a toast or a record arriving.
-
-### Where it earns its place
-
-- **Overlays** — dialog, drawer, popover, context menu, lightbox. They come
-  from somewhere, and **origin-aware**: a popover scales out of its resolved
-  trigger (`--radix-popover-content-transform-origin`, never `center` and never
-  the `side` *prop* — a collision-flipped popover must not animate away from
-  itself); a drawer comes from its edge; a modal stays centred, because it is
-  anchored to nothing.
-- **Panels** — the Workflow Panel's three modes, the context rail collapsing,
-  the queue narrowing on drill-in. A spatial change should read as movement.
-- **New work arriving** — the progressive member list. Records appearing one at
-  a time *because they were read one at a time* is motion carrying meaning, not
-  decorating a list. Gate it on the wire's own arrival instant (`readAt`), not
-  on render bookkeeping, so nothing animates on first paint.
-- **Press feedback on commands** — `active:translate-y-px`, `dsMotion.fast`.
-- **The attention transition** — see the amendment below.
-
-**Mounting is the one case a transition cannot express on its own** (there is no
-previous value to move away from). `useDsEnterTransition()` manufactures one:
-spread it on the element, describe where it comes from with
-`data-[demo-enter=from]:` classes, and everything after the first frame behaves
-like every other transition in the system.
-
-### What must stay STILL
-
-This is the discipline that separates professional from busy, and it matters
-more than any of the above. **Ambient churn does not move.** Elapsed timers
-ticking, counts incrementing, background status settling, a self-initiated
-re-sort. This dashboard updates constantly; if everything that updates also
-moves, it is unreadable exactly when it is busiest.
-
-Also still: anything on first page load, list reordering, numbers counting up,
-and tooltips (a delayed fade after a delayed open feels broken — tooltips
-appear instantly, on purpose).
-
-### AMENDMENT (wave 14): *never animate status changes* narrows
-
-> **Was:** never animate status changes.
-> **Now:** never animate ambient status *churn* — but a run that starts needing
-> you may announce itself, once, on the edge.
-
-**Why the original was written, and why it still holds for almost everything.**
-A queue of forty rows re-renders continuously: steps advance, timers tick,
-counts settle, members finish. If every one of those changes moved, the panel
-would shimmer permanently and the operator would learn to ignore movement
-altogether — which is the worst outcome, because movement is then unavailable
-for the one thing that needs it.
-
-**Why the exception is narrow and not a loophole.** Two states are allowed to
-shout in this product, `Waiting on you` and `Failed`. A run *crossing into* one
-has stopped being background and become work, and the moment that happens is
-precisely the moment the operator is looking somewhere else. A row that turns
-amber silently between glances is a row that gets found late.
-
-**The four constraints that keep it from becoming a licence:**
-
-1. **Edge, never state.** It fires on the *transition into* an attention
-   status. A row that was already waiting when you scrolled to it does nothing.
-2. **Never on mount.** First sight of a row is not a change; otherwise every
-   row on a busy panel announces itself on paint, which is the churn this rule
-   exists to prevent.
-3. **Once, then still.** One settle (`ATTENTION_ANNOUNCE_MS`), and it is over.
-   Nothing pulses, nothing repeats, nothing waits to be acknowledged.
-4. **Only the two loud statuses.** `Running`, `Queued`, `Done`, `Cancelled`,
-   `Done with warnings` and every count beside them stay exactly as still as
-   they were. Reaching for this on a third status is the drift, and the answer
-   is no.
-
-Implemented once, in `useAttentionAnnounce` (`DemoQueue.tsx`). Do not re-derive
-it at a second call site.
-
-### Mechanics
-
-- **Transform and opacity only.** Never animate `width`, `height`, `top`,
-  `left` or a margin.
-- Durations and travel come from tokens. `prefers-reduced-motion` zeroes
-  **both** — the clock *and* the distance — which removes every transition in
-  the system at once. **Do not add a separate reduced-motion branch for a
-  transition**; zeroing only the clock would still slide a drawer 8px in one
-  frame, which is a jump, which is what the preference is asking not to see.
-- Tailwind `animate-*` utilities **must** carry `motion-reduce:animate-none` on
-  the same line (the architecture guard enforces this).
-- Key-frames and bare `animation` properties are banned anywhere under
-  `src/dashboard/**` — guard-enforced, and it is also why the language is
-  interruptible.
-
----
-
-## Accessibility floor — not optional
-
-This demo is asserted through the accessibility tree, so a missing label is a
-**broken build**, not a polish item.
-
-- Every interactive element is reachable by keyboard and shows `dsFocus`.
-- `IconButton` cannot be built without a `label`; `Table`, `PanelToolbar`,
-  `TabList` and `ProgressBar` all require an accessible name.
-- Form controls go inside `Field`, which wires `aria-describedby` /
-  `aria-invalid` and announces the error via `role="alert"`. Never hand-roll it.
-- Dialog and Drawer are Radix: focus enters on open, **returns to the trigger on
-  close**, Escape dismisses, the rest of the page is hidden from assistive tech.
-- Toasts use the shadcn Base UI card composition. Ordinary notifications announce status; errors
-  announce alerts and never auto-dismiss. Title, detail and recovery action remain visible together.
-  The stack stays at the bottom right above Sessions. While a dialog, drawer, popover or menu is open,
-  cards become inert and their controls are disabled; closing the overlay restores interaction.
-  Custom overlays must register their mounted presence with the shared DS layer registry.
-
-### The decision notice and the toast stack are in DIFFERENT coordinate spaces
-
-> **Neither element's position may be a function of the other's presence.** Not
-> horizontally, not vertically, not conditionally.
-
-Operator, on a frame where one had been pushed to the far edge while the other
-sat in the corner: *"these 2 should not be affecting each other."*
-
-Three answers were tried and all three were the same mistake — one surface
-reading the other's state to decide where to go. The toast stepped aside for the
-notice; the notice stepped aside for the toast; the notice was LIFTED by the
-toast stack's measured height. The third was quieter than the first two and was
-still the bug, because the notice's y was a function of how many toasts existed.
-
-**What replaces it is geometry, not arbitration.** The **decision notice** is
-about the run you are looking at, so it is `absolute` inside the run-detail
-panel, clipped by it, never portalled — its x and y are constants of that
-panel's box. The **toast stack** is app-level, so it stays at the VIEWPORT's
-bottom-right. With the context rail open, the rail already separates the two
-right edges. The one case where the anchors converge (a collapsed rail) is
-cleared by a CONSTANT, `--ds-toast-inset-bottom`, built from the bars and bands
-the shell has parked at the bottom. A gap that is always there is predictable;
-one that appears when some other element does is the defect.
-
-**Overlays never move the toast viewport.** Opening a dialog, drawer, popover or menu makes
-its cards inert and disables their controls. Closing the overlay restores interaction at the same anchor.
-- Contrast is WCAG AA minimum, including text on a solid status fill (which is
-  why the loud statuses use dark ink on a bright fill).
-- Colour is never the only differentiator, anywhere.
-
----
-
-## Never do this
-
-- ❌ Hardcode a colour, px size, radius, shadow or duration in a component.
-- ❌ Use a Tailwind palette class (`text-amber-400`) or a raw hex — the
-  architecture guard fails the build.
-- ❌ Render a status as anything other than `StatusPill` / `StatusDot`; recolour
-  one; abbreviate a label; drop the icon in a place where it fits.
-- ❌ Put an age on `Done`, or a second shield glyph beside it — the solid green
-  pill is the whole status. Never make Done louder than `Waiting on you` /
-  `Failed` (different hue, same shape is fine).
-- ❌ Put two primary buttons, or two danger buttons, on one surface.
-- ❌ Use a shadow on something that is not floating.
-- ❌ Write a key-frame animation or a bare `animation` property anywhere under
-  `src/dashboard/**` — guard-enforced, and motion belongs in the tokens.
-- ❌ Use an arbitrary `z-[…]`; use `dsLayer`.
-- ❌ Put load-bearing information in a tooltip only. If it has to be reachable,
-  it goes in the UI or in a **`Popover`** (click-to-open, keyboard- and
-  touch-reachable) — never in a hover-only surface.
-- ❌ Introduce a fifth hue, or give a *category* a colour of its own.
-- ❌ Show a determinate progress bar for something whose denominator you do not
-  know — use the indeterminate form.
-- ❌ Fork a primitive to add a variant. Add the variant to the primitive.
-- ❌ Introduce a new font, a brand colour, an illustration, or an emoji as an
-  icon. Icons are lucide, and only lucide.
-- ❌ Print a sentence that explains a control, restates a rule of the product, or
-  defends the design. It goes in the ⓘ or it goes.
-- ❌ Caption an icon with the word the icon already means.
-- ❌ Hang a `⋯` off a row. The object's commands go on the object, by
-  right-click, with a keyboard route registered in `DEMO_SHORTCUTS`.
-- ❌ Wrap a set of peer chips on a bare `flex-wrap`. Use `ChipRow`.
-
----
-
-## Files
-
-| File | What it is |
-|---|---|
-| `ds/theme/tokens.css` | every value in the system — the only place a literal may live |
-| `ds/theme/tokens.ts` | the class names builders type (`dsText`, `dsLayer`, `dsFocus`, …) |
-| `ds/theme/theme.ts` | `useDemoTheme()` — the dark/light pair and where it is stamped |
-| `ds/primitives/primitives-core.tsx` | Button, IconButton, Badge, CountBadge, Chip, Kbd, Spinner, Skeleton, Separator |
-| `ds/primitives/primitives-status.tsx` | the eight statuses + StatusPill / StatusDot / StatusIcon |
-| `ds/primitives/primitives-layout.tsx` | Panel, Card, **CardBody `grow`**, **CardBase**, **CompareGrid / CompareCard**, Banner, **Refusal**, **MetaLine**, **BulletList**, **ChipRow**, EmptyState, Tabs, Well, FloatingSurface |
-| `ds/primitives/primitives-form.tsx` | Field, Input, Textarea, Select, Checkbox, RadioGroup, Switch, SearchInput, **ValueField**, **LockedValue** |
-| `ds/primitives/primitives-overlay.tsx` | Dialog, Drawer, **Popover**, **ContextMenu** (+ `openContextMenuFor`), Tooltip, Toast |
-| `ds/primitives/primitives-data.tsx` | Table, ProgressBar, TimelineSteps, KeyValueList |
-| `demo-ui.tsx` | **the barrel — import from here** |
-| `DemoUiKit.tsx` | the specimen page: every primitive, every state |
-| `kit.html` + `kit-entry.tsx` | standalone mount for the specimen page |
-
-### Seeing the specimen page
-
-```bash
-npx vite --config vite.dashboard.config.ts --port 3943
-# → http://localhost:3943/components/dev/rebuild-demo/kit.html
-```
-
-`DemoUiKit` is **not** wired into the demo's view switch — `RebuildDemo.tsx` and
-`App.tsx` were off-limits to the pass that created it. A later agent that owns
-those files should mount it behind a demo view (e.g. a "Design system" entry
-beside "Row & panel catalog"); it needs no props.
+# Dashboard design system
+
+`ds/ui.tsx` is the public primitive barrel. `ds/theme/tokens.css` owns CSS values;
+`ds/theme/tokens.ts` supplies named class strings. `kit.html` renders the real primitives through
+`kit/kit-page.tsx`. Start it with `npm run web` at `http://localhost:5174/kit.html`.
+
+## Tokens
+
+The neutral palette resolves through `--ui-canvas`, `--ui-panel`, `--ui-table`, `--ui-hover`,
+`--ui-primary`, `--ui-secondary`, `--ui-muted`, `--ui-stroke`, and `--ui-stroke-control`.
+The `--ds-*` aliases serve the shell, body, Settings, and overlays. Theme state uses
+`data-demo-theme`; `useDemoTheme` owns the browser preference.
+
+| API | Use |
+| --- | --- |
+| `dsSurface` | `page`, `bodyPage`, `card`, `recess`, `raised`, `overlay`, `scrim`, `selected` |
+| `dsFg` | Base, secondary, muted, faint, inverse, link, and danger text |
+| `dsBorder` | Subtle, base, strong, and loud edges |
+| `dsRadius` | `xs`, `sm`, `md`, `lg`, `xl`, and `pill` shapes |
+| `dsElev` | Low card separation, mid floating surfaces, and high dialogs/drawers |
+| `dsFocus`, `dsFocusWithin` | Keyboard focus and composite focus |
+| `dsLayer` | Sticky, menu, drawer, modal, toast, skip-focus, and toast viewport/card stacking |
+| `dsSize` | Control/row/bar heights, rail width, body width, and session pipeline band |
+| `dsGap`, `dsPad` | Named internal, control, card, and section spacing |
+| `dsClip.token`, `dsClip.text` | One-line token shell paired with a shrinking ellipsis child |
+| `dsIcon` | `sm` 12px, `md` 14px, and `lg` 16px glyphs |
+
+`dsText` provides `micro` 10px, `meta` 11px, `body` 12px, `ui` 13px, `title` 14px,
+`section` 16px, `display` 20px, and `pageTitle` 27px. `caps` is for short group labels,
+`nums` uses tabular monospace, and `flush` removes extra line-box height beside a taller control.
+`DsBodyScope` overrides type, spacing, row, control, and radius values for product content.
+Use the scoped primitives rather than copying shell measurements into a body page.
+
+## Primitives
+
+| Family | Public components |
+| --- | --- |
+| Commands and short facts | `Button`, `BareButton`, `ButtonLink`, `IconButton`, `Badge`, `CountBadge`, `Chip`, `Kbd`, `Spinner`, `Skeleton`, `Separator`, `VisuallyHidden` |
+| Status | `StatusPill`, `StatusDot`, `StatusIcon`, `DS_STATUS`, `DS_STATUS_ORDER` |
+| Frames | `Panel`, `PanelHeader`, `PanelToolbar`, `PanelBody`, `PanelFooter`, `Card`, `CardHeader`, `CardBody`, `CardBase`, `CardFooter`, `CompareGrid`, `CompareCard`, `TakeoverFrame`, `FloatingSurface` |
+| Product bodies | `DsBodyScope`, `PageHeading`, `PageHeader`, `PageBreadcrumbs`, `BodySection`, `TableList`, `TableToolbar`, `FormGroup`, `ResultRow`, `SectionLabel` |
+| State and disclosure | `Banner`, `Refusal`, `EmptyState`, `Disclosure`, `Well`, `MetaLine`, `ChipRow`, `BulletList`, `Collapsible`, `Tabs`, `TabList`, `Tab`, `TabPanel` |
+| Forms | `Field`, `Input`, `PathControl`, `Textarea`, `Select`, `Checkbox`, `RadioGroup`, `Switch`, `SearchInput`, `UnitField`, `SecretField`, `ValueField`, `LockedValue`, `Dropzone` |
+| Dates and choices | `Calendar`, `DateInput`, `DatePicker`, `DateRangeInput`, `RangeCalendar`, `ChoicePicker`, `SegmentedChoice`, `ToggleGroup` |
+| Overlays | `Dialog`, `Drawer`, `Popover`, `ContextMenu`, `Tooltip`, their companion components, `TooltipProvider`, `ToastProvider`, `useToasts` |
+| Data | `Table`, `THead`, `TBody`, `TR`, `TH`, `TD`, `ProgressBar`, `TimelineSteps`, `KeyValueList`, `RankedList` |
+
+The ContextMenu primitive remains available, but Queue rows do not mount row context menus.
+`DatePicker` exports `DateInput` under another name. Date controls display `MM/DD/YYYY` while wire
+values remain ISO dates. Partial segments remain editor state.
+
+## Status vocabulary
+
+`DS_STATUS_ORDER` is the reading order. Status uses wording and shape as well as color.
+
+| Key | Presentation | Meaning |
+| --- | --- | --- |
+| `waiting` | Solid blue Review | A decision gate needs the operator |
+| `failed` | Solid danger | Error requiring inspection |
+| `parked` | Dashed warning | A write outcome is unknown and needs reconciliation |
+| `doneWarnings` | Tinted Done with warning count | Finished with warnings; accessible name is Done with warnings |
+| `running` | Tinted activity with spinner | Worker owns the run |
+| `cancelling` | Tinted activity | Cancellation requested, not settled |
+| `queued` | Outline | Accepted, not started |
+| `cancelled` | Solid neutral | Deliberate stop |
+| `verifiedDone` | Solid green Done | Finished and read back |
+
+`DS_ATTENTION_STATUSES` contains `waiting` and `failed`. A displayed status does not confer command
+permission. Served actions and exact write authority decide which controls are available.
+
+## Layout
+
+The app has a 1024×720 CSS-pixel minimum canvas. Queue remains beside Logs. Below the floor, the
+page scrolls rather than switching to a phone layout. Workspace/workflow rails, the top bar, and
+Sessions are shell chrome; Settings and intake replace the main region through `TakeoverFrame`.
+Settings owns its rail and guarded back arrow. Analytics and Explorer mount inside Settings.
+
+`PageBreadcrumbs` precedes a child heading. Available parents call the existing route callback;
+the last item is passive text. Wizard Back changes stages, while dismissal closes the layer.
+`DsBodyScope` supplies a shared content width and body rhythm. Tables hold dense records, grids
+hold aligned peer facts, and short chips carry facts that tolerate truncation.
+
+Queue footers stay on one line. They show time, `#attempt`, trace text, and duration. Context about
+how a run was created belongs in its information disclosure. Logs group ordered action entries
+under steps; read/fill observations use aligned label/value rows with shared facts at the heading. Timeline segments are
+categorical and equal width. Duration text carries elapsed time separately from segment width.
+
+## Motion
+
+`dsMotion.base` is a 140ms color/fill/edge transition. `fast` is a 90ms command hover/press,
+`enter` a 150ms arrival, `exit` a 90ms departure, and `move` a 220ms spatial change.
+`dsTravel.sm` and `dsTravel.md` represent 4px and 8px travel. Reduced-motion rules remove animation.
+Use `useDsEnterTransition` for arrivals without a primitive-owned open state.
+
+Keep reading content stationary: no animated log text, automatic focus jumps on live status
+updates, or width animation on categorical timeline segments. Existing transition classes handle
+status fill changes without changing the information's position.
+
+## Composition rules
+
+- Keep the specimen limited to `ds/**` and `lib/**`, with local fixture identities rather than workflow IDs.
+- Read each attempt as a complete surface; do not invent an automatic cross-attempt comparison.
+- Compose public primitives; change a shared variant at its owner instead of forking a component.
+- Use defined tokens for color, size, radius, depth, and duration; verify any runtime custom property has an actual writer.
+- Keep the theme root above Tooltip and Toast providers so their fragment siblings inherit tokens.
+- Reserve the toast viewport's bottom inset for the Sessions bar; panel notices belong to their panel's coordinate space.
+- Let a segmented frame own its height and make segments fill it; give free space to the control group rather than multiple `ml-auto` siblings.
+- Use `CardBase` with a growing body for aligned card bottoms and `CompareGrid` for peer records that share row tracks.
+- Put facts shared by every row on the group heading; show per-row departures next to the affected value.
+- Print IDs, paths, trace values, permanence, and refusal sentences as wrapping text when truncation would hide their meaning.
+- Keep a nested ID's full identity in state and search even when display drops a repeated parent prefix.
+- Apply `break-all` to an unbroken value, not its whole label cell.
+- Show served summaries, codes, and permanence in shared record heads so every consumer receives them.
+- State both boolean outcomes when silence would mean missing authority; distinguish measured zero, missing duration, and unavailable counts.
+- Put confidence beside the verdict it qualifies and keep independently derived facts visible until their agreement is proven.
+- Preserve every distinct capture availability/provenance arm; dimensions come from verified bytes, never guessed geometry.
+- Latch image selection and viewport through background refresh; image controls must not cover document text.
+- Use one control shell for fixed and editable Run Options, with a fixed value's reason visible below it.
+- Derive visible form-group membership and numbering together; a workflow that declares no flags shows no empty flags group.
+- Offer spreadsheet intake from its declared capability and show only reachable launcher stages.
+- Move labels and shared file-limit text with an upload control; intake routes always identify a real session.
+- Use `TakeoverFrame` for a full-page replacement and keep nested Settings sections free of duplicate takeover chrome.
+- Preserve arrival focus and restore the launching control or main region when a takeover closes.
+- Represent a navigation state outside a switcher's choices explicitly instead of highlighting Dashboard under another page.
+- Derive count badges and explanatory text from the same inputs, including pool excess and rollups.
+- Keep operation, member, and linked-child distinctions; deletion admission follows actual parent authority, not visual row kind.
+- Keep local validation/refusal feedback visible beside the dispatch; never present a local check as a server acknowledgment.
+- Move a replaced control’s labels, limits, and reachable destination with its replacement.
+- Keep approval controls, safe retry advice, write state, and remediation visible; disclose diagnosis without hiding safety facts.
+- A status or field mark belongs beside the exact fact it qualifies and uses the complete run/step/field identity.
+- Do not replace an explicit unavailable section with an empty table or an invented success value.
+- Preserve the approved component's copy and shape; a backend fact requiring a UI change goes through operator approval.
+
+## Accessibility
+
+- Every control has a computed accessible name; a clickable label or `title` alone does not prove it.
+- Use `aria-labelledby` for button-based Checkbox controls and a named role for labeled groups.
+- Keep important explanations visible or behind keyboard-reachable controls; hover is not their only route.
+- Give disclosure triggers real controls and preserve focusability when an action disappears.
+- Keep timeline waits visible even when a step has no ordinary event slot.
+- Distinguish task duration from execution duration with the exact label and source bound.
+- Keep icon/text items together when wrapping; a warning icon on a line by itself loses its referent.
+- Preserve complete accessible names, copy, search, and selection when clipping paint or deferring offscreen layout.
+- Do not duplicate a visible reason in a tooltip that makes assistive technology announce it twice.
+- Use live regions for changes, not every standing fact rendered on mount.
+- Keep focus rings on interactive controls; programmatic takeover focus does not draw an extra default browser ring.
+
+Read [PARITY.md](PARITY.md) before judging a visual difference and
+[the wiring contract](../../docs/rebuild/reference/frontend-backend-integration.md) before replacing a producer.

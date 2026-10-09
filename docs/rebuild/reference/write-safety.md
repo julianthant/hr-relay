@@ -2355,7 +2355,7 @@ warning. Cancel returns to Steps; warning Confirm acknowledges and advances to V
 run and submits nothing. The operator edits Values and finishes the modal; only that final submission
 authorizes the new run. Completion history does not prohibit explicit selection. This is a planned contract, not a claim that repeat submission is implemented or live-proved.
 
-The [2026-09-19 default-selection clarification](dashboard-surfaces.md#rerun-required-step-defaults--2026-09-19)
+The 2026-09-19 default-selection clarification
 also selects descriptor-required completed steps for a failed/interrupted source, with a visible
 explanation. It does not alter the warning, consent, execution or recovery rules below.
 

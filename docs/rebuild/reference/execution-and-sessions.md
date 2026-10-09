@@ -1071,7 +1071,7 @@ operator can see after a restart is the entire point.
 membership remain durable and immutable. Only `group_in_queue` and its monotonically advancing
 presentation version may change, through the journaled batch command. The queue presentation,
 new-batch defaults, historical migration behavior and retry display are owned by
-[dashboard-surfaces](dashboard-surfaces.md#workflow-batch-presentation)
+dashboard-surfaces
 in the workflow-batch paragraph immediately before D330.4. References below to the original schema
 and session terminology describe the released implementation.
 

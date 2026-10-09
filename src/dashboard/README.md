@@ -1,89 +1,79 @@
 # Dashboard frontend
 
-This is the browser application. Start at `app/main.tsx`, then the shell in
-`app/dashboard-app.tsx`. Feature components, their pure models, local styles and mock
-producers live together under `surfaces/`.
+The browser application starts at `app/main.tsx` and mounts `DashboardApp` from
+`app/dashboard-app.tsx`. The separate `kit.html` entry mounts `kit/main.tsx`.
+
+## Folder map
 
 | Folder | Responsibility |
 | --- | --- |
-| `app/navigation/` | The single URL/history owner and typed navigation coordinates |
-| `app/commands/` | Dispatch, command outcomes and bulk/worker orchestration |
-| `surfaces/shell/` | Workspace rail, workflow navigation, toolbar, calendar and run search |
-| `surfaces/queue/` | Queue rows, filters, sorting, actions and grouping |
-| `surfaces/run-detail/` | Detail sections, logs, timeline, identity review, write resolution and failure evidence |
-| `surfaces/run-start/` | Shared launcher layouts, input/options/confirmation and rerun service |
-| `surfaces/workflows/` | One frontend workflow catalog; `mocks/` holds preview contracts and producers |
-| `surfaces/notifications/`, `surfaces/sessions/` | Each feature’s view, model and mock producer |
-| `surfaces/settings/` | Settings shell plus `general/`, `editor/`, `providers/`, `routes/`, `storage/`, `preflight/`, `navigation/`, `catalog/` |
-| `surfaces/activity/`, `surfaces/explorer/` | Analytics and Explorer page components, models, local fixtures and styles; Analytics retains the existing Activity module and route identifiers |
-| `surfaces/archive/` | Retained, unmounted historical report readers and transport models; Archive is retired from product navigation |
-| `surfaces/spreadsheets/`, `surfaces/intake/` | Workbook editing/import and intake workspace |
-| `surfaces/shared/` | Reused actions, status formatting, loading geometry and run evidence |
-| `client/` | Stable `index.ts`, `queries.ts`, `commands.ts` facades; implementations in `queries/`, `commands/`, `subscriptions/` |
-| `state/` | Shared resource lifecycle, client context, bootstrap/day and served clock |
-| `ds/` | Public `ui.tsx` barrel; implementation in `primitives/`, tokens/themes in `theme/` |
-| `lib/` | Framework-free browser helpers |
-| `kit/`, `logs-preview/` | Separate specimen/presentation entry points |
+| `app/` | Application composition, workflow source policy, and takeovers |
+| `app/navigation/` | URL parsing, history, typed view state, keyboard shortcuts, and focus restoration |
+| `app/commands/` | Command composition, settlement, bulk dispatch, and worker controls |
+| `surfaces/shell/` | Workspace rail, workflow navigation, date controls, toolbar, and run search |
+| `surfaces/queue/` | Queue rows, focus mode, filters, sorting, grouping, selection, and local preview mutations |
+| `surfaces/run-detail/` | Logs, timeline, decisions, image workspace, run headers, and identity models |
+| `surfaces/run-start/` | Launcher, plan, options, steps, rerun, and recovery |
+| `surfaces/workflows/` | Shared workflow catalog; `mocks/` contains preview runs, definitions, documents, and Records |
+| `surfaces/sessions/` | Worker strip, cards, local command port, idle refresh, and samples |
+| `surfaces/notifications/` | Bell, inbox, destination models, and local preview producer |
+| `surfaces/settings/` | Settings composition and local styles |
+| `surfaces/settings/editor/` | Served fields, drafts, autosave, protected authority, and command attempts |
+| `surfaces/settings/general/` | General, appearance, ChatGPT account port, performance, path picker, and relocation |
+| `surfaces/settings/navigation/` | Settings search and keyboard preferences |
+| `surfaces/settings/preflight/`, `routes/`, `storage/`, `providers/` | Readiness, route display, doctor reports, and protected-value controls |
+| `surfaces/settings/catalog/` | Retained row vocabulary model, without a catalog page |
+| `surfaces/activity/` | Analytics view, range, timing, population, drilldown, and local producer |
+| `surfaces/explorer/` | Workflow timeline, source views, choices, and local definitions |
+| `surfaces/spreadsheets/` | CSV/XLSX worker import/export, library, typed mappings, editor, and undo history |
+| `surfaces/intake/` | Served intake session, mapping, validation, and enqueue workspace |
+| `surfaces/archive/` | Retained archive model; no mounted Archive page |
+| `surfaces/shared/` | Shared actions, recovery, loading, evidence styles, status, and formatting |
+| `client/` | Typed transport, query/command facades, errors, and subscription |
+| `state/` | Client context, resources, bootstrap/day reads, and served clock |
+| `ds/` | `ui.tsx` public barrel, `primitives/`, and `theme/` tokens |
+| `lib/` | Framework-free helpers |
+| `assets/ocr/` | Local document images and manifest for OCR previews |
+| `kit/` | Design-system specimen page |
 
-## Where a change belongs
+## Change owners
 
-Keep a component with its feature. Extract calculation, parsing, hooks and shared constants
-to a sibling `.ts` model. Move something into `shared/` only when independent features
-actually use it. Import the exact model needed; do not add feature barrels or registry
-imports to browser code. Component `.tsx` files under `app/` and `surfaces/` export components
-only. The design-system barrel is the deliberate exception.
+Keep components, styles, and models beside their feature. Component `.tsx` files under `app/`
+and `surfaces/` export components only. Put hooks, calculations, constants, and vocabulary in
+sibling `.ts` models. `ds/ui.tsx` is the design-system barrel. Use `surfaces/shared/` only for
+behavior several features use.
 
-## Backend wiring
+`client/index.ts` is the transport seam. `queries.ts` and `commands.ts` assemble implementations
+from their subfolders. Canonical wire contracts live under `src/models/dashboard/`; command rules
+live under `src/rules/commands/`. Browser imports never reach backend composition or task registries.
 
-`client/index.ts` is the typed transport seam. Its query and command facades infer contracts
-from `src/domain/**`; no frontend wire mirrors or server/workflow composition imports.
-`surfaces/workflows/workflow-catalog-model.ts` supplies the rail, launcher, workers and
-other workflow consumers. Availability, preview capability and executable registration
-are distinct fields; a displayed mock is not proof of a backend implementation.
+`app/workflow-sources.ts` reads `config/dashboard-workflow-sources.json`. Each workflow is explicitly
+`mock` or `served`; all configured workflows currently select `mock`. An undeclared ID throws
+`WORKFLOW_SOURCE_UNDECLARED`. A served failure never falls back to a mock.
 
-General’s ChatGPT account card consumes `ChatGptAccountPort` through `ChatGptAccountContext`.
-The default producer is a memory-only preview. Replace the context port using the existing typed
-client/domain seam for verified session, consent, sign-in and sign-out results; credentials and
-tokens belong to the backend. Provider budget/model and API-key controls are retired from the
-frontend; their existing backend contracts remain pending integration.
-
-Feature mocks own fictional state transitions. Replace a producer behind its existing
-view model when wiring a feature. Keep explicit loading, empty, refusal, unknown outcome
-and failed states; do not substitute fixture success when transport fails.
-
-The [current wiring checklist](../../docs/rebuild/reference/frontend-backend-integration.md#current-frontend-mock-wiring-checklist)
-distinguishes mounted producers from retained transport implementations. Use it before replacing a
-mock. In particular, current Logs, Analytics, notifications and Sessions still contain local
-producers; the older runtime matrix is not proof that those consumers are mounted today.
-
-Archive is no longer mounted or offered in Settings, shell search, queue menus or notifications.
-Legacy Archive URLs show an explicit removal notice and a guarded return to the dashboard. Stored
-history and backend archival contracts remain intact. A unified cross-day, cross-version run query
-and upgrade compatibility/migration policy still require backend integration; page retirement does
-not make historical reports available in the current day queue.
-
-`tests/perf/frontend/` builds an isolated production fixture using the real Queue and Log components.
-It measures rendering, interaction and heap cleanup independently of HR services. Preserve complete
-search, copy, selection and focus when changing rendering. Offscreen layout deferral reduces layout
-work; it does not bound loaded data or DOM memory.
+Bootstrap, Settings, Preflight, storage, and the served intake workspace use the typed client.
+Current Logs, worker cards, Analytics, Explorer, notifications, and workflow runs have local
+producers. Retained client methods do not prove those consumers are wired. The
+[current frontend mock wiring checklist](../../docs/rebuild/reference/frontend-backend-integration.md#current-frontend-mock-wiring-checklist)
+names each replacement seam and its acceptance contract.
 
 ## Navigation
 
-`app/navigation/url-state.ts` owns public page coordinates. The bounded `view` query
-parameter uses `ViewRouteSchema`; it contains workflow/run selections, filters, tabs,
-modal/wizard steps and disclosure coordinates. The provider delegates every write to the
-same history owner. Same-event updates are combined into one history entry. Typing search
-terms replaces the current entry; changing a page, selection or stage pushes an entry.
+`app/navigation/url-state.ts` owns public coordinates. `ViewRouteSchema` bounds filters, selected
+workflows/runs, tabs, stages, and disclosures. Search typing replaces history; navigation pushes
+history. Breadcrumbs and native Back/Forward use the same owner. Private values, PDF bytes, OCR
+edits, credentials, pending commands, and workbook history never enter URLs.
 
-Use `PageBreadcrumbs` from `ds/ui.tsx` for page hierarchy. Place child-page trails before the
-heading; pass the existing route callback for each available parent. The last item is passive
-current-page text. Settings keeps its rail heading and a separate guarded back-arrow button; child pages
-retain breadcrumbs. Keep wizard Back controls for steps and modal dismissal for closing layers;
-do not add a second return control for the same destination.
+Drafts survive navigation within the mounted session. Reload cannot recreate private drafts or a
+locally created run. Archive and UI catalog routes show removal notices. The dashboard has no
+Archive page, version-bump controls, row context menus, or mobile Capture Mode.
 
-Private form values, PDF bytes, OCR edits, credentials, pending commands and read receipts
-are not serialized into URLs. Mock drafts survive history within the running page;
-reloading does not manufacture a private draft or a created run. Transient menus, hover,
-focus, field errors and unsaved mutation state remain with their feature.
+## Commands and references
 
-See [DESIGN.md](DESIGN.md), [PARITY.md](PARITY.md) and the nearest instructions before edits.
+`npm run dashboard` starts the BFF and Vite. `npm run web` starts Vite on port 5174 and needs a
+running BFF for dashboard data. `npm run web:build` builds dashboard and specimen assets.
+`http://localhost:5174/kit.html` shows the primitives.
+
+Read [AGENTS.md](AGENTS.md) before edits, [DESIGN.md](DESIGN.md) for tokens and layout,
+[PARITY.md](PARITY.md) for visual verification, and [dashboard surfaces](../../docs/rebuild/reference/dashboard-surfaces.md)
+for mounted behavior. `tests/perf/frontend/` contains the isolated Queue/Logs performance fixture.
