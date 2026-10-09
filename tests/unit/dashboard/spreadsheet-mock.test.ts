@@ -1,3 +1,4 @@
+import { manualClock } from "../../../src/rules/time/clock.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { registeredSpreadsheetWorkbook, registerLocalSpreadsheet, retainSpreadsheetCopy, addMockSpreadsheetType, initialSpreadsheetSheets, NOT_MAPPED, registerMockSpreadsheet, resetSpreadsheetMocks, searchMockSpreadsheet, spreadsheetMappingErrors, WORKBOOK_ONLY, type SpreadsheetType } from "../../../src/dashboard/surfaces/spreadsheets/spreadsheet-mock-model.js";
@@ -77,4 +78,17 @@ it("chooses readable imported-fill text at the exact luminance boundary", () => 
     assert.equal(spreadsheetForeground(background), "var(--ds-sheet-contrast-dark)", background);
   }
   for (const background of [undefined, "transparent", "rgb(0, 0, 0)", "#000"]) assert.equal(spreadsheetForeground(background), undefined);
+});
+
+it("stamps registrations from injected time and retains original timestamps on replacement", () => {
+  const clock = manualClock(new Date("2026-10-08T12:00:00Z"));
+  const first = registerMockSpreadsheet({ name: "Clock roster.xlsx", typeId: "roster", sheets: initialSpreadsheetSheets(roster) }, undefined, clock);
+  assert.equal(first.addedAt, "2026-10-08T12:00:00.000Z");
+  const local = registerLocalSpreadsheet({ ...newEditableWorkbook(), name: "Local clock.xlsx" }, undefined, clock);
+  assert.equal(local.addedAt, first.addedAt);
+  clock.advanceWall(60_000);
+  assert.equal(registerMockSpreadsheet({ name: "Renamed roster.xlsx", typeId: "roster", sheets: first.sheets }, first.id, clock).addedAt, first.addedAt);
+  assert.equal(registerLocalSpreadsheet({ ...newEditableWorkbook(), name: "Renamed local.xlsx" }, local.id, clock).addedAt, local.addedAt);
+  const supplied = registerMockSpreadsheet({ name: "Supplied.xlsx", typeId: "roster", sheets: first.sheets, addedAt: "2026-01-01T00:00:00Z" }, undefined, clock);
+  assert.equal(supplied.addedAt, "2026-01-01T00:00:00Z");
 });

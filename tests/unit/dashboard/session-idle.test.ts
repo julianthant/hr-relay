@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, it, vi } from 'vitest';
-import { IdleSessionSchedule, IDLE_REFRESH_MS } from '../../../src/dashboard/surfaces/sessions/session-idle-model.js';
+import { IdleSessionSchedule, IDLE_REFRESH_MS, useIdleSessionRefresh } from '../../../src/dashboard/surfaces/sessions/session-idle-model.js';
 import { useSessionPreviewCommands, type SessionPreviewCommandPort, type SessionPreviewRequest } from '../../../src/dashboard/surfaces/sessions/session-preview-command-model.js';
 import { sessionsSample } from '../../../src/dashboard/surfaces/sessions/sessions-fixture.js';
+import { manualClock } from '../../../src/rules/time/clock.js';
 import type { SessionsViewState } from '../../../src/dashboard/surfaces/sessions/sessions-view-model.js';
 
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
@@ -50,4 +51,36 @@ it('runs with the panel collapsed, retains an uncertain request for readback, an
     await act(async () => vi.advanceTimersByTimeAsync(IDLE_REFRESH_MS)); assert.equal(requests.length, 2);
   } finally { await act(async () => root.unmount()); }
   await vi.advanceTimersByTimeAsync(IDLE_REFRESH_MS); assert.equal(requests.length, 2);
+});
+
+it('uses injected wall time for countdown and confirmed refresh without advancing ambient time', async () => {
+  vi.useFakeTimers(); vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const clock = manualClock(new Date('2026-10-08T12:00:00Z'));
+  const requests: SessionPreviewRequest[] = [];
+  const data = sessionsSample('active');
+  let idle: ReturnType<typeof useIdleSessionRefresh> | undefined;
+  function Harness() { idle = useIdleSessionRefresh(data, {}, async request => { requests.push(request); }, clock); return null; }
+  const host = document.createElement('div'), root = createRoot(host);
+  try {
+    await act(async () => root.render(createElement(Harness)));
+    assert.equal(idle?.countdowns['sample-worker-4'].remainingMs, IDLE_REFRESH_MS);
+    await act(async () => vi.advanceTimersByTimeAsync(IDLE_REFRESH_MS));
+    assert.equal(requests.length, 0, 'timer movement cannot substitute for the injected clock');
+    clock.advanceWall(IDLE_REFRESH_MS - 1);
+    await act(async () => vi.advanceTimersByTimeAsync(1000));
+    assert.equal(idle?.countdowns['sample-worker-4'].remainingMs, 1);
+    clock.advanceWall(1);
+    await act(async () => vi.advanceTimersByTimeAsync(1000));
+    assert.equal(requests.length, 1);
+    assert.equal(idle?.countdowns['sample-worker-4'].waiting, true);
+    clock.advanceWall(IDLE_REFRESH_MS);
+    await act(async () => vi.advanceTimersByTimeAsync(1000));
+    assert.equal(requests.length, 1);
+    idle?.confirmed(requests[0]);
+    await act(async () => vi.advanceTimersByTimeAsync(1000));
+    assert.equal(idle?.countdowns['sample-worker-4'].remainingMs, IDLE_REFRESH_MS);
+    clock.advanceWall(IDLE_REFRESH_MS);
+    await act(async () => vi.advanceTimersByTimeAsync(1000));
+    assert.equal(requests.length, 2);
+  } finally { await act(async () => root.unmount()); }
 });
