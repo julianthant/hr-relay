@@ -14,7 +14,8 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { activeTakeover, shellViewOf, type ActiveTakeover } from "../../../../../src/dashboard/app/navigation/url-state.js";
+import { parseArchiveBrowse } from "../../../../../src/dashboard/app/navigation/archive-route-model.js";
+import { parseRoute, routeToSearch, activeTakeover, shellViewOf, type ActiveTakeover } from "../../../../../src/dashboard/app/navigation/url-state.js";
 import { SHELL_VIEWS, type ShellViewSelection } from "../../../../../src/dashboard/surfaces/shell/top-bar-model.js";
 
 const BASE = { start: false } as const;
@@ -86,4 +87,18 @@ describe("the Top Bar switcher's pressed segment", () => {
       }
     }
   });
+});
+
+it("keeps clean Archive routes and marks corrupt, invalid and oversized browsing input", () => {
+  const browse = { filters: { workflow: "separations" }, columns: ["name"], section: 1 };
+  assert.deepEqual(parseArchiveBrowse(JSON.stringify(browse)), browse);
+  const route = { start: false, archive: "index", archiveBrowse: browse };
+  assert.deepEqual(parseRoute(routeToSearch(route)).archiveBrowse, browse);
+  for (const encoded of ["{", JSON.stringify({ unexpected: true }), JSON.stringify({ filters: {}, columns: ["name", "name"] }), " ".repeat(24001)]) {
+    assert.equal(parseArchiveBrowse(encoded), null);
+    const parsed = parseRoute(`?archive=index&archiveBrowse=${encodeURIComponent(encoded)}`);
+    assert.equal(parsed.archiveBrowseInvalid, true);
+    assert.equal(parsed.archiveBrowse, undefined);
+  }
+  assert.throws(() => routeToSearch({ ...route, archiveBrowse: { filters: {}, columns: ["x".repeat(24001)] } }), /Archive browsing state exceeds its route bounds/u);
 });

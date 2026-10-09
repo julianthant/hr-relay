@@ -12,6 +12,7 @@ import { StorageHealthSummaryWireSchema } from "../../../../../src/models/dashbo
 import type { DashboardClient } from "../../../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../../../src/dashboard/state/client-context.js";
 import { SettingsPage } from "../../../../../src/dashboard/surfaces/settings/settings.js";
+import { useEditableSettings } from "../../../../../src/dashboard/surfaces/settings/editor/settings-editor-model.js";
 import { settingInput } from "../../../../../src/dashboard/surfaces/settings/editor/settings-draft-model.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -338,4 +339,27 @@ describe("editable Settings surface", () => {
     if (typeof original === "string") throw new Error("CRM route values are not an object");
     assert.deepEqual(command.payload.patch["urls.crm.prod"]?.set, { ...original, entry: "https://crm.example.test/new" }, "editing one row retains the other four URLs");
   });
+});
+
+it("publishes a failed refresh while retaining the verified document and unsaved draft", async () => {
+  let fail = false;
+  let controller: ReturnType<typeof useEditableSettings> | undefined;
+  const client = { editableSettings: () => fail ? Promise.reject(new Error("synthetic read failure")) : Promise.resolve(DOCUMENT),
+    storageRelocationPlans: () => Promise.reject(new Error("synthetic no relocation")),
+  } as unknown as DashboardClient;
+  function Surface() { controller = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: "d".repeat(64) }); return null; }
+  host = document.createElement("div"); document.body.append(host);
+  await act(async () => { root = createRoot(host!); root.render(createElement(DashboardClientProvider, { client, children: createElement(Surface) })); });
+  assert.ok(controller);
+  const current = () => { if (controller === undefined) throw new Error("missing editor"); return controller; };
+  const leaf = current().leaves.find(candidate => candidate.input === "text");
+  assert.ok(leaf);
+  await act(async () => current().update(leaf.path, "synthetic retained draft"));
+  const retained = structuredClone(current().draft);
+  fail = true;
+  await act(async () => current().reload());
+  assert.equal(current().editor.state, "loaded");
+  assert.match(current().readProblem ?? "", /could not be read.*drafts are retained/u);
+  assert.deepEqual(current().draft, retained);
+  assert.equal(current().dirtyCount, 1);
 });

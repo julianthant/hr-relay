@@ -4,6 +4,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it } from "vitest";
 import type { SettingsSaveNotice } from "../../../../../src/dashboard/surfaces/settings/editor/settings-attempt-model.js";
+import { DashboardClientError } from "../../../../../src/dashboard/client/errors.js";
 import type { DashboardClient } from "../../../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../../../src/dashboard/state/client-context.js";
 import { StorageRelocationRows } from "../../../../../src/dashboard/surfaces/settings/general/settings-relocation.js";
@@ -350,4 +351,29 @@ describe("storage relocation Paths controls", () => {
     if (command.type !== "apply-settings") throw new Error("expected ordinary settings write");
     assert.deepEqual(command.payload.patch["paths.downloadsDir"], { set: "/tmp/chosen-downloads" });
   });
+});
+
+it("clears a typed before-effect refusal but retains an unknown relocation attempt", async () => {
+  const commands: unknown[] = [];
+  let beforeEffect = true;
+  const client = { storageRelocationPlans: () => Promise.resolve(INITIAL),
+    applyStorageRelocation: (command: unknown) => {
+      commands.push(structuredClone(command));
+      return Promise.reject(beforeEffect
+        ? new DashboardClientError({ kind: "http", status: 403, code: "OPERATOR_MUTATION_ORIGIN_REFUSED", message: "synthetic admission refusal" })
+        : new Error("synthetic unknown effect"));
+    },
+  } as unknown as DashboardClient;
+  const surface = await mount(client);
+  await edit("Artifact folder", "/tmp/refused-artifacts"); await idle();
+  assert.equal(surface.controller().save.state, "refused");
+  assert.equal(surface.controller().dirtyCount, 1);
+  beforeEffect = false;
+  await edit("Artifact folder", "/tmp/unknown-artifacts"); await idle();
+  assert.equal(surface.controller().save.state, "unconfirmed");
+  assert.notDeepEqual(commands[0], commands[1]);
+  await edit("Artifact folder", "/tmp/ignored-artifacts");
+  await act(async () => surface.controller().retry());
+  assert.deepEqual(commands[2], commands[1]);
+  assert.equal(surface.controller().save.state, "unconfirmed");
 });
