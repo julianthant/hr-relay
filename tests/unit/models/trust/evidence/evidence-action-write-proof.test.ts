@@ -1,25 +1,4 @@
-/**
- * The receipt action entry's write proof — 03a Track F's one open BE line
- * (ledger 2 D16–D22): the receipt's commit action carries what PROVED the
- * write — the fenced system and key digest, the completion arm, the durable
- * proof source, the proof's own redacted values and the instant they were
- * recorded — beside the write it proves.
- *
- * Three seams in this file, all pre-agreed by the dispatch brief:
- *
- * 1. **The schema arms** (`ActionEvidenceSchema.proved`,
- *    `RunEvidenceReceiptSchema.composition`). `proved` is OPTIONAL because
- *    receipts are durably persisted and immutable (D141/D199): a row derived
- *    before composition 2 carries neither field and MUST keep parsing —
- *    the D13 lesson (a required field on a durably persisted schema is a
- *    migration) applied to the one record an operator reads months later.
- * 2. **The redaction table**: every commit contract's completion proof has a
- *    declared `write-proof` classification for every leaf its example proof
- *    produces — an undeclared leaf fails receipt derivation loud, so the
- *    table must be total BEFORE any run commits through the contract.
- * 3. **Negative controls** per arm: a `proved` on a read action, an empty
- *    values list, and a forbidden classification pairing are each refused.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import {
@@ -61,7 +40,7 @@ const PROVED = Object.freeze({
   recordedAt: AT,
 });
 
-describe("ActionEvidenceSchema.proved (ledger 2 D16–D22)", () => {
+describe("ActionEvidenceSchema.proved", () => {
   it("a commit action carries what proved the write — system, key digest, completion arm, proof source, redacted values, instant", () => {
     const parsed = ActionEvidenceSchema.parse({ ...COMMIT_ACTION, proved: PROVED });
     assert.equal(parsed.proved?.system, "kuali");
@@ -71,7 +50,7 @@ describe("ActionEvidenceSchema.proved (ledger 2 D16–D22)", () => {
     assert.equal(parsed.proved?.recordedAt, AT);
   });
 
-  it("a pre-composition-2 durable row — no `proved` at all — still parses (the D13 migration rule)", () => {
+  it("a pre-composition-2 durable row without proved still parses", () => {
     const parsed = ActionEvidenceSchema.parse(COMMIT_ACTION);
     assert.equal(parsed.proved, undefined);
   });

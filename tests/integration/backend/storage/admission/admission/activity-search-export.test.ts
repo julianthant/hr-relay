@@ -156,7 +156,7 @@ it("serves and exports the same reviewed Activity summary snapshot and refuses s
   assert.deepEqual(summary.data.find(row=>row[0]==="Distinct people")?.slice(0,2),["Distinct people",0]);
   assert.equal(file.evidence.workbookVersion,3);assert.equal("requestedBy" in file.evidence&&file.evidence.requestedBy,"synthetic-operator");
   assert.deepEqual(f.database.authority.operatorXlsxExports.get(file.evidence.exportId),file.evidence);
-  // Registering this export itself advances authority: old review cannot silently read the new generation.
+
   assert.throws(()=>f.activity.readSelected(report.from,report.to,report.snapshot.token),/stale/u);
   assert.equal((await f.app.request(`http://localhost/api/v1/reports/activity.csv?from=${report.from}&to=${report.to}`)).status,409);
 });

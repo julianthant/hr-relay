@@ -25,16 +25,11 @@ type TestTargetEntryInput = TestTargetRegistryInput["targets"][number];
 type FinalizationArmInput = NonNullable<TestTargetEntryInput["workflows"]["separations-kuali-finalization"]>;
 type ChainArmInput = NonNullable<TestTargetEntryInput["workflows"]["separations"]>;
 
-/**
- * The ONE test-target value that crosses the closed secret boundary (D300): the
- * canary's Kuali document number, bound to its test-data-local name. The
- * three person references D286 registered are retired, so no fixture in this
- * file can supply an EID or a display name through the registry at all.
- */
+
 const DOCUMENT_NUMBER_SECRET = {
   name: "separationsKualiFinalizationCanaryDocumentNumber",
 } as const;
-/** The fixture subject's number, configured in ignored config/test-data.local.json (D341). */
+
 const FIXTURE_DOCUMENT_NUMBER = "4502";
 const FIXTURE_CONFIGURED_SOURCE = testDataInputSource({
   separationsKualiFinalizationCanaryDocumentNumber: FIXTURE_DOCUMENT_NUMBER,
@@ -45,12 +40,7 @@ const COMMITTED_CONFIGURED_SOURCE = testDataInputSource({
   separationsKualiFinalizationCanaryDocumentNumber: COMMITTED_DOCUMENT_NUMBER,
 });
 
-/**
- * The subject-level identity every fixture below starts from. It declares NO
- * workflow arm — each fixture adds exactly the arm(s) its behaviour needs, so a
- * case about the finalization arm cannot accidentally be carried by the chain
- * arm or the other way round.
- */
+
 const SUBJECT = {
   label: "fixture-target",
   availability: {
@@ -84,13 +74,7 @@ const OBSERVED_PUBLIC_INPUT: FinalizationArmInput["publicInput"] = {
   observedExistingComments: "",
 };
 
-/**
- * The observed leaves minus `terminationEffectiveDate` — the one pending leaf
- * `OBSERVED_PUBLIC_INPUT` above actually carries. The other two pending leaves
- * (`transactionNumber`, `timekeeperComments`) were never in it, so nothing has
- * to be removed for them: this is the input a case may declare EVERY pending
- * field against without tripping the both-observed-and-pending refusal.
- */
+
 const PENDING_FREE_PUBLIC_INPUT: FinalizationArmInput["publicInput"] = (() => {
   const { terminationEffectiveDate: _staged, ...rest } = OBSERVED_PUBLIC_INPUT;
   return rest;
@@ -103,11 +87,7 @@ const COMPLETE_PUBLIC_INPUT: FinalizationArmInput["publicInput"] = {
   timekeeperComments: "Synthetic finalization comment.",
 };
 
-/**
- * The standalone finalization arm is an OBSERVATION record since D300: it holds
- * no secret input at all, and no completeness of its public leaves can make its
- * resolver answer `ready`.
- */
+
 const FINALIZATION_ARM: FinalizationArmInput = {
   kind: "ordinary",
   publicInput: COMPLETE_PUBLIC_INPUT,
@@ -128,12 +108,7 @@ function registry(targets: TestTargetRegistryInput["targets"]): TestTargetRegist
   return { schemaVersion: 2, targets };
 }
 
-/**
- * The shape a REJECTION case needs: the compiler refuses an unknown arm, an EID
- * in public input or a retired `secretInput` block, which is half the point —
- * so the invalid cases go in as data and are judged by the parser, exactly as
- * config is.
- */
+
 function rawRegistry(targets: readonly unknown[]): unknown {
   return { schemaVersion: 2, targets };
 }
@@ -196,14 +171,7 @@ describe("the committed test target registry", () => {
   });
 
   it("lists the committed subject's declared workflows in the arms schema's own shape order", () => {
-    // `declaredWorkflows` (internal) now derives its fixed order from
-    // `TestTargetWorkflowArmsSchema.shape` rather than a hand-written pair, so a
-    // third arm added to the schema is picked up automatically. This pins the
-    // source of that order directly, and pins the committed canary's own parsed
-    // key order (zod builds a parsed object by iterating the shape's keys, so
-    // this is UNSORTED on purpose) to the same sequence — together they prove
-    // `declaredWorkflows`'s output for this subject is
-    // `[separations, separations-kuali-finalization]`, not an arbitrary sort.
+
     assert.deepEqual(Object.keys(TestTargetWorkflowArmsSchema.shape), [
       SEPARATIONS_WORKFLOW,
       FINALIZATION_WORKFLOW,
@@ -217,8 +185,7 @@ describe("the committed test target registry", () => {
   });
 
   it("commits the canary's document as a closed reference, never as a number", () => {
-    // D300: a literal here would let a COMMIT choose the live subject. The
-    // reference makes ignored config/test-data.local.json the only place that can.
+
     const chain = TEST_TARGET_REGISTRY.targets[0]?.workflows[SEPARATIONS_WORKFLOW];
     assert.deepEqual(chain?.publicInput.document, {
       state: "configured",
@@ -255,8 +222,7 @@ describe("the committed test target registry", () => {
       label: "finalization-canary",
       reason: "blocked: needs finalization-canary for separations-kuali-finalization; transactionNumber not yet filed (UCPath filing \u2461 pending); timekeeperComments not authored (the composed chain's comments node composes it); terminationEffectiveDate not observed on the form; the chain's dates node derives it (separation date + 1), last observed 2026-09-08",
     });
-    // Since D300 this resolver cannot spend a credential because it cannot be
-    // HANDED one: it takes the registry and the label, and nothing else.
+
     assert.equal(resolveSeparationsKualiFinalizationTestTarget.length, 2);
   });
 
@@ -291,8 +257,7 @@ describe("the committed test target registry", () => {
       assert.equal(committed.includes(retired), false, `retired label ${retired} is still committed`);
     }
     assert.equal(committed.includes("emplId\":\""), false);
-    // The three person references D286 registered are retired, not re-pointed:
-    // none of their names may survive anywhere in the committed registry.
+
     for (const retiredReference of [
       "separationsKualiFinalizationCanaryEid",
       "separationsKualiFinalizationCanaryEmployeeName",
@@ -340,16 +305,7 @@ describe("test target registry parsing", () => {
   });
 
   it("rejects a pending block that declares no field at all", () => {
-    // `pending: {}` parses as "every leaf is optional and none is declared",
-    // which reads as a truthful claim and makes none: the arm would then
-    // resolve past the pending gate and report the standing refusal as though
-    // nothing were outstanding. An arm with nothing pending omits the block.
-    //
-    // `{ transactionNumber: undefined }` is the SAME empty claim spelled with a
-    // key, and it is the one that got through: zod's parsed object still OWNS
-    // that key, so a refine counting `Object.keys` saw one field and passed it.
-    // Both spellings must be refused with the refine's own message — matching
-    // only /pending/ would pass on any message mentioning the word.
+
     for (const pending of [{}, { transactionNumber: undefined }]) {
       assert.throws(
         () => parseTestTargetRegistry(registry([finalizationSubject({
@@ -414,10 +370,7 @@ describe("test target registry parsing", () => {
   });
 
   it("refuses the retired secretInput block on the finalization arm", () => {
-    // D300 deleted the three person references AND the block that carried them.
-    // A config that still declares one is not "extra data the parser ignores":
-    // it is a claim that the registry supplies person values, and the strict
-    // arm schema must refuse it by name.
+
     assert.throws(
       () => parseTestTargetRegistry(rawRegistry([{
         ...SUBJECT,
@@ -438,9 +391,7 @@ describe("test target registry parsing", () => {
   });
 
   it("refuses a chain arm that commits a document NUMBER instead of the closed reference", () => {
-    // The retired `{ state: "present", documentNumber }` shape is exactly the
-    // commit-chooses-the-subject hazard D300 closed; the discriminated union
-    // must not still accept it.
+
     assert.throws(() => parseTestTargetRegistry(rawRegistry([{
       ...SUBJECT,
       workflows: { separations: { kind: "full-chain-dry-run", publicInput: { document: { state: "present", documentNumber: "4537" } } } },
@@ -511,10 +462,7 @@ describe("test target registry parsing", () => {
   });
 
   it("refuses a manifest case for EITHER modelled workflow whose arm is absent", () => {
-    // Both arms of the workflow→arm lookup, from both sides: the chain subject
-    // declares no finalization arm and the finalization subject declares no
-    // chain arm. A lookup that answered with the OTHER workflow's arm would
-    // compare the manifest against the wrong kind and pass silently here.
+
     assert.throws(
       () => parseTestTargetRegistry(registry([chainSubject()]), [{
         workflow: "separations-kuali-finalization",
@@ -532,9 +480,7 @@ describe("test target registry parsing", () => {
   });
 
   it("accepts a chain manifest case that matches the subject's own chain arm", () => {
-    // The matching half of the same lookup: the chain arm must be REACHED, not
-    // merely absent, or the case above would pass on a lookup that never
-    // returns a chain arm at all.
+
     const parsed = parseTestTargetRegistry(registry([chainSubject()]), [{
       workflow: "separations",
       cases: [{ subjectLabel: "fixture-target", subjectKind: "full-chain-dry-run" }],
@@ -543,9 +489,7 @@ describe("test target registry parsing", () => {
   });
 
   it("blames the manifest, not the entry, for a workflow no resolver models", () => {
-    // An unmodelled workflow id is a defect in the MANIFEST; saying the entry
-    // "declares no <workflow> arm" would send the reader to config to add an arm
-    // for a workflow that has no resolver at all.
+
     assert.throws(
       () => parseTestTargetRegistry(registry([finalizationSubject()]), [{
         workflow: "i9-lookup",
@@ -576,20 +520,16 @@ describe("test target registry parsing", () => {
 
 describe("separations-kuali-finalization test target resolution", () => {
   it("states the standing refusal in the words the resolver reports", () => {
-    // The constant the resolver and its readers share is pinned to its own
-    // TEXT here, so the exact-reason assertions below cannot be satisfied by a
-    // constant that quietly stopped saying anything.
+    // Pin the reason text independently so a silently emptied shared constant cannot satisfy both sides.
     assert.equal(
       FINALIZATION_PERSON_FACTS_DERIVED_REASON,
       "employee name, EID and timekeeper name are derived live by the composed separations chain "
-      + "and are never registry- or protected-settings-supplied (D300); run the composed separations workflow",
+      + "and are never registry- or protected-settings-supplied; run the composed separations workflow",
     );
   });
 
   it("blocks BY NAME even when every public leaf a live read can supply is present", () => {
-    // D300: completeness of the public record can no longer produce `ready`.
-    // The standalone harness holds no person facts, so its whole vocabulary is
-    // `blocked` — and it says why, with the subject's own observation date.
+
     const parsed = parseTestTargetRegistry(registry([finalizationSubject({ availability: AVAILABLE })]));
 
     assert.deepEqual(resolveSeparationsKualiFinalizationTestTarget(parsed, "fixture-target"), {
@@ -601,10 +541,7 @@ describe("separations-kuali-finalization test target resolution", () => {
   });
 
   it("blocks rather than defects when the public record is INCOMPLETE", () => {
-    // The old resolver assembled a canonical input and threw a registry defect
-    // for a missing undeclared leaf. It no longer parses one at all, so an
-    // incomplete observation record must still answer with the standing public
-    // refusal — never an exception a caller reads as "the registry is wrong".
+
     const parsed = parseTestTargetRegistry(registry([finalizationSubject({
       availability: AVAILABLE,
       workflows: {
@@ -685,11 +622,7 @@ describe("separations-kuali-finalization test target resolution", () => {
   });
 
   it("names EVERY pending key the schema declares in the blocked reason", () => {
-    // The resolver's report order must be DERIVED from the pending schema. A
-    // key the schema declares but the report order omits would drop out of the
-    // reason entirely and leave the operator reading the standing refusal as
-    // the whole story, so the pin walks the schema itself rather than a copy of
-    // its keys.
+
     const declared = Object.keys(SeparationsKualiFinalizationPendingSchema.shape);
     assert.equal(declared.length > 0, true);
     const parsed = parseTestTargetRegistry(rawRegistry([{
@@ -703,8 +636,7 @@ describe("separations-kuali-finalization test target resolution", () => {
         },
       },
     }]));
-    // The resolver's whole vocabulary is `blocked` since D300, so there is no
-    // other state to narrow away here — the reason IS the report.
+
     const result = resolveSeparationsKualiFinalizationTestTarget(parsed, "fixture-target");
     assert.equal(result.state, "blocked");
     for (const field of declared) {
@@ -756,11 +688,7 @@ describe("separations chain test target resolution", () => {
     assert.deepEqual(resolveSeparationsTestTarget(parsed, "fixture-target", FIXTURE_CONFIGURED_SOURCE), {
       state: "ready",
       label: "fixture-target",
-      // The document number is the box's ONE varying value, and it arrives from
-      // ignored config/test-data.local.json through the arm's closed reference;
-      // The server planner admits the protected timekeeper and applies
-      // ingress defaults once after this readiness check.
-      // Nothing here is authored by the resolver.
+
       protectedBindings: [{ kind: "test-data-local", inputPath: "documentNumber",
         name: "separationsKualiFinalizationCanaryDocumentNumber", sourceId: "00000000-0000-4000-8000-000000000010" }],
       canonicalInput: {
@@ -785,18 +713,12 @@ describe("separations chain test target resolution", () => {
       state: "blocked",
       label: "fixture-target",
       reason: "blocked: needs fixture-target; its Kuali document number is not configured — "
-        + `set ${DOCUMENT_NUMBER_SECRET.name} in config/test-data.local.json (D341)`,
+        + `set ${DOCUMENT_NUMBER_SECRET.name} in config/test-data.local.json`,
     });
   });
 
   it("defects by reference and key — never by value — on a malformed configured number", () => {
-    // The value is judged by the SAME `KualiDocumentNumberSchema` the start box
-    // applies (3-8 digits) when the private file loads, so what the resolver
-    // accepts is exactly what an operator could have typed. Each malformed value
-    // below is written to a real 0600 private file and read through the
-    // production loader: a DEFECT in local configuration surfaces as a
-    // TestDataLocalConfigError, and the resolver's message may name the
-    // reference and the key only. Any other source failure propagates unchanged.
+
     const parsed = parseTestTargetRegistry(registry([chainSubject({ availability: AVAILABLE })]));
     assert.throws(
       () => resolveSeparationsTestTarget(parsed, "fixture-target", { read: () => { throw new TypeError("unexpected source failure"); } }),
@@ -858,9 +780,7 @@ describe("separations chain test target resolution", () => {
     assert.throws(
       () => resolveSeparationsTestTarget(parsed, "fixture-target", FIXTURE_CONFIGURED_SOURCE),
       (error: unknown) => {
-        // The refusal must be the registry's own defect type, not a bare Error:
-        // a caller distinguishing "mis-addressed request" from "decayed canary"
-        // reads the NAME, and a message regex alone would pass on either.
+        // The registry defect name distinguishes bad requests from invalid registry state.
         assert.equal((error as Error).name, "TestTargetRegistryDefectError");
         assert.match(
           String(error),
@@ -888,7 +808,7 @@ describe("separations chain test target resolution", () => {
   });
 });
 
-describe("the person-lookup live-read resolver (D318)", () => {
+describe("the person-lookup live-read resolver", () => {
   const PERSON_LOOKUP_LABEL = "person-lookup-canary";
   const EID_NAME = "personLookupCanaryEid";
 
@@ -907,7 +827,7 @@ describe("the person-lookup live-read resolver (D318)", () => {
     assert.deepEqual(resolution, {
       state: "blocked",
       label: PERSON_LOOKUP_LABEL,
-      reason: `blocked: needs ${PERSON_LOOKUP_LABEL}; its UCPath employee id is not configured — set ${EID_NAME} in config/test-data.local.json (D341)`,
+      reason: `blocked: needs ${PERSON_LOOKUP_LABEL}; its UCPath employee id is not configured — set ${EID_NAME} in config/test-data.local.json`,
     });
     assert.deepEqual(read, ["personLookupCanaryEid"]);
   });

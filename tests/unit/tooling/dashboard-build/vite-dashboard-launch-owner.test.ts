@@ -1,20 +1,4 @@
-/**
- * The dev server's launch-owner middleware, driven as the middleware — not as a
- * re-implementation of it.
- *
- * `scripts/dev/dashboard.ts` mints a launch nonce and passes it to Vite in the
- * child environment; the preflight's Vite-occupant detector counts an occupant
- * as OWNED only when this path answers with the CURRENT launcher's nonce
- * (ref frontend-backend-integration; the 2026-08-28 preflight lesson). Both
- * halves of that proof live in this handler: the 200 that publishes the nonce,
- * and the 404 that refuses to publish anything when this process was not
- * launched by a launcher. A test that re-implemented the handler could not see
- * either, so every case here takes the function `configureServer` installs.
- *
- * The config reads the environment at MODULE LOAD (a `const` beside the
- * import), which is why each case resets the module registry and imports it
- * again under its own environment rather than mutating anything afterwards.
- */
+
 import assert from "node:assert/strict";
 import { describe, it, vi } from "vitest";
 
@@ -55,10 +39,7 @@ function recordingResponse(): RecordingResponse {
   };
 }
 
-/**
- * Loads the config fresh under `environment` and returns the ONE handler its
- * launch-owner plugin registers with `server.middlewares.use`.
- */
+
 async function loadOwnerMiddleware(
   environment: Readonly<Record<string, string | undefined>>,
 ): Promise<MiddlewareHandler> {
@@ -101,9 +82,7 @@ describe("the dashboard dev server's launch-owner middleware", () => {
     assert.equal(response.statusCode, 200);
     assert.deepEqual(response.ended, [NONCE]);
     assert.equal(response.headers.get("content-type"), "text/plain; charset=utf-8");
-    // The detector compares against the CURRENT launcher's fresh nonce, so a
-    // cached answer would let a previous launcher's proof stand in for this
-    // one's.
+
     assert.equal(response.headers.get("cache-control"), "no-store");
   });
 

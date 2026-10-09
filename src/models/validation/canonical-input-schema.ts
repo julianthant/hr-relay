@@ -1,10 +1,4 @@
-/**
- * Transform-free audit for a workflow's canonical-input schema (ref workflow-model §2, D62).
- *
- * Lives beside `contract-boundary.ts` because both walk zod's internal
- * definitions, which `src/domain/**` may not do — the strict-boundary guard bars
- * type assertions there, and reading `_zod.def` requires them.
- */
+/** Transform-free audit for a workflow's canonical-input schema, living beside `contract-boundary.ts` because both walk zod's internal definitions. */
 import { z } from "zod";
 import { auditContractBoundarySchema } from "./contract-boundary.js";
 
@@ -26,10 +20,7 @@ const INGRESS_NODE_REASONS: Readonly<Record<string, string>> = {
   success: "converts a parse failure into a boolean instead of failing loud",
 };
 
-/**
- * Walk the whole schema graph — a transform buried under an array element or a
- * union arm re-applies on exactly the same read as a top-level one.
- */
+/** Walk the whole schema graph — a transform buried under an array element or a union arm re-applies on exactly the same read as a top-level one. */
 export function auditCanonicalInputSchema(
   schema: z.core.$ZodType,
   label: string,

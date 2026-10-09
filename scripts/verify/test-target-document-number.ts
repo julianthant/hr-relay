@@ -39,11 +39,7 @@ async function committedReference(): Promise<TestDataInputReference> {
   return TestDataInputReferenceSchema.parse(document.reference);
 }
 
-/**
- * The same private source the CLI's `dry-run-scenario separations` path reads
- * before any browser starts: THIS checkout's ignored `config/test-data.local.json`,
- * captured once (D341). Never the caller's CWD, never protected Settings.
- */
+/** This checkout's ignored `config/test-data.local.json`, never the caller's CWD or protected Settings. */
 function checkoutTestInputs(): TestDataInputSource {
   const repoRoot = resolve(fileURLToPath(new URL("../..", import.meta.url)));
   return createTestDataInputSource(testDataLocalPath(repoRoot));
@@ -85,14 +81,7 @@ function documentNumberState(
   }
 }
 
-/**
- * Read-only pre-run admission for the ONE canary value (D300/D341): is the
- * registered document-number input set in the private test-data file, does it
- * satisfy the Kuali document-number schema, and does the composed `separations`
- * subject resolve `ready` from it? Output is closed to public metadata + state
- * — the number is never printed, so the transcript can be preserved as
- * evidence without redaction.
- */
+/** Read-only admission whose output stays public metadata/state, so retained evidence cannot expose the canary number. */
 export async function runTestTargetDocumentNumberSmoke(
   options: TestTargetDocumentNumberSmokeOptions = {},
 ): Promise<number> {

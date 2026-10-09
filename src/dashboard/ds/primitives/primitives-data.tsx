@@ -1,7 +1,5 @@
-/**
- * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
- * src/dashboard/components/dev/rebuild-demo/ds/primitives-data.tsx
- */
+/** Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc
+ * src/dashboard/components/dev/rebuild-demo/ds/primitives-data.tsx */
 import { Button as HeroButton, ProgressBar as HeroProgressBar } from "@heroui/react";
 import { useState, type DragEvent, type HTMLAttributes, type KeyboardEvent, type ReactNode, type TdHTMLAttributes, type ThHTMLAttributes } from "react";
 import { ArrowDown, ArrowUp, ChevronsUpDown, GripVertical } from "lucide-react";
@@ -10,28 +8,12 @@ import { IconButton } from "./primitives-core.js";
 import { ShadcnTable, ShadcnTableBody, ShadcnTableCell, ShadcnTableHead, ShadcnTableHeader, ShadcnTableRow } from "./shadcn-table.js";
 import { dsFocus, dsIcon, dsLayer, dsMotion, dsRadius, dsText } from "../theme/tokens.js";
 
-/**
- * Data display primitives: Table, ProgressBar, TimelineSteps.
- *
- * Density is the point. These render a lot of rows in a little space without
- * becoming a wall: hairline separators instead of zebra stripes, tabular
- * numerals everywhere a value can change, and one accent per row at most.
- */
+/** Data display primitives: Table, ProgressBar, TimelineSteps. Density is the point. */
 
-/* =========================================================================
- * Table
- * ====================================================================== */
+/** Table */
 
-/**
- * ```tsx
- * <Table label="Queued runs">
- *   <THead><TR><TH>Person</TH><TH align="right">Elapsed</TH></TR></THead>
- *   <TBody><TR><TD>…</TD><TD align="right" numeric>2m 14s</TD></TR></TBody>
- * </Table>
- * ```
- * `label` is required: a table without an accessible name is a grid of
- * mystery to anyone not looking at it.
- */
+/** <Table label="Queued runs">
+ * <THead><TR><TH>Person</TH><TH align="right">Elapsed</TH></TR></THead> */
 export function Table({
   label,
   layout = "auto",
@@ -40,21 +22,10 @@ export function Table({
   children,
 }: {
   label: string;
-  /**
-   * `fixed` sizes the columns from the first row (or a `<colgroup>`) and never
-   * re-measures. Reach for it whenever the BODY IS WINDOWED: an `auto` table
-   * measures whatever rows are currently mounted, so a virtualised list
-   * re-computes its columns on every scroll and the whole grid shivers. It is
-   * also what lets a section header span the row without dragging the columns
-   * around with it.
-   */
+  /** `fixed` sizes the columns from the first row (or a `<colgroup>`) and never
+ * re-measures. Reach for it whenever the BODY IS WINDOWED: an `auto` table */
   layout?: "auto" | "fixed";
-  /**
-   * `aria-rowcount`, for a table whose body is WINDOWED: only the mounted rows
-   * are in the DOM, so without this an assistive technology counts however many
-   * rows happen to be rendered rather than the true size of the list. Pair with
-   * `aria-rowindex` on each `TR` (it already forwards arbitrary row props).
-   */
+  /** `aria-rowcount`, for a table whose body is WINDOWED */
   rowCount?: number;
   className?: string;
   children: ReactNode;
@@ -106,15 +77,8 @@ export function TR({
       className={cn(
         "h-[var(--ds-h-row)]",
         dsMotion.base,
-        // UK141 (D276 item 5) — ROLLED BACK to the demo's one arm. A row that
-        // opens a panel DISCLOSES; it does not commit. `dsMotion.fast` is this
-        // system's press timing and is spent on "press + hover on a COMMAND"
-        // (DESIGN.md), and `--ds-surface-3` is the pressed fill — spending both
-        // on a row that only reveals what was already there teaches the press
-        // dip to mean nothing, which is the same argument the timeline segment
-        // already carries: it takes a hover tint and deliberately no press dip
-        // (unit F6). `:active` is transient, so no stored parity screenshot
-        // could ever have caught the broadening either way.
+                // A row that opens a panel DISCLOSES; it does not commit, so it takes no press dip.
+        // spent on COMMANDs, so a row takes a hover tint and deliberately no press dip.
         interactive && "cursor-pointer hover:bg-[var(--ds-surface-2)]",
         selected && "bg-[var(--ds-surface-selected)]",
         className,
@@ -341,16 +305,9 @@ export function RankedList({
   );
 }
 
-/* =========================================================================
- * ProgressBar
- * ====================================================================== */
 
-/**
- * Determinate when you know the denominator (`value`/`max`), indeterminate
- * when you do not. Never fake a determinate bar — a progress bar that lies
- * about how far along a UCPath transaction is teaches the operator to ignore
- * every bar in the product.
- */
+
+/** Use indeterminate progress when the denominator is unknown; never invent transaction completion. */
 export function ProgressBar({
   value,
   max = 100,
@@ -411,9 +368,7 @@ export function ProgressBar({
   );
 }
 
-/* =========================================================================
- * TimelineSteps
- * ====================================================================== */
+
 
 export type DsStepState = "done" | "current" | "pending" | "failed" | "skipped";
 
@@ -422,28 +377,7 @@ export interface DsStep {
   state: DsStepState;
   /** a duration or a note shown under the label in the `full` variant */
   detail?: string;
-  /**
-   * A right-aligned value on the step's own row in the `full` variant — the
-   * step's measured duration, in practice. It is a COLUMN rather than a second
-   * line under the label because a list of durations an operator wants to
-   * compare has to share an edge; stacked under variable-length labels they
-   * are a ragged set of numbers nobody can scan.
-   *
-   * UK144 (D276 item 5) — a KEPT extension, and this paragraph is its
-   * contract, because the arm the ruling rejects is a primitive broadened
-   * WITHOUT one. The demo's `DsStep` has no such column and needs none: its
-   * steps carry no measured span. This tree's archive does
-   * (`archive.tsx`'s step rows), and it is a SERVED measurement with a named
-   * absence — `—` plus the projection's own reason on `trailingTitle` when
-   * nothing measured the step. Deleting the column to match the demo would
-   * delete a fact the surface holds, which is the failure mode this directory
-   * has recorded five times.
-   *
-   * The contract is therefore narrow, and a future caller must meet it: a
-   * `trailing` value is a MEASURED number, one unit family down a column, and
-   * an unmeasured step says so rather than printing a plausible zero. It is
-   * not a slot for a second label, a status word, or a control.
-   */
+  /** Compare measured durations in one aligned unit column; unknown durations are never zero. */
   trailing?: string;
   /** Why `trailing` reads the way it does — carried on the row's `title`. */
   trailingTitle?: string;
@@ -465,14 +399,7 @@ const STEP_TEXT: Record<DsStepState, string> = {
   skipped: "text-[color:var(--ds-fg-faint)] line-through",
 };
 
-/**
- * Where a run is, without opening it.
- *
- * `compact` is the one-line dot rail for a card header — it is decorative, so
- * it carries an accessible summary instead of per-dot semantics. `full` is
- * the labelled list for a detail panel; the in-flight step is marked with
- * `aria-current="step"`.
- */
+/** Decorative rails need an accessible summary; detailed rails identify the current step. */
 export function TimelineSteps({
   steps,
   variant = "compact",
@@ -561,9 +488,7 @@ export function TimelineSteps({
   );
 }
 
-/* =========================================================================
- * KeyValue — the fact list under a run, a receipt or a record
- * ====================================================================== */
+/** KeyValue — the fact list under a run, a receipt or a record */
 
 export function KeyValueList({
   items,

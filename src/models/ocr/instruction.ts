@@ -1,23 +1,4 @@
-/**
- * The extraction instruction, GENERATED from the form registry.
- *
- * This is the other half of "the same result no matter who does it". The
- * admission gate makes every producer's output conform; this makes every
- * producer's INPUT identical. A model reached through a provider adapter, an
- * agent the operator runs in their terminal, and the operator reading the page
- * themselves are all given the same field list, the same per-field prompt, the
- * same closed absence vocabulary, and the same answer shape — because all of it
- * is derived from `OCR_FORMS` rather than written out beside it.
- *
- * A hand-maintained prompt is the failure this avoids. Add a field to the
- * registry and every route asks for it on its next run; forget to update a
- * prompt that lives in a string constant and one route silently stops looking,
- * which is precisely the skipping the operator asked to make impossible.
- *
- * The instruction is plain text on purpose. It has to be equally usable as a
- * provider system prompt, as something pasted into another terminal agent, and
- * as something a person reads.
- */
+/** Generate every route's extraction instruction from the shared form registry. */
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { CANONICAL_FIELDS } from "../fields/registry.js";
 import { OcrPageKindSchema, fieldOnPageKind, ocrForm, type OcrFormType } from "./form-registry.js";
@@ -30,13 +11,7 @@ function expectationFor(spec: ReturnType<typeof ocrForm>["fields"][number]): str
   return `${field.label} — e.g. ${field.examples.map((example) => JSON.stringify(example)).join(" or ")}`;
 }
 
-/**
- * The whole instruction for one form type.
- *
- * `sourceSha256` and `sourcePage` are named in the skeleton rather than left to
- * the producer's memory, because an extraction that cannot say which page it
- * came from cannot be checked against another producer's reading of it.
- */
+/** The whole instruction for one form type; `sourceSha256` and `sourcePage` are named in the skeleton, because an extraction that cannot say which page it came from cannot be checked. */
 export function buildExtractionInstruction(formType: OcrFormType): string {
   const form = ocrForm(formType);
   const expectedKinds = form.pageKinds.map((kind) => `\`${kind}\``).join(" / ");
@@ -118,13 +93,7 @@ export function buildExtractionInstruction(formType: OcrFormType): string {
   return lines.join("\n");
 }
 
-/**
- * A filled-in-shape example the producer copies. Deliberately shows one of each
- * answer arm so neither looks like the exceptional case. The example page is
- * the form's FIRST data kind, and the skeleton is consistent with that
- * classification: a field living on another section is shown as `not-on-form`,
- * exactly as the gate will demand.
- */
+/** A filled-in-shape example the producer copies, deliberately showing one of each answer arm so neither looks like the exceptional case. */
 export function buildAnswerSkeleton(formType: OcrFormType): unknown {
   const form = ocrForm(formType);
   const exampleKind = form.pageKinds[0];

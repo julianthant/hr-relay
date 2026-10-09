@@ -34,12 +34,7 @@ function sessionFactory(options: Readonly<{
   closeFailureAt?: number;
   omitExclusiveRelease?: boolean;
   screenshotFailure?: boolean;
-  /**
-   * A driver that stops responding: `authenticate` never settles until the
-   * caller's signal aborts. This is the live exit run's CRM failure — every
-   * step inside the login recipe is individually bounded, but the CHAIN was
-   * not, so nothing surfaced for 262.9s.
-   */
+  // The fake login waits for abort, reproducing a driver that never responds.
   loginHangs?: boolean;
 }> = {}): Readonly<{
   factory: WorkerBrowserSessionFactory;
@@ -85,9 +80,7 @@ function sessionFactory(options: Readonly<{
                 return Promise.reject(new Error("injected login failure"));
               }
               if (options.loginHangs === true) {
-                // Settles ONLY when someone aborts it. A cooperative recipe
-                // rejects on the acquisition signal; a wedged one never would,
-                // and the manager's race is what bounds that case.
+
                 return new Promise<"logged-in">((_resolve, reject) => {
                   authOptions.signal?.addEventListener(
                     "abort",
@@ -152,7 +145,7 @@ function manager(
       ? {}
       : { browserScreenshotCapture: options.browserScreenshotCapture }),
   });
-  // Stand-in for the worker loop's per-run D116 bind.
+
   sessions.bindRunConfigFingerprint(RUN_FINGERPRINT, undefined, {
     runId: "00000000-0000-4000-8000-000000000099",
     descriptorFingerprint: RUN_FINGERPRINT,
@@ -454,7 +447,7 @@ describe("worker browser sessions", () => {
     assert.equal(harness.closes(), 2);
   });
 
-  it("requires a bound run config fingerprint before any driver lease (D116)", async () => {
+  it("requires a bound run config fingerprint before any driver lease", async () => {
     const harness = sessionFactory();
     const sessions = new WorkerSessionManager({
       workerId: WORKER_ID,
@@ -483,7 +476,7 @@ describe("worker browser sessions", () => {
     );
   });
 
-  it("reuses only on an exact fingerprint match and proves the boundary on drift (D116)", async () => {
+  it("reuses only on an exact fingerprint match and proves the boundary on drift", async () => {
     const harness = sessionFactory();
     const events: WorkerSessionEvent[] = [];
     const sessions = manager(harness, events);
@@ -491,8 +484,7 @@ describe("worker browser sessions", () => {
     await sessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => "same-run-reuse");
     assert.equal(harness.opens(), 1);
 
-    // The next run resolves a DIFFERENT config fingerprint: the old context is
-    // closed with proof before a replacement authenticates — never reused.
+
     sessions.releaseRunConfigFingerprint();
     sessions.bindRunConfigFingerprint(OTHER_FINGERPRINT);
     await sessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => "next-run");
@@ -511,7 +503,7 @@ describe("worker browser sessions", () => {
     assert.notEqual(relevant[0]?.sessionId, relevant[2]?.sessionId);
   });
 
-  it("treats a changed resolved instance as identity drift, not silent reuse (D116)", async () => {
+  it("treats a changed resolved instance as identity drift, not silent reuse", async () => {
     const harness = sessionFactory();
     const events: WorkerSessionEvent[] = [];
     const sessions = manager(harness, events);
@@ -569,7 +561,7 @@ describe("worker browser sessions", () => {
     assert.equal(harness.opens(), 2, "headed identity drift must force a fresh acquisition before refusing its missing echo");
   });
 
-  it("refuses a factory resource that echoes a different fingerprint (D116)", async () => {
+  it("refuses a factory resource that echoes a different fingerprint", async () => {
     const harness = sessionFactory();
     const forging: WorkerBrowserSessionFactory = {
       async open(input) {
@@ -622,19 +614,8 @@ describe("worker browser sessions", () => {
   });
 });
 
-/**
- * D125 — session acquisition is bounded SEPARATELY from the task that wants
- * a driver.
- *
- * The Phase-1 live exit run (`pl-000619-4ebf`, 2026-08-04) spent **262.9s**
- * inside one `withDriver` when the CRM browser died: `factory.open` succeeded,
- * the login recipe then chained a series of individually-bounded steps, and
- * the only bound reaching this code was the interpreter's whole-task deadline
- * — which must stay long enough for the real read (UCPath person-org ~22s,
- * Kuali fill→save→reload→verify 8–10s per cycle). Claim expiry surfaced the
- * dead session before the task deadline did.
- */
-describe("bounded browser-session acquisition (D125)", () => {
+
+describe("bounded browser-session acquisition", () => {
   const UCPATH_NEED = { system: "ucpath", access: "read", session: "reuse-worker" } as const;
 
   it("fails the lease at timeouts.sessionAcquireMs when the driver stops responding", async () => {
@@ -671,10 +652,7 @@ describe("bounded browser-session acquisition (D125)", () => {
       release = resolve;
     });
     const base = sessionFactory();
-    // A login that IGNORES its abort signal — the case the race exists for. It
-    // is already past `defineWorkerSessionProvider`'s pre-flight abort check
-    // when the bound expires, so it lands a live, authenticated session on a
-    // lease that has already given up on it.
+
     const stubborn: WorkerBrowserSessionFactory = {
       async open(input) {
         const resource = await base.factory.open(input);
@@ -711,9 +689,7 @@ describe("bounded browser-session acquisition (D125)", () => {
     scheduler.pending()[0].fire();
     await rejection;
 
-    // Now the abandoned acquisition completes. Its session is uncertain by
-    // construction, so it is poison-closed rather than inherited as a warm
-    // reuse by the next lease.
+
     release?.();
     for (let tick = 0; tick < 5; tick += 1) await new Promise((resolve) => setImmediate(resolve));
     assert.deepEqual(sessions.activeSystems(), []);

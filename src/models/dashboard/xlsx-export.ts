@@ -1,11 +1,5 @@
 import { ActivitySnapshotTokenSchema } from "./activity-selection.js";
-/**
- * DCR5 operator XLSX export: a strict complete selection document.
- *
- * The current search arm contains the bounded metadata corpus admitted by
- * `CrossDateSearchResultSchema`. Full run, trace and retry ids are
- * required to prove the authority selection and retained in the workbook.
- */
+/** Operator XLSX export: a strict complete selection document; full run, trace and retry ids prove the authority selection and are retained. */
 import { z } from "zod";
 import { HistoricalOperatorXlsxExportEvidenceSchema } from "./xlsx-export-history.js";
 import { ArtifactRefSchema } from "../artifacts/artifacts.js";

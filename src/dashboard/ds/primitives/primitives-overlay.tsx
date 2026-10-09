@@ -1,7 +1,5 @@
-/**
- * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
- * src/dashboard/components/dev/rebuild-demo/ds/primitives-overlay.tsx
- */
+/** Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc
+ * src/dashboard/components/dev/rebuild-demo/ds/primitives-overlay.tsx */
 import {
   createContext,
   useContext,
@@ -25,49 +23,12 @@ import { dsElev, dsIcon, dsLayer, dsMotion, dsRadius, dsText } from "../theme/to
 import { IconButton } from "./primitives-core.js";
 import { FloatingSurface } from "./primitives-layout.js";
 
-/**
- * Floating surfaces: Dialog, Drawer, Popover, Tooltip, Toast.
- *
- * Everything here is built on Radix where a focus trap or an escape hatch is
- * involved, because focus management is not something to re-implement in a
- * tool that files real HR transactions. Radix gives us: focus moved into the
- * surface on open and RESTORED to the trigger on close, Escape to dismiss,
- * outside-click to dismiss, `aria-modal`, and the rest of the page hidden
- * from assistive tech while a modal is open.
- *
- * Motion: these are the only surfaces that animate on entry, because the
- * motion answers "where did this come from" — a dialog scales up from the
- * centre, a drawer slides in from its edge. All of it collapses to nothing
- * under `prefers-reduced-motion` (the --ds-dur-* tokens go to 0ms).
- */
+/** Floating surfaces: Dialog, Drawer, Popover, Tooltip, Toast. */
 
-/* =========================================================================
- * Modal presence
- *
- * A module-scoped registry of how many modal surfaces are currently mounted,
- * so the toast viewport can get out of a dialog's way without the two surfaces
- * having to know about each other (and without every app having to nest one
- * provider inside the other in the right order).
- *
- * WHY IT EXISTS: the viewport is `fixed bottom-right` at the toast layer, and a
- * `danger` toast never auto-dismisses — so while any layer is open the cards go
- * inert (`pointer-events: none`, controls disabled) rather than swallowing
- * clicks meant for the dialog underneath. See `ToastViewport`.
- * ====================================================================== */
+/** Modal presence
+ * A module-scoped registry of how many modal surfaces are currently mounted */
 
-/**
- * TWO COUNTS, because two different things are being asked for.
- *
- * `modal` — a Dialog or a Drawer. It has a footer whose right-hand gutter holds
- * the primary action, and the toast viewport must not COVER that. This is the
- * only thing that may move the viewport.
- *
- * `layer` — a Popover or a context menu. Non-modal, anchored, no action gutter.
- * A toast must not swallow a click meant for one, but it has no business
- * teleporting to the other side of the window every time an ⓘ is opened. That
- * is the same "one surface moves because another exists" defect the operator
- * rejected, and a popover is the most frequently opened surface in the product.
- */
+// Modals move toasts away from primary actions; nonmodal layers only make toast controls inert.
 let openModalCount = 0;
 let openLayerCount = 0;
 const modalListeners = new Set<() => void>();
@@ -99,93 +60,18 @@ export function OverlayLayerPresence() {
   return null;
 }
 
-/**
- * Register a modal surface that is NOT one of this file's Dialog/Drawer.
- *
- * The registry above is what marks overlay layers open so toast cards go inert,
- * and `ds`'s own overlays opt in automatically. Any OTHER dialog primitive
- * rendered inside this app — notably `@/components/ui/dialog`, which the demo's
- * `ConfirmCommandDialog` and `RenameRunDialog` are built on — is invisible to it,
- * so a persistent `danger` toast can still sit on top of those footers and eat
- * the click. Those dialogs cannot see this module's internals, so this is the
- * seam they call instead.
- *
- * Call it from a component that MOUNTS ONLY WHILE THE DIALOG IS OPEN (the
- * content, not the root) — the count is keyed to mount, not to an `open` prop:
- *
- * ```tsx
- * function ConfirmBody() {
- *   useDsModalPresence();      // ← unregisters on unmount
- *   return <DialogHeader>…</DialogHeader>;
- * }
- *
- * <Dialog open={open}>
- *   <DialogContent>{open && <ConfirmBody />}</DialogContent>
- * </Dialog>
- * ```
- *
- * Radix's `DialogContent` already unmounts its children on close, so rendering
- * the hook's host inside `DialogContent` is enough in the common case.
- */
+/** Register a modal surface that is NOT one of this file's Dialog/Drawer.
+ * The registry above is what marks overlay layers open so toast cards go inert */
 export function useDsModalPresence(): void {
   useRegisterModal();
 }
 
-/**
- * Is any Dialog or Drawer open right now?
- *
- * Exported because a keyboard-first shell has to stop listening while one is:
- * Radix traps FOCUS, but a `window` keydown listener still fires, so `j`/`k`
- * kept moving the queue selection behind an open modal and the operator came
- * back to a different row than the one they left.
- */
+// Focus traps do not stop window key listeners; suppress shell shortcuts while modals are open.
 export function useDsModalOpen(): boolean {
   return useModalOpen();
 }
 
-/* -------------------------------------------------------------------------
- * TWO COORDINATE SPACES, SO THERE IS NOTHING TO ARBITRATE.
- *
- * Operator, on a frame where the decision notice had been pushed to the far
- * left while a toast sat bottom-right: *"these 2 should not be affecting each
- * other."*
- *
- * THE RULE, and it is absolute: **neither element's position may be a function
- * of the other's presence.** Not horizontally, not vertically, not
- * conditionally. The notice renders in exactly the same place at zero toasts
- * and at five, and the toast stack renders in exactly the same place whether a
- * notice exists or not.
- *
- * THREE WRONG ANSWERS WERE TRIED FIRST, and all three are the same mistake —
- * one surface reading the other's state to decide where to go:
- *
- *   1. The TOAST stepped aside for the notice (right → left). An alert that
- *      moves is one the operator learns to look for in two places.
- *   2. The NOTICE stepped aside for the toast (right → left). Same defect,
- *      other tenant: you reach for it and it is gone, for a reason invisible
- *      from where you are standing.
- *   3. The notice was LIFTED by the toast stack's measured height, published
- *      as a custom property and consumed as a transform. Quieter than the
- *      first two and still the same bug: the notice's y was a function of how
- *      many toasts happened to be on screen.
- *
- * WHAT REPLACES IT is not arbitration, it is geometry. The two belong to
- * different boxes and always did:
- *
- *   - The **decision notice** is about the RUN YOU ARE LOOKING AT, so it is
- *     positioned inside the run-detail panel's own box — `absolute`, clipped
- *     by that panel, never portalled to the body.
- *   - The **toast stack** is app-level (it reports command outcomes, not the
- *     selected run), so it stays at the VIEWPORT's bottom-right.
- *
- * They are disjoint by their ANCHOR, not by an inset: the notice hangs off its
- * panel's bottom-LEFT and this stack off the viewport's bottom-right, so there
- * is no layout — collapsed rail included — on which they converge, and neither
- * one's geometry contains a term for the other. `--ds-toast-inset-bottom`
- * therefore clears only what the APP has parked at the bottom of the window
- * (the Session bar). A floor built partly out of a panel-local reminder was the
- * coupling the operator was pointing at, even as a constant.
- * ---------------------------------------------------------------------- */
+// Decision notices stay panel-relative; app toasts stay viewport-relative, independent of each other.
 
 /** Is any Dialog or Drawer open right now? */
 function useModalOpen(): boolean {
@@ -205,7 +91,7 @@ function useAnyOverlayOpen(): boolean {
   );
 }
 
-/** True one frame after mount — lets a freshly-portalled surface transition in. */
+/** True one frame after mount */
 function useEntered(): boolean {
   const [entered, setEntered] = useState(false);
   useEffect(() => {
@@ -215,9 +101,7 @@ function useEntered(): boolean {
   return entered;
 }
 
-/* =========================================================================
- * Dialog
- * ====================================================================== */
+/** Dialog */
 
 export const Dialog = DialogPrimitive.Root;
 export const DialogTrigger = DialogPrimitive.Trigger;
@@ -232,12 +116,7 @@ const DIALOG_SIZE: Record<DsDialogSize, string> = {
   xl: "max-w-[min(94vw,1100px)]",
 };
 
-/**
- * The backdrop. `slow` matches a DRAWER's own `--ds-dur-4` slide: at the default
- * `--ds-dur-3` the scrim finished 60ms before the panel landed, so the last
- * third of the drawer slid over an already-solid backdrop and read as two
- * separate events instead of one surface arriving.
- */
+/** The backdrop. `slow` matches a DRAWER's own `--ds-dur-4` slide */
 function Scrim({ layer, entered, slow }: { layer: string; entered: boolean; slow?: boolean }) {
   return (
     <DialogPrimitive.Overlay
@@ -252,23 +131,8 @@ function Scrim({ layer, entered, slow }: { layer: string; entered: boolean; slow
   );
 }
 
-/**
- * A modal dialog. `title` is REQUIRED — Radix warns without one, and an
- * unlabelled modal is unusable with a screen reader. Use `description` for
- * the one line that says what the operator is about to do.
- *
- * ```tsx
- * <Dialog open={open} onOpenChange={setOpen}>
- *   <DialogContent title="Approve 12 records" description="…">
- *     <DialogBody>…</DialogBody>
- *     <DialogFooter>
- *       <Button variant="muted" onClick={…}>Cancel</Button>
- *       <Button variant="primary" onClick={…}>Approve</Button>
- *     </DialogFooter>
- *   </DialogContent>
- * </Dialog>
- * ```
- */
+/** A modal dialog. `title` is REQUIRED — Radix warns without one,
+ * and an unlabelled modal is unusable with a screen reader. */
 export function DialogContent({
   title,
   description,
@@ -309,7 +173,7 @@ export function DialogContent({
 }
 
 function protectNestedPopupEscape(event: KeyboardEvent): void {
-  // Radix handles Escape in capture; let the inner Base UI popup dismiss first.
+  // Radix handles Escape in capture
   const dialog = event.target instanceof Element ? event.target.closest('[role="dialog"]') : null;
   if (dialog?.querySelector('[data-slot="dropdown-menu-content"][data-open], [data-slot="dropdown-menu-sub-content"][data-open], [data-slot="select-content"][data-open]')) event.preventDefault();
 }
@@ -389,16 +253,8 @@ export function DialogBody({ className, children }: { className?: string; childr
   );
 }
 
-/**
- * Actions right-aligned, primary last — the operator's eye ends on the verb.
- *
- * `meta` is the quiet left-hand slot every dialog in this product wants: the
- * contract version, the source file, the standing rule. It was being hand-rolled
- * as `<span className="… mr-auto">` on five surfaces with five different text
- * treatments, so it lives here now and the footers line up. It also `min-w-0`s
- * and truncates, which the hand-rolled ones did not — a long filename used to
- * push the actions off the right edge.
- */
+/** Actions right-aligned, primary last — the operator's eye ends on the verb.
+ * `meta` is the quiet left-hand slot every dialog in this product wants */
 export function DialogFooter({
   meta,
   className,
@@ -413,9 +269,7 @@ export function DialogFooter({
       className={cn(
         "flex shrink-0 items-center gap-[var(--ds-space-base)] border-t px-[var(--ds-space-loose)] py-[var(--ds-space-cozy)]",
         // The recessed plane, the same solid band the queue row's own footer
-        // draws. It was `surface-2` + a full-strength border — a second answer
-        // to "this sits back from the panel" living in a primitive, which is
-        // the worst place for one to live: every consumer inherits it.
+        // draws, read off the shared tokens rather than re-answered here.
         "border-[color:var(--ds-border-subtle)] bg-[var(--ds-recess-bg)] [border-end-start-radius:inherit] [border-end-end-radius:inherit]",
         meta ? "justify-between" : "justify-end",
         className,
@@ -436,9 +290,7 @@ export function DialogFooter({
   );
 }
 
-/* =========================================================================
- * Drawer — a side panel for detail that must not lose the list behind it
- * ====================================================================== */
+/** Drawer */
 
 export const Drawer = DialogPrimitive.Root;
 export const DrawerTrigger = DialogPrimitive.Trigger;
@@ -446,11 +298,8 @@ export const DrawerClose = DialogPrimitive.Close;
 
 export type DsDrawerSide = "right" | "bottom";
 
-/**
- * A drawer is a dialog that arrives from an edge. Use it when the operator
- * needs the CONTEXT behind it (a run's detail beside its queue); use a Dialog
- * when the decision must be isolated.
- */
+/** A drawer is a dialog that arrives from an edge. Use it when the operator
+ * needs the CONTEXT behind it (a run's detail beside its queue); use a Dialog */
 export function DrawerContent({
   title,
   description,
@@ -538,23 +387,11 @@ function DrawerSurface({
   );
 }
 
-/* =========================================================================
- * Tooltip
- * ====================================================================== */
+/** Tooltip */
 
 export const TooltipProvider = TooltipPrimitive.Provider;
 
-/**
- * A tooltip is a HINT, never the only place information lives — it is
- * invisible to touch and to a keyboard user who never tabs there. Anything
- * load-bearing goes in the UI.
- *
- * ```tsx
- * <Tooltip content="Replays the same input">
- *   <IconButton label="Retry" icon={…} />
- * </Tooltip>
- * ```
- */
+// Tooltips supplement visible labels; touch and keyboard users may never reach them.
 export function Tooltip({
   content,
   side = "top",
@@ -591,24 +428,8 @@ export function Tooltip({
   );
 }
 
-/* =========================================================================
- * Popover
- *
- * The Tooltip's counterpart, and the reason both exist: a tooltip is a HINT
- * (hover-only, invisible to touch and to anyone who never tabs there), so
- * DESIGN.md forbids load-bearing information from living in one. A Popover is
- * where that information goes instead — it OPENS ON CLICK, so it is reachable
- * by pointer, touch and keyboard alike.
- *
- * Radix owns the parts that are not worth re-implementing in a tool that files
- * real HR transactions: anchoring with a flip when it would overflow the
- * viewport, Escape and outside-click to dismiss, focus moved into the surface
- * on open and RESTORED to the trigger on close, and the `aria-haspopup` /
- * `aria-expanded` / `aria-controls` wiring on the trigger.
- *
- * It is deliberately NON-modal: an explanation should not lock the page behind
- * it. That is also why it is not a Dialog — nothing here is a decision.
- * ====================================================================== */
+/** Popover
+ * The Tooltip's counterpart, and the reason both exist: a tooltip is a HINT */
 
 export const Popover = PopoverPrimitive.Root;
 export const PopoverTrigger = PopoverPrimitive.Trigger;
@@ -624,40 +445,12 @@ const POPOVER_WIDTH: Record<DsPopoverWidth, string> = {
   lg: "w-[var(--ds-w-popover-lg)]",
 };
 
-/**
- * Entry motion is ORIGIN-AWARE: the surface scales out of the point it is
- * anchored to, so it reads as coming FROM the trigger rather than appearing
- * from nowhere. `--radix-popover-content-transform-origin` is the exact anchor
- * point Radix computed — which is why this survives a collision FLIP, where a
- * hand-picked origin (or a translate keyed off the `side` prop) would have the
- * surface moving away from its own trigger.
- *
- * It scales from 0.97, never from 0: nothing in the world appears from nothing.
- * Transform and opacity only, on `--ds-dur-3`, which `prefers-reduced-motion`
- * zeroes along with every other duration in the system.
- *
- * There is no EXIT animation, deliberately, and Dialog and Drawer do the same:
- * an entrance answers "where did this come from", a dismissal answers nothing.
- * Slow where the operator is deciding, instant where the system is responding.
- */
+/** Entry motion is ORIGIN-AWARE: the surface scales out of the point it is
+ * anchored to, so it reads as coming FROM the trigger rather than appearing */
 const POPOVER_ORIGIN = "origin-[var(--radix-popover-content-transform-origin)]";
 
-/**
- * ```tsx
- * <Popover>
- *   <PopoverTrigger asChild>
- *     <IconButton label="Why is this parked?" icon={<Info aria-hidden />} />
- *   </PopoverTrigger>
- *   <PopoverContent title="Why is this parked?">
- *     <BulletList items={…} />
- *   </PopoverContent>
- * </Popover>
- * ```
- *
- * `title` is REQUIRED and becomes the surface's accessible name. Pass
- * `hideTitle` when the content is self-explanatory on screen — the name still
- * exists for a screen reader, it just does not take a line.
- */
+/** <Popover>
+ * <PopoverTrigger asChild> */
 export function PopoverContent({
   id,
   title,
@@ -704,17 +497,8 @@ export function PopoverContent({
   );
 }
 
-/**
- * Mounts only while the popover is open — which is what lets it both read as
- * arriving AND register itself in the modal-presence registry.
- *
- * WHY IT REGISTERS. The toast viewport is `fixed bottom-right` at the toast
- * layer and a `danger` toast never auto-dismisses, so a persistent failure
- * toast can sit on top of any dismissable layer below it and eat the click —
- * the exact defect the registry was built for. A popover anchored to a row
- * near the bottom of the queue lands in the same corner, so it opts in on the
- * same terms as Dialog and Drawer: while it is open its toast cards go inert.
- */
+/** Mounts only while the popover is open — which is what lets it both read as
+ * arriving AND register itself in the modal-presence registry. */
 function PopoverSurface({
   id,
   title,
@@ -793,42 +577,14 @@ function PopoverSurface({
   );
 }
 
-/* =========================================================================
- * ContextMenu — the commands an object carries, on its own object
- *
- * The queue row used to hang a `⋯` button off its footer. That button is a
- * control whose only job is to admit there are more controls: it costs a slot
- * on every row in the queue, it names nothing, and it puts the row's full
- * command set behind a target the operator has to hit. Production already
- * solved this for the Session Panel's browser tiles — right-click opens the
- * recovery menu (`terminal-drawer/WorkflowBox.tsx`) — so this is that pattern
- * promoted to a primitive instead of a second hand-rolled copy.
- *
- * KEYBOARD PARITY IS NOT OPTIONAL. A menu that only opens under the pointer
- * makes every command in it unreachable from the keyboard, which in a
- * keyboard-first console is worse than the `⋯` it replaced. Two routes exist:
- * the platform's own context-menu key (Menu / Shift+F10, which the browser
- * dispatches as a `contextmenu` event on the focused element — Radix's trigger
- * answers it), and an app shortcut that dispatches the same event on the
- * selected object. `openContextMenuFor()` below is that second route, so the
- * shell can bind one key and every consumer inherits it.
- * ====================================================================== */
+/** ContextMenu — the commands an object carries, on its own object
+ * An object's commands belong on the object itself, not behind a `⋯` button */
 
 export const ContextMenu = ContextMenuPrimitive.Root;
 export const ContextMenuTrigger = ContextMenuPrimitive.Trigger;
 export const ContextMenuSeparator = ContextMenuPrimitive.Separator;
 
-/**
- * Open an element's context menu from the keyboard.
- *
- * Radix's `ContextMenu.Root` has no controlled `open` prop — it opens from the
- * DOM `contextmenu` event, by design — so the honest keyboard route is to
- * dispatch that exact event rather than to reach inside the primitive. The
- * coordinates are the element's own top-left corner plus a small inset, which
- * is where a pointer-opened menu would have appeared had the operator clicked
- * the object's leading edge. Returns false when there is nothing to open, so a
- * caller never reports a menu it did not open.
- */
+// Radix has no controlled open prop; keyboard opening dispatches its native contextmenu event.
 export function openContextMenuFor(element: Element | null | undefined): boolean {
   if (!(element instanceof HTMLElement)) return false;
   const box = element.getBoundingClientRect();
@@ -843,16 +599,8 @@ export function openContextMenuFor(element: Element | null | undefined): boolean
   return true;
 }
 
-/**
- * The surface. Same floating language as `Popover` — overlay surface, menu
- * layer, mid elevation — and the same origin-aware entry, scaled from 0.97
- * out of the point Radix resolved rather than from a hand-picked corner.
- *
- * It registers modal presence for the reason every dismissable layer in this
- * system does: a `danger` toast never auto-dismisses and the viewport is
- * `fixed bottom-right`, so a menu opened on a row near the bottom of the queue
- * would otherwise share that corner with a surface that eats clicks.
- */
+/** The surface. Same floating language as `Popover` — overlay surface, menu
+ * layer, mid elevation — and the same origin-aware entry, scaled from 0.97 */
 export function ContextMenuContent({
   label,
   className,
@@ -915,10 +663,8 @@ export function ContextMenuLabel({ children }: { children: ReactNode }) {
   );
 }
 
-/**
- * One command. `tone="destructive"` is the single irreversible slot — the same
- * rule the rest of the system holds to, so a menu never offers two.
- */
+/** One command. `tone="destructive"` is the single irreversible slot — the same
+ * rule the rest of the system holds to, so a menu never offers two. */
 export function ContextMenuItem({
   icon,
   tone = "neutral",
@@ -958,9 +704,7 @@ export function ContextMenuItem({
   );
 }
 
-/* =========================================================================
- * Toast
- * ====================================================================== */
+/** Toast */
 
 export type DsToastTone = "info" | "success" | "warning" | "danger";
 
@@ -982,15 +726,8 @@ interface ToastContextValue {
 
 const ToastContext = createContext<ToastContextValue | null>(null);
 
-/**
- * `const { toast } = useToasts()` — then
- * `toast({ tone: "danger", title: "Write parked", description: "…" })`.
- *
- * Rules: a toast reports something that ALREADY happened. It never asks a
- * question, never holds the only copy of information, and a `danger` toast
- * never disappears on its own — a failed write must be dismissed by a human.
- * Cards show their title, detail and recovery action together.
- */
+/** `const { toast } = useToasts` — then
+ * `toast({ tone: "danger", title: "Write parked", description: "…" })`. */
 export function useToasts(): ToastContextValue {
   const ctx = useContext(ToastContext);
   if (!ctx) throw new Error("useToasts() must be used inside <ToastProvider>");

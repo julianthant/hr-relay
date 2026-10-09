@@ -1,12 +1,5 @@
 import { RunRecordService } from "../../../../../../src/backend/runs/lifecycle/run-record-service.js";
-/**
- * D307 — the command kernel's start and retry envelope builders
- * (src/backend/runs/commands/command-kernel.ts `executeStartRun` / `executeRetry`) must carry
- * `stepOmissions` onto the run they create, byte for byte, the same way
- * `captureBrowserScreenshots` already rides through both doors. This is a
- * thin harness mirroring tests/unit/command-kernel.test.ts's own fixtures,
- * scoped to exactly the start → retry path.
- */
+
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -219,7 +212,7 @@ function runCommand(type: string, runId: string, expectedVersion: number) {
   } as const;
 }
 
-describe("command-kernel start/retry step-omission carry (D307)", () => {
+describe("command-kernel start/retry step-omission carry", () => {
   it("carries the consumed start plan's stepOmissions onto the created run's envelope", () => {
     const harness = createHarness();
     const plan = createPlan(harness, ["10800000"], STEP_OMISSIONS);

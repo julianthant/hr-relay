@@ -1,10 +1,4 @@
-/**
- * The two JSONL event streams on disk (ref dashboard-surfaces §2.1): `spans/` and `notes/`
- * under the config-resolved state root, one file per `<workflow>-<date>`,
- * `O_APPEND` single-line writes, append-at-now partitioning, and the D86
- * 30-day prune. The ledger is deliberately NOT here — it has its own
- * serialized outbox projector (ref write-safety) and is never pruned.
- */
+
 import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, statSync, unlinkSync, writeSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
@@ -27,11 +21,7 @@ export function eventStreamDirectory(stateRoot: string, stream: EventStream): st
   return join(stateRoot, EventStreamSchema.parse(stream));
 }
 
-/**
- * One event, one line, one `O_APPEND` write. The handle is opened per append —
- * these are low-volume files and a held handle would complicate prune — and
- * closed even when the write throws.
- */
+
 export function appendEventStreamLine(
   stateRoot: string,
   stream: EventStream,
@@ -59,12 +49,7 @@ export interface EventStreamFile {
   readonly path: string;
 }
 
-/**
- * Every file in a stream directory, sorted by (date, workflow) so a replay
- * folds days in order. A file that does not match `<workflow>-<date>.jsonl`
- * is a corruption of an owned directory and fails loud — skipping it would
- * silently exclude events from every rebuild that follows.
- */
+
 export function listEventStreamFiles(stateRoot: string, stream: EventStream): readonly EventStreamFile[] {
   const directory = eventStreamDirectory(stateRoot, stream);
   if (!existsSync(directory)) return [];
@@ -102,21 +87,7 @@ export function readEventStreamLines(stateRoot: string, stream: EventStream): re
   return readWholeFiles(listEventStreamFiles(stateRoot, stream));
 }
 
-/**
- * The partitions ONE reader may open (D5, ref frontend-backend-integration §7.4).
- *
- * These directories are partitioned by `(workflow, date)` in the file NAME, so
- * a reader that wants one workflow's lines over one date range never has to
- * open — let alone parse — the rest of the corpus. That is the whole finding
- * behind audit P3: a logs GET read every byte of every workflow's every day to
- * serve thirteen lines, and the corpus grows for as long as the tool runs.
- *
- * The scope is INCLUSIVE at both ends and fails loud on an inverted range: a
- * `from` after `to` selects nothing, and silently serving zero lines for a run
- * that has them would report real history as absent. A workflow whose id could
- * never appear in a file name is refused for the same reason — it would scope
- * to nothing while looking like a run with no notes.
- */
+
 export interface EventStreamScope {
   readonly workflow: string;
   /** Inclusive `YYYY-MM-DD` lower bound on the partition date. */
@@ -152,11 +123,7 @@ export function scopedEventStreamFiles(
   );
 }
 
-/**
- * Every non-empty line of ONE workflow's partitions inside `scope`, in the same
- * (date, workflow, line) order `readEventStreamLines` returns — so a caller that
- * narrows its scope gets a SUBSEQUENCE of the unscoped read, never a reordering.
- */
+
 export function readScopedEventStreamLines(
   stateRoot: string,
   stream: EventStream,
@@ -207,22 +174,7 @@ const FILE_TAIL_IO: EventStreamTailIo = {
   },
 };
 
-/**
- * Cursor-based read — the offset-aware half of the D218 cross-process tailer.
- * Returns every COMPLETE line appended since `cursors`, in the same
- * (date, workflow, line) order as `readEventStreamLines`, plus the cursors to
- * resume from. Three properties are load-bearing:
- *
- * - A trailing line whose newline has not landed is NOT consumed: another
- *   process may be mid-append, and parsing half a record would report real
- *   history as corrupt. The returned cursor stops at the last newline, so the
- *   torn tail is read whole on a later call.
- * - A file SHORTER than its cursor fails loud. These streams are append-only,
- *   so a shrink is truncation of history, never a state to read around.
- * - A file the directory no longer lists (the D86 prune) simply leaves the
- *   result cursors; a file the cursors have never seen (day roll, new
- *   workflow) is read from byte 0.
- */
+
 export function readEventStreamLinesFrom(
   stateRoot: string,
   stream: EventStream,
@@ -306,19 +258,14 @@ export interface PruneReport {
   readonly removed: readonly string[];
 }
 
-/**
- * D86: `spans/` and `notes/` prune at 30 days, by file date. The ledger is
- * exempt by construction — this function can only see the two event streams.
- */
+
 export function pruneEventStreams(input: Readonly<{
   stateRoot: string;
   clock: Clock;
   retentionDays?: number;
   streams?: readonly EventStream[];
 }>): PruneReport {
-  // ONE constant: the Archive's retention block computes its purge instants
-  // from the same number, so the date a surface shows and the date this sweep
-  // acts on cannot drift apart.
+
   const retentionDays = z.number().int().positive().parse(input.retentionDays ?? EVENT_STREAM_RETENTION_DAYS);
   const cutoff = new Date(input.clock.now().getTime() - retentionDays * 24 * 60 * 60 * 1000);
   const cutoffDate = localDatePart(cutoff);

@@ -1,20 +1,4 @@
-/**
- * The build manifest behind `descriptor.contractFingerprint` (ref workflow-model §1.1).
- *
- * **Fingerprints are build-manifest based, never `Function.toString()`.** A
- * descriptor's fingerprint hashes canonical `(relative path, file content)`
- * tuples over the descriptor source and its bundle-safe transitive dependency
- * closure, plus the locked toolchain versions. Absolute paths, mtimes, build
- * timestamps, and object iteration order are excluded, so identical source in
- * another checkout produces the same hash — while a `bind`/`identity`/`derive`
- * edit changes semantic compatibility even when the output zod schema does not.
- *
- * `src/workflow-kit/validation/generated-build-manifest.ts` is the checked-in artifact;
- * `scripts/build/generate-workflow-manifest.ts` regenerates it and the
- * `descriptor-coverage` guard fails on any diff. The generated module is itself
- * excluded from every closure — a manifest that hashed its own contents could
- * never reach a fixed point.
- */
+/** The build manifest behind `descriptor.contractFingerprint`; fingerprints hash canonical (path, content) tuples over the descriptor's closure plus toolchain — never `Function.toString()`. */
 import { z } from "zod";
 import { FingerprintSchema, TaskIdSchema, WorkflowIdSchema } from "../../rules/identity/ids.js";
 import type { Fingerprint, TaskId, WorkflowId } from "../../rules/identity/ids.js";
@@ -66,11 +50,6 @@ export function parseBuildManifest(input: unknown): BuildManifest {
   return manifest;
 }
 
-/**
- * Fail loud on a missing entry. A descriptor with no manifest row is a
- * descriptor whose semantic identity nothing pins — a run stamped with a
- * fabricated fingerprint would let an incompatible checkpoint replay.
- */
 /** The checked-in manifest, parsed at module load so a hand-edit fails immediately. */
 export const BUILD_MANIFEST: BuildManifest = parseBuildManifest(GENERATED_BUILD_MANIFEST);
 

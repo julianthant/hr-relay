@@ -71,9 +71,7 @@ describe("task to system-driver boundary", () => {
   });
 
   it("still fences tasks off from the session-factory raw-browser family", () => {
-    // Widening the owner set to `src/backend/runtime/browser/**` must not make it
-    // reachable: a task that imports the factory (directly or through a
-    // helper) is the same ownership bypass as importing a private driver.
+
     const root = resolve(tmpdir(), `hrauto-ui-factory-${String(process.pid)}-${String(Date.now())}`);
     const task = resolve(root, "src/backend/systems/ucpath/tasks/bad.ts");
     const helper = resolve(root, "src/backend/systems/ucpath/helper.ts");

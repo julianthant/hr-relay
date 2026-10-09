@@ -7,11 +7,7 @@ import { FIXTURE_BOOTSTRAP } from "./fixture-bootstrap.js";
 import { at,uuidOf } from "./fixture-identity.js";
 
 
-/**
- * D281 item 7's isolated degraded profile. It reuses the Storage-health fixture
- * U3 introduced and changes only the authority fact, so the ordinary corpus
- * remains a healthy dashboard rather than using a fault to expose the band.
- */
+
 export const FIXTURE_STORAGE_DEGRADED_BOOTSTRAP: FrontendBootstrapWire =
   FrontendBootstrapWireSchema.parse({
     ...FIXTURE_BOOTSTRAP,

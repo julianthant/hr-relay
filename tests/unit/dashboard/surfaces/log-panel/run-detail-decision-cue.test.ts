@@ -1,14 +1,5 @@
 // @vitest-environment jsdom
-/**
- * D273 items 1, 4 and 5 — the run-detail cues that are composed in JSX.
- *
- * Operator context is `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/decisions/dashboard.md` §D273
- * (answered A on 2026-08-26); the audited rows are ledger 2 A3, A13, B91 and
- * C4. Each claim here is about the words or the ownership of a rendered
- * element, so `renderToStaticMarkup` is the instrument — the same one
- * `queue-bulk-band-sentence.test.ts` uses for a sentence composed across JSX
- * branches, which has no fold to test.
- */
+
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -40,7 +31,7 @@ afterEach(async () => {
 
 /** The open arm specifically: `InlineDecision` renders no other one. */
 
-describe("A3/A13 — the provenance bar uses the demo's identity wording", () => {
+describe("the provenance bar uses the demo's identity wording", () => {
   const surface = QueueSurfaceWireSchema.parse({
     runId: RUN_ID,
     itemId: "99999999-9999-4999-8999-999999999999",
@@ -87,8 +78,7 @@ describe("A3/A13 — the provenance bar uses the demo's identity wording", () =>
       servedDescriptorHash: DESCRIPTOR_HASH,
     }));
     assert.match(html, />9f9f9f9f</u);
-    // The `wf ` noun was a rebuild addition nothing recorded, and the fact it
-    // labelled is named in full by the ⓘ's `Workflow` row.
+
     assert.equal(/wf 9f9f9f9f/u.test(html), false);
   });
 
@@ -112,9 +102,7 @@ describe("A3/A13 — the provenance bar uses the demo's identity wording", () =>
       trigger.click();
     });
 
-    // This assertion reads Radix's OPEN portal from document.body, not the
-    // closed static trigger tree. Reinstating either A18's Config row or A19's
-    // Attempt row in RunProvenanceBar's KeyValueList makes this test fail.
+    // Read the open Radix portal from document.body; the static trigger tree cannot prove popover content.
     const popover = document.querySelector<HTMLElement>('[aria-label="Provenance"]');
     if (popover === null) throw new Error("opening Run provenance mounted no provenance popover");
     assert.match(popover.textContent ?? "", /Workflow/u);

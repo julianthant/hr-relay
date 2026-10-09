@@ -1,7 +1,7 @@
 import { tmpdir } from "node:os";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { eventStreamDirectory, pruneEventStreams } from "../../../src/backend/storage/events/jsonl-streams.js";
-/** T replaces projector authority with confirmed SQLite history; old source evidence remains read-only. */
+
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import ts from "typescript";

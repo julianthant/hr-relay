@@ -9,25 +9,7 @@ const RAW_BROWSER_MEMBERS = new Set([
   "newPage", "evaluate", "$", "$$", "$eval", "$$eval",
 ]);
 
-/**
- * The closed set of modules allowed to name a Playwright type or drive a raw
- * page. Three closed families, each with one responsibility:
- *
- * - `src/backend/systems/<system>/driver/**` and `.../session.ts` own ONE
- *   system's page knowledge — its semantic driver and its login recipe.
- * - `src/backend/runtime/browser/**` owns browser CREATION itself: the persistent
- *   context, the Duo Autopilot extension, and the provable teardown behind
- *   `WorkerBrowserSessionFactory` (ref execution-and-sessions §4 — "concrete browser creation
- *   remains a factory injected at the runtime composition boundary"). It has
- *   runtime resource ownership stays separate from one system's driver.
- * - `src/backend/systems/browser-shared/**` owns the reusable browser action
- *   and login adapters consumed by system sessions and drivers.
- *
- * Workflow wrappers under `src/workflows/<workflow>/tasks/**` are
- * sessionless consumers; they remain outside the raw-browser owner set.
- * Membership is the whole enforcement — a task or workflow that reaches any
- * private browser family transitively is still a violation, checked below.
- */
+// Raw browser owners are drivers, session factories and shared browser adapters; tasks only consume leases.
 function isRawBrowserOwner(path: string): boolean {
   return /^src\/backend\/systems\/[a-z0-9-]+\/driver\//u.test(path)
     || /^src\/backend\/systems\/[a-z0-9-]+\/session\.ts$/u.test(path)
@@ -221,9 +203,7 @@ function rawBrowserAstIssues(path: string, source: ts.SourceFile, checker: ts.Ty
         issues.push(`${path}: extracted raw browser member ${member} crosses the driver/session boundary`);
       }
     }
-    // Ref write-safety beat ⑤ / D111: `src/workflow-kit/mutation-capability.ts` owns the ONE
-    // sanctioned minting point (its WeakSet makes the token runtime-
-    // unforgeable); every other file asserting the brand is still a forgery.
+
     if (path !== MUTATION_CAPABILITY_REGISTRY
       && (ts.isAsExpression(node) || ts.isTypeAssertionExpression(node))
       && node.type.getText(source).includes("MutationCapability")) {

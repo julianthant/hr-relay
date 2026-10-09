@@ -1,26 +1,4 @@
-/**
- * The `dashboard` command's REAL lifecycle, end to end, in a child process.
- *
- * `tests/unit/backend/app/composition/runtime-composition/runtime-composition.test.ts` proves the seam logic against an
- * injected composer, an injected signal seam, and the real `process` signal
- * registration. It cannot prove the half that actually broke: that the
- * production entrypoint — `scripts/dev/secure-env-bootstrap.ts` → `runCli` →
- * `startRebuildRuntime` → `composeDashboardRuntime` — subscribes those handlers
- * at all, that awaiting the lifecycle keeps the process alive through `stop()`
- * instead of letting Node's default signal disposition kill it mid-drain, and
- * that the shutdown ordering therefore reaches its last step.
- *
- * The durable proof is the process lock. `composeDashboardRuntime`'s `stop()`
- * releases it only AFTER the authority database handle closed, so a released
- * record for this exact pid is evidence that ingress closed, the timers were
- * cleared, owned workers drained, and the database closed.
- *
- * Two SIGINTs, not one: the second arrives while `stop()` is still draining.
- * With `process.once` the first signal removed its own listener, so the second
- * fell through to Node's default terminate and killed the process mid-ordering
- * — exit 130 and `releasedAt: null` again. Exit 0 with a released record for
- * this pid is the real-process proof that the listeners stayed subscribed.
- */
+
 import assert from "node:assert/strict";
 import { type ChildProcessByStdio, spawn } from "node:child_process";
 import { createServer } from "node:net";
@@ -43,18 +21,9 @@ const REFERENCE_ENVIRONMENT = "CEREBRAS_API_KEY=reference-only-fixture\n";
 const LISTENING_MARKER = "dashboard BFF listening";
 const BOOT_TIMEOUT_MS = 120_000;
 const SHUTDOWN_TIMEOUT_MS = 60_000;
-/**
- * The test checks that the child is still inside stop() before sending the
- * second signal; it does not assume a fixed drain duration.
- */
 
-/**
- * A dashboard already listening on the isolated port makes this test measure
- * somebody else's process. That is a red gate, never a skip: the port is named
- * so the operator can stop the occupant. The isolated port is not overridable,
- * by design (`config/runtime-isolation.json`), so a scratch root does not — and
- * must not — make this probe unnecessary.
- */
+
+
 async function requireIsolatedPortFree(): Promise<void> {
   const port = rebuildRuntimeIsolation.backendPort;
   await new Promise<void>((resolve, reject) => {
@@ -108,29 +77,7 @@ function requirePrivateEnvironmentFile(root: string): void {
   );
 }
 
-/**
- * `composeDashboardRuntime` takes `repoRoot = process.cwd()`, so spawning this
- * child in the checkout would boot a real dashboard over the developer's own
- * `.tracker/state.db` on every per-commit gate: a config snapshot inserted,
- * the active runtime generation advanced, and the real `server` lock claimed.
- * The child gets a scratch cwd holding the production inputs it reads relative
- * to its root:
- *
- *  - `package.json` — the served app version (compose.ts) and half of the
- *    `runtime.compatibility` preflight;
- *  - `package-lock.json` — the other half of that same preflight and the build identity;
- *  - `src`, `vite.dashboard.config.ts`, and `tsconfig.json` — the identity-bound inputs;
- *  - a small synthetic `dist/dashboard` stamped from those copied inputs;
- *  - `config/test-data.json` — the public registry loaded by the secure bootstrap;
- *  - `node_modules` — a symlink, because Node resolves the bare `--import tsx`
- *    specifier against the CWD.
- *
- * `.tracker/**` and `config/**` are the composition's own to create. Copy the
- * unmodified production bootstrap into this root so its module-relative `.env`
- * is the private provider-only fixture, never the operator's migration sources.
- * Dependencies are linked read-only by convention; runtime state and admitted
- * environment bytes belong to this disposable root.
- */
+
 function createScratchRepoRoot(): string {
   const root = mkdtempSync(join(tmpdir(), "hr-dashboard-lifecycle-"));
   for (const file of ["package.json", "package-lock.json", "vite.dashboard.config.ts", "tsconfig.json"]) {
@@ -155,10 +102,7 @@ function createScratchRepoRoot(): string {
   return root;
 }
 
-/**
- * Unlink the dependency link before recursive cleanup; its target belongs to
- * the shared checkout.
- */
+// Unlink the dependency symlink before recursive cleanup; its target belongs to the shared checkout.
 function removeScratchRepoRoot(root: string): void {
   rmSync(join(root, "node_modules"), { force: true });
   rmSync(root, { recursive: true, force: true });
@@ -223,12 +167,7 @@ function captureOutput(child: DashboardChild): () => string {
   return () => output;
 }
 
-/**
- * The negative half of "the gate stops writing developer state": this
- * checkout's authority database and server lock, byte-for-byte and by mtime,
- * before and after the child ran. `absent` is a legitimate reading on a
- * checkout that has never started a dashboard.
- */
+
 function checkoutStateFingerprint(): Readonly<{ authority: string; lock: string }> {
   const describe_ = (path: string): string => {
     if (!existsSync(path)) return "absent";
@@ -257,10 +196,7 @@ describe("the `dashboard` CLI command's shutdown lifecycle", () => {
     const lockPath = join(scratchRoot, rebuildRuntimeIsolation.processLockRoot, "server.lock.json");
     const checkoutBefore = checkoutStateFingerprint();
     try {
-      // The production launch shape: `node --import tsx scripts/dev/secure-env-bootstrap.ts cli dashboard`,
-      // exactly what `productionWorkerLaunch` uses for a worker child. Spawning
-      // node directly (rather than an npm/npx wrapper) makes `child.pid` the very
-      // process the signal must reach and the lock record must name.
+
       const child = spawn(
         process.execPath,
         ["--import", "tsx", join(scratchRoot, "scripts", "dev", "secure-env-bootstrap.ts"), "cli", "dashboard", "--prod"],

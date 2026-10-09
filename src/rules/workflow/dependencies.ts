@@ -10,16 +10,7 @@ import {
   PositiveIntSchema,
   RunIdSchema,
 } from "../identity/ids.js";
-/**
- * D102: the durable dependency row stores ref workflow-model §3.2's delegation vocabulary
- * verbatim — one vocabulary from builder through manifest, dependency row, and
- * UI. The 1c shape (`failure: fail-parent|collect|ignore`,
- * `retry: retry-child|replace-child|parent-only`,
- * `visibility: member|linked|delegated`) was never ratified in any owning doc
- * and had no arm for ref workflow-model's `block-parent`, so it is replaced rather than
- * mapped. The policy is a JSON payload validated here, not a SQL enum, so no
- * migration version is consumed.
- */
+/** Preserve one delegation vocabulary; validate policy JSON rather than narrowing it to a SQL enum. */
 import { DelegationPolicySchema } from "../../models/workflow/delegation-policy.js";
 
 export const DependencyRecordSchema = z.strictObject({
@@ -50,24 +41,7 @@ const DelegatedChildManifestEntrySchema = z.strictObject({
   canonicalInputFingerprint: FingerprintSchema,
 });
 
-/**
- * Three shapes here changed when 1e built the planner that writes this record
- * (D102's "one vocabulary end to end" applied to the manifest, not only the
- * dependency row):
- *
- * - `policy` is recorded. Without it the manifest cannot verify on replay that
- *   the fan-out still runs under the policy the operator selected, and the
- *   dependency rows would be the only durable copy of a decision the manifest
- *   is supposed to be authoritative for.
- * - `join` carries all four arms. A `cardinality:"one"` awaited edge joins
- *   `"one"`, and an un-awaited fan-out joins `"none"` while still minting a
- *   manifest — that manifest reference IS the node's output
- *   (`DelegationManifestRef`), so the record must be expressible.
- * - `children` may be empty. A zero-child fan-out is a legitimate outcome of an
- *   empty upstream list, and ref workflow-model §3.2 requires it to stay an explicit
- *   satisfied join rather than an edge that silently vanished. `min(1)` made
- *   the honest record unwritable.
- */
+/** Three shapes the manifest record needs: `policy` recorded, `join` with all four arms, and `children` allowed to be empty for a zero-child fan-out. */
 export const DelegationManifestSchema = z.strictObject({
   manifestId: DelegationManifestIdSchema,
   parentRunId: RunIdSchema,

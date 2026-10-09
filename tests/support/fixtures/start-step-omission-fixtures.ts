@@ -1,26 +1,4 @@
-/**
- * Fixture descriptors for D307's START-side omission seam.
- *
- * No registered workflow declares a `stepOmissions` entry yet (Separations'
- * declarations land with their own unit), so a suite that only swept the
- * registry would prove the new arms by never reaching them. These three
- * descriptors share ONE three-node graph and differ only in what their step
- * folders declare, which is exactly the axis the projection and the planner
- * classify on:
- *
- * - `read` feeds `fold`; `audit` stands alone and nothing reads it.
- * - `omissionBlockedDescriptor` — `reading` declares an omission it cannot
- *   honestly rebuild `read` from, and `folding` declares none. Omitting
- *   `reading` would leave `fold` reading an unread node, so the cascade is
- *   BLOCKED by a step that must run.
- * - `omissionCascadingDescriptor` — the same, except `folding` declares an
- *   omission too, so the choice is legal and FORCES `folding` out with it.
- * - `omissionAssertingDescriptor` — `reading` rebuilds `read` from its typed
- *   facts, so nothing downstream is left unread and the step stands alone.
- *
- * `auditing` declares an omission in all three: a clean, terminal omittable
- * step that forces nothing, which is what a cascade row of `[]` has to mean.
- */
+
 import { z } from "zod";
 import { flow } from "../../../src/workflow-kit/flow.js";
 import { defineWorkflowDescriptor, type AnyWorkflowDescriptor } from "../../../src/workflow-kit/workflow.js";

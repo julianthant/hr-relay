@@ -1,19 +1,4 @@
-/**
- * The dashboard's keyboard flow and its command composer — the two pure halves
- * of the wave's consolidated wiring commit (R2 D13/D14, R3 finding 8, R5
- * findings 7/8, R8 findings 4/7).
- *
- * Both were previously untestable because neither existed: the keys were
- * advertised by `surfaces/shortcuts.tsx` and by the panel toggle's own `title`
- * with no `window` listener anywhere, and no served descriptor had a route to
- * the command client at all.
- *
- * What is pinned here is deliberately the part that COMPUTES an answer rather
- * than the part that routes one. The handler itself is guards and calls; the
- * traversal arithmetic, the attention wrap and — above all — the identity
- * gate's payload composition are where a wrong answer would be silent, and the
- * gate is the one that authorises a real termination against a named human.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { CommandRequestSchema } from "../../../../../src/rules/commands/commands.js";
@@ -83,7 +68,7 @@ function surface(input: Record<string, unknown>) {
   });
 }
 
-describe("stepSelection — the j/k arithmetic (R3 finding 8)", () => {
+describe("stepSelection — the j/k arithmetic", () => {
   const ids = ["a", "b", "c"];
 
   it("moves one place in each direction", () => {
@@ -114,7 +99,7 @@ describe("stepSelection — the j/k arithmetic (R3 finding 8)", () => {
   });
 });
 
-describe("nextAttention — the `n` binding (R3 finding 8)", () => {
+describe("nextAttention — the `n` binding", () => {
   const visible = ["a", "b", "c", "d"];
   const attention = ["b", "d"];
 
@@ -154,9 +139,7 @@ describe("attentionRunIds — the band and the key cannot disagree", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// the command composer
-// ---------------------------------------------------------------------------
+
 
 function commandAction(input: Record<string, unknown>): CommandAction {
   return {
@@ -189,9 +172,7 @@ describe("composeCommandRequest — the run family", () => {
       }
       assert.equal(composed.state, "ready");
       if (composed.state !== "ready") return;
-      // Parsed through the KERNEL's own schema — the client refuses a malformed
-      // command before it burns a round trip, so a fixture that only looks
-      // right would pass this test and fail in production.
+
       const parsed = CommandRequestSchema.parse(composed.request);
       assert.equal(parsed.family, "run");
       assert.equal(parsed.type, verb);
@@ -199,9 +180,7 @@ describe("composeCommandRequest — the run family", () => {
   }
 
   it("REFUSES both park resolutions rather than double-routing them", () => {
-    // They have their own wired dialog, which captures the evidence note the
-    // kernel requires. One irreversible answer by two roads, one of which
-    // cannot carry the note, is worse than one road.
+
     const composed = composeCommandRequest(
       commandAction({
         command: "resolve-write-absent",
@@ -234,10 +213,7 @@ function packet(): IdentityEvidencePacket {
       renderContext: { entry: "auto-detail", searchResultRows: 0, employmentInstances: "already-complete" },
       observedAt: NOW as never,
     },
-    // `one-click` is a NARROW state and this fixture has to earn it: the names
-    // must agree, the search must have RESOLVED to the same person, and the job
-    // summary must show a single active job. Anything less is the server asking
-    // for a choice, which is the refusal arm below.
+
     nameSelection: {
       status: "resolved",
       selected: {
@@ -307,9 +283,7 @@ describe("composeCommandRequest — the identity gate (ref write-safety §14.4)"
     const parsed = CommandRequestSchema.parse(composed.request);
     assert.equal(parsed.family, "gate");
     if (parsed.family !== "gate") return;
-    // Every leaf is a value the SERVER served. The hash in particular is never
-    // derived here: a client computing it would be a second implementation of
-    // the descriptor's identity.
+
     assert.equal(parsed.payload.result.schemaHash, section.value.resultSchemaHash);
     const result = IdentityApprovalResultSchema.parse(parsed.payload.result.value);
     assert.equal(result.decision, "approved");
@@ -319,7 +293,7 @@ describe("composeCommandRequest — the identity gate (ref write-safety §14.4)"
     assert.equal(result.evidenceDigest, section.value.evidenceDigest);
   });
 
-  it("REFUSES a rejection nobody authored — the reason is the operator's own (D226)", () => {
+  it("REFUSES a rejection nobody authored — the reason is the operator's own", () => {
     // The ceremony dialog supplies it; a dispatcher that minted an empty reason
     // would put a sentence nobody wrote on a terminal failure record.
     const composed = composeCommandRequest(

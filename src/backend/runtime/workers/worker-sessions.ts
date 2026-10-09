@@ -1,12 +1,5 @@
 import { WorkerControlRefusal, WorkerBrowserObservationSchema, type WorkerBrowserObservation } from "../../../models/run/worker-control.js";
-/**
- * Worker-local browser ownership (ref execution-and-sessions §§2,4,6.1).
- *
- * Drivers are exposed only inside `withDriver`'s awaited callback. A system is
- * serialized within one worker, a clean release resets before reuse, and every
- * uncertain release poison-closes the resource. An authored `fresh` need
- * closes the old resource before the replacement can emit `start`.
- */
+
 import { z } from "zod";
 import type {
   BrowserSessionCloseReason,
@@ -55,13 +48,7 @@ export type WorkerSessionEvent =
     workflowId: WorkflowId;
     system: BrowserSystemId;
     sessionId: BrowserSessionId;
-    /**
-     * Whether this session had to authenticate or rode a live one. Both are
-     * legitimate, and they are NOT interchangeable to an operator: a run of
-     * `already-authenticated` sessions that should have been cold is exactly
-     * the shape of the 2026-08-03 false pass, and an event that flattened the
-     * two hid it.
-     */
+    // Authentication evidence distinguishes warm sessions from sessions that performed login.
     login: LoginResult;
     at: string;
   }>
@@ -107,28 +94,14 @@ export interface WorkerSessionManagerOptions {
   readonly workflowId: WorkflowId;
   readonly stores: TaskStoreRegistry;
   readonly factory: WorkerBrowserSessionFactory;
-  /** Compatibility mode for historical envelopes that predate browserMode. */
+  // Envelopes without browserMode use the configured compatibility mode.
   readonly defaultBrowserMode?: BrowserPresentationMode;
   readonly clock: Clock;
-  /**
-   * The kernel-owned monotonic deadline port — the SAME one the interpreter
-   * arms task deadlines on, so a test drives acquisition time explicitly
-   * instead of waiting on a wall clock (D125).
-   */
+
   readonly scheduler: MonotonicDeadlineScheduler;
-  /**
-   * D125: the bound on ONE acquisition — `factory.open` plus the system's
-   * login recipe. Required, with no default: a manager that could be built
-   * without it would silently inherit the whole-task deadline again, which is
-   * exactly the defect this closes. Non-positive values fail loud.
-   */
+  // Require an explicit acquisition bound; an unbounded login can strand every later run.
   readonly acquireDeadlineMs: number;
-  /**
-   * D267 (ref execution-and-sessions §10): the per-credential Duo ceremony
-   * lease. Required, with no default: a manager built without it would hand
-   * every login recipe no gate, and the recipe's ceremony half could not run —
-   * which is the correct refusal, made at construction instead of mid-login.
-   */
+  // Require the per-credential ceremony gate for every acquired login context.
   readonly duoCeremony: DuoCeremonyGateFactory;
   readonly onEvent?: (event: WorkerSessionEvent) => void;
   readonly onObservation?: (observation: Omit<WorkerBrowserObservation, "leaseGeneration">) => void;
@@ -167,11 +140,7 @@ function abortError(system: BrowserSystemId): Error {
   return new Error(`${system} driver lease was aborted before acquisition`);
 }
 
-/**
- * D125. The message names the bound, its config leaf, and the ONE other leaf
- * an operator might legitimately need to move — because the failure an
- * operator sees at 60s must be actionable without reading this file.
- */
+
 function acquisitionDeadlineError(system: BrowserSystemId, boundMs: number): Error {
   return new Error(
     `${system} browser-session acquisition (open + login) exceeded its ${String(boundMs)}ms `
@@ -183,23 +152,12 @@ function acquisitionDeadlineError(system: BrowserSystemId, boundMs: number): Err
   );
 }
 
-/**
- * The settled loser of an acquisition race. It is not discarded evidence: the
- * lease has already thrown the deadline error the operator sees, and
- * `#closeAbandonedAcquisition` owns whatever cleanup the late settlement
- * implies. This exists only so a promise nobody awaits any more cannot be
- * reported as an unhandled rejection.
- */
+// An acquisition race loser retains its own settlement and teardown evidence.
 function observeAbandonedAcquisition(error: unknown): void {
   void error;
 }
 
-/**
- * Race one acquisition against its own bound. The loser is OBSERVED, never
- * swallowed: if the acquisition settles after losing, its own settlement is
- * handled by `#abandonAcquisition`, and this handler only keeps Node from
- * reporting an unhandled rejection for a promise nobody awaits any more.
- */
+// Observe late acquisition settlement and prove cleanup even after its deadline wins.
 async function waitForAcquisition<Result>(
   acquisition: Promise<Result>,
   signal: AbortSignal,
@@ -258,13 +216,7 @@ async function waitForOperation<Result>(
   }
 }
 
-/**
- * The bind/release half of D116 (ref clock-config-secrets §4) as a first-class surface: the
- * caller that OWNS a run context — the worker loop for its claimed run, ref write-safety
- * §4 recovery for a target run's out-of-loop probe lease — binds that run's
- * retained immutable `configFingerprint` for exactly the duration of the
- * operation and releases it afterwards, success or failure.
- */
+
 export interface RunConfigFingerprintBinding {
   bindRunConfigFingerprint(
     fingerprint: Fingerprint,
@@ -278,11 +230,7 @@ export interface RunConfigFingerprintBinding {
   releaseRunConfigFingerprint(): void;
 }
 
-/**
- * One-way ownership transition for ref write-safety's durable fence.
- * Before this arm is called, parent cancellation has ordinary `withDriver`
- * semantics. Afterwards cancellation is retained until the callback settles.
- */
+// After the durable fence, parent cancellation cannot interrupt the transaction lease.
 export interface TransactionDriverLeaseOwnership {
   retainAfterFence(): void;
 }
@@ -362,12 +310,7 @@ async function waitForTransactionOperation<Result>(
   }
 }
 
-/**
- * The ONE bind/execute/release discipline every run-scoped driver-lease window
- * uses (worker loop and tests alike). A bind failure throws BEFORE `operation`
- * runs — a second concurrent run binding, or a malformed fingerprint, is a
- * loud precondition refusal, never a silently unbound lease.
- */
+
 export async function withBoundRunConfigFingerprint<Result>(
   sessions: RunConfigFingerprintBinding,
   fingerprint: Fingerprint,
@@ -504,13 +447,7 @@ export class WorkerSessionManager {
       acceptDownloads: resource.acceptDownloads, exclusive: resource.exclusive, health, observedAt: this.#clock.now().toISOString() }));
   }
 
-  /**
-   * D116 (ref clock-config-secrets §4): the worker loop binds the claimed run's immutable
-   * `configFingerprint` before any task executes, making the fingerprint part
-   * of the session lookup identity rather than evidence metadata. Exactly one
-   * run is bound at a time — a second bind without a release is a programming
-   * error and fails loud.
-   */
+
   bindRunConfigFingerprint(
     fingerprint: Fingerprint,
     browserMode?: BrowserPresentationMode,
@@ -594,7 +531,7 @@ export class WorkerSessionManager {
     const browserMode = this.#runBrowserMode;
     if (configFingerprint === undefined) {
       throw new Error(
-        `${need.system} driver lease requires the claimed run's bound config fingerprint (D116); none is bound`,
+        `${need.system} driver lease requires the claimed run's bound config fingerprint; none is bound`,
       );
     }
     if (browserMode === undefined) {
@@ -731,21 +668,7 @@ export class WorkerSessionManager {
     }
   }
 
-  /**
-   * D125 — acquisition is bounded SEPARATELY from the task that wants it.
-   *
-   * The live exit run (2026-08-04, `pl-000619-4ebf`) spent 262.9s inside one
-   * `withDriver` because the only bound reaching this code was the
-   * interpreter's whole-task deadline. `#openAndLogin` is a chain of
-   * individually-bounded steps — `factory.open`, then a login recipe whose
-   * navigations and Duo window each carry their own timeout — and nothing
-   * bounded the CHAIN. The task deadline cannot do that job: it must stay long
-   * enough for the real read (UCPath person-org ~22s, Kuali fill→save→reload→
-   * verify 8–10s per cycle), and by the time it would have fired, claim expiry
-   * had already requeued the run. So acquisition gets its own, much shorter,
-   * kernel-scheduled monotonic bound, and blowing it FAILS — it is never
-   * converted into a silent retry that hides a dead session.
-   */
+
   async #acquireBounded(
     need: SessionNeed,
     instance: string | undefined,
@@ -788,14 +711,7 @@ export class WorkerSessionManager {
     }
   }
 
-  /**
-   * An acquisition that outlived its bound is UNCERTAIN, so a session it
-   * produces late is poison-closed rather than inherited by the next lease as
-   * a warm reuse. A close that cannot be proven leaves `#poisoned` set, and
-   * the next `#getOrStart` refuses by name — the failure is retained in
-   * manager state, which is why nothing is rethrown out of a background task
-   * nobody awaits.
-   */
+  // A late acquisition is uncertain; poison-close its session instead of reusing it.
   #abandonAcquisition(system: BrowserSystemId, started: Promise<WorkerBrowserResource>): void {
     void this.#closeAbandonedAcquisition(system, started);
   }
@@ -808,10 +724,7 @@ export class WorkerSessionManager {
     try {
       resource = await started;
     } catch (error) {
-      // The abandoned acquisition failed on its own terms, which means
-      // `#openAndLogin` already ran its PROVEN cleanup (or retained the
-      // system as poisoned when it could not prove one). Nothing is left for
-      // this observer to do.
+      // A failed abandoned acquisition already owns cleanup; preserve poison state when that cleanup cannot prove closure.
       observeAbandonedAcquisition(error);
       return;
     }
@@ -823,10 +736,7 @@ export class WorkerSessionManager {
         () => this.#closeSystem(system, "poisoned"),
       );
     } catch (error) {
-      // `#closeSystem` marks `#poisoned` BEFORE closing and clears it only on
-      // a proven close, so an unprovable close is RETAINED in manager state
-      // and the next `#getOrStart` refuses this system by name. The fact is
-      // kept; only the rethrow is dropped, because no caller awaits this.
+      // Mark poison before closing and clear it only after proven closure; later leases must refuse uncertain ownership.
       observeAbandonedAcquisition(error);
     }
   }
@@ -844,11 +754,7 @@ export class WorkerSessionManager {
     }
     const existing = this.#resources.get(need.system);
     if (existing !== undefined) {
-      // D116 (ref clock-config-secrets §4, ref execution-and-sessions §7): reuse requires the COMPLETE identity —
-      // worker (this manager), system, resolved instance, AND the run's
-      // config fingerprint. Any drift proves the old context closed (a forced
-      // fresh boundary) before a replacement is authenticated; a context
-      // configured under another run snapshot is never reused.
+
       if (existing.instance !== instance
         || existing.configFingerprint !== configFingerprint
         || effectiveResourceBrowserMode(existing, this.#defaultBrowserMode) !== browserMode) {
@@ -874,18 +780,7 @@ export class WorkerSessionManager {
     }
   }
 
-  /**
-   * D267 §10.5 — ONE acquisition, with the fresh-profile-once recovery around
-   * it. The Duo ceremony gate is opened here and HELD across the retry: a
-   * terminal refusal poison-closes the resource (proof required — the
-   * directory cannot be touched while a context may hold it), the factory
-   * removes and recreates the SAME profile path, and the login runs once more
-   * under the lease the gate still holds. A second refusal fails loud naming
-   * the directory and never deletes a third time; every other login failure
-   * takes the ordinary path. `dispose` in `finally` releases whatever the
-   * gate still holds, so a recovery that dies between the two attempts cannot
-   * strand the credential.
-   */
+  // Hold the same ceremony lease across the single fresh-profile retry.
   async #openAndLogin(
     need: SessionNeed,
     instance: string | undefined,
@@ -901,10 +796,8 @@ export class WorkerSessionManager {
       cancelCeremony: envelope.cancel,
       signal,
     });
-    // Finding 1 (ref execution-and-sessions §10.4): the settlement is captured as DATA, exactly as
-    // the gate's own `withCeremony` does, rather than reached through `try { … } finally { gate.dispose() }`.
-    // A plain `finally` cannot hand `dispose()` the error it is unwinding, so a release failure there
-    // would silently REPLACE this call's own thrown error instead of preserving it as `cause`.
+
+    // Capture settlement so a dispose failure preserves the primary error as its cause.
     let settled: Readonly<{ state: "returned"; value: WorkerBrowserResource }> | Readonly<{ state: "threw"; error: unknown }>;
     try {
       let value: WorkerBrowserResource;
@@ -988,11 +881,7 @@ export class WorkerSessionManager {
           `${need.system} session factory returned resource ${resource.system} with driver ${resource.driver.system}`,
         );
       }
-      // `browserMode` was added after the fixture/session port, so a legacy
-      // resource means the manager's configured default presentation. That
-      // compatibility is deliberately one-way: an omitted echo can satisfy
-      // headless only; a per-run headed request still has to be positively
-      // echoed by the factory before a session can be used.
+      // A resource without browserMode uses the configured compatibility presentation.
       const resourceBrowserMode = effectiveResourceBrowserMode(resource, this.#defaultBrowserMode);
       if (resource.instance !== instance
         || resource.configFingerprint !== configFingerprint

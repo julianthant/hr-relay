@@ -25,8 +25,7 @@ import {
   PROTECTED_SETTINGS_SET_MARKER,
   markProtectedSettingsPatch,
 } from "../../../../../../src/models/config/protected-settings.js";
-// D341: the D331 settings-file authority is a frozen LEGACY source (seven protected names, pinned
-// hash); this file proves that source and therefore speaks the legacy family, never the live one.
+
 import {
   LEGACY_PROTECTED_SETTINGS_SCHEMA_HASH as PROTECTED_SETTINGS_SCHEMA_HASH,
   LegacyProtectedSettingsReadbackSchema as ProtectedSettingsReadbackSchema,
@@ -350,7 +349,7 @@ describe("baseline atomic Settings invariants on the single file authority", () 
 });
 
 
-describe("D331 shared settings root", () => {
+describe("shared settings root", () => {
   it("closes the settings rejection vocabulary exactly", () => {
     assert.deepEqual(SettingsApplyRejectionCodeSchema.options, [
       "schema-mismatch",
@@ -377,7 +376,7 @@ describe("D331 shared settings root", () => {
     };
   }
 
-  it("P7/P21 canonicalizes every protected set to the one journal marker", () => {
+  it("canonicalizes every protected set to the one journal marker", () => {
     const firstValue = "first-synthetic-value";
     const secondValue = "second-distinct-value";
     const first = markProtectedSettingsPatch({
@@ -400,7 +399,7 @@ describe("D331 shared settings root", () => {
     assert.equal(journalBytes.includes(sha256Hex(firstValue)), false);
   });
 
-  it("P8/P28 refuses a protected ordinary key before creating authority state", () => {
+  it("refuses a protected ordinary key before creating authority state", () => {
     const path = settingsPath();
     const service = createTestService({ path });
     const patch = { ucpathPassword: { set: "must-not-enter-settings-json" } };
@@ -416,7 +415,7 @@ describe("D331 shared settings root", () => {
     assert.equal(existsSync(dirname(path)), false);
   });
 
-  it("P12 keeps protected readback exhaustive, presence-only, and strict", () => {
+  it("keeps protected readback exhaustive, presence-only, and strict", () => {
     const path = settingsPath();
     const store = createProtectedSettingsFileAuthority({ path, assertWriteIdAvailable: () => undefined });
     const result = store.apply(protectedRequest());
@@ -443,7 +442,7 @@ describe("D331 shared settings root", () => {
     }), /unrecognized/i);
   });
 
-  it("P23 enforces private files, hard-link count, ancestry, and bound directory identity", () => {
+  it("enforces private files, hard-link count, ancestry, and bound directory identity", () => {
     const permissionPath = settingsPath();
     const permissionStore = createProtectedSettingsFileAuthority({
       path: permissionPath,
@@ -485,7 +484,7 @@ describe("D331 shared settings root", () => {
     assert.throws(() => createTestService({ path: symlinkPath }).read(), /symbolic link/u);
   });
 
-  it("P27 derives the single root and returns independent revision-1 baselines", () => {
+  it("derives the single root and returns independent revision-1 baselines", () => {
     const stateRoot = mkdtempSync(join(tmpdir(), "hrauto-settings-root-"));
     roots.push(stateRoot);
     const paths = settingsRootPaths(stateRoot);
@@ -500,7 +499,7 @@ describe("D331 shared settings root", () => {
     assert.deepEqual(protectedSettingsReadback(protectedStore.read()).entries.ucpathPassword, { present: false });
   });
 
-  it("P27 resumes exact revision-1 baseline materialization after a durability interruption", () => {
+  it("resumes exact revision-1 baseline materialization after a durability interruption", () => {
     const path = settingsPath();
     const root = dirname(path);
     let interrupted = false;
@@ -540,7 +539,7 @@ describe("D331 shared settings root", () => {
     }, { ordinary: "initialized", protected: "initialized" });
   });
 
-  it("P28 performs request-only schema, fingerprint, and value refusals before authority access", () => {
+  it("performs request-only schema, fingerprint, and value refusals before authority access", () => {
     const schemaPath = settingsPath();
     const ordinary = createTestService({ path: schemaPath });
     const patch = settingsSetOperations({ browser: { headless: false } });
@@ -572,7 +571,7 @@ describe("D331 shared settings root", () => {
     assert.equal(existsSync(dirname(invalidPath)), false);
   });
 
-  it("P24 holds one lock across ordinary/protected apply and commit", () => {
+  it("holds one lock across ordinary/protected apply and commit", () => {
     const path = settingsPath();
     const ordinary = createTestService({ path });
     const protectedStore = createProtectedSettingsFileAuthority({ path, assertWriteIdAvailable: () => undefined });
@@ -589,7 +588,7 @@ describe("D331 shared settings root", () => {
     assert.deepEqual(readdirSync(dirname(path)).sort(), ["authority.json", "protected.json", "settings.json"]);
   });
 
-  it("P24 admits an active writer's staging name only long enough to report the shared lock", () => {
+  it("admits an active writer's staging name only long enough to report the shared lock", () => {
     const path = settingsPath();
     const contender = createProtectedSettingsFileAuthority({
       path,
@@ -613,7 +612,7 @@ describe("D331 shared settings root", () => {
     assert.equal(contentionObserved, true);
   });
 
-  it("P22/P29 compares exact replay values inside the held shared lock and rejects divergence", () => {
+  it("compares exact replay values inside the held shared lock and rejects divergence", () => {
     const path = settingsPath();
     let uniquenessChecks = 0;
     const store = createProtectedSettingsFileAuthority({ path, assertWriteIdAvailable: () => { uniquenessChecks += 1; } });
@@ -633,7 +632,7 @@ describe("D331 shared settings root", () => {
     assert.deepEqual(readFileSync(join(dirname(path), "protected.json")), persisted);
   });
 
-  it("P15 keeps authority tuple identical across different protected values and never retains digests", () => {
+  it("keeps authority tuple identical across different protected values and never retains digests", () => {
     const authorityBytes: string[] = [];
     for (const value of ["first-synthetic-value", "second-distinct-value"]) {
       const path = settingsPath();
@@ -650,7 +649,7 @@ describe("D331 shared settings root", () => {
     assert.equal(authorityBytes[0], authorityBytes[1]);
   });
 
-  it("P25 retains exact target/document/authority bytes and restores both on rollback", () => {
+  it("retains exact target/document/authority bytes and restores both on rollback", () => {
     const path = settingsPath();
     const store = createProtectedSettingsFileAuthority({ path, assertWriteIdAvailable: () => undefined });
     store.read();
@@ -676,7 +675,7 @@ describe("D331 shared settings root", () => {
     assert.equal(store.read().revision, 1);
   });
 
-  it("P23 rejects an unexplained entry before it acquires the root lock", () => {
+  it("rejects an unexplained entry before it acquires the root lock", () => {
     const path = settingsPath();
     const store = createProtectedSettingsFileAuthority({ path, assertWriteIdAvailable: () => undefined });
     store.read();
@@ -685,7 +684,7 @@ describe("D331 shared settings root", () => {
     assert.equal(existsSync(join(dirname(path), "settings.lock")), false);
   });
 
-  it("P27 refuses missing initialized documents by name and keeps protected absence distinct", () => {
+  it("refuses missing initialized documents by name and keeps protected absence distinct", () => {
     const path = settingsPath();
     const store = createProtectedSettingsFileAuthority({ path, assertWriteIdAvailable: () => undefined });
     assert.deepEqual(store.read().entries, {});
@@ -697,7 +696,7 @@ describe("D331 shared settings root", () => {
     assert.throws(() => createTestService({ path }).read(), /authority-uncertain: protected.json presence/u);
   });
 
-  it("P29/P31 applies CAS before writeId uniqueness, rotates valueId, and journals clear", () => {
+  it("applies CAS before writeId uniqueness, rotates valueId, and journals clear", () => {
     const path = settingsPath();
     const seen = new Set<string>();
     const store = createProtectedSettingsFileAuthority({ path, assertWriteIdAvailable: (writeId) => {
@@ -728,7 +727,7 @@ describe("D331 shared settings root", () => {
     assert.equal(cleared.record.lastApplied?.expectedRevision, 3);
   });
 
-  it("P30 refuses oversized candidates and unjournaled authority without changing prior bytes", () => {
+  it("refuses oversized candidates and unjournaled authority without changing prior bytes", () => {
     const oversizedPath = settingsPath();
     const oversized = createTestService({ path: oversizedPath });
     oversized.read();
@@ -756,7 +755,7 @@ describe("D331 shared settings root", () => {
 });
 
 
-describe("D331 process-loss recovery for both document targets", () => {
+describe("process-loss recovery for both document targets", () => {
   function crashRequest(target: "ordinary" | "protected", expectedRevision: number): unknown {
     if (target === "ordinary") {
       const patch = settingsSetOperations({ browser: { headless: expectedRevision === 1 ? false : true } });
@@ -809,7 +808,7 @@ describe("D331 process-loss recovery for both document targets", () => {
     `], { encoding: "utf8" });
   }
 
-  it("P25 removes an exact crash-left virgin authority temporary only after stale-lock recovery", () => {
+  it("removes an exact crash-left virgin authority temporary only after stale-lock recovery", () => {
     const path = settingsPath();
     const child = crashBeforeAtomicReplace({
       path, target: "ordinary", destination: "authority.json", action: "read",
@@ -824,7 +823,7 @@ describe("D331 process-loss recovery for both document targets", () => {
     assert.deepEqual(readdirSync(dirname(path)).sort(), ["authority.json", "protected.json", "settings.json"]);
   });
 
-  it("P23 refuses a crash-left temporary whose exact staged bytes changed", () => {
+  it("refuses a crash-left temporary whose exact staged bytes changed", () => {
     const path = settingsPath();
     const authority = createTestService({ path });
     authority.read();
@@ -853,7 +852,7 @@ describe("D331 process-loss recovery for both document targets", () => {
       { destination: "rollback.json", occurrence: 1, action: "rollback", seeded: false },
       { destination: target === "ordinary" ? "settings.json" : "protected.json", occurrence: 2, action: "rollback", seeded: true },
     ] as const) {
-      it(`P25 ${target} recovers its exact ${scenario.destination} temporary before rename (${scenario.action} ${String(scenario.occurrence)})`, () => {
+      it(` ${target} recovers its exact ${scenario.destination} temporary before rename (${scenario.action} ${String(scenario.occurrence)})`, () => {
         const path = settingsPath();
         const ordinary = createTestService({ path });
         ordinary.read();
@@ -901,7 +900,7 @@ describe("D331 process-loss recovery for both document targets", () => {
 
   for (const target of ["ordinary", "protected"] as const) {
     for (const crashStage of ["prepare.json", "document", "afterRollbackPrepared", "afterRollbackSettingsRestored", "afterRollbackInitializationRestored"] as const) {
-      it(`P25 ${target} preserves exact prior bytes after death at ${crashStage}`, () => {
+      it(`${target} preserves exact prior bytes after death at ${crashStage}`, () => {
         const path = settingsPath();
         const ordinary = createTestService({ path });
         ordinary.read();

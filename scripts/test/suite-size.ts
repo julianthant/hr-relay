@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { isDirectExecution, resolveScopeFiles } from "./scope-files.js";
 
 const ROOT = process.cwd();
-// D93: each named Vitest project owns one independent subtree.
+// Each named Vitest project owns one independent subtree.
 const FAMILIES = [
   ["unit", "tests/unit"],
   ["integration", "tests/integration"],

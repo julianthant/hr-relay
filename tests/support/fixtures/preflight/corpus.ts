@@ -52,7 +52,7 @@ async function inject(f: ReturnType<typeof runtimeFixture>, entry: Case): Promis
   }
   if (id === "storage.disk-space") {Reflect.set(f.input.dashboard,"filesystemProbe",{availableBlocks:()=>0});return()=>{Reflect.deleteProperty(f.input.dashboard,"filesystemProbe");};}
   if (id === "storage.sqlite" || id === "storage.backup") {
-    // D322: backups never gate healthy authority. The recovery dependency is exercised with corrupt authority.
+
     const undo=replace(f.databasePath,"corrupt synthetic authority");
     if(id === "storage.backup") {const path=join(f.stateRoot,"backups");mkdirSync(path);writeFileSync(join(path,"invalid.manifest.json"),"corrupt synthetic backup");return()=>{undo();rmSync(path,{recursive:true});};}
     return undo;

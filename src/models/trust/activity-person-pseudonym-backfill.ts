@@ -36,11 +36,7 @@ export const ActivityPersonPseudonymBackfillUnavailableReasonSchema = z.enum([
   "canonical-subject-malformed",
 ]);
 
-/**
- * D288 deliberately pins the complete current Separations terminal value at
- * the trust boundary. The backfill does not accept a looser object merely
- * because it happens to contain an identifier-shaped `approved.emplId`.
- */
+/** Require the complete terminal schema; an identifier-shaped subset is not proof. */
 export const CurrentSeparationsPseudonymSourceResultSchema = z.strictObject({
   documentNumber: z.string().min(1),
   approved: ResolvedIdentitySubjectSchema,
@@ -62,9 +58,8 @@ export const CurrentSeparationsPseudonymSourceResultSchema = z.strictObject({
     lastDayWorkedChanged: z.boolean(),
     separationDateChanged: z.boolean(),
   }),
-  // D307 — mirrors the descriptor's omitted arms exactly; this schema's hash
-  // must equal the current SeparationsResultSchema's or every current run
-  // reads as unavailable.
+    // Mirrors the descriptor's omitted arms exactly; this schema's hash must equal the current
+  // SeparationsResultSchema's or every current run reads as unavailable.
   pendingSweep: z.union([
     z.strictObject({
       disposition: z.enum(["committed", "already-present"]),

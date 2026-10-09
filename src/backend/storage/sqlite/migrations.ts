@@ -53,11 +53,7 @@ export function requiresStoppedSystemAuthorityUpgrade(schemaVersion: number): bo
   return schemaVersion > 0 && (schemaVersion <= UPGRADE_FLOOR_SCHEMA_VERSION || schemaVersion < NORMAL_AUTHORITY_SCHEMA_VERSION);
 }
 
-/**
- * Tables created by the immutable v1 migration and retired by v28. They stay
- * named here only so the released migration can retain its exact bytes; they
- * are absent from the current authority registry and from every repository.
- */
+// Keep released table names literal so immutable migration replay preserves its exact DDL.
 export const RETIRED_PHONE_CAPTURE_TABLES = [
   "capture_sessions",
   "capture_photo_order",
@@ -201,9 +197,7 @@ export const SQLITE_TABLE_DDL = deepFreeze({
       CHECK ((state = 'settled') = (actual_cost_usd_micros IS NOT NULL))
     ) STRICT
   `,
-  // Ref operator-trust §2.2. A bundle is content-addressed and pinned or purged EXPLICITLY:
-  // `purge_after` exists exactly when retention is ordinary, and an
-  // operator-requested bundle is the one origin that carries no failure.
+
   diagnostic_bundles: `
     CREATE TABLE diagnostic_bundles (
       record_key TEXT PRIMARY KEY,
@@ -249,9 +243,7 @@ export const SQLITE_TABLE_DDL = deepFreeze({
       CHECK (result <> 'verified-done' OR confidence = 'verified')
     ) STRICT
   `,
-  // Ref guards-and-tests §10.6. This is citable dry-run evidence, not a mutable
-  // projection. A started result binds to one real run; a pre-browser block
-  // carries neither run nor trace identity rather than fabricating either.
+
   dry_run_scenario_results: `
     CREATE TABLE dry_run_scenario_results (
       record_key TEXT PRIMARY KEY,
@@ -272,7 +264,7 @@ export const SQLITE_TABLE_DDL = deepFreeze({
       )
     ) STRICT
   `,
-  // DCR5 — immutable evidence for one operator-facing workbook attachment.
+  // immutable evidence for one operator-facing workbook attachment.
   operator_xlsx_exports: `
     CREATE TABLE operator_xlsx_exports (
       record_key TEXT PRIMARY KEY,
@@ -286,9 +278,7 @@ export const SQLITE_TABLE_DDL = deepFreeze({
       created_at TEXT NOT NULL
     ) STRICT
   `,
-  // D288 — one deterministic, keyed person pseudonym per run and public key
-  // generation. The source identifier and HMAC key have no columns and never
-  // enter record_json.
+
   activity_person_pseudonyms: `
     CREATE TABLE activity_person_pseudonyms (
       record_key TEXT PRIMARY KEY,
@@ -302,9 +292,7 @@ export const SQLITE_TABLE_DDL = deepFreeze({
       UNIQUE (run_id, key_generation)
     ) STRICT
   `,
-  // D288 — an irreversible commitment binds each public generation to one
-  // secret HMAC key. Neither key material nor a person-derived value enters
-  // this table.
+
   activity_person_pseudonym_generations: `
     CREATE TABLE activity_person_pseudonym_generations (
       record_key TEXT PRIMARY KEY,
@@ -334,9 +322,7 @@ export const SQLITE_TABLE_DDL = deepFreeze({
       created_at TEXT NOT NULL
     ) STRICT
   `,
-  // Ref write-safety §6. One row per `(system, date)`: the sequence authority and the
-  // projection lease. `next_seq` advances only inside the same transaction that
-  // writes the assignment row it hands out.
+
   ledger_partitions: `
     CREATE TABLE ledger_partitions (
       record_key TEXT PRIMARY KEY,
@@ -353,9 +339,7 @@ export const SQLITE_TABLE_DDL = deepFreeze({
       CHECK ((lease_holder IS NULL) = (lease_expires_at IS NULL))
     ) STRICT
   `,
-  // Ref write-safety §6. One row per projected outbox id — the projector's idempotency
-  // key — written BEFORE the append so the append window is repairable. `seq`
-  // is unique inside its partition; nothing may delete or rewrite a row.
+
   ledger_projections: `
     CREATE TABLE ledger_projections (
       record_key TEXT PRIMARY KEY REFERENCES durable_outbox(record_key) ON DELETE RESTRICT,
@@ -411,16 +395,8 @@ export const SQLITE_TABLE_DDL = deepFreeze({
   config_snapshots: jsonRecordTable("config_snapshots"),
   version_plans: jsonRecordTable("version_plans"),
   checkpoint_payloads: jsonRecordTable("checkpoint_payloads"),
-  // Ref workflow-model §5.7. The logical item is (workflow, item_id) — retries share it,
-  // rerun-with-new-input gets a fresh one — and the resume grain is a graph
-  // NODE, so the doc's `step_id` column is `node_id` here. Payloads are
-  // system-of-record under D14: pruned only on logical-item deletion, never on
-  // the 7-day JSONL clock.
-  //
-  // **This constant is the v3 SHAPE and is frozen there.** D214 added the
-  // `claim_generation` column and widened the uniqueness tuple; that rebuild is
-  // migration v14's own literal SQL, because v3 hashes these exact bytes and a
-  // released migration is immutable. Read v14 for the live shape.
+
+  // These checkpoint-v3 SQL bytes are frozen by the released migration hash.
   run_checkpoints: `
     CREATE TABLE run_checkpoints (
       record_key TEXT PRIMARY KEY,
@@ -434,9 +410,7 @@ export const SQLITE_TABLE_DDL = deepFreeze({
       UNIQUE (workflow, item_id, node_id, attempt)
     ) STRICT
   `,
-  // Ref frontend-backend-integration §5.1. A plan is proposed, shown, and then consumed exactly once; the
-  // consuming command carries only its id and fingerprints, so the plan itself
-  // has to be durable or the confirmation would be trusting the client's copy.
+
   start_plans: `
     CREATE TABLE start_plans (
       record_key TEXT PRIMARY KEY,
@@ -483,8 +457,7 @@ export const SQLITE_TABLE_DDL = deepFreeze({
   `,
   artifact_outbox: jsonRecordTable("artifact_outbox"),
   artifact_sink_heads: jsonRecordTable("artifact_sink_heads"),
-  // D308 — the delete tombstone. One row per deleted run, inserted FIRST in the
-  // delete transaction; every relaxed `*_never_deleted` trigger reads it.
+
   deleted_runs: `
     CREATE TABLE deleted_runs (
       record_key TEXT PRIMARY KEY,
@@ -506,13 +479,7 @@ export const SQLITE_TABLE_DDL = deepFreeze({
       created_at TEXT NOT NULL
     ) STRICT
   `,
-  /**
-   * Ref data-intake-and-edit-data §2.2's in-progress upload → map → validate session (2i-E1). The
-   * operator's decisions plus the immutable source identity — rows and
-   * columns are re-derived from the content-addressed artifact, never
-   * stored. `source_sha256` and `state` are columns so "does this exact
-   * file already have an open session" is a lookup, not a JSON scan.
-   */
+
   intake_sessions: `
     CREATE TABLE intake_sessions (
       record_key TEXT PRIMARY KEY,
@@ -524,11 +491,7 @@ export const SQLITE_TABLE_DDL = deepFreeze({
       updated_at TEXT NOT NULL
     ) STRICT
   `,
-  /**
-   * Ref data-intake-and-edit-data §5's immutable plan manifest. `record_key` is the manifest id; the
-   * source digest is a column so "has this exact file been run before" is a
-   * lookup rather than a scan over parsed JSON.
-   */
+
   intake_manifests: `
     CREATE TABLE intake_manifests (
       record_key TEXT PRIMARY KEY,
@@ -539,13 +502,7 @@ export const SQLITE_TABLE_DDL = deepFreeze({
       created_at TEXT NOT NULL
     ) STRICT
   `,
-  /**
-   * Ref data-intake-and-edit-data §4.3's admitted extraction, one row per PAGE.
-   *
-   * `(source_sha256, source_page, form_type)` is UNIQUE: one page read once for
-   * one form. A second producer reading the same page is a REPLACEMENT decision
-   * a human makes, not a second row that silently doubles a person.
-   */
+
   ocr_extractions: `
     CREATE TABLE ocr_extractions (
       record_key TEXT PRIMARY KEY,
@@ -560,11 +517,7 @@ export const SQLITE_TABLE_DDL = deepFreeze({
       UNIQUE (source_sha256, source_page, form_type)
     ) STRICT
   `,
-  /**
-   * D179 / ref dashboard-surfaces §10.2 — the applied version bump. Charter §25's change
-   * record: what scope moved, to which build, and how many runs left the
-   * active surfaces because of it.
-   */
+
   version_bump_applications: `
     CREATE TABLE version_bump_applications (
       record_key TEXT PRIMARY KEY,
@@ -577,13 +530,7 @@ export const SQLITE_TABLE_DDL = deepFreeze({
       created_at TEXT NOT NULL
     ) STRICT
   `,
-  /**
-   * One archived run, stored as SELF-CONTAINED data (charter §25). The row
-   * holds the run's final projected row, its detail, its receipt/failure and
-   * its evidence POINTERS, so rendering it needs no descriptor and no
-   * old-version code. `content_digest` is the integrity value a relaunch
-   * cites back.
-   */
+
   archived_runs: `
     CREATE TABLE archived_runs (
       record_key TEXT PRIMARY KEY REFERENCES tasks(record_key) ON DELETE RESTRICT,
@@ -597,12 +544,7 @@ export const SQLITE_TABLE_DDL = deepFreeze({
       created_at TEXT NOT NULL
     ) STRICT
   `,
-  /**
-   * Relaunch provenance, keyed by the FRESH run (charter §25: relaunch starts
-   * a new run on the current version and is never a resume). One archived run
-   * may be relaunched more than once, and neither side is rewritten to record
-   * it — the link is its own insert-only fact.
-   */
+
   archive_relaunches: `
     CREATE TABLE archive_relaunches (
       record_key TEXT PRIMARY KEY REFERENCES tasks(record_key) ON DELETE RESTRICT,
@@ -611,14 +553,7 @@ export const SQLITE_TABLE_DDL = deepFreeze({
       created_at TEXT NOT NULL
     ) STRICT
   `,
-  /**
-   * D267 (ref execution-and-sessions §10) — the Duo ceremony lease: ONE row per
-   * credential identity, UPDATED in place across generations. It is the second
-   * authority row (after notifications) that is updated rather than appended,
-   * and for a similar reason: the row IS the lock, and a lock that left a row
-   * behind per ceremony would be a ledger of ceremonies, not a lease. Every
-   * mirrored column is pinned to the record's own value by the integrity audit.
-   */
+
   duo_ceremony_leases: `
     CREATE TABLE duo_ceremony_leases (
       record_key TEXT PRIMARY KEY,
@@ -632,15 +567,7 @@ export const SQLITE_TABLE_DDL = deepFreeze({
       created_at TEXT NOT NULL
     ) STRICT
   `,
-  /**
-   * D269 (ref execution-and-sessions §11.5) — the per-workflow worker POOL
-   * declaration, the CAS basis `plan-worker-count` / `spawn-worker` cite. One
-   * row per workflow, updated under a version CAS (a pool is a standing
-   * declaration, not a history), never deleted: a row that vanished would read
-   * as "nothing was ever planned", which is a different fact from the one it
-   * replaced. `desired_workers` and `version` are mirrored so a pool can be
-   * listed without parsing every record; the integrity audit pins them.
-   */
+
   worker_pools: `
     CREATE TABLE worker_pools (
       record_key TEXT PRIMARY KEY,
@@ -650,14 +577,7 @@ export const SQLITE_TABLE_DDL = deepFreeze({
       created_at TEXT NOT NULL
     ) STRICT
   `,
-  /**
-   * D269 (ref execution-and-sessions §11.1) — a dashboard-started GROUP of
-   * runs. Insert-only by trigger (a group that could be rewritten would be a
-   * weaker record than the runs it names) and it holds NO member list:
-   * membership is `tasks.session_id`, so the group is derived from the run
-   * table and can never claim a run that table does not show. `workflow` is
-   * mirrored for the per-workflow listing.
-   */
+
   run_sessions: `
     CREATE TABLE run_sessions (
       record_key TEXT PRIMARY KEY,
@@ -777,11 +697,7 @@ const POST_V1_TABLE_ORDER = [
 
 const TABLE_ORDER = [...V1_TABLE_ORDER, ...POST_V1_TABLE_ORDER] as const satisfies readonly MigrationTableName[];
 
-/**
- * D290/D332 — immutable released-layout admission. These are deliberately
- * literal: growing today's DDL must never rewrite what an integrated v27,
- * v28, or v29 authority meant.
- */
+// Released layouts are literal admission contracts; changing current DDL must not rewrite them.
 export const INTEGRATED_AUTHORITY_TABLES_BY_VERSION = deepFreeze({
   27: [
     "activity_person_pseudonym_generations", "activity_person_pseudonyms", "archive_relaunches",
@@ -828,7 +744,7 @@ export const INTEGRATED_AUTHORITY_TABLES_BY_VERSION = deepFreeze({
   ],
 } as const satisfies Readonly<Record<27 | 28 | 29, readonly string[]>>);
 
-/** Historical v30–v37 layouts stay independent of the current registry. */
+
 const V30_TABLES = [...INTEGRATED_AUTHORITY_TABLES_BY_VERSION[29], "authority_upgrades", "protected_settings_current"].sort();
 const V32_TABLES = V30_TABLES.filter((name) => name !== "protected_settings_current");
 const V33_TABLES = V32_TABLES.map((name) => name === "tasks" ? "workflow_runs" : name === "run_sessions" ? "workflow_run_batches" : name).sort();
@@ -901,15 +817,8 @@ export const SQLITE_MIGRATIONS = deepFreeze([
     ],
   },
   {
-    // Ref dashboard-surfaces §2.3's task/claim store, typed. `tasks` holds runs and `leases`
-    // holds worker leases; both were created as opaque JSON tables in v1 because
-    // nothing wrote them before the executor existed.
-    //
-    // There is deliberately NO unique index over (workflow, item_id): a logical
-    // item legitimately carries many runs — in-run attempts share a run id, and
-    // a cross-run retry is a new run against the same item. "At most one ACTIVE
-    // run per item" is descriptor policy (`enqueue`), and a workflow that
-    // declares `allow-parallel` would break a schema-level uniqueness rule.
+
+    // Retries and parallel runs share items; active-run uniqueness belongs to descriptor policy.
     version: 4,
     statements: [
       "ALTER TABLE tasks ADD COLUMN workflow TEXT",
@@ -993,9 +902,7 @@ export const SQLITE_MIGRATIONS = deepFreeze([
     ],
   },
   {
-    // Start plans (ref frontend-backend-integration §5.1), plus the delegation edge every projection and
-    // the tree-scoped cancel need. `parent_run_id` is a column rather than a
-    // JSON extract because cancelling a group walks it.
+
     version: 5,
     statements: [
       SQLITE_TABLE_DDL.start_plans,
@@ -1019,22 +926,14 @@ export const SQLITE_MIGRATIONS = deepFreeze([
     ],
   },
   {
-    /*
-     * D109 makes raw ingress a mandatory durable part of every start-plan
-     * outcome. Pre-D109 records cannot be honestly upgraded: their canonical
-     * input may be transformed and is not a substitute for raw operator input.
-     * Plans are short-lived proposals, so invalidate them and require operators
-     * to re-plan rather than fabricate historical ingress.
-     */
+    // Records without submitted ingress cannot be safely upgraded by guessing it.
     version: 6,
     statements: [
       "DELETE FROM start_plans",
     ],
   },
   {
-    // D110/D114 terminal authority. Failed and successful settlements are
-    // immutable facts; the composite repository writes one of these rows and
-    // the matching terminal run transition in one outer transaction.
+
     version: 7,
     statements: [
       SQLITE_TABLE_DDL.failures,
@@ -1045,9 +944,7 @@ export const SQLITE_MIGRATIONS = deepFreeze([
     ],
   },
   {
-    // The D110/D114 review repair preserves the exact pre-terminal CAS/claim
-    // authorization separately from v7's released terminal facts. Existing v7
-    // databases must execute this migration rather than look current by mistake.
+
     version: 8,
     statements: [
       SQLITE_TABLE_DDL.run_terminal_authorizations,
@@ -1055,8 +952,7 @@ export const SQLITE_MIGRATIONS = deepFreeze([
     ],
   },
   {
-    // D112 generic durable provider admission. Production adapters and
-    // consumers remain Phase 2h; these tables are capability-global authority.
+
     version: 9,
     statements: [
       SQLITE_TABLE_DDL.provider_budget_counters,
@@ -1093,20 +989,7 @@ export const SQLITE_MIGRATIONS = deepFreeze([
     ],
   },
   {
-    /*
-     * D134 — the 2g event/trust foundation. Three groups land together because
-     * they share one schema version and no later 2g slice may edit the chain:
-     *
-     *  1. ref operator-trust's trust tables (diagnostic bundles + attachments, evidence
-     *     receipts, knowledge and fix records);
-     *  2. ref write-safety §6's ledger sequencing lease and projection state;
-     *  3. the two column upgrades the projections ref operator-trust already requires —
-     *     a searchable failure fingerprint, and the notification dedupe fold.
-     *
-     * The notification upgrade is the only one that rewrites stored JSON, and
-     * it does so with the exactly-true values: a row that was inserted once has
-     * been seen once, at its own creation instant. No count is invented.
-     */
+
     version: 10,
     statements: [
       SQLITE_TABLE_DDL.diagnostic_bundles,
@@ -1209,22 +1092,7 @@ export const SQLITE_MIGRATIONS = deepFreeze([
     ],
   },
   {
-    /*
-     * Phase-2h durability. Everything the intake and OCR pipelines produce was
-     * in-memory until here: a manifest and an admitted extraction survived
-     * exactly as long as the process did.
-     *
-     * Both tables carry their identifying facts as COLUMNS beside the record
-     * JSON, for the same reason v10 gave `failures` a searchable fingerprint:
-     * "has this file been run before" and "has this page already been read"
-     * are lookups an operator makes constantly, and a scan over parsed JSON is
-     * not an answer.
-     *
-     * `ocr_extractions` is UNIQUE on `(source_sha256, source_page, form_type)`.
-     * One page, read once, for one form. A second producer reading the same
-     * page is a REPLACEMENT a human decides on — not a second row that silently
-     * doubles a person in the fan-out.
-     */
+
     version: 11,
     statements: [
       SQLITE_TABLE_DDL.intake_manifests,
@@ -1233,9 +1101,7 @@ export const SQLITE_MIGRATIONS = deepFreeze([
       "CREATE INDEX intake_manifests_workflow_idx ON intake_manifests(workflow, created_at)",
       "CREATE INDEX ocr_extractions_source_idx ON ocr_extractions(source_sha256, source_page)",
       "CREATE INDEX ocr_extractions_form_idx ON ocr_extractions(form_type, created_at)",
-      // An intake manifest is the rerun authority (ref data-intake-and-edit-data §5): it proves which
-      // file and mapping produced which items. Rewriting one would rewrite
-      // history that a run already fanned out against.
+
       `CREATE TRIGGER intake_manifests_immutable_update
         BEFORE UPDATE ON intake_manifests
         BEGIN
@@ -1256,16 +1122,7 @@ export const SQLITE_MIGRATIONS = deepFreeze([
     ],
   },
   {
-    /*
-     * 2i-E1: the durable intake session — the in-progress upload → map →
-     * validate state ref data-intake-and-edit-data §2.2 walks, which D159's TERMINAL manifest
-     * deliberately does not cover (a manifest is the immutable rerun
-     * authority; a session is the operator's working state before one
-     * exists). Mutable under a version CAS like `capture_sessions`;
-     * rows/columns are never stored — they re-derive from the
-     * content-addressed artifact, so a stored copy could only drift from
-     * its own source.
-     */
+
     version: 12,
     statements: [
       SQLITE_TABLE_DDL.intake_sessions,
@@ -1274,21 +1131,7 @@ export const SQLITE_MIGRATIONS = deepFreeze([
     ],
   },
   {
-    /*
-     * 2i-G: the archive model (D179, charter §25 / ref dashboard-surfaces §10.2). Three facts,
-     * all insert-only in SQL rather than by convention:
-     *
-     * - the applied bump, which is the change record;
-     * - one self-contained record per archived run;
-     * - relaunch provenance keyed by the fresh run.
-     *
-     * The triggers are the load-bearing part. An archive whose rows could be
-     * updated or deleted would be a WEAKER record than the live run row it
-     * replaced, and the whole argument for archiving — that the operator can
-     * still read exactly what happened, forever, without the code that did it
-     * — depends on the bytes not moving. Nothing here touches the ledger:
-     * archiving is a display lifecycle and the ledger is an audit one.
-     */
+
     version: 13,
     statements: [
       SQLITE_TABLE_DDL.version_bump_applications,
@@ -1330,32 +1173,9 @@ export const SQLITE_MIGRATIONS = deepFreeze([
     ],
   },
   {
-    /*
-     * D214 — a run ATTEMPT is not one execution of its graph, so the checkpoint
-     * identity gains the claim generation that executed the node.
-     *
-     * A gate park and its resume are two executions inside ONE attempt, and an
-     * `always-rerun` node re-executes across that boundary by design (ref workflow-model
-     * §5.3). Under `UNIQUE (workflow, item_id, node_id, attempt)` the second
-     * execution's genuinely different observation collided with the first
-     * execution's row and the immutable insert refused it — so a graph with a
-     * gate upstream of an always-rerun node could not pass its own gate.
-     *
-     * `claim_generation` is NULLABLE and every pre-D214 row copies across as
-     * NULL, because a row written before the component existed does not name an
-     * execution and writing `1` into it would be fabricating a fact nobody
-     * recorded (D133 read-forward). NULLs are distinct under SQLite's UNIQUE, so
-     * the constraint alone would not stop two unrecorded rows for one tuple —
-     * two things make that unreachable: the copied rows were already unique
-     * under the OLD constraint, and `runCheckpoints.insert` refuses a record
-     * carrying no generation, so no further NULL row can ever be written.
-     *
-     * The rebuild is table-copy rather than `ALTER TABLE ADD COLUMN` because a
-     * UNIQUE constraint cannot be widened in place. `record_key` is copied
-     * VERBATIM: `checkpointLookupKey` appends nothing for an absent generation,
-     * so every stored key stays byte-identical and every stored row stays
-     * resolvable by the exact key it was written under.
-     */
+
+    // NULL preserves an unrecorded claim generation; inserts reject new records without one.
+    // SQLite UNIQUE treats NULLs as distinct; copied rows remain unique under their original constraint.
     version: 14,
     statements: [
       `CREATE TABLE run_checkpoints_d214 (
@@ -1381,30 +1201,7 @@ export const SQLITE_MIGRATIONS = deepFreeze([
     ],
   },
   {
-    /*
-     * D230 — a run's ORDINAL within its workflow, the queue footer's `#N`.
-     *
-     * `run_number` is a MIRRORED column, not a JSON leaf read at query time,
-     * because the two things this ordinal must guarantee are both SQL
-     * properties: `max(run_number)` over one workflow is the counter the next
-     * enqueue reads inside its own transaction, and `UNIQUE (workflow,
-     * run_number)` is what makes "no two runs of one workflow hold the same
-     * number" a fact the database enforces rather than a claim two call sites
-     * make. The integrity audit pins the column to the record's own value, as
-     * it does for every other mirrored column.
-     *
-     * NULLABLE, and every pre-D230 row keeps NULL: an ordinal computed for
-     * those rows now — by `created_at` order, say — would mint a number that
-     * was never true of them and would then have to be reconciled with the
-     * live counter, which is exactly the back-fill D133 forbids. SQLite treats
-     * NULLs as distinct under UNIQUE, so the historical rows do not collide
-     * with each other; the constraint binds only rows that name a number, and
-     * `runs.enqueue` refuses a record whose number the workflow has spent, so
-     * the loud refusal lands before the index has to.
-     *
-     * `ALTER TABLE ADD COLUMN` rather than the v14 table copy: nothing about
-     * the existing UNIQUE constraint moves, so there is nothing to widen.
-     */
+
     version: 15,
     statements: [
       "ALTER TABLE tasks ADD COLUMN run_number INTEGER",
@@ -1412,13 +1209,7 @@ export const SQLITE_MIGRATIONS = deepFreeze([
     ],
   },
   {
-    /*
-     * D267 (ref execution-and-sessions §10) — the Duo ceremony lease. One row
-     * per credential identity; `generation` advances on every acquisition and
-     * `state` moves held → released → held … as ceremonies serialize. Nothing
-     * is ever deleted (a lease row that vanished would read as a free
-     * credential), so the delete trigger aborts; updates are the design.
-     */
+
     version: 16,
     statements: [
       SQLITE_TABLE_DDL.duo_ceremony_leases,
@@ -1429,19 +1220,7 @@ export const SQLITE_MIGRATIONS = deepFreeze([
     ],
   },
   {
-    /*
-     * D269 (ref execution-and-sessions §11) — the worker POOL declaration, the
-     * run SESSION, and the run row's membership column.
-     *
-     * `worker_pools` is updated under a version CAS and never deleted.
-     * `run_sessions` is insert-only: both UPDATE and DELETE abort, exactly as
-     * the archive tables do, because a group that can be rewritten is a weaker
-     * record than the runs it names. `tasks.session_id` is a MIRRORED, NULLABLE
-     * column (D230's `run_number` shape, `ALTER TABLE ADD COLUMN`): every
-     * pre-v17 row keeps NULL, which D133 reads forward as "no session" — a
-     * group back-filled onto those rows would be one nobody started. The index
-     * is what makes "every member of session S" a lookup rather than a scan.
-     */
+
     version: 17,
     statements: [
       SQLITE_TABLE_DDL.worker_pools,
@@ -1461,9 +1240,7 @@ export const SQLITE_MIGRATIONS = deepFreeze([
     ],
   },
   {
-    // Ref guards-and-tests §10.6 — durable, insert-only dry-run scenario evidence.
-    // This branch originally allocated v16 concurrently with D267/D269. The
-    // merged append-only history places its new table after those rows as v18.
+
     version: 18,
     statements: [
       SQLITE_TABLE_DDL.dry_run_scenario_results,
@@ -1480,7 +1257,7 @@ export const SQLITE_MIGRATIONS = deepFreeze([
     ],
   },
   {
-    // DCR5 — the attachment bytes are content-addressed; this row is the
+    // the attachment bytes are content-addressed; this row is the
     // insert-only proof of the exact selection, artifact and download headers.
     version: 19,
     statements: [
@@ -1495,8 +1272,7 @@ export const SQLITE_MIGRATIONS = deepFreeze([
     ],
   },
   {
-    // D288 — insert-only, secret-keyed pseudonym evidence. A rotation appends
-    // a different public generation for the run; it never rewrites history.
+
     version: 20,
     statements: [
       SQLITE_TABLE_DDL.activity_person_pseudonyms,
@@ -1510,9 +1286,7 @@ export const SQLITE_MIGRATIONS = deepFreeze([
     ],
   },
   {
-    // D288 review — SQLite REPLACE may delete a conflicting row without
-    // running DELETE triggers when recursive_triggers is disabled. Refuse the
-    // conflict in BEFORE INSERT, before REPLACE can reach that delete path.
+    // SQLite REPLACE can bypass DELETE triggers when recursive_triggers is disabled.
     version: 21,
     statements: [
       `CREATE TRIGGER activity_person_pseudonyms_immutable_insert_conflict
@@ -1526,8 +1300,7 @@ export const SQLITE_MIGRATIONS = deepFreeze([
     ],
   },
   {
-    // D288 review — a generation is durably and immutably committed to one
-    // secret key before evidence for that generation may be appended.
+    // Commit each generation to its secret key before appending immutable pseudonym evidence.
     version: 22,
     statements: [
       SQLITE_TABLE_DDL.activity_person_pseudonym_generations,
@@ -1555,10 +1328,7 @@ export const SQLITE_MIGRATIONS = deepFreeze([
     ],
   },
   {
-    // D288 storage review — v21 evidence predates key commitments, and no
-    // migration can reconstruct which secret produced it. This transient
-    // guard runs in the same exclusive transaction as v22, so refusal rolls
-    // back the table, triggers, metadata and user_version together.
+    // Pseudonym evidence without a key commitment cannot reveal which secret produced it.
     version: 23,
     statements: [
       `CREATE TABLE activity_person_pseudonym_v21_upgrade_guard (
@@ -1580,9 +1350,7 @@ export const SQLITE_MIGRATIONS = deepFreeze([
     ],
   },
   {
-    // D75 — v1 rows remain NULL/unattributed forever; v2 rows mirror the
-    // server-derived actor. The insert guard closes SQLite REPLACE's implicit
-    // delete path without changing the released v19 triggers.
+    // Unattributed actor rows remain NULL; replacement must not fabricate an actor.
     version: 24,
     statements: [
       "ALTER TABLE operator_xlsx_exports ADD COLUMN requested_by TEXT",
@@ -1625,8 +1393,7 @@ export const SQLITE_MIGRATIONS = deepFreeze([
     ],
   },
   {
-    // D235 replay binds one bulk id to one exact ordered accepted parent before
-    // any child command can reach the kernel.
+
     version: 27,
     statements: [
       SQLITE_TABLE_DDL.bulk_command_acceptances,
@@ -1639,10 +1406,7 @@ export const SQLITE_MIGRATIONS = deepFreeze([
     ],
   },
   {
-    // D294 — the rebuild never reached production, so the retired phone
-    // capture product leaves no live compatibility surface. Refuse databases
-    // that contain capture-owned or capture-derived authority rather than
-    // silently deleting history; empty shells are then removed in place.
+    // Refuse nonempty replaced capture tables before dropping them; conversion cannot discard evidence.
     version: 28,
     statements: [
       `CREATE TABLE phone_capture_retirement_guard (
@@ -1677,19 +1441,12 @@ export const SQLITE_MIGRATIONS = deepFreeze([
     ],
   },
   {
-    // D308 — delete means delete. A terminal run, on the queue or in the
-    // Archive, can be removed from authority with every row it owns. The
-    // `deleted_runs` tombstone is insert-only and written FIRST; each
-    // never-delete trigger below is relaxed to pass ONLY behind a tombstone for
-    // that exact run, so no other code path gains a delete. This migration
-    // removes no rows.
+
     version: 29,
     statements: [
       SQLITE_TABLE_DDL.deleted_runs,
       "CREATE INDEX deleted_runs_workflow_idx ON deleted_runs(workflow, deleted_at)",
-      // The tombstone is written with an EMPTY tally before the cascade (the
-      // relaxed triggers must see it) and settled with the final tally once.
-      // Only that one-way settle is an admitted UPDATE; every other change aborts.
+
       `CREATE TRIGGER deleted_runs_immutable_update
         BEFORE UPDATE ON deleted_runs
         WHEN NOT (
@@ -1758,9 +1515,7 @@ export const SQLITE_MIGRATIONS = deepFreeze([
     ],
   },
   {
-    // D332 — the one stopped-system authority upgrade journal. Every append
-    // has its own opaque key; planned attempts may repeat, while the three
-    // decisive phases are unique per upgrade identity.
+
     version: 30,
     statements: [
       "ALTER TABLE deleted_runs ADD COLUMN item_id TEXT",
@@ -1817,10 +1572,7 @@ export const SQLITE_MIGRATIONS = deepFreeze([
     ],
   },
   {
-    // D330.9 / Task 1.6.2-1: relaunch provenance belongs to the NEW run.
-    // Removing an archived source therefore preserves every live descendant's
-    // lineage; deleting the new run still removes its row behind that run's
-    // own D308 tombstone. No other authority shape changes in v31.
+    // Relaunch provenance belongs to the new run; removing its archived source preserves descendants.
     version: 31,
     statements: [
       "DROP TRIGGER archive_relaunches_immutable_update",
@@ -1852,9 +1604,7 @@ export const SQLITE_MIGRATIONS = deepFreeze([
     ],
   },
   {
-    // D336: ordinary values share the current command/audit transaction. An
-    // existing row must be enriched by the stopped upgrade before this step;
-    // silently importing empty defaults would lose settings authority.
+
     version: 32,
     statements: [
       "DROP TRIGGER settings_current_never_deleted",

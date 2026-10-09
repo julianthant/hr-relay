@@ -1,18 +1,4 @@
-/**
- * `workflow:separations/read-separation-dates` — the values a real termination is
- * filed on, as a real node.
- *
- * §4e's staged-variables model wants every write to consume a VARIABLE that was
- * decided once, never re-derived at fill time. These are the most load-bearing
- * variables in the workflow: the last day worked becomes the UCPath *Override
- * Last Date Worked* field, and the separation date + 1 becomes the termination's
- * effective date — which is also half its permanent key.
- *
- * It is a task rather than a `derive` because it refuses: a card that opened
- * with no punch establishes no worked day, and §4b's answer is that no path
- * through this workflow files a termination on a date nobody read. A `derive`
- * has nowhere to put that.
- */
+/** The values a real termination is filed on, as a real node: it refuses rather than filing on a date nobody read. */
 import { z } from "zod";
 import { taskId } from "../../../rules/identity/ids.js";
 import {
@@ -37,17 +23,13 @@ export const SeparationsReadSeparationDates = defineTaskContract({
     plan: SeparationPlanSchema,
     /** The operator whose initials sign the Kuali audit lines. */
     timekeeperName: KualiTimekeeperNameSchema,
-    /** The card's last physical punch, or `null` when it carried none (S38). */
+    /** Null means the card had no physical punch. */
     lastPunchDate: TimecardDateSchema.nullable(),
     sickDates: z.array(TimecardDateSchema),
     holidayDates: z.array(TimecardDateSchema),
-    /**
-     * Pay codes the ported classifier declined to count (§9.1's 2026-08-13
-     * answer). Carried through so a day the rule did not count is visible at
-     * the gate; nothing here consumes them.
-     */
+        /* Surface uncounted pay codes for operator review. */
     unclassifiedPayCodes: z.array(z.string().min(1)),
-    /** The window the grid was PROVED to be showing when it was read (S40). */
+    /** Retain the window the grid was proved to display. */
     observedWindow: TimecardWindowSchema,
   }),
   output: ReadSeparationDatesOutputSchema,

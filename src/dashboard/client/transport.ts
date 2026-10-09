@@ -1,10 +1,5 @@
-/**
- * The ONE transport implementation (ref frontend-backend-integration §2): nothing outside
- * `src/dashboard/client/**` may call `fetch` or open an event stream. The
- * stream side speaks SSE over `fetch` + `ReadableStream` — no `EventSource`
- * dependency, so the same code runs in the browser and in Node tests — and
- * resumes with `Last-Event-ID` exactly like an EventSource would.
- */
+/** The ONE transport implementation (ref frontend-backend-integration §2): nothing outside `src/dashboard/client/**` may call `fetch` or open an event stream.
+ * The */
 import { httpError, networkError } from "./errors.js";
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
@@ -34,30 +29,13 @@ export interface BinaryResponse {
 
 export interface DashboardTransport {
   requestJson(path: string, init?: RequestInit): Promise<unknown>;
-  /**
-   * The same request, with the status line preserved.
-   *
-   * Two routes make the status load-bearing rather than incidental: the command
-   * route rides `409`/`422` with a typed body, and the intake upload answers
-   * `201` for a session it CREATED against `200` for one it JOINED — the same
-   * wire shape, two different things to tell the operator. `requestJson` throws
-   * that distinction away by design, so a caller who needs it asks for it here
-   * instead of re-deriving it from the payload.
-   */
+  /** The same request, with the status line preserved.
+ * Two routes make the status load-bearing rather than incidental: the command */
   requestJsonResponse(path: string, init?: RequestInit): Promise<JsonResponse>;
   /** A strict binary response; non-2xx bodies still use the wire-error contract. */
   requestBinary(path: string, init?: RequestInit): Promise<BinaryResponse>;
-  /**
-   * The absolute URL this transport would request `path` at.
-   *
-   * It exists for the ONE thing a typed client cannot do for a surface: hand
-   * the browser a link it downloads itself (D240's CSV export). The alternative
-   * — fetch the bytes here and mint an object URL in a component — would put a
-   * blob lifecycle and a synthetic click into a render tree to reproduce what
-   * `Content-Disposition` already does, and it would still need this base to
-   * build the request. Nothing outside `src/dashboard/client/**` composes an
-   * API path; a caller asks for one and gets it resolved.
-   */
+  /** The absolute URL this transport would request `path` at.
+ * It exists for the ONE thing a typed client cannot do for a surface: hand */
   resolveUrl(path: string): string;
   openStream(
     path: string,
@@ -77,13 +55,8 @@ export function createDashboardTransport(input: Readonly<{
   const baseOrigin = new URL(baseUrl).origin;
   const fetchImpl: FetchLike = input.fetchImpl ?? ((url, init) => fetch(url, init));
 
-  /**
-   * Every non-GET request carries the transport's own Origin. A browser sets
-   * (and refuses to let a page override) this header itself, so in the real
-   * dashboard the line is inert; in Node and in test fakes it is what makes the
-   * BFF's loopback admission (ref frontend-backend-integration §3.4) observable
-   * rather than assumed. The server enforces regardless of this line.
-   */
+  /** Every non-GET request carries the transport's own Origin. A browser sets
+ * (and refuses to let a page override) this header itself, so in the real */
   const isMutation = (init?: RequestInit): boolean =>
     init?.method !== undefined && init.method.toUpperCase() !== "GET" && init.method.toUpperCase() !== "HEAD";
 
@@ -115,10 +88,7 @@ export function createDashboardTransport(input: Readonly<{
   return Object.freeze({
     async requestJson(path: string, init?: RequestInit): Promise<unknown> {
       const response = await send(path, init);
-      // Command results legitimately ride 409/422 with a typed body; every
-      // other non-2xx is the wire-error contract. The bulk door (D235) is on
-      // the same footing for the same reason: its whole-request refusal rides
-      // 422 with the vocabulary the operator has to read.
+      // Typed command refusals use 409/422; other non-success responses follow the wire-error contract.
       if (!response.ok && !isTypedCommandResultStatus(path, response.status)) {
         throw httpError(response.status, response.body);
       }

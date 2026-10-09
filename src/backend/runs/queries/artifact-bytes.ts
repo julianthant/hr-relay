@@ -1,4 +1,4 @@
-/** DCA1/D291: exact diagnostic-index authority followed by bounded whole-byte verification. */
+
 import { ArtifactRefSchema, type ArtifactRef } from "../../../models/artifacts/artifacts.js";
 import { ArtifactIdSchema } from "../../../rules/identity/ids.js";
 import type {
@@ -28,12 +28,7 @@ export interface ArtifactVerificationPass {
   isAbort(error: unknown): boolean;
 }
 
-/**
- * The caller has an authoritative ref, but the content store no longer has
- * its physical object. DCA1 exposes this as a non-retryable 500; later
- * evidence viewers may retain the distinction from malformed bytes without
- * guessing from an error message.
- */
+
 export class IndexedArtifactBytesMissingError extends Error {
   constructor(message: string, options?: ErrorOptions) {
     super(message, options);
@@ -120,7 +115,7 @@ export async function verifyArtifactBytes(
   }
 }
 
-/** A selected response always performs a fresh prepare pass; prior pass proofs never satisfy it. */
+// Every selected response prepares bytes again; an earlier proof cannot satisfy it.
 export async function prepareVerifiedArtifactLease(
   artifactReader: ServerVerifiedArtifactReader,
   ref: ArtifactRef,

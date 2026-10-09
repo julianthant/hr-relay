@@ -2,7 +2,7 @@ import { RunRecordSchema, type RunRecord } from "../../../../src/models/run/reco
 import type { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/index.js";
 import { runRecordOf, type SeedRunInput } from "./dashboard-harness.js";
 
-/** One strict authority row shaped exactly like the sanitized D283 search corpus. */
+
 export function insertMeasuredSearchRun(database: AuthorityDatabase, input: SeedRunInput): RunRecord {
   const base = runRecordOf({
     ...input,

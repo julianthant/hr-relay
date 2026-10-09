@@ -2,44 +2,7 @@ import { RunLifecycleSchema } from "../../../src/models/run/record.js";
 import { sqliteRunReader } from "../../support/helpers/canonical-run-reader.js";
 import { dashboardRouteSource } from "./helpers/dashboard-route-source.js";
 // @vitest-environment jsdom
-/**
- * Wire connectivity — ref frontend-backend-integration §8.8, both directions (D107's pattern one layer up).
- *
- * The defect class this exists to make loud is "built one half, never
- * connected", and this tree has shipped it twice with every gate green: a
- * `captures` section arm no `availableSections` could ever return, and a
- * `"degraded"` stream arm nothing could emit. Neither is a bug in any one
- * module — each half is correct on its own, which is exactly why nothing
- * caught them. The connection is the thing nobody owned.
- *
- * Three joints are audited, and each fails in BOTH directions:
- *
- *  1. **Section arms.** Every literal arm of `RunDetailSectionResponseSchema`
- *     is either returnable by `availableSections` — proven by CALLING it over
- *     records covering every lifecycle state, not by reading the source — or
- *     declared in `docs/rebuild/migrations/legacy/pending-wire-bindings.json`. A declaration whose arm
- *     has become reachable, or whose arm no longer exists, fails too: a stale
- *     exception is how an inventory rots into a claim nobody can act on
- *     (D184/D188).
- *  2. **Command keys.** Every `ActionCommandKeySchema` verb is accepted by the
- *     kernel's own request union, and every kernel verb is either serveable as
- *     an action or named in a closed exemption table WITH the reason it is
- *     kernel-internal. A served descriptor naming a command the kernel refuses
- *     is a control that 422s on click. And — the direction D234 added, because
- *     the guard had been blind to it — every serveable verb is one some
- *     PRODUCER actually emits: `unhide` sat in the vocabulary for a whole phase
- *     while `queue-row-actions.ts` structurally excluded it, so the key was
- *     kernel-accepted, schema-blessed, and unreachable by any surface. Both
- *     halves of a joint have to exist; a key nothing projects is the same
- *     unbuilt half as a section arm nothing returns.
- *  3. **Routes ↔ client.** Every path the dashboard client calls
- *     resolves to a route `api.ts` registers; a registered route no client
- *     calls is allowed only through the manifest.
- *
- * The manifest is the exception channel, deliberately: an unbuilt half is a
- * legitimate state, and the thing that must never be legitimate is an unbuilt
- * half nobody wrote down.
- */
+
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -91,15 +54,7 @@ afterEach(() => {
 });
 
 const SECTION_SCHEMA_NAME = "RunDetailSectionResponseSchema";
-/**
- * The gate/park section `ActionDescriptorWire` producer, read as SOURCE.
- *
- * The queue row's producer beside it is CALLED instead (`queueRowActions` is a
- * pure function of a policy and a flat fact record), which is the standard arm
- * 1 already holds itself to. This one composes its descriptors deep inside a
- * whole run-detail build, so a scan of the literals it can emit is the honest
- * cheap reading — and its three verbs are plain literals there.
- */
+
 const SECTION_DESCRIPTOR_PRODUCER = "src/backend/runs/queries/run-detail/gate-park.ts";
 const API_ROUTES_FILE = "src/backend/transports/http/routes/api.ts";
 const CLIENT_ROOTS = ["src/dashboard/client"];
@@ -131,13 +86,7 @@ interface LifecycleCase {
   readonly claimGeneration?: number;
 }
 
-/**
- * One legal lifecycle per `RunStateSchema` member, terminal expanded over every
- * `RunOutcomeSchema` member. They are built as plain objects and PARSED, so a
- * state this sweep gets wrong is a schema error rather than a silently
- * unreachable case — and the coverage assertion below makes a newly added
- * lifecycle state fail here until somebody decides what it serves.
- */
+
 function lifecycleCases(): readonly LifecycleCase[] {
   const cases: LifecycleCase[] = [
     { label: "queued", lifecycle: { state: "queued" } },
@@ -210,9 +159,7 @@ async function reachableSections(): Promise<{ readonly reachable: ReadonlySet<st
     for (const section of availableSections(row, record)) reachable.add(section);
     for (const section of availableSections(row, record, trust)) reachable.add(section);
   }
-  // Captures are an async verified capability, not a lifecycle-derived constant.
-  // Keep the complete lifecycle sweep above; add what the public read actually
-  // advertises after canonical SQLite diagnostic authority verifies real bytes.
+
   const database = AuthorityDatabase.open({ path: join(world.stateRoot, "wire-capture-authority.db"),
     busyTimeoutMs: 1000, migrationOwner: "wire-capture-census" }, world.clock);
   try {
@@ -253,26 +200,8 @@ async function reachableSections(): Promise<{ readonly reachable: ReadonlySet<st
 
 /* ── the kernel-internal command exemptions ──────────────────────────────── */
 
-/**
- * Kernel commands that legitimately have no `ActionDescriptorWire`, each with
- * the reason. This is a CLOSED table checked both ways: a verb the kernel
- * dropped fails as a stale entry, and a verb that is neither serveable nor
- * listed fails as an unreviewed asymmetry.
- *
- * The shape of the asymmetry is the point. An action descriptor is ref frontend-backend-integration
- * §3.2's control on a run ROW — so a command whose target is not a run, or
- * whose payload the operator composes on a dedicated surface rather than by
- * clicking a row control, is correctly absent from the vocabulary.
- */
-/**
- * Every command verb the QUEUE ROW producer can emit, proven by CALLING it —
- * the standard arm 1 holds itself to, and the reason a `key` that is computed
- * (`cancel-tree` for a group, `cancel` otherwise) is read correctly here and
- * would be missed by any scan of its source.
- *
- * The sweep runs every status against both member and non-member shapes,
- * because the row's admission table narrows on both.
- */
+// Row actions omit commands targeting another scope or requiring a dedicated input surface.
+
 function projectedRowCommands(): ReadonlySet<string> {
   const commands = new Set<string>();
   for (const status of QueueStatusSchema.options) {
@@ -415,11 +344,7 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
         problems.push(`KERNEL_ONLY_COMMANDS exempts "${type}", which the kernel no longer accepts`);
       }
     }
-    /*
-     * The direction D234 added. A key the kernel accepts and the vocabulary
-     * names is still dead if nothing composes a descriptor for it — which is
-     * exactly what `unhide` was, and what the two checks above could not see.
-     */
+
     const projected = new Set<string>([
       ...projectedRowCommands(),
       ...projectedCommandKeys(readFileSync(join(REPO_ROOT, SECTION_DESCRIPTOR_PRODUCER), "utf8")),
@@ -453,12 +378,7 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
     assert.deepEqual(problems, [], `wire connectivity — routes:\n  ${problems.join("\n  ")}`);
   });
 
-  /*
-   * The negative controls. Each arm above is run against a synthesized
-   * violation through the SAME entry point, for the reason `ratchet-arms`
-   * fixtures exist: a check that has never been observed to fail is
-   * indistinguishable from a check that cannot.
-   */
+
   it("catches a synthesized orphan arm, a synthesized bad command key, and an unserved path", async () => {
     const orphanUnion = RunDetailSectionResponseSchema.options[0]?.extend({});
     assert.ok(orphanUnion !== undefined);
@@ -474,18 +394,13 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
     assert.ok(kernelTypes.includes("resolve-write-absent"), "introspection missed a known kernel verb");
     assert.ok(!kernelTypes.includes("force-done"), "the kernel must never accept a force-done verb");
 
-    // (b2) the producer scan reads CODE, not prose — the arm that would have
-    //      caught `unhide`. A key named only in a comment must not count, and a
-    //      key named in a descriptor literal must.
+
     assert.deepEqual(
       projectedCommandKeys('/* key: "unhide" is never served */\nconst a = { key: "retry" };'),
       ["retry"],
     );
     assert.deepEqual(projectedCommandKeys('// command: "unhide"\nconst a = { command: "resolve-gate" };'), ["resolve-gate"]);
-    //      And through the REAL readers: a verb no producer emits must be
-    //      absent from the projected set, which is what makes the arm above
-    //      able to fail at all. `unhide` is the retired key that motivated it
-    //      (D234) and `force-done` is one that never existed.
+
     const projected = new Set<string>([
       ...projectedRowCommands(),
       ...projectedCommandKeys(readFileSync(join(REPO_ROOT, SECTION_DESCRIPTOR_PRODUCER), "utf8")),
@@ -494,9 +409,7 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
     assert.ok(!projected.has("unhide"));
     assert.ok(!projected.has("force-done"));
 
-    // (c) a client path with no route, and a route pattern that must not
-    //     over-match — a matcher that accepted anything would report every
-    //     joint healthy forever.
+
     const routes = servedRoutes(dashboardRouteSource());
     assert.ok(!routes.some(({ path }) => routeMatches(path, "/api/v1/invented")));
     assert.ok(routeMatches("/api/v1/runs/:runId", normalizeClientPath("/api/v1/runs/${runId}")));
@@ -506,18 +419,7 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
   });
 
   it("keeps every wire mirror of a durable vocabulary member-for-member identical", () => {
-    /*
-     * A mirror is the fourth joint, and the one with no import to keep it
-     * honest. `run-detail.ts` re-declares ref write-safety's park codes and subject
-     * evidence because `write-safety.ts` imports `node:crypto` and this module
-     * is in the dashboard bundle's reach — the copy is forced by ref frontend-backend-integration §8.13,
-     * so the equality has to be asserted somewhere or it is only a comment.
-     *
-     * `z.toJSONSchema` is the comparison rather than a hand-listed member set:
-     * a member ADDED to either side, a regex loosened on one, or a branded id
-     * swapped for a bare string all show up, and none of them would if this
-     * test enumerated what it already believed.
-     */
+    // Browser-safe mirrors cannot import the server contract; compare schemas to detect drift.
     const mirrors = [
       {
         name: "parked-write park codes",
@@ -530,13 +432,7 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
         wire: ParkedWriteSubjectEvidenceSchema,
       },
       {
-        /*
-         * D95's scheduling class. `src/models/dashboard/projection.ts` is in
-         * the dashboard bundle's reach and `src/models/run/envelope.ts` reaches
-         * `workflow/checkpoint.js`, so the queue wire re-declares the enum for
-         * ref frontend-backend-integration §8.13's reason — and a member added to either side (a third
-         * priority class, say) has to show up on both.
-         */
+        // The browser-safe scheduling enum must match the server contract without importing its Node dependencies.
         name: "run priority",
         durable: RunPrioritySchema,
         wire: QueuePrioritySchema,

@@ -1,38 +1,4 @@
-/**
- * Guard (ref execution-and-sessions §4 · ref write-safety fail-loud): a browser session's authentication is
- * never CONCLUDED from a URL, and its verification is never skippable.
- *
- * ## Why this guard exists
- *
- * On 2026-08-03 a live UCPath login smoke reported success in ~3 seconds having
- * never authenticated. Two independent production defects, both failing OPEN:
- *
- * 1. the login recipe read `page.url()`, matched a host SUBSTRING, and returned
- *    `already-authenticated` on the PUBLIC UCPath portal — and that early
- *    return also skipped the recipe's own second fact; and
- * 2. the neutral reset validated a reused session with `isAuthenticatedUrl`
- *    alone, so PeopleSoft's signon page — same host, same route shape — passed
- *    as the authenticated application.
- *
- * A person lookup on that session would have scraped a sign-in page and
- * reported it as authenticated HR data. Unit tests pin the CURRENT recipes;
- * this guard pins the SHAPE, so the next system's recipe cannot rebuild the
- * defect from scratch.
- *
- * ## What is enforced, structurally
- *
- * - every store login recipe is produced by `defineVerifiedLoginRecipe`, whose
- *   wrapper runs the proof AFTER the flow on every return path;
- * - no store login recipe reaches its own `return "already-authenticated"` /
- *   `"logged-in"` outside that wrapper;
- * - `BrowserSystemBinding` exposes a VERIFIER, not a URL predicate, and every
- *   landed binding supplies one; and
- * - the browser-session factory's reset asserts through
- *   `assertAuthenticatedApplication` rather than calling a URL predicate.
- *
- * Each arm is executed against a violating fixture below, so a scanner that
- * stopped working cannot stand in for enforcement.
- */
+// An application URL alone cannot prove authentication; require the system content verifier.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";

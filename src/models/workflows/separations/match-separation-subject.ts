@@ -1,15 +1,4 @@
-/**
- * `workflow:separations/match-separation-subject` — S18/S19's fork as a real node.
- *
- * Chunk 3 is TOLD which EID to check and where it came from, and says in as
- * many words that resolving it "is chunk 2's output and the composition's job".
- * This is that node: one pure decision over the document's own EID field and the
- * unconditional UCPath name search, producing the `(emplId, emplIdSource)` pair
- * every downstream read and the gate packet bind against.
- *
- * §5 item 10's recorded answer is why it is a fold and not a delegation: no
- * child run; candidates are resolved inline and handed to the identity packet.
- */
+/** The fork of the document's own EID field and the unconditional UCPath name search, producing the `(emplId, emplIdSource)` pair every downstream read binds against. */
 import { z } from "zod";
 import { taskId } from "../../../rules/identity/ids.js";
 import {

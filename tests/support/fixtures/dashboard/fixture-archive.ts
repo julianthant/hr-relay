@@ -1,20 +1,4 @@
-/**
- * The Archive and Activity fixtures (2i-G, D179/D180).
- *
- * These are hand-authored and then PARSED through the production wire schemas,
- * which is the opposite of `fixture-explorer.ts` and deliberately so: the
- * explorer's payload is derived from the live registry, so building it any
- * other way would let the fixture disagree with the projection. An archived
- * run is the opposite kind of value — it is a FROZEN artefact of a bump that
- * already happened, so the honest fixture is a stored record, and the schema
- * parse is what stops it drifting from the shape authority holds.
- *
- * The corpus deliberately carries both halves of every union the surface can
- * render: a stamped app build and an unstamped one, a receipt present and
- * absent, a workflow with archivable runs and one with a BLOCKER, and a plan
- * that is reviewable but would be refused. A reference set that only ever
- * photographed the happy path would not be a test of a refusal surface.
- */
+
 import { archiveRetention } from "../../../../src/models/archive/retention.js";
 import {
 ActivityReportWireSchema,
@@ -85,12 +69,7 @@ facts: { state: "absent", reason: "run is running and has not produced a termina
   ],
   panelKind: "run",
   availableSections: ["logs"],
-  /*
-   * EMPTY by the archive's own contract: the frozen row is the last row the
-   * operator saw and D179's archived tables abort UPDATE and DELETE in SQL, so
-   * there is no command a control here could send. Relaunch is served from the
-   * ARCHIVED detail, which is not a live run row.
-   */
+
   actions: [],
   rowRevision: 6,
   surfaceKind: "single",
@@ -158,9 +137,7 @@ export const FIXTURE_ARCHIVE_INDEX: ArchiveIndexWire = ArchiveIndexWireSchema.pa
     // The SAME value the frozen row carries — the index copies it, never
     // re-derives it, so the two surfaces cannot name different instances.
     resolvedInstances: [{ system: "ucpath", instance: "prod" }],
-    // Both copied off ARCHIVED_ROW above, byte for byte — the index entry is a
-    // copy of the frozen row's own fields, so a fixture that disagreed with the
-    // row would photograph a state production cannot produce.
+
     dryRun: false,
     warnings: { state: "absent", reason: "this run's evidence receipt records no warning" },
     archiveFingerprint: ARCHIVE_DIGEST,
@@ -177,9 +154,7 @@ export const FIXTURE_ARCHIVE_INDEX: ArchiveIndexWire = ArchiveIndexWireSchema.pa
     appliedBy: "local-operator",
     appliedAt: at(60),
     archivedCount: 1,
-    // Charter §25's change record: the WHY the reference set had no way to
-    // photograph before, with the commit half taking its PRESENT arm here and
-    // the plan below taking the absent one.
+
     changeRecord: {
       state: "present",
       value: {
@@ -230,13 +205,7 @@ export const FIXTURE_ARCHIVE_INDEX: ArchiveIndexWire = ArchiveIndexWireSchema.pa
       enqueuedAt: at(12),
       drift: ["descriptor-version"],
     }],
-    // MAJOR, and it has to be. This plan carries a blocker, and since D274 a
-    // minor bump archives nothing and cannot be blocked — so a minor plan
-    // holding a blocking run is a contradiction `VersionBumpPlanSchema` (and,
-    // as of unit F9c, `VersionBumpPlanWireSchema`) refuses outright. The fixture
-    // said `minor` from before that rule existed, which drew a screen reading
-    // "a minor bump archives no run at all" above a blocker table demanding the
-    // run be resolved first.
+
     changeRecord: {
       state: "present",
       value: {
@@ -252,15 +221,7 @@ export const FIXTURE_ARCHIVE_INDEX: ArchiveIndexWire = ArchiveIndexWireSchema.pa
   }],
 });
 
-/**
- * D223's frozen sections, carried by a generation-3 record (D242 added the
- * frozen short code beside the frozen label) — the payloads the
- * five tabs render. The corpus photographs the range on purpose: log lines at
- * two levels, data entries dated by both a live and a derived observation, a
- * member row, an attempt history with a REAL retry in it (attempt 1 failed a
- * step, attempt 2 settled), and a described capture tile — the tile is what
- * makes the Evidence tab a tab rather than a list of ids.
- */
+
 const ARCHIVED_SECTIONS = {
   logs: {
     state: "present",
@@ -378,13 +339,9 @@ export const FIXTURE_ARCHIVED_RUN: ArchivedRunDetailWire = ArchivedRunDetailWire
     ledgerPartitions: [],
   },
   sections: { state: "present", value: ARCHIVED_SECTIONS },
-  // The pointers above, resolved. This run filed nothing, so there is nothing
-  // to resolve — an empty list here is the same fact as an empty pointer list,
-  // never a resolution that silently dropped a row.
+
   ledger: [],
-  // Computed by the SAME domain function the server calls, off this fixture's
-  // own row — a hand-authored retention block would let the reference drift
-  // from the policy it is meant to photograph.
+
   retention: archiveRetention({
     now: at(120),
     endedAt: { state: "present", value: at(21) },
@@ -433,15 +390,11 @@ export const FIXTURE_ACTIVITY_REPORT: ActivityReportWire = ActivityReportWireSch
   totalRuns: 12,
   terminalRuns: 10,
   inFlightRuns: 2,
-  // Eight validated canonical identities across twelve current Separations rows in one
-  // compatible generation: the axis is a real deduplicated count, not another
-  // spelling of run total.
+
   people: { state: "present", distinct: 8, evidenceRows: 12 },
   days: FIXTURE_ACTIVITY_DAYS,
   volume: fixtureActivityVolume(FIXTURE_ACTIVITY_RANGE, FIXTURE_ACTIVITY_DAYS),
-  // The whole-report completion split the headline tile reads, equal by
-  // construction to the two rows' columns below — the schema refuses the
-  // fixture outright if they ever part company.
+
   completion: { readBack: 5, warnings: 1, warningsUnknown: 1 },
   workflows: [
     {
@@ -451,10 +404,7 @@ export const FIXTURE_ACTIVITY_REPORT: ActivityReportWire = ActivityReportWireSch
       completion: { readBack: 5, warnings: 1, warningsUnknown: 0 },
       failed: 1, cancelled: 0, partial: 0, open: 2,
     },
-    // The honest half: a workflow whose descriptor was retired still ran, and
-    // the report names it rather than inventing a label from its id. Its one
-    // `done` run has no derived receipt, so it lands in the unread column —
-    // the reference photographs an amber cell rather than a clean-looking 1.
+
     {
       workflowId: "retired-workflow",
       registration: {
@@ -476,10 +426,7 @@ export const FIXTURE_ACTIVITY_REPORT: ActivityReportWire = ActivityReportWireSch
   statuses: [
     { status: "done", runs: 7, sample: [] },
     { status: "failed", runs: 2, sample: [] },
-    // The Who sample: two RUNNING runs, one of which the day payload holds a
-    // row for and one of which it does not — so the reference photographs the
-    // resolved name AND the honest fallback beside it, which is the pair a
-    // screenshot of only-resolvable ids would never catch.
+
     { status: "running", runs: 2, sample: [uuidOf(20), ARCHIVED_RUN_ID] },
     { status: "cancelled", runs: 1, sample: [] },
   ],
@@ -499,12 +446,7 @@ export const FIXTURE_ACTIVITY_REPORT: ActivityReportWire = ActivityReportWireSch
     longestMs: { state: "present", value: 1_632_000, runId: ARCHIVED_RUN_ID },
     totalMs: 8_431_000,
   },
-  /**
-   * D236's second authority. Two systems, and the load-bearing half is the
-   * amber one: `kuali` filed a TEST-instance entry, which the reference
-   * photographs tinted, and a corpus where every entry was production would
-   * never catch a surface that dropped the tint.
-   */
+
   ledger: {
     systems: [
       { system: "ucpath", entries: 6, prod: 6, test: 0 },
@@ -513,7 +455,7 @@ export const FIXTURE_ACTIVITY_REPORT: ActivityReportWire = ActivityReportWireSch
   },
 });
 
-/** D288's complete-but-incompatible range: absence is not zero or a partial count. */
+
 export const FIXTURE_ACTIVITY_UNAVAILABLE_REPORT: ActivityReportWire = ActivityReportWireSchema.parse({
   ...FIXTURE_ACTIVITY_REPORT,
   from: FIXTURE_ACTIVITY_UNAVAILABLE_RANGE.from,

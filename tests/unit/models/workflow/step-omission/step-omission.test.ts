@@ -9,16 +9,7 @@ import {
   type StepOmissionSpec,
 } from "../../../../../src/models/workflow/step-omission.js";
 
-/**
- * D307 — the pure plan over a graph shaped like Separations' write half:
- *
- *   read (task) ─► fold (task) ─► gate ─► approve (task) ─► write (transaction) ─► receipt (task)
- *
- * with three steps: `reading` = [read, fold], `deciding` = [gate, approve],
- * `writing` = [write, receipt]. `reading` can rebuild `fold` from a typed
- * fact but never `read`; `writing` rebuilds `receipt` from a typed number
- * and leaves the transaction unrun.
- */
+
 const READING: StepOmissionSpec = {
   step: "reading",
   form: { fields: [{ key: "value", label: "Value", kind: "text" }] },
@@ -158,9 +149,7 @@ describe("stepOmissionCascade", () => {
         WRITING,
       ],
     }));
-    // Omitting `reading` forces `deciding` out. D313: whole-step omission
-    // takes `deciding`'s GATE with the step — nothing outside still reads an
-    // unread member — so the chained choice is omittable, forcing `deciding`.
+
     assert.deepEqual(chained.get("reading"), { state: "omittable", forces: ["deciding"] });
   });
 });

@@ -313,10 +313,7 @@ const FAILED_TEST_MANIFEST = parseDryRunScenarioManifest({
   cases: [
     {
       ...TEST_MANIFEST.cases[0],
-      // The failed-terminal arm. It is the SAME subject — D284 left exactly one —
-      // and this fixture never reaches the registry: it drives
-      // `createProductionDryRunScenarioRuntime` directly to pin how a failed run
-      // is recorded, so what varies here is the terminal, not the subject.
+
       caseId: "failed-run",
       subjectLabel: "finalization-canary",
       subjectKind: "ordinary",
@@ -387,12 +384,7 @@ function admissionFixture(
   };
 }
 
-/**
- * The composed chain's manifest, on the ONE registry subject D284 left: enough
- * to prove `resolveTarget` dispatched to the CHAIN resolver — and reached
- * `createRuntime` with the chain's own canonical input — rather than refusing
- * the workflow or crossing into the finalization arm.
- */
+
 const CHAIN_READY_MANIFEST = parseDryRunScenarioManifest({
   scenarioId: "separations/dry-run",
   workflow: "separations",
@@ -1318,9 +1310,7 @@ describe("dry-run scenario production composition boundary", () => {
       canonicalInput: NAME_ONLY_FINALIZATION_INPUT,
     });
     await runtime.drain(TEST_MANIFEST.workflow);
-    // Migration §9.36's diagnostic, reproduced at the supported seam: the
-    // durable/asserted receipt survives, but its exact UCPath row disappears
-    // between identity settlement and the fresh finalization precondition.
+
     filingWorld.rows = [];
     await runtime.resolveGate({
       manifest: TEST_MANIFEST,
@@ -1547,7 +1537,7 @@ describe("dry-run scenario production composition boundary", () => {
         scenarioCase,
         canonicalInput: {},
       }),
-      /dry-run-preview manifest person-lookup\/dry-run names workflow person-lookup, whose compiled graph has no transaction node; a transaction-free graph must declare the live-read arm \(D318\) — D209 still refuses dryRun for it \(no-transaction-node\)/,
+      /dry-run-preview manifest person-lookup\/dry-run names workflow person-lookup, whose compiled graph has no transaction node; a transaction-free graph must declare the live-read arm — dryRun is refused for it \(no-transaction-node\)/,
     );
   });
 });
@@ -1659,8 +1649,7 @@ describe("dry-run scenario target dispatch", () => {
           "Task 1.6.7 full rehearsal after pending-set observation repair; failed reread 1 retained.",
       },
     });
-    // D341 P5: the start record binds the private input by NAME and opaque source identity,
-    // never by value, so resume/rerun/archive compare identities the value can't leak through.
+
     assert.deepEqual(capturedBindings, [
       {
         kind: "test-data-local",

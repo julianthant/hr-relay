@@ -1,17 +1,5 @@
 import { valueFreeProtectedData } from "../../../models/write-safety/protected-input.js";
-/**
- * The one place a Kuali finalization read-back becomes a ref write-safety `ProbeVerdict`.
- *
- * Both the idempotency probe (beat ①) and the completion verifier (beat ⑥) run
- * the SAME reload read-back and the SAME translation, because they are asking
- * the same question at different times — "does this document carry this exact
- * finalization?" Sharing the translation is what makes ref write-safety §4's promise
- * real: a `present` found by recovery parses through the identical schema the
- * normal path used.
- *
- * Every arm carries evidence. There is no boolean anywhere on this path, and a
- * driver-side throw arrives here already shaped as `unknown` — never `absent`.
- */
+
 import { FingerprintSchema } from "../../../rules/identity/ids.js";
 import type { KualiFinalizationVerdict } from "../../../models/systems/kuali/match-separation-finalization.js";
 import { KualiFinalizationVerdictSchema } from "../../../models/systems/kuali/match-separation-finalization.js";
@@ -25,15 +13,7 @@ import type {
 } from "../../../models/ui/kuali-separation-finalization.js";
 import { deriveIdempotencyKeyDigest } from "../../../rules/write-safety/write-safety.js";
 
-/**
- * The exact question this read asked, hashed.
- *
- * It binds the absence to the document AND to every staged value, not just to
- * the permanent key: the key asks "is this document finalized against this
- * transaction", while the READ asked "does it carry these twelve values". An
- * absence gathered for a different field set is a different question and can
- * never be counted toward this key's settlement.
- */
+// Absence binds every staged value as well as document and transaction; another field set is another question.
 export function kualiFinalizationQueryDigest(target: KualiFinalizationTarget): string {
   return FingerprintSchema.parse(sha256Hex(
     `hrauto:kuali-finalization-query:v1\0${JSON.stringify(valueFreeProtectedData({ actionId: target.actionId,
@@ -41,12 +21,7 @@ export function kualiFinalizationQueryDigest(target: KualiFinalizationTarget): s
   ));
 }
 
-/**
- * The evidence record's identity, DERIVED rather than random — two reads of the
- * same document, for the same variables, at the same instant ARE the same
- * observation, and a random id would make the same absence unequal to itself on
- * replay.
- */
+
 function kualiFinalizationAbsenceEvidenceId(
   target: KualiFinalizationTarget,
   observedAt: string,

@@ -5,30 +5,9 @@ import { BrowserSystemIdSchema } from "../../../src/rules/identity/ids.js";
 import { auditRuntimeDependencyCoverage, PREFLIGHT_CHECKS, ProviderIdSchema, RUNTIME_DEPENDENCY_REGISTRY, RuntimeCapabilitySchema, SYSTEM_RUNTIME_SPECS } from "../../../src/models/runtime/runtime-dependencies.js";
 import { FROZEN_LEGACY_ARCHITECTURE_PROVENANCE, frozenLegacyPaths } from "../support/helpers/frozen-legacy-architecture-provenance.js";
 
-/**
- * Guard (ref guards-and-tests §3.12 — D68): the rebuild's closed runtime-dependency sets
- * agree with the legacy inventory they replace, in BOTH directions.
- *
- * `auditRuntimeDependencyCoverage` already closes the registry against itself
- * — every capability has a check, every check a consumer and scenario, every
- * secret an owning dependency — and the rebuild lane exercises that with
- * mutation fixtures. What no lane covered is the direction that actually goes
- * stale in a coexistence program: **legacy grew a system or a provider and the
- * rebuild registry did not notice.** Ref guards-and-tests names the failure exactly — "a
- * missing ServiceNow/SharePoint/Old-Kronos endpoint or provider key ... fails
- * with the exact owner."
- *
- * Legacy is read as SOURCE TEXT (directory names, a parsed union type), never
- * imported: after D93 they are two repositories, and this guard is a
- * comparison of inventories, not a bridge between them.
- *
- * This guard also re-runs the registry audit inside `test:architecture`. Ref guards-and-tests
- * §5.1 registers `runtime-dependency-coverage` as a guard-of-guards entry, so
- * the gate that fails on registry drift must be the architecture lane — not
- * only the unit lane, which a legacy-only maintenance pass would not run.
- */
 
-/** Legacy browser systems = frozen driver directories at the recorded legacy commit. */
+
+
 function legacySystemIds(): readonly string[] {
   const shared = new Set(["common"]);
   const ids = new Set<string>();

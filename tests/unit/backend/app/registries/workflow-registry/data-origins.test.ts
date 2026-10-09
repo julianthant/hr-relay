@@ -1,11 +1,4 @@
-/**
- * D252 — the Data rail's origin view, against the REAL registered modules.
- *
- * The point of running it over `WORKFLOW_MODULES` rather than a fixture is the
- * separations-6c lesson: a wire arm is only as pinned as the VALUES a producer
- * can actually emit. `dir: "write"` and a served `system` are the two arms most
- * easily left unreachable, so both are asserted against a real descriptor.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { WORKFLOW_MODULES } from "../../../../../../src/backend/app/registries/workflow-registry.js";
@@ -17,7 +10,7 @@ function moduleFor(workflowId: string) {
   return found;
 }
 
-describe("dataOriginViewsOf (D252)", () => {
+describe("dataOriginViewsOf", () => {
   it("reads a task node's declared effect as `read`, with the store's own system", () => {
     const origins = dataOriginViewsOf(moduleFor("person-lookup"));
     const searching = origins.find((origin) => origin.nodeId === "searching");

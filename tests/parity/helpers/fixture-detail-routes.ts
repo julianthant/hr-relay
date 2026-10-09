@@ -76,7 +76,7 @@ export function registerFixtureDetailRoutes({ app, runCaptureEvidence, diagnosti
   });
 
 
-  /** E29's fixture is exact-id only, just like the production route. */
+
   app.get("/api/v1/diagnostic-bundles/:bundleId", (c) => {
     if (c.req.param("bundleId") !== diagnostic.bundle.bundleId) {
       return c.json(wireError("TARGET_NOT_FOUND", `no fixture diagnostic bundle ${c.req.param("bundleId")}`), 404);

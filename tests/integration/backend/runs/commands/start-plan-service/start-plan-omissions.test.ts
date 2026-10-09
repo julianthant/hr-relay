@@ -1,19 +1,4 @@
-/**
- * D307 — the plan service reconciles step omissions against the descriptor
- * BEFORE it plans.
- *
- * The ingress schema only ever proved the SHAPE of `stepOmissions`: an array
- * of `{ step, facts }` with unique steps. Which steps this workflow lets the
- * operator omit, which facts each one's own form requires, and whether a node
- * that still runs would read what the omission leaves unread are all facts
- * about the DESCRIPTOR, and until this seam existed the service passed the
- * request straight through to `planStart`.
- *
- * The property under test is that a refusal costs nothing durable: no plan
- * row, no run identity, no authority transaction at all. So the transaction
- * count and the minted-id list are the evidence, and a valid plan through the
- * same service is the positive control that proves neither is vacuous.
- */
+
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -32,11 +17,7 @@ import {
 } from "../../../../../support/fixtures/start-step-omission-fixtures.js";
 
 const CLOCK = manualClock(new Date(NOW));
-/**
- * Deliberately NOT the submitted subject's eid: the plan legitimately serves
- * the submission's own title and match key, so a fact that repeated it would
- * make the "no facts on the wire" assertion below unfalsifiable.
- */
+// Use a different fact EID; repeating the submitted title would make the wire-leak assertion vacuous.
 const READING_FACTS = { eid: "20111222", effectiveDate: "01/02/2026" };
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
@@ -101,7 +82,7 @@ function refusal(run: () => unknown): StartStepOmissionRefusedError {
   return assert.fail("the plan was accepted");
 }
 
-describe("start plan step omissions (D307)", () => {
+describe("start plan step omissions", () => {
   it("carries the reconciled omissions onto the served wire and the durable plan record", () => {
     const harness = harnessFor(omissionAssertingDescriptor);
     const wire = harness.service.plan(request(omissionAssertingDescriptor, {
@@ -109,9 +90,7 @@ describe("start plan step omissions (D307)", () => {
       stepOmissions: [{ step: "reading", facts: READING_FACTS }],
     }));
 
-    // KEYS only on the wire. The typed facts are the same kind of value the
-    // response already refuses to echo back for `rawInput`: a step form can
-    // ask for an employee id or a date about a real person.
+
     assert.deepEqual(wire.omittedSteps, ["reading"]);
     assert.equal(JSON.stringify(wire).includes(READING_FACTS.eid), false);
     assert.equal(JSON.stringify(wire).includes(READING_FACTS.effectiveDate), false);

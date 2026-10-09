@@ -1,12 +1,4 @@
-/**
- * Shared archive fixtures (D179).
- *
- * Every value here is parsed through the PRODUCTION schema and every digest is
- * computed by the PRODUCTION function, so a fixture cannot drift into a shape
- * authority would refuse — the archive's whole argument is that the stored
- * bytes are the record, and a hand-written approximation of them would be the
- * one thing the tests must never assert against.
- */
+
 import {
   archivedRunContentDigest,
   ArchivedRunContentSchema,
@@ -114,13 +106,7 @@ const ARCHIVED_ROW = {
   pipeline: [{ id: "ucpath-person", label: "ucpath-person", state: "done" }],
   panelKind: "run",
   availableSections: ["logs"],
-  /*
-   * EMPTY, and that is the archive's own contract rather than a gap: the frozen
-   * row is the last row the operator saw, and D179's archived tables abort
-   * UPDATE and DELETE in SQL — there is no command a control here could send.
-   * An archived row that offered `retry` would be offering to run a descriptor
-   * this build may no longer hold.
-   */
+
   actions: [],
   rowRevision: 4,
   surfaceKind: "single",
@@ -180,16 +166,7 @@ export const ARCHIVED_RUN: ArchivedRunRecord = ArchivedRunRecordSchema.parse({
   contentDigest: archivedRunContentDigest(ARCHIVED_CONTENT),
 });
 
-/**
- * The same run archived at generation 2 (D223) — the one that carries frozen
- * sections. `ARCHIVED_RUN` above stays at generation 1 ON PURPOSE: it is the
- * read-forward witness, and a suite that only ever held the new shape could
- * not tell whether a pre-D223 record still parses.
- *
- * The `runId` differs because both records can be inserted into ONE database:
- * `archived_runs` is keyed by run, and two rows for one run is not a state the
- * archive can be in.
- */
+
 export const ARCHIVED_RUN_WITH_SECTIONS: ArchivedRunRecord = (() => {
   const content = ArchivedRunContentSchema.parse({
     ...ARCHIVED_CONTENT,
@@ -247,11 +224,7 @@ export const ARCHIVE_RELAUNCH: ArchiveRelaunchRecord = ArchiveRelaunchRecordSche
   relaunchedAt: NOW,
 });
 
-/**
- * The kernel's archive snapshot seam for suites that never bump a version. It
- * THROWS rather than returning an empty snapshot: a test that accidentally
- * reaches the archive path must fail loudly, not archive a blank row.
- */
+
 export const UNWIRED_ARCHIVE_SNAPSHOTS = Object.freeze({
   snapshotBatch(runIds: readonly string[]): never {
     throw new Error(`this harness composed no archive snapshot source; ${String(runIds.length)} runs cannot be archived here`);

@@ -1,9 +1,4 @@
-/**
- * `FrontendBootstrapWire` (ref frontend-backend-integration §3.1): the one startup document. Everything
- * here is a projection of real registration/config/authority state; a fact
- * this slice cannot yet serve is an explicit `unavailable` with its owning
- * milestone named — never a plausible placeholder.
- */
+
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { descriptorRuntimeNodes, workflowProjections } from "../../../workflow-kit/workflow.js";
 import { runtimeTimeZone, type Clock } from "../../../rules/time/clock.js";
@@ -17,30 +12,11 @@ import { projectStartSteps, startStepWireControl } from "../start/step-selection
 import type { RunQueueProjection } from "../projections/run-queue-projection.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../models/config/protected-settings.js";
 
-/**
- * One registered workflow MODULE, as this query needs to see it (D219).
- *
- * The bootstrap wire used to take bare descriptors, and cannot any more: the
- * `role` it serves is the module's declaration, not the descriptor's, precisely
- * so taxonomy stays out of `contractFingerprint` (ref workflow-model §1.2.1). Deriving the
- * role from an id prefix here would be a second answer beside the composition
- * root's — the one thing D219's "no two surfaces disagree" rests on not
- * existing.
- */
+
 export interface BootstrapModuleView {
   readonly descriptor: AnyWorkflowDescriptor;
   readonly role: WorkflowModuleRole;
-  /**
-   * The module's intake projection, when it declares one (D296). It is read
-   * for its PRESENCE only — the served `spreadsheetIntake` boolean — because
-   * the Run Modal's question is whether the second start method exists, and
-   * the projection's target fields belong to the intake workspace's own wire.
-   *
-   * Optional here because it is optional on the module: `intakeProjectionRegistry`
-   * skips a module that declares none, and the same tuple feeds both. Reading
-   * it from the module rather than re-deriving it from `INTAKE_PROJECTIONS`
-   * keeps one source, exactly as `role` does.
-   */
+
   readonly intake?: unknown;
 }
 
@@ -56,11 +32,7 @@ export interface BootstrapQueryDeps {
   readonly projection: Pick<RunQueueProjection, "generation">;
   /** Probes the authority store; throws when it cannot be reached. */
   readonly authorityMeta: () => { schemaVersion: number; authorityGeneration: number };
-  /**
-   * The cheap backup indicator (2i-D): newest write-time-verified manifest
-   * judged by age + generation gap. Full byte re-verification is the doctor
-   * route. Must not throw when authority itself is unavailable.
-   */
+  // Use manifest age and generation for the cheap indicator; the doctor performs byte verification.
   readonly backupSummary: () => "current" | "stale" | "missing";
   /** The one retained report produced by the composed preflight authority. */
   readonly preflightReport: () => z.infer<typeof PreflightReportSchema>;
@@ -125,11 +97,7 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
       ...(result.status === "pass" ? {} : { remediation: result.remediation }),
       checkedAt: preflight.checkedAt,
     })),
-    // `code` is the descriptor's own, guarded 2-char code (ref frontend-backend-integration §3.1). The
-    // category is served RAW: the heading text and the display order are the
-    // frontend's, so nothing here invents a label from an id. `role` is served
-    // RAW for the same reason (D219) — it is the MODULE's declaration, and how
-    // a harness nests under its composition is the frontend's ONE rule.
+
     workflows: deps.modules.map(({ descriptor, role, intake }) => ({
       id: descriptor.id,
       code: descriptor.code,
@@ -138,15 +106,7 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
       descriptorFingerprint: descriptor.contractFingerprint,
       availability: { state: "available" },
       role,
-      // D264/D285 (amending D251) — the Run Modal's start facts, projected
-      // from the SAME descriptor this process plans with. They used to be read
-      // off the bundle-safe descriptor tuple in the browser, which is what kept
-      // the whole composition root in the dashboard bundle; serving them here
-      // is what lets it leave. Each is passed through verbatim: `summary` and
-      // `inputRun` are omitted when the descriptor declares none, because their
-      // ABSENCE is the fact the modal renders, and `enqueue` is always declared
-      // so it is always served — the client no longer has a default to fall
-      // back to, which is the point.
+
       start: {
         ...(descriptor.summary === undefined ? {} : { summary: descriptor.summary }),
         enqueue: descriptor.enqueue,
@@ -156,10 +116,7 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
         ...(descriptor.surfaces.inputRun === undefined
           ? {}
           : { inputRun: descriptor.surfaces.inputRun }),
-        // D296 — the second start door, served as the fact it is. `undefined`
-        // is the module declaring no projection, which `intakeProjectionRegistry`
-        // reads the same way and `command-kernel` refuses a commit by; the
-        // modal draws no spreadsheet method for it.
+
         spreadsheetIntake: intake !== undefined,
       },
     })),
@@ -172,17 +129,7 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
         reason: "test-instance selection lands with the settings surface (2i)",
       },
     })),
-    // Every section here is READ-ONLY status. Editable settings
-    // (`apply-settings`) stay a deferred command family (doc 04), so the list
-    // carries no editable group and the nav draws none.
-    //
-    // D274 item 6 (ledger 3 SE40–SE42) added the second and third: both are
-    // projections of authority this process already composed — the resolved
-    // config, and the descriptor tuple the kernel plans with — served by
-    // `GET /api/v1/settings/facts`. They were absent for exactly one reason,
-    // which the ledger names: this list said `storage` and nothing else.
-    //
-    // Keep the served navigation label aligned with the Storage checks page.
+
     settingsSections: [
       { id: "storage", label: "Storage checks", revision: 1 },
       { id: SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID, label: "Workflow capabilities", revision: 1 },

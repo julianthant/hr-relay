@@ -56,14 +56,7 @@ function legacyPhoneCaptureConfig() {
   };
 }
 
-/**
- * A current-generation database whose one config snapshot is then rewritten to
- * the shape it had at `removed` — the same surgery history performed, so the
- * row is a genuine older snapshot rather than a hand-written approximation of
- * one. `.tracker/phase1-exit-state.db` (the preserved Phase-1 exit
- * database, gitignored) reproduces exactly this shape with `removed` set to
- * `timeouts.sessionAcquireMs`.
- */
+
 function databaseWithSnapshotMissing(removed: string): string {
   const path = databasePath();
   const database = AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "generation-test" }, CLOCK);
@@ -86,7 +79,7 @@ function databaseWithSnapshotMissing(removed: string): string {
   return path;
 }
 
-describe("pre-D125 config snapshots are read forward", () => {
+describe("earlier-generation config snapshots are read forward", () => {
   it("opens an authority database whose snapshot predates timeouts.sessionAcquireMs", () => {
     const path = databaseWithSnapshotMissing("timeouts.sessionAcquireMs");
 
@@ -101,13 +94,10 @@ describe("pre-D125 config snapshots are read forward", () => {
     assert.notEqual(record, undefined);
     if (record === undefined) return;
 
-    // The absence is REPORTED, not filled: a run that predates D125 held no
-    // session-acquire bound at all, and the record must not claim it held 60s.
+    // An absent bound remains unreported; a reader must not invent a bound the stored run never held.
     assert.equal(record.config.timeouts.sessionAcquireMs, undefined);
     assert.deepEqual(configSnapshotAbsentLeaves(record.config), ["timeouts.sessionAcquireMs"]);
-    // A snapshot missing generation 2's leaf IS generation 1, whatever later
-    // leaves (D267's generation-3 grace) the fixture happens to carry: the
-    // generation is the last one whose every introduced leaf is present.
+    // The snapshot generation is the last generation whose complete introduced leaf set is present.
     assert.equal(configSnapshotGeneration(record.config), 1);
     assert.ok(CURRENT_CONFIG_SNAPSHOT_GENERATION >= 3);
     // Every other leaf still parsed strictly.
@@ -217,7 +207,7 @@ describe("pre-D125 config snapshots are read forward", () => {
     if (!write.success) assert.match(write.error.message, /cannot mint retired crm test routes/u);
   });
 
-  it("reads an immutable pre-D294 capture snapshot but refuses to mint one", () => {
+  it("reads an immutable phone-capture snapshot but refuses to mint one", () => {
     const legacyRecord = {
       configSnapshotId: SNAPSHOT_ID,
       revision: 1,

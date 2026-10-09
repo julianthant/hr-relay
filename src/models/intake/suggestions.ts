@@ -1,32 +1,4 @@
-/**
- * The header-suggestion scorer — ref data-intake-and-edit-data §2.5, the redesigned successor to
- * legacy's `COLUMN_PATTERNS` regex table.
- *
- * It **proposes**. It cannot bind. That is structural rather than
- * conventional: a `ColumnBinding` requires `confirmedAt`, and a `Suggestion`
- * has no such field and no way to acquire one — only `confirmBinding` in
- * `mapping.ts`, called from an operator action, mints one. So there is no code
- * path from this module to a populated `bindings` array, which is what ref data-intake-and-edit-data
- * §7 vector #1 asks for.
- *
- * The reason this matters more than it looks: legacy's regexes silently decided
- * what a column meant, and a confident-but-wrong guess ("Name" → `fullName`
- * when the file's real name lives in "Legal Name") produces a run against the
- * wrong person. Suggestions make the same knowledge available while keeping the
- * decision where it belongs.
- *
- * ## Sample values are evidence, and disagreement is the strongest signal
- *
- * Header text alone is weak — "Dept" could be `deptId` or `department`. So each
- * candidate is also tried against the column's real sample values through the
- * canonical field's own `coerce` + `schema`. A column whose samples all parse
- * is corroborated; a column where none do is suppressed to zero no matter how
- * well its header scored, because a header that matches while the data cannot
- * is the mis-map ref data-intake-and-edit-data §2.4 wants surfaced.
- *
- * A `CellCoercionError` here is an expected outcome, not a failure: it is the
- * measurement. Anything else propagates.
- */
+/** The header-suggestion scorer: it proposes and cannot bind, because a binding requires `confirmedAt`, and a column whose samples do not parse is suppressed no matter how well its header scored. */
 import { z } from "zod";
 import {
   IntakeTargetFieldIdSchema,
@@ -46,12 +18,7 @@ export const SuggestionSchema = z.strictObject({
   score: z.number().min(0).max(1),
   /** What produced the score, so the grid can say WHY a column is proposed. */
   why: z.array(z.enum(["alias-exact", "label-exact", "token-overlap", "samples-parse"])).min(1),
-  /**
-   * True when a second candidate scores within `AMBIGUITY_EPSILON`. The grid
-   * must NOT pre-highlight an ambiguous suggestion: picking one of two
-   * indistinguishable columns for the operator is the silent guess in
-   * miniature.
-   */
+    /* True when a second candidate scores within `AMBIGUITY_EPSILON`: the grid must NOT pre-highlight an ambiguous suggestion. */
   ambiguous: z.boolean(),
 });
 export type Suggestion = z.infer<typeof SuggestionSchema>;
@@ -74,11 +41,7 @@ function tokenOverlap(left: string, right: string): number {
   return shared / new Set([...a, ...b]).size;
 }
 
-/**
- * What fraction of a column's non-blank samples survive this field's own
- * coercion and schema. `null` when the column offers no samples to judge with —
- * absent evidence, which must not read as evidence of absence.
- */
+/** What fraction of a column's non-blank samples survive this field's own coercion and schema; `null` when there are no samples, which must not read as evidence of absence. */
 function sampleAgreement(
   canonicalFieldId: keyof typeof CANONICAL_FIELDS,
   column: DetectedColumn,
@@ -118,13 +81,7 @@ function headerScore(canonicalFieldId: keyof typeof CANONICAL_FIELDS, column: De
   return best > 0 ? { score: best * 0.8, why: ["token-overlap"] } : { score: 0, why: [] };
 }
 
-/**
- * Rank each detected column against each declared target field.
- *
- * The result is ordered by target then descending score, and carries every
- * candidate above the floor rather than one winner per target — the operator
- * chooses from a list, and a list of two is how ambiguity is communicated.
- */
+/** Rank each detected column against each declared target field, ordered by target then descending score, carrying every candidate above the floor. */
 export function suggestBindings(args: {
   workflow: string;
   detected: readonly DetectedColumn[];

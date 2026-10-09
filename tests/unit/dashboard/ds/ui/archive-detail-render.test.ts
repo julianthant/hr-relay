@@ -1,20 +1,4 @@
-/**
- * Two archived-run detail rows (unit F10c, ledger 3 AR150 and AR163) that only
- * the drawn tree can hold.
- *
- * AR150 is a REMOVAL, which is the hardest kind of row to pin: three counts
- * about the run — attempts, data facts, evidence facts — sat under a card
- * headed `Decision`, and each of them has an owner elsewhere on the same page
- * that derives its number from the FROZEN sections. Two sources for one fact
- * is the thing this bundle bans, and where a section was never frozen its
- * owner prints the REASON, which is a better answer than a number the archive
- * cannot corroborate. Nothing but an assertion about their absence can keep
- * them out.
- *
- * AR163 is the log line's shape: fixed clock and level columns so every
- * message starts on one x, and the level as a WORD so nothing is carried by
- * colour alone.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import {
@@ -26,14 +10,8 @@ import {
 } from "../../../../../src/models/dashboard/archive.js";
 import { FIXTURE_ARCHIVED_RUN } from "../../../../parity/helpers/fixture-archive.js";
 
-/*
- * D307 — the frozen timeline drew a note for a skipped step ONLY when its span
- * recorded a closed reason, and dropped the `absent` arm's served sentence. A
- * step that did not run then looked exactly like a step that ran: no note under
- * either. Both arms draw now, and this is the arm nobody would have written a
- * test for, because its absence is a blank rather than a wrong word.
- */
-describe("a skipped step whose span recorded no reason (D307)", () => {
+
+describe("a skipped step whose span recorded no reason", () => {
   const NO_REASON = "this step did not run; its span recorded no reason";
 
   function detailWithSkips(): ArchivedRunDetailWire {
@@ -72,5 +50,3 @@ describe("a skipped step whose span recorded no reason (D307)", () => {
     assert.equal(archivedNotRunNote(detailWithSkips().detail.timeline.events[0]), undefined);
   });
 });
-
-// H: the served saved-document renderer never mounts the retired live detail actions.

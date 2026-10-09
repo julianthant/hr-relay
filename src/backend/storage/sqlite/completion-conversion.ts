@@ -1,4 +1,4 @@
-/** Stopped schema <=40 conversion. Never reads retired authority during runtime. */
+// Stopped schema conversion never opens replaced authority during ordinary runtime.
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";

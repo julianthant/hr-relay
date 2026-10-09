@@ -1,24 +1,4 @@
-/**
- * D314 — a completed external write never executes twice, whichever recovery
- * choice the operator takes, and a restart whose fresh facts no longer match
- * the completed write refuses by name.
- *
- * The REAL write sequencer runs over a REAL authority database and the
- * deterministic UCPath Smart HR world:
- *
- * 1. attempt 1 files the termination — exactly one stage and one click;
- * 2. a Restart-from-start attempt of the same item reaches the same node with
- *    the same fresh facts — the settlement replays from its durable proof, and
- *    the world sees no second stage, fence or click;
- * 3. a restart whose fresh facts derive a DIFFERENT permanent key (another
- *    approved EID) refuses by node name and key digest reference, still with
- *    no stage, fence or click;
- * 4. a restart that BOTH drifted (the descriptor moved under the stored
- *    settlement) and moved its fresh facts is refused as DRIFT — the drift
- *    check runs before the fresh-fact lookup, so the operator is told the one
- *    thing that has to be resolved first rather than a mismatch derived from a
- *    checkpoint this build may no longer read.
- */
+
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { FingerprintSchema } from "../../../../../../src/rules/identity/ids.js";
@@ -90,7 +70,7 @@ async function fileTermination(h: CompositionHarness): Promise<RunRecord> {
   return run;
 }
 
-describe("write sequencer — no repeat writes across recovery (D314)", () => {
+describe("write sequencer — no repeat writes across recovery", () => {
   it("a restart attempt reuses the completed write's durable proof: zero new stage, fence or click", async () => {
     const h = harness();
     const first = await fileTermination(h);
@@ -130,7 +110,7 @@ describe("write sequencer — no repeat writes across recovery (D314)", () => {
         outputs: {
           ...COMPOSITION_SCOPE_OUTPUTS,
           "pending-set": compositionPendingSet([]),
-          // The fresh identity fold names ANOTHER person than the one the write was filed for.
+
           approval: { ...approval, approved: { ...approval.approved, emplId: COMPOSITION_OTHER_EID } },
         },
       },
@@ -140,7 +120,7 @@ describe("write sequencer — no repeat writes across recovery (D314)", () => {
       h.bound(() => h.sequencer.executeTransaction(context)),
       (error: unknown) => error instanceof Error
         && new RegExp(`transaction node "${TERMINATION_NODE}" holds a completed settlement`, "u").test(error.message)
-        && /refusing to relabel a completed external write as the consequence of new facts \(D314\)/u.test(error.message)
+        && /refusing to relabel a completed external write as the consequence of new facts/u.test(error.message)
         && /protected transaction key \(withheld\)/u.test(error.message)
         && !/[0-9a-f]{12}…/u.test(error.message)
         && !error.message.includes(String(COMPOSITION_OTHER_EID))
@@ -159,8 +139,7 @@ describe("write sequencer — no repeat writes across recovery (D314)", () => {
       h.database, h.clock, restartRun(UUID_7, 2, first.envelope.runId), TERMINATION_NODE,
     );
     const moved = compositionContext(run, claim, TERMINATION_NODE);
-    // The descriptor MOVED under the stored settlement: this build no longer
-    // reads the checkpoint attempt 1 wrote.
+
     const drifted = FingerprintSchema.parse("d".repeat(64));
     assert.notEqual(drifted, moved.descriptor.contractFingerprint);
     const approval = COMPOSITION_SCOPE_OUTPUTS.approval;
@@ -172,10 +151,7 @@ describe("write sequencer — no repeat writes across recovery (D314)", () => {
         outputs: {
           ...COMPOSITION_SCOPE_OUTPUTS,
           "pending-set": compositionPendingSet([]),
-          // …AND the fresh identity fold names another person, so the fresh
-          // key names no permanent intent either. Both refusals are available;
-          // only drift is correct, because it is the one that has to be
-          // resolved before the other question can even be asked.
+
           approval: { ...approval, approved: { ...approval.approved, emplId: COMPOSITION_OTHER_EID } },
         },
       },

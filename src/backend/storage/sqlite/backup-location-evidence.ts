@@ -7,7 +7,7 @@ import { inspectDoctorPairWithOrigin } from "./storage-recovery-status.js";
 
 export type BackupLocationOrigin = "current" | "previous-location";
 
-/** A settled locator receipt can authenticate old backup provenance, never restore eligibility. */
+// A settled locator receipt authenticates backup provenance, never restore eligibility.
 export function classifyBackupLocationOrigin(
   admission: RuntimeAdmission,
   activeAuthorityPath: string,

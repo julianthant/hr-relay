@@ -1,17 +1,5 @@
 import { hostConfigFacts } from "../../../../../../src/models/config/host-display.js";
-/**
- * Ref execution-and-sessions §10.8 (D267): the serialization PROOF, on the
- * manual clock — two workers cold-starting one credential, the second's
- * ceremony provably beginning AFTER the first's verifier returned — plus the
- * waiter refusal (§10.4), the expiry / generation takeover and the
- * poison-on-supersede arm (§10.3), and the fresh-profile-once recovery arms
- * (§10.5) on the real `WorkerSessionManager`.
- *
- * Nothing here is a stand-in for the lease: both managers run over ONE
- * authority database, the fake factories run the REAL
- * `defineVerifiedLoginRecipe` wrapper against a stub page, and the token each
- * ceremony receives is the one the store minted.
- */
+
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import type { Page } from "playwright";
@@ -95,12 +83,7 @@ interface CeremonyScript {
   readonly onCeremony: (token: DuoCeremonyLeaseToken, context: SystemLoginContext) => Promise<void>;
 }
 
-/**
- * A factory whose `authenticate` runs the REAL wrapper: a stub page, a verifier
- * that proves the session only after the scripted ceremony ran, and the gate
- * the manager handed in. `discardProfile` is recorded; omit it to model a
- * factory that cannot recover.
- */
+
 function recipeFactory(
   workerId: WorkerId,
   script: CeremonyScript,
@@ -205,7 +188,7 @@ function leaseRow(database: AuthorityDatabase) {
   return row;
 }
 
-describe("D267 — two workers, one credential, one ceremony at a time", () => {
+describe("two workers, one credential, one ceremony at a time", () => {
   it("starts the second worker's ceremony strictly after the first worker's verifier returned", async () => {
     const clock = manualClock(T0);
     const scheduler = new ManualScheduler(clock);
@@ -446,9 +429,7 @@ describe("Gate#release preserves the original error when the store's release() i
     const real = database.authority.duoCeremonyLeases;
     const releaseError = new Error("sqlite: database is locked (fixture)");
     let releaseCalls = 0;
-    // A store double whose `release` throws on its FIRST call (a transient store failure, never the
-    // ordinary `superseded` report — that is a returned outcome, not a throw) and delegates for
-    // every later call, so a retry can be proved to succeed.
+
     const flaky: DuoCeremonyLeaseRepository = Object.freeze({
       acquire: (input: unknown) => real.acquire(input),
       get: (credentialKey: string) => real.get(credentialKey),

@@ -10,14 +10,7 @@ import {
 } from "../identity/ids.js";
 import { SchemaBoundCanonicalValueSchema } from "../../models/validation/schema-bound-value.js";
 
-/**
- * The identity a write is fenced against (ref write-safety beat ③).
- *
- * It lives in the browser-safe half for the same reason `TransactionOutcome`
- * does (D144): a descriptor closure has to be able to hash a schema that embeds
- * it, and `write-safety.ts` imports `node:crypto`. Ref write-safety's module re-exports
- * it, so its address is unchanged.
- */
+/** The identity a write is fenced against; it lives in the browser-safe half because a descriptor closure has to be able to hash a schema that embeds it. */
 export const SubjectEvidenceSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("person"),
@@ -73,21 +66,7 @@ export const NegativeSettlementPolicySchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("operator-only"), reason: z.string().min(1) }),
 ]);
 
-/**
- * The DURABLE settlement of one transaction node (ref write-safety §3 beat ⑦ / §14), and
- * the exact schema a `run_checkpoints` row for a transaction node is bound to.
- *
- * It lives in this browser-safe half rather than beside the rest of ref write-safety's
- * write-safety records because a workflow descriptor's terminal `build` must
- * hash it (D144), and a descriptor closure may not reach a Node built-in —
- * `write-safety.ts` imports `node:crypto`. `write-safety.ts` re-exports it, so
- * ref write-safety's module stays the name every write-lane caller reads.
- *
- * `output` and `proof` are schema-bound canonical values: the commit contract's
- * own output/proof schema hashes live INSIDE this envelope, one level down.
- * That nesting is why the checkpoint row carries THIS schema's hash and the
- * commit contract's identity is still checked — see `projectTransactionOutcome`.
- */
+/** Keep settlement browser-safe for descriptor hashing; output/proof retain nested schema binding. */
 export const TransactionOutcomeSchema = z.discriminatedUnion("disposition", [
   z.strictObject({
     disposition: z.literal("committed"),
@@ -105,32 +84,8 @@ export const TransactionOutcomeSchema = z.discriminatedUnion("disposition", [
   }),
 ]);
 
-/**
- * D210 — what a dry run of a transaction node actually observed.
- *
- * Every field is a fact the preview GATHERED: the prepare arm's own parsed
- * output under its contract's schema hash, and the beat-③ subject observation
- * taken on the staged page. There is deliberately no `disposition` and no commit
- * output, because a preview settles nothing — and inventing either to make a
- * terminal derive fold is exactly the fabrication D144 refused.
- *
- * It lives here, beside `TransactionOutcome`, because the descriptor factory
- * hashes it when a previewed run is terminalized.
- */
-/**
- * D215 — what beat ①'s READ-ONLY probes answered during a preview.
- *
- * The real path's first act is not `prepare`: it is the durable permanent-key
- * lookup and then the policy-controlled live probe, and either can settle the
- * node `already-present` before anything is staged. A preview that skipped them
- * rehearsed a path the real run would never take.
- *
- * `not-required` is the honest name for the ONE case where the real path
- * genuinely skips the live read (`probePolicy:"retries-and-recovery-only"`, no
- * durable row, first attempt) — the durable lookup is never skipped, so this arm
- * is about the live half only. Ambiguous, unknown, and a probe that throws have
- * no arm on purpose: the real path REFUSES on each, so the preview refuses too.
- */
+/** What a dry run of a transaction node actually observed: gathered facts only, with no `disposition` and no commit output, because a preview settles nothing. */
+/** What beat ①'s READ-ONLY probes answered during a preview, so the preview rehearsed the path the real run takes; the refusal arms have no preview arm on purpose. */
 export const DryRunProbeObservationSchema = z.discriminatedUnion("state", [
   z.strictObject({
     state: z.literal("durable-intent"),
@@ -154,14 +109,9 @@ export type DryRunProbeObservation = z.infer<typeof DryRunProbeObservationSchema
 export const TransactionDryRunPreviewSchema = z.strictObject({
   kind: z.literal("transaction-dry-run-preview"),
   nodeId: z.string().min(1),
-  /** Beat ①, run BEFORE any staging, exactly as the real path runs it (D215). */
+  /** Beat ①, run BEFORE any staging, exactly as the real path runs it. */
   probe: DryRunProbeObservationSchema,
-  /**
-   * What the preview reached. `prepare` and `subject` live INSIDE the
-   * `would-prepare` arm because a preview whose probe settled first staged
-   * nothing and observed no subject — making them unspellable there is the only
-   * shape in which "no staged page" cannot be mistaken for an empty one.
-   */
+    /* What the preview reached: `prepare` and `subject` live INSIDE the `would-prepare` arm, so "no staged page" cannot be mistaken for an empty one. */
   outcome: z.discriminatedUnion("state", [
     z.strictObject({
       state: z.literal("would-prepare"),

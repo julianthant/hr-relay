@@ -83,14 +83,7 @@ const EvidencePreviewSchema = z.discriminatedUnion("outcome", [
   }),
 ]);
 
-/**
- * D318 — the collected terminal is one of three: a transaction preview
- * (`dry-run-preview`), an ordinary workflow result reached by the
- * transaction-free `live-read` arm, or a node-bound failure. The runtime
- * collects exactly the arm the manifest admitted; the evaluator compares it
- * against the case's own terminal expectation and never projects one arm's
- * fields onto the other.
- */
+// A terminal is a preview, ordinary live-read result, or pre-start refusal.
 const EvidenceTerminalSchema = z.discriminatedUnion("lifecycle", [
   z.strictObject({
     lifecycle: z.literal("done"),
@@ -245,8 +238,7 @@ export function evaluateDryRunScenarioEvidence(
     && evidence.terminal.code === scenarioCase.terminal.code
     && evidence.terminal.node === scenarioCase.terminal.node
     && evidence.terminal.fingerprint === scenarioCase.terminal.fingerprint;
-  // D318 — the live-read case has no preview expectation at all; its terminal
-  // is the ordinary workflow result, and its assertion list omits `preview`.
+
   if (!("preview" in scenarioCase)) {
     const terminalMatches = scenarioCase.terminal.lifecycle === "failed"
       ? failedTerminalMatches
@@ -350,10 +342,7 @@ export async function runDryRunScenario(
       verdict: "blocked",
       exitCode: 2,
       resultId,
-      // The resolver's reason is the operator's only instruction — "set
-      // <key> in the ignored local environment", "registry says gone, last
-      // observed <date>", a pending leaf by name. Printing the bare label
-      // discarded it (found when D300 made the unset-key case the common one).
+
       output: `${resolution.reason}\nresult: ${resultId}`,
     });
   }

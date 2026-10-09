@@ -1,16 +1,5 @@
 import { derivePersistedSettingsFingerprint } from "../../../../../../src/models/config/settings.js";
-/**
- * The run/claim store (ref execution-and-sessions §3, ref workflow-model §4).
- *
- * Two things are being pinned here, and they are different in kind. The schema
- * tests prove that an illegal *shape* cannot be spelled — a claimed run with no
- * claim generation, a failed run with no failure record, a freshness override
- * that authorizes an attempt this run is not. The repository tests prove that
- * an illegal *sequence* cannot happen even when two callers race: two workers
- * cannot hold one row, a zombie's heartbeat cannot resurrect a claim someone
- * else already took, and a requeue cannot carry a single-resume affordance into
- * the next attempt.
- */
+
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -158,8 +147,7 @@ describe("RunEnvelope", () => {
       correctedAt: NOW,
       reason: "operator corrected the selection",
     };
-    // D166: a live Edit-Data save needs no startAt — the executor refuses,
-    // loudly, any patch naming a node it will execute rather than replay.
+
     assert.equal(
       RunEnvelopeSchema.parse({ ...RUN_ENVELOPE, injected: [patch] }).injected?.length,
       1,
@@ -634,13 +622,7 @@ describe("run claim store", () => {
     assert.equal(resumed.run.lifecycle.state, "queued");
   });
 
-  /**
-   * D262 — the needs-you watch's ONE authority read. The park is a STANDING
-   * fact, so the query must answer it for as long as the run holds it and stop
-   * answering the instant a human resolves it; that pair is what makes the
-   * watcher's transition rule derivable from authority rather than from a
-   * process's memory of what it saw.
-   */
+
   it("lists a run parked at a gate for exactly as long as it is parked", () => {
     const database = openDatabase();
     database.authority.runs.enqueue(QUEUED_RUN);
@@ -715,8 +697,7 @@ describe("run claim store", () => {
       }).state,
       "conflict",
     );
-    // D234 retired `hidden`; presentation is the display name and nothing else,
-    // so an update that names no name is refused by the schema itself.
+
     assert.throws(
       () => database.authority.runs.updatePresentation({ runId: RUN_ID, expectedVersion: 2, now: LATER }),
       /displayName/,
@@ -726,7 +707,7 @@ describe("run claim store", () => {
   it("lists every run of one logical item", () => {
     const database = openDatabase();
     database.authority.runs.enqueue(QUEUED_RUN);
-    // D221 — the retry takes the ITEM's next attempt; attempt 1 is spent.
+
     database.authority.runs.enqueue(siblingRun({}, { itemId: ITEM_ID, retryOf: RUN_ID, attempt: 2 }));
     const runs = database.authority.runs.listByItem({ workflow: WORKFLOW_ID, itemId: ITEM_ID });
     assert.equal(runs.length, 2);
@@ -844,9 +825,7 @@ describe("run row column invariants", () => {
     database.authority.runs.enqueue(QUEUED_RUN);
     const claimed = claimOne(database);
     assert.equal(runClaim(claimed)?.workerId, WORKER_ID);
-    // The boot-time validator walks every authority row against its schema, so
-    // reopening the database is the end-to-end proof that what was written
-    // parses back as a run.
+
     const reopened = database.authority.runs.get(RUN_ID);
     assert.equal(reopened?.lifecycle.state, "claimed");
     assert.equal(reopened?.input.parsed.schemaHash, HASH_C);

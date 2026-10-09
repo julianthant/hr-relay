@@ -47,7 +47,7 @@ const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
   },
 ]);
 
-describe("authority classification and D95 command families", () => {
+describe("authority classification and command families", () => {
   it("retains strict historical Snooze journal and audit rows without admitting a live payload", () => {
     const request = { commandId: UUID_1, requestedAt: NOW, requestedBy: "local-operator", source: "notification-bell",
       family: "notification", type: "notification-snooze", target: { notificationId: UUID_2, actorId: "local-operator", expectedVersion: 1 },

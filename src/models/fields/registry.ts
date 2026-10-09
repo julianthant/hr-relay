@@ -1,44 +1,4 @@
-/**
- * The canonical field registry — ref data-intake-and-edit-data §1 and charter §11.
- *
- * This is the closed vocabulary an operator can bind a spreadsheet column to.
- * Its one load-bearing invariant is that **a workflow input field composes
- * from the SAME schema object the mapper coerces to**, so a coerced cell is
- * valid for its target by construction rather than by two regexes that happen
- * to agree today. `defineIntakeProjection` (`../intake/projection.ts`) checks
- * that identity, and `intake-canonical-field-registry.test.ts` checks it for
- * every registered workflow in both directions.
- *
- * ## The registry is frozen against a recorded scan, not against intuition
- *
- * Ref data-intake-and-edit-data §1 requires that, before this vocabulary freezes, every legacy
- * workflow input schema, roster header rule, OCR form field and Edit-Data
- * field is scanned, and each mappable concept either gets one canonical id or
- * is explicitly recorded as workflow-local WITH a reason. That scan is
- * `src/models/fields/canonical-field-inventory.json`; the guard fails in both directions,
- * so a field cannot be quietly added here and cannot be quietly dropped there.
- *
- * ## Tight schemas need evidence; the rest carry an audit obligation
- *
- * `eid` is `/^10\d{6}$/` because ref data-intake-and-edit-data §9.1 resolved it and the loose legacy
- * `/^\d{5,}$/` validators are recorded there as validation bugs. Dates are ISO
- * `DateOnly` because the domain owns the value and the DRIVER owns the
- * `MM/DD/YYYY` wire form. Where no such evidence exists, the field carries a
- * conservative non-empty-text schema and `evidence: "audit-at-migration"` —
- * inventing `/^\d{4,6}$/` for `deptId` from three call sites would be exactly
- * the unverified constant this tree bans, and a schema that is wrong in the
- * TIGHT direction rejects real operator data at intake.
- *
- * ## Redaction is declared here because a reject row is durable
- *
- * A row rejection stores its offending cell in the immutable intake manifest.
- * The operator fixes the cell against the live grid, which reads the
- * content-addressed source artifact, so the manifest never needs the raw
- * value — and duplicating a person's identifiers into a second durable store
- * is precisely what ref operator-trust's classification rules exist to prevent. Each field
- * therefore declares `(classification, redactTransform)`, refused at
- * definition time by the same table `redactDiagnosticFields` uses.
- */
+/** The canonical field registry: the closed vocabulary an operator can bind a spreadsheet column to, one entry per fact a workflow can be about. */
 import { z } from "zod";
 import { DateOnlySchema, EidSchema, IntakeTargetFieldIdSchema, WorkflowIdSchema } from "../../rules/identity/ids.js";
 import { DataClassificationSchema, EvidenceTransformSchema, evidenceTransformAllowed } from "../../rules/redaction/redaction.js";
@@ -109,15 +69,7 @@ export const CanonicalFieldIdSchema = z.enum([
 ]);
 export type CanonicalFieldId = z.infer<typeof CanonicalFieldIdSchema>;
 
-/**
- * How much evidence stands behind this field's schema.
- *
- * `resolved` — a reviewed decision or live verification pins the exact shape.
- * `audit-at-migration` — the shape is deliberately conservative; the consuming
- * workflow's migration must scan its real fixtures through this schema and
- * report every rejection before tightening it (ref data-intake-and-edit-data §1's resolved base
- * decision, generalized past `Eid`).
- */
+/** How much evidence stands behind this field's schema: `resolved` is pinned by a reviewed decision or live verification, and each level names who decided. */
 export const CanonicalFieldEvidenceSchema = z.enum(["resolved", "audit-at-migration"]);
 export type CanonicalFieldEvidence = z.infer<typeof CanonicalFieldEvidenceSchema>;
 
@@ -126,10 +78,7 @@ export interface CanonicalField<S extends z.ZodType = z.ZodType> {
   readonly label: string;
   /** THE schema. A workflow input field composes from this exact object. */
   readonly schema: S;
-  /**
-   * One raw cell → a pre-parse value. Throws `CellCoercionError` naming the
-   * row, column and value; never substitutes a default (ref data-intake-and-edit-data §7 #2).
-   */
+    /* One raw cell → a pre-parse value; throws naming the row, column and value, never substituting a default. */
   readonly coerce: (raw: string, location: CellLocation) => unknown;
   /** Header hints for the SUGGESTION engine only — never auto-applied (§2.5). */
   readonly aliases: readonly string[];
@@ -145,15 +94,7 @@ export interface CanonicalField<S extends z.ZodType = z.ZodType> {
 
 const FACTORY_DEFINED_FIELDS = new WeakSet<CanonicalField>();
 
-/**
- * Seal one canonical field, refusing a declaration that cannot hold.
- *
- * Every check here is one a broken registry would otherwise pass silently:
- * an alias that duplicates another field's, a classification/transform pair
- * ref clock-config-secrets forbids, and — the sharpest one — an `example` that its own `coerce`
- * and `schema` reject. A registry whose declared sample values fail its own
- * pipeline is a registry whose suggestions and grid previews are fiction.
- */
+/** Seal one canonical field, refusing a declaration that cannot hold; every check here is one a broken registry would otherwise pass silently. */
 export function defineCanonicalField<S extends z.ZodType>(spec: {
   id: CanonicalFieldId;
   label: string;
@@ -191,9 +132,7 @@ export function defineCanonicalField<S extends z.ZodType>(spec: {
   }
   if (spec.examples.length === 0) throw new Error(`canonical field ${spec.id} needs at least one example`);
   const probeLocation: CellLocation = {
-    // Parsed, not asserted: the probe location is itself a boundary value, and
-    // a cast here would let a self-check run against an id shape the intake
-    // pipeline would refuse.
+    // Parse probe locations so self-checks use the intake boundary's actual shape.
     workflow: WorkflowIdSchema.parse("registry-self-check"),
     // A FIXED instant: the self-check must not change answer with the calendar,
     // or a declared example could start failing on New Year's Day.
@@ -288,10 +227,7 @@ function emailCoercer(id: CanonicalFieldId) {
   };
 }
 
-/**
- * A text field whose real width is not yet evidenced. Kept together so the
- * deferral is visible as one decision rather than scattered as a habit.
- */
+/** A text field whose real width is not yet evidenced, kept together so the deferral is visible as one decision rather than scattered as a habit. */
 function auditedText(spec: {
   id: CanonicalFieldId;
   label: string;
@@ -319,14 +255,7 @@ export const UsStateCodeSchema = z.string().regex(/^[A-Z]{2}$/, "state must be a
 export const PhoneDigitsSchema = z.string().regex(/^\d{7,15}$/, "phone must be 7–15 digits");
 export const EmailSchema = z.email();
 export const MiddleInitialSchema = z.string().regex(/^[A-Za-z]$/, "middle initial must be one letter");
-/**
- * The zero-padded PPS identifier a pre-UCPath roster carries. It is a
- * DIFFERENT identifier from `Eid`, not a looser spelling of one: ref data-intake-and-edit-data §1
- * requires a distinct domain type with an explicit verified conversion rather
- * than widening `Eid`, and legacy's `i9-check` keeps `ppsEid` beside `emplId`
- * precisely because UCPath may not know the person at all. No conversion is
- * declared here, so nothing can silently treat one as the other.
- */
+/** The zero-padded PPS identifier a pre-UCPath roster carries; a DIFFERENT identifier from `Eid`, not a looser spelling of one. */
 export const PpsEidSchema = z.string().regex(/^\d+$/, "PPS EID must be digits").brand<"PpsEid">();
 
 export const CANONICAL_FIELDS = Object.freeze({

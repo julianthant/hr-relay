@@ -3,25 +3,7 @@ import { fixturePreflightReport } from "../../../../parity/helpers/fixture-prefl
 import { DEFAULT_DASHBOARD_PROFILE } from "../../../../parity/helpers/fixture-profile.js";
 import { PreflightActionsProvider } from "../../../../../src/dashboard/surfaces/settings/preflight/preflight-actions.js";
 // @vitest-environment jsdom
-/**
- * D274 item 6 (ledger 3 SE40–SE42) — the Workflow capabilities Settings section, as an
- * operator actually meets them.
- *
- * `settings-facts.test.ts` pins what the SERVER says. What no fold on either
- * side can see is the three-state arm between them: these sections fetch, and a
- * surface that fetches has a loading state, a loaded state and a REFUSAL, and
- * the refusal is the one this repo cares about. An empty table and "we could not
- * ask the server" look identical on screen, and only one of them means the
- * deployment provisions nothing — so this file mounts the real `SettingsPage`
- * into a real document and drives all three.
- *
- * It is the second file in the unit lane to render React (after
- * `session-panel-pool-press.test.ts`) and for the same reason: the standing rule
- * that behaviour belongs to the parity lane holds for PIXELS, and none of the
- * claims below is about a pixel. Each was run against a mutation of the line it
- * pins — collapsing the failed arm into an empty render turns the refusal tests
- * red, and dropping `labelServed` turns the id-fallback test red.
- */
+
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -64,9 +46,7 @@ const FACTS: SettingsFactsWire = SettingsFactsWireSchema.parse({
       test: { state: "provisioned", url: "https://kuali.example/sbx" },
     },
     { system: "crm", production: "https://crm.example/hr", test: { state: "not-provisioned" } },
-    // Configured, but identical to production — the third wire state unit
-    // F11b finding 2 added: refused at run time, and must not read the same
-    // as `crm` above, which was simply never provisioned.
+
     { system: "onbase", production: "https://onbase.example/hr", test: { state: "not-distinct" } },
   ],
   workflowCapabilities: [
@@ -171,7 +151,7 @@ function pending(): Promise<SettingsFactsWire> {
   return new Promise<SettingsFactsWire>(() => undefined);
 }
 
-describe("D349 System hosts page retirement", () => {
+describe("System hosts page retirement", () => {
   it("leaves a stale served id as a named build gap without rendering the retired page", async () => {
     const entries = buildSettingsNav(LEGACY_SECTIONS).flatMap((group) => group.entries);
     const retiredEntry = entries.find((entry) => entry.id === SETTINGS_SYSTEM_HOSTS_SECTION_ID);
@@ -198,7 +178,7 @@ describe("System hosts wire compatibility", () => {
   });
 });
 
-describe("Workflow capabilities (SE41/SE42)", () => {
+describe("Workflow capabilities", () => {
   it("names the served descriptor source on demand without blanket teaching", async () => {
     const text = await mount(SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID, () => Promise.resolve(FACTS));
     assert.ok(!text.includes("Source: served workflow descriptors."), text);
@@ -267,9 +247,7 @@ describe("the F11b review fixes", () => {
   it("keeps a capability detail out of a clipping chip", async () => {
     await mount(SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID, () => Promise.resolve(FACTS));
     const dom = mounted();
-    // A chip is `overflow-hidden whitespace-nowrap` outside and `truncate`
-    // inside, so a value in one is unreachable the moment it is too long --
-    // on EVERY pointer. The state token may be a chip; the detail may not.
+
     for (const chip of dom.querySelectorAll("span")) {
       if (!chip.className.includes("whitespace-nowrap")) continue;
       const text = chip.textContent ?? "";
@@ -298,7 +276,7 @@ describe("the F11b review fixes", () => {
 
 });
 
-describe("the async arms (D275 item 4)", () => {
+describe("the async arms", () => {
   it("says facts are loading instead of drawing an empty matrix", async () => {
     const text = await mount(SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID, pending);
     assert.ok(mounted().querySelector('[role="status"][aria-label="Loading workflow operations"]'));

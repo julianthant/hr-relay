@@ -1,24 +1,4 @@
-/**
- * Declared cross-source verification obligations (D140) — the half of ref operator-trust
- * §2.3 that makes a receipt a double-check rather than a transcript.
- *
- * D82's bar is that the operator finishes their double-check WITHOUT opening
- * UCPath. Printing what each system said is not enough: the operator would
- * still have to compare the values themselves, and comparing two redacted
- * identifiers by eye is exactly the check a machine should have already done.
- *
- * So the receipt carries the SERVER's verdict on a declared obligation, with
- * the durable facts it compared. Each obligation names its sources by
- * `(nodeId | workflow input, dotted path)` — the same path vocabulary the
- * checkpoint provenance uses — and a closed rule. Nothing here inspects a
- * value's NAME to decide what it means; a comparison exists because it was
- * declared, and a workflow with no declared obligation truthfully carries none
- * rather than a fabricated green tick.
- *
- * A source that is absent (its node did not run, or its union arm does not
- * carry that path) is reported as absent. It never silently shrinks the
- * comparison to one side and calls the result agreement.
- */
+/** Declared cross-source verification obligations: the receipt carries the SERVER's verdict on a declared obligation, so the operator never has to open UCPath to compare two numbers. */
 import { z } from "zod";
 import { NodeIdSchema, WorkflowIdSchema } from "../../rules/identity/ids.js";
 import { EvidenceLeafPathSchema } from "./evidence-classification.js";
@@ -58,9 +38,7 @@ export const EvidenceObligationSchema = z.discriminatedUnion("rule", [
 export type EvidenceObligation = z.infer<typeof EvidenceObligationSchema>;
 
 export const EVIDENCE_OBLIGATIONS: readonly EvidenceObligation[] = Object.freeze([
-  /* person-lookup: the whole point of `cross-verify` is that a second system
-     independently displays the same EID. The receipt states that verdict, so
-     the operator never has to open UCPath to compare two numbers. */
+    /* person-lookup: `cross-verify` exists so a second system independently displays the same EID, and the receipt states that verdict. */
   {
     rule: "all-equal",
     workflowId: "person-lookup",
@@ -83,9 +61,7 @@ export const EVIDENCE_OBLIGATIONS: readonly EvidenceObligation[] = Object.freeze
     summary: "UCPath resolved exactly one person; an ambiguous or empty search is not a selection",
   },
 
-  /* separations-kuali-finalization: the operator authorized one twelve-field
-     finalization on one document for one person. These obligations bind the
-     durable reload proof back to the ingress rather than trusting the click. */
+    /* separations-kuali-finalization: these obligations bind the durable reload proof back to the ingress rather than trusting the click. */
   {
     rule: "all-equal",
     workflowId: "separations-kuali-finalization",

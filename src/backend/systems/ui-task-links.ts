@@ -34,12 +34,7 @@ const KUALI_DOCUMENT_READERS = [
   KUALI_STAGE_FINALIZATION_TASK,
   KUALI_VERIFY_FINALIZATION_TASK,
 ];
-/**
- * Kuali attribution splits by FACT. The separation reader and finalization
- * probe/stage/verifier share one RRSS document; the Action List belongs only to
- * the search task; and Save belongs only to the commit task because naming a
- * prepare or verifier beside it would lie about which task can click.
- */
+
 const KUALI_READ_ONLY_FACTS: readonly string[] = [
   "kuali.rrss-document.employee-name-field",
   "kuali.rrss-document.termination-type-field",
@@ -64,12 +59,7 @@ function kualiTaskUses(id: string): TaskId[] {
   }
   return [...KUALI_DOCUMENT_READERS];
 }
-/**
- * New Kronos is read-only, and its two screens split cleanly by task: the search
- * panel belongs to the employee search, the timecard to the separation-timecard
- * read. Attribution is per SCREEN rather than per fact because nothing on the
- * search panel is reachable from the timecard read and vice versa.
- */
+
 const NEW_KRONOS_SEARCH_TASK = TaskIdSchema.parse("new-kronos/search-employee");
 const NEW_KRONOS_TIMECARD_TASK = TaskIdSchema.parse("new-kronos/read-separation-timecard");
 const NEW_KRONOS_SEARCH_SCREEN_ID = "new-kronos.employee-search";
@@ -78,20 +68,7 @@ function newKronosTaskUses(screen: string): TaskId[] {
   return screen === NEW_KRONOS_SEARCH_SCREEN_ID ? [NEW_KRONOS_SEARCH_TASK] : [NEW_KRONOS_TIMECARD_TASK];
 }
 
-/**
- * UCPath's attribution splits by SCREEN FAMILY, and within the termination
- * family by FACT — the same rule Kuali settled (D197 #2), because the catalog
- * is what an operator reads to answer "what can click this?".
- *
- * The two commit controls are attributed to their COMMIT task alone. Naming the
- * prepare task beside `Save and Submit` would be a lie about which task can
- * file a real termination, and naming anything but the sweep's commit beside
- * `Delete Selected Transactions` would be a lie about which task can delete.
- *
- * The Person Org family stays unattributed: its two read tasks reach the page
- * through one semantic driver operation each, and the registry's Person Org
- * elements are the driver's internal steps rather than task-addressable facts.
- */
+
 const UCPATH_STAGE_TERMINATION_TASK = TaskIdSchema.parse("ucpath/stage-termination");
 const UCPATH_CREATE_TERMINATION_TASK = TaskIdSchema.parse("ucpath/create-termination");
 const UCPATH_STAGE_SWEEP_TASK = TaskIdSchema.parse("ucpath/stage-pending-termination-sweep");

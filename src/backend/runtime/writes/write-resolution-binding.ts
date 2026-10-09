@@ -1,47 +1,7 @@
 import { retainedRunProtectedBindings, hasProtectedTransactionInput } from "../../../models/write-safety/protected-input.js";
 import { readRunCheckpoint } from "../checkpoints/run-checkpoint-reader.js";
 import { repeatOccurrenceKey } from "../../../models/run/rerun.js";
-/**
- * D136 — what a parked write's resolvability actually binds to (ref write-safety §4.1).
- *
- * A parked write is the one state in this system deliberately designed to
- * survive ACROSS time and code change: it waits for a human to go look in the
- * target system, and humans are slow. Binding its resolvability to
- * `descriptor.contractFingerprint` — a hash of the descriptor's WHOLE source
- * closure — made it expire on any unrelated edit anywhere in that closure. The
- * person-lookup/Kuali closures span ~31 files, and one edit to
- * `src/domain/ids.ts` stranded a real parked Kuali intent permanently
- * (ref write-safety, "The parked intent from the failed attempt, and a drift finding").
- *
- * The fingerprint binding is not wrong, it is just the wrong GRAIN. Byte
- * identity of the closure is a *sufficient* proof that nothing semantic moved;
- * it is nowhere near necessary. This module states the necessary condition
- * directly: the exact semantic surface a resolution consumes, checked one named
- * check at a time.
- *
- * **May change** — anything in the closure that leaves all of the checks below
- * held: an unrelated module in the same import graph, comments, formatting, a
- * sibling workflow, a sibling node, an impl detail of a read task.
- *
- * **May not change** — the workflow id; the descriptor version (a bump is the
- * author's explicit statement that semantics moved, and is never re-derived
- * away here); the transaction node that commits this task; the canonical-input
- * schema the run's stored snapshot is bound to; the permanent key the current
- * build re-derives from the exact durable input (a different key names a
- * DIFFERENT external transaction — the single most dangerous drift there is);
- * and the retained binding proof's task/run identity.
- *
- * The completion PROOF rules are checked where the proof actually arrives —
- * `resolvePresent` compares the operator's attested `proof.schemaHash` against
- * the current `completion.proofSchema`, and recovery re-parses a present probe
- * through the current parsers and parks `present-proof-invalid` on failure.
- * Both are already loud; this module deliberately does not duplicate them.
- *
- * There is no waiver, no override flag, and no "force" arm. When a check moves
- * the refusal is final and names exactly what moved, because the honest repair
- * is to restore the semantics or re-plan the run — not to resolve a parked real
- * HR write against a target we can no longer prove is the same one.
- */
+// Resolve only the same workflow, node, schemas, permanent key and binding proof; whole-closure identity is sufficient, not necessary.
 import { z } from "zod";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { JsonValueSchema } from "../../../rules/validation/canonical-json.js";
@@ -64,11 +24,7 @@ export type TransactionRuntimeNode = Extract<RuntimeFlowNode, { kind: "transacti
 /** The durable-state readers a binding evaluation needs; nothing writes here. */
 export type WriteBindingRepositories = Pick<AuthorityRepositories, "runCheckpoints" | "gateResults">;
 
-/**
- * Which ref write-safety arm is asking. The arm never relaxes a check — it only labels
- * the refusal, so an operator reading a rejected `resolve-write-absent` knows
- * which action was refused.
- */
+
 export const WriteResolutionArmSchema = z.enum([
   "recovery-probe",
   "operator-confirmed-present",
@@ -76,10 +32,7 @@ export const WriteResolutionArmSchema = z.enum([
 ]);
 export type WriteResolutionArm = z.infer<typeof WriteResolutionArmSchema>;
 
-/**
- * The named semantic checks, in evaluation order. Adding one is a contract
- * change (ref write-safety §4.1 owns the list); removing one weakens a real write guard.
- */
+
 export const WriteBindingCheckSchema = z.enum([
   "workflow-identity",
   "descriptor-version",
@@ -112,12 +65,7 @@ export class WriteCommitInputRebuildError extends Error {
 
 export const WriteBindingCheckResultSchema = z.strictObject({
   check: WriteBindingCheckSchema,
-  /**
-   * `held` — proved equivalent. `moved` — proved different (a refusal).
-   * `not-evaluated` — a prerequisite check moved, so this one could not run;
-   * it is NEVER reported as held, because "we could not look" and "we looked
-   * and it matched" must stay distinguishable.
-   */
+  // Not-evaluated means a prerequisite moved; it never counts as held.
   state: z.enum(["held", "moved", "not-evaluated"]),
   detail: z.string().min(1),
   rederiveFailure: WriteCommitInputRebuildFailureSchema.optional(),
@@ -185,12 +133,7 @@ function lookupTransactionNode(
       && (nodeId === undefined || candidate.id === nodeId));
 }
 
-/**
- * Rebuild the transaction node's exact commit input from DURABLE state: the
- * run's canonical input snapshot plus the node's declared dependency outputs
- * (task checkpoints and stored gate results). The rebuilt input must re-derive
- * the EXACT fenced idempotency key — any drift refuses loudly.
- */
+// Rebuild commit input from durable input and dependency outputs; its permanent key must match the fenced intent.
 export function rebuildCommitInput(
   repositories: WriteBindingRepositories,
   descriptor: AnyWorkflowDescriptor,
@@ -315,12 +258,7 @@ function short(fingerprint: string): string {
   return `${fingerprint.slice(0, SHORT)}…`;
 }
 
-/**
- * Render the whole check table, held rows included. An operator staring at a
- * refused resolution needs to see what was PROVED equivalent as much as what
- * moved — that is the difference between "the code drifted, here is the one
- * thing that matters" and "computer says no".
- */
+
 export function renderWriteBindingChecks(checks: readonly WriteBindingCheckResult[]): string {
   const label = (result: WriteBindingCheckResult) =>
     result.state === "held" ? "[held] " : result.state === "moved" ? "[MOVED]" : "[skip] ";
@@ -368,9 +306,7 @@ export function evaluateWriteResolutionBinding(input: WriteResolutionBindingInpu
   checks.push(held("transaction-node", `node "${node.id}" still commits ${intent.taskId}`));
 
   if (closureIdentical) {
-    // Byte identity of the whole closure IS the proof; re-deriving the key
-    // would only add failure modes (a pruned dependency checkpoint) to the
-    // ordinary path, so the remaining checks are not run and say so.
+    // Exact closure identity is sufficient; extra key derivation could fail on pruned dependencies without adding proof.
     for (const check of ["canonical-input", "permanent-key-identity", "binding-proof-identity"] as const) {
       checks.push(held(check, `the contract closure is byte-identical (${short(current)}); nothing could have moved`));
     }
@@ -475,10 +411,7 @@ function refuse(
   });
 }
 
-/**
- * The call-site form: return the transaction node when the binding holds, and
- * throw the full, legible check table when it does not.
- */
+
 export function requireWriteResolutionBinding(
   input: WriteResolutionBindingInput,
 ): Readonly<{ node: TransactionRuntimeNode; binding: WriteResolutionBinding }> {

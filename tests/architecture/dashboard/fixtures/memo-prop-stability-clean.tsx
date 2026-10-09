@@ -1,10 +1,4 @@
-/**
- * The clean counterpart: the same three memoized panels, every prop slot a
- * shape that is stable across renders or primitive by construction — a bare
- * identifier, a member-access chain, a string/boolean literal, a comparison,
- * and a call whose result the guard does not judge (see the guard's own
- * doc comment for why it deliberately says nothing about calls).
- */
+
 /* eslint-disable */
 // @ts-nocheck
 export function Good({ boot, route }: any) {

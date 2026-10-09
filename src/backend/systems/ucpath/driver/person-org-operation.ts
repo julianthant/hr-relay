@@ -1,16 +1,6 @@
-/**
- * Strict UCPath Person Organizational Summary read.
- *
- * Port provenance (legacy repo, commit 793abe1f8265f3213ffe8a80d6cfd9860a32a1dc):
- * - src/systems/ucpath/person-org-summary.ts @ 601d3a2407e9c6cd79f2383c240be8a9ca7261db
- * - src/workflows/person-lookup/lookup.ts @ b29f57105699e4e1ca96e1186035783ba98a414d
- * - src/workflows/person-lookup/outcome.ts @ 454320b59d280ff8ccfa24b6b0235ad49a86ae2d
- * - src/systems/ucpath/selectors.ts @ 695d88fcc7a108f262b91b45eb1b9a276deaf427
- *
- * The search ordering and preferred-assignment rules are faithful ports. Unsafe legacy fallbacks
- * are deliberately rejected: no body-name scan, no observed-EID overwrite, no extraction-error
- * empty array, no missing-table not-found, no swallowed field clear, and no drill-failure null.
- */
+// Port source commit 793abe1f8265f3213ffe8a80d6cfd9860a32a1dc: legacy:src/systems/ucpath/person-org-summary.ts @ 601d3a2407e9c6cd79f2383c240be8a9ca7261db; legacy:src/workflows/person-lookup/lookup.ts @ b29f57105699e4e1ca96e1186035783ba98a414d
+// Source blobs: legacy:src/workflows/person-lookup/outcome.ts @ 454320b59d280ff8ccfa24b6b0235ad49a86ae2d; legacy:src/systems/ucpath/selectors.ts @ 695d88fcc7a108f262b91b45eb1b9a276deaf427
+
 import type { Locator, Page } from "playwright";
 import { recordBrowserAction } from "../../browser-shared/action-notes.js";
 import { z } from "zod";
@@ -96,21 +86,10 @@ export type PersonOrgAssignmentDetails = z.infer<typeof AssignmentDetailsSchema>
 const PersonOrgDetailSchema = z.strictObject({
   observedEid: EidSchema,
   displayedName: z.string().min(1),
-  /**
-   * Every Employment Instances row's cells, verbatim, from the ONE extraction.
-   *
-   * The detail deliberately does NOT carry a parsed `assignment` any more.
-   * `searchPersonOrg` still selects its preferred row (through
-   * `deriveAssignmentDetailsFromCells` + `selectPreferredAssignmentDetails`,
-   * both unchanged), but that derivation REFUSES a blank department or job
-   * description — correct for a candidate, and wrong for the job-summary read,
-   * where S24's unreadable cell is data with a reason. Parsing eagerly here
-   * would have made a blank department fail an identity check that never uses
-   * the department. One extraction, two parses, each strict about its own
-   * needs.
-   */
+
+  // Keep raw cells until assignment validation; identity checks need neither department nor job description.
   cells: z.array(z.array(z.string())).min(1),
-  /** Whether `View All` had to be driven, or the grid was already complete. */
+
   employmentInstances: z.enum(["already-complete", "expanded"]),
 });
 export type PersonOrgDetail = z.infer<typeof PersonOrgDetailSchema>;
@@ -142,11 +121,7 @@ function assertEnabledViewToggleHref(href: string | null, label: string): void {
   }
 }
 
-/**
- * PeopleSoft's verified completeness contract is stateful: an enabled `View All` anchor must be
- * clicked and become `View N`; an already-complete grid exposes disabled `View All` text without
- * an href. Absence or any third state is unknown and therefore fails loud.
- */
+// View All completeness requires the enabled control to become View N; row presence alone is insufficient.
 export async function ensurePersonOrgViewAllExpanded(
   port: PersonOrgViewTogglePort,
   label: string,
@@ -348,13 +323,7 @@ function comparePreferredAssignment(
   return 0;
 }
 
-/**
- * The inverse of `deriveAssignmentDetailsFromCells`, for fixtures and fakes.
- *
- * A fixture that authors a `PersonOrgAssignmentDetails` and hands it to the port
- * as `cells` exercises the REAL parse on the way back in, which is the point —
- * a fixture that skipped the parse would agree with a broken one.
- */
+
 export function assignmentDetailsToCells(
   details: PersonOrgAssignmentDetails,
 ): readonly string[] {
@@ -594,12 +563,7 @@ async function ensureResultsExpanded(page: Page): Promise<void> {
   );
 }
 
-/**
- * Legacy provenance for the CELL LAYOUT this reads (unchanged from the port at
- * `deriveAssignmentDetailsFromCells`): twelve columns, in this order, from the
- * Person Org Employment Instances grid. The job-summary read parses the same
- * twelve — it differs only in which of them may legitimately be blank.
- */
+
 const JOB_ROW_CELL_COUNT = 12;
 
 function jobCell(raw: string | undefined, label: string): { state: "present"; value: string }
@@ -613,16 +577,7 @@ function jobCell(raw: string | undefined, label: string): { state: "present"; va
     : { state: "present", value };
 }
 
-/**
- * One grid row → one `UcpathJobRow`.
- *
- * Empl record, HR status and business unit are STRUCTURAL and refuse a blank:
- * a rendered employment row always carries all three, so a blank one means the
- * extraction read something that is not an employment row (the header-row check
- * below is the same instinct). Everything else is an absent arm with a reason —
- * S24's unreadable department is data here, and the consumer that needs a
- * department is the one that refuses.
- */
+
 export function deriveJobRowFromCells(cells: readonly string[], rowIndex: number): UcpathJobRow {
   if (cells.length < JOB_ROW_CELL_COUNT) {
     throw new Error(
@@ -651,14 +606,7 @@ export function deriveJobRowFromCells(cells: readonly string[], rowIndex: number
   });
 }
 
-/**
- * D194's read, over the SAME page port `searchPersonOrg` drives.
- *
- * The run already names the person, so this is not a resolution: it searches by
- * EID, reaches the detail page (auto-redirect, or one drill-in from the grid),
- * PROVES the displayed EID equals the requested one, and returns the whole
- * grid. Every negative it can answer is an outcome; anything mechanical throws.
- */
+
 export async function readJobSummaryWithPagePort(
   pagePort: PersonOrgPagePort,
   input: Readonly<{ emplId: Eid }>,
@@ -681,11 +629,7 @@ export async function readJobSummaryWithPagePort(
     entry = "auto-detail";
     searchResultRows = 0;
   } else {
-    // A by-EID search that grids renders one row per employment instance, all
-    // for the same person; drilling ANY of them reaches the same detail page,
-    // whose own grid is the authority. Row 0 is chosen and then PROVED, rather
-    // than a row being picked for its status — picking by status is exactly the
-    // legacy shape that made S22 unobservable.
+    // Employment-instance rows lead to the same Person Org detail; drill any row only after proving the shared person.
     const foreign = outcome.rows.filter(({ emplId: rowEid }) => rowEid !== emplId);
     if (foreign.length > 0) {
       throw new Error(
@@ -761,24 +705,7 @@ async function extractDetail(page: Page): Promise<PersonOrgDetail> {
   });
 }
 
-/**
- * What a settled Person Org search page turned out to be (D213).
- *
- * `#PTS_CRITTEXT_DISP` is PeopleSoft's **search-criteria banner**, not a
- * no-results marker: it renders on EVERY list page and states the count and the
- * criteria — live `No matching values were found` with nothing beside it, and
- * live `4 results   -   Last Name "Ezeunala"   Name "Chim…"` directly above a
- * populated grid. The registry's own label calls it a "positive no results
- * marker", which was true of every subject this store had ever searched, because
- * chunks 3 and 4's two live subjects each matched exactly one person and UCPath
- * navigates straight to the detail page in that case. The first search that
- * returned FOUR rows is what showed the mapping was externally wrong.
- *
- * So the banner is not an outcome; it is the page saying "you are looking at a
- * result list". The outcome is decided by what sits beside it, and only two
- * things are genuinely contradictory: a detail page cannot also be a list, and a
- * page that settled as none of the three is not a page this driver models.
- */
+// PeopleSoft criteria banners render on every list page; their presence is not a no-results signal.
 type PersonOrgSearchOutcomeKind =
   | Readonly<{ kind: "not-found"; marker: string }>
   | Readonly<{ kind: "detail" }>
@@ -809,12 +736,7 @@ export function classifyPersonOrgSearchOutcome(observed: Readonly<{
     throw new Error("Person Org search criteria banner is visible but rendered no text");
   }
   if (!bannerText.includes(NO_RESULTS_TEXT)) {
-    /**
-     * A banner reporting a count with NO grid beside it is a page this driver
-     * does not model — never a not-found. Reading it as "nobody matched" is the
-     * exact silent-wrong-value this program forbids: the run would report an
-     * unknown person for a search that found several.
-     */
+
     throw new Error(
       `Person Org search criteria banner reports ${JSON.stringify(bannerText)} with no result grid `
       + `and no detail page; only ${JSON.stringify(NO_RESULTS_TEXT)} means nobody matched`,
@@ -872,16 +794,7 @@ function createPlaywrightPersonOrgPage(page: Page): PersonOrgPagePort {
       const criteriaBanner = resolveUcpathElement(page, UCPATH_PERSON_ORG_NO_RESULTS_STATUS);
       const displayedEid = resolveUcpathElement(page, UCPATH_PERSON_ORG_EID_DISPLAY);
       const resultsGrid = resolveUcpathElement(page, UCPATH_PERSON_ORG_RESULTS_GRID);
-      /**
-       * D213 — `.first()` is REQUIRED, not decoration. Playwright's `.or()` builds
-       * one union locator and `waitFor` runs it under strict mode, so the wait
-       * throws the moment two arms match at once. The banner and the grid DO match
-       * at once on every multi-result page (live: four results for the doc-4524
-       * subject), which is why this settle wait crashed on the first live search
-       * that returned more than one row. `.first()` re-evaluates each poll and asks
-       * the honest question — "has ANY outcome rendered yet" — leaving the
-       * classification below to decide WHICH.
-       */
+      // Playwright or locators form a union; first permits waiting when several readiness signals coexist.
       await criteriaBanner.or(displayedEid).or(resultsGrid).first().waitFor({
         state: "visible",
         timeout: OUTCOME_TIMEOUT_MS,

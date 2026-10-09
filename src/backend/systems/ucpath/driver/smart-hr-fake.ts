@@ -1,14 +1,4 @@
-/**
- * The deterministic Smart HR termination driver, and the loud refusal that lets
- * each half of the `ucpath` store's ONE driver surface be faked on its own.
- *
- * The store has a single `DriverDeclaration` (D197 rule 1) covering two
- * unrelated screen families, so any fixture must satisfy both halves
- * structurally. It must not IMPLEMENT both: a Person Org fixture that quietly
- * answered a termination scan would be inventing HR transactions, and a Smart
- * HR fixture that quietly answered an employment-grid read would be inventing
- * employment. Each half therefore refuses the other's operations by name.
- */
+
 import { assertMintedMutationCapability } from "../../../../workflow-kit/mutation-capability.js";
 import { IsoInstantSchema } from "../../../../rules/identity/ids.js";
 import type { Eid } from "../../../../rules/identity/ids.js";
@@ -84,29 +74,13 @@ export interface DeterministicSmartHrOptions {
   readonly displayedName?: string;
   /** Set to make the commit report a click UCPath refused (S47/S50). */
   readonly commitPerformed?: boolean;
-  /**
-   * **S48.** Model UCPath refusing the typed Empl ID: Page B's name anchor
-   * renders ZERO nodes, which is the live signal (§9.8/§9.9, 2026-08-14) and
-   * covers both live causes. The fixture must be given `staging` as well, so
-   * that a test asserting this arm cannot pass on the fixture's generic
-   * "does not implement `stageTermination`" refusal instead — which is exactly
-   * what the S48 scenario used to assert.
-   */
+  // Zero Page-B name anchors model a refused EID lookup, including a person without a terminable job.
   readonly emplIdNotRecognized?: true;
-  /**
-   * **S45.** The existence probe THROWS rather than answering `unreadable`.
-   * That is a different failure from an unreadable scan and it must propagate:
-   * "the lookup blew up" is not "this person has no termination".
-   */
+
   readonly scanThrows?: string;
 }
 
-/**
- * A Smart HR fixture over EXPLICIT data. Every answer is supplied: there is no
- * "plausible default" arm anywhere, because the scenarios this fixture serves
- * are precisely the ones where a plausible-but-wrong answer would authorize a
- * duplicate or wrong-person termination.
- */
+
 export function createDeterministicUcpathSmartHrDriver(
   options: DeterministicSmartHrOptions,
 ): UcpathStoreDriver {
@@ -149,9 +123,7 @@ export function createDeterministicUcpathSmartHrDriver(
       return parsed;
     },
     async commit(id, capability: MutationCapability): Promise<UiActionProof> {
-      // The fixture validates the capability for the same reason the real driver
-      // does: an unminted token must be refused BEFORE any click, and a fixture
-      // that skipped the check could not exercise that refusal at all.
+
       assertMintedMutationCapability(capability);
       if (id !== UCPATH_SMART_HR_SAVE_AND_SUBMIT_BUTTON
         && id !== UCPATH_SMART_HR_DELETE_SELECTED_BUTTON) {
@@ -184,9 +156,7 @@ export function createDeterministicUcpathSmartHrDriver(
         throw new Error(`${half} cannot read ${String(id)}`);
       }
       if (options.emplIdNotRecognized === true) {
-        // The same absence, read through the kernel's own beat-③ observation:
-        // when UCPath resolves nobody the anchor renders zero nodes, so the
-        // subject read has nothing to return either.
+
         throw new Error(
           `${half} renders no Page-B name anchor: UCPath resolved no person for this Empl ID`,
         );
@@ -211,24 +181,12 @@ export function createDeterministicUcpathSmartHrDriver(
 
 /* ── The stateful world, for the write-sequencer scenarios ───────────────── */
 
-/**
- * A mutable Smart HR world.
- *
- * The static factory above answers a fixed question and is right for a task
- * walk. The transaction scenarios need something else: they drive the REAL
- * write sequencer over a REAL authority database, and their whole claim is
- * about what is durable BEFORE and AFTER a click. So this world's transaction
- * list actually changes when the commit fires — a fixture whose grid never
- * moved could not tell a landed write from a refused one.
- */
+
 export interface UcpathSmartHrFakeWorld {
   readonly emplId: Eid;
   /** Who UCPath resolves the typed EID to on Page B. */
   displayedName: string;
-  /**
-   * Who Page B shows AFTER prepare has staged — the beat-③ mismatch arm, and
-   * the one the pooled-page hazard is about.
-   */
+
   displayedNameAfterStage?: string;
   /** The rows the SS Smart HR surface currently carries for this person. */
   rows: UcpathTransactionRow[];
@@ -263,9 +221,7 @@ export function createUcpathSmartHrFakeWorld(input: Readonly<{
   return {
     emplId: input.emplId,
     displayedName: input.displayedName,
-    // Written as an explicit branch rather than `?? []`: a fixture's row set is
-    // DATA about what UCPath holds, and a nullish literal fallback on data is
-    // the shape the ratchet exists to refuse.
+
     rows: input.rows === undefined ? [] : [...input.rows],
     events: [],
     commitPerformed: true,
@@ -375,10 +331,7 @@ export function createDeterministicUcpathSmartHrWorldDriver(
       }
       world.events.push(`commit:${String(id)}`);
       if (!world.commitPerformed) {
-        // S47/S50: the click happened and UCPath refused it. The world's rows
-        // are deliberately NOT moved — a refused submit files nothing — and the
-        // throw is what carries the refusal, because a `UiActionProof` is a
-        // proof by construction (`performed: z.literal(true)`).
+
         throw new UcpathCommitRefusedError({
           elementId: id,
           refusal: "the world models UCPath rendering a refusal after the click",
@@ -424,9 +377,7 @@ export function createDeterministicUcpathSmartHrWorldDriver(
       if (id === UCPATH_SMART_HR_DISPLAYED_PERSON_NAME) {
         return world.displayedNameAfterStage ?? world.displayedName;
       }
-      // The in-progress grid is a STAGED page too, so it carries the same
-      // beat-③ hazard: the page may show a different person by the time the
-      // kernel observes it.
+
       if (id === UCPATH_SMART_HR_IN_PROGRESS_NAME) {
         return world.displayedNameAfterStage ?? world.displayedName;
       }

@@ -1,21 +1,5 @@
-/**
- * The run launcher's compact path.
- *
- * Options is always visible. Step customization is chosen there, and only
- * then does the Steps stage appear.
- *
- * THE SPREADSHEET METHOD HAS ONE STAGE, AND THAT IS THE HONEST COUNT (D296).
- * Its whole contribution to the dialog is the choice of method: the file, the
- * column mapping, the per-row review, the queue policy and the enqueue all
- * belong to the intake workspace this arm hands off to. The demo walks its
- * spreadsheet method through every stage and suppresses each stage's controls
- * (`DemoRunStart.tsx:973,1001` — `!isHandoff`), which it can afford because it
- * serves a sheet list to pick from and a `Confirm` that names the chosen sheet;
- * nothing here serves either. Numbering two more stages an operator would walk
- * through empty is `DESIGN.md`'s own empty scaffolding, and a rail that says
- * `1 → 2 → 3` over one reachable stage is a claim about this dialog that is
- * false.
- */
+/** The run launcher's compact path.
+ * Options is always visible. Step customization is chosen there, and only */
 
 import type { StartMethod } from "./run-start-model.js";
 

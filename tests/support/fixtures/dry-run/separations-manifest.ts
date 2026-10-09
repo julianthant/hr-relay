@@ -4,12 +4,7 @@ import {
   type DryRunScenarioManifest,
 } from "../../../../src/models/trust/dry-run-scenario.js";
 
-/**
- * The graph, in the order a run REACHES it. Thirteen read/fold nodes, the
- * conditional name-only identity gate, the identity authority verification,
- * the exact pending-set fold, and the first of three transaction nodes — where
- * D215 stops a rehearsal.
- */
+
 const READ_NODES = [
   "resolve-action",
   "document",
@@ -32,12 +27,7 @@ const TRANSACTION_NODE = "clear-pending";
 
 const FULL_PATH = [...READ_NODES, APPROVAL_NODE, PENDING_SET_NODE, TRANSACTION_NODE] as const;
 
-/**
- * The two transaction nodes downstream of the preview terminal, plus the
- * receipt task that sits between them. A rehearsal that entered ANY of them
- * would have gone past the stop, so naming them is the "it did more than
- * expected" half the zero deltas cannot express on their own.
- */
+
 const EXCLUDED_NODES = [
   GATE_NODE,
   "file-termination",
@@ -54,14 +44,8 @@ const CHECKPOINT_KEY = [
   "claimGeneration",
 ] as const;
 
-/**
- * The fifteen rows, in the order the evidence collector emits them. The
- * document-supplied path never parks, so `timecard-search` runs once. The
- * `approval` node still uses `always-rerun`: it must re-derive machine authority
- * from current evidence rather than replay a checkpoint across an input/source
- * change.
- */
-// Explicit reread item: independently require no prior runs/checkpoints before its first attempt.
+
+
 const EXPECTED_CHECKPOINTS = [
   { node: "resolve-action", attempt: 1, keyedBy: CHECKPOINT_KEY },
   { node: "document", attempt: 1, keyedBy: CHECKPOINT_KEY },
@@ -84,19 +68,7 @@ const EXPECTED_CHECKPOINTS = [
  * rows from earlier real proofs, so an absolute count would be false. */
 const NO_WRITES = { writeIntents: 0, writeAttempts: 0, durableOutbox: 0 } as const;
 
-/**
- * The receipt service's complete ordered authority vocabulary for a current
- * supplied-EID preview of this graph.
- *
- * Every graph node is present. The conditional gate is `absent` and
- * non-mandatory; the stopped-at transaction and the three nodes downstream of
- * it are `unknown`, as is the terminal result.
- * `unknown` is the load-bearing word: a dry run may never report a write-side
- * obligation as `verified`, because nothing was written to verify. This
- * composition declares no cross-source `write.*`/`identity.*` obligations of
- * its own; its evidence is node-scoped, which is why the list is exactly the
- * twenty-one runtime nodes plus the terminal.
- */
+
 const PREVIEW_RECEIPT_VERIFICATION = [
   { obligation: "node.resolve-action", verdict: "verified", mandatory: false },
   { obligation: "node.document", verdict: "verified", mandatory: false },
@@ -125,7 +97,7 @@ const PREVIEW_RECEIPT_VERIFICATION = [
 const MANIFEST = {
   scenarioId: "separations/dry-run",
   workflow: "separations",
-  // D318 — the transaction-bearing graph declares the preview arm explicitly.
+
   arm: "dry-run-preview",
   transactionNode: TRANSACTION_NODE,
   recordedBy: "the 2026-09-02 supplied-EID policy correction and current separations graph; "
@@ -134,11 +106,7 @@ const MANIFEST = {
   cases: [
     {
       caseId: "nothing-to-sweep",
-      // The value lives outside git: config/test-data.json (subjects) names the
-      // closed reference and ignored `config/test-data.local.json` carries the
-      // number (D300/D341); the ingress is
-      // ONE typed document number and every person fact is derived live from
-      // it (D261).
+
       subjectLabel: "finalization-canary",
       subjectKind: "full-chain-dry-run",
       why: "D284's one retained historical test subject is now gone from the Kuali Action List, so "

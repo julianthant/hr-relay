@@ -197,7 +197,7 @@ export const TombstoneBackfillCountsSchema = z.strictObject({
   missingRunNumber: NonNegativeIntSchema,
 });
 
-/** D336 observations never authenticate or gate the independent credential store. */
+/** Sqlite settings upgrade observations never authenticate or gate the independent credential store. */
 const SqliteSettingsUpgradeRecordSchema = AuthorityUpgradeRecordBaseSchema.extend({
   format: z.literal(3),
   historicalExposure: z.array(z.literal("operator.timekeeperName")),
@@ -260,7 +260,7 @@ export const ProtectedSettingsEntrySchema = z.strictObject({
   updatedAt: IsoInstantSchema,
 });
 
-/** D331.4 — the protected document's journal identity; never a value, digest, or length. */
+/** The protected document's journal identity; never a value, digest, or length. */
 export const ProtectedSettingsCurrentRecordSchema = z.strictObject({
   revision: PositiveIntSchema,
   commandId: CommandIdSchema,
@@ -287,7 +287,7 @@ export const ProtectedSettingsCurrentRecordSchema = z.strictObject({
 });
 export type ProtectedSettingsCurrentRecord = z.infer<typeof ProtectedSettingsCurrentRecordSchema>;
 
-/** D330.2: evidence cannot manufacture a lifecycle row. */
+/** Evidence cannot manufacture a lifecycle row. */
 export const RunExistenceSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("absent"), runId: RunIdSchema }),
   z.strictObject({
@@ -299,7 +299,7 @@ export const RunExistenceSchema = z.discriminatedUnion("state", [
 ]);
 export type RunExistence = z.infer<typeof RunExistenceSchema>;
 
-/** D330.5: expected refusals are data; storage failures still propagate. */
+/** Expected refusals are data; storage failures still propagate. */
 export const RunRecordRefusalSchema = z.discriminatedUnion("reason", [
   z.strictObject({ reason: z.literal("conflict"), currentVersion: PositiveIntSchema }),
   z.strictObject({ reason: z.literal("identity-conflict"), field: z.enum(["runId", "attempt", "runNumber", "itemId", "sessionId"]) }),

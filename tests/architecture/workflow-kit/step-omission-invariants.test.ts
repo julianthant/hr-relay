@@ -1,60 +1,4 @@
-/**
- * D307 — step-omission invariants, swept over every registered workflow
- * descriptor.
- *
- * `src/models/workflow/step-omission.ts` is pure: the factory
- * (`deriveStepOmissions`, `src/workflow-kit/workflow.ts`) enforces at DEFINITION TIME
- * that a producer names only TASK nodes of its own step, and the planner
- * (`planStepOmissions`)/cascade (`stepOmissionCascade`) enforce the rest at
- * plan time.
- *
- * The production registry DOES declare omissions: `separations` declares three
- * — `kronos-timecard`, `ucpath-transaction` and `kuali-finalization`, each
- * authored in its own step folder's `omission.ts` and carried onto the
- * descriptor by that folder's `nodes.category(..., { omission })`. Every sweep
- * below therefore pins those three BY NAME (a declaration that disappears, is
- * renamed, or stops reaching the registry turns the sweep red rather than
- * quietly shrinking it), and pins the exact row each one yields.
- *
- * The in-test fixture — shaped like Separations' write half: a read, the
- * `identity-approval` operator gate, a post-gate task and a transaction, across
- * the same `reading`/`identity-check`/`writing` step keys — exists for the arms
- * the registry cannot reach: the definition-time refusals (no registered
- * descriptor may contain them and still import) and the `blocked` cascade arm
- * Separations has no instance of.
- *
- * (a) an omission can never produce a gate or a transaction node; the factory
- *     throws at `defineWorkflowDescriptor()` call time.
- * (b) every production omittable step's `stepOmissionCascade` row equals the
- *     exact pinned row (Separations: three `{ state: "omittable", forces: [] }`
- *     rows); the fixture keeps the `omittable`-or-`blocked` union assertion,
- *     because the cascade never throws is what the un-caught call proves there.
- * (c) every RAW step-folder declaration (`KRONOS_TIMECARD_OMISSION` and its two
- *     siblings, imported from the `omission.ts` files themselves, not read back
- *     off an already-parsed `spec.form`) parses through `StepOmissionFormSchema`
- *     with the exact pinned field keys and no duplicate key, declares exactly
- *     the pinned `produces` node ids, and reaches the descriptor unchanged.
- * (d) `planStepOmissions` never classifies a gate node as `asserted`, and
- *     classifies it `omitted` exactly when its OWN step is omitted (D313 —
- *     whole-step omission executes no entry of the step, a gate included; a
- *     mandatory check lives outside the step as its own entry). A gate outside
- *     every omitted step stays present (classified neither way) for three plan
- *     shapes per declaration: the step alone, the step together with its
- *     cascade `forces` set, and every omittable step of the descriptor at once.
- *     Separations' `identity-approval` gate sits in the omission-free
- *     `identity-check` step and is required to remain present in all three;
- *     its own evidence condition still decides whether it opens. The fixture's
- *     `identity-approval` gate sits INSIDE its omittable `identity-check` step
- *     and is required to be omitted with it. Each plan's asserted/omitted node
- *     ids are pinned: `dates` and `receipt` are the only asserted nodes, while
- *     `clear-pending`, `file-termination` and `finalize-kuali` are only ever
- *     omitted.
- *
- * There is no separate "no separations omission produces identity-approval"
- * arm: a declaration naming the gate throws at import, so that test could not
- * fail — the invariant lives in (c)'s exact `produces` pinning (a producer
- * ADDED for a task node is a reachable red) and in (d)'s planner sweep.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { z } from "zod";
@@ -117,13 +61,7 @@ const ApproveContract = defineTaskContract({
   example: { approved: true },
 });
 
-/**
- * A fixture graph shaped like Separations' write half: a read, the
- * `identity-approval` operator gate, a post-gate task, and a transaction —
- * split across the SAME three step keys Separations uses (`reading`,
- * `identity-check`, `writing`) so the fixture stands in for the real
- * descriptor's omission-free `identity-check` step.
- */
+
 function buildStepOmissionFixture(
   id: string,
   code: string,
@@ -219,14 +157,7 @@ function graphViewOf(descriptor: AnyWorkflowDescriptor): StepOmissionGraphView {
   };
 }
 
-/**
- * The production registry's declarations, pinned BY NAME. Each row names the
- * step folder that authors it, the RAW declaration that folder exports, the
- * exact form field keys and the exact task node ids its `produces` map
- * rebuilds. A declaration that is deleted, renamed, or given another producer
- * fails here — `audited > 0` counting would not have noticed, because the
- * in-test fixture alone satisfies it.
- */
+
 const PRODUCTION_DECLARATIONS: readonly Readonly<{
   descriptor: string;
   step: string;
@@ -261,11 +192,7 @@ const PRODUCTION_CASCADE_ROWS: Readonly<Record<string, StepOmissionCascadeRow>> 
   "separations::kuali-finalization": { state: "omittable", forces: [] },
 };
 
-/**
- * The exact node classification each production single-step omission yields
- * (check d): the browser reads and the transactions are OMITTED — never
- * asserted — and only the two pure folds are rebuilt from typed facts.
- */
+
 const PRODUCTION_PLANS: Readonly<Record<string, Readonly<{ asserted: readonly string[]; omitted: readonly string[] }>>> = {
   "separations::kronos-timecard": { asserted: ["dates"], omitted: ["timecard", "timecard-search"] },
   "separations::ucpath-transaction": {
@@ -302,11 +229,7 @@ function sorted(ids: Iterable<string>): readonly string[] {
   return [...ids].sort((left, right) => left.localeCompare(right));
 }
 
-/**
- * Plan the named steps of one descriptor with the CASCADE's own placeholder
- * facts (`stepOmissionPlaceholderFacts`, exported by the domain module so this
- * guard cannot drift from a hand-copied second generator).
- */
+
 function planSteps(descriptor: AnyWorkflowDescriptor, steps: readonly string[]): StepOmissionPlan {
   const view = graphViewOf(descriptor);
   const specByStep = new Map(view.stepOmissions.map((spec) => [spec.step, spec]));
@@ -327,7 +250,7 @@ function assertSweptEveryDeclaration(audited: readonly string[], sweep: string):
   );
 }
 
-describe("step-omission invariants (D307)", () => {
+describe("step-omission invariants", () => {
   it("throws at definition time when an omission produces the gate node of its own step", () => {
     const gateOmission: StepOmissionDeclaration = {
       form: { fields: [] },
@@ -335,7 +258,7 @@ describe("step-omission invariants (D307)", () => {
     };
     assert.throws(
       () => buildStepOmissionFixture("step-omission-guard-gate", "sog", { identityCheckOmission: gateOmission }),
-      /identity-check" omission produces gate node "identity-approval"; only task nodes are ever asserted \(D307\)/u,
+      /identity-check" omission produces gate node "identity-approval"; only task nodes are ever asserted/u,
     );
   });
 
@@ -346,7 +269,7 @@ describe("step-omission invariants (D307)", () => {
     };
     assert.throws(
       () => buildStepOmissionFixture("step-omission-guard-txn", "sot", { writingOmission: transactionOmission }),
-      /writing" omission produces transaction node "submit"; only task nodes are ever asserted \(D307\)/u,
+      /writing" omission produces transaction node "submit"; only task nodes are ever asserted/u,
     );
   });
 
@@ -366,12 +289,7 @@ describe("step-omission invariants (D307)", () => {
     for (const descriptor of SWEPT_DESCRIPTORS) {
       const view = graphViewOf(descriptor);
       if (view.stepOmissions.length === 0) continue;
-      // stepOmissionCascade computes planStepOmissions to a fixpoint for
-      // EVERY omittable step and throws internally the moment a refusal
-      // other than "dependency-omitted" appears (step-omission.ts). Letting
-      // it run un-caught IS the "never throws for any refusal but
-      // dependency-omitted" proof for a single-step omission with
-      // placeholder facts.
+
       const rows = stepOmissionCascade(view);
       for (const spec of view.stepOmissions) {
         const key = `${String(descriptor.id)}::${spec.step}`;
@@ -415,9 +333,7 @@ describe("step-omission invariants (D307)", () => {
     }
     assertSweptEveryDeclaration(audited, "raw declaration sweep");
 
-    // The raw declarations are the ones the registry actually carries, in both
-    // directions: a folder could otherwise export a pristine declaration the
-    // descriptor never sees, or stop wiring one through `nodes.category`.
+
     const carried: string[] = [];
     for (const descriptor of SWEPT_DESCRIPTORS) {
       for (const spec of descriptor.stepOmissions) {
@@ -432,7 +348,7 @@ describe("step-omission invariants (D307)", () => {
     assertSweptEveryDeclaration(carried, "registry-carried declaration sweep");
   });
 
-  it("classifies a gate omitted exactly when its own step is omitted, never asserted — alone, with its cascade forces, or with every omittable step of its descriptor (D313)", () => {
+  it("classifies a gate omitted exactly when its own step is omitted, never asserted — alone, with its cascade forces, or with every omittable step of its descriptor", () => {
     const audited: string[] = [];
     const wholeDescriptorsAudited: string[] = [];
     for (const descriptor of SWEPT_DESCRIPTORS) {
@@ -453,7 +369,7 @@ describe("step-omission invariants (D307)", () => {
           assert.ok(!plan.asserted.has(gateId), `${id} (${shape}): asserts gate "${gateId}"`);
           const ownStep = stepOfNode.get(gateId);
           if (ownStep !== undefined && omittedSteps.includes(ownStep)) {
-            // D313 — the whole step is omitted, its gate with it.
+
             assert.equal(plan.omitted.get(gateId), ownStep, `${id} (${shape}): gate "${gateId}" must be omitted with its own step "${ownStep}"`);
           } else {
             assert.ok(!plan.omitted.has(gateId), `${id} (${shape}): omits gate "${gateId}" whose step "${String(ownStep)}" is not omitted`);
@@ -469,9 +385,7 @@ describe("step-omission invariants (D307)", () => {
 
         const alone = planSteps(descriptor, [spec.step]);
         assertGatesExecute(alone, `step "${spec.step}" alone`, [spec.step]);
-        // The step TOGETHER with everything its cascade forces out with it —
-        // the set the Steps screen would actually lock, which a single-step
-        // plan never exercises.
+
         const withForces = planSteps(descriptor, [spec.step, ...(row?.forces ?? [])]);
         assertGatesExecute(withForces, `step "${spec.step}" + forces`, [spec.step, ...(row?.forces ?? [])]);
         if (row?.state === "omittable") {

@@ -1,17 +1,4 @@
-/**
- * `cli test-data check` and `cli test-data migrate` (D341).
- *
- * `check` reads the tracked `config/test-data.json` and, when named, the
- * ignored `config/test-data.local.json`, and reports names, states and
- * reasons only — never a private value. It opens no authority database, no
- * credential store and no browser.
- *
- * `migrate --from-credentials` is the ONE writer that moves the two retired
- * canary entries out of the pre-D341 credential document into the private
- * test-data file; its rules live in `src/backend/storage/config/credential-test-data-migration.ts`.
- * Both commands run under the secure bootstrap's environment bypass: they
- * never load `.env`.
- */
+
 import type { RuntimeIsolation } from "../../../models/config/define-runtime-isolation.js";
 import {
   readTestDataFileBytes,

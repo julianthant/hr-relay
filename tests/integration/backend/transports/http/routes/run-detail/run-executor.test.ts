@@ -14,11 +14,7 @@ import { createTimelineEmitter } from "../../../../../../../src/backend/storage/
 import { DiagnosticBundleSchema } from "../../../../../../../src/models/trust/diagnostic.js";
 import { RunRecordSchema } from "../../../../../../../src/models/run/record.js";
 import { testRunLifecycle, testRunService } from "../../../../../../support/fixtures/run-lifecycle-fixtures.js";
-/**
- * Phase-1f interpreter behavior over the REAL person-lookup descriptor,
- * stores, claim authority, and worker session manager — only the process
- * edges (browser factory, clock, ids, timers, span sink) are recording fakes.
- */
+
 import assert from "node:assert/strict";
 import { setImmediate } from "node:timers";
 import { afterEach, describe, it } from "vitest";
@@ -368,8 +364,7 @@ describe("complete operation display action binding", () => {
     const page = buildRunLogsSection({
       stateRoot,
       projection: { runLogSnapshot: () => ({ entries: [] }) },
-      // Historical Logs must use the envelope snapshot, not a current
-      // registry lookup for this now-unregistered synthetic workflow.
+      // Logs resolve the retained envelope snapshot for unregistered workflows.
       descriptors: { resolve: () => undefined },
     } as unknown as RunDetailQueryDeps, UUID_5, undefined, terminal);
     if (page.section !== "logs") throw new Error("expected action log page");
@@ -961,9 +956,7 @@ describe("person-lookup full walk", () => {
       event.spanPath,
       "outcome" in event ? event.outcome : "",
     ]);
-    // D270 — every executed task publishes its recorded observations on its own
-    // span, BETWEEN the open and the close. The skipped node has none, because
-    // a node that did not run observed nothing.
+
     assert.deepEqual(spans, [
       ["span.started", taskSpanPath(trace, node("searching"), 1, 1), ""],
       ["data.observed", taskSpanPath(trace, node("searching"), 1, 1), ""],
@@ -979,9 +972,7 @@ describe("person-lookup full walk", () => {
       ["span.ended", trace, "done"],
     ]);
 
-    // D123: the skip span carries the SAME closed reason the durable result
-    // records, so the timeline can say why the node did not run instead of
-    // presenting it as an act somebody took.
+
     const skipSpan = harness.emitter.events().find((event) =>
       event.t === "span.ended" && "outcome" in event && event.outcome === "skipped");
     assert.ok(skipSpan);
@@ -1136,8 +1127,7 @@ describe("failure, retry, and resume", () => {
     const crossVerifySpans = harness.emitter.events()
       .filter((event) => event.spanPath.includes("/cross-verify#"))
       .map((event) => [event.t, event.spanPath, "outcome" in event ? event.outcome : ""]);
-    // The failed attempt read nothing before it threw, so it publishes no
-    // observation; the successful one does, on ITS OWN span path (D123/D214).
+
     assert.deepEqual(crossVerifySpans, [
       ["span.started", taskSpanPath(trace, node("cross-verify"), 1, 1), ""],
       ["span.ended", taskSpanPath(trace, node("cross-verify"), 1, 1), "failed"],
@@ -1191,8 +1181,7 @@ describe("failure, retry, and resume", () => {
     assert.equal(failed.state, "failed");
     assert.equal(ucpathSearches, 1);
 
-    // Cross-run retry: a NEW run on the same logical item (ref workflow-model §6).
-    // D221 — a retry is the ITEM's next attempt, not a second attempt 1.
+
     const retryRun = personLookupQueuedRun({ runId: UUID_5, attempt: 2 });
     const retryEnvelope = retryRun.envelope as Record<string, unknown>;
     retryEnvelope.runId = UUID_5;
@@ -1245,8 +1234,7 @@ describe("failure, retry, and resume", () => {
     assert.ok(result);
     const active = result.dependencies.find((dependency) => dependency.nodeId === "active-status");
     assert.ok(active?.state === "resolved");
-    // The always-rerun dependency was produced by THIS run, not replayed from
-    // the failed one: the interpreter never consults loadCheckpoint for it.
+
     assert.equal(active.checkpoint.runId, UUID_5);
     const replay = database.authority.timelineEvents.page({ runId: UUID_5 }).filter((event) => event.payload.kind === "checkpoint-replayed");
     assert.ok(replay.some((event) => event.payload.kind === "checkpoint-replayed"
@@ -1268,7 +1256,7 @@ describe("failure, retry, and resume", () => {
 
     const outcome = await executeClaimedRun(harness.deps, { ...claimed, signal: SIGNAL });
     assert.equal(outcome.state, "failed");
-    // §5.4: before any browser launches — zero sessions were opened.
+
     assert.equal(harness.sessions.opens(), 0);
     const run = database.authority.runs.get(RUN_ID);
     assert.ok(run && run.lifecycle.state === "terminal");
@@ -1285,7 +1273,7 @@ describe("failure, retry, and resume", () => {
     assert.match(failure.summary, /missing context "cross-verify"/);
   });
 
-  it("emits every recorded point on the task's own span with original values (D346)", async () => {
+  it("emits every recorded point on the task's own span with original values", async () => {
     const harness = executorHarness({ sessions: happySessionHarness() });
     const { database, clock } = harness.authority;
     const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
@@ -1349,10 +1337,8 @@ describe("failure, retry, and resume", () => {
     assert.deepEqual(database.authority.runs.get(RUN_ID)?.input.parsed.protectedBindings, [binding]);
   });
 
-  it("fails the task by name on an UNDECLARED leaf, emitting nothing for that batch (D270)", async () => {
-    // The point is honest about the page and the classification table has no
-    // line for it. Dropping it would make the log look complete while hiding
-    // what the run read, so the recording task fails instead.
+  it("fails the task by name on an UNDECLARED leaf, emitting nothing for that batch", async () => {
+
     const undeclaredCrossVerify = defineTask(crmDriver, CrmReadOnboardingRecord, {
       sessions: [{ system: "crm", access: "read", session: "reuse-worker" }],
       async run({ input, ctx }) {
@@ -1479,13 +1465,11 @@ describe("failure, retry, and resume", () => {
     const failure = database.authority.failures.get(failureId);
     assert.ok(failure);
     assert.match(failure.summary, /exceeded its immutable 5000ms task deadline/);
-    // The wedged session was poison-closed, not reused.
+
     assert.deepEqual(harness.sessions.closeReasons(), ["poisoned"]);
   });
 
-  // D166: injected patches now APPLY to replayed checkpoints; a patch naming
-  // a node with no checkpoint to replay is refused loudly — a fresh read
-  // supersedes any correction, so the patch must never be silently ignored.
+
   it("rejects injected patches naming a node this run does not replay", async () => {
     const harness = executorHarness();
     const { database, clock } = harness.authority;
@@ -1537,7 +1521,7 @@ describe("failure, retry, and resume", () => {
     assert.equal(outcome.state, "abandoned");
     if (outcome.state === "abandoned") assert.match(outcome.reason, /operator cancelled the run/);
     await new Promise((resolve) => setImmediate(resolve));
-    // No terminal settlement was attempted; the run is still claimed/running.
+
     const run = database.authority.runs.get(RUN_ID);
     assert.ok(run);
     assert.equal(run.lifecycle.state, "running");

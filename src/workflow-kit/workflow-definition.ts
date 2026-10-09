@@ -1,28 +1,6 @@
 import type { JsonValue } from "../rules/validation/canonical-json.js";
 import type { ProtectedInputBinding } from "../models/write-safety/protected-input.js";
-/**
- * D311/D315/D317 — the ONE workflow-authoring seam.
- *
- * A `WorkflowDefinition` is the reviewed source form of a workflow: identity
- * and presentation, typed input/result, and one ordered array of timeline
- * tuples `[group, entries[]]`. Tuple order is presentation order only; every
- * execution edge is derived from the typed references an entry declares. The
- * compiler is the only place those references become the runtime builder's
- * string node ids, so tuple order can never accidentally become execution
- * authority.
- *
- * The tuple's entries come from one CLOSED, EXPLICIT algebra (D315):
- * `task | parallel | delegate | gate | transaction`. The compiler may derive
- * edges from typed references, but it never infers whether an operation is
- * parallel, delegated, gated or transactional — each is an explicit entry
- * whose control policy the author writes down, and each entry and each
- * parallel leaf has a stable id.
- *
- * Vocabulary (D317): the authored value is a `WorkflowDefinition`, its
- * generated executable representation is a `CompiledWorkflow`, and one
- * execution is a workflow run. "Recipe" is a teaching analogy and is not a
- * type, file, API or second domain concept here.
- */
+/** The ONE workflow-authoring seam. A `WorkflowDefinition` is ordered `[group, entries[]]` tuples whose order is presentation only; execution edges come from typed references the compiler resolves. */
 import { z } from "zod";
 import { assertFactorySealedTaskContract } from "../models/task/task-contract.js";
 import type {
@@ -71,7 +49,7 @@ import type {
   WorkflowDescriptorSpec,
 } from "./workflow.js";
 
-/** The closed entry algebra (D315). */
+/** The closed entry algebra. */
 export type WorkflowEntryKind = "task" | "parallel" | "delegate" | "gate" | "transaction";
 const GROUP_OWNER = Symbol("workflow-group-owner");
 
@@ -82,11 +60,7 @@ export interface WorkflowTimelineGroup {
   readonly [GROUP_OWNER]?: WorkflowTimelineGroup;
 }
 
-/**
- * One entry of a timeline tuple: a typed reusable value over an existing task
- * contract (or gate/transaction/parallel/delegate declaration) that appears in
- * exactly one tuple.
- */
+/** One timeline-tuple entry: a typed reusable value over an existing contract (or gate/transaction/parallel/delegate declaration), in exactly one tuple. */
 export interface WorkflowEntry<
   Id extends string = string,
   Output = unknown,
@@ -95,7 +69,7 @@ export interface WorkflowEntry<
   readonly entryKind: "workflow-entry";
   readonly kind: WorkflowEntryKind;
   readonly id: Id;
-  /** Exact D265 step object that owns a reusable identity, when one exists. */
+  /** Exact step object that owns a reusable identity, when one exists. */
   readonly step?: WorkflowTimelineGroup;
   readonly references: readonly AnyWorkflowEntry[];
   readonly contracts: readonly (AnyReadTaskContract | AnyPrepareTaskContract | AnyCommitTaskContract)[];
@@ -128,7 +102,7 @@ export interface WorkflowEntryScope<
 
 type HasWhen<Identity> = "when" extends keyof Identity ? true : false;
 
-/** A step-owned identity carries the exact D265 step object; an inline identity carries none. */
+/** A step-owned identity carries the exact step object; an inline identity carries none. */
 interface StepOwned {
   readonly step?: WorkflowTimelineGroup;
 }
@@ -170,13 +144,8 @@ export interface TransactionEntryIdentity<
   readonly retryBeforeFence?: RetryPolicy;
 }
 
-/**
- * D315 — a parallel entry declares its join and failure policy explicitly.
- * The runtime interprets `join: "all"` with `failure: "fail-fast"`: every leaf
- * checkpoints independently, so one failed leaf retries on the next attempt
- * while its successful siblings replay; `all-settled` remains a capability the
- * executor refuses by name, so the compiler refuses it before a run exists.
- */
+/** A parallel entry declares its join and failure policy; `join:"all"` +
+ *  `failure:"fail-fast"` retries one leaf while siblings replay, and `all-settled` is refused by name. */
 export interface ParallelEntryIdentity<Id extends string = string> extends StepOwned {
   readonly id: Id;
   readonly label?: string;
@@ -197,7 +166,7 @@ export type ParallelEntryOutput<Branches extends readonly ParallelBranchDeclarat
   branches: Readonly<{ [Branch in Branches[number] as Branch["id"]]: readonly string[] }>;
 }>;
 
-/** D315 — a delegate entry names the existing typed child-run edge and its whole policy. */
+/** A delegate entry names the existing typed child-run edge and its whole policy. */
 export interface DelegateEntryIdentity<
   Id extends string = string,
   Target extends AnyWorkflowRef = AnyWorkflowRef,
@@ -302,7 +271,7 @@ export interface WorkflowResultDeclaration<
 /* ── the author ──────────────────────────────────────────────────────────── */
 
 export interface WorkflowAuthor<InputSchema extends z.ZodType> {
-  /** D307/D313 — declare a group omittable, beside its own entries. */
+  /** Declare a group omittable, beside its own entries. */
   group(
     this: void,
     step: WorkflowTimelineGroup,
@@ -686,16 +655,7 @@ function validateSteps(
   for (const entry of entries) visit(entry, []);
 }
 
-/**
- * D313 — an omittable group must say, at definition time, how every value the
- * rest of the workflow reads from it is supplied. Whole-step omission executes
- * NO entry of the group, so an entry outside the group may read a member only
- * when the group's omission rebuilds that member; gates, transactions, parallel
- * and delegate entries are never rebuilt. The terminal result is the one
- * reader allowed to see an omitted member, because it declares the omitted
- * arm itself. A mandatory verifier therefore lives outside the step it
- * verifies, as its own selected entry.
- */
+// Omission rebuilds only tasks; mandatory verifiers remain outside the omitted step.
 function validateOmissions(id: string, steps: readonly WorkflowTimelineTuple[]): void {
   const memberGroup = new Map<AnyWorkflowEntry, WorkflowTimelineGroup>();
   for (const [group, members] of steps) {
@@ -726,7 +686,7 @@ function validateOmissions(id: string, steps: readonly WorkflowTimelineTuple[]):
       if (produced.kind !== "task") {
         throw new Error(
           `workflow ${id} step "${group.key}" omission produces "${producedId}", which is a ${produced.kind} entry; `
-          + "only task entries are ever rebuilt from operator facts (D313)",
+          + "only task entries are ever rebuilt from operator facts",
         );
       }
     }
@@ -739,7 +699,7 @@ function validateOmissions(id: string, steps: readonly WorkflowTimelineTuple[]):
           `workflow ${id} step "${group.key}" is omittable, but ${entryName(reader)} in step "${readerGroup.key}" reads its `
           + `${reference.kind} entry "${reference.id}", which omitting the step leaves unread; rebuild "${reference.id}" `
           + "from the step's omission form, move the reader into the step, or declare the check as its own entry "
-          + "outside the omitted step (D313)",
+          + "outside the omitted step",
         );
       }
     }
@@ -755,11 +715,7 @@ type CompiledFlow<InputSchema extends z.ZodType, ResultSchema extends z.ZodType>
   readonly string[]
 >;
 
-/**
- * The authored presentation half of a definition: every descriptor field an
- * author writes, minus the products the compiler derives (`flow`, `timeline`
- * and the build-manifest fingerprint).
- */
+/** The authored presentation half of a definition: every descriptor field an author writes, minus the compiler-derived products (`flow`, `timeline`, `contractFingerprint`). */
 export type WorkflowDefinitionPresentation<
   InputSchema extends z.ZodType,
   ResultSchema extends z.ZodType,
@@ -783,17 +739,14 @@ export interface WorkflowDefinitionSpec<
   Completion extends CompletionProgram | undefined = undefined,
 > extends WorkflowDefinitionPresentation<InputSchema, ResultSchema, Completion> {
   readonly input: InputSchema;
-  /** D219 — what this workflow IS to the composition root. */
+  /** What this workflow IS to the composition root. */
   readonly role: WorkflowModuleRole;
   /** Ref data-intake-and-edit-data §1 — the spreadsheet-capable declaration, when one exists. */
   readonly intake?: IntakeProjection;
   /** Optional v1 action display declaration; omitted definitions remain legacy. */
   readonly operationDisplay?: WorkflowOperationDisplayDeclaration;
-  /**
-   * The graph, authored through the typed author so every entry's input and
-   * output binds to THIS input schema. Returns the ordered timeline tuples and
-   * the terminal result declaration.
-   */
+    /** The graph, authored through the typed author so each entry's input/output binds to THIS
+     *  input schema; returns the ordered timeline tuples and the terminal result declaration. */
   readonly steps: (author: WorkflowAuthor<InputSchema>) => Readonly<{
     steps: readonly WorkflowTimelineTuple[];
     result: WorkflowResultDeclaration<InputSchema, ResultSchema>;
@@ -816,11 +769,7 @@ export interface WorkflowDefinition<
 
 export type AnyWorkflowDefinition = WorkflowDefinition<z.ZodType, z.ZodType, CompletionProgram | undefined>;
 
-/**
- * Define one immutable workflow. The `steps` callback exists only to bind every
- * entry's input/output types to this workflow's input schema; the returned
- * tuple array remains the sole grouping and timeline-order authority.
- */
+/** Define one immutable workflow. The `steps` callback only binds each entry's input/output types to this workflow's input schema; the returned tuples stay the grouping/order authority. */
 export function defineWorkflow<
   InputSchema extends z.ZodType,
   ResultSchema extends z.ZodType,
@@ -929,9 +878,8 @@ function compileFlow<InputSchema extends z.ZodType, ResultSchema extends z.ZodTy
   definition: WorkflowDefinition<InputSchema, ResultSchema, CompletionProgram | undefined>,
 ): CompiledFlow<InputSchema, ResultSchema> {
   const builder = flow(definition.input) as unknown as RuntimeFlowBuilder;
-  // A leaf's parallel node must be declared before the leaf (the builder's
-  // downstream check); the parallel entry itself has no references, so it is
-  // emitted lazily — immediately before its first leaf in dependency order.
+  // A leaf's parallel node must be declared before the leaf (builder downstream check); the
+  // parallel entry has no references, so it is emitted lazily before its first leaf in dep order.
   const parallelOf = new Map<AnyWorkflowEntry, ParallelEntry<string, unknown>>();
   for (const entry of flattenEntries(definition.steps)) {
     if (!isParallel(entry)) continue;
@@ -1018,11 +966,8 @@ export type CompiledWorkflowDescriptor<
   readonly string[]
 >;
 
-/**
- * The generated executable representation of one definition: the exact
- * descriptor the runtime and every generic projection consume, plus the
- * contract set and store namespaces the composition root resolves.
- */
+/** The generated executable representation of one definition: the descriptor every projection
+ *  consumes, plus the contract set and store namespaces the composition root resolves. */
 export interface CompiledWorkflow<
   InputSchema extends z.ZodType = z.ZodType,
   ResultSchema extends z.ZodType = z.ZodType,
@@ -1058,11 +1003,8 @@ function defaultEntryLabel(entry: RuntimeEntry): string | undefined {
   }
 }
 
-/**
- * The operation display receives a read-only projection of the existing entry
- * graph. It can validate identities and field references, but it never builds
- * an edge or gives nested presentation children scheduler meaning.
- */
+/** Projects the entry graph read-only: it validates identities and field references but never
+ *  builds an edge or gives presentation children scheduler meaning. */
 function operationDisplayEntries(definition: AnyWorkflowDefinition): readonly WorkflowOperationEntryProjection[] {
   const entries = flattenEntries(definition.steps) as readonly RuntimeEntry[];
   return Object.freeze(entries.map((entry) => {
@@ -1136,18 +1078,10 @@ function operationDisplayEntries(definition: AnyWorkflowDefinition): readonly Wo
   }));
 }
 
-/**
- * Compile a definition through the existing descriptor factory and runtime.
- * Compilation is memoized per definition object, so the descriptor's identity
- * is stable across every consumer — the composition root, the bundle-safe
- * descriptor tuple and every test read the same object.
- */
+/** Compile a definition through the descriptor factory and runtime; memoized per definition object, so the composition root, the descriptor tuple and every test read the same object. */
 export interface CompileWorkflowOptions {
-  /**
-   * The build manifest that owns this workflow's contract fingerprint. Defaults
-   * to the checked-in manifest; a test fixture that is not a registered
-   * workflow supplies a manifest naming itself. It is never an authoring input.
-   */
+    /** The build manifest owning this workflow's contract fingerprint; defaults to the
+     *  checked-in one. Never an authoring input. */
   readonly manifest?: BuildManifest;
 }
 
@@ -1237,11 +1171,7 @@ export interface WorkflowModule<
   readonly operationDisplay: WorkflowOperationDisplay;
 }
 
-/**
- * Bind a compiled workflow to the exact stores its contracts resolve through.
- * `availableStores` is an inventory, not another authoring list: unused stores
- * are dropped and missing/exact-contract mismatches refuse by name.
- */
+// Select only contract-owned stores; unused inventory drops and mismatches refuse.
 export function composeWorkflowModule<
   InputSchema extends z.ZodType,
   ResultSchema extends z.ZodType,
@@ -1285,23 +1215,13 @@ export function composeWorkflowModule<
   });
 }
 
-/* ── shared step identities (D265 organization, D315 entries) ─────────────── */
+/* ── shared step identities ─────────────── */
 
 type WithWhen<Identity> = Identity extends { readonly when: NodeConditionSpec }
   ? { readonly when: NodeConditionSpec }
   : Record<never, never>;
 
-/**
- * The entry identities a STEP FOLDER shares (D265 §1.2.2): a node's id,
- * contract, label, replay policy and — for a transaction — its whole write
- * policy, bound to the exact frozen step object that owns them. A composition
- * and the harness that proved the step both pass these values straight to the
- * author's `task` / `gate` / `transaction`, so nobody re-types an identity and
- * the compiler refuses a group that claims another step's identity.
- *
- * These are plain values, not fragments: they carry no wiring and no builder
- * hook, and the only way to execute one is through a workflow definition.
- */
+/** The entry identities a STEP FOLDER shares — id, contract, label, replay, write policy — bound to the frozen step object. Plain values: passed straight to the author, never re-typed. */
 export function defineStepEntries<const Key extends string>(step: Readonly<{ key: Key; label: string }>) {
   const owner: WorkflowTimelineGroup = step;
   return Object.freeze({

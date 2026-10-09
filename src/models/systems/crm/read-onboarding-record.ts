@@ -1,17 +1,4 @@
-/**
- * `crm/read-onboarding-record` — ref workflow-model §8's cross-verification step.
- *
- * Ref workflow-model §8 sketches this as `crm/find-onboarding-record`. The verb is `read`
- * here because ref task-contract's contract factory (landed in 1d) pins the effect→verb
- * vocabulary — `read | search | list | extract | match | verify` for a read —
- * and a name that disagrees with its effect is exactly the drift that check
- * exists to catch. The contract object is imported by value, so the rename is a
- * compile error at every consumer rather than a silent mismatch.
- *
- * "No CRM record for this person" is a real, expected outcome of a correct
- * search, so it is an `absent` arm rather than a throw — and it carries the
- * queried EID, so an absence can never be confused with a lookup that never ran.
- */
+/** The cross-verification step: a name that disagrees with its effect is a compile error at every consumer, and "no CRM record for this person" is an `absent` arm carrying the queried EID. */
 import { z } from "zod";
 import { EidSchema, ObservationIdSchema, taskId } from "../../../rules/identity/ids.js";
 import { ContractFieldPathSchema, defineTaskContract } from "../../task/task-contract.js";

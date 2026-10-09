@@ -4,13 +4,7 @@ import type { TimelineRepository } from "../../../../src/models/events/timeline.
 import { createTimelineRepository, TIMELINE_EVENT_TABLE_DDL, TIMELINE_EVENT_INDEX_DDL } from "../../../../src/backend/storage/sqlite/timeline-repository.js";
 import { inMemoryRunReaderFake, type CanonicalRunReader, type InMemoryRunReaderState } from "../canonical-run-reader.js";
 import { type RunSessionRecord } from "../../../../src/models/run/session.js";
-/**
- * Shared harness for the 1g-spine projection/hub/route suites: a temp state
- * root, a real span writer chained into the real projection ("JSONL first,
- * projection after"), a Map-backed authority read fake whose records are
- * REAL `RunRecordSchema` parses (no state a production transition could not
- * produce). Canonical readers admit lifecycle; spans supply optional evidence.
- */
+
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -53,12 +47,7 @@ export const DESCRIPTOR_SET_HASH = FingerprintSchema.parse("d".repeat(64));
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/**
- * The local day `offset` whole days after `AT`, named by the SAME function the
- * projection buckets rows with. A range test that hard-coded "2026-08-05" would
- * be asserting the harness's arithmetic; asserting `dayOffsetOf(2)` asserts the
- * projection's.
- */
+
 export function dayOffsetOf(offset: number): string {
   return localDatePart(new Date(AT.getTime() + offset * DAY_MS));
 }
@@ -68,11 +57,7 @@ export function atDayOffset(world: DashboardWorld, offset: number): void {
   world.clock.setWall(new Date(AT.getTime() + offset * DAY_MS));
 }
 
-/**
- * The instant `elapsedMs` after the clock reads day `offset` — i.e. exactly
- * `elapsedMs` after the `run.queued` span a run seeded on that day carries, so
- * a duration assertion is stating the interval it means.
- */
+
 export function instantOffsetOf(offset: number, elapsedMs = 0): string {
   return new Date(AT.getTime() + offset * DAY_MS + elapsedMs).toISOString();
 }
@@ -99,12 +84,12 @@ export interface AuthorityFake {
   readonly notifications: NotificationRecord[];
   listNotifications(actorId: string): readonly NotificationRecord[];
   listNotificationCheckpoints(workflowId: string, itemId: string, nodeId: string, attempt: number): readonly RunCheckpointRecord[];
-  /** D179/D80: the archived-run set the projection excludes, once, for every surface. */
+
   readonly archived: Set<string>;
   isArchived(runId: string): boolean;
   readonly failures: Map<string, FailureRecord>;
   getFailure(failureId: string): FailureRecord | undefined;
-  /** D22/D126: the already-derived receipts the `△ N` warning count reads. */
+
   readonly receipts: Map<string, RunEvidenceReceipt>;
   getReceipt(runId: string): RunEvidenceReceipt | undefined;
   readonly activityPersonPseudonyms: ActivityPersonPseudonymEvidence[];
@@ -114,25 +99,16 @@ export interface AuthorityFake {
   readonly writeIntents: Map<string, WriteIntentRecord>;
   getWriteIntent(writeIntentId: string): WriteIntentRecord | undefined;
   putWriteIntent(record: WriteIntentRecord): void;
-  /**
-   * D204/D237: the durable gate decisions, oldest first, exactly as
-   * `authority.gateResults.listByRun` serves them. A parsed insert, so a
-   * fixture cannot seed a shape the real repository would refuse.
-   */
+
   readonly gateResults: GateResultRecord[];
   listGateResults(runId: string): readonly GateResultRecord[];
   putGateResult(record: unknown): void;
-  /**
-   * D248: the Session Panel's card set. A parsed insert for the same reason
-   * `putGateResult` is one — a fixture may not seed a lease the real
-   * repository would refuse, and the whole point of the card is that it says
-   * what AUTHORITY holds.
-   */
+
   readonly workerLeases: Map<string, WorkerLeaseRecord>;
   listLiveWorkerLeases(): readonly WorkerLeaseRecord[];
   getWorkerLease(workerId: string): WorkerLeaseRecord | undefined;
   putWorkerLease(record: unknown): void;
-  /** D269: the pool declarations the day wire's `workerPools` block serves; parsed insert. */
+
   readonly workerPools: Map<string, WorkerPoolRecord>;
   listWorkerPools(): readonly WorkerPoolRecord[];
   readonly batches: Map<string, RunSessionRecord>;
@@ -174,9 +150,7 @@ export function authorityFake(): AuthorityFake {
     receipts,
     getReceipt: (runId) => receipts.get(runId),
     activityPersonPseudonyms,
-    // The production repository scopes this SQL read. Keep the fake broader so
-    // projector tests can prove it refuses a repository that returns foreign
-    // evidence rather than silently filtering it into a plausible count.
+    // Return foreign evidence from the broad fake to prove the projector rejects incorrect repository scope.
     listActivityPersonPseudonyms: () => activityPersonPseudonyms,
     putActivityPersonPseudonym: (record) => {
       activityPersonPseudonyms.push(ActivityPersonPseudonymEvidenceSchema.parse(record));
@@ -224,12 +198,7 @@ export interface DashboardWorld {
 export function makeWorld(input?: Readonly<{
   reader?: CanonicalRunReader;
   collectRebuilds?: boolean;
-  /**
-   * The registry the projection resolves labels, categories and runtime nodes
-   * against. It defaults to resolving NOTHING — the unregistered-workflow
-   * posture — so a test that wants a label has to say which descriptor it
-   * expects it from.
-   */
+
   descriptors?: { resolve(workflowId: string): AnyWorkflowDescriptor | undefined };
 }>): DashboardWorld {
   const stateRoot = mkdtempSync(join(tmpdir(), "hrauto-dashboard-"));
@@ -267,8 +236,7 @@ export function makeWorld(input?: Readonly<{
     clock,
     appVersion: APP_VERSION,
     descriptorSetHash: DESCRIPTOR_SET_HASH,
-    // D236: the report's one second authority, read through the SAME
-    // real database history over separately seeded operation owners.
+
     ledger: createTransactionHistory(database.authority),
     authority,
     descriptors: input?.descriptors ?? { resolve: () => undefined },
@@ -283,9 +251,7 @@ export function makeWorld(input?: Readonly<{
     clock,
     pid: 4242,
   });
-  // D218: the projection's one live feed is the SQLite cursor feed. The harness ticks
-  // it after every append so each emitted event folds through the same
-  // read-back-from-disk path production uses.
+
   const writer: TimelineEmitter = Object.freeze({
     emit: (event: unknown): void => {
       jsonlWriter.emit(event);
@@ -322,33 +288,21 @@ export interface SeedRunInput {
   readonly version?: number;
   readonly claimGeneration?: number;
   readonly enqueuedAt?: string;
-  /** Pending checkpoint corrections riding the envelope (D166/2i-C). */
+
   readonly injected?: unknown;
-  /** D6: the rehearsal flag, whose one home is the envelope. */
+
   readonly dryRun?: boolean;
   /** The operator's own name for the run — the `rename` command's durable field. */
   readonly displayName?: string;
-  /** D95's scheduling class, the `bump` command's durable target. */
+
   readonly priority?: "interactive" | "bulk";
-  /**
-   * D230's workflow ordinal. `undefined` is the READ-FORWARD arm, not a
-   * convenience default — it is exactly the shape of every run enqueued before
-   * schema v15, so a seed that omits it exercises the absence rather than
-   * skipping it.
-   */
+  // Undefined is the stored pre-ordinal shape, not a guessed default.
   readonly runNumber?: number;
-  /** D269: the session this run belongs to; absent = a pre-v17 row. */
+
   readonly sessionId?: string;
 }
 
-/**
- * ONE durable worker lease (D248) — the Session Panel's card, at its source.
- *
- * Parsed by the real schema, so a seed cannot express a lease the repository
- * would refuse: a `stopped` lifecycle carrying a `run` directive, a `busy`
- * state with no run id, or an `updatedAt` before `createdAt` all fail HERE
- * rather than passing into an assertion about a shape production cannot reach.
- */
+
 export function workerLeaseOf(input: Readonly<{
   workerId?: string;
   workflow?: string;
@@ -454,20 +408,13 @@ export function queuedEventOf(world: DashboardWorld, input: SeedRunInput): RunQu
   return event as unknown as RunQueuedWire;
 }
 
-/**
- * ONE task span, started and (optionally) ended.
- *
- * `outcome` is the WHOLE `SpanOutcomeWire` union rather than a convenient
- * three, because D268's vocabulary pin has to state each of the seven words a
- * span can actually carry — a helper that could only emit three would have made
- * the four unpinnable arms exactly the ones that diverged.
- */
+
 export function taskEventsOf(
   world: DashboardWorld,
   seed: number,
   node: string,
   outcome?: SpanOutcomeWire,
-  /** The run-detail wire's whole closed vocabulary, D307's two reasons included. */
+
   notRunReason?: "condition-false" | "branch-not-selected" | "operator-asserted" | "step-omitted",
 ): void {
   const base = {
@@ -486,11 +433,7 @@ export function taskEventsOf(
   }
 }
 
-/**
- * The run's own `span.ended`, written straight to the stream — the harness's
- * way to put the fold ahead of authority, an order the real executor never
- * produces (it settles the terminal CAS before it emits).
- */
+
 export function runEndedEventOf(
   world: DashboardWorld,
   seed: number,
@@ -511,11 +454,7 @@ export function runEndedEventOf(
   });
 }
 
-/**
- * The minimum legal `FailureRecord` for a run: exactly one primary cause whose
- * `transient` flag the record's own flag must match (the schema refuses any
- * other combination), so a breakdown's transient tally is a real fact.
- */
+
 export function failureRecordOf(input: Readonly<{
   seed: number;
   code: string;
@@ -541,12 +480,7 @@ export function failureRecordOf(input: Readonly<{
   });
 }
 
-/**
- * A minimal `done-with-warnings` evidence receipt for a run — the source the
- * queue row's `△ N` count reads (D22/D126). Everything the schema does not
- * need for the warning arm is deliberately empty: the point of the fixture is
- * the warning SET and its first summary, not a second receipt derivation.
- */
+
 export function receiptWithWarningsOf(input: Readonly<{
   seed: number;
   summaries: readonly string[];
@@ -583,14 +517,7 @@ export function receiptWithWarningsOf(input: Readonly<{
   });
 }
 
-/**
- * A receipt carrying OUTPUT facts — the queue row's `facts[]` chips (D7).
- *
- * The three arms it can author are exactly the three the row has to keep apart:
- * an `allowed` primitive becomes a chip, an `allowed` STRUCTURED value does not
- * (an object is not a chip), and a `drop`ped leaf must never reach a surface an
- * operator screenshots.
- */
+
 export function receiptWithOutputOf(input: Readonly<{
   seed: number;
   outputs: readonly { field: string; value: unknown; redact?: "drop" }[];
@@ -611,12 +538,7 @@ export function receiptWithOutputOf(input: Readonly<{
   });
 }
 
-/**
- * A receipt that was DERIVED and records no warning — the third arm of the
- * warning verdict, and the one an aggregate must keep apart from "no receipt
- * exists". They read the same on a row (both are absences) and mean opposite
- * things in a total: one run came back clean, the other was never checked.
- */
+
 export function cleanReceiptOf(input: Readonly<{ seed: number; workflow?: string }>): RunEvidenceReceipt {
   return RunEvidenceReceiptSchema.parse({
     ...receiptWithWarningsOf({ ...input, summaries: ["placeholder"] }),

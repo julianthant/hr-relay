@@ -1,12 +1,4 @@
-/**
- * Stage 1 and 2 of the scanner pipeline (D157).
- *
- * The fixtures are the two REAL scans. `detect-test.pdf` is a
- * `VersaLink B7035` stack whose pages pair up per person; the 44-page
- * `Xerox Scan` is a `VersaLink C7020` stack whose first four pages are four
- * different people. Grouping has to be right on both, which is the whole reason
- * it matches by name rather than by neighbour.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import {
@@ -29,7 +21,7 @@ function stack(pages: readonly [number, string, string | null][]) {
   });
 }
 
-describe("D157 person match key", () => {
+describe("person match key", () => {
   it("matches the two name orders the corpus actually contains", () => {
     // An I-9 Section 2 header reads `Clauldia, Drona A.`; a Section 1 spells the
     // same person across separate Last/First boxes.
@@ -55,11 +47,9 @@ describe("D157 person match key", () => {
   });
 });
 
-describe("D157 grouping does not assume adjacency", () => {
+describe("grouping does not assume adjacency", () => {
   it("groups the real I-9 stack by NAME, never by neighbour", () => {
-    // The first four pages of Xerox Scan_08052026141856.pdf: four different
-    // people, alternating sections. Pairing neighbours would have attached
-    // Casey's Section 1 from Cho's page.
+
     const grouping = groupStack(stack([
       [1, "i9-section2", "Clauldia, Drona A."],
       [2, "i9-section1", "Brethea, Brauso J."],
@@ -124,8 +114,7 @@ describe("D157 grouping does not assume adjacency", () => {
     ]);
     const report = reportStack(mixed, "oath");
     assert.equal(report.pagesClassified, 6);
-    // The point of the check: a page in no bucket is a page nobody knows was
-    // skipped.
+
     assert.equal(report.pagesAccounted, 6);
 
     const grouping = groupStack(mixed, "oath");
@@ -140,11 +129,9 @@ describe("D157 grouping does not assume adjacency", () => {
   });
 });
 
-describe("D160 the sectioned subject — an i9 spans two loose pages", () => {
+describe("the sectioned subject — an i9 spans two loose pages", () => {
   it("claims BOTH section kinds for an i9 run, and flags each half-person rather than pairing neighbours", () => {
-    // The real first four pages of Xerox Scan_08052026141856.pdf: four
-    // DIFFERENT people, alternating sections. Neighbour-pairing would have
-    // attached Casey's Section 1 from Cho's page.
+
     const report = reportStack(stack([
       [1, "i9-section2", "Clauldia, Drona A."],
       [2, "i9-section1", "Brethea, Brauso J."],
@@ -162,8 +149,7 @@ describe("D160 the sectioned subject — an i9 spans two loose pages", () => {
       [1, "i9-section2", "Clauldia, Drona A."],
       [2, "i9-section1", "Brethea, Brauso J."],
     ]), "i9");
-    // The orphan §2 is FLAGGED, never blocked (D157): the subject is listed
-    // with exactly which page to go find.
+
     assert.deepEqual(grouping.subjects.map((subject) => [subject.pages[0].sourcePage, subject.missingKinds]), [
       [1, ["i9-section1"]],
       [2, ["i9-section2"]],
@@ -171,9 +157,7 @@ describe("D160 the sectioned subject — an i9 spans two loose pages", () => {
   });
 
   it("completes a person from a §2 and a §1 however far apart, whatever the name order", () => {
-    // An I-9 §2 header reads `Clauldia, Drona A.`; her §1 spells the same person
-    // across separate boxes. Both pages name her independently — that is what
-    // makes the pair matchable at all (D157).
+    // Match I-9 sections by independently supplied names, not page adjacency.
     const grouping = groupStack(stack([
       [1, "i9-section2", "Clauldia, Drona A."],
       [2, "i9-section1", "Brethea, Brauso J."],

@@ -1,17 +1,5 @@
 import type { ProtectedInputBinding } from "../write-safety/protected-input.js";
-/**
- * Bundle-safe workflow graph vocabulary (ref workflow-model §1.1/§3).
- *
- * These are the node shapes a descriptor is made of. They carry pure functions
- * (`bind`, `choose`, `resolve`, `derive`) alongside serializable fields, so they
- * are operational type surfaces rather than durable-data boundaries — the
- * strict-boundary catalog owns the durable/wire records, not these.
- *
- * Nothing here imports a store, an executor, or Playwright. The exact node
- * tuple a builder accumulates is what feeds inference; `RuntimeFlowNode` exists
- * only so the composition root can switch exhaustively at runtime and is never
- * fed back into descriptor inference (ref workflow-model §3).
- */
+/** Bundle-safe workflow graph vocabulary: the node shapes a descriptor is made of, operational type surfaces rather than durable-data boundaries. */
 import { z } from "zod";
 import type { JsonObject, JsonValue } from "../../rules/validation/canonical-json.js";
 import type {
@@ -89,31 +77,17 @@ export interface TaskStepNode<Scope, C extends AnyReadTaskContract> extends Grap
   readonly kind: "task";
   /** Display label. Defaults to the contract's `title` (ref workflow-model §1.5 precedence). */
   readonly label?: string;
-  /** The CONTRACT object (ref task-contract / D3), imported by value. */
+  /** Import the contract by value. */
   readonly uses: C;
   /** Pure: workflow input + declared upstream outputs → `z.input<C["input"]>`. */
   readonly bind: (scope: Scope) => z.input<C["input"]>;
-  /**
-   * D228 — a DECLARED condition, evaluated by `evaluateNodeCondition` and
-   * rendered by `describeNodeCondition`. One declaration, so the sentence the
-   * explorer prints cannot disagree with the rule the executor applies.
-   */
+    /* A DECLARED condition, evaluated by one function and rendered by another: one declaration, so the sentence the explorer prints cannot disagree with the rule the executor applies. */
   readonly when?: NodeCondition;
   /** Resume policy — REQUIRED, no default (ref workflow-model §5.3). */
   readonly replay: "checkpoint" | "always-rerun";
 }
 
-/**
- * The graph-scope view of ref write-safety's durable `TransactionOutcome`
- * (`src/domain/write-safety.ts`), which stores `output`/`proof` as
- * schema-bound canonical values. Here they are the parsed, contract-typed
- * values a downstream `bind` actually reads. Same event, two altitudes — ref write-safety
- * owns the durable record and its validator; this is only its typed refinement,
- * so the name is distinct and nothing mints a second durable schema.
- *
- * Downstream nodes cannot confuse "this run clicked" with "the permanent key
- * was already satisfied"; both still carry the contract's full typed output.
- */
+/** Contract-typed downstream values project the durable outcome without minting another schema. */
 export type TypedTransactionOutcome<C extends AnyCommitTaskContract> =
   | Readonly<{
     disposition: "committed";
@@ -128,21 +102,7 @@ export type TypedTransactionOutcome<C extends AnyCommitTaskContract> =
     proof: ProofOf<C>;
   }>;
 
-/**
- * Lower the DURABLE `TransactionOutcome` a `run_checkpoints` row stores onto the
- * graph-scope `TypedTransactionOutcome<C>` every descriptor is authored against
- * (D144). This is the ONE direction that crossing between the two altitudes is
- * allowed to travel, and it is a projection, never a re-derivation: no field is
- * defaulted, substituted, or invented, and both nested schema hashes must be the
- * commit contract's own before either value is parsed.
- *
- * Checking the nesting is what lets a transaction checkpoint carry the durable
- * outcome's schema hash without losing the commit contract's identity: the
- * envelope hash proves the ROW round-trips, `output.schemaHash` proves the
- * commit contract that produced it has not moved, and `proof.schemaHash` proves
- * the same of its completion proof. A drift in any of the three fails loud here
- * rather than reaching an authored `derive`.
- */
+/** Lower the durable transaction outcome a checkpoint row stores onto the graph-scope type; the ONE allowed direction, and a projection: no field is defaulted, substituted, or invented. */
 export function projectTransactionOutcome<C extends AnyCommitTaskContract>(
   commit: C,
   storedValue: unknown,
@@ -170,10 +130,7 @@ export function projectTransactionOutcome<C extends AnyCommitTaskContract>(
     output: commit.output.parse(outcome.output.value),
     proof: proofSchema.parse(outcome.proof.value),
   });
-  // A checked identity bridge, not an assertion: every field above was parsed by
-  // the commit contract's OWN schemas, and only after both nested schema hashes
-  // were proven to be that contract's. This narrows an object this function
-  // assembled; it never re-types one it was handed.
+  // Narrow only the object assembled from contract-parsed values with verified nested hashes.
   const ExactProjection = z.custom<TypedTransactionOutcome<C>>(
     (candidate) => candidate === projected,
     "transaction outcome projection was not assembled by projectTransactionOutcome",
@@ -189,11 +146,7 @@ export interface TransactionNode<
   readonly kind: "transaction";
   readonly label?: string;
   readonly prepare: Readonly<{ uses: P; bind: (scope: Scope) => z.input<P["input"]> }>;
-  /**
-   * Bound and parsed before the live probe or browser launch. It may read only
-   * workflow input and declared upstream outputs — never the ephemeral prepare
-   * output — so the durable key is stable before any page mutation.
-   */
+    // Bind commit input before probes; never include ephemeral prepare output in durable transaction identity.
   readonly commit: Readonly<{ uses: C; bind: (scope: Scope) => z.input<C["input"]> }>;
   /** Same context/page lease from prepare start through commit verification. */
   readonly leaseScope: "transaction";
@@ -225,7 +178,7 @@ export interface ParallelNode extends GraphNodeBase {
   readonly join: "all" | "all-settled";
 }
 
-/** One vocabulary, one owner — see `./delegation-policy.js` (D102). */
+/** One vocabulary, one owner — see `./delegation-policy.js`. */
 export {
   ChildCancelPolicySchema,
   ChildFailurePolicySchema,
@@ -253,10 +206,7 @@ export type ChildRunOutcome<Target extends AnyWorkflowRef> =
   }>
   | Readonly<{ state: "blocked"; runId: RunId; itemId: ItemId; failureId: FailureId; reason: string }>;
 
-/**
- * The durable validator for a child terminal outcome. Ref workflow-model §3.2 requires every
- * child outcome to be schema-parsed and stored BEFORE the dependency transition.
- */
+/** The durable validator for a child terminal outcome; every child outcome is schema-parsed and stored BEFORE the dependency transition. */
 export function childRunOutcomeSchema<ResultSchema extends z.ZodType>(result: ResultSchema) {
   const identity = { runId: RunIdSchema, itemId: ItemIdSchema } as const;
   return z.discriminatedUnion("state", [
@@ -349,11 +299,7 @@ export type AnyGateNode =
   | ChildrenGateNode<WorkflowGateSource<AnyWorkflowRef, z.ZodType>, z.ZodType>
   | ExternalGateNode<ExternalGateSource<z.ZodType>, z.ZodType>;
 
-/**
- * Runtime discriminant union. The builder retains the descriptor's exact node
- * tuple; this alias is only for exhaustive runtime switching and never feeds
- * type inference (ref workflow-model §1.1).
- */
+/** Runtime discriminant union: the builder retains the descriptor's exact node tuple, and this alias is only for exhaustive runtime switching, never type inference. */
 export type RuntimeFlowNode =
   | TaskStepNode<RuntimeScope, AnyReadTaskContract>
   | TransactionNode<RuntimeScope, AnyPrepareTaskContract, AnyCommitTaskContract>

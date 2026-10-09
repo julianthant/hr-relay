@@ -1,12 +1,4 @@
-/**
- * A spreadsheet-capable fixture workflow for the D170 intake surface.
- *
- * It is ref data-intake-and-edit-data §8's worked example in miniature — an EID, an effective date
- * and an optional department — because that is the shape the intake pipeline
- * was designed against. No registered workflow declares an intake projection
- * yet (person-lookup's input is a union, which is real 2i-E3 design work), so
- * the fixture is what proves the arms and the wire end to end.
- */
+
 import { z } from "zod";
 import { flow } from "../../../src/workflow-kit/flow.js";
 import { defineWorkflowDescriptor, type AnyWorkflowDescriptor } from "../../../src/workflow-kit/workflow.js";
@@ -30,23 +22,13 @@ export const intakeFixtureProjection = defineIntakeProjection(IntakeFixtureInput
   department: CANONICAL_FIELDS.department,
 });
 
-/**
- * The same workflow under a different enqueue policy, so the fan-out's
- * `reject-active` path is exercised against a real descriptor rather than an
- * injected fault. Both share the ONE input schema object, which is what makes
- * one projection valid for both.
- */
+
 export function defineIntakeFixtureDescriptor(options: Readonly<{
   id: string;
   code: string;
   contractFingerprint: string;
   enqueue: "allow-parallel" | "reject-active";
-  /**
-   * A version bump is a source edit plus `npm run build:manifest`, which is
-   * exactly what moving `version` and `contractFingerprint` together produces.
-   * The D185 lifecycle walk needs the SAME workflow at two versions to archive
-   * one of its own runs, so the factory is exported rather than copied.
-   */
+
   version?: number;
   canonicalDepartmentMaxLength?: number;
 }>): AnyWorkflowDescriptor {

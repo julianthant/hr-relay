@@ -1,23 +1,4 @@
-/**
- * Name-match scoring and name-similarity classification (ref data-intake-and-edit-data §4).
- *
- * Ported from the legacy repository (D93 — copy with provenance, never link):
- * `legacy:src/services/matching/match.ts` at commit `ab9ab5ab` — `tokenize`,
- * `scoreNameMatch` (the five-tier scorer) and `classifyNameSimilarity` (the
- * order-insensitive same/similar/different classifier), each byte-equivalent
- * in behaviour. Ref data-intake-and-edit-data §4 draws the line precisely: the confidence→tier
- * BUCKETING (`match-confidence.ts`) is live-verified and ports verbatim,
- * while the roster SCORING COMPOSITION built over these functions
- * (`roster-match.ts`) is REDESIGNED code that must be re-verified against
- * real rosters at the roster migration — these primitives carry legacy's
- * accumulated accuracy knowledge, and the composition around them does not
- * inherit that pedigree.
- *
- * NOT ported, deliberately: `matchAgainstRosterAsync`'s LLM disambiguation
- * arm (a provider concern; ref data-intake-and-edit-data §4's rebuilt contract has no LLM tier),
- * `correctNameSpelling` (a Kuali write-path concern), and the address
- * helpers (address matching is not part of `roster/match-spreadsheet`).
- */
+
 import { z } from "zod";
 import { levenshteinDistance } from "./levenshtein.js";
 
@@ -36,21 +17,7 @@ export function tokenizeName(value: string): string[] {
     .filter(Boolean);
 }
 
-/**
- * Five-tier name match scoring (handwritten form names vs. roster
- * "Last, First" or "First Last" entries):
- *   - Exact (sorted tokens equal) → 1.0
- *   - Token-set near-subset on the smaller side (≥ 0.8) → 0.9
- *   - Levenshtein ≤ 2 on the full normalized name → 0.7
- *   - Otherwise → 0.0
- *
- * The token-set tier requires both sides to hold at least 2 distinct tokens:
- * without that guard, "John John" collapses to a 1-element set and would
- * match "John X" at ratio 1/1 = 1.0. Requiring a near-subset on the SMALLER
- * side keeps "John Michael Doe" vs "John Doe" strong while rejecting
- * "John Doee" vs "John Doe" (only 1/2 tokens match — that difference is a
- * Levenshtein-1 case the fuzzy tier catches).
- */
+// Two distinct tokens per name prevent spurious token-set matches.
 export function scoreNameMatch(a: string, b: string): NameMatchResult {
   const at = tokenizeName(a);
   const bt = tokenizeName(b);
@@ -76,26 +43,7 @@ export function scoreNameMatch(a: string, b: string): NameMatchResult {
 /** Max per-token Levenshtein distance still counted as a spelling variant. */
 export const TOKEN_VARIANT_MAX = 2;
 
-/**
- * Three-way name comparison for "same person?" decisions where one side may
- * be a misspelling of the other (e.g. a roster "Balmaceda, Jaden" vs the
- * subject's "Jayden Balmaceda"):
- *
- *   - `"same"`      — identical token multiset (order-insensitive), OR every
- *                     token of the shorter name is an EXACT token of the
- *                     longer (the longer side may carry extra middle names).
- *   - `"similar"`   — every token of the shorter name finds a partner within
- *                     `TOKEN_VARIANT_MAX` edits and at least one is a
- *                     non-exact variant → same person, spelling drift.
- *   - `"different"` — some token of the shorter name has NO partner within
- *                     `TOKEN_VARIANT_MAX` edits → different people (or one
- *                     side is empty).
- *
- * Unlike `scoreNameMatch`'s fuzzy tier (Levenshtein on the UNSORTED joined
- * tokens, which inflates the distance on a First-Last vs Last-First swap),
- * this aligns token-by-token, so name-order differences never masquerade as
- * a mismatch.
- */
+/** Three-way name comparison aligned token-by-token, so name-order differences never masquerade as a mismatch. */
 export const NameSimilarityTierSchema = z.enum(["same", "similar", "different"]);
 export type NameSimilarityTier = z.infer<typeof NameSimilarityTierSchema>;
 

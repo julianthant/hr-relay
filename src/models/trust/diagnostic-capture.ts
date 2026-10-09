@@ -1,22 +1,4 @@
-/**
- * Ref operator-trust §2.2 — the pure half of automatic diagnostic capture.
- *
- * Three facts live here because they must be identical for the capture path,
- * the retention sweep, and every test that pins either:
- *
- *  1. the CLOSED trigger set and its one-to-one mapping onto the stored
- *     `DiagnosticBundle.origin` arm — a bundle can only exist because one of
- *     ref operator-trust §2.2's five triggers fired, and the trigger is what decides
- *     whether a failure id or a requesting actor is mandatory;
- *  2. the retention plan — an ordinary bundle follows the D86 notes floor
- *     (30 days) computed from its own capture instant, and a pin is an
- *     explicit reason, never "keep it a bit longer";
- *  3. the sweep disposition — a closed union over (retention, now) so
- *     "this bundle is due" is a decision a test can pin without a database.
- *
- * `src/domain/redaction.ts` owns the classified capture result and retains
- * original values for the local operator.
- */
+/** The pure half of automatic diagnostic capture: three facts live here because they must be identical for the capture path and the purge sweep. */
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import {
@@ -31,19 +13,12 @@ import { RedactionResultSchema } from "../../rules/redaction/redaction.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
 import { DiagnosticAttachmentSchema, DiagnosticBundleSchema } from "./diagnostic.js";
 
-/**
- * D86 (ref dashboard-surfaces §10.4): notes retain 30 days, and ref operator-trust §2.2 says an ordinary
- * bundle "follows notes retention unless pinned". One constant, one meaning.
- */
+/** Notes retain 30 days and an ordinary bundle follows notes retention unless pinned; one constant, one meaning. */
 export const DIAGNOSTIC_ORDINARY_RETENTION_DAYS = 30;
 
 const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
 
-/**
- * Ref operator-trust §2.2's exact trigger sentence: "On an unexpected state, task failure,
- * subject mismatch, recovery park, or operator-requested snapshot". Nothing
- * else may mint a bundle, and the union is what makes that checkable.
- */
+/** The exact trigger sentence: on an unexpected state, task failure, subject mismatch, recovery park, or operator-requested snapshot — nothing else may mint a bundle. */
 export const DiagnosticCaptureTriggerSchema = z.enum([
   "unexpected-state",
   "task-failure",
@@ -53,11 +28,7 @@ export const DiagnosticCaptureTriggerSchema = z.enum([
 ]);
 export type DiagnosticCaptureTrigger = z.infer<typeof DiagnosticCaptureTriggerSchema>;
 
-/**
- * The trigger decides the stored origin arm. `task-failure` is the only name
- * that changes shape on the way in — ref operator-trust §2.1 calls the stored arm
- * `failure` — so the mapping is written once rather than at each call site.
- */
+/** The trigger decides the stored origin arm; the mapping is written once rather than at each call site, because one trigger name changes shape on the way in. */
 const ORIGIN_KIND_OF_TRIGGER = Object.freeze({
   "unexpected-state": "unexpected-state",
   "task-failure": "failure",
@@ -68,11 +39,7 @@ const ORIGIN_KIND_OF_TRIGGER = Object.freeze({
 
 export const DiagnosticCaptureOriginSchema = DiagnosticBundleSchema.shape.origin;
 
-/**
- * A capture names EITHER the failure it explains or the operator who asked for
- * it. The stored table carries the same rule as a CHECK constraint; refusing
- * here means a mis-triggered capture fails before an artifact is written.
- */
+/** A capture names EITHER the failure it explains or the operator who asked for it; refusing here means a mis-triggered capture fails before an artifact is written. */
 export function diagnosticOriginOfTrigger(input: Readonly<{
   trigger: unknown;
   failureId?: unknown;
@@ -110,11 +77,7 @@ export const DiagnosticRetentionRequestSchema = z.discriminatedUnion("kind", [
 
 export const DiagnosticRetentionSchema = DiagnosticBundleSchema.shape.retention;
 
-/**
- * An ordinary bundle's purge instant is derived from its OWN capture instant,
- * never from wall-clock now at sweep time — otherwise a late sweep would keep
- * extending the life of data the retention floor already expired.
- */
+/** An ordinary bundle's purge instant is derived from its OWN capture instant, never from wall-clock now at sweep time, so a late sweep cannot extend expired data. */
 export function planDiagnosticRetention(input: Readonly<{
   capturedAt: unknown;
   request: unknown;
@@ -134,11 +97,7 @@ export function planDiagnosticRetention(input: Readonly<{
   });
 }
 
-/**
- * Content addressing over the exact facts the bundle publishes. The digest
- * covers the REDACTED payload, so two captures of the same failure with the
- * same evidence agree, and a capture whose redaction changed does not.
- */
+/** Content addressing over the exact facts the bundle publishes; the digest covers the REDACTED payload, so two captures of the same failure with the same evidence agree. */
 export function deriveDiagnosticContentDigest(input: Readonly<{
   runId: unknown;
   origin: unknown;
@@ -175,12 +134,7 @@ export const DiagnosticSweepDispositionSchema = z.discriminatedUnion("state", [
 ]);
 export type DiagnosticSweepDisposition = z.infer<typeof DiagnosticSweepDispositionSchema>;
 
-/**
- * One decision per bundle, with no hidden third state: a pinned bundle is
- * retained for its named reason, an ordinary bundle is purged exactly when its
- * own `purgeAfter` has passed, and anything else is still live. `purgeAfter`
- * is inclusive of the boundary instant — the stored value IS the expiry.
- */
+/** One decision per bundle, with no hidden third state: pinned retains for its named reason, ordinary purges exactly when its own `purgeAfter` has passed, and anything else is still live. */
 export function planDiagnosticSweep(input: Readonly<{
   now: unknown;
   bundles: readonly z.infer<typeof DiagnosticBundleSchema>[];

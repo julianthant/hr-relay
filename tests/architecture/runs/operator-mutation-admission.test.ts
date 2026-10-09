@@ -2,19 +2,7 @@ import { dashboardRouteSource } from "../dashboard/helpers/dashboard-route-sourc
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 
-/**
- * Guard (ref frontend-backend-integration §3.4, D75): every browser-reachable
- * mutating route the BFF registers is admitted by a loopback Host/Origin door
- * BEFORE its handler runs. A hostile page can reach 127.0.0.1 with a simple
- * no-CORS POST; the `app.use(<path>, <guard>)` line that precedes the route is
- * the whole defence, so a new `app.post(...)` without a row in the table below
- * is a red gate rather than a quiet exposure.
- *
- * The table is closed on purpose: the body policy is part of the admission
- * (a JSON envelope door refuses `text/plain`; an opaque door owns its own
- * media contract), and the one inline door (preflight rerun) is named as such
- * so nobody mistakes "no app.use line" for "unguarded".
- */
+
 
 type Admission =
   | { readonly guard: "operatorMutationIngressGuard" | "operatorOpaqueIngressGuard" }
@@ -35,12 +23,7 @@ const ADMITTED_MUTATIONS: Readonly<Record<string, Admission>> = Object.freeze({
 
 const MUTATION_ROUTE = /app\.(post|put|patch|delete)\(\s*"([^"]+)"/g;
 const USE_LINE = /app\.use\(\s*"([^"]+)"\s*,\s*(\w+)\s*\)/g;
-/**
- * Registration shapes this guard does not classify — a method-agnostic
- * `all`, a method-list `on`, a mounted sub-app `route`, or a non-literal path.
- * Any of them could carry a mutation the table never sees, so their presence
- * is itself a violation: classify the shape here before using it.
- */
+
 const UNCLASSIFIED_REGISTRATION = /app\.(all|on|route)\(|app\.(post|put|patch|delete)\(\s*[^"\s]/g;
 
 interface Audit {
@@ -94,7 +77,7 @@ export function auditOperatorMutationAdmission(source: string, table: Readonly<R
   return Object.freeze({ mutations: Object.freeze(mutations), violations: Object.freeze(violations) });
 }
 
-describe("operator mutation admission (ref frontend-backend-integration §3.4, D75)", () => {
+describe("operator mutation admission", () => {
   const source = dashboardRouteSource();
 
   it("admits every browser-reachable mutating route through a loopback Host/Origin door registered before it", () => {

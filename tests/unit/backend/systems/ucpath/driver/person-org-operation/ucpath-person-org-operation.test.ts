@@ -381,14 +381,9 @@ describe("strict UCPath Person Org operation", () => {
     );
   });
 
-  /**
-   * D213 — the live defect: the criteria banner and the result grid render
-   * TOGETHER on every multi-result page, and the settle wait treated the banner
-   * as a no-results marker that excluded them.
-   */
+
   it("reads the criteria banner as a list marker, never as a verdict", () => {
-    // The live doc-4524 page: four results, banner AND grid, and the banner text
-    // is a COUNT. Before D213 this pair was rejected as an ambiguous outcome.
+
     assert.deepEqual(
       classifyPersonOrgSearchOutcome({
         bannerVisible: true,
@@ -425,9 +420,7 @@ describe("strict UCPath Person Org operation", () => {
   });
 
   it("refuses every page shape it cannot name, and never calls a count 'nobody matched'", () => {
-    // A count banner with no grid: the page did not render what it announced.
-    // Reading this as not-found would report an unknown person for a search that
-    // found four — the silent wrong value this program forbids.
+
     assert.throws(
       () => classifyPersonOrgSearchOutcome({
         bannerVisible: true, detailVisible: false, gridVisible: false, bannerText: "4 results",

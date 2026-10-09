@@ -32,7 +32,7 @@ export function confirmedOperationTimeline(input: Readonly<{
   });
 }
 
-/** T2 consumes this lossless resolver; missing exact evidence never yields an empty history. */
+/** Lossless resolver; missing exact evidence never yields an empty history. */
 export function reconstructConfirmedOperation(repositories: Readonly<{
   writeAttempts: { get(id: string): WriteAttemptRecord | undefined };
   runCheckpoints: { get(workflowId: string, itemId: string, nodeId: string, attempt: number, claimGeneration?: number): RunCheckpointRecord | undefined };

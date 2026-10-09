@@ -18,11 +18,7 @@ import { CONFIG_FINGERPRINT,CONTRACT_FINGERPRINT,uuidOf,WORKFLOW_ID } from "./fi
 import { FIXTURE_DAY_WIRE } from "./fixture-queue.js";
 
 
-/**
- * The start-picker reference uses the active registry while the day fixture
- * remains the Person Lookup queue corpus. Keeping these separate prevents a
- * picker change from redrawing unrelated queue references.
- */
+// Separate the registry-driven picker from the fixed queue corpus to keep their references independent.
 const START_PICKER_MODULES = WORKFLOW_MODULES;
 
 
@@ -55,11 +51,7 @@ export const FIXTURE_START_PICKER_BOOTSTRAP: FrontendBootstrapWire = FrontendBoo
       ...(module.descriptor.surfaces.inputRun === undefined
         ? {}
         : { inputRun: module.descriptor.surfaces.inputRun }),
-      // D296, read off each MODULE's own declaration exactly as `buildBootstrap`
-      // reads it. `intake` is an optional property a module may not declare at
-      // all, so the `in` test is what distinguishes "declares none" from
-      // "declares one" without an invented default — this profile carries one
-      // spreadsheet-capable workflow and one that is not.
+
       spreadsheetIntake: "intake" in module && module.intake !== undefined,
     },
   })),
@@ -102,12 +94,7 @@ export const FIXTURE_START_PLAN: StartPlanResponse = StartPlanResponseSchema.par
 });
 
 
-/**
- * The Separations Start Run references exercise the dialog's real typed-input
- * and two-command continuity. The plan rows deliberately name themselves as
- * fixture layout evidence: the fixture cannot honestly derive the composition
- * planner's workflow plan, so it must not imply that it did.
- */
+
 export const FIXTURE_SEPARATIONS_START_PLAN: StartPlanResponse = StartPlanResponseSchema.parse({
   wireVersion: 1,
   startPlanId: uuidOf(930),

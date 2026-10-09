@@ -1,8 +1,4 @@
-/**
- * Capture the exact stable-ID transaction set a pending sweep may act on.
- * This is a live read after identity authority, not an approval or a caller
- * bypass. The transaction probe re-reads the same question before any fence.
- */
+/** Capture the exact stable-ID transaction set a pending sweep may act on: a live read after identity authority, not an approval or a caller bypass. */
 import { z } from "zod";
 import { EidSchema, ObservationIdSchema, taskId } from "../../../rules/identity/ids.js";
 import {

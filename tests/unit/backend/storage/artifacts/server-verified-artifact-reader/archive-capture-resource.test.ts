@@ -1,7 +1,7 @@
 import { inMemoryRunReaderFake } from "../../../../../support/helpers/canonical-run-reader.js";
 import { RunRecordSchema } from "../../../../../../src/models/run/record.js";
 import { QUEUED_RUN } from "../../../../../support/fixtures/phase1f-run-fixtures.js";
-/** DCA4: archived evidence can only read bytes through its frozen tile. */
+/** Archived evidence reads bytes only through its frozen tile. */
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { Readable } from "node:stream";
@@ -147,7 +147,7 @@ function deps(record: ArchivedRunRecord | undefined, open: (ref: ArtifactRef) =>
   };
 }
 
-describe("DCA4 archived capture resource", () => {
+describe("archived capture resource", () => {
   it("prepares an opaque single-use lease from the exact frozen tile", async () => {
     const record = archivedRecordWithCapture();
     const ref = ArtifactRefSchema.parse({

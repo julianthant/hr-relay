@@ -1,7 +1,5 @@
-/**
- * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
- * src/dashboard/components/dev/rebuild-demo/ds/primitives-core.tsx
- */
+/** Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc
+ * src/dashboard/components/dev/rebuild-demo/ds/primitives-core.tsx */
 import {
   forwardRef,
   type AnchorHTMLAttributes,
@@ -19,33 +17,13 @@ import { ShadcnButton } from "./shadcn-button.js";
 import { ShadcnBadge } from "./shadcn-badge.js";
 import { dsClip, dsFocus, dsIcon, dsMotion, dsRadius, dsText } from "../theme/tokens.js";
 
-/**
- * Core interactive primitives.
- *
- * Everything here is keyboard-reachable, carries the one focus ring, and reads
- * its colour/size/motion from `tokens.css`. Compose these; do not restyle them
- * at the call site beyond layout (margin, width, order).
- */
+/** Core interactive primitives.
+ * Everything here is keyboard-reachable, carries the one focus ring, and reads */
 
-/* =========================================================================
- * Button
- * ====================================================================== */
+/** Button */
 
-/**
- * Button variants, and the choice is semantic, not decorative:
- *   primary   — the ONE affirmative action on a surface (Approve, Run, Save)
- *   brand     — the product-level launch CTA (`Start a run`). A NEUTRAL solid
- *               (`--ds-brand-solid-*`), so the queue toolbar CTA is neither the
- *               near-white fill of every dialog primary nor a status hue.
- *   secondary — a real alternative to primary (Cancel, Back, Skip)
- *   muted     — subdued filled dismissal beside an affirmative action
- *   outline   — a peer action in a group of equals (toolbar, filters)
- *   ghost     — a tertiary action that must not compete (Details, Copy)
- *   danger    — an irreversible write (Delete, Terminate). Never the default.
- *   dangerGhost — destructive but low-stakes-looking (Remove row from a list)
- *
- * A surface has at most one `primary` and at most one `danger`.
- */
+/** Button variants, and the choice is semantic, not decorative
+ * primary — the ONE affirmative action on a surface (Approve, Run, Save) */
 const buttonVariants = cva(
   cn(
     "inline-flex shrink-0 cursor-pointer select-none items-center justify-center border",
@@ -64,9 +42,8 @@ const buttonVariants = cva(
           "hover:bg-[var(--ds-accent-hover)]",
         ),
         brand: cn(
-          // Same edge weight as the Workflow Panel toggle beside it
-          // (`--ds-border-strong`). Transparent / 8% borders disappeared on
-          // Graphite Warm next to outlined toolbar peers.
+                    // Same edge weight as the Workflow Panel toggle beside it.
+          // (`--ds-border-strong`): a hairline edge reads as a toolbar peer.
           "bg-[var(--ds-brand-solid-bg)] text-[color:var(--ds-brand-solid-fg)] font-semibold",
           "border-[color:var(--ds-border-strong)]",
           "hover:bg-[var(--ds-brand-solid-hover)]",
@@ -100,21 +77,12 @@ const buttonVariants = cva(
         ),
       },
       size: {
-        // `flush` on every size: buttons carry an icon beside a label, and the
-        // size class's padded line box would sit the glyphs a hair below the
-        // glyph. Collapse to the em so `items-center` centers text to logo.
+                // `flush` on every size
         sm: cn("h-[var(--ds-h-sm)] px-[var(--ds-space-snug)] gap-[var(--ds-space-tight)]", dsText.meta, dsText.flush),
         md: cn("h-[var(--ds-h-md)] px-[var(--ds-space-cozy)] gap-[var(--ds-space-snug)]", dsText.ui, dsText.flush),
         lg: cn("h-[var(--ds-h-lg)] px-[var(--ds-space-loose)] gap-[var(--ds-space-snug)]", dsText.ui, dsText.flush),
-        /**
-         * A control in an ACTION BAR. Identical box to `toolbarControl()` in
-         * DemoBulkBar — same height token, same inset, same gap, same type —
-         * because the one primary in the queue's bar sits a hairline from ten
-         * toggles that are not Buttons, and the operator reads a 2px padding
-         * difference as two different control sizes. It was `sm` plus a pinned
-         * height at the call site, which fixed the height and left the padding
-         * to drift.
-         */
+        /** A control in an ACTION BAR. The same box as `toolbarControl` — same
+ * height token, same inset, same gap, same type — because the one */
         toolbar: cn(
           "h-[var(--ds-h-toolbar)] px-[var(--ds-space-base)] gap-[var(--ds-space-snug)]",
           dsText.meta,
@@ -138,10 +106,8 @@ export interface DsButtonProps
   icon?: ReactNode;
   /** icon after the label (chevrons, external-link) */
   iconAfter?: ReactNode;
-  /**
-   * Shows a spinner in place of `icon` and disables the button. The LABEL
-   * stays put so the button never changes width mid-click.
-   */
+  /** Shows a spinner in place of `icon` and disables the button. The LABEL
+ * stays put so the button never changes width mid-click. */
   loading?: boolean;
 }
 
@@ -204,9 +170,7 @@ export const ButtonLink = forwardRef<HTMLAnchorElement, DsButtonLinkProps>(
   },
 );
 
-/* =========================================================================
- * IconButton
- * ====================================================================== */
+/** IconButton */
 
 const iconButtonVariants = cva(
   cn(
@@ -289,17 +253,11 @@ export const IconButton = forwardRef<HTMLButtonElement, DsIconButtonProps>(
   },
 );
 
-/* =========================================================================
- * Badge / Count
- * ====================================================================== */
+/** Badge / Count */
 
 const badgeVariants = cva(
   cn(
-    // `text-ellipsis` rides `dsClip.token` here rather than living on a child,
-    // because a Badge's content is usually a bare text node with no element to
-    // hang the cut on. `shrink-0` stays — a badge is not squeezed by its
-    // neighbours — but `max-w-full` means it can never exceed its parent
-    // either, which is what it used to do.
+        // `text-ellipsis` rides `dsClip.token` here rather than living on a child
     "inline-flex w-fit shrink-0 items-center border text-ellipsis",
     dsClip.token,
     dsRadius.sm,
@@ -310,9 +268,7 @@ const badgeVariants = cva(
   {
     variants: {
       tone: {
-        // The recessed plane, the same one `Chip`'s neutral tone reads. It was
-        // outlined-with-its-own-fill a hundred lines above the chip that had
-        // already been migrated off exactly that treatment.
+        // The recessed plane, the same one `Chip`'s neutral tone reads.
         neutral:
           "border-[color:var(--ds-recess-border)] bg-[var(--ds-recess-bg)] text-[color:var(--ds-recess-fg)]",
         info: "bg-[var(--ds-info-bg)] border-[color:var(--ds-info-border)] text-[color:var(--ds-info-fg)]",
@@ -325,11 +281,8 @@ const badgeVariants = cva(
         /** the loudest badge — reserve it for "N need you" */
         attention:
           "bg-[var(--ds-status-waiting-solid-bg)] border-transparent text-[color:var(--ds-status-waiting-solid-fg)] font-semibold",
-        /**
-         * A standing SYSTEM label that must stay legible but must never compete
-         * for attention — an environment marker, a build tag. Same hue as
-         * `info`, no fill, so it reads as chrome rather than as news.
-         */
+        /** A standing SYSTEM label that must stay legible but must never compete for attention —
+ * an environment marker, a build tag. */
         infoOutline:
           "bg-transparent border-[color:var(--ds-info-border)] text-[color:var(--ds-info-fg)]",
       },
@@ -347,11 +300,8 @@ export function Badge({ className, tone, children, ...props }: DsBadgeProps) {
   return <ShadcnBadge className={cn(badgeVariants({ tone }), className)} {...props}>{children}</ShadcnBadge>;
 }
 
-/**
- * A numeric count. Always tabular so a ticking number does not reflow the row.
- * `zeroStyle="dim"` keeps the slot occupied (a count that disappears at 0
- * makes the eye re-scan the whole rail).
- */
+/** A numeric count. Always tabular so a ticking number does not reflow the row.
+ * `zeroStyle="dim"` keeps the slot occupied (a count that disappears at 0 */
 export function CountBadge({
   value,
   tone = "neutral",
@@ -381,9 +331,7 @@ export function CountBadge({
   );
 }
 
-/* =========================================================================
- * Chip
- * ====================================================================== */
+
 
 export interface DsChipProps {
   children: ReactNode;
@@ -397,24 +345,12 @@ export interface DsChipProps {
   /** renders a remove affordance with its own accessible name */
   onRemove?: () => void;
   removeLabel?: string;
-  /**
-   * A hover explanation. SUPPLEMENTARY only — a chip's own text must still say
-   * what it is, because a title is invisible to touch and to a keyboard user who
-   * never tabs to it (DESIGN.md: nothing load-bearing lives in a tooltip alone).
-   */
+  /** Hover explanations are supplementary; essential facts must remain reachable without hover. */
   title?: string;
   className?: string;
 }
 
-/**
- * Tone is a FILL, never a fill plus an outline.
- *
- * Every chip sits on the one recessed plane (`--ds-recess-*`, see tokens.css):
- * the row footer's treatment — a fill and no line — is the house answer to
- * "this sits back from the card", and a chip is the same statement at chip
- * size. The border box is still there (`border-transparent`), so a chip that
- * genuinely needs an edge can draw one without anything shifting a pixel.
- */
+/** Transparent borders reserve geometry so adding an edge cannot shift chip layout. */
 const CHIP_TONE: Record<NonNullable<DsChipProps["tone"]>, string> = {
   neutral: "border-[color:var(--ds-recess-border)] bg-[var(--ds-recess-bg)] text-[color:var(--ds-recess-fg)]",
   info: "border-[color:var(--ds-info-border)] bg-[var(--ds-info-bg)] text-[color:var(--ds-info-fg)]",
@@ -423,23 +359,7 @@ const CHIP_TONE: Record<NonNullable<DsChipProps["tone"]>, string> = {
   danger: "border-[color:var(--ds-danger-border)] bg-[var(--ds-danger-quiet)] text-[color:var(--ds-danger)]",
 };
 
-/**
- * A compact fact or filter token: `EID 10084412`, `pdf · oath-batch-7.pdf`.
- * Values render monospace so columns of them line up down a dense queue.
- *
- * **A chip is a SINGLE-LINE token, always.** It truncates inside its own
- * border and never wraps, at any width, with any value. This is not a
- * preference: laid on the `ChipRow` grid track a long value used to wrap to a
- * second line and render OUTSIDE the border it belongs to — a chip drawn as
- * debris. The mechanism that stops it is `min-w-0` on the value span (a flex
- * child's `min-width` is `auto`, so without it the chip refuses to shrink
- * below its own text and overflows its cell) plus `whitespace-nowrap`.
- *
- * The full value stays reachable: it goes on the element's `title` and, when a
- * chip is a control, into its accessible name. **If a fact cannot survive
- * truncation it is not a chip** — put it on the row's `MetaLine`, on its own
- * line, where it can wrap.
- */
+/** Keep chips single-line; expose complete values and move nontruncatable facts to wrapping metadata. */
 export function Chip({
   children,
   label,
@@ -454,11 +374,7 @@ export function Chip({
 }: DsChipProps) {
   const interactive = Boolean(onSelect);
   const text = typeof children === "string" ? children : undefined;
-  // The full value is never lost to the cut. For a screen reader nothing is
-  // lost in the first place — `text-overflow` clips the PAINT, not the DOM, so
-  // the accessible name is already whole and an `aria-label` here would only
-  // overwrite it. What the cut does cost is the SIGHTED read, so a chip with
-  // no explanatory title of its own falls back to printing itself on hover.
+  // Clipping preserves the accessible text; hover reveals the sighted cut without replacing its name.
   const hoverText = title ?? text;
   const body = (
     <>
@@ -496,7 +412,7 @@ export function Chip({
           dsMotion.fast,
           "hover:bg-[var(--ds-surface-3)]",
           // The same 1px dip Button uses. A filter chip is a button; without
-          // this it was the only pressable in the system that ignored a press.
+          // this it is a pressable that ignores a press.
           "active:translate-y-px",
         )}
       >
@@ -529,21 +445,14 @@ export function Chip({
   );
 }
 
-/* =========================================================================
- * Small parts
- * ====================================================================== */
+
 
 /** A keyboard hint. Shortcuts are first-class in this product — show them. */
 export function Kbd({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <HeroKbd
       className={cn(
-        // KEPT OUTLINED, deliberately, while every other `surface-2 + border`
-        // token moved to the recessed plane: this one is drawing a KEY. The
-        // outline plus the fill is the whole cue that says "a thing you press",
-        // and a border-less keycap reads as a word in a slightly different
-        // colour. Its raw `h-4 min-w-4 px-1` went on the scale, though — those
-        // were three literals with no argument behind them.
+        // Keep keycaps outlined so they read as pressable keys rather than ordinary words.
         "inline-flex items-center justify-center border",
         "h-[var(--ds-h-xs)] min-w-[var(--ds-h-xs)] px-[var(--ds-space-tight)]",
         dsRadius.xs,
@@ -568,11 +477,7 @@ export function Spinner({ className, label = "Loading" }: { className?: string; 
   );
 }
 
-/**
- * A loading placeholder. It must match the SHAPE of what is coming, so the
- * layout does not jump when real content lands — pass the same height/width
- * classes the real element uses.
- */
+/** Match the incoming content’s dimensions so loading does not shift layout. */
 export function Skeleton({ className }: { className?: string }) {
   return (
     <span

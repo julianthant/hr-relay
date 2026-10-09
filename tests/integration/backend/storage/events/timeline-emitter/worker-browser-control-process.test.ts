@@ -125,7 +125,7 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
     const raw=new DatabaseSync(join(stateRoot,"state.db"),{readOnly:true});
     try {
       for(const table of ["run_operations","run_operation_attempts"]) assert.equal(raw.prepare(`SELECT count(*) AS n FROM ${table}`).get()?.["n"],0);
-      // The current schema retired operation_outbox; prove it was not recreated.
+
       assert.equal(raw.prepare("SELECT count(*) AS n FROM sqlite_schema WHERE name='operation_outbox'").get()?.["n"],0);
     }finally{raw.close();}
     process.stdout.write(`[sessions-process-proof] ${JSON.stringify({ claims: claims.map(value => ({ runId:value?.envelope.runId, dryRun:value?.envelope.dryRun, lifecycle:value?.lifecycle })), controls:[refresh,reopen].map(value=>db.authority.workerControls.get(value.request.commandId)), original, replacement })}\n`);

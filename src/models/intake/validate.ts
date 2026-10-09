@@ -1,36 +1,4 @@
-/**
- * The intake validation pipeline — ref data-intake-and-edit-data §5's "mapped dataset → N inputs".
- *
- * Format-agnostic on purpose: it takes an already-parsed cell matrix, the
- * detected columns, the operator's confirmed mapping and the workflow's intake
- * projection, and returns exactly one disposition per source row. The
- * extraction store owns turning a `.csv`/`.xlsx`/PDF into that matrix; nothing
- * here knows or cares which it was.
- *
- * ## Every row lands somewhere, and nothing half-launches
- *
- * The output covers `1..sourceRows` exactly once. A row is `valid` only if
- * every bound cell coerced, every field parsed, the WHOLE assembled input
- * parsed through the workflow schema, and its identity is unique in the file.
- * Anything else is a rejection carrying the row, the column, the field and a
- * legible reason — never a dropped row and never a substituted value.
- *
- * ## A `CellCoercionError` is converted; nothing else is
- *
- * `coerce` throws a typed, located failure for a cell it cannot turn into a
- * canonical value, and that is the measurement §2.4 designed. This module
- * catches exactly that class (and the `ZodError` from the field schema) and
- * records a durable, visible rejection. Any other throw propagates untouched —
- * a bug in a coercer must not become "row 12 was a bit odd".
- *
- * ## Validation is a pure function of its inputs
- *
- * Given the same file, mapping, projection and corrections, it produces the
- * same dispositions and the same reject ids. That is what makes "rerun with
- * existing data" checkable rather than hopeful: the diff between two manifests
- * is a real difference in the file, the mapping, or the contract — not noise
- * from a fresh id per pass.
- */
+/** The intake validation pipeline: format-agnostic, one disposition per source row, converting exactly the typed coercion failure and nothing else, and a pure function of its inputs. */
 import { z } from "zod";
 import { JsonValueSchema, canonicalJsonStringify, type JsonValue } from "../../rules/validation/canonical-json.js";
 import {
@@ -61,24 +29,13 @@ export interface IntakeValidationInput {
   readonly bindings: readonly ColumnBinding[];
   /** Data rows, header-relative, in file order. Row N is `rows[N - 1]`. */
   readonly rows: readonly (readonly string[])[];
-  /**
-   * Values the operator typed once for the whole run (ref data-intake-and-edit-data §8 step 2's
-   * `effectiveDate`). A required target satisfied here needs no column.
-   *
-   * A list rather than a keyed object, because the key is a declared target
-   * field id and an open string-keyed map at this boundary would accept one
-   * that the projection never heard of.
-   */
+    /* Values the operator typed once for the whole run; a list rather than a keyed object, because the key is a declared target field id. */
   readonly constants?: readonly { targetFieldId: IntakeTargetFieldId; value: JsonValue }[];
   /** Operator cell corrections, applied over the source without rewriting it. */
   readonly corrections?: readonly { sourceRow: number; field: IntakeTargetFieldId; correctedValue: string }[];
   /** Source rows the operator has explicitly excluded. */
   readonly excludedRows?: readonly number[];
-  /**
-   * When these rows were read, as an ISO instant. Supplied by the caller from
-   * the clock rather than read here, so a replayed validation resolves its
-   * two-digit years exactly as the original did.
-   */
+    /* When these rows were read, as an ISO instant, supplied by the caller from the clock rather than read here. */
   readonly readAt: string;
   /** The workflow's own identity function over a parsed input (ref workflow-model §5.7). */
   readonly deriveItemId: (parsedInput: JsonValue) => ItemId;
@@ -120,14 +77,7 @@ function setAtPath(target: MutableJsonObject, path: readonly string[], value: un
   setAtPath(child, rest, value);
 }
 
-/**
- * One cell's coercion attempt, as a value.
- *
- * The `catch` classifies and returns; it sets no flag and supplies no default.
- * That keeps the `fail-loud-catch-default` ratchet honest AND keeps the shape
- * right: a refused cell is an OUTCOME the caller records durably, while any
- * other throw is a fault that must reach the top.
- */
+/** One cell's coercion attempt, as a value: the `catch` classifies and returns, setting no flag and supplying no default. */
 type CellCoercion =
   | { readonly coerced: true; readonly value: unknown }
   | { readonly coerced: false; readonly reason: string };
@@ -290,10 +240,7 @@ export function validateIntakeRows(input: IntakeValidationInput): IntakeValidati
     const wholeInput = input.projection.inputSchema.safeParse(assembled);
     if (!wholeInput.success) {
       const issues = boundaryIssues(wholeInput.error);
-      // A root-level issue is a refinement OVER the combination — ref data-intake-and-edit-data §5's
-      // `cross-field`. Naming every bound target is truthful ("one of these
-      // together is wrong"); inventing a specific pair zod never reported
-      // would be a guess dressed as a diagnosis.
+      // Root refinements concern the bound fields together; never invent a narrower field pair.
       const rootIssues = issues.filter((issue) => issue.path.length === 0);
       const boundPaths = [...bindingByTarget.keys()].sort((left, right) => left.localeCompare(right));
       if (rootIssues.length > 0 && boundPaths.length >= 2) {
@@ -331,9 +278,7 @@ export function validateIntakeRows(input: IntakeValidationInput): IntakeValidati
       continue;
     }
 
-    // Parsed, not asserted: the round-trip through canonical JSON is what makes
-    // the stored input byte-stable, and `JsonValueSchema` is what proves the
-    // result is really JSON rather than something that merely stringified.
+    // Parse canonical JSON to prove stored input is JSON and byte-stable.
     const parsedInput = JsonValueSchema.parse(JSON.parse(canonicalJsonStringify(wholeInput.data)));
     valid.push({
       sourceRow,
@@ -343,9 +288,7 @@ export function validateIntakeRows(input: IntakeValidationInput): IntakeValidati
     });
   }
 
-  // Identity collision is decided across the WHOLE file, so it runs after every
-  // row has an input. Both colliding rows are rejected: choosing a winner would
-  // silently drop a person the operator listed.
+  // Reject both colliding identities; choosing a winner would silently drop a listed person.
   const byItemId = new Map<string, ValidatedRow[]>();
   for (const row of valid) byItemId.set(row.itemId, [...(byItemId.get(row.itemId) ?? []), row]);
   const collided = new Set<number>();

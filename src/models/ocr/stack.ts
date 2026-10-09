@@ -1,32 +1,4 @@
-/**
- * Stage 1 and 2 of the scanner pipeline — classify a stack, then group its
- * pages into subjects (D157).
- *
- * Stage 3, `admitOcrExtraction`, reads ONE page and already assumes its caller
- * knows the form type. These two stages are what let a caller know it, and they
- * are separate from extraction for three reasons: classification is cheap while
- * extraction is not, so nobody pays to extract twenty-four boilerplate pages; a
- * misclassification is visible and correctable BEFORE the expensive step; and
- * grouping gets to be deterministic code over classifications rather than
- * something a model holds in its head across forty-four pages.
- *
- * ## Grouping matches by NAME across the whole stack, never by adjacency
- *
- * Measured on raw Xerox output (D157): the 44-page I-9 scan's first four pages
- * are four DIFFERENT people with alternating sections — §2 Casey, §1 Cho, §2
- * Cisneros, §1 Chan. Neighbour-pairing would have attached Casey's Section 1
- * from Cho's page: a real employment verification bound to the wrong person,
- * and it would have looked entirely successful. Adjacency is a property of how
- * a particular pile was assembled, not of scanning.
- *
- * ## The match is exact, and ambiguity is reported rather than resolved
- *
- * A fuzzy surname score is precisely where this would start guessing. The key
- * is a normalized token set with single-letter initials dropped — because a
- * middle initial is written inconsistently and its absence must not split one
- * person into two — and two pages group only on an EXACT key match. Anything
- * else is `ambiguous` or `unidentified` and reaches a human.
- */
+/** Stage 1 and 2 of the scanner pipeline: classify a stack, then group its pages into subjects. */
 import { z } from "zod";
 import { IsoInstantSchema } from "../../rules/identity/ids.js";
 import { displayPersonName } from "../fields/cell-coercion.js";
@@ -38,12 +10,7 @@ const DATALESS: ReadonlySet<OcrPageKind> = new Set(["boilerplate", "unrelated", 
 export const ClassifiedPageSchema = z.strictObject({
   sourcePage: z.number().int().positive(),
   pageKind: OcrPageKindSchema,
-  /**
-   * The person this page names, exactly as written, or null when the page
-   * carries no name or it could not be read. An I-9 Section 2 names the person
-   * independently of its Section 1 ("Employee Last Name, First Name and Middle
-   * Initial from Section 1"), which is what makes the pair matchable at all.
-   */
+    /* The person this page names, exactly as written, or null when the page carries no name or it could not be read; a later section may name the person independently. */
   subjectName: z.string().min(1).nullable(),
   confidence: z.number().min(0).max(1),
 });
@@ -64,19 +31,7 @@ export const ClassifiedStackSchema = z.strictObject({
 });
 export type ClassifiedStack = z.infer<typeof ClassifiedStackSchema>;
 
-/**
- * A person's identity for matching: lowercased alphabetic tokens, sorted, with
- * single letters dropped.
- *
- * Sorted because `Clauldia, Drona A.` and `Drona Clauldia` are one person and the two
- * forms both occur. Initials dropped because a middle initial is written
- * inconsistently — present on the Section 2 header, absent on the Section 1 —
- * and letting its absence split one person into two would orphan both halves of
- * a complete pair.
- *
- * Returns null below two tokens: one name does not identify anybody here, and a
- * key that matched on a surname alone would group siblings.
- */
+/** A person's identity for matching: lowercased alphabetic tokens, sorted, with single letters dropped. */
 export function personMatchKey(name: string): string | null {
   const tokens = displayPersonName(name)
     .toLowerCase()
@@ -91,13 +46,7 @@ export const SubjectCompletenessSchema = z.enum([
   "complete",
   /** Two pages of one KIND name one person; a human decides which is theirs. */
   "duplicate",
-  /**
-   * The sectioned case D158 deferred until a form needed it: a person whose
-   * pages cover only part of the form — an I-9 Section 2 whose Section 1 is
-   * nowhere in the stack, or the reverse. FLAGGED, never blocked (D157, and
-   * legacy's `orphanSection2` before it): the missing page is a fact about the
-   * paper the operator fed in, not a reason to hide the person who IS there.
-   */
+    /* The sectioned case a form can need: a person whose pages cover only part of the form — FLAGGED, never blocked. */
   "incomplete",
 ]);
 
@@ -110,11 +59,7 @@ export const StackSubjectSchema = z.strictObject({
     pageKind: OcrPageKindSchema,
   })).min(1),
   completeness: SubjectCompletenessSchema,
-  /**
-   * The expected page kinds this subject has NO page of, in the form's own
-   * order. Non-empty on `incomplete` — and on a `duplicate` that is also
-   * missing a section, because one enum arm must not hide the other fact.
-   */
+    /* The expected page kinds this subject has NO page of, in the form's own order, because one enum arm must not hide the other fact. */
   missingKinds: z.array(OcrPageKindSchema),
 });
 export type StackSubject = z.infer<typeof StackSubjectSchema>;
@@ -122,10 +67,7 @@ export type StackSubject = z.infer<typeof StackSubjectSchema>;
 export const StackGroupingSchema = z.strictObject({
   formType: OcrFormTypeSchema,
   subjects: z.array(StackSubjectSchema),
-  /**
-   * Pages of the RIGHT type that could not be attributed to anybody — no name,
-   * or a name too short to identify. They are listed rather than dropped.
-   */
+    /* Pages of the RIGHT type that could not be attributed to anybody — no name, or a name too short to identify; they are listed rather than dropped. */
   unidentified: z.array(z.number().int().positive()),
   /** Pages of a different form than this run is processing. */
   otherForms: z.array(z.strictObject({
@@ -140,22 +82,12 @@ export const StackGroupingSchema = z.strictObject({
 });
 export type StackGrouping = z.infer<typeof StackGroupingSchema>;
 
-/**
- * The page kinds this run is processing — the form's own declared data pages.
- * One kind for a one-page form; the I-9's two sections for an `i9` run.
- */
+/** The page kinds this run is processing — the form's own declared data pages; one kind for a one-page form, and the I-9's two sections for an `i9` run. */
 function expectedKinds(formType: OcrFormType): readonly OcrPageKind[] {
   return ocrForm(formType).pageKinds;
 }
 
-/**
- * Group a classified stack into subjects for one workflow.
- *
- * Every page lands in exactly one bucket — a subject, `unidentified`,
- * `otherForms` or `dataless` — so a count can be reconciled against the paper
- * that was fed in. That total coverage is the point: a page that quietly
- * belonged to no bucket is a page nobody knows was skipped.
- */
+/** Assign every page to one bucket so the classified stack reconciles with the paper. */
 export function groupStack(stack: ClassifiedStack, formType: OcrFormType): StackGrouping {
   const wanted = new Set(expectedKinds(formType));
   const subjects = new Map<string, { displayName: string; pages: ClassifiedPage[] }>();
@@ -208,14 +140,7 @@ export function groupStack(stack: ClassifiedStack, formType: OcrFormType): Stack
   });
 }
 
-/**
- * The operator's first checkpoint: what is in this pile, and what does not
- * belong in this run.
- *
- * The counts reconcile — `pagesAccounted` equals the pages classified — because
- * the whole reason to look at this before extracting is to check the machine
- * saw the same stack you fed it.
- */
+/** Reconcile classified-page totals before extraction. */
 export const StackReportSchema = z.strictObject({
   formType: OcrFormTypeSchema,
   pagesClassified: z.number().int().positive(),
@@ -228,7 +153,7 @@ export const StackReportSchema = z.strictObject({
   subjects: z.strictObject({
     complete: z.number().int().nonnegative(),
     duplicate: z.number().int().nonnegative(),
-    /** Sectioned subjects missing a page — flagged, never blocked (D157). */
+    /** Sectioned subjects missing a page — flagged, never blocked. */
     incomplete: z.number().int().nonnegative(),
   }),
   unidentifiedPages: z.array(z.number().int().positive()),

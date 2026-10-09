@@ -27,17 +27,7 @@ const EvidenceSourceSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("input"), inputFingerprint: FingerprintSchema }),
   z.strictObject({ kind: z.literal("system"), taskId: TaskIdSchema, observedAt: IsoInstantSchema }),
   z.strictObject({ kind: z.literal("checkpoint"), taskId: TaskIdSchema, checkpointFingerprint: FingerprintSchema, observedAt: IsoInstantSchema }),
-  /**
-   * A GATE's fact: it came from a human, through the typed `resolve-gate`
-   * command, and authority — not the payload — says who and when (D202/D204).
-   *
-   * It is its own arm rather than a `system` fact with a task id, because a
-   * gate owns no task contract and never will: what it dates is a DECISION,
-   * not an observation of a page. `resolvedBy`/`resolvedAt` are the kernel's
-   * own values off the `gate_results` row, which is the whole point — a
-   * caller-supplied approver beside them would be a claim sitting next to
-   * authority.
-   */
+    /* A GATE's fact: it came from a human through the typed command, and authority — not the payload — says who and when. */
   z.strictObject({
     kind: z.literal("gate-result"),
     gateId: GateIdSchema,
@@ -57,18 +47,7 @@ const EvidenceSourceSchema = z.discriminatedUnion("kind", [
   }),
   z.strictObject({ kind: z.literal("operator-correction"), supersedes: EvidenceEntryIdSchema }),
   z.strictObject({ kind: z.literal("derived"), evidence: z.array(EvidenceRefSchema).min(1) }),
-  /**
-   * D307 — an OPERATOR ASSERTION. The operator omitted this node's timeline
-   * step at start and typed the facts the step would have read; the step's
-   * producer rebuilt this node's output from them and the executor stored a
-   * MARKED checkpoint row (every provenance leaf `operator`-sourced).
-   *
-   * It is its own arm, and NOT `system`/`checkpoint`, for the reason the whole
-   * unit exists: those two arms say a task observed a page at an instant, and
-   * this value was observed by nobody. `assertedAt` is when the assertion was
-   * made, never when anything was seen, and `step` names the omitted step so
-   * the sentence beside the fact is checkable against the run's own envelope.
-   */
+    /* Typed omission facts are operator assertions, never observations. */
   z.strictObject({
     kind: z.literal("operator-assertion"),
     taskId: TaskIdSchema,
@@ -91,45 +70,14 @@ export const EvidenceFactSchema = z.discriminatedUnion("state", [
 
 export const DecisionEvidenceSchema = z.strictObject({
   id: EvidenceEntryIdSchema,
-  /**
-   * D307 adds `assertion`: the operator omitted a step at start and the step's
-   * producer rebuilt this node's output from typed facts. It is not a `branch`
-   * (no controller chose anything) and emphatically not a `gate` (nobody
-   * approved an observation), so it is its own closed kind.
-   */
+    /* The assertion arm adds its own closed kind: it is not a `branch` (no controller chose anything) and emphatically not a `gate` (nobody approved an observation). */
   kind: z.enum(["branch", "gate", "identity", "dedupe", "assertion"]),
   outcome: z.enum(["taken", "not-taken", "blocked", "approved", "rejected"]),
   reason: z.string().min(1),
   evidence: z.array(EvidenceRefSchema).min(1),
 });
 
-/**
- * What PROVED a commit — the fenced write's durable completion evidence,
- * carried BESIDE the action it proves (03a Track F's BE line, ledger 2
- * D16–D22). Every field is read from a durable authority row or from the
- * commit contract's own declaration; nothing here is observed at derivation:
- *
- * - `system` / `idempotencyKeyDigest` — the write intent's fence identity.
- *   The digest, never the raw key: the natural key embeds the person's EID
- *   (`ucpath:termination|{eid}|{date}`), and authority keeps the raw half.
- * - `completion` — the commit contract's declared completion arm. `receipt`
- *   means the system issued its own confirmation record at the click;
- *   `save-verify` / `upload-verify` mean an independent read-back is the proof.
- * - `proofSource` — the durable `TransactionOutcome`'s own account of where
- *   the proof came from (a fresh verify read, a recovery probe, an operator
- *   attestation, or an already-present observation).
- * - `values` — the completion proof's leaves, redacted through the declared
- *   `write-proof` classification scope. Undeclared leaves fail derivation
- *   loud; nothing crosses the wire that the table did not disposition.
- * - `recordedAt` — the outcome's `confirmedAt` / `observedAt`, the instant
- *   authority recorded the proof.
- *
- * OPTIONAL because receipts are durably persisted and immutable (D141/D199):
- * a composition-1 receipt row predates this field and must keep parsing and
- * re-deriving byte-identically. Producers at composition 2 emit it whenever a
- * settled outcome and its fenced intent exist; its absence there means "no
- * completion proof is in authority for this write", and the UI names that.
- */
+/** What PROVED a commit — the fenced write's durable completion evidence, carried BESIDE the action it proves; every field is read from a durable authority row or the contract's own declaration. */
 export const ActionWriteProofSchema = z.strictObject({
   system: BrowserSystemIdSchema,
   idempotencyKeyDigest: PublicTransactionKeyDigestSchema,
@@ -200,14 +148,7 @@ const OptionalRunIdSchema = z.discriminatedUnion("state", [
 ]);
 
 export const RunEvidenceReceiptSchema = z.strictObject({
-  /**
-   * The derivation composition this receipt was built under. ABSENT means
-   * composition 1 — the shape every receipt stored before the action write
-   * proof existed. Composition 2 adds `actions[].proved`; composition 3 is the
-   * first whose free diagnostic sentences are safe for operator projection. A stored receipt is
-   * immutable and re-derives under ITS OWN composition (never upgraded in
-   * place), so absence is a closed, documented state rather than a default.
-   */
+    /* The derivation composition this receipt was built under; a stored receipt is immutable and re-derives under ITS OWN composition, so absence is a closed state rather than a default. */
   composition: z.union([z.literal(2), z.literal(3), z.literal(4), z.literal(5)]).optional(),
   receiptId: EvidenceReceiptIdSchema,
   runId: RunIdSchema,

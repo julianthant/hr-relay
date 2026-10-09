@@ -1,56 +1,7 @@
 import { PARITY_WORKFLOW_COMPOSITION } from "../../../../parity/helpers/workflow-composition.js";
 import { FIXTURE_EDITABLE_SETTINGS } from "../../../../parity/helpers/fixture-settings.js";
 // @vitest-environment jsdom
-/**
- * ENTERING a takeover moves focus into it — the open half of a pair this tree
- * only held the close end of.
- *
- * Settings, Archive, the Explorer and the Activity report were Radix `Dialog`s.
- * A dialog takes focus on open and gives it back on close for free; D272 item 1
- * / D274 item 5 turned all four into routed full-page takeovers, unit F4b
- * re-implemented the CLOSE arm by hand (`settingsCloseFocusTargetId`, pinned in
- * `settings-takeover.test.ts`), and nothing re-implemented the OPEN arm. The
- * result was a page that replaces the whole window while the operator's focus
- * stays on a door that is no longer rendered: the next Tab walks the top bar,
- * and a keyboard operator cannot reach the page they just opened without
- * re-Tabbing the entire shell.
- *
- * `TakeoverFrame` (D275 item 2 — ONE shared wrapper, kept as the accessibility
- * and motion convention) now owns it. The generic claims below test that one
- * owner; the adoption test proves the last adopter, intake, actually crosses
- * the boundary and keeps its truthful first control. The UI catalog was the
- * other one until D295 made it a Settings SECTION — it owns no frame of its
- * own now, which is what the case below its adoption test pins instead.
- * Three claims, and each was run against a mutation of the exact line it pins:
- *
- * 1. **The frame takes focus on mount.** Deleting the `node.focus(...)` call
- *    turns the first two tests red.
- * 2. **It is a focus TARGET, never a tab stop.** Dropping `tabIndex={-1}`
- *    turns THREE of the four red, which is the useful surprise: a bare
- *    `section` is not focusable, so `focus()` silently does nothing and claim
- *    1 collapses with it. The attribute is load-bearing, not decoration.
- * 3. **A descendant that focused itself in the same commit KEEPS focus.**
- *    Deleting the `node.contains(document.activeElement)` guard turns the third
- *    test red — the frame steals focus back off the control the surface
- *    deliberately focused on arrival.
- *
- * A fourth claim earned its place the hard way. Focus was reasoned to be
- * invisible to the parity corpus — the frame carries no `ds-focus` class, so
- * the product's opt-in `.ds-focus:focus-visible` ring never paints. The lane
- * disagreed: 38 references moved, 2548 pixels each, tracing the frame's own
- * perimeter. The ring was CHROMIUM'S, not the product's — a programmatic focus
- * with no preceding pointer interaction matches `:focus-visible`, and the UA's
- * `outline: auto` picked up the base layer's `* { outline-color }`. So opening
- * any takeover drew a ring around the whole page. `outline-none` suppresses it,
- * and the fourth test pins that class: the operator can never tab TO this
- * element, so an indicator on it points at nothing actionable, and it is the
- * region's accessible NAME that announces the arrival.
- *
- * That assertion is a class check, which on its own would be weak — the real
- * proof is the parity lane going green with zero references moved. It lives
- * here so the fast lane catches a deletion in seconds rather than in the 5
- * minutes the reference corpus costs.
- */
+
 import assert from "node:assert/strict";
 import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -99,8 +50,7 @@ const APP_BOOTSTRAP = FrontendBootstrapWireSchema.parse({
     start: {
       enqueue: "reject-active",
       version: 1,
-      // D296 — this shell fixture's workflow declares no intake projection, so
-      // its Run Modal draws no method tabs and no spreadsheet door.
+
       spreadsheetIntake: false,
       steps: [{
         key: "fixture-step",
@@ -162,11 +112,7 @@ function frameOf(label: string): HTMLElement {
   return node;
 }
 
-/**
- * Mounts a takeover the way the shell does: into a host that is already in the
- * document, so `document.activeElement` is a real answer rather than a
- * detached-tree artefact.
- */
+
 async function mountTakeover(label: string, children: ReactNode[]): Promise<void> {
   const host = document.createElement("div");
   document.body.append(host);
@@ -177,11 +123,7 @@ async function mountTakeover(label: string, children: ReactNode[]): Promise<void
   });
 }
 
-/**
- * Mounts one real takeover against only the client reads its initial arm owns.
- * The provider remains strict: an unexpected client call still throws rather
- * than falling through a permissive fake.
- */
+
 async function mountSurface(client: DashboardClient, children: ReactNode): Promise<void> {
   const host = document.createElement("div");
   document.body.append(host);
@@ -202,9 +144,7 @@ function appClient(): DashboardClient {
       return { close: () => undefined };
     },
     calendar: (input: Parameters<DashboardClient["calendar"]>[0]) => Promise.resolve(CALENDAR(input)),
-    // D298 — `?intake=` is always a session id, so mounting the takeover
-    // always reads one. Left in flight: the door this suite restores is
-    // owned by the frame, not by anything the session decides.
+
     intakeSession: () => new Promise<never>(() => undefined),
     editableSettings: () => Promise.resolve(EDITABLE_SETTINGS),
   } as unknown as DashboardClient;
@@ -282,11 +222,7 @@ async function dirtyBrowserSettings(): Promise<{ input: HTMLInputElement; value:
   return { input, value };
 }
 
-/**
- * The browser's first Tab from a `tabIndex=-1` frame reaches the first enabled
- * descendant in DOM order. jsdom does not implement Tab navigation, so make
- * that order explicit, focus the same node, and assert the resulting target.
- */
+// jsdom does not implement Tab navigation; assert the first enabled descendant order directly.
 function takeFirstTab(frame: HTMLElement): HTMLElement {
   const first = frame.querySelector<HTMLElement>(
     "button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex='-1'])",
@@ -306,9 +242,7 @@ describe("ds/TakeoverFrame — entering a takeover moves focus into it", () => {
   });
 
   it("leaves the door it was opened from — focus does not stay on the trigger", async () => {
-    // The gear/segment the operator pressed. It stays MOUNTED (the top bar
-    // renders it regardless of which takeover is open), which is precisely why
-    // a missing focus move is invisible until someone presses Tab.
+
     const door = document.createElement("button");
     door.type = "button";
     door.id = "the-door";
@@ -329,19 +263,14 @@ describe("ds/TakeoverFrame — entering a takeover moves focus into it", () => {
   it("paints no focus ring — the UA's included", async () => {
     await mountTakeover("Workflow explorer", []);
     const cls = frameOf("Workflow explorer").className.split(/\s+/u);
-    // Chromium's own `:focus-visible { outline: auto }` matches a programmatic
-    // focus. Without this class the ring traced the whole page and moved 38
-    // parity references; jsdom computes no UA styles, so the class IS the
-    // assertion here and the parity corpus is the proof behind it.
+    // Chromium applies focus-visible to programmatic focus; suppress the frame outline.
     assert.ok(cls.includes("outline-none"), `the frame must suppress the UA ring: ${cls.join(" ")}`);
     // And it must not have opted INTO the product ring by accident.
     assert.ok(!cls.includes("ds-focus"), "the frame is not an interactive control");
   });
 
   it("does not steal focus from a descendant that took it in the same commit", async () => {
-    // React applies `autoFocus` in the commit phase, before the frame's passive
-    // effect runs — the same ordering a surface gets when it focuses a control
-    // of its own on arrival. The frame must yield to it.
+    // React autoFocus commits before passive effects; preserve a child control that already took focus.
     await mountTakeover("Settings", [
       createElement("input", { key: "q", type: "search", autoFocus: true, "aria-label": "Search settings" }),
     ]);
@@ -354,13 +283,7 @@ describe("ds/TakeoverFrame — entering a takeover moves focus into it", () => {
 
 describe("the two remaining takeovers use the shared focus boundary (UF-FU-1)", () => {
   it("Spreadsheet intake receives frame focus, then Tab reaches Close first", async () => {
-    /*
-      D298 — the workspace is only ever addressed WITH a session, so the read
-      is what it opens on. It is left in flight deliberately: the frame, the
-      header and its ONE exit are the claim here, and they must hold while the
-      session is still loading — that is the frame the operator actually
-      lands on.
-    */
+
     const client = {
       intakeSession: () => new Promise<never>(() => undefined),
     } as unknown as DashboardClient;
@@ -401,11 +324,7 @@ describe("the two remaining takeovers use the shared focus boundary (UF-FU-1)", 
 });
 
 describe("closing a route-backed takeover restores its toolbar door", () => {
-  // D296 — the intake door is the Run Modal's spreadsheet method now, and
-  // `Start a run` is the toolbar control that opens it. The old
-  // `Import spreadsheet` button is deleted, so this asserts BOTH halves: the
-  // door that is restored, and the absence of the one that used to be.
-  // D298 — and the address is a session id: `?intake=new` is not a state.
+
   it("returns intake focus to Start a run after the route unmounts", async () => {
     await mountDashboard("?intake=e1f2a3b4-0000-4000-8000-000000000001");
     await press(buttonNamed("Close"));

@@ -128,15 +128,7 @@ const IntakeVersionTargetSchema = z.strictObject({
   expectedVersion: PositiveIntSchema,
 });
 
-/**
- * D269 (ref execution-and-sessions §11.5): the worker POOL target. `expectedVersion`
- * is the pool row's version — `worker_pools.version` — and **0 when the
- * workflow has no row yet**: nothing seeds a pool, so 0 is the honest basis
- * for the first plan rather than a placeholder, and the kernel answers a stale
- * basis with `conflict` naming the current one (0 included). It is NOT a
- * worker lease's version (`WorkerVersionTargetSchema`, one worker's row) and
- * never `WorkerCardWire.revision` (a patch cursor).
- */
+// Pool CAS uses row versions; zero means unplanned, never a lease version or patch cursor.
 const WorkerPoolVersionTargetSchema = z.strictObject({
   workflowId: WorkflowIdSchema,
   expectedVersion: NonNegativeIntSchema,
@@ -166,19 +158,7 @@ export const StartCommandRequestSchema = z.strictObject({
   }),
 });
 
-// D170: the five non-enqueue intake payloads carry what ref data-intake-and-edit-data §2.2's flow
-// actually sends. The old shapes named an artifact and two fingerprints the
-// session itself now holds, and a `rowId` for something that has no item
-// identity until it validates — they were deferred-arm placeholders no producer
-// ever sent, so they are amended rather than migrated (D161/D167's rule).
-// The artifact rides the SESSION, which the upload route creates.
-//
-// D171 amends the sixth the same way: `enqueue-intake-manifest` targeted an
-// `intakeManifestId` that CANNOT exist when the command is issued — the command
-// is what mints it — so it targets the session under the same version CAS as
-// its five siblings. `dryRun` is explicit rather than defaulted, exactly as
-// `StartPlanIngressSchema` requires it: a fan-out that silently chose one is a
-// fan-out that silently chose whether to touch a real HR system.
+// Upload sessions own artifacts; enqueue targets their version and requires explicit dryRun.
 export const IntakeCommandRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("intake"), type: z.literal("inspect-intake"), target: IntakeVersionTargetSchema, payload: z.strictObject({ sheet: z.string().min(1).optional(), headerRowIndex: z.number().int().nonnegative().optional(), comparisonManifestId: IntakeManifestIdSchema.optional() }) }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("intake"), type: z.literal("confirm-intake-mapping"), target: IntakeVersionTargetSchema, payload: z.strictObject({ targetFieldId: IntakeTargetFieldIdSchema, sourceColumnId: SourceColumnIdSchema, headerFingerprint: FingerprintSchema }) }),
@@ -305,10 +285,7 @@ export const MarkedProtectedSettingsCommandRequestSchema =
     }),
   });
 
-/**
- * The public boundary accepts values; the durable schema additionally accepts
- * the marked form because command/audit rows must never retain protected data.
- */
+/** The public boundary accepts values; the durable schema additionally accepts the marked form because command/audit rows must never retain protected data. */
 const SettingsCommandFamilyRequestSchema = z.union([
   ProtectedSettingsCommandRequestSchema,
   MarkedProtectedSettingsCommandRequestSchema,
@@ -338,15 +315,7 @@ export function deriveSettingsCommandFingerprint(command: unknown): string {
   ));
 }
 
-/**
- * Charter §25's declared bump scope. `workflows` names an exact set whose
- * descriptors moved; `application` is the dashboard update that bumps the
- * effective version of EVERY workflow, because old runs may not be
- * interpretable against new dashboard state. Exported because the durable
- * archive model (D179) binds the same scope a command declared — a plan that
- * recorded a looser copy of its own scope could apply to runs the operator
- * never named.
- */
+// Share the exact reviewed scope; application bumps affect every workflow.
 export const VersionScopeSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("workflows"), workflowIds: z.array(WorkflowIdSchema).min(1) }),
   z.strictObject({ kind: z.literal("application"), applicationVersion: SemverSchema }),
@@ -373,12 +342,7 @@ export const VersionArchiveCommandRequestSchema = z.discriminatedUnion("type", [
     family: z.literal("version-archive"),
     type: z.literal("plan-version-bump"),
     target: z.strictObject({ scope: VersionScopeSchema }),
-    /**
-     * Charter §25 / ref dashboard-surfaces §10.2: a bump's scope is declared by whoever makes
-     * the change AND recorded in that update's change record. `changeRecord`
-     * is required here — the plan is where the author is, and asking the
-     * question later would mean asking somebody who did not make the change.
-     */
+        /* A bump's scope is declared by whoever makes the change AND recorded in that update's change record; `changeRecord` is required here, at the plan. */
     payload: z.strictObject({
       targetVersion: SemverSchema,
       changeFingerprint: FingerprintSchema,
@@ -405,18 +369,18 @@ export const VersionArchiveCommandRequestSchema = z.discriminatedUnion("type", [
     type: z.literal("relaunch-archived-run"),
     target: z.strictObject({ archivedRunId: RunIdSchema, archiveFingerprint: FingerprintSchema }),
   }),
-  /** D308 — delete means delete: the archived run and every row it owns leave authority. */
+  /** Delete means delete: the archived run and every row it owns leave authority. */
   ArchiveDeleteCommandRequestSchema,
 ]);
 
 export const RunCommandRequestSchema = z.discriminatedUnion("type", [
-  /** D314 — `retry` is Resume from checkpoints and `restart` is Restart from start: both mint the item's next attempt. */
+  /** `retry` is Resume from checkpoints and `restart` is Restart from start: both mint the item's next attempt. */
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.enum(["retry", "restart", "cancel", "bump"]), target: RunVersionTargetSchema }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("archive"), target: RunVersionTargetSchema }),
-  /** D308 — delete means delete: a terminal queue run and every row it owns leave authority. */
+  /** Delete means delete: a terminal queue run and every row it owns leave authority. */
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("delete"), target: RunVersionTargetSchema }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("rename"), target: RunVersionTargetSchema, payload: z.strictObject({ displayName: RunDisplayNameSchema }) }),
-  // D166: ref data-intake-and-edit-data §6.3's field-level patch model. The earlier whole-checkpoint
+    // Field-level patch model; an entry edits one field, never a whole checkpoint blob.
   // blob payload was a deferred-arm placeholder no producer ever sent.
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("resolve-write-present"), target: z.strictObject({ ...RunVersionTargetSchema.shape, writeIntentId: WriteIntentIdSchema, intentGeneration: PositiveIntSchema }), payload: z.strictObject({ occurrenceKeyDigest: FingerprintSchema.optional(), proof: SchemaBoundCanonicalValueSchema, evidenceNote: OperatorReasonSchema }) }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("resolve-write-absent"), target: z.strictObject({ ...RunVersionTargetSchema.shape, writeIntentId: WriteIntentIdSchema, intentGeneration: PositiveIntSchema }), payload: z.strictObject({ occurrenceKeyDigest: FingerprintSchema.optional(), evidenceNote: OperatorReasonSchema }) }),
@@ -434,7 +398,7 @@ export const NotificationCommandRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("notification"), type: z.enum(["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze"]), target: z.strictObject({ notificationId: NotificationIdSchema, actorId: ActorIdSchema, expectedVersion: PositiveIntSchema }) }),
 ]);
 
-/** D283: the sole durable Explorer edit door; validation remains a read-only route. */
+/** The sole durable Explorer edit door; validation remains a read-only route. */
 export const ExplorerCommandRequestSchema = ExplorerEditApplyRequestSchema;
 
 export const WorkflowBatchCommandRequestSchema = z.strictObject({
@@ -477,7 +441,7 @@ export const CommandTargetReferenceSchema = z.discriminatedUnion("family", [
   }),
   z.strictObject({ family: z.literal("intake"), intakeSessionId: IntakeSessionIdSchema }),
   z.strictObject({ family: z.literal("worker-browser"), workerId: WorkerIdSchema }),
-  /** D269: the per-workflow pool row `plan-worker-count` advanced. */
+  /** The per-workflow pool row `plan-worker-count` advanced. */
   z.strictObject({ family: z.literal("worker-pool"), workflowId: WorkflowIdSchema }),
   z.strictObject({ family: z.literal("settings"), revision: PositiveIntSchema }),
   z.strictObject({ family: z.literal("storage-relocation"), revision: PositiveIntSchema }),
@@ -510,11 +474,7 @@ export const CommandRejectionCodeSchema = z.enum([
   "command-divergent",
   "write-id-reused",
   "active-version-blockers",
-  /**
-   * D113: the arm is schema-recognized but its owning later milestone has not
-   * activated it. This result is computed with ZERO authority side effects —
-   * no journal row, no audit row, no generation advance.
-   */
+    /* The arm is schema-recognized but its owning milestone has not activated it; this result is computed with ZERO authority side effects. */
   "capability-unavailable",
 ]);
 
@@ -526,9 +486,7 @@ const CommandLandingResultSchema = z.strictObject({
   settingsRevision: PositiveIntSchema.optional(),
   settingsFingerprint: FingerprintSchema.optional(),
   revision: PositiveIntSchema.optional(),
-  // D341: live results carry the five-name readback; committed history from before
-  // D341 carries the legacy seven-name readback (value-free presence). Both parse;
-  // nothing in between does, so an audit is never reinterpreted as another family.
+// Preserve distinct five-name current and seven-name historical readbacks; never reinterpret their family.
   entries: z.union([ProtectedSettingsReadbackSchema.shape.entries, LegacyProtectedSettingsReadbackSchema.shape.entries]).optional(),
 }).superRefine((result, context) => {
   const settingsTargets = result.affectedTargets.filter((target) => target.family === "settings");
@@ -587,12 +545,7 @@ const CommandLandingResultSchema = z.strictObject({
 export const CommandResultSchema = z.discriminatedUnion("state", [
   CommandLandingResultSchema,
   z.strictObject({ state: z.literal("confirmation-required"), commandId: CommandIdSchema, warningDigest: FingerprintSchema, message: z.string().min(1) }),
-  /**
-   * `currentVersion` is non-negative rather than positive since D269: the worker
-   * POOL is the one versioned target whose "no row yet" state is a legitimate
-   * CAS basis (0), so a conflict against an unplanned pool must be able to say
-   * so. Every other target is created at version 1 and never reports 0.
-   */
+  // Only unplanned pools report version zero; all other targets start at one.
   z.strictObject({ state: z.literal("conflict"), commandId: CommandIdSchema, currentVersion: NonNegativeIntSchema, message: z.string().min(1) }),
   z.strictObject({ state: z.literal("rejected"), commandId: CommandIdSchema, code: CommandRejectionCodeSchema, message: z.string().min(1) }),
 ]).superRefine((result, context) => {
@@ -611,16 +564,12 @@ export const CommandAuditRecordSchema = z.strictObject({
   request: CommandRequestSchema,
   result: CommandResultSchema,
   completedAt: IsoInstantSchema,
-  /** `before` admits 0 for the same D269 reason `conflict.currentVersion` does: the first pool plan moves 0 → 1. */
+  /** `before` admits 0 because the first pool plan moves 0 → 1. */
   versionChanges: z.array(z.strictObject({ target: CommandTargetReferenceSchema, before: NonNegativeIntSchema, after: PositiveIntSchema })),
   affectedDependencyIds: z.array(DependencyIdSchema),
 });
 
-/**
- * D333: internal persistence for D330 lifecycle idempotency. This is deliberately
- * separate from the product command union: it cannot be submitted through the
- * command kernel and carries no run input or other secret-bearing payload.
- */
+/** Internal persistence for lifecycle idempotency, deliberately separate from the product command union: it cannot be submitted through the command kernel and carries no run input. */
 export const RunLifecycleCommandOperationSchema = z.enum([
   "create",
   "claim-next",
@@ -717,7 +666,7 @@ export const BulkRunCommandRequestSchema = z.strictObject({
   mode: z.enum(["all-or-none", "best-effort"]),
 });
 
-/** Exact accepted parent identity for D235's ordered N-child replay. */
+/** Exact accepted parent identity for ordered N-child replay. */
 export function deriveBulkRunCommandFingerprint(input: unknown): string {
   const parsed = BulkRunCommandRequestSchema.parse(input);
   return FingerprintSchema.parse(sha256Hex(
@@ -769,20 +718,7 @@ export const StoredAuthorityCommandRecordSchema = z.union([
   BulkParentCommandRecordSchema,
 ]);
 
-/**
- * D235 — what ONE target's child command settled as. A bulk request is N real
- * CAS-bound transitions, so it answers with N outcomes and never with a count.
- *
- * The vocabulary is the single-command vocabulary, deliberately: `conflict`
- * carries the server's `currentVersion` because that is the only number that
- * tells an operator to refresh, and `refused` carries the SAME
- * `CommandRejectionCode` a single `POST /api/v1/commands` would have answered
- * with. A fourth arm, `errored`, exists because a child can raise a structured
- * error the kernel does not type (a broken journal, an inconsistent authority);
- * collapsing that into `refused` would put a code nobody computed onto a real
- * HR record, and dropping it would hide the fact that the targets after it were
- * never attempted.
- */
+// Keep structured child errors distinct from refusals; an errored child leaves later targets unattempted.
 export const BulkRunCommandOutcomeSchema = z.discriminatedUnion("outcome", [
   z.strictObject({
     outcome: z.literal("applied"),
@@ -797,7 +733,7 @@ export const BulkRunCommandOutcomeSchema = z.discriminatedUnion("outcome", [
     outcome: z.literal("conflict"),
     runId: RunIdSchema,
     commandId: CommandIdSchema,
-    /** Mirrors `CommandResultSchema.conflict` — see the D269 note there. A run target never answers 0. */
+    /** Mirrors the single-command conflict shape; a run target never answers 0. */
     currentVersion: NonNegativeIntSchema,
     detail: z.string().min(1),
   }),
@@ -816,16 +752,7 @@ export const BulkRunCommandOutcomeSchema = z.discriminatedUnion("outcome", [
   }),
 ]);
 
-/**
- * D235 — the bulk response. `vector` is the complete per-run result; `refused`
- * is a whole-request refusal that reached no target at all (a malformed
- * request, an empty target set, a mode this runtime does not execute).
- *
- * `requestedCount` is on the wire rather than derived from `results.length`
- * precisely so a stopped run — an `errored` child ends the pass — is legible:
- * `results.length < requestedCount` means the remainder was NOT attempted, and
- * the surface says so instead of implying the vector is whole.
- */
+/** The bulk response; `requestedCount` is on the wire rather than derived, precisely so a stopped run is legible as a remainder that was NOT attempted. */
 export const BulkRunCommandResponseSchema = z.discriminatedUnion("state", [
   z.strictObject({
     state: z.literal("vector"),
@@ -874,7 +801,7 @@ export const CommandFamilyRegistrySchema = z.array(CommandFamilySpecSchema).supe
     }
     const expected = COMMAND_ACTIONS_BY_FAMILY[family];
     if (entry.actions.length !== expected.length || expected.some((action) => !entry.actions.includes(action))) {
-      context.addIssue({ code: "custom", path: [entries.indexOf(entry), "actions"], message: `${family} command actions do not match D95` });
+      context.addIssue({ code: "custom", path: [entries.indexOf(entry), "actions"], message: `${family} command actions do not match the registered family` });
     }
   }
 });

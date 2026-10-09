@@ -1,40 +1,7 @@
 import type { ContentAddressedArtifactWriter } from "../../../workflow-kit/artifacts.js";
 import type { ArtifactRef } from "../../../models/artifacts/artifacts.js";
 import { OPERATOR_XLSX_MEDIA_TYPE } from "../../../models/dashboard/xlsx-export.js";
-/**
- * The `xlsx-retention` sink (ref data-intake-and-edit-data §4.1, ref dashboard-surfaces §3.2): one workbook, one
- * stable-keyed idempotent upsert, one atomic replace.
- *
- * ## The workbook layout is deliberately the durability layout, not a guess
- *
- * Four columns — `stableKey`, `keyValues`, `record`, `projectedAt` — with the
- * two value columns holding canonical JSON text. The operator-facing column
- * layout for i9-check's real retention workbook belongs to that workflow's
- * migration, which knows the real fields; inventing a display layout here
- * would be exactly the plausible-but-wrong shape this tree bans. What THIS
- * layout proves is the §4.1 contract: a duplicate key is a verified no-op, a
- * changed record is an in-place update, rows are sorted by stable key so the
- * bytes are deterministic per row set, and nothing is ever appended twice.
- *
- * ## Writer choice (recorded like the reader's, same commit discipline)
- *
- * `write-excel-file` — the maintained sibling of `read-excel-file`, already
- * trusted in this tree for building test fixtures. The alternatives were
- * rejected for the reasons `extract-spreadsheet.ts` documents: SheetJS CE is
- * abandoned with open advisories, `node-xlsx` resolves through a CDN tarball,
- * `exceljs` (legacy's writer) is unmaintained since 2023, and
- * `@office-kit/xlsx` is still pre-1.0 (0.9.0, checked 2026-08-08).
- *
- * ## Conflict = anything the head cannot vouch for
- *
- * The projector's recorded head hash is the ONLY authority on what this sink
- * last wrote. A workbook whose bytes hash differently was changed by the
- * operator or another process; a workbook present with no head, or a head
- * with no workbook, is the same uncertainty from another side. Every arm
- * throws `ArtifactSinkConflictError` naming both hashes — and on a byte
- * mismatch the intended update is PRESERVED beside the operator's file
- * (`<workbook>.pending-<outboxId>.xlsx`), never written over it.
- */
+// The recorded head hash owns sink identity; preserve mismatched operator bytes and write the intended update beside them.
 import { createHash } from "node:crypto";
 import { lstat, mkdir, open, readFile, realpath, rename, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
@@ -154,9 +121,7 @@ export function createXlsxRetentionSink(options: Readonly<{ workbookPath: string
         String(row.createdAt),
       ];
 
-      // The hash is verified BEFORE the bytes are interpreted: operator-edited
-      // bytes may not even parse as a workbook, and a parse failure must not
-      // mask the real finding (somebody else changed the file).
+      // Verify the head hash before parsing; malformed edited workbooks must still report a conflict.
       if (stored.present && head !== undefined) {
         const actual = contentSha256(stored.bytes);
         if (actual !== head.contentSha256) {
@@ -204,9 +169,7 @@ export function createXlsxRetentionSink(options: Readonly<{ workbookPath: string
         if (!stored.present) {
           throw new Error("retention upsert found an existing row without existing bytes; impossible state");
         }
-        // A duplicate key with identical content is a VERIFIED no-op: the
-        // hash-checked bytes on disk already say what this row says, so
-        // nothing is rewritten and the recorded hash stays authoritative.
+
         if (request.previousArtifact === undefined) throw new Error("generated-artifact-previous-version-unavailable");
         const artifact = request.previousArtifact;
         request.prepare(artifact);

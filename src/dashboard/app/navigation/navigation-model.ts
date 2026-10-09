@@ -46,10 +46,8 @@ export function useDashboardNavigation({ route, setRoute, day, activeWorkflowId,
     guard(proceed);
   }, [route.settings]);
 
-  // Browser Back/Forward changes the address before it emits `popstate`. A
-  // dirty Settings page first returns to its stable cursor, without replacing
-  // the browser's target entry, then lets the same page-owned guard either
-  // keep it or atomically replay that target.
+    // Browser Back/Forward changes the address before it emits `popstate`. A dirty
+  // Settings page returns to its stable cursor, then replays the target atomically.
   onPopstateRef.current = (target: RouteHistoryTarget): void => {
     if (route.settings === undefined || target.route.settings !== undefined) {
       nativeHistory.accept(target);
@@ -82,14 +80,8 @@ export function useDashboardNavigation({ route, setRoute, day, activeWorkflowId,
         applyingNav.current = true;
         setNavHistory(next);
         setActiveWorkflowId(place.workflow);
-        // Preserve the requested section; the selection boundary names a section
-        // the restored run cannot offer instead of silently opening another tab.
-        // Every takeover clears, exactly as the switcher does: a place is a spot
-        // in the QUEUE, and restoring one under an Archive overlay would move the
-        // panel behind a screen the operator cannot see it through. The day moves
-        // with the run for the same reason the demo's does — a place restored
-        // into the wrong partition lands on an empty queue and reads as a broken
-        // button.
+                // Every takeover clears, exactly as the switcher does: a place is a spot in the QUEUE.
+        // the QUEUE, and the day moves with the run so a restore never lands on the wrong partition.
         setRoute({
           ...route,
           intake: undefined,
@@ -111,7 +103,7 @@ export function useDashboardNavigation({ route, setRoute, day, activeWorkflowId,
     [navHistory, route, setRoute, leaveSettings, setActiveWorkflowId],
   );
 
-  /** what each control will actually do, named on its face rather than guessed at */
+  /** what each control will actually do */
   const nameRun = useCallback(
     (runId: string): string | undefined =>
       dayWire?.queueSurfaces.find((surface) => String(surface.runId) === runId)?.title,
@@ -120,7 +112,7 @@ export function useDashboardNavigation({ route, setRoute, day, activeWorkflowId,
 
   const navBackTo = navDestinationLabel(navHistory, "back", nameRun, workflowLabelOf);
   const navForwardTo = navDestinationLabel(navHistory, "forward", nameRun, workflowLabelOf);
-  /** The bar's history controls, as ONE object per change rather than per render (D4). */
+  /** The bar's history controls, as ONE object per change rather than per render. */
   const nav = useMemo(
     (): NavControls => ({
       canBack: canGoBack(navHistory),

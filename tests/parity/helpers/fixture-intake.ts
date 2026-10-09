@@ -1,20 +1,4 @@
-/**
- * The intake corpus for parity adapter #1 (ref frontend-backend-integration §7.2, 2i-E3).
- *
- * Nothing here is a hand-typed wire payload. A grid of cells goes in, and the
- * REAL domain functions produce every derived fact on the way out — the ranked
- * header candidates, the column ids and their layout fingerprint, the
- * suggestion scores and their reasons, and the per-row dispositions from the
- * one validation pipeline the kernel itself runs. That is what makes these
- * references evidence: a screenshot of a suggestion score is a screenshot of
- * what the scorer actually returns, and a change to the scorer moves the
- * picture rather than quietly disagreeing with it.
- *
- * The grid is deliberately awkward in the ways real exports are — a title row
- * and a blank row above the headers, an EID with a dash in it, one person
- * listed twice, and a row with neither identifier — because the states worth
- * photographing are the ones where the operator has to decide something.
- */
+
 import { CANONICAL_FIELDS } from "../../../src/models/fields/registry.js";
 import { deriveItemId } from "../../../src/rules/identity/identifiers.js";
 import { ItemIdSchema } from "../../../src/rules/identity/ids.js";
@@ -32,12 +16,7 @@ import { workflowPlanning } from "../../../src/workflow-kit/workflow.js";
 import { personLookupIntake } from "../../../src/workflows/person-lookup/workflow.js";
 import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
 
-/**
- * Two sessions, because the two states worth photographing are two POINTS IN
- * ONE FLOW and the workspace addresses a session by id. Giving them one id and
- * a hidden toggle would have made the reference set depend on a control the
- * product does not have.
- */
+// Use separate session ids for separate flow states; a hidden phase switch would not model the real route.
 export const FIXTURE_INTAKE_IDS = Object.freeze({
   mapping: "7f1c9d20-4b6e-4a51-9c33-0b21d7e5a840",
   validated: "9a34be71-2c08-4d19-88f5-6e0b7c214d95",
@@ -163,11 +142,7 @@ function sessionWire(input: Readonly<{
   });
 }
 
-/**
- * Mid-mapping: `emplId` is bound, `name` is not, and the scorer's proposal for
- * it sits beside the empty control. This is the state the whole design exists
- * for — a decision and a proposal on one row, told apart by where they are.
- */
+
 export const FIXTURE_INTAKE_MAPPING = sessionWire({
   intakeSessionId: FIXTURE_INTAKE_IDS.mapping,
   bindings: [BINDINGS[0]],
@@ -231,7 +206,7 @@ export const FIXTURE_INTAKE_MANIFEST = IntakeSessionWireSchema.parse({
   },
 });
 
-/** A validated candidate with prior-plan evidence for the Rerun diff tab. */
+
 export const FIXTURE_INTAKE_RERUN = IntakeSessionWireSchema.parse({
   ...FIXTURE_INTAKE_VALIDATED,
   intakeSessionId: FIXTURE_INTAKE_IDS.rerun,

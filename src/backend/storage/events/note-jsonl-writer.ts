@@ -1,11 +1,4 @@
-/**
- * The JSONL note writer — the high-volume half of the D10 split (ref dashboard-surfaces
- * §1.1). Notes are evidence, not control state: log lines and structured
- * fields addressed to their exact task attempt or worker/browser lifetime.
- *
- * Classified diagnostic fields and task logger fields retain their original
- * values for the local operator; invalid diagnostic fields remain counted.
- */
+
 import { z } from "zod";
 import type { Clock } from "../../../rules/time/clock.js";
 import { localDatePart } from "../../../rules/time/clock.js";

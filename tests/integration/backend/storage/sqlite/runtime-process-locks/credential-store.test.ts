@@ -155,7 +155,7 @@ function applied(
   return outcome.record;
 }
 
-describe("D336 independent credential store", () => {
+describe("independent credential store", () => {
   it("keeps absent read/replay read-only, then creates one 0700/0600 authority on first apply", () => {
     const f = fixture();
     const baseline = f.store.read();

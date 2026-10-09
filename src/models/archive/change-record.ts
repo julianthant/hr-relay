@@ -1,32 +1,9 @@
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
-/**
- * Charter §25's change record for a version bump — its own leaf module.
- *
- * It lives here rather than in `./model.ts` because BOTH the archive model and
- * `src/domain/commands.ts` need it, and the model already imports the command
- * vocabulary (`SemverSchema`, `VersionScopeSchema`). A shared leaf that value-
- * imports nothing but zod is the only shape that does not put a cycle between
- * them.
- */
+/** Charter §25's change record for a version bump, as its own leaf module: the archive model and the command vocabulary both need it, and a shared zod-only leaf keeps a cycle out between them. */
 import { z } from "zod";
 
-/**
- * Charter §25's change record, as a value (ref dashboard-surfaces §10.2: "the scope of a bump
- * is declared by whoever makes the change … and recorded in that update's
- * change record — same store as fix records: what, why, version, commit").
- *
- * Every sweep on the Archive could say WHO applied it and WHEN, and nothing
- * about WHY. Six months later that is the only question anyone asks of a bump,
- * and it is the one an archive is FOR — so it is authored at plan time,
- * carried into the application verbatim, and covered by the plan fingerprint
- * the operator's apply cites back.
- *
- * `commit` is an explicit absence union rather than a required string. A
- * workflow bump usually has a commit and an application bump often does not
- * (the operator shipped a build, not a change), and demanding a hash would
- * mean a fabricated one on the record that exists to be trustworthy.
- */
+/** What a bump changed and why, carried from plan to application; `commit` is an absence union because demanding a hash would fabricate one. */
 export const VersionBumpChangeRecordSchema = z.strictObject({
   /** MAJOR is a shape change; MINOR is behaviour inside the same shape. */
   kind: z.enum(["major", "minor"]),
@@ -68,7 +45,6 @@ export const LegacyLifecycleVersionChangeSchema = z.strictObject({
     context.addIssue({ code: "custom", message: "version-change-membership-invalid" });
   }
 });
-
 
 const ApplicationVersionSchema=z.string().regex(/^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u);
 const IdentitySchema=z.strictObject({workflow:z.string().min(1),version:z.number().int().positive(),fingerprint:z.string().regex(/^[a-f0-9]{64}$/u)});

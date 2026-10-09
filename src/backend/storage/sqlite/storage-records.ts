@@ -54,21 +54,7 @@ export const OpaqueAuthorityRecordSchema = z.strictObject({
   createdAt: IsoInstantSchema,
 });
 
-/**
- * The version-bump plan row (D179). The released v1 shell held an opaque
- * `payload` and a three-state enum; it had ZERO production rows because the
- * whole `version-archive` family was deferred, so this is the first real shape
- * rather than a migration of one — the same D164 precedent `artifact_outbox`
- * set when its first producer landed.
- *
- * Two shell corrections come with it. The payload is the exact
- * `VersionBumpPlan`, not a schema-bound blob, because the apply arm reads the
- * plan's own scope back and a blob would let a reader see whatever it parsed
- * the bytes as. And `rejected` is gone: a bump that meets a blocker leaves the
- * plan `planned` so the operator can clear the blocker and apply the SAME
- * reviewed plan — a rejected state would have been written by nothing and read
- * by nobody.
- */
+
 export const VersionPlanStorageRecordSchema = z.strictObject({
   versionPlanId: VersionPlanIdSchema,
   version: PositiveIntSchema,
@@ -97,21 +83,13 @@ export const VersionPlanStorageRecordSchema = z.strictObject({
   }
 });
 
-/**
- * The applied bump (D179) — charter §25's change record, insert-only. It is a
- * separate row from the plan on purpose: the plan is what was REVIEWED, this
- * is what was DONE, and the archived runs reference this one.
- */
+
 export const VersionBumpApplicationStorageRecordSchema = VersionBumpApplicationSchema;
 
-/**
- * One archived run, self-contained (D179). The row is immutable in SQL, not
- * merely by convention: an archive that could be rewritten would be a worse
- * record than the live row it replaced.
- */
+
 export const ArchivedRunStorageRecordSchema = ArchivedRunRecordSchema;
 
-/** Relaunch provenance (D179) — insert-only, keyed by the FRESH run. */
+
 export const ArchiveRelaunchStorageRecordSchema = ArchiveRelaunchRecordSchema;
 
 /** The CAS `apply-version-bump` presents to move a plan `planned → applied`. */
@@ -134,22 +112,10 @@ export const VersionPlanConsumeOutcomeSchema = z.discriminatedUnion("state", [
 ]);
 export type VersionPlanConsumeOutcome = z.infer<typeof VersionPlanConsumeOutcomeSchema>;
 
-/**
- * Ref dashboard-surfaces §2.1 (D45) / ref data-intake-and-edit-data §4.1: one stable-keyed durable projection row,
- * committed atomically with the producing node's checkpoint. `projectionId`,
- * `keyValues`, and the source identity joined the record at D164, when the
- * first producer landed — the released v1 shell had zero production rows, so
- * this is the first real shape, not a migration of one. `projectedAt` exists
- * exactly when `state` is `"projected"` (enforced by the repository's ack).
- */
+
 export { ArtifactOutboxStorageRecordSchema, ArtifactSinkHeadRecordSchema, ArtifactOutboxAckRequestSchema, ArtifactSinkHeadRecordRequestSchema } from "../../../models/artifacts/generated-artifact.js";
 
-/**
- * A diagnostic attachment is stored beside its bundle so a content-addressed
- * artifact can be found without scanning every bundle's JSON array. The row
- * retains the bundle id explicitly; the attachment arm itself is ref operator-trust §2.2's
- * exact union, never a loosened copy.
- */
+
 export const DiagnosticAttachmentStorageRecordSchema = z.strictObject({
   bundleId: DiagnosticBundleIdSchema,
   attachment: DiagnosticAttachmentSchema,
@@ -162,7 +128,7 @@ export const ProjectionStorageRecordSchema = z.strictObject({
   updatedAt: IsoInstantSchema,
 });
 
-/** Exact historical review/application sources, never executable current claims. */
+// Retained review sources authorize exact replay only, never current execution.
 export const HistoricalVersionChangeSchema = z.strictObject({
   schemaVersion: z.literal("historical-archive-v1"), state:z.literal("historical"), changeId: z.string().uuid(),
   sourceDigest: z.string().regex(/^[a-f0-9]{64}$/u),
@@ -191,10 +157,7 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   transaction_selection: TransactionSelectionRecordSchema,
   run_search_index: RunSearchIndexRecordSchema, run_search_grams: RunSearchGramSchema, run_search_publication: RunSearchPublicationSchema, run_search_declarations: RunSearchDeclarationSchema, run_search_actors: RunSearchActorLinkSchema,
   run_summaries: RunSummarySchema, summary_publication: SummaryPublicationSchema,
-  // Ref dashboard-surfaces §2.3 names `workflow_runs` and `workflow_workers` the task/claim store. Schema v4 gave
-  // both their typed columns, so neither is an opaque payload any more: a row
-  // that predates the typing fails validation at boot rather than being
-  // reinterpreted as a run or a worker it was never written as.
+
   workflow_runs: RunRecordSchema,
   run_failures: FailureRecordSchema,
   run_results: RunResultRecordSchema,
@@ -209,7 +172,7 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   workflow_workers: WorkerLeaseRecordSchema,
   delegation_dependencies: DependencyRecordSchema,
   run_delegations: DelegationManifestSchema,
-  // D341: pre-D341 protected commands/audits name retired entries; the frozen arm keeps them readable.
+  // Read frozen protected command and audit representations through their matching schema family.
   commands: z.union([BulkParentCommandRecordSchema, AuthorityCommandRecordSchema, PreFloorCommandSchema, HistoricalProtectedSettingsCommandSchema, HistoricalNotificationSnoozeCommandSchema, HistoricalProviderKeysCommandSchema]),
   command_audits: z.union([AuthorityCommandAuditRecordSchema, PreFloorCommandAuditSchema, HistoricalProtectedSettingsAuditSchema, HistoricalNotificationSnoozeAuditSchema, HistoricalProviderKeysAuditSchema]),
   notifications: NotificationRecordSchema,
@@ -225,22 +188,22 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   workflow_run_requests: StartPlanRecordSchema,
   run_operations: WriteIntentRecordSchema,
   run_operation_attempts: WriteAttemptRecordSchema,
-  /** Typed at D164, when the first sink projector landed. */
-  /** Ref data-intake-and-edit-data §2.2's in-progress session (2i-E1). */
-  imported_artifacts: ImportedArtifactSchema,
-  /** Ref data-intake-and-edit-data §5's immutable plan manifest (D159). */
 
-  /** Ref data-intake-and-edit-data §4.3's admitted page extraction (D159). */
+
+  imported_artifacts: ImportedArtifactSchema,
+
+
+
   extracted_artifacts: AdmittedExtractionSchema,
-  /** D179 / ref dashboard-surfaces §10.2 — the archive model's three durable facts. */
+
   version_bump_applications: VersionBumpApplicationStorageRecordSchema,
   archived_runs: ArchivedRunStorageRecordSchema,
-  /** D267 / ref execution-and-sessions §10 — the per-credential Duo ceremony lease. */
+
   worker_auth: DuoCeremonyLeaseRecordSchema,
-  /** D269 / ref execution-and-sessions §11 — the per-workflow pool declaration and the run session. */
+
   worker_pools: WorkerPoolRecordSchema,
   workflow_run_batches: RunSessionRecordSchema,
-  /** D308 — the delete tombstone: the one row a deleted run leaves behind. */
+
   deleted_runs: DeletedRunRecordSchema,
   database_upgrades: AuthorityUpgradeRecordSchema,
   timeline_events: TimelineEventRecordSchema,

@@ -10,23 +10,7 @@ import { archivedRunReferenceFingerprint } from "../../../../../../src/models/ar
 import { RunRecordService } from "../../../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { canonicalJsonStringify } from "../../../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../../../src/rules/validation/sha256.js";
-/**
- * The D80 archive model, clause by clause (2i-G, D179).
- *
- * Phase 2's exit criterion reads: *"a version bump moves prior-version runs
- * into a read-only Archive, an archived run renders with zero old-version code
- * paths, the ledger is untouched, relaunch starts a fresh current-version run,
- * and a bump REFUSES while any prior-version run is non-terminal."* Each `it`
- * below pins exactly one of those five clauses against the REAL authority
- * database and the REAL command kernel — no repository fake, no stubbed
- * projection, and every assertion is on a durable row or on bytes on disk
- * rather than on a log line.
- *
- * The descriptor "bump" is simulated the way it really happens: the registry
- * the kernel resolves against is swapped for one whose version and
- * `contractFingerprint` have moved, which is precisely what a source edit plus
- * `npm run build:manifest` produces. Nothing here rewrites a stored run.
- */
+
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -91,13 +75,7 @@ const ArchiveCanonicalInput = defineCanonicalInput(
   [{ eid: "10800000" }, { eid: "10800001" }],
 );
 
-/**
- * ONE workflow at two versions. A real bump is a source edit plus
- * `npm run build:manifest`, which is exactly what changing `version` and
- * `contractFingerprint` together produces — and nothing about a bump ever
- * rewrites a stored run, which is why the fixture swaps the REGISTRY the
- * kernel resolves through rather than touching authority.
- */
+
 function descriptorAt(version: number, fingerprint: string): AnyWorkflowDescriptor {
   return defineWorkflowDescriptor({
     id: "archive-fixture",
@@ -123,10 +101,7 @@ function descriptorAt(version: number, fingerprint: string): AnyWorkflowDescript
         replay: "checkpoint",
         bind: ({ input }) => ({ eid: input.eid }),
       })
-      // The archive fixture must be capable of producing a REAL rehearsal
-      // envelope. Dry-run support is derived from transaction nodes (D209), so
-      // a read-only graph would correctly refuse the start before this suite
-      // could prove that Archive preserves `dryRun:true`.
+      // A read-only graph cannot rehearse; archive fixtures need a transaction-supported preview envelope.
       .transaction("previewable-write", {
         dependsOn: ["probe"],
         prepare: { uses: WriteFixturePrepare, bind: ({ input }) => ({ eid: input.eid }) },
@@ -153,28 +128,15 @@ interface World {
   /** Flipped by `bumpRegistry` — the kernel resolves through this box. */
   registry: AnyWorkflowDescriptor;
   readonly ids: { uuid: () => string };
-  /**
-   * What the frozen row will claim this run resolved. Mutable so one test can
-   * archive a run that touched a TEST instance and read the fact back off the
-   * INDEX entry, which is the only place it was previously unavailable.
-   */
+  // Mutable resolved-instance facts let the index copy be tested against the frozen row.
   resolvedInstances: readonly { system: string; instance: "prod" | "test" }[];
-  /**
-   * What the frozen row will claim this run WARNED about. Mutable for the same
-   * reason `resolvedInstances` is: the index entry copies the row's own field,
-   * and the only way to prove a copy is to move the thing being copied.
-   */
+  // Mutable warning facts let the index copy be tested against the frozen row.
   warnings:
     | { state: "present"; count: number; first: string }
     | { state: "absent"; reason: string };
 }
 
-/**
- * A snapshot source that returns a MINIMAL but schema-valid frozen pair. The
- * production one is `createArchiveSnapshotSource` over the run/queue
- * projection; this suite is about the archive's durable semantics, and wiring
- * a whole JSONL projection here would test the projection instead.
- */
+
 function snapshotSource(world: {
   database: AuthorityDatabase;
   resolvedInstances?: readonly { system: string; instance: "prod" | "test" }[];
@@ -208,13 +170,11 @@ function snapshotSource(world: {
           resolvedInstances: world.resolvedInstances ?? [],
           dryRun: run.envelope.dryRun,
           priority: run.envelope.priority,
-          // D230: the archived row freezes the ordinal the live row carried;
-          // a run enqueued before schema v15 froze an absence, and resolving
-          // one now would be back-filling on the archive's read path.
+
           runNumber: run.runNumber === undefined
             ? { state: "absent", reason: "enqueued before runs carried a workflow ordinal (D230)" }
             : { state: "present", value: run.runNumber },
-          // D269: the same read-forward shape for the session the live row carried.
+
           session: run.sessionId === undefined
             ? { state: "absent", reason: "this run predates D269 session grouping, or retries a run that does" }
             : { state: "present", sessionId: run.sessionId },
@@ -260,13 +220,7 @@ function snapshotSource(world: {
           availableSections: ["logs"],
         },
         failure: { state: "absent", reason: "the run did not settle with a structured failure" },
-        /*
-         * D223's frozen sections. The production seam builds these from the
-         * span fold and the note stream; this suite is about the archive's
-         * durable semantics, so the payloads are minimal and REAL — a note
-         * line that comes back verbatim is what proves the freeze rather than
-         * a re-derivation.
-         */
+
         sections: {
           logs: {
             state: "present",
@@ -439,9 +393,7 @@ function plan(
     payload: {
       targetVersion: "0.2.0",
       changeFingerprint: HASH_B,
-      // Charter §25's change record, authored at plan time and carried into
-      // the application verbatim. Without it a sweep can say who and when, and
-      // nothing about why.
+
       changeRecord: {
         kind,
         what: kind === "major"
@@ -476,13 +428,7 @@ function apply(world: World, reviewed: ReturnType<typeof plan>): CommandResult {
   }));
 }
 
-/**
- * The archive read deps with an EMPTY descriptor list — ref frontend-backend-integration §8 guard #11
- * the only way it proves anything. Nothing on the read path can resolve the
- * version this run executed, or any version at all. The ledger read-through is
- * over the SAME state root the world writes to, so a pointer this test
- * archived resolves the way production would.
- */
+// Read archives with an empty registry so current definitions cannot repair missing frozen facts.
 function reportOf(world: World, runId: string) {
   const report = createRunLifecycleStorage(world.database).readReport(runId); assert.ok(report); return report;
 }
@@ -514,7 +460,7 @@ function ledgerBytes(stateRoot: string): readonly [string, string][] {
     .map((name) => [name, readFileSync(join(ledgerRoot, name), "utf8")] as const);
 }
 
-describe("the D80 archive model", () => {
+describe("the archive model", () => {
   for (const changed of ["raw", "parsed", "both"] as const) {
     it(`refuses changed protected ${changed} input at archive reads and commands without effects`, () => {
       const world = createWorld(true);
@@ -740,13 +686,8 @@ describe("the D80 archive model", () => {
     assert.equal(JSON.stringify(world.database.authority.archivedRuns.get(historical.runId)).includes(raw), true);
   });
 
-  it("reads a PRE-D223 record forward and fabricates no tab for it", () => {
-    /*
-     * D133's rule on the archive's own schema. A generation-1 record is stored
-     * exactly as it was written; the reader admits it, and the wire says the
-     * payloads were never captured rather than serving empty panels that would
-     * read as "this run did nothing".
-     */
+  it("reads a generation-1 record forward and fabricates no tab for it", () => {
+
     const world = createWorld(true);
     world.database.withAuthorityTransaction((repositories) => {
       repositories.runs.enqueue(QUEUED_RUN);
@@ -761,9 +702,7 @@ describe("the D80 archive model", () => {
     const stored = world.database.authority.archivedRuns.get(ARCHIVED_RUN.runId);
     assert.equal(stored?.archiveSchemaGeneration, 1);
     assert.equal(stored?.sections, undefined);
-    // The stored digest is BYTE-IDENTICAL to the one the record was written
-    // with: canonical JSON omits an absent key, so a generation-1 row's
-    // identity did not move when generation 2 was added.
+
     assert.equal(stored?.contentDigest, ARCHIVED_RUN.contentDigest);
 
     const detail = buildArchivedRunDetail(emptyRegistryDeps(world), ARCHIVED_RUN.runId);
@@ -771,22 +710,19 @@ describe("the D80 archive model", () => {
     assert.equal(detail.sections.state, "absent");
     assert.match(
       detail.sections.state === "absent" ? detail.sections.reason : "",
-      /schema generation 1, which predates D223/u,
+      /schema generation 1, which has no frozen section payloads/u,
     );
 
-    // The SAME rule for D242's frozen short code, one generation later. The
-    // record holds no code, the wire says so and names its generation, and
-    // nothing derives one from the trace id's `pl-` prefix — which would look
-    // right and be wrong for a run planned under a code since changed.
+
     assert.equal(stored?.workflowCode, undefined);
     assert.equal(detail.workflowCode.state, "absent");
     assert.match(
       detail.workflowCode.state === "absent" ? detail.workflowCode.reason : "",
-      /schema generation 1, which predates D242's frozen workflow short code/u,
+      /schema generation 1, which has no frozen workflow short code/u,
     );
   });
 
-  it("reads a pre-D269 archived row forward without changing its stored digest", () => {
+  it("reads an archived row without session grouping forward without changing its digest", () => {
     const world = createWorld(true);
     const { session: _session, ...preD269Row } = ARCHIVED_RUN.row;
     const { contentDigest: _oldDigest, ...historicalContent } = ARCHIVED_RUN;
@@ -809,7 +745,7 @@ describe("the D80 archive model", () => {
     assert.equal(stored?.contentDigest, historicalDigest);
     assert.deepEqual(buildArchivedRunDetail(emptyRegistryDeps(world), ARCHIVED_RUN.runId).row.session, {
       state: "absent",
-      reason: "no session recorded (archived before D269)",
+      reason: "no session recorded in the archived row",
     });
   });
 
@@ -896,12 +832,7 @@ describe("the D80 archive model", () => {
     assert.equal(ArchivedRunRecordSchema.safeParse(generation3).success, true);
   });
 
-  /**
-   * The generation-3 writer rules (D242), asserted at the schema rather than
-   * through a sweep: a WRITER may not adopt the read-forward shape, and the
-   * label and the code come from ONE registry lookup so they cannot disagree
-   * about whether the descriptor resolved.
-   */
+
   it("refuses an archived record whose frozen code and generation disagree, in both directions", () => {
     const generation3 = {
       ...ARCHIVED_RUN,
@@ -911,8 +842,7 @@ describe("the D80 archive model", () => {
     };
     assert.equal(ArchivedRunRecordSchema.safeParse(generation3).success, true);
 
-    // A generation-3 record that names no code would be indistinguishable from
-    // one written before codes were frozen.
+
     const { workflowCode: _dropped, ...codeless } = generation3;
     const refusedCodeless = ArchivedRunRecordSchema.safeParse(codeless);
     assert.equal(refusedCodeless.success, false);
@@ -927,7 +857,7 @@ describe("the D80 archive model", () => {
     assert.equal(refusedEarly.success, false);
     assert.match(
       JSON.stringify(refusedEarly.error?.issues ?? []),
-      /predates D242's frozen short code/u,
+      /predates the frozen short code/u,
     );
 
     // Half-resolved: a label present beside an absent code describes a
@@ -941,12 +871,7 @@ describe("the D80 archive model", () => {
   });
 
   it("archives a run that FILED a ledger line, and resolves it back from the archive", () => {
-    /*
-     * The end-to-end shape `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/findings/archive.md` was missing: a REAL
-     * fenced-and-committed write intent, a REAL projected ledger line on disk,
-     * and an archived record that names it by `(system, date, sequence)` and
-     * copies nothing. Everything below is durable state or bytes on disk.
-     */
+
     const world = createWorld();
     const archived = startRun(world, "10873698", true);
     const run = world.database.authority.runs.get(archived);
@@ -963,9 +888,7 @@ describe("the D80 archive model", () => {
       configFingerprint: run.envelope.configFingerprint,
       instance,
       confirmedAt: NOW,
-      // The UCPath termination's OWN proof, so the archived line resolves
-      // through `LEDGER_PRESENTATION_DECLARATIONS` rather than through the
-      // undeclared fallback — the declaration and the archive meet here.
+
       proof: {
         schemaHash: deriveSchemaHash(UcpathCreateTermination.writeSafety.completion.proofSchema, "output"),
         value: {
@@ -1108,7 +1031,7 @@ describe("the D80 archive model", () => {
     assert.equal(result.message.includes(String(blockingRun?.envelope.traceId)), true, result.message);
     assert.equal(result.message.includes("queued"), true, result.message);
 
-    // Fail-closed: NOTHING was archived, not even the run that was eligible.
+
     assert.equal(world.database.authority.archivedRuns.isArchived(terminal), false);
     assert.equal(world.database.authority.archivedRuns.list().length, 0);
     assert.equal(world.database.authority.versionBumpApplications.list().length, 0);
@@ -1135,12 +1058,7 @@ describe("the D80 archive model", () => {
     }
   });
 
-  /**
-   * D308 — the Archive's DELETE door, from the digest the surface reads to the
-   * rows that leave. The dashboard half (the confirm, the envelope, the
-   * navigation) is pressed in `tests/unit/dashboard/archive-delete-door.test.ts`;
-   * this is the half only real authority can answer.
-   */
+
   it("deletes an archived run against the digest its detail served, and refuses any other", () => {
     const world = createWorld();
     const archived = startRun(world, "10873698", true);
@@ -1178,14 +1096,8 @@ describe("the D80 archive model", () => {
   });
 });
 
-/**
- * D274 (ref dashboard-surfaces §9.5.1): "A MINOR bump archives nothing and
- * cannot be blocked: it records the new version without moving prior-version
- * runs … A MINOR bump archives nothing, so non-terminal runs do not block it."
- * A MAJOR bump keeps the D80 semantics the suite above pins: it archives the
- * affected set and refuses while any prior-version run is non-terminal.
- */
-describe("D274 — bump kind semantics", () => {
+
+describe("bump kind semantics", () => {
   it("a minor bump cannot be blocked — it applies while a prior-version run is in flight", () => {
     const world = createWorld();
     const inFlight = startRun(world, "10873698", false);
@@ -1233,10 +1145,7 @@ describe("D274 — bump kind semantics", () => {
 
     const reviewed = plan(world, "minor");
     const stored = world.database.readVersionChange(reviewed.versionPlanId);
-    // …and the MINOR plan lists neither: its candidates are "what apply will
-    // archive" and its blockers are "what apply will refuse on", and for a
-    // minor bump both are empty by definition (D274). Listing them would be a
-    // review copy that lies about the sweep it reviews.
+
     assert.deepEqual([...(stored?.members ?? ["unread"])], []);
     assert.deepEqual([...(stored?.blockers ?? ["unread"])], []);
     assert.equal(stored?.change?.kind, "minor");
@@ -1251,10 +1160,7 @@ describe("D274 — bump kind semantics", () => {
 
   it("refuses to apply a generation-1 plan that declares no bump kind, rather than guessing one", () => {
     const world = createWorld(true);
-    // A stored generation-1 plan predates charter §25's change record: those
-    // bytes are on disk and nothing may back-fill them, so it names NO kind.
-    // Guessing major would archive runs nobody reviewed for archival; guessing
-    // minor would silently downgrade a sweep to a no-op.
+
     const inserted = world.database.authority.versionPlans.insert(VERSION_PLAN_ROW);
     assert.equal(inserted.state, "inserted");
 
@@ -1292,8 +1198,7 @@ describe("D274 — bump kind semantics", () => {
       archiveSchemaGeneration: CURRENT_ARCHIVE_SCHEMA_GENERATION,
       changeRecord: minorRecord,
     };
-    // A minor plan carrying a candidate — or a blocker — is a stored claim
-    // that a minor bump will archive or can be refused, which D274 forbids.
+
     assert.equal(VersionBumpPlanSchema.safeParse(minorPlan).success, false);
     assert.equal(
       VersionBumpPlanSchema.safeParse({
@@ -1332,7 +1237,7 @@ describe("D274 — bump kind semantics", () => {
     const result = apply(world, plan(world));
     assert.equal(result.state, "applied", result.state === "rejected" ? result.message : "major apply refused");
 
-    // The application row names exactly the two prior-version runs.
+
     const applications = world.database.historicalVersionChanges().filter(row => row.state === "applied").map(row => VersionChangeStorageSchema.parse(row));
     assert.equal(applications.length, 1);
     assert.deepEqual([...(applications[0]?.members.map(member => member.runId) ?? [])].sort(), [priorA, priorB].sort());

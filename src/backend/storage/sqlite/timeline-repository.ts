@@ -77,7 +77,7 @@ function invalidTimelineRecord(value: unknown): TimelineRecordError {
   return new TimelineRecordError("timeline-record-invalid");
 }
 
-/** Mirrors are checked on reads too, including databases whose checks were bypassed externally. */
+// Validate mirrored columns on reads; external writes can bypass SQLite checks.
 export function timelineEventFromRow(raw: unknown): TimelineEventRecord {
   const parsedRow = RowSchema.safeParse(raw);
   if (!parsedRow.success) throw new TimelineRecordError("timeline-record-invalid");

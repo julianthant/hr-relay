@@ -1,37 +1,14 @@
-/**
- * Kronos timecard pay-period range resolution — pure, Clock-injected domain logic.
- *
- * PORTED (copy with provenance, D93 cross-repo rules) from the legacy repo:
- *   commit 793abe1f8265f3213ffe8a80d6cfd9860a32a1dc
- *   path   src/services/timecard/index.ts
- *   blob   91c5b930a77dcc40c4185475ab59d720edcc90b7
- *
- * Kronos grids render punch dates without a year ("Mon 12/30"), so every parsed
- * month/day must be resolved against a window the view is actually showing. The
- * legacy module carried `now: Date = new Date()` defaults; those defaults are
- * exactly what reintroduced the Dec→Jan year-stamp bug whenever a caller omitted
- * the argument. Here every reference time is an explicit `Clock` read, so there
- * is no default to omit and `clock-single-source` covers it.
- *
- * Browser orchestration is NOT here — see `src/backend/systems/kronos-shared/timecard.ts`.
- */
+/** Pay-period ranges use the injected clock. */
 import { z } from "zod";
 import type { Clock } from "./clock.js";
 
-/**
- * Inclusive date window a grid-parsed month/day pair must fall inside.
- * Compared at DAY granularity — the time-of-day on `start`/`end` is ignored.
- */
+/** Inclusive date window a grid-parsed month/day pair must fall inside, compared at DAY granularity. */
 export const TimecardDateRangeSchema = z.strictObject({
   start: z.date(),
   end: z.date(),
 });
 
-/**
- * Month/day pair read directly from a visible Kronos grid row. The grid renders
- * no year, so this is the untrusted half of every timecard date and its bounds
- * are enforced here rather than at each call site.
- */
+/** A month/day pair read directly from a visible Kronos grid row; the grid renders no year, so this is the untrusted half of every timecard date. */
 export const TimecardMonthDaySchema = z.strictObject({
   month: z.number().int().min(1).max(12),
   day: z.number().int().min(1).max(31),
@@ -56,11 +33,7 @@ function startOfDay(at: Date): number {
   return new Date(at.getFullYear(), at.getMonth(), at.getDate()).getTime();
 }
 
-/**
- * Whole calendar days from `from` to `to`. A DST transition makes the raw
- * millisecond difference 23h or 25h, so the quotient is rounded — every caller
- * here compares day counts, never sub-day precision.
- */
+/** Whole calendar days from `from` to `to`; a DST transition makes the raw millisecond difference 23h or 25h, so the quotient is rounded. */
 function calendarDaysBetween(from: Date, to: Date): number {
   return Math.round((startOfDay(to) - startOfDay(from)) / DAY_MS);
 }
@@ -83,20 +56,13 @@ function assertValidDate(at: Date, label: string): void {
   if (!Number.isFinite(at.getTime())) throw new Error(`[timecard] ${label} is not a valid Date`);
 }
 
-/**
- * Bounds-check a grid pair through its own schema, but keep the legible
- * `[timecard] impossible <label> grid date M/D` message that names the offending
- * value — a raw Zod issue path would not say which of the two visible rows failed.
- */
+/** Bounds-check a grid pair through its own schema, keeping the legible message that names the offending value. */
 function assertValidMonthDayBounds(value: TimecardMonthDay, label: string): void {
   if (TimecardMonthDaySchema.safeParse(value).success) return;
   throw new Error(`[timecard] impossible ${label} grid date ${value.month}/${value.day}`);
 }
 
-/**
- * Compose a real calendar date, or `null` when JavaScript would silently roll
- * the day into the next month (2/30 → Mar 1, a non-leap 2/29 → Mar 1).
- */
+/** Compose a real calendar date, or `null` when JavaScript would silently roll the day into the next month. */
 function composeMonthDay(value: TimecardMonthDay, year: number): Date | null {
   const composed = new Date(year, value.month - 1, value.day);
   if (composed.getFullYear() !== year || composed.getMonth() !== value.month - 1
@@ -191,17 +157,7 @@ export function resolvePreviousVisibleTimecardRange(
   return requireSingleVisibleRange(candidates, "before the verified current pay period");
 }
 
-/**
- * Format a grid month/day pair as MM/DD/YYYY, resolving the YEAR against the
- * range the timecard view is actually showing. There is no reference-date
- * default: the year is the unique candidate in
- * `[range.start.getFullYear() .. range.end.getFullYear()]` whose composed date
- * falls inside `[range.start, range.end]` (inclusive, day granularity).
- *
- * Throws — never guesses — on an impossible month/day, zero candidate years
- * (the day cannot belong to the requested window), or two or more candidates
- * (a window wider than a year is ambiguous).
- */
+/** Format a grid month/day pair as MM/DD/YYYY, resolving the YEAR against the range the timecard view is actually showing; there is no reference-date default. */
 export function formatTimecardDate(
   month: number,
   day: number,
@@ -216,17 +172,7 @@ export function formatTimecardDate(
   return resolved;
 }
 
-/**
- * The same resolution, with the OUT-OF-WINDOW arm returned rather than thrown.
- *
- * A caller that is auditing a whole rendered grid needs to say *which* rows do
- * not belong to the window it applied — a formatter that throws on the first
- * one turns a describable anomaly (live run `sp-064821-1fd7`, 2026-08-14: a WFD
- * grid still rendering the CURRENT pay period after the period label had
- * already switched) into an unhandled error naming a single date. Every other
- * refusal stays a throw, because an impossible or ambiguous month/day is a
- * defect in the read rather than a fact about the window.
- */
+/** The same resolution, with the OUT-OF-WINDOW arm returned rather than thrown, so a caller auditing a whole grid can name which rows do not belong. */
 export function resolveTimecardDate(
   month: number,
   day: number,
@@ -265,20 +211,7 @@ export function resolveTimecardDate(
     : `${String(month).padStart(2, "0")}/${String(day).padStart(2, "0")}/${resolved}`;
 }
 
-/**
- * Positive check that a displayed pay-period label actually changed after a
- * "switch to previous period" action.
- *
- * Both Kronos systems close the period dropdown as soon as the click registers;
- * that only proves the dropdown DETACHED, never that the grid switched periods.
- * A blank BEFORE means the baseline was never read, so the switch CANNOT be
- * verified — that is a verification failure, not "assume it switched". When
- * `currentLabelPattern` is supplied, `after` must also no longer match it (New
- * Kronos can close the dropdown while still literally showing "Current Pay
- * Period").
- *
- * Callers must throw on `false`; `assertPeriodLabelSwitched` does that for them.
- */
+/** Positive check that a displayed pay-period label actually changed after a "switch to previous period" action; a closed dropdown only proves it detached. */
 export function didPeriodLabelSwitch(
   before: string,
   after: string,
@@ -304,22 +237,7 @@ export function assertPeriodLabelSwitched(
   );
 }
 
-/**
- * Conservative year-resolution windows for the two timecard reads, derived from
- * the Clock's now:
- *
- * - current pay period  ≈ [now − 60d, now + 7d]
- * - previous pay period ≈ [now − 120d, now + 7d]
- *
- * Kronos pay periods are at most a month long, so these comfortably contain
- * whatever period is displayed, and each window is well under ~330 days — any
- * month/day pair resolves to exactly ONE candidate year inside it.
- *
- * Offsets are applied in CALENDAR days, not `n * 86_400_000` milliseconds. The
- * legacy version used millisecond arithmetic, which lands an hour off local
- * midnight across a DST transition and can therefore shift a bound by a whole
- * day once `startOfDay` rounds it. Every bound here is local midnight exactly.
- */
+/** Conservative year-resolution windows for the two timecard reads, derived from the Clock's now. */
 export function timecardCheckWindows(
   clock: Clock,
 ): Readonly<{ current: TimecardDateRange; previous: TimecardDateRange }> {

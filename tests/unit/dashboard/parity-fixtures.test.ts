@@ -1,13 +1,7 @@
 import { fixtureIntakePresentation } from "../../parity/helpers/fixture-intake-routes.js";
 import { fixturePreflightReport } from "../../parity/helpers/fixture-preflight-routes.js";
 import { DEFAULT_DASHBOARD_PROFILE } from "../../parity/helpers/fixture-profile.js";
-/**
- * The parity fixture corpus is only trustworthy if it stays inside the strict
- * wire contracts AND internally consistent (D81: counts can never disagree
- * with the surfaces they summarize). Construction already schema-parses every
- * value; this suite pins the cross-value invariants and proves the fixture
- * BFF actually serves the corpus over real HTTP.
- */
+
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -37,18 +31,10 @@ afterAll(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup();
 });
 
-/**
- * The intake corpus (2i-E3) is derived, not typed: every column id, layout
- * fingerprint, suggestion score and row disposition comes from the same domain
- * functions the kernel runs. These cases assert the properties that make the
- * references EVIDENCE rather than decoration — a hand-edited fixture would
- * still schema-parse, so schema parsing alone proves nothing here.
- */
+
 describe("intake fixture corpus", () => {
   it("keeps suggestions out of bindings, which is the whole §2.5 invariant", () => {
-    // Mid-mapping: one binding confirmed, and a proposal for the OTHER target
-    // still sitting unapplied beside it. If the fixture ever folded one into
-    // the other, the reference would document the exact defect §2.5 bans.
+
     expect(FIXTURE_INTAKE_MAPPING.bindings.map((binding) => binding.targetFieldId)).toEqual(["emplId"]);
     const proposed = FIXTURE_INTAKE_MAPPING.suggestions.map((suggestion) => suggestion.targetFieldId);
     expect(proposed).toContain("name");
@@ -72,9 +58,7 @@ describe("intake fixture corpus", () => {
     const validation = FIXTURE_INTAKE_VALIDATED.validation;
     if (validation.state !== "validated") throw new Error("the validated fixture is not validated");
     const codes = new Set(validation.rejected.map((reject) => reject.code));
-    // A cell that cannot be read, a row the workflow's own schema refuses, and
-    // one person listed twice — the three shapes the review surface renders
-    // differently. A corpus of one kind would leave two arms unphotographed.
+
     expect(codes).toContain("cell-coercion");
     expect(codes).toContain("duplicate-identity");
     expect(codes).toContain("cross-field");
@@ -107,7 +91,7 @@ describe("intake fixture corpus", () => {
 });
 
 describe("parity fixture corpus", () => {
-  it("keeps D81 count semantics: statusCounts recount exactly from non-member surfaces", () => {
+  it("keeps count semantics: statusCounts recount exactly from non-member surfaces", () => {
     const countable = FIXTURE_DAY_WIRE.queueSurfaces.filter((surface) => surface.surfaceKind !== "member");
     const recount = new Map<string, number>();
     for (const surface of countable) {
@@ -170,10 +154,7 @@ describe("parity fixture corpus", () => {
   it("serves the corpus over real HTTP from an ephemeral port", async () => {
     const distDir = mkdtempSync(join(tmpdir(), "hrauto-parity-dist-"));
     writeFileSync(join(distDir, "index.html"), "<!doctype html><title>probe</title>");
-    // API-only probe: this server never renders the app, so it declares its
-    // bundle unverified rather than demanding a working-tree build. The parity
-    // lane itself may never take this branch — parity-reference-authority
-    // proves no spec does.
+
     const server = await startFixtureServer({
       distDir,
       bundle: { proof: "unverified", reason: "API/SSE route probe; the served dist is a one-file stub, never rendered" },

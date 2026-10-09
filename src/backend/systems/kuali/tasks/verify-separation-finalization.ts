@@ -3,16 +3,7 @@ import { KualiVerifySeparationFinalization } from "../../../../models/systems/ku
 import { kualiDriver } from "../driver-declaration.js";
 import { kualiFinalizationVerdict } from "../finalization-verdict.js";
 
-/**
- * Beat ⑥'s completion verifier — §4e's fourth beat, and the answer to the
- * behavior review's open question under **S59**.
- *
- * It runs on the RETAINED transaction page immediately after the click, and its
- * reload is the only thing that can turn a UI-silent Kuali save into landing
- * proof. Anything other than `present` parks the run: `absent` means the save
- * did not take (or took only partly, which is not a finalization), `unknown`
- * means we could not tell, and neither may report success.
- */
+
 export const verifySeparationFinalizationTask = defineTask(
   kualiDriver,
   KualiVerifySeparationFinalization,

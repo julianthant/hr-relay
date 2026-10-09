@@ -1,18 +1,4 @@
-/**
- * Transaction pairing (ref workflow-model §1.4 #7, §3.1; ref write-safety's write sequence).
- *
- * A transaction node is ONE resumable boundary containing a prepare arm and a
- * commit arm under a single page/context lease. The rules exist because of one
- * failure: a commit whose durable key depended on something read after the page
- * was already mutated cannot be probed for idempotently, so a crash between the
- * click and the confirmation becomes an unresolvable "did it land?".
- *
- * Hence: the commit arm binds from workflow input and DECLARED UPSTREAM outputs
- * only — never the ephemeral prepare output — so the key is stable before any
- * mutation; prepare and commit come from the same system; a positive
- * probe→fence budget exists so a stale preflight can never proceed to a click;
- * and no independently schedulable commit node exists anywhere in the graph.
- */
+
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -34,12 +20,7 @@ import {
 const ALL = [...DESCRIPTORS, fixtureDescriptor];
 const FixtureInput = z.strictObject({ eid: z.string().regex(/^10\d{6}$/) });
 
-/**
- * A commit contract may be referenced ONLY as `commit: { uses: … }`. Anywhere
- * else — a `.step(...)`, a second registry, a re-declared write gate — is the
- * "write gating re-declared per step" rot vector, and the builder's types
- * already reject it; this is the backstop for what a cast could smuggle past.
- */
+
 function commitReferenceViolations(path: string, content: string): readonly string[] {
   const source = ts.createSourceFile(path, content, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const violations: string[] = [];
@@ -85,11 +66,7 @@ describe("transaction pairing", () => {
   });
 
   it("keeps commit.bind blind to prepare output", () => {
-    // Structural, not stylistic: `commit.bind` and `prepare.bind` receive the
-    // SAME scope — workflow input plus declared upstream outputs. There is no
-    // channel through which prepare's ephemeral output could reach the commit
-    // key, so a stable durable key before any page mutation is guaranteed by
-    // construction rather than by review.
+
     for (const descriptor of ALL) {
       for (const node of descriptorRuntimeNodes(descriptor)) {
         if (node.kind !== "transaction") continue;
@@ -142,9 +119,7 @@ describe("transaction pairing", () => {
         .map((point) => point.id);
       for (const node of nodes) {
         if (node.kind !== "transaction") continue;
-        // dry-run only exists where a dry run is actually supported; the other
-        // three are unconditional, because every commit can be refused on a
-        // subject mismatch, land once, or find its key already satisfied.
+        // Every commit can refuse a subject mismatch, settle once or find its key satisfied; preview is conditional.
         const expected = [
           ...(node.dryRun === "stop-after-prepare" ? [`transaction:${node.id}/dry-run`] : []),
           `transaction:${node.id}/subject-mismatch`,

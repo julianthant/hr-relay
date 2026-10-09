@@ -1,4 +1,4 @@
-// Frozen D331 contract from e314fb0d; permanent strict v1/v2 historical-backup reader.
+
 import { z } from "zod";
 import { basename, dirname, join, resolve } from "node:path";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";

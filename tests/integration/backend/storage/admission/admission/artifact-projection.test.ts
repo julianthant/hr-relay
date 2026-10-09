@@ -3,21 +3,7 @@ import { RunCheckpointRecordSchema } from "../../../../../../src/models/workflow
 import { generatedUpdateId, pendingGeneratedUpdateIds } from "../../../../../../src/backend/logs/generated-artifact-projection.js";
 import { createContentAddressedArtifactWriter } from "../../../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { testRunLifecycle } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
-/**
- * Ref data-intake-and-edit-data §4.1 / ref dashboard-surfaces §2.1 (D45, D164): the stable-keyed local artifact
- * projector, in three layers.
- *
- * 1. Derivation is PURE — the same checkpoint output always derives the same
- *    stable key. Replay separately binds each update to its exact checkpoint.
- * 2. The projector + xlsx sink over a REAL authority database and real files:
- *    fresh create, verified no-op, in-place update, operator-edit conflict
- *    (both files preserved, row stays pending), head/file mismatch arms, and
- *    the exclusive sink lock.
- * 3. The executor: checkpoint + outbox rows commit atomically, the node
- *    blocks on acknowledgement, a projection failure fails the run WITHOUT
- *    losing the durable rows, and a second run of the same item resumes the
- *    projection from the replayed checkpoint.
- */
+
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -368,10 +354,7 @@ function projectionDescriptor(): AnyWorkflowDescriptor {
   });
 }
 
-/**
- * D221 — a second run of the SAME logical item takes the item's next attempt;
- * authority refuses one that reuses an attempt the item already spent.
- */
+
 function queuedRunFor(descriptor: AnyWorkflowDescriptor, runId?: string, attempt = 1) {
   return {
     ...QUEUED_RUN,
@@ -467,8 +450,7 @@ describe("executor projection wiring", () => {
     database.authority.artifactOutbox.insert({ ...pending, outboxId: newerId,
       sourceRunId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee", state: "pending" });
 
-    // A second run of the same item replays the checkpoint; nothing is owed,
-    // so the workbook and head stay EXACTLY as they were.
+
     database.authority.runs.enqueue(queuedRunFor(descriptor, "cccccccc-cccc-4ccc-8ccc-cccccccccccc", 2));
     const second = claim(database, descriptor);
     const replayed = await executeClaimedRun(harness.deps, { ...second, signal: SIGNAL });
@@ -493,7 +475,7 @@ describe("executor projection wiring", () => {
     const failure = database.authority.failures.get(failureId);
     assert.ok(failure !== undefined);
     assert.match(failure.summary, /wires no artifact sink projector/u);
-    // Nothing durable was minted: no checkpoint, no outbox row.
+
     assert.equal(database.authority.artifactOutbox.listPending().length, 0);
   });
 

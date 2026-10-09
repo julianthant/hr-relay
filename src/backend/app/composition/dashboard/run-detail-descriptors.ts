@@ -10,14 +10,7 @@ import type {
 import { describeProofShape } from "../../../../models/validation/proof-shape.js";
 import type { RegisteredTaskStore } from "../../../../workflow-kit/task-registry.js";
 
-/**
- * The gate nodes of a descriptor, in the shape the identity-gate section reads.
- *
- * `resultSchemaHash` is `deriveSchemaHash(node.result, "output")` — byte for
- * byte the value `executeResolveGate` compares an incoming payload against, so a
- * surface that echoes it back cannot be refused for naming a schema this build
- * does not have.
- */
+// Hash the result with the same output derivation used by gate execution.
 export function gateNodeViewsOf(descriptor: AnyWorkflowDescriptor): readonly Readonly<{
   nodeId: string;
   label: string;
@@ -36,18 +29,7 @@ export function gateNodeViewsOf(descriptor: AnyWorkflowDescriptor): readonly Rea
   ));
 }
 
-/**
- * The transaction nodes of a descriptor, in the shape the parked-write
- * section's proof form reads (D245, ref write-safety §4.1).
- *
- * `proofSchemaHash` is `deriveSchemaHash(completion.proofSchema, "output")` —
- * byte for byte the value `resolvePresent` compares an incoming
- * `proof.schemaHash` against — and `proof` is that same schema described as a
- * field list, or the named reason this build cannot describe it. Both are
- * derived HERE for the reason stated on `gateNodeViewsOf`: the queries never
- * reach the descriptor builders, and a query that re-walked a proof schema
- * would be a second copy of the contract's identity.
- */
+// Hash the proof with the same output derivation used by write resolution.
 export function writeContractViewsOf(descriptor: AnyWorkflowDescriptor): readonly RunDetailWriteContractView[] {
   return descriptorRuntimeNodes(descriptor).flatMap((node) => {
     if (node.kind !== "transaction") return [];
@@ -61,29 +43,7 @@ export function writeContractViewsOf(descriptor: AnyWorkflowDescriptor): readonl
   });
 }
 
-/**
- * D252/L3 — every ordinary task and every real transaction role, with the facts
- * the rail's origin line draws: the step's label, whether its task READS or
- * WRITES, the system it runs against, and the reuse bound its own contract
- * declares per field.
- *
- * Nothing here is inferred. `dir` is the node's task `effect` (ref task-contract's own
- * word for what a contract does to the world) — the rail's header comment used
- * to record direction as unservable because "nothing durable says whether a
- * recorded field was read or written", which is true of the CHECKPOINT ROW and
- * false of the descriptor that wrote it. `system` comes from the module's own
- * store list, the same binding the explorer's node panel reads, and a headless
- * store contributes none rather than a fabricated label. The bound is resolved
- * through `resolveFreshnessBound`, which is the function `auditCheckpointFreshness`
- * itself calls, and `feeds` through `reachableCommits` for the same reason —
- * the sentence the operator reads is the rule the executor applies.
- *
- * Probe/prepare/commit/verify each retain their invoked task id; this is what
- * lets an observed row resolve system without treating the transaction node's
- * commit as every beat. Only the field paths a Data entry can actually carry are resolved, which is
- * exactly `details[].source` ∪ `capabilities.editData.fields`: a bound for a
- * path no surface serves is a fact nobody reads.
- */
+
 export function dataOriginViewsOf(module: {
   readonly descriptor: AnyWorkflowDescriptor;
   readonly stores: readonly RegisteredTaskStore[];

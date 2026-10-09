@@ -32,7 +32,7 @@ const bindings = {
   ONBOARDING_ROSTER_URL: "https://fixture.invalid/private-roster", HRAUTO_ACTIVITY_PERSON_PSEUDONYM_HMAC_KEY: "ab".repeat(32),
   HRAUTO_ACTIVITY_PERSON_PSEUDONYM_KEY_GENERATION: "activity-person-fixture",
 };
-// D341: the two test-target canary keys are retired from the env import; a stale `.env` still naming one is refused by name (proved below).
+
 const RETIRED_TEST_TARGET_ENV = {
   HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER: "12345678", HRAUTO_TEST_SUBJECT_PERSON_LOOKUP_CANARY_EID: "10123456",
 };
@@ -41,7 +41,7 @@ function fixture(body: string) {
   const environmentFile = join(root, ".env"); writeFileSync(environmentFile, body, { mode: 0o600 });
   return { root, environmentFile, input: { stateRoot: root, processLockRoot: join(root, "locks"), environmentFile, plan: false } };
 }
-describe("D332.9 expired environment import", () => {
+describe("expired environment import refuses before access", () => {
   it("covers every former input while fresh authority and credentials remain independent", async () => {
     assert.deepEqual([...Object.keys(bindings), ...Object.keys(RETIRED_TEST_TARGET_ENV)].sort(), [...MIGRATED_SETTINGS_ENVIRONMENT_KEYS, ...HISTORICAL_PROVIDER_MODEL_ENVIRONMENT_KEYS].sort());
     const retired = { I9_USER_ID: "synthetic-retired-id", I9_PASSWORD: "synthetic-retired-password", TELEGRAM_BOT_TOKEN: "synthetic-retired-token", TELEGRAM_CHAT_ID: "synthetic-retired-chat" };

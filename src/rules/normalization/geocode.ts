@@ -1,15 +1,4 @@
-/**
- * The geocode provider payload contract (ref data-intake-and-edit-data §4.2) — shared by the
- * normalization task (builder), the Census/Nominatim adapters (parsers), and
- * every fixture, so one schema owns the wire shape.
- *
- * Confidence rules port with provenance (D93): `censusConfidence` from
- * `legacy:src/services/address/census.ts` and `confidenceFromImportance`
- * from `legacy:src/services/address/nominatim.ts`, both at commit
- * `0034671d`. Census confidence compares HOUSE NUMBERS via the same
- * incident-hardened primitive the street guard uses: a matched address whose
- * house number differs from the input's is `approximate`, never `exact`.
- */
+/** The geocode provider payload contract, shared by the normalization task, the Census/Nominatim adapters and every fixture, so one schema owns the wire shape. */
 import { z } from "zod";
 import { parseHouseNumber } from "./street-safety.js";
 
@@ -25,11 +14,7 @@ export type GeocodeRequest = z.infer<typeof GeocodeRequestSchema>;
 export const GeocodeConfidenceSchema = z.enum(["exact", "approximate", "unverified"]);
 export type GeocodeConfidence = z.infer<typeof GeocodeConfidenceSchema>;
 
-/**
- * `no-match` is a real, expected outcome — a geocoder that finds nothing
- * produced an answer, and the task records it as an observation rather than
- * treating it like a provider failure.
- */
+/** `no-match` is a real, expected outcome — a geocoder that finds nothing produced an answer, recorded as an observation rather than a provider failure. */
 export const GeocodeOutcomeSchema = z.discriminatedUnion("state", [
   z.strictObject({
     state: z.literal("resolved"),

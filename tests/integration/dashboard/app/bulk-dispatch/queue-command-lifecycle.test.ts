@@ -1,22 +1,4 @@
-/**
- * Queue command lifecycle, dispatch, and deletion settlement proof (S3, S4, P2, P3).
- *
- * Covers:
- *  - CAS revision binding: exact `expectedVersion` passed; stale CAS returns `conflict`
- *    and records feed entry without state change.
- *  - Single command dispatch: rename/bump/cancel use exact revisions; direct retry/restart
- *    refuses with guidance to open Rerun modal.
- *  - Source attribution: verifies `source: "queue"` vs `source: "run-detail"`.
- *  - In-flight duplicate dispatch prevention: rapid successive dispatches ignore duplicate
- *    invocations while first is pending.
- *  - Uncertain response & exact replay: transport error retains envelope; replay uses the
- *    exact same `commandId` and produces a single accepted effect.
- *  - Bulk dispatch: frozen target order, individual revision binding, distinguishable
- *    outcomes (applied/conflict/refused/unattempted/skipped), no aggregate false success.
- *  - Terminal-only leaves-first deletion: deleting terminal runs succeeds with tombstones;
- *    deleting active runs is refused by authority; selection is cleared only when deleted
- *    run is currently selected (selection-switch race protection).
- */
+
 import assert from "node:assert/strict";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -155,7 +137,7 @@ function terminalizeRun(harness: Harness, runId: string, outcome: "completed" | 
 
 type Harness = ReturnType<typeof createHarness>;
 
-describe("P2 · Queue commands: CAS binding, attribution, in-flight, and replay", () => {
+describe("Queue commands: CAS binding, attribution, in-flight, and replay", () => {
   it("binds exact expectedVersion; stale version refuses with CAS conflict and records feed entry without state change", () => {
     const harness = createHarness();
     const runId = "11111111-1111-4000-8000-111111111111";
@@ -191,7 +173,7 @@ describe("P2 · Queue commands: CAS binding, attribution, in-flight, and replay"
     if (result.state !== "conflict") return;
     assert.equal(result.currentVersion, 2);
 
-    // Settle through D253 fold
+
     const settlement = settleCommandResult(result);
     assert.equal(settlement.kind, "refused");
     if (settlement.kind !== "refused") return;
@@ -337,8 +319,7 @@ describe("P2 · Queue commands: CAS binding, attribution, in-flight, and replay"
     const result1 = harness.kernel.execute(request1);
     assert.equal(result1.state, "applied");
 
-    // Suppose the response was lost or timed out before reaching client.
-    // Client retains `{ commandId, requestedAt }` in `uncertainCommands` and replays:
+
     const composedReplay = composeCommandRequest(action, target, {
       actorId: "operator-1",
       source: "queue",
@@ -434,7 +415,7 @@ describe("P2 · Queue commands: CAS binding, attribution, in-flight, and replay"
   });
 });
 
-describe("P3 · Delete: Terminal-only, leaves-first, and selection-switch protection", () => {
+describe("Delete: Terminal-only, leaves-first, and selection-switch protection", () => {
   it("refuses to delete an active run; leaves no tombstone and removes no bytes", () => {
     const harness = createHarness();
     const runId = "55555555-5555-4000-8000-555555555555";
@@ -505,7 +486,7 @@ describe("P3 · Delete: Terminal-only, leaves-first, and selection-switch protec
     assert.equal(result.state, "applied");
     if (result.state !== "applied") return;
 
-    // Run row is removed
+
     assert.equal(harness.database.authority.runs.get(runId), undefined);
 
     // Tombstone exists with lifecycleCommandId
@@ -676,7 +657,7 @@ describe("P3 · Delete: Terminal-only, leaves-first, and selection-switch protec
     assert.ok(!bulkIdsA.has(targetRunId), "removed deleted run from bulk selection");
     assert.ok(bulkIdsA.has(otherRunId), "preserved other bulk selections");
 
-    // Scenario B: operator switched selection to otherRunId while delete was in-flight
+
     let routeB: { run?: string; section?: string } = { run: otherRunId, section: "log" };
     let bulkIdsB = new Set<string>([otherRunId]);
 

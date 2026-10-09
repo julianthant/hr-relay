@@ -144,7 +144,7 @@ const ARTIFACT = {
   },
 };
 
-/** One served workflow entry, including D219's required `role` fact. */
+
 const WORKFLOW_PRIMITIVE = {
   id: "onboarding",
   code: "on",
@@ -153,19 +153,14 @@ const WORKFLOW_PRIMITIVE = {
   descriptorFingerprint: HASH_A,
   availability: { state: "available" },
   role: { kind: "standalone" },
-  // D264/D11 — the served start block. It carries the typed-input door on
-  // purpose: the strict-boundary arm below walks whatever this literal reaches,
-  // so an inputRun-less primitive would leave `InputRunSurfaceSchema` and its
-  // parser spec unwalked by the very test that exists to walk them.
+
   start: {
     summary: "Look one person up in UCPath and CRM.",
     enqueue: "reject-active",
-    // C96: keep this non-1 so the wire fixture never makes a guessed default
+    // Keep this non-1 so the wire fixture never makes a guessed default
     // appear equivalent to a producer-supplied descriptor version.
     version: 7,
-    // D296 — `true` on purpose, for the same reason `inputRun` is present: the
-    // strict-boundary arm walks what this literal reaches, and a start block
-    // that never carries the spreadsheet door leaves its arm unwalked.
+
     spreadsheetIntake: true,
     inputRun: {
       placeholder: "Enter EIDs or names, semicolon-separated",
@@ -262,13 +257,7 @@ describe("dashboard wire primitives", () => {
     assert.equal(RunDetailWireSchema.safeParse({ ...DETAIL, runId: RUN_2 }).success, false);
   });
 
-  /**
-   * A served control's CAS target is the row it rides. The two arms below are
-   * the whole reason `actions[]` is refined rather than merely typed: a
-   * descriptor projected against another revision is a control that conflicts
-   * on click for a reason the operator cannot see, and two descriptors sharing
-   * a `key` collapse into one control in both surfaces that render them.
-   */
+
   it("binds every served action to the row's own revision, once per key", () => {
     const [cancel, hide] = QUEUE.actions;
     assert.ok(cancel !== undefined && hide !== undefined);
@@ -296,10 +285,7 @@ describe("dashboard wire primitives", () => {
     assert.equal(QueueSurfaceWireSchema.safeParse({ ...QUEUE, actions: [] }).success, true);
   });
 
-  /**
-   * D219 — a chunk harness is a step of its composition, and the wire refuses
-   * to describe a nesting the receiving surface could not draw.
-   */
+
   it("refuses a served chunk harness whose composition is not in the same document", () => {
     const composition = {
       ...WORKFLOW_PRIMITIVE,
@@ -364,14 +350,7 @@ describe("dashboard wire primitives", () => {
     };
     assert.equal(QueueSurfaceWireSchema.safeParse(member).success, true);
     assert.equal(QueueSurfaceWireSchema.safeParse({ ...QUEUE, surfaceKind: "member" }).success, false);
-    /*
-     * Containment, lineage and surface kind are three views of one fact, and
-     * the schema refuses every way they can disagree. The load-bearing arm is
-     * the second: a row that called itself a member while presenting as a
-     * single run would be counted twice — once in its parent's rollup and once
-     * in the day's totals — because `surfaceKind` is what the count filter
-     * reads and `containment` is what the layout reads.
-     */
+
     assert.equal(QueueSurfaceWireSchema.safeParse({ ...member, containment: "root" }).success, false);
     assert.equal(QueueSurfaceWireSchema.safeParse({ ...QUEUE, containment: "member" }).success, false);
     assert.equal(QueueSurfaceWireSchema.safeParse({ ...QUEUE, containment: "linked" }).success, false);
@@ -419,7 +398,7 @@ describe("dashboard wire primitives", () => {
     }).success, false);
   });
 
-  it("D259 — a replayed step names the checkpoint it replayed, and measures nothing", () => {
+  it("a replayed step names the checkpoint it replayed, and measures nothing", () => {
     const stepped = (member: unknown) => ({
       ...DETAIL,
       timeline: { ...DETAIL.timeline, steps: [{ label: "Kronos timecard", state: "replayed", members: [member] }] },
@@ -427,7 +406,7 @@ describe("dashboard wire primitives", () => {
     assert.equal(RunDetailWireSchema.safeParse(
       stepped({ label: "Timecard", state: "replayed", replayedFrom: { attempt: 8, claimGeneration: 2 } }),
     ).success, true);
-    // A pre-D214 checkpoint names no execution, and the wire must not invent one.
+
     assert.equal(RunDetailWireSchema.safeParse(
       stepped({ label: "Timecard", state: "replayed", replayedFrom: { attempt: 8 } }),
     ).success, true);
@@ -448,9 +427,7 @@ describe("lazy detail and artifact resources", () => {
   it("correlates every lazy section with a closed payload", () => {
     const sections = [
       { section: "logs", payload: NOTE_PAGE },
-      // D140/D142: both sections carry CONTENT now, not a pointer. The
-      // receipt is the real builder's output so this stays honest when its
-      // shape moves; the failure is the strict, already-redacted projection.
+
       { section: "receipt", payload: { state: "available", value: receiptWireFixture() } },
       { section: "review", payload: REVIEW_PAGE },
       { section: "people", payload: PEOPLE_PAGE },

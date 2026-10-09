@@ -58,29 +58,7 @@ export type RunLogScanEntry =
 /** @deprecated Kept for callers of the combined notes + fence snapshot cache. */
 export type RunNoteScanEntry = RunLogScanEntry;
 
-/**
- * The `notes/` partitions ONE run's log lines can be in (D5, audit P3).
- *
- * `readEventStreamLines(stateRoot, "notes")` read every byte of every workflow's
- * every day on EVERY logs GET — 20,800 lines and 5.4 MB in the §7.4 fixture, to
- * serve thirteen — and it grows for as long as the tool runs. The corpus is
- * partitioned by `(workflow, date)` in the file name, and a run's lines can only
- * be in its own workflow's partitions inside its own activity window, so the
- * reader opens exactly those.
- *
- * The window arithmetic, the margins and the fail-loud parse are NOT here: they
- * are `runNotePartitionScope` in `domain/run/note-scope.ts`, the ONE
- * function this reader and every note PRODUCER share (ref dashboard-surfaces
- * §2.1). Nothing else binds an append-at-now writer to the days this reader
- * opens, and a note outside them is a line on disk the run's own logs tab can
- * never serve.
- *
- * What this function adds is the span fold's own instants, on top of the
- * authority instants a producer asserts against. That direction is the whole
- * safety argument and must stay this way round: the reader's instant set is a
- * SUPERSET, so its window contains the producer's, and a note the producer's
- * assertion admitted is a note this reader opens the partition for.
- */
+// Read only workflow/date partitions that belong to this run; unrelated notes are outside its corpus.
 export function runNotePartitionScope(
   runId: string,
   row: RunFoldRecord | undefined,
@@ -97,15 +75,7 @@ export function runNotePartitionScope(
   return sharedNotePartitionScope({ runId, workflow: authority.envelope.workflow, instants });
 }
 
-/**
- * ONE immutable combined-log snapshot, for a caller that pages the same run to the end.
- *
- * The archive's version-bump freeze walks `buildRunSection(run, "logs")` page by
- * page (`FROZEN_LOG_PAGE_LIMIT` of them). The cache avoids re-reading the same
- * partitions for every 200-line slice. The archive cache lives for exactly one freeze.
- * Live request deps retain at most 128 snapshots; a missing/evicted cursor
- * refuses by name and a fresh first page observes the new corpus.
- */
+// Page a run against one immutable combined-log snapshot so advancing cursors cannot mix reads.
 interface RunLogSnapshot {
   readonly id: string;
   readonly entries: readonly RunLogScanEntry[];
@@ -157,15 +127,7 @@ function logSnapshotsFor(deps: RunDetailQueryDeps, provided?: RunNoteScanCache):
   return created;
 }
 
-/**
- * ONE note line, parsed, or a refusal that says WHICH line (D218).
- *
- * `JSON.parse` throws a `SyntaxError` reading "Unexpected token" and zod throws
- * an issue list; neither names the file or the line number, so the operator
- * whose logs tab just answered 500 has no way to find the byte that did it —
- * and "read around it" is not available, because a line the corpus holds is
- * durable history and skipping it reports real events as absent.
- */
+
 function parseNoteLine(line: EventStreamLine): z.infer<typeof NoteAtRestSchema> {
   try {
     return NoteAtRestSchema.parse(JSON.parse(line.text));
@@ -173,7 +135,7 @@ function parseNoteLine(line: EventStreamLine): z.infer<typeof NoteAtRestSchema> 
     throw new Error(
       `notes line ${line.file.path}:${String(line.lineNumber)} is not a readable note `
       + `(${cause instanceof Error ? cause.message : String(cause)}); the logs reader refuses to read around a line `
-      + "the corpus holds, because a skipped line reports real history as absent (D218)",
+      + "the corpus holds, because a skipped line reports real history as absent",
       { cause },
     );
   }
@@ -268,10 +230,7 @@ function logLinesForRun(
 ): readonly RunLogScanEntry[] {
   const scan = (): readonly RunLogScanEntry[] => {
     const matches: RunLogScanEntry[] = [];
-    // The scope already selected this workflow's partitions, so the old
-    // per-line `line.file.workflow !== workflow` skip can no longer be true —
-    // the same lines reach the parse, and an unparsable one throws by name
-    // rather than being read around (D218).
+
     for (const line of readScopedEventStreamLines(deps.stateRoot, "notes", runNotePartitionScope(runId, row, authority))) {
       const note = parseNoteLine(line);
       if (note.workflow !== line.file.workflow) {
@@ -429,11 +388,7 @@ function projectActionOccurrence(
   };
 }
 
-/**
- * The only historical definition authority is the run envelope.  A note with
- * declared-action provenance must resolve to that exact frozen tree; a current
- * descriptor is neither consulted nor substituted for an unknown reference.
- */
+// Only the run envelope supplies frozen definition authority for declared-action notes.
 export function operationStructureForRun(
   authority: RunRecord,
   runId: string,
@@ -477,7 +432,7 @@ export function buildRunLogsSection(
   row: RunFoldRecord | undefined,
   authority: RunRecord,
   cursorInput?: string,
-  /** D5/L3: immutable combined-log snapshots across a page walk. */
+
   noteScanCache?: RunNoteScanCache,
 ): RunDetailSectionResponse {
   const section = "logs";

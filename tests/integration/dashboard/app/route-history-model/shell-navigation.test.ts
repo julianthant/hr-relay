@@ -254,7 +254,7 @@ it("native date history preserves a dirty Settings draft, then restores the acce
     descriptor.set.call(width, "1777"); width.dispatchEvent(new Event("input", { bubbles: true }));
   });
   await historyMove("back"); // Settings root retains its editor.
-  await historyMove("back"); // The queued destination is the historical day.
+  await historyMove("back");
   await click(button("Keep editing"));
   assert.equal(width.value, "1777");
   assert.equal(new URLSearchParams(location.search).has("settings"), true);

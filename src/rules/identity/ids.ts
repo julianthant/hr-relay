@@ -7,24 +7,7 @@ function brandedText<Name extends string>(pattern: RegExp, description: string) 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
-/**
- * A named slug id, with two impersonations refused.
- *
- * A lowercase UUID satisfies `SLUG_PATTERN` character for character, so without
- * the first refusal a run id could be spelled as a worker id, an actor, or a
- * node — exactly the substitution ref dashboard-surfaces §1.1 rules out when it says workers
- * "never receive a synthetic run id".
- *
- * An all-digit slug likewise parses, and an id that is only digits is a
- * position wearing a name: `nodeId: "3"` says where a node sat, not which node
- * it is. `step-3` and `i9` stay legal; only the bare ordinal is refused.
- *
- * Exported UNBRANDED (D265) for the one identifier that is not an id yet must
- * share this exact grammar: a timeline category key, whose derived default IS a
- * node id (`src/domain/workflow/presentation.ts`). A second, stricter spelling
- * there made a legal graph — one whose first node is `2fa-prompt` — throw at
- * `build()` naming the KEY, a field the author never wrote.
- */
+/** A named slug id with two impersonations refused: a lowercase UUID cannot be spelled as another id kind, and a bare ordinal is a position wearing a name. */
 export function slugSchema(description: string) {
   return z.string()
     .regex(SLUG_PATTERN, description)
@@ -79,7 +62,7 @@ export const StartPlanIdSchema = brandedText<"StartPlanId">(UUID_PATTERN, "start
 export const IntakeSessionIdSchema = brandedText<"IntakeSessionId">(UUID_PATTERN, "intake session id must be a UUID");
 export const IntakeManifestIdSchema = brandedText<"IntakeManifestId">(UUID_PATTERN, "intake manifest id must be a UUID");
 export const BrowserSessionIdSchema = brandedText<"BrowserSessionId">(UUID_PATTERN, "browser session id must be a UUID");
-/** D269 (ref execution-and-sessions §11): a dashboard-started group of runs. */
+/** A dashboard-started group of runs. */
 export const RunSessionIdSchema = brandedText<"RunSessionId">(UUID_PATTERN, "run session id must be a UUID");
 export const VersionPlanIdSchema = brandedText<"VersionPlanId">(UUID_PATTERN, "version plan id must be a UUID");
 export const VersionBumpApplicationIdSchema = brandedText<"VersionBumpApplicationId">(
@@ -96,43 +79,19 @@ export const ProviderAdmissionIdSchema = brandedText<"ProviderAdmissionId">(
 );
 export const RowRejectIdSchema = brandedText<"RowRejectId">(UUID_PATTERN, "row reject id must be a UUID");
 
-/**
- * A detected source column's identity — ref data-intake-and-edit-data §2.1's
- * `base64url(canonicalJson({ normalizedHeader, occurrence }))`.
- *
- * It is deliberately NOT the header text and NOT the column position. A raw
- * header cannot distinguish two `Name` columns; a position silently rebinds to
- * whatever column slid into that slot when the operator inserted one. Encoding
- * the pair keeps duplicates distinct and keeps the id stable across a
- * reordered export, which is the whole point of ref data-intake-and-edit-data §2.3's reuse scheme.
- *
- * `src/domain/intake/mapping.ts` owns the derivation; this schema owns the
- * shape so a hand-written string cannot be passed where a derived id belongs.
- */
+/** A detected source column's identity: the header AND its occurrence, never the position, so duplicates stay distinct and the id survives a reordered export. */
 export const SourceColumnIdSchema = brandedText<"SourceColumnId">(
   /^[A-Za-z0-9_-]{8,}$/,
   "source column id must be base64url text derived from the header and its occurrence",
 );
 
-/**
- * A stable target-field path inside a workflow's intake projection — the key
- * an operator binds a column TO (`emplId`, `emergencyContact.city`).
- *
- * Dotted camelCase, because it addresses a path in a zod object rather than a
- * kebab-case registry id. Array indices are refused: a binding must name a
- * field the projection declares, never a positional slot inside one.
- */
+/** A stable target-field path inside a workflow's intake projection; dotted camelCase, with array indices refused so a binding names a declared field, never a slot. */
 export const IntakeTargetFieldIdSchema = brandedText<"IntakeTargetFieldId">(
   /^[a-z][A-Za-z0-9]*(?:\.[a-z][A-Za-z0-9]*)*$/,
   "intake target field id must be a dotted camelCase path",
 );
 
-/**
- * A record's identity inside an extracted document — derived at admission from
- * the source-artifact digest plus stable page/form identity (ref dashboard-surfaces §4.1). The
- * shape is deliberately structural so an array index or a run id cannot be
- * spelled as one.
- */
+/** Bind document identity to source/page/form; structural IDs cannot masquerade as run/index IDs. */
 export const StableRecordIdSchema = brandedText<"StableRecordId">(
   /^[0-9a-f]{64}#[a-z0-9]+(?:-[a-z0-9]+)*#[1-9]\d*$/,
   "stable record id must be <source-sha256>#<form-slug>#<page>",
@@ -155,20 +114,7 @@ export const DelegationEdgeIdSchema = slugText<"DelegationEdgeId">("delegation e
 /** The identity that holds a ledger partition's projection lease (ref write-safety §6). */
 export const LedgerProjectorIdSchema = slugText<"LedgerProjectorId">("ledger projector id must be kebab-case");
 
-/**
- * `<code>-<HHMMSS>-<runId4>` — the workflow's short code, the minute of the
- * day it was planned, and four bytes of its run id.
- *
- * The code segment is DELIBERATELY wider than what a descriptor may declare
- * today (`WorkflowCodeSchema`: two to four lowercase LETTERS, D242). This
- * schema parses durable stored ids — every run row, span, note line and ledger
- * entry this program has written carries one — so it is a READER, and a reader
- * that narrowed to the writer's current rule would refuse history the moment
- * the rule moved. Two-character alphanumeric codes were the rule until D242,
- * so `[a-z0-9]{2,4}` is exactly "every code that was ever legal"; the writer
- * stays strict at its own declaration site, which is where a new code is
- * chosen and where a wrong one can still be refused.
- */
+/** `<code>-<HHMMSS>-<runId4>`; the code segment is deliberately wider than the writer's current rule because this schema is a READER of durable stored ids. */
 export const TraceIdSchema = brandedText<"TraceId">(
   /^[a-z0-9]{2,4}-(?:[01][0-9]|2[0-3])[0-5][0-9][0-5][0-9]-[0-9a-f]{4}$/,
   "trace id must be <code>-<HHMMSS>-<runId4>",

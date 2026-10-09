@@ -1,21 +1,4 @@
-/**
- * The wire-connectivity audit's mechanical half (ref frontend-backend-integration §8.8).
- *
- * D107's `pending-impl-bindings.json` proves a descriptor's contracts are
- * bound in BOTH directions. This is the same idea one layer up: a schema arm,
- * a command key, and a route are each one half of a connection, and this tree
- * has twice shipped the other half missing with every gate green — a
- * `captures` section arm no `availableSections` could return, and a
- * `"degraded"` stream arm nothing could emit.
- *
- * Everything here is DERIVED, never listed. Section arms come from walking the
- * zod union at runtime (a regex over the source would go stale the moment
- * somebody reformats it, and would happily agree with a schema that no longer
- * parses), the reachable set comes from CALLING `availableSections` over
- * synthesized records covering every lifecycle state, and command keys come
- * from walking the kernel's own request union. Only the exceptions are written
- * down, and an exception that stops being true fails too.
- */
+
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
@@ -61,16 +44,7 @@ function asUnionLike(node: unknown): UnionLike {
   return typeof node === "object" && node !== null ? node : {};
 }
 
-/**
- * The literal (or enum member) values a discriminant key takes across a union.
- *
- * It walks NESTED unions because the kernel's request schema is a union of
- * per-family discriminated unions, and it accepts both a `z.literal` and a
- * `z.enum` on the discriminant because the kernel writes `type: z.enum([...])`
- * wherever several verbs share a target shape. Reading only literals would
- * have silently missed `retry`/`cancel`/`bump` — the three that
- * matter most here.
- */
+
 export function discriminantValues(schema: unknown, key: string): readonly string[] {
   const found: string[] = [];
   const visit = (node: unknown): void => {
@@ -94,13 +68,7 @@ export function discriminantValues(schema: unknown, key: string): readonly strin
   return [...new Set(found)].sort();
 }
 
-/**
- * The schema at `<discriminant> === <value>`'s `<field>`, refused by name when
- * the union no longer has that arm. It is untyped on purpose: the callers
- * compare two schemas structurally, and reaching a member of a refined
- * discriminated union through the type system costs more narrowing than the
- * comparison is worth — a missing arm has to fail loudly either way.
- */
+
 export function armField(
   schema: unknown,
   discriminant: string,
@@ -144,14 +112,7 @@ export function servedRoutes(source: string): readonly ServedRoute[] {
   }));
 }
 
-/**
- * A client reference, reduced to the shape a router matches on.
- *
- * Every `${…}` interpolation becomes one opaque segment marker and the query
- * and fragment are dropped — a client path is only ever compared against a
- * route PATTERN, so preserving the interpolated expression would just make
- * every parameterised call look unserved.
- */
+// Treat each interpolation as one opaque route segment; query and fragment do not affect matching.
 export function normalizeClientPath(raw: string): string {
   const withMarkers = raw.replaceAll(/\$\{[^}]*\}/g, "\u0000");
   const [pathOnly = ""] = withMarkers.split(/[?#]/);
@@ -172,12 +133,7 @@ export function clientRouteReferences(roots: readonly string[]): readonly Client
   return references;
 }
 
-/**
- * Does a served route PATTERN match a client path? Segment counts must agree
- * and a `:param` route segment matches any single client segment — including
- * the opaque interpolation marker, which is the only honest verdict for a
- * value the scan cannot evaluate.
- */
+
 export function routeMatches(pattern: string, clientPath: string): boolean {
   const patternSegments = pattern.split("/");
   const clientSegments = clientPath.split("/");
@@ -234,22 +190,12 @@ export function routeConnectivityProblems(input: {
 
 /* ── 5. served-descriptor producers ───────────────────────────────────────── */
 
-/** Block and line comments, removed before a producer scan. */
+
 const COMMENTS = /\/\*[\s\S]*?\*\/|\/\/[^\n]*/g;
 /** An `ActionDescriptorWire` literal names its verb as `command:` or `key:`. */
 const DESCRIPTOR_COMMAND = /\b(?:command|key)\s*:\s*"([a-z-]+)"/g;
 
-/**
- * The command verbs a served-descriptor producer can actually EMIT.
- *
- * Comments are stripped first, and that is the load-bearing half: the verb this
- * check was written for (`unhide`) appeared in the projector only inside the
- * prose explaining why it is never served, and a scan that counted prose would
- * have called the dead key healthy.
- *
- * A stripper bug is fail-CLOSED here — deleting real code makes a live key look
- * unprojected, which fails the arm loudly rather than passing it quietly.
- */
+// Strip comments before finding producer verbs; prose cannot make a command reachable.
 export function projectedCommandKeys(source: string): readonly string[] {
   const code = source.replaceAll(COMMENTS, " ");
   return [...new Set([...code.matchAll(DESCRIPTOR_COMMAND)].map(([, key]) => key ?? ""))].sort();

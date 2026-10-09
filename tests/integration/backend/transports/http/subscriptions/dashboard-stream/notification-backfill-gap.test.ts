@@ -1,8 +1,4 @@
-/**
- * Track F A46: an unreplayable dashboard cursor is a notification-history gap,
- * not a disconnect guess. The event is closed protocol evidence and projects
- * to one linkless durable safety record.
- */
+
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

@@ -1,19 +1,4 @@
-/**
- * Every arm of the bootstrap's storage summary is EMITTABLE by its producer.
- *
- * This exists because one of them was not. `StorageHealthSummaryWireSchema`
- * carried `authority: "degraded"` while `buildBootstrap` types the value it
- * computes as `"healthy" | "unavailable"` — the D181 shape at wire scale: a
- * complete, schema-valid, renderable state that nothing in production could
- * ever produce, and every gate green over it because a schema arm is not a
- * code path anyone runs.
- *
- * So the check is deliberately in BOTH directions and label-blind: it walks
- * the schema's own arms rather than a list retyped here, and for each one it
- * drives the producer into that state and asserts the produced document says
- * so. A new arm added to the wire without a way to reach it fails here on the
- * day it is added, not on the day an operator needs it.
- */
+
 import assert from "node:assert/strict";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -48,9 +33,7 @@ function depsOf(
     settingsSchemaHash: descriptorSetHash(["settings-schema"]),
     projection: world.projection,
     authorityMeta: () => {
-      // The exact shape of the real failure: `AuthorityDatabase.getMeta`
-      // throws when the store cannot be read. Nothing returns a reduced
-      // handle, which is the whole reason the third arm was unreachable.
+
       if (!storage.authorityReachable) throw new Error("authority database is unreadable");
       return { schemaVersion: 13, authorityGeneration: 4 };
     },
@@ -78,7 +61,7 @@ function depsOf(
 }
 
 describe("bootstrap storage summary", () => {
-  it("P14 serves both ordinary and protected command schema identities", () => {
+  it("serves both ordinary and protected command schema identities", () => {
     const world = makeWorld();
     try {
       const deps = depsOf(world, { authorityReachable: true, backup: "current" });
@@ -222,9 +205,7 @@ describe("bootstrap storage summary", () => {
   it("an unreachable authority still serves the backup indicator", () => {
     const world = makeWorld();
     try {
-      // `backupSummary` judges manifests on disk and must not depend on the
-      // authority handle — the composition documents that contract, and this
-      // is the arm where it matters.
+
       const wire = buildBootstrap(depsOf(world, { authorityReachable: false, backup: "stale" }));
       assert.deepEqual(
         { authority: wire.storage.authority, backup: wire.storage.backup },

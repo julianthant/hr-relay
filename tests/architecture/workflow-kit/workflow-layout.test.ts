@@ -1,61 +1,4 @@
-/**
- * workflow-layout — D265 (ref workflow-model §1.2.2), the `src/workflows/` tree
- * IS the rail and the timeline.
- *
- * The operator's ruling made the folder view and the dashboard view the same
- * view: a top-level folder is a rail entry, a sub-folder is one DECLARED
- * timeline step of the workflow above it, and a chunk harness lives inside the
- * step it proves. That is only true while something holds the served ROLE and
- * the PATH to each other — otherwise the two drift the first time a folder
- * moves, and the surfaces (rail, picker, Explorer, the Explorer's source links)
- * go on rendering a tree that no longer exists on disk.
- *
- * The four arms, in the order they run:
- *
- *   (a) role ↔ path. Every registered module's derived folder
- *       (`workflowSourceFolder`, the ONE rule) exists and holds exactly ONE
- *       authored file, `workflow.ts` (D312/D317 — descriptors, modules, step
- *       identities and omissions are compiled from it or declared inside it,
- *       never authored beside it), and that file DECLARES the module's id —
- *       read with the build manifest's own `declaredWorkflowId`, because the
- *       manifest keys every fingerprint by that answer and two readers of one
- *       syntax are two opinions. Nothing else lives directly under
- *       `src/workflows/`: only `descriptor-registry.ts` and the folders
- *       registered workflows are addressed to. A stray folder is refused BY
- *       NAME, and so is anything nested below a step folder — the tree is
- *       exactly two levels deep.
- *   (b) folders ⊆ declared groups, and a folder holds a harness. Since D312
- *       (ref workflow-model §1.6.1 item 5) the composition's `steps` tuples
- *       own timeline membership and order; a step folder is organization and
- *       audit structure that exists for exactly one reason — to hold the
- *       chunk harness that proves the step (§1.2.2 rule 3). So every
- *       sub-folder of a workflow that DECLARED a timeline must be one of its
- *       declared group keys AND the address of a retained `chunk-harness` proof;
- *       a declared group with no harness (`job-summary`) has no folder. A
- *       workflow that declared none (D225's honest per-node default:
- *       `person-lookup`) has no sub-folders at all.
- *   (c) the registry audit is WIRED. `auditWorkflowModuleRoles` is the one
- *       implementation of the role rules, and it now also refuses two harnesses
- *       claiming one `(of, step)` — that pair is an ADDRESS, so a collision is
- *       two modules claiming two files. The arm runs it over the active
- *       workflows and retained proofs, then proves the refusal fires.
- *   (d) one rule for path-from-role. `descriptor-coverage` and
- *       `workflow-editor-compile-integrity` both DERIVE a descriptor's path
- *       from `src/workflow-kit/validation/source-layout.ts`; a second copy of the rule,
- *       inline in either guard, is refused. Three copies of a path literal were
- *       free to disagree the moment a folder moved, and one of them printed a
- *       link an operator would click.
- *
- * Arms (a) and (b) are ONE pure function of `(modules, tree)` —
- * `auditWorkflowLayout` never touches the filesystem — so the real repository
- * and every violating fixture go through identical code.
- * `collectWorkflowLayoutTree` supplies both: for the repo it reads
- * `src/workflows/`, for a fixture it reads that fixture's own miniature
- * `src/workflows/` written to a temp root, exactly as `guard-manifest` does for
- * the ratchet arms (a `.ts` fixture checked into `tests/` would be part of this
- * tree's own zero-debt `typecheck`/`lint` program, which is not what a
- * deliberately malformed tree can be).
- */
+
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -74,11 +17,7 @@ const WORKFLOWS_ROOT = "src/workflows";
 /** The one file §1.2.2 rule 1 allows to sit beside the workflow folders. */
 const TOP_LEVEL_FILES = new Set(["descriptor-registry.ts"]);
 
-/**
- * A registered module as the layout rules see it: its id, its role, and whether
- * its timeline was DECLARED (never the factory's per-node default — §1.2.2
- * rule 2's word "declared" is what separates a step folder from a node id).
- */
+
 export interface WorkflowLayoutModule {
   readonly id: string;
   readonly role: WorkflowModuleRole;
@@ -86,14 +25,7 @@ export interface WorkflowLayoutModule {
   readonly timelineKeys: readonly string[];
 }
 
-/**
- * A declaration read out of a source file, or the reason it could not be.
- *
- * The reason travels as a VALUE rather than a throw so the audit can name the
- * file in a violation instead of exploding mid-walk; it is never silently
- * treated as "no declaration", which would let an unreadable `workflow.ts` pass
- * as a folder with nothing to say.
- */
+
 type SourceDeclaration = { readonly value: string } | { readonly unreadable: string };
 
 export interface WorkflowLayoutTree {
@@ -109,9 +41,7 @@ function readDeclaration(read: () => string): SourceDeclaration {
   try {
     return { value: read() };
   } catch (error) {
-    // Not a swallow: the reason becomes a VIOLATION naming the file, which is
-    // the loudest place it can land — the audit has no other way to report on a
-    // file it cannot parse, and reporting nothing would read as "compliant".
+
     return { unreadable: error instanceof Error ? error.message : String(error) };
   }
 }
@@ -149,11 +79,7 @@ function childrenOf(paths: readonly string[], parent: string): readonly string[]
   return paths.filter((path) => dirname(path) === parent).map((path) => path.slice(parent.length + 1));
 }
 
-/**
- * Arms (a) and (b), decided entirely from the registered modules and one tree
- * listing. Every refusal names the offender — a path, an id, or both — because
- * "the layout is wrong" is a sentence nobody can act on.
- */
+
 export function auditWorkflowLayout(
   modules: readonly WorkflowLayoutModule[],
   tree: WorkflowLayoutTree,
@@ -173,9 +99,7 @@ export function auditWorkflowLayout(
       );
       continue;
     }
-    // D312/D317 — a workflow authors exactly `workflow.ts`; a descriptor,
-    // module, step, node-id, entry or omission file beside it is the retired
-    // multi-file authoring path returning under another name.
+
     const entryPath = workflowSourcePath(module.id, module.role);
     if (!files.has(entryPath)) violations.push(`workflow ${module.id} must author ${entryPath}, which is missing`);
     for (const name of childrenOf(tree.files, folder)) {
@@ -183,7 +107,7 @@ export function auditWorkflowLayout(
       if (module.role.kind !== "chunk-harness" && name === "task-registry.ts") continue;
       violations.push(
         `workflow ${module.id} authors ${folder}/${name} beside ${entryPath}; a workflow folder holds exactly its `
-        + `one ${module.role.kind === "chunk-harness" ? "step.ts" : "workflow.ts"} (D312/D317)`,
+        + `one ${module.role.kind === "chunk-harness" ? "step.ts" : "workflow.ts"}`,
       );
     }
     const declared = tree.declaredIds.get(entryPath);
@@ -233,7 +157,7 @@ export function auditWorkflowLayout(
     if (!module.timelineDeclared) {
       if (subFolders.length > 0) {
         violations.push(
-          `workflow ${module.id} declares no timeline (D225's per-node default) but ${folder}/ holds step `
+          `workflow ${module.id} declares no timeline (the per-node default) but ${folder}/ holds step `
           + `folder(s) ${subFolders.join(", ")}; a step folder is a DECLARED category (§1.2.2 rule 2)`,
         );
       }
@@ -248,14 +172,12 @@ export function auditWorkflowLayout(
         );
         continue;
       }
-      // D312 §1.6.1 item 5 — the composition's `workflow.ts` owns the step's
-      // identities; a folder exists only to hold the harness that proves the
-      // step, so a folder nobody is addressed to is authored glue with no owner.
+
       const harness = addressed.get(`${stepsFolder}/${name}`);
       if (harness === undefined) {
         violations.push(
           `${stepsFolder}/${name}/ holds no retained chunk-harness; a step folder exists only to hold the harness `
-          + "that proves the step (D312, §1.2.2 rule 3)",
+          + "that proves the step",
         );
       }
     }
@@ -264,14 +186,7 @@ export function auditWorkflowLayout(
   return violations;
 }
 
-/**
- * Arm (d) — the two guards that need a descriptor's path must ASK for it.
- *
- * A path literal rebuilt inline is a second copy of §1.2.2's rule, free to
- * disagree the next time a folder moves. `source-layout.ts` is the one
- * derivation and these two are its consumers alongside the Explorer's source
- * links.
- */
+
 export const PATH_RULE_CONSUMERS = [
   "tests/architecture/workflow-kit/descriptor-coverage.test.ts",
   "tests/architecture/workflow-kit/workflow-editor-compile-integrity.test.ts",
@@ -295,10 +210,7 @@ export function auditPathRuleSingleSource(sources: ReadonlyMap<string, string>):
   return violations;
 }
 
-// ---------------------------------------------------------------------------
-// Fixtures — miniature `src/workflows/` trees, one per arm, written to a temp
-// root and read back by the same collector the repository goes through.
-// ---------------------------------------------------------------------------
+
 
 function fixtureDescriptor(id: string): string {
   return `export const descriptor = defineWorkflowDescriptor({ id: "${id}", version: 1 });\n`;
@@ -308,11 +220,7 @@ function fixtureWorkflow(id: string): string {
 }
 const FIXTURE_MODULE = "export const module = { role: \"fixture\" };\n";
 
-/**
- * The clean tree: a standalone workflow, a composition declaring two groups of
- * which only `step-one` carries a harness (so only `step-one/` exists — the
- * `job-summary` shape), and nothing authored beside any `workflow.ts`.
- */
+
 function cleanFixtureFiles(): Record<string, string> {
   return {
     "src/workflows/descriptor-registry.ts": "export const REGISTRY = [];\n",
@@ -388,7 +296,7 @@ const FIXTURES: readonly LayoutFixture[] = [
     arm: "a",
     files: withFiles((files) => { files["src/workflows/solo/descriptor.ts"] = fixtureDescriptor("solo"); }),
     modules: cleanFixtureModules(),
-    expected: /workflow solo authors src\/workflows\/solo\/descriptor\.ts beside src\/workflows\/solo\/workflow\.ts; a workflow folder holds exactly its one workflow\.ts \(D312\/D317\)/,
+    expected: /^workflow solo authors src\/workflows\/solo\/descriptor\.ts beside src\/workflows\/solo\/workflow\.ts; a workflow folder holds exactly its one workflow\.ts$/,
   },
   {
     name: "folder-missing-workflow-ts",
@@ -497,22 +405,18 @@ function registeredLayoutModules(): readonly WorkflowLayoutModule[] {
   }));
 }
 
-describe("workflow-layout — the src/workflows/ tree IS the rail and the timeline (D265, §1.2.2)", () => {
+describe("workflow-layout — the src/workflows/ tree IS the rail and the timeline", () => {
   const repositoryTree = collectWorkflowLayoutTree(REPO_ROOT);
 
   it("arms (a) and (b): the real tree and the real registry agree, in both directions", () => {
-    // A walker that resolved nothing would report every arm green, so the tree
-    // is asserted non-empty first — the same negative control every fixture-fed
-    // guard in this suite carries.
+
     assert.ok(repositoryTree.directories.length > 0, "collector resolved no workflow folders");
     assert.ok(repositoryTree.declaredIds.size > 0, "collector read no workflow ids");
     assert.deepEqual(auditWorkflowLayout(registeredLayoutModules(), repositoryTree), []);
   });
 
   it("arm (b): the composition's step folders are exactly its harness-carrying declared groups, by name", () => {
-    // Belt-and-braces over the arm above: if `auditWorkflowLayout` ever stopped
-    // deriving sub-folders, the set comparison here would still notice. The
-    // one declared group without a folder is the one with no harness.
+
     const modules = registeredLayoutModules();
     const separations = modules.find(({ id }) => id === "separations");
     assert.ok(separations !== undefined, "separations must stay registered");
@@ -525,13 +429,12 @@ describe("workflow-layout — the src/workflows/ tree IS the rail and the timeli
     assert.deepEqual(
       separations.timelineKeys.filter((key) => !harnessSteps.includes(key)),
       ["job-summary"],
-      "job-summary is the declared group proved inside identity-check's harness and has no folder (D265 mapping)",
+      "job-summary is the declared group proved inside identity-check's harness and has no folder",
     );
   });
 
-  it("arm (b): a declared group with no harness needs no folder (D312 §1.6.1 item 5)", () => {
-    // The clean fixture declares `step-two` and holds no `step-two/` folder;
-    // if that ever became a violation, the tuples would no longer own membership.
+  it("a declared group with no harness needs no folder", () => {
+
     const root = writeFixtureTree(cleanFixtureFiles());
     try {
       assert.deepEqual(auditWorkflowLayout(cleanFixtureModules(), collectWorkflowLayoutTree(root)), []);

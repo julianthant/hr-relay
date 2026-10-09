@@ -1,42 +1,4 @@
-/**
- * The intake plan manifest — ref data-intake-and-edit-data §5.
- *
- * This is the record that makes "42 rows ran" checkable. It proves which file
- * and mapping were used, which rows became which stable items, which cells the
- * operator corrected without rewriting the source, which rows were rejected or
- * explicitly excluded, and the exact validated input hashes.
- *
- * ## Current disposition is stored; totals are derived from it
- *
- * `rejectedRows` is immutable validation HISTORY — a row rejected at 10:02 and
- * corrected at 10:04 keeps its rejection event forever. So the manifest cannot
- * infer "is this row valid" by adding event arrays; it stores exactly one
- * current disposition per source row and derives every total from that. The
- * schema refines all of it: every source row from `1..sourceRows` appears
- * exactly once, `valid` carries an `itemId`, `rejected` carries at least one
- * CURRENT reject id, `excluded` carries neither, and the six totals must equal
- * what the dispositions say.
- *
- * That refinement is the mechanical form of §7 vector #12: a partial intake can
- * never look like every source row completed, because the counts are checked
- * against the per-row truth rather than accumulated alongside it.
- *
- * ## Why a reject id is derived, not minted
- *
- * The same defect on the same cell of the same file is the same rejection. If
- * ids were minted, re-validating after a correction would produce a second id
- * for a rejection the operator already saw, and the history would grow a
- * duplicate every pass. The fold is over the source artifact digest, the row,
- * the kind and the field — so revalidation is idempotent.
- *
- * ## Redaction
- *
- * A reject stores its offending cell as a `RedactedValue`, per the canonical
- * field's own declared `(classification, transform)`. The operator sees the
- * real cell in the intake grid, which reads the content-addressed source
- * artifact; the durable manifest never becomes a second copy of a person's
- * identifiers.
- */
+/** The intake plan manifest: which file and mapping were used, which rows became which items, which cells were corrected, and the exact validated input hashes. */
 import { z } from "zod";
 import { JsonValueSchema, canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { BoundaryIssueSchema } from "../failures/boundary-failure.js";
@@ -119,10 +81,7 @@ export const RowRejectSchema = z.discriminatedUnion("kind", [
 ]);
 export type RowReject = z.infer<typeof RowRejectSchema>;
 
-/**
- * A rejection's identity is a function of what it is about, so revalidating a
- * corrected file does not mint a second id for a defect already recorded.
- */
+/** A rejection's identity is a function of what it is about, so revalidating a corrected file does not mint a second id. */
 export function deriveRowRejectId(args: {
   sourceSha256: string;
   sourceRow: number;
@@ -154,15 +113,7 @@ export const ValidRowSchema = z.strictObject({
   sourceRow: z.number().int().positive(),
   itemId: ItemIdSchema,
   inputHash: FingerprintSchema,
-  /**
-   * The parsed workflow input, under the generic canonical-JSON envelope only
-   * because one manifest schema covers many workflows. **No caller reads this
-   * as a workflow input.** Manifest load, rerun and enqueue resolve the named
-   * descriptor and parse each value through its exact current transform-free
-   * canonical schema, whose identity is pinned once per manifest as
-   * `canonicalInputSchemaHash` (D62/D110). A parse failure quarantines the
-   * manifest; it never reaches a task bind.
-   */
+    /* The parsed workflow input under the generic canonical-JSON envelope: readers resolve the named descriptor and parse it through the manifest's pinned canonical schema. */
   parsedInput: JsonValueSchema,
 });
 
@@ -359,15 +310,7 @@ export const IntakePlanManifestSchema = z.strictObject({
 });
 export type IntakePlanManifest = z.infer<typeof IntakePlanManifestSchema>;
 
-/**
- * Assemble one immutable manifest from a validation pass.
- *
- * The dispositions are computed here from the pass rather than supplied, and
- * the totals are computed from the dispositions, so the schema's refinement is
- * checking a derivation rather than restating an assumption. `rejectionHistory`
- * is the union of everything ever recorded for this file — a corrected row
- * keeps its earlier rejection event and loses only its CURRENT reject ids.
- */
+/** Assemble one immutable manifest from a validation pass; the dispositions and totals are computed here, so the refinement checks a derivation. */
 export function buildIntakeManifest(args: {
   manifestId: string;
   workflow: string;
@@ -442,15 +385,7 @@ export function buildIntakeManifest(args: {
   });
 }
 
-/**
- * The visible diff a "rerun with existing data" must show before it creates a
- * new run — ref data-intake-and-edit-data §7 vector #11.
- *
- * A rerun references an immutable manifest and an immutable artifact. If the
- * file, mapping, projection, workflow contract, canonical schema, membership,
- * or a stable item's input has moved, that is a NEW plan the operator confirms,
- * never a silent reparse.
- */
+/** The visible diff a "rerun with existing data" must show before it creates a new run: any moved fact is a NEW plan, never a silent reparse. */
 export const RerunDiffSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("same-plan") }),
   z.strictObject({
@@ -568,11 +503,7 @@ export function rerunDiff(
   if (currentItemIds.size !== currentState.validRows.length) {
     throw new Error("rerun diff current plan repeats a valid item identity");
   }
-  // Membership is a SET difference by stable item identity, not by source row
-  // or input hash. A mapping that changes an identity yields the prior row in
-  // `removed` and the current row in `added`. When identity survives, changed
-  // canonical input is a separate hash-only vector rather than a fake remove
-  // plus add.
+  // Diff membership by stable item identity; changed input hashes do not create removals/additions.
   const added = currentState.validRows.filter((row) => !priorItemIds.has(row.itemId));
   const removed = priorManifest.validRows.filter((row) => !currentItemIds.has(row.itemId));
   const priorByItemId = new Map(priorManifest.validRows.map((row) => [row.itemId, row]));
@@ -592,14 +523,7 @@ export function intakeInputHash(parsedInput: unknown) {
   return FingerprintSchema.parse(sha256Hex(`hrauto:intake-input:v1\0${canonicalJsonStringify(parsedInput)}`));
 }
 
-/**
- * Whether this manifest may fan out — ref data-intake-and-edit-data §2.2 step 4 and §5.
- *
- * A valid ZERO-row intake is NOT a no-op success. An operator who uploaded the
- * wrong sheet, or whose every row failed, must see `no-valid-rows` and an
- * inspectable manifest rather than a run that reports done having launched
- * nothing.
- */
+/** Whether this manifest may fan out; a valid ZERO-row intake refuses with `no-valid-rows` rather than launching nothing. */
 export const EnqueueReadinessSchema = z.discriminatedUnion("ready", [
   z.strictObject({ ready: z.literal(true), enqueueCount: z.number().int().positive() }),
   z.strictObject({

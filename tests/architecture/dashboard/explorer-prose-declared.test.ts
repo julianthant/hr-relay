@@ -1,20 +1,4 @@
-/**
- * `explorer-prose-declared` — every REGISTERED workflow and node carries the
- * descriptor's own words (ref operator-trust §5.9, D229).
- *
- * The explorer's ⓘ opens with the descriptor's sentence about the workflow and
- * about the selected node. That sentence is DATA the descriptor authors, and
- * the wire carries an `absent` arm for it rather than throwing — the explorer
- * serves every registered workflow in ONE document, so refusing the whole
- * surface over a missing sentence would take the operator's index of the system
- * down for a piece of prose.
- *
- * This guard is what makes that arm unreachable in the product: a registered
- * workflow with no summary, or a node with no purpose, fails the BUILD instead
- * of quietly shipping a reference surface that explains nothing. A fixture
- * descriptor is deliberately unaffected — it is not in the composition root,
- * and prose about a graph nobody runs would be prose nobody reads.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { z } from "zod";
@@ -136,7 +120,7 @@ describe("the declaration itself is exhaustive or absent, never partial", () => 
   it("REFUSES a node-purpose list that does not cover every node", () => {
     assert.throws(
       fixtureWith([{ nodeId: "first", purpose: "reads the receipt" }]),
-      /a declared node-purpose list is exhaustive \(D229\) and this one does not cover: second/u,
+      /a declared node-purpose list is exhaustive and this one does not cover: second/u,
     );
   });
 

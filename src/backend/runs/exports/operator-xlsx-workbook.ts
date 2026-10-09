@@ -83,13 +83,7 @@ const ZIP_END_OF_CENTRAL_DIRECTORY = 0x0605_4b50;
 const ZIP_FIXED_DOS_TIME = 0;
 const ZIP_FIXED_DOS_DATE = 0x0021; // 1980-01-01, the earliest ordinary ZIP date.
 
-/**
- * `write-excel-file` delegates to fflate, whose ZIP headers default to the
- * current wall clock. The workbook XML is deterministic, so pin only that
- * archive metadata after walking the authoritative central directory. This
- * parser deliberately refuses ZIP64/multidisk shapes instead of scanning for
- * signature-like bytes inside compressed worksheet data.
- */
+// fflate defaults ZIP timestamps to the wall clock; pin them for byte-identical workbooks.
 function normalizeXlsxArchiveTimestamps(input: Buffer): Buffer {
   const output = Buffer.from(input);
   const minimumEnd = 22;

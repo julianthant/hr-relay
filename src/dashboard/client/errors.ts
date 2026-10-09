@@ -1,10 +1,5 @@
-/**
- * The client's one error vocabulary. Every failure a component can see is a
- * `DashboardClientError` with a closed kind — network reachability, an HTTP
- * status with the server's typed wire error attached, a schema parse failure
- * (the server sent something the contract does not admit), or a subscription
- * protocol violation. Nothing is swallowed into `undefined`.
- */
+/** The client's one error vocabulary. Every failure a component can see is a
+ * `DashboardClientError` with a closed kind — network reachability, an HTTP */
 import { z } from "zod";
 
 export const WIRE_ERROR_BODY = z.strictObject({

@@ -59,8 +59,7 @@ try {
   projection.rebuildFromTimeline();
   assert.equal(projection.health().state, 'live');
   f.db.refreshRunSummaries();
-  // The pre-existing queueSurface comparison uses its full snapshot API.
-  // The production served day path under review must never fall back to it.
+
   const detailDeps = createOperatorRunDetail({ database: f.db, stateRoot: f.root, projection, runReader: reader });
   const observe = (stage: string) => {
     const canonical = projection.queueSurface(runId);

@@ -1,14 +1,4 @@
-/**
- * Definition fixtures for D315's closed entry algebra.
- *
- * Every fixture is a REAL `defineWorkflow` value over REAL store-implemented
- * contracts, compiled through the real compiler against a build manifest that
- * names the fixture (a fixture is not a registered workflow, so the checked-in
- * manifest cannot carry its fingerprint). Nothing here is registered: the
- * registry-wide conformance suite projects these through the same generic
- * surfaces the registered workflows use, and the executor proof runs one of
- * them through the real interpreter.
- */
+
 import { z } from "zod";
 import {
   compileWorkflow,
@@ -54,12 +44,7 @@ export function fixtureBuildManifest(ids: readonly string[]): BuildManifest {
   });
 }
 
-/**
- * One manifest object per fixture id: `compileWorkflow` memoizes per definition
- * AND refuses a second manifest identity, so compiling the same fixture twice
- * (a `describe`-level compile plus a case-level one) must present the same
- * manifest object, not a structurally equal fresh one.
- */
+// Reuse one manifest identity per definition; compileWorkflow refuses a structurally equal replacement.
 const FIXTURE_MANIFESTS = new Map<string, BuildManifest>();
 
 export function compileFixtureWorkflow(definition: AnyWorkflowDefinition): AnyCompiledWorkflow {
@@ -90,13 +75,7 @@ const FixtureGateResultSchema = z.strictObject({ approved: z.boolean() });
 
 export const EVERY_ENTRY_KIND_WORKFLOW_ID = "fixture-every-entry-kind";
 
-/**
- * One definition using every entry kind of the closed algebra exactly as an
- * author would: an explicit `task`, an explicit `parallel` with two
- * independently checkpointed leaves, an explicit `gate`, an explicit
- * `delegate` over the registered person-lookup ref, and an explicit
- * `transaction` over the real pending-sweep prepare/commit pair.
- */
+
 export const everyEntryKindWorkflow = defineWorkflow({
   id: EVERY_ENTRY_KIND_WORKFLOW_ID,
   version: 1,
@@ -207,11 +186,7 @@ export const everyEntryKindWorkflow = defineWorkflow({
 export const PARALLEL_LEAVES_WORKFLOW_ID = "fixture-parallel-leaves";
 export const ParallelLeavesResultSchema = z.strictObject({ searched: z.boolean(), verified: z.boolean() });
 
-/**
- * Two independent leaves under one explicit parallel entry — the executor
- * proof that a failed leaf retries on the next attempt while its successful
- * sibling replays from its own checkpoint (D315 / D314 item 1).
- */
+
 export const parallelLeavesWorkflow = defineWorkflow({
   id: PARALLEL_LEAVES_WORKFLOW_ID,
   version: 1,

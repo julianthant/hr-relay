@@ -11,23 +11,7 @@ import { randomUUID } from "node:crypto";
 import { createSpanJsonlWriter } from "../../../../../../src/backend/storage/events/span-jsonl-writer.js";
 import { createTimelineEmitter } from "../../../../../../src/backend/storage/events/timeline-emitter.js";
 import { QUEUED_RUN } from "../../../../../support/fixtures/phase1f-run-fixtures.js";
-/**
- * D322: an authority backup is written ONLY by `cli storage backup`.
- *
- * The dashboard composition used to own a cadence (start / dirty 15-minute
- * tick / graceful drain). The operator retired it: the state root holds the
- * bare minimum and regenerates itself when deleted, and a SQLite backup exists
- * only when asked for. This file pins the three consequences on the real
- * command surface over a real authority database:
- *
- *  1. `storage backup` writes exactly one verified backup set + manifest at the
- *     live generation and prints the manifest it wrote;
- *  2. `storage backup` REFUSES when no authority exists — it never creates an
- *     empty database to back up;
- *  3. `storage doctor` no longer gates its exit code on a current backup: a
- *     healthy, reconciled authority with NO backup exits 0 and reports the
- *     backup arm as missing.
- */
+
 import assert from "node:assert/strict";
 import { truncateSync, copyFileSync, symlinkSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -82,8 +66,8 @@ function createAuthority(p: Paths): number {
   }
 }
 
-describe("cli storage backup (D322)", () => {
-  it("M18 real restore warns about displaced fenced evidence without resurrecting the run", async () => {
+describe("cli storage backup", () => {
+  it("real restore warns about displaced fenced evidence without resurrecting the run", async () => {
     const p = paths(); createAuthority(p);
     const backup = await composeStorageCommand(rebuildRuntimeIsolation, ["backup"], CLOCK, p.repoRoot);
     assert.equal(backup.exitCode, 0, backup.output);
@@ -278,7 +262,7 @@ describe("cli storage backup (D322)", () => {
     assert.equal(result.output.includes("synthetic-invalid-private-input"), false); assert.equal(existsSync(p.stateRoot), false);
     assert.equal(readFileSync(join(p.repoRoot, ".env"), "utf8"), source);
   });
-  it.each(["--force", "--skip-backup", "--allow-mixed"])("M19 refuses unsupported upgrade flag %s before touching the root", async (flag) => {
+  it.each(["--force", "--skip-backup", "--allow-mixed"])("refuses unsupported upgrade flag %s before touching the root", async (flag) => {
     const p = paths(); const before = readdirSync(p.repoRoot);
     const result = await composeStorageCommand(rebuildRuntimeIsolation, ["upgrade", flag], CLOCK, p.repoRoot);
     assert.equal(result.exitCode, 2); assert.ok(result.output.includes(flag)); assert.deepEqual(readdirSync(p.repoRoot), before);

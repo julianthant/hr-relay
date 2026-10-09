@@ -200,11 +200,7 @@ function protectedBindingFor(path: string, bindings: readonly ProtectedInputBind
   return bindings.find((binding) => binding.inputPath === root);
 }
 
-/**
- * A binder is scoped to one real task invocation and task retry. It observes
- * completed notes only; it never makes an absent note look started, failed, or
- * not-run.
- */
+// Bind completed notes only; absent notes never become synthetic action outcomes.
 export function createDeclaredActionBinder(input: DeclaredActionBinderInput): (action: BrowserAction) => BrowserAction {
   const invocation = input.snapshot.invocations.find((candidate) =>
     candidate.entryId === input.nodeId
@@ -228,9 +224,7 @@ export function createDeclaredActionBinder(input: DeclaredActionBinderInput): (a
     sequence += 1;
     const declared = findAction(actions, observed, invocation.operation.page);
     if (declared === undefined) {
-      // Session/navigation and field-clear observations are real notes, but
-      // they are not an action kind a declaration can claim. A typed/clicked
-      // target that could be declared is never silently relabelled.
+      // Session and field-clear notes are observations, not declared action outcomes.
       if (observed.kind !== "cleared") {
         throw new Error(
           `browser action ${observed.kind} ${observed.targetId} is not declared for operation ${invocation.operation.id}`,

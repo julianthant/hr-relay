@@ -1,11 +1,4 @@
-/**
- * D312 (doc 03.2 Task 2) — the ref stores §2 renderer, against a fixture registry.
- *
- * `store-catalog-current.test.ts` proves the CHECKED-IN bytes; this file proves the renderer's
- * behaviour on shapes the live registry does not currently carry: a plain (non-discriminated) union
- * input, a discriminated union, and a pending D107 contract. A generator only ever exercised against
- * today's registry would silently lose those arms the first time a store grows one.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { z } from "zod";
@@ -98,7 +91,7 @@ describe("store catalog generator", () => {
     assert.match(rendered, /_3 registered stores · 2 bound tasks · 0 pending contracts\._/u);
   });
 
-  it("renders D107 pending contracts as their own rows rather than omitting them", () => {
+  it("renders pending contracts as their own rows rather than omitting them", () => {
     const pending: StoreCatalogPendingBindings = {
       tasks: [{
         taskId: "i9/read-signer",

@@ -15,15 +15,8 @@ export type DayCountWire = z.infer<typeof DayCountWireSchema>;
 export type ServerClockWire = z.infer<typeof ServerClockWireSchema>;
 
 
-/**
- * "Today", as the SERVER understands it.
- *
- * The demo read a `DEMO_DAY` constant. Here the live day is a served fact —
- * bootstrap's `serverClock`, in the zone the server states — because the queue
- * is day-partitioned by the backend's local midnight, not the browser's. A
- * browser in another zone must not disagree with the tracker about which day
- * "today" is.
- */
+/** "Today", as the SERVER understands it.
+ * The demo read a `DEMO_DAY` constant. Here the live day is a served fact */
 export function serverLocalDay(clock: { readonly now: string; readonly zone: string }): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: clock.zone,
@@ -112,15 +105,7 @@ export interface CalendarCell {
 }
 
 
-/**
- * Six Sunday-first weeks, always — 42 cells.
- *
- * A grid whose ROW COUNT changes with the month reflows the popover (and the
- * button under the pointer) every time you step a month, which is the one thing
- * a date picker must not do.
- *
- * Counts identify days with rows; every day through today can be opened.
- */
+/** Keep six weeks so month changes cannot move the picker under the pointer. */
 export function buildCalendarMonth(
   month: string,
   counts: readonly DayCountWire[],

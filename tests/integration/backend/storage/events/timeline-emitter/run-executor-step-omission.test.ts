@@ -1,14 +1,7 @@
 import { createTimelineEmitter } from "../../../../../../src/backend/storage/events/timeline-emitter.js";
 import { timelineCheckpointReference } from "../../../../../../src/models/events/timeline.js";
 import { testRunLifecycle } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
-/**
- * D307 — the executor under step omission.
- *
- * A two-step fixture graph: `read` (a service task that must NEVER run when
- * its step is omitted) feeds `fold`. The `reading` step declares an omission
- * whose producer rebuilds `read` from one typed fact. The proof is the
- * executor's own durable and span evidence, not a stubbed plan.
- */
+
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
@@ -51,13 +44,7 @@ const FixtureCanonicalInput = defineCanonicalInput(
   z.strictObject({ name: z.string().min(1) }),
   [{ name: "Battistessa, Johnnie" }],
 );
-/**
- * Both nodes borrow the ONE manifest-known, fixture-classified task id
- * (`ocr/extract-form-page`, see `evidence-classification.ts`): the executor
- * resolves impl fingerprints through the generated manifest and refuses an
- * unknown id. Its leaves are the classified ones; the two nodes differ only
- * in what they bind.
- */
+// Use a manifest-known fixture task so execution resolves a real implementation fingerprint.
 const FixtureIo = z.strictObject({ disposition: z.string().min(1), providerState: z.string().min(1) });
 const fixtureContract = defineTaskContract({
   id: taskId("ocr/extract-form-page"),
@@ -162,12 +149,7 @@ const projectingDescriptor = fixtureDescriptor(
   }],
 );
 
-/**
- * Bullet 7 — `read → gate → fold`, where `reading` (the ONLY node before the
- * gate) is omittable. This is the D307 × D214 crossing: the run parks at the
- * gate with the assertion already durable, and the resume's fresh claim must
- * republish that SAME marked row rather than reprocessing the omission.
- */
+
 const ApprovalSchema = z.strictObject({ approved: z.boolean() });
 const gateOmissionFlow = flow(FixtureInput)
   .step("read", fixtureContract, { dependsOn: [], replay: "checkpoint", bind: () => ({ disposition: "observed" }) })
@@ -297,10 +279,7 @@ function claim(database: AuthorityDatabase, descriptor: AnyWorkflowDescriptor): 
   return { run: claimed.run, claim: { workerId: WORKER_ID, claimGeneration: claimed.run.claimGeneration } };
 }
 
-/**
- * Drain the gate fixture's FIRST claim: the operator's typed facts publish
- * `read` as a marked assertion row, and the run parks at the `approval` gate.
- */
+
 async function parkAtGate(harness: ReturnType<typeof harnessFor>): Promise<RunRecord> {
   const { database } = harness.authority;
   database.authority.runs.enqueue(queuedRunFor(gateOmissionDescriptor, [{ step: "reading", facts: { value: "typed" } }]));
@@ -342,7 +321,7 @@ function markedRowsFor(database: AuthorityDatabase, run: RunRecord) {
   );
 }
 
-describe("executor step omission (D307)", () => {
+describe("executor step omission", () => {
   it("publishes the producer's output without running the task, and the terminal record cites it as asserted", async () => {
     invocations.length = 0;
     const harness = harnessFor(honestDescriptor);
@@ -510,7 +489,7 @@ describe("executor step omission (D307)", () => {
       assert.fail(`second run failed at ${failure?.nodeId ?? "?"}: ${failure?.summary ?? "?"}`);
     }
     assert.deepEqual(outcome, { state: "done", runId: UUID_4 });
-    // The task was genuinely invoked again — this is an OBSERVATION, not a replayed assertion.
+
     assert.deepEqual(invocations, ["observed", "observed!"]);
 
     const rows = database.authority.runCheckpoints.listByAttempt(honestDescriptor.id, QUEUED_RUN.envelope.itemId, "read", 2);
@@ -519,7 +498,7 @@ describe("executor step omission (D307)", () => {
     assert.equal(rows[0]?.runId, UUID_4);
   });
 
-  it("D307 × D214 — an asserted node upstream of a gate republishes its ONE marked row across the resume", async () => {
+  it("an asserted node upstream of a gate republishes its single marked row across resume", async () => {
     invocations.length = 0;
     const harness = harnessFor(gateOmissionDescriptor);
     const { database } = harness.authority;
@@ -544,8 +523,7 @@ describe("executor step omission (D307)", () => {
       assert.fail(`resumed run failed at ${failure?.nodeId ?? "?"}: ${failure?.summary ?? "?"}`);
     }
     assert.deepEqual(outcome, { state: "done", runId: RUN_ID });
-    // "fold" genuinely ran once on the resume (consuming the asserted "typed" value);
-    // "read" itself was never invoked — republishing an assertion never re-invokes its task.
+
     assert.deepEqual(invocations, ["typed"]);
 
     /* ── exactly ONE row for "read", byte-identical to the one the park left ── */
@@ -572,9 +550,7 @@ describe("executor step omission (D307)", () => {
     assert.ok(readDependency?.state === "asserted");
     assert.equal(readDependency.step, "reading");
     assert.equal(readDependency.outputSchemaHash, beforeResume[0]?.output.schemaHash);
-    // `done` is only reachable because `#assertStoredTerminalDependencies` found
-    // EXACTLY ONE marked row binding this assertion; the sibling test below shows
-    // what a second one does to the very same resume.
+
     const run = database.authority.runs.get(RUN_ID);
     assert.ok(run !== undefined && run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done");
   });
@@ -587,14 +563,7 @@ describe("executor step omission (D307)", () => {
     const parkedRow = markedRowsFor(database, parkedRun)[0];
     assert.ok(parkedRow !== undefined);
 
-    /*
-     * The exact corruption `#assertStoredTerminalDependencies` exists to catch:
-     * a SECOND marked row for the same node at the same attempt, binding the
-     * same step/schema/digest — what a resume that RE-PRODUCED the assertion
-     * (rather than republishing it) would leave behind. The unique key includes
-     * `claim_generation`, so the second execution's row is a legal INSERT; only
-     * the terminal mirror can tell that the attempt now holds two.
-     */
+
     database.authority.runCheckpoints.insert({ ...parkedRow, claimGeneration: 2 });
     assert.equal(markedRowsFor(database, parkedRun).length, 2, "the fixture must actually hold two marked rows");
 

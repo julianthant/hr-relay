@@ -1,16 +1,4 @@
-/**
- * person-lookup — ref workflow-model §8's worked example, and Phase 1's live exit slice.
- *
- * This module is bundle-safe: it value-imports only zod, `src/domain/**`, and
- * the audited `src/base` builders, so the same declaration drives the daemon and
- * the dashboard. Everything the legacy client hand-maintained for this workflow
- * — its rail entry, icon, category, input panel and parser, session-card label,
- * pipeline chips, and `notFound`/`inactive` statuses — is a projection of the
- * object below.
- *
- * The contracts are imported by VALUE, so renaming a field on
- * `ucpath/search-person-org` fails `tsc` here rather than at the first run.
- */
+// person-lookup: one bundle-safe declaration drives daemon and dashboard.
 import { z } from "zod";
 import { defineWorkflow } from "../../workflow-kit/workflow-definition.js";
 import { requireFact } from "../../workflow-kit/workflow.js";
@@ -33,27 +21,10 @@ import { STANDARD_WORKFLOW_ACTIONS } from "../../models/workflow/presentation.js
 
 /* ── workflow-constant input ─────────────────────────────────────────────── */
 
-/**
- * The person's name, as one schema object shared by both arms of the input
- * union and by the canonical view (D172).
- *
- * It IS the canonical `fullName` schema rather than a structurally identical
- * `z.string().min(1)`, because `defineIntakeProjection` proves ref data-intake-and-edit-data §1 by
- * OBJECT IDENTITY: a spreadsheet column bound to `name` is coerced through
- * `CANONICAL_FIELDS.fullName.coerce` and must then satisfy the very schema this
- * workflow validates with, not a copy that agrees today. Sharing one object
- * across both arms is the other half of the same fact — two arms spelling the
- * constraint twice would be two schemas for one field, which the resolver
- * refuses by name.
- */
+// One shared `fullName` schema object; intake proves identity by object.
 const PersonNameSchema = CANONICAL_FIELDS.fullName.schema;
 
-/**
- * The ingress schema — the ONE place defaults are applied (ref workflow-model §2). There is
- * deliberately no `dryRun` field: that is kernel envelope state (D6), and a
- * workflow that could declare it could also disagree with the executor about
- * whether a run may commit.
- */
+// The only place defaults apply; `dryRun` stays kernel envelope state.
 export const PersonLookupInput = z.union([
   z.strictObject({
     name: PersonNameSchema,
@@ -68,11 +39,7 @@ export const PersonLookupInput = z.union([
   }),
 ]);
 
-/**
- * The validation-only view of the stored snapshot. Same shape, no defaults —
- * so a redeployed default can never rewrite an in-flight run's input, and a
- * snapshot that no longer matches fails loud instead of being re-derived.
- */
+// Validation-only snapshot: no defaults, so a mismatch fails loudly.
 export const PersonLookupCanonicalInput = defineCanonicalInput(
   PersonLookupInput,
   z.union([
@@ -103,29 +70,7 @@ export const PersonLookupResultSchema = z.strictObject({
   ]),
 });
 
-/**
- * The first real intake projection (ref data-intake-and-edit-data §2.7, D172) — a spreadsheet of
- * people fanning out one lookup per row.
- *
- * **Two targets, and deliberately only two.** `emplId` and `name` are the whole
- * of what a roster row says about a person; `keepNonHdh` and `includeCrmDates`
- * are execution options, recorded as `execution-option` in
- * `config/canonical-field-inventory.json` precisely because they describe the
- * RUN rather than the subject. Binding a spreadsheet column to one would let a
- * file decide whether this system reads CRM.
- *
- * **Neither target is `required`, and that is the union telling the truth.**
- * `PersonLookupInput` accepts `{name}` or `{emplId, name?}`, so no single path
- * is present in every valid input — and a projection that claimed otherwise
- * would reject, with `unmapped-required`, rows the workflow itself accepts. The
- * combination is still enforced: §5's pipeline parses every assembled row
- * through this exact schema, so a row carrying neither identifier is rejected
- * with the schema's own words rather than passed on.
- *
- * It is declared HERE, on the server module, rather than on the descriptor, so
- * it stays out of `contractFingerprint` — an operator-facing mapping surface is
- * not part of the contract a run replays against (D170).
- */
+// A spreadsheet fans out one lookup per row; intake stays off the descriptor.
 export const personLookupIntake = defineIntakeProjection(PersonLookupInput, {
   emplId: CANONICAL_FIELDS.eid,
   name: CANONICAL_FIELDS.fullName,
@@ -151,11 +96,7 @@ export const personLookupWorkflow = defineWorkflow({
   actions: STANDARD_WORKFLOW_ACTIONS,
   capabilities: {
     review: false,
-    // Ref data-intake-and-edit-data §6.2: the three CRM dates are the fields an operator genuinely
-    // corrects — a misread date fixed before anything downstream consumes it.
-    // Each path names the `present` arm's value; a correction against a stored
-    // `absent` outcome fails the save's full re-parse, which is the honest
-    // answer ("there is no recorded date to correct").
+    // Correct only recorded CRM dates; absent outcomes fail full save validation.
     editData: {
       fields: [
         { nodeId: "crm-dates", fieldPath: "invitedOn.value", label: "Invited on" },
@@ -182,14 +123,7 @@ export const personLookupWorkflow = defineWorkflow({
           { field: "includeCrmDates", value: { kind: "boolean", value: false } },
         ],
       },
-      /**
-       * D250. Both texts are the placeholder's own values, so nothing new is
-       * introduced here, and the factory proves each one parses AND satisfies
-       * `PersonLookupInput` before this descriptor exists. The pair is chosen to
-       * show the parser's discrimination — the arm an operator cannot guess from
-       * a placeholder is that a name goes in the SAME box, unquoted, with the
-       * comma inside it left alone because the delimiter is a semicolon.
-       */
+      // Examples must parse and satisfy `PersonLookupInput`.
       examples: [
         {
           key: "one-eid",
@@ -221,14 +155,7 @@ export const personLookupWorkflow = defineWorkflow({
       display: "badge",
     },
   ],
-  /**
-   * Ref dashboard-surfaces §1.2: an EID-started lookup titles itself `EID 10873698` until the
-   * Person Org search has RESOLVED somebody, and then says who. The path runs
-   * through the selection's discriminated union on purpose — `selected` is
-   * `null` on the not-found and ambiguous arms, so the resolver reads those as
-   * *no subject* and the row keeps the EID it was started from, which is
-   * precisely what an unresolved lookup should still be called.
-   */
+  // Unresolved searches keep the EID title, not a guessed person.
   subjectProjection: { nodeId: "searching", fieldPath: "selection.selected.name" },
   identity: {
     matchKey: (input) => ("emplId" in input ? `eid:${input.emplId}` : `name:${input.name}`),
@@ -237,7 +164,7 @@ export const personLookupWorkflow = defineWorkflow({
     title: (input) => ("emplId" in input ? `EID ${input.emplId}` : input.name),
     subtitle: (input) => (input.includeCrmDates ? "with CRM dates" : "person lookup"),
   },
-  /** D229 — the descriptor's own words about each node, projected by the explorer. */
+  /** The descriptor's own words about each node, projected by the explorer. */
   nodePurposes: [
     {
       nodeId: "searching",
@@ -258,7 +185,7 @@ export const personLookupWorkflow = defineWorkflow({
   ],
   input: PersonLookupInput,
   intake: personLookupIntake,
-  // An ordinary workflow that stands on its own — no composition owns it (D219).
+  // An ordinary workflow that stands on its own — no composition owns it.
   role: defineWorkflowRole({ kind: "standalone" }),
   scenarios: [
     "person-lookup/happy-by-eid",

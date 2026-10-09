@@ -1,19 +1,4 @@
-/**
- * D225 — the run-detail timeline is CATEGORICAL (ref dashboard-surfaces; separations §9.18).
- *
- * The composed separations graph has eighteen nodes and drew eighteen
- * truncated stubs, two of them duplicates of each other because a gate resume
- * re-runs an `always-rerun` node inside one attempt. The operator ruled the
- * strip is grouped: a descriptor DECLARES the categories, every node folds
- * into exactly one, and a re-execution becomes a `×N` marker on its category
- * rather than a second segment.
- *
- * Two halves are pinned here, and the FACTORY half carries the weight: a
- * declared timeline is exhaustive by rule, because a node quietly missing from
- * the declaration would vanish from the one surface whose whole job is to say
- * what a run does — and it would vanish silently, which is the failure mode
- * this program refuses everywhere else.
- */
+
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
@@ -86,12 +71,7 @@ function descriptorWith(
   return descriptorNamed("timeline-fixture", "tf", "first", timeline);
 }
 
-/**
- * The same two-node graph with the FIRST node's id as a parameter, so a test
- * can pin what the derived default key does with a node id the graph is
- * allowed to have (D265 — `NodeIdSchema`'s slug grammar leads with a letter OR
- * a digit).
- */
+
 function descriptorNamed<First extends string>(
   id: string,
   code: string,
@@ -129,30 +109,16 @@ function descriptorNamed<First extends string>(
   });
 }
 
-describe("D225 — the descriptor's declared timeline", () => {
+describe("the descriptor's declared timeline", () => {
   it("derives ONE category per node when a descriptor declares nothing", () => {
-    // The honest default for a graph small enough to read node by node: the
-    // categorical strip and the old per-node strip are the same picture, so
-    // nothing regresses for person-lookup-shaped workflows.
-    // D265: the default's KEY is the node id — the stable anchor a step folder
-    // and a `chunk-harness.step` name, while the label stays the display string.
+
     assert.deepEqual(descriptorWith().timeline, [
       { key: "first", label: "Read one", nodes: [{ id: "first", label: "Read one" }] },
       { key: "second", label: "Read two", nodes: [{ id: "second", label: "Read two" }] },
     ]);
   });
 
-  /**
-   * D265 — the derived default key IS the node id, so the key's grammar has to
-   * BE the node id's grammar.
-   *
-   * `NodeIdSchema` accepts a digit-leading slug (`2fa-prompt`, `9-box-review`)
-   * and refuses only a bare ordinal and a UUID. A key schema that additionally
-   * demanded a leading letter made the default derivation throw on a graph the
-   * builder had already accepted — and threw naming the KEY, so the message
-   * pointed at a field the author never wrote. A folder name is the only thing
-   * that reads a key, and a slug is already a safe folder name.
-   */
+
   it("derives the default key for a node id that leads with a digit", () => {
     const digitLed = descriptorNamed("timeline-digit-fixture", "td", "2fa-prompt");
     assert.deepEqual(digitLed.timeline, [
@@ -211,10 +177,8 @@ describe("D225 — the descriptor's declared timeline", () => {
     );
   });
 
-  it("REFUSES two categories sharing one key, naming the duplicate (D265)", () => {
-    // The key is the anchor a step folder and a `chunk-harness.step` name; two
-    // categories answering to one key would make "which step is this" a
-    // question with two answers.
+  it("REFUSES two categories sharing one key, naming the duplicate", () => {
+
     assert.throws(
       () => descriptorWith([
         { key: "same", label: "One", nodes: ["first"] },
@@ -231,12 +195,7 @@ describe("D225 — the descriptor's declared timeline", () => {
     );
   });
 
-  /**
-   * The key's grammar widened to the node id's (D265) — these two are what it
-   * did NOT widen to. A bare ordinal is a position wearing a name and a UUID is
-   * a run id wearing a step's name; both would become a folder under
-   * `src/workflows/<workflow>/`, where either one is unreadable.
-   */
+
   it("REFUSES a category key that is a bare ordinal or a UUID", () => {
     assert.throws(
       () => descriptorWith([{ key: "3", label: "All", nodes: ["first", "second"] }]),
@@ -295,7 +254,7 @@ function seedRun(w: DashboardWorld): void {
   claimEventOf(w, 1);
 }
 
-describe("D225 — the served categorical steps", () => {
+describe("the served categorical steps", () => {
   it("serves ONE step per category, not one per node", () => {
     const w = world();
     seedRun(w);
@@ -326,9 +285,7 @@ describe("D225 — the served categorical steps", () => {
   });
 
   it("folds a re-execution into ×N rather than drawing a second segment", () => {
-    // THE defect this decision exists for: a gate park and its resume are two
-    // executions inside ONE attempt, so an always-rerun node emits the same
-    // span path twice. Before D225 that drew two identical `Timecard` stubs.
+
     const w = world();
     seedRun(w);
     ranFor(w, "timecard", 5_000, "done", 1);
@@ -395,9 +352,7 @@ describe("D225 — the served categorical steps", () => {
   });
 
   it("serves NO steps when no registered descriptor can say what the graph's shape is", () => {
-    // A replayed historical workflow has no descriptor to group by, and an
-    // invented grouping would be worse than none: the client falls back to the
-    // per-event strip, exactly as it does for a pre-D225 archived record.
+
     const w = world();
     seedRun(w);
     ranFor(w, "document", 1_000);
@@ -408,19 +363,9 @@ describe("D225 — the served categorical steps", () => {
   });
 });
 
-/* ── 3. D259 — the REPLAYED arm ──────────────────────────────────────────── */
 
-/**
- * A replayed node emits no spans, by design (ref workflow-model §5.3), and this timeline
- * folds spans — so replay was invisible to it and every replayed step came out
- * `pending` on a run that had finished. Track C watched
- * `Identity check — pending, took 0s` on the very gate the operator had
- * approved a minute earlier (separations §9.22 item 3).
- *
- * The reader moves and nothing fabricates a span: the stored checkpoint is what
- * says the step's fact is on file. Every arm below is one of the three
- * conditions that keep the claim true.
- */
+
+
 function checkpointOf(
   w: DashboardWorld,
   input: Readonly<{ nodeId: string; runSeed: number; attempt?: number; claimGeneration?: number }>,
@@ -453,7 +398,7 @@ function terminal(w: DashboardWorld, outcome: "done" | "failed"): void {
   }));
 }
 
-describe("D259 — a replayed node is not a node that never ran", () => {
+describe("a replayed node is not a node that never ran", () => {
   it("renders a no-span node with an earlier run's checkpoint as REPLAYED", () => {
     const w = world();
     seedRun(w);
@@ -472,7 +417,7 @@ describe("D259 — a replayed node is not a node that never ran", () => {
     }]);
   });
 
-  it("omits the claim generation a PRE-D214 row does not carry, rather than fabricating 1", () => {
+  it("omits a claim generation absent from the stored row rather than fabricating 1", () => {
     const w = world();
     seedRun(w);
     ranFor(w, "comparison", 3_000);
@@ -545,7 +490,7 @@ describe("D259 — a replayed node is not a node that never ran", () => {
     const extraction = detailOf(w, CATEGORIES).timeline.steps?.[0];
     assert.equal(extraction?.state, "done");
     assert.deepEqual(extraction?.members.map((member) => member.state), ["replayed", "done"]);
-    // And the category's number is still only what was MEASURED.
+
     assert.equal(extraction?.durationSec, 2);
   });
 

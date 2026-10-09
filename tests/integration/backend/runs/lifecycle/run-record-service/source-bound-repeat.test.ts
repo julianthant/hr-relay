@@ -31,7 +31,7 @@ function effects(h: ReturnType<typeof harness>) {
       h.database.authority.writeIntents.listByRun(h.database.authority.runs.listByWorkflow(h.descriptor.id)[0].envelope.runId)[0].idempotencyKeyDigest) };
 }
 
-describe("source-bound repeat through planner, kernel, service and interpreter (D334/D335)", () => {
+describe("source-bound repeat through planner, kernel, service and interpreter", () => {
   it("keeps protected source proof and key digests out of serialized rerun warnings", async () => {
     const documentHarness = () => { const h = sourceBoundHarness(writeFixtureDocumentDescriptor); disposers.push(h.dispose); return h; };
     const original = documentHarness(); const completedSource = await completed(original);

@@ -1,23 +1,4 @@
-/**
- * The intake workspace's pure half — every sentence the surface composes from
- * the served session, extracted so it is pinned by a unit test rather than by a
- * screenshot.
- *
- * This tree renders no React in the unit lane (D187's lesson, restated by
- * D237/D238), so an operator-facing string left inside a component is only as
- * pinned as the parity corpus that photographs it — and three of the facts
- * below (`corrections`, the manifest block) appear on states the corpus does
- * not hold. They are folds, so they are testable; leaving them inline would
- * have made them unpinnable.
- *
- * Every fact here is one the wire ALREADY carries and the surface used to drop
- * on the floor (03a §Served-and-dropped, ledger 3 §6 rows IN8, IN9, IN53, IN82,
- * IN106, IN121, IN126, IN127, IN131). The legacy rebuild-demo is the incumbent
- * visual truth for where and how each is drawn; each fold names the demo line
- * it is ported from.
- *
- * Provenance: `hr-automation@src/dashboard/components/dev/rebuild-demo/DemoIntake.tsx`.
- */
+/** The intake workspace's pure half — every sentence the surface composes from the served session */
 import { useEffect, useState } from "react";
 import type { z } from "zod";
 import { canonicalJsonStringify, type JsonObject, type JsonValue } from "../../../rules/validation/canonical-json.js";
@@ -34,17 +15,8 @@ type RowReject = z.infer<typeof RowRejectSchema>;
 type Suggestion = z.infer<typeof SuggestionSchema>;
 export type RerunMembershipRow = IntakeManifestWire["validRows"][number];
 
-/**
- * The dropzone's own three strings, in ONE place because TWO surfaces now draw
- * that zone (D298): the workspace's empty state, and the Run Modal's
- * `Import a spreadsheet` arm, which is the same first act moved one screen
- * earlier. Two copies of "up to 25 MB" is how one of them ends up lying about
- * a cap the other already raised.
- *
- * `accept` is a HINT to the file picker and nothing more — a dragged file that
- * does not match still reaches the server, which refuses it by media type and
- * magic bytes. Filtering here instead would make an unreadable file vanish.
- */
+/** The dropzone's own three strings, in ONE place because TWO surfaces now draw
+ * that zone: the workspace's empty state, and the Run Modal's */
 export const INTAKE_ACCEPT = ".csv,.xlsx,.xls";
 
 export const INTAKE_DROPZONE_HINT =
@@ -55,14 +27,7 @@ export function intakeDropzoneLabel(workflowLabel: string): string {
   return `Drop a spreadsheet of people for ${workflowLabel}`;
 }
 
-/**
- * The operator words shared by the rejection table, its two editors and the
- * outcome band. Keep this vocabulary together: `Fix cell` is the affordance,
- * while `Re-coerce this cell` is the irreversible request it opens.
- *
- * Ported from hr-automation@80967ce5,
- * src/dashboard/components/dev/rebuild-demo/DemoIntake.tsx:816-922.
- */
+/** Keep rejection editors and outcomes on one vocabulary; affordance and durable request remain distinct. */
 export const INTAKE_REVIEW_COPY = Object.freeze({
   tableLabel: "Rejected rows",
   columns: Object.freeze(["Row", "Kind", "Field / column", "Why", "Resolve"]),
@@ -119,10 +84,7 @@ export type RejectionReviewEligibility =
     reviewed: boolean;
   }>;
 
-/**
- * The exact rejection set the operator acknowledged. A later authority read
- * invalidates the acknowledgement before the next render can offer Run.
- */
+/** Bind acknowledgement to the exact rejection set; new authority must revoke stale Run permission. */
 export function rejectionReviewEligibility(
   session: IntakeSessionWire,
   reviewedKey: string | undefined,
@@ -219,7 +181,7 @@ function assertIntakeListPageIndex(totalItems: number, pageIndex: number): numbe
   return pageCount;
 }
 
-/** A local rendering bound; D9's shared virtualization primitive remains unbuilt. */
+/** Bound local rendering while shared virtualization is unavailable. */
 export function intakeListPage<T>(items: readonly T[], pageIndex: number): IntakeListPage<T> {
   const pageCount = assertIntakeListPageIndex(items.length, pageIndex);
   const start = pageIndex * INTAKE_LIST_PAGE_SIZE;
@@ -306,62 +268,24 @@ const SUGGESTION_WHY_LABEL: Record<Suggestion["why"][number], string> = {
   "samples-parse": "its values parse",
 };
 
-/**
- * The name this file was uploaded under — one fallback, spelled once.
- *
- * A pre-D171 session has no `sourceName`, and a blank there would read as a
- * file with no name rather than as a record that predates the field.
- */
+/** Absent source names describe older records, not unnamed uploaded files. */
 export function sourceLabel(session: IntakeSessionWire): string {
   return session.sourceName ?? "(this session predates file names)";
 }
 
-/**
- * A header candidate as one line of a `<select>` — `row 4 · confidence 0.96 —
- * Employee ID · Legal Name · …` (IN53, `DemoIntake.tsx:488-493`).
- *
- * The demo draws the rank as its own muted span inside a selectable `Card`;
- * D173 reshaped the candidate list into one `Select`, and an `<option>` carries
- * text and nothing else — so the fact travels as a ` · ` segment in the label,
- * in the demo's own order (row, then confidence, then the row's cells) and at
- * the demo's own two decimal places. It is a RANK, never a probability, which
- * is why it is never rendered as a percentage.
- */
+/** Header confidence is a rank, never a probability; keep row identity beside it. */
 export function headerCandidateOptionLabel(candidate: ServedHeaderCandidate): string {
   const preview = candidate.cells.filter((cell) => cell.length > 0).slice(0, 6).join(" · ");
   return `row ${String(candidate.rowIndex + 1)} · confidence ${candidate.confidence.toFixed(2)} — ${preview}`;
 }
 
-/**
- * A proposal's reasoning and its rank — `known header, matches the field label
- * (0.94)` (IN82, `DemoIntake.tsx:636-638`).
- *
- * The demo prints the score parenthesised immediately after the reason, in the
- * same muted span, because the two are one thought: *this* is why, and *this*
- * is how strongly. Splitting them across two lines would let the rank read as a
- * fact about the column rather than about the proposal.
- */
+/** Keep proposal rank beside its reasoning so it cannot read as a column fact. */
 export function suggestionProposalText(proposal: Suggestion): string {
   const why = proposal.why.map((entry) => SUGGESTION_WHY_LABEL[entry]).join(", ");
   return `${why} (${proposal.score.toFixed(2)})`;
 }
 
-/**
- * The layout the whole surface is read relative to — `header row 4 ·
- * fingerprint 503172dd` (IN8/IN9, `DemoIntake.tsx:355-358`).
- *
- * Every binding, correction and exclusion on this screen names a row and a
- * column UNDER THIS LAYOUT, and the kernel fences each confirmation on this
- * exact fingerprint — so the operator working at the bottom of a long grid can
- * read which layout they are deciding against without scrolling back to the
- * source band. That is the demo's reason for putting it in the dialog footer,
- * and the sticky outcome band is this workspace's footer.
- *
- * Empty until a header row is settled: before that there is no layout, and a
- * fingerprint of nothing is a value nobody could act on. The header row is
- * printed 1-BASED, matching the row numbers the source band's own picker and
- * every rejection use; `headerRowIndex` is 0-based on the wire.
- */
+/** Show the settled layout fingerprint at decisions; display row indices in the source’s one-based numbering. */
 export function layoutMetaItems(session: IntakeSessionWire): string[] {
   const fingerprint = layoutFingerprint(session);
   if (session.headerRowIndex === null || fingerprint === undefined) return [];
@@ -371,62 +295,24 @@ export function layoutMetaItems(session: IntakeSessionWire): string[] {
   ];
 }
 
-/**
- * The whole layout fingerprint behind the footer's short eye-scan value.
- *
- * The short prefix keeps the sticky outcome band dense, but this is a fencing
- * value rather than decorative metadata: the operator must be able to inspect
- * the exact value the kernel will compare. It stays absent until there is a
- * settled layout for the same reason as `layoutMetaItems`.
- */
+/** Expose the full fencing fingerprint; an eye-scan prefix cannot verify exact authority. */
 export function layoutFingerprint(session: IntakeSessionWire): string | undefined {
   if (session.headerRowIndex === null || session.headerFingerprint === null) return undefined;
   return session.headerFingerprint;
 }
 
-/**
- * A recorded correction, as its own line — `Employee ID (EID) → “12345”`
- * (IN121, `DemoIntake.tsx:918-921`).
- *
- * The demo writes `“<original>” → “<corrected>”`. `IntakeRowCorrectionSchema`
- * carries no `original`, so the left of the arrow is UNSERVED and the field's
- * own label stands there instead — inventing the prior value, or leaving an
- * empty quoted pair, would both be claims about a cell nothing on this wire
- * describes. The arrow survives because the direction is served: this value
- * REPLACED what the file holds, and the file is never rewritten.
- */
+/** Only the replacement value is served; never invent the original cell or rewrite the file. */
 export function correctionText(correction: IntakeRowCorrection, fieldLabel: string): string {
   return `${fieldLabel} → “${correction.correctedValue}”`;
 }
 
-/**
- * What the enqueued manifest is made of (IN126/IN127/IN131,
- * `DemoIntake.tsx:961-971`).
- *
- * The demo's Manifest STAGE is a `KeyValueList` of eight rows; four of them are
- * not on `IntakeSessionWire` at all and stay booked as unserved. These are the
- * ones the wire already carries, drawn in the demo's shape, in the demo's
- * order, where the enqueued banner used to print one bare `manifest <uuid>`.
- *
- * `created` reads `rerun.createdAt` — the MANIFEST's instant. `session.createdAt`
- * is when the file was uploaded, which the source band already prints as
- * `uploaded …`; labelling it `created` on a manifest block would be the right
- * kind of fact read from the wrong instance of it (D256's shape). When an
- * enqueued session carries no rerun view, the row is simply absent rather than
- * filled from the nearest plausible instant.
- */
+/** Manifest creation uses its own instant; never substitute the upload time when rerun evidence is absent. */
 export function manifestFacts(session: IntakeSessionWire): IntakeStageFact[] {
   const stage = manifestStage(session);
   return stage.kind === "terminal" ? stage.facts : [];
 }
 
-/**
- * The full opaque identifiers behind the manifest block's compact rows.
- *
- * `KeyValueList` deliberately truncates its dense value column, so these exact
- * values travel separately to the one accessible disclosure beside that list.
- * The digest is the full SHA-256, never the source row's eye-scan prefix.
- */
+/** Expose complete manifest IDs and digests through accessible disclosure, not dense-list truncation. */
 export function manifestIdentifierFacts(session: IntakeSessionWire): IntakeStageFact[] {
   const stage = manifestStage(session);
   if (stage.kind === "reserved") return [{ key: "reserved manifest id", value: stage.manifestId }];
@@ -547,22 +433,7 @@ export function intakeTab(value: string): IntakeTab {
   throw new Error(`intake workspace received an undeclared tab value: ${value}`);
 }
 
-/**
- * What each rejection KIND is, in the operator's words (D276 item 1, ledger 3
- * row IN101; the demo's list is `demo-data-intake.ts:523`).
- *
- * The table printed the raw wire discriminant — `cell-coercion`, `field-schema`,
- * `cross-field` — which names the CODE PATH that refused the row and leaves the
- * person holding the spreadsheet to guess which of their cells is the problem.
- * The served `code` still prints beneath the reason (IN106), so nothing an
- * operator would quote in a bug report is lost by giving the badge a sentence.
- *
- * Total over `RowRejectSchema`'s six arms in both directions: a seventh arm is a
- * typecheck failure here rather than a badge that silently falls back to its
- * own identifier. The words are the demo's, and each says what the operator can
- * DO something about — the field, the cell, the value, the row, the person, the
- * disagreement — never which validator ran.
- */
+/** Operator labels cover every rejection arm; diagnostic codes remain visible. */
 export const REJECT_KIND_LABEL: Record<RowReject["kind"], string> = {
   "unmapped-required": "unmapped field",
   "cell-coercion": "cell could not be read",

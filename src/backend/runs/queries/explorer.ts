@@ -1,29 +1,4 @@
-/**
- * The read-only Workflow Explorer projection (ref operator-trust §5.2 Phase A, D176).
- *
- * "The explorer is a projection of the exact descriptor … not a mined or
- * parallel graph." That sentence is the whole design of this file: every fact
- * below is read off the ONE composition root (`WORKFLOW_MODULES`), the
- * descriptors' factory-sealed projections, the generated build manifest, and
- * the in-code UI registries. There is no literal node list, no per-workflow
- * switch, and no hand-maintained table — a workflow appears here because it is
- * registered, and a node appears because `descriptorRuntimeNodes` returned it.
- * `workflow-editor-compile-integrity` proves that mechanically in both
- * directions, which is what makes the surface's claim ("this is the as-built
- * graph") checkable rather than aspirational.
- *
- * ## Source links resolve, they never interpolate
- *
- * A path is rendered to a human — or to an AI about to open it — as "the file
- * that owns this fact". So every path is a CANDIDATE looked up in a real
- * listing (the manifest's own fingerprinted source closure, or the scenario
- * directory listing) and reported `unresolved` with the path it tried when the
- * lookup misses. Printing a guessed contract path because the convention
- * usually holds is precisely the plausible-but-wrong value this program bans.
- *
- * This module is server-only: it reads the repository. Its wire schema lives in
- * `src/models/dashboard/explorer.ts`, which stays browser-clean.
- */
+
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
@@ -81,10 +56,10 @@ import type { PendingImplBindings } from "../../../workflow-kit/validation/impl-
 export interface ExplorerModuleView {
   readonly descriptor: AnyWorkflowDescriptor;
   readonly stores: readonly RegisteredTaskStore[];
-  /** The module's declared taxonomy (ref workflow-model §1.2.1, D219) — required, like the module's own. */
+
   readonly role: WorkflowModuleRole;
   readonly intake?: IntakeProjection;
-  /** D317 — present iff the module was compiled from a `workflow.ts` definition. */
+
   readonly definition?: AnyWorkflowDefinition;
 }
 
@@ -93,21 +68,13 @@ export interface ExplorerQueryDeps {
   /** The composition root's own tuple — never a re-listed copy of it. */
   readonly modules: readonly ExplorerModuleView[];
   readonly descriptorSetHash: Fingerprint;
-  /** Registered pending implementation bindings, already parsed (D107). */
+
   readonly pendingImplBindings: PendingImplBindings;
   /** Semantic UI identifiers attributed to tasks by the registered drivers. */
   readonly uiTaskLinks: readonly UiTaskLink[];
-  /**
-   * The build manifest whose source closures the Explorer links. Defaults to
-   * the checked-in generated manifest; a conformance fixture that is not a
-   * registered workflow supplies a manifest naming itself.
-   */
+
   readonly buildManifest?: BuildManifestSource;
-  /**
-   * Lists the executable scenario corpus, relative to the repo root. Injected
-   * so the resolution is testable and so a packaging without `tests/` reports
-   * every scenario `unresolved` BY NAME instead of throwing the surface away.
-   */
+  // Missing executable scenario files report unresolved names; packaging without tests must not discard the Explorer.
   readonly listScenarioSources: () => readonly Readonly<{ path: string; text: string }>[];
   /** Presentation-only hot overrides; absence means revision zero. */
   readonly overrides?: Readonly<{ readAll(): readonly ExplorerWorkflowOverride[] }>;
@@ -115,42 +82,13 @@ export interface ExplorerQueryDeps {
 
 const SCENARIO_DIRECTORY = "tests/scenario";
 
-/**
- * `AnyWorkflowDescriptor` widens `details[].display` to `string` (the exact
- * union survives only behind the generic descriptor). Re-parsing it here is the
- * same check `DetailProjectionSpecRuntimeSchema` already made at definition
- * time, not a cast past one.
- */
+
 const DetailDisplaySchema = z.enum(["text", "eid", "date", "count", "badge"]);
 
-/**
- * The SOURCE tree this build is running from.
- *
- * Deliberately not the caller's `repoRoot`: that names where runtime state and
- * `package.json` resolve from, and a harness legitimately points it at a temp
- * directory. The explorer describes the code that is executing, so the files it
- * reads — `config/`, `tests/scenario/`, `generated/` — and the paths it prints
- * both belong to this tree. The same `import.meta.dirname` anchor
- * `scripts/build/generate-workflow-manifest.ts` also uses.
- */
+// Source evidence belongs to the executing module tree, not repoRoot, which may name a temporary runtime root.
 export const EXPLORER_SOURCE_ROOT = resolve(import.meta.dirname, "..", "..", "..", "..");
 
-/**
- * The default corpus reader: every `*.scenario.test.ts` under `tests/scenario`,
- * with its text, so a scenario id can be located by the file that names it.
- *
- * The walk RECURSES because R10 §10.9 gives each workflow its own folder
- * (`tests/scenario/workflows/<workflow-id>/structural.scenario.test.ts`, D266)
- * — a flat read would have silently stopped resolving those ids the moment the
- * first pair moved, which is precisely the kind of quiet degradation the
- * `unresolved` arm exists to make loud rather than to absorb.
- *
- * An ABSENT directory is a documented precondition, not a swallowed error: the
- * listing is empty and every scenario then reports `unresolved` naming the path
- * it looked for, which the surface prints. Nothing is substituted and nothing
- * is hidden. A directory that exists but cannot be read still throws, because
- * "unreadable" must never be indistinguishable from "empty".
- */
+
 export function readScenarioSources(sourceRoot: string): readonly Readonly<{ path: string; text: string }>[] {
   const root = join(sourceRoot, SCENARIO_DIRECTORY);
   if (!existsSync(root)) return [];
@@ -200,28 +138,12 @@ function taskFingerprint(taskId: string): Fingerprint | undefined {
   return entry === undefined ? undefined : (entry.fingerprint as Fingerprint);
 }
 
-/**
- * A task id as a PATH tail.
- *
- * A workflow mini-store's ids carry the `workflow:` scheme
- * (`workflow:person-lookup/read-active-status`) which distinguishes them from a
- * browser system of the same name — but `:` is not a path character, and the
- * files sit under the plain segment. Stripping the scheme is the one place that
- * translation happens; every candidate path below is built from the result and
- * then CHECKED, so a wrong translation surfaces as an unresolved link naming
- * the path it tried rather than as a broken string in the UI.
- */
+
 function taskPathTail(taskId: string): string {
   return taskId.startsWith("workflow:") ? taskId.slice("workflow:".length) : taskId;
 }
 
-/**
- * The contract's declaring module, proven present in a fingerprinted closure.
- *
- * The candidate comes from the contract id and owner group, but the answer
- * comes from the manifest: if the contract path is not one of the files whose bytes this workflow's fingerprint
- * covers, the link is unresolved and says so.
- */
+
 function contractSourceLink(
   taskId: string,
   closures: readonly ReadonlySet<string>[],
@@ -237,16 +159,7 @@ function contractSourceLink(
     : unresolved(candidate, "no fingerprinted source closure contains this path");
 }
 
-/**
- * The store's implementation of a contract, read out of the task's own
- * fingerprinted closure rather than guessed from its id.
- *
- * A task's closure contains exactly the files its fingerprint covers, so the
- * implementation is whichever of them sits under its system or workflow-task
- * store `tasks/` directory.
- * Two matches would mean the convention no longer identifies one file, so the
- * link refuses rather than picking the first.
- */
+
 function implSourceLink(taskId: string, closure: ReadonlySet<string> | undefined): SourceLinkWire {
   const tail = taskPathTail(taskId);
   const namespace = tail.slice(0, tail.indexOf("/"));
@@ -354,15 +267,7 @@ function writeSafetyWire(contract: AnyTaskContract): ExplorerWriteSafetyWire | u
   };
 }
 
-/**
- * The freshness bound a field is read under, EXACTLY as the kernel resolves it.
- *
- * `freshnessLimitMs` matches a `byField` rule on the whole path and falls back
- * to the default; the provenance resolver matches on the longest PREFIX. The two
- * genuinely differ, and the explorer states each the way its own consumer
- * enforces it — a surface that harmonised them would be printing a bound the
- * kernel does not apply.
- */
+
 function fieldFreshness(
   freshness: ExplorerFreshnessWire | undefined,
   path: string,
@@ -376,11 +281,7 @@ function fieldFreshness(
   };
 }
 
-/**
- * The provenance of one output leaf — `src/backend/runs/task-provenance.ts`'s own rule,
- * repeated here because that module is the kernel's and this is a projection of
- * the same declaration: longest declared PREFIX wins, else the policy default.
- */
+
 function fieldProvenance(
   provenance: ExplorerProvenanceWire | undefined,
   path: string,
@@ -399,16 +300,7 @@ const INPUT_BINDING_REASON: Record<"read" | "prepare" | "commit", string> = {
   commit: "the graph binds this value and the commit arm writes it — it is not an observation",
 };
 
-/**
- * How each field of one contract is recorded (ref operator-trust §5.9).
- *
- * Every arm is a statement the registry can make from the descriptor alone. The
- * `unknown` arm is the one that matters: a read contract whose provenance the
- * projection did not receive leaves its outputs undeclared, and the column then
- * says `unknown` naming the gap rather than printing the `live` most reads
- * happen to declare. Substituting the common answer for the missing one is the
- * plausible-but-wrong value this program forbids.
- */
+
 function contractFieldWires(
   contract: AnyTaskContract,
   freshness: ExplorerFreshnessWire | undefined,
@@ -425,7 +317,7 @@ function contractFieldWires(
     if (effect === "commit") {
       return {
         state: "checkpointed",
-        reason: "the transaction outcome checkpoint stores this arm's whole output envelope (D144)",
+        reason: "the transaction outcome checkpoint stores this arm's whole output envelope",
       };
     }
     const source = fieldProvenance(provenance, path);
@@ -466,13 +358,7 @@ function contractFieldWires(
   }));
 }
 
-/**
- * The task → UI id index, REVERSED out of the catalog's own `taskUses`.
- *
- * The relationship already exists as data in the driver registries; deriving it
- * a second way (walking recipes, say) would produce a second answer that could
- * disagree with the one the `semantic-ui-registry` guard pins.
- */
+
 function uiLinkIndex(entries: readonly UiTaskLink[]): ReadonlyMap<string, readonly ExplorerUiLinkWire[]> {
   const index = new Map<string, ExplorerUiLinkWire[]>();
   for (const entry of entries) {
@@ -498,14 +384,7 @@ interface BindingIndex {
   readonly byTaskId: ReadonlyMap<string, ExplorerTaskBindingWire>;
 }
 
-/**
- * Where each contract is implemented, from the module's OWN store list.
- *
- * `auditWorkflowModuleBindings` already refuses a module whose stores do not
- * resolve every contract it uses, so a contract with no entry here is either
- * genuinely pending (D107's tracked list) or a defect the boot audit catches
- * first. Either way the explorer states which, and never invents a store.
- */
+
 function bindingIndex(
   module: ExplorerModuleView,
   pending: PendingImplBindings,
@@ -549,9 +428,7 @@ function taskWire(
     : [context.workflowClosure, taskClosure];
   const binding = context.bindings.byTaskId.get(taskId);
   if (binding === undefined) {
-    // The registry's boot audit refuses this state; reaching it means the
-    // explorer is describing a composition nothing validated, and a silent
-    // "unbound" chip would be a projection inventing a fact.
+    // An unbound implementation means registry validation did not run; refuse instead of inventing a chip.
     throw new Error(
       `workflow explorer cannot place ${taskId}: no module store implements it and `
       + "src/backend/app/registries/pending-impl-bindings.json does not track it",
@@ -656,15 +533,7 @@ function nodeTasks(
   return [];
 }
 
-/**
- * Every edge the surface draws.
- *
- * `dependsOn` gives the execution edges. Branch cases and parallel branches are
- * kept as their own kinds because a controller naming a downstream node means
- * something different from a node declaring a dependency — one is "instead of"
- * or "alongside", the other is "after" — and collapsing them would make a
- * branch look like a fan-out that always runs.
- */
+
 function edgesOf(nodes: readonly RuntimeFlowNode[]): readonly ExplorerEdgeWire[] {
   const edges: ExplorerEdgeWire[] = [];
   for (const node of nodes) {
@@ -711,14 +580,7 @@ function scenarioWires(
   });
 }
 
-/**
- * The descriptor's prose, or the gap named (D229).
- *
- * The reason text says WHERE to author the missing sentence, because the reader
- * of this surface is exactly the person — or the AI — who would author it. It
- * never composes one from the label: a sentence assembled from a two-word label
- * would read as the descriptor's own words and be nobody's.
- */
+
 function proseWire(
   text: string | undefined,
   subject: string,
@@ -757,10 +619,7 @@ function resolveExplorerPresentation(
   });
 }
 
-/**
- * Explorer serves the same canonical, redacted definition a new run would
- * freeze.  It does not turn a legacy descriptor into a plausible new tree.
- */
+
 function operationStructureWire(descriptor: AnyWorkflowDescriptor): ExplorerOperationStructureWire {
   const definition = freezeWorkflowOperationDisplaySnapshot({
     workflowId: descriptor.id,
@@ -826,11 +685,7 @@ function workflowWire(
 
   const editable = descriptor.capabilities?.editData;
 
-  // D265 §1.2.2 — the path comes from the ROLE, never from the id alone: a
-  // chunk harness lives inside the step it proves, so a link built from the id
-  // would point at a folder that no longer exists.
-  // D317 — workflow.ts or step.ts is the authored definition; descriptor and
-  // module links resolve to that same file.
+
   const descriptorPath = workflowSourcePath(workflowId, module.role);
   const modulePath = descriptorPath;
 
@@ -849,8 +704,7 @@ function workflowWire(
     code: descriptor.code,
     icon: effectivePresentation.icon,
     category: effectivePresentation.category,
-    // The MODULE's fact, never the descriptor's: taxonomy is not part of a
-    // run's contract identity (ref workflow-model §1.2.1, D219).
+
     role: module.role,
     version: descriptor.version,
     contractFingerprint: descriptor.contractFingerprint,
@@ -919,9 +773,7 @@ function workflowWire(
         : {
           state: "declared",
           placeholder: descriptor.surfaces.inputRun.placeholder,
-          // D209 — the graph's answer, through the same derivation the start
-          // plan refuses on. Reading the stamped surface field would agree, but
-          // one call keeps a second reading from ever drifting into existence.
+
           supportsDryRun: workflowDryRunSupport(descriptor).state === "supported",
         },
       intake: module.intake === undefined
@@ -969,10 +821,7 @@ function workflowWire(
       descriptor: workflowClosure.has(descriptorPath)
         ? resolved(descriptorPath)
         : unresolved(descriptorPath, "the workflow's fingerprinted closure does not contain it"),
-      // `module.ts` is deliberately OUTSIDE the descriptor's fingerprint (D170):
-      // it carries server composition, which is not part of a run's contract
-      // identity. So it cannot be proven through the manifest, and the link
-      // says which listing it was — and was not — checked against.
+
       module: resolved(modulePath),
       closureFileCount: workflowClosure.size,
     },

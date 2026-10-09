@@ -1,29 +1,4 @@
-/**
- * W5 (ref execution-and-sessions §7.1 / §11): the REAL-child stand-in for the
- * worker CLI, spawned by the parallel-proof suite as an actual OS process so
- * the supervisor's claims about processes are proved against processes.
- *
- * It performs exactly the birth/stop protocol the real worker CLI performs
- * against the durable worker lease — §11.3's only coordination channel:
- *
- * 1. acquire the per-worker `workers` process lock under the test's
- *    `.tracker`-scoped lock root;
- * 2. open the SAME authority database the supervising dashboard serves from
- *    and prove birth by writing its own lease under its own OS pid;
- * 3. poll the lease's operator directive; on `stop`, report the `stopped`
- *    lifecycle, release the lock, close the database and exit cleanly;
- * 4. on SIGTERM, do the same with the `shutdown` reason.
- *
- * It deliberately runs NO workflow and opens NO browser — the W5 unit proves
- * supervision, not execution. Every unexpected state fails loud (a thrown
- * structured error and a non-zero exit), which the supervisor's birth-proof
- * path is required to surface as a typed rejection.
- *
- * argv (after the supervisor's fixed prefix): the suite passes
- * `<authority-db-path> <process-lock-root>` as prefix args, and the supervisor
- * appends its member-derived tail `worker <workflow-id> --pool-index <n>` —
- * byte-exactly the tail the real CLI receives.
- */
+
 import { systemClock } from "../../../src/rules/time/clock.js";
 import { PositiveIntSchema, WorkerIdSchema, WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
@@ -112,8 +87,7 @@ const shutdown = (reason: "operator" | "shutdown"): void => {
   lock.release();
   database.close();
   admission.release();
-  // No process.exit: with the poll cleared, the signal listener removed and
-  // the database closed, the event loop empties and the process exits 0.
+  // Clearing listeners, timers and the database lets the child exit naturally.
 };
 
 const directivePoll = setInterval(() => {

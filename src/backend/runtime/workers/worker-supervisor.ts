@@ -1,34 +1,5 @@
 import { WorkerControlRefusal } from "../../../models/run/worker-control.js";
-/**
- * The dashboard-owned child-process worker supervisor (ref execution-and-sessions
- * §11, D271) — the REAL process effect behind the W1 pool contract's awaitable
- * `WorkerPoolProcessSupervisor.execute` seam.
- *
- * What it owns:
- * - launching the EXACT worker CLI as argv arrays (an absolute command path, a
- *   fixed prefix, and the member-derived `worker <workflow> --pool-index <n>`
- *   tail) — never a shell string, never a PATH lookup;
- * - proving child BIRTH before anything is acknowledged: the durable worker
- *   lease (authority — §11.3's only coordination channel) must carry the
- *   spawned child's OS pid. "spawn returned" is not birth; a child that never
- *   proves its lease is killed and the command rejects;
- * - durable supervisor ownership: only a child THIS supervisor spawned and
- *   proved may be stopped, paused, resumed, or covered by a plan as
- *   `supervised`; anything else refuses BY NAME (no adoption — D271);
- * - stop escalation exactly as D271 ratified: the graceful between-items stop
- *   first (the injected durable-directive channel), SIGTERM after the policy's
- *   graceful bound, SIGKILL after the SIGTERM bound — each stage recorded with
- *   its instant WHEN IT HAPPENS, never promised in advance;
- * - crash evidence with NO auto-restart: a child that exits outside a stop is
- *   recorded `crashed` with its exit code/signal/instant and stays down until
- *   an explicit new `spawn-worker` replaces it.
- *
- * What it does NOT own: writing authority (the kernel writes leases and
- * directives; the graceful-stop channel is injected so composition can route
- * it through the kernel), the browser session arms (`refresh-browser` /
- * `reopen-browser` refuse by name until a cross-process browser channel
- * exists), and its own wiring into `compose.ts` (a separate unit).
- */
+
 import { isAbsolute } from "node:path";
 import { z } from "zod";
 import type { Clock } from "../../../rules/time/clock.js";
@@ -68,11 +39,7 @@ export interface WorkerProcessSpawnRequest {
   readonly member: WorkerPoolMember;
 }
 
-/**
- * The structural subset of a spawned OS child this supervisor consumes.
- * `node:child_process.ChildProcess` satisfies it through a thin adapter;
- * tests satisfy it with deterministic fakes.
- */
+
 export interface SpawnedWorkerHandle {
   readonly pid: number | undefined;
   kill(signal: "SIGTERM" | "SIGKILL"): boolean;
@@ -94,19 +61,7 @@ export interface WorkerLeaseProbe {
   observe(workerId: WorkerId): WorkerLeaseBirthFact | undefined;
 }
 
-/**
- * The durable graceful-stop request (the worker lease's `stop` directive,
- * observed by the worker between items). Injected because directives are
- * authority only commands write; composition routes it through the kernel's
- * directive write. The channel MUST write the directive at exactly
- * `directive.requestedAt` — the kernel command's own `now` — and resolve with
- * the DURABLE instant, which is what the observed graceful stage records; the
- * supervisor refuses a durable instant that differs from the command's now,
- * because an observed stage that postdates the command's `now` is a claim the
- * kernel's `requireObservedNotAfterNow` bound rightly rejects. The receipt
- * also carries the directive WRITE's own lease versions (before → after), so
- * command authority audits the write's change rather than a later lease read.
- */
+
 export interface WorkerDurableStopReceipt {
   readonly requestedAt: string;
   readonly leaseVersions: z.input<typeof WorkerDirectiveLeaseVersionsSchema>;
@@ -140,12 +95,7 @@ export interface DashboardWorkerSupervisorDependencies {
   readonly scheduler: MonotonicDeadlineScheduler;
   /** Birth-proof polling: re-probe the lease every `pollMs`, give up at `timeoutMs`. */
   readonly birth: Readonly<{ pollMs: number; timeoutMs: number }>;
-  /**
-   * The structured sink for a failure observed OUTSIDE a command (an
-   * escalation timer firing after the acknowledgement returned). Required:
-   * an unobserved fault has nowhere honest to go, and swallowing it is the
-   * exact silent failure this tree bans.
-   */
+
   readonly onFault: (error: Error) => void;
 }
 
@@ -168,12 +118,7 @@ export function workerCliArgv(member: WorkerPoolMember): readonly string[] {
 
 /* ── evidence ────────────────────────────────────────────────────────────── */
 
-/**
- * What this supervisor can truthfully say about a member it spawned. Absent
- * (undefined) means "never spawned by this supervisor" — deliberately
- * indistinguishable from an externally started worker, because adopting or
- * describing a process it does not own is exactly what D271 forbids.
- */
+// Absent ownership cannot distinguish an external process from no process; neither grants control.
 interface MemberRecord {
   readonly member: WorkerPoolMember;
   state: "awaiting-birth" | "running" | "stopping" | "stop-uncertain" | "kill-undelivered" | "exited";
@@ -181,24 +126,11 @@ interface MemberRecord {
   pid: number | undefined;
   bornAt?: string;
   leaseStartedAt?: string;
-  /**
-   * Set when a pre-birth spawn-abort SIGKILL could NOT be delivered: the
-   * child may still be alive, so no exit is synthesized and the slot stays
-   * blocked until the child's REAL exit event is observed.
-   */
+  // Failed pre-birth kill retains the blocked member until an OS exit is observed.
   killUndelivered?: { at: string; cause: string };
-  /**
-   * Set when the durable stop channel THREW mid-request: whether the stop
-   * directive landed is unknown, so the record refuses plans, re-stops,
-   * pause and resume until the child's real exit is observed.
-   */
+  // A throwing durable stop request has unknown landing; refuse further control instead of retrying.
   stopUncertain?: { at: string; cause: string };
-  /**
-   * Set SYNCHRONOUSLY when a stop begins, before the durable graceful-stop
-   * request is awaited: `state` only becomes "stopping" after that await, so
-   * without this flag two concurrent stops both pass the state guard and
-   * request the durable directive twice.
-   */
+  // Mark stopping before awaiting the directive so another command cannot race its in-flight write.
   stopInFlight: boolean;
   observedStop: { stage: "graceful-stop-requested" | "sigterm-sent" | "sigkill-sent"; at: string }[];
   escalationTimer?: MonotonicDeadlineHandle;
@@ -211,12 +143,7 @@ interface MemberRecord {
     signal: string | null;
     at: string;
     outcome: "stopped" | "crashed";
-    /**
-     * "os" = a real exit event from the process boundary; "supervisor" =
-     * synthesized for a child that provably cannot run (it never got a pid,
-     * or its spawn-abort SIGKILL was delivered) — a launch failure must never
-     * read as a normal worker crash.
-     */
+    // Only an OS exit or proof that a child cannot run permits an exited state.
     reportedBy: "os" | "supervisor";
   };
 }
@@ -231,11 +158,7 @@ export const WorkerChildEvidenceSchema = z.discriminatedUnion("state", [
     pid: z.number().int().positive(),
     bornAt: IsoInstantSchema,
     leaseStartedAt: IsoInstantSchema,
-    /**
-     * Present only while a stop's durable directive request is in flight —
-     * close()'s returned evidence must never hide a pending stop behind
-     * plain "running".
-     */
+
     stopInFlight: z.literal(true).optional(),
   }),
   z.strictObject({
@@ -283,20 +206,9 @@ export interface DashboardWorkerProcessSupervisor extends WorkerPoolProcessSuper
   /** Evidence about a member THIS supervisor spawned; undefined = never spawned here. */
   memberEvidence(member: WorkerPoolMember): WorkerChildEvidence | undefined;
   ownsWorker(workerId: string, processId: number, startedAt: string): boolean;
-  /** Durably request D271 stops for owned live children and resolve only when their OS exits are observed. */
+
   drainOwnedChildren(directive: WorkerStopDirectiveContext): Promise<void>;
-  /**
-   * The teardown seam (W3 composition): cancels every armed escalation timer,
-   * refuses all further commands, and returns the evidence of every child
-   * still live at close — the caller decides what to do with them; this
-   * supervisor never pretends they stopped. Idempotent. A spawn still
-   * awaiting birth keeps its birth poll (cancelling it would strand the
-   * pending command) and is reported here as awaiting-birth; a running child
-   * whose stop's durable directive request is still in flight is reported
-   * with `stopInFlight: true` — and if that directive lands after close, no
-   * escalation is armed (the landed fact goes to onFault and the stop
-   * command rejects).
-   */
+
   close(): readonly WorkerChildEvidence[];
 }
 
@@ -391,15 +303,7 @@ export function createDashboardWorkerProcessSupervisor(
         pollHandle?.cancel();
         outcome();
       };
-      /**
-       * Abort an unproved spawn: SIGKILL the child (when the OS gave it a
-       * pid) and say honestly whether the kill was delivered. An undelivered
-       * abort goes to the fault sink — the child may still be alive, and the
-       * rejection must never claim a kill that did not happen.
-       * `childCannotRun` is true only when the child provably cannot be
-       * running (it never got a pid, or the SIGKILL was delivered) — the only
-       * cases where synthesizing exit evidence is honest.
-       */
+      // A failed spawn-abort kill leaves the child uncertain and the member slot blocked.
       const killUnprovenChild = (): Readonly<{ childCannotRun: boolean; description: string }> => {
         if (record.pid === undefined) {
           return { childCannotRun: true, description: "the child has no pid to kill" };
@@ -427,18 +331,14 @@ export function createDashboardWorkerProcessSupervisor(
       });
       child.onError((error) => {
         if (settled) {
-          // The birth already settled: this is a live child's process error
-          // (e.g. a failed signal delivery). It has no command to reject, so
-          // the fault sink is the only honest place for it.
+
           deps.onFault(new Error(
             `worker ${member.workerId} (pid ${String(record.pid)}) process errored after its lease `
             + `birth settled: ${error.message}`,
           ));
           return;
         }
-        // A pre-birth process error (spawn ENOENT is the common case) leaves
-        // no exit event to transition the record: without evidence here the
-        // record would stay awaiting-birth forever and brick the worker slot.
+        // Spawn ENOENT may emit no exit event; record the pre-birth failure explicitly.
         const killed = killUnprovenChild();
         if (record.state === "awaiting-birth") {
           if (killed.childCannotRun) {
@@ -454,12 +354,7 @@ export function createDashboardWorkerProcessSupervisor(
             record.state = "exited";
             record.resolveExitObserved();
           } else {
-            // The abort SIGKILL was NOT delivered: the child may still be
-            // alive. Recording "exited" would free the slot and let a
-            // replacement run beside a live orphan under the same worker id —
-            // instead the record enters kill-undelivered, which blocks
-            // respawn, stop, pause, resume and plan coverage until the
-            // child's REAL exit event is observed.
+            // An undelivered SIGKILL does not prove exit; keep the slot occupied.
             record.state = "kill-undelivered";
             record.killUndelivered = { at: instant(), cause: error.message };
           }
@@ -506,10 +401,7 @@ export function createDashboardWorkerProcessSupervisor(
           }
           pollHandle = deps.scheduler.schedule(deps.clock.monotonicMs() + deps.birth.pollMs, poll);
         } catch (error) {
-          // A birth probe that throws (the lease store unreadable, a corrupt
-          // birth fact) on a scheduler tick would otherwise escape into the
-          // scheduler, never re-schedule, and leave the spawn pending forever
-          // with the child alive and unsupervised.
+          // A throwing birth probe must reject the pending launch rather than escape a scheduler callback.
           const probe = error instanceof Error ? error : new Error(String(error));
           const killed = killUnprovenChild();
           settle(() => {
@@ -524,9 +416,7 @@ export function createDashboardWorkerProcessSupervisor(
     });
 
     if (record.state !== "awaiting-birth") {
-      // The exit event landed between birth resolution and this continuation;
-      // promoting to running would erase the exit evidence and claim a child
-      // that is already dead.
+      // An exit between birth resolution and continuation must not be overwritten by running state.
       const exit = record.exit;
       throw new Error(
         `spawn-worker failed: worker ${member.workerId} (pid ${String(record.pid)}) exited `
@@ -546,11 +436,7 @@ export function createDashboardWorkerProcessSupervisor(
     });
   };
 
-  /**
-   * A member this supervisor durably owns as a LIVE child. Anything else —
-   * never spawned (possibly externally running: indistinguishable on purpose),
-   * still unproved, or already exited — refuses BY NAME with its evidence.
-   */
+
   const requireLiveOwnedChild = (
     command: WorkerSupervisorRequest["command"],
     member: WorkerPoolMember,
@@ -595,11 +481,7 @@ export function createDashboardWorkerProcessSupervisor(
     return record;
   };
 
-  /**
-   * Arm the next escalation deadline. Each stage is recorded only AFTER its
-   * signal was actually delivered; an undeliverable signal goes to the fault
-   * sink and records nothing — never a stage that did not happen.
-   */
+  // Record escalation only after the signal is delivered; failed delivery is a fault, never an observed stage.
   const armEscalation = (
     record: MemberRecord,
     signal: "SIGTERM" | "SIGKILL",
@@ -660,15 +542,7 @@ export function createDashboardWorkerProcessSupervisor(
       durable = await deps.gracefulStop.request(record.member, directive);
     } catch (error) {
       const cause = error instanceof Error ? error.message : String(error);
-      // A throw AFTER the durable directive landed is indistinguishable from
-      // one before it. Releasing the flag and reverting to plain "running"
-      // would let a plan attest a healthy member over a possibly-landed stop
-      // and let a retry double-write the directive — instead the record
-      // enters stop-uncertain, which refuses plans, re-stops, pause and
-      // resume until the child's real exit is observed. stopInFlight stays
-      // true on purpose: a stop with an unknown durable outcome IS still in
-      // flight. (An exit that landed during the request keeps its own
-      // evidence.)
+      // A stop-channel throw leaves directive landing unknown; preserve that uncertainty.
       if (record.state === "running") {
         record.state = "stop-uncertain";
         record.stopUncertain = { at: instant(), cause };
@@ -690,10 +564,7 @@ export function createDashboardWorkerProcessSupervisor(
     const requestedAt = IsoInstantSchema.parse(durable.requestedAt);
     const parsedVersions = WorkerDirectiveLeaseVersionsSchema.safeParse(durable.leaseVersions);
     if (!parsedVersions.success) {
-      // The channel RESOLVED, so the durable directive stands — but its
-      // receipt cannot say which write it was. Re-initiating or attesting
-      // over a landed stop would double-write or lie, so the record is
-      // blocked exactly like a stop-uncertain until the child's exit.
+      // A landed stop without its exact write receipt cannot be safely re-initiated or attested.
       if (record.state === "running") {
         record.state = "stop-uncertain";
         record.stopUncertain = {
@@ -709,12 +580,7 @@ export function createDashboardWorkerProcessSupervisor(
       );
     }
     if (requestedAt !== directive.requestedAt) {
-      // The directive DID land (the channel resolved), but at an instant that
-      // is not the kernel command's `now` — the exact W1/W2 gap this seam
-      // closes, because `requireObservedNotAfterNow` bounds observed stages by
-      // that `now`. The record is blocked like a stop-uncertain (the durable
-      // stop stands; re-initiating or attesting over it would double-write or
-      // lie) and the command refuses by name.
+
       if (record.state === "running") {
         record.state = "stop-uncertain";
         record.stopUncertain = {
@@ -739,12 +605,7 @@ export function createDashboardWorkerProcessSupervisor(
     record.state = "stopping";
     record.observedStop.push({ stage: "graceful-stop-requested", at: requestedAt });
     if (closed) {
-      // close() ran while the durable request was in flight: the directive
-      // landed and its stage is recorded above, but arming SIGTERM/SIGKILL
-      // timers after teardown would resurrect the supervisor. close()
-      // already reported this child stop-in-flight; the landed-directive
-      // fact goes to the fault sink, and the command refuses instead of
-      // acknowledging an escalation it will never run.
+      // Teardown during a durable stop request must not arm new escalation timers.
       deps.onFault(new Error(
         `worker ${record.member.workerId} durable stop directive landed at ${requestedAt}, but `
         + "the supervisor closed while the request was in flight; no escalation will be armed",
@@ -785,23 +646,14 @@ export function createDashboardWorkerProcessSupervisor(
     });
   };
 
-  /** The canonical D271 escalation policy: 120s graceful, SIGTERM, 30s, SIGKILL. */
+
   const canonicalEscalation = (): z.infer<typeof WorkerStopEscalationPolicySchema> => WorkerStopEscalationPolicySchema.parse([
     { stage: "graceful-stop-requested", timeoutMs: WORKER_GRACEFUL_STOP_TIMEOUT_MS },
     { stage: "sigterm-sent", timeoutMs: WORKER_SIGTERM_TIMEOUT_MS },
     { stage: "sigkill-sent" },
   ]);
 
-  /**
-   * The truthful reconciliation fact for one roster member. A member this
-   * supervisor never spawned, or one whose stop completed, has no process and
-   * reads `unmet/not-started`; a crash stays visibly `crashed` (D271 — a crash
-   * is evidence, never silently erased capacity); a stop already in flight is
-   * attested `reconciling` with exactly the escalation prefix that already
-   * occurred. `initiateStopForRunning` is set only for EXCESS members: a
-   * running excess member gets its bounded graceful stop initiated here, while
-   * a running desired member is simply `running`.
-   */
+
   const planMemberFact = async (
     member: WorkerPoolMember,
     initiateStopForRunning: boolean,
@@ -871,9 +723,7 @@ export function createDashboardWorkerProcessSupervisor(
         + `desiredWorkers ${String(request.desiredWorkers)}`,
       );
     }
-    // EVERY refusal is pre-scanned before the first fact or stop: initiating
-    // an excess member's durable stop and then refusing the plan would leave
-    // that stop durably requested but unacknowledged.
+
     const roster = [...desired, ...excess];
     const seen = new Set<string>();
     for (const member of roster) {
@@ -936,12 +786,7 @@ export function createDashboardWorkerProcessSupervisor(
     });
   };
 
-  /**
-   * The kernel writes the durable pause/resume directive itself; this seam's
-   * duty is the OWNERSHIP attestation — proving the directive targets a child
-   * this supervisor durably owns and is not mid-stop, so a directive can never
-   * be acknowledged against an external or dead process.
-   */
+  // Pause and resume require attested ownership of the supervisor's own live child.
   const attestDirective = (
     command: "pause-worker" | "resume-worker",
     member: WorkerPoolMember,
@@ -1117,7 +962,7 @@ export function createDashboardWorkerProcessSupervisor(
             const finalSignalSent = record.observedStop.at(-1)?.stage === "sigkill-sent";
             if (record.stopInFlight || (record.escalationTimer === undefined && !finalSignalSent)) {
               const failure = new Error(
-                `owned worker ${record.member.workerId} is stopping without an active D271 escalation`,
+                `owned worker ${record.member.workerId} is stopping without an active escalation`,
               );
               failures.push(failure);
               record.drainFailure.reject(failure);

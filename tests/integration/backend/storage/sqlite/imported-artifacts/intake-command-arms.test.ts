@@ -2,32 +2,7 @@ import { reviewedIntakeFixture } from "../../../../../support/fixtures/intake-ke
 import { insertImportedArtifact } from "../../../../../../src/backend/storage/sqlite/imported-artifacts.js";
 import { importedArtifact } from "../../../../../../src/models/intake/imported-artifact.js";
 import { RunRecordService } from "../../../../../../src/backend/runs/lifecycle/run-record-service.js";
-/**
- * D170 — the five non-enqueue intake arms, driven through the REAL kernel over
- * the REAL authority database.
- *
- * What the suite is actually protecting:
- *
- * - a binding is minted only against the layout the file ACTUALLY presents,
- *   and a confirmation carrying a stale `headerFingerprint` is refused rather
- *   than applied to whatever column now sits there;
- * - any change to the mapping unvalidates the session, so a stale `validated`
- *   can never gate an enqueue;
- * - a header/sheet move discards the row-level decisions that named rows under
- *   the OLD header, instead of silently re-pointing them;
- * - a repeat of an identical decision is a no-op, not a version bump;
- *
- * and, from D171 (2i-E2):
- *
- * - `enqueue-intake-manifest` gates on ref data-intake-and-edit-data §5's readiness, so an unresolved
- *   rejection and a zero-valid-row file both refuse BY NAME instead of running
- *   a partial file or reporting a no-op success;
- * - the fan-out is ONE transaction with the manifest and the session CAS: a
- *   run refused by the descriptor's enqueue policy leaves no manifest, no run
- *   and no state change;
- * - a manifest fans out exactly once, and a session that moved since the
- *   operator reviewed it conflicts rather than enqueueing an unreviewed plan.
- */
+
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -243,7 +218,7 @@ function harness(sessionOverrides: Record<string, unknown> = {}, preReservation 
 
 /* ── the arms ────────────────────────────────────────────────────────────── */
 
-describe("D170 intake arms — confirm-intake-mapping", () => {
+describe("intake arms — confirm-intake-mapping", () => {
   it("mints a binding against the layout the file actually presents", () => {
     const { current, bindEid } = harness();
     assert.equal(bindEid().state, "applied");
@@ -307,7 +282,7 @@ describe("D170 intake arms — confirm-intake-mapping", () => {
   });
 });
 
-describe("D170 intake arms — inspect-intake", () => {
+describe("intake arms — inspect-intake", () => {
   it("settles the header row discovery preselects when the operator has not chosen", () => {
     const { current, send } = harness({ headerRowIndex: null });
     assert.equal(current().headerRowIndex, null);
@@ -350,7 +325,7 @@ describe("D170 intake arms — inspect-intake", () => {
   });
 });
 
-describe("D170 intake arms — corrections and exclusions", () => {
+describe("intake arms — corrections and exclusions", () => {
   it("refuses a correction for a field with no bound column", () => {
     const { send } = harness();
     const result = send("correct-intake-row", { sourceRow: 1, field: "emplId", correctedValue: "10456712" });
@@ -390,7 +365,7 @@ describe("D170 intake arms — corrections and exclusions", () => {
   });
 });
 
-describe("D170 intake arms — validate-intake", () => {
+describe("intake arms — validate-intake", () => {
   it("retains the validation arm with the readAt it resolved rows against", () => {
     const { current, send, bindEid } = harness();
     bindEid();
@@ -428,7 +403,7 @@ describe("D170 intake arms — validate-intake", () => {
   });
 });
 
-describe("D170 intake arms — every arm needs its session", () => {
+describe("intake arms — every arm needs its session", () => {
   it("refuses every arm on a session that does not exist", () => {
     const { kernel } = harness();
     const result = kernel.execute({
@@ -445,7 +420,7 @@ describe("D170 intake arms — every arm needs its session", () => {
   });
 });
 
-/* ── D171: the enqueue ───────────────────────────────────────────────────── */
+
 
 /** The fixture file's row 2 (`10-4567`) is the one the canonical EID refuses. */
 const REJECTED_ROW = 2;
@@ -454,7 +429,7 @@ function enqueue(send: ReturnType<typeof harness>["send"], dryRun = false) {
   return send("enqueue-intake-manifest", { dryRun });
 }
 
-describe("D171 enqueue-intake-manifest — the readiness gate", () => {
+describe("enqueue-intake-manifest — the readiness gate", () => {
   it("refuses a pre-reservation session by id instead of minting a manifest identity", () => {
     const { database, send, mapAndValidate } = harness({}, true);
     send("exclude-intake-row", { sourceRow: REJECTED_ROW, reason: "Malformed EID" });
@@ -503,15 +478,14 @@ describe("D171 enqueue-intake-manifest — the readiness gate", () => {
     assert.equal(database.authority.intakeManifests.findBySource(HASH_A).length, 0);
   });
 
-  it("refuses a dry run the GRAPH cannot offer (D209)", () => {
+  it("refuses a dry run the GRAPH cannot offer", () => {
     const { send, mapAndValidate } = harness();
     send("exclude-intake-row", { sourceRow: REJECTED_ROW, reason: "Malformed EID" });
     mapAndValidate();
     const result = enqueue(send, true);
     assert.equal(result.state, "rejected");
     assert.equal(result.state === "rejected" ? result.code : "", "policy-refused");
-    // D209 — the refusal names the graph fact, not the absent input surface:
-    // this fixture is read-only, so a preview of it would BE an ordinary run.
+
     assert.match(
       result.state === "rejected" ? result.message : "",
       /has no transaction node, so a dry run would be indistinguishable from a real run/,
@@ -537,7 +511,7 @@ describe("D171 enqueue-intake-manifest — the readiness gate", () => {
   });
 });
 
-describe("D171 enqueue-intake-manifest — the fan-out", () => {
+describe("enqueue-intake-manifest — the fan-out", () => {
   function readyHarness() {
     const created = harness();
     created.send("exclude-intake-row", { sourceRow: REJECTED_ROW, reason: "Malformed EID" });
@@ -586,8 +560,7 @@ describe("D171 enqueue-intake-manifest — the fan-out", () => {
       assert.equal(run.envelope.dryRun, false);
       assert.equal(run.envelope.configSnapshotId, UUID_1);
       assert.equal(run.envelope.configFingerprint, CONFIG_SNAPSHOT.fingerprint);
-      // D62: the run's canonical input is re-read through the CURRENT schema
-      // and bound to the exact hash the manifest pins.
+
       assert.equal(run.input.parsed.schemaHash, manifest.canonicalInputSchemaHash);
       assert.deepEqual(run.input.raw, row.parsedInput);
     }
@@ -617,8 +590,7 @@ describe("D171 enqueue-intake-manifest — the fan-out", () => {
     assert.equal(manifest.totals.valid, 2);
     assert.deepEqual(manifest.exclusions.map((entry) => entry.sourceRow), [3]);
     assert.equal(manifest.corrections.length, 1);
-    // D361 retains the complete classified original value read from the file;
-    // the session does not carry it.
+
     assert.equal(manifest.corrections[0].original.state, "allowed");
     assert.equal(
       manifest.corrections[0].original.state === "allowed" ? manifest.corrections[0].original.value : "",

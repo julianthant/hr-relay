@@ -1,26 +1,6 @@
 import { RuntimeAdmission } from "../../../../../../src/backend/storage/admission/admission.js";
 import { healthyRuntimePreflightRunners } from "../../../../../support/fixtures/preflight-seams.js";
-/**
- * D318 — the transaction-free `live-read` T1b arm, proved deterministically
- * through the REAL dry-run scenario runtime (real start-plan service, real
- * command kernel, real worker drain, real receipt service) over the REAL
- * person-lookup definition with deterministic UCPath/CRM drivers.
- *
- * What this file pins:
- *
- * 1. a `live-read` manifest on a transaction-free graph starts the ORDINARY
- *    path with `dryRun: false`, reaches the read nodes, checkpoints them,
- *    settles the workflow's OWN result (bound to its declared result schema,
- *    never the preview schema), and shows exact zero deltas in every
- *    write-authority table;
- * 2. the person-lookup T1b manifest's every expectation equals the evidence
- *    the runtime actually collects — the checked-in declaration is the
- *    pinned vocabulary, not a guess;
- * 3. the two graph refusals: a `live-read` manifest on a transaction-bearing
- *    graph, and a `dry-run-preview` manifest on a transaction-free graph, each
- *    refuse before any effect and by name; and D209's own `no-transaction-node`
- *    refusal of `dryRun: true` on that graph is unchanged.
- */
+
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -58,9 +38,7 @@ import {
 } from "../../../../../../src/backend/app/dry-run/runtime.js";
 import { HASH_A, UUID_7 } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
 
-// The checked-in declarations, evaluated without importing them: a collected
-// file may never import a T1b manifest (the pair invariant), and the exact
-// checked-in bytes are what this proof pins.
+
 const PERSON_LOOKUP_LIVE_READ = evaluateT1bManifest(process.cwd(), "tests/support/fixtures/dry-run/person-lookup-manifest.ts");
 const SEPARATIONS_DRY_RUN = evaluateT1bManifest(process.cwd(), "tests/support/fixtures/dry-run/separations-manifest.ts");
 
@@ -86,7 +64,7 @@ function composedRoot(prefix: string) {
   return { root, clock };
 }
 
-describe("D318 live-read T1b arm — person-lookup", () => {
+describe("live-read arm — person-lookup", () => {
   it.each([true, false])("starts the ordinary path with browser.headless=%s, retains its mode and shows exact zero write deltas", async (headless) => {
     const { root, clock } = composedRoot("hrauto-live-read-");
     const settings = selectedSettingsFixture(root, clock, {}, databases);
@@ -121,8 +99,7 @@ describe("D318 live-read T1b arm — person-lookup", () => {
     });
     const scenarioCase = PERSON_LOOKUP_LIVE_READ.cases[0];
     assert.ok(scenarioCase);
-    // The old test selection remains failed. A replacement private input gets a
-    // new opaque identity, so its ordinal cannot collide with the old selection.
+
     const binding = { kind: "test-data-local", inputPath: "emplId", name: "personLookupCanaryEid" } as const;
     const previous = await runtime.start({ manifest: PERSON_LOOKUP_LIVE_READ, scenarioCase, canonicalInput: CANONICAL_INPUT,
       protectedBindings: [{ ...binding, sourceId: "aaaaaaaa-0001-4000-8000-000000000010" }] });
@@ -198,9 +175,7 @@ describe("D318 live-read T1b arm — person-lookup", () => {
     assert.equal(sessions.opens("ucpath"), 1);
     assert.equal(sessions.opens("crm"), 1);
 
-    // A persisted live-read result binds to THIS ordinary run — at insert and
-    // again at every database open (the invariant sweep) — while a preview
-    // result may never cite a run that was not a dry run.
+
     const persisted = {
       resultId: "aaaaaaaa-0001-4000-8000-000000000001",
       scenarioId: PERSON_LOOKUP_LIVE_READ.scenarioId,
@@ -265,7 +240,7 @@ describe("D318 live-read T1b arm — person-lookup", () => {
     assert.ok(liveReadCase);
     await assert.rejects(
       runtime.start({ manifest: separationsAsLiveRead, scenarioCase: liveReadCase, canonicalInput: {} }),
-      /live-read manifest separations\/live-read names workflow separations, whose compiled graph carries transaction node\(s\) clear-pending, file-termination, finalize-kuali; a transaction-bearing graph must declare the dry-run-preview arm \(D318\)/u,
+      /live-read manifest separations\/live-read names workflow separations, whose compiled graph carries transaction node\(s\) clear-pending, file-termination, finalize-kuali; a transaction-bearing graph must declare the dry-run-preview arm/u,
     );
 
     const personLookupAsPreview = parseDryRunScenarioManifest({
@@ -278,13 +253,13 @@ describe("D318 live-read T1b arm — person-lookup", () => {
     assert.ok(previewCase);
     await assert.rejects(
       runtime.start({ manifest: personLookupAsPreview, scenarioCase: previewCase, canonicalInput: CANONICAL_INPUT }),
-      /dry-run-preview manifest person-lookup\/dry-run names workflow person-lookup, whose compiled graph has no transaction node; a transaction-free graph must declare the live-read arm \(D318\) — D209 still refuses dryRun for it \(no-transaction-node\)/u,
+      /dry-run-preview manifest person-lookup\/dry-run names workflow person-lookup, whose compiled graph has no transaction node; a transaction-free graph must declare the live-read arm — dryRun is refused for it \(no-transaction-node\)/u,
     );
-    // D209 is unchanged: the graph itself still refuses a dry run by name.
+
     assert.deepEqual(workflowDryRunSupport(personLookupDescriptor), { state: "unsupported", reason: "no-transaction-node" });
     assert.equal(workflowDryRunSupport(separationsDescriptor).state, "supported");
   });
-  it("refuses a manifest whose arm disagrees with its case shape before any graph or effect check (D318)", async () => {
+  it("refuses a manifest whose arm disagrees with its case shape before any graph or effect check", async () => {
     const { root, clock } = composedRoot("hrauto-live-read-arm-shape-");
     const database = AuthorityDatabase.open(
       { path: join(root, rebuildRuntimeIsolation.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "live-read-arm-shape-test" },
@@ -318,7 +293,7 @@ describe("D318 live-read T1b arm — person-lookup", () => {
     );
   });
 
-  it("refuses the live-read arm for a delegating graph: a child run's writes live under its own run, outside this run's zero-delta proof (D318)", () => {
+  it("refuses the live-read arm for a delegating graph: a child run's writes live under its own run, outside this run's zero-delta proof", () => {
     const DelegateInput = z.strictObject({ name: z.string().min(1) });
     const delegatingFlow = flow(DelegateInput)
       .childRun("delegate", {
@@ -365,16 +340,14 @@ describe("D318 live-read T1b arm — person-lookup", () => {
     assert.deepEqual(workflowDryRunSupport(delegating), { state: "unsupported", reason: "no-transaction-node" });
     assert.match(
       liveReadGraphRefusal(delegating, "fixture/live-read") ?? "",
-      /live-read manifest fixture\/live-read names workflow live-read-delegating-fixture, whose compiled graph carries child-run node\(s\) delegate; a delegating graph runs its child under its own run and write intents, which this run's zero-delta proof cannot see — no live-read arm admits it \(D318\)/u,
+      /live-read manifest fixture\/live-read names workflow live-read-delegating-fixture, whose compiled graph carries child-run node\(s\) delegate; a delegating graph runs its child under its own run and write intents, which this run's zero-delta proof cannot see — no live-read arm admits it/u,
     );
     assert.equal(liveReadGraphRefusal(personLookupDescriptor, "person-lookup/live-read"), undefined);
     assert.match(liveReadGraphRefusal(separationsDescriptor, "separations/live-read") ?? "", /transaction node\(s\)/u);
   });
 
   it("classifies every graph node kind for the live-read arm: admitted kinds plus the two refused kinds are exactly the vocabulary", () => {
-    // Fail closed: a kind added to the graph vocabulary must be classified here
-    // before a dryRun=false live-read may carry it. This pin turns red on the
-    // addition, not on the first live run that meets the new kind.
+
     const refused = ["transaction", "child-run"] as const;
     for (const kind of refused) assert.equal(LIVE_READ_ADMITTED_NODE_KINDS.has(kind), false);
     assert.deepEqual(

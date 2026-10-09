@@ -1,16 +1,4 @@
-/**
- * The ONE bridge from a hub connection to an SSE response body (ref
- * frontend-backend-integration §3.5). It is a `pull()` source on purpose: the
- * Web Stream asks for the next envelope only when its consumer — the Node
- * adapter, which honours `res.write()` backpressure — has taken the previous
- * one, so demand flows from the socket to the hub's single bounded queue and
- * a slow browser is answered with the hub's loud `reset-required`, never with
- * an unbounded buffer here or a silently dropped envelope.
- *
- * Lifecycle: `cancel()` (client disconnect, adapter cancellation, server
- * shutdown) closes the connection exactly once; a hub close resolves the
- * outstanding pull with `undefined`, which ends the body cleanly.
- */
+// Use a pull source so socket demand controls delivery; pushing would bypass backpressure.
 import type { DashboardStreamEnvelope } from "../../../../models/dashboard/subscription.js";
 import type { DashboardStreamConnection } from "./dashboard-stream.js";
 import type { CompositeConnection } from "./run-logs-stream.js";

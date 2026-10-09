@@ -1,28 +1,4 @@
-/**
- * D271's worker-process controls on the Session Panel — the pool roster fold,
- * the plan intent (including its explicit scale-down set), and the two commands
- * the controls post.
- *
- * Three claims are pinned here that nothing else in the tree can hold.
- *
- * **The bundle's copy of the pool contract cannot drift from the kernel's.**
- * `src/dashboard/**` may not import `src/core` (`dashboard-wire-boundary`), so
- * the cap and the canonical worker id are restated in `shell-model.ts`. A test
- * CAN import both, so it does: raising `MAX_WORKERS_PER_POOL` or changing
- * `poolWorkerId` without the panel fails here rather than in front of an
- * operator who is offered a size the supervisor refuses.
- *
- * **The excess set the panel NAMES is the set the kernel reconciles.** A
- * scale-down's members are `desiredWorkers+1..MAX` — the same derivation
- * `createWorkerPoolRuntimeExecutor` builds its `excessMembers` from — so the
- * confirmation the operator reads names exactly the workers the plan will
- * gracefully stop, and never a member picked by any client-side judgement.
- *
- * **Both refusal arms are drawn verbatim** (D253). The two settlements a pool
- * command can come back refused with are rendered and asserted on the server's
- * own sentence, plus the ONE fact each arm adds: the live pool version for a
- * `conflict`, the kernel's code for a `rejected`. Neither renders a retry.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { MAX_WORKERS_PER_POOL, poolWorkerId } from "../../../../../src/backend/runtime/workers/worker-loop.js";
@@ -106,7 +82,7 @@ function groupFor(day: DashboardDayWire, workflowId: string): SessionPoolGroup {
 }
 
 describe("the panel's copy of the pool contract is pinned to the kernel's", () => {
-  it("restates D271's cap as the kernel's own number", () => {
+  it("restates the worker cap as the kernel number", () => {
     assert.equal(SESSION_POOL_MAX_WORKERS, MAX_WORKERS_PER_POOL);
   });
 
@@ -153,7 +129,7 @@ describe("the pool roster is folded from served facts only", () => {
     assert.equal(slotAt(group, 2).workerId, "person-lookup-worker-2");
   });
 
-  it("keeps a retained terminal card on its declared index as a visibly unmet member (D271)", () => {
+  it("keeps a retained terminal card on its declared index as a visibly unmet member", () => {
     const day = dayOf(
       [retainedCardOf({ workerId: "person-lookup-worker-1", workflowId: "person-lookup", stopReason: "crashed" })],
       [poolRow("person-lookup", 1, 2)],
@@ -172,9 +148,7 @@ describe("the pool roster is folded from served facts only", () => {
     assert.equal(group.facts.state, "absent");
     assert.equal(group.declaration, undefined);
     assert.equal(group.expectedVersion, 0);
-    // The served card's index is still a member of the roster: a live worker
-    // above an undeclared pool is real, and hiding it would hide the member a
-    // plan is about to stop.
+
     assert.deepEqual(group.slots.map((slot) => slot.poolIndex), [2]);
     assert.equal(slotAt(group, 2).declared, false);
   });
@@ -203,7 +177,7 @@ describe("a plan names the exact members it will stop", () => {
     "person-lookup",
   );
 
-  it("refuses a count outside D271's range without composing anything", () => {
+  it("refuses a count outside the worker range without composing anything", () => {
     for (const count of [0, -1, MAX_WORKERS_PER_POOL + 1, 2.5]) {
       const intent = planPoolIntent(plannedTwo(), count);
       assert.equal(intent.kind, "refused");

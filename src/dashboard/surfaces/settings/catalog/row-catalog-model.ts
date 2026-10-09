@@ -1,34 +1,5 @@
-/**
- * The ROW-AND-PANEL vocabulary, as this build actually serves it (D274 item 4).
- *
- * ## What this is, and what it deliberately is not
- *
- * The rebuild-demo carries a "Row & panel catalog" (legacy
- * `src/dashboard/components/dev/rebuild-demo/DemoCatalogView.tsx` +
- * `demo-catalog.ts`, legacy commit `1bffbd6`) — a five-section reference page
- * naming 8 row VARIANTS over 3 row types, 3 containment kinds, a status rollup
- * precedence chain, 4 Log-Panel kinds and a per-workflow map. D184 retired the
- * demo SHELL as a port target and said nothing about the vocabulary; D274 item
- * 4 answers it: **build only the vocabulary this system serves, and NAME what
- * the demo has that it does not.** The rejected arms were claiming the demo's
- * unsupported semantics (B) and giving the vocabulary no home at all (C).
- *
- * So every kind on this page is READ OFF a schema — `QueueSurfaceWire`'s own
- * discriminant, `ContainmentSchema.options`, `PanelKindSchema.options`, and
- * `sectionsForPanelKind` — never authored beside it. A `Record` keyed by the
- * schema's own union is what makes that structural: a fifth arm on any of them
- * is a TYPECHECK failure here, not a page that silently documents four of five.
- * What IS authored is the prose, and each sentence is lifted from the schema's
- * own doc comment at the site that defines the arm, so there is one place to
- * correct it.
- *
- * ## The named absences
- *
- * `UNSERVED_VOCABULARY` is the other half of D274 item 4 and is rendered, not
- * commented: a reference page that quietly omits what the demo names is
- * indistinguishable from one that has not been finished. Each entry says what
- * the demo has, and why nothing in this tree can print it.
- */
+/** The ROW-AND-PANEL vocabulary, as this build actually serves it.
+ * The rebuild-demo carries a "Row & panel catalog" (legacy */
 import { ContainmentSchema, type QueueSurfaceWireSchema } from "../../../../models/dashboard/projection.js";
 import { PanelKindSchema, type RunDetailSectionSchema } from "../../../../models/dashboard/primitives.js";
 import { sectionsForPanelKind } from "../../../../models/dashboard/run-detail.js";
@@ -37,20 +8,15 @@ import { PANEL_TAB_LABEL, TAB_ORDER, type PanelTab } from "../../run-detail/log-
 
 type QueueSurfaceWire = z.infer<typeof QueueSurfaceWireSchema>;
 
-/**
- * Which panel the catalog takeover shows. Route-owned (`?catalogView=`), like
- * the Archive's `archiveView`, so a link can name the exact view.
- */
+/** Which panel the catalog takeover shows. Route-owned (`?catalogView=`), like
+ * the Archive's `archiveView`, so a link can name the exact view. */
 export type CatalogView = "vocabulary" | "selectors";
 
 /** The view a link with no `catalogView` lands on — the surface this key has always opened. */
 export const DEFAULT_CATALOG_VIEW: CatalogView = "selectors";
 
-/**
- * A query value this build does not render is DROPPED rather than trusted: the
- * omitted arm is a real destination, and landing the operator on a blank panel
- * because a link carried a typo is worse than landing them on the default.
- */
+/** A query value this build does not render is DROPPED rather than trusted: the
+ * omitted arm is a real destination, and landing the operator on a blank panel */
 export function parseCatalogView(raw: string | null): CatalogView | undefined {
   if (raw === "vocabulary" || raw === "selectors") return raw;
   return undefined;
@@ -68,18 +34,14 @@ export interface RowSurfaceSpec {
   readonly name: string;
   /** What this shape IS, in one sentence. */
   readonly subject: string;
-  /** What the projector must be looking at to emit it. */
+  /** What the projector must be looking at to emit */
   readonly producedWhen: string;
   /** The facts this shape carries that no other shape does. */
   readonly carries: readonly string[];
 }
 
-/**
- * A `Record` rather than an array, so the compiler — not a reviewer — is what
- * notices a new `surfaceKind`. `surfaceKindOf` in
- * `src/server/dashboard/projectors/run-queue-projection.ts` folds the run's own
- * `shape` into exactly these four.
- */
+/** A `Record` rather than an array, so the compiler — not a reviewer —
+ * is what notices a new `surfaceKind`. */
 const ROW_SURFACE: Record<RowSurfaceKind, RowSurfaceSpec> = {
   single: {
     key: "single",
@@ -124,18 +86,13 @@ const ROW_SURFACE: Record<RowSurfaceKind, RowSurfaceSpec> = {
   },
 };
 
-/**
- * Display order. The `Record` above owns MEMBERSHIP and this owns SEQUENCE;
- * `row-catalog-model.test.ts` pins that the two agree, because an order list is the
- * one place a fifth arm can be dropped without the compiler noticing.
- */
+/** Display order. */
 export const ROW_SURFACE_ORDER: readonly RowSurfaceKind[] = ["single", "preview", "operation", "member"];
 
 export function rowSurfaceSpecs(): readonly RowSurfaceSpec[] {
   return ROW_SURFACE_ORDER.map((key) => {
     const spec = ROW_SURFACE[key];
-    // Fail loud rather than skip: an order entry with no spec would silently
-    // shorten the page, which is exactly the drift this catalog exists against.
+    // Fail loud rather than skip
     if (spec === undefined) throw new Error(`row surface order names ${key}, which has no spec`);
     return spec;
   });
@@ -149,11 +106,7 @@ export interface ContainmentSpec {
   readonly counts: string;
 }
 
-/**
- * The three arms of ContainmentSchema, in its own words
- * (src/domain/dashboard/projection.ts). The demo names a FOURTH — see
- * UNSERVED_VOCABULARY.
- */
+
 const CONTAINMENT: Record<ContainmentKind, ContainmentSpec> = {
   root: {
     key: "root",
@@ -186,7 +139,7 @@ export interface PanelKindSpec {
   readonly key: PanelKind;
   readonly name: string;
   readonly forRows: string;
-  /** Derived from sectionsForPanelKind, never authored (D274 item 4). */
+  /** Derived from sectionsForPanelKind, never authored. */
   readonly tabs: readonly { readonly key: PanelTab; readonly label: string }[];
   /** Every section this kind may advertise, tabbed or not. */
   readonly sections: readonly RunDetailSection[];
@@ -199,22 +152,11 @@ const PANEL_KIND_NAME: Record<PanelKind, { readonly name: string; readonly forRo
   group: { name: "Group panel", forRows: "Operation group" },
 };
 
-/**
- * The tab strip a kind can draw, read off the SAME derivation the panel calls.
- *
- * tabsFor filters a run's ADVERTISED sections through TAB_ORDER; here the
- * advertisable set comes from sectionsForPanelKind, so the catalog can never
- * document a tab the schema would refuse on that kind. What it does not claim
- * is that every real run has all of them — availableSections is per run, and
- * the surface says so.
- */
+/** Catalog tabs use advertised schema sections; possible tabs do not claim every run serves them. */
 function tabsForPanelKind(panelKind: PanelKind): readonly { key: PanelTab; label: string }[] {
   const advertisable = new Set<RunDetailSection>(sectionsForPanelKind(panelKind));
   const tabs: { key: PanelTab; label: string }[] = [];
-  // TAB_ORDER, not a second copy of it: a hand-kept list beside the one the
-  // panel actually filters is a specimen page that documents an order the
-  // product stopped drawing, which is the exact drift this surface exists to
-  // prevent.
+  // Reuse the product tab order so the catalog cannot document a stale parallel list.
   for (const tab of TAB_ORDER) {
     if (advertisable.has(tab)) tabs.push({ key: tab, label: PANEL_TAB_LABEL[tab] });
   }
@@ -231,14 +173,7 @@ export function panelKindSpecs(): readonly PanelKindSpec[] {
   }));
 }
 
-/**
- * What a group's status is rolled up FROM, and what this build does not roll.
- *
- * The demo authors a status PRECEDENCE chain (ROLLUP_STEPS, first match
- * wins). Nothing in src/ derives a group status that way: memberRollup is
- * three counts, refused by the schema unless they are internally consistent
- * and total matches the member ids exactly.
- */
+/** Member counts are not a status-precedence rollup; document only the derivation actually produced. */
 export const ROLLUP_COUNTS: readonly { readonly key: string; readonly meaning: string }[] = [
   { key: "total", meaning: "Every member id this group served — the schema refuses a total that disagrees with the list." },
   { key: "terminal", meaning: "Members that have settled. Never greater than total." },
@@ -252,9 +187,7 @@ export interface UnservedVocabulary {
   readonly why: string;
 }
 
-/**
- * D274 item 4's second half, RENDERED. Each row is a fact about a producer.
- */
+
 export const UNSERVED_VOCABULARY: readonly UnservedVocabulary[] = [
   {
     demo: "Eight named row VARIANTS — Person Run Row, Document Run Row, Review Run Row, Catalog Run Row, Packet Group Row, Roster Group Row, Person Member Row, Rejected Member Row.",

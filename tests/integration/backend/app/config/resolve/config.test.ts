@@ -505,7 +505,7 @@ describe("strict config resolution", () => {
     }
   });
 
-  it("preserves the four DCC3 settings among the catalogued ordinary leaves", () => {
+  it("preserves the four settings among the catalogued ordinary leaves", () => {
     const patch = {
       ocr: { pageConcurrency: 3, maxValidationRetries: 0 },
       concurrency: { defaultWorkers: 2 },
@@ -526,7 +526,7 @@ describe("strict config resolution", () => {
     try {
       const authority = createSettingsFileAuthority({ path: ordinarySettingsPath(root) });
       const applied = authority.apply(settingsApplyRequest(SETTINGS_COMMAND_1, 1, patch));
-      if (applied.state !== "applied") assert.fail("DCC3 leaves must apply");
+      if (applied.state !== "applied") assert.fail("Catalogued settings leaves must apply");
       applied.commit();
       assert.deepEqual(authority.read().settings, patch);
     } finally {
@@ -604,7 +604,7 @@ describe("strict config resolution", () => {
     }
   });
 
-  it("P8 rejects protected names and state deployment paths at both settings write boundaries", () => {
+  it("rejects protected names and state deployment paths at both settings write boundaries", () => {
     const forbiddenPatches = [
       { operator: { timekeeperName: "request-owned-identity" } },
       { paths: { stateRoot: "/tmp/untrusted-state" } },
@@ -1292,7 +1292,7 @@ describe("strict config resolution", () => {
     }
   });
 
-  it("P4 preserves settings authority on restart under hostile environment names", () => {
+  it("preserves settings authority on restart under hostile environment names", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-authority-"));
     try {
       const path = ordinarySettingsPath(join(root, ".tracker"));
@@ -1516,7 +1516,7 @@ describe("strict config resolution", () => {
     }).success, true);
   });
 
-  it("P4/P6/P10 applies settings over defaults with complete value-free provenance", () => {
+  it("applies settings over defaults with complete value-free provenance", () => {
     const settings = {
       ocr: { secondOpinionMax: 7 },
       timeouts: { ukgNavigationMs: 75_000 },
@@ -1546,7 +1546,7 @@ describe("strict config resolution", () => {
     assert.equal(resolved.provenance["browser.closeProofMs"], "settings");
   });
 
-  it("P37 rejects malformed ordinary values, missing job-end dates and half-display overrides", () => {
+  it("rejects malformed ordinary values, missing job-end dates and half-display overrides", () => {
     assert.throws(() => resolveConfigWithProvenance({ ocr: { pageConcurrency: "auto" } }, hostConfigFacts({}), CLOCK));
     const jobEndOnly = resolveConfigWithProvenance({ annualDates: { FY2027: { jobEndDate: "06/30/2027" } } }, hostConfigFacts({}), CLOCK).config;
     assert.equal(jobEndOnly.annualDates.FY2027?.jobEndDate, "06/30/2027");
@@ -1561,12 +1561,12 @@ describe("strict config resolution", () => {
     assert.equal(config.annualDates.FY2027?.jobEndDate, "06/30/2027");
   });
 
-  it("P3 refuses restored environment provenance in resolved settings", () => {
+  it("refuses restored environment provenance in resolved settings", () => {
     assert.equal(ConfigProvenanceSchema.safeParse("env").success, false);
     assert.deepEqual(ConfigProvenanceSchema.options, ["settings", "default"]);
   });
 
-  it("P4 ignores every migrated process environment key and rejects the old resolver signature", () => {
+  it("ignores every migrated process environment key and rejects the old resolver signature", () => {
     const settings = { concurrency: { defaultWorkers: 2 } };
     const facts = hostConfigFacts({});
     const before = resolveConfigWithProvenance(settings, facts, CLOCK);

@@ -4,15 +4,7 @@ import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.j
 import { ucpathDriver } from "../driver-declaration.js";
 import { firstDisagreeingName, ucpathTerminationVerdict } from "../termination-verdict.js";
 
-/**
- * Beat ⑥'s completion verifier. It re-reads the SS Smart HR surface after the
- * click and is the ONLY thing that may turn a submitted wizard into `done`.
- *
- * Every non-`present` verdict parks: `absent` means the submit did not take
- * (S50), `unknown` means we could not tell (S51/S52), and neither may report
- * success. Legacy's own best line — "PeopleSoft's outcome is unknown, refusing
- * to report success" — is this arm, kept as a kernel state rather than a throw.
- */
+// Only the post-submit read can prove completion; every non-present verdict parks.
 export const verifyTerminationTask = defineTask(ucpathDriver, UcpathVerifyTermination, {
   sessions: [{ system: "ucpath", access: "read", session: "reuse-worker" }],
   async run({ input, ctx }) {

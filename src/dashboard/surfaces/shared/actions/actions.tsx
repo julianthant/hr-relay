@@ -1,26 +1,5 @@
-/**
- * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
- * src/dashboard/components/dev/rebuild-demo/DemoActions.tsx
- *
- * Served run controls render only the server-sent `actions[]`. Local preview
- * callbacks provide fixture-only controls and never create command descriptors.
- *
- * Port scope: the run-action renderers (footer, banner, park resolutions,
- * outcome), the server-authored confirm dialog, and the result
- * feedback split. `settleCommandResult` (D253) decides every command verdict;
- * applied settlements toast, while the two refusal settlements remain in the
- * bounded persistent feed with their exact server facts. The demo's `settling`
- * annotation remains absent because this command-result wire does not serve it.
- *
- * `ParkResolutions` and the park command split were deferred here on the claim
- * that "no park commands exist in the Phase-1 action vocabulary". That claim is
- * FALSE and was corrected by the R8 audit
- * (`docs/plans/2026-08-13-detail-fidelity-audit.md`, finding 1): the
- * `parked-write` section projects both resolutions with their `detail`
- * sentences (`src/server/dashboard/queries/run-detail.ts:516-551`) and they
- * reach the wire at `src/domain/dashboard/actions.ts`. They had simply been
- * rendering as bare banner pills, dropping the served `detail` on the floor.
- */
+/** Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc
+ * src/dashboard/components/dev/rebuild-demo/DemoActions.tsx */
 import { useRef, type ReactNode } from "react";
 import {
   AlertTriangle,
@@ -67,26 +46,19 @@ import {
   type ActionIntent,
 } from "../../../../models/dashboard/actions.js";
 
-/** The object a run action is about — the row id and the revision it was projected at. */
+/** The object a run action */
 export interface ActionTarget {
   runId: string;
   expectedVersion: number;
 }
 
-/**
- * Every control calls this. The surface hands back the action and its target;
- * the app owns turning that into the one command envelope (and reacting to
- * conflict / rejected in place). Navigation actions route instead of command.
- */
+/** Every control calls this. */
 export type DashboardActionHandler = (action: ActionDescriptorWire, target: ActionTarget) => void;
 
 const NOOP_ACTION: DashboardActionHandler = () => {};
 
-/**
- * Persistent refusal context. It is a client-side feed of command answers,
- * not a replacement for the durable audit trail; both refusal arms retain the
- * exact server message from `settleCommandResult`.
- */
+/** Persistent refusal context. It is a client-side feed of command
+ * answers not a replacement for the durable audit trail */
 export function CommandResultFeed({
   results,
   onDismiss,
@@ -177,7 +149,7 @@ const ICONS: Record<ActionIconKey, ReactNode> = {
   drill: <Search aria-hidden className={dsIcon.md} />,
 };
 
-/* the pill shell and the placement folds live in `actions-model.ts` — see the note there */
+/** the pill shell and the placement folds live in `actions-model.ts` — see the note there */
 
 /** the IconActionButton palette is narrower than the wire's intents */
 const INTENT_TONE: Record<ActionIntent, "destructive" | "warning" | "primary" | "muted"> = {
@@ -190,26 +162,10 @@ const INTENT_TONE: Record<ActionIntent, "destructive" | "warning" | "primary" | 
   warning: "warning",
 };
 
-// ---------------------------------------------------------------------------
 // Footer — the queue row's own controls
-// ---------------------------------------------------------------------------
 
-/**
- * D16's no-undo sentence, on the group cancel's own ✕ (R3 finding 22).
- *
- * Ported verbatim from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
- * `DemoActions.tsx:171-174`. D16 keeps group cancel exempt from a confirm
- * dialog by construction — the descriptor carries no `confirm` — so this title
- * is the ONLY place an operator is told what the ✕ takes with it, which is
- * exactly why losing it mattered.
- *
- * BOUND BY `key`, NOT BY `command`, and that is a deviation with a cause: the
- * demo tests `a.command === "cancel-tree"`, and this repository's
- * `ActionCommandKeySchema` has no such verb — the kernel accepts `cancel`, and
- * binding to that would put a sentence about "every member" on a single run's
- * cancel. `key` is the descriptor's stable per-row identifier, so the action
- * projection names this control by naming this key. Inert until it serves one.
- */
+/** The no-undo sentence, on the group cancel's own ✕.
+ * Ported verbatim from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc */
 const CANCEL_TREE_KEY = "cancel-tree";
 const CANCEL_TREE_TITLE =
   "Cancels this group, its delegated review and every member. Final — there is no undo.";
@@ -227,11 +183,8 @@ export function FooterActions({
 }) {
   const footer = actionsAt(actions, "footer");
   if (footer.length === 0 && !onPreviewAction) return null;
-  // The `Cancel group` caption beside the ✕ is GONE. An icon that already means
-  // cancel, captioned "cancel", is the same word twice — and it was the only
-  // label in the footer's action cluster, so it made one row's buttons a
-  // different shape from every other row's. D16's warning did not live in that
-  // caption: it is the ✕'s own `title` below.
+  // No `Cancel group` caption beside the ✕: an icon that already means cancel,
+  // captioned "cancel", is the same word twice; the warning lives in the ✕'s own `title`.
   return (
     <span className="flex items-center gap-[var(--ds-space-hair)]">
       {onPreviewAction && footer.length === 0 && <>
@@ -261,9 +214,7 @@ export function FooterActions({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Banner — the decision the row is sitting on
-// ---------------------------------------------------------------------------
+
 
 export function DataActions({ actions, target, onAction = NOOP_ACTION }: { actions: readonly ActionDescriptorWire[]; target: ActionTarget; onAction?: DashboardActionHandler }) {
   return <div className="flex gap-[var(--ds-space-snug)]">{actionsAt(actions, "data").map((action) => <BareButton key={action.key} className={intentPill(action.intent, "md")} onClick={() => onAction(action, target)}>{action.label}</BareButton>)}</div>;
@@ -299,20 +250,7 @@ export function BannerActions({
   );
 }
 
-/**
- * Ported verbatim from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
- * `DemoActions.tsx:225-280`.
- *
- * The only two exits from Write parked. Both are the operator reporting what
- * they SAW in the system of record — neither one re-submits anything. There is
- * no Resume here because the contract never sends one: resuming an unknown
- * write is how you terminate somebody twice.
- *
- * The `detail` sentence is SERVED (`run-detail.ts:516-551`) and is the whole
- * reason these are cards rather than pills: a pill can carry a verb, and the
- * thing that separates these two verbs is a sentence about what each one
- * unlocks.
- */
+/** Park resolution reports observed outcomes only; never resume or resubmit an unknown write. */
 export function ParkResolutions({
   actions,
   target,
@@ -325,11 +263,7 @@ export function ParkResolutions({
   const options = parkResolutions(actions);
   if (options.length === 0) return null;
   return (
-    // A CONTAINER query: these render inside the gate banner and inside the log
-    // stream, both of which live in the detail region's CENTRE column — whose
-    // width is a function of the context rail's state as well as the window's.
-    // Keyed to the window, two resolutions were being forced side-by-side into
-    // a 414px column at a 1280px viewport.
+    // Measure the detail column, not viewport width; context rails change the space controls share.
     <div className="mt-[var(--ds-space-base)] grid gap-[var(--ds-space-snug)] @min-[35rem]:grid-cols-2">
       {options.map((a) => {
         const present = a.kind === "command" && a.command === "resolve-write-present";
@@ -374,9 +308,7 @@ export function ParkResolutions({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Outcome — the ONE thing to do about this row
-// ---------------------------------------------------------------------------
+
 
 export function OutcomeActionButton({
   actions,
@@ -389,20 +321,13 @@ export function OutcomeActionButton({
   target: ActionTarget;
   onAction?: DashboardActionHandler;
   className?: string;
-  /**
-   * Keys this SURFACE refuses to draw, because it already renders the thing the
-   * action travels to. Queue cards omit the Review ↗ (`open-gate`) — the
-   * operator clicks the row — and inside the detail panel the gate options are
-   * already on screen, so a pill that only scrolls is redundant.
-   */
+  /** Suppress jumps to evidence already rendered by this surface. */
   omitKeys?: readonly string[];
 }) {
   const action = outcomeAction(actions);
   if (!action || omitKeys?.includes(action.key)) return null;
 
-  // Waiting used to open with a gray ↗ beside the gate line. Queue cards now
-  // omit `open-gate` entirely — clicking the row is enough. This branch stays
-  // for any surface that still asks for the icon-only Review jump.
+  // Keep the review jump only where requested; queue rows already open their gate by selection.
   if (action.key === "open-gate") {
     return (
       <BareButton
@@ -444,9 +369,7 @@ export function OutcomeActionButton({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Confirmation — server-authored, because only the server knows the casualties
-// ---------------------------------------------------------------------------
+
 
 export interface PendingCommand {
   action: Extract<ActionDescriptorWire, { kind: "command" }>;
@@ -461,13 +384,7 @@ export interface PendingCommand {
   triggerElement?: HTMLElement | null | undefined;
 }
 
-/**
- * On the ds Dialog (which registers its own modal presence, so a persistent
- * `danger` toast steps aside and cannot intercept the confirm click). The
- * blast-radius copy is served with the descriptor — the client never writes a
- * confirmation message, because only the server knows how many rows are
- * involved.
- */
+/** Use served blast-radius copy and modal presence so danger toasts cannot intercept confirmation. */
 export function ConfirmCommandDialog({
   pending,
   onCancel,
@@ -493,10 +410,7 @@ export function ConfirmCommandDialog({
             }
           }}
           title={
-            // The layout only — NO second type class. `DialogPrimitive.Title`
-            // already carries `dsText.section`, and nesting `dsText.title`
-            // inside it made this the one dialog in the product whose title was
-            // a different size from every other dialog's (R8 finding 15).
+            // Use the dialog primitive’s title typography; nested title classes would create a different heading scale.
             <span className="flex items-center gap-[var(--ds-space-base)]">
               <AlertTriangle
                 aria-hidden

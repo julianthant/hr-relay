@@ -1,38 +1,7 @@
 import { servedFixtureSources } from "../../../../parity/helpers/workflow-composition.js";
 import { buildWorkflowCatalog } from "../../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 // @vitest-environment jsdom
-/**
- * THE RUN MODAL, PRESSED — the half of D272 items 8 and 9 that no fold can hold.
- *
- * `run-start-model.test.ts` pins the folds (`startRequestFingerprint`,
- * `runControlGroups`) and `run-start-kit-render.test.ts` pins the pieces the
- * dialog draws. Neither can see the WIRING between them, and every finding this
- * file exists for lives exactly there:
- *
- *   - C109's reset effect is a `useEffect` in `run-start.tsx`. The fingerprint
- *     fold was pinned; the effect that CONSUMES it was not, so deleting the
- *     whole `useEffect` left every test in this tree green while a settled plan
- *     stood over a request the operator had already edited away.
- *   - the launcher's compact path hides the input control at Confirm but keeps
- *     the exact input in the confirmation summary; dropping that summary would
- *     let the operator authorise a plan without seeing its basis.
- *   - the settle-after-edit RACE is a fold's blind spot by construction: the
- *     fingerprint is right, and an in-flight request that resolves after the
- *     edit re-lands the superseded answer on top of the cleared state.
- *   - and the two exits from a settled banner (Close / Dismiss, Reload the
- *     form) are `onDismiss` / `onReload` PROPS — pinned in the kit as words on
- *     a button, unpinned as the state transition they trigger.
- *
- * So this file renders the real `RunStartDialog` into a real document and
- * presses the real controls. It is the second file in the unit lane to do so —
- * `session-panel-pool-press.test.ts` is the first, and its rule applies here
- * unchanged: the standing rule that behaviour belongs to the Playwright parity
- * lane still holds for anything about PIXELS. Which stage the rail says it is
- * on, and whether a stale plan re-lands, are not pixels.
- *
- * Every case below was run against a mutation of the line it pins; the mutation
- * is named in the case.
- */
+
 import assert from "node:assert/strict";
 import { act, createElement, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -50,12 +19,7 @@ import { RunStartDialog, type RunStartWorkflow } from "../../../../../src/dashbo
 import { START_DOOR_ABSENCE } from "../../../../../src/dashboard/surfaces/run-start/run-start-model.js";
 import { FIXTURE_BOOTSTRAP, FIXTURE_START_PICKER_BOOTSTRAP } from "../../../../parity/helpers/fixture-day.js";
 
-/**
- * The two browser APIs Radix's overlay layers ask for that jsdom does not
- * implement. They are STUBS for measurement only — nothing in this file asserts
- * a position, and anything that did would be asserting against these stubs
- * rather than against a layout engine, which is what the parity lane is for.
- */
+// jsdom lacks overlay measurement APIs; these stubs supply capabilities without asserting geometry.
 class MeasurementFreeResizeObserver {
   observe(): void {}
   unobserve(): void {}
@@ -89,16 +53,7 @@ const WORKFLOW_ID = "person-lookup";
 const TYPED = "10873698";
 const HASH = "a".repeat(64);
 
-/**
- * The catalogue, composed exactly as `dashboard-app.tsx` composes it, from the
- * SAME served bootstrap the parity corpus photographs. A hand-built workflow
- * here would let this file pass against a shape the composition root never
- * produces.
- *
- * It is a module constant because `RunStartDialog`'s open effect keys on the
- * `workflows` identity: a fresh array per render would re-select the default
- * workflow forever and clear the form under every press.
- */
+
 const WORKFLOWS: readonly RunStartWorkflow[] = parseWorkflows(FIXTURE_BOOTSTRAP.workflows).map(
   (entry): RunStartWorkflow => {
     const start = entry.start;
@@ -168,13 +123,7 @@ const CONFLICT: CommandResult = CommandResultSchema.parse({
   message: "The start plan was built against version 4.",
 });
 
-/**
- * A client that serves exactly what the case wires and THROWS for anything else.
- *
- * A blanket no-op stub would let a surface reach for a query this file never
- * meant it to have and answer with `undefined` — the silent substitution this
- * repo bans, wearing a test's clothes.
- */
+
 function stubClient(served: Partial<DashboardClient>): DashboardClient {
   const handler: ProxyHandler<Partial<DashboardClient>> = {
     get(target, property): unknown {
@@ -192,12 +141,7 @@ function stubClient(served: Partial<DashboardClient>): DashboardClient {
 
 let mounted: Root | undefined;
 
-/**
- * A press resolves a promise, and the dialog records the settlement one
- * microtask later. Flushing it here is not cosmetic: an unflushed settlement is
- * a React `act` warning today and a state update landing inside the NEXT case
- * tomorrow.
- */
+// Flush one settlement microtask inside act so React reports no out-of-scope state update.
 async function settle(): Promise<void> {
   await act(async () => {
     await Promise.resolve();
@@ -229,7 +173,7 @@ async function render(element: ReactElement): Promise<void> {
 interface OpenDialog {
   /** the typed-input box, present on Input and restored after every exit */
   readonly typedInput: () => HTMLTextAreaElement;
-  /** a `Field`-labelled control, by the label a screen reader would read (D307) */
+
   readonly fill: (label: string, next: string) => Promise<void>;
   /** whether a control the dialog draws is currently disabled */
   readonly disabled: (name: string) => boolean;
@@ -260,18 +204,7 @@ function buttonName(button: HTMLButtonElement): string {
   return (button.textContent ?? "").trim();
 }
 
-/**
- * Set a control's value the way a keystroke does.
- *
- * React keeps its own value tracker on the DOM node, so assigning `.value`
- * directly leaves the tracker agreeing with the new text and React discards the
- * event that follows as "nothing changed". The PROTOTYPE's setter is the one
- * that moves the tracker, which is what makes the dispatched event real.
- *
- * The descriptor is annotated rather than used raw because `PropertyDescriptor`
- * declares `set` in method shorthand, and pulling a method off an object
- * without binding it is a lint error in this tree — correctly, in general.
- */
+// Use the native value setter to bypass React tracking before dispatching input.
 function typeInto(node: HTMLTextAreaElement | HTMLSelectElement | HTMLInputElement, next: string): void {
   const prototype = node instanceof HTMLSelectElement
     ? HTMLSelectElement.prototype
@@ -288,11 +221,7 @@ function typeInto(node: HTMLTextAreaElement | HTMLSelectElement | HTMLInputEleme
   node.dispatchEvent(new Event(node instanceof HTMLSelectElement ? "change" : "input", { bubbles: true }));
 }
 
-/**
- * Every handoff this mount saw, in order (D296, reshaped by D298): the
- * workflow AND the session the drop opened, because the dialog now uploads
- * before it hands over.
- */
+
 const closed: boolean[] = [];
 const intakeHandoffs: { workflowId: string; intakeSessionId: string }[] = [];
 
@@ -345,9 +274,7 @@ async function openDialog(
         + `[${buttons().map((button) => JSON.stringify(buttonName(button))).join(", ")}]`,
       );
     }
-    // Focus first, the way a pointer or a Tab would: a `click()` in jsdom moves
-    // no focus of its own, so without this the focus assertions below would be
-    // asserting that focus never left the box in the first place.
+    // jsdom click does not move focus; focus the control before testing its handoff.
     only.focus();
     await act(async () => {
       only.click();
@@ -362,11 +289,7 @@ async function openDialog(
     });
   };
 
-  /**
-   * The control BY ITS VISIBLE LABEL, through the `<label for>` the DS `Field`
-   * emits — the same association a screen reader follows. Naming the control
-   * keeps the test stable if another select joins the Options screen later.
-   */
+
   const chooseRadio = async (name: string, value: string) => {
     const radio = document.querySelector<HTMLInputElement>(`input[type="radio"][name^="${name}-"][value="${value}"]`);
     assert.ok(radio, `missing ${name}: ${value}`);
@@ -375,15 +298,7 @@ async function openDialog(
   const choosePriority = (value: string) => chooseRadio("Priority", value);
   const chooseBrowserMode = (value: string) => chooseRadio("Browser mode", value);
 
-  /**
-   * Drop a file on the spreadsheet arm's zone (D298).
-   *
-   * jsdom has no `DataTransfer`, so the FileList is installed on the real
-   * `<input type="file">` the `Dropzone` wraps and `change` is dispatched —
-   * which is the exact path a click-to-browse takes. The zone's drag handlers
-   * are pixels and belong to the parity lane; what this file pins is what the
-   * dialog DOES with the file.
-   */
+  // jsdom has no DataTransfer; install FileList on the Dropzone input.
   const drop = async (file: File): Promise<void> => {
     const input = document.body.querySelector('input[type="file"]');
     if (!(input instanceof HTMLInputElement)) {
@@ -400,10 +315,7 @@ async function openDialog(
     await settle();
   };
 
-  /**
-   * Type into the control a visible LABEL names — the same association a screen
-   * reader follows, which is what makes an unlabelled fact box fail here.
-   */
+
   const fill = async (label: string, next: string): Promise<void> => {
     const found = [...document.body.querySelectorAll("label")]
       .filter((candidate) => (candidate.textContent ?? "").trim() === label);
@@ -455,14 +367,7 @@ async function openDialog(
   };
 }
 
-/**
- * Is the plan region drawn? Asked as a BOOLEAN, never as the element itself.
- *
- * `assert.equal(element, null)` on a jsdom node spends the whole test budget
- * inside `util.inspect` walking a live DOM tree and takes the worker process
- * out with it — the failure that reports nothing at all. Every DOM identity in
- * this file is compared before it reaches an assertion for that reason.
- */
+// Compare presence as a boolean; formatting a jsdom node can exhaust the assertion budget.
 function planIsDrawn(): boolean {
   return document.body.querySelector("#run-start-confirm") !== null;
 }
@@ -518,10 +423,7 @@ it("keeps the current view after a refused start", async () => {
 
 describe("a settlement that arrives after the request moved is DROPPED", () => {
   it("does not land a plan for text the operator has already edited away", async () => {
-    // The mutation: delete the dispatch-time fingerprint capture in
-    // `submitPlan` and let `setPlan(next)` run unconditionally. The plan for
-    // `10873698` then lands on top of a form that now says something else, and
-    // the footer offers to start it.
+
     let release: ((plan: StartPlanResponse) => void) | undefined;
     const dialog = await openDialog(stubClient({
       submitStartPlan: async () => new Promise<StartPlanResponse>((resolve) => {
@@ -553,8 +455,7 @@ describe("a settlement that arrives after the request moved is DROPPED", () => {
   });
 
   it("does not land a result for a plan the operator has already edited away", async () => {
-    // Same shape one stage later, and the more dangerous half: the banner would
-    // say a start was applied for a request this form no longer describes.
+
     let release: ((result: CommandResult) => void) | undefined;
     const dialog = await openDialog(stubClient({
       submitStartPlan: async () => planResponse("5a000000-0000-4000-8000-000000000001"),
@@ -585,12 +486,9 @@ describe("a settlement that arrives after the request moved is DROPPED", () => {
   });
 });
 
-describe("C109 — a plan outlives nothing that shaped it, in the dialog", () => {
+describe("a plan outlives nothing that shaped it, in the dialog", () => {
   it("drops the plan when a run control moves under it", async () => {
-    // The mutation: delete the whole `useEffect` keyed on `requestFingerprint`
-    // in `run-start.tsx`. `startRequestFingerprint` stays correct and every
-    // fold case stays green, while the plan the operator is about to authorise
-    // is one the server would no longer make.
+
     const dialog = await openDialog(stubClient({
       submitStartPlan: async () => planResponse("5a000000-0000-4000-8000-000000000001"),
     }));
@@ -620,7 +518,7 @@ describe("C109 — a plan outlives nothing that shaped it, in the dialog", () =>
   });
 });
 
-describe("D293 keeps D285 and removes only per-start destination", () => {
+describe("keeps optional steps and removes only the per-start destination", () => {
   it("keeps Options and the separate Steps screen while omitting destination controls", async () => {
     let submitted: unknown;
     const dialog = await openDialog(stubClient({
@@ -653,7 +551,7 @@ describe("D293 keeps D285 and removes only per-start destination", () => {
     await dialog.press("Customize steps");
     await dialog.press("Continue");
     assert.equal(dialog.stage(), "Steps");
-    assert.ok(dialog.text().includes("CRM Dates"), "the optional D285 step disappeared");
+    assert.ok(dialog.text().includes("CRM Dates"), "the optional step disappeared");
     await dialog.press("CRM Dates");
     await dialog.press("Continue");
     assert.equal(dialog.stage(), "Confirm");
@@ -723,9 +621,7 @@ describe("the compact confirmation keeps the exact input basis", () => {
 
 describe("every exit from a settled banner returns the form to Input", () => {
   it("Close resets the stage with the result, and puts focus back in the box", async () => {
-    // The mutation: put `onDismiss` back to `() => setResult(null)`. The rail
-    // then names Result as the current step over an empty region, and focus is
-    // on an element that no longer exists.
+
     const dialog = await reachResult();
 
     await dialog.press("Close");
@@ -737,9 +633,7 @@ describe("every exit from a settled banner returns the form to Input", () => {
   });
 
   it("Reload the form drops the spent token, returns to Input and focuses the box", async () => {
-    // The mutation: delete `setStage("input")` from `onReload`, or the focus
-    // call after it. Both leave the operator on a stage whose region is empty,
-    // and the second leaves the keyboard on `document.body`.
+
     const dialog = await openDialog(stubClient({
       submitStartPlan: async () => planResponse("5a000000-0000-4000-8000-000000000001"),
       executeCommand: async () => CONFLICT,
@@ -808,17 +702,9 @@ describe("spreadsheet registration stays outside Run", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// D307 — omitting a step, and typing what the rest of the run would have read
-// ---------------------------------------------------------------------------
 
-/**
- * The Separations catalogue, composed from the SAME served bootstrap the parity
- * corpus photographs. Separations is the tree's only workflow with declared
- * omissions, and its three omittable steps cover the two shapes that matter: a
- * form with fields (Kronos timecard, UCPath transaction) and a form with none
- * (Kuali finalization).
- */
+
+
 const SEPARATIONS_WORKFLOWS: readonly RunStartWorkflow[] = parseWorkflows(
   FIXTURE_START_PICKER_BOOTSTRAP.workflows,
 ).map((entry): RunStartWorkflow => {
@@ -886,7 +772,7 @@ async function openSteps(client: DashboardClient, typed: string = DOCUMENT): Pro
   return dialog;
 }
 
-describe("an omittable step draws its own form when it is left out (D307)", () => {
+describe("an omittable step draws its own form when it is left out", () => {
   it("draws nothing while the step is included, and the step's declared fields once it is not", async () => {
     // The mutation: draw the form for every omittable step rather than for the
     // omitted ones. It leaves the fields on screen before the checkbox moves.
@@ -932,7 +818,7 @@ describe("an omittable step draws its own form when it is left out (D307)", () =
   });
 });
 
-describe("Confirm is not reachable while an omitted step's form does not parse (D307)", () => {
+describe("Confirm is not reachable while an omitted step's form does not parse", () => {
   it("holds the Steps stage, draws the declared refusal, and never asks the server", async () => {
     // The mutation: let `advance` submit regardless. The dialog would send a
     // date the descriptor's own schema refuses and land on the server's 400.
@@ -960,7 +846,7 @@ describe("Confirm is not reachable while an omitted step's form does not parse (
   });
 });
 
-describe("the request carries the operator's omissions (D307)", () => {
+describe("the request carries the operator's omissions", () => {
   it("sends one entry per omitted step, in timeline order, with the typed facts", async () => {
     // The mutation: send `stepOmissions` unconditionally, or drop the facts.
     let submitted: unknown;
@@ -1014,7 +900,7 @@ describe("the request carries the operator's omissions (D307)", () => {
   });
 });
 
-describe("a plan that omits a different set cannot be started (D307)", () => {
+describe("a plan that omits a different set cannot be started", () => {
   it("refuses Start and says which set each side named", async () => {
     // The mutation: trust `plan.omittedSteps`. The operator would authorise a
     // run that keeps a step they omitted, or omits one they kept.
@@ -1046,7 +932,7 @@ describe("a plan that omits a different set cannot be started (D307)", () => {
   });
 });
 
-describe("typed facts describe ONE subject (D307 single-subject-only)", () => {
+describe("typed facts describe ONE subject", () => {
   it("does not offer an omission for a box that would create several runs", async () => {
     // The mutation: ignore the entry count. The dialog would send facts about
     // one person for a plan that asserts them for two.
@@ -1060,16 +946,7 @@ describe("typed facts describe ONE subject (D307 single-subject-only)", () => {
   });
 });
 
-/**
- * The served catalogue with ONE step declaring a cascade.
- *
- * `forces` is a served field of the omittable control and the wire admits any
- * step key on it; no registered descriptor declares a non-empty one TODAY,
- * which is exactly why the screen's handling of it cannot be left unpinned —
- * the first descriptor that declares one would otherwise ship an unlocked row
- * the planner refuses. Only that one served field is changed; every other fact
- * is the bootstrap's own.
- */
+
 const CASCADING_SEPARATIONS = Object.freeze({
   panelWorkflowId: "separations",
   workflows: SEPARATIONS_WORKFLOWS.map((workflow): RunStartWorkflow => workflow.workflowId !== "separations"
@@ -1082,11 +959,9 @@ const CASCADING_SEPARATIONS = Object.freeze({
     }),
 });
 
-describe("a forced step is unchecked and LOCKED while the choice that forces it stands (D307)", () => {
+describe("a forced step is unchecked and LOCKED while the choice that forces it stands", () => {
   it("names the forced step up front, drags it out, locks it, and puts it back", async () => {
-    // The mutation: drop the cascade from the toggle. The dialog would send one
-    // omission the planner refuses with `cascade-refused`, after the operator
-    // authorised it.
+
     let submitted: unknown;
     const dialog = await openDialog(stubClient({
       submitStartPlan: async (input) => {

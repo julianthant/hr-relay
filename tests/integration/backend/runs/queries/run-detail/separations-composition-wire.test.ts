@@ -7,19 +7,7 @@ import { ProtectedStoreRecordSchema } from "../../../../../../src/models/config/
 import { canonicalJsonStringify } from "../../../../../../src/rules/validation/canonical-json.js";
 import { FingerprintSchema } from "../../../../../../src/rules/identity/ids.js";
 import { deriveCheckpointOutputDigest, deriveRunResultDigest } from "../../../../../../src/models/run/result.js";
-/**
- * The composed `separations` workflow, driven through the machinery that
- * ALREADY exists — §3's rule for every chunk of this migration: *"makes its
- * workflow fully operable through the machinery that already exists … verify
- * that; do not build it."*
- *
- * So nothing here is new server surface. What it pins is that a registered
- * workflow with three transaction nodes, an operator gate and a three-value
- * structured ingress is start-able, previewable, approvable and resumable
- * without one further server change — and that the ONE genuinely new fact this
- * chunk added (the gate packet's write-plan block) reaches the wire an approver
- * reads, rather than living only in the graph.
- */
+
 import { protectedSecretSource } from "../../../../../support/helpers/protected-secret-source.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -61,11 +49,7 @@ const EID = "10873698";
 const RUN_ID = uuidOf(1);
 const GATE_NOW = "2026-08-14T18:00:00.000Z";
 
-/**
- * D261: `actionId` left the ingress — the graph's head node resolves it — so a
- * separations submission is the ONE number an operator types plus the constant
- * the start surface contributes.
- */
+
 const SUBMISSION = Object.freeze({
   documentNumber: "4510",
 });
@@ -252,10 +236,7 @@ describe("separations — start planning through the existing service", () => {
   });
 
   it("plans one item per document, and refuses a submission the ingress does not admit", () => {
-    // The refused half is now the SHAPE the surface no longer sends: a
-    // submission still carrying D261's retired `actionId` is refused by the
-    // strict input schema rather than quietly ignored, which is what keeps a
-    // stale caller from starting a run under a contract it does not hold.
+
     const planned = plan([SUBMISSION, { ...SUBMISSION, actionId: "6a7a33b2ac106d428b3217e0" }]);
     assert.equal(planned.planned.length, 1);
     assert.equal(planned.planned[0]?.matchKey, "separations:4510");
@@ -263,8 +244,7 @@ describe("separations — start planning through the existing service", () => {
       planned.planned[0]?.itemId,
       deriveItemId("separations", "separations:4510"),
     );
-    // The refusal retains the operator's EXACT raw submission (D109), so the
-    // thing they typed is still readable beside the reason it was refused.
+
     assert.equal(planned.refused.length, 1);
     assert.deepEqual(planned.refused[0]?.rawInput, {
       ...SUBMISSION,
@@ -272,12 +252,8 @@ describe("separations — start planning through the existing service", () => {
     });
   });
 
-  /**
-   * D261's door, end to end through the ingress the modal actually uses: the
-   * operator types ONE number and the plan is a real, schema-satisfying
-   * separations run — the claim D260 measured as unavailable.
-   */
-  it("plans a run from typed text alone, which is the whole point of D261", () => {
+
+  it("plans a run from typed text alone", () => {
     const surface = separationsDescriptor.surfaces.inputRun;
     assert.ok(surface, "separations declares a typed-text start surface");
     const entries = parseInputRunText(surface.parser, "4502; 4510");
@@ -303,10 +279,7 @@ describe("separations — start planning through the existing service", () => {
   });
 
   it("gives an explicit re-read its OWN item, which is §'the re-run wall' item 2's whole point", () => {
-    // A checkpoint is keyed (workflow, itemId, node, attempt) with no run id, so
-    // a second run of one document replays the first run's reads — whose
-    // `observedAt` differs by construction. The operator's explicit re-read is
-    // part of the canonical input, so the start plan mints a different item.
+    // Checkpoint keys omit run id, so repeated runs can replay the same item node evidence.
     const planned = plan([
       SUBMISSION,
       { ...SUBMISSION, reRead: { ordinal: 1, reason: "the department corrected the last day worked" } },
@@ -317,12 +290,10 @@ describe("separations — start planning through the existing service", () => {
     assert.notEqual(planned.planned[0]?.itemId, planned.planned[1]?.itemId);
   });
 
-  it("is dry-startable through the GRAPH (D209), stopping at the first transaction node", () => {
+  it("dry-run stops at the first transaction node", () => {
     const support = workflowDryRunSupport(separationsDescriptor);
     assert.deepEqual(support, { state: "supported", stopsAt: "clear-pending" });
-    // …and all three transaction nodes declare the arm, which is what D209
-    // requires: checking only the first would be a true statement about the
-    // wrong thing (D205).
+
     const transactions = descriptorRuntimeNodes(separationsDescriptor)
       .filter((node) => node.kind === "transaction");
     assert.equal(transactions.length, 3);
@@ -346,11 +317,7 @@ const PARKED_GATE_LIFECYCLE = {
   resumeAt: "approval",
 } as const;
 
-/**
- * The gate node view the dashboard composition derives from a descriptor —
- * derived here from the REAL registered descriptor rather than hand-written, so
- * a gate whose `dependsOn` or result schema moved fails this suite.
- */
+
 function gateNodeViews(): readonly unknown[] {
   return descriptorRuntimeNodes(separationsDescriptor).flatMap((node) => (
     node.kind === "gate"
@@ -457,10 +424,7 @@ function seedGate(world: DashboardWorld, packet: IdentityEvidencePacket): void {
   }
   world.authority.put(current);
   const checkpoint = RunCheckpointRecordSchema.parse({
-    // The harness's own run identity: the identity-gate section is GENERIC — it
-    // locates the packet through the descriptor's `dependsOn` and hard-codes no
-    // node name — so what this suite substitutes is the real `separations` gate
-    // VIEW, which is the half that could drift.
+
     workflowId: seeded.envelope.workflow,
     itemId: seeded.envelope.itemId,
     nodeId: "comparison",
@@ -545,13 +509,9 @@ describe("separations — the identity-gate wire", () => {
       deriveSchemaHash(IdentityApprovalResultSchema, "output"),
     );
     assert.equal(payload.value.evidenceDigest, deriveIdentityEvidenceDigest(packet));
-    // Even a single exact name candidate remains an operator decision: the
-    // packet carries no independently supplied EID, so D309 requires typing it.
+
     assert.equal(payload.value.approvalShape, "type-the-eid");
-    // And a command built straight off this payload parses through the kernel's
-    // own request schema unchanged, which is what "approvable through the
-    // existing machinery" means for a workflow whose gate dominates three real
-    // writes across two systems.
+
     assert.deepEqual(
       payload.value.actions.map(({ command }) => command),
       ["resolve-gate", "resolve-gate"],
@@ -618,9 +578,7 @@ describe("separations — the identity-gate wire", () => {
   });
 
   it("moves the evidence digest when a PLANNED VALUE moves, not only when the person does", () => {
-    // §14.5, made load-bearing by putting the plan in the packet: an approval is
-    // an observation of a specific packet, and a reconciled date the run would
-    // file is part of what was observed.
+
     const packet = packetWithPlan();
     const moved = SeparationWritePlanSchema.parse(
       packet.plan.state === "planned"
@@ -634,10 +592,7 @@ describe("separations — the identity-gate wire", () => {
   });
 
   it("names EXACTLY ONE gate dependency holding an identity packet, which is what the section requires", () => {
-    // `buildIdentityGatePayload` refuses when the gate's `dependsOn` does not
-    // resolve to exactly one identity decision packet. The composed graph hangs
-    // everything the operator must see off `comparison` and depends the gate on
-    // that node alone, so the requirement is met by shape rather than by luck.
+
     const views = gateNodeViews() as readonly { nodeId: string; dependsOn: readonly string[] }[];
     assert.equal(views.length, 1);
     assert.deepEqual(views[0]?.dependsOn, ["comparison"]);

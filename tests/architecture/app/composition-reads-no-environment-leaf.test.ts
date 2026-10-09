@@ -33,7 +33,7 @@ function resolverViolations(path: string, source: string): readonly string[] {
   return inventoryEnvironmentAccesses(path, source).map(({ operation }) => `${path}: resolver environment ${operation} is forbidden`);
 }
 
-describe("composition-reads-no-environment-leaf (D331)", () => {
+describe("composition-reads-no-environment-leaf", () => {
   it("walks every config module and rejects direct, aliased and computed process environment access", () => {
     const paths = gitVisibleFiles(["src/models/config", "src/backend/app/config"]).filter((path) => path.endsWith(".ts") && path !== "src/models/config/secrets.ts");
     assert.ok(paths.includes("src/backend/app/config/resolve.ts"));
@@ -100,10 +100,9 @@ describe("composition-reads-no-environment-leaf (D331)", () => {
     writeFileSync(join(root, "package.json"), '{"version":"0.1.0"}');
     const hostile = environment(key);
     const common = { admission: fixtureAdmission(root), isolation: rebuildRuntimeIsolation, repoRoot: root, env: hostile.env, clock };
-    // D341: the two retired canary keys are refused by name toward the private test-data file; every
-    // other migrated key still points at Settings. Both refusals happen before any value is read.
+
     const expected = (RETIRED_TEST_TARGET_ENVIRONMENT_KEYS as readonly string[]).includes(key)
-      ? `retired test-target environment key ${key} is refused; test-target inputs live in config/test-data.local.json (D341), so remove it`
+      ? `retired test-target environment key ${key} is refused; test-target inputs live in config/test-data.local.json, so remove it`
       : `migrated environment key ${key} is refused; set it in Settings, then remove it`;
     const refuse = (error: unknown): boolean => error instanceof Error && error.message === expected;
     await assert.rejects(composeDashboardRuntime({ ...common, backendPortOverride: 0, frontendPortOverride: 0 }), refuse);

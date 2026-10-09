@@ -1,9 +1,5 @@
 import { testWorkerPorts } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
-/**
- * Ref execution-and-sessions §3 worker loop: claim → execute → next, one active item, heartbeat
- * renewal during long operations, claim-loss abort, and worker-stop session
- * closure — plus the Phase-1 `WorkerRuntimeExecutor` seam.
- */
+
 import { fixtureDuoCeremonyGates } from "../../../../../support/helpers/duo-ceremony-fixtures.js";
 import assert from "node:assert/strict";
 import { setImmediate } from "node:timers";
@@ -198,7 +194,7 @@ describe("worker run loop", () => {
     const report = await looping;
     assert.equal(report.outcomes[0]?.state, "abandoned");
     await new Promise((resolve) => setImmediate(resolve));
-    // The interrupted lease was poison-closed; the cancelled outcome stands.
+
     assert.ok(harness.sessions.closeReasons().includes("poisoned"));
     const run = database.authority.runs.get(RUN_ID);
     assert.ok(run && run.lifecycle.state === "terminal");
@@ -223,8 +219,7 @@ describe("durable worker directives (ref dashboard-surfaces §2.4), observed bet
     assert.equal(report.stopped, "stop-directive");
     assert.deepEqual(report.outcomes, []);
     assert.deepEqual(polls, ["stop"]);
-    // The queued row was never claimed: a stop directive is not a claim gate
-    // the loop can race past.
+
     assert.equal(harness.authority.database.authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
     assert.equal(harness.sessions.opens(), 0);
   });
@@ -328,10 +323,7 @@ describe("pool-capable worker runtime executor seam", () => {
         throw new Error("never invoked: this test is a compile-time pin");
       },
     });
-    // A mis-wire into the kernel's sync `workerRuntime` dependency would
-    // launch the real supervisor effect, then abandon its promise as an
-    // unhandled rejection once the synchronous zod parse throws on it. The
-    // pool seam's distinct method names make that mis-wire a compile error.
+    // Pool method names prevent assigning its awaitable executor to the synchronous worker seam.
     // @ts-expect-error — the awaitable pool executor must never satisfy the sync WorkerRuntimeExecutor
     const misWired: WorkerRuntimeExecutor = executor;
     assert.ok(misWired, "the runtime value itself still exists; only the assignment must be refused");
@@ -927,10 +919,7 @@ describe("pool-capable worker runtime executor seam", () => {
   });
 
   it("refuses an initiating plan fact claiming escalation stages beyond the graceful request", async () => {
-    // A fact attested `initiating` says THIS plan requested the graceful stop,
-    // so at acknowledgement time only graceful-stop-requested can have been
-    // observed; SIGTERM/SIGKILL are recorded through later `reconciling`
-    // facts as they occur, never promised in the initiating acknowledgement.
+
     const executor = createWorkerPoolRuntimeExecutor({
       execute: () => ({
         command: "plan-worker-count",
@@ -975,11 +964,7 @@ describe("pool-capable worker runtime executor seam", () => {
   });
 
   it("accepts a reconciling plan fact reporting escalation stages that already occurred", async () => {
-    // A supervisor mid-escalation (graceful sent earlier, SIGTERM since) must
-    // have a legal TRUTHFUL fact on a re-issued plan: the supervisor-attested
-    // `reconciling` phase accepts the policy-ordered observed prefix that
-    // ALREADY happened, still bounded by the command's now — while the
-    // initiating arm above stays pinned to the graceful stage alone.
+
     const executor = createWorkerPoolRuntimeExecutor({
       execute: () => ({
         command: "plan-worker-count",
@@ -1017,9 +1002,7 @@ describe("pool-capable worker runtime executor seam", () => {
   });
 
   it("bounds a reconciling plan fact's observed stages by the command's now", async () => {
-    // Reconciling relaxes WHICH stages may be reported, never WHEN: an
-    // escalation stage postdating the command's now is still a claim about
-    // the future dressed as a fact.
+
     const executor = createWorkerPoolRuntimeExecutor({
       execute: () => ({
         command: "plan-worker-count",
@@ -1057,9 +1040,7 @@ describe("pool-capable worker runtime executor seam", () => {
   });
 
   it("refuses a plan fact that omits the initiating/reconciling attestation", async () => {
-    // The phase is supervisor-attested and schema-pinned: without it, an
-    // initiating acknowledgement could smuggle future stages by simply not
-    // saying which arm it claims.
+
     const executor = createWorkerPoolRuntimeExecutor({
       execute: () => ({
         command: "plan-worker-count",
@@ -1093,9 +1074,7 @@ describe("pool-capable worker runtime executor seam", () => {
   });
 
   it("refuses a malformed command now instead of silently unbounding observed stages", async () => {
-    // Date.parse of a garbage instant is NaN and every `> NaN` comparison is
-    // false, so a malformed now would silently accept ANY observed timestamp —
-    // the bound must fail loud, naming the offending value.
+    // Date.parse can return NaN; validate the command instant before comparing observed stages.
     const executor = createWorkerPoolRuntimeExecutor({
       execute: () => ({
         command: "stop-worker",
@@ -1128,9 +1107,7 @@ describe("pool-capable worker runtime executor seam", () => {
     { method: "refreshPoolBrowser" },
     { method: "reopenPoolBrowser" },
   ] as const)("$method names itself when mis-dispatched a foreign command", async ({ method }) => {
-    // The diagnostic must name the POOL method that mis-received the command —
-    // not the phase-1 executor's differently named arm — so a mis-wire is
-    // legible at the seam that refused it.
+
     const executor = createWorkerPoolRuntimeExecutor({
       execute: () => {
         throw new Error("supervisor must not be called on a mis-dispatch");
@@ -1367,9 +1344,7 @@ describe("pool-capable worker runtime executor seam", () => {
   });
 
   it("refuses a stop acknowledgement with no observed stages", async () => {
-    // Pins the schema's .min(1): a stop acknowledgement that observed NOTHING
-    // has no graceful request to attest — an empty observation list is not a
-    // quieter way to acknowledge a stop.
+
     const executor = createWorkerPoolRuntimeExecutor({
       execute: () => ({
         command: "stop-worker",
@@ -1434,10 +1409,7 @@ describe("pool-capable worker runtime executor seam", () => {
   });
 
   it("accepts a scale-down acknowledgement reporting an honest unmet excess member", async () => {
-    // D271: a crashed member's declaration stays visibly unmet. An excess
-    // member that crashed or never started has no process to stop — the honest
-    // `unmet` fact satisfies stop coverage instead of coercing a fabricated
-    // graceful-stop observation.
+
     const executor = createWorkerPoolRuntimeExecutor({
       execute: () => ({
         command: "plan-worker-count",
@@ -1494,9 +1466,7 @@ describe("pool-capable worker runtime executor seam", () => {
   it("refuses a supervisor that mutates the spawn request member after submission", async () => {
     const executor = createWorkerPoolRuntimeExecutor({
       execute: (request) => {
-        // An adversarial supervisor rewrites the submitted member in place and
-        // acknowledges the rewritten member, hoping the executor compares the
-        // acknowledgement against its own mutation instead of the original.
+
         const mutable = request as unknown as { member: { poolIndex: number; workerId: string } };
         mutable.member.poolIndex = 2;
         mutable.member.workerId = "person-lookup-worker-2";
@@ -1517,9 +1487,7 @@ describe("pool-capable worker runtime executor seam", () => {
       payload: { workerId: "person-lookup-worker-1" },
     });
 
-    // The submitted member is frozen at mint: the rewrite itself explodes as
-    // a strict-mode TypeError naming the property, before any acknowledgement
-    // comparison could be steered.
+
     await assert.rejects(
       () => executor.spawnPoolWorker({ command: spawn, now: requestedAt }),
       { name: "TypeError", message: /read only property 'poolIndex'/ },
@@ -1555,9 +1523,7 @@ describe("pool-capable worker runtime executor seam", () => {
       payload: { desiredWorkers: 3 },
     });
 
-    // The submitted roster entries are frozen at mint: the rewrite itself
-    // explodes as a strict-mode TypeError naming the property, so the hijacked
-    // id can never reach the accepted plan's workerIds.
+
     await assert.rejects(
       () => executor.planPoolWorkerCount({ command: plan, now: requestedAt }),
       { name: "TypeError", message: /read only property 'workerId'/ },

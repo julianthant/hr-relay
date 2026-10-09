@@ -1,18 +1,4 @@
-/**
- * Ref workflow-model §1.4 — THE coverage guard: one table-driven sweep over `DESCRIPTORS`.
- *
- * Its job is the half a descriptor cannot check about itself: cross-descriptor
- * uniqueness, the module tuple agreeing with the derived registry, the bundle
- * boundary that keeps a descriptor client-safe, the build manifest being
- * current, and the descriptor↔impl pairing that is legitimately incomplete in
- * 1e but must never be silently incomplete.
- *
- * The registered corpus is thin today — one workflow, four read steps — so
- * every rule that needs branch/gate/delegation/transaction shapes is also run
- * against `fixtureDescriptor`, and the negative arms construct violating
- * descriptors and require the factory to reject them. A guard that only swept a
- * four-step graph would pass by having nothing to look at.
- */
+
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -81,15 +67,7 @@ import { workflowSourcePath } from "../../../src/workflow-kit/validation/source-
 const ALL: readonly AnyWorkflowDescriptor[] = [...DESCRIPTORS, fixtureDescriptor];
 
 /** Roots a descriptor module may VALUE-import. Type-only imports are exempt (§1.4 #6). */
-/**
- * `src/workflows/` joined these at D265 §1.2.2: a step folder's `step.ts` (and,
- * from the fragment unit, its node fragments) is source a descriptor imports,
- * and the ruling is explicit that the D106 boundary is untouched by the move —
- * a step folder's files "value-import only what a descriptor may". The walk is
- * transitive, so a descriptor that reached a `module.ts` and through it a store
- * still fails on service stores, while system-store source is also outside the
- * safe roots. The negative arms below prove both classes remain excluded.
- */
+
 const BUNDLE_SAFE_ROOTS = ["src/models/", "src/rules/", "src/workflow-kit/", "src/workflows/"];
 
 let currentBuildManifest: ReturnType<typeof computeBuildManifest> | undefined;
@@ -160,16 +138,7 @@ describe("descriptor coverage", () => {
     assert.deepEqual(Object.keys(SERVER_REGISTRY).sort(), descriptorIds);
   });
 
-  /**
-   * §1.4 item 2's second half (ref workflow-model §1.2.1, D219).
-   *
-   * Every module DECLARES a role — the schema makes an absent one a type error
-   * and `defineWorkflowRole` makes a mis-shaped one a parse error, so what is
-   * left to check here is the cross-module fact no single module can see: a
-   * `chunk-harness.of` resolving to a registered COMPOSITION. The negative arms
-   * run the real audit against violating tuples, because a check that only ever
-   * sees the passing corpus is a check that cannot fail.
-   */
+
   it("declares one role per module, every chunk harness naming a registered composition", () => {
     const roleSpecimens = [...WORKFLOW_MODULES, ...STEP_PROOF_MODULES];
     assert.deepEqual(auditWorkflowModuleRoles(roleSpecimens), []);
@@ -215,18 +184,8 @@ describe("descriptor coverage", () => {
     assert.doesNotThrow(() => workflowRoleRegistry(roleSpecimens));
   });
 
-  /**
-   * §1.2.2 rule 3 (D265, 2026-08-21): a harness is a STEP of its composition,
-   * and the step is a name the composition declares.
-   *
-   * `of` alone said which composition a harness belongs to; `step` says WHERE
-   * in it. The registry refuses a step the composition does not declare as a
-   * timeline category for the same reason it refuses a dangling `of`: a
-   * membership claim nothing can render is one every surface would have to
-   * invent a fallback for, and three surfaces inventing three fallbacks is how
-   * they come to disagree about what a step is.
-   */
-  it("refuses a chunk harness whose step its composition does not declare (D265)", () => {
+  // A harness role names both its composition and the step that owns its address.
+  it("refuses a chunk harness whose step its composition does not declare", () => {
     const roleSpecimens = [...WORKFLOW_MODULES, ...STEP_PROOF_MODULES];
     const harness = STEP_PROOF_MODULES[0];
     const composition = WORKFLOW_MODULES.find((module) => module.role.kind === "composition");
@@ -260,13 +219,7 @@ describe("descriptor coverage", () => {
     assert.match(unknownStep.join("\n"), /no-such-step/);
     assert.match(unknownStep.join("\n"), new RegExp(declaredKeys[0] ?? "unreachable"));
 
-    // A composition that DECLARED no timeline has no steps to be of: the
-    // factory still derives one category per node (D225), so reading the
-    // normalized timeline alone would accept any of its NODE IDS as a step —
-    // a harness claiming a folder that does not and cannot exist. The step
-    // named here is exactly that: a real node id of the target, which is what
-    // the derived default keys its categories by. `person-lookup` is the real
-    // specimen. §1.2.2 rule 2 — the rule bites when a timeline is DECLARED.
+
     const standalone = WORKFLOW_MODULES.find((module) => module.role.kind === "standalone");
     if (standalone === undefined) throw new Error("the role fixtures require one standalone workflow");
     const derivedKey = standalone.descriptor.timeline[0]?.key;
@@ -301,15 +254,7 @@ describe("descriptor coverage", () => {
     );
   });
 
-  /**
-   * The SHORT CODE, and the one cross-descriptor fact about it (ref workflow-model §1.1,
-   * D242). Well-formedness is the factory's — it refuses a bad code where the
-   * code is authored — so what is left here is uniqueness, which no descriptor
-   * can check about itself, plus the composed fact that makes uniqueness
-   * matter: the code is the leading segment of every trace id this program
-   * mints, so two workflows sharing one would make a stored identifier name
-   * two things.
-   */
+
   it("declares one unique short code per workflow, and every code composes a legal trace id", () => {
     assert.deepEqual(auditWorkflowCodes(DESCRIPTORS), []);
     for (const descriptor of DESCRIPTORS) {
@@ -399,8 +344,7 @@ describe("descriptor coverage", () => {
 
   it("keeps every descriptor module's value-import closure bundle-safe", () => {
     for (const module of WORKFLOW_MODULES) {
-      // D265 §1.2.2: the path comes from the ROLE, never from the id alone;
-      // D317: a workflow's one authored entry is `workflow.ts`.
+
       const entry = workflowSourcePath(String(module.descriptor.id), module.role);
       assert.deepEqual(bundleViolations(entry), [], entry);
     }
@@ -464,14 +408,10 @@ describe("descriptor coverage", () => {
     const onDisk = readFileSync(join(REPO_ROOT, BUILD_MANIFEST_PATH), "utf8");
     assert.deepEqual(auditBuildManifestBytes(onDisk, manifest), [], BUILD_MANIFEST_PATH);
 
-    // Negative control. The arm above this one compares OBJECTS, so it is green
-    // for every rendering of the same manifest — proven here by asserting it
-    // against a manifest whose module text has been reformatted. Only the byte
-    // arm separates "the checked-in file is what the generator writes" from
-    // "the checked-in file happens to parse to the right thing".
+
     const reformatted = renderBuildManifestModule(manifest)
       .replace("export const GENERATED_BUILD_MANIFEST = {", "export const GENERATED_BUILD_MANIFEST =  {")
-      .replace(" * GENERATED — run `npm run build:manifest`. Do not edit by hand.", " * GENERATED.");
+      .replace("/** Generated by npm run build:manifest; do not edit by hand. */", "/** Generated. */");
     assert.notEqual(reformatted, renderBuildManifestModule(manifest));
     assert.deepEqual(manifest, BUILD_MANIFEST, "the parsed arm cannot observe the reformatting");
     assert.match(auditBuildManifestBytes(reformatted, manifest).join("\n"), /is stale on disk/);
@@ -483,9 +423,7 @@ describe("descriptor coverage", () => {
       /generated-build-manifest\.ts is stale on disk.*npm run build:manifest/su,
     );
 
-    // The same arm must stay reachable from the CLI. It shipped behind a
-    // `--check` flag no npm script invoked, which is how the byte comparison
-    // came to exist without ever running.
+
     const pkg = z.object({ scripts: z.record(z.string(), z.string()) })
       .parse(JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8")));
     assert.match(pkg.scripts["build:manifest:check"] ?? "", /generate-workflow-manifest\.ts --check/);
@@ -520,9 +458,7 @@ describe("descriptor coverage", () => {
       }],
     });
     assert.match(stale.join("\n"), /no registered descriptor uses/);
-    // D184: the OTHER staleness — a pending entry a store now implements. Its
-    // arm had no fixture, so "delete the entry" was enforced only by the empty
-    // set happening to be correct; an empty allowlist cannot prove an arm.
+
     const nowBound = auditImplBindings({
       ...bindings,
       tasks: [...bindings.tasks, {
@@ -550,7 +486,7 @@ describe("descriptor coverage", () => {
     assert.match(extra.join("\n"), /lists extra store onbase/);
   });
 
-  it("refuses an intake projection built over a COPY of the descriptor's input schema (D171)", () => {
+  it("refuses an intake projection built over a COPY of the descriptor's input schema", () => {
     // The real fixture reuses the one schema object, so it registers.
     assert.deepEqual(
       Object.keys(intakeProjectionRegistry([{
@@ -577,11 +513,7 @@ describe("descriptor coverage", () => {
     );
   });
 
-  /**
-   * D172 — the SHIPPED registry, not a fixture of it. Until person-lookup
-   * declared one, every intake route and arm refused by name, so "at least one
-   * workflow is spreadsheet-capable" is a real claim about the running system.
-   */
+
   it("registers the production intake projections over the canonical registry's own fields", () => {
     const registered = Object.entries(INTAKE_PROJECTIONS);
     assert.equal(registered.length > 0, true, "no workflow declares an intake projection");

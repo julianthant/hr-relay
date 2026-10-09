@@ -1,69 +1,11 @@
-/**
- * The OCR form registry — what a form HAS, declared once.
- *
- * This file is the reason three different producers can be trusted to return
- * the same thing. An extraction may be performed by a provider model, by an
- * agent the operator runs in their terminal, or by the operator themselves; all
- * three are told what to extract by an instruction GENERATED from this
- * registry, and all three are admitted by one function that checks the result
- * against this same registry. There is no second list to drift.
- *
- * ## Every declared field must be answered — absence is a value
- *
- * A field is never "optional and missing". A producer must return, for every
- * declared field, either a value or a typed reason it has none:
- * `not-on-form`, `blank`, or `illegible`. That is what makes "nobody skips
- * anything" mechanical rather than aspirational — a result that omits a field
- * fails to parse, and a result that quietly returned `null` for a field the
- * form clearly shows has to say WHICH kind of nothing it saw.
- *
- * Legacy could not make this promise. Its OCR record schemas were built from
- * `.nullable().optional()` fields, so "the model did not look" and "the form is
- * blank" were the same value, and `originallyMissing` was reconstructed
- * afterwards by comparing snapshots.
- *
- * ## A form field binds to a canonical field where one exists
- *
- * The canonical registry (ref data-intake-and-edit-data §1) already owns coercion, schema and
- * redaction for `eid`, `fullName`, `cellPhone` and the rest. An OCR field names
- * the canonical field it produces, so an extracted EID is validated by exactly
- * the schema an intake column would be — one definition, two sources.
- */
+/** The OCR form registry — what a form HAS, declared once, which is the reason three different producers can be trusted to return the same thing. */
 import { z } from "zod";
 import { CANONICAL_FIELDS, CanonicalFieldIdSchema, type CanonicalFieldId } from "../fields/registry.js";
 
 export const OcrFormTypeSchema = z.enum(["oath", "emergency-contact", "i9"]);
 export type OcrFormType = z.infer<typeof OcrFormTypeSchema>;
 
-/**
- * What a page turned out to BE, decided before any field is read.
- *
- * A scanned stack is mixed — operators feed it loose paper — so without this a
- * producer handed an emergency-contact page during an oath run has two bad
- * options: invent oath answers, or fail the page. Neither is true.
- *
- * The vocabulary is derived from the real corpus at
- * `hr-automation/data/documents`, not guessed:
- *
- * - `oath` — a UC State Oath of Allegiance, UPAY 585 or 586. One person.
- * - `emergency-contact` — a UCSD HDH Emergency Contact form. One person.
- * - `i9-section1` / `i9-section2` — the only two data-bearing pages of a
- *   NINE-page I-9 packet, and they are separated here because a scanned stack
- *   carries them loose: in the corpus, page 1 of `i9.pdf` is a Section 2 for one
- *   person and page 2 is a Section 1 for a DIFFERENT one. Pairing them is a
- *   grouping problem above this gate, not something a page can answer.
- * - `boilerplate` — a printed page of a real form that carries no data: the
- *   I-9 instructions and Lists of Acceptable Documents (seven of every nine
- *   pages in a packet), an oath's pre-printed legal text overflow.
- * - `unrelated` — a real document that is not one of these forms at all; the
- *   corpus has a Kronos sick-hours report sitting in the same folder.
- * - `blank` — a separator or an empty scan.
- *
- * `boilerplate`, `unrelated` and `blank` are kept apart on purpose. All three
- * mean "no data here", but only `unrelated` means the operator put something in
- * the stack that does not belong, and only `blank` might mean the scanner
- * double-fed.
- */
+/** What a page turned out to BE, decided before any field was read; a scanned stack is mixed — operators feed it loose paper — so a misclassified page is refused rather than read. */
 export const OcrPageKindSchema = z.enum([
   "oath",
   "emergency-contact",
@@ -86,27 +28,13 @@ export const OcrFieldSpecSchema = z.strictObject({
   path: OcrFieldPathSchema,
   /** What the producer is told to look for. Reaches every route verbatim. */
   prompt: z.string().min(1),
-  /**
-   * The canonical field this produces, when one exists. `null` means the value
-   * is form-local (a checkbox, a page ordinal) and carries its own schema.
-   */
+    /** Null canonical fields are form-local values with their own schema. */
   canonicalFieldId: CanonicalFieldIdSchema.nullable(),
   /** Form-local shape, required exactly when `canonicalFieldId` is null. */
   localKind: z.enum(["boolean", "text"]).nullable(),
-  /**
-   * Whether a HUMAN must resolve an unanswered field before the record may be
-   * used. A mandatory field that came back `illegible` blocks approval; an
-   * advisory one is surfaced and may be accepted (ref operator-trust's evidence rule).
-   * Blocking applies only on the page kinds that carry the field.
-   */
+    /** Mandatory unreadable fields block approval only on page kinds carrying the field. */
   mandatory: z.boolean(),
-  /**
-   * The page kinds this field's box exists on, or `null` for every data page
-   * of the form. Non-null only on a sectioned form: an I-9's date of birth is
-   * a Section 1 box, so on a Section 2 page the only truthful answer is
-   * `not-on-form` — and the gate can REFUSE a value claimed to be read from a
-   * box the page does not have, which is a value from nowhere.
-   */
+    /** Off-kind fields must be not-on-form; blank or illegible would claim a box exists. */
   onPageKinds: z.array(OcrPageKindSchema).min(1).nullable(),
 });
 export type OcrFieldSpec = z.infer<typeof OcrFieldSpecSchema>;
@@ -114,21 +42,11 @@ export type OcrFieldSpec = z.infer<typeof OcrFieldSpecSchema>;
 export const OcrFormSpecSchema = z.strictObject({
   formType: OcrFormTypeSchema,
   title: z.string().min(1),
-  /**
-   * The data-bearing page kinds of this form. One kind for a one-page form;
-   * the I-9 spans two, because a scanned stack carries its Section 1 and
-   * Section 2 loose and each is classified — and extracted — on its own.
-   * Pairing them into one subject is grouping's job, above the gate.
-   */
+    /** Classify/extract loose pages independently; subject pairing belongs to grouping. */
   pageKinds: z.array(OcrPageKindSchema).min(1),
   /** One paragraph of orientation, prepended to every generated instruction. */
   description: z.string().min(1),
-  /**
-   * Cross-field rules that reach every route verbatim — digit-accuracy
-   * warnings, address handling, what NOT to infer. These are the parts of
-   * legacy's prompts that were learned from real misreads, and they belong with
-   * the form rather than in one route's prompt string.
-   */
+    /** Share form-owned cross-field rules across every extraction route. */
   extractionNotes: z.array(z.string().min(1)),
   fields: z.array(OcrFieldSpecSchema).min(1),
 });
@@ -225,25 +143,7 @@ const EMERGENCY_CONTACT: z.input<typeof OcrFormSpecSchema> = {
   ],
 };
 
-/**
- * Ported from `legacy:src/services/ocr/forms/i9.ts` at `4deabc5a` (D160). One
- * UNIFORM record across both sections, as legacy's prompt demanded ("Every
- * record has the SAME fields; which ones are filled depends on the page kind")
- * — here the section-absent fields are typed `not-on-form` instead of a `null`
- * that also meant blank and illegible. The extraction notes are legacy's
- * accuracy rule, learned from real misreads: live 2026-07-13 a degraded scan
- * produced a confident-looking fabricated SSN and DOB (page 51 read
- * `02/28/1972` + `950-75-2168` off illegible paper), searched UCPath, and
- * returned a false "not found" — which is indistinguishable from "this person
- * does not work here". Legacy's "never round a 2-digit year" note is
- * deliberately NOT ported: `raw` is reported verbatim here and D155 resolves
- * the century against the observation instant, by documented rule.
- *
- * Legacy's `"i9 ssn"` supplemental sheet (a UCRS 419 statement) has no page
- * kind here on purpose: D154 derives the vocabulary from the real corpus, and
- * the corpus has none. Such a sheet classifies as `unrelated` today — surfaced
- * to the operator by name rather than silently folded into a record.
- */
+/** One UNIFORM record across both sections, as the prompt demanded: every record has the SAME fields, and which ones are filled depends on the page kind. */
 const I9: z.input<typeof OcrFormSpecSchema> = {
   formType: "i9",
   pageKinds: ["i9-section1", "i9-section2"],
@@ -286,11 +186,7 @@ const I9: z.input<typeof OcrFormSpecSchema> = {
   ],
 };
 
-/**
- * Frozen at runtime while keeping the schema-derived static type: a second
- * hand-written interface for "the same thing but readonly" would be a boundary
- * shape with no schema, which is exactly what this tree refuses.
- */
+/** Frozen at runtime while keeping the schema-derived static type: a second hand-written interface for "the same thing but readonly" would be a boundary shape with no schema. */
 function sealForm(input: z.input<typeof OcrFormSpecSchema>): OcrFormSpec {
   const spec = OcrFormSpecSchema.parse(input);
   const paths = spec.fields.map(({ path }) => path);
@@ -341,9 +237,7 @@ export const OCR_FORMS: Readonly<Record<OcrFormType, OcrFormSpec>> = Object.free
 
 export const OCR_FORM_TYPES: readonly OcrFormType[] = Object.freeze(OcrFormTypeSchema.options);
 
-// A page kind names exactly one form's page, or grouping could put one page in
-// two runs. Checked over the sealed registry so a new form cannot land claiming
-// an owned kind.
+// Page kinds have one form owner so grouping cannot duplicate pages across runs.
 {
   const owners = new Map<OcrPageKind, OcrFormType>();
   for (const formType of OCR_FORM_TYPES) {

@@ -1,38 +1,4 @@
-/**
- * **D130's finding, enforced at the one place it matters** — the receipt PAIR
- * that decides whether a Kuali document may be finalized.
- *
- * §5 item 2's recorded answer is that the UCPath termination's completion arm is
- * `receipt`, and that the receipt is the pair `(transactionNumber,
- * approvalStatus)` — **never the number alone**, because the 2026-08-04 live
- * probe proved a **Denied** transaction carries a perfectly well-formed `T…`
- * (`T002204014`), and legacy's own `interpretPostSubmitTxnReadback` tests only
- * `/^T\d{6,}$/`.
- *
- * The commit contract already returns the pair. What nothing owned until the
- * composition existed is the CONSEQUENCE: writing a Denied `T…` into the Kuali
- * document's *Transaction Number* field records a termination that UCPath
- * refused, on the local record everyone reads afterwards. §9.11 named this as
- * chunk 6's ("the receipt pair still belongs to the composition"); this is it.
- *
- * ## Where the Denied receipt actually comes from
- *
- * Not from a fresh submit — a just-filed transaction reads `Pending`. It comes
- * from the `already-present` arm: `ucpathTerminationVerdict` matches on action
- * and effective date and returns whatever `approvalStatus` the row carried, so a
- * re-run over a person whose earlier termination was refused gets a `present`
- * verdict with a `Denied` receipt and **no click**. That is the probe working
- * exactly as designed, and it is precisely why the reading of its answer has to
- * be its own decision.
- *
- * ## The vocabulary, and why `Pending` passes
- *
- * `Approved` and `Manually Processed` are settled successes. `Pending` is the
- * ordinary state of a transaction this run just filed, and refusing it would
- * refuse every happy path. `Denied`, `Error` and `Pushed Back` all mean the
- * termination did NOT take effect while still carrying a receipt — the exact
- * shape D130 warns about — so they refuse by name.
- */
+/** The receipt PAIR — `(transactionNumber, approvalStatus)`, NEVER the number alone — that decides whether a Kuali document may be finalized. */
 import { z } from "zod";
 import { EidSchema } from "../identity/ids.js";
 import { directIdentifierDisplay } from "../redaction/redaction.js";
@@ -54,11 +20,7 @@ export const TERMINATION_RECEIPT_REFUSAL_CODES = [
 export const TerminationReceiptRefusalCodeSchema = z.enum(TERMINATION_RECEIPT_REFUSAL_CODES);
 export type TerminationReceiptRefusalCode = z.infer<typeof TerminationReceiptRefusalCodeSchema>;
 
-/**
- * The statuses a termination may carry and still be written onto the Kuali
- * document. `Pending` is here because a transaction this run just filed is
- * always `Pending`; the three failure statuses are deliberately absent.
- */
+/** The statuses a termination may carry and still be written onto the Kuali document; `Pending` is here because a transaction this run just filed is always `Pending`. */
 export const TERMINATION_RECEIPT_ACCEPTED_STATUSES = [
   "Approved",
   "Manually Processed",
@@ -73,12 +35,7 @@ export const TerminationReceiptSchema = z.strictObject({
   emplId: EidSchema,
   /** The name UCPath's own detail page showed for this transaction's subject. */
   displayedName: z.string().min(1),
-  /**
-   * Whether this run filed it, found it already there (ref write-safety §5) —
-   * or, under D307, never touched UCPath and carries the number the operator
-   * typed when omitting the UCPath transaction step. That last arm is the
-   * receipt's own word that nothing here was read from a transaction page.
-   */
+    /* Whether this run filed it, found it already there — or never touched UCPath and carries the number the operator typed when omitting that step. */
   disposition: z.enum(["committed", "already-present", "operator-asserted"]),
 });
 export type TerminationReceipt = z.infer<typeof TerminationReceiptSchema>;
@@ -93,12 +50,7 @@ export const TerminationReceiptVerificationSchema = z.discriminatedUnion("state"
 ]);
 export type TerminationReceiptVerification = z.infer<typeof TerminationReceiptVerificationSchema>;
 
-/**
- * The two field checks a receipt's number and status must pass whether they
- * were READ from a UCPath transaction page or TYPED by the operator (D307):
- * one implementation, two callers, so the accepted-status list and the Kuali
- * number format cannot drift between them.
- */
+/** The two field checks a receipt's number and status must pass whether they were READ or TYPED: one implementation, two callers, so the accepted-status list cannot drift. */
 function receiptFields(transactionId: string, approvalStatus: string):
   | Readonly<{ state: "accepted"; transactionNumber: z.infer<typeof KualiTransactionNumberSchema>; approvalStatus: z.infer<typeof UcpathApprovalStatusSchema> }>
   | Readonly<{ state: "refused"; code: TerminationReceiptRefusalCode; reason: string }> {
@@ -109,8 +61,8 @@ function receiptFields(transactionId: string, approvalStatus: string):
       code: "termination-not-in-effect",
       reason: `UCPath transaction ${transactionId} carries approval status `
         + `${JSON.stringify(approvalStatus)}, so the termination did not take effect — and it `
-        + "still carries a perfectly well-formed T-number, which is the whole of D130's finding (live "
-        + "Denied receipt T002204014, 2026-08-04). Writing it into the Kuali document's Transaction "
+        + "still carries a well-formed T-number. "
+        + "Writing it into the Kuali document's Transaction "
         + "Number field would record a termination UCPath refused.",
     };
   }
@@ -174,14 +126,7 @@ export function verifyTerminationReceipt(input: Readonly<{
   });
 }
 
-/**
- * D307 — the receipt when the operator OMITTED the UCPath transaction step and
- * typed the transaction number and its approval status instead. The subject
- * and effective date are NOT typed: they come from the identity approval and
- * the reconciled dates this run still holds, exactly the two facts the fold
- * path checks a live receipt against. Only a status the fold would accept is
- * assertable — a Denied or Pushed Back filing is not a filed termination.
- */
+/** Typed receipts still bind subject/date to the run and require an accepted status. */
 export function assertTerminationReceipt(input: Readonly<{
   transactionNumber: string;
   approvalStatus: string;

@@ -41,14 +41,7 @@ export const NotificationRecordSchema = z.strictObject({
   title: z.string().min(1).max(160),
   summary: z.string().min(1).max(1_000),
   links: z.array(NotificationLinkSchema),
-  /**
-   * D134 (ref dashboard-surfaces §2.6, ref operator-trust §6): a repeated identical trigger folds into the
-   * ONE row its `(actorId, dedupeFingerprint)` already owns. `count` is how many
-   * times the trigger fired and `lastSeenAt` is the newest firing — neither is
-   * derivable from an insert-only history, because the folded firings leave no
-   * separate rows behind. This is deliberately NOT ledger semantics: a
-   * notification is operator-facing derived state, never a transaction record.
-   */
+    /* A repeated identical trigger folds into the ONE row its `(actorId, dedupeFingerprint)` already owns; `count` and `lastSeenAt` are not derivable from an insert-only history. */
   count: PositiveIntSchema,
   lastSeenAt: IsoInstantSchema,
   version: PositiveIntSchema,
@@ -97,11 +90,7 @@ export const NotificationRecordSchema = z.strictObject({
   }
 });
 
-/**
- * The two mutations ref dashboard-surfaces §2.6 requires of a durable notification, each CAS-ed
- * on the row's exact current version. `fold` is the repeat-trigger path;
- * `state` is the operator's read/snooze path. Neither may touch identity.
- */
+/** The two mutations required of a durable notification, each CAS-ed on the row's exact current version; neither may touch identity. */
 export const NotificationFoldRequestSchema = z.strictObject({
   actorId: ActorIdSchema,
   dedupeFingerprint: FingerprintSchema,

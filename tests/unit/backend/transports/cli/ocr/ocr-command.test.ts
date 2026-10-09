@@ -1,11 +1,4 @@
-/**
- * The `ocr` command — the transport that makes routes 2 and 3 usable (D151).
- *
- * What matters here is that the transport adds NOTHING. It reads a file, calls
- * the gate, and reports. So the cases below are about the seams a transport can
- * get wrong: an unreadable file reported as a schema problem, a refusal that
- * exits zero, and a refusal that looks like a record.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { composeOcrCommand } from "../../../../../../src/backend/transports/cli/ocr.js";

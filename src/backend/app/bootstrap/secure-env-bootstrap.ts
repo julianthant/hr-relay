@@ -115,9 +115,7 @@ export async function runSecureEnvironmentBootstrap(
       ...entrypointArgs,
     );
     const runCli = dependencies.runCli ?? (await import("../../../cli.js")).runCli;
-    // Awaited: for `dashboard` this promise is the runtime's lifetime, and a
-    // rejection must crash the process loudly rather than becoming an
-    // unobserved rejection while the shell reports success.
+    // Await shutdown so a rejection reaches the process exit.
     await runCli(admission);
     return;
   }
@@ -133,9 +131,7 @@ export async function runSecureEnvironmentBootstrap(
   process.exitCode = await runTestTargetDocumentNumberSmoke();
   } finally {
     if (entrypoint === "cli" && entrypointArgs[0] === "dashboard") {
-      // The runtime's shutdown listeners end before this final admission release.
-      // Keep signal ownership through the next event-loop turn so a queued second
-      // Ctrl+C cannot interrupt the mutex owner publication or cleanup.
+      // Retain signal ownership through the next turn; a queued Ctrl+C must not interrupt admission release.
       const absorb = (): void => undefined;
       process.on("SIGINT", absorb);
       process.on("SIGTERM", absorb);

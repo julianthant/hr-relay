@@ -1,22 +1,4 @@
-/**
- * D151 — every OCR producer is held to the same rules, structurally.
- *
- * The unit suite proves the three routes AGREE on a given page. This proves
- * they cannot be made to disagree:
- *
- * 1. `admitOcrExtraction` may not branch on `source`. A single `if` on who
- *    produced a value is all it takes for "the provider path is trusted" to
- *    creep in, and no test over sample inputs would necessarily catch it.
- * 2. Only the gate may mint an `AdmittedExtraction`. A transport that built one
- *    itself would be a second, unchecked admission path.
- * 3. The submitted-answer shape carries no `.optional()`. An optional field is
- *    exactly a field a producer can skip in silence, which is the thing the
- *    operator asked to make impossible.
- * 4. The generated instruction covers every declared field, both directions —
- *    so a field cannot be added to the registry and silently not asked for.
- *
- * Each static arm runs against a violating fixture through the same scanner.
- */
+
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import assert from "node:assert/strict";
@@ -72,7 +54,7 @@ function ocrSources(): ScannedFile[] {
   ].map((absolute) => ({ path: repoRelative(absolute), source: readFileSync(absolute, "utf8") }));
 }
 
-describe("D151 OCR producer parity", () => {
+describe("OCR producer parity", () => {
   it("scans a non-empty OCR surface and finds it clean", () => {
     const files = ocrSources();
     assert.equal(files.length >= 3, true, "expected the registry, the gate and the instruction builder");
@@ -87,16 +69,12 @@ describe("D151 OCR producer parity", () => {
       for (const path of declared) {
         assert.equal(instruction.includes(`\`${path}\``), true, `${formType}: ${path} is never asked for`);
       }
-      // The other direction: the skeleton a producer copies must name exactly
-      // the declared set, so it cannot teach a producer about a field that no
-      // longer exists or omit one that does.
+
       const skeleton = buildAnswerSkeleton(formType) as {
         pageKind: string;
         record: { answers: Record<string, unknown> };
       };
-      // A one-page form's kind spells its form type; a sectioned form's
-      // skeleton shows one of its DATA kinds — never the bare form type, which
-      // is not a page kind at all for the I-9.
+
       assert.equal(
         (ocrForm(formType).pageKinds as readonly string[]).includes(skeleton.pageKind),
         true,
@@ -114,8 +92,7 @@ describe("D151 OCR producer parity", () => {
         true,
         `${formType}: the brief does not say how many records a page yields`,
       );
-      // Every extraction note reaches the brief verbatim — that knowledge was
-      // learned from real misreads and must not live in one route's string.
+
       for (const note of ocrForm(formType).extractionNotes) {
         assert.equal(instruction.includes(note), true, `${formType}: an extraction note never reaches the brief`);
       }
@@ -128,11 +105,7 @@ describe("D151 OCR producer parity", () => {
           `${formType}: ${spec.path} is mandatory but the brief does not say so`,
         );
       }
-      // A sectioned field's page kinds reach the brief, and the skeleton is
-      // consistent with its own example classification: a field not on the
-      // example page is shown `not-on-form`, exactly as the gate demands. A
-      // skeleton demonstrating a value read from a box its page does not have
-      // would teach every producer the violation.
+
       for (const spec of ocrForm(formType).fields) {
         if (spec.onPageKinds === null) continue;
         assert.equal(

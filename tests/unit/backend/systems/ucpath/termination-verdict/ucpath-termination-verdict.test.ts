@@ -1,12 +1,4 @@
-/**
- * The two folds over one rich UCPath transaction scan, and the action
- * vocabulary the 2026-08-14 live read corrected.
- *
- * The interesting cases here are the ones where a plausible answer would
- * authorize a duplicate termination on a real person: a scan that could not be
- * read, an action code the matcher did not recognise, and a settled row the
- * sweep must not delete.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { EidSchema, IsoInstantSchema } from "../../../../../../src/rules/identity/ids.js";
@@ -115,10 +107,7 @@ describe("ucpath termination verdicts", () => {
   });
 
   it("matches BOTH live action vocabularies, and nothing else", () => {
-    // The defect the live read found: the SS Smart HR grid and detail page
-    // render the PeopleSoft CODE, while the Transactions in Progress grid
-    // renders the descriptive form. A matcher that knew only the second one
-    // answered `absent` about a person who has a Pending termination.
+    // PeopleSoft renders codes in SS Smart HR and descriptions in Transactions in Progress.
     for (const accepted of ["TER", "ter", " TER ", "Terminatn", "Termination", "terminat"]) {
       assert.equal(isUcpathTerminationAction(accepted), true, accepted);
     }
@@ -138,7 +127,7 @@ describe("ucpath termination verdicts", () => {
   });
 
   it("folds the live four-row scan for EID 10001799 to `present` on the matching date", () => {
-    // The exact rows read live on 2026-08-14, verbatim.
+
     const verdict = ucpathTerminationVerdict(TARGET, scan([
       row(),
       row({ transactionId: "T002197996", approvalStatus: "Approved", startDate: "07/01/2026" }),
@@ -152,7 +141,7 @@ describe("ucpath termination verdicts", () => {
     assert.equal(verdict.proof.approvalStatus, "Pending");
   });
 
-  it("an unreadable scan is `unknown`, never `absent` — D5 and D6 as code", () => {
+  it("an unreadable scan is unknown, never absent", () => {
     const unreadable: UcpathTransactionScan = {
       state: "unreadable",
       emplId: EID,
@@ -318,7 +307,7 @@ describe("ucpath termination verdicts", () => {
     assert.equal(
       asserted.state === "present" ? asserted.proof.receiptDisposition : undefined,
       "operator-asserted",
-      "fresh presence does not promote D307 asserted ingress into controlled-filing evidence",
+      "fresh presence does not promote asserted ingress into controlled-filing evidence",
     );
   });
 });

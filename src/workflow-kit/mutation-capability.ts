@@ -1,26 +1,4 @@
-/**
- * The ONE mutation-capability registry (ref write-safety beat ⑤, D111).
- *
- * A `MutationCapability` is what stands between a commit task and a real HR
- * write. Its type brand is declare-only, so a structurally identical literal
- * type-checks — unforgeability is the module-private WeakSet below, and nothing
- * else. Only an object THIS module minted is in the set.
- *
- * ## Why it lives in `src/workflow-kit/`
- *
- * Minting needs a type assertion, and no source under `src/models/` may
- * contain one (`strict-boundary-schemas`). Verification has to run inside a
- * `src/backend/systems/<system>/driver/` module immediately before its click.
- * `src/workflow-kit/` owns the shared capability that both layers import.
- *
- * ## The single-minter rule
- *
- * `mintMutationCapability` has exactly one permitted caller —
- * `src/backend/runtime/writes/write-sequencer.ts`, immediately after its fence CAS wins and
- * immediately before the commit impl runs. `task-driver-boundary` fails if any
- * other module so much as names it, and fails on any attempt to conjure the
- * brand through `as` / `satisfies` anywhere else in the tree.
- */
+// Module-private WeakSet membership authorizes fenced writes; caller-created tokens cannot.
 import type { MutationCapability } from "../models/ui/driver.js";
 import type { Fingerprint, PositiveInt } from "../rules/identity/ids.js";
 
@@ -42,13 +20,7 @@ export function mintMutationCapability(
   return capability;
 }
 
-/**
- * The driver-side verification seam. A commit-capable driver method calls this
- * BEFORE resolving a locator, let alone clicking. A capability nobody minted,
- * or one bound to a different intent generation / binding-proof digest, throws
- * — ref write-safety §7 row 10: "the mutation primitive fired without a fence ⇒ the
- * primitive throws — corruption, loud".
- */
+/** The driver-side verification seam: a commit-capable driver calls this BEFORE resolving a locator; an unminted or mis-bound capability throws rather than clicking. */
 export function assertMintedMutationCapability(
   capability: unknown,
   expected?: Readonly<{ intentGeneration: number; bindingDigest: string }>,

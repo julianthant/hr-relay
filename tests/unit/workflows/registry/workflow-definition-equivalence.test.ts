@@ -86,7 +86,7 @@ describe("workflow definition public equivalence characterization", () => {
         category: "search",
         surface: { shape: "single" },
         enqueue: "reject-active",
-        // D314 — every ordinary workflow now offers both recovery choices.
+
         actions: { enabled: ["retry", "restart", "cancel", "bump", "rename", "delete"] },
         capabilities: {
           review: false,
@@ -251,7 +251,7 @@ describe("workflow definition public equivalence characterization", () => {
         category: "separation",
         surface: { shape: "single" },
         enqueue: "reject-active",
-        // D314 — every ordinary workflow now offers both recovery choices.
+
         actions: { enabled: ["retry", "restart", "cancel", "bump", "rename", "delete"] },
         capabilities: undefined,
         verdicts: [

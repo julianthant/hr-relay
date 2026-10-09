@@ -6,28 +6,7 @@ import {
 import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.js";
 import { ucpathDriver } from "../driver-declaration.js";
 
-/**
- * D194's job-summary read, executed.
- *
- * Ported knowledge: legacy `1bffbd65`,
- * `src/systems/ucpath/job-summary.ts:249-298` (the multi-row status scan, which
- * is where S21's all-terminated refusal and S23's concurrent-jobs refusal live)
- * and `:427-573` / `:656-776` (the Work Location + Job Information extractions).
- * What ports is the KNOWLEDGE — which facts a job row carries and which of them
- * decide a separation — not the code: legacy reads them off
- * `WF_JOB_SUMMARY.GBL`'s two lazily-rendered tabs, and this reads the same
- * facts off the Person Org detail page's one grid (see
- * `src/domain/ui/ucpath-job-summary.ts` for why).
- *
- * **What deliberately does NOT port: the judgment.** Legacy THROWS inside the
- * page module when every row is Terminated, and throws again when two rows are
- * not — so "already separated" and "two concurrent jobs" exist only as thrown
- * strings, are computed only when the search happened to render a grid (S22),
- * and can never reach an operator as data. Here the task reports what the grid
- * showed and `workflow:separations/classify-job-summary` folds it. A read that
- * refuses on the shape of its own answer cannot serve a gate whose whole job is
- * to SHOW the operator that answer.
- */
+
 export const readJobSummaryTask = defineTask(ucpathDriver, UcpathReadJobSummary, {
   sessions: [{ system: "ucpath", access: "read", session: "reuse-worker" }],
   retry: { attempts: 2, backoffMs: 2_000, retryOn: "transient" },
@@ -35,10 +14,7 @@ export const readJobSummaryTask = defineTask(ucpathDriver, UcpathReadJobSummary,
     const read = await ctx.driver.readJobSummary({ emplId: input.emplId });
 
     if (read.state === "employee-not-found") {
-      // S18/S19: a genuine UCPath answer, not a timeout. The CALLER decides
-      // whether a not-found EID falls back to a name search (a short/incomplete
-      // EID) or fails loud (a complete 8-digit one) — that decision needs the
-      // input record, which this task does not have.
+
       return ctx.fail(
         "employee-not-found",
         `UCPath Person Org has no record for EID ${directIdentifierDisplay(read.emplId)} `

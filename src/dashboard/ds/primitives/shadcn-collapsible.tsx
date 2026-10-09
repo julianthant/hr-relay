@@ -1,6 +1,5 @@
-/** Adapted from shadcn/ui Collapsible (MIT):
- * https://github.com/shadcn-ui/ui/blob/main/apps/v4/registry/bases/radix/ui/collapsible.tsx
- */
+/** Adapted from shadcn/ui Collapsible (MIT)
+ * https://github.com/shadcn-ui/ui/blob/main/apps/v4/registry/bases/radix/ui/collapsible.tsx */
 import * as CollapsiblePrimitive from "@radix-ui/react-collapsible";
 import type { ComponentProps } from "react";
 

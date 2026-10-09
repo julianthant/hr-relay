@@ -1,41 +1,7 @@
 import { OperationChildResultReferenceSchema } from "../workflow/operation-action-identity.js";
 import { SnapshotWorkflowValueReferenceSchema } from "../workflow/operation-display-snapshot.js";
 import { OperationInputLineageSchema, OperationChildResultIdentitySchema } from "../workflow/operation-action-identity.js";
-/**
- * The span/notes wire and at-rest contract (ref dashboard-surfaces §1.1) — a leaf module.
- *
- * This file imports zod plus the zod-only canonical redaction-policy leaf on
- * purpose (the same import budget a bundle-safe descriptor gets): every JSONL line, projector ingest, and SSE
- * payload that carries a span or note parses through these schemas, so the
- * contract must not drag the server module graph — or the descriptor closure —
- * behind it. The id patterns are therefore restated locally; the
- * `tests/unit/events/span-events.test.ts` parity cases pin them byte-for-byte
- * against `src/domain/ids.ts` so a drift fails the suite instead of silently
- * forking the vocabulary.
- *
- * Identity (ref dashboard-surfaces §1.1): run/task spans are `(runId, attempt, spanPath)`;
- * worker/browser spans are `(workerId, spanPath)`. Identity attributes are
- * written exactly once, by `run.queued`, and no arm of this union can restate
- * one: every other event is a `strictObject` that does not name them.
- *
- * D254 (2026-08-20, operator ruling) — the `span.patched` detail channel is
- * RETIRED from this union. It carried a declared per-workflow key vocabulary
- * and had ZERO production emitters: the kernel's `SpanEmitter`
- * (`src/backend/logs/span-emitter.ts`) never had the arm, so nothing in `src/` could
- * produce one, and `.tracker/spans` holds no such line. A vocabulary
- * arm nothing can emit is not "unused", it is unreachable — and it made every
- * surface fed by it render its empty state permanently while every gate stayed
- * green. Removing it is reversible and honest; building the emitter was work
- * nobody asked for. A `span.patched` line therefore now fails the union BY
- * NAME, which is the correct answer for a shape this repository never wrote.
- *
- * Deliberately absent from this 1g slice (each is a later owning slice, not a
- * forgotten arm): `subject.observed` (emitted by the write-sequencer /
- * driver lane), screenshot/data-point attachments (driver instrumentation),
- * and `resultRef` on `gate.resolved`
- * (gate results are keyed by `(runId, gateId)` in authority; a separate ref id
- * would duplicate that identity today).
- */
+/** The span/notes wire and at-rest contract: a zod-only leaf module whose id patterns are restated locally and pinned byte-for-byte by the parity test. */
 import { z } from "zod";
 import { ConfirmedActionEventSchema } from "./confirmed-action.js";
 import { DiagnosticSafetyVersionSchema } from "../trust/failure.js";
@@ -62,11 +28,7 @@ const SpanPathSchema = z.string().min(1);
 export const SpanTaskIdSchema = z.string().regex(TASK_ID_PATTERN, "must be <registered-store>/<kebab-case-operation>");
 export const SpanFieldPathSchema = z.string().regex(FIELD_PATH_PATTERN, "must be a dot-delimited camelCase object path");
 
-/**
- * `JsonValueSchema`, restated — the same recursion `src/domain/canonical-json.ts`
- * declares. It is restated rather than imported for this module's whole reason
- * for existing: the wire leaf must not drag the server module graph behind it.
- */
+/** `JsonValueSchema`, restated: the wire leaf must not drag the server module graph behind it. */
 const JsonValueWireSchema: z.ZodType<unknown> = z.lazy(() => z.union([
   z.null(),
   z.boolean(),
@@ -88,12 +50,7 @@ export const SpanOutcomeWireSchema = z.enum([
 ]);
 export type SpanOutcomeWire = z.infer<typeof SpanOutcomeWireSchema>;
 
-/**
- * Why a `skipped` task span did not run. Pinned against
- * `TerminalNotRunReasonSchema` (`src/domain/run/result.ts`) — the durable
- * result and the timeline must name a skip with the SAME closed word, or the
- * surface and the record disagree about the same fact.
- */
+/** Why a `skipped` task span did not run; pinned against `TerminalNotRunReasonSchema` so surface and record name a skip with the same word. */
 export const SpanNotRunReasonSchema = z.enum(["condition-false", "branch-not-selected", "operator-asserted", "step-omitted"]);
 
 /** Why a queued row re-queued; pinned against `RequeueCauseSchema`. */
@@ -121,10 +78,7 @@ const WorkerSpanIdentityFields = {
   parentSpanPath: SpanPathSchema.optional(),
 } as const;
 
-/**
- * Run is born at ENQUEUE (ref dashboard-surfaces §1.1). Carries the queue row's immutable
- * identity attributes — stamped once, never re-derived by a projector.
- */
+/** The run's immutable identity attributes, stamped at enqueue and never re-derived by a projector. */
 const AuthorityReconstructionRepairSchema = z.strictObject({
   kind: z.literal("authority-reconstruction"),
   repairedAt: IsoInstantSchema,
@@ -146,13 +100,13 @@ const RunQueuedSchema = z.strictObject({
   shape: z.enum(["single", "preview", "operation", "operation-member"]),
   priority: z.enum(["interactive", "bulk"]),
   dryRun: z.boolean(),
-  /** D307 — the step keys this run omits; the typed facts stay in run authority, never in a span. */
+    /** The step keys this run omits; the typed facts stay in run authority, never in a span. */
   omittedSteps: z.array(SlugSchema).min(1).optional(),
   retryOf: UuidSchema.optional(),
-  /** D314 — present only on a Restart-from-start attempt; a Resume carries `retryOf` alone. */
+    /** Present only on a Restart-from-start attempt; a Resume carries `retryOf` alone. */
   recovery: RunRecoveryModeSchema.optional(),
   actorId: SlugSchema,
-  /** The exact title/subtitle the confirmation surface showed (start-plan D109). */
+    /** The exact title/subtitle the confirmation surface showed. */
   title: z.string().min(1),
   subtitle: z.string().min(1).optional(),
   descriptorVersion: PositiveIntSchema,
@@ -210,25 +164,13 @@ const GateOpenedSchema = z.strictObject({
   gate: SlugSchema,
 });
 
-/**
- * D210 / ref task-contract §6.2 — a dry run's transaction node. Its parity twin lives in
- * `src/backend/logs/span-emitter.ts`; see that arm for why it is not a `span.ended`.
- */
+/** A dry run's transaction node; its parity twin in the span emitter carries why it is not a `span.ended`. */
 const TransactionPreviewedSchema = z.strictObject({
   t: z.literal("transaction.previewed"),
   ...BaseFields,
   ...RunSpanIdentityFields,
   node: SlugSchema,
-  /**
-   * D215 — `not-observed` is the fourth verdict, and it is the one an
-   * `already-present` preview reports: beat ①'s probe settled the node before
-   * anything was staged, so no page was prepared and no subject was read.
-   * It was ratified in ref workflow-model §2.1 and landed in the kernel's twin
-   * (`src/backend/logs/span-emitter.ts`) without reaching this wire leaf, so the FIRST
-   * preview that ever settled — chunk 6c's composed dry run on doc 4502,
-   * whose ordinary subject has no pending transaction — threw inside the JSONL
-   * writer and killed the worker one emit short of its terminal.
-   */
+    /* `not-observed` is the fourth verdict: the probe settled the node before anything was staged, so no page was prepared and no subject was read. */
   subject: z.enum(["match", "mismatch", "unscoped", "not-observed"]),
   externalCommit: z.literal("none"),
 });
@@ -242,14 +184,7 @@ const TransactionFencedSchema = z.strictObject({
   taskId: SpanTaskIdSchema,
 });
 
-/**
- * D270 — an observed data point's redacted value. The parity twin of
- * `RedactedFieldSchema` (`src/domain/redaction.ts`), restated arm-for-arm while
- * sharing its canonical classification/transform rule; the
- * round-trip cases in `tests/unit/events/span-events.test.ts` enumerate every
- * classification and every transform, because the D215 lesson is that two
- * schemas calling each other twins still fork on the arm nobody emits.
- */
+/** An observed data point's redacted value; the parity twin of the kernel's `RedactedFieldSchema`, restated arm-for-arm under one classification rule. */
 export const SpanDataClassificationSchema = DataClassificationSchema;
 const RedactedSpanValueSchema = z.discriminatedUnion("transform", [
   z.strictObject({
@@ -309,10 +244,7 @@ export const ObservedDataPointWireSchema = z.strictObject({
 });
 export type ObservedDataPointWire = z.infer<typeof ObservedDataPointWireSchema>;
 
-/**
- * D270 — the observed-log emission. Its parity twin lives in
- * `src/backend/logs/span-emitter.ts`; that arm carries the reasoning.
- */
+/** The observed-log emission; its parity twin in the span emitter carries the reasoning. */
 const DataObservedSchema = z.strictObject({
   t: z.literal("data.observed"),
   ...BaseFields,
@@ -330,7 +262,7 @@ const GateResolvedSchema = z.strictObject({
   gate: SlugSchema,
   /** Descriptor-validated display/audit key, never the gate's decision payload. */
   resolutionKey: SlugSchema,
-  /** The schema-parsed result lives in authority (D67); this is its digest. */
+    /** The schema-parsed result lives in authority; this is its digest. */
   resultHash: Hex64Schema,
 });
 
@@ -344,11 +276,7 @@ const TaskSpanEndedSchema = z.strictObject({
   /** Display-safe summary; never the only failure evidence. */
   errorSummary: z.string().min(1).optional(),
   diagnosticSafetyVersion: DiagnosticSafetyVersionSchema.optional(),
-  /**
-   * Present only on `skipped`, and only when the executor actually recorded a
-   * reason. Its absence means "no reason was recorded" and must stay legible
-   * as that — never be back-filled with a plausible one.
-   */
+    /* Present only on `skipped`, and only when the executor recorded a reason; absence means no reason was recorded. */
   notRunReason: SpanNotRunReasonSchema.optional(),
 }).superRefine((event, context) => {
   if (event.outcome !== "skipped" && event.notRunReason !== undefined) {
@@ -381,11 +309,7 @@ const WorkerSpanEndedSchema = z.strictObject({
   diagnosticSafetyVersion: DiagnosticSafetyVersionSchema.optional(),
 });
 
-/**
- * A plain union on purpose: `span.started`/`span.ended` legitimately appear
- * for task, run, worker, and browser identities, so `t` alone cannot be a
- * unique discriminator. Every arm stays a strict object.
- */
+/** A plain union on purpose: `span.started`/`span.ended` appear for task, run, worker and browser identities, so `t` alone cannot discriminate. */
 export const SpanEventWireSchema = z.union([
   RunQueuedSchema,
   RunClaimedSchema,
@@ -404,7 +328,7 @@ export const SpanEventWireSchema = z.union([
 export type SpanEventWire = z.infer<typeof SpanEventWireSchema>;
 export type RunQueuedWire = z.infer<typeof RunQueuedSchema>;
 
-/* ── the notes stream (D10) ──────────────────────────────────────────────── */
+/* ── the notes stream ──────────────────────────────────────────────── */
 
 export const NoteLevelSchema = z.enum(["step", "success", "error", "waiting", "warn", "debug"]);
 

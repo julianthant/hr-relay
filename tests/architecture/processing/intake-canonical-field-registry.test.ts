@@ -1,21 +1,4 @@
-/**
- * Ref data-intake-and-edit-data §1 — the canonical field vocabulary is frozen against a RECORDED
- * scan, and every entry in it is coherent.
- *
- * Three claims, each falsifiable:
- *
- * 1. `src/models/fields/canonical-field-inventory.json` covers the registry in both
- *    directions. A canonical field nobody scanned is unevidenced vocabulary; a
- *    scanned field with no disposition is the silent omission ref data-intake-and-edit-data §1 bans
- *    in as many words ("No current mappable field may be silently omitted").
- * 2. Each scanned field still exists in the file the scan names. The legacy
- *    repository is frozen, so this can only fail when the inventory drifts.
- * 3. Each registry entry holds together: its declared redaction pair is legal,
- *    a deferred shape says why, and no header alias claims two fields.
- *
- * Each arm runs its audit against a violating fixture too, so a guard that
- * stopped checking would itself fail.
- */
+
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import assert from "node:assert/strict";

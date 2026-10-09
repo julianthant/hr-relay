@@ -49,10 +49,7 @@ export {
   AbsentEvidenceSchema,
   NegativeSettlementPolicySchema,
   probeVerdictSchema,
-  // The durable transaction settlement lives in the browser-safe half so a
-  // descriptor closure can hash it (D144); ref write-safety's module stays its address.
-  // The subject evidence a fence binds and the D210 dry-run preview are there
-  // for the same reason.
+  // Keep settlement, subject evidence and previews browser-safe for descriptor hashing.
   SubjectEvidenceSchema,
   TransactionDryRunPreviewSchema,
   TransactionOutcomeSchema,
@@ -165,14 +162,7 @@ const SafeToRetrySettlementSchema = z.strictObject({
   evidence: z.array(AbsentEvidenceSchema).min(2).max(3),
 });
 
-/**
- * Ref write-safety §4.1.2 — the operator's typed confirmed-absent resolution. It is the
- * ONLY non-evidence path from `attempting`/`parked` to `retryable`: it records
- * who confirmed absence in the target system, when, and the non-empty evidence
- * note, scoped to the exact intent generation it resolves. It never deletes or
- * reopens committed history and it does not itself click — only the next fence
- * may create a new generation.
- */
+/** Typed absence permits retry for this intent generation; it neither erases history nor submits. */
 export const OperatorAbsenceResolutionSchema = z.strictObject({
   state: z.literal("operator-confirmed-absent"),
   writeIntentId: WriteIntentIdSchema,
@@ -183,7 +173,7 @@ export const OperatorAbsenceResolutionSchema = z.strictObject({
   evidenceNote: z.string().min(1),
 });
 
-/** Either D64/D69 stabilized negative evidence or a typed operator resolution. */
+/** Either stabilized negative evidence or a typed operator resolution. */
 export const WriteRetrySettlementSchema = z.discriminatedUnion("state", [
   SafeToRetrySettlementSchema,
   OperatorAbsenceResolutionSchema,

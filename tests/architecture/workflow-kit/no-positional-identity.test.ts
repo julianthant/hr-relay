@@ -1,23 +1,4 @@
-/**
- * `no-positional-identity` — nothing durable is identified by where it sat.
- *
- * Two substitutions this guard exists to make unspellable:
- *
- * 1. **A position standing in for an identity.** An array index, a row number,
- *    or an ordinal is stable only until something is inserted, reordered, or
- *    retried. Every durable identity here is a branded id, so a bare integer or
- *    a plain string cannot be handed to a field that means "which person" or
- *    "which run".
- * 2. **One id kind wearing another's clothes.** A lowercase UUID matches the
- *    kebab-case slug pattern character for character, so before `slugText`
- *    refused the shape a run id could be written into a worker id and parse.
- *    Ref dashboard-surfaces §1.1 states the rule directly — workers persist across runs and
- *    "never receive a synthetic run id" — and this is where it is mechanical.
- *
- * The extracted-record case is the sharpest one: `StableRecordId` is derived
- * from the source digest plus page identity precisely so a "record 3" cannot
- * become a different person when an upstream page is re-extracted.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { z } from "zod";

@@ -1,11 +1,4 @@
-/**
- * D251 — the Run Modal's start facts, and the one it refuses.
- *
- * None of them grew a wire: every value here is already on the client-bundled
- * descriptor. What these cases pin is that the modal's words about those values
- * stay TRUE — an exhaustive vocabulary, a reason set scoped to the modal's own
- * preconditions, and the claim ref frontend-backend-integration §D251 makes about the enqueue enum.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { EnqueuePolicySchema } from "../../../../../src/models/workflow/presentation.js";
@@ -29,7 +22,7 @@ import {
 } from "../../../../../src/dashboard/surfaces/run-start/run-start-model.js";
 import { versionTag } from "../../../../../src/dashboard/surfaces/shared/status/format.js";
 
-describe("the descriptor version in Run Modal facts (C96)", () => {
+describe("the descriptor version in Run Modal facts", () => {
   it("prints the stored integer with no fabricated minor version", () => {
     for (const descriptor of WORKFLOW_DESCRIPTORS) {
       const tag = versionTag(descriptor.version);
@@ -56,7 +49,7 @@ describe("compact input guidance follows the declared parser", () => {
   });
 });
 
-describe("the declared active-run policy, as the modal states it (D251)", () => {
+describe("the declared active-run policy, as the modal states it", () => {
   it("covers the enum exactly — a new policy arm cannot land wordless, and no word outlives its arm", () => {
     assert.deepEqual(
       Object.keys(ENQUEUE_POLICY_MEANING).sort(),
@@ -73,11 +66,8 @@ describe("the declared active-run policy, as the modal states it (D251)", () => 
     }
   });
 
-  it("pins ref frontend-backend-integration §D251's claim that NO registered workflow declares supersede-active", () => {
-    // The doc says the arm supersedes nothing because no planner path implements
-    // it and nothing declares it. The second half is checkable, so it is checked:
-    // the day a descriptor declares it, this case fails and the sentence gets
-    // re-decided instead of quietly becoming false on an operator's screen.
+  it("no registered workflow declares supersede-active", () => {
+
     assert.deepEqual(
       WORKFLOW_DESCRIPTORS.filter((descriptor) => descriptor.enqueue === "supersede-active").map((d) => d.id),
       [],
@@ -85,39 +75,28 @@ describe("the declared active-run policy, as the modal states it (D251)", () => 
   });
 
   it("states WHY the policy is not a control, so a locked value never reads as a broken one", () => {
-    // The SHIPPED words, not an earlier draft of them: `b5581781` unified the
-    // run-option fields onto "Fixed by this workflow." and the frozen parity
-    // a11y references photograph exactly that sentence, so a regex naming the
-    // old wording was failing against the surface it claims to pin.
+
     assert.match(ENQUEUE_POLICY_REASON, /Fixed by this workflow/u);
   });
 });
 
-describe("why this dialog cannot start a workflow (D251)", () => {
+describe("why this dialog cannot start a workflow", () => {
   it("names the modal's own precondition and does not speak for the server", () => {
     const reason = START_DOOR_ABSENCE["no-typed-input"];
-    // The wording is load-bearing: `POST /start-plans` takes JSON submissions and
-    // parses them with `descriptor.input`, so a caller composing its own
-    // submission CAN start a workflow that declares no typed-input surface. What
-    // is missing is this dialog's box, and the sentence must say only that.
+    // No typed-input dialog does not forbid API input; JSON submissions still use the workflow schema.
     assert.match(reason, /this dialog/u);
     assert.doesNotMatch(reason, /refus|server|not allowed|cannot be started/u);
   });
 
   it("has exactly one arm, because exactly one precondition exists", () => {
-    // `availability` is deliberately not a second: `buildBootstrap` serves every
-    // workflow `available` unconditionally and no start path reads it, so an arm
-    // keyed on it would be a reason nothing produces and nothing enforces.
+
     assert.deepEqual(Object.keys(START_DOOR_ABSENCE), ["no-typed-input"]);
   });
 });
 
-describe("the descriptor prose the modal draws (D251)", () => {
+describe("the descriptor prose the modal draws", () => {
   it("finds a summary on every registered workflow, and treats absence as legal anyway", () => {
-    // Every descriptor declares one today (D229), which is why the modal shows a
-    // paragraph for each. The field stays OPTIONAL and the surface renders
-    // nothing when it is missing — a composed sentence about a workflow would be
-    // this surface claiming to know one.
+
     for (const descriptor of WORKFLOW_DESCRIPTORS) {
       assert.equal(typeof descriptor.summary, "string", `${descriptor.id} declares no summary`);
       assert.ok((descriptor.summary ?? "").trim().length > 0);
@@ -125,9 +104,7 @@ describe("the descriptor prose the modal draws (D251)", () => {
   });
 
   it("has exactly one start method kind, which is why no method tabs are drawn", () => {
-    // The demo renders its tab strip only at `methods.length > 1`. Nothing here
-    // declares `uploadRun`, so one method is the whole set and no tabs is the
-    // demo-faithful rendering — not a deferral.
+
     assert.deepEqual(
       WORKFLOW_DESCRIPTORS.filter((descriptor) => descriptor.surfaces.uploadRun !== undefined).map((d) => d.id),
       [],
@@ -135,11 +112,9 @@ describe("the descriptor prose the modal draws (D251)", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// D272 items 8 and 9 — the run-start follow-on ports (ledger 1 rows C83/C84/C109)
-// ---------------------------------------------------------------------------
 
-describe("a plan outlives nothing that shaped it (C109, D272 item 8)", () => {
+
+describe("a plan outlives no change to the request that shaped it", () => {
   const base: StartRequestShape = {
     workflowId: "person-lookup",
     text: "E1234567",
@@ -152,10 +127,7 @@ describe("a plan outlives nothing that shaped it (C109, D272 item 8)", () => {
   };
 
   it("changes when ANY field of the start request changes", () => {
-    // Every field here is one the server binds the plan token to, so a plan
-    // made before the change is unusable after it. The cases are enumerated
-    // one field at a time because a fingerprint that silently dropped a field
-    // would still pass a whole-object comparison.
+
     const moved: readonly [string, StartRequestShape][] = [
       ["workflowId", { ...base, workflowId: "kuali-separation" }],
       ["text", { ...base, text: "E7654321" }],
@@ -164,16 +136,10 @@ describe("a plan outlives nothing that shaped it (C109, D272 item 8)", () => {
       ["captureBrowserScreenshots", { ...base, captureBrowserScreenshots: false }],
       ["priority", { ...base, priority: "bulk" }],
       ["selectedStepKeys", { ...base, selectedStepKeys: [...base.selectedStepKeys, "crm-dates"] }],
-      // D307 — a changed FACT is a changed request. The server binds the plan
-      // token to the omission it planned, so a plan made against 06/30 cannot
-      // start a run that asserts 07/31.
+
       ["stepOmissionDrafts", { ...base, stepOmissionDrafts: [{ step: "kronos-timecard", draft: { lastDayWorked: "07/31/2026" } }] }],
     ];
-    // The enumeration is only as good as its coverage, and nothing here could
-    // see a SIXTH field arriving on `StartRequestShape` with no case for it —
-    // which is the whole failure mode this fold exists to prevent, one level
-    // up. `base` is typed as the real shape, so its own keys are the list the
-    // cases have to match exactly (unit F5b finding 9).
+
     assert.deepEqual(
       moved.map(([field]) => field).sort(),
       Object.keys(base).sort(),
@@ -190,11 +156,9 @@ describe("a plan outlives nothing that shaped it (C109, D272 item 8)", () => {
 
 });
 
-describe("the run-control rail is numbered by what it draws (C83/C84, D272 item 9)", () => {
+describe("run-control rail numbers match the drawn groups", () => {
   it("draws no Safety group at all for a workflow that declares no dry run", () => {
-    // DESIGN.md:305 — "a workflow that declares none shows none: no empty
-    // scaffolding". The offer-disabled rule it also states is written for an
-    // OPTION inside a control, not for the group around it.
+
     assert.deepEqual(
       runControlGroups(false).map((group) => group.key),
       ["queue"],
@@ -215,9 +179,7 @@ describe("the run-control rail is numbered by what it draws (C83/C84, D272 item 
   });
 
   it("leaves no gap in the reading path, in either shape", () => {
-    // The numbers exist to be read in order; a frozen `03` beside a two-group
-    // rail is the defect this row names. Contiguity is asserted rather than the
-    // two literal lists, so a fourth group cannot land wearing a wrong number.
+
     for (const supportsDryRun of [false, true]) {
       const groups = runControlGroups(supportsDryRun);
       assert.deepEqual(
@@ -236,15 +198,9 @@ describe("the run-control rail is numbered by what it draws (C83/C84, D272 item 
   });
 });
 
-// ---------------------------------------------------------------------------
-// D307 — the Steps screen's omission folds
-// ---------------------------------------------------------------------------
 
-/**
- * One form per declared kind, parsed through the SAME schema a step folder's
- * declaration is parsed through — a hand-shaped literal here could pin a form
- * no descriptor can declare.
- */
+
+
 const EVERY_KIND: StepOmissionForm = StepOmissionFormSchema.parse({
   fields: [
     { key: "note", label: "Note", kind: "text" },
@@ -267,11 +223,9 @@ const COMPLETE_DRAFT = Object.freeze({
   codes: "REG\n\n  OT  \n",
 });
 
-describe("an omission form starts EMPTY (D307)", () => {
+describe("an omission form starts EMPTY", () => {
   it("seeds every typed kind with nothing and only a checkbox with an answer", () => {
-    // A seeded date or id would be a fabricated fact about a real person the
-    // moment the operator did not touch it. `false` is a real unchecked answer,
-    // which is why it is the one seeded value.
+    // Seed no date or identifier: untouched controls must not fabricate a person fact; false is a valid checkbox answer.
     assert.deepEqual(initialStepOmissionDraft(EVERY_KIND), {
       note: "",
       lastDayWorked: "",
@@ -292,16 +246,13 @@ describe("an omission form starts EMPTY (D307)", () => {
       ["emplId", "hours", "lastDayWorked", "note", "status"],
       "every kind whose declared schema requires a value must be refused when it has none",
     );
-    // The two that are NOT refused are the two whose declared schema accepts
-    // what an untouched control holds: a checkbox's `false` is an answer, and
-    // `text-list` declares no minimum, so an empty box is an empty list. The
-    // screen adds no rule the server does not have.
+    // Untouched false and an optional empty text list are schema-valid answers.
     assert.equal(fold.errors["reviewed"], undefined);
     assert.equal(fold.errors["codes"], undefined);
   });
 });
 
-describe("a complete draft reads as the facts the declared schema produces (D307)", () => {
+describe("a complete draft reads as the facts the declared schema produces", () => {
   it("reads each kind as its own shape, TRIMMED exactly as the schema trims it", () => {
     const fold = foldStepOmissionFacts(EVERY_KIND, COMPLETE_DRAFT);
     assert.equal(fold.state, "facts", fold.state === "invalid" ? JSON.stringify(fold.errors) : "");
@@ -320,7 +271,7 @@ describe("a complete draft reads as the facts the declared schema produces (D307
   });
 });
 
-describe("every kind's refusal is the declared schema's own (D307)", () => {
+describe("every kind's refusal is the declared schema's own", () => {
   const cases: readonly (readonly [string, string, string | boolean])[] = [
     ["note", "an empty text field", "   "],
     ["lastDayWorked", "a date that is not MM/DD/YYYY", "6/30/2026"],
@@ -353,19 +304,14 @@ describe("every kind's refusal is the declared schema's own (D307)", () => {
   });
 });
 
-/**
- * A three-step workflow whose first omission forces the second out. No
- * registered descriptor declares a non-empty `forces` today, and the wire
- * serves the field regardless — the screen has to lock what the planner would
- * refuse the day one does.
- */
+
 const CASCADING_STEPS: readonly StepOmissionStepView[] = Object.freeze([
   { key: "read", label: "Read", control: { state: "omittable", form: EVERY_KIND, forces: ["stage"] } },
   { key: "stage", label: "Stage", control: { state: "omittable", form: { fields: [] }, forces: [] } },
   { key: "finalize", label: "Finalize", control: { state: "required", reason: "This workflow requires every node in this step." } },
 ]);
 
-describe("the cascade locks exactly what the planner would refuse (D307)", () => {
+describe("the cascade locks exactly what the planner would refuse", () => {
   it("names nobody while every step is included", () => {
     assert.deepEqual([...forcedStepOmissions(CASCADING_STEPS, ["read", "stage", "finalize"])], []);
   });

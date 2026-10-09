@@ -1,56 +1,8 @@
-/**
- * Header-row discovery — ref data-intake-and-edit-data §3.
- *
- * Pure, and deliberately **alias-independent**. Legacy found the header row by
- * looking for a recognized column name, so a spreadsheet whose every heading
- * was novel had no header row at all and the whole file was rejected before the
- * operator could say what any column meant. That is §7 vector #9: "novel
- * headers never reach mapping".
- *
- * Ranking therefore uses generic structure only — cell density, how
- * text-shaped the row is, how distinct its values are, whether the row's width
- * matches the data beneath it, whether there IS data beneath it, and how many
- * of its values occur nowhere else in the sheet. Known aliases contribute a
- * bounded BONUS on top, so recognizing `UCPath ID` still helps and never
- * becomes a precondition.
- *
- * ## `soleUse` is the strongest signal, and it is a principle rather than a fit
- *
- * A header cell is a LABEL, so it does not appear among the DATA. A data cell
- * shares vocabulary with its column — the same department, status or campus
- * repeats down every row. Measured on a real UCSD onboarding roster
- * (2026-08-05, three cohort sheets): header rows scored 0.97–1.00, every data
- * row scored 0.27–0.52. Without it the same file ranked its header top but
- * only 0.09 clear of a data row, which put every real roster into "ambiguous"
- * and made the operator hand-pick a header the ranking had already found.
- *
- * The count deliberately excludes the candidate row itself. A sheet may
- * legitimately carry two columns both headed `Name` (ref data-intake-and-edit-data §2.1 exists to keep
- * them distinct); counting the duplicate against the row would penalize exactly
- * the layout the design supports, and it is not what the principle says.
- *
- * It degrades the right way. A sheet whose data rows are all unique gives
- * everyone a high `soleUse`, the remaining signals decide, and a genuine tie
- * still returns a choice rather than a guess.
- *
- * ## Preselection follows the same anti-ambiguity rule as the scorer
- *
- * A candidate preselects only when it is both confident AND clearly ahead of
- * the runner-up. Two structurally indistinguishable rows produce
- * `headerRowIndex: null` and the operator chooses, because picking one for them
- * is the silent guess this program exists to prevent — and picking wrong shifts
- * every column by a row, which the coercers would then report as forty
- * unrelated bad cells rather than as one wrong header.
- */
+/** Header-row discovery: pure and deliberately alias-independent — generic structure only, with known aliases a bounded bonus rather than a precondition. */
 import { z } from "zod";
 import { normalizeHeader } from "../../models/fields/registry.js";
 
-/**
- * One ranked candidate. The contract in `contracts/extraction/` serves a
- * PROJECTION of this (row index, cells, confidence) and imports that projection
- * from here rather than restating it, so the served shape cannot drift from the
- * computed one.
- */
+/** One ranked candidate; the served projection is imported from here rather than restated, so the served shape cannot drift from the computed one. */
 export const HeaderCandidateSchema = z.strictObject({
   /** 0-based index into the rows given to `rankHeaderRows`. */
   rowIndex: z.number().int().nonnegative(),
@@ -83,7 +35,7 @@ export const HeaderDiscoverySchema = z.strictObject({
 });
 export type HeaderDiscovery = z.infer<typeof HeaderDiscoverySchema>;
 
-/** How many leading rows are considered. Legacy sniffed 0–3; 20 is generous. */
+
 export const HEADER_SCAN_DEPTH = 20;
 /** A candidate must reach this to preselect. */
 export const HEADER_PRESELECT_FLOOR = 0.7;
@@ -94,15 +46,7 @@ function isBlank(cell: string): boolean {
   return cell.trim().length === 0;
 }
 
-/**
- * A cell that reads as DATA rather than as a label.
- *
- * Dates count, in both the ISO and the `MM/DD/YYYY` wire form, and that matters
- * more than it looks: without the US form an ordinary work-study export scored
- * its first data row within 0.085 of its header row, which put every such file
- * into "ambiguous" and made the operator disambiguate something that was not
- * actually ambiguous. A header cell is essentially never a date.
- */
+/** A cell that reads as DATA rather than as a label; dates count in both the ISO and the `MM/DD/YYYY` wire form, and a header cell is essentially never a date. */
 function looksLikeData(cell: string): boolean {
   const trimmed = cell.trim();
   if (trimmed.length === 0) return false;
@@ -144,12 +88,7 @@ function rowsContainingValue(rows: readonly (readonly string[])[]): ReadonlyMap<
   return counts;
 }
 
-/**
- * Rank the leading rows of one sheet as header candidates.
- *
- * `knownAliases` is every canonical field alias, normalized. Passing an empty
- * set must still produce candidates — the guard proves it.
- */
+/** Rank the leading rows of one sheet as header candidates; passing an empty alias set must still produce candidates. */
 export function rankHeaderRows(
   rows: readonly (readonly string[])[],
   knownAliases: ReadonlySet<string>,
@@ -174,12 +113,7 @@ export function rankHeaderRows(
     const density = filled.length / width;
     const textShaped = filled.filter((cell) => !looksLikeData(cell)).length / filled.length;
     const distinct = new Set(filled.map((cell) => normalizeHeader(cell))).size / filled.length;
-    // ASYMMETRIC on purpose. A header that spans MORE columns than a typical
-    // data row is normal — optional fields are simply unfilled — so it takes no
-    // penalty. A header that spans FEWER is the suspicious case: that is what a
-    // merged title row looks like. The symmetric version scored a real UCSD
-    // roster sheet's header 0.00 here (30 headings over 12 filled data cells)
-    // and lost the sheet entirely.
+    // Extra header columns may be empty; fewer columns can indicate a merged title row.
     const beneathWidth = modalWidth(dataBelow);
     const widthMatch = beneathWidth === 0
       ? 0

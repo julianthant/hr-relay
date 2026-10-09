@@ -1,26 +1,4 @@
-/**
- * WHAT THE ⓘ HOLDS, and — as of 2026-09-01 — what it deliberately does not.
- *
- * The operator's rule: *"the subtitle and other important stuff related to the
- * run that doesnt fit into the queue row — something i dont need normally when
- * i glance at the queue row but i could maybe use sometimes to find out more
- * info."* Two exclusions fall out of that sentence, and each is pinned below
- * because each was previously rendered and could be re-added by a one-line
- * edit that no other test would notice:
- *
- *   NOT PRODUCT EXPLANATION — the panel-kind and containment paragraphs are
- *     facts about the product, identical on every row sharing a `panelKind`.
- *     They live in `surfaces/queue.tsx`, so this fold never held them; the
- *     popover's own composition is what dropped them.
- *   NOT THE RUN'S EXTRACTED VALUES — `facts[]` is the evidence receipt's
- *     output, already drawn on the row as chips. Both its present values AND
- *     its absence reason are gone from here.
- *
- * What remains is the SUBTITLE, which left the row's footer entirely
- * (`surfaces/queue.tsx`) because a provenance line holds when · which run ·
- * which trace · how long and a subtitle is none of those — plus the absence
- * reasons D230 / §9 D7 require, so a served gap can never read as a silent one.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { FIXTURE_DAY_WIRE } from "../../../../parity/helpers/fixture-day.js";
@@ -36,12 +14,7 @@ if (base === undefined) throw new Error("the parity day fixture must serve at le
 
 const LONG_VALUE = "re-read 1 — operator requested fresh 4568 rehearsal after resume freshness refusal";
 
-/*
-  Every variant goes through the WIRE SCHEMA rather than being cast into shape.
-  Half these fields are branded (`runNumber.value` is a `PositiveInt`), and a
-  fixture assembled past the parser could pin the fold against a row the server
-  could never send.
-*/
+
 const surfaceOf = (raw: unknown): QueueSurfaceWire => QueueSurfaceWireSchema.parse(raw);
 
 const REASONS = {
@@ -84,7 +57,7 @@ const operationSurface = surfaceOf(OPERATION_PRESENT);
 /** The present subtitle's entry, which LEADS every list the fold returns. */
 const SUBTITLE_ENTRY = { label: "Subtitle", state: "present", text: "person lookup" } as const;
 
-/** The present run number reads in the ⓘ, whole, since the footer's `#N` became the attempt (2026-09-01). */
+
 const RUN_NUMBER_ENTRY = { label: "Run number", state: "present", text: "#7 of this workflow" } as const;
 
 describe("the ⓘ carries the subtitle, and carries it whole", () => {
@@ -104,9 +77,7 @@ describe("the ⓘ carries the subtitle, and carries it whole", () => {
   });
 
   it("drops a subtitle that only repeats the row's title", () => {
-    // The demo's `showId` guard (`DemoQueue.tsx:674`), which used to live in
-    // the footer that no longer reads this field. Without it the popover
-    // prints the row's own name back at it as a second fact.
+
     const entries = rowInfoFacts(surfaceOf({
       ...SINGLE_PRESENT,
       title: "EID 10873698",
@@ -121,15 +92,7 @@ describe("the ⓘ carries the subtitle, and carries it whole", () => {
   });
 });
 
-/**
- * THE EXCLUSION, pinned in both directions.
- *
- * `facts[]` is the run's own output and is already drawn on the row as chips.
- * It was rendered here until 2026-09-01 — both its values and its absence
- * reason — so re-adding either is a two-line edit. These are the tests that
- * make that edit go red instead of quietly turning the ⓘ back into a second
- * copy of the row.
- */
+
 describe("the ⓘ excludes the run's extracted values", () => {
   it("lists no outcome fact, however many the receipt produced", () => {
     const entries = rowInfoFacts(surfaceOf({
@@ -144,9 +107,7 @@ describe("the ⓘ excludes the run's extracted values", () => {
   });
 
   it("does not explain an outcome's ABSENCE either", () => {
-    // The absence arm is about the same field, and its served reason is
-    // composition prose ("immutable receipt composition 2 predates
-    // diagnostic-safe composition 3…") — the explanation the operator ruled out.
+    // Served absence reasons explain missing frozen data; composition metadata stays out of queue facts.
     const entries = rowInfoFacts(surfaceOf({ ...SINGLE_PRESENT, facts: ABSENT_FIELDS.facts }));
     assert.deepEqual(
       entries,
@@ -156,20 +117,7 @@ describe("the ⓘ excludes the run's extracted values", () => {
   });
 });
 
-/**
- * THE ABSENCE ARMS, each pinned so that deleting it or inverting its test goes
- * red.
- *
- * Distinct reasons can hide behind a served gap and the fold counts them all
- * (D230 / §9 D7): an arm that quietly stops reporting an absence is
- * indistinguishable from a server that had nothing to report, which is the
- * exact conflation this program bans.
- *
- * The assertions are `deepEqual` over the WHOLE entry list rather than a
- * `find`, because the list's ORDER is part of the contract — the ⓘ reads as the
- * row it was opened from — and a `find` cannot see an arm that fired twice, in
- * the wrong place, or with a neighbour's reason.
- */
+
 describe("the ⓘ's absence arms", () => {
   it("reports NOTHING absent when the server served every field", () => {
     assert.deepEqual(rowInfoFacts(singleSurface), [SUBTITLE_ENTRY, RUN_NUMBER_ENTRY]);
@@ -211,9 +159,7 @@ describe("the ⓘ's absence arms", () => {
   });
 
   it("never asks a non-group for a member preview it does not carry", () => {
-    // `single` has no `memberPreview` key at all. Inverting the `surfaceKind`
-    // half of that arm reads `.state` off `undefined` here rather than falling
-    // quietly through, so this case cannot pass by accident.
+
     assert.deepEqual(rowInfoFacts(surfaceOf({ ...SINGLE_PRESENT, ...ABSENT_FIELDS })), [
       { label: "Subtitle", state: "absent", text: REASONS.subtitle },
       { label: "Live message", state: "absent", text: REASONS.liveMessage },

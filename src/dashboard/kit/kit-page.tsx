@@ -1,32 +1,5 @@
-/**
- * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
- * src/dashboard/components/dev/rebuild-demo/DemoUiKit.tsx (1,189 lines).
- *
- * THE DESIGN-SYSTEM SPECIMEN PAGE (D274 item 3; ledger 3 UK146–UK157).
- *
- * Every primitive in `ds/ui.tsx`, in every state, on one scrollable page. Two
- * jobs: it is the visual proof that the system renders, and it is the catalogue
- * a builder agent skims before choosing a component. `DESIGN.md` — binding for
- * anything visual in this tree — points at this page from three places, so
- * until it existed that document named an artifact nobody in this checkout
- * could open. Open it with `npm run web` → http://localhost:5174/kit.html.
- *
- * SPECIMENS, NOT COPIES. Everything below is drawn by the REAL `ds/ui.tsx`
- * barrel. Nothing here re-implements a primitive, forks one to add a variant,
- * or draws a status any way except `StatusPill` / `StatusDot` — a specimen page
- * that hand-rolled its own copy of a component would prove the copy renders and
- * say nothing at all about the system. Where the page needs chrome of its own
- * (`KitHeader`, `Section`, `Row`) it composes primitives and tokens, and those
- * three shells are the only components this file declares.
- *
- * Two small divergences from the legacy file, both mechanical:
- *   - `dsFocus` / `dsMotion.base` replace the literal `"ds-focus ds-motion"`
- *     string on the anchor nav. Same emitted classes; this tree's own
- *     `DESIGN.md` rule is that a builder types the token constant.
- *   - `--ds-fg` reaches the page through `dsFg.default` for the same reason.
- * The synthetic sample data — every name, EID, trace id, rate and file name —
- * is the legacy page's, verbatim. It touches no system and is not served.
- */
+/** Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc
+ * src/dashboard/components/dev/rebuild-demo/DemoUiKit.tsx (1,189 lines). */
 import { useState, type ReactNode } from "react";
 import {
   ArrowUpDown,
@@ -470,9 +443,7 @@ function DisplaySection() {
             <ProgressBar label="Retries used" value={80} tone="warning" showValue />
             <ProgressBar label="Failed writes" value={22} tone="danger" showValue />
             <ProgressBar label="Waiting on UCPath" />
-            {/* The caveat belongs to the CARD, so it sits on the card's bottom
-                edge rather than floating in the middle of it beside a taller
-                neighbour. */}
+            {/* Anchor caveats to the card base so taller neighbors cannot displace them. */}
             <CardBase>
               <span className={cn(dsText.meta, "text-[color:var(--ds-fg-faint)]")}>
                 The last bar is indeterminate — never fake a denominator you do not have.
@@ -609,9 +580,7 @@ function ContainersSection() {
           </Banner>
           <Banner tone="success" title="12 records verified" />
 
-          {/* A REFUSAL is not a failure. The triangle means something broke;
-              the shield means the product declined, on purpose, with a rule
-              behind it — and always with the code that names the rule. */}
+          {/* Differentiate rule refusals from failures and retain the code explaining the refusal. */}
           <Refusal
             title="Nothing was enqueued — this form was built on a stale contract"
             code="workflow-version-conflict"
@@ -649,12 +618,7 @@ function ContainersSection() {
             </Disclosure>
           </Well>
 
-          {/* ChipRow — the same five facts twice. The top row is a bare
-              `flex-wrap`, which is what every chip row in this demo used to be:
-              line one ends at the container edge, line two ends wherever its
-              last chip stopped, and the set reads as four-plus-one. The bottom
-              row lays them on the shared track, so both lines end on the same
-              edge and it reads as one block. */}
+          {/* Shared tracks keep wrapped facts aligned as one block. */}
           <div className="flex flex-col gap-[var(--ds-space-snug)]">
             <SectionLabel>ChipRow — a wrapping row of peer facts</SectionLabel>
             <div className="flex flex-wrap gap-[var(--ds-space-tight)] opacity-60">
@@ -675,11 +639,7 @@ function ContainersSection() {
         </div>
       </div>
 
-      {/* CardBody grow + CardBase — the sibling-alignment pair.
-          The three descriptions are deliberately one, two and three lines long:
-          without `grow` on the body nothing claims the row's slack, and without
-          `CardBase` the button hangs off the end of each card's own text, so
-          the middle card's control sits a line below its neighbours'. */}
+      {/* Unequal text lengths must not move sibling actions off their shared baseline. */}
       <div className="flex flex-col gap-[var(--ds-space-snug)]">
         <SectionLabel>CardBase — a trailing control on the row&apos;s bottom edge, not on its own card&apos;s</SectionLabel>
         <div className="grid grid-cols-3 gap-[var(--ds-space-cozy)]">
@@ -708,12 +668,7 @@ function ContainersSection() {
         </div>
       </div>
 
-      {/* CompareGrid + CompareCard — the OTHER half of sibling alignment.
-          Same three candidates as the specimen above, and the difference is
-          visible at a glance: there, only the buttons agree; here every line
-          does, because the cards share the row's tracks rather than just its
-          bottom edge. The third card has no reason at all and still holds the
-          space its neighbours' reasons need. */}
+      {/* Shared row tracks reserve absent content so sibling comparisons remain aligned. */}
       <div className="flex flex-col gap-[var(--ds-space-snug)]">
         <SectionLabel>CompareGrid — cards read ACROSS: name with name, reason with reason</SectionLabel>
         <CompareGrid rows={4} min="14rem">
@@ -1096,11 +1051,7 @@ function OverlaysSection() {
           Open drawer
         </Button>
       </Row>
-      {/* ContextMenu — an object's own commands, ON the object. There is no
-          `⋯` in this system: a button whose only job is to admit there are more
-          buttons costs a slot on every row in a queue. Right-click the panel
-          below, or focus it and press the platform's Menu / Shift+F10 key —
-          a shell binds its own shortcut through `openContextMenuFor`. */}
+      {/* Provide keyboard access to the object’s context menu as well as right-click. */}
       <Row label="ContextMenu">
         <ContextMenu>
           <ContextMenuTrigger asChild>
@@ -1172,11 +1123,7 @@ function OverlaysSection() {
           <Button variant="ghost">Hover me</Button>
         </Tooltip>
       </Row>
-      {/* The Tooltip's counterpart. Anything the operator has to be able to
-          READ belongs here, not in a hover-only surface: this one opens on
-          CLICK, so it is reachable by pointer, touch and keyboard. It flips
-          when it would overflow, Escape and outside-click dismiss it, focus
-          enters on open and returns to the trigger on close. */}
+      {/* Essential detail uses click disclosure so pointer, touch and keyboard can reach it. */}
       <Row label="Popover">
         <Popover>
           <PopoverTrigger asChild>

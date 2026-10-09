@@ -62,7 +62,7 @@ export function buildRunSection(
   }
 }
 
-/** Legacy imports use the same dispatcher rather than a second section switch. */
+
 export function buildTrustSection(
   deps: RunDetailQueryDeps,
   runId: string,

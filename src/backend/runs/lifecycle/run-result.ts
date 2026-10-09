@@ -12,11 +12,7 @@ import {
 
 export { TerminalDependencyEvidenceSchema };
 
-/**
- * Build the result by invoking the exact descriptor-authored derive over the
- * run's canonical input and schema-validated checkpoint outputs. There is no
- * caller-supplied candidate value: the factory owns both derivation and seal.
- */
+
 export function buildRunResult(
   descriptor: AnyWorkflowDescriptor,
   currentRun: unknown,
@@ -30,11 +26,7 @@ export function buildRunResult(
   );
 }
 
-/**
- * D210 — the terminal record of a previewed run, through the same sealed
- * factory. There is no authored derive to invoke: the record IS what the
- * preview observed, so nothing here composes a value the run did not produce.
- */
+
 export function buildRunPreviewResult(
   descriptor: AnyWorkflowDescriptor,
   currentRun: unknown,

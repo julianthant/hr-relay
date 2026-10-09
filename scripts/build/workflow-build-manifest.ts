@@ -1,23 +1,4 @@
-/**
- * Computes the checked-in build manifest behind `descriptor.contractFingerprint`
- * (ref workflow-model §1.1; schema in `src/workflow-kit/validation/build-manifest.ts`).
- *
- * The hash covers canonical `(repo-relative path, file content)` tuples for a
- * descriptor module and its transitive relative-import closure, plus the
- * INSTALLED TypeScript and zod versions. Deliberately excluded: absolute paths,
- * mtimes, build timestamps, object iteration order, and any minified function
- * text. So the same source in another checkout hashes identically, while a
- * `bind`/`identity`/`derive` edit changes the fingerprint even though its output
- * zod schema did not — which is the whole point, because a checkpoint written
- * under the old bind semantics must not silently replay under the new ones.
- *
- * Type-only imports are inside the closure on purpose. They do not ship, but a
- * changed type IS a changed contract, and a fingerprint that ignored them would
- * call two semantically different descriptors compatible.
- *
- * The generated module is excluded from every closure: a manifest that hashed
- * its own contents could never reach a fixed point.
- */
+/** Hashes canonical (path, content) tuples plus the installed toolchain so any checkout matches; type-only imports count because a type change is a contract change, and the generated module is excluded so the hash reaches a fixed point. */
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
@@ -131,28 +112,7 @@ export function fingerprintSourceSet(
   }));
 }
 
-/**
- * The workflow id a descriptor file DECLARES, read from its own source.
- *
- * D265 §1.2.2 detached the path from the id: a chunk harness now lives at
- * `src/workflows/<composition>/steps/<step>/`, where no path segment is its id
- * (`separations/steps/kuali-extraction/` is `separations-kuali-read`). Ids are run
- * identity and did not move with the folders, so the manifest — which every
- * descriptor looks its own fingerprint up in BY ID — has to read the id the
- * descriptor actually declares rather than infer one from where it sits.
- *
- * Fail loud on anything but exactly one string-literal `id` in exactly one
- * workflow-authoring call: the not-yet-converted harness form passes the spec
- * first to `defineWorkflowDescriptor`, and D317's authored form passes it
- * first to `defineWorkflow`. A guessed id would key a fingerprint to a
- * workflow that does not exist, and `resolveWorkflowFingerprint`'s throw would
- * then fire at load time for the workflow that does.
- *
- * Exported because `workflow-layout` (D265 arm (a)) asks the same question of
- * the same files — "which workflow does the descriptor at this path declare?" —
- * and a second reader of the same syntax is a second opinion that can drift the
- * moment either one learns about a new spelling.
- */
+/** Reads the id a descriptor declares, never one inferred from its folder; `workflow-layout` shares this parser so the two readers cannot drift. */
 export function declaredWorkflowId(entry: string): string {
   const source = ts.createSourceFile(
     entry, readFileSync(entry, "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
@@ -198,10 +158,6 @@ function workflowEntryIn(folder: string): string | undefined {
   return present[0];
 }
 
-/**
- * Every workflow entry under `src/workflows/`: `workflow.ts` for a rail
- * workflow, `steps/<step>/step.ts` for a chunk harness.
- */
 function descriptorFiles(root: string): readonly string[] {
   if (!existsSync(root)) return [];
   const found: string[] = [];
@@ -228,11 +184,7 @@ function descriptorEntries(repoRoot: string): readonly { readonly id: string; re
     .sort((left, right) => left.id < right.id ? -1 : 1);
 }
 
-/**
- * Task-impl fingerprints cover each bound implementation's server-side closure.
- * Impl binding lands with the workers in 1f; until a store declares one the
- * list is legitimately empty rather than absent.
- */
+/** Server-side impl closures; an empty list is legitimate when no store declares one, not a missing binding. */
 function taskEntries(
   repoRoot: string,
 ): readonly { readonly id: string; readonly entries: readonly string[] }[] {
@@ -301,42 +253,18 @@ export function computeBuildManifest(repoRoot: string): BuildManifest {
   });
 }
 
-/**
- * Render the checked-in module. It lives under `src/workflow-kit/validation/**` so a descriptor
- * can value-import its own fingerprint without reaching outside the bundle-safe
- * set, and so the diff is reviewable in the same commit as the change that
- * moved it.
- */
+/** Rendered under `src/workflow-kit/validation/**` so a descriptor can value-import its fingerprint while staying browser-safe. */
 export function renderBuildManifestModule(manifest: BuildManifest): string {
   BuildManifestSchema.parse(manifest);
   return [
-    "/**",
-    " * GENERATED — run `npm run build:manifest`. Do not edit by hand.",
-    " *",
-    " * Descriptor and task-impl fingerprints over canonical (path, content)",
-    " * tuples plus the locked toolchain. `descriptor-coverage` regenerates this",
-    " * file and fails on any diff.",
-    " */",
+    "/** Generated by npm run build:manifest; do not edit by hand. */",
     "",
     `export const GENERATED_BUILD_MANIFEST = ${JSON.stringify(manifest, null, 2)} as const;`,
     "",
   ].join("\n");
 }
 
-/**
- * The BYTE arm behind the manifest gate.
- *
- * `descriptor-coverage` also compares the PARSED manifest against a fresh
- * recomputation, and that comparison is structurally blind to how the module was
- * rendered: indentation, key spacing, and the doc comment can all drift while
- * `deepEqual` stays green. A stale-on-disk file that still parses to the right
- * object is exactly the "silent drift" the root CLAUDE.md says must be a red
- * gate, so the checked-in text is compared to the generator's exact output.
- *
- * One arm, two callers — `scripts/build/generate-workflow-manifest.ts --check` and the
- * guard — so the CLI check and the gate can never disagree about what "current"
- * means.
- */
+/** Byte check: parsed equality misses rendered drift, and the CLI `--check` and the guard share it. */
 export function auditBuildManifestBytes(
   current: string,
   manifest: BuildManifest,

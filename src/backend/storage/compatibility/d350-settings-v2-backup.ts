@@ -31,7 +31,7 @@ const D350HistoricalSettingsSchema = z.strictObject({
 });
 
 if (deriveSchemaHash(D350HistoricalSettingsSchema, "input") !== D350_HISTORICAL_SETTINGS_SCHEMA_HASH) {
-  throw new Error("D350 historical Settings shape no longer matches its pinned schema hash");
+  throw new Error("Historical Settings shape does not match its pinned schema hash");
 }
 
 export const D350HistoricalSettingsFileRecordSchema = z.strictObject({

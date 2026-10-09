@@ -15,9 +15,7 @@ let separationsStartServer: FixtureServer | undefined;
 let storageServer: FixtureServer | undefined;
 let seeded: SeededServer | undefined;
 test.beforeAll(async () => {
-  // Build (or prove the reuse of) the bundle under test before anything serves
-  // it: a reference captured from a stale `dist/dashboard` documents code that
-  // is not in the working tree.
+
   ensureParityBundle();
 
   if (kinds.includes("server")) server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
@@ -67,18 +65,7 @@ get seeded() { if (seeded === undefined) throw new Error("seeded was not started
 }
 
 
-/**
- * The workflow panel opens as a FLOATING window that dismisses on the first
- * click outside it, and at these viewports it sits over the intake workspace's
- * left edge — its target-field column and its stage tabs.
- *
- * The queue's references keep the window because the queue is what the window
- * is FOR: you pick a workflow, you read its rows. The intake workspace is a
- * takeover, so the operator's very first act is a click into it, and a
- * reference photographed before that click documents a window rather than the
- * surface under test. The press lands on the panel header — deliberately not
- * the body, where the dropzone would open a file chooser instead.
- */
+// Dismiss the floating panel before interacting with the intake workspace it overlaps.
 export async function dismissWorkflowWindow(page: import("@playwright/test").Page): Promise<void> {
   const viewport = page.viewportSize();
   if (viewport === null) throw new Error("the parity lane always sets a viewport before navigating");
@@ -89,23 +76,7 @@ export async function dismissWorkflowWindow(page: import("@playwright/test").Pag
 }
 
 
-/**
- * Dismiss the window on a QUEUE view — where `y=100` is a live control.
- *
- * On a takeover the queue and its bands are gone, so the press above lands in
- * empty chrome. On the queue view it lands on the STATUS FILTER ROW, and the
- * first `panel-dismissed` reference minted with it photographed the queue
- * filtered to `Done 2` while claiming to be the day queue — a harness that
- * changed the state it was supposed to reveal. (`run-receipt-populated` already
- * found this once and worked around it locally; this is the same finding with a
- * post-condition attached so it cannot happen a third time.)
- *
- * The press goes into the panel region instead, which is inert on both views:
- * the `No run open` empty state with nothing selected, the log stream with a
- * run open. And it ASSERTS its own post-condition — the window gone AND the
- * status filter untouched — because a dismissal that quietly changes the
- * subject is exactly the check that cannot fail.
- */
+// Dismiss on the queue, where y=100 is a live control; takeover chrome has no queue bands.
 export async function dismissWorkflowWindowOverQueue(page: import("@playwright/test").Page): Promise<void> {
   const filters = page.getByRole("group", { name: "Filter the queue by status" });
   const pressedBefore = await filters.getByRole("button", { pressed: true }).allInnerTexts();

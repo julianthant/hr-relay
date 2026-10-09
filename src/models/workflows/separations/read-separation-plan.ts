@@ -1,18 +1,4 @@
-/**
- * `workflow:separations/read-separation-plan` — everything the composed graph needs
- * from the separation document ALONE, as a real node.
- *
- * It sits between the Kuali read and every other read, because the two things
- * it produces are preconditions of them: the employee name the UCPath candidate
- * search runs on, and the timecard window the New Kronos read is applied over.
- * Its refusals cost nothing here and would cost two browser sessions one node
- * later.
- *
- * It is a task rather than a `derive` for `match-termination-type`'s reason: a
- * fold that can REFUSE needs somewhere to put the refusal, and a task has a
- * durable `FailureRecord.code` while a `derive` has only a thrown string. S7's
- * future-date refusal in particular is a run outcome an operator queries on.
- */
+/** Everything the composed graph needs from the separation document ALONE; its refusals cost nothing here and would cost two browser sessions one node later. */
 import { z } from "zod";
 import { taskId } from "../../../rules/identity/ids.js";
 import {
@@ -39,11 +25,7 @@ export const SeparationsReadSeparationPlan = defineTaskContract({
     employeeName: KualiTextFieldSchema,
     lastDayWorked: KualiDateFieldSchema,
     separationDate: KualiDateFieldSchema,
-    /**
-     * The instant the document read observed the page — S7's reference. Using
-     * the read's own instant rather than a clock keeps the fold pure and makes
-     * the refusal say what is true: *as of the moment this run read the form*.
-     */
+        /* The instant the document read observed the page — the read's own instant rather than a clock keeps the fold pure. */
     observedAt: IsoInstantSchema,
   }),
   output: ReadSeparationPlanOutputSchema,

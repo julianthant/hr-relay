@@ -34,7 +34,7 @@ export function registerArchiveRoutes(app: DashboardApp, deps: ArchiveRouteDeps)
     });
   }
 
-  /* ── archive + activity (D179/D180, ref frontend-backend-integration §3.6) ───────────────────────── */
+
   app.get("/api/v1/archive/reports/:runId/files/:digest", async c => c.json(await savedFileResource(deps.archive, c.req.param("runId"), c.req.param("digest"), c.req.raw.signal)));
   app.get("/artifacts/v1/archive/:runId/files/:digest", async c => {
     const artifact = await prepareSavedCaptureLease(deps.archive, c.req.param("runId"), c.req.param("digest"), c.req.raw.signal, true);

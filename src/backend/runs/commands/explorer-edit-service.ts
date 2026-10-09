@@ -1,12 +1,5 @@
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
-/**
- * Explorer draft validation and apply authority (D186/D283).
- *
- * Validation always starts from the live, factory-built Explorer projection.
- * That projection has already traversed the registered descriptor, graph,
- * contracts, UI registry and scenario declarations and parsed the resulting strict
- * wire. Presentation overrides never become a second executable graph.
- */
+
 import {
   descriptorRuntimeNodes,
   workflowProjections,
@@ -75,11 +68,7 @@ function sameStrings(left: readonly string[], right: readonly string[]): boolean
   return canonicalJsonStringify([...left]) === canonicalJsonStringify([...right]);
 }
 
-/**
- * Re-run the runtime-capable arms of `workflow-editor-compile-integrity` over the
- * exact live composition. Static/no-DSL and executed-scenario arms remain source-gate
- * obligations and are never reported as having run inside the BFF.
- */
+
 export function buildExplorerCompileAttestation(
   deps: ExplorerQueryDeps,
   workflow: ExplorerWorkflowWire,

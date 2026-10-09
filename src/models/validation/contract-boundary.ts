@@ -85,14 +85,7 @@ export function assertContractBoundarySchema(schema: z.core.$ZodType, label: str
   if (issues.length > 0) throw new Error(issues.join("; "));
 }
 
-/**
- * `every` — the path must resolve in EVERY union arm, which is what a consumer
- * reading the value unconditionally requires.
- * `some` — the path need only resolve in ONE arm. That is the right rule for an
- * ingress surface: a `by-eid`/`by-name` input union has `emplId` in exactly one
- * arm, and requiring it everywhere would make a discriminated submission
- * unspellable.
- */
+// Unconditional reads require every union arm; conditional input paths need only one.
 function schemaOwnsPath(
   schema: z.core.$ZodType,
   parts: readonly string[],
@@ -171,30 +164,16 @@ export function sealDeclarativeMetadata<Value>(
   return Object.freeze(copy) as Value;
 }
 
-/* ── the field census a contract's schema owns (D227) ─────────────────────── */
+/* ── the field census a contract's schema owns ─────────────────────── */
 
-/**
- * What one census leaf holds, as a closed vocabulary.
- *
- * Declared as a zod enum because the explorer's wire re-serves it verbatim: a
- * second hand-written copy of this list on the wire is the classic pair that
- * eventually disagrees, and the wire schema imports THIS one instead.
- */
+/** What one census leaf holds, as a closed vocabulary; declared as a zod enum because the explorer's wire re-serves it verbatim and imports THIS one instead of a second copy. */
 export const ContractSchemaLeafKindSchema = z.enum([
   "string", "number", "boolean", "bigint", "date", "enum", "literal",
   "null", "list", "value",
 ]);
 export type ContractSchemaLeafKind = z.infer<typeof ContractSchemaLeafKindSchema>;
 
-/**
- * One field of a contract boundary, named by the dotted path a consumer reads
- * it at.
- *
- * `presence` is `sometimes` when the leaf is optional, nullable, defaulted, or
- * carried by only SOME arms of a union. Which of the three is irrelevant to the
- * one question the census answers — *is this field always in the answer?* — and
- * a reader who needs the distinction has the contract's source link beside it.
- */
+/** One field of a contract boundary, named by the dotted path a consumer reads it at; `presence` is `sometimes` when the leaf is optional, nullable, defaulted, or carried by only SOME union arms. */
 export interface ContractSchemaLeaf {
   readonly path: string;
   readonly kind: ContractSchemaLeafKind;
@@ -203,12 +182,7 @@ export interface ContractSchemaLeaf {
   readonly options?: readonly string[];
 }
 
-/**
- * Scalar-ish zod tags whose value is ONE field. Everything structural is walked
- * below; a tag in neither list throws, because an unrecognised tag may be a
- * CONTAINER, and emitting one leaf for a container would report a whole subtree
- * of fields as a single field — a census that looks complete and is not.
- */
+/** Scalar-ish zod tags whose value is ONE field; a tag in neither list throws, because an unrecognised tag may be a CONTAINER. */
 const LEAF_KIND_BY_ZOD_TYPE: { readonly [tag: string]: ContractSchemaLeafKind } = {
   string: "string",
   number: "number",
@@ -230,15 +204,7 @@ const LEAF_KIND_BY_ZOD_TYPE: { readonly [tag: string]: ContractSchemaLeafKind } 
   unknown: "value",
 };
 
-/**
- * Container tags that count as ONE leaf.
- *
- * `evidenceLeaves` and the freshness / provenance `byField` prefix rule already
- * treat an array as one leaf, and the census has to agree with them or the
- * "Recorded" column would resolve a rule against a path no policy can name. The
- * boundary audit refuses `record`/`map`/`set` outright, so those three are
- * listed for completeness rather than because a contract can reach them.
- */
+/** Container tags that count as ONE leaf; the census has to agree with the evidence and prefix rules or the "Recorded" column would resolve a rule against a path no policy can name. */
 const ONE_LEAF_CONTAINER_ZOD_TYPES = new Set(["array", "tuple", "set", "map", "record"]);
 
 const ALWAYS = "always" as const;
@@ -273,10 +239,7 @@ function indexLeaves(leaves: readonly ContractSchemaLeaf[]): ReadonlyMap<string,
   return index;
 }
 
-/**
- * The leaves a schema owns, RELATIVE to itself — a scalar answers with the one
- * unnamed leaf `""`, which its caller then names.
- */
+/** The leaves a schema owns, RELATIVE to itself — a scalar answers with the one unnamed leaf `""`, which its caller then names. */
 function relativeLeaves(
   schema: z.core.$ZodType,
   presence: "always" | "sometimes",
@@ -284,9 +247,7 @@ function relativeLeaves(
 ): readonly ContractSchemaLeaf[] {
   const currentObject = schema as unknown as object;
   if (ancestors.includes(currentObject)) {
-    // A recursive schema is a shape whose depth is decided per value, so it is
-    // reported as the one leaf it sits at rather than unrolled to some
-    // arbitrary depth the contract never promised.
+// Recursive depth belongs to values; report one leaf rather than inventing a depth limit.
     return [Object.freeze({ path: "", kind: "value" as const, presence })];
   }
   const definition = schemaDefinition(schema);
@@ -305,20 +266,14 @@ function relativeLeaves(
     const nested = [...ancestors, currentObject];
     const allArms = (definition.options as z.core.$ZodType[])
       .map((option) => indexLeaves(relativeLeaves(option, presence, nested)));
-    // An arm that contributes only the UNNAMED leaf — `z.null()` beside an
-    // object arm is the common one — says "this field may hold no record". That
-    // is exactly what `sometimes` already says about the object's own fields,
-    // and naming the container's path beside its children would list a
-    // container as a field. So such arms weaken presence and name nothing.
+    // Null-only arms weaken child presence without naming the container as a field.
     const named = allArms.filter((arm) => [...arm.keys()].some((path) => path.length > 0));
     const arms = named.length === 0 ? allArms : named;
     const everyArmNames = named.length === allArms.length;
     const merged = new Map<string, ContractSchemaLeaf>();
     for (const arm of arms) {
       for (const [path, leaf] of arm) {
-        // A path missing from ANY arm is not guaranteed to be in the answer,
-        // which is the same distinction `schemaOwnsPath`'s every/some split
-        // makes from the checking side.
+        // A field missing from any union arm is not guaranteed present.
         const inEveryArm = everyArmNames && arms.every((other) => other.has(path));
         const scoped: ContractSchemaLeaf = Object.freeze({
           ...leaf,
@@ -370,15 +325,7 @@ function relativeLeaves(
   })];
 }
 
-/**
- * Every field a contract boundary schema owns, as dotted paths, sorted.
- *
- * This is the field census the explorer's contract table renders (ref operator-trust §5.9).
- * It is derived from the SAME schema object `deriveSchemaHash` fingerprints, so
- * the census and the hash on the row above it describe one shape — a
- * hand-maintained field list beside a schema hash is two descriptions that
- * eventually disagree.
- */
+// Derive field descriptions and fingerprints from the same schema to prevent drift.
 export function contractSchemaLeaves(schema: z.core.$ZodType): readonly ContractSchemaLeaf[] {
   const leaves = relativeLeaves(schema, ALWAYS, []);
   const unnamed = leaves.find((leaf) => leaf.path.length === 0);
@@ -389,11 +336,7 @@ export function contractSchemaLeaves(schema: z.core.$ZodType): readonly Contract
     );
   }
   const merged = [...indexLeaves(leaves).values()];
-  // A field that is `z.null()` in one union arm and an OBJECT in another lands
-  // twice: once as its own path, once as its children. The bare `null` row says
-  // "this may hold no record", which is precisely what its children already say
-  // by being `sometimes` — and listing a container beside its own fields would
-  // make the count wrong. So the container wins and the null row is dropped.
+// Nullable containers already weaken child presence; omit their duplicate null leaf.
   const containers = new Set(merged.flatMap(({ path }) => {
     const segments = path.split(".");
     return segments.slice(0, -1).map((_part, index) => segments.slice(0, index + 1).join("."));

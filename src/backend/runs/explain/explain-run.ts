@@ -1,26 +1,6 @@
 import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
 import { PublicTransactionKeyDigestSchema, publicTransactionKeyDigest, hasProtectedTransactionInput } from "../../../models/write-safety/protected-input.js";
-/**
- * `explain run <traceId|runId> [--json] [--bundle <dir>]` — ref operator-trust §2.5's
- * canonical debug entry point (D143).
- *
- * The section list is the doc's, in the doc's order: current/terminal state,
- * node timeline, checkpoint reuse, subject bindings, failure fingerprint, last
- * successful action, open gate/dependency, command history, notification
- * state, write intent/proof, and the concrete next safe action.
- *
- * Two rules shape what it prints.
- *
- * 1. **It reads authority, and it says so when authority has nothing.** A
- *    section whose backing service has not landed prints a named absence
- *    ("the notification inbox lands with the 2g inbox slice") rather than an
- *    empty heading an operator would read as "nothing happened". The two are
- *    completely different facts and this command exists to keep them apart.
- * 2. **The evidence receipt IS the explanation of a settled run.** For a
- *    terminal run the command derives the same receipt the dashboard serves
- *    and reads the sections off it, so a terminal explanation and a terminal
- *    receipt can never disagree — they are one derivation.
- */
+
 import { z } from "zod";
 import { TimelineCategoryKeySchema } from "../../../models/workflow/presentation.js";
 import { idempotencyKeyDigestReference } from "../../../rules/redaction/redaction.js";
@@ -55,19 +35,11 @@ export const ExplainRunViewSchema = z.strictObject({
   outcome: present(z.string().min(1)),
   dryRun: z.boolean(),
   resolvedInstance: z.record(z.string(), z.string()),
-  /**
-   * D307 — the steps the operator omitted at start, by KEY. The typed facts
-   * that replaced those steps' reads are the run's own input and never appear
-   * here: what an operator explaining a run needs is which steps nobody read.
-   */
+
   omittedSteps: z.array(TimelineCategoryKeySchema),
   timeline: z.array(z.strictObject({
     nodeId: z.string().min(1),
-    /**
-     * `operator-asserted` is its own disposition (D307): the node stored a
-     * checkpoint, so it is not `not-run`, and nothing observed it, so calling
-     * it `observed-this-attempt` would be the exact lie this arm prevents.
-     */
+
     disposition: z.enum([
       "observed-this-attempt",
       "replayed-from-checkpoint",
@@ -250,9 +222,7 @@ export function buildExplainRunView(evidence: ExplainRunEvidence): ExplainRunVie
     omittedSteps: [...new Set((envelope.stepOmissions ?? []).map((entry) => String(entry.step)))].sort(),
     timeline,
     reuse: (receipt?.reuse ?? []).map((entry) => ({
-      // The reuse row's source ref names the node's verification entry; the
-      // obligation is `node.<id>`, so the node id is recoverable without a
-      // second lookup.
+
       nodeId: receipt?.verification
         .find((row) => `observation:${row.id}` === entry.source)
         ?.obligation.replace(/^node\./, "") ?? "unknown",

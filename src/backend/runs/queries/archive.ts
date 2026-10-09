@@ -12,27 +12,7 @@ import { listCanonicalRuns } from "./canonical-runs.js";
 import { deriveRunStatus } from "../lifecycle/run-status.js";
 import { archivedRunReferenceFingerprint, authenticArchivedRunContent } from "../../../models/archive/model.js";
 import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
-/**
- * The Archive read model and the version-bump state (D179; ref dashboard-surfaces §10.2, doc
- * ref frontend-backend-integration §5 "Archive + version bump", §3.6 `GET /api/v1/archive`).
- *
- * **Two halves with opposite rules, in one file so the difference is visible.**
- *
- * `buildArchivedRunDetail` reads ONE archived run and resolves NOTHING. No
- * descriptor or projection. Canonical read admits archive membership; the
- * stored record already holds the row, the detail, the receipt, the failure
- * and the evidence pointers, which is what "self-contained" means. Ref frontend-backend-integration §8
- * guard #11 checks it the only way that proves anything: by reading a record
- * back with the workflow registry emptied.
- *
- * `buildArchiveIndex` is the opposite by necessity — the version STATE a bump
- * would act on is a fact about the registry NOW, so it re-derives current
- * identities, candidates and blockers per request rather than reading them out
- * of a plan. A plan goes stale the moment a run is enqueued, and a surface
- * that showed the plan's copy would invite an operator to apply a sweep whose
- * blocker list they had already been shown as empty.
- *
- */
+
 import { z } from "zod";
 import {
   ArchiveIndexWireSchema,
@@ -81,18 +61,7 @@ import {
   verifyArtifactBytes,
 } from "./artifact-bytes.js";
 
-/**
- * The archived run's frozen short code, for the index row and the detail
- * (D242). ONE implementation, because the two must never disagree about what
- * a record holds.
- *
- * Two absences reach here and they are DIFFERENT facts, so each keeps its own
- * sentence: the record predates generation 3 and holds no code at all, or the
- * sweep ran when the workflow was already unregistered and the record says so
- * itself. Neither is filled in — deriving one from the trace id's prefix would
- * look right and be wrong for a run planned under a code the workflow has
- * since changed, which is the only case a frozen field is for.
- */
+// Use the frozen short code; current codes cannot reconstruct an archived identity.
 function archivedWorkflowCode(
   record: Readonly<{
     archiveSchemaGeneration: number;
@@ -102,7 +71,7 @@ function archivedWorkflowCode(
   return record.workflowCode ?? {
     state: "absent",
     reason: `this record was archived at schema generation ${String(record.archiveSchemaGeneration)}, `
-      + "which predates D242's frozen workflow short code; no code was recorded for this run",
+      + "which has no frozen workflow short code; no code was recorded for this run",
   };
 }
 
@@ -110,7 +79,7 @@ function archivedQueueRow(
   row: Readonly<Record<string, unknown>> & { readonly session?: unknown },
 ): QueueSurfaceWire {
   return QueueSurfaceWireSchema.parse(row.session === undefined
-    ? { ...row, session: { state: "absent", reason: "no session recorded (archived before D269)" } }
+    ? { ...row, session: { state: "absent", reason: "no session recorded in the archived row" } }
     : row);
 }
 
@@ -193,35 +162,22 @@ export interface ArchiveQueryDeps {
   readonly reader: Pick<RunRecordService, "read" | "list">;
   readonly clock: Clock;
   readonly appVersion: string;
-  /**
-   * Read-only authority access. The Archive never mutates; a bump is a command
-   * and goes through the one command path.
-   */
+
   readonly authority: {
     withAuthorityTransaction<Result>(work: (repositories: AuthorityRepositories) => Result): Result;
   };
-  /**
-   * The registry, used ONLY for the version state — never on the archived
-   * detail path. `list` is what an application-scope bump needs: charter §25's
-   * "a dashboard update bumps the effective version of EVERY workflow".
-   */
+
   readonly descriptors: {
     list(): readonly Readonly<{
       id: string;
       label: string;
-      /** the SHORT CODE the version registry prints beside the label (D242) */
+
       code: string;
       version: number;
       contractFingerprint: string;
     }>[];
   };
-  /**
-   * Resolves an archived run's ledger pointers against the LIVE ledger. It is
-   * a required dependency rather than an optional one on purpose: a reader
-   * composed without it would serve an empty Write-ledger card on a run that
-   * filed real HR transactions, which is the most dangerous empty state this
-   * surface has.
-   */
+  // Archive ledger pointers resolve against live ledger authority; missing composition cannot become an empty ledger.
 
 }
 
@@ -284,11 +240,7 @@ function frozenArchivedCaptureRef(
         || candidate.byteLength !== tile.byteLength || candidate.mediaType !== tile.mediaType)) {
         corrupt("conflicting frozen capture metadata");
       }
-      /*
-       * This is intentionally constructed only from the archived tile. Reading
-       * the diagnostic attachment index (or a current run) could make an old
-       * capture appear to be a newer object with the same id.
-       */
+      // Bind bytes to the frozen tile, never a current diagnostic index entry with the same ID.
       return Object.freeze(ArtifactRefSchema.parse({
         id: tile.artifactId,
         sha256: tile.digest,
@@ -302,10 +254,7 @@ function frozenArchivedCaptureRef(
   }
 }
 
-/**
- * Prepares one single-use verified-byte lease only after binding its ref to the
- * exact archived tile. The HTTP response owns disposal after this function returns.
- */
+// Return a single-use verified-byte lease; the HTTP response owns disposal.
 export async function prepareArchivedCaptureLease(
   deps: Pick<ArchiveQueryDeps, "authority" | "reader"> & {
     readonly artifactReader: ServerVerifiedArtifactReader;
@@ -335,11 +284,7 @@ export async function prepareArchivedCaptureLease(
   }
 }
 
-/**
- * The metadata is already frozen in the archive detail. This is a separate
- * read-time resource state so neither a deadline nor a policy can overwrite
- * what the archived capture was.
- */
+// Resource state is a read-time fact; it cannot overwrite frozen capture metadata.
 export async function buildArchivedCaptureResource(
   deps: Pick<ArchiveQueryDeps, "authority" | "reader"> & {
     readonly artifactReader: ServerVerifiedArtifactReader;
@@ -450,10 +395,7 @@ export function buildArchiveIndex(deps: ArchiveQueryDeps): ArchiveIndexWire {
         // Copied off the FROZEN row, never re-derived: the index and the
         // detail must name the same instances, and the detail reads `row`.
         resolvedInstances: record.row.resolvedInstances,
-        // The same copy, for the same reason. Both facts are already in this
-        // record — the detail has drawn them since D179 — so serving them on
-        // the index adds no authority read and cannot diverge from the run's
-        // own page.
+
         dryRun: record.row.dryRun,
         warnings: archivedPublicRow(record).warnings,
         archiveFingerprint: archivedRunReferenceFingerprint(record),
@@ -475,14 +417,7 @@ export function buildArchiveIndex(deps: ArchiveQueryDeps): ArchiveIndexWire {
               + "asked what moved or why, and neither is reconstructible",
           }
           : { state: "present", value: application.changeRecord },
-        /*
-         * Derived from the ARCHIVED RECORDS' own frozen identities rather than
-         * from the plan: the plan's `observedIdentities` are the versions the
-         * bump moves TO, and the question "from what" is answered by what the
-         * swept runs were actually carrying. A sweep that archived nothing has
-         * no from-version, and an empty list is that fact — there is no run to
-         * read one off.
-         */
+
         fromVersions: [...new Set(
           archived
             .filter(({ record }) => record.applicationId === application.applicationId)
@@ -523,12 +458,7 @@ export function buildArchivedRunDetail(deps: ArchiveQueryDeps, runIdInput: strin
     if (record === undefined) {
       throw new TargetNotFoundError(`archived run ${runIdInput} does not exist`);
     }
-    /**
-     * The ONLY registry read on this path, and it decides an AFFORDANCE, not
-     * content: a relaunch starts a fresh run on the CURRENT version, so it is
-     * unavailable when there is no current version to start. Everything the
-     * page renders comes out of `record`.
-     */
+
     const current = registered.find((entry) => entry.id === record.workflowId);
     const projectedRow = archivedPublicRow(record);
     const diagnosticWithholding = archivedDiagnosticWithholding(record);
@@ -557,18 +487,12 @@ export function buildArchivedRunDetail(deps: ArchiveQueryDeps, runIdInput: strin
       failure: diagnosticWithholding === null ? record.failure
         : { state: "absent", reason: diagnosticWithholding },
       evidence: record.evidence,
-      /*
-       * The frozen sections, verbatim. A record written before generation 2
-       * carries none, and the absence NAMES its generation rather than serving
-       * empty panels — an archived run whose logs are simply blank and one
-       * whose logs were never frozen are different facts, and the second one is
-       * the only one an operator can do anything about.
-       */
+      // Generation 1 has no frozen sections; report absence instead of empty panels.
       sections: record.sections === undefined
         ? {
           state: "absent",
           reason: `this record was archived at schema generation ${String(record.archiveSchemaGeneration)}, `
-            + "which predates D223's frozen section payloads; its log lines, data points, member rows, "
+            + "which has no frozen section payloads; its log lines, data points, member rows, "
             + "capture descriptions and attempt history were never captured and are not reconstructible",
         }
         : diagnosticWithholding !== null
@@ -577,23 +501,9 @@ export function buildArchivedRunDetail(deps: ArchiveQueryDeps, runIdInput: strin
           state: "present",
           value: archivedSectionsForOperator(record.sections, record.archiveSchemaGeneration),
         },
-      /*
-       * The read-through. The archived record keeps naming the lines and
-       * copies none of them, so this is the one place the two meet — and it
-       * happens on READ, per request, against whatever the live ledger holds
-       * now. It is not a descriptor read and it resolves no old-version code:
-       * the ledger is a flat append-only file whose entry schema is the same
-       * one every reader in this tree uses.
-       */
+
       ledger: repositories.archivedRuns.transactions(record.runId).lines,
-      /*
-       * Computed from the record's OWN fields, the D86 policy constants and
-       * `now` — no store read, no descriptor. Reading the artifact bytes back
-       * to confirm a retention state would break the property this whole path
-       * exists to have (ref dashboard-surfaces §10.2: an archived run resolves nothing), so
-       * the pointer count states its derivation rather than claiming an
-       * observation.
-       */
+      // Derive retention from frozen metadata and policy; reading bytes would mutate the meaning of archive state.
       retention: archiveRetention({
         now: deps.clock.now().toISOString(),
         endedAt: record.row.endedAt,
@@ -766,9 +676,7 @@ export async function savedFileResource(deps: ArchiveQueryDeps, runId: string, d
   }
 }
 
-/** Recover the dashboard's exact envelope only when the durable claim authenticates it.
- * Other command producers retain their own original request; never invent its optional fields.
- */
+// Recover only the dashboard envelope authenticated by its durable claim; never invent optional fields.
 export function versionApplyResumeRequest(row: VersionChange) {
   if (row.state !== "applying") return undefined;
   const request = authenticatedVersionApplyRequest(row);

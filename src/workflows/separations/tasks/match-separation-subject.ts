@@ -5,10 +5,7 @@ import {
 } from "../../../models/workflows/separations/match-separation-subject.js";
 import { resolveSeparationSubject } from "../../../rules/separations/separation-subject.js";
 
-/**
- * S18/S19's fork, executed. The refusals are the two states legacy resolves by
- * delegating to person-lookup and then proceeding on whatever comes back.
- */
+// Without a document EID, refuse zero or multiple name-search matches.
 export const matchSeparationSubjectTask = defineTask(SeparationsMatchSeparationSubject, {
   sessions: [],
   async run({ input, ctx }) {

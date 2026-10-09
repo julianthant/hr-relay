@@ -34,8 +34,7 @@ describe("formatTimecardDate", () => {
   });
 
   it("resolves a December row read from a window that straddles the new year", () => {
-    // The legacy Dec→Jan bug: inferring the year from "now" stamped 12/30 with
-    // January's year. The window, not the wall clock, decides.
+    // Derive December and January years from the requested window, not the wall clock.
     assert.equal(formatTimecardDate(12, 30, range(2025, 12, 16, 2026, 1, 15)), "12/30/2025");
     assert.equal(formatTimecardDate(1, 5, range(2025, 12, 16, 2026, 1, 15)), "01/05/2026");
   });
@@ -202,8 +201,7 @@ describe("timecardCheckWindows", () => {
   });
 
   it("lands every bound on local midnight across a DST transition", () => {
-    // 2026-03-20 minus 60 calendar days crosses US spring-forward (2026-03-08).
-    // Millisecond arithmetic would land 23:00 on the prior day.
+    // 2026-03-20 minus sixty calendar days crosses spring-forward; milliseconds would land on the preceding day.
     const windows = timecardCheckWindows(manualClock(localDate(2026, 3, 20)));
     for (const bound of [
       windows.current.start, windows.current.end, windows.previous.start, windows.previous.end,

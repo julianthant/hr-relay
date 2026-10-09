@@ -1,23 +1,4 @@
-/**
- * Ref data-intake-and-edit-data §7 vectors #1, #3, #6 and #13 — the mapping boundary.
- *
- * The suggestion scorer is the single most dangerous piece of intake, because
- * its output looks exactly like the answer. Legacy's `COLUMN_PATTERNS` decided
- * what a column meant and nobody was asked; the redesign keeps the knowledge
- * and moves the decision. That separation is only real if it is mechanical, so:
- *
- * - `suggestions.ts` may not reach a binding. It cannot name `confirmedAt`, and
- *   `ColumnBindingSchema` — whose `confirmedAt` is required — may be parsed in
- *   exactly one place.
- * - A binding resolves by header + occurrence, never by stored index.
- * - A projection target must reuse its canonical field's schema OBJECT.
- * - The whole intake domain stays bundle-safe, because the mapping grid is a
- *   browser surface and ref frontend-backend-integration §8.13's lesson was that a Node built-in six hops
- *   away kills the app at module evaluation.
- *
- * Each static arm is executed against a violating fixture through the same
- * scanning function, so a scan that stopped scanning would fail here.
- */
+
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import assert from "node:assert/strict";
@@ -173,8 +154,7 @@ describe("ref data-intake-and-edit-data §7 intake mapping boundary", () => {
       assert.equal(reuse.outcome, "offered");
       if (reuse.outcome !== "offered") return;
       assert.equal(reuse.resolutions.every((entry) => entry.state === "unbound"), true);
-      // `effectiveDate` was never bound by this fixture; `emplId` was bound and
-      // lost its column, and the stored index did not rescue it.
+
       assert.deepEqual([...reuse.unboundRequired].sort(), ["effectiveDate", "emplId"]);
       assert.equal(reuse.readyToRun, false);
     });

@@ -1,13 +1,4 @@
-/**
- * Bundle-safe operation/action declaration vocabulary.
- *
- * An operation describes the stable UI semantics a task owns. A workflow only
- * instantiates that operation at a concrete task occurrence and binds its
- * values; it never retypes the driver's action tree or creates execution
- * edges. `compileWorkflowOperationDisplay` projects the existing workflow
- * graph's dependencies unchanged, so presentation order cannot become a
- * scheduler.
- */
+/** Bundle-safe operation/action declaration vocabulary: a workflow instantiates a task's operation and binds its values, never retypes the driver's action tree. */
 import type { AnyReadTaskContract } from "../task/task-contract.js";
 import { z } from "zod";
 import { canonicalJsonStringify, JsonValueSchema } from "../../rules/validation/canonical-json.js";
@@ -172,10 +163,7 @@ export interface TaskOperationAction {
   readonly children?: readonly TaskOperationAction[];
 }
 
-/**
- * A reusable task-level operation. It is attached to the exact sealed task
- * contract and references the same semantic UI identities that a driver uses.
- */
+/** A reusable task-level operation, attached to the exact sealed task contract and referencing the same semantic UI identities a driver uses. */
 export interface TaskOperationDeclaration {
   readonly version: typeof OPERATION_DISPLAY_FORMAT_VERSION;
   readonly id: string;
@@ -728,11 +716,7 @@ function freezePresentation(nodes: readonly WorkflowOperationPresentationNode[])
   })));
 }
 
-/**
- * Compile the optional complete format. The caller supplies graph projections
- * from the one workflow compiler; this function deliberately has no builder
- * and cannot synthesize runtime scheduling authority.
- */
+/** Compile the optional complete format; this function has no builder and cannot synthesize runtime scheduling authority. */
 export function compileWorkflowOperationDisplay(input: WorkflowOperationDisplayCompileInput): WorkflowOperationDisplay {
   WorkflowIdSchema.parse(input.workflowId);
   if (input.declaration === undefined) return Object.freeze({ capability: "legacy", version: 0 });

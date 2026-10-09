@@ -1,16 +1,4 @@
-/**
- * Deterministic receipt identities (D140).
- *
- * A receipt is DERIVED from authority, not minted beside it, so every id it
- * carries has to be a pure function of what it identifies. A fresh UUID per
- * derivation would make the receipt a different record each time it was built
- * — and the whole point of deriving it is that re-deriving the same terminal
- * run yields the same bytes, so the durable row can refuse a divergent rebuild
- * instead of quietly overwriting one.
- *
- * The fold is `deriveItemId`'s, with `sha256Hex` rather than `node:crypto` so
- * nothing here blocks a browser-reachable import later.
- */
+/** Deterministic receipt identities: every id a receipt carries is a pure function of what it identifies, so re-deriving the same terminal run yields the same bytes. */
 import {
   EvidenceEntryIdSchema,
   EvidenceReceiptIdSchema,
@@ -38,11 +26,7 @@ export function deriveEvidenceReceiptId(runId: string, attempt: number): Evidenc
   );
 }
 
-/**
- * One evidence row's id. `kind` and `key` together must be unique inside a
- * receipt; the schema's own uniqueness refinement is the backstop, and a
- * collision there means this seed was not specific enough.
- */
+/** One evidence row's id; `kind` and `key` together must be unique inside a receipt, and the schema's uniqueness refinement is the backstop. */
 export function deriveEvidenceEntryId(
   receiptId: string,
   kind: "input" | "observation" | "decision" | "action" | "verification" | "output" | "reuse" | "warning",
@@ -53,13 +37,7 @@ export function deriveEvidenceEntryId(
   );
 }
 
-/**
- * A reference to another evidence row. `EvidenceRef`'s grammar admits
- * `artifact:`, `observation:`, and `receipt:` — an evidence ROW is the
- * observation record ref operator-trust §2.3 describes ("the semantic observation that a
- * row refers to remains a dotted ObservationId in the UI vocabulary"), so a
- * row-to-row link is spelled `observation:<entry uuid>`.
- */
+/** A reference to another evidence row; an evidence ROW is the observation record, so a row-to-row link is spelled `observation:<entry uuid>`. */
 export function evidenceEntryRef(entryId: string): EvidenceRef {
   return EvidenceRefSchema.parse(`observation:${entryId}`);
 }

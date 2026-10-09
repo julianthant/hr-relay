@@ -1,8 +1,4 @@
-/**
- * Request authorization for a terminal run settlement. The run completion preserves the
- * exact pre-terminal CAS and claim so a later replay cannot substitute a stale
- * or unrelated authorization after the run has dropped its live claim fields.
- */
+/** Request authorization for a terminal run settlement, preserving the exact pre-terminal CAS and claim so a later replay cannot substitute a stale one. */
 import { z } from "zod";
 import {
   FailureIdSchema,

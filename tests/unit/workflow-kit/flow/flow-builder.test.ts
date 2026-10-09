@@ -439,7 +439,7 @@ describe("workflow flow builder", () => {
     assert.deepEqual(node.branches.map((branch) => branch.id), ["org", "contact"]);
     assert.equal(Object.isFrozen(node.branches), true);
   });
-  describe("workflow steps (D265 §1.2.2 rule 2)", () => {
+  describe("workflow steps", () => {
     it("refuses a step whose folder key is not a kebab-case slug", () => {
       assert.throws(
         () => defineWorkflowStep({ key: "Not Kebab", label: "Invalid folder" }),

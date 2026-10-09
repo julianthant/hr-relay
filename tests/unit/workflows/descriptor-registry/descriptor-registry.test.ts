@@ -3,12 +3,7 @@ import { DESCRIPTORS, SERVER_REGISTRY, WORKFLOW_MODULES, workflowModuleOf } from
 import { HISTORICAL_STEP_PROOF_DESCRIPTORS } from "../../../../src/backend/app/registries/step-proof-modules.js";
 import { WORKFLOW_DESCRIPTORS } from "../../../../src/workflows/descriptor-registry.js";
 
-/**
- * The bundle-safe descriptor tuple is a VIEW of the composition root, not a
- * second registry: same descriptors, same identity, same order. A workflow
- * added to `WORKFLOW_MODULES` without its descriptor-registry entry (or vice
- * versa) fails here rather than drifting into a dashboard that cannot see it.
- */
+
 describe("workflow descriptor registry", () => {
   it("registers only operator workflows", () => {
     expect(WORKFLOW_DESCRIPTORS.map(({ id }) => String(id))).toEqual([

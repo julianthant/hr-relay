@@ -6,17 +6,7 @@ import { promisify } from "node:util";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 
-/**
- * Doc 01 §"Item 1e begins with a new real-scale type-inference proof":
- * the real suite records `tsc --extendedDiagnostics` and FAILS if the
- * representative graph file exceeds 5 seconds or 1 GiB on the same baseline
- * machine. A regression outside that budget stops builder work for type-shape
- * simplification rather than being normalized as editor lag.
- *
- * The budget is measured over a project containing only the representative file
- * and its transitive imports, so an unrelated growth elsewhere in `src/` cannot
- * silently consume the allowance.
- */
+
 const run = promisify(execFile);
 const REPO_ROOT = resolve(import.meta.dirname, "../../../..");
 const REPRESENTATIVE_FILE = "tests/types/flow-graph.typecheck.ts";
@@ -29,10 +19,7 @@ interface ExtendedDiagnostics {
   readonly memoryUsedBytes: number;
 }
 
-/**
- * `--extendedDiagnostics` prints `Name: value` lines such as
- * `Check time:     0.71s` and `Memory used:  212345K`.
- */
+
 function parseExtendedDiagnostics(stdout: string): ExtendedDiagnostics {
   const readSeconds = (label: string): number => {
     const match = new RegExp(`^${label}:\\s+([0-9.]+)s$`, "mu").exec(stdout);
@@ -59,9 +46,7 @@ async function measureRepresentativeGraph(): Promise<ExtendedDiagnostics> {
       compilerOptions: {
         rootDir: REPO_ROOT,
         incremental: false,
-        // `typeRoots` resolves relative to the config file, which lives outside
-        // the repo; without this the `node` type entry point cannot be found and
-        // tsc bails before it ever reports a check time.
+        // typeRoots is relative to the external config file; point it back to the repository type packages.
         typeRoots: [resolve(REPO_ROOT, "node_modules/@types")],
       },
       include: [resolve(REPO_ROOT, REPRESENTATIVE_FILE)],

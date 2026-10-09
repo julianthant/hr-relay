@@ -134,7 +134,7 @@ function allCellText(
 }
 
 describe("operator XLSX workbook", () => {
-  it("refuses search rows outside the selected DCR3 authority order", async () => {
+  it("refuses search rows outside the selected authority order", async () => {
     await assert.rejects(
       composeOperatorXlsxWorkbook({
         ...SEARCH_DOCUMENT,

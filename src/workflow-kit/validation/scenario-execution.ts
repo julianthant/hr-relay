@@ -5,26 +5,11 @@ import { deepFreeze } from "../../rules/validation/immutability.js";
 import { defineWorkflowRole } from "./module-role.js";
 import { workflowStructuralScenarioPath } from "./source-layout.js";
 
-/**
- * Declared scenario IDs and expected paths are registry metadata, not proof of
- * execution. The scenario corpus is currently absent; an unresolved source
- * stays unresolved until a collected test supplies evidence.
- */
+/** Declared scenario IDs and paths are registry metadata, not proof of execution; an unresolved source stays unresolved until a collected test supplies evidence. */
 export const GRAPH_SCENARIO_FILE_PATTERN =
   /^tests\/scenario\/(?:[a-z0-9-]+\.scenario\.test\.ts|workflows\/(?:[a-z0-9-]+\/structural|[a-z0-9-]+\/steps\/[a-z0-9-]+\/structural)\.scenario\.test\.ts)$/u;
 export const INTEGRATION_WALK_FILE_PATTERN = /^tests\/scenario\/[a-z0-9-]+\.walk\.test\.ts$/u;
-/**
- * R10 §10.9's T2 tier: `tests/scenario/dashboard/<feature>/<name>.scenario.test.ts`
- * — a DASHBOARD feature over the real projection and the real command service,
- * no browser and no graph.
- *
- * It is a third kind rather than a third arm of the graph pattern because it
- * carries the opposite obligation: a graph scenario MUST claim a scenario id
- * (a file that claims none is walking nothing), and a dashboard scenario must
- * claim NONE — a graph path is claimed by the file that walks the graph, which
- * is the same rule the integration walk already carries. Folding the two into
- * one pattern would make each obligation unenforceable against the other.
- */
+/** A DASHBOARD scenario over the real projection/command service (no browser, no graph). A third KIND, not a graph arm: it claims NO scenario id — the opposite obligation to a graph scenario. */
 export const DASHBOARD_SCENARIO_FILE_PATTERN =
   /^tests\/scenario\/dashboard\/[a-z0-9-]+\/[a-z0-9-]+\.scenario\.test\.ts$/u;
 
@@ -34,45 +19,22 @@ export const ExecutableScenarioSpecSchema = z.strictObject({
 });
 export type ExecutableScenarioSpec = z.infer<typeof ExecutableScenarioSpecSchema>;
 
-/**
- * Production scenario ids are independently registered here. Contracts and
- * descriptors may reference only these ids; the architecture lane separately
- * proves each row is an actual `it("<scenario-id> …")` in the named file.
- */
-/** Every registered workflow owns exactly one structural T1a source file. */
+/** Production scenario ids are registered here; contracts and descriptors may reference only these, and a lane separately proves each row is a real `it(...)` in its file. */
+/** Every registered workflow owns exactly one structural scenario source file. */
 const SEPARATIONS_KRONOS_TIMECARD_FILE = workflowStructuralScenarioPath("separations-kronos-timecard",
   defineWorkflowRole({ kind: "chunk-harness", of: "separations", step: "kronos-timecard" }));
 const SEPARATIONS_KUALI_READ_FILE = workflowStructuralScenarioPath("separations-kuali-read",
   defineWorkflowRole({ kind: "chunk-harness", of: "separations", step: "kuali-extraction" }));
 const SEPARATIONS_IDENTITY_CHECK_FILE = workflowStructuralScenarioPath("separations-identity-check",
   defineWorkflowRole({ kind: "chunk-harness", of: "separations", step: "identity-check" }));
-/** Chunk 4's UCPath termination write — the two transactions share one file. */
+/** The UCPath termination write — the two transactions share one file. */
 const SEPARATIONS_UCPATH_TERMINATION_FILE = workflowStructuralScenarioPath("separations-ucpath-termination",
   defineWorkflowRole({ kind: "chunk-harness", of: "separations", step: "ucpath-transaction" }));
-/**
- * Chunk 5's Kuali finalization — one file, three kinds of arm. 5a's contract
- * walks run the real task implementations against the deterministic driver
- * (the only way to observe "it refused" rather than "it returned something
- * plausible"); 5b's sequencer walks drive the real write sequencer over a real
- * authority database; 5b's pure graph walk covers the gate.
- */
 const SEPARATIONS_KUALI_FINALIZATION_FILE = workflowStructuralScenarioPath("separations-kuali-finalization",
   defineWorkflowRole({ kind: "chunk-harness", of: "separations", step: "kuali-finalization" }));
-/**
- * Chunk 6's COMPOSITION — the largest graph in the program, and one file for
- * the same three kinds of arm chunk 5 established: pure fold walks for the five
- * composition-only refusals, sequencer walks over a real authority database for
- * the three transaction nodes' twelve paths, and a pure graph walk for the gate
- * and the terminal derive.
- */
 const SEPARATIONS_FILE = workflowStructuralScenarioPath("separations", defineWorkflowRole({ kind: "composition" }));
 
-/**
- * Order 0's workflow — ONE structural scenario beside its `live-read` manifest
- * (D318). Its pure graph walks and its runtime task walks merged into that one
- * file on 2026-09-02, retiring the two root-level files that used to split
- * them; §10.3 admits exactly one collected structural scenario per workflow.
- */
+/** The person-lookup workflow — ONE structural scenario file, as §10.3 admits exactly one collected structural scenario per workflow. */
 const PERSON_LOOKUP_FILE = workflowStructuralScenarioPath("person-lookup", defineWorkflowRole({ kind: "standalone" }));
 
 export const DECLARED_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSchema.array().parse([
@@ -83,7 +45,7 @@ export const DECLARED_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSchem
   { scenarioId: "person-lookup/crm-failure-retry", file: PERSON_LOOKUP_FILE },
   { scenarioId: "person-lookup/crm-subject-mismatch", file: PERSON_LOOKUP_FILE },
   { scenarioId: "person-lookup/ucpath-drill-subject-mismatch", file: PERSON_LOOKUP_FILE },
-  // D314 — the two ordinary recovery choices, proved over the registered descriptor.
+  // The two ordinary recovery choices, proved over the registered descriptor.
   { scenarioId: "person-lookup/resume-from-checkpoints", file: PERSON_LOOKUP_FILE },
   { scenarioId: "person-lookup/restart-from-start", file: PERSON_LOOKUP_FILE },
   { scenarioId: "ocr/extract/complete", file: "tests/scenario/ocr-extraction.scenario.test.ts" },
@@ -297,17 +259,9 @@ export function auditExecutableScenarioParity(
   return violations;
 }
 
-/* ── the corpus's own layout (D185) ──────────────────────────────────────── */
+/* ── the corpus's own layout ──────────────────────────────────────── */
 
-/**
- * One file in `tests/scenario/`, as the guard's directory read observes it.
- *
- * The titles are passed in rather than read here for the reason every audit in
- * this module is pure: a mechanical arm that reaches the filesystem itself can
- * only ever be proved against the tree it happens to be standing in, and this
- * one has to be proved against DELIBERATELY VIOLATING corpora it will never
- * find on disk.
- */
+/** One file in `tests/scenario/`, as the guard's directory read observes it. Titles are passed in, not read here, so this pure audit is proved against violating corpora, not a live tree. */
 export const ScenarioCorpusFileSchema = z.strictObject({
   /** Repo-relative, forward-slashed. */
   file: z.string().min(1),
@@ -316,33 +270,13 @@ export const ScenarioCorpusFileSchema = z.strictObject({
 });
 export type ScenarioCorpusFile = z.infer<typeof ScenarioCorpusFileSchema>;
 
-/**
- * The scenario id an `it` title CLAIMS, or `undefined` when the title is prose.
- *
- * The corpus's convention is `it("<scenario-id> — <what it walks>")`, and the
- * separator is load-bearing: the head either parses as a `ScenarioId` — a
- * slash-delimited kebab path — or it does not, and English prose never does.
- * That is what makes "an unregistered id" and "a sentence" distinguishable
- * without a list of blessed exceptions. A TYPO stays a claim (it is still
- * slug-shaped), which is the whole point: it must fail, not be reclassified as
- * prose and waved through.
- */
+// Slug-shaped title typos still claim scenarios and must fail validation.
 export function claimedScenarioId(title: string): string | undefined {
   const head = title.split(" — ")[0] ?? "";
   return ScenarioIdSchema.safeParse(head).success ? head : undefined;
 }
 
-/**
- * Both directions over the corpus DIRECTORY, which is the half
- * `auditExecutableScenarioParity` structurally cannot see: it audits the
- * registered set against production references, so a file registered nowhere
- * — or an `it` inside a registered file naming an id nobody registered — is
- * invisible to it in every direction.
- *
- * `graphClaimedIds` is the fixture side: `tests/scenario/coverage-claims.ts`
- * claims graph paths for descriptors that are test fixtures and therefore have
- * no production reference to be registered against.
- */
+/** Both directions over the corpus DIRECTORY — the half the registered-set audit cannot see. `graphClaimedIds` supplies graph claims for fixture descriptors with no production reference. */
 export function auditScenarioCorpusLayout(
   filesInput: readonly unknown[],
   graphClaimedIdsInput: readonly string[],

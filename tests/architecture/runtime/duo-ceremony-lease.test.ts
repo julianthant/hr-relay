@@ -1,33 +1,5 @@
-/**
- * Guard (ref execution-and-sessions §10.7, D267): no login path reaches the SSO
- * form or the Duo assertion without presenting a `DuoCeremonyLeaseToken`, the
- * token is minted and retired by the lease store alone, and
- * `defineVerifiedLoginRecipe` is the ONE acquirer.
- *
- * ## Why this guard exists
- *
- * Duo's WebAuthn signature counter is per CREDENTIAL; Duo Autopilot's copy is
- * per browser PROFILE; §1 partitions profiles per worker. Two ceremonies for
- * one credential inside the same second present the same floored counter and
- * Duo reads the non-advancing one as a cloned key, which BURNS the profile
- * (D243 recorded three further logins refused with counters more than a
- * thousand ahead; only a fresh directory recovered). The lease serializes the
- * ceremonies, and the token is what makes "under the lease" structural: the SSO
- * helpers refuse without one, so a recipe that bypassed the wrapper could not
- * reach SSO at all. The type system enforces the parameter; THIS guard pins the
- * shape so the next recipe cannot rebuild the defect from scratch:
- *
- * - `mintDuoCeremonyLeaseToken` / `retireDuoCeremonyLeaseToken` are named only
- *   by their module and the lease store;
- * - the brand is conjured through `as` / `satisfies` nowhere outside its module;
- * - `withCeremony` — the acquisition — is called only by the wrapper;
- * - every store recipe is the wrapper's `{navigate, ceremony}` shape (no
- *   `flow`), and every SSO-helper call inside a store presents `token`.
- *
- * Each arm runs against the checked-in violating fixture
- * (`fixtures/duo-lease-recipe-violation.ts`, the exact shipped pre-lease
- * shape), so a walker that resolved nothing cannot report the tree clean.
- */
+// Duo counters are credential-wide but browser storage is profile-local; serialize ceremonies to avoid key-clone
+// refusals.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -94,10 +66,7 @@ export function auditAcquirers(path: string, content: string): readonly string[]
   return violations;
 }
 
-/**
- * Arm 4 — a store recipe is the wrapper's `{navigate, ceremony}` shape, and
- * every SSO-helper call in the store presents the token it was handed.
- */
+
 export function auditRecipeShape(path: string, content: string): readonly string[] {
   const violations: string[] = [];
   visit(parse(path, content), (node) => {

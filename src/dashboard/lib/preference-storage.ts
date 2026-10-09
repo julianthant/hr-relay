@@ -1,19 +1,5 @@
-/**
- * Reading and writing an operator's UI preference, WITHOUT losing the
- * difference between "nothing is stored" and "storage refused".
- *
- * Both outcomes usually land on the same rendered default, and that is fine —
- * a panel position is a preference, not a fact about a run. What is NOT fine is
- * a `catch` that returns the default directly: it makes a SecurityError, a
- * quota failure and a disabled store indistinguishable from a first visit, so
- * a browser where persistence is silently broken looks exactly like one where
- * the operator never chose. This module keeps the three cases apart in the
- * type, hands the caller a named reason when storage failed, and lets the
- * caller — not the accident — decide what a missing preference means.
- *
- * The default itself must be a named constant the caller owns, so "the default"
- * is a documented choice rather than a literal invented inside a catch block.
- */
+/** Reading and writing an operator's UI preference, WITHOUT losing the
+ * difference between "nothing is stored" and "storage refused". */
 
 export type PreferenceRead =
   | { readonly state: "stored"; readonly value: string }
@@ -53,12 +39,7 @@ export function writePreference(key: string, value: string): PreferenceWrite {
   return { state: "written" };
 }
 
-/**
- * The common shape: a stored value that must be one of a closed set, with the
- * caller's own named default for every other case. A stored value OUTSIDE the
- * set is treated as absent — it is corrupt, not authoritative — and the caller
- * still gets its documented default rather than an invalid mode.
- */
+/** Invalid local preferences use the caller’s documented default; corrupt storage is not authority. */
 export function readEnumPreference<Value extends string>(
   key: string,
   allowed: readonly Value[],

@@ -21,8 +21,7 @@ export const PERSON_LOOKUP_LIVE_READ: DryRunScenarioManifest = parseDryRunScenar
       why: "the ordinary Search mode: one current person resolved by EID, cross-verified against the CRM, folded to a verdict; the CRM dates arm stays off by the start box's declared constant",
       nodesReached: [...READ_NODES],
       nodesExcluded: ["crm-dates"],
-      // Prior selection and replacement acquisition failures remain in authority.
-      // The same replacement identity must prove its next unspent attempt.
+
       checkpoints: READ_NODES.map((node) => ({ node, attempt: 3, keyedBy: [...CHECKPOINT_KEY] })),
       gateResults: [],
       durableDeltas: { writeIntents: 0, writeAttempts: 0, durableOutbox: 0 },

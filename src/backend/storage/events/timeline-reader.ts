@@ -20,10 +20,7 @@ export function readTimelineRecords(repository: TimelineRepository, after = 0, r
   });
 }
 
-/**
- * The logs reader shares its location carrier with the unchanged notes stream.
- * A timeline address is an event identity, never a filename to open or tail.
- */
+
 export function timelineSpanLocation(record: TimelineEventRecord): EventStreamLine {
   if (record.payload.kind !== "span") throw new Error("timeline-span-location-kind");
   return { file: { stream: "spans", workflow: record.workflow, date: record.retentionDate,

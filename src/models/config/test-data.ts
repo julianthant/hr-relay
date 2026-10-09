@@ -3,30 +3,14 @@ import { EidSchema, IsoInstantSchema } from "../../rules/identity/ids.js";
 import { deepFreeze } from "../../rules/validation/immutability.js";
 import { KualiDocumentNumberSchema } from "../ui/kuali-document-identity.js";
 
-/**
- * D341 — test inputs are a separate owner from application configuration.
- *
- * - `config/test-data.json` (tracked) carries the public subject registry,
- *   named shared file references and synthetic sample values.
- * - `config/test-data.local.json` (ignored) carries the operator's private
- *   live-subject inputs (the former protected-Settings canaries) and private
- *   document paths. It is never a protected Setting, never a credential and
- *   never read by the settings authority.
- *
- * This module owns the strict shapes only. Loading, path resolution and the
- * once-per-start capture live in `src/backend/app/control/test-data.ts`.
- */
+/** Test inputs are a separate owner from application configuration: this module owns the strict shapes only, and the private file is never a protected Setting or a credential. */
 export const TEST_DATA_CONFIG_PATH = "config/test-data.json";
 export const TEST_DATA_LOCAL_CONFIG_PATH = "config/test-data.local.json";
 export const TEST_DATA_LOCAL_EXAMPLE_PATH = "config/test-data.local.example.json";
 /** A private file larger than this is a defect, not a bigger configuration. */
 export const TEST_DATA_LOCAL_MAXIMUM_BYTES = 64_000;
 
-/**
- * The closed set of private test inputs. Each value is judged by the SAME
- * schema the owning workflow's start box applies, so what a resolver reads is
- * exactly what an operator could have typed (D300/D318).
- */
+/** The closed set of private test inputs, each judged by the SAME schema the owning workflow's start box applies. */
 export const TestDataInputValueSchemas = Object.freeze({
   separationsKualiFinalizationCanaryDocumentNumber: KualiDocumentNumberSchema,
   personLookupCanaryEid: EidSchema,
@@ -55,12 +39,7 @@ export type TestDataFileKind = z.infer<typeof TestDataFileKindSchema>;
 /** A `.` segment, an empty segment or a trailing slash is a defect; parent (`..`) segments are only refused where noted. */
 const PATH_DOT_SEGMENT_DEFECT = /(?:^|\/)\.(?:\/|$)|\/\/|\/$/u;
 const PATH_PARENT_SEGMENT = /(?:^|\/)\.\.(?:\/|$)/u;
-/** A path declared in a config file: relative to that file, no traversal, no NUL, no backslash. */
-/**
- * A shared file path is relative to the declaring config file. Parent segments are
- * admitted so tracked fixtures can live outside `config/`; the loader still refuses
- * any target whose real path leaves the repository.
- */
+/** A shared file path is relative to the declaring config file, with no traversal, no NUL and no backslash; parent segments are admitted so tracked fixtures can live outside `config/`. */
 export const DeclaredRelativePathSchema = z.string().min(1).max(1024).refine(
   (path) => !path.startsWith("/") && !path.includes("\0") && !path.includes("\\") && !PATH_DOT_SEGMENT_DEFECT.test(path),
   { message: "declared path must be relative to its config file without . or empty segments" },
@@ -92,11 +71,7 @@ export const TestDataSamplesSchema = z.strictObject({
 });
 export type TestDataSamples = z.infer<typeof TestDataSamplesSchema>;
 
-/**
- * The tracked document. `subjects` is the public subject registry whose exact
- * shape belongs to `src/backend/app/control/test-target-registry.ts`; this layer only
- * insists it is present as an object, and the control reader parses it.
- */
+/** The tracked document; `subjects` shape belongs to the test-target registry, and this layer only insists it is present. */
 export const TestDataSharedConfigSchema = z.strictObject({
   schemaVersion: z.literal(1),
   subjects: z.looseObject({}),
@@ -131,12 +106,7 @@ export const TestDataLocalConfigSchema = z.strictObject({
 });
 export type TestDataLocalConfig = z.infer<typeof TestDataLocalConfigSchema>;
 
-/**
- * The once-per-start view of the private file. `read` returns the exact stored
- * entry (value + opaque `valueId`) or `undefined` when the operator has not
- * configured that name; a malformed or unreadable private file throws a
- * `TestDataLocalConfigError` naming the file and key, never a value.
- */
+/** The once-per-start view of the private file: `read` returns the exact stored entry or `undefined`, and a malformed file throws naming the file and key, never a value. */
 export interface TestDataInputSource {
   readonly read: <Name extends TestDataInputName>(name: Name) => TestDataLocalInputEntry<Name> | undefined;
 }

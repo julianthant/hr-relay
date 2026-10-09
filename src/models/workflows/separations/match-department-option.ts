@@ -1,17 +1,4 @@
-/**
- * `workflow:separations/match-department-option` — **S55's upstream half**, as a
- * real node.
- *
- * The resolution is pure (`src/domain/separations/department-option.ts`); this
- * contract is what makes an unresolvable department a **run outcome** with a
- * closed durable code rather than a thrown derivation — the same argument
- * `match-termination-type` makes one control over, for the same reason: a
- * `derive` has nowhere to put "this run refuses, and here is why".
- *
- * It is a fold over facts the run already holds, so it is sessionless and
- * carries no freshness budget of its own — ref workflow-model §5.5 ages the reads that feed
- * it.
- */
+/** Department mismatch is a durable outcome; deriving retained facts needs no freshness budget. */
 import { z } from "zod";
 import { taskId } from "../../../rules/identity/ids.js";
 import { DEPARTMENT_OPTION_REFUSAL_CODES } from "../../../rules/separations/department-option.js";

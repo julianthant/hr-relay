@@ -1,7 +1,4 @@
-/**
- * D281 item 7: authority loss is the one storage state that mounts an app-wide
- * hazard, and that hazard is a band rather than the default in-surface card.
- */
+
 import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -26,7 +23,7 @@ function liveRegionClasses(markup: string, role: "alert" | "status"): string {
   return match[1];
 }
 
-describe("the app-wide storage band (D281 item 7)", () => {
+describe("the app-wide storage band", () => {
   it("renders only when authority storage is unavailable", () => {
     const healthy = renderToStaticMarkup(createElement(StorageBanner, {
       storage: storage("healthy"),

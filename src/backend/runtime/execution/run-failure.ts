@@ -1,20 +1,5 @@
 import { hasProtectedTransactionInput } from "../../../models/write-safety/protected-input.js";
-/**
- * Executor-side construction of ref operator-trust's strict `FailureRecord` (ref dashboard-surfaces
- * §Phase-1f: `failures` is a non-rebuildable authority family — every failed
- * run stores one of these, and a display-safe span summary is not a
- * substitute).
- *
- * Two builders, matching the two ways a Phase-1 run fails:
- *
- * - a NODE failure carries the exact `(nodeId, taskId)` the run was executing
- *   — the atomic failure composite cross-checks both against the descriptor
- *   and the run's `currentNodeId`, so a record naming the wrong node cannot
- *   terminalize the run;
- * - an ENTRY-VALIDATION failure (ref workflow-model §5.4) happens in `validating`, before
- *   any node executes, so it deliberately names no node — and lists EVERY
- *   problem in one summary rather than forcing a fix-one-refresh-repeat loop.
- */
+
 import { TaskError } from "../../../workflow-kit/errors.js";
 import {
   WriteSafetyAuthorityError,
@@ -48,19 +33,12 @@ function writeAuthorityReasonFrom(error: unknown): WriteAuthorityReason | undefi
   return undefined;
 }
 
-/**
- * Task-contract error codes are kebab-case; `FailureRecord.code` is
- * SCREAMING_SNAKE_CASE. One deterministic transform, applied in one place.
- */
+
 export function failureCodeFromTaskCode(code: string): string {
   return ErrorCodeSchema.parse(code.toUpperCase().replaceAll("-", "_"));
 }
 
-/**
- * The failure-CLASS fingerprint: workflow + node + task + code, not the
- * occurrence. Two runs failing the same way share it, which is what ref operator-trust's
- * knowledge lookups key on.
- */
+// Failure fingerprints describe a failure class; occurrence identity must not split repeated failures.
 export function deriveFailureFingerprint(input: Readonly<{
   workflowId: string;
   nodeId?: string;

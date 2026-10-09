@@ -1,34 +1,4 @@
-/**
- * Kuali Build — the RRSS Separation Request Form document surface.
- *
- * This is the semantic vocabulary the separation read and finalization write
- * use: one document screen, its shared controls, and authoritative observations
- * including the displayed EID that binds every write to its subject.
- *
- * Two facts shape every recipe below and are not negotiable (doc 03c §Live probe status /
- * ref write-safety §13 OQ1, the operator-authorized 2026-07-23 live probe, D78):
- *
- *  - **A Kuali save signal is worthless in BOTH directions.** The 2026-07-23
- *    probe recorded the save as UI-silent; the 2026-08-04 controlled attempt
- *    measured the opposite and worse — Kuali renders `Form saved` and answers
- *    `200` on its `submitDocumentV2` mutation for a save that persisted nothing
- *    of the targeted field. A reload read-back is therefore the ONLY landing
- *    proof; "clicked without an error" and "the app said saved" may never
- *    count. This independently re-confirms the legacy 2026-04-10 lesson that
- *    deleted Kuali error detection as false-positive-prone
- *    (`kuali/LESSONS.md:17-23`).
- *  - **DOM refs change on every reload**, so every recipe anchors on role +
- *    the EXACT accessible name — including the literal `*` the form labels
- *    carry — and never on a captured ref.
- *
- * The `Save` button sits in one action group with `Send Back` and
- * `Mark Complete`, which ADVANCE the workflow. A fallback that widened onto
- * either of those would file a real separation step. That is why
- * `KUALI_RRSS_SAVE_BUTTON` is an exact-name recipe with no `.or()` chain and
- * why the driver refuses on a match count other than one — verified live
- * 2026-08-04 (exactly one `button "Save"`, one `Send Back`, one
- * `Mark Complete` on doc 4490).
- */
+/** Kuali Build — the RRSS Separation Request Form document surface: the semantic vocabulary the separation read and finalization write share. */
 import { z } from "zod";
 import {
   ElementIdSchema,
@@ -59,12 +29,7 @@ export const KUALI_RRSS_DISPLAYED_EID = ObservationIdSchema.parse(
   "kuali.rrss-document.displayed-eid",
 );
 
-/**
- * The document identifiers, re-exported so every existing importer of this
- * module keeps its one import site. They are DEFINED in
- * `kuali-document-identity.ts` because the separation-read module needs them
- * too, and this module names that module's operation schema.
- */
+/** The document identifiers, re-exported so every existing importer keeps its one import site; they are DEFINED in the identity module. */
 export {
   KUALI_RRSS_TIMEKEEPER_FORM_KEY,
   KualiActionIdSchema,
@@ -76,36 +41,13 @@ const ReadObservationOperationSchema = z.custom<(
   id: ObservationId,
 ) => Promise<string>>((value) => typeof value === "function");
 
-/**
- * The Action-List read (D261), declared HERE for the same reason as the two
- * families below it: a second `DriverDeclaration` for one store is exactly what
- * `task-driver-boundary` forbids, so a sibling task family extends this surface
- * rather than minting its own. Its schemas live in `kuali-action-list.ts`
- * because the Action List is a different SCREEN from the document — not because
- * it is a different driver.
- */
+/** The Action-List read, declared HERE because a second driver declaration for one store is what the task/driver boundary forbids; a sibling family extends this surface. */
 const ReadActionListForDocumentOperation = ReadActionListForDocumentOperationSchema;
 
-/**
- * The separation-document read (2i chunk 2). It is declared HERE, on the one
- * driver declaration the whole store binds, because a second
- * `DriverDeclaration` for the same store is exactly what the task/driver
- * boundary forbids: `defineTask(driver, …)` binds the store's exact invariant
- * declaration, so a sibling task family extends this surface rather than
- * minting its own. The schemas it returns live in `kuali-separation-document.ts`
- * — a separate module because the read surface is an order of magnitude wider
- * than the write's three fields, not because it is a separate driver.
- */
+/** The separation-document read, declared here on the one driver declaration the whole store binds, because a second declaration for the same store is what the boundary forbids. */
 const ReadSeparationDocumentOperation = ReadSeparationDocumentOperationSchema;
 
-/**
- * The finalization write (chunk 5), declared here for the same reason: a second
- * `DriverDeclaration` for the same store is exactly what the task/driver
- * boundary forbids, so a sibling task family extends this surface rather than
- * minting its own. Its schemas live in `kuali-separation-finalization.ts`
- * because the staged-variables model is an order of magnitude wider than this
- * shared document vocabulary — not because it is a separate driver.
- */
+/** The finalization write, declared here for the same reason: a sibling family extends this surface rather than minting a second declaration. */
 const StageSeparationFinalizationOperation = StageSeparationFinalizationOperationSchema;
 const ReadSavedSeparationFinalizationOperation = ReadSavedSeparationFinalizationOperationSchema;
 
@@ -114,14 +56,7 @@ const CommitOperationSchema = z.custom<(
   capability: MutationCapability,
 ) => Promise<UiActionProof>>((value) => typeof value === "function");
 
-/**
- * Kuali's task-facing semantic surface.
- *
- * `read` is the seam the kernel calls at ref write-safety beat ③ to observe the
- * subject on the exact staged page. `commit` is the only method that can click
- * Save, and it requires the unforgeable
- * `MutationCapability` the fenced write sequencer alone mints.
- */
+/** Kuali's task-facing semantic surface; `read` is the seam the kernel calls to observe the page before anything is staged. */
 export const KualiRrssDocumentDriverSchema = z.strictObject({
   system: z.literal("kuali"),
   read: ReadObservationOperationSchema,

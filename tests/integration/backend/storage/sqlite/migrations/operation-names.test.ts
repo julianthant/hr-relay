@@ -30,9 +30,7 @@ function fixture(version = 34, complete = true) {
   const input = { stateRoot, processLockRoot: join(stateRoot, "locks"), environmentFile: join(root, ".env"), plan: false };
   return { path, input, backup: () => backupStoppedAuthority(stateRoot, clock), run: (plan = false) => upgradeStorage({ ...input, plan }, clock) };
 }
-/** The released rename corpus has no checkpoint and mismatched generic facts.
- * Keep that corpus unchanged for its fingerprint guard; complete only these
- * stopped-conversion fixtures before taking their immutable source snapshot. */
+// Keep the released rename corpus unchanged; complete only the stopped-conversion fixture facts.
 function completeHistoricalConfirmation(path: string, version: number) {
   const db = new DatabaseSync(path);
   const operations = version < 36 ? "write_intents" : "run_operations";

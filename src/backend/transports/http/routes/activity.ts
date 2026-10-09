@@ -21,12 +21,7 @@ export function registerActivityRoutes(app: DashboardApp, deps: ActivityRouteDep
     return c.json(deps.activity.read(from, to));
   });
 
-  /**
-   * The same report as a file (D240). It refuses a missing bound in the SAME
-   * words as the JSON route above — an export is the one copy that gets mailed
-   * on, so a window it defaulted silently would travel further than a page that
-   * did. The artifact carries its own caveats; see `activity-export.ts`.
-   */
+
   app.get("/api/v1/reports/activity.csv", (c) => {
     const from = c.req.query("from");
     const to = c.req.query("to");

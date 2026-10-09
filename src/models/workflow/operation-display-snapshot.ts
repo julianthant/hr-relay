@@ -1,8 +1,4 @@
-/**
- * The durable, browser-safe projection of a compiler-produced complete
- * operation display.  It deliberately copies declaration semantics, never
- * Zod schemas, derives, examples, or run/configuration values.
- */
+/** The durable, browser-safe projection of a compiler-produced complete operation display; it copies declaration semantics, never Zod schemas, derives, examples, or run values. */
 import { z } from "zod";
 import { canonicalJsonStringify, JsonValueSchema } from "../../rules/validation/canonical-json.js";
 import {
@@ -305,11 +301,7 @@ const SnapshotWorkflowResultSourceSchema = z.strictObject({
   ]),
 });
 
-/**
- * A content-addressed, strict JSON document suitable for the immutable run
- * envelope.  It has no executable display code or value-bearing config/schema
- * examples, so an archived run can be read without today's descriptor module.
- */
+/** A content-addressed, strict JSON document for the immutable run envelope, with no executable display code, so an archived run can be read without today's descriptor module. */
 export const WorkflowOperationDisplaySnapshotSchema = z.strictObject({
   capability: z.literal("complete"),
   declarationVersion: z.literal(OPERATION_DISPLAY_FORMAT_VERSION),
@@ -472,10 +464,7 @@ function displaySnapshotDigest(snapshot: Omit<WorkflowOperationDisplaySnapshot, 
   ));
 }
 
-/**
- * Freeze a complete compiler projection for a newly minted run.  Legacy
- * displays deliberately return no payload; their historical truth is legacy.
- */
+/** Freeze a complete compiler projection for a newly minted run; legacy displays deliberately return no payload. */
 export function freezeWorkflowOperationDisplaySnapshot(input: Readonly<{
   workflowId: string;
   definitionFingerprint: string;
@@ -531,11 +520,7 @@ export function freezeWorkflowOperationDisplaySnapshot(input: Readonly<{
   });
 }
 
-/**
- * Parse and integrity-check a stored complete snapshot.  Callers invoke this
- * only for a run claimed complete; an absent payload is therefore a named
- * historical-integrity failure rather than a fallback to today's registry.
- */
+/** Parse and integrity-check a stored complete snapshot; an absent payload is a named historical-integrity failure rather than a fallback to today's registry. */
 export function requireWorkflowOperationDisplaySnapshot(
   stored: unknown,
   identity: OperationDisplaySnapshotIdentity,

@@ -79,12 +79,8 @@ describe("durable control and outbox records", () => {
   });
 });
 
-/**
- * D102 — one delegation vocabulary, from builder through manifest, dependency
- * row, and UI. If a future change re-splits these, this fails before the two
- * halves can drift apart again the way 1c's `DependencyPolicySchema` did.
- */
-describe("D102 single delegation policy vocabulary", () => {
+
+describe("single delegation policy vocabulary", () => {
   it("stores the builder's exact policy shape on the durable dependency row", () => {
     const policy = {
       onChildFailed: "block-parent",

@@ -1,22 +1,5 @@
 import { testRunLifecycle } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
-/**
- * D313 — the run modal is the complete omission authority.
- *
- * Four things this file proves, each red-capable:
- *
- * 1. DEFINITION TIME — an omittable group whose members are read from outside
- *    the group refuses at `defineWorkflow` unless the omission rebuilds them;
- *    a producer may name only the group's own task entries.
- * 2. PLAN TIME — a gate inside an omitted group is omitted with the group
- *    (no decision is manufactured or required), and a transaction outside the
- *    group that depends on it refuses by name.
- * 3. RUN TIME — the executor runs NO entry of the omitted group: the gate
- *    opens nothing and records no `gate_results` row, the omitted read opens
- *    no session, and the asserted task's checkpoint carries D307 provenance.
- * 4. NO MID-RUN PROMPT — a run whose envelope reaches the executor with an
- *    incomplete omission bundle fails loud before any session is acquired;
- *    the start plan refused the same bundle before a row existed.
- */
+
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
@@ -104,10 +87,7 @@ function fixture(id: string, code: string, steps: (author: Author) => ReturnType
   });
 }
 
-/**
- * `search` (reads) → [`review` gate, `verify` task] (deciding, omittable) → result.
- * Omitting `deciding` runs neither the gate nor the read; `verify` is rebuilt.
- */
+
 const gateInsideOmittableStep = fixture("d313-gate-inside-omitted-step", "dg", ({ task, gate, group, result }) => {
   const search = task({ id: "search", contract: SearchPersonOrg, label: "Search", replay: "checkpoint" }, [], ({ input }) => ({
     kind: "by-eid" as const, emplId: input.emplId,
@@ -125,7 +105,7 @@ const gateInsideOmittableStep = fixture("d313-gate-inside-omitted-step", "dg", (
   };
 });
 
-describe("D313 — definition-time omission completeness", () => {
+describe("definition-time omission completeness", () => {
   it("refuses an omittable step whose gate is read from outside the step, naming the mandatory-verifier rule", () => {
     assert.throws(() => fixture("d313-gate-read-outside", "dgr", ({ task, gate, group, result }) => {
       const search = task({ id: "search", contract: SearchPersonOrg, replay: "checkpoint" }, [], ({ input }) => ({
@@ -147,7 +127,7 @@ describe("D313 — definition-time omission completeness", () => {
         ],
         result: result(FixtureResultSchema, [after], ({ outputs }) => ({ verified: outputs.after.state === "found" })),
       };
-    }), /step "deciding" is omittable, but workflow entry "after" in step "after" reads its gate entry "review", which omitting the step leaves unread; .*declare the check as its own entry outside the omitted step \(D313\)/u);
+    }), /step "deciding" is omittable, but workflow entry "after" in step "after" reads its gate entry "review", which omitting the step leaves unread; .*declare the check as its own entry outside the omitted step/u);
   });
 
   it("refuses an omittable step whose unproduced task is read from outside, and a producer naming a non-member or a gate", () => {
@@ -202,7 +182,7 @@ describe("D313 — definition-time omission completeness", () => {
         ],
         result: result(FixtureResultSchema, [search], ({ outputs }) => ({ verified: outputs.search.selection.selected !== null })),
       };
-    }), /omission produces "review", which is a gate entry; only task entries are ever rebuilt from operator facts \(D313\)/u);
+    }), /omission produces "review", which is a gate entry; only task entries are ever rebuilt from operator facts/u);
   });
 
   it("admits the terminal result as the one reader of an omitted member and compiles the gate-inside-step shape", () => {
@@ -217,7 +197,7 @@ describe("D313 — definition-time omission completeness", () => {
   });
 });
 
-describe("D313 — the executor runs no entry of an omitted step and never asks for values", () => {
+describe("the executor runs no entry of an omitted step and never asks for values", () => {
   const compiled = compileFixtureWorkflow(gateInsideOmittableStep);
   const { descriptor } = compiled;
 

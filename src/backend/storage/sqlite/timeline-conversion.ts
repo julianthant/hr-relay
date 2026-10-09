@@ -89,7 +89,7 @@ export function importTimelineSources(database: DatabaseSync, source: TimelineSo
   return TimelineImportCountsSchema.parse(counts);
 }
 
-/** Preserve exact retired representations before the first DROP in migration 40. */
+// Preserve exact source representations before the first schema-conversion DROP.
 export function convertOperationHistory(database: DatabaseSync, source: TimelineSourceSnapshot, recordedAt: string) {
   if (!database.isTransaction) throw new Error("operation-history-conversion-requires-transaction");
   const read = <T>(schema: z.ZodType<T>, table: string): T[] => database.prepare(`SELECT record_json FROM ${table}`).all().map((row) => sourceAuthorityRecord(schema, row));
@@ -201,7 +201,7 @@ export function freezeConvertedArchiveTransactions(database: DatabaseSync, recor
   const history = createTransactionHistory({
     timelineEvents: createTimelineRepository({ database, read: (work) => work(), mutate: (work) => work().result, assertOwner: () => {} }),
     confirmedTransactionSources: { select: range => {
-      // Explicit stopped conversion owns the full legacy source scan.
+
       const events = database.prepare("SELECT * FROM timeline_events WHERE retention_class='confirmed-operation'").all()
         .map(timelineEventFromRow).filter(event => {
           if (event.payload.kind !== "operation-confirmed") return false;

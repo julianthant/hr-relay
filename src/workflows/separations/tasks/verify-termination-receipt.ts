@@ -5,10 +5,7 @@ import {
 } from "../../../models/workflows/separations/verify-termination-receipt.js";
 import { verifyTerminationReceipt } from "../../../rules/separations/termination-receipt.js";
 
-/**
- * D130's finding, executed at the one place it decides anything: between the
- * UCPath termination and the Kuali write that records its number.
- */
+/** The receipt check, executed at the one place it decides anything: between the UCPath termination and the Kuali write that records its number. */
 export const verifyTerminationReceiptTask = defineTask(SeparationsVerifyTerminationReceipt, {
   sessions: [],
   async run({ input, ctx }) {

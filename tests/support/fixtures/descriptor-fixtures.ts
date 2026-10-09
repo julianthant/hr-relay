@@ -1,14 +1,4 @@
-/**
- * A representative fixture descriptor for the graph-shaped guards.
- *
- * The registered corpus is deliberately thin in 1e — person-lookup is four read
- * steps — so a guard that only swept `DESCRIPTORS` would pass by having nothing
- * to check. Every graph-shaped guard therefore also runs against this fixture,
- * which carries a branch, a parallel, an operator gate, an awaited many-child
- * delegation, and a transaction: exactly the paths those guards exist to
- * police. `guard-manifest` already applies this rule to the mechanical ratchets;
- * this is the same idea for the descriptor guards.
- */
+
 import { z } from "zod";
 import { flow } from "../../../src/workflow-kit/flow.js";
 import { defineWorkflowDescriptor } from "../../../src/workflow-kit/workflow.js";

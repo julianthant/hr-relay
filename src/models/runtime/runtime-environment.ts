@@ -6,13 +6,7 @@ import { WORKER_PROCESS_MECHANIC_KEYS, SECRET_SPECS } from "../config/secrets.js
 
 const EnvironmentKeySchema = z.string().regex(/^[A-Z_][A-Z0-9_]*$/);
 const EnvironmentFamilyPrefixSchema = z.string().regex(/^[A-Z][A-Z0-9_]*$/);
-/**
- * A source path in one of the TWO repositories this inventory spans (D93).
- *
- * Both repos have a `src/`, so a bare path is ambiguous across them. Legacy-repo
- * paths therefore carry an explicit `legacy:` scheme; unprefixed paths are this
- * repo's. See `tests/unit/architecture/helpers/guard-files.ts`.
- */
+/** A source path in one of the TWO repositories this inventory spans; both have a `src/`, so legacy-repo paths carry an explicit `legacy:` scheme and unprefixed paths are this repo's. */
 const SourcePathSchema = z.string().regex(/^(?:legacy:)?[a-z0-9_.-]+(?:\/[a-z0-9_.-]+)*\.(?:[cm]?[jt]sx?)$/);
 export const RuntimeEnvironmentExactSpecSchema = z.discriminatedUnion("disposition", [
   z.strictObject({
@@ -81,7 +75,7 @@ const ComputedReaderBulkTargetSchema = z.strictObject({
   reason: z.string().min(1),
 });
 
-/** D331 worker spawn mechanics are not settings or provider bindings. */
+/** Worker spawn mechanics are not settings or provider bindings. */
 const WorkerProcessMechanicsTargetsSchema = z.strictObject({
   kind: z.literal("closed-process-mechanics"),
   exact: z.array(z.enum(WORKER_PROCESS_MECHANIC_KEYS)).length(WORKER_PROCESS_MECHANIC_KEYS.length),
@@ -154,7 +148,7 @@ const SECRET_ENVIRONMENT_SPECS = [
   { key: "HRAUTO_ACTIVITY_PERSON_PSEUDONYM_KEY_GENERATION", classification: "non-secret-config" },
 ] as const;
 
-/** D341: retired canary names stay refused by name; their home is `config/test-data.local.json`. */
+/** Retired canary names stay refused by name; their home is `config/test-data.local.json`. */
 const TEST_TARGET_SECRET_ENVIRONMENT_KEY_SET: ReadonlySet<string> = new Set(
   RETIRED_TEST_TARGET_ENVIRONMENT_KEYS,
 );
@@ -191,7 +185,7 @@ const INERT_RETIRED_ENVIRONMENT_KEYS = [
   "PLAYWRIGHT_BROWSERS_PATH", "SEPARATIONS_ROSTER_URL",
 ] as const;
 
-/** D331: names whose values moved to settings/protected authority and now refuse boot. */
+/** Names whose values moved to settings/protected authority and now refuse boot. */
 export const RETIRED_ENVIRONMENT_KEYS = deepFreeze(
   [...MIGRATED_SETTINGS_ENVIRONMENT_KEYS],
 );
@@ -199,7 +193,7 @@ export const RETIRED_ENVIRONMENT_KEYS = deepFreeze(
 const DOCUMENTED_ENVIRONMENT_KEYS: ReadonlySet<string> = new Set();
 
 const TEST_ONLY_ENVIRONMENT_OWNERS = {
-  // D93: the guard lane locates the legacy repo it audits. Test-lane only —
+  // The guard lane locates the legacy repo it audits. Test-lane only —
   // no rebuild RUNTIME module may read across the split.
   HRAUTO_LEGACY_REPO: ["tests/unit/architecture/helpers/guard-files.ts"],
   HRAUTO_E2E_STUBS: ["legacy:src/core/daemon/client.ts", "legacy:src/core/e2e/stub-workflows.ts", "legacy:src/core/workflow-loaders.ts"],
@@ -223,7 +217,7 @@ export const RUNTIME_ENVIRONMENT_EXACT = deepFreeze(RuntimeEnvironmentExactSpecS
     documented: false,
   },
   {
-    // D324: the host's primary display, published once per process tree by the
+    // The host's primary display, published once per process tree by the
     // composition that first resolves config and inherited by every child.
     key: HOST_PRIMARY_DISPLAY_ENV,
     classification: "non-secret-config",
@@ -239,7 +233,7 @@ export const RUNTIME_ENVIRONMENT_EXACT = deepFreeze(RuntimeEnvironmentExactSpecS
         ? "direct-identifier" : "non-secret-config"),
     disposition: "migrated-refused",
     reason: TEST_TARGET_SECRET_ENVIRONMENT_KEY_SET.has(key)
-      ? "test-target input moved to ignored config/test-data.local.json (D341); remove it"
+      ? "test-target input moved to ignored config/test-data.local.json; remove it"
       : "setting moved to the settings authority; set it in Settings, then remove it",
     documented: false,
   })),
@@ -496,9 +490,7 @@ export function auditRuntimeEnvironmentInventory(input: unknown): readonly strin
     if (reader.classification === "target-accessor" && reader.path !== "src/models/config/secrets.ts") {
       violations.push(`target computed reader must be owned by src/models/config/secrets.ts: ${reader.path}`);
     }
-    // D93: the two sides are now two repositories, so a reader's side IS its
-    // path scheme. A legacy-production reader must name a legacy-repo file; an
-    // unprefixed path belongs to this repo and can never be legacy production.
+    // Legacy production readers require legacy: paths; unprefixed paths belong to this repository.
     if (reader.classification === "legacy-production" && !reader.path.startsWith("legacy:")) {
       violations.push(`legacy computed reader must carry the legacy: scheme: ${reader.path}`);
     }

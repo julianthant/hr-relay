@@ -1,16 +1,5 @@
 // @vitest-environment jsdom
-/**
- * The hook's one authority duty: a subscription that STOPPED with an error has
- * no path back to fresh data, so the day it was holding may not stay on screen
- * dressed as live (ref frontend-backend-integration §3.5).
- *
- * `subscription.test.ts` pins which stream endings produce that state. This
- * file pins what the React side does with it, which is the half no fold can
- * see: the `day` resource must become `failed` carrying the SAME error, so
- * every surface reading it renders the failure rather than the last snapshot.
- * The negative control is the operator's own close — `{ state: "stopped" }`
- * with no error — which must leave the loaded day exactly where it is.
- */
+
 import assert from "node:assert/strict";
 import { act, createElement, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";

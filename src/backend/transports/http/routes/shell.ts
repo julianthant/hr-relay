@@ -39,11 +39,7 @@ export function registerShellRoutes(app: DashboardApp, deps: ShellRouteDeps): vo
   app.get("/api/v1/search", (c) =>
     c.json(deps.search.search(parseCrossDateSearchRouteQuery(c.req.url))));
 
-  /**
-   * DCR5's narrow operator workbook command. This is deliberately NOT an
-   * artifact-id byte reader: the command composes, persists, verifies and
-   * serves only the workbook it just generated from one strict selection.
-   */
+
   app.post("/api/v1/exports/search", async c=>{
     if(deps.searchMetadataExports===undefined)throw new SectionUnavailableError("search metadata export is unavailable");
     return deps.searchMetadataExports.export(await c.req.json());

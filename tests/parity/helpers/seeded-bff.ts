@@ -23,11 +23,7 @@ import { seed } from "./seeded-lifecycle.js";
 import { composeSeededServices } from "./seeded-services.js";
 
 
-/**
- * States the 1i slice's real machinery CANNOT reach, and why. These are the
- * honest differences between adapter #1's fixture matrix and this adapter; a
- * parity spec must not assert them against the seeded backend.
- */
+
 export const SEEDED_COVERAGE_GAPS: readonly string[] = Object.freeze([
   "status 'partial': the projection's RUN_OUTCOME_STATUS maps no run outcome to it "
   + "(done|failed|cancelled|discarded|superseded|interrupted only), so no real transition produces it",
@@ -171,8 +167,7 @@ export async function startSeededServer(
     clock,
     pid: 4242,
   });
-  // D218: the projection's one live feed is the SQLite cursor feed; the seeder ticks
-  // it after every append so each event folds through the production path.
+
   const spans: ReturnType<typeof createTimelineEmitter> = Object.freeze({
     emit: (event: unknown): void => {
       jsonlWriter.emit(event);

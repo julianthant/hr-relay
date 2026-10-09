@@ -1,72 +1,17 @@
-/**
- * Server-authored action descriptors (ref frontend-backend-integration §3.2/§8.5): the ONLY source from
- * which a surface may render an interactive run control. A control the server
- * did not describe is unreachable, not hidden — surfaces render exactly the
- * descriptors they are handed and never re-derive availability from a status.
- *
- * Ported (shape) from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
- * src/dashboard/components/dev/rebuild-demo/demo-wire.ts (`ActionDescriptorWire`),
- * narrowed to the command vocabulary the rebuild's Phase-1 kernel actually
- * accepts (`src/domain/commands.ts`: run retry/cancel/bump/rename, gate
- * resolve-gate). The 1g BFF does not serve these yet — until it does, surfaces
- * receive an empty list and honestly draw no run-action controls (1i landing
- * note; serving lands with the ref dashboard-surfaces action-policy projection).
- */
+/** Server-authored action descriptors: the ONLY source a surface may render a run control from — a control the server did not describe is unreachable, not hidden. */
 import { z } from "zod";
 import { WriteIntentIdSchema } from "../../rules/identity/ids.js";
 
 export const ActionPlacementSchema = z.enum(["footer", "banner", "outcome", "menu", "data", "review"]);
 export const ActionIntentSchema = z.enum(["primary", "neutral", "destructive", "violet", "success", "info", "warning"]);
 export const ActionIconKeySchema = z.enum(["retry", "cancel", "bump", "archive", "delete", "review", "resolve", "rename", "external", "drill"]);
-/**
- * The command verbs a served action may name (kernel-accepted only).
- *
- * The two `resolve-write-*` verbs are ref write-safety §4.1's typed operator resolutions.
- * They are NOT interchangeable with `retry`: the kernel rejects generic retry
- * for a `parked-write` run by name, because a fenced write that may already
- * exist in a real HR system has no "try again" — only "I looked, and it is
- * there" or "I looked, and it is not". Serving them is what makes that pair
- * reachable at all.
- *
- * `rename` joined the vocabulary with D233. It was recorded as kernel-internal
- * on the reasoning that *"the display-name edit is an inline field on the row,
- * not a descriptor-driven control"* — and no build ever grew that field, so the
- * one kernel command an operator would reach for daily was reachable only from
- * a CLI that does not exist. It is a descriptor-driven control like every other
- * run verb, and the demo (`RebuildDemo.tsx:240`) serves it exactly that way: a
- * `menu` descriptor the surface INTERCEPTS to collect its one value, the same
- * shape `resolve-gate` already uses for the ceremony dialog's answer.
- *
- * `hide` and `unhide` LEFT the vocabulary with D234, on the operator's ruling
- * that *"there are runs and archived runs; there should be no hidden runs."*
- * `unhide` had never been serveable at all — a hidden run was filtered out of
- * the queue projection, so no row existed to hang it off — and `hide` was a
- * one-way door dressed as a reversible tombstone.
- *
- * `delete` JOINED with D308, on the operator's second ruling: *"some runs were
- * just error runs … I should be able to delete normal runs like this and
- * archived runs."* It is what `hide` only pretended to be. A hidden run was
- * still there — filtered out of one projection and rendered by nothing, which
- * is why `unhide` could never be served. A DELETED run is gone: the terminal
- * run and every row it owns leave authority behind one insert-only tombstone,
- * so there is no hidden state to reveal and nothing left to render. Archiving
- * is still the model that takes a run off the queue and KEEPS it; delete is
- * the one that ends it, and its blast radius is why every served descriptor
- * carries a confirm.
- */
+/** The command verbs a served action may name; the two write resolutions are INTENT-scoped rather than run-scoped, and every verb on this list has a durable reason it is here. */
 export const ActionCommandKeySchema = z.enum([
   "retry", "restart", "cancel", "bump", "rename", "archive", "delete", "resolve-gate",
   "resolve-write-present", "resolve-write-absent",
 ]);
 
-/**
- * Ref write-safety §4.1: both write resolutions are INTENT-scoped as well as run-scoped
- * — the run version alone cannot express "resolve the write this browser was
- * looking at", because recovery can advance a generation without touching the
- * run row. A stale generation is refused by the kernel, which is why the
- * descriptor carries the one it was projected from rather than letting the
- * surface read it back off a second fetch.
- */
+/** Both write resolutions are INTENT-scoped as well as run-scoped: a stale generation is refused by the kernel, so the descriptor carries the generation it was projected from. */
 export const ActionWriteTargetSchema = z.strictObject({
   writeIntentId: WriteIntentIdSchema,
   intentGeneration: z.number().int().positive(),
@@ -115,10 +60,7 @@ export const ActionDescriptorWireSchema = z.discriminatedUnion("kind", [
 ]).superRefine((action, context) => {
   if (action.kind !== "command") return;
   const scoped = action.command === "resolve-write-present" || action.command === "resolve-write-absent";
-  // A write resolution WITHOUT its intent target is a control that cannot be
-  // sent, and an intent target on any other verb names a scope that command
-  // does not accept — both are unreachable controls, which is the one thing a
-  // server-authored descriptor exists to make impossible.
+  // Intent targets belong only to write resolutions, which require one to be sendable.
   if (scoped && action.writeTarget === undefined) {
     context.addIssue({
       code: "custom",

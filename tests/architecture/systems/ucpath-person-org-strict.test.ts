@@ -42,9 +42,7 @@ export function auditStrictPersonOrgSource(source: string): readonly string[] {
   for (const [label, required] of [
     ["row-to-detail subject proof", "detail.observedEid !== row.emplId"],
     ["query-to-observation subject proof", "candidate.emplId !== input.emplId"],
-    // D213 moved this check into `classifyPersonOrgSearchOutcome`, where the
-    // banner is read as a LIST marker and only PeopleSoft's own text answers
-    // not-found. The invariant is unchanged and the reader moved to meet it.
+
     ["positive no-results marker", "bannerText.includes(NO_RESULTS_TEXT)"],
     ["empty results grid failure", "results grid rendered without rows; refusing to report not-found"],
     ["empty assignment failure", "detail has no parsed assignment rows"],
@@ -70,13 +68,7 @@ describe("strict UCPath Person Org port", () => {
   });
 
   it("keeps every raw operation locator behind an exact semantic registry element", () => {
-    // Scoped to the two Person Org screens on purpose. The UCPath registry is
-    // no longer single-family — the 2026-08-04 receipt probe added the
-    // SS Smart HR transaction screen — so equality against EVERY registry
-    // element would make an unrelated family's growth fail this guard while
-    // saying nothing about Person Org. The invariant that matters is
-    // unchanged: this operation's raw locators and the Person Org screens'
-    // registered elements are the SAME set, in both directions.
+
     const personOrgScreens = new Set<ScreenId>([
       UCPATH_PERSON_ORG_SEARCH_SCREEN,
       UCPATH_PERSON_ORG_DETAIL_SCREEN,
@@ -91,9 +83,7 @@ describe("strict UCPath Person Org port", () => {
   });
 
   it("keeps the SS Smart HR receipt family out of the Person Org operation", () => {
-    // The other direction of the same fence: a receipt element must never be
-    // reachable from the Person Org read, and the receipt family must never be
-    // silently empty (which would make the scoped assertion above vacuous).
+
     const receiptElements = UCPATH_UI_REGISTRY.elements
       .filter(({ screen }) => screen === UCPATH_SS_SMART_HR_TRANSACTION_SCREEN)
       .map(({ id }) => id);

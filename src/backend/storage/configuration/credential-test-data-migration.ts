@@ -1,16 +1,4 @@
-/**
- * D341 — move the two retired test-target canary entries out of the pre-D341
- * credential document (`.tracker/credentials/protected.json`, schemaVersion 1)
- * into the ignored private test-data file (`config/test-data.local.json`).
- *
- * Order under the credential writer lock: read and strictly replay the legacy
- * document; plan the destination merge; stage, rename and read back the
- * destination; only then rewrite the source as the schemaVersion-2 document
- * whose baseline retires the old identities value-free. A failure before the
- * source rewrite leaves the source untouched; a re-run after a destination
- * write finds equal entries and proceeds idempotently. Neither `plan` nor
- * `apply` touches `.env`, a browser, or the authority database.
- */
+
 import { randomUUID } from "node:crypto";
 import {
   planTestDataLocalMerge,
@@ -104,7 +92,7 @@ export async function migrateTestDataFromCredentials(
       destination: { ...destinationPath, state: destination.state, action: "none", inputs: [] } };
   }
   if (inspection.state === "current") {
-    // Value-free check that the destination still carries what the baseline retired.
+
     const missing = destination.outcome?.state === "valid"
       ? inspection.retiredEntries.filter(({ name, valueId }) => destination.outcome?.state === "valid"
         && destination.outcome.config.inputs[name]?.valueId !== valueId).map(({ name }) => name)
@@ -153,9 +141,7 @@ export async function migrateTestDataFromCredentials(
       const sameEntries = entries.length === plannedEntries.length && entries.every((entry, index) =>
         entry.name === plannedEntries[index]?.name && entry.valueId === plannedEntries[index]?.valueId
         && entry.updatedAt === plannedEntries[index]?.updatedAt && privateEqual(entry.value, plannedEntries[index]?.value ?? ""));
-      // Re-read the destination under the lock as well: an equal ("unchanged") plan writes nothing,
-      // so the writer's own prior-state fence would never run; the source is retired only against
-      // a destination re-verified here.
+      // An unchanged destination plan still needs source and destination rechecks under the writer lock.
       const liveDestination = readTestDataLocalConfig(input.localPath);
       const sameDestination = liveDestination.state === priorDestination.state
         && (liveDestination.state !== "valid" || priorDestination.state !== "valid"

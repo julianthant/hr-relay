@@ -19,12 +19,7 @@ export function fixtureIntakePresentation(session: IntakeSessionWire): IntakeSes
 export function registerFixtureIntakeRoutes({ app }: { app: Hono }): void {
 
 
-  /**
-   * The intake pair (2i-E3). The upload answers `201` with the mid-mapping
-   * session, which is what a real first upload of these bytes returns — the
-   * status is the contract here, so serving `200` would have the app report a
-   * JOINED session for a file it had never seen.
-   */
+
   app.post("/api/v1/intake/files", (c) => {
     const fileName = c.req.query("filename");
     if (fileName === undefined || fileName.length === 0) {

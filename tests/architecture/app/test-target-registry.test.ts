@@ -18,29 +18,19 @@ import {
 } from "../../../src/backend/app/registries/test-target-registry.js";
 import { testDataInputSource } from "../../integration/backend/app/registries/test-target-registry/test-data-source.js";
 
-/** The one separations subject D284 left; its number is private configuration (D300). */
+
 const SOLE_SUBJECT_LABEL = "finalization-canary";
 const SOLE_SUBJECT_LAST_OBSERVED = "2026-09-08";
 
-/**
- * The ONE test-target reference the registry may commit (D300). The chain arm
- * names this reference and never a number, so choosing the live subject stays
- * in ignored config/test-data.local.json (D341) rather than in a commit.
- */
+
 const DOCUMENT_NUMBER_REFERENCE = {
   name: "separationsKualiFinalizationCanaryDocumentNumber",
 } as const;
-/**
- * Every arm key `TestTargetWorkflowArmsSchema` declares, derived from the
- * schema itself rather than hardcoded, so a third arm added to the schema
- * cannot go silently uncased by this file. The sanity assertion right below
- * pins today's known set — if the schema ever grows a third key, that
- * assertion goes red and the growth becomes a visible, deliberate change here.
- */
+
 const ARM_WORKFLOW_KEYS = Object.keys(TestTargetWorkflowArmsSchema.shape) as readonly (keyof typeof TestTargetWorkflowArmsSchema.shape)[];
 assert.deepEqual([...ARM_WORKFLOW_KEYS].sort(), [FINALIZATION_WORKFLOW, PERSON_LOOKUP_WORKFLOW, SEPARATIONS_WORKFLOW].sort());
 
-/** D318 — the second committed subject: the person-lookup live-read canary, ONE EID selected in ignored config/test-data.local.json (D341). */
+
 const PERSON_LOOKUP_SUBJECT_LABEL = "person-lookup-canary";
 const EID_REFERENCE = {
   name: "personLookupCanaryEid",
@@ -56,9 +46,7 @@ function armsDeclaredBy(target: TestTargetRegistryEntry): readonly Readonly<{ wo
 describe("test target registry architecture", () => {
 
   it("commits exactly two subjects: the Kuali document addressable by both separations workflows, and the person-lookup live-read canary", () => {
-    // D284: one label, one availability, one document — an arm per workflow,
-    // never a second entry and never an alias. D318 adds the ONE other subject
-    // kind the tree has: a person, for the transaction-free live-read arm.
+
     assert.deepEqual(TEST_TARGET_REGISTRY.targets.map(({ label }) => label), [SOLE_SUBJECT_LABEL, PERSON_LOOKUP_SUBJECT_LABEL]);
     const person = TEST_TARGET_REGISTRY.targets.find(({ label }) => label === PERSON_LOOKUP_SUBJECT_LABEL);
     assert.deepEqual(person === undefined ? undefined : armsDeclaredBy(person), [{ workflow: PERSON_LOOKUP_WORKFLOW, kind: "search-by-eid" }]);
@@ -69,8 +57,7 @@ describe("test target registry architecture", () => {
       { workflow: SEPARATIONS_WORKFLOW, kind: "full-chain-dry-run" },
       { workflow: FINALIZATION_WORKFLOW, kind: "ordinary" },
     ]);
-    // D300: the chain arm commits the closed REFERENCE; the number itself is
-    // selected in the operator's ignored local environment, never here.
+
     assert.deepEqual(subject.workflows[SEPARATIONS_WORKFLOW]?.publicInput.document, {
       state: "configured",
       reference: DOCUMENT_NUMBER_REFERENCE,
@@ -84,14 +71,10 @@ describe("test target registry architecture", () => {
     assert.equal(canary?.availability.lastObserved, SOLE_SUBJECT_LAST_OBSERVED);
     assert.match(String(canary?.availability.reason), /EMPLOYEE_NOT_FOUND/u);
     assert.match(String(canary?.availability.reason), /0\/0\/0/u);
-    // The standalone harness remains blocked on upstream-authored leaves and
-    // commits no observations from the retired document.
+
     assert.deepEqual(canary?.workflows[FINALIZATION_WORKFLOW]?.publicInput, {});
     const pending = canary?.workflows[FINALIZATION_WORKFLOW]?.pending ?? {};
-    // The resolver judges a leaf pending by a DEFINED reason; zod keeps an
-    // explicitly-`undefined` key on the parsed object, so `Object.keys` alone
-    // would let an unreasoned key slip past this pin unnoticed. Filter to
-    // entries whose reason is actually defined before asserting the set.
+    // Zod retains explicit undefined keys; only defined reasons mark pending leaves.
     assert.deepEqual(
       Object.entries(pending)
         .filter(([, reason]) => reason !== undefined)
@@ -101,23 +84,16 @@ describe("test target registry architecture", () => {
   });
 
   it("blocks every currently declared label, and cannot be handed an environment at all", () => {
-    // D300 removed the resolver's `env` parameter with its ready path: the
-    // standalone harness reads no secret because it can receive none.
+
     assert.equal(resolveSeparationsKualiFinalizationTestTarget.length, 2);
     const resolutions = TEST_TARGET_REGISTRY.targets
       .filter((target) => target.workflows["separations-kuali-finalization"] !== undefined)
       .map(({ label }) => resolveSeparationsKualiFinalizationTestTarget(TEST_TARGET_REGISTRY, label));
-    // `.every` on an empty array is vacuously true: assert WHICH labels the
-    // filter yielded first, so a registry that stopped declaring a finalization
-    // arm cannot pass this guard by resolving nothing.
+
     assert.deepEqual(resolutions.map(({ label }) => label), [SOLE_SUBJECT_LABEL]);
     assert.equal(resolutions.every(({ state }) => state === "blocked"), true);
 
-    // Function.length is not sufficient: an accidentally reintroduced
-    // `env = {}` parameter would still report length 2. Pass a third argument
-    // through the runtime calling convention and make every possible
-    // environment access throw. The standalone resolver must ignore it and
-    // return the same blocked result.
+    // Function.length hides defaulted parameters; probe runtime access with a throwing third argument.
     const forbiddenEnvironment = new Proxy(Object.create(null) as NodeJS.ProcessEnv, {
       get: () => {
         throw new Error("standalone finalization resolver must not read an environment");
@@ -157,14 +133,9 @@ describe("test target registry architecture", () => {
       throw new Error("the sole canary commits no configured document reference");
     }
     assert.deepEqual(chain.publicInput.document.reference, DOCUMENT_NUMBER_REFERENCE);
-    // The retired person block may not come back under any spelling: the
-    // finalization arm is an observation record and carries no secret input.
+
     assert.equal(Object.hasOwn(subject?.workflows[FINALIZATION_WORKFLOW] ?? {}, "secretInput"), false);
-    // Exactly TWO test-data inputs (D341): the separations canary's document
-    // number (D300) and the person-lookup live-read canary's EID (D318) — each
-    // a closed reference to one workflow's own ingress value, judged by that
-    // workflow's own value schema, never a person value with a document-shaped
-    // name or the reverse. Neither is a protected Settings name any more.
+
     assert.deepEqual([...TEST_DATA_INPUT_NAMES], [DOCUMENT_NUMBER_REFERENCE.name, EID_REFERENCE.name]);
     assert.equal(TestDataInputValueSchemas[DOCUMENT_NUMBER_REFERENCE.name].safeParse("4999").success, true);
     assert.equal(TestDataInputValueSchemas[DOCUMENT_NUMBER_REFERENCE.name].safeParse("10800000x").success, false);
@@ -214,8 +185,7 @@ describe("test target registry architecture", () => {
           kind: chain.kind,
           state: target.availability.state,
           lastObserved: target.availability.lastObserved,
-          // D300: the chain arm's document is a closed reference, so the row
-          // reports the NAME the operator configures — never a number.
+
           document: chain.publicInput.document.state === "configured"
             ? chain.publicInput.document.reference.name
             : "none",
@@ -233,14 +203,7 @@ describe("test target registry architecture", () => {
     ]);
   });
 
-  /**
-   * D284 left ONE subject, declared for BOTH resolvers, so the committed
-   * registry can no longer exhibit a label that belongs to the other workflow.
-   * What it must still exhibit is that each resolver answers from its OWN arm
-   * and never guesses across the boundary. The refusal-BY-NAME path for a subject that lacks an arm is pinned in
-   * tests/unit/test-target-registry.test.ts, which can construct such a subject
-   * without committing a false one to config.
-  */
+
   it("answers both resolvers from the one subject's own arm, without cross-workflow guessing", () => {
     const chain = resolveSeparationsTestTarget(
       TEST_TARGET_REGISTRY,
@@ -268,7 +231,7 @@ describe("test target registry architecture", () => {
     // resolver says so in one public sentence once the pending leaves clear.
     assert.match(
       FINALIZATION_PERSON_FACTS_DERIVED_REASON,
-      /never registry- or protected-settings-supplied \(D300\)/,
+      /^employee name, EID and timekeeper name are derived live by the composed separations chain and are never registry- or protected-settings-supplied; run the composed separations workflow$/,
     );
   });
 

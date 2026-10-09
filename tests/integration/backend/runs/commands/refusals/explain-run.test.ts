@@ -1,13 +1,5 @@
 import { TargetNotFoundError } from "../../../../../../src/backend/runs/commands/refusals.js";
-/**
- * `explain run` against the real authority database (ref operator-trust §2.5, D143).
- *
- * The command's value is that an operator can paste a trace id from a screen
- * and get every fact ref operator-trust lists — including the ones authority does NOT
- * hold, said out loud. These arms therefore assert the absences as hard as the
- * presences: a section that quietly rendered empty would read as "nothing
- * happened", which is the exact confusion this command exists to remove.
- */
+
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

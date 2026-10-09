@@ -1,36 +1,4 @@
-/**
- * Declared gate decisions (D204) — how a stored `gate_results` row becomes the
- * receipt's `DecisionEvidence` row, ref operator-trust §2.3 over ref write-safety §14.6 risk 6.
- *
- * ## Why this is declared rather than derived
- *
- * A gate's result payload is authored on the gate node, so its shape is
- * workflow-specific: `IdentityApprovalResultSchema` happens to discriminate on
- * `decision`, and the next gate this program grows will not. The receipt's
- * `DecisionEvidence.outcome` is a CLOSED five-value enum, so turning one into
- * the other is a mapping, and there are only two honest ways to have one:
- *
- * 1. Sniff the payload for a field called `decision` and hope its values line
- *    up with the enum. That is the "plausible-but-wrong value" this program
- *    forbids: a gate whose payload said `{ decision: "deferred" }` would land
- *    on the receipt as `approved` or as nothing at all, and both read as a
- *    statement about a human decision that the human did not make.
- * 2. Declare it, once, beside the redaction and obligation tables it sits with
- *    — which is exactly D140's shape for the same reason.
- *
- * So a gate is declared here or its rows do not reach the receipt: an
- * undeclared gate, and an arm value no declaration lists, both fail LOUD. That
- * is the same rule `classifyEvidenceLeaf` applies to an undeclared leaf, and it
- * costs one reviewed entry per gate — of which this tree has exactly one.
- *
- * ## What is NOT here
- *
- * The approver and the instant. They are not payload facts and never become
- * one: the command kernel writes `resolvedBy`/`resolvedAt` onto the durable row
- * inside the same transaction that stores the result (`executeResolveGate`,
- * D202), and the receipt reads them from there. Nothing in this file can move
- * them.
- */
+/** Declared gate decisions: how a stored `gate_results` row becomes the receipt's decision-evidence row, with each gate decision scoped by its own workflow and gate. */
 import { z } from "zod";
 import { GateIdSchema, WorkflowIdSchema } from "../../rules/identity/ids.js";
 import { EvidenceLeafPathSchema } from "./evidence-classification.js";
@@ -52,20 +20,10 @@ export const GateDecisionArmSchema = z.strictObject({
 export const GateDecisionDeclarationSchema = z.strictObject({
   workflowId: WorkflowIdSchema,
   gateId: GateIdSchema,
-  /**
-   * The leaf whose value names the arm the operator took. It is a leaf path in
-   * the same vocabulary the redaction table and the provenance rows use, so a
-   * declaration that names a path the payload does not carry fails at
-   * derivation time rather than producing a decision about nothing.
-   */
+    /* The leaf whose value names the arm the operator took, in the same vocabulary the redaction table and the provenance rows use, so a declaration naming an absent path fails at parse. */
   decisionPath: EvidenceLeafPathSchema,
   arms: z.array(GateDecisionArmSchema).min(1),
-  /**
-   * The leaf carrying the evidence the decision was bound to, when the gate
-   * declares one. The identity gate does: an approval is an observation of a
-   * SPECIFIC packet (ref write-safety §14.5), so the digest is the load-bearing half of
-   * "what did they actually approve".
-   */
+    /* The leaf carrying the evidence the decision was bound to, when the gate declares one; the identity gate does, and the digest is the load-bearing half. */
   boundEvidencePath: EvidenceLeafPathSchema.optional(),
 }).superRefine((declaration, context) => {
   const values = declaration.arms.map((arm) => arm.value);
@@ -80,13 +38,7 @@ export const GateDecisionDeclarationSchema = z.strictObject({
 export type GateDecisionDeclaration = z.infer<typeof GateDecisionDeclarationSchema>;
 
 export const GATE_DECISIONS: readonly GateDecisionDeclaration[] = Object.freeze([
-  /**
-   * The name-resolved identity approval (ref write-safety §14.4). A supplied
-   * EID creates no gate row. When this gate does open, `rejected` terminalizes
-   * the run, so both arms are real outcomes an operator-facing record must be
-   * able to state — a receipt that could only describe approvals would be a
-   * receipt that never shows a refusal.
-   */
+    /* The name-resolved identity approval: a supplied EID creates no gate row, and when this gate does open, `rejected` terminalizes the run, so both arms are real outcomes. */
   {
     workflowId: "separations-identity-check",
     gateId: "identity-approval",
@@ -106,17 +58,7 @@ export const GATE_DECISIONS: readonly GateDecisionDeclaration[] = Object.freeze(
     boundEvidencePath: "evidenceDigest",
   },
   {
-    /**
-     * Chunk 4's write carries the same conditional name-only gate, and it needs its own
-     * declaration rather than inheriting chunk 3's: a gate decision is scoped by
-     * `(workflow, gate)` on purpose (D204), because the payload is authored per
-     * gate and a second workflow reusing a schema is not the same thing as a
-     * second workflow having answered the question.
-     *
-     * Here the stakes are also higher: this gate stands in front of a real
-     * UCPath termination rather than in front of a read-only chunk's result, so
-     * `rejected` means an operator refused to let a person be separated.
-     */
+      /* This gate needs its own declaration rather than inheriting another's, because a gate decision is scoped by `(workflow, gate)` on purpose. */
     workflowId: "separations-ucpath-termination",
     gateId: "identity-approval",
     decisionPath: "decision",
@@ -135,13 +77,7 @@ export const GATE_DECISIONS: readonly GateDecisionDeclaration[] = Object.freeze(
     boundEvidencePath: "evidenceDigest",
   },
   {
-    /**
-     * Chunk 5's Kuali finalization declares its own name-only gate answer; the
-     * per-workflow declaration is the contract (D204). What
-     * `rejected` means here is different again: no separation is recorded on the
-     * source document, so the UCPath termination this run was going to cite
-     * stays unattributed on the Kuali record an auditor reads.
-     */
+      /* This gate declares its own answer for its workflow; what `rejected` means here is different again, because no separation is recorded on the source document when it fires. */
     workflowId: "separations-kuali-finalization",
     gateId: "identity-approval",
     decisionPath: "decision",
@@ -160,14 +96,7 @@ export const GATE_DECISIONS: readonly GateDecisionDeclaration[] = Object.freeze(
     boundEvidencePath: "evidenceDigest",
   },
   {
-    /**
-     * Chunk 6's COMPOSITION, declaring its own answer for the fourth time — and
-     * here the repetition earns the most, because this gate is the only one
-     * whose name-only approval dominates THREE real writes across two systems. What
-     * `rejected` means: no pending sweep, no UCPath termination and no Kuali
-     * finalization happen at all, so the separation the department filed stays
-     * exactly as they left it.
-     */
+      /* The composition declares its own answer, and the repetition earns the most here because this gate dominates THREE real writes across two systems. */
     workflowId: "separations",
     gateId: "identity-approval",
     decisionPath: "decision",

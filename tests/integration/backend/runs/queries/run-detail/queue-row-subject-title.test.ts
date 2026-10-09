@@ -1,19 +1,4 @@
-/**
- * The subject-derived row title (ref dashboard-surfaces §1.2, and ref dashboard-surfaces's *Queue-row
- * projection as-built delta*).
- *
- * A queue row starts life titled with whatever the start input could compose —
- * `Separation 4502`, `EID 10873698` — and becomes the PERSON once the run's own
- * reads have settled who it is about. The seam is the descriptor's declared
- * `subjectProjection`, and the whole point of the tests below is that the
- * decision is made from that DECLARATION and a stored checkpoint, never from a
- * workflow branch, a field name, or a shape that "looks like" a name.
- *
- * The four outcomes, one case each: replaced, kept-because-not-yet,
- * kept-because-undeclared, and refused-because-the-declaration-is-wrong. Plus
- * the operator's own `displayName`, which is served BESIDE the title rather
- * than folded into it.
- */
+
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { RunCheckpointRecordSchema } from "../../../../../../src/models/workflow/checkpoint.js";
@@ -34,18 +19,7 @@ import { personLookupDescriptor } from "../../../../../support/helpers/registere
 
 const worlds: DashboardWorld[] = [];
 
-/**
- * The registry every case resolves against. It defaults to the REAL
- * person-lookup descriptor, whose `subjectProjection` names
- * `searching.selection.selected.name` — a path through a discriminated union,
- * which is the ordinary shape of a resolved subject and the reason the factory
- * validates the address with `offers`.
- *
- * Every case that wants a DIFFERENT declaration hands over another REAL
- * descriptor rather than a spread copy of one: `descriptorRuntimeNodes` keys
- * its graph off the exact frozen object the factory produced, so a spread is a
- * descriptor whose nodes cannot be read.
- */
+
 function world(descriptor: AnyWorkflowDescriptor | "none" = personLookupDescriptor): DashboardWorld {
   const created = makeWorld({
     descriptors: { resolve: () => (descriptor === "none" ? undefined : descriptor) },
@@ -113,18 +87,14 @@ describe("the subject-derived queue-row title (ref dashboard-surfaces §1.2)", (
   it("keeps the start-input title while the declared node has produced no checkpoint", () => {
     const w = world();
     seedRun(w, 2);
-    // The ordinary state of every row for the first seconds of its life. There
-    // is no blank arm and no placeholder: the run genuinely knows only the EID
-    // it was started from.
+
     assert.equal(rowOf(w, 2).title, "EID 10873698");
   });
 
   it("keeps the start-input title when the run took the union arm the declared leaf does not live on", () => {
     const w = world();
     seedRun(w, 3);
-    // `selected: null` is person-lookup's real not-found arm. A lookup that
-    // resolved nobody has no subject to be named after, and the EID it was
-    // started from is exactly what it should still be called.
+
     w.authority.putCheckpoint(searchingCheckpoint(3, {
       status: "not-found",
       selected: null,
@@ -134,9 +104,7 @@ describe("the subject-derived queue-row title (ref dashboard-surfaces §1.2)", (
   });
 
   it("keeps the start-input title forever for a workflow that declares no subject leaf", () => {
-    // A COMPLETE declared state, not a gap: the Kuali finalization harness's
-    // subject IS its document, so it declares nothing and its rows are titled
-    // by their start input for the whole life of the run.
+
     const w = world(separationsKualiFinalizationDescriptor);
     seedRun(w, 4);
     w.authority.putCheckpoint(searchingCheckpoint(4, RESOLVED) as never);
@@ -155,11 +123,7 @@ describe("the subject-derived queue-row title (ref dashboard-surfaces §1.2)", (
   it("refuses by name when the declared leaf holds something that is not a name", () => {
     const w = world();
     seedRun(w, 6);
-    // A checkpoint is canonical JSON, so nothing between the contract and this
-    // read re-checks that the declared leaf is a string. Printing `42` — or
-    // `[object Object]` — in the one column an operator scans is worse than
-    // refusing, and the refusal names the workflow, the node and the path so
-    // the DECLARATION is what gets fixed.
+    // Checkpoint JSON does not validate a declared string leaf; reject non-string titles at this read boundary.
     w.authority.putCheckpoint(searchingCheckpoint(6, {
       status: "resolved",
       selected: { emplId: "10873698", name: 42, hdh: true },
@@ -171,9 +135,7 @@ describe("the subject-derived queue-row title (ref dashboard-surfaces §1.2)", (
   });
 
   it("names a structured value for what it is rather than stringifying it", () => {
-    // The same refusal, taken at the seam that owns it: a declaration that
-    // addresses a WRAPPER instead of its leaf is the likeliest way to author
-    // this wrong, and `[object Object]` is the outcome being refused.
+
     assert.throws(
       () => resolveSubjectTitle(
         { nodeId: "searching", fieldPath: "selection.selected" },
@@ -202,9 +164,7 @@ describe("the subject-derived queue-row title (ref dashboard-surfaces §1.2)", (
     w.authority.putCheckpoint(searchingCheckpoint(8, RESOLVED) as never);
 
     const row = rowOf(w, 8);
-    // The row renders `displayName ?? title`; the subject stays on `title` so
-    // the renamed row's tooltip can still say what the run is about. Folding
-    // the two on the server is what made that tooltip unwritable.
+
     assert.deepEqual(row.displayName, { state: "present", value: "Johnnie — final check" });
     assert.equal(row.title, "Battistessa, Johnnie");
   });
@@ -229,9 +189,7 @@ describe("the subject-derived queue-row title (ref dashboard-surfaces §1.2)", (
       authority: w.authority,
       descriptors: { resolve: () => personLookupDescriptor },
     }, uuidOf(10));
-    // A row and the panel it opens are the pair an operator sees side by side;
-    // two surfaces naming one run two ways is the divergence ref dashboard-surfaces's "one
-    // projection" rule exists to prevent.
+
     assert.equal(detail.header.title, "Battistessa, Johnnie");
     assert.equal(detail.header.title, rowOf(w, 10).title);
   });

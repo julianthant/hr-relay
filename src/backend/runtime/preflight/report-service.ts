@@ -58,7 +58,7 @@ export function createPreflightReportService(input: Readonly<{
       const result = Promise.resolve().then(async (): Promise<Result> => {
         const selection = command.target.selection;
         if (selection === undefined) {
-          // New commands cannot claim the old boot report after a settings change.
+
           const scope = input.runtime.currentScope();
           if (scope.configFingerprint !== command.target.expectedConfigFingerprint) throw new PreflightAdmissionRefusal("scope-mismatch", "Preflight configuration changed.");
           return input.dashboard.execute(command, signal);

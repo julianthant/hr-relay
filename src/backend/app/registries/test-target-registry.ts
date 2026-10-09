@@ -31,7 +31,7 @@ import {
 } from "../../../workflows/separations/workflow.js";
 import { SeparationsKualiFinalizationInput } from "../../../workflows/separations/steps/kuali-finalization/step.js";
 
-/** D341: the public subject registry is the `subjects` member of the shared test-data config. */
+
 export const TEST_TARGET_REGISTRY_PATH = TEST_DATA_CONFIG_PATH;
 export const TEST_TARGET_REGISTRY_MEMBER = "subjects";
 
@@ -39,24 +39,12 @@ export const FINALIZATION_WORKFLOW = "separations-kuali-finalization";
 export const SEPARATIONS_WORKFLOW = "separations";
 export const PERSON_LOOKUP_WORKFLOW = "person-lookup";
 
-/**
- * What a live finalization subject can truthfully BE. The scenario matrix's
- * other arms (`already-present`, `no-active-job`, `ambiguous-name`,
- * `subject-mismatch`, `name-differs`, `concurrent-jobs`) are manifest
- * vocabulary — they live in `DryRunSubjectKindSchema`, where a manifest case
- * names them — and D284 retired the entries that claimed them here, because no
- * live subject exercises one. A kind this registry cannot honour is a lie about
- * a real document, so it is not offered.
- */
+// Live subjects model observed facts; scenario outcomes require injected fixtures, never registry claims.
 export const SeparationsKualiFinalizationSubjectKindSchema = z.enum([
   "ordinary",
 ]);
 
-/**
- * What a subject of the COMPOSED separations chain is for: the full-chain
- * rehearsal role, and the controlled-commit role D280 names. Doc 03.3's other
- * migration roles retired with D284 along with the documents that carried them.
- */
+
 export const SeparationsChainSubjectKindSchema = z.enum([
   "full-chain-dry-run",
   "controlled-commit-candidate",
@@ -73,16 +61,7 @@ export const TestTargetProvenanceSchema = z.strictObject({
   section: z.string().min(1),
 });
 
-/**
- * The exact first-workflow ingress with its four person leaves removed. Every
- * remaining field is explicit and strict in config; `.partial()` lets a subject
- * record only what was actually observed — what is MISSING is then either
- * declared `pending` below, or a registry defect. The four person leaves are
- * not registry-supplied at all (D300): the composed chain reads the employee
- * name and document EID from Kuali, resolves the UCPath subject through its
- * identity gate, and carries its declared timekeeper constant — so this arm is
- * an observation record, and its resolver blocks by name (below).
- */
+// Partial observed facts describe absence; pending declarations decide whether missing leaves block admission.
 export const SeparationsKualiFinalizationPublicTestInputSchema =
   SeparationsKualiFinalizationInput.omit({
     employeeName: true,
@@ -91,26 +70,12 @@ export const SeparationsKualiFinalizationPublicTestInputSchema =
     timekeeperName: true,
   }).partial();
 
-/**
- * The public reason the standalone finalization harness cannot resolve a live
- * subject (D300). Stated once so the resolver's `blocked` row and the smoke
- * that reads it agree byte for byte.
- */
+
 export const FINALIZATION_PERSON_FACTS_DERIVED_REASON =
   "employee name, EID and timekeeper name are derived live by the composed separations chain " +
-  "and are never registry- or protected-settings-supplied (D300); run the composed separations workflow";
+  "and are never registry- or protected-settings-supplied; run the composed separations workflow";
 
-/**
- * The canonical leaves a live READ cannot supply, each with the reason it is
- * absent. All three are values a real run receives from upstream work, not from
- * the document: `transactionNumber` exists only after the UCPath filing ② files
- * it, `timekeeperComments` is composed by the chain, and
- * `terminationEffectiveDate` is EMPTY on the live form — the finalization stages
- * it from the chain's `dates` node (separation date + 1). Declaring them here is
- * what separates "the registry is telling the truth and the run is not ready"
- * from "the registry is wrong" — the first blocks by name, the second is a
- * defect.
- */
+// A document read cannot supply downstream transaction, timecard or receipt facts.
 const FinalizationPendingShape = {
   transactionNumber: z.string().min(1).optional(),
   timekeeperComments: z.string().min(1).optional(),
@@ -119,16 +84,7 @@ const FinalizationPendingShape = {
 
 export const SeparationsKualiFinalizationPendingSchema = z
   .strictObject(FinalizationPendingShape)
-  // `pending: {}` would parse as "nothing is pending" while LOOKING like a
-  // declaration, so the arm would resolve past the pending gate, spend the EID
-  // secret and defect at canonical parse. An arm with nothing pending omits the
-  // block entirely.
-  //
-  // The predicate is over the declared REASONS, not the keys: zod's parsed
-  // object still owns a key whose value was an explicit `undefined`, so
-  // `Object.keys(pending).length > 0` passed `{ transactionNumber: undefined }`
-  // — the same empty claim spelled with a key, and the exact input this schema
-  // exists to refuse. A field is pending only when it carries the reason it is.
+
   .refine(
     (pending) => Object.values(pending).some((reason) => reason !== undefined),
     {
@@ -139,13 +95,7 @@ export const SeparationsKualiFinalizationPendingSchema = z
 
 type FinalizationPendingField = keyof typeof FinalizationPendingShape;
 
-/**
- * Fixed report order, so a blocked reason never depends on JSON key order. The
- * `satisfies Record<FinalizationPendingField, number>` is the exhaustiveness
- * half: a key added to the pending schema and not ranked here is a COMPILE
- * error, never a leaf the resolver skips on its way to spending the EID secret
- * and defecting at canonical parse (the blocked/defect inversion D284 forbids).
- */
+
 const FINALIZATION_PENDING_ORDER = {
   transactionNumber: 0,
   timekeeperComments: 1,
@@ -180,14 +130,7 @@ export const SeparationsKualiFinalizationArmSchema = z.strictObject({
   pending: SeparationsKualiFinalizationPendingSchema.optional(),
 });
 
-/**
- * The canary is ONE Kuali document number selected in ignored
- * `config/test-data.local.json` (D300/D341): the registry commits the exact
- * closed reference — the registered input name — never a number. A literal
- * here would let a commit choose the live subject; the reference makes the
- * private file the only place that can. "No subject exists" is still a real,
- * recorded state, spelled out rather than left as a missing key.
- */
+// Commit the closed private-input reference, never a literal document number.
 export const SeparationsChainSubjectDocumentSchema = z.discriminatedUnion(
   "state",
   [
@@ -207,12 +150,7 @@ export const SeparationsChainArmSchema = z.strictObject({
   }),
 });
 
-/**
- * D318 — what a person-lookup live-read subject is for: one Search by EID of
- * a current, access-visible person. The EID is a CLOSED reference (the
- * registered input name), never a committed value; `resolvePersonLookupTestTarget`
- * reads it from ignored `config/test-data.local.json` (D341).
- */
+
 export const PersonLookupSubjectKindSchema = z.enum(["search-by-eid"]);
 
 export const PersonLookupSubjectEidSchema = z.discriminatedUnion("state", [
@@ -228,25 +166,14 @@ export const PersonLookupArmSchema = z.strictObject({
   publicInput: z.strictObject({ subject: PersonLookupSubjectEidSchema }),
 });
 
-/**
- * ONE subject, one arm per workflow that can address it (D284). The subject is
- * the document; an arm is what a given workflow needs of it. Both arms are
- * optional because a subject may genuinely be addressable by only one workflow
- * — `parseTestTargetRegistry` refuses a subject that declares neither, and each
- * resolver refuses BY NAME when the arm it needs is absent.
- */
+
 export const TestTargetWorkflowArmsSchema = z.strictObject({
   [SEPARATIONS_WORKFLOW]: SeparationsChainArmSchema.optional(),
   [FINALIZATION_WORKFLOW]: SeparationsKualiFinalizationArmSchema.optional(),
   [PERSON_LOOKUP_WORKFLOW]: PersonLookupArmSchema.optional(),
 });
 
-/**
- * Every entry carries these, whatever workflow addresses it: what the subject is
- * FOR (`purpose`, doc 03.3's target-registry contract), the dated
- * availability claim — a fact about the DOCUMENT, not about one workflow — the
- * record that observed it, and D85's usage rules.
- */
+
 export const TestTargetRegistryEntrySchema = z.strictObject({
   label: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
   availability: TestTargetAvailabilitySchema,
@@ -272,11 +199,7 @@ export const TestTargetBlockedResolutionSchema = z.strictObject({
   label: z.string().min(1),
   reason: z.string().min(1),
 });
-/**
- * The standalone finalization harness has no `ready` arm (D300): the composed
- * chain is the only path that can truthfully assemble the finalization's
- * person leaves, so this resolver's whole vocabulary is `blocked`.
- */
+
 export const SeparationsKualiFinalizationTestTargetResolutionSchema =
   TestTargetBlockedResolutionSchema;
 export type SeparationsKualiFinalizationTestTargetResolution = z.output<
@@ -324,12 +247,7 @@ export type TestTargetManifestView = Readonly<{
   cases: readonly Readonly<{ subjectLabel: string; subjectKind: string }>[];
 }>;
 
-/**
- * Every arm key the schema declares, in the schema's own shape order. Deriving
- * this from `TestTargetWorkflowArmsSchema.shape` — rather than hand-listing the
- * two constants — means a third arm added to the schema is picked up here for
- * free instead of silently missing from `declaredWorkflows`'s output.
- */
+
 const WORKFLOW_ARM_KEYS = Object.keys(
   TestTargetWorkflowArmsSchema.shape,
 ) as ReadonlyArray<keyof typeof TestTargetWorkflowArmsSchema.shape>;
@@ -354,21 +272,7 @@ function isModelledWorkflow(workflow: string): workflow is ModelledWorkflow {
   return MODELLED_WORKFLOWS.some((modelled) => modelled === workflow);
 }
 
-/**
- * The arm a workflow id addresses, without an index signature: the id is
- * narrowed to a MODELLED workflow first, so `undefined` here means exactly one
- * thing — this subject declares no arm for a workflow that does have a resolver
- * — and never "nobody models that id at all", which is a different mistake with
- * a different fix. A prototype key such as `constructor` cannot reach this.
- *
- * The narrowed id indexes the arms object DIRECTLY rather than through a
- * two-way ternary. The ternary's else branch answered with the FINALIZATION arm
- * for every id that was not `separations`, so a third member added to
- * `MODELLED_WORKFLOWS` would have been compared against the wrong arm — a
- * silently passing manifest check, not a compile error. Indexing makes that
- * third member a COMPILE error until `TestTargetWorkflowArmsSchema` grows its
- * arm, and answers with the right one the moment it does.
- */
+// Undefined means the subject lacks an arm for a modeled workflow, never an unknown workflow ID.
 function workflowArm(
   target: TestTargetRegistryEntry,
   workflow: ModelledWorkflow,
@@ -388,9 +292,7 @@ function assertManifestCompatibility(
   manifests: readonly TestTargetManifestView[],
 ): void {
   for (const manifest of manifests) {
-    // An id no resolver models is a defect in the MANIFEST, and it is checked
-    // before any entry is consulted: "declares no <workflow> arm" would send the
-    // reader to config to add an arm for a workflow that has no resolver at all.
+
     if (!isModelledWorkflow(manifest.workflow)) {
       throw new Error(
         `no resolver models workflow ${manifest.workflow}; modelled: ${MODELLED_WORKFLOWS.join(", ")}`,
@@ -417,10 +319,7 @@ function assertManifestCompatibility(
   }
 }
 
-/**
- * A field cannot be BOTH observed and pending: one of the two claims is false,
- * and which one it is cannot be guessed from config.
- */
+// Observed and pending claims for the same field contradict each other.
 function assertPendingFieldsAreAbsent(target: TestTargetRegistryEntry): void {
   const arm = target.workflows[FINALIZATION_WORKFLOW];
   if (arm?.pending === undefined) return;
@@ -514,13 +413,7 @@ function registryDefect(
   );
 }
 
-/**
- * The cause of a failed private-input READ, for the defect detail.
- * `TestDataLocalConfigError` (src/domain/test-data.ts) names the private file
- * and the offending KEY and never a value, so quoting it cannot leak an input —
- * while dropping it makes "no such file" and "the value is malformed" the same
- * sentence. Any other error is a programming defect and propagates as-is.
- */
+// Private-input failures name keys and paths without publishing values.
 function inputFailureDetail(error: unknown): string {
   if (error instanceof TestDataLocalConfigError)
     return `${error.name}: ${error.message}`;
@@ -542,13 +435,7 @@ function unavailableReason(target: TestTargetRegistryEntry): string {
   return `blocked: needs ${target.label}; registry says ${target.availability.state}, last observed ${target.availability.lastObserved}`;
 }
 
-/**
- * Read a subject's configured private input through its closed reference
- * (D341). `undefined` means the operator has not configured it — a truthful
- * "not ready", reported as `blocked` by key. A private file that is malformed,
- * not private, or carries a value failing the input's own workflow schema is a
- * DEFECT in local configuration, named by reference and key and never by value.
- */
+
 function resolveConfiguredInput<Name extends TestDataInputName>(
   target: TestTargetRegistryEntry,
   reference: TestDataInputReference & { name: Name },
@@ -566,13 +453,7 @@ function resolveConfiguredInput<Name extends TestDataInputName>(
   }
 }
 
-/**
- * Resolve the first T1b workflow's label. Since D300 this resolver can only
- * answer `blocked`: the standalone finalization harness holds no person facts
- * — the composed `separations` chain derives them live — so after the truthful
- * registry gates (unknown label, availability, declared-pending leaves) it
- * blocks BY NAME with the one public reason. No secret is read here at all.
- */
+
 export function resolveSeparationsKualiFinalizationTestTarget(
   registry: TestTargetRegistry,
   label: string,
@@ -581,9 +462,7 @@ export function resolveSeparationsKualiFinalizationTestTarget(
     (candidate) => candidate.label === label,
   );
   if (target === undefined) return blocked(label, `blocked: needs ${label}`);
-  // A label that exists but carries no arm for THIS workflow is a mis-addressed
-  // request, not a decayed canary: `blocked` would read as "the subject left
-  // the university" and hide the mistake. Refuse by name.
+
   const arm = target.workflows[FINALIZATION_WORKFLOW];
   if (arm === undefined) {
     throw new TestTargetRegistryDefectError(
@@ -593,9 +472,7 @@ export function resolveSeparationsKualiFinalizationTestTarget(
   if (target.availability.state !== "available")
     return blocked(label, unavailableReason(target));
 
-  // Declared-pending leaves come first: the reason a run cannot start is a
-  // truthful registry claim about the DOCUMENT, and it outranks the harness's
-  // own standing limitation below.
+  // Declared pending document facts take precedence over standing harness limitations.
   const pending = FINALIZATION_PENDING_FIELDS.flatMap((field) => {
     const reason = arm.pending?.[field];
     return reason === undefined ? [] : [`${field} ${reason}`];
@@ -613,25 +490,7 @@ export function resolveSeparationsKualiFinalizationTestTarget(
   );
 }
 
-/**
- * Resolve a composed-chain label the way the OPERATOR would start the run.
- *
- * The chain's ingress is one typed Kuali document number (D261), so this
- * resolver does not assemble a canonical input field by field the way the
- * finalization resolver must. It feeds the registry's document number through
- * the descriptor's OWN `inputRun` parser — the same code path the dashboard's
- * start box uses — and parses the resulting submission through the descriptor's
- * own server admission. The ready value preserves that submission and any explicit
- * reread decision already admitted by the descriptor's canonical input:
- * `timekeeperName` is bound once from protected settings by the planner, which
- * then applies the ingress defaults and canonical validation. Readiness never
- * manufactures a protected default or accepts a protected caller override.
- *
- * The number itself comes from ignored `config/test-data.local.json` through
- * the arm's closed reference (D300/D341) — the registry never commits it. Unset is `blocked`
- * by key; malformed is a defect by key. No EID crosses this boundary at all: a
- * Kuali document number is not a person, and it is never copied into one.
- */
+
 export function resolveSeparationsTestTarget(
   registry: TestTargetRegistry,
   label: string,
@@ -667,7 +526,7 @@ export function resolveSeparationsTestTarget(
   if (documentNumber === undefined) {
     return blocked(
       label,
-      `blocked: needs ${label}; its Kuali document number is not configured — set ${reference.name} in ${TEST_DATA_LOCAL_CONFIG_PATH} (D341)`,
+      `blocked: needs ${label}; its Kuali document number is not configured — set ${reference.name} in ${TEST_DATA_LOCAL_CONFIG_PATH}`,
     );
   }
   const surface =
@@ -710,18 +569,7 @@ export function resolveSeparationsTestTarget(
   });
 }
 
-/**
- * Resolve a person-lookup live-read label the way the OPERATOR would start
- * the run (D318). The ingress is the person-lookup start box: the configured
- * EID is fed through the descriptor's OWN `inputRun` parser — the same code
- * path the dashboard uses — and parsed through the descriptor's own ingress
- * and canonical schemas, so `keepNonHdh` and `includeCrmDates` come from the
- * parser's declared constants, never from this resolver.
- *
- * The EID itself comes from ignored `config/test-data.local.json` through the
- * arm's closed reference (D341): unset is `blocked` by key; malformed is a defect by key.
- * No person value is committed, and none is echoed in a refusal.
- */
+
 export function resolvePersonLookupTestTarget(
   registry: TestTargetRegistry,
   label: string,
@@ -755,7 +603,7 @@ export function resolvePersonLookupTestTarget(
   if (emplId === undefined) {
     return blocked(
       label,
-      `blocked: needs ${label}; its UCPath employee id is not configured — set ${reference.name} in ${TEST_DATA_LOCAL_CONFIG_PATH} (D341)`,
+      `blocked: needs ${label}; its UCPath employee id is not configured — set ${reference.name} in ${TEST_DATA_LOCAL_CONFIG_PATH}`,
     );
   }
   const surface =

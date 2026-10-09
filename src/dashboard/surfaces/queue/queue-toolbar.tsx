@@ -1,49 +1,5 @@
-/**
- * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
- * src/dashboard/components/dev/rebuild-demo/DemoBulkBar.tsx (`DemoQueueToolbar`
- * :98 and its select-mode band).
- *
- * ONE BAR, THREE GROUPS, and the grouping is by what a control DOES — ref dashboard-surfaces
- * §Shell's "one composed action bar", and DESIGN.md's "toolbars group by what a
- * control DOES, separated by a hairline, not by uniform gaps":
- *
- *   WHERE YOU ARE and WHAT YOU START, left  — the Workflow Panel toggle, then
- *     the intake route, then the one primary on the surface;
- *   WHAT YOU ARE LOOKING AT, middle         — the status filters, taking the
- *     slack and scrolling sideways at a narrow window rather than folding a
- *     status behind an overflow menu;
- *   HOW YOU ARE LOOKING AT IT, right        — sort, then select.
- *
- * The row never wraps: a fixed `--ds-h-bar` with `flex-wrap` silently CLIPS the
- * second line, so the middle group scrolls instead.
- *
- * IT IS AN ISLAND, not a full-bleed band (D224, operator decision). It carries
- * the same card treatment as every panel beside it — full border,
- * `--ds-radius-lg`, `--ds-surface-card`, `overflow-hidden` so the select-mode
- * band below cannot square off a rounded corner — and the shell supplies its
- * outside edge through `className` exactly as it does for the storage banner.
- * The bar had been the one full-width element in a shell made of cards, held
- * apart only by a bottom hairline. Two things fall out and both are
- * improvements: the inner padding becomes `--ds-space-cozy`, which is the same
- * 12px `--ds-shell-inset` resolves to, so the leading control now aligns with
- * the queue panel's own header text instead of with the window edge; and the
- * bottom hairline goes, because a bordered island already states where it ends.
- *
- * THE BULK STRIP IS PORTED (D235), and the note that used to stand here is
- * struck. It said the projection served no row actions and that drawing bulk
- * buttons would be a fabricated command surface — true when it was written on
- * 2026-08-14, and false since `QueueSurfaceWire.actions` began carrying the
- * server's own per-row descriptors. The verbs are the operator's two:
- * `cancel` and `retry`. `hide` left the vocabulary with D234; `bump` is
- * executed by the same server loop and is deliberately off the strip
- * (`bulk-dispatch.ts` records why).
- *
- * THE STRIP ONLY EVER DRAWS WHAT THE ROWS SERVE. A verb appears when at least
- * one selected row's `actions[]` admits it, and it is SENT only for the rows
- * that do — the strip states how many are being left alone and why, because a
- * batch that silently drops half a selection is the same lie as one that
- * reports "Done" over a partial result.
- */
+/** Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc
+ * src/dashboard/components/dev/rebuild-demo/DemoBulkBar.tsx (`DemoQueueToolbar` */
 import { useMemo, type ReactNode } from "react";
 import { AlertTriangle, ArrowUpDown, Ban, CheckCircle2, CheckSquare, RotateCcw, Square, X } from "lucide-react";
 import { cn } from "../../lib/utils.js";
@@ -80,17 +36,10 @@ import {
   type BulkVerbPlan,
 } from "../../app/commands/bulk-dispatch.js";
 
-/** D235: the icon per bulk verb — the same two the row's own footer draws. */
+/** the icon per bulk verb — the same two the row's own footer draws */
 const BULK_VERB_ICON: Record<BulkVerb, typeof RotateCcw> = { cancel: Ban, retry: RotateCcw };
 
-/**
- * D235 — what one run's child command settled as, in the operator's words.
- *
- * `conflict` carries the refresh instruction because a stale row version is the
- * ONE outcome the operator fixes by reloading; `refused` and `errored` carry
- * the server's own sentence verbatim, because it is the only party that knows
- * which policy or which failure it was.
- */
+/** what one run's child command settled as, in the operator's words: a `conflict` carries the refresh instruction */
 const OUTCOME_TONE: Record<
   BulkRunCommandOutcome["outcome"],
   { readonly word: string; readonly text: string; readonly dot: string }
@@ -116,14 +65,8 @@ export interface PendingBulkCommand {
   readonly requestedAt?: string | undefined;
 }
 
-/**
- * D235 — WARN FIRST. A bulk press is N durable transitions against N real HR
- * runs, so it asks before it fires, and the sentence it asks with is composed
- * from the plan (`bulkConfirmBody`) rather than served: the server authors a
- * single row's blast radius because only it knows that row's dependency tree,
- * and a BATCH's radius is a fact about the selection, which only this client
- * holds.
- */
+/** WARN FIRST. A bulk press is N durable transitions against N real HR
+ * runs, so it asks before it fires, and the sentence it asks with is composed */
 export function ConfirmBulkCommandDialog({
   pending,
   onCancel,
@@ -147,12 +90,7 @@ export function ConfirmBulkCommandDialog({
           }
           description={bulkConfirmBody(pending.plan)}
         >
-          {/*
-            THE ROWS IT LANDS ON, named. A count is not a subject line: the
-            single-row confirm shows the run it is about (`actions.tsx`), and a
-            batch owes the same — the whole list, scrolling, never truncated to
-            "and 12 more".
-          */}
+          {/** THE ROWS IT LANDS ON, named. A count is not a subject line */}
           <div
             className={cn(
               dsText.meta,
@@ -210,23 +148,17 @@ export function QueueToolbar({
   visibleIds: readonly string[];
   onSelectAll: () => void;
   onClearSelection: () => void;
-  /**
-   * D235: one plan per OFFERED verb — a verb at least one selected row serves,
-   * carrying its frozen eligible target set and the rows it will skip. The
-   * strip renders exactly these and derives no availability of its own.
-   */
+  /** one plan per OFFERED verb — a verb at least one selected row serves carrying its frozen eligible target set and the rows it will skip.
+ * The */
   bulkPlans: readonly BulkVerbPlan[];
-  /**
-   * Selected ids the day serves no row for. Read here rather than off a plan
-   * because the case that matters most — every selected row gone — leaves no
-   * plan at all, and the band must not then blame `actions[]` nobody read.
-   */
+  /** Selected ids the day serves no row for. Read here rather than off a plan
+ * because the case that matters most — every selected row gone — leaves no */
   bulkUnavailable: readonly string[];
   onBulk: (plan: BulkVerbPlan) => void;
   /** the last batch's answer with the subjects it was sent for, kept until dismissed */
   bulkOutcome: BulkBatchOutcome | null;
   onDismissBulkOutcome: () => void;
-  /** open a run from the result band — the row a batch touched is a row you go to */
+  /** open a run from the result band */
   onSelectRun: (runId: string) => void;
   /** shell-owned, far left: the Workflow Panel toggle, where its column began */
   leading?: ReactNode;
@@ -292,65 +224,33 @@ export function QueueToolbar({
         </BareButton>
       </OperationsToolbarRow>
 
-      {/* SELECT MODE IS A MODE, so it gets its own band rather than six more
-          controls shoved into a bar already carrying three groups. It exists
-          only while the mode is on, so it costs nothing at rest.
-
-          THE ACTION STRIP IS THE DEMO'S (`DemoBulkBar.tsx:236-260`), carrying
-          the two verbs D234 left standing. Which verbs appear is `actions[]`
-          and nothing else — the shell plans them (`bulk-dispatch.ts`) and this
-          band draws exactly what it is handed, so a control here can never be
-          one the server did not describe for a row in this selection. */}
+      {/** SELECT MODE IS A MODE, so it gets its own band rather than six more
+ * controls shoved into a bar already carrying three groups. It exists */}
       {selectMode && (
         <div
           className={cn(
             "flex items-center border-t bg-[var(--ds-recess-bg)]",
-            // `min-h`, not the fixed `dsSize.hBar`: the refusal sentence below
-            // is the one thing in this band that can outgrow a line, and it has
-            // to WRAP rather than clip — a truncated refusal is a reason the
-            // operator cannot finish reading and has no other route to. At rest
-            // (a plan's buttons, or a sentence that fits) the band measures
-            // exactly `--ds-h-bar` and nothing moves.
+                  // `min-h`, not the fixed `dsSize.hBar`: the refusal sentence below is the one
+      // thing in this band that can outgrow a line, so it must WRAP rather than clip.
             "min-h-[var(--ds-h-bar)] py-[var(--ds-space-tight)]",
             dsBorder.subtle,
             "gap-[var(--ds-space-snug)] px-[var(--ds-space-cozy)]",
           )}
         >
-          {/* NOT disabled at zero, which is the demo's own call
-              (`DemoBulkBar.tsx:236`) and R8 finding 22: the uncited
-              `disabled={visibleIds.length === 0}` this used to carry was a
-              rebuild addition with no argument behind it. `Select all 0 in
-              view` is a control that reads its own count out loud and does
-              nothing when pressed, and that is strictly more legible than a
-              greyed button giving no reason — the band is only mounted in
-              select mode anyway, so the zero case is a day with no rows, not a
-              malfunction. */}
+          {/** NOT disabled at zero, which is the demo's own call
+ * (`DemoBulkBar.tsx:236`) and : the uncited */}
           <Button size="sm" variant="secondary" onClick={allSelected ? onClearSelection : onSelectAll}>
             {allSelected ? "Clear" : `Select all ${visibleIds.length} in view`}
           </Button>
           <span className={cn(dsText.meta, dsText.nums, "shrink-0 text-[color:var(--ds-fg-muted)]")}>
             {selectedCount} selected
           </span>
-          {/*
-            THE STRIP'S OWN REFUSAL, and it is now about the SELECTION rather
-            than about the build. A selection whose rows serve neither verb says
-            so — that sentence is a refusal (what cannot be done and why), which
-            is one of DESIGN.md's two exemptions from "the product does not
-            explain itself". An empty selection says nothing at all, because
-            "select something first" is a caption on an absence.
-          */}
+          {/* Explain ineligible selections; empty selection alone needs no refusal caption. */}
           {selectedCount > 0 && bulkPlans.length === 0 && (
-            /* NOT `truncate`. This is the band's only statement of WHY nothing
-               can be applied, and the ⓘ-and-popover route the rows use for a
-               clipped value does not exist on a toolbar — so a clipped sentence
-               here is a reason with no route to it at all, on any pointer. It
-               wraps instead, and the band's `min-h` lets it. */
+            /* Wrap the only refusal reason; this toolbar offers no disclosure route for clipped text. */
             <span className={cn(dsText.meta, "ml-auto min-w-0 leading-snug text-[color:var(--ds-fg-muted)]")}>
               {selectedCount === bulkUnavailable.length
-                ? /* Every selected row has left the day. Saying they "serve
-                     neither verb" would be a claim about `actions[]` this
-                     screen never received — the honest sentence is that there
-                     are no rows here to act on. */
+                ? /* Missing rows reveal no action vocabulary; say unavailable rather than claiming neither verb is served. */
                   `${bulkUnavailableSentence(bulkUnavailable.length, "present")}.`
                 : `None of the ${selectedCount - bulkUnavailable.length} selected `
                   + `${selectedCount - bulkUnavailable.length === 1 ? "row still on this day serves" : "rows still on this day serve"} `
@@ -369,13 +269,7 @@ export function QueueToolbar({
                   <Button
                     key={plan.verb}
                     size="sm"
-                    /*
-                      `cancel` takes the surface's single danger slot — it is
-                      the irreversible one, and two danger buttons on one
-                      surface is exactly what that ban exists to stop. Retry
-                      creates work rather than destroying it, so it is an
-                      `outline` peer.
-                    */
+                    /* Reserve danger for destructive cancellation; retry creates work rather than destroying it. */
                     variant={plan.verb === "cancel" ? "dangerGhost" : "outline"}
                     onClick={() => onBulk(plan)}
                     title={[
@@ -391,24 +285,13 @@ export function QueueToolbar({
                   >
                     {plan.label} {plan.eligible.length}
                     {plan.skipped.length > 0 && (
-                      /*
-                        THE SKIP IS ON THE CONTROL, not only in the confirm.
-                        `Cancel 3` beside `4 selected` is a discrepancy the
-                        operator has to notice and explain; `Cancel 3 · 1
-                        skipped` explains it before the press, and the dialog
-                        then says WHY.
-                      */
+                      /* Show skipped counts before confirmation so selected and eligible counts cannot appear contradictory. */
                       <span className={cn(dsText.micro, "text-[color:var(--ds-fg-muted)]")}>
                         {" "}· {plan.skipped.length} skipped
                       </span>
                     )}
                     {plan.unavailable.length > 0 && (
-                      /*
-                        And the same argument for the third bucket, kept as its
-                        own count rather than added to the skip: `3 + 1` under
-                        `6 selected` is the arithmetic the operator was left to
-                        do, and the two numbers have different explanations.
-                      */
+                      /* Unavailable and skipped counts stay separate because they require different operator checks. */
                       <span className={cn(dsText.micro, "text-[color:var(--ds-fg-muted)]")}>
                         {" "}· {plan.unavailable.length} not on this day
                       </span>
@@ -421,15 +304,7 @@ export function QueueToolbar({
         </div>
       )}
 
-      {/*
-        THE RESULT VECTOR (D235, ref dashboard-surfaces §2.4). A batch of four can come back
-        "2 applied · 1 conflict · 1 refused" and the UI may NEVER collapse that
-        into "Done" — so this band renders every run's own outcome, keeps it
-        until it is dismissed, and never summarises without the rows underneath.
-        It is a BAND rather than a toast for that reason: a toast that
-        auto-dismisses would take a partial result off the screen before it was
-        read.
-      */}
+      {/* Keep every per-run batch outcome until dismissal; summaries cannot replace the vector. */}
       <BulkCommandFeedback bulkOutcome={bulkOutcome} onDismissBulkOutcome={onDismissBulkOutcome} onSelectRun={onSelectRun} />
     </ActionBar>
   );
@@ -488,9 +363,7 @@ export function BulkCommandFeedback({ bulkOutcome, onDismissBulkOutcome, onSelec
           </div>
 
           {vector === undefined ? (
-            /* A whole-request refusal reached no run at all, so it has no
-               vector — the server's sentence is the whole answer and is printed
-               verbatim. */
+            /* Whole-request refusal reached no run; the served sentence is the complete answer. */
             <p className={cn(dsText.meta, "mt-[var(--ds-space-snug)] text-[color:var(--ds-danger)]")}>
               {bulkOutcome.response.state === "refused" ? bulkOutcome.response.message : ""}
             </p>
@@ -515,11 +388,7 @@ export function BulkCommandFeedback({ bulkOutcome, onDismissBulkOutcome, onSelec
                   >
                     <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", tone.dot)} />
                     <span className={cn(dsText.caps, "w-16 shrink-0", tone.text)}>{tone.word}</span>
-                    {/* The row's own name, frozen from the plan that was sent
-                        — the vector names runs by id, and a report of uuids is
-                        a report nobody reads. A run the map does not hold shows
-                        its id, which is still the run's own identity rather
-                        than a plausible substitute for one. */}
+                    {/* Keep sent subjects with results; unknown subjects display their real ID rather than an invented name. */}
                     <span className="w-40 shrink-0 truncate text-[color:var(--ds-fg-secondary)]">
                       {bulkOutcome.subjects.get(entry.runId) ?? entry.runId}
                     </span>
@@ -542,10 +411,7 @@ export function BulkCommandFeedback({ bulkOutcome, onDismissBulkOutcome, onSelec
             </div>
           )}
 
-          {/* THE SKIPPED ROWS SURVIVE THE SEND. They are named before the press
-              and named again after it, because a selection of four answering
-              with three outcomes is a discrepancy the operator would otherwise
-              have to reconstruct from memory. */}
+          {/* Name skipped rows after dispatch so missing outcomes can be reconciled with the original selection. */}
           {bulkOutcome.plan.skipped.length > 0 && (
             <Disclosure className="mt-[var(--ds-space-snug)]" summaryClassName={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")} summary={<>
                 <span className={dsText.nums}>{bulkOutcome.plan.skipped.length}</span> selected{" "}
@@ -563,16 +429,10 @@ export function BulkCommandFeedback({ bulkOutcome, onDismissBulkOutcome, onSelec
             </Disclosure>
           )}
 
-          {/* AND THE THIRD BUCKET SURVIVES THE SEND TOO. It has no titles to
-              list — the day served no row for these ids — so it names them by
-              the only identity it holds, which is still the run's own rather
-              than a plausible substitute for one. */}
+          {/* Unavailable rows retain their IDs; no served titles exist to display. */}
           {bulkOutcome.plan.unavailable.length > 0 && (
             <p className={cn(dsText.meta, "mt-[var(--ds-space-snug)] text-[color:var(--ds-fg-muted)]")}>
-              {/* PAST tense: this is the batch's outcome, and the rows it names
-                  were already gone at the instant it was sent. The sentence
-                  carries "when this batch was sent" itself, so the two halves
-                  can no longer disagree about which moment they describe. */}
+              {/* Outcome copy describes row availability when the batch was sent, never the present day. */}
               {bulkUnavailableSentence(bulkOutcome.plan.unavailable.length, "past")}:{" "}
               <span className={dsText.nums}>{bulkOutcome.plan.unavailable.join(", ")}</span>
             </p>

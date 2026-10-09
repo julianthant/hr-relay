@@ -91,7 +91,7 @@ export function createOperationRenameSource(path: string, version = 34): void {
     insertRun(WRITE_INTENT_ATTEMPTING.runId, 1);
     insertRun(operationFixtureId(50), 3);
     insertRun(operationFixtureId(70), 2);
-    // Already settled historical receipts must survive byte-for-byte.
+
     const deleted = DeletedRunRecordSchema.parse({ runId: operationFixtureId(70), workflow: "separation",
       traceId: "se-120000-2222", origin: "queue", commandId: operationFixtureId(71), deletedAt: NOW,
       itemId: operationFixtureId(72), attempt: 2, runNumber: 7, ordinalSource: "tombstone", tallyVersion: 2,

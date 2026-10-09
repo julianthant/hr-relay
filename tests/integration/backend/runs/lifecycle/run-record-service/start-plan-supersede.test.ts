@@ -64,9 +64,7 @@ describe("start-specific supersede review is atomic", () => {
     assert.ok(result.state === "rejected"); assert.equal(result.code, "replan-required"); assert.equal(h.queueRoots.length, 0);
   });
   it("reopens and replays an accepted historical plan without a supersede review basis", async () => {
-    // The pre-basis persisted format is identical for both policies. Produce
-    // an actual accepted command/audit with that format, then reopen under
-    // the supersede descriptor to prove replay never runs current admission.
+
     const h = launchHarness("reject-active"); cleanup.push(h.dispose);
     const plan = h.proposal(); assert.equal(plan.planned[0].supersedeTargets, undefined);
     const command = h.command(plan); const accepted = h.kernel.execute(command); assert.equal(accepted.state, "applied");

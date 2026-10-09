@@ -1,51 +1,4 @@
-/**
- * `kuali/read-separation-document` — ONE visit to the RRSS Separation Request
- * Form (D194 / ref task-contract §2.8), returning the whole form.
- *
- * `docs/migrations/separations.md` §2.3 lists this task as "the six fields off
- * the RRSS separation form". That row predates §2.8, which was ratified later
- * in the same document; this is that rule applied, exactly as `new-kronos`
- * applied it in chunk 1. The six fields legacy extracts (name, EID, last day
- * worked, separation date, termination type, location) are all here, and so is
- * everything else the page carries — the Timekeeper Tasks section, the Final
- * Transactions section, the Final Pay group, and **every dropdown's complete
- * option list** (§3.2's MAP-EVERYTHING directive).
- *
- * ## The subject is the DOCUMENT
- *
- * Every other browser read in this tree binds a PERSON subject from its input.
- * This one cannot: the run names a document and the EID is what it DISCOVERS —
- * that is the whole point of the read. Ref task-contract's `artifact` subject kind with
- * `identity:"document-id"` is exactly this shape, proved against the level-1
- * heading Kuali renders the document number in (D129: an `actionId` names a
- * workflow STEP, not a document, so a run carries both and the number is proved
- * from the page).
- *
- * ## Six error codes, because six different things go wrong
- *
- * D196's rule — distinct negatives are distinct durable `FailureRecord.code`s:
- *
- *  - `document-unavailable` — the action id rendered no document at all (stale
- *    step), or the route never named its own form.
- *  - `document-number-mismatch` — a REAL document opened; a different one.
- *  - `not-a-separation-document` — **S2**, answered by NAME before a single
- *    field is read. Legacy discovers this as a 5-second locator timeout on the
- *    employee-name field, which is indistinguishable from a slow page.
- *  - `unparseable-date` — **S8**, naming the field and the value.
- *  - `unreadable-eid` — the EID control holds something that is not an EID.
- *  - `unexpected-page-state` — the driver answered about a different document
- *    than the task asked for.
- *
- * ## Strictly read-only
- *
- * **S61 is the legacy defect this task must not inherit.** Legacy's "dry run"
- * still writes the Kuali draft — the timekeeper-name fill and the `similar`
- * name correction both land on the live document — and its safety argument
- * ("an abandoned draft discards its edits") is stated in a comment and verified
- * nowhere. This task fills nothing, saves nothing, and clicks nothing: it
- * navigates, reads, and returns. The driver operation it calls has no write
- * path to reach.
- */
+/** ONE visit to the RRSS Separation Request Form, returning the whole form; the subject is the DOCUMENT, and the task is strictly read-only — it navigates, reads and returns. */
 import { z } from "zod";
 import { ObservationIdSchema, taskId } from "../../../rules/identity/ids.js";
 import {
@@ -59,7 +12,7 @@ import {
 import { ContractFieldPathSchema, defineTaskContract } from "../../task/task-contract.js";
 
 export const ReadSeparationDocumentInputSchema = z.strictObject({
-  /** The Action-List deep-link id. NOT stable across workflow steps (D129). */
+  /** The Action-List deep-link id. NOT stable across workflow steps. */
   actionId: KualiActionIdSchema,
   /** The document number the run names, and the read's subject (proved on page). */
   documentNumber: KualiDocumentNumberSchema,
@@ -93,16 +46,7 @@ export const KualiReadSeparationDocument = defineTaskContract({
     match: "exact",
     requiredAt: "before-subject-read",
   },
-  /**
-   * `Infinity`, argued: `separations.md` §5 residual 5A. The operator's answer
-   * is that there is NO automatic freshness refresh in separations — a saved
-   * Kuali separation document is a stable artifact, and an age-triggered
-   * re-read of a value the run is about to write back adds cost without adding
-   * safety. Refresh is a deliberate operator RE-RUN, never a silent mid-run
-   * re-read. `defaultOverride:"audited"` matches the timecard read: the
-   * identity, person-selection, idempotency-key and write-proof fields are
-   * `forbidden` by guard regardless of what a read declares.
-   */
+    /* `Infinity`, argued: separations takes no automatic freshness refresh, and the identity, person-selection, idempotency-key and write-proof fields stay `forbidden` by guard. */
   freshness: { defaultMaxAgeMs: Number.POSITIVE_INFINITY, defaultOverride: "audited" },
   provenance: { default: "live" },
   scenarios: [

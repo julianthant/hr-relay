@@ -1,35 +1,4 @@
-/**
- * `ucpath/match-pending-terminations` — ref write-safety §5's **second probe kind**: the
- * DATE-AGNOSTIC one.
- *
- * Ref write-safety §5 requires both, and they are genuinely different questions asked of
- * the same page:
- *
- * | Probe | Question | Keyed by |
- * |---|---|---|
- * | `ucpath/match-existing-termination` | is this person already being terminated **effective this date**? | EID + effdt + `Terminat*` |
- * | this one | does this person have **any** in-progress termination at all? | EID + `Terminat*` + in-progress status |
- *
- * Legacy's `deletePendingTransaction` asks the second one and deletes every
- * matching in-progress row before filing — which the behavior review rates
- * `sound` in intent (**S30/S31**) while noting it is *the first mutation the
- * run performs*. That is exactly why it is its own transaction here rather than
- * a step inside the termination's prepare: a delete is an external write, and
- * an external write gets a fence, a permanent key and a read-back like every
- * other one.
- *
- * ## The verdict's polarity, which is the part worth reading twice
- *
- * The "transaction" this probe guards is **"this person has no in-progress
- * termination rows"**. So:
- *
- *  - `present`   — there are none ⇒ the sweep is `already-present`, nothing is
- *                  clicked, and the run moves on. This is the common case.
- *  - `absent`    — in-progress rows exist ⇒ the sweep proceeds.
- *  - `ambiguous` / `unknown` — park. A scan that could not be read is never
- *                  "there was nothing to delete": that reading would let the
- *                  termination file on top of a pending duplicate.
- */
+/** The DATE-AGNOSTIC probe: does this person have ANY in-progress termination at all, with polarity inverted — no rows means `already-present`. */
 import { z } from "zod";
 import { EidSchema, ObservationIdSchema, taskId } from "../../../rules/identity/ids.js";
 import {

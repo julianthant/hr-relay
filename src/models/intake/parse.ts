@@ -1,38 +1,10 @@
-/**
- * The intake PARSE VIEW — the re-derived half of a session (ref data-intake-and-edit-data §2.2, D170).
- *
- * A session retains the operator's decisions and the immutable source identity.
- * Everything else an intake surface shows — which worksheets the file holds,
- * which rows rank as header candidates, which columns exist, what their sample
- * values are, and the data rows themselves — is a pure function of
- * `(artifact bytes, sheet, headerRowIndex)`. It is therefore RE-DERIVED on every
- * read rather than stored: a stored copy could only ever drift from its own
- * source, and there is nothing it could be reconciled against.
- *
- * This module owns the SHAPE of that derivation, not the derivation itself. The
- * parse is produced behind the kernel's injected `intakeParser` seam because the
- * spreadsheet parser implementation lives in `src/backend/processing`, which
- * neither `src/domain` nor `src/core` may reach.
- *
- * ## Why `layout` is nullable rather than a second refusal code
- *
- * "This sheet has no settled header row" is a normal, expected state — ref data-intake-and-edit-data
- * §3's discovery deliberately preselects nothing when two candidates are
- * structurally indistinguishable, and the operator then picks. That is not a
- * failure to read the file, so it is not a refusal; the candidates are still
- * served so the picker has something to show. A refusal means the BYTES could
- * not yield a grid at all.
- */
+/** Re-derive the parse view from artifact/sheet/header; store only operator decisions and identity. */
 import { z } from "zod";
 import { FingerprintSchema } from "../../rules/identity/ids.js";
 import { HeaderDiscoverySchema, ServedHeaderCandidateSchema } from "../../rules/intake/header-discovery.js";
 import { DetectedColumnSchema } from "./mapping.js";
 
-/**
- * `header-row-absent` is the parser's own arm: the three others come verbatim
- * from the shared grid edge, while an explicitly requested header row that the
- * sheet does not contain is a refusal this layer discovers.
- */
+/** A requested but absent header is this parser's refusal; shared grid errors remain unchanged. */
 export const IntakeParseRefusalCodeSchema = z.enum([
   "unreadable-file",
   "unknown-sheet",
@@ -47,11 +19,7 @@ export const IntakeLayoutSchema = z.strictObject({
   columns: z.array(DetectedColumnSchema),
   /** Ref data-intake-and-edit-data §2.3's order-insensitive layout identity, over these exact columns. */
   headerFingerprint: FingerprintSchema,
-  /**
-   * Data rows, header-relative and in file order, with wholly blank rows
-   * dropped: source row N is `rows[N - 1]`. A blank row is not a data row, and
-   * counting one would reject a person who is not in the file.
-   */
+    /* Data rows, header-relative and in file order, with wholly blank rows dropped: source row N is `rows[N - 1]`, and counting a blank row would reject a person who is not in the file. */
   rows: z.array(z.array(z.string())),
 });
 export type IntakeLayout = z.infer<typeof IntakeLayoutSchema>;
@@ -83,18 +51,7 @@ export const IntakeParseRequestSchema = z.strictObject({
 });
 export type IntakeParseRequest = z.infer<typeof IntakeParseRequestSchema>;
 
-/**
- * The `inspect-intake` selection, resolved in ONE place.
- *
- * The kernel arm and the caller that prepares the parse for it must agree
- * exactly on which `(sheet, headerRowIndex)` pair the command asks for —
- * two independent resolutions of one selection is a drift surface, and the
- * kernel would fail loud on a key nobody prepared.
- *
- * A sheet change discards the header row: a row index means nothing on a
- * different sheet, so the selection falls back to discovery rather than
- * carrying a number across.
- */
+/** The `inspect-intake` selection, resolved in ONE place; a sheet change discards the header row, because a row index means nothing on a different sheet. */
 export function resolveInspectSelection(
   session: Readonly<{ sheet: string; headerRowIndex: number | null }>,
   payload: Readonly<{ sheet?: string | undefined; headerRowIndex?: number | undefined }>,

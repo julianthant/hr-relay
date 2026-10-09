@@ -1,20 +1,4 @@
-/**
- * The canonical-input snapshot contract (ref workflow-model §2, D62).
- *
- * A run's raw submission is parsed ONCE by `descriptor.input` — defaults and
- * transforms applied — and the resulting value is stored as the canonical
- * snapshot. Those stored bytes are not trusted: every authority read re-parses
- * them through a SEPARATE strict schema that validates the already-transformed
- * shape without re-applying ingress coercion.
- *
- * The failure this prevents is quiet and expensive: if resume re-ran
- * `descriptor.input`, a deploy that changed a default would silently rewrite an
- * in-flight run's input, and the operator would see a run that "always meant"
- * something it never meant. So the canonical schema must be transform-free
- * ANYWHERE in its graph — one buried under an array element or a union arm
- * re-applies on exactly the same read as a top-level one — and a corrupted
- * snapshot fails loud rather than being re-derived from ingress.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { z } from "zod";
@@ -74,12 +58,7 @@ describe("canonical input snapshot", () => {
   });
 
   it("refuses a canonical schema that drifted from its ingress schema", () => {
-    // A canonical schema that DROPS a field is already a compile error:
-    // `CanonicalInputSchema<InputSchema>` pins the output type. What types
-    // cannot see is a canonical schema that is STRICTER than ingress output —
-    // same TypeScript type, narrower validation — so a stored value that ingress
-    // accepted would stop parsing on the first resume. The sample round-trip is
-    // what catches it, at build.
+
     const ingress = z.strictObject({ eid: z.string().min(1), note: z.string() });
     assert.throws(
       () => defineCanonicalInput(

@@ -1,9 +1,4 @@
-/**
- * The start-plan wire has ONE owner (ref frontend-backend-integration §3.4, 2026-09-03):
- * the browser's request, the server's admission of it, and the answer are
- * three schemas in `models/dashboard/start-plan.ts`, imported by both sides.
- * Before this, the client held a looser "mirror" the server could drift from.
- */
+
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -94,9 +89,7 @@ describe("start-plan wire contract (one shared owner)", () => {
     }).success, false);
     assert.equal(StartPlanWireSchema.safeParse({ ...WIRE, rawInput: REQUEST.submissions }).success, false, "rawInput never echoes");
     assert.equal(StartPlanWireSchema.safeParse({ ...WIRE, startPlanId: "plan-1" }).success, false, "ids are domain ids, not any string");
-    // The two tightenings that moved the fixtures: the server can only ever
-    // emit a closed refusal code and a real trace id, and the browser now
-    // refuses anything else instead of rendering it.
+
     assert.equal(StartPlanWireSchema.safeParse({
       ...WIRE,
       refused: [{ entry: 1, code: "duplicate-active", message: "not a code the server can emit" }],

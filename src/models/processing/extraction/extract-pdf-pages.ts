@@ -1,31 +1,4 @@
-/**
- * `extraction/extract-pdf-pages` — a scanned PDF becomes one page artifact each.
- *
- * This is what feeds `ocr/extract-form-page`, whose input is ONE page. The
- * operator scans a stack; this splits it so every page can be read, reviewed
- * and re-read independently, and so `sourcePage` means something a human can
- * check against the paper.
- *
- * ## Ref data-intake-and-edit-data §3's `parse-pdf-fields` described a capability that does not exist
- *
- * That entry says "same shape for a fielded PDF (onboarding's extraction step
- * ports here)". Reading legacy at `4deabc5a`: onboarding's `extract.ts` is
- * Playwright scraping labelled fields off a CRM page, and no legacy code reads
- * an AcroForm anywhere. What legacy actually does with PDFs is rasterize pages
- * for OCR, split a page out for OnBase, and text-extract Kronos reports. So the
- * real intake need is rasterization, and inventing an AcroForm reader for a
- * form nobody submits would be building against a misremembered requirement.
- * §3.2 records the correction.
- *
- * ## Determinism
- *
- * The input is content-addressed and the render scale is pinned, so the same
- * bytes produce the same images. `maxAgeMs` is Infinity for the same reason the
- * spreadsheet parse is: a renderer upgrade can change the ENCODING of a page
- * image, never what the page shows, and a replayed page image is still that
- * page. That is a different claim from the OCR read, which is an interpretation
- * and therefore ages.
- */
+/** `extraction/extract-pdf-pages`: a scanned PDF becomes one page artifact each, feeding `ocr/extract-form-page`; content-addressed input and a pinned render scale make the images deterministic. */
 import { z } from "zod";
 import { ArtifactRefSchema } from "../../artifacts/artifacts.js";
 import { taskId } from "../../../rules/identity/ids.js";
@@ -33,12 +6,7 @@ import { defineTaskContract } from "../../task/task-contract.js";
 
 export const ExtractPdfPagesInputSchema = z.strictObject({
   document: ArtifactRefSchema,
-  /**
-   * 1-based inclusive window. Absent means every page. A window is refused
-   * rather than clamped when it runs past the end: an operator who asked for
-   * pages 40–50 of a 44-page scan has miscounted something, and silently
-   * returning five pages would hide it.
-   */
+    /* 1-based inclusive window; absent means every page, and a window past the end is refused rather than clamped. */
   fromPage: z.number().int().positive().optional(),
   toPage: z.number().int().positive().optional(),
 });

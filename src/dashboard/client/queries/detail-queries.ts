@@ -31,7 +31,7 @@ export interface DetailQueries {
     options?: Readonly<{ limit?: number; cursor?: string; signal?: AbortSignal }>,
   ): Promise<ItemAttemptHistoryResponse>;
 
-  /** One D137 bundle, read by its exact durable id only after the operator asks. */
+  /** One diagnostic bundle, read by its exact durable id only after the operator asks. */
   diagnosticBundle(bundleId: string, signal?: AbortSignal): Promise<DiagnosticBundleWire>;
 
   /** The browser downloads the server's canonical durable manifest; no UI reconstruction. */
@@ -40,7 +40,7 @@ export interface DetailQueries {
   /** One exact indexed attachment, scoped to the bundle the operator inspected. */
   diagnosticBundleAttachmentUrl(bundleId: string, artifactId: string): string;
 
-  /** One verified capture ref's DCA1 byte resource. */
+  /** One verified capture ref's byte resource. */
   artifactUrl(artifactId: string): string;
 
 }

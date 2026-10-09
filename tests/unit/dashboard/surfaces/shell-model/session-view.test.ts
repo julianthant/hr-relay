@@ -1,15 +1,4 @@
-/**
- * The Session Panel's authority joins are a pure read of the day wire: worker
- * leases name active work, a queue row names the session its run belongs to,
- * and a pool row is only a declaration. This fixture starts at the strict, real
- * dashboard wire rather than rebuilding a second session vocabulary beside it.
- *
- * D305 retired the drawer's membership LIST (the demo's strip holds sessions,
- * and a list of runs grouped by session id is not one), so the folds pinned
- * here are the two the panel still draws from: the per-card membership join
- * and the per-workflow pool facts, plus the by-id pool group the Add workers
- * dialog plans against.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { DashboardDayWireSchema, type DashboardDayWire } from "../../../../../src/models/dashboard/projection.js";
@@ -191,7 +180,7 @@ describe("Session Panel authority joins", () => {
     assert.deepEqual(view.poolGroups.map((group) => group.workflowId), ["person-lookup"]);
   });
 
-  it("plans a workflow with neither a card nor a pool row at basis 0 with an empty roster (D305)", () => {
+  it("plans a workflow with neither a card nor a pool row at basis 0 with an empty roster", () => {
     const day = sessionDay();
 
     const group = sessionPoolGroupFor("separations", day.workerCards, day.workerPools);

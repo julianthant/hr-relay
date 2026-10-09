@@ -1,11 +1,4 @@
-/**
- * Wire-shaped trust payloads for schema tests.
- *
- * The receipt is built by the REAL builder over the real Kuali evidence rather
- * than hand-typed: a hand-typed receipt would drift from the schema the moment
- * the builder's shape moved, and a wire test that asserts against a stale hand
- * copy proves nothing about what the server serves.
- */
+
 import { buildRunEvidenceReceipt } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
 import { FailureDetailWireSchema } from "../../../../src/models/dashboard/run-detail.js";
 import type { RunEvidenceReceipt } from "../../../../src/models/trust/evidence.js";

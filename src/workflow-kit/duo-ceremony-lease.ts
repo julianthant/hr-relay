@@ -1,23 +1,4 @@
-/**
- * The Duo ceremony lease TOKEN and the gate port (ref execution-and-sessions
- * §10.6, D267) — `MutationCapability`'s shape, for the same reason: a rule that
- * can be satisfied by a caller's claim is not a rule.
- *
- * A `DuoCeremonyLeaseToken` is what stands between a login recipe and the SSO
- * form. Its type brand is declare-only, so a structurally identical literal
- * type-checks — unforgeability is the module-private WeakSet below, and nothing
- * else. Only an object THIS module minted is in the set, and only the lease
- * store (`src/backend/storage/sqlite/authority-database.ts`) may mint or retire one;
- * the `duo-ceremony-lease` guard fails any other module that names either
- * function and any attempt to conjure the brand through `as` / `satisfies`.
- *
- * ## Why it lives in `src/workflow-kit/`
- *
- * Minting needs a type assertion, which no source under `src/models/` may
- * contain (`strict-boundary-schemas`); the store that mints sits in
- * `src/backend/storage/` and the SSO helpers that assert sit in
- * `src/backend/runtime/browser/`; both may import `src/workflow-kit/`.
- */
+// Only lease-store tokens authorize a Duo ceremony; caller claims cannot.
 import type { DuoCeremonyLeaseHolder } from "../rules/sessions/duo-ceremony-lease.js";
 import type { BrowserSystemId, Fingerprint, IsoInstant, PositiveInt } from "../rules/identity/ids.js";
 
@@ -55,10 +36,7 @@ export function mintDuoCeremonyLeaseToken(input: MintedTokenShape): DuoCeremonyL
   return token;
 }
 
-/**
- * DO NOT CALL. The lease store retires a token when its lease is released (or
- * found superseded), so a helper presented with it AFTER the release refuses.
- */
+/** DO NOT CALL. The lease store retires a token when its lease is released or superseded. */
 export function retireDuoCeremonyLeaseToken(token: DuoCeremonyLeaseToken): void {
   if (!MINTED_DUO_CEREMONY_LEASE_TOKENS.has(token)) {
     throw new Error("Duo ceremony lease token was not minted by the Duo ceremony lease store; refusing to retire it");
@@ -73,12 +51,7 @@ export function isDuoCeremonyLeaseToken(token: unknown): token is DuoCeremonyLea
   return token !== null && typeof token === "object" && MINTED_DUO_CEREMONY_LEASE_TOKENS.has(token);
 }
 
-/**
- * The SSO-helper verification seam: every helper that navigates to the SSO
- * form or drives the Duo assertion calls this BEFORE touching the page. A
- * token nobody minted, one already retired, or one minted for a different
- * system throws — the ceremony would otherwise run outside the lease.
- */
+/** SSO-helper verification seam: call BEFORE touching the page; an unminted, retired, or wrong-system token throws. */
 export function assertDuoCeremonyLeaseToken(
   token: unknown,
   expected?: Readonly<{ system: BrowserSystemId }>,
@@ -96,11 +69,7 @@ export function assertDuoCeremonyLeaseToken(
   }
 }
 
-/**
- * The per-acquisition gate a login recipe is handed. `defineVerifiedLoginRecipe`
- * is its ONE caller (ref execution-and-sessions §10.6): it runs the ceremony
- * half of a recipe under the credential's lease, minting nothing itself.
- */
+/** The per-acquisition gate a login recipe is handed; its one caller runs the ceremony half under the credential's lease, minting nothing itself. */
 export interface DuoCeremonyGate {
   withCeremony<Result>(run: (token: DuoCeremonyLeaseToken) => Promise<Result>): Promise<Result>;
 }

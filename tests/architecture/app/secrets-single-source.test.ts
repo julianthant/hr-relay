@@ -7,36 +7,13 @@ import { ENVIRONMENT_SOURCE_EXTENSIONS, inventoryEnvironmentAccesses, type Envir
 import { auditCountAllowlist, gitVisibleFiles, REPO_ROOT, type CountAllowlist } from "../support/helpers/guard-files.js";
 import { auditSoleRunnerInvocation, packageDeclaredExternalProductionSources } from "../tooling/helpers/runner-invocation-audit.js";
 
-/**
- * Guard (roadmap §Phases at a glance · ref clock-config-secrets §5): the rebuild runtime reads `process.env` through
- * ONE owner.
- *
- * Doc 01 §Phase summary's critical-path justification is explicit — "building 01+ on raw
- * `new Date()`/`process.env` would require re-threading later; the
- * `clock-single-source` and `secrets-single-source` guards must be green from
- * the first `src` file." A second credential reader is not a style
- * problem: it is a value that never passes through `domain/secrets.ts`'s
- * classification, so ref clock-config-secrets's redaction contract cannot see it and it reaches
- * a log, an evidence record, or a diagnostic bundle unredacted.
- *
- * The rule, per ref clock-config-secrets §5:
- *
- * - `src/models/config/secrets.ts` is the sole *credential* reader. Every other
- *   consumer receives an already-resolved value.
- * - D331 removes environment leaves from config resolution; config modules admit no
- *   process.env access. The composition guard independently scans them and tests retired
- *   key refusals before effects. Explicit host facts remain a separate source.
- * - Protected catalog keys are forbidden even in the secret owner: reads, writes and
- *   deletes must never revive the retired environment bridge.
- * - Everywhere else in src, any direct/computed/bulk environment access fails.
- * The shrink-only ported-leaf allowlist remains empty.
- */
+
 
 const SECRET_OWNER = "src/models/config/secrets.ts";
 const CONFIG_OWNER_PREFIX = "src/models/config/";
 const APP_CONFIG_OWNER_PREFIX = "src/backend/app/config/";
 
-/** file (relative to repo root) -> { count, reason }; empty = no ported leaf owes an exception. */
+
 const ALLOWLIST: CountAllowlist = {};
 
 const CREDENTIAL_KEYS: ReadonlySet<string> = new Set(
@@ -48,11 +25,7 @@ const CREDENTIAL_KEYS: ReadonlySet<string> = new Set(
 );
 function isCredentialKey(key: string): boolean { return CREDENTIAL_KEYS.has(key); }
 
-/**
- * Classifies one environment access against the single-source rule. Exported so
- * the negative controls below can exercise it on synthetic sources rather than
- * only on a tree that happens to be clean today.
- */
+
 export function auditSecretsSingleSource(
   occurrences: readonly EnvironmentAccessOccurrence[],
 ): readonly string[] {
@@ -497,9 +470,7 @@ describe("secrets single source", () => {
     const violations = auditSecretsSingleSource(
       inventoryEnvironmentAccesses("src/core/leak.ts", fixture),
     );
-    // Two destructures (named + rest), six resolved/computed/aliased/imported
-    // reads, one write, one delete. Pinned exactly so a scanner regression that
-    // stops resolving one of these forms fails here instead of going quiet.
+
     assert.equal(violations.length, 10, violations.join("\n"));
     assert.equal(violations.every((violation) => violation.includes("only src/models/config/secrets.ts")), true);
     assert.equal(violations.some((violation) => violation.includes("environment write")), true);

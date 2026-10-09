@@ -10,11 +10,7 @@ import {
   type CountAllowlist,
 } from "../support/helpers/guard-files.js";
 
-/**
- * Raw credential-named interpolation and diagnostic arguments require a classified boundary.
- * D361 permits the exact local identifier-display export; imported ownership and lexical
- * shadowing checks refuse lookalike helpers. D346 separately constrains provider and OS egress.
- */
+
 
 const SENSITIVE_ROOTS = [
   "password", "passwd", "passphrase", "secret", "credential", "privatekey",
@@ -76,22 +72,12 @@ function isDirectIdentifierBindingName(name: string): boolean {
   const compact = name.replaceAll(/[^A-Za-z0-9]/gu, "");
   const structuralFamily = /(?:Eid|Eids|EIDs|EmplId|EmplIds|EmployeeId|EmployeeIds)$/u.test(compact);
   if (!structuralFamily) return false;
-  // Predicate names answer a question ABOUT an identifier; they do not carry
-  // it. Value names such as `matchedEid` stay sensitive ("matched" is a value
-  // adjective), while a reviewed `rowMatchesTerminationEid` is a boolean.
+
   return !/(?:matches|equals|differsfrom|contains)[a-z0-9]*(?:eids?|emplids?|employeeids?)$/u
     .test(normalized);
 }
 
-/**
- * Suffixes that make a binding a DESCRIPTOR of a credential rather than the
- * credential itself. `secretName`, `credentialPath`, and `credentialDependencyId`
- * are exactly what a legible fail-loud message is supposed to name.
- *
- * `key`/`keys` are deliberately ABSENT: `apiKey`, `secretKey`, and `privateKey`
- * all carry the value. So is `state` — `storageState` is a credential, not a
- * description of one.
- */
+// Credential descriptor suffixes name metadata, not credential values.
 const DESCRIPTOR_SUFFIXES = [
   "name", "names", "id", "ids", "path", "paths", "prefix", "prefixes",
   "file", "files", "family", "families", "spec", "specs", "env", "envs",
@@ -182,12 +168,7 @@ function importedCanonicalSanitizers(path: string, source: ts.SourceFile): Reado
   );
 }
 
-/**
- * Find one sensitive value carried by an interpolation expression. Calls and
- * conditionals need expression-aware inspection: `String(eid)`,
- * `candidateEids.join(", ")`, and `ok ? eid : ""` all retain the identifier
- * even though their outermost binding names do not.
- */
+
 function sensitiveBindingInExpression(
   expression: ts.Expression,
   sensitive: (name: string, expression: ts.Expression) => boolean,
@@ -437,11 +418,7 @@ function bindingForIdentifier(
     })[0];
 }
 
-/**
- * Resolve a statically named object member back to the literal that packed it.
- * A member we cannot resolve remains unknown to the data-flow ratchet; callers
- * fall back to its own sensitive name, never to a plausible safe value.
- */
+
 function objectPropertyValues(
   raw: ts.Expression,
   property: string,
@@ -483,12 +460,7 @@ function objectPropertyValues(
   return objectPropertyValues(binding.sourceExpression, property, bindings, next, staticText);
 }
 
-/**
- * Loop variables drawn from a descriptor COLLECTION are descriptors themselves:
- * `for (const secret of dependency.secretNames)` iterates names, so the bare
- * `secret` binding cannot be a value even though its name reads like one.
- * Collected per file — a ratchet's precision floor, not a type system.
- */
+
 function descriptorLoopBindings(source: ts.SourceFile): ReadonlySet<string> {
   const names = new Set<string>();
   function visit(node: ts.Node): void {
@@ -1114,9 +1086,7 @@ describe("no secret values in logs", () => {
     const files = rebuildSources();
     assert.equal(files.length > 0, true, "src resolved zero scannable source files");
 
-    // The scanner must be looking at real templates: `domain/secrets.ts` builds
-    // its fail-loud messages by interpolation, so a zero-template result means
-    // the walker broke, not that the tree is clean.
+
     const templates = files.filter((path) =>
       readFileSync(join(REPO_ROOT, path), "utf8").includes("${"));
     assert.equal(templates.includes("src/models/config/secrets.ts"), true);
@@ -1575,9 +1545,7 @@ describe("no secret values in logs", () => {
       "}",
     ].join("\n")), []);
 
-    // ...but only when the collection itself is a descriptor. `apiKeys` holds
-    // values, so its loop variable stays sensitive. (One report, not two: the
-    // template span owns it, so the enclosing sink call does not double-count.)
+
     assert.equal(findSecretInterpolations("src/domain/bad.ts", [
       "export function leak(pool: { apiKeys: string[] }) {",
       "  for (const secret of pool.apiKeys) console.log(`using ${secret}`);",

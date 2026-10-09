@@ -1,15 +1,4 @@
-/**
- * 2i-D: the cheap backup indicator (`summarizeBackupHealth`) against REAL
- * manifests written by the REAL backup service — the write-time-verified
- * manifest is exactly what the summary trusts, so the test writes one the
- * production way instead of hand-forging JSON.
- *
- * current = fresh by age AND no authority-generation gap; any gap or age
- * beyond the bound reads stale; no usable manifest reads missing — including
- * a manifest that no longer parses, because the summary's closed enum has no
- * invalid arm and "missing" is its fail-safe reading (the full doctor names
- * the corruption precisely).
- */
+
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

@@ -1,14 +1,4 @@
-/**
- * The `explain run` composition value (D143) — the CLI's injected seam.
- *
- * It sits in `src/backend/app/` because it imports the workflow registry
- * and assembles lower-level services for `src/cli.ts`.
- *
- * It opens the SAME authority database the dashboard and workers use, in the
- * same isolated state root, and closes it before returning. `explain` is a
- * read-and-derive command: the only row it may create is the run's receipt,
- * and that insert is idempotent by construction (D141).
- */
+
 import { join } from "node:path";
 import { z } from "zod";
 import type { RuntimeIsolation } from "../../../models/config/define-runtime-isolation.js";
@@ -51,11 +41,7 @@ export function composeExplainRuntime(input: ExplainComposeInput): string {
 
   const bundleIndex = flags.indexOf("--bundle");
   if (bundleIndex !== -1) {
-    // Ref operator-trust §2.5's `--bundle` exports a REDACTED portable diagnostic package
-    // plus a manifest and hash. The capture side of that package (ref operator-trust §2.2)
-    // is a separate 2g slice; exporting a package that silently omitted the
-    // screenshots, DOM excerpts, and console/network evidence it promises would
-    // be worse than refusing, because the recipient could not tell.
+    // Bundle export packages retained diagnostics; it cannot manufacture a missing capture.
     throw new Error(
       "--bundle needs the ref operator-trust §2.2 diagnostic capture slice, which is not wired; refusing to "
       + "export a diagnostic package that would be missing the evidence its manifest claims",

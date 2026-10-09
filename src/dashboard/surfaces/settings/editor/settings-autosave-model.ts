@@ -14,11 +14,7 @@ function lostToDisabling(element: HTMLElement): boolean {
   return element.matches(":disabled") || element.getAttribute("aria-disabled") === "true" || element.closest("[aria-disabled='true'], [data-disabled]") !== null;
 }
 
-/**
- * Owns a Settings form's blur flush and keeps keyboard focus across its save lock. Locked controls are
- * disabled while a command settles, which makes the browser drop focus; when the lock releases, focus
- * returns to the control that lost it unless the operator has focused something else meanwhile.
- */
+/** Owns a Settings form's blur flush and keeps keyboard focus across its save lock. */
 export function useSettingsFormFocus<T extends HTMLElement>(locked: boolean, onFieldBlur: (event: SettingsBlurEvent) => void): (element: T | null) => () => void {
   const lockedRef = useRef(locked);
   const displaced = useRef<HTMLElement | null>(null);

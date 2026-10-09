@@ -1,16 +1,4 @@
-/**
- * D222: the backup-health watch — the first wired producer of ref dashboard-surfaces §2.6's
- * `storage` trigger.
- *
- * The load-bearing arms are the two publishing rules: a TRANSITION into (or
- * between) `stale`/`missing` publishes exactly once, a standing state on the
- * next tick publishes nothing (the fold marks a row unread again, so a
- * per-tick publish would make the inbox unreadable-forever — the spam §2.6
- * forbids); and a publish that THROWS advances nothing, so the next
- * observation retries the same transition instead of treating the alert as
- * sent. The durable rows themselves go through the REAL inbox over a real
- * authority database, because the dedupe fold is half the contract.
- */
+
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -50,7 +38,7 @@ function world(): { inbox: NotificationInbox } {
   return { inbox };
 }
 
-describe("backup-health notifier (D222)", () => {
+describe("backup-health notifier", () => {
   it("publishes nothing while the backup reads current", async () => {
     const { inbox } = world();
     const notifier = createBackupHealthNotifier({ inbox });
@@ -97,9 +85,7 @@ describe("backup-health notifier (D222)", () => {
     assert.equal(rows.length, 2);
     assert.ok(rows.some((row) => row.title === "Storage failed — backup"));
 
-    // This retired producer has no durable occurrence identity. Replaying its
-    // same event cannot invent a new occurrence under the publication contract.
-    // The production health observer proves distinct episodes separately.
+
     await notifier.observed("current");
     await notifier.observed("stale");
     const after = inbox.list(LOCAL_OPERATOR_ACTOR_ID);

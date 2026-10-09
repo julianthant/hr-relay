@@ -1,27 +1,4 @@
-/**
- * The DELETE tombstone (D308).
- *
- * The operator ruled on 2026-09-01 that *delete means delete*: a terminal run —
- * on the queue or in the Archive — is removed from the authority database with
- * every row it owns, its write ledger included. What survives is exactly ONE
- * row: this tombstone, keyed by the run id, inserted FIRST in the same
- * transaction that removes everything else.
- *
- * It exists for three reasons, none of them nostalgia:
- *
- * 1. **The never-delete triggers are relaxed behind it, not removed.** Schema
- *    v29 rewrites each `*_never_deleted` trigger on a run-owned table to abort
- *    UNLESS a tombstone for that run already exists. A stray `DELETE` from any
- *    other code path still aborts by name; only the delete command, which
- *    writes the tombstone first, can pass.
- * 2. **Timeline rows are owned history.** Deletion removes the run's current
- *    SQLite events. Historical file import uses the tombstone to exclude
- *    deleted roots; retired files cannot resurrect current history.
- * 3. **The idempotency key is gone with the ledger.** `removed` records how
- *    many `run_operations` rows actually left. Shared retry evidence remains
- *    until its last retained owner/reference is deleted; only then is its
- *    permanent key released and counted in that deletion receipt.
- */
+/** The DELETE tombstone: the ONE row that survives deleting a run, inserted FIRST in the transaction that removes everything else. */
 import { z } from "zod";
 import {
   CommandIdSchema,

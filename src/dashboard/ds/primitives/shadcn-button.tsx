@@ -1,8 +1,5 @@
-/** Adapted from shadcn/ui Button (MIT):
- * https://github.com/shadcn-ui/ui/blob/main/apps/v4/registry/bases/radix/ui/button.tsx
- * Dashboard variants live in primitives-core; this base retains shadcn's
- * Radix Slot composition and data slot without imposing another visual scale.
- */
+/** Adapted from shadcn/ui Button (MIT)
+ * https://github.com/shadcn-ui/ui/blob/main/apps/v4/registry/bases/radix/ui/button.tsx */
 import { Slot } from "@radix-ui/react-slot";
 import { forwardRef, type ButtonHTMLAttributes } from "react";
 import { cn } from "../../lib/utils.js";

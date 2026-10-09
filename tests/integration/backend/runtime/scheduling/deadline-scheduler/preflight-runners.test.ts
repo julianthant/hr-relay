@@ -27,7 +27,7 @@ const PASSIVE_DEADLINE_SCHEDULER: MonotonicDeadlineScheduler = Object.freeze({
   schedule: () => Object.freeze({ cancel: () => undefined }),
 });
 
-/** Adapt historical detector fixtures to the one production runner composition. */
+
 function createDashboardPreflightRunners(input: Omit<DashboardPreflightRunnerInput, "config" | "authorityHealth" | "listLiveWorkerProcesses">
   & { configFingerprint: string; authorityDoctorOptions: unknown; backendOwned: () => boolean }) {
   const composed = composeRunners({

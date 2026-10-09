@@ -1,10 +1,4 @@
-/**
- * A `<label for>` names an `<input>`; it does NOT name the `<button role="checkbox">`
- * Radix renders (HTML-AAM computes a button's native name from its SUBTREE, and the
- * DS indicator inside it is `aria-hidden`). So the DS `Checkbox` must name its control
- * with `aria-labelledby` pointing at its OWN label span — one expression, no surface
- * may re-state it (ref lessons 2026-08-26, booked for the parity re-freeze).
- */
+
 import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";

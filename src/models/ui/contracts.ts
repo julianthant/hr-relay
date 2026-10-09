@@ -53,14 +53,7 @@ export const UiVerificationSchema = UiVerificationBaseSchema.extend({
 
 export const UiVerificationAssertionSchema = z.enum([
   "exactly-one-visible",
-  /**
-   * Strictly stronger than `exactly-one-visible`: the recipe resolved to one
-   * node AND that node was ENABLED and (for a text control) EDITABLE on the
-   * live page. It exists because a selector mapped on a read-only record is not
-   * a verified selector for the editable page — separations chunk 5c's own
-   * caveat — and `exactly-one-visible` cannot say the difference. It still
-   * claims nothing about a WRITE: `externalWriteAttempted` stays `false`.
-   */
+    /* Strictly stronger than `exactly-one-visible`: the recipe resolved to one node AND that node was ENABLED and (for a text control) EDITABLE on the live page; it still claims nothing about a WRITE. */
   "exactly-one-editable",
   "accepts-canonical-eid",
   "displayed-eid-equals-query",
@@ -80,19 +73,7 @@ export const UiVerificationEvidenceManifestSchema = z.strictObject({
     scenarioId: ScenarioIdSchema,
     portMapRows: z.array(UiPortMapRowReferenceSchema).min(1),
     assertion: UiVerificationAssertionSchema,
-    /**
-     * How many nodes the recipe resolved, VERBATIM (D261).
-     *
-     * It was `z.literal(1)` while every published recipe named a form control,
-     * where one node is the invariant. Kuali's Action-List document link is the
-     * first published recipe whose live count is legitimately TWO — a row
-     * publishes its document number in both `Document #` and `Document Title`,
-     * and the surface's real invariant is one distinct ACTION, not one node. A
-     * schema that could only record `1` would have forced that pass to write a
-     * number it did not measure, which is the fabricated constant this program
-     * bans; the `exactly-one-*` assertions still pin the count themselves in the
-     * refinement below, so nothing that meant "one node" got weaker.
-     */
+        /* How many nodes the recipe resolved, VERBATIM: the real invariant is one distinct ACTION, not one node, and the `exactly-one-*` assertions still pin the count. */
     matchedCount: z.number().int().positive(),
     capturedValue: z.literal(false),
   })).min(1).superRefine((assertions, ctx) => {

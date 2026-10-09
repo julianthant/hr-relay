@@ -34,8 +34,7 @@ export class AuthorityHealthPreflightRunner implements PreflightRunner {
       ? `authority upgrade journal ${report.authorityUpgrades.state}`
       : `authority upgrade phase ${latestUpgrade.phase}`;
     const upgradeSettled = latestUpgrade?.phase === "baseline" || latestUpgrade?.phase === "settled";
-    // D322: the backup arm is REPORTED, never gated — a backup exists only after
-    // `cli storage backup`, so its absence is the operator's choice, not a fault.
+
     if (report.authority.state === "healthy"
       && report.spanAuthority.state === "reconciled"
       && report.protectedSettings.state === "available" && upgradeSettled) {

@@ -1,49 +1,5 @@
 import { ProtectedInputBindingsSchema, type ProtectedInputBinding } from "../../models/write-safety/protected-input.js";
-/**
- * The identity-approval **decision packet** — ref write-safety §14.4's "everything needed
- * to decide without leaving the dashboard", as a pure fold over facts the run
- * already read.
- *
- * ## Nothing here is minted; everything is derived
- *
- * The packet is a function of the run's own stored node outputs (the job-summary
- * read, the name search, the run input). That is the D82 shape, and for the same
- * reason: an approval must bind to evidence that can be RE-DERIVED and compared,
- * so `deriveIdentityEvidenceDigest` over the same stored outputs yields the same
- * bytes, and ref write-safety §14.5's "an approval never survives the disappearance of
- * what it approved" becomes a byte comparison instead of a judgement call.
- *
- * ## Disconfirming evidence FIRST (ref write-safety §14.6 risk 1)
- *
- * `comparisons` is ordered disagreements-first, always. On the name-only arm,
- * putting fields that DISAGREE at the top counters rubber-stamping; on the
- * supplied-EID arm it keeps a name discrepancy visible without turning it into
- * a substitute identity decision. `approvalShape` governs only a gate that is
- * actually required.
- *
- * ## `approvalShape` is a policy, and it is computed here on purpose
- *
- * §14.6 requires the *shape of the control to change with the risk*: a single
- * unambiguous candidate is a one-click approve, and ANY ambiguity — 2+
- * candidates, a `different` tier, an EID conflict, a manual EID — requires a
- * distinct explicit action. That is a server decision, not a rendering
- * preference: a frontend free to choose the control could quietly turn every
- * gate into one click, which is the exact rot §14.6 predicts. The wire serves
- * the shape; the UI obeys it.
- *
- * ## What deliberately does NOT port (S15)
- *
- * Legacy's `similar` tier trusts the Kuali EID, proceeds silently, AND rewrites
- * the employee's name into the live Kuali document
- * (`legacy:src/workflows/separations/workflow.ts:629-649`, commit `1bffbd65`).
- * `Chan`/`Chen`, `Marc`/`Mark` and `Nguyen`/`Nguyan` are all inside its 2-edit
- * threshold, so the arm that is supposed to fix a typo also SUPPRESSES the
- * wrong-person control on exactly the near-miss cases it should raise it for.
- * Here `similar` is always visible. A name-only identity opens the gate with
- * both spellings shown; an exact supplied/read-back EID records the discrepancy
- * as evidence and continues with machine authority. No name is ever written by
- * this workflow.
- */
+/** The identity-approval **decision packet** — everything needed to decide without leaving the dashboard, as a pure fold over facts the run already read. */
 import { z } from "zod";
 import { canonicalJsonStringify } from "../validation/canonical-json.js";
 import { FingerprintSchema, EidSchema, IsoInstantSchema } from "../identity/ids.js";
@@ -64,7 +20,7 @@ import type { JobSummaryClassification } from "./job-summary-classification.js";
 import { SeparationWritePlanSchema } from "./write-plan.js";
 import type { SeparationWritePlan } from "./write-plan.js";
 
-/** Where the EID this run is checking came from — S18/S19's fork, stated. */
+/** Retain the source of the EID being checked. */
 export const IdentityEidSourceSchema = z.enum(["document-eid", "canonical-eid", "name-resolved"]);
 export type IdentityEidSource = z.infer<typeof IdentityEidSourceSchema>;
 
@@ -96,15 +52,7 @@ export const IdentityFieldComparisonSchema = z.strictObject({
 });
 export type IdentityFieldComparison = z.infer<typeof IdentityFieldComparisonSchema>;
 
-/**
- * What a search on the DOCUMENT'S NAME resolves, run on every identity check.
- *
- * Legacy only ever performs this search when the name tier came back
- * `different` — which is why the `T002173685` incident's alternative candidate
- * was invisible until the tier fired. Running it unconditionally is what makes
- * ref write-safety §14.2's two-candidate side-by-side presentation exist on every run
- * rather than only on the runs a threshold happened to select.
- */
+/** What a search on the DOCUMENT'S NAME resolves, run on every identity check, so the two-candidate presentation exists on every run rather than only on the runs a threshold selects. */
 export const IdentityNameSearchSchema = z.discriminatedUnion("status", [
   z.strictObject({
     status: z.literal("resolved"),
@@ -145,13 +93,7 @@ export const IdentityEvidencePacketSchema = z.strictObject({
   comparisons: z.array(IdentityFieldComparisonSchema).min(1),
   nameSearch: IdentityNameSearchSchema,
   jobs: JobSummaryClassificationSchema,
-  /**
-   * **What the writes will consume**, or a stated reason this graph composes
-   * none (`write-plan.ts`). It rides INSIDE the packet so §14.5's digest binds
-   * the approval to the values themselves: a reconciled date that moves after
-   * approval re-derives a different digest and re-opens the gate. An approval of
-   * a person is not an approval of a date.
-   */
+    /* What the writes will consume, or a stated reason this graph composes none; it rides INSIDE the packet so the digest binds the approval to the values themselves. */
   plan: SeparationWritePlanSchema,
   /** Every EID a human may legitimately approve on this packet. */
   approvableEids: z.array(EidSchema).min(1),
@@ -161,16 +103,7 @@ export const IdentityEvidencePacketSchema = z.strictObject({
 });
 export type IdentityEvidencePacket = z.infer<typeof IdentityEvidencePacketSchema>;
 
-/**
- * The digest ref write-safety §14.5 binds an approval to.
- *
- * It hashes the PARSED packet through canonical JSON, so an approval granted on
- * one packet cannot be replayed against a different one: re-derive the packet
- * from the run's stored outputs and the digest either matches (proceed) or does
- * not (re-open the gate). `sha256Hex` is this tree's pure implementation — this
- * module is reachable from the dashboard bundle through the run-detail wire, and
- * a static `node:crypto` import there is the defect D120 recorded.
- */
+/** The digest an approval binds to: it hashes the PARSED packet, so an approval granted on one packet cannot be replayed against a different one. */
 export function deriveIdentityEvidenceDigest(packet: IdentityEvidencePacket): Fingerprint {
   return FingerprintSchema.parse(sha256Hex(
     `hrauto:identity-evidence:v1\u0000${canonicalJsonStringify(IdentityEvidencePacketSchema.parse(packet))}`,
@@ -202,14 +135,7 @@ function nameSearchFrom(selection: UcpathPersonSelection): z.infer<typeof Identi
   );
 }
 
-/**
- * The control's shape, decided by the RISK and nothing else (§14.6 risk 1).
- *
- * The order of the tests is the policy: anything that could mean "this is not
- * the person" demands a typed EID; anything ambiguous demands an explicit
- * choice; only a single unambiguous, same-named, single-active-job candidate
- * whose EID came off the document itself is a one-click approve.
- */
+/** The control's shape, decided by the RISK and nothing else; the order of the tests is the policy, and only a single unambiguous candidate is a one-click approve. */
 export function deriveApprovalShape(input: Readonly<{
   nameTier: z.infer<typeof NameSimilarityTierSchema>;
   emplIdSource: IdentityEidSource;
@@ -237,15 +163,7 @@ export function deriveApprovalShape(input: Readonly<{
   return "one-click";
 }
 
-/**
- * Deliberately NOT exported and deliberately NOT schema-backed: this is a
- * function's argument list, not a boundary. Every value it carries is already
- * schema-bound by the node that produced it (the job-summary read's output, the
- * search's selection, the run's own canonical input), and the packet it builds
- * is parsed through `IdentityEvidencePacketSchema` before it is returned — so a
- * second schema here would restate three contracts and add a fourth place for
- * them to drift.
- */
+/** Deliberately NOT exported and deliberately NOT schema-backed: it is a function's argument list, not a boundary, and the packet it builds is parsed through its schema before it is returned. */
 interface IdentityEvidenceInput {
   readonly protectedBindings?: readonly ProtectedInputBinding[];
   readonly documentNumber: string;

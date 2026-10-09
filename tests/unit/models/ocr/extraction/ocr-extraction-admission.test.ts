@@ -1,15 +1,4 @@
-/**
- * The operator's requirement, made checkable: an extraction may be produced by
- * a provider model, by an agent run in their terminal, or by the operator —
- * and **all three must yield the same record, with nobody skipping anything**.
- *
- * Two mechanisms carry that, and both are tested here rather than asserted:
- *
- * 1. ONE admission gate with no branch on the source, so a route cannot get a
- *    weaker rule by being more convenient.
- * 2. A completeness rule with no `.optional()` in it, so a skipped field is a
- *    parse failure instead of a silent hole.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import {
@@ -146,9 +135,7 @@ describe("nobody skips anything", () => {
       officerSigned: "blank",
       signatureDate: "illegible",
     });
-    // Only `illegible` says a better scan would help; the fingerprint keeps
-    // them apart, so two producers disagreeing about WHICH nothing they saw is
-    // a visible disagreement rather than a silent match.
+
     assert.notEqual(
       answersFingerprint(admission.extraction.record!.answers),
       answersFingerprint(admission.extraction.record!.answers.map((answer) =>
@@ -178,9 +165,7 @@ describe("nobody skips anything", () => {
 
 describe("a scanned stack is loose paper", () => {
   it("accepts a page that is a DIFFERENT form, with no record and no invention", () => {
-    // Real corpus: `detect-test.pdf` interleaves emergency-contact and oath
-    // pages. Demanding oath answers from an EC page would force a producer to
-    // invent them; failing the page would lose it. Classifying it is the truth.
+
     const admission = admitOcrExtraction({
       formType: "oath",
       source: PROVIDER,
@@ -197,10 +182,7 @@ describe("a scanned stack is loose paper", () => {
   });
 
   it("distinguishes boilerplate, unrelated and blank, which are not the same fact", () => {
-    // Seven of every nine pages in an I-9 packet are instructions and Lists of
-    // Acceptable Documents. `unrelated` means the operator put something in the
-    // stack that does not belong; `blank` may mean the scanner double-fed. All
-    // three carry no data, and only one of them is nobody's mistake.
+    // Instruction pages are not unrelated documents; I-9 packets deliberately contain both.
     for (const pageKind of ["boilerplate", "unrelated", "blank"] as const) {
       const admission = admitOcrExtraction({
         formType: "oath",
@@ -259,7 +241,7 @@ describe("a scanned stack is loose paper", () => {
   });
 });
 
-describe("the i9 is one form across two loose sections (D160)", () => {
+describe("the i9 is one form across two loose sections", () => {
   /** A correct Section 1 reading: the §2-only field is truthfully not-on-form. */
   function section1Submission(overrides: Record<string, unknown> = {}) {
     return {
@@ -392,8 +374,7 @@ describe("every route is told the same thing", () => {
   });
 
   it("carries the form's hard-won extraction notes to every route", () => {
-    // These are legacy's real prompt knowledge — recorded misreads, address
-    // handling — and they belong with the form, not in one route's string.
+
     const oath = buildExtractionInstruction("oath");
     assert.equal(oath.includes("do NOT drop the leading `10`"), true);
     assert.equal(oath.includes("top margin"), true);
@@ -417,9 +398,7 @@ describe("every route is told the same thing", () => {
   });
 
   it("cannot silently stop asking for a field, because the prompt is derived", () => {
-    // The point of generating: a field added to the registry appears in every
-    // route's instruction on the next run. Proven by construction rather than
-    // by remembering to edit a prompt constant.
+
     const instruction = buildExtractionInstruction("emergency-contact");
     const spec = ocrForm("emergency-contact");
     for (const entry of spec.fields) assert.equal(instruction.includes(entry.prompt), true, entry.path);

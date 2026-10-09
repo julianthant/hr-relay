@@ -1,13 +1,4 @@
-/**
- * Track F A46: the resumable dashboard stream could not replay a requested
- * cursor range. This is protocol evidence, not a timeout or disconnect guess.
- *
- * A gap identity publishes once while this process is alive. Memory advances
- * only after the inbox commits the durable row, so a failed publish leaves the
- * same gap pending for the next resume attempt. Across a process restart the
- * inbox's authority dedupe returns the existing row byte-for-byte unchanged.
- * Reconnect and resnapshot never clear or mutate that record.
- */
+// A replay gap is explicit protocol evidence, not a timeout or disconnect.
 import type { z } from "zod";
 import {
   BackfillGapTriggerEventSchema,

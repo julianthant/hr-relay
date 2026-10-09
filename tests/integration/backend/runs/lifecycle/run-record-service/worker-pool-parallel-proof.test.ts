@@ -1,37 +1,7 @@
 import { installationAdmission, releaseAdmissionFixture, releaseAdmissionFixtures } from "../../../../../support/helpers/admission-fixture.js";
 import { healthyRuntimePreflightRunners } from "../../../../../support/fixtures/preflight-seams.js";
 import { RunRecordService } from "../../../../../../src/backend/runs/lifecycle/run-record-service.js";
-/**
- * W5 (ref execution-and-sessions §7.1 / §11, D271): the automated two-child
- * PARALLEL proof for the dashboard worker supervisor — §7.1's standing rule
- * says a new surface two callers can reach adds its concurrency row in the
- * commit that lands it, and §11's pool door is that surface.
- *
- * Two lanes, split by what each claim is ABOUT:
- *
- * - Claims about PROCESSES run REAL OS children: `tests/support/processes/worker-stub-cli.ts`
- *   is spawned through the composed control's real process boundary, proves its
- *   own birth by writing the durable worker lease under its own pid into the
- *   same authority database, takes the real per-worker process lock, observes
- *   the durable stop directive, and exits. Real time is used only here, bounded
- *   generously.
- * - Claims about ORDERING and REFUSALS run the deterministic composed harness
- *   (the W3 pattern): real supervisor, real kernel pool door, real authority —
- *   manual clock, manual scheduler, recording fakes at the process edge only.
- *
- * What this file pins, from the W5 brief:
- * 1. TWO children supervised concurrently through the composed kernel door,
- *    with EXACT pool identities (workflow + pool index + workerId derivation)
- *    and no cross-talk;
- * 2. the overlap/teardown soak: overlapping command sequences, every
- *    acknowledgement truthful, per-workflow serialization observable (the W3b
- *    mutex) — SAME-workflow commands serialize, DIFFERENT workflows interleave;
- * 3. locks released after shutdown, close() evidence on the fault sink, no
- *    orphan children (PID liveness);
- * 4. ZERO false success: spawn ENOENT, an undelivered signal, and a durable
- *    stop-channel throw each surface as their typed refusal/fault — never an
- *    applied acknowledgement.
- */
+
 import assert from "node:assert/strict";
 import { spawn as spawnChildProcess, type ChildProcess } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
@@ -109,10 +79,7 @@ const cleanups: (() => Promise<void> | void)[] = [];
 const liveRealChildren: ChildProcess[] = [];
 
 afterEach(async () => {
-  // Each phase must run even if an earlier one throws (e.g. runtime.stop()
-  // rejecting) — otherwise a throwing cleanup phase aborts the SIGKILL loop,
-  // the db close, and the root sweep, leaking live stub children on the last
-  // test. Collect every phase's errors and rethrow aggregated at the end.
+  // Run every cleanup stage despite failures so signal escalation, database close and root cleanup still execute.
   const errors: unknown[] = [];
   for (const cleanup of cleanups.splice(0).reverse()) {
     try {
@@ -180,13 +147,7 @@ function eventOf(events: readonly PoolEffectEvent[], commandId: string, phase: "
   );
 }
 
-/**
- * Wraps the composed pool seam so the proof can OBSERVE the door: every pool
- * effect records its enter/exit with a door-wide sequence number. The W3b
- * per-workflow mutex serializes the whole A→C flow, so two same-workflow
- * commands must produce disjoint effect windows in submission order, while
- * different workflows may nest.
- */
+
 function instrumentPool(
   pool: WorkerPoolRuntimeSeam,
   clock: Clock,
@@ -266,10 +227,7 @@ function assertUnjournaled(database: AuthorityDatabase, commandId: string): void
   );
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   Lane 1 — deterministic composed harness (real supervisor + kernel door,
-   recording fakes at the process edge; the W3 pattern, extended for W5)
-   ═══════════════════════════════════════════════════════════════════════════ */
+
 
 class FakeWorkerChild implements SpawnedWorkerHandle {
   readonly pid: number | undefined;
@@ -320,7 +278,7 @@ interface SoakHarness {
 interface SoakHarnessOptions {
   /** Per-worker fake-child behavior; default is a healthy signalable child. */
   readonly childFor?: (member: WorkerPoolMember, pid: number) => FakeWorkerChild;
-  /** The W3 interception hook: run an out-of-band authority write inside the door. */
+
   readonly interceptPool?: (
     pool: WorkerPoolRuntimeSeam,
     edges: Readonly<{ database: AuthorityDatabase; clock: TestClock }>,
@@ -400,7 +358,7 @@ function proveBirth(harness: SoakHarness, member: WorkerPoolMember): void {
   fireBirthPoll(harness);
 }
 
-describe("W5 soak: overlapping command sequences over the composed pool door (deterministic)", () => {
+describe("soak: overlapping command sequences over the composed pool door (deterministic)", () => {
   it(
     "serializes SAME-workflow commands, interleaves DIFFERENT workflows, and every acknowledgement is truthful",
     async () => {
@@ -526,9 +484,7 @@ describe("W5 soak: overlapping command sequences over the composed pool door (de
       const [shrinkResult, stopSepResult] = await Promise.all([shrinkPl, stopSep]);
       assert.equal(shrinkResult.state, "applied");
       assert.equal(stopSepResult.state, "applied");
-      // The scale-down's acknowledgement is truthful in authority: the excess
-      // member PL-2 carries the durable stop directive at the plan command's
-      // own now; the desired member PL-1 is untouched.
+
       assert.deepEqual(harness.database.authority.workerLeases.get(PL_2.workerId)?.control, {
         directive: "stop", requestedAt: scaleDownAt, requestedBy: "local-operator",
       });
@@ -647,7 +603,7 @@ describe("W5 soak: overlapping command sequences over the composed pool door (de
     assert.equal(evidence?.state, "stopping");
     if (evidence?.state !== "stopping") throw new Error("unreachable");
     assert.deepEqual(evidence.observedStop, [{ stage: "graceful-stop-requested", at: stopAt }]);
-    // No SIGKILL follow-up was armed over an undelivered SIGTERM.
+
     assert.equal(harness.scheduler.pending().length, 0);
     assertJournaled(harness.database, stopId);
   });
@@ -657,9 +613,7 @@ describe("W5 soak: overlapping command sequences over the composed pool door (de
       interceptPool: (pool, edges) => ({
         ...pool,
         stopPoolWorker: async (context) => {
-          // The child dies and reports its own stopped lifecycle between the
-          // kernel's phase-A validation and the durable directive write —
-          // the composed channel then finds a dead lease and throws.
+
           const lease = required(
             edges.database.authority.workerLeases.get(PL_1.workerId),
             "PL-1's lease",
@@ -702,9 +656,7 @@ describe("W5 soak: overlapping command sequences over the composed pool door (de
   });
 });
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   Lane 2 — REAL OS children through the composed door (real time, bounded)
-   ═══════════════════════════════════════════════════════════════════════════ */
+
 
 interface RealChildRecord {
   readonly member: WorkerPoolMember;
@@ -805,7 +757,7 @@ function reportW5Phase(
   process.stdout.write(`[r3b:w5:${proof}] ${phase}:${state}\n`);
 }
 
-describe("W5 real processes: two children supervised concurrently through the composed kernel door", () => {
+describe("real processes: two children supervised concurrently through the composed kernel door", () => {
   interface RealHarness {
     readonly database: AuthorityDatabase;
     readonly kernel: CommandKernel;
@@ -920,8 +872,7 @@ describe("W5 real processes: two children supervised concurrently through the co
       const pid1 = required(record1.pid, "child 1 pid");
       const pid2 = required(record2.pid, "child 2 pid");
       assert.notEqual(pid1, pid2);
-      // No cross-talk: each durable lease is owned by exactly the child that
-      // was launched with that member's argv, under the child's REAL OS pid.
+
       const lease1 = required(harness.database.authority.workerLeases.get(PL_1.workerId), "lease 1");
       const lease2 = required(harness.database.authority.workerLeases.get(PL_2.workerId), "lease 2");
       assert.equal(lease1.workflow, PL);
@@ -1006,7 +957,7 @@ describe("W5 real processes: two children supervised concurrently through the co
       }
       reportW5Phase("two-child-door", "teardown", "complete");
 
-      process.stdout.write(`W5-MEASURED two-child kernel door: ${JSON.stringify({
+      process.stdout.write(`Measured two-child kernel door: ${JSON.stringify({
         spawn1AckMs: Math.round(result1.ackMs),
         spawn2AckMs: Math.round(result2.ackMs),
         birth1EffectMs: Math.round(birth1Ms),
@@ -1047,7 +998,7 @@ describe("W5 real processes: two children supervised concurrently through the co
   );
 });
 
-describe("W5 real runtime: dashboard shutdown releases the locks, reports close() evidence, and leaves no orphans", () => {
+describe("real runtime: dashboard shutdown releases the locks, reports close evidence, and leaves no orphans", () => {
   it(
     "two real children over the real ingress; graceful stop, shutdown with one live child, then PID-proved teardown",
     async () => {

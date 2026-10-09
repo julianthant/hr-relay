@@ -1,14 +1,7 @@
 import { fixtureAdmission, installationAdmission, releaseAdmissionFixture, releaseAdmissionFixtures } from "../../../../../support/helpers/admission-fixture.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../../../src/backend/storage/sqlite/migrations.js";
 import { hostConfigFacts } from "../../../../../../src/models/config/host-display.js";
-/**
- * The composed dashboard runtime over a REAL loopback socket:
- * composeDashboardRuntime opens authority under a temp state root, folds
- * existing JSONL, binds an OS-owned ephemeral port, and the ONE typed client
- * talks to it over real sockets — bootstrap query, day query, and a live SSE
- * hello/snapshot. Production-port identity stays in runtime-composition and
- * operational-isolation; a test must never contend with a running dashboard.
- */
+
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import {
@@ -80,11 +73,7 @@ import { settingsSetOperations } from "../../../../../support/fixtures/settings-
 
 const cleanups: (() => Promise<void> | void)[] = [];
 
-/**
- * Every composition in this suite owns both of its port roles. Production-port
- * identity is pinned elsewhere; reaching it here would make an unrelated live
- * dashboard decide whether these assertions execute.
- */
+
 async function composeDashboardRuntime(input: DashboardComposeInput): Promise<DashboardRuntime> {
   return composeProductionDashboardRuntime({
     ...input,
@@ -214,9 +203,7 @@ afterEach(async () => {
   vi.mocked(openSync).mockReset();
   vi.mocked(mkdirSync).mockReset();
   vi.restoreAllMocks();
-  // LIFO, like any resource teardown: the subscription closes before the
-  // runtime stops, and the runtime stops — including its graceful-drain
-  // backup write — before the temp root it writes into is removed.
+
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
   releaseAdmissionFixtures();
 });
@@ -519,7 +506,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     assert.equal(typeof current.releasedAt, "string");
   });
 
-  it("M9 refuses the current authority under the pre-floor build before settings opens or config resolution", async () => {
+  it("refuses the current authority under the pre-floor build before settings opens or config resolution", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-downgrade-v31-"));
     copyRuntimePackageFixture(repoRoot);
     cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
@@ -687,10 +674,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   });
 
   it("launches pool workers through the secure bootstrap's cli arm, never the inert src/cli.ts module", () => {
-    // A direct `src/cli.ts` entry exits 0 without writing a lease
-    // (secure-env-bootstrap.test.ts proves the module is inert), and the
-    // supervisor then reports "exited with code 0 before proving its lease
-    // birth" for every spawn — which is how the 2026-09-02 live check found it.
+
     const launch = productionWorkerLaunch("/repo");
     assert.equal(launch.command, process.execPath);
     assert.deepEqual([...launch.prefixArgs], ["--import", "tsx", "/repo/scripts/dev/secure-env-bootstrap.ts", "cli"]);
@@ -698,7 +682,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     assert.ok(!launch.prefixArgs.some((arg) => arg.endsWith(join("src", "cli.ts"))));
   });
 
-  it("P20 launch carries only process mechanics and host display, never provider or arbitrary values", () => {
+  it("launch carries only process mechanics and host display, never provider or arbitrary values", () => {
     const hostile = new Proxy<NodeJS.ProcessEnv>({
       PATH: "/synthetic/bin", HOME: "/synthetic/home", HRAUTO_HOST_PRIMARY_DISPLAY: "1920x1080",
       GEMINI_API_KEY: "synthetic-provider-private", NODE_OPTIONS: "synthetic-injection", UNREGISTERED: "synthetic-private",
@@ -715,7 +699,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       /migrated environment key UCPATH_PASSWORD is refused/u);
   });
 
-  it("publishes a lease-only worker card from the real tail tick, before any span exists (D248 freshness)", async () => {
+  it("publishes a lease-only worker card from the real tail tick, before any span exists", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-lease-tick-"));
     copyRuntimePackageFixture(repoRoot);
     cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
@@ -1238,10 +1222,7 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
       const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(runtime.port)}` });
       const bootstrap = await client.bootstrap();
       assert.equal(bootstrap.appVersion, "0.1.0");
-      // DERIVED from the composition root, never a hand-listed set: this assertion
-      // was hardcoded to `["person-lookup"]` and went red the moment a second
-      // workflow registered, asserting the fixture rather than the contract —
-      // the bootstrap serves exactly what WORKFLOW_MODULES declares.
+
       assert.deepEqual(
         (bootstrap.workflows as { id: string }[]).map(({ id }) => id).toSorted(),
         DESCRIPTORS.map(({ id }) => id).toSorted(),

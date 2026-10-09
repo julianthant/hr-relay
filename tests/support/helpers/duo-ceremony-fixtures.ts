@@ -1,11 +1,4 @@
-/**
- * D267 test equipment: a REAL Duo ceremony gate factory over a throwaway
- * authority database. There is deliberately no in-memory stand-in — the token
- * can only be minted by the lease store, so a fixture that bypassed the store
- * would hand recipes a token `assertDuoCeremonyLeaseToken` refuses. The
- * database is opened lazily on the first gate, so the many harnesses whose
- * fake factories never run a real recipe pay nothing.
- */
+
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -22,7 +15,7 @@ import type { BrowserSystemId, WorkerId } from "../../../src/rules/identity/ids.
 import { AuthorityDatabase } from "./synthetic-database-admission.js";
 
 export const FIXTURE_DUO_CREDENTIAL_KEY = FingerprintSchema.parse("d0".repeat(32));
-/** The production defaults (D125 / D267). */
+
 export const FIXTURE_DUO_LEASE_SESSION_ACQUIRE_MS = 60_000;
 export const FIXTURE_DUO_LEASE_GRACE_MS = 20_000;
 
@@ -41,11 +34,7 @@ export function openDuoCeremonyLeaseDatabase(clock: Clock): AuthorityDatabase {
   );
 }
 
-/**
- * A gate factory over its OWN throwaway database. Use when the test only needs
- * a valid gate (most harnesses); tests proving serialization share ONE database
- * between two factories through `duoCeremonyGatesOver` instead.
- */
+
 export function fixtureDuoCeremonyGates(
   clock: Clock = systemClock,
   scheduler: MonotonicDeadlineScheduler = realScheduler,

@@ -1,25 +1,4 @@
-/**
- * The two honesty gaps separations §9.17 item 7 recorded, closed (D237/D238).
- *
- * **(a) A settled gated run's panel could not say its gate was approved.** The
- * wire's `resolved` arm was keyed on the span stream's `resolutionKey`, and the
- * command service emits the literal `resolved` for every gate — deliberately,
- * because until gate descriptors declare display keys the fact of resolution is
- * the one honest key. So the approve/reject arm was structurally unreachable and
- * every settled gated run reported its gate ABSENT while `resolvedBy` sat in
- * authority (D202) and the receipt read it (D204). The verdict now comes from
- * the same durable `gate_results` row through the same declared arm table.
- *
- * **(b) A preview run's outcome read `verified-done`.** `done → verified-done`
- * was mechanical, so a rehearsal that wrote nothing wore the label reserved for
- * an independently verified real completion — while the receipt for the SAME
- * run said `partial`/`unknown` with a load-bearing `DRY_RUN_PREVIEW` warning.
- *
- * What this suite pins is both halves plus every NAMED absence: the whole value
- * of the gate arm is that it never guesses a word for a human decision, so each
- * way the durable read can fail to produce a verdict is asserted to be an
- * absence that says which gap it hit.
- */
+
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { deriveSchemaHash } from "../../../../../../src/models/validation/schema-bound-value.js";
@@ -52,7 +31,7 @@ const RUN_ID = uuidOf(1);
 const HASH = "a".repeat(64);
 const GATE_RESULT_SCHEMA_HASH = deriveSchemaHash(IdentityApprovalResultSchema, "output");
 const RESOLVED_AT = "2026-08-19T09:15:00.000Z";
-/** The declared name-only workflow/gate pair D204 owns — `separations`. */
+
 const WORKFLOW = "separations";
 const GATE = "identity-approval";
 
@@ -71,11 +50,7 @@ function depsOf(w: DashboardWorld): RunDetailQueryDeps {
   };
 }
 
-/**
- * The durable row the kernel writes inside the resolving transaction (D202).
- * Parsed by the fake's own `GateResultRecordSchema`, so a case cannot seed a
- * shape the real repository would refuse.
- */
+
 function putGateResult(
   w: DashboardWorld,
   input: Readonly<{ gateId?: string; decision?: unknown; resolvedBy?: string }> = {},
@@ -134,7 +109,7 @@ function gateOf(w: DashboardWorld): ReturnType<typeof buildRunDetail>["gate"] {
   return buildRunDetail(depsOf(w), RUN_ID).gate;
 }
 
-describe("D237 — a settled gate's panel names the verdict, the approver and the instant", () => {
+describe("a settled gate's panel names the verdict, the approver and the instant", () => {
   it("serves approved/by-whom/when from the durable gate result, not from the span key", () => {
     const w = world();
     settledGatedRun(w);
@@ -168,9 +143,7 @@ describe("D237 — a settled gate's panel names the verdict, the approver and th
     const gate = gateOf(w);
     assert.equal(gate.state, "absent");
     if (gate.state !== "absent") throw new Error("unreachable");
-    // Distinguishable from "this run has no gate": the reason states the span
-    // fact AND the missing durable row, so nobody reads a lost decision as a
-    // workflow that never asked for one.
+
     assert.match(gate.reason, /span stream recorded gate identity-approval resolved/);
     assert.match(gate.reason, /authority holds no gate result row/);
   });
@@ -210,7 +183,7 @@ describe("D237 — a settled gate's panel names the verdict, the approver and th
   });
 });
 
-describe("D238 — a rehearsal's terminal is never verified-done", () => {
+describe("a rehearsal's terminal is never verified-done", () => {
   it("serves partial + rehearsal for a dry-run preview terminal", () => {
     const w = world();
     settledGatedRun(w, { dryRun: true });
@@ -266,9 +239,7 @@ describe("D238 — a rehearsal's terminal is never verified-done", () => {
     const { outcome } = buildRunDetail(depsOf(w), RUN_ID);
     if (outcome.state !== "terminal") throw new Error("unreachable");
 
-    // The exact string the bar renders, off the SERVED outcome — not a
-    // paraphrase of it. `verified-done` must be unreachable in this sentence
-    // for a rehearsal, which is the whole of §9.17 item 7(b).
+
     const text = terminalOutcomeText(outcome);
     assert.ok(text.startsWith("dry run · "), text);
     assert.ok(text.includes("partial"), text);

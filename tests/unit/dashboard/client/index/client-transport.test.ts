@@ -1,21 +1,9 @@
-/**
- * The ONE typed client (ref frontend-backend-integration §0.2): schema-parsed queries, normalized
- * errors, day-state patch application, and the resumable subscription's
- * protocol behavior — resume with Last-Event-ID, cursor-gap resnapshot,
- * reset-required, and a malformed envelope stopping loudly.
- */
+
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { describe, it } from "vitest";
 import { applyDashboardDayPatch, createDashboardClient, DashboardClientError, type SubscriptionState } from "../../../../../src/dashboard/client/index.js";
-// The stream endings themselves are produced HERE, one layer under the client
-// facade: `openStream` is the only thing that decides whether a day stream ends
-// resolved, `network`-rejected or `http`-rejected, and `subscription.ts`'s
-// whole reconnect classification is written against those three answers.
-// The stream endings themselves are produced HERE, one layer under the client
-// facade: `openStream` is the only thing that decides whether a day stream ends
-// resolved, `network`-rejected or `http`-rejected, and `subscription.ts`'s
-// whole reconnect classification is written against those three answers.
+
 import { createDashboardTransport } from "../../../../../src/dashboard/client/transport.js";
 import { DashboardDayWireSchema, type DashboardDayWire } from "../../../../../src/models/dashboard/projection.js";
 import type { DashboardDayPatch } from "../../../../../src/dashboard/client/queries/day-state.js";
@@ -127,7 +115,7 @@ function measuredSearchPage(resultPatch: Readonly<Record<string, unknown>>): Rea
   };
 }
 
-describe("day-state patch application (D81: apply, never derive)", () => {
+describe("day-state patch application", () => {
   it("replaces by identity, keeps counts untouched, and dedupes stale revisions", () => {
     const day = dayOf([surfaceOf(2)]);
     const replaced = applyDashboardDayPatch(day, {
@@ -764,14 +752,7 @@ describe("resumable subscription protocol", () => {
 
 /* ── openStream's three endings, at the transport seam ───────────────────── */
 
-/**
- * `subscription.ts` classifies a stream ending by the error KIND the transport
- * rejects with — `network` reconnects, everything else stops the subscription
- * loudly — and that classification is only as true as what `openStream`
- * actually produces. The subscription's own suite fakes the transport (it is
- * about what the subscription DID with an ending), so these three cases are the
- * only place the real producer of those endings is observed.
- */
+
 describe("openStream endings", () => {
   it("rejects with the NETWORK kind when the response body errors mid-read", async () => {
     const encoder = new TextEncoder();
@@ -819,9 +800,7 @@ describe("openStream endings", () => {
     const failure = await stream.done.then(() => undefined, (reason: unknown) => reason);
     assert.equal(failure instanceof DashboardClientError, true);
     if (!(failure instanceof DashboardClientError)) assert.fail("expected a DashboardClientError");
-    // NOT `network`: reopening the same request cannot answer a refusal, and
-    // the subscription stops rather than reconnecting forever behind a screen
-    // that still looks live — even though the server calls this retryable.
+
     assert.equal(failure.kind, "http");
     assert.equal(failure.status, 503);
     assert.equal(failure.code, "PROJECTION_DEGRADED");
@@ -830,10 +809,7 @@ describe("openStream endings", () => {
   });
 
   it("RESOLVES done when the client closes a live stream", async () => {
-    // A live stream: the response arrived, the body is open, and nothing has
-    // been read yet. A real `fetch` errors the body when its signal aborts, so
-    // the fake does exactly that — without it the reader would simply hang and
-    // the test would prove a timeout rather than a resolution.
+    // A real fetch abort errors its open body; model that settlement in the fake.
     let bodyController: ReadableStreamDefaultController<Uint8Array>;
     const body = new ReadableStream<Uint8Array>({
       start(c): void {
@@ -855,9 +831,7 @@ describe("openStream endings", () => {
     const stream = transport.openStream("/events/v1", { onMessage: () => undefined });
     await tick();
     stream.close();
-    // The abort arm RESOLVES rather than rejecting, which is why
-    // `subscription.ts` cannot tell a supersede from a server-side EOF by the
-    // settlement alone and binds each handler to its own handle instead.
+
     assert.equal(await stream.done.then(() => "resolved", () => "rejected"), "resolved");
   });
 });

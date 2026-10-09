@@ -6,12 +6,7 @@ import {
   frozenLegacyPaths,
 } from "../support/helpers/frozen-legacy-architecture-provenance.js";
 
-/**
- * Every path in this guard and its inventory is a LEGACY-repo path (D93): the
- * subject is the legacy test tree this rebuild will eventually retire. The set
- * is single-rooted, so paths stay unprefixed; only inventories that MIX both
- * repos carry the `legacy:` scheme.
- */
+// This inventory contains one source repository, so its source-relative paths remain unprefixed.
 
 function baselineDirectories(): string[] {
   const frozen = FROZEN_LEGACY_ARCHITECTURE_PROVENANCE.testDisposition;

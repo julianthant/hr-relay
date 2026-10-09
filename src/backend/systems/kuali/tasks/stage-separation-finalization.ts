@@ -7,20 +7,7 @@ import {
 } from "../../../../models/ui/kuali-separation-finalization.js";
 import { kualiDriver } from "../driver-declaration.js";
 
-/**
- * Beat ②. It opens the document, stages every finalization field in ONE pass
- * from the run's stored variables, and saves nothing.
- *
- * The EID check here is defence in depth, not the subject binding: the kernel
- * re-observes the subject itself at beat ③ on this exact page, and that is the
- * observation the fence is bound to. This one exists so a wrong document fails
- * before the kernel ever reaches the fence path.
- *
- * The three typed driver refusals below are TYPES rather than message matches,
- * so each maps to exactly one durable error code and nothing else can land on
- * it. Anything else the driver throws re-throws untouched — a page that crashed
- * is not a page that told us something.
- */
+
 export const stageSeparationFinalizationTask = defineTask(
   kualiDriver,
   KualiStageSeparationFinalization,
@@ -29,15 +16,14 @@ export const stageSeparationFinalizationTask = defineTask(
     async run({ input, ctx }) {
       const staging = await ctx.driver.stageSeparationFinalization(input).catch((error: unknown) => {
         if (error instanceof KualiDepartmentOptionNotOfferedError) {
-          // S55: legacy throws here too, and that refusal is the sound one —
-          // what is new is that the run records the whole option list.
+
           return ctx.fail("department-option-not-offered", error.message, {
             subject: input.emplId,
             cause: error,
           });
         }
         if (error instanceof KualiCommentsChangedError) {
-          // S56, strengthened: legacy refuses only when the READ throws.
+
           return ctx.fail("comments-changed-since-read", error.message, {
             subject: input.emplId,
             cause: error,

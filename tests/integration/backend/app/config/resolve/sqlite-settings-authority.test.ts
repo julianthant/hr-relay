@@ -58,7 +58,7 @@ function failAudit(database: AuthorityDatabase): CommandAuthority {
   })) };
 }
 
-describe("D336 SQLite settings authority", () => {
+describe("SQLite settings authority", () => {
   it("represents empty revision one without a file or current row", () => {
     const f = fixture();
     assert.equal(f.database.authority.settingsCurrent.get(), undefined);

@@ -1,20 +1,7 @@
 import { createTrustRunReader } from "../../../src/backend/runs/trust/canonical-reader.js";
 import { personLookupQueuedRun } from "../../support/helpers/phase1f-executor-harness.js";
 import { RunRecordSchema } from "../../../src/models/run/record.js";
-/**
- * Guard: `notification-durability` (ref guards-and-tests §3.10; ref dashboard-surfaces §2.6 + §10.4 D79b;
- * ref operator-trust §6/§6.1 D134).
- *
- * The load-bearing arm is the injected OS-delivery failure. Everything else in
- * this file exists to make that arm meaningful: the row must already be
- * committed when delivery is attempted, so a delivery that throws leaves an
- * operator with an unread inbox item and nothing else changed.
- *
- * Each closed trigger commits a durable item; dedupe folds instead of spamming;
- * read/unread and snooze are independent and snooze suppresses delivery only;
- * notification text has no free-text channel at all; and the run/failure/storage
- * links are pinned.
- */
+
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -109,7 +96,7 @@ const EVERY_EVENT = [
 ] as const;
 
 describe("notification-durability: every closed trigger commits a durable item", () => {
-  it("routes each trigger to its D79b channel and stores it unread", async () => {
+  it("routes each trigger to its channel and stores it unread", async () => {
     const database = openDatabase();
     const inbox = inboxFor(database, NOW);
     const routed: [string, string, string][] = [];
@@ -153,9 +140,7 @@ describe("notification-durability: every closed trigger commits a durable item",
   });
 
   it("has no free-text channel a captured value could enter through", () => {
-    // Ref dashboard-surfaces §2.6: notification text uses redacted arguments, never raw form
-    // contents. The event union is ids, closed codes, and counts — a caller
-    // cannot hand it prose at all.
+
     assert.equal(
       NotificationTriggerEventSchema.safeParse({ ...RUN_FAILED, message: "SSN 951-57-1700" }).success,
       false,

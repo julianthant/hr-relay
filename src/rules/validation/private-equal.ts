@@ -6,10 +6,7 @@ export function encodePrivate(value: unknown): Uint8Array {
   return new TextEncoder().encode(`${canonicalJsonStringify(value)}\n`);
 }
 
-/**
- * Constant-time equality of two private values through a fixed-size padded
- * comparison, so neither the length nor the content of a secret leaks timing.
- */
+/** Constant-time equality of two private values through a fixed-size padded comparison, so neither the length nor the content of a secret leaks timing. */
 export function privateEqual(left: unknown, right: unknown, maximumBytes = 64_000): boolean {
   const leftBytes = encodePrivate(left);
   const rightBytes = encodePrivate(right);

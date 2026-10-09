@@ -3,18 +3,7 @@ import type { PreflightAdmission } from "../../../rules/preflight/preflight-admi
 import { selectNewRunIdentity } from "../settings/run-settings.js";
 import type { ProtectedInputBinding } from "../../../models/write-safety/protected-input.js";
 import type { ProtectedSecretSource } from "../../../models/config/secrets.js";
-/**
- * POST /api/v1/start-plans — minting the short-lived plan a `start-run`
- * command later consumes (ref frontend-backend-integration §5.1). Planning goes through the D109
- * authority: `planStart` builds the exact raw+canonical record and the
- * `start_plans` repository persists it in one authority transaction.
- *
- * The response wire deliberately does NOT echo `rawInput` back: the plan
- * retains it durably for audit, and reflecting submitted values through an
- * HTTP response would bypass the schema-owned redaction lane. The operator
- * confirms against the served titles/refusals plus the fingerprints that
- * bind the plan.
- */
+
 import { StartPlanIngressSchema, StartPlanWireSchema, type StartPlanWire } from "../../../models/dashboard/start-plan.js";
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import type { Clock } from "../../../rules/time/clock.js";
@@ -89,12 +78,7 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
       if (descriptor === undefined) {
         throw new TargetNotFoundError(`workflow ${ingress.workflowId} is not registered; nothing to plan`);
       }
-      // D307 — the omissions are reconciled against THIS descriptor's forms
-      // and cascade BEFORE anything is planned, so a refusal costs no plan row
-      // and no run identity. The ingress schema only proved the shape; the
-      // descriptor is what proves the step is omittable, that every omitted
-      // step carries the facts its own form requires, and that nothing still
-      // running would read what the omission leaves unread.
+
       if (ingress.stepOmissions !== undefined && ingress.submissions.length !== 1) {
         // Typed facts (a last day worked, a transaction number) describe ONE
         // subject; a plan that fans out to several would assert them for all.

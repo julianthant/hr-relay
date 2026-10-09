@@ -1,20 +1,4 @@
-/**
- * D264/D11 — the run modal's four start facts are SERVED, and the descriptor
- * registry leaves the browser bundle.
- *
- * D251 read `summary`, `enqueue` and `surfaces.inputRun` straight off the
- * bundled `WORKFLOW_DESCRIPTORS` tuple on the argument that serving a fact the
- * bundle already carries would give one surface two sources for one value.
- * That argument holds only while the bundle carries the tuple — and carrying it
- * ships every registered workflow's whole descriptor closure to the browser for
- * three plain-data fields. D264 amends it the other way: the fields are served,
- * the tuple is not bundled, and there is still exactly ONE source.
- *
- * So this pins the direction that makes the amendment safe: for EVERY registered
- * descriptor, the block the server emits is byte-equal to what that descriptor
- * declares. A served block that drifted from the registry would be the second
- * source D251 was right to refuse.
- */
+
 import assert from "node:assert/strict";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -71,14 +55,7 @@ const VERSION_SEVEN_DESCRIPTOR = defineWorkflowDescriptor({
   }),
 });
 
-/**
- * Every registered descriptor, each served as a `standalone` module.
- *
- * The composition's real role is `composition` and its chunks declare
- * `chunk-harness of` it — a nesting the wire's own `superRefine` checks. That
- * fact is D219's and is pinned where it lives; flattening it here keeps this
- * test about the start block and nothing else.
- */
+// Flatten module roles only; preserve descriptor facts to test the bootstrap projection independently.
 function depsOf(world: DashboardWorld): BootstrapQueryDeps {
   return {
     appVersion: "0.1.0",
@@ -86,11 +63,7 @@ function depsOf(world: DashboardWorld): BootstrapQueryDeps {
     modules: WORKFLOW_DESCRIPTORS.map((descriptor) => ({
       descriptor,
       role: defineWorkflowRole({ kind: "standalone" }),
-      // D296 — the intake declaration this flattened view still has to carry.
-      // The role above is flattened deliberately (see the note); `intake` is
-      // NOT, because it is the fact the start block serves: substituting
-      // "declares none" for every workflow would make the assertion below pass
-      // against a wire that never draws the modal's second start method.
+
       ...(INTAKE_PROJECTIONS[String(descriptor.id)] === undefined
         ? {}
         : { intake: INTAKE_PROJECTIONS[String(descriptor.id)] }),
@@ -126,21 +99,14 @@ describe("bootstrap start-surface block", () => {
           ...(descriptor.summary === undefined ? {} : { summary: descriptor.summary }),
           enqueue: descriptor.enqueue,
           version: descriptor.version,
-          // D296 — served from the MODULE's intake declaration, which is the
-          // same registry the kernel refuses an intake commit against. Reading
-          // it here from `INTAKE_PROJECTIONS` rather than restating which
-          // workflow is capable keeps this a statement about the WIRE.
+
           spreadsheetIntake: INTAKE_PROJECTIONS[String(descriptor.id)] !== undefined,
           steps: projectStartSteps(descriptor).map((step) => ({
             key: step.key,
             label: step.label,
             includedByDefault: step.includedByDefault,
             systems: systemsByStep[String(descriptor.id)]?.[step.key],
-            // Reconstructed inline ON PURPOSE: the server maps this union
-            // through `startStepWireControl`, and a test that called the same
-            // helper would be the producer agreeing with itself. The three
-            // arms are restated here so the wire's shape is asserted, not
-            // shared.
+            // Reconstruct the control union independently; calling the producer helper would compare it with itself.
             control: step.control.state === "selectable"
               ? { state: "selectable", inputField: step.control.inputField }
               : step.control.state === "omittable"
@@ -180,12 +146,7 @@ describe("bootstrap start-surface block", () => {
     }
   });
 
-  /**
-   * D307 — the third control arm, served. No registered workflow declares an
-   * omission yet, so without a fixture module this arm would exist on the
-   * schema and never leave the server: the "built one half, never connected"
-   * defect the wire-connectivity guard exists for, one block down.
-   */
+
   it("serves a declared omission's form and cascade on the step's control", () => {
     const world = makeWorld();
     try {
@@ -246,13 +207,7 @@ describe("bootstrap start-surface block", () => {
     expect(WorkflowStartWireSchema.safeParse(block).success).toBe(false);
   });
 
-  /**
-   * Ledger 1 C96 — the modal's footer prints `{label} v{n}`, and the version is
-   * REQUIRED on the block for the reason D264 made `enqueue` required: an
-   * optional version is a version the client has to guess at, and the only
-   * guess available (`v1`) is a wrong statement about every workflow that has
-   * ever been bumped. A descriptor always declares one, so it always travels.
-   */
+
   it("requires the version — a modal cannot guess which shape it is starting", () => {
     const block = { enqueue: "reject-active" };
     expect(WorkflowStartWireSchema.safeParse(block).success).toBe(false);

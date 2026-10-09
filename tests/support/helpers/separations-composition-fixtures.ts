@@ -1,25 +1,5 @@
 import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
-/**
- * The chunk-6 COMPOSITION harness — one authority database, one write
- * sequencer, and BOTH deterministic browsers the composed graph's three
- * transaction nodes reach.
- *
- * Same claim as the chunk-4 and chunk-5 harnesses it merges: nothing here is
- * synthetic except the process edges. The contracts, the four stores, the driver
- * semantics, the registered `separations` descriptor and all three of its
- * transaction nodes are the production ones; only the browsers, the clock, the
- * id source, the timer and the span sink are fakes. That is what lets a scenario
- * say "zero rows in `run_operations`" about the real authority database.
- *
- * It is ONE harness rather than two because §4c's arm is a claim about a single
- * run: the UCPath termination commits for real, the Kuali save lands nothing,
- * and what has to be true afterwards is a durable receipt beside a parked
- * finalization intent. Two harnesses could only assert that separately, which is
- * the state the operator's head was holding in the first place.
- *
- * The identity below is synthetic on purpose. Nothing has ever been written to
- * either live surface by this repository.
- */
+
 import { fixtureDuoCeremonyGates } from "./duo-ceremony-fixtures.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -133,11 +113,7 @@ export const COMPOSITION_VARIABLES: KualiFinalizationVariables = Object.freeze({
   payrollTitleCode: "004921",
   payrollTitle: "STDT 2",
   timekeeperName: COMPOSITION_TIMEKEEPER,
-  // §4e's 2026-08-14 amendment, taken from the SAME reconciled constants the
-  // `dates` node output below carries — never re-spelled, so the fixture cannot
-  // agree with itself while disagreeing with the graph. This fixture's
-  // separation date MOVED (06/12 → 06/19 on a holiday), which is the case the
-  // write-back exists for.
+  // Use the reconciled date constants so separately spelled fixtures cannot accidentally agree.
   lastDayWorked: COMPOSITION_LAST_DAY_WORKED,
   separationDate: COMPOSITION_SEPARATION_DATE,
   terminationEffectiveDate: COMPOSITION_EFFECTIVE_DATE,
@@ -149,12 +125,7 @@ export const COMPOSITION_VARIABLES: KualiFinalizationVariables = Object.freeze({
 export const COMPOSITION_FINALIZATION_FIELDS: KualiFinalizationFields =
   kualiFinalizationFields(COMPOSITION_VARIABLES);
 
-/**
- * D261 removed `actionId` from the ingress — the graph's head node resolves it
- * — so the run input is the one number an operator types plus the constant the
- * start surface contributes. `COMPOSITION_ACTION_ID` stays, because it is still
- * the value the RESOLVE NODE produces and every downstream fixture binds.
- */
+
 export const COMPOSITION_RUN_INPUT = Object.freeze({
   documentNumber: COMPOSITION_DOCUMENT,
   timekeeperName: COMPOSITION_TIMEKEEPER,
@@ -204,10 +175,7 @@ export const FINALIZATION_IDEMPOTENCY_KEY = kualiFinalizationIdempotencyKey({
   variables: COMPOSITION_VARIABLES,
 });
 
-/**
- * The post-gate scope all three transaction nodes and the `receipt` fold bind
- * against — the exact node outputs the composed descriptor names.
- */
+
 export const COMPOSITION_SCOPE_OUTPUTS = Object.freeze({
   "resolve-action": COMPOSITION_ACTION_RESOLUTION,
   document: {
@@ -356,16 +324,9 @@ export function compositionHarness(options: Readonly<{
   ucpathNameAfterStage?: string;
   /** Who the Kuali document shows AFTER staging — the same arm, one system over. */
   kualiEidAfterStage?: string;
-  /**
-   * Seed the Kuali document with exactly these values.
-   *
-   * Typed as the OBSERVED shape rather than the staged one so a partly filled
-   * document is spellable — a real RRSS document normally carries its two date
-   * controls and nothing else, which is precisely the starting state §4e's
-   * 2026-08-14 date write-backs act on.
-   */
+
   persistedFinalization?: KualiObservedFinalizationFields;
-  /** The Kuali Save click succeeds and Kuali keeps the old values — S59 / D128. */
+
   kualiCommitDoesNotPersist?: boolean;
 }> = {}): CompositionHarness {
   const clock = manualClock(new Date(COMPOSITION_NOW));
