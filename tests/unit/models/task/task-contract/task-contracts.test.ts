@@ -453,5 +453,21 @@ describe("sealed task contracts", () => {
     assert.equal(wrapped.code, "unhandled");
     assert.equal(wrapped.transient, false);
     assert.match(wrapped.message, /\[ucpath\/search-person-org\] unhandled: boom/);
+    const schemaFailure = new z.ZodError([{ code: "custom", path: ["undeclaredLeaf"],
+      message: "no declared evidence classification for undeclaredLeaf" }]);
+    assert.equal(schemaFailure instanceof Error, false);
+    const wrappedSchemaFailure = wrapUnhandledTaskError(contract.id, schemaFailure);
+    assert.equal(wrappedSchemaFailure.taskId, contract.id);
+    assert.equal(wrappedSchemaFailure.code, "unhandled");
+    assert.equal(wrappedSchemaFailure.transient, false);
+    assert.equal(wrappedSchemaFailure.cause, schemaFailure);
+    assert.equal(wrappedSchemaFailure.message, `[${contract.id}] unhandled: ${schemaFailure.message}`);
+    const nonError = { message: "must not masquerade as an Error" };
+    const wrappedNonError = wrapUnhandledTaskError(contract.id, nonError);
+    assert.equal(wrappedNonError.taskId, contract.id);
+    assert.equal(wrappedNonError.code, "unhandled");
+    assert.equal(wrappedNonError.transient, false);
+    assert.equal(wrappedNonError.cause, nonError);
+    assert.equal(wrappedNonError.message, `[${contract.id}] unhandled: task threw a non-Error value`);
   });
 });
