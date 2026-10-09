@@ -1,40 +1,9 @@
-/**
- * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
- * src/dashboard/components/dev/rebuild-demo/ds/theme.ts
- */
+/** Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc
+ * src/dashboard/components/dev/rebuild-demo/ds/theme.ts */
 import { useCallback, useLayoutEffect, useState } from "react";
 import { readEnumPreference, writePreference } from "../../lib/preference-storage.js";
 
-/**
- * The dashboard's theme pair.
- *
- * `Graphite Warm` (dark) and `Paper Ink` (light) are two compositions of the
- * SAME product, not a colour scheme and its inverse: each is authored as its
- * own contiguous block in `ds/tokens.css`, with its own hues, its own text
- * steps, and its own mechanic for separating one plane from the next (a
- * hairline on the dark theme, a shadow on the light one).
- *
- * WHY THIS FILE STAMPS THREE ELEMENTS. The shipped dashboard hardcodes
- * `class="dark"` on BOTH `<html>` and `<body>` (`index.html`), and a `.dark`
- * ANCESTOR re-scopes every semantic token — which is exactly how an earlier
- * session lost hours to a light theme that rendered dark. So the attribute
- * goes on:
- *
- *   1. `<html>`  — matched by `:root[data-demo-theme=…]` (0,2,0) > `.dark` (0,1,0)
- *   2. `<body>`  — matched by `body[data-demo-theme=…]` (0,1,1) > `.dark` (0,1,0);
- *                  a declaration on `<body>` itself beats anything inherited,
- *                  so stamping `<html>` alone is not enough
- *   3. the demo's own root container — matched by the bare attribute selector,
- *      which is what keeps the demo self-describing in the DOM
- *
- * (3) alone would leave every PORTALLED surface — dialog, drawer, tooltip,
- * popover, toast, all of which mount under `<body>` — on the app's theme. (1)
- * and (2) are what make the overlays follow.
- *
- * Both values are stamped, dark included: the demo's themes are demo-scoped
- * overrides of the app's tokens, so "dark" is a real selection here and not a
- * fall-through to `.dark`.
- */
+// Stamp html, body and the root so portalled overlays inherit the selected theme.
 
 export type DemoTheme = "dark" | "light";
 
@@ -56,13 +25,8 @@ function readStoredTheme(): DemoTheme {
   return readEnumPreference(STORAGE_KEY, THEMES, THEME_DEFAULT);
 }
 
-/**
- * Owns the demo's theme: the selected value, the DOM stamp, and persistence.
- *
- * Mount it once, at the demo's root. The returned `theme` goes on the root
- * container so the attribute is visible where the demo lives; the hook has
- * already put it on `<html>` and `<body>` for the portals.
- */
+/** Owns the demo's theme: the selected value, the DOM stamp, and persistence.
+ * Mount it once, at the demo's root. The returned `theme` goes on the root */
 export function useDemoTheme(): {
   theme: DemoTheme;
   setTheme: (next: DemoTheme) => void;
@@ -70,17 +34,12 @@ export function useDemoTheme(): {
 } {
   const [theme, setThemeState] = useState<DemoTheme>(readStoredTheme);
 
-  /* A LAYOUT effect, not a plain one: React commits it before the browser
-     paints, so a reload with `light` stored never flashes the dark palette for
-     a frame on the way in. */
+  /** A LAYOUT effect, not a plain one */
   useLayoutEffect(() => {
     const html = document.documentElement;
     const { body } = document;
-    /* A palette change is a CUT. Without this, the elements carrying
-       `ds-motion` would crossfade their colours over 90–140ms while everything
-       else snapped, and the swap would read as a ragged wipe. The attribute
-       zeroes every duration token for the frame the new palette lands in; see
-       "THEME SWAP" in `tokens.css`. */
+    /** A palette change is a CUT. Without this, the elements carrying
+ * `ds-motion` would crossfade their colours over 90–140ms while everything */
     html.setAttribute("data-demo-theme-switching", "");
     const settle = requestAnimationFrame(() => {
       requestAnimationFrame(() => html.removeAttribute("data-demo-theme-switching"));
@@ -90,7 +49,7 @@ export function useDemoTheme(): {
     return () => {
       cancelAnimationFrame(settle);
       html.removeAttribute("data-demo-theme-switching");
-      // The demo is one view inside the real dashboard; leaving the attribute
+            // The demo is one view inside the real dashboard; leaving the attribute
       // behind would re-theme every other view.
       html.removeAttribute(DEMO_THEME_ATTR);
       body.removeAttribute(DEMO_THEME_ATTR);
@@ -100,8 +59,7 @@ export function useDemoTheme(): {
   const setTheme = useCallback((next: DemoTheme) => {
     setThemeState(next);
     // Persistence is best-effort and not load-bearing: the selection still
-    // applies for this session, and nothing downstream reads it back as truth.
-    // The outcome is still returned rather than swallowed by a bare catch.
+// applies for this session, and nothing downstream reads it back as truth.
     void writePreference(STORAGE_KEY, next);
   }, []);
 

@@ -6,26 +6,7 @@
     <title>Rebuild demo — design system</title>
   </head>
   <body class="dark" data-demo-theme="dark">
-    <!--
-      Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
-      src/dashboard/components/dev/rebuild-demo/kit.html (D274 item 3, ledger 3 UK157).
-
-      The design-system specimen page: every primitive in `ds/ui.tsx`, in every
-      state, on one scrollable page. `DESIGN.md` is binding and points here, so
-      this page existing is what makes that document readable in this checkout.
-
-      Open it on the dev server (no BFF needed — the page serves no fact and
-      calls no endpoint):
-
-        npm run web
-        → http://localhost:5174/kit.html
-
-      The THEME is stamped statically on `<html>` and `<body>`, as the legacy
-      page stamps it and as `index.html` does. There is no toggle: a theme
-      control is not one of the seven sections ledger 3 rules, and
-      `:root[data-demo-theme=…]` (0,2,0) already beats `.dark` (0,1,0), so
-      flipping both attributes to `light` in devtools renders Paper Ink.
-    -->
+    <!-- The specimen page serves no authority data and requires no backend. -->
     <div id="ds-kit-root"></div>
     <script type="module" src="/kit/main.tsx"></script>
   </body>

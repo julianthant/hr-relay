@@ -18,7 +18,7 @@ export interface PreflightQueries {
   readPreflight(selection?: PreflightSelection): Promise<PreflightReadinessWire>;
   readiness(): Promise<{ state: "present"; checks: NonNullable<FrontendBootstrapWire["preflight"]> } | { state: "unavailable"; reason: string }>;
 
-  /** DCC2's read-only rerun command, typed here when Settings acquired its control. */
+  /** The preflight rerun command, read-only, typed when Settings acquired its control. */
   rerunPreflight(request: unknown): Promise<PreflightRerunCommandResult>;
 }
 

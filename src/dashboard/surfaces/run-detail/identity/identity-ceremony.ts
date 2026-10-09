@@ -1,28 +1,4 @@
-/**
- * THE THREE IDENTITY-APPROVAL CEREMONIES (ref write-safety §14.4/§14.6, D226).
- *
- * The identity gate asks one question — *is this the right person* — and ref write-safety
- * §14.6 risk 1 says the CONTROL that answers it must reflect the evidence. This
- * gate is now present only for a name-resolved EID; supplied-EID read-back uses
- * machine authority and never reaches this module. When the gate is present,
- * the SERVER decides its shape — `approvalShape` is computed
- * in `src/domain/separations/identity-evidence.ts` and served on the wire
- * precisely so a frontend cannot quietly downgrade every gate to one click.
- *
- * This module is the client half of that contract, and it is deliberately a
- * pure `.ts` fold rather than component state: what a ceremony COSTS, and
- * whether the operator's draft answer satisfies it, are decisions a test can
- * pin. The `.tsx` surface renders what this returns and adds nothing to it.
- *
- * ## The one rule that outranks the others
- *
- * **An `approvalShape` this build does not know refuses BY NAME.** It never
- * falls through to the approve button, never picks the first candidate, never
- * "defaults" to one click. A surface that met an unrecognised shape and
- * approved anyway would be §14.6 risk 1 with the server's own guard removed —
- * which is strictly worse than having no guard, because the server would still
- * be reporting that it had asked for a choice.
- */
+// The served shape determines the ceremony; unsupported shapes must never downgrade to one-click approval.
 import type { RunDetailSectionResponse } from "../../../../models/dashboard/run-detail.js";
 import { directIdentifierDigestReference } from "../../../../rules/redaction/redaction.js";
 
@@ -34,24 +10,10 @@ export type IdentityGatePayload =
 export type IdentityGateAvailable = Extract<IdentityGatePayload, { state: "available" }>;
 export type IdentityGateDetail = IdentityGateAvailable["value"];
 
-/**
- * One approvable EID, paired with the `chosenFrom` label the authority node
- * will verify. The label is served, never inferred: `verify-identity-approval`
- * re-derives where an approved EID actually came from and refuses a label the
- * packet contradicts (`identity-approval-choice-mismatch`), so a surface that
- * invented one would put a false statement on the receipt (D202 #3).
- */
+/** chosenFrom is served evidence provenance; never infer it from the selected EID. */
 export type IdentityGateOption = IdentityGateDetail["options"][number];
 
-/**
- * What the operator is asked to DO, derived from the served shape.
- *
- * `unsupported` is a first-class arm rather than a thrown error because the
- * dialog has somewhere honest to put it — a named refusal beside the packet,
- * with the send control blocked — and because a thrown error in a render pass
- * would take the whole panel down with it, hiding the very evidence the
- * operator needs to act on the gate from the CLI instead.
- */
+// Unsupported ceremonies show a blocked refusal beside the evidence rather than throwing during render.
 export type IdentityCeremony =
   /** `one-click`: one unambiguous candidate. The confirm block is the ceremony. */
   | { readonly kind: "confirm"; readonly option: IdentityGateOption }
@@ -61,7 +23,7 @@ export type IdentityCeremony =
   | { readonly kind: "type-the-eid"; readonly options: readonly IdentityGateOption[] }
   /** the rejection arm — operator-authored text, on either approval shape. */
   | { readonly kind: "reject" }
-  /** this build cannot describe the ceremony the server asked for. */
+  /** this build cannot describe the ceremony the server asked */
   | { readonly kind: "unsupported"; readonly reason: string };
 
 /** What the operator has typed or picked so far. Both halves, always. */
@@ -74,24 +36,13 @@ export interface IdentityGateDraft {
 
 export const EMPTY_IDENTITY_GATE_DRAFT: IdentityGateDraft = { eid: "", reason: "" };
 
-/**
- * The operator's ANSWER — the part of an `IdentityApprovalResult` that only a
- * human knows. Everything else on the payload (the digest, the schema hash,
- * the `chosenFrom` label) is a served fact the composer reads off the section.
- */
+/** The operator's ANSWER — the part of an `IdentityApprovalResult` that only a
+ * human knows. Everything else on the payload (the digest, the schema hash */
 export type IdentityGateAnswer =
   | { readonly decision: "approved"; readonly eid: string }
   | { readonly decision: "rejected"; readonly reason: string };
 
-/**
- * An approval shape this build has no ceremony for.
- *
- * The parameter is `never`, so adding a fourth arm to
- * `IdentityApprovalShapeSchema` without adding its ceremony here is a COMPILE
- * error rather than a surface that silently drew the wrong control. The
- * runtime arm still exists, because a wire value can outrun a bundle: a server
- * upgraded ahead of a browser tab serves a shape this build never compiled.
- */
+// Exhaustive at compile time; newer server shapes still receive a named runtime refusal.
 function unsupportedShape(shape: never): IdentityCeremony {
   return {
     kind: "unsupported",
@@ -102,14 +53,8 @@ function unsupportedShape(shape: never): IdentityCeremony {
   };
 }
 
-/**
- * What this resolution costs, from the SERVER's shape and the served options.
- *
- * A contradiction between the two — a `one-click` packet carrying two
- * candidates, a `choose-a-candidate` packet carrying one — is `unsupported`
- * rather than a best guess. The server states both facts; when they disagree,
- * only the server can say which one it meant.
- */
+/** What this resolution costs, from the SERVER's shape and the served options.
+ * A contradiction between the two — a `one-click` packet carrying two */
 export function identityCeremonyFor(
   gate: IdentityGateDetail,
   resolution: "approved" | "rejected",
@@ -149,17 +94,7 @@ export function identityCeremonyFor(
 /** The 8-digit shape the wire's own option schema pins. */
 const EID_PATTERN = /^\d{8}$/u;
 
-/**
- * Why this draft cannot be sent yet, in the words the operator has to act on —
- * or `undefined` when it can.
- *
- * Every bound stated here is a bound the KERNEL also holds, stated where the
- * value is typed rather than discovered from a rejection: the EID must be one
- * the packet showed (`identity-approval-eid-not-shown`), and a rejection's
- * reason is `z.string().min(1)`. Nothing invents a bound the server does not
- * have — a client-side maximum on a reason the kernel accepts would be this
- * surface refusing a legitimate answer.
- */
+/** Match kernel answer bounds; extra client limits would refuse legitimate operator decisions. */
 export function identityDraftProblem(
   ceremony: IdentityCeremony,
   draft: IdentityGateDraft,
@@ -200,13 +135,7 @@ export function optionFor(
   return options.find((option) => option.eid === eid);
 }
 
-/**
- * The operator's answer, or `undefined` when the draft is not yet answerable.
- *
- * It is deliberately NOT a command: composing the envelope stays with
- * `composeCommandRequest`, which is the one place a served control becomes a
- * command. This function's whole job is to say what the HUMAN decided.
- */
+/** Return the human decision only; envelope composition remains with the shared command composer. */
 export function identityGateAnswer(
   ceremony: IdentityCeremony,
   draft: IdentityGateDraft,

@@ -27,11 +27,7 @@ import { SettingsSearchTargetContext, useSettingsSearchArrival } from "./navigat
 export type { SettingsSection,StorageHealthSummary };
 
 
-/**
- * The served sections this build has a renderer for. A served id NOT in here
- * draws the named build gap below — which is the arm that must keep working, so
- * the set is spelled once and both the switch and the gap read it.
- */
+/** The served sections this build has a renderer for. */
 const RENDERED_SERVED_SECTION_IDS: ReadonlySet<string> = new Set([
   ...EditableSettingsSectionIdSchema.options,
   "credentials",
@@ -57,12 +53,7 @@ const NAV_ICON: Record<SettingsNavIcon, typeof Database> = {
 };
 
 
-/**
- * One nav entry. `aria-current="page"` rather than `aria-selected`, because
- * this is navigation between pages of one surface and not a tablist — the
- * demo's own choice, and the one an assistive technology reads as "you are
- * here" rather than "this option is picked".
- */
+/** One nav entry. */
 function SectionButton({
   entry,
   active,
@@ -75,12 +66,8 @@ function SectionButton({
   const Icon = NAV_ICON[entry.icon];
   return (
     <a
-      // A real href — not a `button` — so middle-click, Cmd/Ctrl-click and
-      // "open in new tab" all work the way any other in-page navigation does
-      // (unit F4b finding 4). `onSection` still owns the actual transition
-      // (through `setRoute`, which carries the rest of the route the bare
-      // href below cannot), so the default navigation is prevented and the
-      // click is handed to it exactly as the `button` version did.
+            // A real href — not a `button` — so middle-click and Cmd/Ctrl-click work as usual.
+      // new tab" all work the way any other in-page navigation does.
       href={`?settings=${encodeURIComponent(entry.id)}`}
       aria-current={active ? "page" : undefined}
       onClick={(event) => {
@@ -119,14 +106,7 @@ function SearchResultLink({ result, active, onSelect }: { result: SettingsSearch
 }
 
 
-/**
- * The gear. A plain button now rather than a `DialogTrigger`: what it opens is
- * a page, so it navigates instead of raising a layer.
- *
- * `open` is still passed in rather than held here, because the page is
- * reachable from two places — this gear and the storage banner mounted above
- * every view — and a component's own `useState` cannot be opened by a sibling.
- */
+/** Settings navigation is shared because both gear and storage doors open the same page. */
 export function SettingsGear({
   storage,
   open,
@@ -142,11 +122,7 @@ export function SettingsGear({
       id={SETTINGS_GEAR_ID}
       size="sm"
       label={attention ? "Settings — storage needs attention" : "Settings"}
-      // The gear REPORTS that it owns the screen, in both representations:
-      // `aria-pressed` for the accessibility tree and the surface-3 fill
-      // for the eye. Every other pressed control in this cluster carries
-      // the pair; the gear carried neither, so the one takeover an operator
-      // opens most often was the one that never looked open.
+      // Expose pressed state visually and accessibly so the takeover never appears closed.
       aria-pressed={open}
       onClick={onOpen}
       className={cn(open && "bg-[var(--ds-surface-3)] text-[color:var(--ds-fg)]")}
@@ -165,18 +141,7 @@ export function SettingsGear({
 }
 
 
-/**
- * Settings, as a page (D272 item 1 / D274 item 5).
- *
- * The persistent section nav and body replace the queue while Settings is open.
- *
- * UF-SET-1/4/5. `TakeoverFrame`'s JSDoc owns the why — geometry, arrival and
- * focus, decided once for all four takeovers. This surface's demo container:
- * `// ported from legacy 1ec1d870
- * src/dashboard/components/dev/rebuild-demo/DemoSettings.tsx:1071-1075`, a bare
- * `flex min-h-0 flex-1` with the 220px nav as its first child. It is the only
- * takeover that lays out in a ROW, which is what `direction="row"` is for.
- */
+
 export function SettingsPage({
   storage,
   sections,
@@ -196,10 +161,7 @@ export function SettingsPage({
 }: {
   storage: StorageHealthSummary;
   sections: readonly SettingsSection[];
-  /**
-   * The bootstrap's own workflow labels, by id. Capabilities joins on them
-   * rather than being served a second copy — one page, one name per workflow.
-   */
+  /** Join capability rows to the bootstrap’s single workflow label source. */
   workflowLabels: ReadonlyMap<string, string>;
   /** the open section id — `""` is the page's own default, from `?settings=` */
   section: string;
@@ -329,9 +291,7 @@ export function SettingsPage({
             {editor.editor.message.replace(/ Try again\.$/u, "")} <Button size="sm" variant="secondary" onClick={editor.reload}>Try again</Button>
           </Banner>
         )}
-        {/* A link naming a section this build has no entry for is stated, never
-            redirected: landing on Storage under `?settings=budgets` tells the
-            operator they are reading something they are not. */}
+        {/* Refuse unknown settings destinations; redirecting would label the wrong page as the requested one. */}
         {resolution.state === "unknown" && (
           resolution.requested === "ui-catalog" ? <Banner tone="info" title="UI catalog removed">Use the Settings navigation to return to a dashboard page.</Banner> : resolution.requested === "archive" ? <Banner tone="info" title="Archive page removed">
             Existing stored run data has not been deleted. <Button variant="ghost" onClick={() => requestExit(onClose)}>Return to dashboard</Button>

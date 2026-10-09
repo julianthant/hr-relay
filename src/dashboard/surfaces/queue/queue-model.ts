@@ -1,14 +1,5 @@
-/**
- * The queue's pure half: the band vocabulary and its sort, the row title folds,
- * the member ordering, and the visible/attention run-id lists the keyboard
- * layer reads.
- *
- * It lives beside `queue.tsx` rather than inside it because a module that
- * exports a component may export nothing else if React Fast Refresh is to
- * treat it as a refresh boundary: one non-component export makes
- * every edit to the queue invalidate upward into `dashboard-app.tsx` and
- * remount the surface. Same values, same call sites, one import hop.
- */
+/** The queue's pure half: the band vocabulary and its sort, the row title folds
+ * the member ordering, and the visible/attention run-id lists the keyboard */
 import { useEffect, useRef, useState } from "react";
 import type { z } from "zod";
 import type { QueueSurfaceWireSchema } from "../../../models/dashboard/projection.js";
@@ -20,42 +11,8 @@ import {
 import { MEMBER_WELL_LINES } from "./layout-metrics.js";
 import { elapsedSecondsBetween, fmtElapsed } from "../shared/status/format.js";
 
-/**
- * ONE ROW'S ⓘ CONTENT, as a fold rather than as JSX.
- *
- * WHAT THE ⓘ IS FOR, in the operator's own words: *"the subtitle and other
- * important stuff related to the run that doesnt fit into the queue row —
- * something i dont need normally when i glance at the queue row but i could
- * maybe use sometimes to find out more info."* Two exclusions follow from that
- * sentence and both were applied:
- *
- *   NOT PRODUCT EXPLANATION. What a panel of this kind shows, and what this
- *     row's containment means, are facts about the PRODUCT — identical on
- *     every row sharing a `panelKind`, worth one read ever, and printed above
- *     the thing the ⓘ was opened for. They left `surfaces/queue.tsx`.
- *   NOT THE RUN'S EXTRACTED VALUES. `facts[]` — the evidence receipt's own
- *     output — is what the run PRODUCED, and it is already drawn on the row as
- *     chips. Repeating it here made the ⓘ a second copy of the row instead of
- *     the place you go for what the row could not hold.
- *
- * Two kinds of entry remain and they must stay distinguishable, which is why
- * `state` rides along instead of both arms being flattened into a sentence:
- *
- *   ABSENT — the server said it has no such fact, and said WHY. Letting those
- *     reasons collapse into a silent gap is the absence-versus-failure
- *     conflation this program bans (D230 / §9 D7).
- *   PRESENT — the fact's own value, WHOLE, on a click a touch user and a
- *     keyboard user can both make. DESIGN.md is explicit that load-bearing
- *     detail "goes in the UI or in a Popover (click-to-open, keyboard- and
- *     touch-reachable), never in a hover-only surface".
- *
- * KNOWN CONSEQUENCE, recorded rather than hidden: dropping the present
- * `facts[]` entries takes the row's fact CHIPS back to `title` as their only
- * route to an uncut value, which is the hover-only surface that rule names. The
- * chips are the row's own output and belong to it; if that clip starts costing
- * an operator a value, the answer is an affordance on the chips, not putting
- * the run's output back inside the ⓘ.
- */
+/** ONE ROW'S ⓘ CONTENT, as a fold rather than as JSX.
+ * WHAT THE ⓘ IS FOR, in the operator's own words */
 export interface RowInfoFact {
   readonly label: string;
   readonly state: "absent" | "present";
@@ -69,37 +26,14 @@ export function rowInfoFacts(surface: QueueSurfaceWire): readonly RowInfoFact[] 
     facts.push({ label, state: "absent", text });
   };
   if (surface.subtitle.state === "absent") absent("Subtitle", surface.subtitle.reason);
-  /*
-    PRESENT — and the ⓘ is now its ONLY home.
-
-    The subtitle left the row's footer entirely (`surfaces/queue.tsx`). That
-    line is provenance — when, which run, which trace, how long — and a
-    subtitle is not: across the product it is the workflow's own name, a start
-    option, the filer, or a re-read ordinal with the operator's free-text
-    reason. It is context about how the run came to BE, not something the run
-    produced, so it belongs where explanation lives rather than on a surface
-    read at a glance. Being here also means the value is never clipped: the
-    popover prints it whole, on a click that a touch and a keyboard can both
-    make.
-
-    THE DEMO'S `showId` GUARD COMES WITH IT (`DemoQueue.tsx:674`, R3 finding
-    18): a subtitle equal to the row's title printed the same string twice on
-    one card, and it would print it twice in one popover for the same reason.
-    The guard moved here because the footer that used to hold it no longer
-    reads the field at all.
-
-    It leads the list — the popover then reads top-down the way the row does.
-  */
+  /** PRESENT — and the ⓘ is now its ONLY home. The subtitle left the row's footer entirely (`surfaces/queue.tsx`).
+ * That */
   if (surface.subtitle.state === "present" && surface.subtitle.value !== queueRowTitle(surface)) {
     facts.push({ label: "Subtitle", state: "present", text: surface.subtitle.value });
   }
   if (surface.liveMessage.state === "absent") absent("Live message", surface.liveMessage.reason);
   if (surface.runNumber.state === "absent") absent("Run number", surface.runNumber.reason);
-  /*
-    PRESENT — the workflow ordinal left the footer too. The footer's `#N` chip
-    is the ATTEMPT (operator ruling, 2026-09-01); the ordinal is context about
-    where this run sits in its workflow's history and reads here, whole.
-  */
+  /** PRESENT — the workflow ordinal left the footer too. The footer's `#N` chip is the ATTEMPT */
   if (surface.runNumber.state === "present") {
     facts.push({ label: "Run number", state: "present", text: `#${String(surface.runNumber.value)} of this workflow` });
   }
@@ -197,11 +131,7 @@ export function filterQueueSurfaces(
   return surfaces.filter((surface) => includedItems.has(queueItemKey(surface)));
 }
 
-/**
- * Browser-local triage, deliberately not an authority projection. The caller
- * owns the state lifetime (DashboardApp creates an empty set on every load),
- * while this fold keeps the immutable set update shared and testable.
- */
+/** Triage is browser-local; it must not be mistaken for an authority projection. */
 export function toggleCheckedByYou(previous: ReadonlySet<string>, runId: string): ReadonlySet<string> {
   const next = new Set(previous);
   if (next.has(runId)) next.delete(runId);
@@ -219,7 +149,7 @@ export function checkedQueueItemCount(items: readonly QueueItemGroup[], checkedI
   return items.filter((item) => item.attempts.some((attempt) => checkedIds.has(String(attempt.runId)))).length;
 }
 
-/** One delegated child this row waits on and does NOT count (D231). */
+/** Delegated children are waited on, never counted as this row’s members. */
 export type LinkedRunWire = QueueSurfaceWire["linkedRuns"][number];
 
 /* ── bands ───────────────────────────────────────────────────────────────── */
@@ -234,13 +164,7 @@ export const BAND_LABEL: Record<QueueBandKey, string> = {
   finished: "Finished today",
 };
 
-/**
- * A fixed map from the closed ds status vocabulary to a visual band — the same
- * class of pure presentation as mapping a status to an icon. It reorders what
- * the operator sees; it never reclassifies what a run is, and the band's own
- * number is the count of rows drawn in it, not a claim about the day's totals
- * (those are the Status Bar's, from the one projection — D81).
- */
+/** Bands count drawn rows; only the served status projection reports day totals. */
 export function bandOf(status: ProposedStatus): QueueBandKey {
   if (status === "waiting" || status === "parked") return "attention";
   if (status === "running" || status === "cancelling") return "active";
@@ -250,14 +174,7 @@ export function bandOf(status: ProposedStatus): QueueBandKey {
 
 export const BAND_ORDER: QueueBandKey[] = ["attention", "active", "queued", "finished"];
 
-/**
- * The `attention` order, copied VALUE FOR VALUE from the demo's
- * `SORT_STATUS_RANK` (`demo-data.ts:4259-4268`).
- *
- * It is not the band order and must not be re-derived from it: `failed` sorts
- * second here while its band is `finished`, which is the whole point — inside
- * the finished band a failure comes before a clean done.
- */
+/** Attention order differs from band order; failures must precede clean completion within their band. */
 const SORT_STATUS_RANK: Record<ProposedStatus, number> = {
   waiting: 0,
   failed: 1,
@@ -270,75 +187,33 @@ const SORT_STATUS_RANK: Record<ProposedStatus, number> = {
   cancelled: 7,
 };
 
-/**
- * How long a row has been working: recorded when it ended, live while it runs.
- * `endedAt` is the served union (D124), so a terminal row whose end instant is
- * genuinely unknown counts as its elapsed-to-now rather than being ranked as
- * zero — and nothing here substitutes `now` for a missing END on a row the
- * server said is still in flight.
- */
+/** Unknown terminal duration sorts by elapsed-to-now; rendering still preserves its unknown end reason. */
 function elapsedMs(surface: QueueSurfaceWire, nowIso: string): number {
   const started = Date.parse(surface.startedAt);
   const ended = surface.endedAt.state === "present" ? Date.parse(surface.endedAt.value) : Date.parse(nowIso);
   return Math.max(0, ended - started);
 }
 
-/**
- * What this row is CALLED — the operator's own name for the run when they have
- * given it one, and otherwise the server's (ref dashboard-surfaces §1.2).
- *
- * The server serves the two separately on purpose: `title` says what the system
- * thinks the run is about (the start-input title, replaced by the subject's
- * name once the run resolves one) and `displayName` is the operator's override.
- * Folding them on the server would make the tooltip below unwritable, because
- * no surface could then tell a renamed row from a system-titled one.
- */
+/** Keep operator displayName separate from system title so renamed subjects remain identifiable. */
 export function queueRowTitle(surface: QueueSurfaceWire): string {
   return surface.displayName.state === "present" ? surface.displayName.value : surface.title;
 }
 
-/**
- * The renamed row's tooltip: it names the SUBJECT the operator renamed away
- * from, so the run's own identity is one hover away rather than gone. A row
- * that was never renamed carries no tooltip at all — a title explaining itself
- * is noise on every row in the queue.
- */
+/** Renamed rows disclose their original subject; unchanged titles need no explanatory tooltip. */
 export function queueRowTitleTooltip(surface: QueueSurfaceWire): string | undefined {
   return surface.displayName.state === "present"
     ? `Named by you — subject is ${surface.title}`
     : undefined;
 }
 
-/**
- * How long the row's gate has been waiting, as the operator reads it.
- *
- * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
- * `demo-data.ts:4084` `gateAge` (`fmtElapsed(gateWaitSec(row, tick))`).
- *
- * D12 draws this age on the row's own pill and `DemoQueue.tsx:818` puts it in
- * the row's accessible NAME as well, which is the only place it reaches a
- * screen reader: the pill's age is a visual fact, and a queue you triage by
- * ear needs `waiting on you · 18m`, not `waiting on you`. It lives here, once,
- * so the pill and the name cannot disagree about how old one gate is — the
- * defect D256 named on this very panel, one clock lower down.
- *
- * `undefined` when the server dated no gate, which is every row that is not
- * waiting on a human: an absent age draws and speaks nothing rather than a
- * zero nobody measured.
- */
+/** Share gate-age measurement with its accessible name; missing gate instants never become zero. */
 export function queueGateAge(surface: QueueSurfaceWire, nowIso: string): string | undefined {
   return surface.gateOpenedAt.state === "present"
     ? fmtElapsed(elapsedSecondsBetween(surface.gateOpenedAt.value, nowIso))
     : undefined;
 }
 
-/**
- * The queue row's accessible identity, including the served age of a gate.
- *
- * This is the same composition `QueueRow` puts on its one press target. It
- * lives beside the shared age fold so a visual pill and the sentence an
- * operator hears cannot become two different readings of the same gate.
- */
+/** Visual and spoken gate age use one fold so they cannot disagree. */
 export function queueRowAccessibleName(surface: QueueSurfaceWire, nowIso: string): string {
   return `${queueRowTitle(surface)} — ${statusAccessibleName(
     dsStatusOf(surface.status),
@@ -374,23 +249,7 @@ export function queueDisplayGroups(rows: readonly QueueSurfaceWire[], sort: Queu
 /** how long the settle lasts — one `move`, then still */
 const ATTENTION_ANNOUNCE_MS = 900;
 
-/**
- * THE ATTENTION TRANSITION — the one status change this product animates.
- *
- * DESIGN.md says never animate status churn, and it is right: this dashboard
- * updates constantly, and if everything that changes also moves it is
- * unreadable exactly when it is busiest. Elapsed timers, counts, background
- * settling and self-initiated re-sorts all stay perfectly still.
- *
- * A run CROSSING INTO `Waiting on you` or `Failed` is different in kind. Those
- * are the two states allowed to shout; a run entering one has stopped being
- * background and become work, and the moment it happens is the moment the
- * operator is looking somewhere else. It fires on the EDGE, never on the state
- * — a row already waiting when you scrolled to it does nothing — never on
- * mount, once, and only for those two statuses.
- *
- * Implemented once, here. Do not re-derive it at a second call site.
- */
+/** Animate only entry into attention states, never mount, timers or ordinary status churn. */
 export function useAttentionAnnounce(status: ProposedStatus): boolean {
   const attention = status === "waiting" || status === "failed";
   const previous = useRef<ProposedStatus | null>(null);
@@ -420,22 +279,7 @@ export function canViewAllMembers(memberCount: number): boolean {
   return memberCount > MEMBER_WELL_LINES;
 }
 
-/**
- * Members sort attention-first and keep the same one-line tracks (DESIGN.md:
- * "Member status changes order and ink, never row shape"). Within a tier the
- * SERVER's order is preserved — the client never re-sorts a projection.
- *
- * The VALUES are the demo's `MEMBER_ATTENTION_RANK`
- * (`demo-data.ts:4388-4397`), copied rather than re-derived: a member that
- * finished WITH WARNINGS ranks with `parked` at 2, because a warning is
- * something to look at, and `cancelled` sinks BELOW a clean done at 5/6 — a
- * member nobody ran is the least interesting line in the well, and the rebuild
- * had those two inverted (R3 finding 13).
- *
- * The TIEBREAK stays the rebuild's: the member's index in the served array, so
- * two members of the same status keep the projection's order. The demo falls
- * back to its fixture id, which is not an order any server produces.
- */
+/** Attention-sort members while preserving served order within each tier. */
 const MEMBER_TIER: Record<ProposedStatus, number> = {
   failed: 0,
   waiting: 1,
@@ -460,11 +304,7 @@ export function orderMembers(members: readonly MemberSurfaceWire[]): MemberSurfa
 
 /* ── the panel ───────────────────────────────────────────────────────────── */
 
-/**
- * Members are contained by their operation and are drawn INSIDE it, so a member
- * surface is never also a top-level row. Containment is read from the served
- * `memberRunIds` / `lineage`, never re-decided here.
- */
+/** Read served containment; member rows cannot also appear as top-level work. */
 export function partition(surfaces: readonly QueueSurfaceWire[]): {
   top: QueueSurfaceWire[];
   membersOf: Map<string, MemberSurfaceWire[]>;
@@ -490,10 +330,7 @@ export function partition(surfaces: readonly QueueSurfaceWire[]): {
   return { top, membersOf };
 }
 
-/**
- * The j/k traversal order for the current view — the SAME order the eye sees,
- * members included, so a keyboard walk and a scroll agree.
- */
+/** Keyboard traversal follows drawn rows, including expanded members. */
 export function visibleRunIds(
   surfaces: readonly QueueSurfaceWire[],
   sort: QueueSortKey = "attention",
@@ -522,15 +359,7 @@ export function visibleRunIds(
   return ids;
 }
 
-/**
- * The rows that need the operator, in the order they are DRAWN — the `n`
- * binding's target (`app/global-keys.ts`).
- *
- * It filters `visibleRunIds` by the same `bandOf` the NEEDS YOU band header
- * draws from, so the key and the band physically cannot disagree about what
- * needs attention. A member of an attention band's group is in the list at its
- * own drawn position, which is where the eye finds it.
- */
+/** Attention shortcuts use the same visible order and bands as the queue. */
 export function attentionRunIds(
   surfaces: readonly QueueSurfaceWire[],
   sort: QueueSortKey = "attention",

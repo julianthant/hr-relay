@@ -3,11 +3,8 @@ import { FingerprintSchema } from "../../../../rules/identity/ids.js";
 const WORKFLOW_PREVIEW_DEFINITIONS = [{"id": "separations", "label": "Separations", "category": "Separations"}, {"id": "onboarding", "label": "Onboarding", "category": "Onboarding"}, {"id": "person-lookup", "label": "Person Lookup", "category": "Search"}, {"id": "i9-lookup", "label": "I-9 Lookup", "category": "Search"}, {"id": "work-study", "label": "Work-Study", "category": "Work Study"}, {"id": "kronos-pay-rule", "label": "Kronos Pay Rule", "category": "Payroll"}, {"id": "ocr", "label": "OCR", "category": "Utils"}, {"id": "oath-signature", "label": "Oath Signature", "category": "Onboarding"}, {"id": "oath-upload", "label": "Oath Upload", "category": "Onboarding"}, {"id": "emergency-contact", "label": "Emergency Contact", "category": "Onboarding"}, {"id": "onbase", "label": "OnBase", "category": "OnBase"}, {"id": "i9-check", "label": "I-9 Check", "category": "Separations"}, {"id": "crm-doc-download", "label": "CRM Doc Download", "category": "Utils"}, {"id": "sharepoint-download", "label": "SharePoint Download", "category": "Utils"}, {"id": "old-kronos-reports", "label": "Old Kronos Reports", "category": "Timekeeping"}] as const;
 
 
-/** Copied contracts: legacy hr-automation@9bb973672666b9267569a22d3fa0af722e4c5e87,
- * src/dashboard/lib/{input-run-registry,run-modal-registry,onbase-document-types,run-settings}.ts,
- * src/dashboard/components/run-modal/{RunModal,SharePointDownloadButton}.tsx,
- * src/workflows/<id>/{workflow,schema,handler}.ts and src/services/ocr/forms/registry.ts.
- * Direct-launch eligibility follows the current operator policy; OCR is directly launchable; I-9 Lookup and SharePoint Download require a parent. */
+/** Copied contracts: legacy hr-automation@9bb973672666b9267569a22d3fa0af722e4c5e87
+ * src/dashboard/lib/{input-run-registry,run-modal-registry,onbase-document-types,run-settings}.ts */
 export const MOCK_LEGACY_COMMIT = "9bb973672666b9267569a22d3fa0af722e4c5e87";
 export type MockWorkflowId = typeof WORKFLOW_PREVIEW_DEFINITIONS[number]["id"];
 export type MockMethod = "typed" | "pdf" | "roster" | "delegated";

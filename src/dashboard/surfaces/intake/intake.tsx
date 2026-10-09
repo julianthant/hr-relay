@@ -1,48 +1,8 @@
 import { IntakeOutcomeSkeleton, IntakeSkeleton } from "../shared/loading/loading.js";
 import { observeResource } from "../../state/async-resource.js";
 import { Checkbox as HeroCheckbox } from "@heroui/react";
-/**
- * The spreadsheet intake workspace — ref data-intake-and-edit-data §2.2's upload → map → validate →
- * run, and ref dashboard-surfaces §11's surface contract (2i-E3, D173).
- *
- * ## One axis carries the whole design: PROPOSED against DECIDED
- *
- * The single thing this surface must make impossible is mistaking the
- * machine's guess for the operator's decision — §2.5 is explicit that a
- * confident-but-wrong header match ("Name" → `fullName` when the real name is
- * in "Legal Name") is the silent substitution this program bans. So the
- * distinction gets the whole visual budget rather than a colour: a **decided**
- * binding is a solid control in the row's own column, and a **suggestion** is
- * recessed, dashed, in a DIFFERENT column, and always carries an explicit verb
- * to accept it. The two can never be confused because they are never in the
- * same place — and mechanically, only `confirm-intake-mapping` mints a binding,
- * which is reachable from nothing but a click.
- *
- * ## It is a workspace, not a dialog
- *
- * The session is DURABLE (`intake_sessions`, D170): it survives reload, and
- * mapping a dozen columns then reviewing four hundred rejections takes minutes
- * during which the operator will want to look at the queue. A modal would trap
- * that, and trapping a task whose whole state is already safe on the server is
- * the definition of a modal used out of laziness. So the workspace lives at
- * `?intake=<sessionId>`, addressable and abandonable at any moment.
- *
- * ## Three bands, and the outcome band never scrolls away
- *
- * Source (what we are reading) → Decision (mapping | review) → Outcome (what
- * would happen, and what blocks it). The outcome band is sticky because the
- * operator scrolling a long grid must always be able to read WHY Run is
- * disabled; a disabled button with its explanation off-screen is how a person
- * concludes the product is broken.
- *
- * ## Every refusal is the server's own sentence
- *
- * The kernel's rejections name exactly what is wrong — a stale layout
- * fingerprint, an unreviewed plan, a session that moved under the reviewed
- * version. None of them is re-worded here, and none is swallowed: a command
- * that fails puts its message on screen with `role="alert"` and changes
- * nothing else, because the wire is the truth and the next read re-derives it.
- */
+/** The spreadsheet intake workspace — ref data-intake-and-edit-data §2.2's upload → map → validate →
+ * run, and ref dashboard-surfaces §11's surface contract . */
 import {
 Check,
 CheckCircle2,
@@ -150,7 +110,7 @@ type RowReject = z.infer<typeof RowRejectSchema>;
 
 const SOURCE_SURFACE = "intake-workspace";
 
-/* ── command plumbing ─────────────────────────────────────────────────────── */
+/** ── command plumbing ─────────────────────────────────────────────────────── */
 
 /** The five mapping arms plus the enqueue, as the workspace issues them. */
 type IntakeCommand =
@@ -167,27 +127,16 @@ type IntakeCommand =
   | { readonly type: "validate-intake" }
   | { readonly type: "enqueue-intake-manifest"; readonly payload: { dryRun: boolean; reviewBinding?: string } };
 
-/**
- * A command outcome the surface renders rather than throws.
- *
- * `conflict` and `rejected` are ANSWERS — the operator acts on them — so they
- * are values here exactly as they are on the wire. A transport or schema
- * failure is different in kind and keeps its own arm, so "the server said no"
- * never reads the same as "the server could not be reached".
- */
+/** A command outcome the surface renders rather than throws.
+ * `conflict` and `rejected` are ANSWERS — the operator acts on them — so they */
 type CommandProblem =
   | { readonly kind: "rejected"; readonly code: string; readonly message: string }
   | { readonly kind: "confirmation-required"; readonly message: string }
   | { readonly kind: "conflict"; readonly currentVersion: number; readonly message: string }
   | { readonly kind: "transport"; readonly message: string };
 
-/**
- * D253 / Track D row D3 — WHETHER the command landed is the fold's answer, not
- * this surface's. What stays here is the PRESENTATION vocabulary: this
- * workspace draws a rejection as a `Refusal` with a code chip and a conflict as
- * a warning `Banner` whose meta line carries the version, so the two refusals
- * keep their own facts and a transport failure keeps its own arm beside them.
- */
+/** / — WHETHER the command landed is the fold's answer, not this surface's.
+ * What stays here is the PRESENTATION vocabulary */
 function problemOf(result: CommandResult): CommandProblem | undefined {
   const settlement = settleCommandResult(result);
   if (settlement.kind === "applied") return undefined;
@@ -197,19 +146,8 @@ function problemOf(result: CommandResult): CommandProblem | undefined {
     : { kind: "conflict", currentVersion: settlement.currentVersion, message: settlement.message };
 }
 
-/**
- * Wraps something that has just MOUNTED so it arrives rather than blinks.
- *
- * It is a WRAPPER rather than props spread onto `Banner`, because `Banner`
- * declares its props explicitly and forwards nothing else — spreading
- * `data-demo-enter` onto it type-checks (a spread skips excess-property
- * checking) and is then dropped at runtime, which is a transition that
- * silently never runs. The extra element is the price of the attribute
- * actually reaching the DOM.
- *
- * Travel and clock are both tokens, so `prefers-reduced-motion` zeroes this
- * with no branch here.
- */
+/** Wraps something that has just MOUNTED so it arrives rather than blinks.
+ * It is a WRAPPER rather than props spread onto `Banner`, because `Banner` */
 function Arriving({ children }: { children: ReactNode }) {
   const entering = useDsEnterTransition();
   return (
@@ -264,15 +202,7 @@ function ProblemNotice({ problem, onDismiss }: { problem: CommandProblem; onDism
 
 /* ── source band ──────────────────────────────────────────────────────────── */
 
-/**
- * What we are reading, and the two choices that change it.
- *
- * Both choices are DESTRUCTIVE in a specific, nameable way — the kernel drops
- * every binding, correction and exclusion when the sheet or header row moves,
- * because they all named rows and columns under the old layout — so this
- * confirms first and says exactly how many of each will go. Discovering that
- * afterwards would be the definition of a surprise.
- */
+/** Sheet or header changes erase layout-bound decisions; confirm the exact affected counts first. */
 function SourceBand({
   session,
   busy,
@@ -297,12 +227,7 @@ function SourceBand({
 
   return (
     <section aria-label="Source file" className="flex flex-col gap-[var(--ds-space-base)]">
-      {/*
-        The demo's own visible `SectionLabel` (D276 item 1, ledger 3 row IN27 —
-        `DemoIntake.tsx:414`). It had survived only as this section's
-        `aria-label`, which names the region for a screen reader and leaves the
-        operator reading an unheaded block of file facts.
-      */}
+      {/* A region’s accessible name does not replace its visible heading. */}
       <SectionLabel>Source file</SectionLabel>
       <div className="flex flex-wrap items-center gap-[var(--ds-space-base)]">
         <FileSpreadsheet aria-hidden className={cn(dsIcon.lg, "text-[color:var(--ds-fg-muted)]")} />
@@ -310,14 +235,7 @@ function SourceBand({
           <span className={cn(dsText.ui, "font-medium text-[color:var(--ds-fg)]")}>
             {sourceLabel(session)}
           </span>
-          {/*
-            The demo's digest and row-count wording (D276 item 1, ledger 3 rows
-            IN44/IN45, `DemoIntake.tsx:437`): `sha <8>` — the product's ONE id
-            length, the same `shortHash` cut every other surface prints — and
-            `N rows read`, which says what the number IS. "N data rows" named a
-            category; "read" names the act that produced the count, which is
-            the fact an operator checks against the sheet in front of them.
-          */}
+          {}
           <MetaLine
             items={[
               `sha ${shortHash(session.artifact.sha256)}`,
@@ -420,21 +338,11 @@ function headerReasonSentence(reason: IntakeSessionWire["headerDiscoveryReason"]
 
 function columnLabel(column: DetectedColumn): string {
   const header = column.header.trim().length === 0 ? "(blank header)" : column.header;
-  // The demo's duplicate-header suffix (D276 item 1, ledger 3 row IN74 —
-  // `DemoIntake.tsx:514`). The `#` is load-bearing: `Header (2)` reads as a
-  // count of two columns; `Header (#2)` reads as the second one of them, which
-  // is the fact an operator binding a repeated heading needs.
+  // Use # to mark duplicate-header ordinals; parentheses alone would read as a column count.
   return column.occurrence === 1 ? header : `${header} (#${String(column.occurrence)})`;
 }
 
-/**
- * One row per DECLARED TARGET FIELD, never one per source column.
- *
- * The workflow's fields are the fixed axis and the file is the variable, which
- * is ref data-intake-and-edit-data §2.2 step 2 in as many words. Turning it around would make the
- * grid's shape depend on the spreadsheet, and an operator could finish it
- * without ever seeing a field the workflow wanted.
- */
+/** Map every declared target field; source-driven rows could hide required workflow fields. */
 function MappingGrid({
   session,
   busy,
@@ -477,15 +385,7 @@ function MappingGrid({
 
   return (
     <div className="overflow-x-auto">
-      {/*
-        THE DEMO'S MAPPING VOCABULARY (D276 item 1, ledger 3 rows IN64/IN66/IN69
-        — `DemoIntake.tsx:571,575,578`). The table's accessible name is what the
-        table IS, not an instruction to the reader; `Target field` and
-        `Suggestion` are nouns, matching `Bound column` beside them, where
-        `Workflow field` and `Suggested` mixed a scope word and a participle
-        into one head row. `sourceLabel` supplies the file's name so the
-        pre-D171 fallback is spelled once, here as everywhere else.
-      */}
+      {}
       <Table label={`Column mapping for ${sourceLabel(session)}`}>
         <THead>
           <TR>
@@ -544,12 +444,7 @@ function TargetCell({ target }: { target: IntakeTarget }) {
   );
 }
 
-/**
- * The DECIDED half. A bound column is a solid control holding a real value and
- * showing the file's own sample cells beneath it, so the operator confirms what
- * a column HOLDS rather than what it is called — which is the only defence
- * against a correctly-named column full of the wrong data.
- */
+/** Show source samples with bindings so correct headers cannot conceal wrong cell contents. */
 function BoundColumnCell({
   target,
   bound,
@@ -566,21 +461,13 @@ function BoundColumnCell({
   return (
     <span className="flex min-w-[var(--ds-w-member-detail)] flex-col gap-[var(--ds-space-tight)]">
       <Select
-        /*
-          The demo's names for this control and its resting option (D276 item 1,
-          ledger 3 rows IN72/IN73 — `DemoIntake.tsx:607,611`). `Source column
-          for X` says what the operator is choosing; `Column bound to X` stated
-          the outcome as though it had already happened. `— unbound —` is the
-          same word the column head uses, so one state has one name.
-        */
+
         aria-label={`Source column for ${target.label}`}
         value={bound?.sourceColumnId ?? ""}
         disabled={locked}
         onChange={(event) => {
           const next = event.currentTarget.value;
-          // The empty option is the resting state of an UNBOUND field, not an
-          // "unbind" action: there is no arm that removes a binding, so
-          // offering one that silently did nothing would be a lie.
+          // The empty option means unbound; do not imply an unsupported unbind action.
           if (next.length === 0) return;
           onPick(next);
         }}
@@ -601,15 +488,7 @@ function BoundColumnCell({
   );
 }
 
-/**
- * The PROPOSED half — recessed, dashed, and in its own column.
- *
- * §2.5: a suggestion is a hint the operator confirms, never a pre-applied
- * binding, and the grid must not even pre-HIGHLIGHT an ambiguous one. So an
- * ambiguous proposal is drawn with its ambiguity stated and no visual
- * preference; picking one of two indistinguishable columns for the operator is
- * the silent guess in miniature.
- */
+/** Ambiguous suggestions carry no visual preference; the operator must choose the binding. */
 function SuggestionCell({
   proposals,
   columnOf,
@@ -670,14 +549,7 @@ function SuggestionCell({
 
 /* ── validation review ────────────────────────────────────────────────────── */
 
-/**
- * The pre-run rejection review (ref data-intake-and-edit-data §5).
- *
- * Rows are grouped by SOURCE ROW rather than listed per rejection, because a
- * row with three bad cells is one person the operator decides about once. Each
- * group offers the two arms that resolve it — correct a cell, or exclude the
- * row with a reason — and nothing else: there is deliberately no "ignore".
- */
+/** Resolve each source row once through correction or reasoned exclusion; there is no ignore arm. */
 function ValidationReview({
   session,
   busy,
@@ -712,19 +584,10 @@ function ValidationReview({
   const validation = session.validation;
   const rejects = [...validation.rejected].sort((left, right) => left.sourceRow - right.sourceRow);
   const locked = busy || session.state === "enqueued" || session.state === "discarded";
-  // A correction names a TARGET FIELD, so the control is labelled with the
-  // field's own operator-facing label rather than its path — `emplId` is the
-  // wire's word for it, "Employee ID (EID)" is the operator's.
+  // Label correction targets with operator field names, not transport paths.
   const labelOf = (targetFieldId: string): string =>
     session.targets.find((target) => target.targetFieldId === targetFieldId)?.label ?? targetFieldId;
-  // IN95 — the acknowledgement's ONE name. Radix renders `Checkbox.Root` as a
-  // `<button role="checkbox">`, and HTML-AAM does not name a `button` from an
-  // associated `<label for>` the way it names an `<input>`: verified 2026-08-26
-  // against the built bundle, the control resolved with NO accessible name at
-  // all, so `getByRole("checkbox", { name })` could never match it and a screen
-  // reader announced the gate that holds the plan closed as an unnamed control.
-  // The visible label and the accessible name are read from this single
-  // expression so the two can never drift apart (WCAG 2.5.3, Label in Name).
+  // Name the checkbox from the visible label; label-for alone does not name Radix’s button.
   const reviewLabel = rejects.length === 0 ? "" : rejectionReviewLabel(new Set(rejects.map((reject) => reject.sourceRow)).size);
 
   return (
@@ -765,19 +628,7 @@ function ValidationReview({
             </>
           )}
 
-          {/*
-            * IN121 / `DemoIntake.tsx:917-922` — what the operator has already
-            * fixed, listed rather than counted.
-            *
-            * A correction MOVES a row out of the rejection list, so the
-            * previous shape hid its own successes: correct the last bad cell
-            * and every trace of the work vanished behind "all rows are
-            * runnable", while the manifest still recorded each one. It sits
-            * where the demo puts it — after the rejections, before the
-            * exclusions — and it is drawn as the exclusions' twin, because
-            * the two are the same kind of thing: a durable, dated decision
-            * this operator made about one source row.
-            */}
+          {/* Keep recorded corrections visible after they remove rows from the rejection list. */}
           {session.corrections.length > 0 && (
             <Well aria-label="Corrected cells" className="flex flex-col gap-[var(--ds-space-tight)]">
               <SectionLabel>{INTAKE_REVIEW_COPY.corrections}</SectionLabel>
@@ -808,23 +659,13 @@ function ValidationReview({
   );
 }
 
-/**
- * The offending value, exactly as the durable manifest would keep it.
- *
- * It is REDACTED by the canonical field's own declared transform, so an EID
- * reads as its last four and a name as a digest — and the transform is named
- * beside it, because "…3698" presented as the cell's contents would be a lie
- * about what the operator is looking at. The real cell is in the file; that is
- * where the correction is made from.
- */
+/** Name the redaction transform; rendered masked values are not the original cell contents. */
 function rejectRawText(reject: RowReject): string | undefined {
   if (reject.kind !== "cell-coercion" && reject.kind !== "field-schema") return undefined;
   const raw = reject.raw;
   if (raw.state === "redacted") return `withheld (${raw.classification})`;
   if (raw.state === "transformed") return `${String(raw.value)} (${raw.transform})`;
-  // The `allowed` arm is the only one carrying arbitrary JSON, and a cell that
-  // is an object has no honest one-line rendering — say so rather than print
-  // `[object Object]` where a value belongs.
+  // Objects have no honest one-line cell display; do not substitute object-string coercion.
   return typeof raw.value === "object" && raw.value !== null
     ? "(a structured value)"
     : String(raw.value);
@@ -1283,12 +1124,7 @@ function RerunStageView({ session }: { session: IntakeSessionWire }) {
   );
 }
 
-/**
- * The complete identifier behind a dense, eye-scan-friendly value. Popover is
- * the design system's accessible home for load-bearing detail that would make
- * the resting surface noisy; the body wraps opaque tokens instead of clipping
- * them again as `KeyValueList` correctly does in dense lists.
- */
+/** Full identifiers belong in accessible disclosure and must wrap rather than be clipped again. */
 function IdentifierPopover({
   label,
   title,
@@ -1326,16 +1162,7 @@ function IdentifierPopover({
 
 /* ── outcome band ─────────────────────────────────────────────────────────── */
 
-/**
- * What would happen, and what stops it.
- *
- * The blockers listed here are the ones DERIVABLE from the served wire — no
- * header row, nothing bound, an unvalidated mapping. They are a courtesy, not
- * the authority: the readiness verdict belongs to the kernel, which judges it
- * against the manifest it would actually write, and its refusal is rendered
- * verbatim above. A surface that decided readiness itself would eventually
- * disagree with the server about what is about to happen.
- */
+/** Client blockers are explanatory; the kernel alone decides manifest readiness. */
 function OutcomeBand({
   session,
   busy,
@@ -1409,13 +1236,7 @@ function OutcomeBand({
             {`Run is blocked: ${blockers.join("; ")}.`}
           </span>
         )}
-        {/*
-          * IN8 / IN9 / `DemoIntake.tsx:355-358` — the layout every decision on
-          * this screen is fenced against, echoed where the deciding buttons
-          * are. `faint` because it is a standing note about the session, not a
-          * fact about what is about to happen; `MetaLine`'s own docstring
-          * names this exact line as one of the seven it was extracted for.
-          */}
+        {/* Keep layout provenance beside decisions so operators can verify their fencing basis. */}
         <span className="flex items-center gap-[var(--ds-space-snug)]">
           <MetaLine tone="faint" items={layoutMetaItems(session)} />
           {fingerprint !== undefined && (
@@ -1465,16 +1286,7 @@ function OutcomeBand({
 
 /* ── the workspace ────────────────────────────────────────────────────────── */
 
-/**
- * D298 — no `empty` and no `refused`.
- *
- * Both belonged to the upload page this workspace used to open on. The Run
- * Modal's `Import a spreadsheet` arm owns the drop now, and it owns the
- * refusal that a drop can earn, so this surface is only ever addressed WITH a
- * session: `?intake=<sessionId>`, always a real id. A workspace that could
- * render with nothing in it was also the thing that made `?intake=new` a
- * legal address.
- */
+/** The workspace requires an uploaded session; upload refusal belongs to its entry dialog. */
 type SessionState =
   | { readonly state: "loading" }
   | { readonly state: "loaded"; readonly session: IntakeSessionWire }
@@ -1492,17 +1304,12 @@ function IntakeSessionWorkspace({
   onClose,
   onEnqueued,
 }: {
-  /**
-   * WHICH workflow's fields these columns are mapped onto. The dropzone used
-   * to carry it ("…of people for {label}"), and the zone is in the Run Modal
-   * now (D298) — so the header carries it, because a mapping grid that does
-   * not name its target is a grid of guesses.
-   */
+  /** Name the target workflow above mapping; unlabeled bindings would be guesses. */
   workflowLabel: string;
   actorId: string;
   /** the descriptor's own dry-run boundary; the kernel refuses a claim it lacks */
   supportsDryRun: boolean;
-  /** always a real id — the dialog uploads before it routes here (D298) */
+  /** Routing here requires a real session created by the upload dialog. */
   sessionId: string;
   onClose: () => void;
   /** the fan-out landed — the queue now holds runs the operator should see */
@@ -1510,22 +1317,10 @@ function IntakeSessionWorkspace({
 }) {
   const client = useDashboardClient();
   const [resource, setResource] = useState<SessionState>({ state: "loading" });
-  /**
-   * WHICH control is in flight, not merely THAT one is.
-   *
-   * Every intake command is a round trip, and locking the whole surface while
-   * showing no spinner anywhere means the operator presses "Use it" and the
-   * interface appears to do nothing. The key names the exact control so it —
-   * and only it — carries the spinner, which is the difference between "the
-   * page is stuck" and "the thing I pressed is working".
-   */
+  /** Show the busy state on the exact command control, not only a locked page. */
   const [pending, setPending] = useState<string | null>(null);
   const [problem, setProblem] = useState<CommandProblem | null>(null);
-  /**
-   * An acknowledgement belongs to the exact served rejection set. Keeping the
-   * set's key, rather than a boolean, makes a later authority read revoke it
-   * without a transient frame that could offer a stale Run command.
-   */
+  /** Acknowledgement belongs to the served rejection set; later authority invalidates it before Run is offered. */
   const [reviewedRejectionKey, setReviewedRejectionKey] = useState<string | undefined>(undefined);
   const [recovery, setRecovery] = useState<{ retry: () => void } | null>(null);
   const active = useRef(true);
@@ -1533,12 +1328,7 @@ function IntakeSessionWorkspace({
   useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
   const busy = pending !== null || recovery !== null;
   const [confirmedReview, setConfirmedReview] = useState<string | undefined>(undefined);
-  /**
-   * Undefined until the operator picks one: a VALIDATED session opens on its
-   * review, because reviewing what the mapping rejects is the thing validation
-   * exists to produce, and landing back on the grid would hide it behind a tab.
-   * What the operator clicked always wins afterwards.
-   */
+  /** Validated sessions open on rejection review until the operator selects another tab. */
   const [tab, setTab] = useState<IntakeTab | undefined>(undefined);
   const [dryRun, setDryRun] = useState(false);
   const rejectionReview = resource.state === "loaded"
@@ -1655,9 +1445,7 @@ function IntakeSessionWorkspace({
               pending={pending}
               onConfirm={(targetFieldId, sourceColumnId) => {
                 const headerFingerprint = session.headerFingerprint;
-                // Unreachable while a header row is settled, and a refusal
-                // rather than a guess if it ever is: the kernel fences the
-                // confirmation on this exact fingerprint.
+                // Header confirmation must use the exact layout fingerprint; stale basis refuses instead of guessing.
                 if (headerFingerprint === null) {
                   setProblem({
                     kind: "transport",
@@ -1722,33 +1510,9 @@ function IntakeSessionWorkspace({
   })();
 
   return (
-    /* UF-FU-1 / D275 item 2. Intake replaces the window, so its root is the
-       shared full-bleed frame: one owner for geometry, arrival and focus. The
-       intake column below is unchanged; D278 owns that separate layout. */
+
     <TakeoverFrame label="Spreadsheet intake">
-      {/*
-        THE DEMO'S OWN HEADER (D276 item 1, ledger 3 rows IN2/IN3 —
-        `DemoIntake.tsx:266-267`). `Import a spreadsheet` named the ACTION the
-        button that opens this surface already names; `Spreadsheet intake` names
-        the WORKSPACE, which is what a header does. The subtitle is the demo's
-        sentence verbatim, and it is the whole reason this surface has five
-        stages instead of one button: a sheet does not become runs until a
-        person has settled the header row, built the mapping and answered every
-        rejected cell. `workflowLabel` rides in the header's `meta` slot since
-        D298 took the upload label that used to carry it.
-
-        THE DISMISS CONTROL STAYS HERE (ledger 3 row IN7 — a named truthful
-        exception, not a port). The demo's `Cancel` is a DIALOG footer button;
-        D173 reshaped this surface from that dialog into a workspace, and a
-        workspace has no dialog footer to put it in. `Cancel` would also
-        misname it: by the time this header is on screen the upload has already
-        created a durable session with an artifact behind it, so the control
-        closes the workspace and cancels nothing.
-
-        `Another file` LEFT with the upload page it reset to (D298). There is
-        one door now — `Start a run -> Import a spreadsheet` — and `Close`
-        already returns focus to it.
-      */}
+      {/* Closing the workspace preserves its durable session; it cancels no uploaded file. */}
       <PanelHeader
         title="Spreadsheet intake"
         headingLevel={2}

@@ -9,7 +9,7 @@ import { buildEmergencyContactMock, buildOnboardingMock, DEFAULT_MOCK_SCENARIO, 
 import { buildWorkflowMock, explorerWorkflowOptions, initialWorkflowChoices, updateWorkflowChoice, workflowContractSource } from "./explorer-workflow-model.js";
 import { MOCK_WORKFLOWS, mockWorkflow, type MockWorkflowId } from "../workflows/mocks/workflow-mock-catalog.js";
 
-/** Local presentation producer; the registered-definition UI has been retired. */
+/** Local presentation producer; the registered-definition UI is not served. */
 export function WorkflowExplorer({ catalog }: { catalog: readonly WorkflowCatalogEntry[] }) {
   const workflows = useMemo(() => explorerWorkflowOptions(catalog), [catalog]);
   const [workflowId, setWorkflowId] = useViewState("explorerWorkflow", "fixture-separations");

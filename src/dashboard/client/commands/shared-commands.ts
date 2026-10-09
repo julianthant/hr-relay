@@ -15,11 +15,8 @@ export interface SharedCommands {
 
   executeCommand(request: unknown): Promise<CommandResult>;
 
-  /**
-   * D235: one request, N CAS-bound transitions, N outcomes. The client parses
-   * the vector verbatim for the same reason it parses a single result verbatim
-   * — the server is the only party that knows what each run settled as.
-   */
+  /** One request, N CAS-bound transitions, N outcomes. The client parses
+ * the vector verbatim for the same reason it parses a single result verbatim */
   executeBulkCommand(request: unknown): Promise<BulkRunCommandResponse>;
 }
 

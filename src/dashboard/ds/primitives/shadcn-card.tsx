@@ -1,7 +1,5 @@
-/** Adapted from shadcn/ui Card (MIT):
- * https://github.com/shadcn-ui/ui/blob/main/apps/v4/registry/bases/radix/ui/card.tsx
- * Radix Slot keeps dashboard section, header, and footer landmarks intact.
- */
+/** Adapted from shadcn/ui Card (MIT)
+ * https://github.com/shadcn-ui/ui/blob/main/apps/v4/registry/bases/radix/ui/card.tsx */
 import { Slot } from "@radix-ui/react-slot";
 import { type HTMLAttributes, type ReactNode } from "react";
 import { cn } from "../../lib/utils.js";

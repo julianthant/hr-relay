@@ -8,20 +8,7 @@ import { parseOrThrow } from "./query-parse.js";
 import type { DashboardTransport } from "../transport.js";
 
 
-/**
- * What an intake upload did — the one place the response STATUS is the answer.
- *
- * `POST /api/v1/intake/files` returns the same session wire whether it minted a
- * session (`201`) or joined the open one those exact bytes already have
- * (`200`), and the difference is the whole message to the operator: "we read
- * your file" against "you already had this file open, with your mapping still
- * on it". A refusal (`422`) carries the parser's own code and words, which are
- * rendered verbatim rather than translated.
- *
- * Any other status is a fault, not an outcome: it throws through `httpError`
- * like every other route, because a surface that quietly treated an unexpected
- * status as "refused" would report a server bug as an operator problem.
- */
+/** What an intake upload did — the one place the response STATUS is the answer. */
 export type IntakeUploadResult =
   | Readonly<{ state: "created" | "joined"; session: IntakeSessionWire }>
   | Readonly<{ state: "refused"; code: string; message: string }>;
@@ -37,7 +24,7 @@ export interface IntakeUploadRequest {
 
 export interface IntakeQueries {
 
-  /** Ref data-intake-and-edit-data §2.2 step 1 — the bytes go up, a durable session comes back (2i-E3). */
+  /** Ref data-intake-and-edit-data §2.2 step 1 — the bytes go up, a durable session comes back. */
   uploadIntakeFile(request: IntakeUploadRequest): Promise<IntakeUploadResult>;
 
   /** The durable session joined with its re-derived parse view and hints. */

@@ -1,13 +1,5 @@
 import { ObservedOperationStructureWireSchema } from "../../../models/dashboard/operation-structure.js";
-/**
- * Which tabs a run detail advertises, and which one opens.
- *
- * It lives beside `log-panel.tsx` rather than inside it because a module that
- * exports a component may export nothing else if React Fast Refresh is to treat
- * it as a refresh boundary: one non-component export makes every edit to the
- * surface invalidate upward into `dashboard-app.tsx` and remount the app
- * instead of hot-swapping the component.
- */
+/** Which tabs a run detail advertises, and which one opens. */
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { z } from "zod";
 import {
@@ -32,12 +24,8 @@ export interface LogRowGroup {
   readonly rows: readonly LogRowWire[];
 }
 
-/**
- * Live pages must carry `rows`. The notes-only compatibility shape belongs to
- * frozen archive readers; this live surface must never silently reinterpret it.
- * The server sequence is the one ordering key. Observations may share a clock
- * instant, so time must never be used as a tie-breaker.
- */
+/** Live pages must carry `rows`. The notes-only compatibility
+ * shape belongs to frozen archive readers */
 function requireLiveLogRows(page: NotePage, requestedCursor: string): readonly LogRowWire[] {
   if (page.rows === undefined) {
     throw new Error(
@@ -70,13 +58,7 @@ export function logPillsOf(row: LogRowWire): readonly LogPill[] {
   })));
 }
 
-/**
- * One row of the observed ledger: the key the operator reads in the left
- * column, the whole `field · key` label + rendered value the search and the
- * hover title keep (the same pair `logPillsOf` serves), and, for a served
- * list, its items so the surface can show a count with a preview instead of
- * a JSON dump.
- */
+
 export interface LogLedgerFact {
   readonly key: string;
   readonly label: string;
@@ -101,16 +83,7 @@ function renderedListItem(item: unknown): string {
   return typeof item === "string" ? item : JSON.stringify(item);
 }
 
-/**
- * The redesigned observed row (2026-09-01): a key · value ledger instead of
- * one bordered chip per fact. Facts keep their served order; a key that
- * repeats its field prefix (`employee.location.value` under `employee`) is
- * shown without it, and a point whose only key IS its field
- * (`documentNumber`) is a plain row with no sub-head. Contiguous points of one
- * direction fold into one section so the direction is stated once, not once
- * per fact; a direction change starts a new section rather than reordering
- * served facts behind an earlier heading.
- */
+/** Preserve observed order; only contiguous rows sharing direction may fold into one section. */
 export function logLedgerOf(row: LogRowWire): readonly LogLedgerSection[] {
   if (row.kind !== "observed") return [];
   const sections: { direction: "read" | "write"; fields: LogLedgerField[] }[] = [];
@@ -150,12 +123,7 @@ function groupLabelOf(row: LogRowWire): string | undefined {
   return `${row.producer.step} · ${row.producer.taskId}`;
 }
 
-/**
- * Preserve stream order while grouping contiguous rows by their REAL producer.
- * A repeated step later in a run deliberately starts a new group: flattening
- * it into the first one would move intervening evidence behind a heading it
- * did not produce.
- */
+/** Group contiguous producer rows only; merging later repeats would reorder intervening evidence. */
 export function groupLogRows(rows: readonly LogRowWire[]): readonly LogRowGroup[] {
   const groups: { label: string | undefined; rows: LogRowWire[] }[] = [];
   for (const row of rows) {
@@ -187,11 +155,7 @@ function logCursorIdentity(cursor: string, runId: NotePage["runId"]): LogCursorI
   return { digest, offset: Number(offsetText) };
 }
 
-/**
- * Append the next immutable page without mutating, deduplicating, or
- * re-sorting evidence. A duplicate sequence is a broken cursor contract, not
- * a reason to silently drop a row.
- */
+/** Append evidence unchanged; duplicate sequences indicate a cursor defect, never permission to drop rows. */
 export function appendLogPage(page: NotePage, requestedCursor: string, next: NotePage): NotePage {
   if (page.nextCursor.state !== "present" || page.nextCursor.value !== requestedCursor) {
     const ownedCursor = page.nextCursor.state === "present" ? page.nextCursor.value : page.nextCursor.reason;
@@ -259,11 +223,7 @@ interface LogPageSnapshot {
   readonly error: Error | undefined;
 }
 
-/**
- * The logs section remains lazy. It appends only the server's next immutable
- * cursor page and leaves evidence already on screen intact while that request
- * is in flight or refused.
- */
+/** Retain displayed evidence while the next cursor page is loading or refused. */
 export function useLogPages(
   initial: NotePage | undefined,
   load: (cursor: string) => Promise<NotePage>,

@@ -89,43 +89,20 @@ import type { StepOmissionForm } from "../../../models/workflow/step-omission.js
 
 /** the surface id this command family is audited under (ref frontend-backend-integration §3.4) */
 
-/**
- * What the app composes from the descriptor and bootstrap projections. The
- * dialog reads exactly this and imports no workflow module.
- */
+/** What the app composes from the descriptor and bootstrap projections. The
+ * dialog reads exactly this and imports no workflow module. */
 export interface RunStartWorkflow {
   readonly workflowId: string;
   readonly label: string;
   /** the served category this workflow is filed under — the picker's grouping */
   readonly categoryId: string;
-  /**
-   * The served taxonomy fact (ref workflow-model §1.2.1, D219) — composed from the boot
-   * document exactly as served, never inferred from an id prefix. It is what
-   * the ONE grouping rule nests a chunk harness by, and what keeps this
-   * dialog's default selection from opening on a step of a workflow.
-   */
+  // Use the served role; never infer it from an ID prefix.
   readonly role: WorkflowModuleRole;
-  /**
-   * The short code the picker row carries — the descriptor's own guarded
-   * 2-char code, served on the bootstrap workflow projection since R2 D1/D2.
-   * It stays OPTIONAL here because the app composes this view-model and the
-   * row must render nothing at all rather than a placeholder if a future
-   * composition has none: a fabricated identity is the value this tree bans.
-   */
   readonly code?: string;
-  /**
-   * D229's own sentence about what this workflow does — the demo's
-   * `capability.note`, and the descriptor's plain data (D251). Optional because
-   * the declaration is: a workflow with none draws no paragraph rather than a
-   * composed one.
-   */
+  /** the descriptor's own sentence about what this workflow does */
   readonly summary?: string;
-  /**
-   * The descriptor's DECLARED active-run policy (D251). It is a fact, not a
-   * control: `planStart` reads `descriptor.enqueue` and `StartPlanIngress`
-   * carries no per-start override, so the demo's select would offer an answer
-   * the server would ignore.
-   */
+  /** The descriptor's DECLARED active-run policy . It is a fact, not a
+ * control: `planStart` reads `descriptor.enqueue` and `StartPlanIngress` */
   readonly enqueue: EnqueuePolicy;
   /** The served descriptor version, shown in Options and Confirm. */
   readonly version: number;
@@ -136,25 +113,16 @@ export interface RunStartWorkflow {
     systems?: readonly BrowserSystemId[];
     control:
       | { state: "selectable"; inputField: string }
-      /**
-       * D307 — the step declares an omission the operator may take instead of
-       * running it, with the closed form to draw and the other steps the
-       * choice forces out. The Steps screen's OMISSION UI lands with its own
-       * unit; the arm is carried here so the served wire assigns without a
-       * widening cast, and the existing `required`/`selectable` branches keep
-       * drawing exactly what they drew.
-       */
+      /** the step declares an omission the operator may take instead of running */
       | { state: "omittable"; form: StepOmissionForm; forces: readonly string[] }
       | { state: "required"; reason: string };
   }>[];
-  /** the descriptor's declared typed-input surface, or why there is none */
+  /** the descriptor's declared typed-input surface */
   readonly inputRun:
     | { readonly state: "present"; readonly surface: InputRunSurface }
     | { readonly state: "absent"; readonly reason: string };
-  /**
-   * Retained served intake capability. Spreadsheet registration lives in
-   * Settings and is not a Run input method.
-   */
+  /** Retained served intake capability. Spreadsheet registration lives in
+ * Settings and is not a Run input method. */
   readonly spreadsheetIntake: boolean;
 }
 
@@ -163,12 +131,8 @@ function isStartable(workflow: RunStartWorkflow): boolean {
   return workflow.inputRun.state === "present";
 }
 
-/**
- * What the dialog reads when the served catalogue holds nothing to select. It
- * is a statement about the dialog's own state, not a substituted descriptor
- * declaration — and it is a module constant so the parse preview memo is not
- * re-keyed by a fresh object on every render.
- */
+/** What the dialog reads when the served catalogue holds nothing to select. It
+ * is a statement about the dialog's own state, not a substituted descriptor */
 /** a stable empty step list, so "no workflow selected" is not a fresh array each render */
 const EMPTY_STEPS: RunStartWorkflow["steps"] = Object.freeze([]);
 
@@ -177,10 +141,8 @@ const NO_WORKFLOW_SELECTED = Object.freeze({
   reason: "no workflow is selected",
 } as const);
 
-/**
- * One omitted step, with the facts form it asks for and what the operator has
- * typed into it so far (D307).
- */
+/** One omitted step, with the facts form it asks for and what the operator has
+ * typed into it so far . */
 interface StepOmissionRow {
   readonly step: string;
   readonly label: string;
@@ -189,14 +151,8 @@ interface StepOmissionRow {
   readonly fold: StepOmissionFactsFold;
 }
 
-/**
- * The `stepOmissions` this request would carry — or `null`, because one of its
- * forms does not parse yet.
- *
- * `null` is not "send fewer": an omission whose facts are missing is a step the
- * run would reach with nothing to read, and the server refuses it by name
- * (`facts-missing` / `facts-invalid`). The dialog therefore does not ask.
- */
+/** The `stepOmissions` this request would carry — or `null`, because one of its
+ * forms does not parse yet. */
 function completeStepOmissions(
   rows: readonly StepOmissionRow[],
 ): readonly Readonly<{ step: string; facts: Readonly<Record<string, StepOmissionFactValue>> }>[] | null {
@@ -208,20 +164,12 @@ function completeStepOmissions(
   return Object.freeze(entries);
 }
 
-/**
- * One omitted step's typed facts, in the operator's own words: the form's own
- * field LABELS, in its own declared order, with what was typed into each.
- *
- * The Confirm screen is the operator confirming their own input, so it shows
- * the values. Nothing here crosses a wire — `stepOmissions` carries the facts
- * once, and every other projection of this run redacts them.
- */
+/** One omitted step's typed facts, in the operator's own words */
 function stepOmissionFactsSummary(row: StepOmissionRow): string {
   if (row.form.fields.length === 0) return "no facts to supply";
   if (row.fold.state !== "facts") {
-    // Confirm is unreachable with an unparsed form: `advance` refuses it and
-    // the fingerprint clears the plan on every keystroke. Reaching here means
-    // one of those two is broken, and a plausible sentence would hide it.
+              // Confirm is unreachable with an unparsed form: `advance` refuses it.
+          // fingerprint clears the plan on every keystroke, so reaching here means one of the two is broken.
     throw new Error(`the Confirm summary reached step "${row.step}" with facts that do not parse`);
   }
   const facts = row.fold.facts;
@@ -238,14 +186,7 @@ function stepOmissionFactLabel(field: string, value: StepOmissionFactValue | und
   return String(value);
 }
 
-/**
- * The omitted steps a plan says it retained, versus the ones this dialog sent.
- *
- * Compared as a SET: which steps are out is the fact, and two orderings of the
- * same set are the same answer. Anything else — a key the plan added, dropped
- * or renamed — is the plan describing a different run, and the dialog refuses
- * to start it.
- */
+/** Compare omission sets, not order; added or missing keys describe a different run and must refuse. */
 function sameStepKeys(left: readonly string[], right: readonly string[]): boolean {
   if (left.length !== right.length) return false;
   const sortedLeft = [...left].sort();
@@ -253,17 +194,9 @@ function sameStepKeys(left: readonly string[], right: readonly string[]): boolea
   return sortedLeft.every((key, index) => key === sortedRight[index]);
 }
 
-// ---------------------------------------------------------------------------
-// The launcher
-// ---------------------------------------------------------------------------
 
-/**
- * The queue toolbar's one primary control — the dialog itself lives at the root.
- *
- * `id` is the intake takeover's focus-return target since D296: the modal this
- * opens is the only door into the intake workspace, so this is the control the
- * operator left when that takeover took the screen.
- */
+
+/** Restore intake focus to its launcher; it is the control that opened the workspace. */
 export function RunStartButton({ id, onOpen }: { id: string; onOpen: () => void }) {
   return (
     <Button
@@ -272,9 +205,7 @@ export function RunStartButton({ id, onOpen }: { id: string; onOpen: () => void 
       variant="brand"
       onClick={onOpen}
       icon={<Play aria-hidden className={dsIcon.sm} />}
-      // No `r` hint on the face of it: a shortcut badge on the ONE primary in
-      // the toolbar spends the slot where the verb should end the eye's travel.
-      // The binding stays discoverable where every other one is.
+      // Keep shortcut hints in their shared discovery route so the primary control stays focused on its verb.
       title="Start a run — any workflow, from anywhere (r)"
     >
       Start a run
@@ -282,9 +213,7 @@ export function RunStartButton({ id, onOpen }: { id: string; onOpen: () => void 
   );
 }
 
-// ---------------------------------------------------------------------------
-// The descriptor's own parser, previewed
-// ---------------------------------------------------------------------------
+
 
 interface ParsePreview {
   readonly entries: readonly ParsedInputEntry[];
@@ -292,24 +221,7 @@ interface ParsePreview {
   readonly problem: string | null;
 }
 
-/**
- * WHY THIS IS NOT THE DEMO'S PER-ENTRY PROBLEM MODEL (R8 finding 17).
- *
- * The demo computes a `{ code, message }` per typed value and keeps the good
- * ones (`DemoRunStart.tsx:405-472` over `parseEntries`), because its parser is
- * fixture code in the same file. This tree's parser is
- * `parseInputRunText` in `src/domain/workflow/ingress.ts` — a contract boundary
- * shared with the start-plan submission — and it THROWS on the whole text, by
- * design: "a silently dropped entry is an EID the operator believes is queued
- * and that never runs." Its split is module-private, so a per-entry preview
- * here would have to re-implement the boundary's own splitting rules in a
- * surface, and a client split that disagreed with the domain's would preview
- * entries the server never receives.
- *
- * So the refusal renders whole and verbatim, and the parsed-entry list below it
- * stays: it is what tells the operator what the boundary DID make of the text.
- * Per-entry tolerance is a change to the boundary, not to this surface.
- */
+/** Preview the shared parser’s whole refusal; client splitting could silently omit subjects the operator expects queued. */
 function TypedInput({
   surface,
   workflowId,
@@ -329,8 +241,7 @@ function TypedInput({
   return (
     <div className="flex flex-col gap-[var(--ds-space-snug)]">
       <Field
-        // D250 — both halves are DERIVED from the parser spec, so the box cannot
-        // describe a rule it does not apply.
+        // Derive hints and preview from the parser specification so the control cannot promise unused rules.
         label={inputRunFieldLabel(surface.parser)}
         description={inputRunDelimiterHint(surface.parser)}
         error={preview.problem}
@@ -371,30 +282,9 @@ function TypedInput({
   );
 }
 
-// ---------------------------------------------------------------------------
-// The dialog
-// ---------------------------------------------------------------------------
 
-/**
- * The workflow the dialog opens on: the panel the operator is standing in when
- * that workflow can be started, then the first that can, rather than opening on
- * nothing.
- *
- * **A chunk harness is never AUTO-picked** (D219). It is a step of its
- * composition, and a dialog that opens on a step the operator did not ask for
- * proposes a run of one piece of a workflow — so a harness is only ever the
- * default when the operator is standing in that harness's own panel, which is
- * a choice they already made. Every fallback below skips harnesses; if the
- * served catalogue holds nothing else, the dialog opens with NOTHING selected
- * and renders the absent state, which is the honest reading of "there is no
- * whole workflow to default to" rather than a step chosen on the operator's
- * behalf.
- *
- * The auto-pick set is exactly the rail's set — the main workflows,
- * compositions and standalones — so the two surfaces cannot disagree about
- * what counts as a workflow to start. Harnesses remain explicitly startable
- * from their own panels and from the picker's nested entries.
- */
+
+/** Never auto-pick a harness; select one only when the operator already chose its panel. */
 function defaultWorkflowId(
   workflows: readonly RunStartWorkflow[],
   panelWorkflowId: string,
@@ -432,13 +322,7 @@ export function RunStartDialog({
   /** echoed from bootstrap; the server matches it against the request identity */
   actorId: string;
   onApplied?: (workflowId: string, count?: number) => void;
-  /**
-   * D296's handoff: close this dialog and open the intake workspace ON THIS
-   * WORKFLOW. The dialog names the workflow rather than assuming the panel's,
-   * because the picker beside it is the whole point of "any workflow, from
-   * anywhere" and an intake seeded from the panel would map the file's columns
-   * onto a workflow the operator did not choose.
-   */
+  /** Hand intake the picker’s workflow, never the panel’s incidental scope. */
   onOpenIntake: (workflowId: string, intakeSessionId: string) => void;
   onCloseAutoFocus?: (event: Event) => void;
   rerunSource?: RerunLaunchSource;
@@ -487,19 +371,7 @@ export function RunStartDialog({
   const [customizeSteps, setCustomizeSteps] = useViewState("launchCustomize", false);
   const [selectedStepKeys, setSelectedStepKeys] = useState<string[]>(() =>
     initialWorkflow?.steps.filter(({ includedByDefault }) => includedByDefault).map(({ key }) => key) ?? []);
-  /**
-   * D307 — what the operator has typed into each omitted step's form, keyed by
-   * step key, and which of those controls they have finished with.
-   *
-   * The drafts survive a re-check of the step (re-typing two dates because a
-   * checkbox was pressed twice is a cost with no benefit); they do NOT survive
-   * a workflow change or leaving `Customize steps`, because a fact typed for
-   * one workflow's step is not a fact about another's.
-   *
-   * `touchedFacts` and `factsAttempted` decide only WHEN a refusal is drawn,
-   * never whether one exists: an empty box the operator has not reached yet is
-   * still an incomplete form, and the footer says so from the moment it is.
-   */
+  /** Keep drafts across checkbox toggles, but clear them across workflow or customization exits. */
   const [stepDrafts, setStepDrafts] = useState<Readonly<Record<string, StepOmissionDraft>>>({});
   const [touchedFacts, setTouchedFacts] = useState<ReadonlySet<string>>(() => new Set());
   const [factsAttempted, setFactsAttempted] = useState(false);
@@ -513,12 +385,7 @@ export function RunStartDialog({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  /**
-   * Switching workflows CLEARS the form. The typed text belongs to the
-   * workflow's own parser and the plan token is bound to its identity, so
-   * carrying either across would leave the dialog holding a proposal for a
-   * workflow the operator is no longer looking at.
-   */
+  /** Changing workflow clears its parser input and bound plan; another workflow cannot reuse either. */
   const selectWorkflow = useCallback((next: string, preserveStage = false) => {
     setWorkflowId(next);
     setText("");
@@ -526,9 +393,7 @@ export function RunStartDialog({
     setResult(null);
     setError(null);
     if (!preserveStage) { setCurrentStage("Input"); setCustomizeSteps(false); }
-    // The method is a property of the workflow's own declarations, so it resets
-    // with everything else: carrying `spreadsheet` onto a workflow whose module
-    // declares no projection would select a tab that is not drawn.
+    // Reset start method with workflow; unavailable spreadsheet declarations must not leave a selected hidden tab.
     setWorkbookId("");
     const nextWorkflow = workflows.find((entry) => entry.workflowId === next);
     setSelectedStepKeys(nextWorkflow?.steps.filter(({ includedByDefault }) => includedByDefault).map(({ key }) => key) ?? []);
@@ -596,25 +461,8 @@ export function RunStartDialog({
     setCurrentStage((current) => reconcileRunStartStage(launchStages, current));
   }, [launchStages, setCurrentStage, previewOwnsStages]);
 
-  /**
-   * C109 (D272 item 8) — a plan, and the RESULT behind it, outlive nothing that
-   * shaped them.
-   *
-   * The demo cleared its result from inside each control's own `onChange`; this
-   * derives the same thing from ONE identity, so a control added later cannot
-   * leave a settled banner standing over a request that no longer exists. The
-   * plan token is bound to these exact fingerprints server-side, so once any of
-   * them moves the token is unusable and saying so is the only honest state.
-   */
-  /**
-   * D307 — the steps the operator has left OUT, each with the form it asks for
-   * and the facts (or refusals) its draft currently reads as.
-   *
-   * `forcedByStep` is the cascade the descriptor already computed: a step
-   * another omitted step forces out is unchecked and LOCKED for as long as that
-   * choice stands, so this screen locks exactly what the planner would refuse
-   * rather than a rule restated here.
-   */
+  /** Plans and results expire when any request-shaping fact changes. */
+  /** Lock forced omissions using the descriptor cascade; the planner owns the rule. */
   const steps = workflow?.steps ?? EMPTY_STEPS;
   const forcedByStep = useMemo(() => forcedStepOmissions(steps, selectedStepKeys), [steps, selectedStepKeys]);
   const omissionRows: readonly StepOmissionRow[] = useMemo(() => (customizeSteps ? omittedStepViews(steps, selectedStepKeys) : []).map(
@@ -638,22 +486,7 @@ export function RunStartDialog({
     selectedStepKeys,
     stepOmissionDrafts: omissionRows.map(({ step, draft }) => ({ step, draft })),
   })]);
-  /**
-   * The identity of the request the dialog is CURRENTLY describing, readable
-   * from inside a settled promise (unit F5b finding 1).
-   *
-   * The effect below clears a plan the moment the request moves, but it can
-   * only clear what has already landed: an in-flight `submitStartPlan` /
-   * `executeCommand` that settles AFTER the edit re-lands its answer on top of
-   * the cleared state, and the operator is looking at a plan for text that is
-   * no longer in the box. Every dispatch below captures the fingerprint it was
-   * made for and compares it against this ref before it writes anything.
-   *
-   * It is updated in the SAME effect that does the clearing, which is what
-   * makes the ordering self-healing: if a settlement wins the race to a render
-   * the effect has not run for yet, the effect runs next and clears exactly
-   * what the settlement wrote.
-   */
+  /** Accept async settlements only for their captured request identity; clear stale results alongside invalidation. */
   const requestFingerprintRef = useRef(requestFingerprint);
   useEffect(() => {
     requestFingerprintRef.current = requestFingerprint;
@@ -663,10 +496,7 @@ export function RunStartDialog({
     if (!previewOwnsStages) setCurrentStage((current) => current === "Confirm" ? (isRerun ? "Values" : "Input") : current);
   }, [requestFingerprint, isRerun, setCurrentStage, previewOwnsStages]);
 
-  /**
-   * The typed box, so an exit from a settled banner can put the keyboard back
-   * where the operator types.
-   */
+  /** Return focus to the typed box when settled-banner controls unmount. */
   const typedInputRef = useRef<HTMLTextAreaElement>(null);
   const restoreInputFocusRef = useRef(false);
 
@@ -717,15 +547,10 @@ export function RunStartDialog({
         captureBrowserScreenshots,
         priority,
         ...(customizeSteps ? { selectedStepKeys } : {}),
-        // D307 — sent only when the operator is customizing steps, and only
-        // when every omitted step's form parses. `stepOmissions === null` is
-        // an incomplete form, and `advance` never reaches this call with one.
+        // Send omission facts only after every declared form parses.
         ...(customizeSteps && stepOmissions !== null && stepOmissions.length > 0 ? { stepOmissions } : {}),
       });
-      // The operator edited the form while this was on the wire, so the server
-      // answered a question the form no longer asks and the plan token it
-      // carries is already unusable. Landing it would put a proposal for text
-      // that has left the box under a primary button that says Start run.
+      // Ignore superseded plan responses; their tokens describe text no longer in the form.
       if (requestFingerprintRef.current !== dispatchedFor || launchInstance.current !== instance) return;
       setPlan(next);
       setResult(null);
@@ -733,11 +558,7 @@ export function RunStartDialog({
         setWarning({ workflowId: next.workflowId, rerun: next.rerun }); setCurrentStage("Warning");
       } else setCurrentStage("Confirm");
     } catch (caught) {
-      // A refusal of a superseded request is not dropped evidence: the next
-      // `Plan the run` re-asks the same server the same way and surfaces it
-      // against the request the operator is actually looking at. What IS
-      // banned is showing this one — a danger banner naming text that is no
-      // longer in the box reads as a refusal of what is.
+      // Render refusals only against their current request; superseded errors would condemn different input.
       if (requestFingerprintRef.current !== dispatchedFor || launchInstance.current !== instance) return;
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
@@ -779,11 +600,7 @@ export function RunStartDialog({
     await sendFinal(finalRequest.current, requestFingerprint);
   }, [launchService, plan, requestFingerprint, recoveryError, sendFinal]);
 
-  // D253 / Track D row D3 — "did the start land" is the ONE fold's question,
-  // and a replay of the same landing IS a landing: the plan token is single-use,
-  // so `already-applied` means this dialog's own send arrived twice, never that
-  // nothing was enqueued. `EnqueueResultBanner` still draws the four arms apart,
-  // because what the operator READS about a refusal is not the same question.
+  // already-applied confirms the same enqueue; its plan token is single-use.
   const applied = result !== null && settleCommandResult(result).kind === "applied";
   const blockedReason = inputRun.state !== "present"
     ? inputRun.reason
@@ -792,23 +609,8 @@ export function RunStartDialog({
       : preview.entries.length === 0
         ? "Type at least one value."
         : null;
-  /**
-   * D307 — why the Steps screen cannot go on to Confirm.
-   *
-   * An omitted step whose form does not parse is a step the run would reach
-   * with nothing to read, and the server refuses exactly that (`facts-missing`
-   * / `facts-invalid`). Saying so here is not a second rule: `stepOmissions` is
-   * `null` precisely when the descriptor's OWN facts schema refused the draft.
-   */
-  /**
-   * D307 — typed facts describe ONE subject.
-   *
-   * A last day worked or a transaction number is a fact about a person, and a
-   * plan that fans out to several would assert it for all of them; the plan
-   * service refuses exactly that (`single-subject-only`). So a multi-subject
-   * box does not OFFER an omission, and an omission chosen before the box grew
-   * blocks the advance by name rather than reaching the server to be refused.
-   */
+  /** Incomplete omitted-step facts block confirmation using the descriptor’s own schema refusal. */
+  /** Omission facts describe one person; fan-out must not assert the same dates for multiple subjects. */
   const subjectCount = preview.entries.length;
   const multiSubject = subjectCount > 1;
   const multiSubjectOmissionReason = `Omitting a step describes one subject; this run would create ${String(subjectCount)}.`;
@@ -819,12 +621,7 @@ export function RunStartDialog({
       ? "Fill in the facts the omitted step asks for."
       : "Fill in the facts every omitted step asks for."
     : null;
-  /**
-   * The plan has to describe the run this dialog asked for. `omittedSteps` is
-   * the server's own account of which steps it retained as omitted; if that
-   * set is not the set this dialog sent, the token in hand belongs to a
-   * different run and Start is refused rather than pressed hopefully.
-   */
+  /** A plan retaining different omissions describes another run; refuse its token. */
   const sentOmittedSteps = customizeSteps && stepOmissions !== null ? stepOmissions.map(({ step }) => step) : [];
   const planOmittedSteps = plan?.omittedSteps ?? [];
   const omissionMismatch = plan !== null && !sameStepKeys(planOmittedSteps, sentOmittedSteps);
@@ -834,11 +631,7 @@ export function RunStartDialog({
     return step.label;
   };
   const stepLabels = (keys: readonly string[]): string => keys.map(stepLabel).join(", ");
-  /**
-   * Which refusals are DRAWN. Every refusal exists from the moment the draft
-   * does — the footer reason and the blocked advance both read the whole fold —
-   * but a box the operator has not reached yet does not wear a red line.
-   */
+  /** Untouched fields hide error decoration, never their actual validation refusal or blocked advance. */
   const visibleFactErrors = (row: StepOmissionRow): Readonly<Record<string, string>> => {
     if (row.fold.state !== "invalid") return {};
     if (factsAttempted) return row.fold.errors;
@@ -855,9 +648,7 @@ export function RunStartDialog({
     setCustomizeSteps(next);
     if (!next) {
       setSelectedStepKeys(workflow?.steps.filter(({ includedByDefault }) => includedByDefault).map(({ key }) => key) ?? []);
-      // Leaving the screen drops the facts with the choice that asked for them:
-      // a draft kept behind an un-customized run is a fact nothing on screen
-      // says this run would assert.
+      // Leaving customization clears facts so unchosen assertions cannot survive invisibly.
       setStepDrafts({});
       setTouchedFacts(new Set());
       setFactsAttempted(false);
@@ -866,11 +657,7 @@ export function RunStartDialog({
     }
   }, [currentStage, workflow, setCurrentStage, setCustomizeSteps]);
 
-  /**
-   * One step checkbox, pressed — through the ONE fold that owns the cascade
-   * (D307). The screen never edits the key list itself, so a row that is locked
-   * by another omission cannot be moved by a press the fold would refuse.
-   */
+  /** Use the shared cascade; locked omissions cannot be changed by another checkbox path. */
   const toggleStep = useCallback((key: string, next: boolean) => {
     setSelectedStepKeys((current) => [...toggleStepSelection(workflow?.steps ?? EMPTY_STEPS, current, key, next)]);
   }, [workflow]);
@@ -914,9 +701,7 @@ export function RunStartDialog({
       return;
     }
     if ((currentStage === "Steps" || (isRerun && currentStage === "Values")) && stepsBlockedReason !== null) {
-      // The press is what asks for every refusal at once: the operator has now
-      // said they are done with the form, so every empty box is a real answer
-      // of "nothing" and gets its line.
+      // Attempted advancement exposes every invalid field so incomplete answers are actionable.
       setFactsAttempted(true);
       return;
     }
@@ -928,23 +713,7 @@ export function RunStartDialog({
     setCurrentStage(nextStage);
   }, [currentStage, nextStage, plan, stepsBlockedReason, submitPlan, isRerun, snapshot, requestFingerprint, launchService, workflowId, selectedStepKeys, acknowledgment, setCurrentStage]);
 
-  /**
-   * The ONE exit from a settled banner — C69's `Reload the form` and C72's
-   * `Close` / `Dismiss` alike (unit F5b findings 2, 3 and 8).
-   *
-   * C72 is a ruling about the WORD on the button, not about the act behind it:
-   * closing a receipt and dismissing a refusal read differently and land in the
-   * same place, because after any of the three the plan token in this form is
-   * spent. D253 refuses a re-send of the same envelope identically, so leaving
-   * the plan standing would offer a Start run that can only conflict.
-   *
-   * Both halves are the fix. Clearing the RESULT without the STAGE left the
-   * rail naming Result as the current step over a region with nothing in it,
-   * and left `reachable` with a step the operator cannot re-enter. And the
-   * control that was just pressed UNMOUNTS with the banner: focus on a removed
-   * element falls to `document.body`, so the next Tab restarts the dialog at
-   * its first control instead of resuming where the operator was working.
-   */
+  /** Discard spent plans and stage state together; restore focus after settled controls unmount. */
   const returnToInput = useCallback(() => {
     if (recovery !== null && result !== null) {
       dismissLaunchRecovery(window.sessionStorage, recovery); setRecovery(null); finalRequest.current = null;
@@ -963,9 +732,7 @@ export function RunStartDialog({
       if (result !== null && recovery !== null) {
         dismissLaunchRecovery(window.sessionStorage, recovery); setRecovery(null); finalRequest.current = null;
       }
-      // The plan token is short-lived and single-use; a closed dialog must not
-      // reopen holding a token the server may already have consumed. The typed
-      // draft survives — retyping it is the cost this deliberately avoids.
+      // Closing invalidates single-use plans; typed drafts may survive, consumed authority may not.
       setPlan(null);
       setResult(null);
       setError(null);
@@ -1250,11 +1017,7 @@ export function RunStartDialog({
   );
 }
 
-/**
- * The launcher plus the dialog, mounted at the shell's ROOT rather than inside
- * the queue toolbar — "reachable from anywhere" has to stay true on surfaces
- * that draw no toolbar.
- */
+/** Mount the launcher at the shell root so views without queue toolbars can still start runs. */
 export function RunStartSurfaces({
   open,
   onOpenChange,

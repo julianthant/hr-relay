@@ -1,7 +1,5 @@
-/** Adapted from shadcn/ui Badge (MIT):
- * https://github.com/shadcn-ui/ui/blob/main/apps/v4/registry/bases/radix/ui/badge.tsx
- * Dashboard tones and sizes are supplied by their shared wrappers.
- */
+/** Adapted from shadcn/ui Badge (MIT)
+ * https://github.com/shadcn-ui/ui/blob/main/apps/v4/registry/bases/radix/ui/badge.tsx */
 import { forwardRef, type HTMLAttributes } from "react";
 import { cn } from "../../lib/utils.js";
 

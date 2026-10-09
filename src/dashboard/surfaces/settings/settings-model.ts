@@ -16,11 +16,8 @@ export type PreflightCheckWire = z.infer<typeof PreflightCheckWireSchema>;
 export type SettingsSection = z.infer<typeof SettingsSectionPrimitiveSchema>;
 
 
-/**
- * Which glyph a nav entry draws. A KEY rather than the component itself,
- * because this module may not export a component (see the boundary note above)
- * and the surface owns the mapping.
- */
+/** Which glyph a nav entry draws. A KEY rather than the component itself
+ * because this module may not export a component (see the boundary note above) */
 export type SettingsNavIcon =
   | "general"
   | "display"
@@ -37,12 +34,8 @@ export type SettingsNavIcon =
   | "activity";
 
 
-/**
- * The glyph for each SERVED section this build renders, keyed by the id the
- * server lists. A served id that is not here draws `unrendered` and the pane
- * says so by name — the list stays the server's, and this map only decides what
- * the entry looks like once it has arrived.
- */
+/** The glyph for each SERVED section this build renders, keyed by the id the
+ * server lists. A served id that is not here draws `unrendered` and the pane */
 const SERVED_NAV_ICON: Readonly<Record<string, SettingsNavIcon>> = Object.freeze({
   general: "general",
   performance: "performance",
@@ -95,50 +88,32 @@ export interface SettingsNavGroup {
 }
 
 
-/** The Help group's keyboard entry — the destination the top bar's deleted keyboard glyph was traded for. */
+/** The Help group's keyboard entry — the Help → Keyboard destination. */
 export const SETTINGS_KEYBOARD_SECTION_ID = "keyboard";
 
 
-/** Retired route token retained for compatibility notices and historical reader contracts. */
+/** Route token kept only for compatibility notices */
 export const SETTINGS_UI_CATALOG_SECTION_ID = "ui-catalog";
 export const SETTINGS_PREFLIGHT_SECTION_ID = "preflight";
 export const SETTINGS_DATA_SECTION_IDS: ReadonlySet<string> = new Set(["explorer", "activity"]);
 
 
-/**
- * The gear's stable DOM id, and the app shell's main region behind the
- * takeover — the two focus-restoration targets on close (unit F4b finding 1).
- *
- * Settings was a `Dialog`, and Radix restores focus to the element that opened
- * it when a dialog closes. As a routed page it has no such trigger ref — the
- * takeover can be reached from two doors (the gear, and the storage band's
- * `Storage checks`) and can survive a reload — so the target is looked up by
- * id the same way `WORKFLOW_PANEL_TOGGLE_ID` is (`shell.tsx`), rather than
- * held as a React ref threaded down through `WorkspaceRail`.
- */
+/** The gear's stable DOM id, and the app shell's main region behind the
+ * takeover — the two focus-restoration targets on close . */
 export const SETTINGS_GEAR_ID = "settings-gear";
 
 export const DASHBOARD_MAIN_REGION_ID = "dashboard-main-region";
 
 
-/**
- * Which id to focus when the takeover closes: the gear it was opened from, or
- * — if the gear is not mounted — the main region the takeover was covering.
- * The gear is part of the persistent `WorkspaceRail` and is always mounted while
- * `SettingsPage` is, so `gearMounted` is normally `true`; the fallback exists
- * because the id lookup happens through the DOM rather than through a prop the
- * type system can prove present.
- */
+/** Which id to focus when the takeover closes: the gear it was opened from, or
+ * if the gear is not mounted — the main region the takeover was covering. */
 export function settingsCloseFocusTargetId(gearMounted: boolean): string {
   return gearMounted ? SETTINGS_GEAR_ID : DASHBOARD_MAIN_REGION_ID;
 }
 
 
-/**
- * The approved Settings page list stays available while the current editor
- * projection loads or fails. Each page still reads its values and edit
- * authority from the served projection; Status and Help remain independent.
- */
+/** The approved Settings page list stays available while the current editor
+ * projection loads or fails. Each page still reads its values and edit */
 export function buildSettingsNav(
   sections: readonly SettingsSection[],
   editor?: EditableSettingsWire,
@@ -181,15 +156,8 @@ export function buildSettingsNav(
 }
 
 
-/**
- * Which section the page opens on, resolved from `?settings=`.
- *
- * An empty value is the demo's `initialSection` default — the first entry. A
- * value naming a section this build has no entry for resolves to `unknown`
- * rather than quietly falling back to the first one: a link that says
- * `?settings=budgets` and lands on Storage has told the operator they are
- * looking at something they are not.
- */
+/** Which section the page opens on, resolved from `?settings=`. An empty value is the demo's `initialSection` default —
+ * the first entry. A */
 export type SettingsSectionResolution =
   | { readonly state: "open"; readonly entry: SettingsNavEntry }
   | { readonly state: "unknown"; readonly requested: string }

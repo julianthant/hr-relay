@@ -1,31 +1,6 @@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "../../ds/primitives/dropdown-menu.js";
-/**
- * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
- * src/dashboard/components/dev/rebuild-demo/DemoQueue.tsx
- *
- * The Queue Panel: attention bands, the three row types, ONE member shape at
- * every count, with aligned content and a provenance footer that wraps.
- *
- * WHAT CHANGED IN THE PORT. The demo rendered a fixture row object that knew
- * its own facts, chips, links, records and explanations. Here every row is a
- * `QueueSurfaceWire` — a finished server read model — and the component is a
- * pure renderer of it (ref frontend-backend-integration §0.1/§0.4): it classifies nothing, counts no
- * authoritative total, and derives no availability. Three consequences worth
- * knowing before editing:
- *
- *  - **Status is served.** `dsStatusOf` is the ONE wire→ds mapping and a status
- *    is drawn only through `StatusBadge`/`StatusDot`.
- *  - **Actions are served.** Nothing here decides a row is retryable; the
- *    surface renders exactly the `ActionDescriptorWire[]` it is handed, so the
- *    honest default (the 1g BFF serves none yet) is a row with no command
- *    controls at all.
- *  - **Absence is served too.** A `subtitle`/`liveMessage` that is absent
- *    carries the server's reason; the queue does not invent a value.
- *
- * Bands, member ordering and elapsed formatting are the only derivations, and
- * each is a fixed map over a closed served enum or a display-only subtraction
- * of two served instants — never a second opinion about what a run IS.
- */
+/** Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc
+ * src/dashboard/components/dev/rebuild-demo/DemoQueue.tsx */
 import { memo, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { AlertTriangle, ArrowRight, ArrowUpRight, ChevronDown, ChevronUp, FileText } from "lucide-react";
@@ -86,33 +61,21 @@ import {
   useAttentionAnnounce,
 } from "./queue-model.js";
 
-/* ── the queue's client-owned view state (ref frontend-backend-integration §4) ─────────────────────── */
+/** ── the queue's client-owned view state (ref frontend-backend-integration §4) ─────────────────────── */
 
 export interface QueueViewState {
   /** the row the detail panel is showing */
   selectedRunId?: string;
-  /**
-   * Which member WELLS are open to their tall shape. This answers "how many of
-   * them fit before it scrolls", never "are the members drawn at all" — every
-   * group keeps its people on screen.
-   */
+  /** Which member WELLS are open to their tall shape. */
   openWells: ReadonlySet<string>;
   /** bulk-selection mode: checkboxes on top-level rows */
   selectMode?: boolean;
   bulkIds?: ReadonlySet<string>;
-  /**
-   * The workflow this queue is scoped to. A row of that workflow does not
-   * reprint its label — the panel header already said it. Left undefined by a
-   * surface that mixes workflows, where the chip is the only thing naming the
-   * owner.
-   */
+  /** The workflow this queue is scoped to. A row of that workflow does not reprint its label —
+ * the panel header already said it. */
   panelWorkflowId?: string;
-  /**
-   * Display-only "now", from the app's bootstrap-calibrated clock (ref frontend-backend-integration §4,
-   * last row). Passed in rather than read here so elapsed values are a pure
-   * function of served instants — which is also what makes a parity capture
-   * of the same state byte-identical twice.
-   */
+  /** Display-only "now", from the app's bootstrap-calibrated clock (ref frontend-backend-integration §4
+ * last row). Passed in rather than read here so elapsed values are a pure */
   nowIso: string;
 }
 
@@ -123,11 +86,8 @@ export interface QueueHandlers {
   onAction?: DashboardActionHandler;
   /** grow this row's member well from 5 lines to 20, or back */
   onToggleWell?: (runId: string) => void;
-  /**
-   * The dedicated roster route. Rendered ONLY when supplied: the full-list
-   * surface is a served People section (deferred past 1i), and a disclosure
-   * that travels nowhere is worse than no disclosure.
-   */
+  /** The dedicated roster route. Rendered ONLY when supplied: the full-list
+ * surface is a served People section, and a disclosure */
   onOpenRoster?: (runId: string) => void;
   /** add/remove a row from the bulk target set */
   onToggleBulk?: (runId: string) => void;
@@ -135,28 +95,15 @@ export interface QueueHandlers {
   onExitSelection?: () => void;
   onPreviewAction?: (action: 'retry' | 'delete', ids: readonly string[]) => void;
   /** Mark a loaded member checked by you. This has no authority effect. */
-  /**
-   * Jump to the run that delegated this one — the panel switch AND the
-   * selection, because a parent can belong to another workflow and selecting it
-   * without moving the panel would open a run the queue beside it cannot show.
-   */
+  /** Jump to the run that delegated this one — the panel switch AND the selection */
   onOpenParent?: (runId: string) => void;
-  /**
-   * Jump to a run this row DELEGATED TO (D231's `linkedRuns[]`). Same shape as
-   * `onOpenParent` and separate from it on purpose: the wire hands the whole
-   * link — its workflow, its panel kind and its live status — so the route does
-   * not have to find the target in the day payload first, which is exactly what
-   * fails when the child ran on another day.
-   */
+  /** Jump to a run this row DELEGATED TO . Same shape as
+ * `onOpenParent` and separate from it on purpose: the wire hands the whole */
   onOpenLinked?: (link: LinkedRunWire) => void;
 }
 
-/**
- * What a row needs to draw a route back to its parent: the parent's own
- * identity and status, resolved from the SERVED day projection. It answers
- * `undefined` for a parent the day does not hold (another day, or paged out),
- * and the chip is then not drawn — never a chip whose label was guessed.
- */
+/** What a row needs to draw a route back to its parent: the parent's own
+ * identity and status, resolved from the SERVED day projection. It answers */
 export type QueueParentLookup = (
   parentRunId: string,
 ) => { runId: string; title: string; workflowLabel: string; status: ProposedStatus } | undefined;
@@ -167,17 +114,13 @@ export type QueueActionsOf = (surface: QueueSurfaceWire) => readonly ActionDescr
 const NO_ACTIONS: QueueActionsOf = () => [];
 const NO_MEMBERS: readonly MemberSurfaceWire[] = [];
 
-/* the band ordering and its sort vocabulary live in `queue-model.ts` — see the note there */
+/** the band ordering and its sort vocabulary live in `queue-model.ts` — see the note there */
 export type { QueueSortKey };
 
-/* ── small row pieces ────────────────────────────────────────────────────── */
+/** ── small row pieces ────────────────────────────────────────────────────── */
 
-/**
- * The served pipeline, one segment per step.
- *
- * The state vocabulary is the wire's own closed enum; each state gets a token,
- * while the Running badge owns the single animated indicator.
- */
+/** The served pipeline, one segment per step.
+ * The state vocabulary is the wire's own closed enum; each state gets a token */
 const STEP_TONE: Record<PipelineStep["state"], string> = {
   done: "bg-ui-info",
   active: "bg-ui-info ring-1 ring-ui-info ring-offset-1 ring-offset-[var(--ds-surface-1)]",
@@ -185,24 +128,13 @@ const STEP_TONE: Record<PipelineStep["state"], string> = {
   failed: "bg-[var(--ds-danger)]",
   blocked: "bg-[var(--ds-status-waiting-mark)]",
   skipped: "bg-[var(--ds-border-subtle)]",
-  // D268 — the pipeline's own `cancelled` arm, in the same hue the run-detail
-  // timeline draws a cancelled step: one span, one word, one colour.
+  // the pipeline's own `cancelled` arm, in the same hue the run-detail timeline
+  // draws a cancelled step: one span, one word, one colour.
   cancelled: "bg-[var(--ds-status-cancelled-mark)]",
 };
 
-/**
- * One step, including only served measurements.
- *
- * Ported from the demo's own `MicroSteps` title
- * (`DemoQueue.tsx:273`, `${label}${durationSec ? ` ${fmtElapsed()}` : ""} (${state})`)
- * — a duration is printed only when the server measured one, and an unmeasured
- * step says its state alone rather than ` 0s`, which would be a measurement.
- *
- * `executions` has no demo counterpart because the demo has no gate resume:
- * ref dashboard-surfaces serves it only at two or more (D214/D225), and a node that ran twice
- * across a park spent BOTH intervals, so the count is what keeps `1m 40s` from
- * reading as one long try.
- */
+/** One step, including only served measurements.
+ * Ported from the demo's own `MicroSteps` title */
 function stepTitle(step: PipelineStep): string {
   const duration = step.durationSec === undefined ? "" : ` ${fmtElapsed(step.durationSec)}`;
   const executions = step.executions === undefined ? "" : ` ×${String(step.executions)}`;
@@ -224,36 +156,20 @@ function QueueProgress({ pipeline }: { pipeline: QueueSurfaceWire["pipeline"] })
   );
 }
 
-/**
- * ONE shell for every chip in a row header. Tone is the only thing a caller
- * chooses — six hand-rolled copies of this span is how a queue ends up with six
- * chip heights on one line.
- */
+
 type RowChipTone = "neutral" | "info" | "warning" | "rehearsal";
 
 const ROW_CHIP_TONE: Record<RowChipTone, string> = {
   neutral: "border-[color:var(--ds-recess-border)] bg-[var(--ds-recess-bg)] text-[color:var(--ds-recess-fg-quiet)]",
   info: "border-[color:var(--ds-info-border)] bg-[var(--ds-info-bg)] text-[color:var(--ds-info-fg)]",
   warning: "border-[color:var(--ds-status-waiting-border)] bg-[var(--ds-status-waiting-bg)] text-[color:var(--ds-status-waiting-fg)]",
-  /*
-   * THE FOURTH TONE (D232), and the whole reason a fifth hue was bought.
-   *
-   * The demo names this tone `violet` and binds it to `--ds-status-parked-*`,
-   * which every theme in this tree derives from AMBER — so on screen the demo's
-   * rehearsal chip is the same colour as the `△ N` warning chip that can sit
-   * beside it, and one step off the `test` chip on its other side. Those two
-   * neighbours are exactly the pair a glance has to separate, so this binds the
-   * real violet the demo's tone NAME describes rather than the amber its tokens
-   * resolve to. It is the one deliberate colour deviation on this row.
-   */
+  /* Give rehearsals a distinct hue from warning and test-instance chips. */
   rehearsal: "border-[color:var(--ds-rehearsal-border)] bg-[var(--ds-rehearsal-bg)] text-[color:var(--ds-rehearsal-fg)]",
 };
 
 const rowChip = (tone: RowChipTone, extra?: string): string =>
   cn(
-    // A chip is a single-line token at every width: it truncates INSIDE its
-    // border rather than wrapping outside it, and `text-ellipsis` is the half
-    // that says something was cut.
+    // Chips truncate inside their borders; wrapping would spill values outside their track.
     "inline-flex shrink-0 items-center border text-ellipsis",
     dsClip.token,
     "h-[var(--ds-h-xs)] gap-[var(--ds-space-tight)] px-[var(--ds-space-snug)]",
@@ -275,15 +191,7 @@ function HeaderChips({
   nowIso: string;
 }) {
   const testSystems = testInstanceSystems(surface.resolvedInstances);
-  /**
-   * D12 — `Waiting on you · 10m`. The SERVED gate instant against the same
-   * calibrated `nowIso` the row's elapsed uses, so the two clocks on one card
-   * cannot disagree. Display-only arithmetic: the server dates the gate from
-   * the gate's own record and never from `updatedAt`, which is what keeps an
-   * aging gate from rendering young. The fold is shared with the row's own
-   * accessible name (`queueGateAge`), so the pill and the sentence a screen
-   * reader hears are the same measurement.
-   */
+  /** Share served gate age with accessible naming; updatedAt must not make old gates appear young. */
   const gateAge = queueGateAge(surface, nowIso);
   return (
     <>
@@ -297,18 +205,7 @@ function HeaderChips({
           test
         </span>
       )}
-      {/*
-        DRY RUN — the rehearsal flag, in the demo's own slot and words
-        (`DemoQueue.tsx:437`, *"this rehearsal reads the systems and writes
-        nothing"*).
-
-        It is SERVED (D6 — `dryRun` is on the envelope, so there is no absent
-        arm and no inference), and it sits immediately after `test` because the
-        two are the row's two hazards and are read together. A rehearsal that
-        renders identically to a real filing is the cheapest possible way to
-        read a dry run as a submitted transaction, which is why this is a chip
-        on the row rather than a fact behind the ⓘ.
-      */}
+      {/* Display served dryRun visibly so rehearsals cannot be mistaken for real filing. */}
       {surface.dryRun && (
         <span
           title="Dry run — this rehearsal reads the systems and writes nothing."
@@ -317,27 +214,7 @@ function HeaderChips({
           dry run
         </span>
       )}
-      {/*
-        △ N — the warning count, beside the status pill.
-
-        Operator, quoted in the demo: *"if there is warning add the triangle
-        with the n number of warnings."* It is also what breaks the D22 hue-only
-        collision on screen: `verifiedDone` and `doneWarnings` both draw the
-        word `Done`, and the triangle is the non-colour half of telling them
-        apart.
-
-        The count is SERVED (`QueueBaseFields.warnings`) — the run's evidence
-        receipt's own warning set, titled with the first warning's sentence.
-
-        The absent arm keeps the older "at least one" reading, and only for a
-        row the server settled as `partial` (→ `doneWarnings`): that row
-        finished with warnings by definition, so `1` is the smallest true
-        statement about it, and dropping the triangle would take D126's
-        argument from three visible channels to two on exactly the rows the
-        argument is about. Every other status draws nothing when the count is
-        absent — an unsettled run has no warning set, and a triangle on one
-        would be a number about a real HR run that nothing produced.
-      */}
+      {/* Missing warning counts imply at least one only for warning-complete rows; other statuses invent no count. */}
       {(surface.warnings.state === "present" || status === "doneWarnings") && (
         <span
           title={surface.warnings.state === "present" ? surface.warnings.first : "Finished with warnings"}
@@ -375,12 +252,7 @@ const PANEL_EXPLANATION: Record<QueueSurfaceWire["panelKind"], string> = {
   member: "Opening it walks the set — previous, next, and a checked mark so you keep your place in it.",
 };
 
-/**
- * The subline is TEXT ONLY, and it is the server's `liveMessage` — the one
- * sentence the projection authors about what this run is doing or why it
- * stopped. Its tone follows the status; a run whose message is absent has no
- * subline rather than a manufactured one.
- */
+/** Render only the served live message; absence must not receive manufactured progress text. */
 const SUBLINE_TONE: Record<ProposedStatus, string> = {
   waiting: "text-ui-info",
   failed: "text-ui-danger",
@@ -411,15 +283,7 @@ function RowFooterLine({
   nowIso: string;
   onPreviewAction?: (action: 'retry' | 'delete') => void;
 }) {
-  // Elapsed is display-only arithmetic over two SERVED instants (ref frontend-backend-integration §4).
-  //
-  // The second instant is the whole point. A queued run has started nothing,
-  // so it shows no timer. A run still in flight shows live elapsed against
-  // `now`. A FINISHED run shows what it took — `endedAt − startedAt` — because
-  // `now − startedAt` answers a question nobody asked of a settled run and
-  // grows forever: the live exit run displayed 2h 47m for ~14.5 minutes of
-  // execution (D124). A terminal row with no served end instant says the
-  // duration is unmeasured and omitted; it never falls back to `now`.
+  // Settled durations need a served end; never substitute now for an unmeasured terminal run.
   const timing = isTerminalQueueStatus(surface.status) && surface.endedAt.state === "absent"
     ? undefined : runTiming(surface, nowIso, isTerminalQueueStatus);
   return (
@@ -533,10 +397,7 @@ function MemberLine({ surface, item, selected, onSelect }: {
   );
 }
 
-/**
- * A group's disclosure link — one shape for `Expand` / `Collapse` and the
- * roster route, so "there is more of this behind here" always looks the same.
- */
+
 const disclosureLink = cn(
   dsText.meta,
   "inline-flex cursor-pointer items-center gap-[var(--ds-space-tight)]",
@@ -562,17 +423,7 @@ function GroupMemberList({
   const ordered = orderMembers(itemGroups.map((item) => item.representative) as MemberSurfaceWire[]);
   const wellOpen = state.openWells.has(itemKey);
   const canExpand = ordered.length > MEMBER_WELL_LINES;
-  /**
-   * DEFERRED, and this branch is currently unreachable (R3 finding 23).
-   * `onOpenRoster` is never supplied by the composition, because the roster it
-   * would travel to is a served People section deferred past 1i — see the
-   * wire-hookup ledger row "served roster/People section + `records[]` stream"
-   * in `docs/plans/2026-08-13-detail-fidelity-audit.md`, and the named trigger
-   * at the top of this file. It is kept whole rather than deleted so the route
-   * lands with the section instead of being rebuilt from the demo again; a
-   * disclosure that travels nowhere is worse than no disclosure, which is why
-   * it stays gated on the handler.
-   */
+  /** Offer roster navigation only when its destination handler exists. */
   const canOpenRoster = canViewAllMembers(surface.memberRollup.total) && handlers.onOpenRoster !== undefined;
   const { onToggleWell, onOpenRoster } = handlers;
 
@@ -592,9 +443,7 @@ function GroupMemberList({
           {wellOpen ? "Collapse" : "Expand"}
         </BareButton>
       )}
-      {/* A stable route to the dedicated roster, beside Expand even when the
-          expanded well fits everyone: the two do different jobs — inspect
-          inline vs work in the full-list surface. */}
+      {/* Inline inspection and roster navigation serve different tasks; expansion does not remove the route. */}
       {canOpenRoster && onOpenRoster !== undefined && (
         <BareButton
           type="button"
@@ -663,16 +512,7 @@ function GroupMemberList({
 
 /* ── cross-panel routes ──────────────────────────────────────────────────── */
 
-/**
- * A chip that CHANGES PANEL. Ported from legacy
- * hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc, `DemoQueue.tsx`
- * `linkChip` (:1078) + `PanelRedirectChip` (:1099) + `ParentBackChip` (:1142).
- *
- * One shape everywhere: gray matte + hairline, `Name · status`, arrow on the
- * RIGHT. Never a leading ←, never info-blue — the operator's rule is that every
- * redirect must match. It grows to fill leftover space, never truncates its
- * label, and a smaller sibling that cannot fit beside it wraps underneath.
- */
+/** Redirects keep one recognizable shape and complete labels across wrapping rows. */
 const linkChip = cn(
   "inline-flex cursor-pointer items-center border",
   dsClip.token,
@@ -685,15 +525,7 @@ const linkChip = cn(
   "border-[color:var(--ds-recess-border)] bg-[var(--ds-recess-bg)] text-[color:var(--ds-fg-muted)] hover:text-[color:var(--ds-fg)]",
 );
 
-/**
- * THE shared panel jump — `Name · status ↗` (demo `PanelRedirectChip`, :1099).
- *
- * Both arms of the band go through this one component: the route BACK to the
- * run that delegated this one, and the route FORWARD to a run this one
- * delegated. The demo made the same choice for the same stated reason — every
- * redirect must look identical, so neither direction gets a leading ← or a
- * different hue.
- */
+
 function PanelRedirectChip({
   label,
   status,
@@ -742,18 +574,7 @@ function ParentBackChip({
   );
 }
 
-/**
- * A run this row DELEGATED TO — the demo's `PanelRedirectChip`/
- * `LinkedReviewChip` (:1099 / :1159), which are one chip with two labels.
- *
- * EVERY WORD IT PRINTS IS SERVED (D231). `label` is what to call the target and
- * `status` is the target's live status, both resolved server-side through the
- * same status function the row's own status comes from — so the chip never
- * re-derives a status out of the day payload, which is the second status path
- * D81 exists to delete and which goes blank the moment the child ran on another
- * day. `panelKind` supplies the sentence about what OPENING it shows, through
- * the served panel vocabulary; the run id is the route.
- */
+/** Use served child label, status and route; current-day lookup loses cross-day links. */
 function LinkedRunChip({ link, onOpen }: { link: LinkedRunWire; onOpen: () => void }) {
   return (
     <PanelRedirectChip
@@ -766,22 +587,7 @@ function LinkedRunChip({ link, onOpen }: { link: LinkedRunWire; onOpen: () => vo
   );
 }
 
-/**
- * A run's own SO-WHAT, as a chip — the demo's `FactChipView` (:168).
- *
- * `label` + `value`, and the values are the ones the RECEIPT prints (§9 D7):
- * the queue chip and the Receipt tab are ONE derivation read twice, never two
- * derivations of one result. The demo's `arrowTo` / `warn` / `fullRow` props
- * have no served counterpart — the wire carries a flat `{label, value}` pair
- * because that is what a receipt output fact is — so they are omitted rather
- * than inferred from the value's text.
- *
- * `grow` follows the demo exactly: beside a redirect chip a fact stays at its
- * natural width (`grow={0}`) and lets the redirect own the spare space;
- * otherwise it starts at full content width, refuses to shrink, and shares only
- * genuine leftover — which makes the wrap greedy, so a second fact joins the
- * line only when both stay readable and otherwise moves down intact.
- */
+/** Receipt facts are one served derivation; never infer absent actions or statuses from their text. */
 function FactChip({ fact, grow }: { fact: { label: string; value: string }; grow: boolean }) {
   return (
     <span
@@ -840,12 +646,7 @@ export function QueueRow({
   handlers: QueueHandlers;
   actionsOf?: QueueActionsOf;
   workflowLabelOf: (workflowId: string) => string;
-  /**
-   * The run that delegated this one, when the day's projection holds it. Read
-   * ONCE at the composition over the whole day's surfaces (a parent can be a
-   * different workflow, so the panel's own scoped list is not enough) and
-   * handed down, rather than each row searching an array it does not own.
-   */
+  /** Resolve parents across the whole day because delegation can cross workflows. */
   parentOf?: QueueParentLookup;
   deferOffscreen?: boolean;
 }) {
@@ -856,39 +657,14 @@ export function QueueRow({
   const actions = actionsOf(surface);
   const target = { runId: surface.runId, expectedVersion: surface.rowRevision };
   const workflowLabel = workflowLabelOf(surface.workflowId);
-  /**
-   * TWO different questions, and conflating them is what R3 finding 9 caught.
-   *
-   *  - `isOperation` — does this row STAND FOR a set? Then its served rollup is
-   *    drawn, even when the payload carried none of its members (the day query
-   *    pages), because "12 members, 0 loaded" is a fact and a group row with no
-   *    member chrome at all is a group row pretending to be a run.
-   *  - `membersVisible` — is the LIST on screen? That is what decides whether
-   *    the subline is redundant (finding 7) and whether the redirect band aligns
-   *    to the well's table.
-   */
+  /** Operation identity and visible member lists are distinct; unloaded members do not erase group chrome. */
   const isOperation = surface.surfaceKind === "operation";
   const membersVisible = isOperation && members.length > 0;
-  /**
-   * A group with its MEMBER LIST on screen has no subline (R3 finding 7).
-   *
-   * Ported from the demo's `groupSublineSuppressed` (`DemoQueue.tsx:638`): the
-   * sentence read `11/12 signed · Grace Egan failed — signature fi…`, cut
-   * mid-word, directly above a tally strip that says the same counts and a list
-   * whose first line IS Grace Egan with her outcome in its own column. Three
-   * renderings of one fact, and the only one that truncates is the redundant
-   * one. A row whose list is shut still gets its sentence — that is the case
-   * the sentence was written for.
-   */
+  /** Hide a group’s redundant subline while its member evidence is visible. */
   const subline =
     membersVisible || surface.liveMessage.state !== "present" ? undefined : surface.liveMessage.value;
   const parent = surface.lineage.state === "child" ? parentOf?.(surface.lineage.parentRunId) : undefined;
-  /**
-   * Whether the chip band holds a REDIRECT, which is what decides how a fact
-   * beside it is sized (`FactChipView`'s `grow` prop, `DemoQueue.tsx:1037`): a
-   * redirect owns the spare space and the facts stay at their natural width, so
-   * `Oath Upload · running ↗` never gets squeezed by a `signed 2:24 PM`.
-   */
+  /** Redirects own spare width; neighboring facts retain readable natural widths. */
   const hasRedirect = parent !== undefined || surface.linkedRuns.length > 0;
   const { onToggleBulk, onAction } = handlers;
   const bulkIds = state.bulkIds;
@@ -911,14 +687,7 @@ export function QueueRow({
           role="button"
           tabIndex={0}
           aria-pressed={selected}
-          // Same collision as the filter bar's, one surface down: the row's
-          // name ended `— done` for BOTH terminal dones. The badge inside the
-          // row still draws the short word; only the name lengthens.
-          //
-          // The gate AGE rides the name too (`DemoQueue.tsx:818`), because the
-          // pill that draws it is the only place it appears and a pill is not
-          // something a screen reader reaches: `— waiting on you · 18m` is the
-          // difference between a queue you scan and one you triage.
+          // Accessible row names include warning completion and gate age, never hue alone.
           aria-label={queueRowAccessibleName(surface, state.nowIso)}
           data-demo-row-id={surface.runId}
           onKeyDown={(event) => {
@@ -958,18 +727,12 @@ export function QueueRow({
                     // pill onto a second line under the name.
                     "min-w-0 truncate font-semibold text-[color:var(--ds-fg)]",
                   )}
-                  // Present only on a RENAMED row, where it names the subject
-                  // the operator's own title replaced. A truncated title
-                  // already gets the browser's own tooltip from `truncate`;
-                  // this one deliberately overrides it, because "which run is
-                  // this really" beats "the rest of the word".
+                  // A renamed row’s subject identity outranks a tooltip repeating its truncated custom name.
                   {...(titleTooltip === undefined ? {} : { title: titleTooltip })}
                 >
                   {queueRowTitle(surface)}
                 </span>
-                {/* Which workflow owns this row. Printed the moment the surface
-                    mixes workflows, silent when every row would say the same
-                    word. */}
+                {/* Name workflow ownership only when the surface mixes workflows. */}
                 {surface.workflowId !== state.panelWorkflowId && (
                   <span className={rowChip("neutral", cn(dsText.caps, "tracking-[var(--ds-tracking-caps)]"))}>
                     {workflowLabel}
@@ -983,26 +746,7 @@ export function QueueRow({
               </div>
             </div>
 
-            {/*
-              WHO IS IN THE GROUP (`DemoQueue.tsx:928-931`, `memberPreview`).
-
-              A counted anchor — `5 separations` — has no subject of its own, so
-              the names ARE its identity; without them the row is a number. It
-              is SUPPRESSED the moment the member list is on screen, which is
-              the demo's own rule: the preview and the list are then the same
-              names twice on one card, and the preview is the copy that
-              truncates.
-
-              The demo also gates this on `row.groupNoun`. That field is not
-              served and was deliberately not added — no registered workflow in
-              this tree is operation-shaped, so a declared noun would be shaped
-              by a sample of zero (D186's argument, one level down) — and the
-              gate is unnecessary here anyway: `memberPreview` exists only on
-              the operation variant, so its presence IS the "this row stands for
-              a set" test the noun was standing in for.
-
-              Absent previews draw nothing; the table distinguishes unloaded members.
-            */}
+            {/* Group previews supply identity only while their member list is hidden; absent previews invent no names. */}
             {isOperation
               && surface.surfaceKind === "operation"
               && !membersVisible
@@ -1033,17 +777,7 @@ export function QueueRow({
                   target={target}
                   {...(onAction === undefined ? {} : { onAction })}
                   className="ml-auto shrink-0"
-                  /*
-                    WHAT THIS CARD ALREADY RENDERS, it does not also offer as a
-                    jump (R3 finding 19). The omission is per STATUS, because
-                    which control is redundant depends on what the card is
-                    showing: a failed row already carries its error in this very
-                    line (so `open-failure` and `reupload` would travel to what
-                    you are reading), a parked row carries the park, and a
-                    waiting row is opened by clicking it. Ported verbatim from
-                    `DemoQueue.tsx:950-958`; inert until the action projection
-                    serves outcome descriptors.
-                  */
+                  /* Do not offer jumps to evidence the current card already renders. */
                   {...(status === "failed"
                     ? { omitKeys: ["open-failure", "reupload"] }
                     : status === "parked"
@@ -1068,26 +802,7 @@ export function QueueRow({
               </div>
             )}
 
-            {/*
-              THE BAND A CROSS-PANEL CHIP LIVES IN (`DemoQueue.tsx:1008-1046`).
-              It shares the row body's left edge.
-
-              Three of the demo's four chip families are served and drawn: the
-              forward routes to the runs this one delegated to (`linkedRuns[]`,
-              D231), the route back to the run that delegated this one, and the
-              run's own outcome facts (`facts[]`, §9 D7). The fourth — the
-              `N people` extracted count — is NOT drawn and is not a rendering
-              gap: nothing in this tree computes how many people an OCR packet
-              holds, so the field was deliberately never added to the wire
-              (`docs/findings/queue-rows.md`), and a count invented from an
-              array length inside somebody's result is exactly the guess D7 must
-              not make.
-
-              ORDER, from the demo: forward redirects, then the parent route,
-              then the facts. A redirect is where you GO and a fact is what
-              happened, and putting the navigation first is what keeps the wrap
-              from breaking the route across two lines.
-            */}
+            {/* Render only served links and receipt facts; never infer an extracted-person count from arbitrary output arrays. */}
             {(parent !== undefined || surface.linkedRuns.length > 0 || surface.facts.state === "present") && (
               <div
                 className={cn(
@@ -1123,15 +838,7 @@ export function QueueRow({
   );
 }
 
-/**
- * The active filter, as the empty state must SAY it.
- *
- * The panel used to be handed `String(filter)`, so it printed the raw wire enum
- * key — `No Person Lookup runs are awaiting-approval` (R3 finding 3). The word
- * is the status pill's own label, lowercased, exactly as the demo's
- * `filterWord` derives it; the `needsYou` composite is not a status and gets
- * the demo's own sentence instead of a word (finding 2).
- */
+/** Filter empty states use the status vocabulary, never raw wire keys. */
 export type QueueFilterScope = { kind: "needsYou" } | { kind: "status"; word: string };
 
 const MemoQueueRow = memo(QueueRow, (before, after) => {
@@ -1155,23 +862,7 @@ const MemoQueueRow = memo(QueueRow, (before, after) => {
   return !belongs(beforeSelected) && !belongs(afterSelected);
 });
 
-/**
- * D4 (Track D, ref frontend-backend-integration §7.4; audit finding P1) — this
- * panel is `memo`'d, and every prop it takes is stable or primitive at the one
- * place that renders it (`app/dashboard-app.tsx`;
- * `dashboard-memo-prop-stability` refuses an inline object, array, arrow or
- * call in any of its prop slots, because ONE of those turns this wrapper into
- * pure overhead).
- *
- * What it buys and what it cannot: the app's live instant (D256) reaches this
- * panel through `state.nowIso` and ticks once a second, so a queue drawn from
- * a served day re-renders once a second no matter what — that is the floor,
- * and it is deliberate (a frozen elapsed is D256's own defect). What `memo`
- * removes is every re-render BETWEEN those ticks: a dialog opening, a
- * selection toggling, a run-detail section landing, a nav step, a theme swap,
- * and an SSE patch whose row is not in this panel's scope. At the §7.4
- * fixture's 1,240 rows each of those used to redraw the whole queue.
- */
+/** Keep memoized queue props stable between deliberate live-clock ticks. */
 export const QueuePanel = memo(function QueuePanel({
   surfaces,
   state,
@@ -1198,11 +889,7 @@ export const QueuePanel = memo(function QueuePanel({
   panelLabel: string;
   /** the day partition these rows came from, as `YYYY-MM-DD`; formatted here */
   day: string;
-  /**
-   * Whether that partition is the live one. `Finished today` is only true on
-   * today's day, and a Tuesday panel saying it about Monday's rows is a lie the
-   * band header told at every viewport (R3 finding 5).
-   */
+  /** Finished today applies only to the live day partition. */
   isToday?: boolean;
   /** the active filter, absent when the scope is `All` */
   filter?: QueueFilterScope;
@@ -1215,19 +902,7 @@ export const QueuePanel = memo(function QueuePanel({
   const { displayTop, itemByRunId } = useMemo(() => queueItemLayout(top), [top]);
   const bands = queueDisplayGroups(displayTop, sort, state.nowIso);
 
-  /**
-   * THE FINISHED-TODAY DIGEST (R3 finding 4).
-   *
-   * One dashed strip under the band head, folded over THE BAND'S OWN ROWS —
-   * the rows already on screen, in this component, for this filter. That is a
-   * count of what is drawn, exactly like the band's own number beside its
-   * label, and it is not a second opinion about the day's totals: those are the
-   * Status Bar's, from the one projection (D81).
-   *
-   * `N verified` prints even at zero, because a finished band that says nothing
-   * verified is itself the answer; the other three appear only when they
-   * happened, which is how the demo folds it (`DemoQueue.tsx:1845-1850`).
-   */
+  /** The digest counts drawn finished rows; it cannot replace authoritative day totals. */
   const finished = displayTop.filter((surface) => bandOf(dsStatusOf(surface.status)) === "finished");
   const digestOf = (status: ProposedStatus): number =>
     finished.filter((surface) => dsStatusOf(surface.status) === status).length;
@@ -1258,9 +933,7 @@ export const QueuePanel = memo(function QueuePanel({
               )}
             >
               <FileText aria-hidden className={cn(dsIcon.md, "text-[color:var(--ds-fg-muted)]")} />
-              {/* No date in the heading (operator call, 2026-08-14): the day
-                  is already the date navigator's one visible fact, and the
-                  body sentence still says "on this day". */}
+              {/* The navigator already identifies the displayed day. */}
               {filter === undefined
                 ? `No ${panelLabel} runs`
                 : filter.kind === "needsYou"
@@ -1294,9 +967,7 @@ export const QueuePanel = memo(function QueuePanel({
               >
                 {/* `Finished today` is only true on today's partition. */}
                 {band.key === "finished" && !isToday ? "Finished" : band.label}
-                {/* How many rows are DRAWN in this band — what is on screen,
-                    never a claim about the day's totals. Those are the Status
-                    Bar's, and they come from the one projection (D81). */}
+                {/* Band counts describe visible rows; day totals belong to the served status projection. */}
                 <span
                   className={cn(
                     dsText.nums,
@@ -1309,9 +980,7 @@ export const QueuePanel = memo(function QueuePanel({
                 </span>
                 <span aria-hidden className="h-px flex-1 bg-[var(--ds-border-subtle)]" />
               </div>}
-              {/* The day's finished work in one line — only under `All`, where
-                  the band holds everything that finished. Under a filter it
-                  would count a subset and read like a day total. */}
+              {/* Show day-finished summaries only under All; filtered subsets cannot claim day totals. */}
               {band.key === "finished" && filter === undefined && (
                 <div
                   className={cn(

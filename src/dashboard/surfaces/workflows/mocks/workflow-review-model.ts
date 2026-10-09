@@ -2,7 +2,7 @@ import type { MockRun } from "./workflow-mock-model.js";
 import { mockOnbaseDocumentType, type MockWorkflowId } from "./workflow-mock-catalog.js";
 import { mockDocumentFixture } from "./workflow-document-model.js";
 
-// Review shapes and selection rules copied from legacy@9bb973672666b9267569a22d3fa0af722e4c5e87,
+// Review shapes and selection rules copied from legacy@9bb973672666b9267569a22d3fa0af722e4c5e87
 // src/dashboard/components/ocr/{EcRecordView,OathRecordView,VerifyRecordView,types,approval-selection}.
 export type ReviewField = Readonly<{ key: string; label: string; value: string; kind?: "date" | "boolean" | "relationship"; section?: string; readOnly?: boolean }>;
 export type ReviewRecord = Readonly<{
