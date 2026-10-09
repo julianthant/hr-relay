@@ -854,9 +854,7 @@ export function TakeoverFrame({
     // on arrival is already `document.activeElement` here, and stealing it
     // back would silently undo that surface's own decision.
     if (node.contains(document.activeElement)) return;
-    // `preventScroll` because the frame is mid-transition: `ds-motion-enter` is
-    // still moving it from `-var(--ds-travel-sm)`, and scrolling an element the
-    // browser reads at a transformed position jogs the whole shell.
+    // Prevent focus from scrolling the shell during the enter transform.
     node.focus({ preventScroll: true });
   }, []);
   return (
