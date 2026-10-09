@@ -9,6 +9,8 @@ Relay is the production rebuild of `hr-automation`. It is a local desktop app fo
   [codebase map](docs/rebuild/reference/codebase-structure.md). Work only on the assigned task.
 - Work assigned through a brief follows that brief and its folder's README. Receipts, notes and
   handoffs go in the brief's evidence folder, never in the repository.
+- The roadmap at docs/roadmap/roadmap.md lists the key implementations and their status.
+  Update it only when the operator or your brief asks.
 - Build the wiring base first: every dashboard component connected to the backend, with no
   workflow-specific behavior. Then wire workflows one at a time, in this order: Person Lookup,
   Separations, then the operator's order.
@@ -124,7 +126,7 @@ One person builds and maintains this codebase. Keep it organized, clean and easy
 
 | Task | Read first |
 | --- | --- |
-| Any task | The assigned brief, its folder's README and the [codebase map](docs/rebuild/reference/codebase-structure.md) |
+| Any task | The assigned brief, its folder's README, the [codebase map](docs/rebuild/reference/codebase-structure.md) and the [roadmap](docs/roadmap/roadmap.md) |
 | Workflow | `ref task-contract`, `ref workflow-model`, `ref stores`, [authoring guide](docs/rebuild/guides/workflow-authoring.md) |
 | Dashboard, client, CLI | `src/dashboard/AGENTS.md`, `ref frontend-backend-integration`, `ref dashboard-surfaces`; use `/ui` for frontend work |
 | Settings, config, secrets | `ref clock-config-secrets` |
@@ -143,3 +145,4 @@ One person builds and maintains this codebase. Keep it organized, clean and easy
 | Visual contract | `npm run test:parity` (desktop only) |
 | Workflow manifest | `npm run build:manifest`, then `npm run build:manifest:check` |
 | Store catalog | `npm run stores:catalog`, then `npm run stores:catalog:check` |
+| Roadmap | `npm run roadmap`, then `npm run roadmap:check` |

@@ -18,6 +18,8 @@
     "build:manifest:check": "tsx scripts/build/generate-workflow-manifest.ts --check",
     "stores:catalog": "tsx scripts/docs/generate-store-catalog.ts",
     "stores:catalog:check": "tsx scripts/docs/generate-store-catalog.ts --check",
+    "roadmap": "tsx scripts/docs/roadmap.ts",
+    "roadmap:check": "tsx scripts/docs/roadmap.ts --check",
     "smoke:test-target-document-number": "tsx scripts/dev/secure-env-bootstrap.ts test-target-document-number",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src tests scripts vitest.config.ts vite.dashboard.config.ts vite.parity.config.ts --max-warnings 0",
