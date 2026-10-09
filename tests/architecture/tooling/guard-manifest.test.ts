@@ -458,6 +458,10 @@ describe("reviewed architecture guard manifest", () => {
         const violations=auditRebuildRatchetArm("fail-loud-catch-default",root).violations;
         assert.ok(violations.some(value=>value.includes("catch returns a bare default")));
         assert.ok(violations.some(value=>value.includes("re-review required")));
+        writeFileSync(target,source + "\n// source-byte control\n");
+        const changedBytes = auditRebuildRatchetArm("fail-loud-catch-default",root).violations;
+        assert.ok(changedBytes.some(value=>value.includes(entry.path) && value.includes("re-review required")));
+        assert.ok(changedBytes.some(value=>value.includes(entry.path) && value.includes("bare default")));
         writeFileSync(target,source);
       }
     } finally {rmSync(root,{recursive:true,force:true});}

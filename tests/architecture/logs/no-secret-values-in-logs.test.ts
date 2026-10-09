@@ -1126,11 +1126,11 @@ describe("no secret values in logs", () => {
   it("recognizes the exact local display symbol while refusing impostors and shadowed callbacks", () => {
     const path = "src/core/local-display.ts";
     const source = [
-      'import { directIdentifierDisplay as display } from "../domain/redaction.js";',
+      'import { directIdentifierDisplay as display } from "../rules/redaction/redaction.js";',
       'export function explain(eid: string) { throw new Error(`subject ${display(eid)}`); }',
     ].join("\n");
     assert.deepEqual(findSecretInterpolations(path, source), []);
-    assert.ok(findSecretInterpolations(path, source.replace("../domain/redaction.js", "../domain/impostor.js")).length > 0);
+    assert.ok(findSecretInterpolations(path, source.replace("../rules/redaction/redaction.js", "../domain/impostor.js")).length > 0);
     assert.ok(findSecretInterpolations(path, source.replace("explain(eid: string)", "explain(eid: string, display: (value: string) => string)")).length > 0);
     assert.ok(findSecretInterpolations(path, 'export function explain(password: string) { throw new Error(`secret ${password}`); }').length > 0);
   });
@@ -1229,7 +1229,7 @@ describe("no secret values in logs", () => {
 
   it("exempts only a canonical imported redaction helper, including an import alias", () => {
     assert.deepEqual(findSecretInterpolations("src/core/safe.ts", [
-      'import { directIdentifierDigestReference as safeReference } from "../domain/redaction.js";',
+      'import { directIdentifierDigestReference as safeReference } from "../rules/redaction/redaction.js";',
       "export function safe(eid: string) {",
       "  throw new Error(`subject ${safeReference(eid)}`);",
       "}",
@@ -1244,7 +1244,7 @@ describe("no secret values in logs", () => {
     assert.equal(localSpoof.length, 1, localSpoof.join("\n"));
 
     const shadowedImport = findSecretInterpolations("src/core/shadow.ts", [
-      'import { directIdentifierDigestReference as safeReference } from "../domain/redaction.js";',
+      'import { directIdentifierDigestReference as safeReference } from "../rules/redaction/redaction.js";',
       "export function leak(eid: string, safeReference: (value: string) => string) {",
       "  throw new Error(`subject ${safeReference(eid)}`);",
       "}",
@@ -1252,7 +1252,7 @@ describe("no secret values in logs", () => {
     assert.equal(shadowedImport.length, 1, shadowedImport.join("\n"));
 
     const mixedScopes = findSecretInterpolations("src/core/mixed-scopes.ts", [
-      'import { directIdentifierDigestReference as safeReference } from "../domain/redaction.js";',
+      'import { directIdentifierDigestReference as safeReference } from "../rules/redaction/redaction.js";',
       "export function safe(eid: string) {",
       "  throw new Error(`subject ${safeReference(eid)}`);",
       "}",
@@ -1265,7 +1265,7 @@ describe("no secret values in logs", () => {
 
   it("exempts only a descriptor presentation callback's direct return expression", () => {
     assert.deepEqual(findSecretInterpolations("src/workflows/example/descriptor.ts", [
-      'import { defineWorkflowDescriptor } from "../../base/workflow.js";',
+      'import { defineWorkflowDescriptor } from "../../workflow-kit/workflow.js";',
       "export const descriptor = defineWorkflowDescriptor({",
       "  presentation: {",
       "    title: (input: { emplId: string }) => `EID ${input.emplId}` ,",
@@ -1275,7 +1275,7 @@ describe("no secret values in logs", () => {
     ].join("\n")), []);
 
     assert.deepEqual(findSecretInterpolations("src/workflows/example/workflow.ts", [
-      'import { defineWorkflow } from "../../base/workflow-definition.js";',
+      'import { defineWorkflow } from "../../workflow-kit/workflow-definition.js";',
       "export const workflow = defineWorkflow({",
       "  presentation: {",
       "    title: (input: { emplId: string }) => `EID ${input.emplId}` ,",
@@ -1285,7 +1285,7 @@ describe("no secret values in logs", () => {
     ].join("\n")), []);
 
     const violations = findSecretInterpolations("src/workflows/example/descriptor.ts", [
-      'import { defineWorkflowDescriptor } from "../../base/workflow.js";',
+      'import { defineWorkflowDescriptor } from "../../workflow-kit/workflow.js";',
       "export const descriptor = defineWorkflowDescriptor({",
       "  presentation: {",
       "    title: (input: { emplId: string }) => {",
@@ -1306,7 +1306,7 @@ describe("no secret values in logs", () => {
     assert.equal(lookalike.length, 1, lookalike.join("\n"));
 
     const shadowedFactory = findSecretInterpolations("src/workflows/example/descriptor.ts", [
-      'import { defineWorkflowDescriptor as defineDescriptor } from "../../base/workflow.js";',
+      'import { defineWorkflowDescriptor as defineDescriptor } from "../../workflow-kit/workflow.js";',
       "export function spoof(defineDescriptor: (value: unknown) => unknown, emplId: string) {",
       "  return defineDescriptor({ presentation: { title: () => `EID ${emplId}` } });",
       "}",
@@ -1316,7 +1316,7 @@ describe("no secret values in logs", () => {
 
   it("exempts a durable match key only on the canonical descriptor identity argument", () => {
     assert.deepEqual(findSecretInterpolations("src/workflows/example/descriptor.ts", [
-      'import { defineWorkflowDescriptor } from "../../base/workflow.js";',
+      'import { defineWorkflowDescriptor } from "../../workflow-kit/workflow.js";',
       "export const descriptor = defineWorkflowDescriptor({",
       "  identity: { matchKey: (input: { emplId: string }) => `eid:${input.emplId}` },",
       "});",
@@ -1511,8 +1511,8 @@ describe("no secret values in logs", () => {
 
   it("resolves canonical sanitizer and descriptor-factory aliases by provenance", () => {
     assert.deepEqual(findSecretInterpolations("src/workflows/example/descriptor.ts", [
-      'import { defineWorkflowDescriptor } from "../../base/workflow.js";',
-      'import { directIdentifierDigestReference } from "../../domain/redaction.js";',
+      'import { defineWorkflowDescriptor } from "../../workflow-kit/workflow.js";',
+      'import { directIdentifierDigestReference } from "../../rules/redaction/redaction.js";',
       "const descriptorFactory = defineWorkflowDescriptor;",
       "const safeReference = directIdentifierDigestReference;",
       "export const descriptor = descriptorFactory({",
