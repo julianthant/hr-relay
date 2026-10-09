@@ -68,7 +68,7 @@ describe("architecture project empty collection", () => {
       "architecture exclusions could remove the membership guard that owns the architecture lane",
     );
     assert.ok(
-      existsSync(join(REPO_ROOT, "tests/architecture/guard-manifest.test.ts")),
+      existsSync(join(REPO_ROOT, "tests/architecture/tooling/guard-manifest.test.ts")),
       "the recursive architecture project must retain its membership guard",
     );
   });
@@ -79,6 +79,6 @@ describe("architecture project empty collection", () => {
     assert.equal(result.status, 1, output);
     assert.match(output, /No test files found, exiting with code 1/);
     assert.match(output, /projects: architecture/);
-    assert.match(output, /filter: tests\/unit\/architecture\/fixtures\/does-not-exist\.test\.ts/);
+    assert.match(output, /filter: tests\/architecture\/fixtures\/does-not-exist\.test\.ts/);
   });
 });

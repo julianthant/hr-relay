@@ -106,7 +106,7 @@ it("finishes forced group shutdown after the leader closes its output", async ()
 it("after parent SIGKILL, preserves the live child group and reclaims only after it dies", async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-runner-proof-")));
   const runs = join(root, "runs"), ready = join(root, "ready");
-  const module = fileURLToPath(new URL("../../../../../scripts/test/runner.ts", import.meta.url));
+  const module = fileURLToPath(new URL("../../../../scripts/test/runner.ts", import.meta.url));
   const options = { command: process.execPath, args: ["-e", `require('node:fs').writeFileSync(${JSON.stringify(ready)},'ready');setInterval(()=>{},1000)`], cwd: root, env: {}, rootDirectory: runs };
   const parent = spawn(process.execPath, ["--import", fileURLToPath(import.meta.resolve("tsx")), "--input-type=module", "-e", `import {runTestProcess} from ${JSON.stringify(module)}; await runTestProcess(${JSON.stringify(options)});`], { stdio: "ignore" });
   const closed = new Promise<void>((done) => parent.once("close", () => done()));
@@ -133,10 +133,10 @@ it("after parent SIGKILL, preserves the live child group and reclaims only after
 it("executes the actual Vitest CLI with unchanged selection and a failing exit", () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-runner-cli-")));
   try {
-    symlinkSync(fileURLToPath(new URL("../../../../../node_modules", import.meta.url)), join(root, "node_modules"));
+    symlinkSync(fileURLToPath(new URL("../../../../node_modules", import.meta.url)), join(root, "node_modules"));
     writeFileSync(join(root, "vitest.config.ts"), 'export default {test:{include:["proof.test.ts"],maxWorkers:1}};');
     writeFileSync(join(root, "proof.test.ts"), 'import {it} from "vitest";it("real CLI proof",()=>{throw new Error("intentional-cli-red")});');
-    const result = spawnSync(process.execPath, ["--import", fileURLToPath(import.meta.resolve("tsx")), fileURLToPath(new URL("../../../../../scripts/test/runner.ts", import.meta.url)), "run", "--config", join(root, "vitest.config.ts")], { cwd: root, env: process.env, encoding: "utf8", timeout: 15000 });
+    const result = spawnSync(process.execPath, ["--import", fileURLToPath(import.meta.resolve("tsx")), fileURLToPath(new URL("../../../../scripts/test/runner.ts", import.meta.url)), "run", "--config", join(root, "vitest.config.ts")], { cwd: root, env: process.env, encoding: "utf8", timeout: 15000 });
     assert.equal(result.error, undefined);
     assert.equal(result.status, 1);
     assert.match(result.stdout + result.stderr, /intentional-cli-red/);

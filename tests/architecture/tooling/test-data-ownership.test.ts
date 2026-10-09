@@ -21,6 +21,17 @@ import { gitVisibleFiles, REPO_ROOT } from "../support/helpers/guard-files.js";
 const UNIT_ONLY_ROOTS = ["tests/unit/"];
 const ARCHITECTURE_HELPERS_ROOT = /^tests\/architecture\/(?:support|[^/]+)\/helpers\//u;
 const SHARED_RESOURCE_HARNESSES = new Set([
+  "tests/support/fixtures/integration/activity-person-pseudonym-fixtures.ts",
+  "tests/support/fixtures/integration/dry-run-admission-fixtures.ts",
+  "tests/support/fixtures/integration/settings-runtime-corruption-fixtures.ts",
+  "tests/support/helpers/dashboard/settings-harness.tsx",
+  "tests/support/helpers/integration/historical-archive-authority.ts",
+  "tests/support/helpers/integration/operation-names-fixture.ts",
+  "tests/support/helpers/integration/storage-recovery-fixture.ts",
+  "tests/support/helpers/storage/historical-fixtures.ts",
+  "tests/support/helpers/storage/provider-accounting-fixtures.ts",
+  "tests/support/helpers/storage/storage-relocation-fixture.ts",
+
   "tests/support/fixtures/preflight/corpus.ts",
   "tests/support/helpers/synthetic-storage-admission.ts",
   "tests/support/helpers/admission-fixture.ts",
@@ -57,6 +68,17 @@ function importsOf(path: string) {
 }
 
 const DEFERRED_CAPABILITIES = [
+  { importer: "tests/support/fixtures/integration/activity-person-pseudonym-fixtures.ts", module: "node:sqlite", symbol: "DatabaseSync" },
+  { importer: "tests/support/fixtures/integration/dry-run-admission-fixtures.ts", module: "node:sqlite", symbol: "DatabaseSync" },
+  { importer: "tests/support/fixtures/integration/settings-runtime-corruption-fixtures.ts", module: "node:sqlite", symbol: "DatabaseSync" },
+  { importer: "tests/support/helpers/dashboard/settings-harness.tsx", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },
+  { importer: "tests/support/helpers/integration/historical-archive-authority.ts", module: "node:sqlite", symbol: "DatabaseSync" },
+  { importer: "tests/support/helpers/integration/operation-names-fixture.ts", module: "node:sqlite", symbol: "DatabaseSync" },
+  { importer: "tests/support/helpers/integration/storage-recovery-fixture.ts", module: "node:sqlite", symbol: "DatabaseSync" },
+  { importer: "tests/support/helpers/storage/historical-fixtures.ts", module: "node:sqlite", symbol: "DatabaseSync" },
+  { importer: "tests/support/helpers/storage/provider-accounting-fixtures.ts", module: "node:sqlite", symbol: "DatabaseSync" },
+  { importer: "tests/support/helpers/storage/storage-relocation-fixture.ts", module: "node:sqlite", symbol: "DatabaseSync" },
+  { importer: "tests/support/helpers/storage/storage-relocation-fixture.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },
   { importer: "tests/support/helpers/admission-fixture.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },
   { importer: "tests/support/helpers/synthetic-storage-admission.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },
   { importer: "tests/support/helpers/synthetic-storage-admission.ts", module: "src/backend/storage/configuration/credential-test-data-migration.js", symbol: "migrateTestDataFromCredentials" },
@@ -65,8 +87,10 @@ const DEFERRED_CAPABILITIES = [
   { importer: "tests/support/fixtures/preflight/corpus.ts", module: "playwright", symbol: "chromium" },
 ] as const;
 const PROCESS_ENTRYPOINTS = [
-  { file: "worker-browser-control-cli.ts", consumers: ["tests/integration/backend/storage/events/timeline-emitter/worker-browser-control-process.test.ts"] },
+  { file: "worker-browser-control-cli.ts", consumers: ["tests/integration/backend/storage/events/timeline-emitter/worker-browser-control-process.test.ts", "tests/parity/helpers/session-runtime.ts"] },
   { file: "worker-stub-cli.ts", consumers: ["tests/integration/backend/runs/lifecycle/run-record-service/worker-pool-parallel-proof.test.ts"] },
+  { file: "provider-accounting-race.ts", consumers: ["tests/integration/backend/storage/sqlite/migrations/accounting.test.ts"] },
+  { file: "run-record-race-worker.ts", consumers: ["tests/integration/backend/storage/sqlite/run-store-contracts/service.test.ts"] },
   { file: "runtime-lock-contender.ts", consumers: ["tests/integration/backend/storage/sqlite/migrations/storage-restore-drill.test.ts"] },
 ] as const;
 
@@ -176,6 +200,63 @@ function processImportViolations(path: string, text: string): string[] {
     .map(({ resolved }) => `${path} -> ${resolved}`);
 }
 
+function childEntrypointBound(path: string, text: string, file: string): boolean {
+  const source = parseSource(path, text);
+  const declarations = new Map<string, ts.Expression>();
+  function collect(node: ts.Node) {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer !== undefined) declarations.set(node.name.text, node.initializer);
+    ts.forEachChild(node, collect);
+  }
+  collect(source);
+  function canonicalPath(node: ts.Expression, seen = new Set<string>()): boolean {
+    if (ts.isIdentifier(node) && !seen.has(node.text)) {
+      seen.add(node.text); const initializer = declarations.get(node.text);
+      return initializer !== undefined && canonicalPath(initializer, seen);
+    }
+    if (ts.isNewExpression(node) && node.expression.getText(source) === "URL" && node.arguments?.length === 2) {
+      return ts.isStringLiteral(node.arguments[0]) && node.arguments[0].text.endsWith(`/support/processes/${file}`)
+        && relative(REPO_ROOT, resolve(REPO_ROOT, dirname(path), node.arguments[0].text)) === `tests/support/processes/${file}`
+        && node.arguments[1].getText(source) === "import.meta.url";
+    }
+    if (ts.isCallExpression(node) && node.expression.getText(source) === "join" && node.arguments[0]?.getText(source) === "process.cwd()") {
+      const parts = node.arguments.slice(1);
+      return parts.length > 0 && parts.every(ts.isStringLiteral) && parts.map((part) => part.text).join("/") === `tests/support/processes/${file}`;
+    }
+    return false;
+  }
+  let bound = false;
+  function visit(node: ts.Node) {
+    if (ts.isPropertyAssignment(node) && node.name.getText(source) === "prefixArgs") {
+      let value = node.initializer;
+      if (ts.isCallExpression(value) && value.expression.getText(source) === "Object.freeze" && value.arguments[0] !== undefined) value = value.arguments[0];
+      if (ts.isArrayLiteralExpression(value) && value.elements.some((element) => canonicalPath(element))) bound = true;
+    }
+    if ((ts.isCallExpression(node) || ts.isNewExpression(node)) && ["fork", "Worker", "spawn"].includes(node.expression.getText(source))) {
+      if (node.expression.getText(source) === "spawn") {
+        const args = node.arguments?.[1];
+        if (args !== undefined && ts.isArrayLiteralExpression(args) && args.elements.some((element) => canonicalPath(element))) bound = true;
+      } else if (node.arguments?.[0] !== undefined && canonicalPath(node.arguments[0])) bound = true;
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(source); return bound;
+}
+
+function privateSeamViolations(path: string, text: string): string[] {
+  const source = parseSource(path, text);
+  const failures: string[] = [];
+  function visit(node: ts.Node) {
+    if ((ts.isStringLiteralLike(node) || ts.isTemplateExpression(node))
+      && /test-data\.local\.json|\.tracker\/credentials/u.test(node.getText(source))) failures.push(node.getText(source));
+    if (ts.isPropertyAccessExpression(node) && /^process\.env\.HRAUTO_/u.test(node.getText(source))) failures.push(node.getText(source));
+    if (ts.isElementAccessExpression(node) && node.expression.getText(source) === "process.env"
+      && ts.isStringLiteralLike(node.argumentExpression) && node.argumentExpression.text.startsWith("HRAUTO_")) failures.push(node.getText(source));
+    ts.forEachChild(node, visit);
+  }
+  visit(source);
+  return failures;
+}
+
 function isIgnored(path: string): boolean {
   try {
     execFileSync("git", ["check-ignore", "-q", "--", path], { cwd: REPO_ROOT, stdio: "ignore" });
@@ -200,7 +281,7 @@ describe("D341 test-data ownership", () => {
     assert.ok(sourceFiles(CROSS_TIER_ROOTS).length > 0);
     for (const path of sourceFiles(CROSS_TIER_ROOTS)) {
       for (const { resolved } of importsOf(path)) {
-        if (ARCHITECTURE_HELPERS_ROOT.test(resolved)) {
+        if (ARCHITECTURE_HELPERS_ROOT.test(resolved) && !path.startsWith("tests/architecture/")) {
           assert.fail(`${path} imports an architecture-owned helper directly: ${resolved}`);
         }
       }
@@ -216,9 +297,18 @@ describe("D341 test-data ownership", () => {
       const consumers = files.filter((path) => path !== "tests/architecture/tooling/test-data-ownership.test.ts" && !path.startsWith("tests/support/processes/")
         && readFileSync(join(REPO_ROOT, path), "utf8").includes(entry.file));
       assert.deepEqual(consumers.toSorted(), [...entry.consumers].toSorted(), entry.file);
-      for (const path of consumers) assert.match(readFileSync(join(REPO_ROOT, path), "utf8"), /process-fixtures/u);
+      for (const path of consumers) assert.ok(childEntrypointBound(path, readFileSync(join(REPO_ROOT, path), "utf8"), entry.file), `${path}: ${entry.file} must bind a canonical child entrypoint`);
     }
     assert.equal(processImportViolations("tests/support/helpers/violation.ts", 'import "../processes/worker-stub-cli.js";').length, 1);
+  });
+
+  it("child-entrypoint controls require canonical executable launch binding", () => {
+    const path = "tests/integration/tooling/child-proof.ts", file = "worker-stub-cli.ts";
+    const literal = 'join(process.cwd(), "tests", "support", "processes", "worker-stub-cli.ts")';
+    assert.equal(childEntrypointBound(path, `const child = ${literal}; spawn(process.execPath, ["--import", "tsx", child]);`, file), true);
+    for (const text of [`// spawn(process.execPath, [${literal}]);`, `const unused = ${literal};`, `spawn(process.execPath, [${literal.replace('"support", "processes"', '"process-fixtures"')}]);`, 'import "../../support/processes/worker-stub-cli.ts";']) {
+      assert.equal(childEntrypointBound(path, text, file), false, text);
+    }
   });
 
   it("recorded credential capabilities are deferred producer functions", () => {
@@ -252,6 +342,12 @@ describe("D341 test-data ownership", () => {
     assert.ok(capabilityViolations(path, 'import * as credential from "../../../src/backend/storage/configuration/credential-store.js";').length > 0);
     assert.ok(capabilityViolations(path, 'import { unlisted } from "../../../src/backend/storage/configuration/credential-store.js";').length > 0);
     assert.ok(capabilityViolations(path, 'import("../../../src/backend/storage/configuration/credential-store.js");').length > 0);
+    for (const entry of DEFERRED_CAPABILITIES.filter((item) => item.module === "node:sqlite")) {
+      const prefix = 'import { DatabaseSync as database } from "node:sqlite";';
+      assert.deepEqual(capabilityViolations(entry.importer, `${prefix} export function fixture() { return new database(":memory:"); }`), []);
+      assert.ok(capabilityViolations(entry.importer, `${prefix} const eager = new database(":memory:");`).length > 0, entry.importer);
+      assert.ok(capabilityViolations(`${dirname(entry.importer)}/unrecorded-sibling.ts`, `${prefix} export function fixture() { return new database(":memory:"); }`).length > 0, entry.importer);
+    }
     const corpus = "tests/support/fixtures/preflight/corpus.ts";
     assert.deepEqual(capabilityViolations(corpus, 'import { chromium } from "playwright"; function test() { vi.spyOn(chromium, "launch"); }'), []);
     assert.ok(capabilityViolations(corpus, 'import { chromium } from "playwright"; function test() { chromium.launch(); }').length > 0);
@@ -271,10 +367,18 @@ describe("D341 test-data ownership", () => {
         }
       }
       const text = readFileSync(join(REPO_ROOT, path), "utf8");
-      assert.equal(/test-data\.local\.json|\.tracker\/credentials|process\.env\.HRAUTO_/u.test(text), false, `${path} names a private seam`);
+      assert.deepEqual(privateSeamViolations(path, text), [], `${path} names a private seam`);
     }
     assert.deepEqual(violations, []);
     assert.deepEqual(observedResourceHarnesses, SHARED_RESOURCE_HARNESSES);
+  });
+
+  it("private-seam controls ignore comments and reject executable references", () => {
+    const path = "tests/support/fixtures/private-seam-proof.ts";
+    assert.deepEqual(privateSeamViolations(path, '// config/test-data.local.json .tracker/credentials process.env.HRAUTO_SECRET'), []);
+    for (const text of ['const path = "config/test-data.local.json";', 'read(".tracker/credentials");', 'process.env.HRAUTO_SECRET;', 'process.env["HRAUTO_SECRET"];']) {
+      assert.ok(privateSeamViolations(path, text).length > 0, text);
+    }
   });
 
   it("tracks the shared inputs, ignores the private file and keeps the example value-free", () => {
