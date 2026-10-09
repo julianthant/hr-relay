@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { describe, it } from "vitest";
+import { describe, it, vi } from "vitest";
+import type { WorkerLoopReport } from "../../../../../../src/backend/runtime/workers/worker-loop.js";
 import { rebuildRuntimeIsolation } from "../../../../../../src/backend/app/config/runtime-isolation.js";
 import { runtimeHelp, startRebuildRuntime } from "../../../../../../src/backend/app/composition/runtime-composition.js";
 
@@ -159,6 +160,170 @@ describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
       }),
       /needs its composition seam/,
     );
+  });
+
+  for (const command of ["storage", "test-data"] as const) {
+    it(`awaits ${command} output, forwards exact isolation and arguments, and propagates exit status`, async () => {
+      const previousExitCode = process.exitCode;
+      const output: string[] = [];
+      const args = ["check", "--json"];
+      try {
+        for (const exitCode of [0, 2] as const) {
+          process.exitCode = 7;
+          let finish: ((outcome: { output: string; exitCode: 0 | 2 }) => void) | undefined;
+          const outcome = new Promise<{ output: string; exitCode: 0 | 2 }>(resolve => { finish = resolve; });
+          let settled = false;
+          const before = output.length;
+          const running = startRebuildRuntime({
+            isolation: rebuildRuntimeIsolation, args: [command, ...args], write: value => output.push(value),
+            [command === "storage" ? "storage" : "testData"]: (isolation: typeof rebuildRuntimeIsolation, rest: readonly string[]) => {
+              assert.equal(isolation, rebuildRuntimeIsolation);
+              assert.deepEqual(rest, args);
+              return outcome;
+            },
+          }).then(() => { settled = true; });
+          await settleEventLoop();
+          assert.equal(settled, false);
+          assert.equal(output.length, before);
+          assert.equal(process.exitCode, 7);
+          assert.ok(finish);
+          finish({ output: `${command}:${exitCode}`, exitCode });
+          await running;
+          assert.equal(settled, true);
+          assert.equal(output.at(-1), `${command}:${exitCode}`);
+          assert.equal(process.exitCode, exitCode === 0 ? 7 : exitCode);
+        }
+        const failure = new Error(`${command} refused authority`);
+        const before = [...output];
+        await assert.rejects(startRebuildRuntime({
+          isolation: rebuildRuntimeIsolation, args: [command, ...args], write: value => output.push(value),
+          [command === "storage" ? "storage" : "testData"]: () => Promise.reject(failure),
+        }), error => error === failure);
+        assert.deepEqual(output, before);
+      } finally {
+        process.exitCode = previousExitCode;
+      }
+    });
+  }
+
+  it("forwards OCR arguments and preserves successful and refused command exit status", async () => {
+    const previousExitCode = process.exitCode;
+    const output: string[] = [];
+    try {
+      for (const exitCode of [0, 1]) {
+        process.exitCode = 7;
+        await startRebuildRuntime({
+          isolation: rebuildRuntimeIsolation, args: ["ocr", "admit", "submission.json"],
+          write: value => output.push(value),
+          ocr: args => {
+            assert.deepEqual(args, ["admit", "submission.json"]);
+            return { output: `ocr:${exitCode}`, exitCode };
+          },
+        });
+        assert.equal(output.at(-1), `ocr:${exitCode}`);
+        assert.equal(process.exitCode, exitCode === 0 ? 7 : exitCode);
+      }
+      const failure = new Error("OCR admission refused");
+      await assert.rejects(startRebuildRuntime({
+        isolation: rebuildRuntimeIsolation, args: ["ocr", "admit", "submission.json"],
+        write: value => output.push(value), ocr: () => { throw failure; },
+      }), error => error === failure);
+      assert.deepEqual(output, ["ocr:0", "ocr:1"]);
+    } finally {
+      process.exitCode = previousExitCode;
+    }
+  });
+
+  it("awaits the worker report, publishes only outcome states, and propagates failure without output", async () => {
+    const output: string[] = [];
+    const report = {
+      workerId: "worker-1", workflowId: "separations", stopped: "stop-directive",
+      outcomes: [{ state: "done", runId: "run-1" }, { state: "failed", runId: "run-2", failureId: "failure-2" }],
+    } satisfies WorkerLoopReport;
+    let finish: ((report: WorkerLoopReport) => void) | undefined;
+    const result = new Promise<WorkerLoopReport>(resolve => { finish = resolve; });
+    const running = startRebuildRuntime({
+      isolation: rebuildRuntimeIsolation, args: ["worker", "separations", "--pool-index", "2", "--drain"],
+      write: value => output.push(value), worker: (isolation, args) => {
+        assert.equal(isolation, rebuildRuntimeIsolation);
+        assert.deepEqual(args, ["separations", "--pool-index", "2", "--drain"]);
+        return result;
+      },
+    });
+    await settleEventLoop();
+    assert.deepEqual(output, []);
+    assert.ok(finish);
+    finish(report);
+    await running;
+    assert.equal(output.length, 1);
+    assert.deepEqual(JSON.parse(output[0] ?? ""), {
+      workerId: "worker-1", workflowId: "separations", stopped: "stop-directive", outcomes: ["done", "failed"],
+    });
+    const failure = new Error("worker admission refused");
+    await assert.rejects(startRebuildRuntime({
+      isolation: rebuildRuntimeIsolation, args: ["worker", "separations"],
+      write: value => output.push(value), worker: () => Promise.reject(failure),
+    }), error => error === failure);
+    assert.equal(output.length, 1);
+  });
+
+  it("uses one registered composer per admitted command and refuses duplicate runtime ownership", async () => {
+    vi.resetModules();
+    const runtime = await import("../../../../../../src/backend/app/composition/runtime-composition.js");
+    const output: string[] = [];
+    const signals = signalSeamFake();
+    const seen: string[] = [];
+    const record = (command: string, isolation: typeof rebuildRuntimeIsolation, args: readonly string[]) => {
+      assert.equal(isolation, rebuildRuntimeIsolation);
+      assert.deepEqual(args, ["registered-argument"]);
+      seen.push(command);
+    };
+    try {
+      for (const command of ["ocr", "worker", "test-data", "dry-run-scenario"]) {
+        await assert.rejects(runtime.startRebuildRuntime({
+          isolation: rebuildRuntimeIsolation, args: [command, "registered-argument"], write: value => output.push(value),
+        }), /needs its composition seam/u);
+      }
+      assert.deepEqual(output, []);
+      runtime.registerExplainComposer((isolation, args) => { record("explain", isolation, args); return "explain"; });
+      runtime.registerOcrComposer(args => { assert.deepEqual(args, ["registered-argument"]); seen.push("ocr"); return { output: "ocr", exitCode: 0 }; });
+      runtime.registerStorageComposer((isolation, args) => { record("storage", isolation, args); return Promise.resolve({ output: "storage", exitCode: 0 }); });
+      runtime.registerTestDataComposer((isolation, args) => { record("test-data", isolation, args); return Promise.resolve({ output: "test-data", exitCode: 0 }); });
+      runtime.registerDryRunScenarioComposer((isolation, args) => { record("dry-run-scenario", isolation, args); return Promise.resolve({ output: "dry-run-scenario", exitCode: 0 }); });
+      runtime.registerWorkerComposer((isolation, args) => { record("worker", isolation, args); return Promise.resolve({ workerId: "registered-worker", workflowId: "separations", stopped: "idle", outcomes: [] }); });
+      runtime.registerDashboardComposer((isolation, options) => {
+        assert.equal(isolation, rebuildRuntimeIsolation);
+        assert.deepEqual(options, { frontend: "built-bundle" });
+        seen.push("dashboard");
+        return Promise.resolve({ port: isolation.backendPort, stop: () => { seen.push("stop"); return Promise.resolve(); } });
+      });
+      for (const duplicate of [
+        () => runtime.registerExplainComposer(() => { throw new Error("duplicate invoked"); }),
+        () => runtime.registerOcrComposer(() => { throw new Error("duplicate invoked"); }),
+        () => runtime.registerStorageComposer(() => { throw new Error("duplicate invoked"); }),
+        () => runtime.registerTestDataComposer(() => { throw new Error("duplicate invoked"); }),
+        () => runtime.registerDryRunScenarioComposer(() => { throw new Error("duplicate invoked"); }),
+        () => runtime.registerWorkerComposer(() => { throw new Error("duplicate invoked"); }),
+        () => runtime.registerDashboardComposer(() => { throw new Error("duplicate invoked"); }),
+      ]) assert.throws(duplicate, /already registered; two compositions cannot own one runtime/u);
+      for (const command of ["explain", "ocr", "storage", "test-data", "dry-run-scenario", "worker"]) {
+        await runtime.startRebuildRuntime({ isolation: rebuildRuntimeIsolation, args: [command, "registered-argument"], write: value => output.push(value) });
+      }
+      const dashboard = runtime.startRebuildRuntime({ isolation: rebuildRuntimeIsolation, args: ["dashboard", "--prod"], signals: signals.seam, write: value => output.push(value) });
+      await settleEventLoop();
+      signals.emit("SIGINT");
+      await dashboard;
+      assert.deepEqual(seen, ["explain", "ocr", "storage", "test-data", "dry-run-scenario", "worker", "dashboard", "stop"]);
+      assert.deepEqual(output.slice(0, 5), ["explain", "ocr", "storage", "test-data", "dry-run-scenario"]);
+      assert.deepEqual(JSON.parse(output[5] ?? ""), { workerId: "registered-worker", workflowId: "separations", stopped: "idle", outcomes: [] });
+      assert.equal(output[6], "dashboard BFF listening on 127.0.0.1:3938 serving dist/dashboard");
+      assert.deepEqual(signals.counts, { subscriptions: 1, disposals: 1 });
+      await runtime.startRebuildRuntime({ isolation: rebuildRuntimeIsolation, args: ["explain"], write: value => output.push(value), explain: () => "override" });
+      assert.equal(output.at(-1), "override");
+      assert.equal(seen.filter(command => command === "explain").length, 1);
+    } finally {
+      vi.resetModules();
+    }
   });
 
   it("refuses the retired activity-person-pseudonyms command before invoking its composition", async () => {
