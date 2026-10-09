@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
+import { z } from "zod";
 import { redactObservedDataPoints } from "../../../../../src/backend/logs/observed-data.js";
 import type { ObservedDataPoint } from "../../../../../src/backend/logs/span-emitter.js";
 import { createTaskProvenanceCollector, jsonLeafPaths } from "../../../../../src/backend/runs/provenance/task-provenance.js";
@@ -182,7 +183,16 @@ describe("UCPath pending-set task observation", () => {
 
     assert.throws(() => harness.collector.recordData({
       direction: "read", field: "eligibleTotal", value: 0,
-    }), /no declared evidence classification for task-output:ucpath\/read-pending-termination-set field "eligibleTotal"/u);
+    }), (error: unknown) => {
+      assert.ok(error instanceof z.ZodError);
+      assert.equal(error.issues.length, 1);
+      const [issue] = error.issues;
+      assert.ok(issue);
+      assert.equal(issue.code, "custom");
+      assert.deepEqual(issue.path, ["eligibleTotal"]);
+      assert.match(issue.message, /no declared evidence classification for task-output:ucpath\/read-pending-termination-set field "eligibleTotal"/u);
+      return true;
+    });
 
     assert.deepEqual(harness.observed, observedBefore);
   });
