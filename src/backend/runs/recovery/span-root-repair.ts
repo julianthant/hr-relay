@@ -1,4 +1,4 @@
-/** Stopped recovery reconstructs a missing historical root from exact retained authority. */
+
 import { resolve } from "node:path";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";

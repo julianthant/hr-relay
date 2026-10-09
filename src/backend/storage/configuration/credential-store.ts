@@ -91,11 +91,7 @@ const CredentialUpgradeBindingSchema = z.strictObject({
   entries: ProtectedSettingsPatchSchema,
 });
 
-// ---------------------------------------------------------------------------
-// D341 — the FROZEN pre-migration document (schemaVersion 1, seven names).
-// Read by the test-data migration only; an ordinary read of one is
-// `CredentialStoreMigrationRequiredError`, never a partial interpretation.
-// ---------------------------------------------------------------------------
+// Frozen seven-name protected documents are admitted only by explicit conversion readers.
 const LegacySetValueIdsSchema = z.strictObject({
   ucpathUserId: z.uuid().optional(),
   ucpathPassword: z.uuid().optional(),
@@ -122,15 +118,12 @@ const LegacyCredentialDocumentSchema = z.strictObject({
 type LegacyCredentialHistoryEntry = z.infer<typeof LegacyCredentialHistoryEntrySchema>;
 type LegacyCredentialDocument = z.infer<typeof LegacyCredentialDocumentSchema>;
 
-/**
- * Value-free identities the migration retired with the legacy history. They
- * stay fenced forever: no later command, write or value may reuse one.
- */
+// Value-free identities from the converted schema stay fenced against reuse.
 const CredentialRetiredIdentitiesSchema = z.strictObject({
   commandIds: z.array(z.uuid()),
   writeIds: z.array(z.uuid()),
   valueIds: z.array(z.uuid()),
-  /** Retired test-target entries that were PRESENT at migration and moved to config/test-data.local.json. */
+  // Conversion carries configured test-target entries into the private test-data file.
   entries: z.array(z.strictObject({ name: RetiredTestTargetProtectedNameSchema, valueId: z.uuid() })),
   upgradeBinding: z.strictObject({
     upgradeId: z.string().regex(/^[a-f0-9]{64}$/u),
@@ -167,11 +160,7 @@ function migrationFingerprint(input: Readonly<{
   })}`);
 }
 
-/**
- * The versioned migration baseline that REPLACES canary-bearing legacy history
- * (D341). Its record is the first record of the new schema family; replay of
- * later history starts here, and the retired identities seed every fence.
- */
+
 const CredentialBaselineSchema = z.strictObject({
   migrationId: z.uuid(),
   migratedAt: IsoInstantSchema,
@@ -231,7 +220,7 @@ export interface CredentialStoreHooks {
   readonly beforeRename?: () => void;
   /** Test seam at the uncertain boundary after authority rename and before directory fsync. */
   readonly afterRename?: () => void;
-  /** Existing runtime-lock observation seam, used to prove PID reuse without guessing liveness. */
+
   readonly observeProcessIdentity?: ProcessIdentityObserver;
 }
 
@@ -242,15 +231,15 @@ export interface CredentialStoreOptions {
   readonly hooks?: CredentialStoreHooks;
 }
 
-/** D341: the private document is the frozen pre-migration format; only `cli test-data migrate --from-credentials` may read it. */
+// Only explicit credential-to-test-data conversion reads this frozen protected document.
 export class CredentialStoreMigrationRequiredError extends Error {
   constructor() {
-    super("credential-store-migration-required: protected.json is the pre-D341 format; run cli test-data migrate --from-credentials");
+    super("credential-store-migration-required: protected.json uses the seven-name schema; run cli test-data migrate --from-credentials");
     this.name = "CredentialStoreMigrationRequiredError";
   }
 }
 
-/** The protected document was replaced, but the caller did not observe durable completion. */
+// A replaced protected document can still have unknown observed durable completion.
 export class CredentialStoreCommitUncertainError extends Error {
   constructor(message: string, options?: ErrorOptions) {
     super(`credential-commit-uncertain: ${message}`, options);
@@ -522,7 +511,7 @@ function replayHistory(
   return current;
 }
 
-/** Strict replay of a LEGACY history against the frozen seven-name schema; migration-only. */
+// Conversion-only replay uses the frozen seven-name protected schema.
 function replayLegacyHistory(history: readonly LegacyCredentialHistoryEntry[]): Readonly<{
   record: LegacyProtectedStoreRecord;
   commandIds: readonly string[];
@@ -793,23 +782,20 @@ function removeTemporary(path: string): void {
   }
 }
 
-/**
- * Create D336's independent protected authority under
- * `<stateRoot>/credentials/protected.json`, where stateRoot is the `.tracker` root.
- */
+
 /** Private migration binding; never served as a command or public readback. */
 export interface CredentialUpgradeStore extends CredentialStore {
   bindUpgrade(upgradeId: string, entries: ProtectedSettingsPatch): void;
   /** Pre-SQL preflight admits a first import, but authenticates any surviving binding. */
   verifyUpgradePreflight(upgradeId: string, entries: ProtectedSettingsPatch): void;
   verifyUpgradeBinding(upgradeId: string, entries: ProtectedSettingsPatch): void;
-  /** D341 migration-only: read-only classification of the stored document; values never leave. */
+  // Conversion-only classification is read-only and publishes no values.
   inspectTestDataMigration(): CredentialTestDataMigrationInspection;
-  /** D341 migration-only: convert a legacy document under the writer lock after the destination is staged. */
+  // Convert under the writer lock after staging the destination.
   convertTestDataMigration(input: CredentialTestDataConversionInput): CredentialTestDataConversionOutcome;
 }
 
-/** A retired test-target entry as it must be carried into config/test-data.local.json; PRIVATE. */
+// Private conversion input retains the exact test-target entry.
 export interface RetiredTestTargetEntry {
   readonly name: RetiredTestTargetProtectedName;
   readonly valueId: string;
@@ -825,18 +811,14 @@ export type CredentialTestDataMigrationInspection =
     revision: number;
     historyLength: number;
     retiredEntries: readonly RetiredTestTargetEntry[];
-    /** Retired names a pending (unapplied) upgrade binding still carries; conversion refuses while any exist. */
+    // Pending upgrade bindings must release converted test-target names before conversion.
     pendingUpgradeRetiredNames: readonly RetiredTestTargetProtectedName[];
   }>;
 
 export interface CredentialTestDataConversionInput {
   readonly migrationId: string;
   readonly migratedAt: string;
-  /**
-   * Called under the writer lock with the exact retired entries BEFORE the
-   * source is rewritten. It must make the destination durable and verified,
-   * or throw; a throw leaves the source untouched.
-   */
+  // Make the exact destination durable and verified before rewriting its source under the lock.
   readonly stageDestination: (entries: readonly RetiredTestTargetEntry[]) => void;
 }
 
@@ -859,11 +841,7 @@ function pendingUpgradeRetiredNames(document: LegacyCredentialDocument): readonl
   return RETIRED_TEST_TARGET_PROTECTED_NAMES.filter((name) => binding.entries[name] !== undefined);
 }
 
-/**
- * Build the converted document. Retired history is replaced by one value-free
- * baseline; the five live entries keep their exact identities and values; the
- * migration is the baseline record's own last-applied command.
- */
+
 function convertLegacyDocument(
   legacy: LegacyCredentialDocument,
   migrationId: string,
@@ -1089,11 +1067,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
     throw new CredentialStoreLockUnavailableError();
   }
 
-  /**
-   * The successful hard-link creator alone removes the claimed inode. Other
-   * contenders refuse while the claim exists, so none can unlink a replacement
-   * between identity comparison and unlink.
-   */
+  // Only the successful hard-link creator removes its claimed inode; contenders cannot unlink replacements.
   function reapStaleReaper(): boolean {
     let claimed = false;
     try {
@@ -1179,7 +1153,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
     }
     const currentAny = readPrivateDocumentAny(protectedPath);
     if (currentAny?.stored.version === 1) {
-      // D341: the only transition out of a legacy document is the migration baseline.
+
       const legacy = currentAny.stored.document;
       const baseline = staged.document.baseline;
       const migration = staged.document.history.length === 0
@@ -1335,8 +1309,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
       } catch (error) {
         throw new Error("credential store replacement could not be staged", { cause: error });
       }
-      // Byte identity against the bytes read under this lock; version-agnostic so the D341
-      // conversion can replace a legacy document, which the ordinary reader refuses.
+      // Compare exact bytes under the lock across schema versions before converting the source.
       const live = readPrivateDocumentAny(protectedPath);
       if (priorBytes === undefined ? live !== undefined : live === undefined || !sameBytes(live.bytes, priorBytes)) {
         throw new Error("credential store protected.json changed before replacement");
@@ -1620,7 +1593,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
           }
           const entries = retiredEntriesOf(legacy);
           const next = convertLegacyDocument(legacy, migrationId, migratedAt, z.uuid().parse(ids.randomUUID()));
-          // Destination first: the source is retired only after the private file is durable and verified.
+          // Verify destination durability before replacing source authority.
           input.stageDestination(entries);
           writeDocument(next, current.bytes, true, writer);
           return { committed: true, result: deepFreeze({ state: "converted" as const,

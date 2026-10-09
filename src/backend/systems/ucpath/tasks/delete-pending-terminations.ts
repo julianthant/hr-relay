@@ -8,27 +8,14 @@ import {
 import { ucpathDriver } from "../driver-declaration.js";
 import { firstDisagreeingName, ucpathPendingSweepVerdict } from "../termination-verdict.js";
 
-/**
- * Beat ⑤ of the sweep: the `Delete Selected Transactions` click.
- *
- * It is a real external write and it deletes rows, which is why it is its own
- * transaction rather than a step inside the termination's prepare — legacy runs
- * the same delete as *the first mutation of the run* with no fence, no key and
- * no read-back (**S30/S31**).
- *
- * Like its sibling, an unreadable post-click state THROWS: rows may already be
- * gone, so "we could not check" parks for an operator instead of settling.
- */
+
 export const deletePendingTerminationsTask = defineTask(
   ucpathDriver,
   UcpathDeletePendingTerminations,
   {
     sessions: [{ system: "ucpath", access: "transaction", session: "reuse-worker" }],
     async run({ input, ctx }) {
-      // The refusal arrives as a typed THROW, not a `performed: false` proof —
-      // `UiActionProofSchema.performed` is `z.literal(true)`, so the old
-      // `!action.performed` branch was unreachable and `delete-refused` had no
-      // producer. See `UcpathCommitRefusedError`.
+      // A refused delete throws; performed is literal true, so a false proof cannot represent refusal.
       const action = await ctx.driver
         .commit(UCPATH_SMART_HR_DELETE_SELECTED_BUTTON, ctx.mutation)
         .catch((error: unknown) => {

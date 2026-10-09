@@ -5,15 +5,7 @@ import type { z } from "zod";
 
 export type RunQueueStatus = z.infer<typeof QueueStatusSchema>;
 
-/**
- * The run-level outcome vocabulary: a settled run's own outcome word, as the
- * status a surface prints.
- *
- * `interrupted` is the one arm that is not a rename. The run stopped without a
- * settled verdict — ref write-safety recovery will requeue or settle it — so
- * calling it `cancelled` or `failed` would claim a verdict nobody reached, and
- * `blocked` is the state that says "stopped, not decided".
- */
+
 const RUN_OUTCOME_STATUS = {
   done: "done",
   failed: "failed",
@@ -23,7 +15,7 @@ const RUN_OUTCOME_STATUS = {
   interrupted: "blocked",
 } as const satisfies Record<string, RunQueueStatus>;
 
-/** D330: lifecycle comes only from the canonical run record. Task evidence below is separate. */
+
 export function deriveRunStatus(authority: RunRecord): RunQueueStatus {
   const { lifecycle } = authority;
   if (lifecycle.state === "terminal") return RUN_OUTCOME_STATUS[lifecycle.outcome];
@@ -68,27 +60,7 @@ export function foldCategoryState(states: readonly TimelineCategoryState[], runT
   return runTerminal ? "pending" : "active";
 }
 
-/**
- * The task-level outcome vocabulary — ONE mapping, for the pipeline chip and
- * the timeline step alike (D268).
- *
- * It is the run-level map above, one level down, and deliberately so: a span
- * outcome and a run outcome are the same seven words, so answering them
- * differently was never a distinction anyone could defend. Two arms carry the
- * argument.
- *
- * - `cancelled`/`discarded`/`superseded` → **`cancelled`**. D123's rule is that
- *   a word names what happened, and `Cancelled` names an act somebody took —
- *   which is exactly what all three of these are (an operator cancelled the
- *   run, a plan discarded the item, a later run superseded it). The retired
- *   pipeline reading, `blocked`, named no act at all and collided with
- *   `interrupted`, whose whole point is that nobody decided anything.
- * - `skipped` stays its OWN arm, per D123: the live exit run rendered a
- *   `condition-false` branch as "Cancelled", which claimed an act nobody took.
- *
- * `interrupted` → `blocked` for the run-level reason: the execution stopped
- * without a verdict.
- */
+
 const TASK_OUTCOME_STATE = {
   done: "done",
   failed: "failed",
@@ -99,13 +71,7 @@ const TASK_OUTCOME_STATE = {
   interrupted: "blocked",
 } as const satisfies Record<TaskSpanOutcome, TaskExecutionState>;
 
-/**
- * The state of ONE execution of a node. An outcome that has not been folded
- * yet is `active` — the span started and no end has arrived — which is a fact
- * about the span, not a default standing in for a missing one. A node with NO
- * span at all is `pending` (or `replayed`), and that is the caller's question:
- * this function is only ever asked about a span that exists.
- */
+
 export function taskStateOf(outcome: TaskSpanOutcome | undefined): TaskExecutionState {
   return outcome === undefined ? "active" : TASK_OUTCOME_STATE[outcome];
 }

@@ -3,14 +3,7 @@ import { UcpathStagePendingTerminationSweep } from "../../../../models/systems/u
 import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.js";
 import { ucpathDriver } from "../driver-declaration.js";
 
-/**
- * The sweep's beat ②: tick the Select checkbox on every in-progress
- * `Terminat*` row for this person, read back which rows were ticked, stop.
- *
- * Ticking a checkbox is page state and nothing more, so the whole selection
- * sits on the reversible side of the fence — the same property the termination
- * wizard has, for the same reason.
- */
+
 export const stagePendingTerminationSweepTask = defineTask(
   ucpathDriver,
   UcpathStagePendingTerminationSweep,

@@ -17,18 +17,9 @@ import {
   type TestDataLocalPresence,
 } from "../../../models/config/test-data.js";
 
-/**
- * D341 — the private half of test data: the ignored `config/test-data.local.json`.
- * Reader, capture-once input source, presence, merge planner and the ONE
- * atomic private writer live here in infra so the credential migration can use
- * them without a layer inversion; `src/backend/app/control/test-data.ts` re-exports them
- * beside the shared reader. Errors name the file and the offending key only.
- */
 
-/**
- * `JSON.parse` resolves a repeated key last-wins. A private file that names
- * the same input twice is ambiguous, so it is refused before parsing.
- */
+
+// JSON.parse accepts duplicate keys last-wins; reject them before parsing private inputs.
 function decodeKey(raw: string, label: string): string {
   try {
     const decoded: unknown = JSON.parse(`"${raw}"`);
@@ -94,12 +85,7 @@ export type TestDataLocalReadOutcome =
   | Readonly<{ state: "absent"; path: string }>
   | Readonly<{ state: "valid"; path: string; config: TestDataLocalConfig }>;
 
-/**
- * Read the ignored private file at an exact path. Absent is a truthful state;
- * anything else that is not a private, regular, bounded, unique-keyed, strict
- * document is a `TestDataLocalConfigError` that names the file and the
- * offending key only.
- */
+
 export function readTestDataLocalConfig(
   localPath: string,
   access: TestDataLocalAccess = DEFAULT_LOCAL_ACCESS,
@@ -158,11 +144,7 @@ export function testDataLocalPath(repoRoot: string): string {
   return resolve(repoRoot, TEST_DATA_LOCAL_CONFIG_PATH);
 }
 
-/**
- * The private file as ONE captured snapshot. The first `read` loads and
- * validates the file; every later `read` on the same source answers from that
- * capture, so a run's selected input cannot drift under it.
- */
+// Capture the private file once so sequential reads cannot mix edits.
 export function createTestDataInputSource(
   localPath: string,
   access: TestDataLocalAccess = DEFAULT_LOCAL_ACCESS,
@@ -214,9 +196,7 @@ export function testDataLocalFilePath(outcome: TestDataLocalReadOutcome, name: s
   return isAbsolute(declared) ? declared : resolve(dirname(outcome.path), declared);
 }
 
-// ---------------------------------------------------------------------------
-// Private file writer (D341 migration destination)
-// ---------------------------------------------------------------------------
+
 
 export interface TestDataLocalInputCandidate {
   readonly name: TestDataInputName;
@@ -234,12 +214,7 @@ export interface TestDataLocalMergePlan {
   readonly next?: TestDataLocalConfig;
 }
 
-/**
- * Decide how retired credential entries land in the private file. Missing
- * destination is created; an equal entry (same identity AND value) is
- * idempotent; any other existing entry for the same name is a conflict that
- * stops the migration without overwriting anything.
- */
+// Exact matching identity and value is an idempotent destination; any mismatch refuses conversion.
 export function planTestDataLocalMerge(
   destination: TestDataLocalReadOutcome,
   candidates: readonly TestDataLocalInputCandidate[],
@@ -300,12 +275,7 @@ const DEFAULT_LOCAL_WRITE_ACCESS: TestDataLocalWriteAccess = {
   randomUUID,
 };
 
-/**
- * Replace (or create) the private file atomically: private staged copy,
- * prior-state re-verification, rename, directory sync, exact readback. The
- * prior outcome must still describe the destination at rename time, or the
- * write stops without touching it.
- */
+// Re-verify the exact previous state before atomic rename and directory sync.
 export function writeTestDataLocalConfig(
   localPath: string,
   next: TestDataLocalConfig,

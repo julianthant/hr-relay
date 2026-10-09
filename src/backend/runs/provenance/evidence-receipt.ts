@@ -1,91 +1,6 @@
 import { retainedRunProtectedBindings, hasProtectedTransactionInput, publicTransactionKeyDigest } from "../../../models/write-safety/protected-input.js";
 import { valueFreeProtectedInput } from "../../../models/write-safety/protected-input.js";
-/**
- * The `RunEvidenceReceipt` builder (ref operator-trust §2.3, D140/D141).
- *
- * ## What this is for
- *
- * D82's acceptance bar: the receipt must let the operator finish their
- * double-check WITHOUT opening UCPath. A receipt that says "success" fails
- * that bar. This builder composes, from durable authority alone:
- *
- * - the exact subject the run bound and the proof source that matched it;
- * - every observation and output fact, with the source that established it
- *   (fresh-live this attempt, a replayed checkpoint, or an operator
- *   correction) and the instant it was observed;
- * - the decision reason behind every branch / gate / identity / dedupe
- *   outcome, including a conditional node that did not run;
- * - each commit action's write state and the binding proof it filed;
- * - a verdict per declared obligation, with the durable facts it compared;
- * - warnings ONLY where the uncertainty is non-load-bearing;
- * - one explicit confidence and one explicit result.
- *
- * ## Derived, not minted (D141)
- *
- * The receipt is a **pure function of authority**, derived on demand and
- * persisted on first derivation — it is NOT written inside the terminal
- * settlement transaction. Two reasons, in order of weight:
- *
- * 1. **Authority must never depend on a projection to terminalize.** The
- *    terminal composite (`terminalizeSuccess` / `terminalizeFailure`) is the
- *    one CAS that decides whether a real HR transaction is settled. Making it
- *    also assemble a receipt would let a receipt-shaped problem — a missing
- *    classification, an unreadable span file — block or unwind a settlement
- *    that already happened. That is the wrong failure direction.
- * 2. **The runs this program has already produced would otherwise be
- *    permanently receipt-less.** The live person-lookup exit run and the
- *    controlled Kuali commit terminalized before this code existed. A
- *    mint-only design could never explain them, which defeats the point.
- *
- * The safety property a mint-at-settlement design would have bought is bought
- * a different way: every identity the receipt carries is derived (see
- * `evidence-identity.ts`) and `generatedAt` is the terminal settlement instant
- * rather than a clock read, so re-deriving the same terminal run yields the
- * same bytes. `ensureRunEvidenceReceipt` therefore ALWAYS routes through
- * `evidenceReceipts.insert`, whose immutable-insert check refuses a divergent
- * rebuild by name instead of overwriting one. A receipt that disagrees with
- * authority is louder than no receipt, which is the requirement.
- *
- * `generatedAt = lifecycle.endedAt` is a deliberate, stated reading: the
- * receipt describes the run AS OF the instant its evidence closed. Nothing
- * about the run changes after that, so a wall-clock "when was this rendered"
- * stamp would carry no information and would destroy determinism.
- *
- * ## Bound to what it consumes, not to a closure hash (D199)
- *
- * "Re-deriving one run yields the same bytes" only holds if the derivation
- * survives the tree moving around it. It did not: `descriptorFingerprint` was
- * stamped from the CURRENT build's `descriptor.contractFingerprint`, so any
- * edit anywhere in a ~31-file descriptor closure changed a settled run's
- * receipt and the immutable insert refused it. That value is now the run's OWN
- * retained `envelope.contractFingerprint` — a fact about the run, read from
- * authority like everything else here — and resolvability is checked directly
- * against the surfaces this builder consumes. See
- * `receipt-derivation-binding.ts` for the check table and why a closure hash is
- * neither necessary NOR sufficient for a receipt.
- *
- * ## A gate's evidence is a `gate_results` row, not a checkpoint (D204)
- *
- * `gate_results` is the REPOSITORY's name (`authority.gateResults`), not a
- * table: the rows live in `checkpoint_payloads` keyed `<runId>:<gateId>`, which
- * is why the operator-facing decision sentence below says "the gate result
- * record" and names no table at all. A receipt an operator reads months later
- * must not send them looking for a table that does not exist, and re-pointing
- * the storage to make the sentence true would be renaming authority to suit a
- * string.
- *
- * D203 taught the provenance collector that; the receipt still derived from
- * checkpoints alone, so a settled gated run listed its gate node `unknown` and
- * the approver — the whole point of ref write-safety §14.6 risk 6 — reached authority and
- * stopped there. The reader moves again, for the same reason D144 gave: a
- * durable record must not be fabricated into the shape its reader expected.
- *
- * A gate contributes its stored payload's leaves as observation facts sourced
- * `gate-result` (carrying the kernel's own `resolvedBy`/`resolvedAt`), ONE
- * `kind: "gate"` decision whose outcome comes from the declared arm table in
- * `src/domain/trust/gate-decisions.ts`, and a `verified` obligation. Nothing
- * about the human decision is sniffed out of the payload's field names.
- */
+
 import { z } from "zod";
 import { evaluateNodeCondition } from "../../../models/workflow/node-condition.js";
 import {
@@ -182,11 +97,7 @@ export interface ReceiptBuildInput {
   readonly checkpoints: readonly unknown[];
   /** Every write intent this run fenced, with its attempt rows. */
   readonly writes?: readonly ReceiptWriteEvidence[];
-  /**
-   * Every `gate_results` row this run resolved (D204). Absent and empty are the
-   * same answer — a run with no gate node truthfully has none — but a gate node
-   * whose row is missing stays `unknown` rather than being invented.
-   */
+
   readonly gateResults?: readonly unknown[];
 }
 
@@ -198,14 +109,7 @@ function contractOf(node: RuntimeFlowNode): AnyTaskContract | undefined {
   return undefined;
 }
 
-/**
- * A transaction node's stored output is the kernel's `TypedTransactionOutcome`
- * wrapper (`{ disposition, proofSource, output, proof }`) while its declared
- * output SCHEMA — and therefore its detail paths and its classification scope
- * — is the commit contract's own output (`outputSchemaOf` in
- * `src/base/workflow.ts`). Unwrapping here is the one place that difference is
- * reconciled, stated rather than assumed.
- */
+// Transaction checkpoints wrap output and proof; resolve output paths inside that wrapper.
 interface TransactionOutcomeShape {
   readonly disposition: "committed" | "already-present";
   readonly proofSource: string;
@@ -228,10 +132,7 @@ function transactionOutcomeOf(record: RunCheckpointRecord): TransactionOutcomeSh
   if (!("output" in candidate)) {
     throw new Error(`transaction checkpoint ${record.nodeId} stores no commit-contract output`);
   }
-  // The DURABLE outcome stores `output` and `proof` as schema-bound canonical
-  // values; the in-memory graph scope carries the parsed values directly. A
-  // checkpoint is always the durable form, so the bound value is unwrapped
-  // here rather than sniffed for at every reader.
+  // Durable checkpoint values are schema-bound canonical data; graph scope holds parsed values.
   const bound = SchemaBoundCanonicalValueSchema.parse(candidate.output);
   return Object.freeze({ disposition, proofSource, output: bound.value });
 }
@@ -249,7 +150,7 @@ function scopeOf(node: RuntimeFlowNode): EvidenceValueScope {
   return { kind: "task-output", taskId: contract.id };
 }
 
-/** A `workflow:<id>/…` task contributes no browser session (ref workflow-model §3 / D2). */
+
 function isLocalProjection(contract: AnyTaskContract): boolean {
   return contract.id.startsWith("workflow:");
 }
@@ -262,12 +163,7 @@ function finiteFreshnessLimit(contract: AnyTaskContract): number | undefined {
 
 /* ── receipt assembly ────────────────────────────────────────────────────── */
 
-/**
- * The rows are assembled as schema INPUT — unbranded — and the whole receipt
- * is parsed once at the end. Branding every intermediate would mean re-parsing
- * each id at every construction site, which buys nothing: the single terminal
- * parse is what makes the record authority.
- */
+
 type ReceiptInput = z.input<typeof RunEvidenceReceiptSchema>;
 type Fact = ReceiptInput["input"][number];
 type Decision = ReceiptInput["decisions"][number];
@@ -294,19 +190,7 @@ function canonicalInputFingerprint(run: RunRecord) {
   ));
 }
 
-/**
- * The provenance row that DATES a leaf, using the covering rule
- * `src/backend/runs/task-provenance.ts` already applies: a row covers a path when it
- * names it exactly or is a dot-prefix of it, and the longest such row wins.
- *
- * `lookupPath` is the path INSIDE the stored checkpoint value, which is not
- * the same as the path inside the contract output for a transaction node: the
- * sequencer stores provenance for the wrapper's four fields (`disposition`,
- * `proofSource`, `proof`, `output`), so every commit-output leaf is dated by
- * the wrapper's `output` row. Resolving through the prefix rule rather than a
- * special case keeps one vocabulary; guessing an instant when nothing covers
- * the leaf remains forbidden, and the fact stays `unresolved`.
- */
+
 function provenanceFor(record: RunCheckpointRecord, lookupPath: string): FactProvenance | undefined {
   return record.provenance
     .filter((fact) => fact.path === lookupPath || lookupPath.startsWith(`${fact.path}.`))
@@ -318,13 +202,7 @@ function pickCheckpoint(
   nodeId: string,
   attempt: number,
 ): RunCheckpointRecord | undefined {
-  /*
-   * D214 — an attempt can hold several EXECUTIONS of one node (a gate resume is
-   * a fresh claim and an `always-rerun` node re-executes across it), so the tie
-   * inside one attempt is broken by the claim generation. A row that names no
-   * generation predates the component, and every row that names one was written
-   * after it, so absence sorts LAST — the same order the authority index uses.
-   */
+  // Select the latest execution within the latest attempt; a gate resume can re-execute a node.
   return records
     .filter((record) => record.nodeId === nodeId && record.attempt <= attempt)
     .sort((left, right) =>
@@ -332,17 +210,7 @@ function pickCheckpoint(
       || (right.claimGeneration ?? 0) - (left.claimGeneration ?? 0))[0];
 }
 
-/**
- * The receipt COMPOSITION — which shape this builder derives (Track F,
- * ledger 2 D16–D22). Composition 2 added `actions[].proved` and the
- * `composition` stamp. Composition 3 makes every diagnostic sentence safe to
- * project; composition 1 is the exact shape every receipt stored
- * before that. The number exists for one reason: a stored receipt is
- * immutable and must RE-DERIVE byte-identically under the composition it was
- * stored at, so `ensureRunEvidenceReceipt` derives a stored composition-1
- * receipt at 1 and never upgrades it in place — the D199 stranding, refused
- * structurally rather than remembered.
- */
+
 export type ReceiptComposition = 1 | 2 | 3 | 4 | 5;
 export const LATEST_RECEIPT_COMPOSITION = 5 satisfies ReceiptComposition;
 
@@ -358,10 +226,10 @@ function receiptEvidenceLeaf(scope: EvidenceValueScope, leaf: EvidenceLeaf, comp
 const NOT_RUN_SENTENCE: Record<TerminalNotRunReason, (id: string) => string> = {
   "condition-false": (id) => `node "${id}" did not run: its declared \`when\` condition was false for this run's input`,
   "branch-not-selected": (id) => `node "${id}" did not run: the branch controller selected another case`,
-  "step-omitted": (id) => `node "${id}" did not run: the operator omitted its step at start (D307)`,
+  "step-omitted": (id) => `node "${id}" did not run: the operator omitted its step at start`,
   // Unreachable by construction (the sealed factory refuses it as a not-run
   // reason), authored so the closed map stays exhaustive rather than defaulted.
-  "operator-asserted": (id) => `node "${id}" did not run: the operator asserted its facts at start (D307)`,
+  "operator-asserted": (id) => `node "${id}" did not run: the operator asserted its facts at start`,
 };
 
 export function buildRunEvidenceReceipt(
@@ -371,23 +239,7 @@ export function buildRunEvidenceReceipt(
   return deriveRunEvidenceReceipt(input, composition).receipt;
 }
 
-/**
- * What PROVED a commit, from durable authority alone (ledger 2 D16–D22):
- * the fence identity off the write intent, and the proof value, proof source
- * and instant off the transaction checkpoint's stored `TransactionOutcome`.
- * Every proof leaf is redacted through the declared `write-proof` scope — an
- * undeclared leaf fails loud here, exactly like a receipt fact.
- *
- * A checkpoint holding a SETTLED outcome with no durable write intent to pair
- * it with is a recorder/store failure, and this THROWS rather than deriving a
- * proof-less commit: the fence identity (system + key digest) is half of what
- * the block asserts, inventing it from the contract would be a claim rather
- * than a record, and rendering the absence as "no settled write intent
- * reached authority" would print two false halves over real corruption. The
- * outcome's proof schema hash must be the commit contract's own — a proof
- * bound to a schema this build no longer declares cannot be classified by
- * this build's table, and saying so beats redacting under the wrong rows.
- */
+
 export function deriveActionWriteProof(input: Readonly<{
   commitContract: AnyCommitTaskContract;
   /** The transaction node's checkpoint row (raw or parsed). */
@@ -433,12 +285,7 @@ export function deriveActionWriteProof(input: Readonly<{
   });
 }
 
-/**
- * The same derivation, returning the D199 binding table beside the receipt.
- * `ensureRunEvidenceReceipt` needs the held rows to print a legible refusal
- * when the stored receipt no longer re-derives, and evaluating the table twice
- * would let the two answers drift.
- */
+
 export function deriveRunEvidenceReceipt(
   input: ReceiptBuildInput,
   composition: ReceiptComposition = LATEST_RECEIPT_COMPOSITION,
@@ -494,10 +341,7 @@ export function deriveRunEvidenceReceipt(
   }));
   const gateResults = (input.gateResults ?? []).map((row) => GateResultRecordSchema.parse(row));
   for (const row of gateResults) {
-    // A gate row is keyed `(runId, gateId)` in authority, so a foreign one here
-    // is a supply bug, not a fact about this run. It says who approved WHAT —
-    // attributing another run's approval to this one is the exact wrong-subject
-    // failure the gate exists to prevent.
+
     if (row.runId !== envelope.runId) {
       throw new Error(
         `gate result for "${row.gateId}" belongs to run ${row.runId}, not to run ${envelope.runId}; `
@@ -508,11 +352,7 @@ export function deriveRunEvidenceReceipt(
   const gateResultsByNode = new Map<string, GateResultRecord>();
   for (const row of gateResults) gateResultsByNode.set(String(row.gateId), row);
 
-  /*
-   * D199: before describing the run at all, prove this build still owns every
-   * semantic surface the description consumes. The workflow-identity refusal
-   * that used to sit inline is the table's first row.
-   */
+
   const binding = evaluateReceiptDerivationBinding({
     descriptor,
     run,
@@ -559,13 +399,7 @@ export function deriveRunEvidenceReceipt(
   /* ── node walk ─────────────────────────────────────────────────────────── */
 
   const notRunByNode = new Map<string, TerminalNotRunReason>();
-  /**
-   * D307 — the terminal record's THIRD dependency arm. It is read here only to
-   * be reconciled against the durable checkpoint rows: the row's `assertion`
-   * marker is what makes a value an assertion, and the terminal citation must
-   * agree with it or the two authorities disagree about whether anything was
-   * observed. That is never something a receipt smooths over.
-   */
+
   const assertedByNode = new Map<string, CitedAssertion>();
   const resolvedByNode = new Set<string>();
   for (const dependency of result?.dependencies ?? []) {
@@ -597,16 +431,7 @@ export function deriveRunEvidenceReceipt(
         + `"${cited.step}" at ${cited.assertedAt}; the two authorities disagree about this assertion`,
       );
     }
-    /*
-     * The step and the instant say the two authorities describe the same ACT.
-     * They say nothing about the VALUE, and the value is the whole reason the
-     * asserted arm binds a schema hash and a digest (ref workflow-model §5.8):
-     * a reader must be able to prove the terminal derive consumed exactly this
-     * row's output. Comparing only the marker would let a row rewritten under
-     * the same assertion — a different rebuilt output, a producer changed
-     * between attempts — pass as the value the run terminalized on, and the
-     * receipt would then describe a value nothing in authority agrees on.
-     */
+    // Step and instant bind the act; schema and digest bind the asserted value.
     if (stored.output.schemaHash !== cited.outputSchemaHash) {
       throw new Error(
         `run ${envelope.runId}'s asserted checkpoint for node "${nodeId}" was parsed with output schema `
@@ -654,17 +479,9 @@ export function deriveRunEvidenceReceipt(
     const { record } = evidence;
     const contract = contractOf(node);
 
-    /*
-     * D204: a GATE's durable evidence is its `gate_results` row. It is read
-     * before the record-less arms below because a gate never has a checkpoint
-     * and never will — falling through would report `unknown` for a decision
-     * authority holds in full. A gate node with no row DOES fall through: the
-     * run never resolved it, and `unknown` is then the honest verdict.
-     */
+
     if (node.kind === "gate") {
-      // A descriptor condition can make an operator decision inapplicable.
-      // Re-derive that fact from this run's authenticated checkpoint evidence;
-      // never emit an operator decision or manufacture a gate-result row.
+      // An inapplicable conditional gate produces no synthetic operator decision.
       if (node.resolvedBy === "operator" && node.when !== undefined
         && node.dependsOn.every((dependency) => byNode.get(String(dependency))?.record !== undefined)) {
         const outputs = Object.fromEntries(node.dependsOn.map((dependency) => {
@@ -708,11 +525,7 @@ export function deriveRunEvidenceReceipt(
     if (record === undefined) {
       const reason = evidence.notRun;
       if (reason !== undefined) {
-        // A conditional node that did not run is a DECISION with a closed
-        // reason — never a silent omission (D114's `not-run` arm, mirrored).
-        // Its obligation is `absent`, and NOT mandatory: an absence the
-        // descriptor authored and the terminal record closed is a correct
-        // outcome, not an unresolved one. The reason is what carries it.
+
         const decisionId = entryId("decision", `not-run.${id}`);
         decisions.push({
           id: decisionId,
@@ -729,29 +542,7 @@ export function deriveRunEvidenceReceipt(
           evidence: [evidenceEntryRef(decisionId)],
         });
       } else {
-        /**
-         * EVERY record-less node emits its obligation, not only a terminal
-         * dependency (D187).
-         *
-         * `verificationId` is minted for every node in the graph a few lines
-         * above, and a DOWNSTREAM node's derived fact cites its upstream
-         * nodes' verification ids by that mint. Emitting the row only for a
-         * terminal dependency therefore made the id resolvable or dangling
-         * depending on a completely unrelated property — and
-         * `assertEvidenceRefsResolve` correctly refused the whole receipt,
-         * which turns the ONE surface whose job is to explain a run into an
-         * HTTP 500.
-         *
-         * The state is reachable in production, not just in fixtures: ref workflow-model
-         * §5.4's `startAt` resume with `envelope.injected` (the Edit Data path,
-         * D166/D168) gives a downstream node its upstream VALUE without any
-         * upstream checkpoint. `unknown` is the honest verdict for "authority
-         * holds no checkpoint for this node and no recorded reason it did not
-         * run", and it is exactly what the operator needs to see in the
-         * verification section. `mandatory` still tracks the terminal
-         * dependency set, so confidence is unchanged for every receipt that
-         * could already be derived.
-         */
+
         verification.push({
           id: evidence.verificationId,
           obligation: `node.${id}`,
@@ -766,14 +557,7 @@ export function deriveRunEvidenceReceipt(
       throw new Error(`node "${id}" stored a checkpoint but owns no task contract to interpret it`);
     }
 
-    /*
-     * D307 — an ASSERTED row. The node never ran: the operator omitted its step
-     * at start and the step's producer rebuilt this output from typed facts.
-     * Everything below this branch describes an observation (a source instant,
-     * a read action, a freshness age, a subject the task bound by observing a
-     * page), and none of it happened — so the branch is taken BEFORE any of it,
-     * and the node's obligation is `present`, never `verified`.
-     */
+
     if (record.assertion !== undefined) {
       emitAssertedNodeEvidence({
         composition,
@@ -836,15 +620,7 @@ export function deriveRunEvidenceReceipt(
     const occurredAt = record.writtenAt;
     if (node.kind === "transaction") {
       const outcome = transactionOutcomeOf(record);
-      /*
-       * The intent join is by taskId because the checkpoint row carries no
-       * write-intent id — and a first-match join over a duplicated task would
-       * silently attribute ONE intent's fence identity (system + key digest,
-       * binding proof, subject) to the node's proof values. Authority keys an
-       * intent by (workflow, item, task, system, key), so a second row for one
-       * commit contract is a recorder/supply defect: refuse to guess which
-       * fence proved this write.
-       */
+      // Checkpoint rows lack intent IDs; a duplicated task ID cannot safely join to a first matching intent.
       const matchingWrites = writes.filter((entry) => entry.intent.taskId === contract.id);
       if (matchingWrites.length > 1) {
         throw new Error(
@@ -868,11 +644,7 @@ export function deriveRunEvidenceReceipt(
         occurredAt,
         write,
       });
-      /*
-       * Composition 2 (ledger 2 D16–D22): what proved this write, beside the
-       * write it proves. Composition 1 is the stored shape and emits nothing —
-       * that is the whole re-derivation contract, not an omission.
-       */
+      // Composition 1 emits no proof rows; composition 2 includes them under its stored contract.
       if (composition >= 2) {
         commitAction.proved = deriveActionWriteProof({
           composition,
@@ -966,12 +738,7 @@ export function deriveRunEvidenceReceipt(
 
   /* ── outputs ───────────────────────────────────────────────────────────── */
 
-  /**
-   * D210 — a PREVIEWED run. The two facts must agree: the envelope says the
-   * operator asked for a dry run, and the stored terminal row is bound to the
-   * preview schema. Either alone would be an incoherent record, so each is
-   * checked against the other rather than one being believed.
-   */
+  // Preview envelope and terminal schema must agree; neither alone proves a coherent preview.
   const previewResultSchemaHash = deriveSchemaHash(RunDryRunPreviewResultSchema, "output");
   const previewed = result !== undefined && result.resultSchemaHash === previewResultSchemaHash;
   if (previewed !== (envelope.dryRun && result !== undefined)) {
@@ -984,29 +751,16 @@ export function deriveRunEvidenceReceipt(
 
   if (previewed && result !== undefined) {
     const preview = RunDryRunPreviewResultSchema.parse(result.result.value);
-    /**
-     * NO output facts. A preview produced no workflow result, and putting its
-     * staged-then-discarded values in the section an operator reads as "what
-     * this run produced" is exactly the confusion the arm exists to prevent.
-     * The staged values are not lost — they are on the durable terminal row —
-     * but the receipt's job is the verdict, and the verdict is "nothing".
-     */
+
     verification.push({
       id: terminalResultVerificationId,
       obligation: "completion.terminal-result",
       mandatory: true,
-      // D187: a record-less obligation reports `unknown`, which is the honest
-      // verdict. It also makes `verified-done` structurally unreachable here.
+
       verdict: "unknown",
       evidence: [],
     });
-    /*
-     * D215 — the warning states what the preview actually REACHED. A preview
-     * whose beat-① probe settled `already-present` staged no page and read no
-     * subject, so it has no subject verdict to quote; saying so is the honest
-     * report, and it is also the more useful one — it tells the operator the
-     * real run would have written nothing here either.
-     */
+
     const reached = preview.preview.outcome.state === "would-prepare"
       ? `staged its page and observed subject ${preview.preview.outcome.subject.state}`
       : `settled ${preview.preview.outcome.state} at its ${preview.preview.probe.state} probe, `
@@ -1083,16 +837,9 @@ export function deriveRunEvidenceReceipt(
     }));
   }
 
-  /* ── omitted steps (D307) ──────────────────────────────────────────────── */
 
-  /*
-   * ONE row, naming the omitted STEP KEYS and nothing else. The facts the
-   * operator typed are the run's own input to those steps and never cross into
-   * a receipt: what an operator reading this needs is which steps of the
-   * timeline nobody read, and the per-node rows above say what each one did.
-   * It is load-bearing: a run that read three of its steps from a form is not
-   * a `verified-done` run, and the verdict must say so on its own.
-   */
+
+  // Receipts name omitted step keys; operator-entered facts stay in run input.
   if (omittedSteps.length > 0) {
     warnings.push({
       id: entryId("warning", "step-omitted"),
@@ -1100,7 +847,7 @@ export function deriveRunEvidenceReceipt(
       summary: `the operator omitted ${omittedSteps.length === 1 ? "one step" : `${String(omittedSteps.length)} steps`} `
         + `at start and typed the facts this run would have read there: ${omittedSteps.join(", ")}. `
         + "Every node of those steps either carries an operator-asserted value or did not run at all; "
-        + "nothing under them was observed in a live system (D307)",
+        + "nothing under them was observed in a live system",
       loadBearing: true,
       evidence: [],
     });
@@ -1158,13 +905,7 @@ export function deriveRunEvidenceReceipt(
     workflowId: envelope.workflow,
     attempt: envelope.attempt,
     generatedAt,
-    /*
-     * D199: the closure the RUN executed under, retained on its own envelope —
-     * never the current build's. Stamping `descriptor.contractFingerprint` here
-     * made the receipt claim the run ran under whatever closure happens to be
-     * checked out, which is both a false statement and the reason every settled
-     * receipt was stranded by an unrelated edit.
-     */
+
     descriptorFingerprint: envelope.contractFingerprint,
     configFingerprint: envelope.configFingerprint,
     retryOf: envelope.retryOf === undefined
@@ -1192,11 +933,7 @@ export function deriveRunEvidenceReceipt(
   return Object.freeze({ receipt, checks: binding.checks });
 }
 
-/**
- * Every `observation:`/`receipt:` reference a receipt makes must land on a row
- * the SAME receipt carries. A dangling ref is a citation to nothing, which on
- * a trust surface reads exactly like a citation to something.
- */
+// Every observation or receipt reference must point to a row in this same receipt.
 export function assertEvidenceRefsResolve(receipt: RunEvidenceReceipt): void {
   const known = new Set<string>([
     `receipt:${receipt.receiptId}`,
@@ -1245,7 +982,7 @@ export interface EvidenceReceiptStore {
   getFailure(failureId: string): unknown;
   listCheckpointsByRun(runId: string): readonly unknown[];
   listWritesByRun(runId: string): readonly ReceiptWriteEvidence[];
-  /** Every `gate_results` row this run resolved (D204). */
+
   listGateResultsByRun(runId: string): readonly unknown[];
   findReceiptByRun(runId: string): unknown;
   insertReceipt(receipt: unknown): Readonly<{ state: "inserted" | "existing"; record: RunEvidenceReceipt }>;
@@ -1256,24 +993,7 @@ export type EnsureReceiptOutcome = Readonly<{
   receipt: RunEvidenceReceipt;
 }>;
 
-/**
- * Derive the receipt for a terminal run and persist it, or return the one
- * already stored.
- *
- * The derivation ALWAYS runs, even when a row already exists, and the row is
- * always written through `insertReceipt` — whose immutable-insert check throws
- * by name when the stored bytes differ from the derived ones. That is the
- * whole safety argument for deriving rather than minting: a receipt that
- * disagrees with authority cannot be served quietly, and a stored receipt that
- * a later builder can no longer reproduce is a loud, visible fact rather than
- * an invisible one.
- *
- * D199 adds the missing half of "loud": when a stored receipt no longer
- * re-derives, the refusal NAMES the declaration that moved instead of saying
- * only that the bytes differ. `insertReceipt`'s check stays underneath as the
- * backstop for any caller that does not come through here — this path never
- * skips it.
- */
+
 export function ensureRunEvidenceReceipt(
   store: EvidenceReceiptStore,
   descriptor: AnyWorkflowDescriptor,
@@ -1288,13 +1008,7 @@ export function ensureRunEvidenceReceipt(
   const existing = existingRaw === undefined || existingRaw === null
     ? undefined
     : RunEvidenceReceiptSchema.parse(existingRaw);
-  /*
-   * A stored receipt is immutable and re-derives under ITS OWN composition —
-   * an absent stamp IS composition 1, the closed shape every receipt stored
-   * before the stamp existed (never a guessed default). Only a run with no
-   * stored receipt gets the latest composition; upgrading a stored one in
-   * place would be exactly the "newer story about a settled run" D199 forbids.
-   */
+  // Re-derive immutable receipts under their stored composition; an absent stamp means composition 1.
   const composition: ReceiptComposition = existing === undefined
     ? LATEST_RECEIPT_COMPOSITION
     : existing.composition === undefined ? 1 : existing.composition;
@@ -1324,7 +1038,7 @@ export function ensureRunEvidenceReceipt(
   });
 }
 
-/* ── gate evidence (D204) ────────────────────────────────────────────────── */
+
 
 interface GateEvidenceInput {
   readonly stored: GateResultRecord;
@@ -1341,16 +1055,7 @@ interface GateEvidenceInput {
   readonly composition: ReceiptComposition;
 }
 
-/**
- * One resolved gate, as receipt rows: its payload's leaves as facts sourced
- * from the operator decision, ONE `gate` decision, and a `verified` obligation.
- *
- * The three values that answer §14.6 risk 6 — WHO, WHEN, and on WHAT evidence —
- * come from three different places on purpose. `resolvedBy` and `resolvedAt`
- * are the kernel's own fields on the durable record and are stamped onto every
- * fact's source; the decision arm and the bound-evidence digest are payload
- * leaves, resolved through the DECLARED table rather than by field name.
- */
+
 function emitGateEvidence(input: GateEvidenceInput): void {
   const { stored, nodeId, entryId, evidence } = input;
   if ("source" in stored) {
@@ -1423,9 +1128,7 @@ function emitGateEvidence(input: GateEvidenceInput): void {
   const boundLeaf = declaration.boundEvidencePath === undefined
     ? undefined
     : leaves.find((leaf) => leaf.path === declaration.boundEvidencePath);
-  // A bound-evidence leaf names WHAT was approved, so it has to be a value an
-  // operator can compare by eye against the packet's own digest. A structure
-  // there is a declaration error, not something to stringify into the reason.
+  // Bound-evidence leaves must be scalar values the operator can compare to the packet digest.
   if (boundLeaf !== undefined && typeof boundLeaf.value !== "string") {
     throw new Error(
       `gate "${nodeId}" of ${input.workflowId} declares "${String(declaration.boundEvidencePath)}" as its `
@@ -1469,14 +1172,9 @@ function emitGateEvidence(input: GateEvidenceInput): void {
   });
 }
 
-/* ── operator assertions (D307) ──────────────────────────────────────────── */
 
-/**
- * The terminal record's `asserted` arm for one node, as the receipt reads it:
- * the ACT (step, instant) and the VALUE it binds (the schema that parsed the
- * producer's output and the digest of that whole bound value). Both halves are
- * reconciled against the durable row; neither is taken on the record's word.
- */
+
+// Reconcile both the asserted act and its schema-bound value against the checkpoint.
 interface CitedAssertion {
   readonly step: string;
   readonly assertedAt: string;
@@ -1506,40 +1204,17 @@ interface AssertedEvidenceInput {
   readonly verification: Verification[];
 }
 
-/**
- * One asserted node, as receipt rows: its output leaves as facts sourced from
- * the OPERATOR ASSERTION, ONE `assertion` decision naming the omitted step and
- * the instant, and a `present` obligation.
- *
- * `present`, not `verified`: the value exists, it is schema-bound, and it drove
- * the run — that is exactly what `present` says. `verified` would say this tree
- * checked a system and found the value there, which nobody did. `absent` would
- * be the opposite lie: the run really did consume this value. It is mandatory
- * whether or not the terminal derive depends on it, because an asserted value
- * an operator must know about is never optional detail.
- *
- * No action row and no reuse row: an assertion performed no read of any system
- * and reused no observation, so a `external-read` action or a freshness age
- * beside it would be a sentence about something that did not happen.
- */
+// Operator assertions are present facts, never live-verified observations.
 function emitAssertedNodeEvidence(input: AssertedEvidenceInput): void {
   const { assertion, record, node, nodeId, taskId, entryId, evidence } = input;
   if (node.kind !== "task") {
     throw new Error(
       `node "${nodeId}" (${node.kind}) of run ${input.runId} stores a checkpoint marked as an operator `
       + `assertion for step "${assertion.step}"; only a TASK node is ever asserted — a gate always runs `
-      + "and a transaction in an omitted step never runs at all (D307)",
+      + "and a transaction in an omitted step never runs at all",
     );
   }
-  /*
-   * The reconciliation above this function walks the terminal record's asserted
-   * arms and demands a marked row behind each. THIS is the other direction, and
-   * it is the one that keeps the pair honest: a marked row whose terminal record
-   * says something else — resolved, not-run, or nothing at all for a node the
-   * derive depends on — used to produce an `assertion` decision and a `present`
-   * obligation anyway, which is a receipt asserting on one authority's word while
-   * the other authority contradicts it. Every arm refuses instead.
-   */
+
   if (input.citedResolved) {
     throw new Error(
       `run ${input.runId}'s terminal record cites node "${nodeId}" as resolved, and its checkpoint is `
@@ -1554,14 +1229,7 @@ function emitAssertedNodeEvidence(input: AssertedEvidenceInput): void {
       + "asserted value a node that produced nothing",
     );
   }
-  /*
-   * The THIRD direction — a DECLARED terminal dependency the record leaves out
-   * entirely — has no arm here on purpose: `evaluateReceiptDerivationBinding`
-   * already refuses that whole receipt by name (`terminal-dependency-set
-   * moved`) before this walk starts, and a node the derive does NOT depend on
-   * is absent from `dependencies` by construction, so its silence is no
-   * disagreement at all. An arm here would be one that cannot fail.
-   */
+
   if (!input.omittedSteps.includes(assertion.step)) {
     throw new Error(
       `run ${input.runId}'s checkpoint for node "${nodeId}" is asserted for step "${assertion.step}", `
@@ -1607,19 +1275,11 @@ function emitAssertedNodeEvidence(input: AssertedEvidenceInput): void {
     reason: `node "${nodeId}" did not run: the operator omitted step "${assertion.step}" at start, and `
       + `${taskId}'s output was rebuilt at ${assertion.assertedAt} from the facts the operator typed for `
       + "that step. Every field below it is operator-asserted; none of it was observed in a live "
-      + "system, and no write was made from this node (D307)",
+      + "system, and no write was made from this node",
     evidence: [evidenceEntryRef(evidence.verificationId), ...factRefs],
   });
 
-  /*
-   * The obligation cites the FACTS, not the decision that cites it back. The
-   * decision already names this verification row as its evidence, so listing
-   * the decision here made the two rows a 2-cycle: a reader walking evidence
-   * from either end returns to where it started instead of reaching a value.
-   * `emitGateEvidence` has always ended one-way for exactly this reason, and
-   * an assertion is read the same way — the decision explains the obligation,
-   * the obligation points at what it is an obligation about.
-   */
+  // Cite the facts, not the decision that cites this obligation; mutual citation would form a cycle.
   input.verification.push({
     id: evidence.verificationId,
     obligation: `node.${nodeId}`,
@@ -1645,7 +1305,7 @@ interface ObservationFactInput {
   readonly writtenAt: string;
   readonly upstream: readonly EvidenceEntryId[];
   readonly mandatory: boolean;
-  /** Appended to for an operator correction's superseded twin. */
+
   readonly supersededFacts: Fact[];
 }
 
@@ -1657,9 +1317,7 @@ function observationFact(input: ObservationFactInput): Fact {
   const base = { id: factId, field: leaf.field, mandatory: input.mandatory, state: "satisfied" as const, value };
 
   if (provenance === undefined) {
-    // A leaf with no provenance row cannot be dated, and a receipt never dates
-    // a fact by guessing. The checkpoint it came from is still named — what is
-    // unresolved is WHEN it was observed, and the fact says exactly that.
+    // Without provenance, observation time stays unknown; the checkpoint still supplies source identity.
     return {
       id: factId,
       field: leaf.field,
@@ -1690,20 +1348,11 @@ function observationFact(input: ObservationFactInput): Fact {
     return { ...base, source: { kind: "operator-correction", supersedes: supersededId } };
   }
 
-  /*
-   * D307 — an OPERATOR-sourced row that is not a correction can only be an
-   * assertion (`sourceFor` in `src/backend/runs/task-provenance.ts` yields exactly
-   * `live` or `derived`, and a checkpoint patch always stamps `correctedAt`).
-   * Its facts belong to `emitAssertedNodeEvidence`, which sources them from the
-   * assertion; falling through to the arms below would date an operator-typed
-   * value as though a task had observed it, which is the one thing this unit
-   * exists to make impossible. Reaching here means the caller skipped the
-   * assertion branch — refuse rather than label it.
-   */
+
   if (provenance.source === "operator") {
     throw new Error(
       `node "${nodeId}" stored an operator-sourced provenance row for output field "${leaf.path}" that is `
-      + "not an operator correction; only a D307 assertion writes one, and an asserted checkpoint's facts "
+      + "not an operator correction; only an operator assertion writes one, and an asserted checkpoint's facts "
       + "are emitted from its assertion, never as an observation",
     );
   }
@@ -1746,9 +1395,7 @@ function commitActionOf(input: Readonly<{
 }>): Action {
   const intent = input.write?.intent;
   if (intent === undefined) {
-    // The checkpoint proves the commit path ran, but no durable intent was
-    // supplied. `committed` is the truthful floor: the run has a schema-bound
-    // outcome and this receipt has no proof to file.
+    // A checkpoint without supplied durable intent supports committed, never an invented filed proof.
     return {
       id: input.id, taskId: input.taskId, kind: "commit", writeState: "committed", occurredAt: input.occurredAt,
     };
@@ -1788,12 +1435,7 @@ function commitActionOf(input: Readonly<{
   };
 }
 
-/**
- * Composition 1/2 authority bytes predate the diagnostic projection boundary.
- * Their operator projection is always withheld, but immutable insert still
- * requires exact re-derivation. Keep the raw-key serializers isolated here;
- * no current composition or operator surface may call them.
- */
+// Withhold composition 1/2 operator projections while preserving exact immutable re-derivation.
 function legacyAuthorityResidualWriteSummary(intent: WriteIntentRecord): string {
   return [
     "write intent ", intent.writeIntentId, " for ", intent.system, " key \"", intent.idempotencyKey,

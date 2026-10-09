@@ -4,14 +4,7 @@ import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.j
 import { ucpathDriver } from "../driver-declaration.js";
 import { firstDisagreeingName, ucpathPendingSweepVerdict } from "../termination-verdict.js";
 
-/**
- * Ref write-safety §5's second probe kind, on the same rich read: does this person have
- * ANY in-progress termination?
- *
- * Its polarity is the thing to keep straight — `present` means "there is
- * nothing to sweep", so the sweep settles `already-present` and clicks nothing.
- * That is the common case and it is why the sweep is cheap in practice.
- */
+
 export const matchPendingTerminationsTask = defineTask(
   ucpathDriver,
   UcpathMatchPendingTerminations,

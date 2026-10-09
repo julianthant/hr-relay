@@ -1,13 +1,4 @@
-/**
- * Probe the host's primary display (D324; ref clock-config-secrets §3).
- *
- * One synchronous OS query per process tree, invoked through
- * `establishHostPrimaryDisplay`, which publishes the answer for every child.
- * The parsers are STRICT: an OS tool that answered in a shape this module does
- * not recognize is a thrown error naming the tool, never a guessed viewport.
- * Only two states are answers: a detected `width x height`, or `unavailable`
- * for a host that genuinely has no display to report.
- */
+
 import { execFileSync } from "node:child_process";
 import { z } from "zod";
 import type { HostPrimaryDisplayObservation } from "../../../models/config/host-display.js";
@@ -35,9 +26,7 @@ function dimensions(text: string, tool: string): Readonly<{ screenWidth: number;
   return { screenWidth: Number(match[1]), screenHeight: Number(match[2]) };
 }
 
-// macOS — `system_profiler SPDisplaysDataType -json`. `_spdisplays_resolution`
-// is the LOGICAL resolution ("1512 x 982 @ 120.00Hz"), the size a browser
-// window actually gets; `_spdisplays_pixels` is the backing store and is not it.
+// macOS reports logical resolution; physical mode would double Retina dimensions.
 const SystemProfilerDisplaySchema = z.looseObject({
   _spdisplays_resolution: z.string().optional(),
   spdisplays_main: z.string().optional(),

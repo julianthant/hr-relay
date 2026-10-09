@@ -181,13 +181,7 @@ export function createContentAddressedArtifactWriter(
   admission.assertWritable();
   const rootPromise = initializeArtifactRoot(admission);
   return Object.freeze({
-    /**
-     * Root initialization starts at construction. A composition MUST await this
-     * before serving: an un-awaited rejection (a workspace removed under a
-     * fast shutdown) is an unhandled rejection, not a legible boot failure.
-     * A getter, not a stored chain: a derived promise nobody awaits would
-     * itself reject unhandled whenever `put()` already reported the failure.
-     */
+    // Await root initialization before serving; use a getter to avoid an unobserved derived rejection.
     get ready(): Promise<void> {
       return rootPromise.then(() => { admission.assertLive(); });
     },

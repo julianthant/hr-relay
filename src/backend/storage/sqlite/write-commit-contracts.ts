@@ -149,12 +149,7 @@ export const WriteIntentParkRequestSchema = z.strictObject({
   now: IsoInstantSchema,
 });
 
-/**
- * CAS an `attempting` or `parked` intent to `retryable` with its typed
- * settlement — D64/D69 stabilized negative evidence, or the operator's
- * confirmed-absent resolution. History is retained on the attempt row;
- * only the NEXT fence may create a new generation.
- */
+// Retryable settlement requires typed stabilized absence or an explicit operator resolution.
 export const WriteIntentRetrySettlementRequestSchema = z.strictObject({
   writeIntentId: WriteIntentIdSchema,
   generation: PositiveIntSchema,
@@ -170,11 +165,7 @@ export const WriteIntentRetrySettlementRequestSchema = z.strictObject({
   }
 });
 
-/**
- * CAS a `parked` intent (and attempt) back to `attempting` so the atomic
- * commit primitive can accept an operator confirmed-present resolution.
- * Restores the exact pre-park attempting shape; the primitive re-validates.
- */
+
 export const WriteIntentReopenRequestSchema = z.strictObject({
   writeIntentId: WriteIntentIdSchema,
   generation: PositiveIntSchema,
@@ -182,12 +173,7 @@ export const WriteIntentReopenRequestSchema = z.strictObject({
   now: IsoInstantSchema,
 });
 
-/**
- * CAS a `retryable` permanent row to a NEW `attempting` generation. The intent
- * keeps its permanent identity (same id/system/key); the generation advances by
- * exactly one and carries a FRESH binding proof — no prior `WriteBindingProof`
- * is ever reused across generations (ref write-safety §4.1.2).
- */
+
 export const WriteRefenceInputSchema = z.strictObject({
   expectedVersion: PositiveIntSchema,
   intent: WriteIntentRecordSchema,
@@ -207,19 +193,7 @@ export const SequencedWriteCommitStepSchema = z.enum([
   "run-transition",
 ]);
 
-/**
- * The complete beat-⑦ bundle. The Phase-1c four-row `commitWriteAttempt`
- * primitive stays narrow INSIDE it (ref dashboard-surfaces: "a storage primitive inside this
- * complete bundle, not a separately committable terminal path"); this outer
- * input additionally binds the current run claim, the schema-valid
- * `TransactionOutcome` checkpoint, and the run transition — one outer authority
- * transaction commits all of it or none.
- *
- * An evidence-receipt ref is deliberately ABSENT from this shape: the 2g trust
- * service is not active, and a missing receipt is represented as absent, never
- * fabricated. When 2g activates its terminal-receipt invariant this schema
- * gains the required ref in the same commit.
- */
+// Keep the narrow write primitive inside the complete atomic settlement bundle.
 export const SequencedWriteCommitInputSchema = z.strictObject({
   run: z.strictObject({
     runId: RunIdSchema,

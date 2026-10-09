@@ -9,11 +9,7 @@ export interface RequestIdentityCheckpoint {
   identify(request: Request): ActorId;
 }
 
-/**
- * D75 solo mode has no caller credential and therefore no actor choice. The
- * configured actor is parsed once at composition and every request receives
- * that exact id; request headers, query parameters and bodies are not inputs.
- */
+
 export function createSoloRequestIdentityCheckpoint(
   configuredActor: unknown,
 ): RequestIdentityCheckpoint {

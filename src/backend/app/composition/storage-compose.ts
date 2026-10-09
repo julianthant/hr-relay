@@ -2,30 +2,7 @@ import { verifyBackupManifestAtPath } from "../../storage/sqlite/backup-service.
 import { backupHasArchiveTransferCustody } from "../../storage/compatibility/backup-inspection.js";
 import { restoreLifecyclePair, verifyLifecyclePair } from "../../storage/sqlite/lifecycle-storage.js";
 import { RunRecordService } from "../../runs/lifecycle/run-record-service.js";
-/**
- * `cli storage doctor` and `cli storage restore` (ref dashboard-surfaces
- * §2.5).
- *
- * `doctor` is the read-only recovery report. It opens NOTHING read-write —
- * the doctor inspects the exact authority copy, reconciles its strict run
- * identities against the configured span root, and re-verifies backup bytes
- * — and its exit code is scriptable: 0 only when authority and span/authority
- * reconciliation are healthy AND a verified current backup exists; 1
- * otherwise, with the reasons printed.
- *
- * `restore` (D181) replaces SQLite; `backup` and stopped `upgrade` have separate writing arms. It never picks a backup: the operator names the
- * exact manifest with `--from`, because "restore the newest" is a decision
- * about which minutes of real HR work to discard and no default is right. It
- * observes the runtime's process locks, records that observation, issues the
- * one-time stopped-system proof from it, and hands the whole thing to
- * `OfflineAuthorityRestoreService`, which re-verifies the checksum, quarantines
- * the suspect database, rebuilds projections against the STAGED copy, and only
- * then swaps atomically.
- *
- * The live backup service's last-run state belongs to the dashboard process
- * and is served on its Settings surface / doctor route; this process cannot
- * see it and does not pretend to.
- */
+
 import { SETTINGS_CATALOG } from "../../../models/config/catalog.js";
 import { createCredentialStore } from "../../storage/configuration/credential-store.js";
 import { protectedSettingsReadback } from "../../../models/config/protected-settings.js";
@@ -100,11 +77,7 @@ export function restoreFailureDisposition(error: unknown): Readonly<{
   });
 }
 
-/**
- * How long the observed runtime-lock snapshot and the proof derived from it
- * stay usable. Short on purpose: the proof asserts the system was stopped, and
- * that claim decays the moment the operator can start it again.
- */
+// Stop proofs expire quickly because a process may restart immediately after inspection.
 export const RESTORE_STOPPED_PROOF_MAX_AGE_MS = 5 * 60_000;
 
 const PackageVersionSchema = z.strictObject({ version: z.string().min(1) }).loose();
@@ -117,9 +90,9 @@ const STORAGE_USAGE = [
   "       storage relocate --plan <command-id> | --resume <operation-id> | --status [--json]",
   "       storage repair-span-root --run <run-id> [--json]",
   "  doctor   read-only authority + span reconciliation + backup report (ref dashboard-surfaces §2.5); exit 0 only when",
-  "           authority, recovery inspection, credentials and span reconciliation are healthy; backup is reported, not gated (D322)",
+  "           authority, recovery inspection, credentials and span reconciliation are healthy; backup is reported, not gated",
   "  backup   write ONE verified authority backup + manifest under the state root's backups/authority;",
-  "           this command is the only backup writer (D322) — the dashboard runs no cadence",
+  "           this command is the only backup writer — the dashboard runs no cadence",
   "  restore  quarantine the suspect authority and swap in one EXACT verified backup,",
   "           rebuilding projections against the staged copy first; the runtime must be",
   "           stopped and the manifest is never chosen for you",
@@ -214,7 +187,7 @@ function formatReport(report: StorageDoctorReport): string {
     for (const archived of report.spanAuthority.archived) {
       lines.push(`  archived: ${archived.runId}`);
     }
-    // D308 tombstone facts: run identity and when it left, nothing about a person.
+
     for (const deleted of report.spanAuthority.deleted) {
       lines.push(
         `  deleted: ${deleted.runId} — ${deleted.workflow} · trace ${deleted.traceId} `
@@ -283,11 +256,7 @@ function messageChain(error: unknown): string {
   return parts.join(" ← ");
 }
 
-/**
- * Rebuild and verify optional span evidence against the staged canonical runs.
- * This never persists a run mirror. The restore service re-inspects authority
- * fingerprint and generation afterwards and refuses any authority mutation.
- */
+
 function rebuildStagedProjections(
   stateRoot: string,
   appVersion: string,
@@ -340,10 +309,7 @@ function rebuildStagedProjections(
       projection.rebuildFromTimeline();
       const health = projection.health();
       if (health.state === "degraded") {
-        // `rebuildFromTimeline` never throws — it records. Restoring onto a
-        // projection that could not be rebuilt would hand the operator a
-        // database whose surfaces are silently empty, so the refusal happens
-        // here, while the live authority is still untouched.
+        // A failed projection rebuild refuses restore instead of serving empty surfaces.
         throw new Error(
           `projection rebuild over the staged restore is degraded: ${health.lastError ?? "unknown"}`,
         );
@@ -442,13 +408,7 @@ async function restoreCommand(
       exitCode: 0,
     };
   } catch (error) {
-    // A refusal is the expected outcome of a running runtime, a tampered
-    // backup, or an unreadable manifest, and the operator needs to read it —
-    // so it is REPORTED with its whole cause chain and a non-zero status, not
-    // rethrown as a stack trace. Nothing is defaulted: every field below is
-    // derived from the failure itself. The service marks whether atomic
-    // replacement already happened, so a post-swap fsync/report/release error
-    // can never be described as an untouched live authority.
+
     const snapshotLine = describeLocksForRefusal(processLockRoot, sourceDatabaseIdentity, clock);
     const disposition = restoreFailureDisposition(error);
     return {
@@ -517,10 +477,7 @@ async function repairSpanRootCommand(
   }
 }
 
-/**
- * The lock line printed beside a refusal. If the observation ITSELF is what
- * failed, say so rather than printing a shape that implies the locks were read.
- */
+
 function describeLocksForRefusal(
   processLockRoot: string,
   sourceDatabaseIdentity: string,
@@ -535,13 +492,7 @@ function describeLocksForRefusal(
   }
 }
 
-/**
- * D322: the ONE backup writer. Opens the existing authority (never creates
- * one — a missing database is a refusal, not an empty backup), asks the real
- * `AuthorityBackupService` for a verified backup at the live generation, and
- * prints the manifest it wrote. Safe beside a running dashboard: SQLite's
- * online backup reads a consistent snapshot under WAL.
- */
+// Backup opens existing authority only; missing authority is a refusal, never an empty backup.
 async function backupCommand(
   _isolation: RuntimeIsolation,
   rest: readonly string[],

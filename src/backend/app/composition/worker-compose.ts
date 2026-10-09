@@ -8,47 +8,7 @@ import { bindFailureCapture } from "../../runs/lifecycle/failure-resolution.js";
 import { createCredentialStore } from "../../storage/configuration/credential-store.js";
 import { requireRuntimeAdmission, type RuntimeAdmission } from "../../storage/admission/admission.js";
 import { hostConfigFacts } from "../../../models/config/host-display.js";
-/**
- * The Phase-1f worker composition value: one workflow-scoped browser worker
- * (ref execution-and-sessions §3) assembled from the landed seams and run to a report.
- *
- * It lives in `src/backend/app/` beside the dashboard composition. This file
- * imports the workflow registry and assembles lower-level services. The CLI's `worker` command receives this function
- * through the same injected-seam door the `dashboard` command uses.
- *
- * What it composes, exactly:
- * - the isolation-config state root's `AuthorityDatabase` (claims, leases,
- *   checkpoints, write intents — the one authority);
- * - the `WORKFLOW_MODULES` registry (the descriptor is resolved from
- *   `SERVER_REGISTRY`, never re-derived) and the task-store registry;
- * - the real `PlaywrightWorkerSessionFactory` under the worker-loop-owned
- *   `WorkerSessionManager` (test seam: `sessionFactory`);
- * - the SQLite timeline writer as the loop's required `SpanEmitter`;
- * - the ref write-safety write sequencer through the loop's `writeSequencerFor` seam, so
- *   its driver leases come from the exact manager the loop's D116 window binds;
- * - one real monotonic deadline scheduler shared by task deadlines, browser
- *   close proofs, idle waits, heartbeats, and the D118 sweep cadence;
- * - the durable worker lease: started before the first claim (a second process
- *   on the same worker id refuses), heartbeated with the TRUE busy/idle state
- *   read from run authority, directive-polled between items, and settled
- *   `stopped` with the honest reason;
- * - the D162 capability wiring (ref data-intake-and-edit-data §4.11): the content-addressed artifact
- *   writer under the isolation-pinned artifact root, and the admitted-provider
- *   wiring — adapter registry, `providerAdmissions` authority repository, the
- *   `configSnapshots` repository the executor reads each run's RETAINED
- *   snapshot from, and the admission id factory. The executor mints admitted
- *   clients per invocation; this root only supplies the kernel's ingredients.
- *
- * Deliberately NOT composed here (each fails loud at its own seam):
- * - the `ChildRunExecutor` delegation seam has no Phase-1 implementation — a
- *   child-run node terminalizes `capability-unavailable` in the interpreter;
- * - the artifact sink projector (D164): no production descriptor declares a
- *   projection yet, and the workbook path is the consuming migration's fact;
- * - automated ref write-safety recovery PROBES: the D118 sweep below routes an expired
- *   claim with an unfinished `attempting` intent to the parked/unclaimable
- *   state and reports it; the typed §4.1 operator resolutions (command kernel)
- *   remain the only release paths in this process.
- */
+
 import { RunRecordService, workerRunLifecyclePort, requireLifecycleApplied, sweepWorkerClaims, type WorkerRunLifecyclePort } from "../../runs/lifecycle/run-record-service.js";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -87,21 +47,7 @@ import { AuthorityDatabase } from "../../storage/sqlite/index.js";
 import { acquireRuntimeProcessLock, type ProcessIdentityObserver } from "../../storage/sqlite/runtime-process-locks.js";
 import { taskStoreRegistry } from "../registries/task-registry.js";
 
-/**
- * Cadence defaults. Refs execution-and-sessions/write-safety pin the PROTOCOL (heartbeat renewal, bounded
- * re-poll, recovery-before-requeue) but no numbers, so these are named,
- * overridable composition choices rather than contract values:
- * - heartbeat every 5s renews the run claim and the worker lease;
- * - a claim or lease whose heartbeat is 60s old (12 missed beats) is dead;
- * - the D118 sweep runs on a 30s cadence AND once at boot, BEFORE the first
- *   claim, because recovery has scheduling priority over claim expiry.
- *
- * D200: the boot beat is staleness-gated like every other, so it cannot reach a
- * row this worker id owns with a heartbeat younger than 60s — a crash-restart
- * inside that window. The startup SELF-sweep beside the lease start covers
- * exactly that gap and is not a cadence question at all: it fires once, scoped
- * to this worker id, on the strength of the lease this process just won.
- */
+// Cadences are composition choices; the contracts constrain renewal and recovery ordering, not numeric defaults.
 export const WORKER_HEARTBEAT_INTERVAL_MS = 5_000;
 export const WORKER_CLAIM_STALE_AFTER_MS = 60_000;
 export const WORKER_SWEEP_INTERVAL_MS = 30_000;
@@ -200,12 +146,7 @@ export interface WorkerComposeInput {
   readonly sessionFactory?: WorkerBrowserSessionFactory;
   /** Registered non-operator gate sources; production workflows without a provider fail at the gate. */
   readonly gateSourcePorts?: readonly GateSourcePort[];
-  /**
-   * Test seam over the Duo ceremony lease gate factory (D267); production
-   * omits it and resolves the credential identity at boot. The seam exists
-   * for the same reason `sessionFactory` does: a composition test has no
-   * credential file, and a fixture gate is still a REAL gate over authority.
-   */
+  // Tests may inject the ceremony factory without configuring live credential identity.
   readonly duoCeremony?: DuoCeremonyGateFactory;
   /** Test seam over SIGINT/SIGTERM; production wires the real signals. */
   readonly stopSignal?: AbortSignal;
@@ -213,11 +154,7 @@ export interface WorkerComposeInput {
   readonly heartbeatIntervalMs?: number;
   readonly sweepIntervalMs?: number;
   readonly claimStaleAfterMs?: number;
-  /**
-   * Deterministic process-loss/race seam: production omits it. The hook runs
-   * after the lease check but before the atomic settings-generation/claim check,
-   * while the outer authority transaction is already held.
-   */
+  // Runs inside the authority transaction after lease inspection and before claim admission.
   readonly afterClaimAdmissionCheck?: () => void;
   /** Structured line sink for the default logger; defaults to stdout. */
   readonly write?: (line: string) => void;
@@ -229,13 +166,7 @@ interface WorkerMaintenance {
   failure(): unknown;
 }
 
-/**
- * The lease-heartbeat + D118-sweep ticker. Every beat re-reads the lease (a
- * missing lease or an advanced generation means this process is fenced and
- * must stop), reports the TRUE busy/idle lifecycle from run authority, and on
- * the sweep cadence routes expired claims through the store's D118-aware
- * sweeper — an unfinished `attempting` intent parks/reports, never requeues.
- */
+
 function startWorkerMaintenance(input: Readonly<{
   database: AuthorityDatabase;
   lifecycle: WorkerRunLifecyclePort;
@@ -283,7 +214,7 @@ function startWorkerMaintenance(input: Readonly<{
     for (const outcome of outcomes) {
       if (outcome.state === "recovery-required") {
         log.warn(
-          "D118: expired claim owns an unfinished attempting write intent; routed to ref write-safety recovery, "
+          "expired claim owns an unfinished attempting write intent; routed to ref write-safety recovery, "
           + "unclaimable until a typed resolution",
           {
             runId: outcome.run.envelope.runId,
@@ -342,9 +273,7 @@ function startWorkerMaintenance(input: Readonly<{
         nextSweepAtMonotonicMs = clock.monotonicMs() + input.sweepIntervalMs;
       }
     } catch (error) {
-      // Retained AND surfaced through onFailure — a broken heartbeat/sweep is
-      // a stop condition (the `failure` field gates every later tick), never
-      // a silently skipped beat.
+
       failure = error;
       input.onFailure(error instanceof Error ? error : new Error(String(error)));
       return;
@@ -392,7 +321,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     ?? (scenarioModule?.descriptor.id === id ? scenarioModule.descriptor : undefined);
   const workerId = poolWorkerId(workflowId, poolIndex);
 
-  // D324: the production environment carries the host's primary display as the `display` default.
+
   const env = input.env ?? hostAwareResolutionEnvironment(probePrimaryDisplay);
   assertNoMigratedEnvironmentKeys(env);
   const hostFacts = hostConfigFacts(env);
@@ -400,13 +329,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   mkdirSync(stateRoot, { recursive: true });
   const taskNotes = createNoteJsonlWriter({ stateRoot, clock });
   const protectedAuthority = createCredentialStore({ admission, stateRoot });
-  /**
-   * D181: the `workers` role lock, taken before the database opens. The
-   * authority worker LEASE is the richer fence and stays the one that decides
-   * who may claim runs; this file lock answers a question the lease cannot,
-   * because `cli storage restore` must know whether a worker is running at a
-   * moment when the authority database may be unreadable.
-   */
+  // The worker role lock proves open-handle ownership; the worker lease separately fences claims.
   const processLock = acquireRuntimeProcessLock(
     {
       processLockRoot: join(repoRoot, input.isolation.processLockRoot),
@@ -508,8 +431,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
 
   const scheduler = createTimeoutDeadlineScheduler(clock);
   const emitter = createTimelineEmitter({ repository: database.authority.timelineEvents, clock });
-  // D162 (ref data-intake-and-edit-data §4.11): ctx.artifacts' writer, shared with the OCR adapter's
-  // page reads. The artifact root is the isolation-pinned literal.
+
   const artifacts = createContentAddressedArtifactWriter({
     admission,
   });
@@ -551,18 +473,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
 
   try {
     const now = clock.now().toISOString();
-    /**
-     * Reclaim before acquiring. A worker that dies without settling (SIGKILL,
-     * OOM, power loss) leaves a live lease behind, and only a RUNNING worker's
-     * maintenance ticker sweeps expired leases — so without this pass the
-     * first `start` below refuses forever and the workflow is bricked with no
-     * operator path back. The sweep is the same one the ticker runs, at the
-     * same staleness threshold (12 missed heartbeats), so a genuinely live
-     * second process is still refused: its lease heartbeat is seconds old and
-     * cannot be swept. Nothing is assumed about the dead process — the sweep
-     * settles the lease it can PROVE is stale, and the new lease takes a fresh
-     * generation that fences any revenant.
-     */
+    // Sweep expired leases before acquiring; a dead worker cannot run its maintenance ticker.
     for (const expired of database.authority.workerLeases.sweepExpired({
       staleBefore: new Date(clock.nowMs() - claimStaleAfterMs).toISOString(),
       now,
@@ -587,31 +498,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     }
     const leaseGeneration = started.lease.leaseGeneration;
 
-    /**
-     * D200 — the startup SELF-sweep, before the first claim.
-     *
-     * `claimNext` refuses while this worker id still owns a non-terminal run
-     * (ref execution-and-sessions §0.3, "one worker, one active item"), and the D118 sweep that
-     * would release it lives inside the maintenance ticker of a RUNNING worker.
-     * That ticker's first beat already runs before the loop starts, but it is
-     * staleness-gated: a worker that dies and restarts inside
-     * `claimStaleAfterMs` leaves its own row with a heartbeat NEWER than
-     * `staleBefore`, the sweep skips it, and the first poll throws
-     * `worker … already holds active run …`. Today that clears only by starting
-     * a different workflow's worker or cancelling the run — neither of which is
-     * a recovery path.
-     *
-     * The lease `start` above is what licenses the stronger predicate. It
-     * succeeded, so no other process holds this worker id: any row still under
-     * it belongs to a process that is gone, whatever its heartbeat says. That
-     * is a fact about THIS worker id only, which is why the scope is the
-     * request's `workerId` rather than a widened `staleBefore` — widening the
-     * threshold would sweep live sibling workers' fresh claims.
-     *
-     * It is the SAME sweeper, so D118 routing is not re-implemented: a run with
-     * an unfinished `attempting` write intent parks (`parked-write`) or stays
-     * unclaimable, and NEVER requeues.
-     */
+
     for (const outcome of sweepWorkerClaims(database, lifecycle, { workerId, now })) {
       if (outcome.state !== "recovery-required") {
         const run = requireLifecycleApplied(outcome);
@@ -632,12 +519,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
         reason: outcome.message,
       });
     }
-    /*
-     * A `claimed`/`validating` row holding an attempting intent has no legal
-     * parked-write edge, so no sweep may release it — only ref write-safety §4.1's typed
-     * operator resolutions can. Say so HERE, naming the run, instead of letting
-     * the first poll throw `already holds active run` with no reason attached.
-     */
+    // An attempting intent under a claimed or validating run requires typed operator recovery.
     const stillHeld = database.authority.runs.listByWorker(workerId)
       .filter(({ lifecycle }) => lifecycle.state === "claimed"
         || lifecycle.state === "validating"
@@ -654,8 +536,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
       );
     }
 
-    // Recovery has scheduling priority over claim expiry (ref write-safety §4): one
-    // D118-aware sweep runs BEFORE the first claim, then rides the cadence.
+
     const maintenance = startWorkerMaintenance({
       database,
       lifecycle,
@@ -719,9 +600,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
         browserControl: createWorkerBrowserControl({ database, workerId, leaseGeneration, clock, signal: stopController.signal }),
         browserObservation: observation => { database.authority.workerControls.observe({ ...observation, leaseGeneration }); },
         configFingerprint: resolved.fingerprint,
-        // claimNext owns the one SQLite write transaction that compares the active
-        // runtime token, settings epoch and queued snapshot before changing the run.
-        // The filesystem authority is needed at boot and apply, not on every poll.
+        // The SQLite claim transaction fences settings and runtime tokens; the filesystem check fences its inode.
         claimNext: (request) => claimWithPreflight({ preflight: runtimePreflight, signal: stopController.signal,
           claim: admit => database.withAuthorityTransaction((repositories) => {
           const directive = controlPoll();
@@ -801,10 +680,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   } catch (error) {
     cleanupErrors.push(error);
   }
-  // The process record is the restore interlock's claim that no authority
-  // handle from this worker remains usable. A throwing close supplies no such
-  // proof, so releasing here would let restore report the system stopped while
-  // this caller can still use `database`.
+  // Release the process record only after proven database closure; a throwing close is no stop proof.
   if (databaseClosureProven) {
     try {
       processLock.release();
@@ -828,11 +704,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   return runtimeReport;
 }
 
-/**
- * Write the honest terminal lease state. When settling AFTER a failure the
- * write error is aggregated with the original — never swallowed, never
- * allowed to mask what actually broke.
- */
+
 function settleLease(
   database: AuthorityDatabase,
   clock: Clock,
@@ -847,9 +719,7 @@ function settleLease(
     const lease = database.authority.workerLeases.get(workerId);
     if (lease === undefined) throw new Error(`worker ${workerId} lease disappeared before it could settle`);
     if (lease.leaseGeneration !== leaseGeneration || lease.lifecycle.state === "stopped") {
-      // A newer generation or the expiry sweep already owns/settled this lease;
-      // writing over it would falsify authority. Loud, structured, and only a
-      // report — the caller's own failure (if any) still propagates.
+      // An advanced generation owns the lease; never overwrite its settlement.
       log.warn("worker lease was already settled or re-owned; leaving it untouched", {
         workerId,
         heldGeneration: leaseGeneration,

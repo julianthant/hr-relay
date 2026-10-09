@@ -70,10 +70,7 @@ function parseLines(path: string, bytes: Buffer): readonly SpanEventWire[] {
   });
 }
 
-/** Synchronous directory critical section: child reads resolve from a held cwd.
- * Node has no openat; verify the no-follow descriptor before reading any child.
- * No await or caller callback may enter this private helper.
- */
+// Node has no openat; synchronous held-cwd reads must verify the no-follow directory descriptor.
 function withinSourceDirectory<T>(path: string, read: () => T): T {
   const absolute = resolve(path);
   const previous = process.cwd();
@@ -269,7 +266,7 @@ export function timelineSourcesForUpgrade(stateRoot: string, backup: VerifiedBac
   if (!existsSync(copies)) return original;
   if (!lstatSync(copies).isDirectory() || lstatSync(copies).isSymbolicLink()) throw new TimelineSourceError("timeline-source-copy-parent-invalid");
   for (const name of readdirSync(copies)) {
-    if (!FingerprintSchema.safeParse(name).success) continue; // interrupted private copies were never admitted
+    if (!FingerprintSchema.safeParse(name).success) continue;
     const manifest = TimelineSourceManifestSchema.parse(JSON.parse(fileBytes(join(copies, name, "manifest.json")).toString("utf8")));
     if (manifest.backupSha256 === backup.manifest.sha256 && manifest.files.length > 0) {
       throw new TimelineSourceError("timeline-source-originals-missing: select the verified recovery copy with --timeline-from");

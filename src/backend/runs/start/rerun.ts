@@ -32,7 +32,7 @@ function field(value: unknown, path: string): JsonValue {
   return JsonValueSchema.parse(current);
 }
 
-/** Read-only warning context. Historical outputs here never enter the new run's input. */
+// Outputs from the source run provide warnings only; they never become rerun input.
 export function buildRerunPlan(repositories: AuthorityRepositories, descriptor: AnyWorkflowDescriptor,
   source: RerunSource, planned: readonly PlannedRun[], acknowledgment?: string, stepOmissions?: StepOmissions): RerunPlan {
   return buildWarnings(repositories, descriptor, source, planned[0], acknowledgment, stepOmissions, planned.length);

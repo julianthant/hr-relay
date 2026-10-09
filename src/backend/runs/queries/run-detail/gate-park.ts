@@ -34,26 +34,7 @@ import { canonicalJsonStringify } from "../../../../rules/validation/canonical-j
 import { readRunCheckpoint } from "../../../runtime/checkpoints/run-checkpoint-reader.js";
 import { timelineCheckpointReference } from "../../../../models/events/timeline.js";
 
-/**
- * D237 — what a SETTLED gate's panel says: approved or rejected, by whom, when.
- *
- * The verdict is read from the gate's own durable `gate_results` row through
- * D204's declared arm table, which is the same derivation the evidence receipt
- * uses — so the panel and the receipt cannot disagree about a human decision.
- * The span stream is deliberately NOT the source: the command service emits
- * `resolutionKey: "resolved"` for every gate (the one key that is true without
- * a display vocabulary), so a wire arm keyed on it was structurally unreachable
- * and every settled gated run's panel said the gate was absent — separations
- * §9.17 item 7(a).
- *
- * Every way this read can fail to produce a verdict is a NAMED absence, not a
- * coerced one. That is the split with the receipt, and it is deliberate: the
- * receipt is the durable artifact and REFUSES to derive at all when a gate is
- * undeclared or stores an arm value nobody declared (D204), while the panel
- * must still render the run it is explaining — so it states the exact gap in
- * the reason an operator reads instead of taking the surface down. Neither ever
- * guesses the word.
- */
+
 function settledGateWire(
   runId: string,
   workflowId: string,
@@ -151,16 +132,7 @@ export function buildRunGate(
 
 /* ── the parked-write section (ref write-safety §4.1) ──────────────────────────────── */
 
-/**
- * The binding proof's subject. A `subject-match` proof pins `expected` and
- * `observed` as canonically identical — its own `superRefine` refuses any
- * proof where they are not — so `expected` IS the fact, not half of it.
- *
- * The evidence is copied, not re-shaped: `SubjectEvidenceSchema` is already the
- * display-safe form ref write-safety binds a write against, and every arm of it is a
- * digest, a branded id, or a bounded suffix. A second projection here could
- * only invent a name for a redaction that happened at binding time.
- */
+// Serve current data only through exact registered origin declarations; uncertain evidence stays distinct.
 function parkedWriteSubject(proof: WriteBindingProof): unknown {
   return proof.kind === "unscoped"
     ? {
@@ -177,29 +149,7 @@ function parkedWriteSubject(proof: WriteBindingProof): unknown {
     };
 }
 
-/**
- * WHAT A CONFIRMED-PRESENT RESOLUTION MUST CARRY (D245, ref write-safety §4.1).
- *
- * `resolvePresent` refuses any proof whose `schemaHash` is not
- * `deriveSchemaHash(node.commit.uses.writeSafety.completion.proofSchema)` and
- * then parses the value through that exact schema. This wire served neither,
- * so the present arm was drawn DISABLED on every parked run in the build —
- * a fenced write that DID land could only be recorded as absent, which is a
- * durable lie, or left parked forever.
- *
- * Everything here is DERIVED and nothing is re-derived: the hash and the field
- * list are the composition root's `writeContracts` view, computed from the
- * descriptor beside `gateNodes` and for the same stated reason — this directory
- * never reaches the descriptor builders, and a query that recomputed a schema
- * hash would be a second copy of the contract's identity.
- *
- * Every failure is a NAMED `unavailable` reason rather than a throw, and that
- * split is deliberate: the checks above this one throw because a parked run
- * whose intent authority cannot produce is a storage fault, while a build that
- * cannot describe a proof is a build limitation — the panel must still render,
- * and the confirmed-ABSENT arm must still be reachable, for a run whose
- * workflow this build no longer registers.
- */
+
 function parkedWriteProofContract(
   deps: RunDetailQueryDeps,
   authority: RunRecord,
@@ -212,7 +162,7 @@ function parkedWriteProofContract(
     return unavailable(
       `workflow ${workflow} has no registered descriptor in this build, so the proof this write would `
       + "have to carry cannot be stated. Recording it PRESENT is unavailable until the build that "
-      + "declares this workflow is running (ref write-safety §4.1, D136).",
+      + "declares this workflow is running (ref write-safety §4.1).",
     );
   }
   const contract = (descriptor.writeContracts ?? [])
@@ -240,16 +190,7 @@ function parkedWriteProofContract(
   };
 }
 
-/**
- * The two typed resolutions, both always served (ref write-safety §4.1, ref frontend-backend-integration §8.5).
- *
- * Serving only one would be this query deciding what the operator's look at
- * the target system is going to find, and there is no third arm on purpose:
- * ref write-safety is explicit that no "force done" or "retry anyway" endpoint exists.
- * Both carry `confirm` copy that names the CASUALTY in the operator's terms —
- * confirmed-present settles the run as though the transaction happened, and
- * confirmed-absent authorizes a fresh fence that will click again.
- */
+
 function parkedWriteActions(
   authority: RunRecord,
   intent: Extract<WriteIntentRecord, { status: "parked" }>,
@@ -297,16 +238,7 @@ function parkedWriteActions(
   ];
 }
 
-/**
- * The identity-approval gate section (ref write-safety §14.4).
- *
- * Everything is DERIVED and nothing is minted. The packet is the stored output
- * of the node the gate waits on — located through the descriptor's `dependsOn`,
- * so no node name is hard-coded — and the digest is the one that node stored
- * beside it, which is the value an approval must carry. `missing` is a real
- * answer with a reason: a run parked on a gate this composition cannot describe
- * says so rather than serving a half panel an operator could act on.
- */
+
 function buildIdentityGatePayload(
   deps: RunDetailQueryDeps,
   authority: RunRecord,
@@ -445,16 +377,7 @@ function buildIdentityGatePayload(
   };
 }
 
-/**
- * The two typed resolutions, always both served.
- *
- * Which one is right is a question only the operator's look at the evidence can
- * answer, so hiding either would be this wire pre-deciding it — the same
- * argument the parked-write section makes. What DOES change with the risk is
- * the ceremony: `approvalShape` says whether approval is one click or an
- * explicit choice, and the approve action's `confirm` block names the
- * disagreements the operator is approving over.
- */
+
 function identityGateActions(authority: RunRecord, packet: IdentityEvidencePacket): unknown[] {
   const disagreements = packet.comparisons.filter(({ agrees }) => !agrees);
   return [
@@ -514,10 +437,7 @@ function buildParkedWritePayload(deps: RunDetailQueryDeps, authority: RunRecord)
   }
   const intent = deps.authority.getWriteIntent(lifecycle.writeIntentId);
   if (intent === undefined) {
-    // The run's own park NAMES this intent. Its absence is a storage fault on
-    // the one record that says whether a real HR transaction exists — serving
-    // an empty panel here would let an operator resolve nothing while being
-    // told they resolved something.
+
     throw new Error(
       `run ${runId} is parked on write intent ${lifecycle.writeIntentId}, which authority does not hold`,
     );
@@ -554,9 +474,7 @@ function buildParkedWritePayload(deps: RunDetailQueryDeps, authority: RunRecord)
     taskId: intent.taskId,
     idempotencyKeyDigest: publicTransactionKeyDigest(intent.idempotencyKeyDigest, hasProtectedTransactionInput(authority)),
     fencedAt: intent.fencedAt,
-    // The run's park instant, not the intent's `updatedAt`: the operator is
-    // being told when THIS run stopped, and a later intent row touch is a
-    // different event.
+
     parkedAt: lifecycle.parkedAt,
     parkedCode: intent.parkedCode,
     parkedMessage: `Write intent ${intent.writeIntentId} is parked (${intent.parkedCode}) for `

@@ -4,11 +4,7 @@ import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.j
 import { ucpathDriver } from "../driver-declaration.js";
 import { ucpathTerminationFilingPresence } from "../termination-verdict.js";
 
-/**
- * A fresh read immediately upstream of Kuali finalization. Missing, changed,
- * ambiguous, denied, or unreadable transaction authority fails here, before
- * the Kuali transaction can prepare, fence, or click.
- */
+// Require a fresh exact UCPath filing read before Kuali preparation, fencing or clicks.
 export const verifyTerminationFilingPresentTask = defineTask(
   ucpathDriver,
   UcpathVerifyTerminationFilingPresent,

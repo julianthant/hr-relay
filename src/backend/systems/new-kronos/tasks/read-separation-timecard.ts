@@ -6,21 +6,7 @@ import {
 import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.js";
 import { newKronosDriver } from "../driver-declaration.js";
 
-/**
- * Ported semantic operation: legacy 1bffbd65,
- * `src/systems/new-kronos/navigate.ts` (`clickGoToTimecard` :445-533,
- * `verifyTimecardEmployee` :554-576, `setDateRange` :1266-1345,
- * `getSeparationTimecardData` :852-894).
- *
- * The driver throws for every mechanical failure — a Go To that never enabled,
- * a menu option that never rendered, a window that did not apply, a virtualized
- * grid that was not fully read — and this task maps those refusals onto the
- * contract's distinct error codes so a failed run's durable
- * `FailureRecord.code` says WHICH thing went wrong. The one thing it never does
- * is turn any of them into an empty timecard: `separations.md` §4b and legacy's
- * own S36/S37 are that mistake, and it is what put a real termination on a
- * timesheet nobody opened.
- */
+
 export const readSeparationTimecardTask = defineTask(
   newKronosDriver,
   NewKronosReadSeparationTimecard,

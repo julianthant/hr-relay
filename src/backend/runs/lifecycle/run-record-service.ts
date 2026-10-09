@@ -162,7 +162,7 @@ export type RunRecordServiceDependencies = Readonly<{
   admitQueuedRun?: (run: RunRecord) => void;
 }>;
 
-/** D330: one lifecycle authority; projections never enter this service. */
+
 export class RunRecordService {
   constructor(
     private readonly dependencies: RunRecordServiceDependencies,
@@ -794,7 +794,7 @@ export class RunRecordService {
     return this.retrySource(input, descriptor, true, publication);
   }
 
-  /** Historical replay remains readable; new archive relaunch creation is retired. */
+  // Recorded relaunches remain replayable; creating new relaunches is refused.
   relaunch(input: unknown, descriptor: AnyWorkflowDescriptor, publication?: RunQueuedPublication): RunMutationOutcome | RunExistence {
     void descriptor; void publication;
     const request = CanonicalRelaunchRequestSchema.parse(input);

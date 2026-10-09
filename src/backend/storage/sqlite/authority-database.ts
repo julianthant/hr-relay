@@ -164,12 +164,7 @@ export const AuthoritySchemaInspectionSchema = z.strictObject({
 
 export const ImmutableInsertDispositionSchema = z.enum(["inserted", "existing"]);
 
-/**
- * Ref operator-trust §2.2's retention sweep result for one bundle. `absent` is a real
- * outcome — two sweeps racing the same due bundle must not both claim a purge —
- * and there is deliberately no "skipped" arm: a bundle that must not be purged
- * throws rather than being reported as quietly handled.
- */
+
 export const DiagnosticPurgeDispositionSchema = z.enum(["purged", "absent"]);
 
 type ImmutableInsertResult<RecordValue> = Readonly<{
@@ -198,11 +193,7 @@ type CommandRepository = Readonly<{
   listStorageRelocationCommands(): readonly z.infer<typeof StorageRelocationCommandRequestSchema>[];
 }>;
 
-/**
- * D113 replay reads the recorded outcome by COMMAND id: one journaled command
- * has exactly one recorded audit, and re-delivery must return that exact
- * result rather than re-executing. Two audits for one command is corruption.
- */
+
 const HistoricalSettingsAuditSchema = CommandAuditRecordSchema.extend({ request: PreFloorSettingsCommandSchema });
 type CommandAuditRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<z.infer<typeof CommandAuditRecordSchema>>;
@@ -237,11 +228,7 @@ type SettingsCurrentRepository = Readonly<{
 }>;
 
 
-/**
- * Cancel-tree resolution (ref dashboard-surfaces §2.4) reads every delegation edge under a
- * parent from authority. A child run whose edge row cannot be found makes the
- * tree inconsistent, and an inconsistent tree cancels nothing.
- */
+
 type DependencyRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<z.infer<typeof DependencyRecordSchema>>;
   get(dependencyId: string): z.infer<typeof DependencyRecordSchema> | undefined;
@@ -250,11 +237,11 @@ type DependencyRepository = Readonly<{
 
 type WriteIntentRepository = Readonly<{
   listByBusinessKey(system: unknown, digest: unknown): readonly z.infer<typeof WriteIntentRecordSchema>[];
-  /** D118 recovery admission includes intents from earlier or missing run rows. */
+
   listAttemptingByItem(input: unknown): readonly z.infer<typeof WriteIntentRecordSchema>[];
   recordObservedPresent(input: unknown): PermanentWriteResolution;
   fenceAttempt(input: unknown): PermanentWriteResolution;
-  /** D111: CAS a `retryable` permanent row to `attempting` generation+1 with a FRESH binding proof. */
+
   refenceRetryable(input: unknown): PermanentWriteResolution;
   /** Ref write-safety §4 arm 3: CAS `attempting` → `parked` on intent AND current attempt. */
   parkAttempt(input: unknown): z.infer<typeof WriteIntentRecordSchema>;
@@ -264,20 +251,9 @@ type WriteIntentRepository = Readonly<{
   reopenParkedAttempt(input: unknown): z.infer<typeof WriteIntentRecordSchema>;
   get(writeIntentId: string): z.infer<typeof WriteIntentRecordSchema> | undefined;
   findByPermanentKey(system: unknown, idempotencyKey: unknown): z.infer<typeof WriteIntentRecordSchema> | undefined;
-  /**
-   * Ref operator-trust §2.3/§2.5: what external writes did THIS run fence? `run_operations`
-   * has no `run_id` column — an intent outlives the run that created it, which
-   * is the point of a permanent key — so the run identity is read out of the
-   * record itself. An `observed-present` row carries no `runId` at all and is
-   * therefore correctly absent here: no run fenced it.
-   */
+  // Intents outlive runs; join exact write authority through its binding proof, never assumed run columns.
   listByRun(runId: string): readonly z.infer<typeof WriteIntentRecordSchema>[];
-  /**
-   * T1b dry-run evidence, scoped through THIS run's intent rows. Attempts and
-   * durable outbox rows have no run id of their own, so both counts join via
-   * `write_intent_id`; a global table count would make another run's write look
-   * like this rehearsal's violation.
-   */
+  // Dry-run attempt and outbox evidence join through the run's intent rows because they have no run ID.
   countDryRunEvidenceByRun(runId: string): z.infer<typeof DryRunWriteSafetyCountsSchema>;
 }>;
 
@@ -299,19 +275,10 @@ export interface AuthorityLifecycleHooks {
   }>): void;
 }
 
-/**
- * Ref workflow-model §5.7. `latest` answers "latest compatible attempt wins" — it returns
- * the highest-numbered attempt for a logical item's node, and returns
- * `undefined` rather than an empty record when nothing was written, so the
- * caller's discriminated `loadCheckpoint` branch is the only way forward.
- */
+
 type RunCheckpointRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<RunCheckpointRecord>;
-  /**
-   * The exact row. `claimGeneration` names WHICH execution of the attempt
-   * (D214); omitting it names a row stored before that component existed, which
-   * is the only shape that carries no generation.
-   */
+  // An omitted claim generation names an unwrapped checkpoint row; it never authorizes a new writer.
   get(
     workflowId: string,
     itemId: string,
@@ -332,13 +299,8 @@ type RunCheckpointRepository = Readonly<{
   listByItem(workflowId: string, itemId: string): readonly RunCheckpointRecord[];
 }>;
 
-/**
- * Ref execution-and-sessions §3's claim authority. `claimNext` and `renewClaim` are the only ways a
- * worker gains or keeps a row, and both are CAS: the row moves out of `queued`
- * in the same transaction that reads it, and a heartbeat that no longer matches
- * `(workerId, claimGeneration)` reports `lost` instead of quietly succeeding.
- */
-/** D308 — the delete tombstones, read-only here: the only writer is `RunRepository.delete`. */
+
+
 type DeletedRunRepository = Readonly<{
   get(runId: string): DeletedRunRecord | undefined;
   list(): readonly DeletedRunRecord[];
@@ -348,88 +310,34 @@ type CanonicalRunClaimOutcome = RunClaimOutcome | Readonly<{ state: "refused"; r
 
 type RunRepository = Readonly<{
   enqueue(input: unknown): ImmutableInsertResult<RunRecord>;
-  /**
-   * D308 — remove ONE terminal run and every row it owns, in one transaction,
-   * behind a `deleted_runs` tombstone written first. Children must already be
-   * gone (the kernel walks the tree); a remaining child refuses by name. The
-   * archive rows go too when the run is archived.
-   */
+
   delete(input: unknown): DeletedRunRecord;
   get(runId: string): RunRecord | undefined;
   /** A bounded, keyset-ordered read over exact non-archived run authority. */
   search(input: unknown): RunSearchAuthorityPage;
   listByItem(input: unknown): readonly RunRecord[];
-  /**
-   * D221 — the attempt a run enqueued for this logical item must take: one past
-   * the highest attempt any run of `(workflow, itemId)` has ever held, or 1 for
-   * an item with no runs.
-   *
-   * Callers read it inside the SAME authority transaction that inserts the run,
-   * which is what makes it a reservation rather than a guess; `enqueue` refuses
-   * a record whose attempt this item has ALREADY spent, so a stale read is loud
-   * at the insert instead of a checkpoint collision three nodes later. A gap is
-   * allowed — an unspent attempt can collide with nothing — but a re-used one is
-   * the defect itself.
-   */
+
   nextItemAttempt(input: unknown): number;
-  /**
-   * D230 — the ORDINAL a run enqueued for this workflow must take: one past the
-   * highest number any run of that workflow has ever held, or 1 for a workflow
-   * whose every row predates schema v15.
-   *
-   * The same reservation discipline as `nextItemAttempt` one scope up — read
-   * inside the transaction that inserts the run, refused by `enqueue` if the
-   * number has been spent, with `UNIQUE (workflow, run_number)` underneath. A
-   * gap is legal: a fan-out refused on its fifth entry leaves nothing behind,
-   * and the numbers around the gap still name the runs they always named.
-   */
+
   nextWorkflowRunNumber(workflow: string): number;
   listByWorker(workerId: string): readonly RunRecord[];
-  /** Indexed D118/D200 read; the run service owns every resulting mutation. */
+
   listClaimRecoveryCandidates(input: unknown): readonly RunRecord[];
-  /**
-   * D269 — the MEMBERSHIP of a run session, derived from the run rows that
-   * carry the id (`workflow_runs.session_id`). There is no stored member list to
-   * disagree with this; a session IS the set this returns, oldest first.
-   */
+
   listBySession(sessionId: string): readonly RunRecord[];
-  /**
-   * D262 — every run currently parked at an operator gate.
-   *
-   * The needs-you notification watch reads this and nothing else: a park is a
-   * STANDING authority fact (it does not go away until a human resolves it),
-   * so the set of runs waiting on a person is derivable at any later instant by
-   * any process, which is what makes a missed publish recoverable rather than
-   * lost. Deliberately not a general `listByState` — nothing else needs one,
-   * and a query named for its one job cannot be reused for a state whose
-   * lifecycle arm carries different fields.
-   */
+
   listParkedAtGate(): readonly RunRecord[];
   listChildren(parentRunId: string): readonly RunRecord[];
-  /**
-   * Ref operator-trust §2.5: `explain run <traceId|runId>` accepts either identity. The
-   * trace id is not a column — it is frozen at enqueue inside the envelope —
-   * so this reads it out of the record rather than inventing an index for a
-   * single-operator lookup.
-   */
+
   findByTrace(traceId: string): RunRecord | undefined;
-  /**
-   * D179: every run of one workflow, whatever its state. A version bump has to
-   * see the whole set — the terminal rows it would archive AND the non-terminal
-   * ones that refuse it — so this deliberately does not filter.
-   */
+
   listByWorkflow(workflow: string): readonly RunRecord[];
-  /** D288: current means a task row with no matching archive authority row. */
+
   listCurrentByWorkflow(workflow: string): readonly RunRecord[];
-  /**
-   * The distinct workflows that HAVE runs. An application-scope bump reaches
-   * every one of them, including workflows whose descriptor has since been
-   * retired: their runs are prior-version by definition, and enumerating the
-   * live registry instead would leave exactly those rows unsweepable.
-   */
+
   listWorkflows(): readonly string[];
   claimNext(input: unknown): RunClaimOutcome;
-  /** D330 service path: dependency and disposition eligibility are mandatory. */
+
   claimEligible(input: unknown, admit?: (run: RunRecord) => void): CanonicalRunClaimOutcome;
   renewClaim(input: unknown): RunHeartbeatOutcome;
   transition(input: unknown): RunUpdateOutcome;
@@ -438,19 +346,15 @@ type RunRepository = Readonly<{
   updatePresentation(input: unknown): RunUpdateOutcome;
   requestCancellation(input: Readonly<{ runId: string; expectedVersion: number; now: string }>): RunUpdateOutcome;
   advanceRevision(input: Readonly<{ runId: string; expectedVersion: number; now: string }>): RunUpdateOutcome;
-  /** D95 run-priority `bump`: elevate one QUEUED row's claim class; never a requeue. */
+
   bumpPriority(input: unknown): RunUpdateOutcome;
-  /** Ref data-intake-and-edit-data §6.4 (D166): the Edit-Data save — CAS against the resume fence. */
+
   injectCheckpointPatches(input: unknown): RunUpdateOutcome;
-  /** D118: an `attempting` write intent routes to recovery, never to requeue. */
+
   sweepExpiredClaims(input: unknown): readonly z.infer<typeof RunClaimSweepOutcomeSchema>[];
 }>;
 
-/**
- * Ref operator-trust §2.1/§4.2: a failure fingerprint is a JOIN key, not message text.
- * `listByFingerprint` powers "same failure seen before" and `explain failure`;
- * `countByFingerprint` is what the ref dashboard-surfaces repeat-threshold trigger reads.
- */
+// Failure fingerprint is a class join key, never inferred message text.
 type FailureRepository = Readonly<{
   get(failureId: string): FailureRecord | undefined;
   listByRun(runId: string): readonly FailureRecord[];
@@ -458,12 +362,7 @@ type FailureRepository = Readonly<{
   countByFingerprint(fingerprint: string): number;
 }>;
 
-/**
- * Ref operator-trust §2.2. A bundle and its attachment index are written together: an
- * attachment row that outlived its bundle would be an unreachable artifact
- * reference, and a bundle whose attachments were not indexed would make
- * artifact-scoped retention unanswerable.
- */
+
 type DiagnosticBundleRepository = Readonly<{
   validateOperation(input: unknown): void;
   insert(input: unknown): ImmutableInsertResult<DiagnosticBundle>;
@@ -471,20 +370,9 @@ type DiagnosticBundleRepository = Readonly<{
   listByRun(runId: string): readonly DiagnosticBundle[];
   listAttachments(bundleId: string): readonly DiagnosticAttachmentStorageRecord[];
   findByArtifact(artifactId: string): readonly DiagnosticAttachmentStorageRecord[];
-  /**
-   * Ref operator-trust §2.2's retention floor, read through the
-   * `(retention_kind, purge_after)` index v10 created for exactly this query.
-   * A pinned bundle is structurally unreachable from here.
-   */
+
   listRetentionDue(now: string): readonly DiagnosticBundle[];
-  /**
-   * The one authority family with a delete, and it is bounded: an ordinary
-   * bundle whose own `purgeAfter` has passed, with its attachment index removed
-   * in the same transaction so the boot invariant that ties a bundle's
-   * `attachments` array to its indexed rows can never see a half-purged bundle.
-   * A pinned bundle throws — retention never silently unpins evidence a
-   * knowledge/fix record or a write recovery still depends on.
-   */
+
   purge(bundleId: string, now: string): z.infer<typeof DiagnosticPurgeDispositionSchema>;
 }>;
 
@@ -504,42 +392,24 @@ type DryRunScenarioResultRepository = Readonly<{
   list(): readonly DryRunScenarioResult[];
 }>;
 
-/** D288: immutable keyed pseudonym evidence; rotation appends a generation. */
+// Pseudonym rotation appends immutable generations rather than rewriting evidence.
 export type ActivityPersonPseudonymRepository = Readonly<{
   get(runId: string, keyGeneration: string): ActivityPersonPseudonymEvidence | undefined;
   listByRun(runId: string): readonly ActivityPersonPseudonymEvidence[];
   listByRuns(runIds: unknown): readonly ActivityPersonPseudonymEvidence[];
 }>;
 
-/**
- * D288's scoped mutation capability. It accepts run identities, never a
- * pseudonym or source identifier, and re-reviews exact terminal authority in
- * the transaction that persists the derived batch.
- */
+
 export type ActivityPersonPseudonymBackfillWriteCapability = Readonly<{
   keyGeneration: ActivityPersonPseudonymEvidence["keyGeneration"];
   reviewAndInsert(runIds: unknown): readonly ActivityPersonPseudonymBackfillOutcome[];
 }>;
 
-/** DCR5: insert-only proof binding one selection to exact stored workbook bytes and headers. */
+/** insert-only proof binding one selection to exact stored workbook bytes and headers. */
 export type OperatorXlsxExportRepository = ReturnType<typeof createGeneratedArtifactRepository>["exports"];
 
-/**
- * Ref operator-trust §4.1/§4.2. Authored guidance and proven fixes. `list` returns EVERY
- * recorded row, whatever its status: the §4.3 duplicate/supersession audit has
- * to see retired and superseded records too, or a candidate could claim to
- * supersede something that never existed.
- */
-/**
- * Ref dashboard-surfaces §2.6 / ref operator-trust §6. This is the ONE authority repository that updates a
- * row rather than appending: a repeated identical trigger folds into the row
- * its `(actorId, dedupeFingerprint)` already owns, and read/snooze is per-row
- * operator state. Identity, creation instant, and trigger are frozen by SQLite
- * triggers; only `count`, `lastSeenAt`, `status`, `snooze`, `title`, `summary`,
- * `updatedAt`, and a strictly advancing `version` move. A notification is
- * derived operator state — it is NOT the transaction record, and nothing here
- * weakens the ledger's true append-only immutability.
- */
+
+
 type NotificationRepository = Readonly<{
   create(input: unknown): ImmutableInsertResult<NotificationRecord>;
   fold(input: unknown): NotificationRecordOutcome;
@@ -549,10 +419,7 @@ type NotificationRepository = Readonly<{
   listByActor(actorId: string, status?: unknown): readonly NotificationRecord[];
 }>;
 
-/**
- * Ref write-safety §6's serialized ledger projection authority. Executors never touch
- * these rows; the projector does, one `(system, date)` partition at a time.
- */
+
 
 
 type RunResultRepository = Readonly<{
@@ -566,24 +433,14 @@ type StartPlanRepository = Readonly<{
   consume(input: unknown): StartPlanConsumeOutcome;
 }>;
 
-/**
- * D269 (ref execution-and-sessions §11.5): the per-workflow worker POOL
- * declaration. `plan` is a CAS over `(workflow, version)` where a workflow
- * with no row is at version 0 — the first plan creates it — and a stale
- * `expectedVersion` answers `conflict` naming the current version rather than
- * applying over it. Never deleted; `list` is what the day wire serves.
- */
+
 type WorkerPoolRepository = Readonly<{
   plan(input: unknown): WorkerPoolPlanOutcome;
   get(workflow: string): WorkerPoolRecord | undefined;
   list(): readonly WorkerPoolRecord[];
 }>;
 
-/**
- * D269 (ref execution-and-sessions §11.1): the durable run SESSION — a
- * dashboard-started group. Immutable identity, versioned presentation and no member list: `runs.listBySession`
- * is the membership, derived from the run rows that carry the id.
- */
+
 type RunSessionRepository = Readonly<{
   list(): readonly RunSessionRecord[];
   setGrouping(sessionId: string, expectedVersion: number, groupInQueue: boolean): RunSessionRecord;
@@ -604,14 +461,7 @@ type WorkerLeaseRepository = Readonly<{
 }>;
 
 
-/**
- * Ref dashboard-surfaces §2.1 (D45) / ref data-intake-and-edit-data §4.1: the stable-keyed local artifact outbox.
- * Insert commits atomically with the producing node's checkpoint (the caller
- * wraps both in one authority transaction); `markProjected` is the sink
- * projector's acknowledgement — a CAS from `pending`, idempotent on an
- * already-projected row so an at-least-once projector can re-acknowledge
- * after a crash without erroring.
- */
+
 type ArtifactOutboxRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<ArtifactOutboxStorageRecord>;
   get(outboxId: string): ArtifactOutboxStorageRecord | undefined;
@@ -622,30 +472,20 @@ type ArtifactOutboxRepository = Readonly<{
   }>;
 }>;
 
-/**
- * One row per sink, updated under a generation CAS — the notifications
- * discipline (v10's lesson) applied to the projector's recorded workbook
- * hash. The head is what makes a concurrent operator edit DETECTABLE: bytes
- * that do not hash to `contentSha256` were changed by someone else.
- */
+// Commit sink head and acknowledgement together; acknowledged data must name its recorded workbook hash.
 type ArtifactSinkHeadRepository = Readonly<{
   get(sinkId: string): ArtifactSinkHeadRecord | undefined;
   record(input: unknown): ArtifactSinkHeadRecord;
 }>;
 
-/** Ref data-intake-and-edit-data §5 — insert-only; a rerun creates a new manifest (D159). */
+
 type IntakeManifestRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<z.infer<typeof IntakePlanManifestSchema>>;
   get(manifestId: string): z.infer<typeof IntakePlanManifestSchema> | undefined;
   findBySource(sourceSha256: string): readonly z.infer<typeof IntakePlanManifestSchema>[];
 }>;
 
-/**
- * Ref data-intake-and-edit-data §2.2's durable in-progress session (2i-E1). Create-in-mapping,
- * version-CAS updates that keep the searchable columns in step with the
- * record, and a by-source lookup so a re-upload of the same bytes can find
- * its open session instead of silently forking a second one.
- */
+
 type IntakeSessionRepository = Readonly<{
   create(input: unknown): z.infer<typeof IntakeSessionSchema>;
   get(intakeSessionId: string): z.infer<typeof IntakeSessionSchema> | undefined;
@@ -653,12 +493,7 @@ type IntakeSessionRepository = Readonly<{
   findActiveBySource(sourceSha256: string): readonly z.infer<typeof IntakeSessionSchema>[];
 }>;
 
-/**
- * D179: a reviewable version-bump plan, consumed exactly once. Insert plus a
- * CAS `planned → applied` — the same shape a start plan has, because it is the
- * same problem: an immutable proposal a later command must not be able to
- * apply twice.
- */
+
 type VersionPlanRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<VersionPlanStorageRecord>;
   get(versionPlanId: string): VersionPlanStorageRecord | undefined;
@@ -666,7 +501,7 @@ type VersionPlanRepository = Readonly<{
   consume(input: unknown): VersionPlanConsumeOutcome;
 }>;
 
-/** D179: one self-contained archived run per prior-version run a bump swept. */
+
 type ArchivedRunRepository = Readonly<{
   transactions(runId: string): ArchivedTransactions;
   enrichTransactions(input: unknown): ArchivedTransactions;
@@ -677,7 +512,7 @@ type ArchivedRunRepository = Readonly<{
   list(): readonly ArchivedRunStorageRecord[];
 }>;
 
-/** Ref data-intake-and-edit-data §4.3 — one page, read once, for one form (D159). */
+
 type OcrExtractionRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<z.infer<typeof AdmittedExtractionSchema>>;
   get(sourceSha256: string, sourcePage: number, formType: string):
@@ -685,14 +520,7 @@ type OcrExtractionRepository = Readonly<{
   findByDocument(sourceSha256: string): readonly z.infer<typeof AdmittedExtractionSchema>[];
 }>;
 
-/**
- * D267 (ref execution-and-sessions §10): the Duo ceremony lease — ONE ceremony
- * at a time per credential. `acquire` answers `held` naming the live holder,
- * takes over an expired row at the next generation, and is the ONLY minter of
- * the `DuoCeremonyLeaseToken` the SSO helpers require; `release` retires that
- * token whether or not the row still carries the token's generation, and
- * REPORTS supersession rather than writing over a successor.
- */
+
 export type DuoCeremonyLeaseAcquireOutcome =
   | Readonly<{
     state: "acquired";
@@ -741,7 +569,7 @@ export type AuthorityRepositories = Readonly<{
   dependencies: DependencyRepository;
   delegationManifests: ImmutableRepository<z.infer<typeof DelegationManifestSchema>>;
   gateResults: ImmutableRepository<z.infer<typeof GateResultRecordSchema>> & Readonly<{
-    /** Every gate this run resolved, oldest first — the D204 receipt read. */
+
     listByRun(runId: string): readonly z.infer<typeof GateResultRecordSchema>[];
   }>;
   runCheckpoints: RunCheckpointRepository;
@@ -785,7 +613,7 @@ const MetaRowSchema = z.strictObject({
 });
 const TableNameRowSchema = z.strictObject({ name: z.string() });
 const CountRowSchema = z.strictObject({ count: z.number().int().nonnegative() });
-/** D221 — `max()` over no rows is SQL NULL, which is "this item has never run". */
+// SQL max over no rows is NULL, meaning the item has no run attempt.
 const MaxAttemptRowSchema = z.strictObject({ attempt: z.number().int().positive().nullable() });
 const MaxRunNumberRowSchema = z.strictObject({ run_number: z.number().int().positive().nullable() });
 const PageCountRowSchema = z.strictObject({ page_count: z.number().int().positive() });
@@ -1005,9 +833,7 @@ const INVARIANT_QUERIES = Object.freeze([
     sql: "SELECT count(*) AS count FROM workflow_workers WHERE worker_id <> record_key OR worker_id <> json_extract(record_json, '$.workerId') OR workflow <> json_extract(record_json, '$.workflow') OR lease_generation <> json_extract(record_json, '$.leaseGeneration') OR state <> json_extract(record_json, '$.lifecycle.state') OR directive <> json_extract(record_json, '$.control.directive') OR version <> json_extract(record_json, '$.version')",
   },
   {
-    // One worker owns at most one active run (ref execution-and-sessions §0.3). This is the
-    // invariant the whole claim protocol exists to hold, so it is checked in
-    // the database rather than trusted from the loop that maintains it.
+    // Check one-active-run ownership before claiming; a second active row is a loop defect.
     name: "worker-owns-at-most-one-active-run",
     sql: `
       SELECT count(*) AS count FROM (
@@ -1415,9 +1241,7 @@ const HISTORICAL_FOUNDATION_QUERIES = [
 ] as const;
 
 const historicalInvariantQueries = new Map<number, readonly { name: string; sql: string }[]>();
-/** Historical backups retain every invariant executable in their released DDL.
- * Compile against an empty immutable replay, never against operator state; only
- * absent future tables/columns can omit a query. Runtime current checks are unchanged. */
+// Replay released backup DDL in memory; never validate it against operator state.
 export function inspectHistoricalAuthorityInvariants(database: DatabaseSync, version: number): void {
   if (version >= 43) inspectGenericProviderAccounting(database);
   let queries = historicalInvariantQueries.get(version);
@@ -1445,8 +1269,7 @@ export function inspectHistoricalAuthorityInvariants(database: DatabaseSync, ver
           if (entry.name === "bulk-parent-columns-match-record") sql = "SELECT count(*) AS count FROM bulk_command_acceptances WHERE record_key <> json_extract(record_json, '$.bulkCommandId') OR request_fingerprint <> json_extract(record_json, '$.requestFingerprint') OR created_at <> json_extract(record_json, '$.request.requestedAt')";
         }
         if (version < 43 && entry.name === "provider-active-reservations-match") {
-          // Pre-43 rows are unwrapped. Keep this named invariant explicit so
-          // aliased kind predicates cannot silently exclude historical rows.
+          // Unwrapped rows need explicit invariant admission; kind aliases must not exclude them.
           sql = "SELECT count(*) AS count FROM provider_budget_counters AS counter WHERE counter.active_reservations <> (SELECT count(*) FROM provider_admissions AS admission WHERE admission.capability = counter.capability AND admission.state = 'reserved')";
         } else if (version < 43) sql = sql.replace("json_extract(record_json, '$.kind') = 'legacy-capability' AND (", "(").replaceAll("provider_requests", "provider_admissions").replaceAll("provider_usage", "provider_budget_counters").replaceAll("'$.record.", "'$.");
         if (version < 41) sql = sql.replaceAll("run_failures", "failures");
@@ -1481,10 +1304,7 @@ function runDeletionEvidence(database: DatabaseSync, deleting: RunRecord, archiv
     if (owner.workflow !== workflow || owner.itemId !== itemId) throw new Error("run-delete-evidence-owner-mismatch");
     return owner.state === "deleted" || (ownerId === runId && (owner.state === "live" || owner.state === "archived"));
   };
-  // Checkpoints and permanent operation keys are read by workflow/item, before
-  // a queued retry materializes an explicit evidence reference. Tombstones do
-  // not retain retryOf, so a direct lineage edge cannot protect a later retry.
-  // Keep this exact evidence group while any other retained run can read it.
+  // Checkpoint and permanent-key reads precede retry materialization; tombstones cannot stand in for their payloads.
   const retainedPeers = database.prepare(`SELECT record_key, record_json FROM workflow_runs
     WHERE workflow = ? AND item_id = ? AND record_key <> ?`).all(workflow, itemId, runId);
   for (const raw of retainedPeers) {
@@ -1561,7 +1381,7 @@ function timelineEvidenceRepositories(database: DatabaseSync) {
   };
 }
 
-/** Authenticate even retry-shared sources whose original run timeline was deleted. */
+
 function readHistoricalOperationSource(database: DatabaseSync, json: string): HistoricalOperationSource {
   const source = parseJsonRecord(HistoricalOperationSourceSchema, json);
   if (source.ledgerOutbox.payload.kind !== "ledger-entry" || source.spanOutbox.payload.kind !== "write-committed-span") throw new Error("historical-source-kind-mismatch");
@@ -2335,10 +2155,7 @@ function inspectSpanRunAuthorityReadOnly(
     const archivedRunCount = (hasHistoricalArchiveTables(database) ? CountRowSchema.parse(database.prepare("SELECT count(*) AS count FROM archived_runs").get()).count : 0)+transfers.size;
     const archivedRunById = hasHistoricalArchiveTables(database) ? database.prepare("SELECT record_json FROM archived_runs WHERE record_key = ?") : { get: (_id: string) => undefined };
     const taskById = database.prepare("SELECT record_json FROM workflow_runs WHERE record_key = ?");
-    // D308: the delete cascade removes the `workflow_runs` row (and any `archived_runs`
-    // row) but writes ONE tombstone first, and span files are never rewritten
-    // (D301). So a root with neither authority row is not yet missing — the
-    // tombstone is consulted, in this same read transaction, before absence.
+    // A deleted run leaves a tombstone and immutable span files; never reinterpret that root as orphan evidence.
     const deletedRunById = database.prepare("SELECT record_json FROM deleted_runs WHERE record_key = ?");
     // Reverse reconciliation shares this exact read transaction/fingerprint with
     // the forward root lookup. Malformed rows never become absence facts.
@@ -2737,7 +2554,7 @@ export class AuthorityDatabase implements Disposable {
     return inspectExistingDatabaseReadOnly(path, busyTimeoutMs);
   }
 
-  /** Read-only D332 phase projection. No private journal fields escape this adapter. */
+
   readUpgradePhases() {
     return this.withAuthorityReadSnapshot(() => {
       if (this.getMeta().schemaVersion < 30) return { state: "absent" as const, reason: "pre-journal-schema" as const };
@@ -3030,9 +2847,7 @@ export class AuthorityDatabase implements Disposable {
             DELETE FROM notifications WHERE EXISTS (
               SELECT 1 FROM json_each(record_json, '$.links') AS link WHERE json_extract(link.value, '$.runId') = ?
             )`, runId);
-          // A frozen sibling/parent snapshot also owns these edges. Keep them
-          // until the last live endpoint leaves; child-first transfer must not
-          // mutate the parent's reviewed source before its own verification.
+          // Keep frozen shared edges until their last live endpoint leaves; a child transfer cannot mutate a retained snapshot.
           remove("delegation_dependencies", `
             DELETE FROM delegation_dependencies
             WHERE (json_extract(record_json, '$.parentRunId') = ? OR json_extract(record_json, '$.childRunId') = ?)
@@ -3365,9 +3180,7 @@ export class AuthorityDatabase implements Disposable {
   }
 
   settleArchivedDeletion(runId: string) {
-    // Claim acquisition retains files while holding the authority write lock.
-    // Hold that same lock through owner inspection and unlinking so another
-    // connection cannot commit a new capture whose verified bytes we removed.
+    // Hold the authority write lock through file inspection and unlinking to fence another claimant.
     return this.withAuthorityTransaction(() => {
       const receipt = this.authority.deletedRuns.get(runId);
       if (receipt === undefined || receipt.origin !== "archive") throw new Error("archive-deletion-receipt-missing");
@@ -3774,7 +3587,7 @@ export class AuthorityDatabase implements Disposable {
     }
   }
 
-  /** D330: queue-root publication belongs after the outermost authority commit. */
+
   afterAuthorityCommit(publish: () => void): void {
     if (this.#transactionDepth === 0) {
       publish();
@@ -3784,12 +3597,7 @@ export class AuthorityDatabase implements Disposable {
     this.#authorityCommitCallbacks.push(publish);
   }
 
-  /**
-   * Issue the only D288 write capability. The public repository remains
-   * read-only; this closure owns the authenticated HMAC domain and accepts
-   * only run ids. Every source and replay check is repeated under the same
-   * authority transaction as the batch insert.
-   */
+
   createActivityPersonPseudonymBackfillWriteCapability(_pseudonyms: ActivityPersonPseudonymDomain): ActivityPersonPseudonymBackfillWriteCapability {
     throw new Error("activity-person-pseudonyms-retired");
   }
@@ -4220,9 +4028,7 @@ export class AuthorityDatabase implements Disposable {
       }
 
       if (dependency.state === "asserted") {
-        // D307 — an assertion is durable as a MARKED checkpoint row: the exact
-        // row must exist at the terminal attempt, carry the assertion marker
-        // for the same step, and bind the same output schema and digest.
+
         const rows = this.#database.prepare(`
           SELECT record_json FROM run_checkpoints
           WHERE workflow = ? AND item_id = ? AND node_id = ? AND attempt = ? AND run_id = ?
@@ -4240,12 +4046,7 @@ export class AuthorityDatabase implements Disposable {
         continue;
       }
       if (dependency.state === "not-run") {
-        /*
-         * D214: an attempt can hold SEVERAL executions of one node, so "did this
-         * node run at the terminal attempt" is a question about the whole
-         * attempt and not about one key. A count is the only reading that stays
-         * true once a gate resume can add a second row.
-         */
+
         const executions = CountRowSchema.parse(this.#database.prepare(`
           SELECT count(*) AS count FROM run_checkpoints
           WHERE workflow = ? AND item_id = ? AND node_id = ? AND attempt = ?
@@ -4325,8 +4126,7 @@ export class AuthorityDatabase implements Disposable {
 
   #configureConnection(): void {
     this.#database.exec("PRAGMA foreign_keys = ON");
-    // D308 — a deleted run's bytes leave the file, not just the b-tree: freed
-    // pages are overwritten with zeros rather than kept until reuse.
+    // Enable secure deletion so freed SQLite pages do not retain deleted run bytes.
     this.#database.exec("PRAGMA secure_delete = ON");
     this.#database.exec("PRAGMA journal_mode = WAL");
     this.#database.exec("PRAGMA synchronous = FULL");
@@ -4362,14 +4162,7 @@ export class AuthorityDatabase implements Disposable {
         WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
         ORDER BY name
       `).all().map((row) => TableNameRowSchema.parse(row).name);
-      /*
-       * D290 admits only the common integrated lineage: the exact table set a
-       * database holds at each released version on THIS suffix. v27 is the
-       * whole DDL before the phone-capture retirement; v28 is that set with
-       * the capture tables dropped (D294). Later tables (D308's
-       * `deleted_runs`) are absent from both. Any other set at these versions
-       * is a divergent suffix and refuses below.
-       */
+      // Admit only the released integrated table lineage; divergent layouts require an explicit conversion decision.
       const integratedTables = userVersion === 27 || userVersion === 28 || userVersion === 29
         ? INTEGRATED_AUTHORITY_TABLES_BY_VERSION[userVersion]
         : undefined;
@@ -4390,7 +4183,7 @@ export class AuthorityDatabase implements Disposable {
             ? "DCR"
             : "unrecognized";
       throw new Error(
-        `D290 divergent post-v18 migration suffix: ${source} v${String(userVersion)}; `
+        `divergent post-v18 migration suffix: ${source} v${String(userVersion)}; `
         + "automatic conversion is not authorized",
       );
     }
@@ -4602,10 +4395,7 @@ export class AuthorityDatabase implements Disposable {
         if (sqliteChanges(update.changes) !== 1) throw new Error("authority generation update did not affect the singleton metadata row");
       }
       if (this.#archiveSourcesDirty) {
-        // Fence records owned by cleanup, while retained shared authorities advance.
-        // Frozen captures supply the baseline; admitted older claims may already
-        // have a verified saved report. Uncaptured historical claims retain the
-        // exact-source proof requirement when resumed.
+        // Fence cleanup-owned records while retained shared authority advances; frozen capture remains its baseline.
         if (existsSync(join(dirname(this.#path), "archive.sqlite"))) {
           for (const report of this.lifecycleArchive(true).pendingManualReports()) {
             const claim = report.content.manualArchive;
@@ -4949,12 +4739,7 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  /**
-   * The one authority repository whose rows are UPDATED. `fold` is a
-   * read-modify-write inside the outer authority transaction, so two triggers
-   * firing at once cannot both create the `(actor, dedupeFingerprint)` row —
-   * the unique index and the transaction agree.
-   */
+
   #buildNotificationRepository(): AuthorityRepositories["notifications"] {
     const write = (record: NotificationRecord, mode: "insert" | "update"): void => {
       const json = canonicalJsonStringify(record);
@@ -5111,26 +4896,11 @@ export class AuthorityDatabase implements Disposable {
         `).get(FailureFingerprintSchema.parse(fingerprint))).count,
       }),
       diagnosticBundles: this.#buildDiagnosticBundleRepository(),
-      /**
-       * Ref data-intake-and-edit-data §5's plan manifest (D159). Insert-only and byte-exact on replay:
-       * a manifest proves which file and mapping produced which items, and a
-       * run has already fanned out against it, so a differing rebuild is a
-       * refusal rather than an overwrite.
-       */
-      /**
-       * Ref data-intake-and-edit-data §2.2's in-progress session (2i-E1): created in `mapping` by the
-       * upload route, mutated by the intake command arms under a version CAS.
-       * The searchable columns move WITH the record on every update — a
-       * column that lagged its own JSON would make "open session for this
-       * file" a lie.
-       */
+
+
       intakeSessions: imports.sessions,
       intakeManifests: imports.manifests,
-      /**
-       * Ref data-intake-and-edit-data §4.3's admitted page extraction (D159). One page, read once, for
-       * one form: a second producer reading the same page is a REPLACEMENT a
-       * human decides on, not a second row that silently doubles a person.
-       */
+
       ocrExtractions: Object.freeze({
         insert: (input: unknown) => {
           const record = AdmittedExtractionSchema.parse(input);
@@ -5221,9 +4991,7 @@ export class AuthorityDatabase implements Disposable {
             }
             if (record.execution.state === "started") {
               const run = this.#readRecord("workflow_runs", record.execution.runId, RunRecordSchema);
-              // D318 — a live-read result binds to an ORDINARY run (dryRun
-              // false); a preview result (and every pre-D318 row, which
-              // carries no arm) binds to a dry run. Neither may cite the other.
+
               const expectedDryRun = record.execution.arm !== "live-read";
               if (run === undefined
                 || run.envelope.dryRun !== expectedDryRun
@@ -5533,21 +5301,13 @@ export class AuthorityDatabase implements Disposable {
       runCheckpoints: Object.freeze({
         insert: (input: unknown) => {
           const record = RunCheckpointRecordSchema.parse(input);
-          /*
-           * D214: the schema makes `claimGeneration` optional so that rows
-           * stored before the component existed still PARSE (D133 read-forward).
-           * Absence is a fact about history, never a shape a writer may adopt —
-           * a new row that does not name the execution which produced it would
-           * be indistinguishable from a pre-D214 row and could collide with the
-           * next execution exactly as before. Every writer holds the claim it is
-           * running under, so this is a refusal and not a default.
-           */
+          // Readers admit absent claim generations; every new checkpoint writer must supply one.
           const claimGeneration = record.claimGeneration;
           if (claimGeneration === undefined) {
             throw new Error(
               `run checkpoint ${record.workflowId}/${record.itemId}/${record.nodeId} attempt `
-              + `${String(record.attempt)} names no claim generation; every checkpoint written from D214 `
-              + "forward records WHICH execution of its attempt produced it",
+              + `${String(record.attempt)} names no claim generation; every new checkpoint `
+              + "records WHICH execution of its attempt produced it",
             );
           }
           const json = canonicalJsonStringify(record);
@@ -5591,12 +5351,7 @@ export class AuthorityDatabase implements Disposable {
           checkpointLookupKey(workflowId, itemId, nodeId, attempt, claimGeneration),
           RunCheckpointRecordSchema,
         ),
-        /**
-         * D214 — the LATEST EXECUTION, not merely the latest attempt. A NULL
-         * `claim_generation` (a pre-D214 row) sorts last under `DESC` in SQLite,
-         * which is the honest order: any row that names its execution was
-         * written after every row that could not.
-         */
+        // SQLite DESC sorts NULL claim generations last; order executions within attempts.
         latest: (workflowId: string, itemId: string, nodeId: string) => {
           const row = this.#database.prepare(`
             SELECT record_json FROM run_checkpoints
@@ -5656,12 +5411,7 @@ export class AuthorityDatabase implements Disposable {
         list: () => !hasHistoricalArchiveTables(this.#database) ? this.historicalVersionChanges().filter(row => "schemaVersion" in row && row.schemaVersion === "historical-archive-v1").map(row => HistoricalVersionChangeSchema.parse(row).plan) : Object.freeze(this.#database.prepare(`
           SELECT record_json FROM version_plans ORDER BY created_at DESC, record_key
         `).all().map((row) => parseJsonRecord(VersionPlanStorageRecordSchema, JsonRowSchema.parse(row).record_json))),
-        /**
-         * `planned → applied`, exactly once, under the caller's CAS token —
-         * the same discipline `startPlans.consume` follows, and for the same
-         * reason: a reviewable proposal that could be applied twice would
-         * archive one sweep's runs under two different change records.
-         */
+
         consume: (input: unknown) => {
           const request = VersionPlanConsumeRequestSchema.parse(input);
           return this.#authorityWrite("version_plans", () => {
@@ -5705,12 +5455,7 @@ export class AuthorityDatabase implements Disposable {
           });
         },
       }),
-      /**
-       * D179 / ref dashboard-surfaces §10.2 — the archive model's three durable facts. All
-       * three are insert-only here AND in SQL: the migration's triggers abort
-       * every UPDATE and DELETE, so an archive cannot be quietly rewritten by
-       * a future repository method either.
-       */
+
       versionBumpApplications: Object.freeze({
         insert: (input: unknown) => {
           const record = VersionBumpApplicationStorageRecordSchema.parse(input);
@@ -5828,11 +5573,7 @@ export class AuthorityDatabase implements Disposable {
           const record = this.#readRecord("archived_runs", runId, ArchivedRunStorageRecordSchema);
           return record === undefined ? undefined : this.#verifyArchivedPrivateInput(record);
         }),
-        /**
-         * The predicate the ONE run/queue projection asks per row (D81/D80).
-         * It reads the index rather than the record so excluding an archived
-         * row never costs a JSON parse.
-         */
+
         isArchived: (runId: string) => !hasHistoricalArchiveTables(this.#database) ? this.transferredRun(runId) !== undefined : CountRowSchema.parse(this.#database.prepare(`
           SELECT count(*) AS count FROM archived_runs WHERE record_key = ?
         `).get(runId)).count > 0,
@@ -6095,14 +5836,7 @@ export class AuthorityDatabase implements Disposable {
     return this.#readRecord("workflow_runs", runId, RunRecordSchema);
   }
 
-  /**
-   * D221 — the attempt the NEXT run of this logical item must take.
-   *
-   * The `attempt` column is the envelope's own value (the integrity audit pins
-   * the two together). D330 retains spent ordinals in tombstones, so the
-   * maximum across live and deleted authority is the history. One past it is the
-   * only attempt no execution of that item can already own.
-   */
+
   #nextItemAttempt(workflow: string, itemId: string): number {
     const row = MaxAttemptRowSchema.parse(this.#database.prepare(`
       SELECT max(attempt) AS attempt FROM (
@@ -6117,21 +5851,7 @@ export class AuthorityDatabase implements Disposable {
     return highest + 1;
   }
 
-  /**
-   * D230: the next unspent ORDINAL for one workflow — the queue footer's `#N`.
-   *
-   * Same shape as `#nextItemAttempt` one scope up, and for the same reason: the
-   * column is the record's own value (the integrity audit pins them together),
-   * tombstones retain deleted ordinals, so the two-source maximum is the whole
-   * history of numbers that workflow has spent, and one past it is the only
-   * number no run of that workflow can already own.
-   *
-   * A workflow whose every row predates v15 answers `null` and therefore starts
-   * at 1. That is the honest start rather than a defect: those rows name no
-   * ordinal at all (they are NULL, not 0), so nothing can collide with 1, and
-   * back-filling them by `created_at` order to "make room" would mint numbers
-   * that were never true of them.
-   */
+
   #nextWorkflowRunNumber(workflow: string): number {
     const row = MaxRunNumberRowSchema.parse(this.#database.prepare(`
       SELECT max(run_number) AS run_number FROM (
@@ -6177,13 +5897,9 @@ export class AuthorityDatabase implements Disposable {
         record.claimGeneration,
         claim?.heartbeatAt ?? null,
         record.envelope.parent?.runId ?? null,
-        // D230: NULL for every run enqueued before schema v15, carried through
-        // every later UPDATE unchanged. A row that names no ordinal keeps
-        // naming none — an update is not the moment to invent one.
+        // Runs without a recorded ordinal retain NULL across updates.
         record.runNumber ?? null,
-        // D269: the same read-forward shape — NULL for every run enqueued
-        // before schema v17 and for a run no fan-out grouped; never minted on
-        // an update.
+        // Runs without a recorded session retain NULL across updates.
         record.sessionId ?? null,
         record.version,
       ] as const;
@@ -6199,11 +5915,7 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  /**
-   * One compare-and-swap over a run row. Every mutation funnels through here so
-   * the version check, the claim check, and the legality check cannot be
-   * bypassed by a caller that "knows" its update is safe.
-   */
+
   #mutateRun(
     runId: string,
     expectedVersion: number,
@@ -6258,9 +5970,7 @@ export class AuthorityDatabase implements Disposable {
           throw new Error("dashboard runtime settings are stale; restart activation is required");
         }
       }
-      // One worker, one active item (ref execution-and-sessions §0.3). A worker asking for a
-      // second row is a bug in the loop, not a state to serve — and serving
-      // it would put two runs and two browser-session sets under one owner.
+
       const held = HeldRunRowSchema.parse(this.#database.prepare(`
         SELECT record_key AS run_id FROM workflow_runs
         WHERE owner_worker_id = ? AND state IN ('claimed', 'validating', 'running')
@@ -6360,18 +6070,7 @@ export class AuthorityDatabase implements Disposable {
             }
             return Object.freeze({ state: "existing" as const, record: existing });
           }
-          /*
-           * D221 — a new run of a logical item takes the item's NEXT attempt.
-           *
-           * The checkpoint key is `(workflow, item_id, node_id, attempt,
-           * claim_generation)` and every one of those components is item-scoped
-           * except the two the run supplies, so a second run born at an attempt
-           * the item already spent puts its executions under keys the first run
-           * owns — which is exactly how a retry of a failed run died on the
-           * first `always-rerun` node it reached. The check is here, in the one
-           * transaction that can see the whole item, and not at the two call
-           * sites that build run records.
-           */
+
           const next = this.#nextItemAttempt(record.envelope.workflow, record.envelope.itemId);
           if (record.envelope.attempt < next) {
             throw new Error(
@@ -6381,26 +6080,8 @@ export class AuthorityDatabase implements Disposable {
               + "the run's, and no two runs of one item may hold the same one",
             );
           }
-          /*
-           * D230 — the same rule one scope up, for the workflow ORDINAL.
-           *
-           * `UNIQUE (workflow, run_number)` would refuse a repeat anyway, but a
-           * constraint violation names an index rather than the mistake, and a
-           * caller that read the counter before another transaction spent it
-           * deserves the sentence that says so. A record carrying NO number is
-           * accepted unconditionally: that is the read-forward shape (a replayed
-           * historical row, a fixture built before v15), and a writer that
-           * minted one here would be back-filling.
-           */
-          /*
-           * D269 — a run that names a session names a row authority wrote.
-           * The fan-out inserts the session BEFORE its first member inside this
-           * same transaction, so a member enqueued without it is a caller
-           * defect, refused here by name rather than left as a dangling id the
-           * session view would have to explain away. A record with NO session
-           * is accepted unconditionally: that is the read-forward shape (a
-           * replayed pre-v17 row) and the shape of a run no fan-out grouped.
-           */
+
+
           if (record.sessionId !== undefined) {
             const session = this.#readRecord("workflow_run_batches", record.sessionId, RunSessionRecordSchema);
             if (session === undefined) {
@@ -6433,7 +6114,7 @@ export class AuthorityDatabase implements Disposable {
       },
       get: (runId: string) => this.#readRunRow(runId),
       search: (input: unknown) => this.withAuthorityReadSnapshot(() => createRunSearchIndex(this.#database).search(input, this.getMeta().authorityGeneration)),
-      /** D179: the whole set a version bump assesses — terminal and not. */
+
       listByWorkflow: (workflow: string) => Object.freeze(this.#database.prepare(`
         SELECT record_json FROM workflow_runs WHERE workflow = ? ORDER BY created_at, record_key
       `).all(workflow).map((row) => parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json))),
@@ -6457,9 +6138,7 @@ export class AuthorityDatabase implements Disposable {
         `).all(parsed);
         if (rows.length === 0) return undefined;
         if (rows.length > 1) {
-          // A trace id is frozen at enqueue and carries the run id's own first
-          // four hex digits, so two rows sharing one is corruption — never a
-          // "pick the newest" situation.
+          // Trace identity is frozen at enqueue; duplicate trace IDs are corruption, not ambiguous lookup.
           throw new Error(`trace ${parsed} identifies ${String(rows.length)} runs; a trace id names exactly one`);
         }
         return parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(rows[0]).record_json);
@@ -6519,15 +6198,7 @@ export class AuthorityDatabase implements Disposable {
       listBySession: (sessionId: string) => Object.freeze(this.#database.prepare(`
         SELECT record_json FROM workflow_runs WHERE session_id = ? ORDER BY created_at, record_key
       `).all(RunSessionIdSchema.parse(sessionId)).map((row) => parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json))),
-      /**
-       * D262. `tasks_heartbeat_idx ON workflow_runs(state, heartbeat_at)` leads on
-       * `state`, so this is an index scan over a set that is almost always
-       * empty. The parsed record is re-checked against the column the scan
-       * selected on: the two are written together by `#writeRunRow`, and a row
-       * whose column and lifecycle disagree is an integrity defect that must
-       * name the run rather than quietly publish a notification about a gate
-       * the record does not hold.
-       */
+
       listParkedAtGate: () => {
         const rows = this.#database.prepare(`
           SELECT record_json FROM workflow_runs WHERE state = 'parked-gate' ORDER BY created_at, record_key
@@ -6584,13 +6255,7 @@ export class AuthorityDatabase implements Disposable {
               deletedAt: now,
               removed: rows,
             });
-          /*
-           * The tombstone goes in FIRST with an empty tally: every relaxed
-           * never-delete trigger reads it, so nothing below can pass without
-           * it. Its one admitted UPDATE is the one-way settle at the end of
-           * this transaction — empty tally to final tally, once; the trigger
-           * aborts anything else.
-           */
+          // Write the tombstone before cascading; deletion triggers require it even while its tally is empty.
           const inserted = this.#database.prepare(`
             INSERT INTO deleted_runs
               (record_key, workflow, trace_id, origin, command_id, deleted_at, record_json, created_at,
@@ -6674,12 +6339,7 @@ export class AuthorityDatabase implements Disposable {
           request.claim,
           (current) => RunRecordSchema.parse({
             ...current,
-            // A new attempt drops every single-resume affordance: a freshness
-            // override authorized ONE attempt (ref workflow-model §5.5), and injected
-            // patches have already been persisted as checkpoints by the
-            // executor that applied them. D221: the attempt it advances INTO is
-            // the item's next one, never this run's `+ 1` — a sibling run of the
-            // same item may already hold that.
+            // A new attempt drops single-resume overrides; they never authorize another attempt.
             envelope: nextAttemptEnvelope(
               current.envelope,
               this.#nextItemAttempt(current.envelope.workflow, current.envelope.itemId),
@@ -6760,9 +6420,7 @@ export class AuthorityDatabase implements Disposable {
           request.now,
           undefined,
           (current) => {
-            // §6.4: the resume claim is the fence, and the resume wins. The
-            // version CAS already catches the race (a claim bumps the
-            // version); these arms make a stale-but-lucky caller loud too.
+
             if (runClaim(current) !== undefined) {
               throw new Error(
                 `run ${request.runId} resumed while you were editing — your edit was not applied; `
@@ -6792,14 +6450,7 @@ export class AuthorityDatabase implements Disposable {
       sweepExpiredClaims: (input: unknown) => {
         const request = RunClaimSweepRequestSchema.parse(input);
         return this.withAuthorityTransaction(() => {
-          /*
-           * The request's schema already refused everything but exactly one
-           * proof of death (D200), so the scan differs ONLY in that predicate.
-           * Everything after it — the D118 write-intent gate, the park/requeue
-           * routing, the transition legality check — is one code path for both,
-           * which is the point: a startup self-sweep is the ordinary sweep
-           * pointed at one worker id, not a second recovery path.
-           */
+
           const clauses: string[] = [];
           const bindings: string[] = [];
           if (request.staleBefore !== undefined) {
@@ -6823,13 +6474,7 @@ export class AuthorityDatabase implements Disposable {
           const outcomes: z.infer<typeof RunClaimSweepOutcomeSchema>[] = [];
           for (const row of rows) {
             const current = parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json);
-            // D118 (ref execution-and-sessions §3): before any queued/claimable transition, check
-            // the authoritative write-intent set for this logical item. An
-            // unfinished `attempting` intent means a write may have landed —
-            // the run routes to ref write-safety recovery, never to ordinary requeue.
-            // The lookup runs inside this same transaction; if it throws, the
-            // whole sweep unwinds rather than defaulting to "no unfinished
-            // write".
+
             const intents = this.#database.prepare(`
               SELECT record_json FROM run_operations
               WHERE status = 'attempting'
@@ -6880,9 +6525,7 @@ export class AuthorityDatabase implements Disposable {
                 }));
                 continue;
               }
-              // A claimed/validating row has no legal parked-write edge; it
-              // stays under its expired claim — unclaimable, loud in the
-              // report — until recovery resolves the intent.
+
               outcomes.push(RunClaimSweepOutcomeSchema.parse({
                 state: "recovery-required",
                 run: current,
@@ -6977,12 +6620,7 @@ export class AuthorityDatabase implements Disposable {
               message: `start plan ${request.startPlanId} was planned against a different ${String(mismatched[0])}; re-plan before starting`,
             });
           }
-          /*
-           * Consuming advances the durable record from its confirmation revision
-           * by exactly one. A retry must present that original revision so it
-           * confirms the same body, while an unconsumed plan uses its current
-           * revision normally.
-           */
+          // Consumption advances the exact reviewed revision once; replay binds the consumed revision.
           const confirmationVersion = plan.consumedBy === undefined ? plan.version : plan.version - 1;
           if (request.expectedVersion !== confirmationVersion) {
             return StartPlanConsumeOutcomeSchema.parse({
@@ -6992,9 +6630,7 @@ export class AuthorityDatabase implements Disposable {
             });
           }
           if (plan.consumedBy !== undefined) {
-            // The same command retrying is idempotent; a different one is a
-            // second start wearing the first confirmation's clothes. This runs
-            // only after all immutable confirmation bindings revalidated.
+
             return StartPlanConsumeOutcomeSchema.parse(plan.consumedBy.commandId === request.commandId
               ? { state: "already-consumed", plan }
               : {
@@ -7313,9 +6949,7 @@ export class AuthorityDatabase implements Disposable {
           const updated = WorkerLeaseRecordSchema.parse({
             ...current,
             lifecycle: request.lifecycle,
-            // A worker reporting that it has stopped also settles the directive:
-            // a stopped lease carrying "run" would read as a worker that should
-            // be running and is not.
+
             control: request.lifecycle.state === "stopped" && current.control.directive === "run"
               ? { ...current.control, directive: "stop", requestedAt: request.now }
               : current.control,

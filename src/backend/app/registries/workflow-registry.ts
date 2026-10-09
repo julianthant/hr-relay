@@ -1,14 +1,4 @@
-/**
- * The composition root for workflows (ref workflow-model §1.2).
- *
- * `WORKFLOW_MODULES` is the ONE unavoidable static module tuple. Every registry
- * and projection below derives from it, so adding a workflow is one import plus
- * one tuple entry rather than ten synchronized lists — which is the whole point
- * of §1.3. Lower layers never import workflows; the arrow only points this way.
- *
- * This app-owned registry imports workflow modules and assembles their
- * descriptors. Lower-level runtime packages receive the compiled values.
- */
+
 import { readFileSync } from "node:fs";
 import {
   compileWorkflow,
@@ -31,11 +21,7 @@ import { taskStoreRegistry } from "./task-registry.js";
 import { personLookupWorkflow } from "../../../workflows/person-lookup/workflow.js";
 import { separationsWorkflow } from "../../../workflows/separations/workflow.js";
 
-/**
- * D311/D317 — a definition-backed workflow's server module is DERIVED here,
- * at the composition root, from its one authored `workflow.ts` value and the
- * task-store inventory. Nothing under `src/workflows/` composes stores.
- */
+
 export const personLookupModule = composeWorkflowModule(
   compileWorkflow(personLookupWorkflow),
   taskStoreRegistry.stores,
@@ -68,15 +54,7 @@ export const SERVER_REGISTRY = Object.freeze(Object.fromEntries(
   WORKFLOW_MODULES.map((module) => [module.descriptor.id, module]),
 ));
 
-/**
- * Contracts a registered descriptor uses that no store implements YET.
- *
- * The list is checked in BOTH directions by `descriptor-coverage`: an unlisted
- * unbound contract fails, and a listed contract that a store has since bound
- * fails too. A missing impl is a legitimate mid-program state; a missing impl
- * nobody is tracking is exactly the drift a boot-time throw would only find in
- * production.
- */
+
 export const PENDING_IMPL_BINDINGS_PATH = "src/backend/app/registries/pending-impl-bindings.json";
 
 export function readPendingImplBindings(repoRoot: string): PendingImplBindings {
@@ -103,11 +81,7 @@ export const WORKFLOW_ROLES = workflowRoleRegistry(WORKFLOW_MODULES);
 
 export const WORKFLOW_IDS_BY_CODE = workflowCodeRegistry(DESCRIPTORS);
 
-/**
- * Audit descriptor↔impl pairing. Returns human-readable violations; an empty
- * array means every contract a descriptor names is either bound in a store or
- * explicitly tracked as pending.
- */
+
 export function auditImplBindings(bindings: PendingImplBindings): readonly string[] {
   const violations: string[] = [
     ...auditWorkflowModuleBindings(WORKFLOW_MODULES),

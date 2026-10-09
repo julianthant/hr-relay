@@ -1,22 +1,5 @@
-/**
- * Ref operator-trust §2.2 — automatic diagnostic capture.
- *
- * Capture is TWO phases on purpose, and the reason is a foreign key:
- * `diagnostic_snapshots.failure_id` references `failures(record_key)`, while
- * `FailureRecord.diagnosticBundleId` is a forward reference the failure row
- * must already carry. Neither row can be written second on its own, so the
- * only honest ordering is
- *
- *   1. `prepare` — classify fields, write every attachment to the content-addressed
- *      store, and mint the bundle id. Asynchronous, and nothing durable in
- *      authority has moved yet. A crash here leaves at most an unreferenced
- *      artifact, which the content-addressed writer already tolerates.
- *   2. inside ONE authority transaction: terminalize the failure with the
- *      prepared `bundleId`, then `persist` the bundle naming that failure.
- *
- * Classified fields retain their original values beside their transforms.
- * Unclassified values remain visible in the capture warning.
- */
+
+// Prepare the bundle ID before writing the failure; persist its foreign-key reference in the same transaction.
 import { z } from "zod";
 import type { ContentAddressedArtifactWriter } from "../../../workflow-kit/artifacts.js";
 import type { Clock } from "../../../rules/time/clock.js";
@@ -37,12 +20,7 @@ import {
 } from "../../../models/trust/diagnostic.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 
-/**
- * The exact media type each attachment arm may carry. Ref operator-trust §2.2 allows a
- * screenshot, a bounded accessibility/DOM excerpt, and console/network
- * summaries — not an arbitrary blob — and `DiagnosticAttachmentSchema` pins
- * the same pairs, so a mismatch fails at both ends.
- */
+
 const ATTACHMENT_MEDIA_TYPES = Object.freeze({
   screenshot: ["image/png", "image/jpeg"],
   "accessibility-excerpt": ["text/yaml"],
@@ -72,13 +50,10 @@ export interface DiagnosticCaptureRequest {
   readonly requestedBy?: string;
   readonly configFingerprint: string;
   readonly descriptorFingerprint: string;
-  /**
-   * Classified diagnostic fields. Anything this array cannot classify is
-   * retained in a warning when no classification applies.
-   */
+  // Unclassified diagnostic fields retain a warning rather than silently acquiring a classification.
   readonly fields: unknown;
   readonly attachments: readonly DiagnosticAttachmentSource[];
-  /** Defaults to `ordinary`, i.e. the D86 notes retention floor. */
+
   readonly retention?: unknown;
 }
 
@@ -93,7 +68,7 @@ export interface DiagnosticCaptureDependencies {
   readonly authority: Pick<AuthorityRepositories, "diagnosticBundles">;
   readonly clock: Clock;
   readonly ids: IdFactory;
-  /** Test seam only; production uses the D86 floor from the domain module. */
+
   readonly retentionDays?: number;
 }
 

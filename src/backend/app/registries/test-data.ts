@@ -18,13 +18,7 @@ import {
   type TestTargetRegistry,
 } from "./test-target-registry.js";
 
-/**
- * D341 — the ONE reader for test data. Shared data comes from the tracked
- * `config/test-data.json`; private inputs and private document paths come
- * from the ignored `config/test-data.local.json`. Paths resolve against the
- * DECLARING file; there is no upward search, no CWD default and no fallback to
- * another checkout. Importing this module reads the tracked file only.
- */
+
 
 export interface TestDataSharedFileResolution {
   readonly name: TestDataFileName;
@@ -47,11 +41,7 @@ function isInside(root: string, candidate: string): boolean {
   return candidate === root || candidate.startsWith(root.endsWith(sep) ? root : `${root}${sep}`);
 }
 
-/**
- * Parse one tracked config document. `configPath` must be absolute; declared
- * file paths resolve against its directory and must stay inside `repoRoot`,
- * which is the directory that contains the `config/` folder.
- */
+
 export function parseTestDataSharedConfig(
   input: unknown,
   configPath: string,
@@ -119,11 +109,7 @@ export function testDataFile(shared: TestDataShared, name: string): TestDataShar
   return file;
 }
 
-/**
- * Read a named shared file's bytes. The real path is re-checked against the
- * repository so a symlink cannot walk out; an empty file is a defect, never a
- * substitute document.
- */
+// Recheck shared-file realpaths inside the repository; empty bytes are a defect.
 export function readTestDataFileBytes(shared: TestDataShared, name: string): Readonly<{ file: TestDataSharedFileResolution; bytes: Buffer }> {
   const file = testDataFile(shared, name);
   let real: string;
@@ -154,10 +140,7 @@ export function testDataSamples(shared: TestDataShared = TEST_DATA): {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Private file — implemented in infra (src/backend/storage/config/test-data-local.ts), re-exported here
-// so every consumer of test data keeps ONE import site.
-// ---------------------------------------------------------------------------
+
 export {
   absentTestDataInputSource,
   assertNoDuplicateKeys,

@@ -1,17 +1,6 @@
 import { createFailureResolutionQuery } from "../queries/failure-resolution.js";
 import type { RunRecordService } from "../lifecycle/run-record-service.js";
-/**
- * The ONE authority-backed receipt path (D141).
- *
- * Both consumers — the dashboard's run-detail `receipt` section and the CLI's
- * `explain run` — go through this adapter, so a receipt an operator reads on
- * screen and a receipt they export from a terminal are the same derivation
- * over the same rows. A second assembly would be a second answer.
- *
- * It lives in `src/backend/` for the same reason `compose.ts` does: it resolves
- * the run's descriptor from the composition root's registry, which sits ABOVE
- * `core` in the layer matrix.
- */
+
 import {
   ensureRunEvidenceReceipt,
   type EnsureReceiptOutcome,
@@ -52,8 +41,7 @@ export function createReceiptService(deps: ReceiptServiceDeps): ReceiptService {
     getResult: (runId: string) => {
       const result = authority.runResults.get(runId);
       if (result === undefined) {
-        // A `done` run's result is written in the same transaction as its
-        // terminal transition (D110/D114). Its absence is a storage fault.
+
         throw new Error(`run ${runId} is terminal done but authority holds no run result`);
       }
       if (result.runId !== runId) throw new Error(`TRUST_EVIDENCE_IDENTITY_MISMATCH: result for ${runId}`);
@@ -76,8 +64,7 @@ export function createReceiptService(deps: ReceiptServiceDeps): ReceiptService {
         intent,
         attempts: authority.writeAttempts.listByIntent(intent.writeIntentId),
       })),
-    // D204: the gate's own durable row. A run with no gate node reads an empty
-    // list, which is the same answer as "this workflow asks no human anything".
+    // Gate decisions come from durable gate rows, not task checkpoints.
     listGateResultsByRun: (runId: string) => authority.gateResults.listByRun(runId),
     findReceiptByRun: (runId: string) => authority.evidenceReceipts.findByRun(runId),
     insertReceipt: (receipt: unknown) => authority.evidenceReceipts.insert(receipt),

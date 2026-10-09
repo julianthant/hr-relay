@@ -40,12 +40,7 @@ const ADMITTED_HISTORICAL_SCHEMA_VERSIONS = Object.freeze([
 ] as const);
 const PROJECTION_TABLES = new Set(["spans", "gates", "notes", "runs_view"]);
 
-/**
- * Released authority-table order used by the backup fingerprint algorithm.
- * Filtering this list by a replayed schema reconstructs the list used at that
- * schema version, including the v1-v27 capture tables and the v30-v31 protected
- * singleton that are absent from the v32 runtime registry.
- */
+// Preserve released table order when reconstructing a backup fingerprint for its schema version.
 const RELEASED_AUTHORITY_TABLE_ORDER = Object.freeze([
   "transaction_selection", "run_search_index", "run_search_grams", "run_search_publication", "run_search_declarations", "run_search_actors",
   "run_summaries", "summary_publication", "archive_transfers", "version_changes",
@@ -409,7 +404,7 @@ function pendingCounts(database: DatabaseSync, tableNames: ReadonlySet<string>, 
   });
 }
 
-/** Historical rows are never opaque admission: use the retained grammar for each family. */
+
 function validateHistoricalRecords(database: DatabaseSync, schemaVersion: number, tables: ReadonlySet<string>): void {
   const registry: Readonly<Record<string, z.ZodType>> = {
     ...AUTHORITY_RECORD_SCHEMA_REGISTRY,
@@ -450,8 +445,7 @@ function validateHistoricalRecords(database: DatabaseSync, schemaVersion: number
     if (PROJECTION_TABLES.has(table) || table === databaseStateTable(schemaVersion)) continue;
     const schema = registry[table];
     if (schema === undefined) {
-      // Retired capture authorities have no admitted producer. Refuse any retained
-      // row before the historical DROP migration can discard evidence.
+
       if (count(database, `SELECT count(*) AS count FROM ${quoteIdentifier(table)}`) !== 0) throw new Error(`unsupported-retained-authority { table: ${table} }`);
       continue;
     }
@@ -567,7 +561,7 @@ function removeGeneratedReadOnlyCompanions(
   if (!existing.shm && existsSync(shmPath)) rmSync(shmPath);
 }
 
-/** Internal stopped readers preserve pre-existing SQLite companions and remove only their own empty read artifacts. */
+// Stopped readers preserve existing SQLite companions and remove only their own empty read artifacts.
 export function withAuthorityDatabaseReadOnly<Result>(admission: RuntimeAdmission, path: string, read: (database: DatabaseSync) => Result): Result {
   requireRuntimeAdmission(admission).assertReadOnlyAuthorityDatabase(path);
   const existing = existingSqliteCompanions(path);
@@ -612,10 +606,7 @@ export function authorityBackupSourceDatabaseIdentity(pathInput: string): string
     .digest("hex");
 }
 
-/**
- * Opens a stopped authority without migrating it. The caller owns `close()`;
- * the backup service re-inspects the copied bytes before publishing a manifest.
- */
+// Open without migration; callers own close and backup publication re-inspects copied bytes.
 export function openAuthorityBackupSourceReadOnly(
   admission: RuntimeAdmission,
   pathInput: string,
@@ -668,10 +659,7 @@ export function openAuthorityBackupSourceReadOnly(
   });
 }
 
-/** Published transfers and nonempty applying claims require archive custody.
- * An applying claim may already have captured reports before its first live transfer;
- * absent archive bytes cannot prove that capture never happened.
- */
+// An applying archive claim may capture reports before its first transfer; absent transfer rows prove no absence.
 export function backupHasArchiveTransferCustody(admission: RuntimeAdmission,path: string): boolean {
   return withAuthorityDatabaseReadOnly(admission,path, database => {
     const tables = new Set(database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('archive_transfers','version_changes','runtime_version_changes')").all()

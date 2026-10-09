@@ -15,17 +15,7 @@ export type { DashboardApp, DashboardAppDeps } from "./api-types.js";
 import { registerDataRoutes } from "./data.js";
 import { registerTrustRoutes } from "./trust.js";
 import { composeDataQueries } from "../../../app/composition/dashboard/data.js";
-/**
- * The dashboard BFF routes (ref frontend-backend-integration §0/§3.6) — thin parse/dispatch boundaries
- * over the queries, the command service, and the stream hub. A handler here
- * parses input, calls one service, parses output, and returns it; no
- * projection logic, no workflow switches, no second count path.
- *
- * Every failure leaves as a typed `WireError` body: schema failures are 400,
- * a named-target miss is 404, an unavailable section/capability is 409, and
- * anything else is a 500 that carries the real message — never a silent 200
- * with a plausible body.
- */
+
 import { Hono } from "hono";
 
 import { ArchivedCaptureReadError } from "../../../runs/queries/archive.js";
@@ -49,11 +39,7 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
     return next();
   });
 
-  // Every browser-reachable POST that can touch durable authority, spend a
-  // constrained provider, or create a session is admitted HERE, before its
-  // handler reads a byte (ref frontend-backend-integration §3.4, D75). The
-  // architecture guard `operator-mutation-admission` pins this table: a new
-  // POST route without a row below is a red gate, not a quiet exposure.
+  // Admit browser-reachable mutations before reading body or touching authority or provider state.
   app.use("/api/v1/commands", operatorMutationIngressGuard);
   app.use("/api/v1/commands/bulk", operatorMutationIngressGuard);
   app.use("/api/v1/settings/path-picker", operatorMutationIngressGuard);

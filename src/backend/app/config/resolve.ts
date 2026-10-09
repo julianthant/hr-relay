@@ -80,11 +80,7 @@ type SettingsOverrideByConfigGroup = Exclude<keyof SettingsOverride, keyof Confi
   ? { readonly [Group in keyof Config]: Group extends keyof SettingsOverride ? SettingsOverride[Group] : never }
   : never;
 
-/**
- * The compiler-owned exhaustiveness door for the settings layer. A new Config
- * group cannot be accepted by SettingsOverrideSchema and then omitted here,
- * and SettingsOverrideSchema cannot grow a group ConfigSchema does not own.
- */
+
 function settingsOverrideByConfigGroup(override: SettingsOverride): SettingsOverrideByConfigGroup {
   return {
     actor: override.actor,

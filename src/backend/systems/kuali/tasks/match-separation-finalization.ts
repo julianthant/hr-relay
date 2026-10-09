@@ -3,16 +3,7 @@ import { KualiMatchSeparationFinalization } from "../../../../models/systems/kua
 import { kualiDriver } from "../driver-declaration.js";
 import { kualiFinalizationVerdict } from "../finalization-verdict.js";
 
-/**
- * Beat ①'s live probe: does this document ALREADY carry this finalization?
- *
- * It runs on its own read lease and may navigate freely, which is why the
- * driver re-opens the document rather than assuming any page state.
- *
- * A subject that does not match the expected EID is a `subject-mismatch`
- * failure, not an absence — reading the wrong person's document and reporting
- * "not there" is precisely how a duplicate write would be authorized.
- */
+
 export const matchSeparationFinalizationTask = defineTask(
   kualiDriver,
   KualiMatchSeparationFinalization,

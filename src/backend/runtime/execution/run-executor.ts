@@ -9,37 +9,7 @@ import { retainedRunProtectedBindings } from "../../../models/write-safety/prote
 import { readRunCheckpoint } from "../checkpoints/run-checkpoint-reader.js";
 import type { GateSourceRuntime } from "../gates/gate-source-runtime.js";
 import { shouldRetryTaskFailure } from "../policies/task-retry.js";
-/**
- * The Phase-1f graph interpreter (ref workflow-model §§4–5; ref execution-and-sessions §3): a worker claims a
- * queued run and walks the descriptor's node tuple to a terminal state.
- *
- * The shape follows the run-state machine exactly. Entry validation runs in
- * `validating`, BEFORE any browser launches (ref workflow-model §5.4), and aggregates
- * every problem into one legible terminal failure. Execution then advances
- * `running.currentNodeId` node by node; browser tasks reach their driver only
- * inside `WorkerSessionManager.withDriver`'s callback lease; every read output
- * passes D115 provenance finalization before it may become a checkpoint or a
- * terminal-result dependency; and both terminal arms go through the atomic
- * authority composites with a factory-built `TerminalAuthorizationRecord`.
- *
- * Every task invocation is raced against an immutable, abortable deadline
- * (ref execution-and-sessions §5.5): a service or driver call that ignores its signal cannot
- * occupy the worker past the bound.
- *
- * Replay policy is structural: the interpreter consults `loadCheckpoint` ONLY
- * for `replay:"checkpoint"` task nodes — an `always-rerun` node re-executes on
- * every resume and its stored rows are audit, never authority (ref workflow-model §5.3).
- *
- * Two node arms are typed SEAMS, not implementations: the `transaction` arm
- * delegates to a `WriteSequencer` (ref write-safety's beat family — a separate task) and
- * the `child-run` arm to a `ChildRunExecutor` (ref workflow-model §3.2's enqueue/join
- * authority). Invoked without an implementation, each fails loud in the
- * `capability-unavailable` style — a structured terminal failure naming the
- * missing seam — and never skips the node. A sequencer post-fence park
- * (`WriteParkedError`, durable state already `parked-write`) surfaces as the
- * first-class `parked-write` outcome arm: the interpreter observes the
- * settled park, verifies it against authority, and settles NOTHING else.
- */
+
 import { z } from "zod";
 import { CURRENT_DIAGNOSTIC_SAFETY_VERSION } from "../../../models/trust/failure.js";
 import type { ContentAddressedArtifactWriter } from "../../../workflow-kit/artifacts.js";
@@ -103,11 +73,7 @@ export interface RunExecutionAuthority {
     & { readonly runs: Pick<AuthorityRepositories["runs"], "get"> }
     & Partial<Pick<AuthorityRepositories, "configSnapshots">>;
   afterAuthorityCommit(publish: () => void): void;
-  /**
-   * Required only when a `RunDiagnosticCapture` port is injected: the bundle
-   * row and the failure terminalization have to land together or the failure's
-   * `diagnosticBundleId` forward reference could dangle.
-   */
+  // Injected diagnostic capture requires row authority and failure identity, never an orphan bundle.
   withAuthorityTransaction?<Result>(work: (repositories: AuthorityRepositories) => Result): Result;
 }
 
@@ -115,12 +81,7 @@ type TransactionRuntimeNode = Extract<RuntimeFlowNode, { kind: "transaction" }>;
 type ChildRunRuntimeNode = Extract<RuntimeFlowNode, { kind: "child-run" }>;
 type TaskRuntimeNode = Extract<RuntimeFlowNode, { kind: "task" }>;
 
-/**
- * Ref write-safety §4.1's write sequencer seam. It owns probe → lease → prepare →
- * subject proof → fence → commit → beat-⑦ atomic settlement, and dry-run's
- * stop-after-prepare arm. A separate task implements it; this interpreter only
- * dispatches to it and fails loud when it is absent.
- */
+
 export interface WriteSequencerContext {
   readonly descriptor: AnyWorkflowDescriptor;
   readonly node: TransactionRuntimeNode;
@@ -146,24 +107,11 @@ export interface WriteSequencerContext {
 
 export interface WriteSequencer {
   executeTransaction(context: WriteSequencerContext): Promise<unknown>;
-  /**
-   * D210 — ref write-safety §12's prepare-only arm. It is part of the seam rather than a
-   * production-only extra because the interpreter's dry-run path is not
-   * optional: a run whose envelope says `dryRun` has no other legal way through
-   * a transaction node, and `executeTransaction` refuses to substitute one.
-   */
+  // The sequencer owns probe, preparation, subject proof, fence and commit as one capability boundary.
   executeDryRun(context: WriteSequencerContext): Promise<unknown>;
 }
 
-/**
- * Raised by the write sequencer AFTER the intent and the run are durably
- * parked (`parked-write`, intent-first ordering — ref write-safety §3's fail-closed
- * post-fence exit). It lives HERE, with the `WriteSequencer` seam it is part
- * of: the sequencer owns the durable settlement, and the interpreter's
- * `parked-write` outcome arm only OBSERVES it — no second settlement, no
- * failure terminalization. The ref write-safety §4.1 typed operator resolutions are the
- * only release paths.
- */
+
 export class WriteParkedError extends Error {
   readonly writeIntentId: string;
   readonly intentGeneration: number;
@@ -198,28 +146,12 @@ export interface ChildRunExecutor {
   executeChildRun(context: ChildRunContext): Promise<unknown>;
 }
 
-/**
- * Ref dashboard-surfaces §2.1 (D45) / ref data-intake-and-edit-data §4.1: the sink projector behind a descriptor's
- * `artifactProjections`. The executor commits the checkpoint and the
- * stable-keyed `artifact_outbox` rows in ONE authority transaction, then
- * calls this seam BEFORE the node may report done — a projection that cannot
- * be acknowledged fails the node loudly, never a silently dropped workbook
- * update. The durable rows survive the failure, so a relaunch resumes the
- * projection from the replayed checkpoint.
- */
+
 export interface RunArtifactProjector {
   projectOutbox(outboxIds: readonly string[]): Promise<Readonly<{ projected: number }>>;
 }
 
-/**
- * Ref task-contract §3.4 / D112's admitted-provider wiring for contracts that declare
- * `providers`. The executor mints one admitted client PER declared capability
- * PER task invocation, bound to the run's RETAINED config snapshot (read from
- * authority by the envelope's `configSnapshotId` — never re-resolved from
- * current config, D116) and to the invocation's own deadline-bounded abort
- * signal. Provider I/O is never ambient: the admission kernel stays the only
- * path to an adapter, and this seam only carries the kernel's ingredients.
- */
+
 export interface RunProviderWiring {
   readonly adapters: ProviderAdapterRegistry;
   readonly repository: ProviderAdmissionRepository;
@@ -241,11 +173,7 @@ type TaskCapabilityWiring = Readonly<{
   artifacts?: ContentAddressedArtifactWriter;
 }>;
 
-/**
- * `createAdmittedProviderClient`'s public surface is per-capability overloads,
- * which a union-typed capability cannot call — so the executor dispatches
- * through the same closed switch the kernel's own registry lookup uses.
- */
+
 function admittedClientFor(
   capability: ProviderCapabilityId,
   dependencies: ProviderAdmissionClientDependencies,
@@ -281,23 +209,11 @@ export interface RunExecutorDependencies {
   readonly gateSources?: GateSourceRuntime;
   /** Ref operator-trust §2.2. Absent means no automatic bundle, never a silent empty one. */
   readonly diagnostics?: RunDiagnosticCapture;
-  /**
-   * Absent means a contract declaring provider capabilities terminalizes with
-   * a structured failure naming the missing wiring — never a bypass around
-   * admission (ref data-intake-and-edit-data §4.11).
-   */
+
   readonly providers?: RunProviderWiring;
-  /**
-   * Ref task-contract §2.1's kernel content-addressed writer. Absent means a contract
-   * declaring `artifacts: "content-addressed"` terminalizes with a structured
-   * failure naming the missing wiring.
-   */
+
   readonly artifacts?: ContentAddressedArtifactWriter;
-  /**
-   * Absent means a node with a declared durable artifact projection
-   * terminalizes with a structured failure naming the missing wiring — a
-   * blocking projection is never silently skipped (ref data-intake-and-edit-data §4.1).
-   */
+  // Absent artifact projection fails tasks declaring durable artifacts instead of silently losing output.
   readonly artifactProjector?: RunArtifactProjector;
 }
 
@@ -311,11 +227,7 @@ export const RunExecutionOutcomeSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("done"), runId: z.string().min(1) }),
   z.strictObject({ state: z.literal("failed"), runId: z.string().min(1), failureId: z.string().min(1) }),
   z.strictObject({ state: z.literal("parked-gate"), runId: z.string().min(1), gateId: z.string().min(1) }),
-  /**
-   * A post-fence park the sequencer already settled durably (intent parked,
-   * run `parked-write`). First-class so a park never masquerades as a failure
-   * or an escaping error; released only by ref write-safety §4.1's typed resolutions.
-   */
+  // Post-fence parking is already durable; the interpreter must not overwrite it with ordinary failure.
   z.strictObject({
     state: z.literal("parked-write"),
     runId: z.string().min(1),
@@ -342,12 +254,7 @@ const RunnableTaskSchema = z.custom<(args: {
   ctx: Readonly<Record<string, unknown>>;
 }) => Promise<unknown>>((value) => typeof value === "function", "task implementation requires run");
 
-/**
- * A `found` checkpoint load has a stored row by construction (`loadCheckpoint`
- * answers `found: false` for an absent row); the narrowing is stated here once
- * so the executor never re-parses a record the repository already parsed
- * strictly, and an impossible found-without-row state fails loud by node.
- */
+
 function requireStoredCheckpoint(stored: RunCheckpointRecord | undefined, nodeId: string): RunCheckpointRecord {
   if (stored === undefined) {
     throw new Error(`node "${nodeId}" checkpoint load reported found, but the repository returned no stored row`);
@@ -363,19 +270,13 @@ function observeRaceLoser(error: unknown): void {
   void error;
 }
 
-/**
- * Race a promise against an abort signal so a non-cooperative implementation
- * cannot occupy the worker; the settled loser is observed, never unhandled.
- */
+// Race non-cooperative tasks against abort so cancellation cannot hold the worker indefinitely.
 async function raceAbortable<Result>(
   operation: Promise<Result>,
   signal: AbortSignal,
   label: string,
 ): Promise<Result> {
-  // Observe the race loser so an operation that settles AFTER the abort won
-  // can never become an unhandled rejection. This is not a swallow: when the
-  // operation wins, its own settlement — success or failure — is exactly what
-  // the race delivers to the caller.
+  // Observe the race loser to prevent a late rejection becoming unhandled.
   operation.catch(observeRaceLoser);
   if (signal.aborted) {
     throw signal.reason instanceof Error ? signal.reason : new Error(`${label} was aborted before it started`);
@@ -407,14 +308,9 @@ type PlanEntry =
   | Readonly<{ mode: "execute" }>
   | Readonly<{ mode: "replay"; record: RunCheckpointRecord }>
   | Readonly<{ mode: "skipped-condition" }>
-  /**
-   * D307 — a task an omitted step's producer rebuilds from typed facts at
-   * node time; `replay` carries THIS run's own marked row when a resume (a new
-   * claim of the same attempt) reaches the node again, so the assertion is
-   * republished rather than re-produced and the attempt holds ONE row.
-   */
+
   | Readonly<{ mode: "asserted"; replay?: RunCheckpointRecord }>
-  /** D307 — a node of an omitted step nothing rebuilds: never runs, produces nothing. */
+
   | Readonly<{ mode: "omitted" }>
   | Readonly<{ mode: "replay-gate" }>;
 
@@ -475,9 +371,7 @@ export async function executeClaimedRun(
     }
   }
 
-  // D307 — classify every node for this run's omitted steps BEFORE anything
-  // executes. The start planner refused the same refusals before a run
-  // existed; a run that reaches here with one is miswired and fails loud.
+
   const omissionPlan = planStepOmissions(
     {
       nodes: nodes.map((node) => ({ id: String(node.id), kind: node.kind, dependsOn: node.dependsOn.map(String) })),
@@ -562,21 +456,7 @@ export async function executeClaimedRun(
     throw new RunAbandonedError("cancelled");
   };
 
-  /**
-   * Ref operator-trust §2.2's task-failure capture trigger, wired to the one place a
-   * Phase-1 run's `FailureRecord` becomes durable.
-   *
-   * The ordering is forced by the schema, not chosen: `FailureRecord`
-   * carries the bundle id as a forward reference, while
-   * `diagnostic_snapshots.failure_id` references the failure row. So the bundle
-   * is PREPARED first (redaction and content-addressed attachments, nothing in
-   * authority yet), the failure is terminalized carrying its id, and the bundle
-   * row lands in the SAME authority transaction — a failure can never point at
-   * a bundle that does not exist, and a bundle can never outlive its failure.
-   *
-   * With no capture port injected the behaviour is exactly as before: no
-   * bundle, no `diagnosticBundleId`, and no transaction wrapper.
-   */
+
   const terminalizeAsFailure = async (failure: FailureRecord): Promise<RunExecutionOutcome> => {
     const capture = deps.diagnostics;
     const prepared = capture === undefined ? undefined : await capture.captureForFailure({
@@ -634,11 +514,7 @@ export async function executeClaimedRun(
     } catch (error) {
       problems.push(error instanceof Error ? error.message : "canonical input snapshot failed to parse");
     }
-    // Ref workflow-model §5.6 #3 / ref data-intake-and-edit-data §6 (D166): injected corrections apply to
-    // REPLAYED checkpoints during planning. Each group is consumed by its
-    // node's replay arm below; anything left over names a node this run will
-    // execute (or does not know), and a fresh read supersedes any correction
-    // — so leftovers refuse loudly rather than riding along ignored.
+
     const injectedByNode = new Map<string, CheckpointPatch[]>();
     for (const patch of envelope.injected ?? []) {
       const existing = injectedByNode.get(String(patch.nodeId));
@@ -667,16 +543,10 @@ export async function executeClaimedRun(
     };
     const replayedForFreshness: ReplayedCheckpoint[] = [];
     const skippedReasons = new Map<string, "condition-false" | "branch-not-selected" | "step-omitted">();
-    /** D307 — asserted outputs, keyed by node, as the terminal evidence will cite them. */
+
     const assertedRecords = new Map<string, Readonly<{ step: string; assertedAt: IsoInstant; output: Readonly<{ schemaHash: Fingerprint; value: JsonValue }> }>>();
 
-    /**
-     * Turn a node-id list into the exact terminal-dependency evidence the sealed
-     * factory demands: a durable checkpoint this run actually produced, or a
-     * closed not-run reason this run actually recorded. Nothing is invented — a
-     * node with neither is a hard error, because "we have no record" and "the
-     * node did not run" are the two things that must never be conflated.
-     */
+
     const childUpstreamEvidenceFor = (nodeId: NodeId) => {
       const child = childResultEvidence.get(String(nodeId));
       if (child === undefined) return undefined;
@@ -724,13 +594,7 @@ export async function executeClaimedRun(
       );
     });
 
-    /**
-     * The ONE terminal-success settlement: completion, result, and the
-     * authority transaction that writes them with the run CAS. A derived result
-     * and D210's preview record differ in what they SAY and not in how they
-     * settle, so they share this — a second copy would be a second place for the
-     * terminal invariants to drift.
-     */
+    // Commit terminal state and result in one authority transaction.
     const settleSuccess = (
       current: RunRecord,
       built: Readonly<{ record: RunResultRecord; authorization: object }>,
@@ -749,12 +613,7 @@ export async function executeClaimedRun(
       return RunExecutionOutcomeSchema.parse({ state: "done", runId });
     };
 
-    /**
-     * D210 — end a previewed run AT the transaction node. The dependency evidence
-     * is that node's OWN `dependsOn`, which is the exact set its `prepare`/`commit`
-     * binds read; the factory re-derives the expected set from the authenticated
-     * descriptor, so this list is checked rather than trusted.
-     */
+
     const settlePreview = (
       node: TransactionRuntimeNode,
       preview: TransactionDryRunPreview,
@@ -804,15 +663,10 @@ export async function executeClaimedRun(
       outputSchemaHash: deriveSchemaHash(node.uses.output, "output"),
     });
 
-    // Ancestor planning. With an explicit startAt, every prior node MUST
-    // resolve (replay, condition-skip, or stored gate result) or the resume
-    // refuses loudly (§5.4). Without one, the maximal replayable prefix is
-    // derived and the first non-replayable node begins execution (§5.6 #1/#2).
+    // An explicit start node requires every ancestor to resolve without executing it.
     let ancestorRegionOpen = canonicalInput !== undefined;
     for (const [index, node] of nodes.entries()) {
-      // D307 — an omitted step's nodes are classified before any replay or
-      // execute reasoning: they own no checkpoint on any resume and never
-      // open or close the ancestor region.
+
       if (omissionPlan.omitted.has(String(node.id))) {
         plan.set(String(node.id), { mode: "omitted" });
         continue;
@@ -849,10 +703,7 @@ export async function executeClaimedRun(
           }
         }
         if (node.when !== undefined && conditionKnown) {
-          // D228 — ONE evaluator for the declared condition. The old closure
-          // could return a non-boolean and had to be checked for it; a declared
-          // condition cannot, and every way it can fail to resolve throws by
-          // name inside `evaluateNodeCondition` rather than guessing.
+
           const condition = evaluateNodeCondition(node.when, scopeFor(node.dependsOn));
           if (!condition) {
             plan.set(String(node.id), { mode: "skipped-condition" });
@@ -860,15 +711,7 @@ export async function executeClaimedRun(
           }
         }
         const stored = readRunCheckpoint(deps.authority.authority, envelope, String(node.id), true);
-        // D314 — Restart from start: a read/compute checkpoint ANOTHER run of
-        // this item produced is not replayed; every read and computation
-        // executes again. This run's own rows (a gate resume re-claiming the
-        // same attempt) still replay, and an operator assertion for an omitted
-        // step is classified above, never here.
-        // `stored` is already the repository's strict parse of the durable row
-        // (`runCheckpoints.latest` fails loud on a malformed row before this
-        // point), so its run id is read directly: a lenient re-parse here would
-        // classify an unparseable row as "another run's" instead of refusing.
+
         if ((envelope.recovery === "restart-from-start" || envelope.sourceBound !== undefined) && stored !== undefined && stored.runId !== runId) {
           if (explicit) {
             problems.push(
@@ -891,10 +734,7 @@ export async function executeClaimedRun(
         const storedRecord = load.found ? requireStoredCheckpoint(stored, String(node.id)) : undefined;
         const storedAssertion = storedRecord?.assertion;
         if (storedAssertion !== undefined) {
-          // D307 — the latest row is an operator ASSERTION from a run that
-          // omitted this node's step; this run executes the node, so that row
-          // is not an observation it may replay. An explicit resume cannot
-          // cross it; an ordinary start simply executes.
+
           if (explicit) {
             problems.push(
               `node "${node.id}" (${labelOf(node)}) latest checkpoint is an operator assertion for omitted step `
@@ -1002,7 +842,7 @@ export async function executeClaimedRun(
       );
     }
 
-    // D8 freshness walk — run generically even when no commit sink exists.
+
     if (canonicalInput !== undefined) {
       const scheduled = nodes
         .filter((node) => plan.get(String(node.id))?.mode === "execute")
@@ -1022,9 +862,7 @@ export async function executeClaimedRun(
       }));
     }
 
-    // D307 — a refused omission is an entry-validation failure of THIS run:
-    // it terminalizes with a FailureRecord like a bad canonical input, so the
-    // worker drains and the operator sees the refusal by step name.
+
     for (const refusal of omissionPlan.refusals) {
       problems.push(`step omission refused [${refusal.code}]: ${refusal.message}`);
     }
@@ -1041,9 +879,7 @@ export async function executeClaimedRun(
     /* ── running: walk the plan in declaration order ─────────────────────── */
     transitionTo(runningLifecycle());
 
-    // The corrected checkpoints become durable AT THIS ATTEMPT only after
-    // validation accepted the whole plan. Replay of the same attempt derives
-    // byte-identical rows (the applier is pure), so re-insert is idempotent.
+
     for (const record of patchedInserts) {
       deps.authority.authority.runCheckpoints.insert(record);
     }
@@ -1091,11 +927,7 @@ export async function executeClaimedRun(
       });
     };
 
-    /**
-     * The stored operator decision for a GATE dependency, or `undefined` when
-     * the node is not a gate this run has resolved. It reads the same row the
-     * `replay-gate` arm reads, under this run's identity.
-     */
+
     const gateResultFor = (nodeId: string): GateResultRecord | undefined => {
       const gateNode = nodes.find((candidate) => String(candidate.id) === nodeId);
       if (gateNode?.kind !== "gate") return undefined;
@@ -1161,15 +993,7 @@ export async function executeClaimedRun(
           nodeId: String(node.id),
           taskId: contract.id,
         },
-        /*
-         * A dependency's durable evidence is a CHECKPOINT for a task node and a
-         * `gate_results` row for a gate node — two different tables, because a
-         * gate records an operator decision rather than an observation. Handing
-         * the collector a fabricated checkpoint for a gate would make a durable
-         * record claim a shape it does not have (D144's refusal); handing it
-         * nothing made the post-gate node unrunnable, which is what the first
-         * live chunk-3 run found.
-         */
+
         upstreamEvidence: {
           children: node.dependsOn.flatMap((dependency) => { const child = childUpstreamEvidenceFor(dependency); return child === undefined ? [] : [child]; }),
           checkpoints: node.dependsOn.flatMap((dependency) => {
@@ -1194,19 +1018,7 @@ export async function executeClaimedRun(
           }),
         },
         clock,
-        /*
-         * D270 — the observed log. Every recorded batch is emitted on THIS
-         * task's span at record time, redacted by the declared classification
-         * of its `(taskId, field)` leaf. At record time, not at finalization:
-         * a task that throws after reading the page has still read the page,
-         * and its observations are exactly what the operator needs to see.
-         *
-         * An undeclared leaf throws out of `redactObservedDataPoints`, inside
-         * `ctx.recordData`, which fails the task by name — the intended loud
-         * failure, and the same rule D140 gave the receipt. Nothing else here
-         * may throw into a good read: the emitter is synchronous and the
-         * points are already schema-parsed.
-         */
+
         onRecord: ({ recordedAt, points }) => {
           emit({
             t: "data.observed",
@@ -1290,9 +1102,7 @@ export async function executeClaimedRun(
             + "executeTaskNode must refuse before invoking",
           );
         }
-        // One admitted client per declared capability, minted fresh for THIS
-        // invocation: the client binds the run's retained config snapshot and
-        // this attempt's deadline-bounded signal, so nothing outlives the call.
+        // Mint one provider client per capability and invocation; it is not reusable authority.
         const clients: Record<string, ProviderClient<ProviderCapabilityId>> = {};
         for (const declared of declaredProviders) {
           const capability = ProviderCapabilityIdSchema.parse(declared);
@@ -1358,8 +1168,7 @@ export async function executeClaimedRun(
         input.signal.removeEventListener("abort", forwardAbort);
       }
 
-      // D115: provenance finalization gates the output BEFORE it is
-      // checkpointed or used — missing/contradictory provenance fails here.
+
       const provenance = collector.finalizeRead(raw);
       const parsedOutput: unknown = contract.output.parse(raw);
       for (const [key, source] of actionSources) {
@@ -1374,10 +1183,7 @@ export async function executeClaimedRun(
         itemId: envelope.itemId,
         nodeId: String(node.id),
         attempt: envelope.attempt,
-        // D214 — WHICH execution of this attempt produced the row. A gate
-        // resume is a fresh claim, so an `always-rerun` node re-executing after
-        // one writes under a key nothing owns instead of colliding with its own
-        // earlier observation.
+
         claimGeneration: claim.claimGeneration,
         runId,
         output: {
@@ -1452,9 +1258,7 @@ export async function executeClaimedRun(
             `${contract.id} requires provider capabilities, and this composition wires no admitted provider client`,
           ));
         }
-        // The run's RETAINED snapshot, read by the envelope's own id — a
-        // missing row refuses the node rather than re-resolving current
-        // config, which would admit against a budget this run never carried.
+
         const storedSnapshot = wiring.configSnapshots.get(envelope.configSnapshotId);
         if (storedSnapshot === undefined) {
           return await failNode(node, contract.id, new Error(
@@ -1502,9 +1306,7 @@ export async function executeClaimedRun(
           if (declaredProjections.length === 0) {
             deps.authority.authority.runCheckpoints.insert(record);
           } else {
-            // Bound, not extracted: `withAuthorityTransaction` is a class
-            // method whose `this` is the authority — a detached call dies on
-            // its own private state.
+
             const withTransaction = deps.authority.withAuthorityTransaction?.bind(deps.authority);
             const projector = deps.artifactProjector;
             if (withTransaction === undefined || projector === undefined) {
@@ -1528,12 +1330,9 @@ export async function executeClaimedRun(
               payload: { schemaHash: record.output.schemaHash, value: row.value },
               createdAt: instant(),
             }));
-            // Ref dashboard-surfaces §2.1 (D45): the checkpoint and its stable-keyed outbox
-            // rows are ONE durable fact — neither may exist without the other.
+
             commitGeneratedCheckpoint({withTransaction, checkpoint:record, updates:outboxRows});
-            // Blocking: the node may not report done until every row is
-            // acknowledged. A throw here fails the node; the durable rows
-            // survive, and a relaunch resumes projection from the replay arm.
+            // A task cannot finish before every artifact outbox row is acknowledged.
             await projectGeneratedUpdates(projector, outboxRows.map((row) => String(row.outboxId)));
           }
           checkpointRecords.set(String(node.id), record);
@@ -1618,9 +1417,7 @@ export async function executeClaimedRun(
         continue;
       }
       if (entry.mode === "omitted") {
-        // D307 — the operator omitted this node's step and no producer
-        // rebuilds it. Its span says so with the closed reason the terminal
-        // record will repeat; nothing is fenced, published or checkpointed.
+
         skippedReasons.set(String(node.id), "step-omitted");
         const spanPath = taskSpanPath(envelope.traceId, node.id, 1, claim.claimGeneration);
         emit({
@@ -1637,20 +1434,14 @@ export async function executeClaimedRun(
         continue;
       }
       if (entry.mode === "asserted") {
-        // D307 — rebuild this task's output from the operator's typed facts
-        // and the node's own dependency scope, parse it with the node's OWN
-        // output schema, and publish it exactly as a checkpoint replay would —
-        // minus the checkpoint. A later retry of the same item must never
-        // replay an assertion as an observation.
+
         const assertion = omissionPlan.asserted.get(String(node.id));
         if (assertion === undefined || node.kind !== "task") {
           throw new Error(`node "${node.id}" was planned as asserted but the omission plan does not assert a task there`);
         }
         transitionTo(runningLifecycle(node.id));
         if (entry.replay !== undefined) {
-          // A resume of this attempt: republish the row this run already
-          // asserted. Re-producing would mint a second marked row for one
-          // attempt, which the terminal mirror rightly refuses.
+
           const replayed = entry.replay;
           recordCheckpointReplay(String(node.id), replayed);
           if (replayed.assertion === undefined) throw new Error(`node "${node.id}" planned an assertion replay over an unmarked row`);
@@ -1698,11 +1489,7 @@ export async function executeClaimedRun(
             `node "${node.id}" declares artifact projections and cannot be asserted; an assertion projects nothing`,
           ));
         }
-        // The assertion becomes DURABLE the way an observation would — a
-        // `run_checkpoints` row every later reader (the write sequencer's
-        // commit-input rebuild, the provenance collector, the receipt) can
-        // resolve — but marked, so it is never mistaken for one: every leaf is
-        // `operator`-sourced at `assertedAt`, and the row names its omitted step.
+
         const outputSchemaHash = deriveSchemaHash(node.uses.output, "output");
         const assertedRecord = RunCheckpointRecordSchema.parse({
           workflowId: descriptor.id,
@@ -1764,10 +1551,7 @@ export async function executeClaimedRun(
                 t: "span.ended", kind: "task",
                 ...runSpanIdentity, spanPath, parentSpanPath: runSpanIdentity.spanPath,
                 outcome: "skipped",
-                // The SAME closed reason the terminal result records for this
-                // node (D114). The timeline must be able to say *why* a step
-                // did not run, and re-deriving it from the descriptor later
-                // would be a second source for one fact.
+
                 notRunReason: "condition-false",
               });
               continue;
@@ -1798,7 +1582,7 @@ export async function executeClaimedRun(
           transitionTo(runningLifecycle(node.id));
           if (node.join !== "all") {
             return await failNode(node, undefined, new Error(
-              `parallel "${node.id}" join "${node.join}" is not interpretable in Phase 1; `
+              `parallel "${node.id}" join "${node.join}" is not interpretable by this runtime; `
               + "the all-settled arm lands with its owning milestone (capability-unavailable)",
             ));
           }
@@ -1838,9 +1622,7 @@ export async function executeClaimedRun(
                 : new Error(`gate "${node.id}" source binding failed`, { cause: error }));
             }
           }
-          // §4 park: the checkpoint barrier is already durable (each output
-          // was checkpointed at production), then gate.opened, then session
-          // release, then the parked state. A parked run owns no browser.
+          // A parked write owns durable checkpoints; recovery resumes without inventing task execution.
           await deps.sessions.closeAll("parked");
           const resumeAt = nodes[index + 1]?.id ?? node.id;
           transitionTo(RunLifecycleSchema.parse({
@@ -1929,16 +1711,7 @@ export async function executeClaimedRun(
               return bound;
             },
           };
-          /**
-           * D210 — the preview arm (ref task-contract §6.2). A dry run reaches the
-           * transaction node, runs the sequencer's REAL prepare-only arm (zero
-           * intent, zero fence, zero commit), records an honest
-           * `transaction.previewed` span, and ENDS THE RUN HERE. Nothing
-           * downstream executes: ref task-contract §10.1's default is that a preview stops
-           * after the first transaction prepare, and continuing would run nodes
-           * whose inputs a real run derives from a commit output this run never
-           * produced.
-           */
+
           if (envelope.dryRun) {
             let preview: TransactionDryRunPreview;
             try {
@@ -1959,8 +1732,7 @@ export async function executeClaimedRun(
               t: "transaction.previewed",
               ...runSpanIdentity,
               node: node.id,
-              // D215 — a preview whose probe settled `already-present` staged
-              // nothing and observed no subject, and says so.
+
               subject: preview.outcome.state === "would-prepare"
                 ? preview.outcome.subject.state
                 : "not-observed",
@@ -1995,15 +1767,7 @@ export async function executeClaimedRun(
             const settled = JsonValueSchema.parse(OutcomeSchema.parse(raw));
             outputs[String(node.id)] = settled;
 
-            // D144 — a transaction node may be named in `terminalDependsOn`, so
-            // its durable checkpoint has to become terminal evidence like any
-            // other node's. The sequencer wrote that row inside beat ⑦'s own
-            // authority transaction; the interpreter reads THAT EXACT ROW back
-            // rather than minting a record from the value it was handed. A
-            // missing row means the sequencer reported a settlement it never
-            // durably recorded, and a row that does not project to the very
-            // settlement just observed means the two disagree — both are hard
-            // errors, never a substituted checkpoint.
+            // A transaction terminal dependency refers to its durable outcome wrapper, not its declared inner output.
             const stored = readRunCheckpoint(deps.authority.authority, envelope, String(node.id));
             if (stored === undefined) {
               throw new Error(
@@ -2048,10 +1812,7 @@ export async function executeClaimedRun(
           } catch (error) {
             if (error instanceof RunAbandonedError) throw error;
             if (error instanceof WriteParkedError) {
-              // The sequencer already parked the intent AND the run durably
-              // (intent-first). This arm only observes that settled state —
-              // and it refuses to trust the error object alone: the durable
-              // row must actually be the park the signal claims.
+
               const parked = getRun();
               if (parked.lifecycle.state !== "parked-write"
                 || parked.lifecycle.writeIntentId !== error.writeIntentId
@@ -2134,7 +1895,7 @@ export async function executeClaimedRun(
       }
     }
 
-    /* ── terminal success (D110/D114) ────────────────────────────────────── */
+
     const terminal = workflowTerminalResultExecution(descriptor);
     const current = getRun();
     return settleSuccess(current, buildRunResult(

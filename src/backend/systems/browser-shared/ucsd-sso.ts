@@ -1,28 +1,4 @@
-/**
- * The UCSD Shibboleth SSO page vocabulary, shared by every system whose login
- * lands on `a5.ucsd.edu` (UCPath, CRM, OnBase, Kuali, Kronos, ServiceNow, I-9).
- *
- * PORTED WITH PROVENANCE from legacy
- * hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc:
- *
- * - `src/infra/auth/sso-fields.ts` — the username/password 3-level locator
- *   chains and the `button[name="_eventId_proceed"]` submit selector. The
- *   comment there records WHY the submit is selected by name: the "Enroll in
- *   Two-Step Login" nav link also carries `role="button"` and the text "Login",
- *   so a role/name lookup matches the wrong element on ACT CRM.
- * - `src/infra/auth/login.ts` — the `a5.ucsd.edu` SSO host, the
- *   `duosecurity.com` Duo host, and the "Web Login Service - Stale Request"
- *   page that Shibboleth serves when a SAML execution context expires
- *   mid-login.
- *
- * Copied, never linked: the two repositories share no module graph (D93/D94).
- *
- * What deliberately did NOT come across: legacy's `page.waitForTimeout` settles
- * and its multi-attempt Duo poll loop. Ref execution-and-sessions §5 requires waits on real
- * readiness predicates under bounded deadlines, and Duo Autopilot answers the
- * WebAuthn ceremony in-page, so the honest wait is "the authenticated landing
- * appears within the Duo window, or this login fails loud".
- */
+// Select SSO submit by name: the enrollment navigation also looks like a Login button.
 import type { Locator, Page } from "playwright";
 import { recordBrowserAction } from "./action-notes.js";
 import { assertDuoCeremonyLeaseToken } from "../../../workflow-kit/duo-ceremony-lease.js";
@@ -37,41 +13,17 @@ import type {
 } from "./login-contract.js";
 import type { BrowserSystemId } from "../../../rules/identity/ids.js";
 
-/** legacy src/infra/auth/login.ts — the TritON SSO host every UCSD flow hops through. */
+
 export const UCSD_SSO_HOST = "a5.ucsd.edu";
-/** legacy src/infra/auth/login.ts / duo-poll.ts — the Duo Universal Prompt host. */
+
 export const DUO_HOST = "duosecurity.com";
-/** legacy src/infra/auth/sso-fields.ts:34 — SSO_SUBMIT_SELECTOR. Live-verified 2026-08-03. */
+
 const SSO_SUBMIT_SELECTOR = 'button[name="_eventId_proceed"]';
-/** legacy src/infra/auth/duo-poll.ts — the Shibboleth expired-execution page. */
+
 const STALE_REQUEST_TEXT = "Web Login Service - Stale Request";
-/**
- * Duo's OWN terminal refusal of a WebAuthn assertion (D243).
- *
- * Live-observed 2026-08-19, verbatim, on `api-ce13a1a7.duosecurity.com/prompt/…`:
- *
- * > Couldn't use security key
- * > Your login request using your security key was canceled or timed out.
- * > Show other options · Try again · Need help?
- *
- * It is TERMINAL for this runtime: it offers only a manual "Try again", nothing
- * here clicks it, and the observed screen sat unchanged for 46 s until the
- * acquisition bound tore the context down. So a login that reaches it is
- * already dead, and every further second is spent waiting for a page that has
- * stopped being about our request.
- *
- * The wording matched is the SENTENCE, not the heading: the heading names the
- * factor ("security key" for the `usb` credential, and only that arm has been
- * observed), while the sentence carries the outcome. `.first()` — a Duo prompt
- * renders it once, and a union that assumed exclusivity is D213's defect.
- */
+// Match Duo's outcome sentence, not its factor-specific heading; use first for the union locator.
 const DUO_TERMINAL_REFUSAL_TEXT = /login request .*(?:canceled|cancelled) or timed out/i;
-/**
- * What the refusal MEANS, stated where an operator reads it. §9.21's live
- * bisection is the evidence: the same profile logs in at ~19 s with a counter
- * ahead of Duo's view and burns the whole 60 s bound with one forced 1 063
- * BELOW it, with nothing else changed.
- */
+// A refused security-key assertion can indicate a stale authenticator counter; waiting longer cannot repair it.
 const DUO_TERMINAL_REFUSAL_MESSAGE =
   "Duo REFUSED the WebAuthn assertion and rendered its terminal \"canceled or timed out\" screen; "
   + "this login is dead and the prompt will not clear on its own. The cause is almost never Duo "
@@ -90,11 +42,7 @@ export function abortIfCancelled(
   throw new BrowserLoginError(system, step, "the session was cancelled", context.page.url());
 }
 
-/**
- * Races a Playwright wait against cancellation. Playwright takes no
- * `AbortSignal`, so an aborted session would otherwise sit out the full
- * timeout holding the worker.
- */
+// Playwright waits take no AbortSignal; race cancellation so the session can release promptly.
 export async function raceCancellation<Result>(
   operation: Promise<Result>,
   system: BrowserSystemId,
@@ -117,41 +65,14 @@ export async function raceCancellation<Result>(
   }
 }
 
-/**
- * The TritON username field, RE-PORTED 2026-08-03 after a live CRM login failed
- * loud at `credential-fill`.
- *
- * The legacy chain (hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc
- * `src/infra/auth/sso-fields.ts:19-22`:
- * `getByLabel("User name (or email address)")` → `getByLabel("Username")` →
- * `input[name="j_username"]`) is LABEL-first, and the live page proves why that
- * is the wrong shape: TritON renders the SAME field under a different label per
- * login type, so the label answers "which realm is this form for", not "where
- * do the credentials go".
- *
- * Live-verified 2026-08-03 against `a5.ucsd.edu/tritON`:
- *
- * | login type ("Signing on using:") | username label                  |
- * |---------------------------------|---------------------------------|
- * | Business Systems (the default)  | "Account ID or email address"   |
- * | Active Directory (what HR uses) | "User name (or email address)"  |
- * | UCPath's SSO entry              | "Username"                      |
- *
- * `id="ssousername"` / `name="urn:mace:ucsd.edu:sso:username"` are the same on
- * ALL of them, so the structural anchors come first and every observed label is
- * kept behind them as a corroborating fallback. `input[name="j_username"]` did
- * NOT come across: it matches no page here and would only mask a real break.
- */
+// TritON labels vary by login realm; stable id/name anchors identify the same username field.
 const SSO_USERNAME_SELECTOR = '#ssousername, input[name="urn:mace:ucsd.edu:sso:username"]';
 const SSO_USERNAME_LABELS = [
   "User name (or email address)",
   "Account ID or email address",
   "Username",
 ] as const;
-/**
- * legacy src/infra/auth/sso-fields.ts:25-28 — password chain. Live-verified
- * still current 2026-08-03: label "Password:", `id="ssopassword"`.
- */
+// The password label and stable ssopassword ID bind the same SSO control.
 const SSO_PASSWORD_SELECTOR = '#ssopassword, input[name="urn:mace:ucsd.edu:sso:password"]';
 const SSO_PASSWORD_LABELS = ["Password:", "Password"] as const;
 
@@ -171,16 +92,12 @@ export function ssoSubmitButton(page: Page): Locator {
   return page.locator(SSO_SUBMIT_SELECTOR).first();
 }
 
-/** True when the SSO submit control is present — legacy `isSsoFormReady`. */
+
 export async function isSsoFormPresent(page: Page): Promise<boolean> {
   return await ssoSubmitButton(page).count() > 0;
 }
 
-/**
- * The NEGATIVE half of every UCSD system's authentication proof: the Shibboleth
- * SSO form is not on the page. Shared, because every UCSD system in scope hops
- * through the same `a5.ucsd.edu` form.
- */
+
 export async function probeSsoFormAbsent(page: Page): Promise<ObservedFact> {
   return probeAbsentControl(page, {
     selector: `${SSO_SUBMIT_SELECTOR}, ${SSO_USERNAME_SELECTOR}`,
@@ -188,11 +105,7 @@ export async function probeSsoFormAbsent(page: Page): Promise<ObservedFact> {
   });
 }
 
-/**
- * Waits for the Shibboleth form to paint. The SAML hop chain is client-side,
- * so a single load-state resolves on an interstitial and a form check then
- * fails spuriously (legacy `waitForSsoForm`, motivated by ServiceNow).
- */
+// Shibboleth paints through client-side interstitials; load-state alone does not prove form readiness.
 export async function waitForSsoForm(
   system: BrowserSystemId,
   context: SystemLoginContext,
@@ -217,11 +130,7 @@ export async function waitForSsoForm(
   });
 }
 
-/**
- * Fills the SSO credentials. The values arrive already resolved from
- * `domain/secrets.ts`; nothing here reads the environment and nothing here
- * puts a field value into a message.
- */
+
 export async function fillSsoCredentials(
   system: BrowserSystemId,
   context: SystemLoginContext,
@@ -229,10 +138,7 @@ export async function fillSsoCredentials(
 ): Promise<void> {
   assertDuoCeremonyLeaseToken(token, { system });
   const timeout = context.config.timeouts.navigationMs;
-  // A chain that matches nothing must say SO, and say which chain, rather than
-  // burning a navigation timeout on an ambiguous "could not be filled". This is
-  // how the 2026-08-03 CRM failure was diagnosed down to the relabelled TritON
-  // username field; the refusal itself stays loud either way.
+
   await requireMatchedField(system, context, usernameField(context.page), "username", SSO_USERNAME_SELECTOR);
   await requireMatchedField(system, context, passwordField(context.page), "password", SSO_PASSWORD_SELECTOR);
   try {
@@ -286,9 +192,7 @@ export async function submitSsoForm(
   context: SystemLoginContext,
   token: DuoCeremonyLeaseToken,
 ): Promise<void> {
-  // The click below is what starts the Duo ceremony. It is the one place in
-  // the tree the assertion is PRESENTED, so the token is asserted here even
-  // though every helper before it asserted too (ref execution-and-sessions §10.6).
+
   assertDuoCeremonyLeaseToken(token, { system });
   abortIfCancelled(system, "sso-submit", context);
   try {
@@ -310,15 +214,7 @@ export function duoTerminalRefusalLocator(page: Page): Locator {
   return page.getByText(DUO_TERMINAL_REFUSAL_TEXT).first();
 }
 
-/**
- * Resolves ONLY when Duo has rendered its terminal refusal.
- *
- * Absence is deliberately not an answer this arm may give. It races the landing
- * wait, which owns the timeout; settling here on "the refusal never appeared"
- * would report a healthy-but-slow login as a refusal AND would pre-empt the
- * landing's own diagnosis with a locator error. So the absent case never
- * settles — it is bounded entirely by the arm beside it, which always settles.
- */
+// Only a terminal refusal settles this arm; the parallel landing wait owns its timeout.
 async function observeDuoTerminalRefusal(page: Page, timeoutMs: number): Promise<"duo-refused"> {
   try {
     await duoTerminalRefusalLocator(page).waitFor({ state: "visible", timeout: timeoutMs });
@@ -328,30 +224,7 @@ async function observeDuoTerminalRefusal(page: Page, timeoutMs: number): Promise
   return "duo-refused";
 }
 
-/**
- * Waits for Duo to clear into the authenticated landing.
- *
- * `landed` is the system's verified marker predicate over the URL. On timeout
- * the failure names what the page is actually showing — a Duo prompt that never
- * cleared, the Shibboleth stale-request page, or an unrecognized landing — so
- * the operator is not left guessing. There is NO fallback path: an unverified
- * page never counts as authenticated.
- *
- * ## D243 — why the wait also WATCHES for a refusal
- *
- * Waiting for the landing alone can only ever learn "it did not happen", and
- * only when its own bound expires. That bound is `duoApprovalSeconds` (180 s by
- * default), which is deliberately LARGER than `sessionAcquireMs` (60 s), so on
- * a Duo stall the acquisition envelope always fires first and cancels this wait
- * — which means `describeStalledLanding`, the function whose whole job is to
- * explain a stalled Duo login, is unreachable at the shipped defaults and the
- * operator is handed a bound message naming Duo hand-approval instead (D125's
- * message, a real cause and not this one — separations §9.17 item 5).
- *
- * Duo does not make us infer it. It SAYS so, in words, about a second after the
- * assertion is rejected. So the wait races the landing against that observation
- * and refuses by name in ~12 s instead of burning 60 s and mis-attributing it.
- */
+
 export async function waitForAuthenticatedLanding(
   system: BrowserSystemId,
   context: SystemLoginContext,
@@ -379,20 +252,14 @@ export async function waitForAuthenticatedLanding(
     const observed = context.page.url();
     const diagnosis = await describeStalledLanding(context, observed);
     if (diagnosis === DUO_TERMINAL_REFUSAL_MESSAGE) {
-      // The landing bound expired and the page, asked afterwards, says Duo had
-      // already refused: the same observation as the raced arm, so the same
-      // class — the recovery path keys on it.
+
       throw new DuoTerminalRefusalError(system, diagnosis, observed, { cause: error });
     }
     throw new BrowserLoginError(system, "duo-clearance", diagnosis, observed, { cause: error });
   }
 }
 
-/**
- * Turns a stalled login into a legible diagnosis. A page that cannot be probed
- * is reported as UNKNOWN, never as "no stale-request page found" — the failure
- * is already certain; only its explanation is at stake.
- */
+
 async function describeStalledLanding(
   context: Pick<SystemLoginContext, "page">,
   observed: string,
@@ -407,10 +274,7 @@ async function describeStalledLanding(
     return "Shibboleth served its stale-request page; the SAML execution expired during login";
   }
   if (observed.includes(DUO_HOST)) {
-    // D243: a stall ON the Duo host is two different failures wearing one
-    // message. Ask the page which one it is before generalising, because the
-    // generic answer sends the operator at `timeouts.duoApprovalSeconds`, and
-    // for the refusal that leaf is not the cause and moving it changes nothing.
+    // Probe a stalled Duo page for explicit refusal before blaming the approval timeout.
     let refusalCount: number;
     try {
       refusalCount = await duoTerminalRefusalLocator(context.page).count();
@@ -420,10 +284,7 @@ async function describeStalledLanding(
     if (refusalCount > 0) return DUO_TERMINAL_REFUSAL_MESSAGE;
     return "the Duo prompt never cleared; check that Duo Autopilot is loaded and its credential is current";
   }
-  // Live-verified 2026-08-03: TritON re-renders its OWN form, on the same URL,
-  // when the first factor is rejected ("The username you entered cannot be
-  // identified" — the CRM login-type defect). Reporting that as "Duo never
-  // cleared" sent the diagnosis a whole ceremony downstream of the failure.
+  // TritON can reject the first factor by repainting its form at the same URL.
   let ssoStillPresent: boolean;
   try {
     ssoStillPresent = await isSsoFormPresent(context.page);
@@ -436,20 +297,7 @@ async function describeStalledLanding(
   return "no authenticated landing appeared";
 }
 
-/**
- * Composes one UCSD system's authentication proof from the facts every such
- * system shares plus the ones only it can supply.
- *
- * The order is cheapest-first and is a REFUSAL ladder, not a scoring function:
- * the URL is a necessary precondition, the positive artifact is what actually
- * proves a session exists, and the sign-in-form absences close the case. Any
- * one of them failing means "not authenticated", with the reason preserved
- * verbatim — `assertAuthenticatedApplication` turns that into the loud error.
- *
- * `assertVerifiedLanding` (URL predicate + SSO-form absence) was the previous
- * shape. It is gone on purpose: its URL half could be satisfied by a public
- * portal, and a recipe could return before ever reaching it.
- */
+
 export async function verifyUcsdAuthenticatedApplication(
   system: BrowserSystemId,
   page: Page,

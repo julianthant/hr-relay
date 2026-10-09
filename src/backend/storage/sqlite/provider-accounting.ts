@@ -42,7 +42,7 @@ function nextFixedWindow(start: string, milliseconds: number): string {
 }
 
 
-/** The legacy capability path uses the same owning SQLite transaction as commands and deletion. */
+
 export class SqliteProviderAccounting {
   constructor(private readonly ports: ProviderAccountingPorts) {}
   #readProviderCounter(capability: string): ProviderBudgetCounter | undefined {
@@ -108,13 +108,7 @@ export class SqliteProviderAccounting {
       || run.envelope.configFingerprint !== request.configFingerprint) {
       throw new Error(`provider admission ${request.admissionId} does not match run ${request.execution.runId} execution/config identity`);
     }
-    // A run-NODE admission must be the node the run is executing right now.
-    // An operator-advisory admission (D178) deliberately makes no such claim:
-    // ref operator-trust §4.4's advisory reads FINISHED authority on the presentation lane,
-    // so requiring a live node would either make the feature impossible or
-    // force it to name a node the descriptor never reached. What it still
-    // binds is everything that is true — the run's identity, its retained
-    // attempt, and its own config snapshot, all checked directly above.
+
     if (isRunNodeExecutionIdentity(request.execution)
       && (run.lifecycle.state !== "running" || run.lifecycle.currentNodeId !== request.execution.nodeId)) {
       throw new Error(`provider admission ${request.admissionId} run ${request.execution.runId} is not executing node ${request.execution.nodeId}`);
@@ -701,9 +695,7 @@ export function createGenericProviderAccounting(storage:ProviderAccountingStorag
           if(!same(u.scope,b.scope)||u.meter!==b.meter)throw new Error("provider-scope-identity-conflict");
           if(Date.parse(req.now)<Date.parse(u.updatedAt))throw new Error("provider-time-backwards");
           const held=new Set(s.reservedWindowIds(b.scope.id,b.meter));
-          // Only finalized, expired history may leave the bounded aggregate.
-          // Requests keep their immutable allocations for exact replay; active
-          // allocations retain original windows even when their bound is zero.
+          // Compact only finalized expired periods; immutable request allocations remain exact replay authority.
           const windows=u.windows.filter(w=>w.endsAt===null||Date.parse(w.endsAt)>Date.parse(req.now)||w.reserved!==0||held.has(w.id));
           for(const policy of b.windows){
             const index=windows.findIndex(w=>w.id===policy.id);const oldWindow=windows[index];
@@ -738,7 +730,7 @@ export function createGenericProviderAccounting(storage:ProviderAccountingStorag
   });
 }
 
-/** Separate generic consistency proof; legacy counters never stand in for it. */
+
 export function inspectGenericProviderAccounting(database:DatabaseSync):void {
   const usages=database.prepare("SELECT record_json FROM provider_usage WHERE json_extract(record_json,'$.kind')='generic'").all()
     .map(row=>checkedUsage(ProviderUsageStorageSchema.parse(JSON.parse(JsonRowSchema.parse(row).record_json))));
@@ -749,9 +741,7 @@ export function inspectGenericProviderAccounting(database:DatabaseSync):void {
       const u=usages.find(v=>v.scope.id===a.scopeId&&v.meter===a.meter);
       const w=u?.windows.find(v=>v.id===a.windowId);
       if(w===undefined||w.startsAt!==a.windowStartedAt||w.endsAt!==a.windowEndsAt){
-        // A finalized expired period may have been compacted even when its
-        // label now names a later period. Active/original periods still match
-        // the complete immutable allocation, including both boundaries.
+        // A compacted expired period can share a label with a later period; active allocation identity still binds.
         if(u!==undefined&&r.state!=="reserved"&&a.windowEndsAt!==null&&Date.parse(a.windowEndsAt)<=Date.parse(u.updatedAt))continue;
         throw new Error("provider-generic-allocation-mismatch");
       }

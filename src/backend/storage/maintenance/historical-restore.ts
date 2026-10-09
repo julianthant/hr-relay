@@ -16,8 +16,7 @@ import { upgradeStorage } from "./upgrade.js";
 import { requireRuntimeAdmission, type RuntimeAdmission } from "../admission/admission.js";
 
 function syncDirectory(path:string){const fd=openSync(path,constants.O_RDONLY|constants.O_NOFOLLOW);try{fsyncSync(fd);}finally{closeSync(fd);}}
-/** Explicit old-backup replacement retains suspects and holds stopped admission through conversion.
- * Failures never claim a cross-database rollback; the durable marker blocks ordinary boot. */
+// Explicit replacement holds stopped admission; failures retain markers instead of claiming cross-store rollback.
 export async function restoreHistoricalStorage(runtimeAdmission:RuntimeAdmission,optionsInput:z.input<typeof OfflineRestoreOptionsSchema>,
   requestInput:z.input<typeof OfflineRestoreRequestSchema>,environmentFile:string,clock:Clock,
   afterStep?:(step:"restored"|"quarantined"|"converted")=>void) {
@@ -44,8 +43,7 @@ export async function restoreHistoricalStorage(runtimeAdmission:RuntimeAdmission
     const borrowed=()=>({...admission,release(){}});
     const report=await new OfflineAuthorityRestoreService(runtimeAdmission,options,async()=>{},clock,undefined,borrowed).restore(request);
     afterStep?.("restored");
-    // A pre-lifecycle backup has no independent archive half. Preserve the displaced half,
-    // then reconstruct only its authenticated historical sources through the stopped route.
+    // Pre-lifecycle backups lack an archive half; preserve the displaced half before authenticated reconstruction.
     mkdirSync(options.suspectDirectory,{recursive:true,mode:0o700});
     for(const name of ["archive.sqlite","archive.sqlite-wal","archive.sqlite-shm","archive-files"]) {
       const path=join(root,name);if(!existsSync(path))continue;

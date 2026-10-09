@@ -8,7 +8,7 @@ import { NORMAL_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS, UPGRADE_FLOOR_SCHEM
 import { readArchiveUpgradeJournal, beginArchiveUpgrade, finishArchiveUpgrade, hasHistoricalArchiveSources } from "../compatibility/archive-upgrade-journal.js";
 import { backupLifecyclePair, verifyLifecyclePair } from "../sqlite/lifecycle-storage.js";
 import { timelineSourcesForUpgrade, preserveTimelineSources, readPreservedTimelineSources } from "../events/timeline-import.js";
-/** D336 stopped conversion: SQLite settles first; credentials settle independently. */
+
 import { existsSync, readdirSync, mkdirSync, readFileSync, lstatSync } from "node:fs";
 import { join, basename, dirname } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -188,7 +188,7 @@ function archiveNeedsIndexUpgrade(runtimeAdmission:RuntimeAdmission,stateRoot: s
   try { return archive.schemaVersion === 1; } finally { archive.close(); }
 }
 
-/** Read-only legacy source for the existing explicit backup writer. No credential access. */
+// Explicit backup source is read-only and never opens credentials.
 export async function backupStoppedAuthority(runtimeAdmission:RuntimeAdmission,stateRoot: string, clock: Clock) {
   requireRuntimeAdmission(runtimeAdmission).assertStateRoot(stateRoot);
   const path = join(stateRoot, "state.db");

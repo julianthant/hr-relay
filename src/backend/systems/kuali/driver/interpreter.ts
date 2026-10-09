@@ -1,36 +1,4 @@
-/**
- * The Kuali RRSS-document driver — the only module in this store that touches a
- * raw Playwright `Page`.
- *
- * Every locator is resolved from `KUALI_UI_REGISTRY` by semantic id; there are
- * no inline selectors and no fallbacks. Three rules run through the whole file
- * and each of them exists because of a recorded incident or probe finding:
- *
- *  1. **Exactly one match, or throw.** Kuali's `Save` shares its action group
- *     with `Send Back` and `Mark Complete`, which advance the workflow. A
- *     second match means the DOM moved and we no longer know what we would be
- *     clicking, so we refuse instead of taking `.first()`.
- *  2. **Trim every read.** Kuali inputs return whitespace-padded values (legacy
- *     `kuali/LESSONS.md:49-54`: doc #4241 returned `" 10772489"`).
- *  3. **A save is never proof.** `commit` returns only that the click happened
- *     AND that the mutation it issued carried the staged values. Landing proof
- *     comes exclusively from `readSavedSeparationFinalization`, which RELOADS first
- *     (ref write-safety §13 OQ1 (a)).
- *  4. **The DOM holding the value is not Kuali holding the value.** A Kuali
- *     Build text gadget debounces into the document model; only the model is
- *     serialized by `submitDocumentV2`. Staging therefore waits for the model
- *     commit (`awaitModelCommit`) and the commit re-proves it on the wire
- *     (`assertSubmitCarriedValue`). Both were added 2026-08-04 after a fenced,
- *     `200`-answered, `Form saved`-rendering save persisted nothing.
- *
- * Ported with provenance from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc:
- * `src/systems/kuali/selectors.ts` (the three recipes, via the registry),
- * `src/systems/kuali/navigate.ts:16-39` (`fillWithVerify`'s read-back-or-throw
- * discipline) and `:626-652` (`clickSave`). The deep-link open is NOT a port —
- * legacy has no URL builder and only ever reached a document through the Action
- * List search box; the `…/actions/<actionId>` shape is live-verified knowledge
- * recorded by the 2026-07-23 probe and re-verified read-only 2026-08-04.
- */
+
 import type { ElementHandle, Locator, Page, Response } from "playwright";
 import { recordBrowserAction } from "../../browser-shared/action-notes.js";
 import { z } from "zod";
@@ -124,48 +92,18 @@ const NAVIGATION_TIMEOUT_MS = 60_000;
 const STATE_TIMEOUT_MS = 30_000;
 const FIELD_TIMEOUT_MS = 10_000;
 
-/**
- * Kuali Build's single GraphQL endpoint and the one mutation a `Save` issues.
- * Measured live 2026-08-04 on docs 4489/4490: clicking `Save` sends exactly one
- * `submitDocumentV2` with
- * `variables = { documentId, data, actionId, status:"saved", timeZone }`, where
- * `data` is the WHOLE document model keyed by `formKey`.
- */
+// Save issues submitDocumentV2; status saved requests persistence without advancing the workflow.
 const KUALI_GRAPHQL_PATH = "/app/api/v0/graphql";
 const KUALI_SUBMIT_OPERATION = "submitDocumentV2";
 
-/**
- * How long the model-commit barrier and the save-payload observation may wait.
- * Both are bounded waits for a SPECIFIC fact, and both throw when the fact does
- * not arrive — neither ever proceeds on a timeout.
- */
+
 const MODEL_COMMIT_TIMEOUT_MS = 20_000;
 const SUBMIT_OBSERVE_TIMEOUT_MS = 30_000;
 
 /** The private marker the model-commit barrier stamps on the staged control. */
 const STAGED_PROPS_MARKER = "__hrautoStagedProps";
 
-/**
- * DRIVER-INTERNAL controls: live-verified 2026-08-12, and deliberately NOT
- * registry elements.
- *
- * Every one of these is a real control on the live separation form that legacy
- * has **no selector key for** — `separationForm` stops at six fields and never
- * grew Division, Employee Type, Student Title Code, the optional comments box,
- * or three of the four Final Pay radios. Publishing them in the UI registry
- * would mean inventing a `provenance` row that names a legacy key, blob and
- * line that do not exist, and a fabricated port row is worse than an
- * unpublished one. `new-kronos` set this rule for `#combo_inptxt` and the
- * timecard grid; this follows it.
- *
- * They are listed together rather than inline so a future porter finds the
- * whole set in one place, and each is resolved through `exactlyOneInternal`,
- * which re-asserts the exactly-one count on every read — the same discipline
- * the registry elements get.
- *
- * All names are the EXACT live accessible names, counted at one node each on
- * documents 4510 / 4502 / 4495.
- */
+
 const INTERNAL_DIVISION_FIELD = "Division*";
 const INTERNAL_EMPLOYEE_TYPE_FIELD = "Employee Type*";
 const INTERNAL_STUDENT_TITLE_CODE_FIELD = "Student Title Code*";
@@ -174,13 +112,7 @@ const INTERNAL_FINAL_PAY_SUBMITTED = "Submitted Final Pay Request";
 const INTERNAL_FINAL_PAY_TRANSFER = "Does not need Final Pay (transfer employee)";
 const INTERNAL_FINAL_PAY_OTHER = "Other";
 
-/**
- * The Final Pay group's COMPLETE option list, in DOM order (§3.2). It is a
- * constant rather than a live read because a radio group has no option list to
- * enumerate — the four labels ARE the four controls, each of which is resolved
- * and read on every visit, so a fifth option would surface as a run that reads
- * four radios on a form that renders five.
- */
+// Read each Final Pay radio; the group has no separate enumerable option list.
 const FINAL_PAY_OPTION_LABELS: readonly string[] = Object.freeze([
   INTERNAL_FINAL_PAY_SUBMITTED,
   "Does not need Final Pay (student employee)",
@@ -194,11 +126,7 @@ function elementLocator(id: ElementId): KualiLocatorRecipe {
   return element.locator;
 }
 
-/**
- * The exact-name arm, or a loud refusal. A caller that asked for a role+name
- * recipe and got the Action List's anchored one has resolved the wrong kind of
- * element, and guessing which name it meant is not available.
- */
+
 function elementRecipe(id: ElementId): Extract<KualiLocatorRecipe, { kind: "role-exact-name" }> {
   const locator = elementLocator(id);
   if (locator.kind !== "role-exact-name") {
@@ -207,11 +135,7 @@ function elementRecipe(id: ElementId): Extract<KualiLocatorRecipe, { kind: "role
   return locator;
 }
 
-/**
- * Resolve a registry element to exactly one live node. Zero matches and two+
- * matches are both loud failures: on this page, "pick the first" is how a
- * `Save` fallback would reach `Send Back`.
- */
+
 async function exactlyOne(page: Page, id: ElementId): Promise<Locator> {
   const recipe = elementRecipe(id);
   const locator = page.getByRole(recipe.role, { name: recipe.name, exact: recipe.exact });
@@ -240,29 +164,12 @@ function documentUrl(actionId: string): string {
   return `https://${KUALI_HOST}/build/space/${KUALI_RRSS_SPACE_ID}/actions/${actionId}`;
 }
 
-/**
- * The Action List's own route (D261).
- *
- * NOT a port: legacy reaches this page by navigating the space and clicking the
- * `Action List` menu item (`navigate.ts:44-65`). The direct route is
- * live-verified knowledge — 2026-08-20, a `goto` straight here rendered the
- * list's search box in 1 100 ms — and it removes a click, a menu recipe, and
- * the whole class of "the menu had not painted yet" failures the same file
- * carries a comment about.
- */
+
 function actionListUrl(): string {
   return `https://${KUALI_HOST}/build/space/${KUALI_RRSS_SPACE_ID}/actions`;
 }
 
-/**
- * The anchored Action-List link recipe, ported verbatim from legacy
- * `actionList.docLink()`: `^\s*<n>\s*$`.
- *
- * The anchoring is the safety property and legacy states why in its own
- * comment — Kuali's Action-List search is SUBSTRING-based, so filtering for
- * `414` returns 4140–4149. An unanchored match would resolve a neighbouring
- * document, which is a different person's separation.
- */
+// Kuali searches document numbers by substring; anchor the exact link name to avoid neighboring documents.
 function documentLinks(page: Page, documentNumber: string): Locator {
   const recipe = elementLocator(KUALI_ACTION_LIST_DOCUMENT_LINK);
   if (recipe.kind !== "role-anchored-value-name") {
@@ -270,20 +177,12 @@ function documentLinks(page: Page, documentNumber: string): Locator {
       `Kuali element ${KUALI_ACTION_LIST_DOCUMENT_LINK} is not an anchored-value recipe (${recipe.kind})`,
     );
   }
-  // The value is schema-parsed before it reaches a pattern, so the only
-  // characters that can appear here are digits — there is no regex-injection
-  // surface and no escaping to get wrong.
+
   const number = KualiDocumentNumberSchema.parse(documentNumber);
   return page.getByRole(recipe.role, { name: new RegExp(`^\\s*${number}\\s*$`, "u") });
 }
 
-/**
- * Prove the browser is on the expected document. Kuali redirects
- * `…/actions/<id>` to `…/actions/<id>/view`, and a stale action id silently
- * lands on the Action List instead of a form — verified live 2026-08-04, when
- * doc 4453's 2026-07-23 action id did exactly that. So the URL check accepts
- * the redirect and the heading check proves the document number independently.
- */
+// Kuali redirects document routes to view; stale action IDs silently return to the Action List.
 function assertExactKualiDocumentUrl(rawUrl: string, actionId: string): void {
   const url = new URL(rawUrl);
   const expected = `/build/space/${KUALI_RRSS_SPACE_ID}/actions/${actionId}`;
@@ -295,58 +194,20 @@ function assertExactKualiDocumentUrl(rawUrl: string, actionId: string): void {
   }
 }
 
-/**
- * A level-1 heading whose accessible name is a bare document number.
- *
- * NOT a widening of "the first h1" — a narrowing, and the reason is live
- * measurement (2026-08-04, doc 4489). Kuali Build is client-rendered and paints
- * this route in three stages:
- *
- * | t (after `domcontentloaded`) | level-1 headings |
- * |---|---|
- * | ~0.4s | none at all |
- * | ~1.5s | `["", "Action", "Action List"]` — the document heading exists and is EMPTY |
- * | ~3.0s | `["4489", "Action", "Action List"]` |
- *
- * So "the first h1" is the right node but reads `""` for a second and a half,
- * and "the first NON-EMPTY h1" is the wrong node ("Action") during that window.
- * Both would have refused a perfectly good document. Matching on the shape of
- * the value itself is the only recipe that is correct at every stage, and it is
- * still an independent READ: the number is read off the page and compared to
- * the run's, so opening a different document refuses with both numbers named.
- */
+// Kuali paints headings in stages; wait for a nonempty bare document number, not the first heading.
 const DOCUMENT_NUMBER_HEADING_NAME = /^\s*\d{3,8}\s*$/u;
 
-/**
- * Every bare-number link the Action List renders — legacy `actionList.docLinks()`
- * (NOT ported as a registry element, because this driver never enumerates the
- * list as a candidate source). It is read for ONE purpose: a miss says *"4502
- * is not here — 4537, 4495 are"*, and "not found" alone is a sentence nobody
- * can act on. The bare-number filter is legacy's own and excludes the page's
- * word-labelled nav / action / pagination links.
- */
+
 const BARE_DOCUMENT_NUMBER_NAME = /^\s*\d+\s*$/u;
 
-/**
- * How long the filtered Action List may take to render the matched row.
- *
- * A bounded wait for the SAME fact, never a fallback: when it expires the
- * observation records zero matched links and the pure classifier refuses by
- * name. Live 2026-08-20 the filtered list settled well inside 5 s; 15 s is 3x
- * that and still far below the run's own task bound.
- */
+
 const ACTION_LIST_FILTER_TIMEOUT_MS = 15_000;
 
 type DocumentNumberProbe =
   | { readonly state: "read"; readonly documentNumber: string }
   | { readonly state: "unavailable"; readonly reason: string };
 
-/**
- * Probe the document-number heading. Every negative is a stated REASON, so both
- * callers can decide what to do with it: `openDocument` throws (its callers are
- * mid-write and must not continue), and the separation read reports
- * `document-unavailable` as data so a failed run records WHY.
- */
+
 async function probeDocumentNumberHeading(page: Page, actionId: string): Promise<DocumentNumberProbe> {
   const heading = page.getByRole("heading", { level: 1, name: DOCUMENT_NUMBER_HEADING_NAME });
   // A BOUNDED WAIT FOR THE SAME FACT, not a fallback: when no document-number
@@ -391,23 +252,14 @@ async function readDocumentNumberHeading(page: Page, actionId: string): Promise<
   return probe.documentNumber;
 }
 
-/**
- * The `submitDocumentV2` variables, as observed on the wire 2026-08-04. `data`
- * is deliberately typed as unknown-valued: this driver asserts on exactly one
- * key and must never re-interpret the rest of the operator's document.
- */
+// Check only the staging-owned keys in submitDocumentV2 data; do not reinterpret the rest of the document.
 const SubmitVariablesSchema = z.object({
   actionId: z.string().min(1),
   documentId: z.string().min(1),
   data: z.record(z.string(), z.unknown()),
 });
 
-/**
- * The `submitDocumentV2` answer, as observed on the wire 2026-08-04 for a save
- * that DID persist: `{"data":{"submitDocumentV2":{"status":"Ok","validations":null,…}}}`.
- * Only the refusal-bearing fields are named; the rest of Kuali's payload is not
- * this driver's business.
- */
+// A successful mutation body is not landing proof; name only fields that can show explicit refusal.
 const SubmitResponseSchema = z.object({
   errors: z.array(z.object({ message: z.string() }).loose()).optional(),
   data: z.object({
@@ -418,15 +270,7 @@ const SubmitResponseSchema = z.object({
   }).loose().nullish(),
 });
 
-/**
- * What the last successful staging on the page proved, retained so `commit` can
- * check the save's payload against it.
- *
- * `commit` receives only an element id and a capability, so without this it
- * would have nothing to compare — and a Save
- * clicked with no staging behind it is exactly the no-op write the 2026-08-04
- * attempt performed.
- */
+
 type StagedExpectation = Readonly<{
   kind: "finalization";
   actionId: string;
@@ -453,48 +297,8 @@ async function readDisplayedEid(page: Page): Promise<string> {
   return parsed.data;
 }
 
-/**
- * Wait until Kuali's DOCUMENT MODEL has taken the typed value — the barrier the
- * 2026-08-04 controlled attempt was missing, and the whole reason that attempt
- * saved nothing.
- *
- * A Kuali Build `Textarea` gadget is a controlled React input over LOCAL state.
- * Typing updates the DOM and the gadget's own props immediately, but the value
- * only reaches the document model — the `data` map `submitDocumentV2`
- * serializes — after a debounce. Measured live on doc 4489 (zero-write: every
- * mutation intercepted and aborted, so the payload was read without being
- * sent):
- *
- * | settle after last keystroke | staged value present in `data` |
- * |---|---|
- * | 300 / 400 / 400 / 500 / 500 / 600 / 600 / 600 ms | **0 of 8** |
- * | 700 / 700 / 750 / 750 / 800 / 800 / 900 / 1000 ms | **8 of 8** |
- *
- * Sleeping past that is neither allowed here nor honest, so this waits for the
- * commit ITSELF. A 3s attribute-level sample of the control found exactly one
- * change in the whole window — at **+723ms**, the control's React props OBJECT
- * IDENTITY was replaced (its attributes, classes, DOM value and the section's
- * markup were all byte-identical before and after). That replacement is the
- * parent re-render the model update causes, and it is the only observable this
- * page offers. So: stamp the current props object, then wait for a different
- * one.
- *
- * A page that never renders React internals, or never re-renders, is a page we
- * cannot prove staged — both throw. The barrier is not the proof either: the
- * commit re-checks the value on the wire, so an early or spurious re-render
- * cannot turn into a save that silently drops the field.
- */
-/**
- * Half one of the model-commit barrier: remember the control's CURRENT React
- * props object so a later replacement is observable.
- *
- * Splitting the barrier in two is what lets a caller stamp BEFORE it acts. The
- * timekeeper path stamps after typing and is safe there only because the gadget
- * debounces ~723 ms; a control that commits INSTANTLY (a select, a checkbox, a
- * radio) can re-render before a post-hoc stamp runs, and then a wait for "a
- * different props object" would time out on a staging that actually worked.
- * Every finalization control is therefore stamped first and awaited after.
- */
+// Kuali text gadgets debounce into controlled React state; a DOM value alone is not model-commit proof.
+// Stamp React props before the interaction so a model update cannot be missed.
 async function stampModelProps(
   handle: ElementHandle<SVGElement | HTMLElement>,
   documentNumber: string,
@@ -543,16 +347,7 @@ async function awaitModelPropsReplaced(
   }
 }
 
-/**
- * The save's WIRE PROOF: the exact `submitDocumentV2` the click issued must
- * carry the staged value under the timekeeper's `formKey`, for this action id.
- *
- * This is what makes the model-commit barrier verified rather than assumed. It
- * is still not landing proof — Kuali answers `200` and renders `Form saved` for
- * a mutation that carried nothing of this field, which is precisely how the
- * 2026-08-04 attempt produced a false positive. Only the reload read-back can
- * say the value persisted.
- */
+// Verify staged values under the exact form keys in the Save payload for this action ID.
 function assertSubmitCarriedValue(
   request: Readonly<{ postData: () => string | null }>,
   expected: StagedExpectation,
@@ -592,44 +387,13 @@ function assertSubmitCarriedValue(
   }
 }
 
-/**
- * The `(formKey, value)` pairs the save's `data` map must carry for THIS
- * staging.
- *
- * ## The finalization asserts FIVE of twelve, and that is stated, not hidden
- *
- * Ten of the twelve `formKey`s are known since chunk 5c's live capture
- * (2026-08-14, §9.12) — the two §4e's 2026-08-14 amendment added have never been
- * observed and are `null` — but a key is not an expectation either.
- * `submitDocumentV2` sends the document MODEL,
- * and only a `Text`/`Textarea` gadget holds the staged string there: a `Date`
- * holds epoch milliseconds, a `Dropdown`/`Radios` holds `{id,label}` and
- * `Checkboxes` holds an array of them — all four observed live on real docs
- * 4510/4495/4502. Deriving those expected values needs a transformation this
- * repository has never seen on the WRITE wire, plus an option-id table Kuali can
- * republish, so asserting them would be a check that can only fail — the same
- * "write the expectation, then pass" hazard D132 bans, pointed the other way.
- * `KUALI_RRSS_FINALIZATION_WIRE_ASSERTED` names the five that are derivable and
- * `kualiFinalizationWireUnasserted()` names the seven it does not check. Every
- * `formKey` is now known (§9.16 captured the last two), so the residue is purely
- * about SHAPE: the controlled commit closes it by OBSERVING the payload.
- *
- * That does **not** weaken the write's landing proof, because this check never
- * was the proof: `submitDocumentV2` answers `{"status":"Ok","validations":null}`
- * for a mutation that dropped a field entirely, so the ONLY thing that can turn
- * a Kuali save into `done` is `readSavedSeparationFinalization`'s reload
- * read-back — and that compares all twelve fields.
- */
+// Non-text Kuali model values have different wire shapes; assert only derivable payload values and reload-compare all twelve fields.
 function stagedWireValues(expected: StagedExpectation): readonly (readonly [string, unknown])[] {
   const pairs: (readonly [string, unknown])[] = [];
   for (const field of KUALI_FINALIZATION_FIELD_NAMES) {
     if (!KUALI_RRSS_FINALIZATION_WIRE_ASSERTED.includes(field)) continue;
     const formKey = KUALI_RRSS_FINALIZATION_FORM_KEYS[field];
-    // No field carries `null` today (§9.16 captured the last two), so this is
-    // unreachable. It stays because the table's type still admits `null` for a
-    // field added before its key is captured, and it throws rather than silently
-    // indexing `data[undefined]` — which would turn a landed save into a
-    // post-fence park the day somebody asserts such a field.
+
     if (formKey === null) {
       throw new Error(
         `Kuali finalization field ${field} is asserted on the wire but its formKey has never been `
@@ -641,17 +405,7 @@ function stagedWireValues(expected: StagedExpectation): readonly (readonly [stri
   return pairs;
 }
 
-/**
- * A NEGATIVE check on the save's answer, never a positive one.
- *
- * GraphQL answers HTTP 200 for refusals too — the errors ride in the body — so
- * a `200` says nothing at all. This looks only for a stated refusal: a
- * transport failure, a GraphQL `errors` array, a `status` other than `Ok`, or a
- * non-null `validations`. Passing it does NOT mean the value persisted; the
- * mutation that dropped the field entirely also answered
- * `{"status":"Ok","validations":null}`. Landing proof remains the reload
- * read-back, and nothing here may substitute for it.
- */
+// GraphQL refusals can return HTTP 200; inspect refusal fields, then verify persisted values separately.
 async function assertSubmitNotRefused(response: Response, documentNumber: string): Promise<void> {
   if (!response.ok()) {
     throw new Error(
@@ -704,25 +458,11 @@ async function assertSubmitNotRefused(response: Response, documentNumber: string
   }
 }
 
-/**
- * Kuali's document route sets `document.title` to `Form - <form name> - Kuali`
- * (live 2026-08-12, docs 4510/4502/4495). It is the ONLY unambiguous read of
- * the form's own name on this page: the same string also renders in the space's
- * app list and in every Action-List row, so a page-wide text match would hit
- * several nodes on a page that is not even showing a document.
- */
+// Read form type from document.title; page-wide text can match app lists and dialog rows.
 const DOCUMENT_TITLE_FORM_NAME = /^Form - (.+) - Kuali$/u;
 
-/**
- * Read the form's name off the document title, bounded.
- *
- * A BOUNDED WAIT FOR THE SAME FACT, never a fallback: the title arrives with
- * the rest of the route (measured 2026-08-12 — no headings at ~7ms, an EMPTY
- * document heading at ~258ms, the real number AND the title AND the form
- * controls together at ~1.77s), so sampling once races the paint. When it never
- * takes the shape, this returns the title verbatim and the caller refuses with
- * it quoted — it never proceeds on an unknown page.
- */
+
+// The document title can arrive after route paint; wait for the same fact within a bounded deadline.
 async function readDocumentFormType(page: Page): Promise<
   { readonly state: "read"; readonly formType: string }
   | { readonly state: "unreadable"; readonly observedTitle: string }
@@ -761,23 +501,13 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
   /** See `StagedExpectation` — the staging this page's `Save` may act on, if any. */
   let staged: StagedExpectation | undefined;
 
-  /**
-   * The document number the LAST Action-List resolve proved on this page, if
-   * any — the value `read(KUALI_ACTION_LIST_MATCHED_NUMBER)` answers with. It
-   * is retained rather than re-read for the same reason `staged` is: the
-   * observation is a fact about a page state this driver reached, and a
-   * re-read would be a second, different observation wearing the first's name.
-   */
+
+  // Retain the proved document number; rereading would be a new observation under the retained proof identity.
   let matchedActionListNumber: string | undefined;
 
-  /* ── The Action-List resolve (D261) ────────────────────────────────────── */
 
-  /**
-   * Filter the Action List to ONE document number and report every link that
-   * carried it, verbatim. It classifies nothing (D201) and it clicks nothing:
-   * the action id is on the page as an `href`, so reading it costs no
-   * navigation and mutates no document.
-   */
+
+
   async function readActionListForDocument(input: Readonly<{
     documentNumber: string;
   }>): Promise<KualiActionListObservation> {
@@ -791,26 +521,19 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
       timeout: NAVIGATION_TIMEOUT_MS,
     });
     recordBrowserAction("opened", "kuali.action-list");
-    // The list's own two controls ARE the ready state: legacy waits for the
-    // search box for the same reason, and it renders whether or not the list
-    // holds anything — an empty Action List is a real answer, not a dead page.
+
     const search = await exactlyOne(page, KUALI_ACTION_LIST_SEARCH_INPUT);
     const go = await exactlyOne(page, KUALI_ACTION_LIST_SEARCH_GO_BUTTON);
     await search.fill(documentNumber, { timeout: FIELD_TIMEOUT_MS });
     recordBrowserAction("typed", KUALI_ACTION_LIST_SEARCH_INPUT, documentNumber);
     await go.click({ timeout: FIELD_TIMEOUT_MS });
     recordBrowserAction("clicked", KUALI_ACTION_LIST_SEARCH_GO_BUTTON);
-    // Kuali refetches the filtered list server-side. Waiting for the MATCHED
-    // link is a bounded wait for the fact we came for; when it never renders
-    // the count below is 0 and `classifyKualiActionResolution` refuses by name,
-    // which is the same verdict an immediately-empty list produces.
+
     const matched = documentLinks(page, documentNumber);
     try {
       await matched.first().waitFor({ state: "attached", timeout: ACTION_LIST_FILTER_TIMEOUT_MS });
     } catch {
-      // Not a swallow: a document nobody holds an action on is a REAL outcome,
-      // and the observation below records it as zero matched links with the
-      // list's own contents beside it.
+      // No matched action is a valid absence; the observation below retains the list contents and zero links.
     }
     const matchedLinks = await matched.evaluateAll((elements) => elements.map((element) => ({
       name: (element.textContent ?? "").trim(),
@@ -840,9 +563,7 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
   }>> {
     const actionId = KualiActionIdSchema.parse(input.actionId);
     const expectedNumber = KualiDocumentNumberSchema.parse(input.documentNumber);
-    // A navigation discards Kuali's in-page form model, so anything staged
-    // before it is gone. Dropping the retained expectation here is what stops a
-    // reload read-back from leaving a `commit` able to click on stale grounds.
+    // Navigation discards Kuali's form model; clear retained staging proof before reload.
     staged = undefined;
     await page.goto(documentUrl(actionId), {
       waitUntil: "domcontentloaded",
@@ -878,9 +599,7 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
       return { selected, options };
     });
     if (read.selected === undefined) {
-      // Legacy refuses here too (S12) and that refusal is worth keeping: a
-      // select whose selectedIndex names no option is a control we cannot read,
-      // and guessing "the first one" would file a reason code nobody chose.
+      // An invalid selectedIndex is unreadable; never guess the first dropdown option.
       throw new Error(
         `Kuali ${id} has no option text at its selected index; refusing to guess which option is chosen`,
       );
@@ -893,13 +612,7 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
     return locator.isChecked({ timeout: FIELD_TIMEOUT_MS });
   }
 
-  /**
-   * A driver-internal control: one the live form carries and legacy has NO
-   * selector key for, so publishing it as a registry element would fabricate
-   * provenance (the rule `new-kronos` set for `#combo_inptxt`). Each name below
-   * was counted at EXACTLY ONE node on the live 2026-08-12 accessibility tree
-   * of documents 4510/4502/4495, and the count is re-asserted here per read.
-   */
+
   async function exactlyOneInternal(
     role: "textbox" | "combobox" | "radio",
     name: string,
@@ -998,9 +711,7 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
       });
     }
 
-    // S2, answered BEFORE a single field is read: legacy discovers a
-    // non-separation document as a 5s locator timeout on the employee-name
-    // field, which is indistinguishable from a slow page.
+
     const formType = await readDocumentFormType(page);
     if (formType.state === "unreadable") {
       return KualiSeparationDocumentReadSchema.parse({
@@ -1092,10 +803,7 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
             + "recognise' and 'the field is empty' are different facts",
         };
 
-    // The final-pay group: ONE registry element (the only radio legacy has a
-    // key for) plus its three live siblings, read driver-internally. It is the
-    // SAME implementation the finalization read-back uses, so the two families
-    // cannot disagree about what the document carries.
+
     const finalPayChoice = await readFinalPayChoice(heading.documentNumber);
 
     return KualiSeparationDocumentReadSchema.parse({
@@ -1152,14 +860,7 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
 
   /* ── The finalization write (chunk 5) ──────────────────────────────────── */
 
-  /**
-   * The one place the Final Pay radio group is read, shared by the separation
-   * read and the finalization read-back.
-   *
-   * Two selections at once is a page we cannot describe, so it throws rather
-   * than picking one — and `undefined` (no radio checked) is a REAL state, seen
-   * live on documents 4502 and 4495.
-   */
+  // No Final Pay radio is explicit absence; two selected radios are an ambiguous page and refuse.
   async function readFinalPayChoice(documentNumber: string): Promise<KualiFinalPayChoice | undefined> {
     const checks: readonly (readonly [KualiFinalPayChoice, boolean])[] = [
       ["submitted-final-pay-request",
@@ -1180,16 +881,7 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
     return selected[0]?.[0];
   }
 
-  /**
-   * The twelve finalization controls, read exactly as the page holds them, plus
-   * the department control's COMPLETE option list (§3.2).
-   *
-   * Nothing here parses or classifies: an unset select reads `- - -` and an
-   * empty control reads `""`, because the comparison against the staged fields
-   * is what decides meaning. A read that normalised `- - -` to "absent" would
-   * make "the department did not save" and "the department saved as the
-   * sentinel" the same fact.
-   */
+  // Read all twelve controls and the complete department options without classifying valid blank values.
   async function readFinalizationFields(documentNumber: string): Promise<{
     readonly fields: KualiObservedFinalizationFields;
     readonly departmentOptions: readonly string[];
@@ -1203,10 +895,7 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
         payrollTitle: await readTrimmedInput(page, KUALI_RRSS_PAYROLL_TITLE_FIELD),
         requestAcknowledged: await readCheckbox(KUALI_RRSS_REQUEST_ACKNOWLEDGED_CHECKBOX),
         timekeeperName: await readTrimmedInput(page, KUALI_RRSS_TIMEKEEPER_FIELD),
-        // §4e's 2026-08-14 amendment: the two step-13 date write-backs. Read
-        // through the SAME recipes the separation read uses — this surface
-        // mints no element — so the read half is already live-verified; what is
-        // not is writing them (see `stageSeparationFinalization`).
+
         lastDayWorked: await readTrimmedInput(page, KUALI_RRSS_LAST_DAY_WORKED_FIELD),
         separationDate: await readTrimmedInput(page, KUALI_RRSS_SEPARATION_DATE_FIELD),
         terminationEffectiveDate: await readTrimmedInput(page, KUALI_RRSS_TERMINATION_EFF_DATE_FIELD),
@@ -1219,25 +908,7 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
     };
   }
 
-  /**
-   * Fill one text control, verify it read back, and wait for Kuali's document
-   * model to take it.
-   *
-   * `fillWithVerify` (legacy `navigate.ts:16-39`): Kuali controls silently drop
-   * a `fill()` often enough that an unverified staging is worthless, so one
-   * retry through key events. The model barrier is stamped BEFORE the fill —
-   * see `stampModelProps` — and is skipped when the control did not take the
-   * value at all, because there is no model commit to wait for and the
-   * field-by-field comparison at the end of staging is what reports it.
-   *
-   * live-verified 5c, 2026-08-14: this path staged every text control the
-   * finalization writes on real doc 4524 through `executeDryRun` and read each
-   * one back, in 8.06 s for all ten controls staged then (§4e's amendment has
-   * since made it twelve; the two new date controls are `live-verify:
-   * next-live-pass`). A hard reload then re-read the
-   * document unchanged — so the staging is proved to reach React's state and
-   * proved NOT to reach Kuali (§9.12, S61).
-   */
+  // Kuali can drop fill input; verify readback and wait for the document model before fencing.
   async function stageText(
     id: ElementId,
     value: string,
@@ -1270,19 +941,7 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
     }
   }
 
-  /**
-   * Set one discrete control (a select, a checkbox, a radio) and wait for the
-   * model commit.
-   *
-   * These do not debounce the way a text gadget does, which is exactly why the
-   * props stamp happens before the interaction: a control that re-renders
-   * instantly would otherwise be stamped AFTER its own re-render and then waited
-   * on forever.
-   *
-   * live-verified 5c, 2026-08-14: the `Department*` select, both checkboxes and
-   * the Final Pay radio all committed inside the bound on real doc 4524. The
-   * stamp-first order is what made that observable instead of a timeout.
-   */
+  // Stamp discrete controls before interaction; unlike text gadgets they may update without debounce.
   async function stageDiscrete(
     locator: Locator,
     act: () => Promise<void>,
@@ -1304,7 +963,7 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
     }
   }
 
-  /** The control that carries each Final Pay choice. Only one has a legacy key. */
+
   async function finalPayLocator(choice: KualiFinalPayChoice): Promise<Locator> {
     if (choice === "does-not-need-final-pay-student") {
       return exactlyOne(page, KUALI_RRSS_FINAL_PAY_STUDENT_RADIO);
@@ -1330,8 +989,7 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
     });
     const before = await readFinalizationFields(view.documentNumber);
 
-    // **S56, strengthened.** The staged comments text was composed upstream from
-    // a read of THIS control; if it has moved since, saving would blank an edit.
+    // Preserve the comments read upstream; a changed field must refuse instead of overwriting an edit.
     if (before.fields.timekeeperComments !== target.variables.observedExistingComments) {
       throw new KualiCommentsChangedError({
         documentNumber: view.documentNumber,
@@ -1373,15 +1031,7 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
       view.documentNumber,
     );
     await stageText(KUALI_RRSS_TIMEKEEPER_FIELD, fields.timekeeperName, "timekeeper name", view.documentNumber);
-    // live-verify: 6b — §4e's 2026-08-14 amendment, DISCHARGED the same day.
-    // Both controls now carry `exactly-one-editable`, observed on two open
-    // documents at BOTH live workflow steps (4510 / `Task 1 - Jan` and 4495 /
-    // `Task 1 - Kristina & TES`): one node each, visible, editable, enabled,
-    // holding the document's own date. D208's caveat — a selector mapped on a
-    // read-only record is not a verified selector for the editable page — is
-    // answered rather than carried. The `stageText` discipline stands anyway:
-    // a control that does not take the value is reported by the field-by-field
-    // read-back below, never assumed.
+
     await stageText(
       KUALI_RRSS_LAST_DAY_WORKED_FIELD,
       fields.lastDayWorked,
@@ -1541,15 +1191,7 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
     );
     await save.click({ timeout: FIELD_TIMEOUT_MS });
     recordBrowserAction("clicked", KUALI_RRSS_SAVE_BUTTON);
-    // Legacy `clickSave` settles on `networkidle` here and calls that success.
-    // This one waits for the SPECIFIC mutation to be ANSWERED instead, because
-    // `networkidle` and Kuali's own `Form saved` are both true of a save that
-    // dropped the field (measured 2026-08-04). Waiting for the RESPONSE — not
-    // merely the request — is also what makes the verifier's reload meaningful:
-    // returning at request time let the read-back reload race a save the server
-    // had not applied yet, and that is exactly how a landed write was reported
-    // `absent` on 2026-08-04 at 16:56. A timeout throws; a click whose outcome
-    // we never saw is not a click we can describe.
+    // Wait for the specific save mutation response; networkidle and Form saved do not prove retained values.
     let response: Response;
     try {
       response = await settled;

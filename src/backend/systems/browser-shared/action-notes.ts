@@ -70,11 +70,7 @@ export async function withBrowserActionSession<T>(
   return await scope.run({ ...capture, physicalSessionId }, operation);
 }
 
-/**
- * Attribute only the driver gestures produced by one bounded task role. The
- * binder is pure and runs after each completed gesture; note persistence still
- * drains after the enclosing operation settles.
- */
+
 export async function withBrowserActionBinding<T>(
   bind: BrowserActionBinder | undefined,
   operation: () => Promise<T>,

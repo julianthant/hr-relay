@@ -1,32 +1,4 @@
-/**
- * The JSONL span writer — the concrete `SpanEmitter` the executor is handed
- * (ref dashboard-surfaces §1.1, §2.1). Direct `O_APPEND` to `spans/<workflow>-<date>.jsonl`;
- * NOT SQLite — only the ledger and the write-committed terminal span ride the
- * SQLite outbox, and both already landed in 1c.
- *
- * Enforcement lives HERE, at emit, not in a projector that could only notice
- * after the fact:
- *
- * - **Identity write-once.** A second `run.queued` for the same
- *   `(runId, attempt, spanPath)` throws; so does re-opening or re-ending any
- *   span identity this process already opened/ended. (A span opened by an
- *   earlier process may legitimately be ENDED here after a restart, so a
- *   close without a locally-seen open is allowed — refusing it would make
- *   every recovery emit-path throw.)
- * D254 retired the `span.patched` arm from the wire union, and with it this
- * writer's declared-detail-key enforcement and its `declaredDetails` dep: the
- * channel had no production emitter, so the enforcement guarded a shape
- * nothing could write. A `span.patched` event now fails
- * `SpanEventWireSchema.parse` here, before any byte reaches disk.
- *
- * This writer feeds NO projection (D218). The run/queue projection consumes
- * the stream FROM DISK with an offset-aware tailer, because the emitting
- * process is not necessarily the serving process — the worker is its own OS
- * process, so an in-process post-append hook could only ever cover one
- * emitter's half of the stream. "JSONL append first, projection applies
- * after" (ref dashboard-surfaces §2.3) is therefore structural: the projection can only see
- * what already landed.
- */
+
 import { z } from "zod";
 import type { Clock } from "../../../rules/time/clock.js";
 import { localDatePart } from "../../../rules/time/clock.js";

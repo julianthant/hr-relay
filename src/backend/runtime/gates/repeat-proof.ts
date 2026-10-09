@@ -4,7 +4,7 @@ import type { SchemaBoundCanonicalValue } from "../../../models/validation/schem
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import type { WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
 
-/** A generic old receipt never identifies the newly authorized occurrence. */
+// A generic receipt cannot identify an explicitly authorized repeated occurrence.
 export function isFreshOccurrenceProof(intent: WriteIntentRecord, envelope: RunEnvelope, proof: SchemaBoundCanonicalValue): boolean {
   if (intent.status === "observed-present" || intent.occurrence === undefined) return true;
   const occurrence = intent.occurrence;

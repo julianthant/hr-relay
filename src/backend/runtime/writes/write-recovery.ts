@@ -1,33 +1,6 @@
 import { valueFreeProtectedData, retainedRunProtectedBindings, hasProtectedTransactionInput } from "../../../models/write-safety/protected-input.js";
 import { isFreshOccurrenceProof } from "../gates/repeat-proof.js";
-/**
- * Ref write-safety §4 crash-window recovery (D118) and the §4.1 typed operator
- * resolutions behind the command kernel's `WriteResolutionExecutor` seam.
- *
- * Recovery has scheduling priority over claim expiry: the D118 sweep routes a
- * dead claim whose run owns an unfinished `attempting` intent here BEFORE any
- * ordinary requeue. This service re-runs the idempotency probe FIRST and
- * settles exactly one of ref write-safety §4's arms:
- *
- *   present + valid proof   → beat-⑦ backfill (same parsers as beat ⑥) + resume
- *   present + invalid proof → park `present-proof-invalid` (never done)
- *   qualified stabilized absence (D64/D69) → `retryable` + resume; ONLY this
- *                             arm may let a later fence mint a new generation
- *   not-yet-qualified absence → typed `wait` (a `not_before` requeue decision —
- *                             never a sleeping worker, никогда retry authority)
- *   ambiguous / unknown / inconsistent / operator-only / probe throw → park
- *
- * The operator resolutions are the ONLY release paths for a parked write:
- * confirmed-present re-runs the same atomic beat ⑦ under the same proof
- * parsers; confirmed-absent records the typed evidence note and marks the same
- * permanent intent `retryable`. There is no generic Done/Retry.
- *
- * D116: the recovery probe's driver lease runs outside any worker loop, so
- * `recover` itself binds the target run's retained `configFingerprint` around
- * the lease (see `WriteRecoveryDependencies.sessions`). The typed operator
- * resolutions are pure authority work and lease no driver, so no binding
- * applies there.
- */
+
 import { z } from "zod";
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { canonicalJsonStringify, JsonValueSchema } from "../../../rules/validation/canonical-json.js";
@@ -131,13 +104,7 @@ export interface WriteRecoveryDependencies {
   readonly continuation: RunContinuationPort;
   readonly stores: TaskStoreRegistry;
   readonly authority: WriteRecoveryAuthority;
-  /**
-   * D116 (ref clock-config-secrets §4): the recovery probe leases a driver OUTSIDE any worker
-   * loop's claimed-run binding window, so the host must also expose the
-   * bind/release surface — `recover` binds the TARGET run's retained immutable
-   * `configFingerprint` around its probe lease and releases it afterwards.
-   * `WorkerSessionManager` satisfies this.
-   */
+  // Recovery outside a worker claim window binds the target run's retained config fingerprint itself.
   readonly sessions: Pick<TransactionSessionHost, "withDriver"> & RunConfigFingerprintBinding;
   readonly clock: Clock;
   readonly ids: IdFactory;
@@ -152,12 +119,7 @@ export interface WriteRecoveryDependencies {
 export interface WriteRecoveryInput {
   readonly descriptor: AnyWorkflowDescriptor;
   readonly writeIntentId: string;
-  /**
-   * Absence observations collected EARLIER in this recovery episode, already in
-   * `RecoveryProbeVerdict` shape. Pre-settlement observations are process-held:
-   * after a crash they are re-collected from scratch, which can only delay a
-   * retry, never fabricate authority (D69 counts only qualified observations).
-   */
+  // Pre-settlement absence observations are held in this recovery episode, never synthesized.
   readonly priorVerdicts?: readonly unknown[];
   readonly signal: AbortSignal;
 }
@@ -230,14 +192,7 @@ export function createWriteRecoveryService(deps: WriteRecoveryDependencies): Wri
       return deriveWriteAuthorityReason(code, kind, canonicalJsonStringify({ protectedBindings: bindings,
         evidence: valueFreeProtectedData(parsed, bindings) }));
     };
-    /*
-     * D136: resolvability binds to the SEMANTIC surface this probe consumes —
-     * the workflow/version identity, the transaction node that commits this
-     * task, the canonical-input schema, the permanent key re-derived from the
-     * exact durable input, and the retained binding proof — not to the
-     * descriptor's whole source-closure hash. A worker that restarted onto a
-     * newer build must still be able to recover the crash it caused.
-     */
+
     const { node } = requireWriteResolutionBinding({
       arm: "recovery-probe",
       descriptor: input.descriptor,
@@ -258,16 +213,8 @@ export function createWriteRecoveryService(deps: WriteRecoveryDependencies): Wri
       throw new Error(`run ${intent.runId} resolved no ${intent.system} instance; recovery cannot probe`);
     }
 
-    /*
-     * D116 (ref clock-config-secrets §4): the probe lease runs OUTSIDE any worker loop, so
-     * recovery binds the TARGET run's retained immutable `configFingerprint`
-     * itself — read from the authority run row the intent names, never
-     * recomputed from current config and never taken from caller claims. The
-     * bind sits OUTSIDE the probe's catch on purpose: a missing/malformed
-     * fingerprint on the run row, or a host already bound to another run, is a
-     * PRECONDITION failure that throws out of `recover` loudly — it must never
-     * collapse into a park that reads as a probe verdict (ref write-safety §4).
-     */
+
+    // Bind outside the catch so fingerprint precondition failures cannot become probe verdicts.
     const runConfigFingerprint = FingerprintSchema.parse(run.envelope.configFingerprint);
     deps.sessions.bindRunConfigFingerprint(runConfigFingerprint);
 
@@ -333,7 +280,7 @@ export function createWriteRecoveryService(deps: WriteRecoveryDependencies): Wri
       }
       if (run.lifecycle.state !== "parked-write") {
         throw new Error(
-          `run ${intent.runId} is ${run.lifecycle.state}; positive-recovery backfill requires the D118 `
+          `run ${intent.runId} is ${run.lifecycle.state}; positive-recovery backfill requires the `
           + "sweep's parked-write routing first — an unclaimable non-parked run stays unclaimable",
         );
       }
@@ -382,7 +329,7 @@ export function createWriteRecoveryService(deps: WriteRecoveryDependencies): Wri
       protectedReason("recovery-probe-unknown", "probe", canonicalJsonStringify(verdict)));
     }
 
-    /* absent — one observation is diagnostic; authority needs D64/D69 */
+    // One absence observation is diagnostic; retry authority requires the declared stabilized evidence.
     const policy = NegativeSettlementPolicySchema.parse(commitContract.writeSafety.idempotency.recoveryAbsence);
     const priorVerdicts = (input.priorVerdicts ?? []).map((prior) => RecoveryProbeVerdictSchema.parse(prior));
     const observation = RecoveryProbeVerdictSchema.parse({ state: "absent", evidence: verdict.evidence });
@@ -433,9 +380,7 @@ export function createWriteRecoveryService(deps: WriteRecoveryDependencies): Wri
       });
     }
     if (evaluation.state === "wait") {
-      // Waiting is a `not_before` requeue decision for the caller's scheduler —
-      // never a sleeping worker and NEVER retry authority. Durable state is
-      // deliberately unchanged: the run stays unclaimable under its park.
+
       return WriteRecoveryDecisionSchema.parse({
         state: "wait",
         writeIntentId: intent.writeIntentId,
@@ -470,28 +415,14 @@ export function createWriteRecoveryService(deps: WriteRecoveryDependencies): Wri
 export interface WriteResolutionDependencies {
   readonly continuation: RunContinuationPort;
   readonly descriptors: WorkflowDescriptorResolver;
-  /**
-   * MUST be the same `AuthorityDatabase` the kernel's `withAuthorityTransaction`
-   * runs on: the resolution executes INSIDE the kernel's transaction, and
-   * `commitWriteAttempt` composes as a nested savepoint on that connection.
-   */
+  // Use the kernel's AuthorityDatabase connection so resolution composes inside its transaction as a savepoint.
   readonly authority: WriteRecoveryAuthority;
   readonly ids: IdFactory;
   readonly resolveImplFingerprint?: (taskId: TaskId) => Fingerprint;
   readonly hooks?: WriteSequencerHooks;
 }
 
-/**
- * D136: the resolution's target — the registered descriptor and the exact
- * transaction node this intent commits — validated against the SEMANTIC
- * surface the arm consumes rather than the descriptor's whole closure hash.
- *
- * A parked write waits for a human to go look in the target system, and that
- * wait routinely outlives an unrelated refactor somewhere in a ~31-file import
- * closure. Expiring the operator's only release path on such an edit is not a
- * recovery path; see `write-resolution-binding.ts` for exactly what may move
- * and what may not.
- */
+// Parked-write resolution binds the consumed semantic surface; unrelated source edits cannot expire its release path.
 function requireResolutionTarget(
   deps: WriteResolutionDependencies,
   repositories: WriteBindingRepositories,
@@ -545,21 +476,7 @@ export function createWriteResolutionExecutor(deps: WriteResolutionDependencies)
       const completion = commitContract.writeSafety.completion;
       const proofSchemaHash = deriveSchemaHash(completion.proofSchema, "output");
       const payload = context.command.payload;
-      /*
-       * D245 — BOTH proof checks are typed REJECTIONS, not throws.
-       *
-       * An operator now composes this payload from the field list the
-       * parked-write section serves, so "the proof does not fit" is an ordinary
-       * answer-level mistake rather than an inconsistent store: the client's own
-       * check cannot see a `.refine()`, and the served schema can move between
-       * the serve and the send. Thrown, it reached the dialog through the arm
-       * reserved for "the server never answered" — with no code to quote and a
-       * sentence about transport. `executeResolveGate` has answered
-       * `schema-mismatch` for the identical situation one command over since the
-       * gate landed; this matches it, and the refusal unwinds the whole
-       * transaction exactly as the throw did, so nothing durable moves either
-       * way.
-       */
+
       if (payload.proof.schemaHash !== proofSchemaHash) {
         rejectCommandRequest(
           context.command,

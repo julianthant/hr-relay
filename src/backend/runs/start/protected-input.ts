@@ -6,14 +6,7 @@ import { ProtectedInputBindingsSchema, protectedInputBindings, type ProtectedInp
 import type { SchemaBoundCanonicalValue } from "../../../models/validation/schema-bound-value.js";
 import type { ProtectedSecretSource } from "../../../models/config/secrets.js";
 
-/**
- * D341's closed subject binding replaces the private part of item identity.
- * Preserve the existing document reread ordinal after canonical ingress validation:
- * the same decision resumes its item, while a new decision gets fresh checkpoints.
- * Reason text and other execution settings never become match-key material.
- * Omission retains the exact historical protected key; permanent write keys are
- * derived elsewhere from the transaction's business facts and are unaffected.
- */
+
 export function protectedSubjectMatchKey(bindings: readonly ProtectedInputBinding[], canonicalInput: unknown): string {
   const base = `protected-input:${canonicalJsonStringify(bindings)}`;
   if (!bindings.some(({ inputPath }) => inputPath === "documentNumber")) return base;

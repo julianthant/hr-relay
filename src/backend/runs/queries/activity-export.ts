@@ -1,41 +1,4 @@
-/**
- * The Activity report's served CSV export (D240, ref frontend-backend-integration §6.7).
- *
- * ## The rules travel with the numbers, or the export is a lie
- *
- * Ref frontend-backend-integration §5 has carried `export if later served` in the Activity row since 2i,
- * and `docs/findings/activity.md` recorded the condition attached to building
- * it: **an exported report with the numbers and without the rules is precisely
- * the lying artifact this surface's whole design prevents.** The panel puts its
- * caveats one press away in the ⓘ because a caveat in a footnote nobody scrolls
- * to is a caveat nobody read; a CSV has no ⓘ, so the caveats are a BLOCK of the
- * artifact, ahead of every total they qualify.
- *
- * They are the SAME sentences, not a second copy: `activityReportCaveats` lives
- * in the browser-safe contract and both consumers read it, so a rule that moves
- * moves in both places. Two copies would be the same lie with a delay on it.
- *
- * ## It exports the SERVED payload, and nothing it was not handed
- *
- * Every number below is read off `ActivityReportWire` — including the error
- * rate, which comes from the one `activityErrorRatePercent` the tile renders,
- * so the exported rate cannot round differently than the screen it was taken
- * from. Nothing here re-counts, re-buckets or re-derives, which is D81's rule
- * restated for a second consumer of one payload.
- *
- * What is deliberately ABSENT: the panel footer's operator id and app build.
- * Those are client props that never crossed this wire, and a server composing
- * them would be asserting provenance about a reader it cannot see. The window,
- * the generation instant and the wire version are on the payload, and they are
- * what the header block carries.
- *
- * ## Shape
- *
- * Labelled blocks separated by a blank line, each with its own header row —
- * the shape a spreadsheet opens correctly and a person reads top to bottom.
- * Text cells with formula prefixes are escaped with an apostrophe before RFC 4180 quoting.
- * Numeric values retain their numeric representation.
- */
+
 import {
   activityErrorRatePercent,
   activityReportCaveats,
@@ -60,8 +23,7 @@ export function activityReportCsv(report: ActivityReportWire): string {
     row(["Wire version", report.wireVersion]),
   ]);
 
-  // AHEAD of the totals, on purpose: a reader who stops after the first screen
-  // of a spreadsheet has still read the rules the numbers were counted by.
+  // Put counting rules before totals so a partial spreadsheet view still shows their meaning.
   blocks.push([
     row(["How this report is counted"]),
     row(["Rule"]),
@@ -89,8 +51,7 @@ export function activityReportCsv(report: ActivityReportWire): string {
     row(["Error rate %", activityErrorRatePercent(report)]),
     row(["Measured durations", report.durations.measuredRuns]),
     row(["Unmeasured durations", report.durations.unmeasuredRuns]),
-    // D124 at one more remove: an absent quantile exports its REASON, never a
-    // zero that a spreadsheet would happily average.
+    // Export an absent quantile reason; zero would be averaged as a real measurement.
     row([
       "Median duration (ms)",
       report.durations.medianMs.state === "present"
@@ -124,12 +85,7 @@ export function activityReportCsv(report: ActivityReportWire): string {
     ]),
     ...report.workflows.map((workflow) => row([
       workflow.workflowId,
-      // The short code gets its own column rather than being folded into the
-      // label: a spreadsheet sorts and filters columns, and gluing `sd` onto
-      // the front of a label would make both halves unfilterable. An
-      // unregistered workflow exports an EMPTY code for the same reason it
-      // exports an empty category — it has no registry row to read one from,
-      // and the reason it has none is already in the Label cell.
+      // Export short code as its own sortable column instead of embedding it in the workflow label.
       workflow.registration.state === "registered" ? workflow.registration.code : "",
       // Never an id dressed as a label: an unregistered workflow exports the
       // reason the report gives on screen.
@@ -177,9 +133,7 @@ export function activityReportCsv(report: ActivityReportWire): string {
       ]))),
   ]);
 
-  // D236's second authority, labelled as one HERE too — the exported copy is
-  // read without the panel's subtitle beside it, so the block states its own
-  // seam rather than relying on the caveat block alone.
+
   blocks.push([
     row(["Write ledger — what was actually filed"]),
     row(["A separate authority from every total above; confirmed entries survive Archive transfer and remain until explicit owner deletion."]),

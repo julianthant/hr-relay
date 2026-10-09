@@ -1,21 +1,6 @@
 import type { WorkerBrowserObservation } from "../../../models/run/worker-control.js";
 import type { RunRecord } from "../../../models/run/record.js";
-/**
- * The Phase-1 worker run loop (ref execution-and-sessions §3): one workflow-scoped worker, one
- * active item, claim → execute → terminal/park, then the next eligible row.
- *
- * The loop owns exactly the concerns the interpreter cannot: claiming (the
- * store enforces the one-active-item invariant), heartbeat renewal during long
- * operations (a lost heartbeat aborts the run's signal instead of letting a
- * zombie keep driving a browser), the worker-lifetime browser-session set
- * (warm reuse across sequential items — ref execution-and-sessions §5 — with `worker-stop` close
- * proof at the end), and worker/browser span emission over the injected
- * `SpanEmitter`.
- *
- * Idle behavior is ref execution-and-sessions §3's bounded re-poll: `deferred` sleeps exactly
- * until the earliest `not_before`, capped by `idleRepollMs`; a worker never
- * sleeps while owning a run.
- */
+
 import { z } from "zod";
 import { CURRENT_DIAGNOSTIC_SAFETY_VERSION } from "../../../models/trust/failure.js";
 import type { TaskLogger } from "../../../workflow-kit/task.js";
@@ -111,41 +96,27 @@ export interface WorkerLoopDependencies {
   readonly ids: IdFactory;
   readonly scheduler: MonotonicDeadlineScheduler;
   readonly taskDeadlineMs: number;
-  /**
-   * D125 — `timeouts.sessionAcquireMs`: the bound on acquiring one browser
-   * session (open + login), distinct from and much shorter than
-   * `taskDeadlineMs`. Required, so a composition cannot fall back to the
-   * whole-task deadline for session liveness.
-   */
+  // Session acquisition has its own bound, separate from the task deadline.
   readonly sessionAcquireMs: number;
-  /** Compatibility mode used only by historical envelopes with no browserMode. */
+  // Envelopes without browserMode use the configured compatibility mode.
   readonly defaultBrowserMode?: BrowserPresentationMode;
-  /** D267 (ref execution-and-sessions §10): the per-credential Duo ceremony lease gate factory. */
+
   readonly duoCeremony: DuoCeremonyGateFactory;
   readonly heartbeatIntervalMs: number;
   readonly idleRepollMs: number;
   readonly log: TaskLogger;
   /** Run messages and browser actions; transaction callbacks stay outside this sink. */
   readonly taskNotes?: Pick<NoteJsonlWriter, "emitRunLog" | "emitRunAction">;
-  /** Phase 3 publication handoff; Phase 4 supplies a persistent transport adapter. */
+  // Worker-local publication handoff; persistent transport is supplied separately.
   readonly confirmedActionAppend?: (event: ConfirmedActionEvent) => void;
   /** Stop claiming and shut the worker down; the active run finishes first. */
   readonly stopSignal: AbortSignal;
-  /**
-   * `true` drains the queue once and returns at the first idle poll — the
-   * Phase-1 harness/CLI mode. `false` keeps re-polling until `stopSignal`.
-   */
+  // drainOnce returns at the first idle poll; otherwise the loop runs until stopSignal.
   readonly exitWhenIdle: boolean;
   readonly checkpointMigrations?: readonly CheckpointMigration[];
   readonly canonicalInputMigrations?: readonly CanonicalInputSnapshotMigration[];
   readonly writeSequencer?: WriteSequencer;
-  /**
-   * Builds the ref write-safety write sequencer over the loop-OWNED `WorkerSessionManager`
-   * (D116: the sequencer's driver leases must come from the exact manager whose
-   * run-config-fingerprint window this loop binds). Production composition uses
-   * this seam; `writeSequencer` stays for tests that pre-build one. Passing
-   * both is a wiring error and fails loud.
-   */
+
   readonly writeSequencerFor?: (sessions: WorkerSessionManager, taskDeadlineMs:number) => WriteSequencer;
   readonly childRuns?: ChildRunExecutor;
   readonly gateSources?: GateSourceRuntime;
@@ -153,30 +124,16 @@ export interface WorkerLoopDependencies {
   readonly diagnostics?: RunDiagnosticCapture;
   /** Explicit per-run screenshot persistence, executed while a lease owns its page. */
   readonly browserScreenshotCapture?: RunBrowserScreenshotCapture;
-  /**
-   * Ref data-intake-and-edit-data §4.11: the admitted-provider wiring and the kernel artifact writer,
-   * forwarded verbatim to the executor. Absent, a contract declaring either
-   * capability terminalizes with a structured failure naming the missing
-   * wiring — the loop never substitutes a client or a writer.
-   */
+
   readonly providers?: RunProviderWiring;
   readonly artifacts?: ContentAddressedArtifactWriter;
   /** Ref data-intake-and-edit-data §4.1's blocking sink projector; absent, a declaring node fails loud. */
   readonly artifactProjector?: RunArtifactProjector;
-  /**
-   * Ref dashboard-surfaces §2.4's durable worker directives, observed BETWEEN items: the loop
-   * polls before each claim, so `stop` ends the loop only after the active run
-   * settled and `pause` stops claiming without ending the worker. `stopSignal`
-   * remains the mid-run abort channel (SIGINT / claim loss). A poll that
-   * throws aborts the loop loudly — an unreadable directive is never "run".
-   */
+
   readonly controlPoll?: () => WorkerDirective;
   readonly browserControl?: (sessions: WorkerSessionManager) => Promise<void>;
   readonly browserObservation?: (observation: Omit<WorkerBrowserObservation, "leaseGeneration">) => void;
-  /**
-   * Production composition's resolved boot config. Optional only for focused
-   * loop fixtures that exercise lifecycle mechanics without composing config.
-   */
+
   readonly configFingerprint?: string;
   /** Production claim gate comparing the exact boot/current epochs inside one SQLite transaction. */
   readonly claimNext: (
@@ -396,9 +353,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         const taskDeadlineMs = resources?.taskDeadlineMs ?? deps.taskDeadlineMs;
         const providers = resources === undefined ? deps.providers : resources.providers;
         const writeSequencer = deps.writeSequencer ?? deps.writeSequencerFor?.(sessions,taskDeadlineMs);
-        // D116: the claimed run's immutable config fingerprint becomes part of
-        // the session reuse identity for every driver lease this run takes —
-        // bound for exactly the execution window, released on every exit.
+
         const outcome = await withBoundRunConfigFingerprint(
           sessions,
           run.envelope.configFingerprint,
@@ -457,11 +412,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
 
 /* ── the kernel's WorkerRuntimeExecutor seam, Phase-1 shape (ref execution-and-sessions §0) ──── */
 
-/**
- * Process effects behind the kernel's worker/browser arms. Phase 1 runs ONE
- * worker per workflow with one active item; the supervisor that spawns real
- * processes is composition-owned and injected here.
- */
+
 export interface WorkerProcessSupervisor {
   /** Start the explicit Phase-1 pool member and return evidence that it started. */
   spawnWorker(input: WorkerPoolMember): unknown;
@@ -502,11 +453,7 @@ export const WorkerPoolMemberSchema = z.strictObject({
 });
 export type WorkerPoolMember = z.infer<typeof WorkerPoolMemberSchema>;
 
-/**
- * The canonical bounded-stop escalation ORDER. The policy below states the
- * plan (stages and their timeouts, declared up front); observed stages record
- * what actually happened, one timestamped record per stage AS IT OCCURS.
- */
+
 export const WORKER_STOP_ESCALATION_STAGES = Object.freeze(
   ["graceful-stop-requested", "sigterm-sent", "sigkill-sent"] as const,
 );
@@ -532,13 +479,7 @@ export const WorkerStopObservedStageSchema = z.strictObject({
 });
 export type WorkerStopObservedStage = z.infer<typeof WorkerStopObservedStageSchema>;
 
-/**
- * The timestamped observation record: a strict PREFIX of the escalation order
- * (graceful first, no skipped stage, no repeats) with non-decreasing
- * timestamps. A sequence that jumps past the graceful stage, inverts the
- * order, or time-travels is refused at the schema — an illegal transition can
- * never be acknowledged.
- */
+// Observed escalation stages are a timestamped prefix with no gaps or repeats.
 export const WorkerStopObservedStagesSchema = z
   .array(WorkerStopObservedStageSchema)
   .min(1)
@@ -569,13 +510,7 @@ export const WorkerStopObservedStagesSchema = z
   });
 export type WorkerStopObservedStages = z.infer<typeof WorkerStopObservedStagesSchema>;
 
-/**
- * Durable supervisor ownership of a pool member. `external` is reportable so a
- * supervisor can tell the truth about a process it did not start — and every
- * mutating control REFUSES it by name: only a member the supervisor durably
- * owns may be planned over, spawned, stopped, paused, resumed, or have its
- * browser controlled.
- */
+
 export const WorkerPoolOwnershipSchema = z.enum(["supervised", "external"]);
 export type WorkerPoolOwnership = z.infer<typeof WorkerPoolOwnershipSchema>;
 
@@ -594,14 +529,7 @@ export const WorkerPoolMemberReconciliationFactSchema = z.discriminatedUnion("st
     member: WorkerPoolMemberSchema,
     stage: z.literal("graceful-stop-requested"),
     ownership: WorkerPoolOwnershipSchema,
-    /**
-     * Supervisor-attested provenance of the stop, schema-pinned so it can
-     * never be left implicit: `initiating` — THIS plan requested the graceful
-     * stop, so exactly the graceful stage can have been observed;
-     * `reconciling` — the stop was already in flight when this plan was
-     * acknowledged, and `observed` reports every escalation stage that has
-     * ALREADY occurred. Both arms stay bounded by the command's `now`.
-     */
+    // Stop provenance distinguishes initiation from reconciliation of an existing directive.
     phase: z.enum(["initiating", "reconciling"]),
     escalation: WorkerStopEscalationPolicySchema,
     /** Recorded AS THEY OCCUR: a later `reconciling` fact reports escalations that happened since. */
@@ -628,13 +556,7 @@ const WorkerSpawnAcknowledgementSchema = z.strictObject({
   stage: z.literal("started"),
 });
 
-/**
- * The durable stop directive write's own lease versions — reported by the
- * graceful-stop channel that performed the write, threaded through the stop
- * acknowledgement so command authority audits the WRITE's change, never a
- * later lease read that would absorb unrelated bumps (a worker heartbeat)
- * into the command's claimed change.
- */
+
 export const WorkerDirectiveLeaseVersionsSchema = z.strictObject({
   before: PositiveIntSchema,
   after: PositiveIntSchema,
@@ -658,12 +580,7 @@ const WorkerStopAcknowledgementSchema = z.strictObject({
   escalation: WorkerStopEscalationPolicySchema,
   /** What actually happened so far. The initial acknowledgement may contain only the graceful request. */
   observed: WorkerStopObservedStagesSchema,
-  /**
-   * Optional AT THIS SCHEMA only because a synthetic phase-1 supervisor may
-   * predate the version-reporting channel; the kernel's async pool door
-   * REQUIRES it (`WorkerStopPoolAcknowledgementSchema`) before it will audit
-   * a stop, so an acknowledgement without it refuses loudly there.
-   */
+  // The async pool boundary requires directive versions even when synthetic supervisors omit them.
   directiveLeaseVersions: WorkerDirectiveLeaseVersionsSchema.optional(),
 });
 
@@ -712,17 +629,7 @@ export const WorkerSupervisorAcknowledgementSchema = z.discriminatedUnion("comma
 ]);
 export type WorkerSupervisorAcknowledgement = z.infer<typeof WorkerSupervisorAcknowledgementSchema>;
 
-/**
- * The durable stop directive's identity, threaded from the kernel command that
- * initiates a stop — a `stop-worker`, or a plan that stops an excess member.
- * `requestedAt` is the COMMAND's `now`, the same instant
- * `requireObservedNotAfterNow` bounds observed stages against: the injected
- * graceful-stop channel writes the lease directive at EXACTLY this instant, so
- * the recorded graceful stage can never postdate the acknowledgement that
- * carries it (the W1/W2 seam gap this closes). `requestedBy`/`reason` are the
- * command's own actor and reason — a directive is authority, and authority
- * never carries a fabricated actor.
- */
+
 export const WorkerStopDirectiveContextSchema = z.strictObject({
   commandId: z.uuid().optional(),
   requestedAt: IsoInstantSchema,
@@ -738,12 +645,7 @@ export interface WorkerPoolPlanRequest {
   readonly desiredWorkers: PositiveInt;
   /** The desired roster: canonical members at indices 1..desiredWorkers. */
   readonly members: readonly WorkerPoolMember[];
-  /**
-   * The AUTHORITATIVE excess set: every canonical index above `desiredWorkers`
-   * up to `MAX_WORKERS_PER_POOL`. A scale-down names these explicitly, and the
-   * acknowledgement must cover each of them with a bounded graceful stop —
-   * omitting one, or stopping a desired index instead, refuses.
-   */
+
   readonly excessMembers: readonly WorkerPoolMember[];
   /** The stop identity for any excess member this plan gracefully stops. */
   readonly directive: WorkerStopDirectiveContext;
@@ -799,29 +701,12 @@ export type WorkerSupervisorRequest =
   | WorkerPoolRefreshRequest
   | WorkerPoolReopenRequest;
 
-/**
- * The pool supervisor's ONE effect seam. `execute` may return the
- * acknowledgement synchronously or as a promise of it: the runtime executor
- * AWAITS the result before validating, so a process/browser effect is proved
- * settled before anything is acknowledged — success is never fabricated ahead
- * of the effect, and a failed effect rejects the command instead of
- * acknowledging it.
- */
+
 export interface WorkerPoolProcessSupervisor {
   execute(request: WorkerSupervisorRequest): unknown;
 }
 
-/**
- * Every pool control is awaitable: the acknowledgement settles only after the
- * supervisor's effect settled (the kernel's synchronous Phase-1 seam keeps
- * `createPhase1WorkerRuntimeExecutor`, which refuses pending effects instead).
- *
- * DELIBERATELY not a `WorkerRuntimeExecutor`: the pool methods carry distinct
- * names, so wiring this executor into the kernel's synchronous `workerRuntime`
- * dependency is a compile error rather than a mis-wire that launches the real
- * supervisor effect and abandons its promise as an unhandled rejection when
- * the synchronous zod parse throws on it.
- */
+
 export interface WorkerPoolRuntimeExecutor {
   planPoolWorkerCount(context: WorkerRuntimeContext): Promise<unknown>;
   spawnPoolWorker(context: WorkerRuntimeContext): Promise<unknown>;
@@ -832,11 +717,7 @@ export interface WorkerPoolRuntimeExecutor {
   resumePoolWorker(context: WorkerRuntimeContext): Promise<unknown>;
 }
 
-/**
- * Members are FROZEN at mint: every acknowledgement is compared against the
- * original request scalars, so a supervisor that mutates the submitted request
- * after the fact fails loudly instead of steering what gets acknowledged.
- */
+// Freeze submitted members before invoking the supervisor; acknowledgements must bind the original scalars.
 function poolMember(workflowId: WorkflowId, poolIndex: number): WorkerPoolMember {
   const parsedIndex = PoolSizeSchema.parse(poolIndex);
   return Object.freeze(WorkerPoolMemberSchema.parse({
@@ -878,12 +759,7 @@ function workerStopEscalation(): WorkerStopEscalationPolicy {
   return Object.freeze(escalation);
 }
 
-/**
- * The command's own now/actor/reason, parsed into the durable stop identity a
- * stop's channel writes. A malformed `now` refuses HERE, before the supervisor
- * is consulted — it would otherwise both unbound the observed-stage check and
- * stamp garbage into a durable directive.
- */
+
 function stopDirectiveContext(context: WorkerRuntimeContext): WorkerStopDirectiveContext {
   const { command } = context;
   const now = IsoInstantSchema.safeParse(context.now);
@@ -931,14 +807,7 @@ function requireDurableOwnership(
   }
 }
 
-/**
- * The acknowledgement being checked INITIATED the graceful stop — a stop
- * command always, a plan fact when the supervisor attests `initiating` — so
- * at acknowledgement time only `graceful-stop-requested` can have been
- * observed. The schema pins observation order; this pins TIME: SIGTERM/SIGKILL
- * are recorded through later `reconciling` plan facts as they occur, never
- * promised by the initiating acknowledgement.
- */
+// An initiated stop acknowledgement can attest only the graceful stage at the request instant.
 function requireInitialGracefulObservation(
   command: WorkerSupervisorRequest["command"],
   member: WorkerPoolMember,
@@ -954,11 +823,7 @@ function requireInitialGracefulObservation(
   }
 }
 
-/**
- * An observed stage is a record of something that HAPPENED. One timestamped
- * after the command's own `now` is a claim about the future dressed as a
- * fact — refused by name rather than persisted as history.
- */
+// Observed stage timestamps cannot lie after the command instant.
 function requireObservedNotAfterNow(
   command: WorkerSupervisorRequest["command"],
   member: WorkerPoolMember,
@@ -994,11 +859,7 @@ function requireSupervisorAcknowledgement(command: WorkerSupervisorRequest["comm
     && "then" in value
     && typeof value.then === "function"
   ) {
-    // The kernel consumes this seam inside its synchronous authority
-    // transaction, so a pending effect can never be awaited here. Refusing is
-    // the only honest answer: acknowledging now would fabricate a success the
-    // process has not proved. An asynchronous supervisor belongs behind the
-    // awaitable `WorkerPoolProcessSupervisor.execute` seam instead.
+    // A synchronous authority transaction cannot await a process effect; refuse a pending result.
     throw new Error(
       `${command} supervisor returned a pending promise; the synchronous phase-1 seam cannot prove the effect `
       + "before acknowledging it — use the pool contract's awaitable execute seam",
@@ -1007,11 +868,7 @@ function requireSupervisorAcknowledgement(command: WorkerSupervisorRequest["comm
   return value;
 }
 
-/**
- * The pool-capable runtime adapter. The supervisor acknowledges exact member
- * facts before the kernel may persist the declaration; an `accepted` envelope
- * is never manufactured from a missing or mismatched process observation.
- */
+
 export function createWorkerPoolRuntimeExecutor(
   supervisor: WorkerPoolProcessSupervisor,
 ): WorkerPoolRuntimeExecutor {
@@ -1026,18 +883,13 @@ export function createWorkerPoolRuntimeExecutor(
         { length: desiredWorkers },
         (_, offset) => poolMember(command.target.workflowId, offset + 1),
       ));
-      // The authoritative excess set: pool identities are deterministic and
-      // capped at MAX_WORKERS_PER_POOL, so a plan for N workers names indices
-      // N+1..MAX as the EXACT members whose bounded graceful stop the
-      // acknowledgement must cover.
+
       const excessMembers = Object.freeze(Array.from(
         { length: MAX_WORKERS_PER_POOL - desiredWorkers },
         (_, offset) => poolMember(command.target.workflowId, desiredWorkers + offset + 1),
       ));
       const roster = Object.freeze([...members, ...excessMembers]);
-      // Snapshot the acknowledged ids BEFORE the supervisor sees the request:
-      // the accepted plan names the original scalars, never a post-submission
-      // rewrite (the frozen roster makes such a rewrite throw anyway).
+
       const plannedWorkerIds = Object.freeze(members.map(({ workerId }) => workerId));
       const acknowledgement = WorkerPoolReconciliationAcknowledgementSchema.parse(await supervisor.execute(Object.freeze({
         command: "plan-worker-count",
@@ -1075,20 +927,14 @@ export function createWorkerPoolRuntimeExecutor(
           );
         }
         if (fact.stage === "graceful-stop-requested") {
-          // `initiating` (this plan requested the stop) pins the observation
-          // to the graceful stage alone; a supervisor-attested `reconciling`
-          // fact reports the policy-ordered prefix that ALREADY occurred —
-          // the schema pins its order, and both arms stay bounded by now.
+
           if (fact.phase === "initiating") {
             requireInitialGracefulObservation("plan-worker-count", fact.member, fact.observed);
           }
           requireObservedNotAfterNow("plan-worker-count", fact.member, fact.observed, context.now);
         }
         if (offset >= desiredWorkers && fact.stage === "running") {
-          // Stop coverage is owed only for a process that exists: a running
-          // excess member must carry its bounded graceful stop, while an
-          // honest `unmet` fact (crashed / never started — D271's visibly
-          // unmet declaration) has no process to stop and satisfies coverage.
+
           throw new Error(
             `plan-worker-count must select running excess member ${fact.member.workerId} for bounded graceful stop`,
           );
@@ -1215,13 +1061,7 @@ export function createWorkerPoolRuntimeExecutor(
   });
 }
 
-/**
- * The Phase-1 `WorkerRuntimeExecutor`: exactly one worker per workflow (ref execution-and-sessions
- * §0.3 scoped to this phase's single-operator runtime). A plan asking for more
- * throws — the command unwinds rather than acknowledging capacity that does
- * not exist — and the browser arms fail loud until the 1g supervisor can
- * actually reach a live worker's session set.
- */
+
 export function createPhase1WorkerRuntimeExecutor(
   supervisor: WorkerProcessSupervisor,
 ): WorkerRuntimeExecutor {
@@ -1233,7 +1073,7 @@ export function createPhase1WorkerRuntimeExecutor(
       }
       if (command.payload.desiredWorkers !== 1) {
         throw new Error(
-          `Phase 1 runs exactly one worker per workflow; a plan for `
+          `This runtime runs exactly one worker per workflow; a plan for `
           + `${String(command.payload.desiredWorkers)} workers is not reconcilable yet`,
         );
       }

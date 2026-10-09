@@ -1,21 +1,4 @@
-/**
- * The adapter between the interpreter's `RunDiagnosticCapture` port and the
- * capture service — i.e. ref operator-trust §2.2's task-failure trigger, wired.
- *
- * Every field it contributes is CLASSIFIED explicitly, so
- * `redactDiagnosticFields` transforms or drops it by policy rather than by this
- * module's judgement. Two deliberate omissions:
- *
- *  - `FailureRecord.summary` is not copied. It is free text that can carry a
- *    person's name or an EID, it already lives in the failure row the bundle is
- *    joined to, and duplicating it into an exportable bundle would widen the
- *    blast radius for nothing.
- *  - Screenshots and accessibility excerpts come from `attachmentsFor`, which
- *    is a SEAM. The interpreter terminalizes after its driver lease has closed,
- *    so it holds no page; the system driver layer is what can honestly produce
- *    a page attachment, and it fills this in when it exists. Absent, the bundle
- *    carries the structured evidence only — never a fabricated screenshot.
- */
+
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../rules/identity/ids.js";
 import type {
   RunDiagnosticCapture,
@@ -29,12 +12,7 @@ import type {
   DiagnosticCaptureService,
 } from "./diagnostic-capture.js";
 
-/**
- * Ref operator-trust §2.2 distinguishes a task failure from a subject mismatch, and both
- * from an unexpected page state. The `FailureRecord` already knows which it is:
- * a mismatch names an expected/observed subject pair, and an unexpected state
- * carries the code the driver raises for it.
- */
+
 export const UNEXPECTED_PAGE_STATE_CODE = "UNEXPECTED_PAGE_STATE";
 
 export function diagnosticTriggerOfFailure(failure: FailureRecord): "task-failure" | "subject-mismatch" | "unexpected-state" {
@@ -88,11 +66,7 @@ export function classifiedFailureFields(failure: FailureRecord): readonly unknow
 
 export interface RunDiagnosticCaptureOptions {
   readonly service: DiagnosticCaptureService;
-  /**
-   * The driver-side page evidence seam (screenshot, accessibility excerpt,
-   * console/network summary). Absent means the bundle carries no attachment,
-   * which is honest; a fabricated one would not be.
-   */
+
   readonly attachmentsFor?: (failure: FailureRecord) => Promise<readonly DiagnosticAttachmentSource[]>;
 }
 
@@ -114,11 +88,7 @@ export function createRunDiagnosticCapture(options: RunDiagnosticCaptureOptions)
   });
 }
 
-/**
- * Ref operator-trust §2.2's fifth trigger: an operator asking for a snapshot of a run that
- * has not failed. It names the requesting actor and no failure — the local
- * operator seam (D75) supplies the constant id today.
- */
+
 export function operatorRequestedCapture(input: Readonly<{
   service: DiagnosticCaptureService;
   runId: string;

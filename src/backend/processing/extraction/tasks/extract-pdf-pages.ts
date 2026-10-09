@@ -1,37 +1,4 @@
-/**
- * `extraction/extract-pdf-pages` — the implementation.
- *
- * ## Why `pdf-to-img` (2026-08-06)
- *
- * It wraps Mozilla's `pdfjs-dist` — the reference PDF implementation, and the
- * one legacy already renders with — behind a Node-shaped API, is MIT, is
- * actively maintained (6.2.0, published 2026-06-12), and carries exactly one
- * runtime dependency. Rejected:
- *
- * - **`pdf-lib`**, what legacy uses for page SPLITTING. Last published
- *   2022-05-12 and it cannot rasterize at all. The rebuild does not need a PDF
- *   *writer* on this path, and adopting an unmaintained one for a need that has
- *   not arrived would be debt taken on speculatively.
- * - **`pdfjs-dist` directly.** Same engine, but rendering in Node needs a
- *   canvas binding and the worker plumbing wired by hand; `pdf-to-img` is
- *   precisely that plumbing, kept current by someone else.
- * - **`mupdf`.** AGPL-3.0. A strong copyleft is not a licence to take on
- *   casually for a university system.
- * - **`pdf-parse` / `unpdf`.** Text extractors. A scanned form has no text
- *   layer; the whole point here is the image.
- *
- * ## Two things real scans taught us, both load-bearing
- *
- * 1. **The JBIG2 wasm decoder must be wired.** Xerox scanners emit JBIG2 for
- *    bilevel pages, and without `wasmUrl` pdfjs announces "Falling back to JS
- *    JBIG2 decoder" and takes ~60% longer (measured on a real 44-page operator
- *    scan: 736 ms vs 462 ms for five pages). The URL is resolved from the
- *    INSTALLED `pdfjs-dist`, so it cannot drift from the version actually
- *    loaded.
- * 2. **pdfjs TRANSFERS the input buffer.** A second render over the same
- *    `Uint8Array` throws `DataCloneError` on a detached buffer. Every call
- *    therefore gets its own copy, which is also what makes a retry safe.
- */
+// pdfjs transfers its input buffer; copy it for each render. Wire its installed JBIG2 wasm decoder for scanned pages.
 import { Buffer } from "node:buffer";
 import { createRequire } from "node:module";
 import { dirname } from "node:path";
@@ -43,10 +10,7 @@ import {
   ExtractPdfPagesOutputSchema,
 } from "../../../../models/processing/extraction/extract-pdf-pages.js";
 
-/**
- * Rendered at 2× so small hand-printing survives; the scale is PINNED because
- * it is part of what makes the output deterministic for a given input.
- */
+// The pinned 2× render scale preserves small handwriting and deterministic output.
 const RENDER_SCALE = 2;
 const PAGE_MEDIA_TYPE = "image/png";
 

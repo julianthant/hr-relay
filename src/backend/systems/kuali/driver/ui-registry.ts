@@ -1,32 +1,4 @@
-/**
- * The Kuali semantic UI registry — the closed set of screens, elements, page
- * states, and observations the Kuali driver may resolve.
- *
- * The RRSS document vocabulary is shared by the separation read and its Kuali
- * finalization write. The timekeeper field and Save button retain their exact
- * live-verified recipes because finalization stages that field and commits all
- * twelve fields through that button.
- *
- * Every element is a legacy PORT with exact provenance (legacy commit, path,
- * key, source line, blob) plus its own live read-only re-verification on
- * 2026-08-04. Two ports narrow deliberately, and both narrowings are safety
- * fixes rather than transcription:
- *
- *  - `save.navbarSaveButton()` is a three-deep `.or()` chain in legacy
- *    (`[class*="action-bar"] button:has-text("Save")` → `nav button:has-text("Save")`
- *    → the role selector). On the live 2026-08-04 DOM there is exactly ONE
- *    `button "Save"`, and it sits in one action group with `button "Send Back"`
- *    and `button "Mark Complete"` — both of which ADVANCE the workflow. A
- *    `has-text("Save")` branch is a substring match; a fallback chain around a
- *    button whose neighbours file real separation steps is precisely the
- *    "plausible-but-wrong element" this program bans. The port keeps the exact
- *    role+name branch only, and the driver fails loud on any match count but 1.
- *  - `separationForm.separationDate()` is NOT ported at all, but it is worth
- *    recording why the live check mattered: its legacy recipe is the loose
- *    regex `/Separation Date/`, while the live accessible name is
- *    `"Separation Date (Last day actively employed)*"`. A future port must use
- *    the full literal.
- */
+
 import { z } from "zod";
 import { deepFreeze } from "../../../../rules/validation/immutability.js";
 import {
@@ -97,49 +69,15 @@ const LIVE_EVIDENCE = "docs/rebuild/evidence/selectors/kuali/rrss-document.live.
 const IDENTITY_SCENARIO = "ui/kuali-rrss-document-identity";
 const SHARED_FINALIZATION_CONTROLS_SCENARIO = "ui/kuali-rrss-shared-finalization-controls";
 
-/**
- * The separation READ surface carries its own evidence pair and its own
- * verification date, because a manifest states ONE `verifiedAt` and the audit
- * compares it per fact. The three original shared elements were live-verified
- * 2026-08-04; the fourteen read elements below were live-verified 2026-08-12.
- * Folding both into one manifest would have to lie about one of them.
- */
+// Separate evidence manifests retain each surface's own verification timestamp.
 const READ_FIXTURE_EVIDENCE = "docs/rebuild/evidence/selectors/kuali/separation-document.fixture.json";
 const READ_LIVE_EVIDENCE = "docs/rebuild/evidence/selectors/kuali/separation-document.live.json";
 const READ_SURFACE_SCENARIO = "ui/kuali-separation-document-read-surface";
 
-/**
- * Chunk 5a's finalization write surface. It mints no new ELEMENT — every
- * control it writes is one of the fourteen read elements above — so it carries
- * the read surface's evidence pair and its 2026-08-12 verification date. What
- * it does add is the two facts the write needs and the read did not: the
- * staged page state the fence binds to, and the Transaction Number observation
- * an absence of this write is sourced from. Both are structural claims about
- * that same read-only pass, which counted every one of these controls at
- * exactly one node on real documents 4510 / 4502 / 4495.
- *
- * live-verify: 5c owes the other half — that these controls accept a WRITE.
- * Nothing in this repository has observed that, and no manifest here claims it
- * (`externalWriteAttempted` stays `false` in both).
- */
+// Structural finalization evidence is not proof that controls accept writes.
 const FINALIZATION_SURFACE_SCENARIO = "ui/kuali-rrss-finalization-write-surface";
 
-/**
- * D261's Action-List resolve surface. It carries its OWN evidence pair and its
- * own verification date because it is a different SCREEN, live-verified on
- * 2026-08-20 — folding it into the document surface's manifest would have to
- * lie about one of the two dates.
- *
- * What that pass measured, on the real Action List of space
- * `5e47518b90adda9474c14adb`: a direct `goto` to `…/actions` rendered the
- * search box in **1 100 ms**; `textbox "Search"` resolved to exactly ONE node
- * and `button "GO"` to exactly one; the unfiltered list held three documents
- * publishing SIX bare-number links (each row publishes its number in both
- * `Document #` and `Document Title`); and filtering to `4502` left exactly two
- * links, both carrying
- * `/build/space/5e47518b90adda9474c14adb/actions/6a766ae6f0549046f7f0dc06` —
- * the action id separations §9.18/§9.22 had recorded by hand.
- */
+
 const ACTION_LIST_VERIFIED_AT = "2026-08-20";
 const ACTION_LIST_FIXTURE_EVIDENCE = "docs/rebuild/evidence/selectors/kuali/action-list.fixture.json";
 const ACTION_LIST_LIVE_EVIDENCE = "docs/rebuild/evidence/selectors/kuali/action-list.live.json";
@@ -162,21 +100,11 @@ const LegacySelectorProvenanceSchema = z.strictObject({
   key: z.string().regex(/^[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*\(\)$/u),
   sourceLine: z.number().int().positive(),
   blob: GitBlobSchema,
-  /**
-   * When the rebuild does NOT copy the legacy recipe verbatim, the reason is
-   * recorded here and reviewed. A silent narrowing would be indistinguishable
-   * from a transcription error.
-   */
+
   narrowedFromLegacy: z.string().min(1).optional(),
 });
 
-/**
- * Kuali form controls are addressed the way the live accessibility tree
- * exposes them: role + the EXACT accessible name, `*` included. There is no
- * CSS arm and no `.or()` arm on purpose — ref write-safety §13 OQ1 (c) records that DOM
- * refs change on every reload, and the Save neighbourhood makes a fuzzy match
- * dangerous.
- */
+// Kuali DOM refs change on reload; exact accessible names avoid neighboring workflow-advancing controls.
 export const KualiLocatorRecipeSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("role-exact-name"),
@@ -184,19 +112,7 @@ export const KualiLocatorRecipeSchema = z.discriminatedUnion("kind", [
     name: z.string().min(1),
     exact: z.literal(true),
   }),
-  /**
-   * The Action-List document link (D261). Its accessible name IS the value the
-   * caller is resolving for, so the recipe cannot carry a literal name — it
-   * carries the SHAPE of the value and the resolver supplies the number,
-   * matched ANCHORED (`^\s*<n>\s*$`).
-   *
-   * Anchoring is the whole safety argument, ported verbatim from legacy's own
-   * comment (`actionList.docLink()`): Kuali's Action-List search is
-   * SUBSTRING-based, so filtering for `414` returns 4140–4149, and an unanchored
-   * name match would open a neighbouring person's separation. There is no
-   * `.first()` and no fallback anywhere behind this recipe; two links for one
-   * document is the ordinary row and TWO DIFFERENT action ids is a refusal.
-   */
+  // Kuali document search is substring-based; match the supplied number with an anchored accessible name.
   z.strictObject({
     kind: z.literal("role-anchored-value-name"),
     role: z.literal("link"),
@@ -208,22 +124,11 @@ export type KualiLocatorRecipe = z.infer<typeof KualiLocatorRecipeSchema>;
 export const KualiStateEvidenceRuleSchema = z.discriminatedUnion("kind", [
   /** `…/build/space/<space>/actions/<actionId>` — which redirects to `…/view`. */
   z.strictObject({ kind: z.literal("action-view-url"), space: z.string().regex(/^[0-9a-f]{24}$/u) }),
-  /**
-   * `…/build/space/<space>/actions` — the Action List's OWN route (D261).
-   * Live-verified 2026-08-20: a direct `goto` renders the list's search box in
-   * 1.1 s, so the legacy menu click (`actionList.menuItem()`) is not ported.
-   */
+
   z.strictObject({ kind: z.literal("action-list-url"), space: z.string().regex(/^[0-9a-f]{24}$/u) }),
   /** The level-1 heading is the document number; it is how we prove identity. */
   z.strictObject({ kind: z.literal("document-number-heading"), level: z.literal(1) }),
-  /**
-   * Kuali's document route names the FORM in the page title
-   * (`Form - <form name> - Kuali`, live 2026-08-12). It is the only
-   * unambiguous read of the form type on the page: the same string also appears
-   * in the space's app list and in the Action List dialog's rows, so a
-   * page-wide text match would resolve several nodes on a document that is not
-   * even open (S2).
-   */
+  // The document title names the form; identical text in app lists cannot prove an open form.
   z.strictObject({ kind: z.literal("document-title-form-name"), formName: z.string().min(1) }),
   z.strictObject({ kind: z.literal("element"), element: ElementIdSchema }),
 ]);
@@ -232,7 +137,7 @@ export const KualiObservationRecipeSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("input-value"),
     element: ElementIdSchema,
-    /** Kuali inputs return whitespace-padded values (legacy LESSONS.md:49-54). */
+    // Kuali inputs may return whitespace-padded values.
     trim: z.literal(true),
     valueType: z.enum(["eid", "text"]),
   }),
@@ -248,12 +153,7 @@ export const KualiObservationRecipeSchema = z.discriminatedUnion("kind", [
     trim: z.literal(true),
     valueType: z.literal("form-type"),
   }),
-  /**
-   * The Action-List row's own document number (D261) — the link's accessible
-   * name, which the anchored recipe already proved equals the number the run
-   * asked for. It is read off a LINK, not a form control, which is why it needs
-   * its own recipe kind rather than reusing `input-value`.
-   */
+
   z.strictObject({
     kind: z.literal("action-list-matched-link-name"),
     element: ElementIdSchema,
@@ -340,7 +240,7 @@ const KualiUiEvidenceBindingInputSchema = z.strictObject({
   portBindings: z.array(KualiUiRegistryPortBindingSchema),
 });
 
-/** The Kuali Build space that owns the RRSS form (legacy `src/config.ts:131`). */
+
 export const KUALI_RRSS_SPACE_ID = "5e47518b90adda9474c14adb";
 
 function verification(scenario: string, legacyKey: string) {
@@ -364,7 +264,7 @@ function provenance(key: string, sourceLine: number, narrowedFromLegacy?: string
   };
 }
 
-/** The 2026-08-12 read-surface verification, against its own evidence pair. */
+
 function readVerification(legacyKey: string) {
   return {
     verifiedAt: DateOnlySchema.parse(READ_VERIFIED_AT),
@@ -386,7 +286,7 @@ function finalizationVerification(legacyKey: string) {
   };
 }
 
-/** D261's Action-List surface, against its own 2026-08-20 evidence pair. */
+
 function actionListVerification(legacyKey: string) {
   return {
     verifiedAt: DateOnlySchema.parse(ACTION_LIST_VERIFIED_AT),
@@ -397,10 +297,7 @@ function actionListVerification(legacyKey: string) {
   };
 }
 
-/**
- * One read-surface element: a legacy port, live re-verified 2026-08-12 to
- * resolve to EXACTLY ONE node on real documents 4510 / 4502 / 4495.
- */
+
 function readElement(input: Readonly<{
   id: typeof KUALI_RRSS_EID_FIELD;
   label: string;
@@ -502,7 +399,7 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       ),
       supersedes: [],
     },
-    /* ── D261's Action-List resolve surface (live-verified 2026-08-20) ────── */
+
     {
       id: KUALI_ACTION_LIST_SEARCH_INPUT,
       system: "kuali",
@@ -565,7 +462,7 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       ),
       supersedes: [],
     },
-    /* ── The separation READ surface (2i chunk 2, live-verified 2026-08-12) ── */
+
     readElement({
       id: KUALI_RRSS_EMPLOYEE_NAME_FIELD,
       label: "RRSS document employee name field",
@@ -723,22 +620,13 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       label: "Action List loaded and filterable",
       searchTerms: ["kuali action list ready state"],
       sensitivity: "restricted",
-      /**
-       * The list's OWN route plus its own two controls. Legacy proves the same
-       * fact by waiting for the search box after clicking the menu item
-       * (`navigate.ts:60-64` — *"UI chrome that renders as soon as the list view
-       * mounts, independent of whether any documents are pending"*), which is
-       * exactly why an EMPTY Action List still reaches this state: a document
-       * nobody is holding an action on is a real answer, not a broken page.
-       */
+
       evidence: [
         { kind: "action-list-url", space: KUALI_RRSS_SPACE_ID },
         { kind: "element", element: KUALI_ACTION_LIST_SEARCH_INPUT },
         { kind: "element", element: KUALI_ACTION_LIST_SEARCH_GO_BUTTON },
       ],
-      // A direct `goto` rendered the search box in 1 100 ms live 2026-08-20 on a
-      // warm profile; 30 s is the budget every other ready state in this store
-      // carries and leaves ~27x headroom for a cold SPA boot.
+
       timeoutMs: 30_000,
       verification: actionListVerification(ACTION_LIST_SEARCH_PORT_KEY),
     },
@@ -754,8 +642,7 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
         { kind: "document-number-heading", level: 1 },
         { kind: "element", element: KUALI_RRSS_EID_FIELD },
       ],
-      // A cold document open measured ~6s live on 2026-08-04; 30s is the same
-      // budget every other store's ready state carries.
+
       timeoutMs: 30_000,
       verification: verification(IDENTITY_SCENARIO, EID_PORT_KEY),
     },
@@ -766,11 +653,7 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       label: "RRSS separation document loaded and proved to be a separation form",
       searchTerms: ["kuali rrss separation document ready state"],
       sensitivity: "restricted",
-      /**
-       * Strictly stronger than `…ready`: the same URL and document-number
-       * heading PLUS the form's own name off the document title (S2). A
-       * non-separation document reaches `…ready` and never reaches this.
-       */
+
       evidence: [
         { kind: "action-view-url", space: KUALI_RRSS_SPACE_ID },
         { kind: "document-number-heading", level: 1 },
@@ -778,13 +661,7 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
         { kind: "element", element: KUALI_RRSS_EID_FIELD },
         { kind: "element", element: KUALI_RRSS_TERMINATION_TYPE_FIELD },
       ],
-      /**
-       * The document route paints client-side in stages, measured live
-       * 2026-08-12 on a warm SPA: no headings at ~7ms, an EMPTY document
-       * heading at ~258ms, and the real number + the `Form - … - Kuali` title
-       * + the form controls together at ~1.77s. A cold open measured ~3.0s on
-       * 2026-08-04. 30s is the same budget the write surface carries.
-       */
+      // Kuali paints the document heading, title and controls in stages; readiness waits for all required facts.
       timeoutMs: 30_000,
       verification: readVerification("separationForm.employeeName()"),
     },
@@ -795,12 +672,7 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       label: "RRSS separation document with an unsaved staged finalization",
       searchTerms: ["kuali rrss document finalization staged state"],
       sensitivity: "restricted",
-      /**
-       * Structural evidence only, exactly like the timekeeper staging: that the
-       * controls hold the STAGED values is proved by the prepare's own
-       * field-by-field read-back, not by a page-state rule — a value-dependent
-       * state id would be a different state per run and could not be registered.
-       */
+
       evidence: [
         { kind: "action-view-url", space: KUALI_RRSS_SPACE_ID },
         { kind: "document-number-heading", level: 1 },
@@ -830,12 +702,7 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
         trim: true,
         valueType: "document-number",
       },
-      /**
-       * The ARTIFACT subject of the resolve read (D261). The run names a
-       * document and DISCOVERS its action, so the subject is proved by the
-       * LINK'S OWN accessible name — anchored, so a substring neighbour cannot
-       * satisfy it — and never by the id it is about to return.
-       */
+      // Bind document identity to the matched link's anchored name, never the action ID being discovered.
       authoritativeFor: ["subject"],
       verification: actionListVerification(ACTION_LIST_DOC_LINK_PORT_KEY),
     },
@@ -860,12 +727,7 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       sensitivity: "public",
       valueType: "document-number",
       read: { kind: "document-number-heading", level: 1, trim: true, valueType: "document-number" },
-      /**
-       * The ARTIFACT subject of the separation read: the run names a document
-       * and DISCOVERS the person, so the document number is what the read's
-       * subject binding is proved against. The person-subject observation
-       * beside it (`displayed-eid`) is unchanged and still the write's binding.
-       */
+
       authoritativeFor: ["subject"],
       verification: readVerification("separationForm.employeeName()"),
     },
@@ -896,13 +758,7 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
         trim: true,
         valueType: "text",
       },
-      /**
-       * The finalization's COMPLETION observation: it is the half of the
-       * permanent key `<documentNumber>|finalization|<transactionNumber>` that
-       * the document itself carries, so an absence of this write is sourced
-       * from it. The verdict still compares all ten fields — this names where
-       * the decisive one is read.
-       */
+
       authoritativeFor: ["completion"],
       verification: finalizationVerification("transactionResults.transactionNumber()"),
     },
@@ -984,14 +840,7 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       ],
       fixtureEvidenceRef: ACTION_LIST_FIXTURE_EVIDENCE,
       liveReadOnlyEvidenceRef: ACTION_LIST_LIVE_EVIDENCE,
-      /**
-       * `exactly-one-visible` is deliberately NOT claimed for the document
-       * link: a row publishes its number in both `Document #` and
-       * `Document Title`, so TWO matched links is the ordinary live rendering
-       * (measured 2026-08-20). The invariant this surface actually holds is one
-       * DISTINCT action id, which `classifyKualiActionResolution` owns and
-       * `tests/unit/kuali-action-resolution.test.ts` pins.
-       */
+      // Kuali publishes two links per document; require one distinct action ID, not one link.
       assertions: ["recipe-resolves"],
     },
   ],
@@ -1045,8 +894,7 @@ export function auditKualiUiRegistry(registryInput: unknown = KUALI_UI_REGISTRY)
       && element.locator.role === "button" && !element.locator.exact) {
       issues.push(`${element.id} button recipe must be an exact-name match`);
     }
-    // D261: the anchored arm exists for ONE element. Anywhere else it would be
-    // a name match nobody supplied a value for.
+
     if (element.locator.kind === "role-anchored-value-name"
       && element.id !== KUALI_ACTION_LIST_DOCUMENT_LINK) {
       issues.push(`${element.id} may not use the anchored Action-List link recipe`);
@@ -1066,34 +914,14 @@ export function auditKualiUiRegistry(registryInput: unknown = KUALI_UI_REGISTRY)
       issues.push(`${observation.id} reads an unknown Kuali element`);
     }
   }
-  /**
-   * ONE subject-authoritative observation per SUBJECT IDENTITY, not one
-   * overall.
-   *
-   * The original rule ("exactly one") was written when this store had one
-   * binding: the write's PERSON subject, the displayed EID. The separation read
-   * introduced a second, genuinely different subject — ref task-contract's `artifact` kind
-   * with `identity:"document-id"`, because that read names a document and
-   * DISCOVERS the person. Both must still be unambiguous, so the rule becomes
-   * per-identity rather than being relaxed: exactly one `eid` subject
-   * observation (the write's binding, unchanged) and at most one
-   * `document-number` subject observation.
-   */
+  // Require one subject-authoritative observation per subject identity.
   const subjectObservations = registry.observations.filter(({ authoritativeFor }) =>
     authoritativeFor.includes("subject"));
   const personSubjects = subjectObservations.filter(({ valueType }) => valueType === "eid");
   if (personSubjects.length !== 1) {
     issues.push("Kuali must expose exactly one person subject-authoritative observation for the write binding");
   }
-  /**
-   * **D261 narrows this rule once more, on the argument that already narrowed
-   * it: PER SCREEN.** The Action-List resolve reads a document identity too —
-   * off a link's anchored accessible name rather than off a document's level-1
-   * heading — and those are genuinely different bindings on genuinely different
-   * pages. What must stay unambiguous is which observation is THE document
-   * identity *of a screen*; two on one screen is the ambiguity this rule exists
-   * for, and one each on two screens is not.
-   */
+  // Require unambiguous document identity per screen; different screens have different bindings.
   const documentSubjects = subjectObservations.filter(({ valueType }) => valueType === "document-number");
   const documentSubjectScreens = documentSubjects.map(({ screen }) => screen);
   if (new Set(documentSubjectScreens).size !== documentSubjectScreens.length) {

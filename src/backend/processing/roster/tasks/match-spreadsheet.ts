@@ -1,24 +1,4 @@
-/**
- * `roster/match-spreadsheet` — the implementation.
- *
- * A thin edge over pure domain logic: parse the roster artifact through the
- * SAME shared grid edge extraction uses, prove the operator's mapping fits
- * these exact bytes, coerce the bound cells through the canonical field
- * registry, and hand everything to `matchRosterSubjects` (ref data-intake-and-edit-data §4's
- * redesigned composition, which owns every verdict rule).
- *
- * Fail-closed rules at this edge:
- * - the mapping is APPLIED, never guessed: the freshly detected columns must
- *   reproduce the mapping's own header fingerprint, and every bound column
- *   must resolve by its source-column identity — a moved or missing layout
- *   refuses with `mapping-mismatch` naming what changed, exactly the
- *   fail-closed reuse rule D147 pins for intake;
- * - a cell that fails its canonical coercion makes THAT FACT null on THAT
- *   row (the row's other field may still match); it is data the matcher
- *   handles, not a swallowed error — the counts are recorded and a null fact
- *   can never emit an EID;
- * - every other throw propagates untouched.
- */
+
 import { defineTask } from "../../../../workflow-kit/task.js";
 import { MatchSpreadsheet } from "../../../../models/processing/roster/match-spreadsheet.js";
 import {
@@ -71,9 +51,7 @@ export const matchSpreadsheetTask = defineTask(MatchSpreadsheet, {
       mediaType: input.rosterFileRef.mediaType,
       sheet: input.sheet,
     });
-    // Every parse refusal is one code here: which worksheet/byte problem it
-    // was stays in the message, and the operator's fix is the same — supply a
-    // readable roster.
+
     if (parsed.state === "refused") return ctx.fail("roster-unreadable", parsed.message);
 
     const { mapping } = input;

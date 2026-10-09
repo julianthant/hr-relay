@@ -17,20 +17,7 @@ function allowedLoopbackOrigin(host: string | undefined): string | undefined {
   return url.origin;
 }
 
-/**
- * What a browser-reachable operator mutation must carry before its handler may
- * read a byte of body, query, authority or provider (ref frontend-backend-integration
- * §3.4, D75). The Host/Origin pair is the whole admission; the media-type arm is
- * per policy because the doors differ in what their body IS:
- *
- * - `json` — the body is a strict JSON envelope (commands, bulk, XLSX export,
- *   start plans, Explorer validation). A hostile page can send a JSON-shaped
- *   body as `text/plain` through a simple no-CORS POST, and Hono's `c.req.json()`
- *   parses it regardless, so the media type is part of the admission.
- * - `opaque` — the route owns its media-type contract (intake bytes travel as
- *   themselves under the file's own type).
- *   Origin/Host still gate it; nothing about the body is assumed here.
- */
+// Host and Origin must pass loopback admission before handler or body effects.
 export type OperatorIngressBodyPolicy = "json" | "opaque";
 
 export function operatorIngressAdmission(body: OperatorIngressBodyPolicy): MiddlewareHandler {

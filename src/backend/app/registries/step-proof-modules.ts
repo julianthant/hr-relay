@@ -9,7 +9,7 @@ import { separationsKualiFinalizationWorkflow } from "../../../workflows/separat
 import { separationsKualiReadWorkflow } from "../../../workflows/separations/steps/kuali-extraction/step.js";
 import { separationsUcpathTerminationWorkflow } from "../../../workflows/separations/steps/ucpath-transaction/step.js";
 
-/** Historical step proofs and isolated test fixtures. These are not operator workflows. */
+
 export const separationsKronosTimecardModule = composeWorkflowModule(
   compileWorkflow(separationsKronosTimecardWorkflow),
   taskStoreRegistry.stores,

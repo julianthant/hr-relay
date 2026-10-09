@@ -1,26 +1,4 @@
-/**
- * The intake session service (ref data-intake-and-edit-data §2.2, D170) — the ROUTE half of the
- * upload → map → validate flow.
- *
- * **The route creates the session; commands only mutate it.** That is capture's
- * precedent made explicit: there is deliberately no open arm in the intake
- * command family, because creation carries BYTES, and bytes do not belong in a
- * command envelope that is journaled, replayed and audited. So the upload
- * publishes the file content-addressed, runs discovery once, and mints the
- * `intake_sessions` row; every later decision arrives as a command.
- *
- * **A re-upload of the same bytes joins its open session.** The digest is the
- * identity, so uploading the same export twice is one session with the
- * operator's mapping still on it — forking a second one would silently
- * abandon that work and let two sessions enqueue the same rows.
- *
- * **`prepare` warms what a synchronous authority transaction cannot await.**
- * The kernel re-derives rows and columns from the immutable artifact on every
- * intake command, and reading an artifact is I/O. This service resolves the
- * exact selection the arm will ask for — through the SAME
- * `resolveInspectSelection` the kernel uses, so the two cannot drift — and
- * prepares it before the command runs.
- */
+
 import { z } from "zod";
 import { CsvError } from "csv-parse/sync";
 import { InvalidInputError, InvalidSpreadsheetError } from "read-excel-file/node";
@@ -60,24 +38,10 @@ import type { AuthorityRepositories } from "../../storage/sqlite/authority-datab
 import type { PreparedIntakeParser } from "../../processing/spreadsheet/intake-parser.js";
 import { TargetNotFoundError } from "./refusals.js";
 
-/**
- * The upload cap. A roster export is tens of kilobytes to a few megabytes;
- * 25 MiB is generous for any real spreadsheet while keeping one request from
- * buffering an arbitrary file into this process.
- */
+
 export const INTAKE_UPLOAD_MAX_BYTES = 25 * 1024 * 1024;
 
-/**
- * What the grid edge can actually read. The zip magic still overrides a lying
- * media type downstream — this list is the declared contract, not the proof.
- *
- * It stays EXPORTED beside `INTAKE_UPLOAD_MAX_BYTES` with no importer in this
- * tree on purpose (Track D row D2 kept it where it un-exported eleven other
- * dead exports): the Dropzone's accept list and size cap are client literals
- * today, and serving both from here is a NAMED open wire task
- * (ref dashboard-surfaces §9.7.1, the `FE the intake Dropzone` row in
- * `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/roadmap/roadmap.md`). An unlanded consumer is not dead code.
- */
+
 export const INTAKE_UPLOAD_MEDIA_TYPES = Object.freeze([
   "text/csv",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -87,12 +51,7 @@ export const INTAKE_UPLOAD_MEDIA_TYPES = Object.freeze([
 const IntakeUploadRequestSchema = z.strictObject({
   workflow: WorkflowIdSchema,
   mediaType: z.enum(INTAKE_UPLOAD_MEDIA_TYPES),
-  /**
-   * Required, because the D159 manifest requires `source.originalName` and this
-   * is the one moment the system sees it: a content-addressed artifact has a
-   * digest, not a name (D171). Every real uploader has one — a dropzone reads
-   * `file.name` — so demanding it here is what stops enqueue inventing one.
-   */
+  // Capture the original filename at upload; content addressing cannot recover it.
   fileName: z.string().min(1).max(255),
   byteLength: z.number().int().positive().max(
     INTAKE_UPLOAD_MAX_BYTES,
@@ -188,9 +147,7 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
         readAt,
       });
 
-    // The dispositions are RE-DERIVED against the retained `readAt`, never
-    // stored: ref data-intake-and-edit-data §5.0's pipeline is a pure function of its inputs, so a
-    // stored copy could only drift while this cannot.
+
     const validation = session.validation.state === "none" || layout === null
       ? { state: "none" as const }
       : (() => {
@@ -243,13 +200,7 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
         validRows: committedManifest.validRows,
       });
 
-    /**
-     * Ref data-intake-and-edit-data §7 vector #11 (D171): these exact bytes may have run before. The
-     * committed manifest is the only comparison authority for an enqueued
-     * session. An open session uses the latest earlier manifest for this
-     * (digest, workflow) pair, excluding its own reservation and anything
-     * created after the session.
-     */
+
     const rerun = ((): unknown => {
       const prior = committedManifest ?? resolveIntakeComparison(session, {
         get: dependencies.authorityRead.getIntakeManifest,
@@ -352,9 +303,7 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
         return Object.freeze({ state: "refused" as const, code: "unreadable-file" as const, message: "The spreadsheet is incomplete or malformed. Export a complete CSV or XLSX file and try again." });
       }
       if (parse.state === "refused") {
-        // The bytes are published and immutable — that is harmless and
-        // content-addressed — but no session is minted over a file nobody can
-        // read, and the operator gets the parser's own words.
+
         return Object.freeze({ state: "refused" as const, code: parse.code, message: parse.message });
       }
 
@@ -397,9 +346,7 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
 
     async prepare(command) {
       const parsed = CommandRequestSchema.safeParse(command);
-      // Not an intake command — a real, expected outcome for every other
-      // family. The kernel remains the one authority that parses and refuses a
-      // malformed request; this only warms a seam.
+
       if (!parsed.success || parsed.data.family !== "intake") return;
       // Existing commands are resolved by kernel identity/replay before source reads or new effects.
       if (dependencies.authority.withAuthorityTransaction(repositories => repositories.commands.get(parsed.data.commandId)) !== undefined) return;

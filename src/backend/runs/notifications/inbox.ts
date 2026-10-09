@@ -35,12 +35,7 @@ export interface NotificationInbox {
   clearSnooze(notificationId: string, expectedVersion: number): NotificationRecord;
 }
 
-/**
- * The authority surface the inbox needs; `AuthorityDatabase` satisfies it.
- * The transaction handle is not optional: "find the dedupe row, then create or
- * fold it" has to be one atomic decision or two triggers firing at once would
- * both take the create branch and collide on the unique index.
- */
+
 export interface NotificationAuthority {
   readonly authority: Pick<AuthorityRepositories, "notifications" | "notificationPublications">;
   withAuthorityTransaction<Result>(work: (repositories: AuthorityRepositories) => Result): Result;
@@ -90,7 +85,7 @@ export function createNotificationInbox(
       const occurrence = source === undefined ? canonicalJsonStringify(trigger) : FingerprintSchema.parse(source.identity);
       const sourceId = sha256Hex(`hrauto:notification-source:v1\0${actorId}\0${occurrence}`);
 
-      /* ── phase 1: durable, and complete before anything is delivered ───── */
+
       const settled = dependencies.authority.withAuthorityTransaction((repositories) => {
         const publications = repositories.notificationPublications;
         const replay = publications.get(sourceId);
@@ -115,7 +110,7 @@ export function createNotificationInbox(
         const remember = (record: NotificationRecord, adopted: boolean) => publications.create({
           sourceId, actorId, notificationId: record.notificationId, event: trigger, occurredAt, createdAt: seenAt, adopted,
         });
-        // Historical facts already covered by a row adopt source custody without replaying it.
+
         if (existing !== undefined && (projection.trigger === "backfill-gap" ||
           (source !== undefined && occurredAt <= existing.lastSeenAt && publications.latest(existing.notificationId) === undefined))) {
           remember(existing, true);

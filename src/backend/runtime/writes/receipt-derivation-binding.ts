@@ -1,70 +1,4 @@
-/**
- * D199 — what a settled run's evidence receipt actually binds to (ref operator-trust §2.3).
- *
- * A receipt is D141's pure function of authority: derive it again over the same
- * terminal run and the same durable rows and you must get the same bytes, which
- * is why `evidenceReceipts.insert` refuses a divergent rebuild by name. That
- * promise is only worth something if the derivation SURVIVES the tree moving
- * around it — a receipt is read months after the run, by an operator who is
- * finishing a double-check on a real HR transaction.
- *
- * It did not. `buildRunEvidenceReceipt` stamped the CURRENT build's
- * `descriptor.contractFingerprint` into a record that describes a run which
- * executed under a different one, so the moment anything anywhere in a ~31-file
- * descriptor closure changed, every already-settled run's receipt re-derived to
- * different bytes and the immutable insert correctly refused it. Chunk 2's five
- * live-proof `separations-kuali-read` receipts were stranded exactly this way by
- * a raw-control-byte fix that changed no semantics at all.
- *
- * Two things are wrong with binding a receipt to the closure hash, and they
- * point in OPPOSITE directions:
- *
- * - **The hash is not necessary.** Nearly every edit inside the closure leaves
- *   every surface the derivation reads untouched. This is D136's finding for
- *   parked writes, and a receipt is the same shape of promise.
- * - **The hash is not sufficient either** — and this is where a receipt differs
- *   from a parked write. The declared redaction table
- *   (`src/domain/trust/evidence-classification.ts`) and the declared
- *   cross-source obligations are NOT in any descriptor's import closure, so
- *   they can move with `contractFingerprint` byte-identical. D197 moved one and
- *   two receipts changed content under a frozen hash.
- *
- * So the fingerprint is not the binding at all. The run's OWN retained
- * `envelope.contractFingerprint` is the honest value for the receipt's
- * `descriptorFingerprint` field — it is a fact about the run, read from
- * authority — and resolvability is stated directly, one named check at a time,
- * against the surfaces the derivation actually consumes.
- *
- * **The surfaces `buildRunEvidenceReceipt` consumes, exhaustively:** the
- * workflow id (identity, both evidence scope keys, the obligation lookup); the
- * descriptor version; the runtime node walk (node ids, kinds, `dependsOn`, and
- * each node's task contract id / effect / freshness bound / subject binding);
- * `descriptor.details` (which leaves are mandatory); the terminal execution's
- * `dependsOn` set; the declared obligations for the workflow; the declared gate
- * decisions for every gate node it describes (D204); and the declared redaction
- * for every scope it redacts through. Everything else it reads is a durable
- * authority row, which is immutable and cannot move.
- *
- * **May change** — anything in the closure that leaves the checks below held:
- * an unrelated module in the same import graph, comments, formatting, a control
- * byte escaped to its `\u0000` form, a sibling workflow, a driver gaining an
- * operation.
- *
- * **May not change** — the workflow id; the descriptor version; the presence of
- * every node the run's durable evidence names, still owning the same task
- * contract — and, for a node a `gate_results` row names, still BEING a gate;
- * the canonical-input schema the stored input snapshot is bound to;
- * the terminal dependency set the stored result was built against; and, for a
- * run whose receipt is already stored, the declared evidence itself — the
- * redaction verdict, the mandatory declaration and the obligation set the
- * stored receipt retained.
- *
- * There is no waiver, no override flag and no "force" arm. A refusal prints the
- * whole check table with both fingerprints, because the honest repair is to
- * restore the declaration or accept that the receipt is frozen — never to
- * overwrite an operator-facing record of a real HR transaction with a newer
- * story about it.
- */
+
 import { z } from "zod";
 import {
   descriptorRuntimeNodes,
@@ -82,11 +16,7 @@ import type { RunEvidenceReceipt } from "../../../models/trust/evidence.js";
 import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import type { WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
 
-/**
- * The named semantic checks, in evaluation order. Adding one is a contract
- * change (ref operator-trust §2.3 owns the list); removing one lets a receipt be re-derived
- * against a declaration it was never built under.
- */
+
 export const ReceiptBindingCheckSchema = z.enum([
   "workflow-identity",
   "descriptor-version",
@@ -97,11 +27,7 @@ export const ReceiptBindingCheckSchema = z.enum([
 ]);
 export type ReceiptBindingCheck = z.infer<typeof ReceiptBindingCheckSchema>;
 
-/**
- * Which declaration owns a divergence the `declared-evidence` check found. The
- * receipt's own paths are partitioned across these, so every divergent path is
- * attributed to exactly one of them rather than to "something changed".
- */
+
 export const ReceiptEvidenceOwnerSchema = z.enum([
   "declared-redaction",
   "declared-details",
@@ -114,12 +40,7 @@ export type ReceiptEvidenceOwner = z.infer<typeof ReceiptEvidenceOwnerSchema>;
 
 export const ReceiptBindingCheckResultSchema = z.strictObject({
   check: ReceiptBindingCheckSchema,
-  /**
-   * `held` — proved equivalent. `moved` — proved different (a refusal).
-   * `not-evaluated` — a prerequisite moved, or the baseline this check reads
-   * does not exist for this run; it is NEVER reported as held, because "we
-   * could not look" and "we looked and it matched" must stay distinguishable.
-   */
+  // Not-evaluated is distinct from held; a moved prerequisite supplies no equivalence proof.
   state: z.enum(["held", "moved", "not-evaluated"]),
   detail: z.string().min(1),
 });
@@ -151,7 +72,7 @@ export interface ReceiptDerivationBindingInput {
   readonly checkpoints: readonly RunCheckpointRecord[];
   /** Every write intent this run fenced. */
   readonly writes?: readonly WriteIntentRecord[];
-  /** Every `gate_results` row this run resolved (D204). */
+
   readonly gateResults?: readonly GateResultRecord[];
 }
 
@@ -174,12 +95,7 @@ function short(fingerprint: string): string {
   return `${fingerprint.slice(0, SHORT)}…`;
 }
 
-/**
- * Render the whole check table, held rows included. An operator staring at a
- * refused receipt needs to see what was PROVED equivalent as much as what
- * moved — the difference between "here is the one declaration that changed" and
- * "computer says no".
- */
+
 export function renderReceiptBindingChecks(checks: readonly ReceiptBindingCheckResult[]): string {
   const label = (result: ReceiptBindingCheckResult) =>
     result.state === "held" ? "[held] " : result.state === "moved" ? "[MOVED]" : "[skip] ";
@@ -188,11 +104,7 @@ export function renderReceiptBindingChecks(checks: readonly ReceiptBindingCheckR
 
 /* ── the pre-derivation evaluation ───────────────────────────────────────── */
 
-/**
- * Checks 1–5: can THIS build honestly describe THAT run at all? Every baseline
- * is a durable authority row, so this half is evaluable on a first derivation
- * as well as on a re-derivation.
- */
+
 export function evaluateReceiptDerivationBinding(
   input: ReceiptDerivationBindingInput,
 ): ReceiptDerivationBinding {
@@ -245,11 +157,7 @@ export function evaluateReceiptDerivationBinding(
       graphGaps.push(`checkpoint node "${record.nodeId}" left the graph`);
     }
   }
-  /*
-   * D204: a gate row's node must still BE a gate. A node that stopped being one
-   * is a stronger break than a node that vanished — the row would otherwise be
-   * read as a decision about a step that no longer asks a human anything.
-   */
+
   for (const row of input.gateResults ?? []) {
     if (!gateNodeIds.has(String(row.gateId))) {
       graphGaps.push(
@@ -285,16 +193,7 @@ export function evaluateReceiptDerivationBinding(
       "not evaluated: this run holds no terminal result, so authority retains no dependency set to compare",
     ));
   } else {
-    /**
-     * D210 — a PREVIEWED run's terminal record is not a derived result, so the
-     * set it must still agree with is not `terminalDependsOn`. A preview stops
-     * at the graph's first transaction node and its dependencies are THAT
-     * node's own `dependsOn` — the exact upstream facts its binds read — so
-     * that is the set this build re-derives and compares. Comparing against the
-     * terminal set instead would refuse every preview receipt on a difference
-     * that is by design, which is a check reporting the wrong baseline rather
-     * than a moved declaration.
-     */
+    // Preview terminal dependencies bind the preview boundary, not ordinary workflow success dependencies.
     const dryRun = workflowDryRunSupport(descriptor);
     const previewed = run.envelope.dryRun;
     const declared = (previewed && dryRun.state === "supported"
@@ -322,10 +221,7 @@ export function evaluateReceiptDerivationBinding(
     });
 }
 
-/**
- * The call-site form: throw the full, legible check table when this build
- * cannot honestly describe the run.
- */
+
 export function requireReceiptDerivationBinding(input: ReceiptDerivationBindingInput): void {
   const binding = evaluateReceiptDerivationBinding(input);
   if (binding.state === "incompatible") throw new Error(binding.message);
@@ -348,10 +244,7 @@ const IDENTITY_PATHS: ReadonlySet<string> = new Set([
   "descriptorFingerprint", "configFingerprint", "retryOf", "failure",
 ]);
 
-/**
- * Attribute a divergent path to the ONE declaration that produces it. Every
- * receipt path lands in exactly one owner, so a divergence is always named.
- */
+
 function ownerOf(path: string): ReceiptEvidenceOwner {
   const root = path.split(/[.[]/u)[0] ?? path;
   if (IDENTITY_PATHS.has(root)) return "run-identity";
@@ -370,11 +263,7 @@ function describeEvidence(value: unknown): string {
 const OPAQUE_RECEIPT_VALUE_PATH =
   /^(?:(?:input|observations|output)\[\d+\]\.value\.value|actions\[\d+\]\.proved\.values\[\d+\]\.value)$/u;
 
-/**
- * Walk two receipts and report every path at which they disagree. An array
- * whose LENGTH moved is reported once at the array itself rather than as a
- * cascade of shifted indices, which would name the wrong rows.
- */
+
 export function diffReceipts(
   stored: RunEvidenceReceipt,
   derived: RunEvidenceReceipt,
@@ -423,17 +312,7 @@ export function diffReceipts(
   return Object.freeze(divergences);
 }
 
-/**
- * Check 6, evaluated only when authority already holds a receipt for this run:
- * does this build reproduce the receipt it once wrote?
- *
- * This is the one check whose baseline is the receipt row itself, and it is the
- * only check that can see a declared-redaction or declared-obligation move —
- * both live OUTSIDE every descriptor closure, so they change with
- * `contractFingerprint` byte-identical. It refuses; it never rewrites. The
- * immutable insert stays underneath it as the backstop for any caller that does
- * not come through here.
- */
+// Stored-receipt comparison requires an existing baseline; it cannot run on first derivation.
 export function evaluateReceiptRederivation(input: {
   readonly run: RunRecord;
   readonly descriptor: AnyWorkflowDescriptor;

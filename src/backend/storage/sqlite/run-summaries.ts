@@ -193,10 +193,8 @@ export function createRunSummaries(database: DatabaseSync) {
         else if(status==="partial")clauses.push("0");
         else clauses.push(`(SELECT json_extract(r.record_json,'$.cancelRequested') FROM workflow_runs r WHERE r.record_key=run_summaries.record_key) IS ${status==="cancelling"?"":"NOT "}1`);
       }
-      // The existing index orders day, state, key. Bound each state partition before
-      // merging, so mixed-state ties never require SQLite to sort an unbounded day.
-      // Equal range bounds preserve the index ordering; SQLite elides a state=?
-      // ORDER BY term and otherwise introduces a last-term temporary sort.
+
+// Bound state partitions before merging; equal range bounds preserve index order without an unbounded sort.
       const statusStates: Record<z.infer<typeof QueueStatusSchema>, readonly string[]> = {
         done:["terminal"],failed:["terminal"],cancelled:["terminal"],partial:[],
         blocked:["parked-write","terminal"],queued:["queued"],"awaiting-approval":["parked-gate"],

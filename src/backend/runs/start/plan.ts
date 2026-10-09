@@ -2,20 +2,7 @@ import { type ProtectedInputBinding } from "../../../models/write-safety/protect
 import { admitProtectedInput, protectedSubjectMatchKey } from "./protected-input.js";
 import type { ProtectedSecretSource } from "../../../models/config/secrets.js";
 import type { SchemaBoundCanonicalValue } from "../../../models/validation/schema-bound-value.js";
-/**
- * Start planning — the step between "the operator typed something" and "runs
- * exist" (ref frontend-backend-integration §5.1).
- *
- * The planner parses every submission, derives its logical identity, evaluates
- * the descriptor's enqueue policy against authority, and returns exactly what
- * would start plus exactly what will not and why. Nothing here writes a run.
- *
- * **A refusal is an outcome, not an omission.** A submission that cannot start
- * is a named `refused` entry carrying the reason, so the confirmation surface
- * can show "3 will start, 1 refused: an active run already exists" rather than
- * silently planning three. Dropping the fourth would be the same failure mode
- * as a fallback: the operator would act on a lie.
- */
+
 import type { RerunPlan } from "../../../models/run/rerun.js";
 import { workflowDryRunSupport, workflowPlanning, workflowProjections } from "../../../workflow-kit/workflow.js";
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
@@ -46,13 +33,7 @@ import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.
 
 export interface StartPlannerDeps {
   readonly protectedSecrets?: ProtectedSecretSource;
-  /**
-   * Narrowed to the ONE read the planner makes (D179). An `AuthorityDatabase`
-   * satisfies it structurally, so every existing caller is unchanged; the
-   * relaunch arm, which runs INSIDE a command transaction and holds only the
-   * repositories, can now plan through this same function instead of growing
-   * a second, divergent copy of ingress parsing.
-   */
+
   readonly authority: Readonly<{
     authority: Readonly<{ runs: Readonly<{ listByItem(input: unknown): readonly RunRecord[] }> }>;
   }>;
@@ -70,11 +51,11 @@ export interface StartPlanRequest {
   readonly submissions: readonly unknown[];
   readonly requestedInstance?: InstanceSelection;
   readonly dryRun: boolean;
-  /** Dashboard starts are explicit; other historical/non-dashboard callers may omit it. */
+  // Dashboard starts require explicit choices; retained non-dashboard callers may omit them.
   readonly browserMode?: BrowserPresentationMode;
   /** Omission retains the pre-capture behavior (no browser screenshot). */
   readonly captureBrowserScreenshots?: boolean;
-  /** D307 — already validated against the descriptor's omission forms and cascade by the caller. */
+
   readonly stepOmissions?: StepOmissions;
   readonly priority: RunPriority;
   readonly shape: RunShape;
@@ -88,12 +69,7 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/**
- * Every browser system the descriptor reaches, resolved to an instance.
- *
- * Production is the only new run target. Historical envelopes may still name
- * test, but a new request for it is refused before a plan is admitted.
- */
+
 export function resolveInstances(
   descriptor: AnyWorkflowDescriptor,
   requested: InstanceSelection | undefined,
@@ -113,22 +89,12 @@ export function resolveInstances(
   return InstanceSelectionSchema.parse(resolved);
 }
 
-/**
- * Whether this GRAPH can be previewed (ref workflow-model §2, D209) — never whether it has
- * a paste-a-line input surface. The derivation lives on the descriptor's own
- * projection so the planner, the command kernel and the explorer wire all read
- * ONE answer.
- */
+
 export function supportsDryRun(descriptor: AnyWorkflowDescriptor): boolean {
   return workflowDryRunSupport(descriptor).state === "supported";
 }
 
-/**
- * The refusal a dry-run start earns, in the graph's own words. The two arms are
- * genuinely different situations and a single message would misdescribe one of
- * them: a read-only graph HAS no write to stop before, while a write graph with
- * an `unsupported` transaction node has one and declares no preview arm for it.
- */
+
 export function dryRunRefusalMessage(descriptor: AnyWorkflowDescriptor): string {
   const support = workflowDryRunSupport(descriptor);
   if (support.state === "supported") {
@@ -144,11 +110,7 @@ export function dryRunRefusalMessage(descriptor: AnyWorkflowDescriptor): string 
 
 export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): StartPlanRecord {
   const { descriptor } = request;
-  /**
-   * A non-JSON value cannot be preserved in the durable plan faithfully. Reject
-   * the whole planning request before minting any proposal rather than turning
-   * it into a plausible refusal with fabricated or dropped ingress.
-   */
+
   const admittedSubmissions = admitProtectedInput(descriptor, request.submissions, deps.protectedSecrets, request.retainedInputs, request.protectedSubmissionBindings);
   const rawSubmissions: JsonValue[] = [];
   for (let index = 0; index < request.submissions.length; index += 1) {

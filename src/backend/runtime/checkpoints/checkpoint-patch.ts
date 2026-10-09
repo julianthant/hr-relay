@@ -1,16 +1,4 @@
-/**
- * The injected-checkpoint patch applier (ref workflow-model §5.6 #3, ref data-intake-and-edit-data §6.3) — the
- * executor-side half of Edit Data.
- *
- * A patch is NOT authority until the WHOLE post-patch output re-parses
- * through the producing contract's full output schema — the same schema that
- * produced the value, which is exactly why this path is safe where legacy's
- * `prefilledData` hack was not. Provenance moves per leaf: a changed path
- * becomes `source: "operator"` with `correctedAt` and `supersedes` (the
- * superseded fact's own observedAt), and its `originalObservedAt` is NEVER
- * refreshed — an operator correction does not assert current external truth.
- * Untouched leaves keep their original rows byte-identical.
- */
+
 import { z } from "zod";
 import { JsonValueSchema, type JsonObject, type JsonValue } from "../../../rules/validation/canonical-json.js";
 import { IsoInstantSchema, RunIdSchema } from "../../../rules/identity/ids.js";
@@ -54,18 +42,13 @@ export interface AppliedCheckpointPatches {
   readonly changedPaths: readonly string[];
 }
 
-/**
- * Apply every patch for one node to its replayed checkpoint and mint the
- * CURRENT attempt's row. Throws with the path by name when a patch cannot
- * resolve, when the post-patch output fails the producing schema, or when a
- * changed path has no provenance row to supersede.
- */
+
 export function applyCheckpointPatches(input: Readonly<{
   replayed: RunCheckpointRecord;
   patches: readonly CheckpointPatch[];
   outputSchema: z.ZodType;
   attempt: number;
-  /** D214 — the execution minting this row; see `RunCheckpointRecordSchema`. */
+  // claimGeneration identifies the execution that minted this corrected checkpoint.
   claimGeneration: number;
   runId: string;
   writtenAt: string;

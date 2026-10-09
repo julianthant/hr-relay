@@ -1,16 +1,5 @@
 import type { RunRecordRefusal } from "../../../models/config/authority.js";
-/**
- * The ONE place N queued runs are inserted (ref dashboard-surfaces §2.4 Enqueue, D171, D174).
- *
- * Start and intake commands share this atomic fan-out.
- * Lifecycle creation and publication belong to the injected run service.
- *
- * Everything it writes is inside the CALLER's authority transaction, so a
- * refusal on run 39 of 40 leaves nothing behind. That property is why the
- * refusal is a `never`-returning callback rather than a returned result: a
- * caller that could keep going after a policy refusal would be able to enqueue
- * exactly the partial fan-out this function exists to prevent.
- */
+
 import { CreateRunRequestSchema, lifecycleCommandId, requireLifecycleApplied, type RunRecordService } from "./run-record-service.js";
 import { RuntimeConfigClaimTokenSchema } from "../../../models/config/runtime-generation.js";
 import type { RunEnvelope } from "../../../models/run/envelope.js";
@@ -53,13 +42,13 @@ export function activeRunsForItem(
 
 export interface PlannedRunInsert {
   readonly itemId: string;
-  /** Only ever used to NAME the item in an enqueue-policy refusal. */
+
   readonly matchKey: string;
   readonly title: string;
   readonly subtitle?: string;
   readonly retryOf?: string;
   readonly rawInput: unknown;
-  /** The canonical value bound to its schema hash (D62/D110). */
+
   readonly parsedInput: unknown;
 }
 
@@ -79,24 +68,15 @@ export interface FanOutEnvelope {
   readonly shape: RunShape;
   readonly priority: RunPriority;
   readonly dryRun: boolean;
-  /** Optional only for non-dashboard/historical-compatible enqueue doors. */
+  // Optional for non-dashboard enqueue paths with retained compatibility inputs.
   readonly browserMode?: BrowserPresentationMode;
   readonly captureBrowserScreenshots?: boolean;
-  /** D307 — copied unchanged onto every fanned-out run. */
+
   readonly stepOmissions?: StepOmissions;
   readonly ingressSchemaHash: string;
-  /**
-   * Charter §25 / D179: the app build stamped on every run AT ENQUEUE. It is
-   * required here — the one place runs are created — because a run without it
-   * cannot be told apart from a current one by an application-scope version
-   * bump, and back-filling it later would claim a build the run never saw.
-   */
+  // Stamp the app build at enqueue so application-scope version changes can identify affected runs.
   readonly appVersion: string;
-  /**
-   * D269 (ref execution-and-sessions §11.1): the SESSION this fan-out is. One
-   * per fan-out, N ≥ 1, minted by the caller and inserted before members,
-   * inside the same outer transaction.
-   */
+
   readonly session: Readonly<{ sessionId: string; origin: RunSessionOrigin }>;
 }
 
@@ -127,12 +107,7 @@ export function fanOutQueuedRuns(
     configFingerprint: activeConfig.configFingerprint });
   const affectedTargets: TargetReference[] = [];
   const versionChanges: VersionChange[] = [];
-  /*
-   * The session row FIRST (D269). It holds no member list — membership is the
-   * `sessionId` each run below carries — so inserting it before the loop is
-   * what lets `runs.enqueue` refuse a member whose session authority never
-   * wrote, and a refusal on run 39 of 40 still unwinds it with everything else.
-   */
+
   const session = repositories.runSessions.insert(RunSessionRecordSchema.parse({
     sessionId: envelope.session.sessionId,
     groupInQueue: planned.length > 1,

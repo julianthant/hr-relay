@@ -56,8 +56,7 @@ export function captureArchiveReport(input: Readonly<{
   const records = snapshot.records.map(group => ({ table: group.table, rows: group.rows.map(row => ({ key: row.key,
     value: decodeRecord(group.table, row.json),
   })) }));
-  // Project one combined object so protected values repeated in text/derived data
-  // are removed even when their declaration is in a different source group.
+  // Project source groups together so repeated protected values remain withheld across derived text.
   const original = { run, records, sections: input.sections };
   const secrets = bindings.flatMap(binding => {
     const raw = run.input.raw;
@@ -68,9 +67,7 @@ export function captureArchiveReport(input: Readonly<{
       return typeof secret === "string" && secret.length > 0 ? [secret] : [];
     });
   });
-  // Free-form resolution notes are protected independently of input values.
-  // Collect them before projection so command/audit copies and supplied sections
-  // cannot reintroduce text withheld from the live operator view.
+  // Collect free-form protected resolution notes before projection; journal copies cannot reintroduce them.
   const protectedNotes = new Set<string>();
   const collectNotes = (value: JsonValue): void => {
     if (value === null || typeof value !== "object") return;
