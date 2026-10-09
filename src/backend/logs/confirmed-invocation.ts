@@ -6,7 +6,7 @@ import { withBrowserActionBinding, withBrowserActionNotes } from "../systems/bro
 import { createDeclaredActionBinder, type DeclaredActionBinderInput } from "../runtime/writes/operation-action-binding.js";
 import type { ConfirmedActionPublisher } from "./confirmed-action-publisher.js";
 import { createConfirmedTaskActions } from "./confirmed-actions.js";
-import { registeredUiEffect, registeredUiSensitivity } from "./semantic-ui-effect.js";
+import { registeredUiEffect, registeredUiSensitivity } from "../systems/browser-shared/semantic-ui-effect.js";
 
 /** The executor's one invocation factory: frozen binding, registered source and early notes share identity. */
 export function createConfirmedInvocation(input: Readonly<{
@@ -35,9 +35,16 @@ export function createConfirmedInvocation(input: Readonly<{
     || invocation.operation.session.kind !== "browser"
     || invocation.operation.session.system !== input.registeredDriverSystem) throw new Error("confirmed-invocation-browser-source-mismatch");
   const binder = createDeclaredActionBinder({ ...input.binding,
-    allowPublishedValue: (targetId, value) => input.registeredDriverSystem !== undefined
-      && registeredUiSensitivity(input.registeredDriverSystem, targetId) === "public"
-      && (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean"),
+    allowPublishedValue: targetId => {
+      if (input.registeredDriverSystem !== undefined) {
+        const sensitivity = registeredUiSensitivity(input.registeredDriverSystem, targetId);
+        return sensitivity === "public" || sensitivity === "hr";
+      }
+      const actions = (rows: typeof invocation.operation.actions): typeof invocation.operation.actions =>
+        rows.flatMap(action => [action, ...actions(action.children ?? [])]);
+      return actions(invocation.operation.actions).some(action => (action.target ?? action.id) === targetId
+        && action.valueSlot !== undefined && invocation.operation.values.some(slot => slot.id === action.valueSlot));
+    },
   });
   const confirmed = input.publisher === undefined ? undefined : createConfirmedTaskActions({
     publisher: input.publisher, snapshot: input.binding.snapshot, clock: input.clock,

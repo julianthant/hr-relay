@@ -3,7 +3,7 @@ import type { BrowserAction } from "../systems/browser-shared/action-notes.js";
 import type { ConfirmedActionPublisher } from "./confirmed-action-publisher.js";
 import type { ConfirmedActionDelivery } from "./confirmed-action-publisher.js";
 import type { WorkflowOperationDisplaySnapshot } from "../../models/workflow/operation-display-snapshot.js";
-import { registeredUiEffect } from "./semantic-ui-effect.js";
+import { registeredUiEffect } from "../systems/browser-shared/semantic-ui-effect.js";
 
 export type DurableCommitProof = Readonly<{ writeIntentId: string; confirmedAt: string; proofDigest: string }>;
 

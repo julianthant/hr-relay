@@ -1,8 +1,8 @@
-import type { BrowserSystemId } from "../../rules/identity/ids.js";
-import { CRM_UI_REGISTRY } from "../systems/crm/driver/ui-registry.js";
-import { KUALI_UI_REGISTRY } from "../systems/kuali/driver/ui-registry.js";
-import { NEW_KRONOS_UI_REGISTRY } from "../systems/new-kronos/driver/ui-registry.js";
-import { UCPATH_UI_REGISTRY } from "../systems/ucpath/driver/ui-registry.js";
+import type { BrowserSystemId } from "../../../rules/identity/ids.js";
+import { CRM_UI_REGISTRY } from "../crm/driver/ui-registry.js";
+import { KUALI_UI_REGISTRY } from "../kuali/driver/ui-registry.js";
+import { NEW_KRONOS_UI_REGISTRY } from "../new-kronos/driver/ui-registry.js";
+import { UCPATH_UI_REGISTRY } from "../ucpath/driver/ui-registry.js";
 
 /** Only registered semantic elements classify an interaction. */
 export function registeredUiEffect(system: BrowserSystemId, targetId: string): "observe" | "navigate" | "prepare" | "external-commit" | undefined {

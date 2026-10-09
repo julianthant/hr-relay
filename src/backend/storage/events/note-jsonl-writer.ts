@@ -7,6 +7,8 @@
  * values for the local operator; invalid diagnostic fields remain counted.
  */
 import { z } from "zod";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { sha256Hex } from "../../../rules/validation/sha256.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { localDatePart } from "../../../rules/time/clock.js";
 import { ClassifiedDiagnosticValueSchema } from "../../../rules/redaction/redaction.js";
@@ -20,7 +22,7 @@ import { appendEventStreamLine } from "./jsonl-streams.js";
 import { CURRENT_DIAGNOSTIC_SAFETY_VERSION } from "../../../models/trust/failure.js";
 import type { TaskLogger } from "../../../workflow-kit/task.js";
 import { ConfirmedActionEventSchema, type ConfirmedActionEvent } from "../../../models/events/confirmed-action.js";
-import { registeredUiSensitivity } from "../../logs/semantic-ui-effect.js";
+import { registeredUiSensitivity } from "../../systems/browser-shared/semantic-ui-effect.js";
 
 function safeConfirmedAction(input: ConfirmedActionEvent, authority: RunRecord): ConfirmedActionEvent {
   const event = ConfirmedActionEventSchema.parse(input);
@@ -53,17 +55,45 @@ function safeConfirmedAction(input: ConfirmedActionEvent, authority: RunRecord):
     if (matches.length !== 1) throw new Error("confirmed-action-frozen-action-mismatch");
     return matches[0];
   };
-  const isPublicScalar = (action: ConfirmedActionEvent["action"]): boolean => {
+  const isLocalValueEligible = (action: ConfirmedActionEvent["action"]): boolean => {
     const declared = declaredAction(action);
     if (action.value?.consumed.state !== "observed") return true;
-    const value = action.value.consumed.value;
-    if (event.source.kind !== "browser" || (value !== null && typeof value === "object")) return false;
-    return registeredUiSensitivity(event.source.system, declared.target ?? declared.id) === "public";
+    if (event.source.kind === "browser") {
+      const sensitivity = registeredUiSensitivity(event.source.system, declared.target ?? declared.id);
+      if (sensitivity !== "public" && sensitivity !== "hr") return false;
+    }
+    const invocation = authority.envelope.operationDisplaySnapshot?.invocations.find(candidate => candidate.id === action.invocationId);
+    const slot = invocation?.operation.values.find(candidate => candidate.id === declared.valueSlot);
+    if (slot === undefined || declared.valueSlot !== action.value.slot || slot.source.path !== action.value.fieldPath) {
+      throw new Error("confirmed-action-frozen-value-slot-mismatch");
+    }
+    const reference = slot.source.kind === "contract-output"
+      ? { kind: "task-output", entryId: invocation!.entryId, path: slot.source.path }
+      : invocation?.bindings.find(binding => binding.slot === slot.id)?.value;
+    const producer = action.value.producer;
+    const matches = reference !== undefined && producer.kind === reference.kind && (() => {
+      switch (reference.kind) {
+        case "run-input": return producer.kind === "run-input" && producer.path === reference.path;
+        case "configuration": return producer.kind === "configuration" && producer.key === reference.key && producer.schemaHash === reference.schemaHash;
+        case "constant": return producer.kind === "constant" && producer.valueDigest === sha256Hex(canonicalJsonStringify(reference.value));
+        case "task-output": case "child-output": return (producer.kind === "task-output" || producer.kind === "child-output")
+          && producer.entryId === reference.entryId && producer.path === reference.path;
+        case "transformation": return producer.kind === "transformation" && producer.transformId === reference.transformId && producer.path === reference.path;
+        default: return false;
+      }
+    })();
+    if (!matches) throw new Error("confirmed-action-frozen-value-producer-mismatch");
+    if (event.source.kind === "headless") {
+      return declared.valueSlot !== undefined && declared.valueSlot === action.value.slot
+        && invocation?.operation.values.some(slot => slot.id === declared.valueSlot) === true;
+    }
+    const sensitivity = registeredUiSensitivity(event.source.system, declared.target ?? declared.id);
+    return sensitivity === "public" || sensitivity === "hr";
   };
-  const safeAction = isPublicScalar(event.action) ? event.action : { ...event.action, value: undefined };
+  const safeAction = isLocalValueEligible(event.action) ? event.action : { ...event.action, value: undefined };
   if (event.kind === "trace") return ConfirmedActionEventSchema.parse({ ...event, action: safeAction });
   const verifier = event.proof.verifier;
-  const safeVerifier = isPublicScalar(verifier) ? verifier : { ...verifier, value: undefined };
+  const safeVerifier = isLocalValueEligible(verifier) ? verifier : { ...verifier, value: undefined };
   return ConfirmedActionEventSchema.parse({ ...event, action: safeAction,
     proof: { ...event.proof, verifier: safeVerifier } });
 }

@@ -468,7 +468,7 @@ const DeclaredActionOccurrenceWireSchema = DeclaredActionIdentityWireSchema.safe
     fieldPath: SpanFieldPathSchema,
     producer: ActionValueProducerWireSchema,
     consumed: z.discriminatedUnion("state", [
-      z.strictObject({ state: z.literal("withheld"), reason: z.literal("protection-unresolved") }),
+      z.strictObject({ state: z.literal("withheld"), reason: z.enum(["protection-unresolved", "classification-required"]) }),
       z.strictObject({ state: z.literal("observed"), value: JsonValueWireSchema }),
       z.strictObject({ state: z.literal("redacted"), binding: ProtectedActionBindingWireSchema }),
     ]),
