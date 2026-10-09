@@ -17,11 +17,7 @@ function walk(root: string, extensions: ReadonlySet<string>): string[] {
   return files;
 }
 
-/**
- * Resolve an activation-scoped file family without hiding an empty active root.
- * Absence is the only planned no-op; once the directory exists, zero matches
- * are a configuration error rather than a vacuous pass.
- */
+/** A missing root is a planned no-op; an existing root with zero matches is an error. */
 export function resolveScopeFiles(
   root: string,
   extensions: readonly string[],
