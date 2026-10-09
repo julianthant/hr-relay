@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { act, createElement, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { it, vi } from "vitest";
+import { dsLayer } from "../../../src/dashboard/ds/theme/tokens.js";
 import { OverlayLayerPresence, ToastProvider, useToasts } from "../../../src/dashboard/ds/primitives/primitives-overlay.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -27,7 +28,11 @@ it("keeps error cards until acknowledgment and makes toast actions inert during 
     await act(async () => root.render(createElement(ToastProvider, { children: createElement(Producer) })));
     await act(async () => button("Fail").click());
     const toast = document.querySelector('[data-slot="toast"]');
-    assert.ok(toast); assert.equal(toast.getAttribute("role"), "alert"); assert.equal(toast.getAttribute("data-ds-toast-state"), "full");
+    assert.ok(toast);
+    assert.ok(toast.classList.contains(dsLayer.toastCard));
+    const viewport = document.querySelector('[data-slot="toast-viewport"]');
+    assert.ok(viewport?.classList.contains(dsLayer.toastViewport));
+    assert.equal(toast.getAttribute("role"), "alert"); assert.equal(toast.getAttribute("data-ds-toast-state"), "full");
     assert.match(toast.textContent ?? "", /Write parked.*Review the saved result/);
     await act(async () => vi.advanceTimersByTime(10000));
     assert.equal(toast.hasAttribute("data-ending-style"), false);

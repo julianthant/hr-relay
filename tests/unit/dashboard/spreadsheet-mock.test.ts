@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { registeredSpreadsheetWorkbook, registerLocalSpreadsheet, retainSpreadsheetCopy, addMockSpreadsheetType, initialSpreadsheetSheets, NOT_MAPPED, registerMockSpreadsheet, resetSpreadsheetMocks, searchMockSpreadsheet, spreadsheetMappingErrors, WORKBOOK_ONLY, type SpreadsheetType } from "../../../src/dashboard/surfaces/spreadsheets/spreadsheet-mock-model.js";
 import { ROSTER_FIELDS } from "../../../src/dashboard/surfaces/spreadsheets/spreadsheet-mock-data.js";
-import { newEditableWorkbook, editSpreadsheetCell } from "../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js";
+import { newEditableWorkbook, editSpreadsheetCell, spreadsheetForeground } from "../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js";
 const roster: SpreadsheetType = { id: "roster", name: "Roster", fields: ROSTER_FIELDS };
 const file = () => registerMockSpreadsheet({ name: "Fictional roster.xlsx", typeId: "roster", sheets: initialSpreadsheetSheets(roster) });
 afterEach(resetSpreadsheetMocks);
@@ -66,4 +66,15 @@ describe("type-based mock spreadsheet registration", () => {
     assert.throws(() => registerMockSpreadsheet({ name: "Roster.xlsx", typeId: "roster", sheets: [{ ...sheets[0], mapping: ["Unknown field"] }] }), /SPREADSHEET_FIELD_NOT_FOUND/u);
     assert.throws(() => registerMockSpreadsheet({ name: "Roster.xlsx", typeId: "roster", sheets }, "missing"), /SPREADSHEET_NOT_FOUND/u);
   });
+});
+
+// Imported fills choose contrast independently of the dashboard theme.
+it("chooses readable imported-fill text at the exact luminance boundary", () => {
+  for (const background of ["#000000", "#8b8b8b", "linear-gradient(#000000, #ffffff)", "#0000FF"]) {
+    assert.equal(spreadsheetForeground(background), "var(--ds-sheet-contrast-light)", background);
+  }
+  for (const background of ["#ffffff", "#8c8c8c", "#FFFFFF", "#00ff00"]) {
+    assert.equal(spreadsheetForeground(background), "var(--ds-sheet-contrast-dark)", background);
+  }
+  for (const background of [undefined, "transparent", "rgb(0, 0, 0)", "#000"]) assert.equal(spreadsheetForeground(background), undefined);
 });
