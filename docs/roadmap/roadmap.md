@@ -4,12 +4,14 @@ Statuses: `done`, `now`, `next`, `later`. One line per key implementation.
 
 ## Foundation
 
-- [done] Approved mock dashboard frozen — 146 key-state screenshots are the visual contract; unused UI removed.
-- [now] One combined codebase — frontend, backend and launch fixes merged onto one branch.
-- [next] Cleanup — old plans, history docs, decision log and CLAUDE.md removed; new AGENTS.md.
-- [next] AI providers removed — only the ChatGPT-subscription OCR entry point remains.
-- [next] Every check green — typecheck, lint, tests, screenshots and coverage pass; merged into master.
-- [next] Docs and comments describe the current system — no decision numbers, dates or history.
+- [done] Approved mock dashboard frozen — the parity screenshots are the visual contract; unused UI removed.
+- [done] One combined codebase — frontend, backend and launch fixes merged onto one branch.
+- [done] Cleanup — old plans, history docs, decision log and CLAUDE.md removed; new AGENTS.md.
+- [done] AI providers removed — only the ChatGPT-subscription OCR entry point remains.
+- [done] Every check green — typecheck, lint, tests, screenshots and coverage pass; merged into master.
+- [now] Docs and comments describe the current system — no decision numbers, dates or history.
+- [next] Renamed to Relay — app title, README, favicon and repository name.
+- [next] Dependency and startup fixes — patched packages and a crash-safe admission lock.
 
 ## Wiring base
 
@@ -33,7 +35,7 @@ Every component connected to real backend data. Each workflow keeps its mock unt
 
 One at a time: dry run and operator sign-off before the next.
 
-- [later] Person Lookup
+- [next] Person Lookup
 - [later] Separations
 - [later] OCR
 - [later] Oath Signature
