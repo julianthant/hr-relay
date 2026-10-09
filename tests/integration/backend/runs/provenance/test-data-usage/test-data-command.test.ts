@@ -33,9 +33,9 @@ function checkout(): string {
   const root = mkdtempSync(join(tmpdir(), "hr-test-data-command-"));
   roots.push(root);
   mkdirSync(join(root, "config"), { mode: 0o755 });
-  mkdirSync(join(root, "tests", "fixtures", "documents"), { recursive: true });
+  mkdirSync(join(root, "tests", "support", "fixtures", "documents"), { recursive: true });
   cpSync(join(REPO_ROOT, "config", "test-data.json"), join(root, "config", "test-data.json"));
-  cpSync(join(REPO_ROOT, "tests", "fixtures", "documents", "synthetic-sample.pdf"), join(root, "tests", "fixtures", "documents", "synthetic-sample.pdf"));
+  cpSync(join(REPO_ROOT, "tests", "support", "fixtures", "documents", "synthetic-sample.pdf"), join(root, "tests", "support", "fixtures", "documents", "synthetic-sample.pdf"));
   mkdirSync(join(root, rebuildRuntimeIsolation.stateRoot), { mode: 0o700 });
   return root;
 }

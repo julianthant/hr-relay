@@ -118,6 +118,7 @@ function crashSettingsAuthorityAtHook(path: string, hook: string) {
   const moduleUrl = pathToFileURL(join(
     process.cwd(),
     "tests",
+    "support",
     "fixtures",
     "d331-settings-file.ts",
   )).href;
@@ -139,6 +140,7 @@ function crashFirstUpdateRollbackAtHook(path: string, hook: string) {
   const moduleUrl = pathToFileURL(join(
     process.cwd(),
     "tests",
+    "support",
     "fixtures",
     "d331-settings-file.ts",
   )).href;
@@ -168,6 +170,7 @@ function crashSettingsApplyAfterLiveRename(path: string, request: unknown) {
   const moduleUrl = pathToFileURL(join(
     process.cwd(),
     "tests",
+    "support",
     "fixtures",
     "d331-settings-file.ts",
   )).href;
@@ -982,6 +985,7 @@ describe("strict config resolution", () => {
       const moduleUrl = pathToFileURL(join(
         process.cwd(),
         "tests",
+        "support",
         "fixtures",
         "d331-settings-file.ts",
       )).href;
@@ -1161,6 +1165,7 @@ describe("strict config resolution", () => {
       const moduleUrl = pathToFileURL(join(
         process.cwd(),
         "tests",
+        "support",
         "fixtures",
         "d331-settings-file.ts",
       )).href;

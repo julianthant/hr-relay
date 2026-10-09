@@ -5,10 +5,10 @@ import { it } from "vitest";
 const probe = String.raw`
   import assert from 'node:assert/strict';
   import { createHash, randomUUID } from 'node:crypto';
-  import { resolutionFixture, resolutionCommand } from '../../../failure-resolution/tests/support/helpers/failure-resolution/fixtures.ts';
-  import { createTimelineEmitter } from '../../../failure-resolution/src/backend/storage/events/timeline-emitter.ts';
-  import { AuthorityDatabase } from '../../../failure-resolution/src/backend/storage/sqlite/authority-database.ts';
-  import { localDatePart } from '../../../failure-resolution/src/rules/time/clock.ts';
+  import { resolutionFixture, resolutionCommand } from './tests/support/helpers/failure-resolution/fixtures.ts';
+  import { createTimelineEmitter } from './src/backend/storage/events/timeline-emitter.ts';
+  import { AuthorityDatabase } from './tests/support/helpers/synthetic-storage-admission.ts';
+  import { localDatePart } from './src/rules/time/clock.ts';
   const [instant, localDay, cutoff, retained] = process.argv.slice(1);
   const f = resolutionFixture();
   const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');

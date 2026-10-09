@@ -140,8 +140,8 @@ describe("D341 shared test-data config", () => {
 
   it("resolves declared file paths against the declaring config file, not the working directory", () => {
     const file = testDataFile(TEST_DATA, "synthetic-sample-pdf");
-    assert.equal(file.path, join(dirname(TEST_DATA.configPath), "..", "tests", "fixtures", "documents", "synthetic-sample.pdf").replace("/config/../", "/"));
-    assert.equal(relative(REPO_ROOT, file.path), join("tests", "fixtures", "documents", "synthetic-sample.pdf"));
+    assert.equal(file.path, join(dirname(TEST_DATA.configPath), "..", "tests", "support", "fixtures", "documents", "synthetic-sample.pdf").replace("/config/../", "/"));
+    assert.equal(relative(REPO_ROOT, file.path), join("tests", "support", "fixtures", "documents", "synthetic-sample.pdf"));
     const { bytes } = readTestDataFileBytes(TEST_DATA, "synthetic-sample-pdf");
     assert.equal(bytes.subarray(0, 5).toString("latin1"), "%PDF-");
     assert.equal(bytes.byteLength > 0, true);
@@ -155,7 +155,7 @@ describe("D341 shared test-data config", () => {
     const elsewhere = scratch("hrauto-test-data-cwd-");
     const tsxLoader = pathToFileURL(join(REPO_ROOT, "node_modules", "tsx", "dist", "loader.mjs")).href;
     const child = spawnSync(process.execPath, ["--import", tsxLoader, "--input-type=module", "--eval", `
-      import { TEST_DATA, readTestDataFileBytes } from ${JSON.stringify(join(REPO_ROOT, "src", "control", "test-data.ts"))};
+      import { TEST_DATA, readTestDataFileBytes } from ${JSON.stringify(join(REPO_ROOT, "src", "backend", "app", "registries", "test-data.ts"))};
       const { bytes } = readTestDataFileBytes(TEST_DATA, "synthetic-sample-pdf");
       process.stdout.write(JSON.stringify({ length: bytes.byteLength, head: bytes.subarray(0, 5).toString("latin1") }));
     `], { cwd: elsewhere, encoding: "utf8", env: { ...process.env, TMPDIR: elsewhere } });
@@ -166,9 +166,9 @@ describe("D341 shared test-data config", () => {
     // Separate checkout copy: the declared relative path follows the copied config.
     const copy = scratch("hrauto-test-data-copy-");
     mkdirSync(join(copy, "config"));
-    mkdirSync(join(copy, "tests", "fixtures", "documents"), { recursive: true });
+    mkdirSync(join(copy, "tests", "support", "fixtures", "documents"), { recursive: true });
     cpSync(join(REPO_ROOT, TEST_DATA_CONFIG_PATH), join(copy, TEST_DATA_CONFIG_PATH));
-    cpSync(join(REPO_ROOT, "tests", "fixtures", "documents", "synthetic-sample.pdf"), join(copy, "tests", "fixtures", "documents", "synthetic-sample.pdf"));
+    cpSync(join(REPO_ROOT, "tests", "support", "fixtures", "documents", "synthetic-sample.pdf"), join(copy, "tests", "support", "fixtures", "documents", "synthetic-sample.pdf"));
     const shared = readTestDataShared(copy, []);
     assert.equal(realpathSync(shared.repoRoot), realpathSync(copy));
     assert.deepEqual(readTestDataFileBytes(shared, "synthetic-sample-pdf").bytes, expected);
@@ -190,20 +190,20 @@ describe("D341 shared test-data config", () => {
       samples: TEST_DATA.samples,
     });
     const sharedFor = (path: string) => parseTestDataSharedConfig(config(path), join(root, "config", "test-data.json"), []);
-    assert.throws(() => readTestDataFileBytes(sharedFor("../../../../../docs/missing.pdf"), "probe"), /probe is missing at its declared path/u);
-    assert.throws(() => readTestDataFileBytes(sharedFor("../../../../../docs/empty.pdf"), "probe"), /probe is empty/u);
-    assert.throws(() => readTestDataFileBytes(sharedFor("../../../../../docs/text.pdf"), "probe"), /probe is not a PDF document/u);
-    assert.throws(() => readTestDataFileBytes(sharedFor("../../../../../docs/escape.pdf"), "probe"), /probe resolves outside the repository/u);
+    assert.throws(() => readTestDataFileBytes(sharedFor("../docs/missing.pdf"), "probe"), /probe is missing at its declared path/u);
+    assert.throws(() => readTestDataFileBytes(sharedFor("../docs/empty.pdf"), "probe"), /probe is empty/u);
+    assert.throws(() => readTestDataFileBytes(sharedFor("../docs/text.pdf"), "probe"), /probe is not a PDF document/u);
+    assert.throws(() => readTestDataFileBytes(sharedFor("../docs/escape.pdf"), "probe"), /probe resolves outside the repository/u);
     // A declared path that leaves the repository is a config defect before any read.
     assert.throws(() => sharedFor("../../../../../../elsewhere.pdf"), TestDataConfigError);
     assert.throws(() => sharedFor("/etc/hosts"), TestDataConfigError);
   });
 
   it("keeps the declared path grammar closed: relative, no dot or empty segments, no traversal in private paths", () => {
-    for (const path of ["docs/a.pdf", "../../../../../tests/fixtures/documents/a.pdf", "a.pdf"]) {
+    for (const path of ["docs/a.pdf", "../tests/support/fixtures/documents/a.pdf", "../../../../a.pdf", "a.pdf"]) {
       assert.equal(DeclaredRelativePathSchema.safeParse(path).success, true, path);
     }
-    for (const path of ["/abs/a.pdf", "../../../../a.pdf", "docs/./a.pdf", "docs//a.pdf", "docs/", "a\\b.pdf", "a .pdf", ""]) {
+    for (const path of ["/abs/a.pdf", "docs/./a.pdf", "docs//a.pdf", "docs/", "a\\b.pdf", "a .pdf", ""]) {
       assert.equal(DeclaredRelativePathSchema.safeParse(path).success, false, JSON.stringify(path));
     }
     assert.equal(DeclaredPrivatePathSchema.safeParse("/private/docs/a.pdf").success, true);

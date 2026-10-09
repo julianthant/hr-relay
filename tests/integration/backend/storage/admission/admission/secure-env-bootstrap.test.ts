@@ -10,7 +10,7 @@ import { runSecureEnvironmentBootstrap, secureEnvironmentEntrypoint } from "../.
 import { RuntimeAdmission } from "../../../../../../src/backend/storage/admission/admission.js";
 import { parseRelocationCommand } from "../../../../../../src/backend/app/composition/storage/relocate.js";
 
-const REPO_ROOT = fileURLToPath(new URL("../../../../../../../../../..", import.meta.url));
+const REPO_ROOT = fileURLToPath(new URL("../../../../../../", import.meta.url));
 const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
 const syntheticAdmission = () => RuntimeAdmission.syntheticFixture(":memory:", "authority");
 
@@ -116,7 +116,7 @@ describe("secure environment bootstrap", () => {
   });
 
   it("survives a real SIGINT sent by the stub final admission release", () => {
-    const moduleUrl = pathToFileURL(join(REPO_ROOT, "scripts", "secure-env-bootstrap.ts")).href;
+    const moduleUrl = pathToFileURL(join(REPO_ROOT, "src", "backend", "app", "bootstrap", "secure-env-bootstrap.ts")).href;
     const source = `import { runSecureEnvironmentBootstrap } from ${JSON.stringify(moduleUrl)};
       await runSecureEnvironmentBootstrap(['cli','dashboard'], {
         acquireAdmission: () => ({ release() { process.kill(process.pid, 'SIGINT'); } }),
@@ -245,7 +245,7 @@ describe("secure environment bootstrap", () => {
   it("does not start the document-number smoke when its module is executed directly", () => {
     const result = spawnSync(
       TSX,
-      [join(REPO_ROOT, "scripts", "smoke-test-target-document-number.ts")],
+      [join(REPO_ROOT, "scripts", "verify", "test-target-document-number.ts")],
       { cwd: tmpdir(), encoding: "utf8" },
     );
 
@@ -258,7 +258,7 @@ describe("secure environment bootstrap", () => {
   it("does not start either admitted runner when its module is imported directly", () => {
     const imports = [
       pathToFileURL(join(REPO_ROOT, "src", "cli.ts")).href,
-      pathToFileURL(join(REPO_ROOT, "scripts", "smoke-test-target-document-number.ts")).href,
+      pathToFileURL(join(REPO_ROOT, "scripts", "verify", "test-target-document-number.ts")).href,
     ].map((url) => `import(${JSON.stringify(url)})`).join(",");
     const result = spawnSync(TSX, ["--eval", `Promise.all([${imports}])`], {
       cwd: tmpdir(),

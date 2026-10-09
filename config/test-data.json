@@ -78,7 +78,7 @@
   },
   "files": {
     "synthetic-sample-pdf": {
-      "path": "../tests/fixtures/documents/synthetic-sample.pdf",
+      "path": "../tests/support/fixtures/documents/synthetic-sample.pdf",
       "kind": "pdf",
       "purpose": "Minimal synthetic one-page PDF proving named path resolution and readable bytes; no HR content."
     }
