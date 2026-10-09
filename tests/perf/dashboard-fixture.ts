@@ -692,8 +692,10 @@ export function seedDashboardPerfFixture(): PerfFixture {
   const context: SeedContext = { database, clock, spans, notes };
 
   const tally: SeedTally = { all: [], doneRunIds: [], dayRunCount: 0, neighbouringRunCount: 0 };
-  seedClaimedRuns(context, tally);
-  seedQueuedRuns(context, tally);
+  database.withAuthorityTransaction(() => {
+    seedClaimedRuns(context, tally);
+    seedQueuedRuns(context, tally);
+  });
   const noteLines = seedNotes(context, tally);
   if (noteLines < PERF_FIXTURE_PROFILE.minimumNoteLines) {
     throw new Error(
