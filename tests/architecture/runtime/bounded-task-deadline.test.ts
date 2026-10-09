@@ -1,3 +1,4 @@
+import ts from "typescript";
 import { testRunLifecycle } from "../../support/fixtures/run-lifecycle-fixtures.js";
 /**
  * Ref execution-and-sessions §5.5: tasks and transactions run under immutable, abortable
@@ -40,6 +41,37 @@ afterEach(() => {
   for (const dispose of disposers.splice(0)) dispose();
 });
 
+function deadlineInvocationIssues(content: string): readonly string[] {
+  const source = ts.createSourceFile("run-executor.ts", content, ts.ScriptTarget.Latest, true);
+  const issues: string[] = [];
+  let service = 0, browser = 0;
+  function calls(node: ts.Node, name: string): ts.CallExpression[] {
+    const found: ts.CallExpression[] = [];
+    function visit(child: ts.Node): void { if (ts.isCallExpression(child) && child.expression.getText(source) === name) found.push(child); ts.forEachChild(child, visit); }
+    visit(node); return found;
+  }
+  function checkRace(call: ts.CallExpression): boolean {
+    return call.arguments.length === 3 && call.arguments[1].getText(source) === "controller.signal" && call.arguments[2].getText(source) === "contract.id";
+  }
+  function inspect(node: ts.Node): void {
+    if (ts.isIfStatement(node) && node.expression.getText(source) === "need === undefined" && node.elseStatement !== undefined) {
+      service += 1; browser += 1;
+      const pure = calls(node.thenStatement, "raceAbortable"), leased = calls(node.elseStatement, "raceAbortable");
+      if (pure.length !== 1 || !pure.every(checkRace) || leased.length !== 2 || !leased.every(checkRace)) issues.push("service and browser invocation races must use the armed controller");
+      if (calls(node.thenStatement, "run").length !== 1 || calls(node.elseStatement, "run").length !== 1) issues.push("each race arm must invoke exactly one task");
+      const lease = calls(node.elseStatement, "deps.sessions.withDriver");
+      if (lease.length !== 1 || lease[0].arguments[2]?.getText(source) !== "controller.signal") issues.push("browser lease acquisition must use the armed signal");
+      for (const arm of [node.thenStatement, node.elseStatement]) {
+        if (!arm.getText(source).includes("confirmedInvocation?.withNotes") || !arm.getText(source).includes("withBrowserActionNotes")) issues.push("invocations must preserve the notes wrapper");
+      }
+    }
+    ts.forEachChild(node, inspect);
+  }
+  inspect(source);
+  if (service !== 1 || browser !== 1) issues.push("exact service/browser invocation topology is absent or duplicated");
+  return issues;
+}
+
 describe("bounded task deadline", () => {
   it("keeps the deadline mandatory and racing on every invocation path", () => {
     const source = readFileSync(join(REPO_ROOT, "src/backend/runtime/execution/run-executor.ts"), "utf8");
@@ -51,12 +83,21 @@ describe("bounded task deadline", () => {
     );
     // Both invocation arms (pure/service and browser-leased) go through the
     // abort race against the deadline-armed controller signal.
-    const raceCalls = source.match(/await raceAbortable\(/g) ?? [];
-    assert.equal(raceCalls.length, 2, "both task invocation arms must race the deadline controller");
+    assert.deepEqual(deadlineInvocationIssues(source), []);
     assert.ok(
       /deps\.scheduler\.schedule\(\s*clock\.monotonicMs\(\) \+ deps\.taskDeadlineMs/.test(source),
       "the deadline must be armed on the injected monotonic scheduler",
     );
+  });
+
+  it("rejects missing task races and ignored lease or task signals inside notes wrappers", () => {
+    const source = readFileSync(join(REPO_ROOT, "src/backend/runtime/execution/run-executor.ts"), "utf8");
+    for (const bad of [
+      source.replace("() => raceAbortable(", "() => unbounded("),
+      source.replace("deps.sessions.withDriver(need, instanceSelection, controller.signal", "deps.sessions.withDriver(need, instanceSelection, unrelated.signal"),
+      source.replace("controller.signal, contract.id,", "unrelated.signal, contract.id,"),
+      source.replace("confirmedInvocation?.withNotes", "confirmedInvocation?.other"),
+    ]) assert.ok(deadlineInvocationIssues(bad).length > 0);
   });
 
   it("bounds a task that never settles and ignores its abort signal", async () => {
