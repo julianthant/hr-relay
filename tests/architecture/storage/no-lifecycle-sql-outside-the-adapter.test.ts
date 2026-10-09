@@ -42,15 +42,15 @@ function allowedArchiveSectionSql(relative: string, node: ts.Node): boolean {
   }
   return false;
 }
-function audit(fixtures = false): string[] {
+function collectAudit(): readonly string[] {
   const roots = gitVisibleFiles(["src"]).filter((path) => /\.tsx?$/u.test(path));
   const extras = new Map(["sql", "mutator", "view"].map((kind) => [resolve(REPO_ROOT, `src/core/guard-fixtures/${kind}.ts`),
     readFileSync(resolve(REPO_ROOT, `tests/architecture/storage/fixtures/lifecycle/${kind}.txt`), "utf8")]));
   const options: ts.CompilerOptions = { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
     moduleResolution: ts.ModuleResolutionKind.NodeNext, jsx: ts.JsxEmit.ReactJSX, strict: true, skipLibCheck: true };
   const host = ts.createCompilerHost(options); const original = host.readFile.bind(host);
-  host.readFile = (file) => fixtures && extras.has(file) ? extras.get(file) : original(file);
-  const files = [...roots.map((file) => resolve(REPO_ROOT, file)), ...(fixtures ? extras.keys() : [])];
+  host.readFile = (file) => extras.has(file) ? extras.get(file) : original(file);
+  const files = [...roots.map((file) => resolve(REPO_ROOT, file)), ...extras.keys()];
   const program = ts.createProgram(files, options, host); const checker = program.getTypeChecker();
   // Resolving every call also infers its arguments. Only calls whose callable
   // declarations can own a lifecycle mutation need that overload resolution.
@@ -97,7 +97,14 @@ function audit(fixtures = false): string[] {
     visit(source);
   }
   assert.ok(visited > 1000 && roots.includes("src/backend/runs/commands/command-kernel.ts"), "walker must inspect production commands");
-  return violations;
+  return Object.freeze(violations);
+}
+// One immutable program covers both the production census and disjoint virtual
+// modules. Reusing its completed census avoids a second compiler under coverage.
+let auditSnapshot: readonly string[] | undefined;
+function audit(fixtures = false): readonly string[] {
+  auditSnapshot ??= collectAudit();
+  return fixtures ? auditSnapshot : auditSnapshot.filter((entry) => !entry.startsWith("src/core/guard-fixtures/"));
 }
 describe("no-lifecycle-sql-outside-the-adapter", () => {
   it("admits only exact frozen-section SQL in its stopped converter", () => {

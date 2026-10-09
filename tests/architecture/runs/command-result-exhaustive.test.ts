@@ -47,7 +47,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join, relative, resolve } from "node:path";
 import ts from "typescript";
 import { REPO_ROOT } from "../support/helpers/guard-files.js";
 
@@ -102,10 +102,70 @@ function sourceFiles(root: string): readonly string[] {
  * naming one and leaving the other to fall through. Both comparison operators
  * count as naming the arm, because `!== "conflict"` decides the same question.
  */
-function decidesSettlementAlone(text: string): boolean {
-  const namesRejected = /state\s*[!=]==\s*"rejected"/u.test(text);
-  const namesConflict = /state\s*[!=]==\s*"conflict"/u.test(text);
-  return namesRejected !== namesConflict;
+function decidesSettlementAlone(text: string, source?: ts.SourceFile, checker?: ts.TypeChecker, canonical?: ts.Type): boolean {
+  const parsed = source ?? ts.createSourceFile("fixture.ts", text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const arms = new Map<ts.Symbol | string, Set<string>>();
+  function receiverSymbol(expression: ts.Expression, seen = new Set<ts.Symbol>()): ts.Symbol | undefined {
+    const symbol = checker?.getSymbolAtLocation(expression);
+    if (symbol === undefined || seen.has(symbol)) return symbol;
+    seen.add(symbol);
+    const declaration = symbol.valueDeclaration;
+    if (declaration !== undefined && ts.isVariableDeclaration(declaration) && declaration.initializer !== undefined
+      && ts.isIdentifier(declaration.initializer)) return receiverSymbol(declaration.initializer, seen) ?? symbol;
+    return symbol;
+  }
+  function visit(node: ts.Node) {
+    if (ts.isBinaryExpression(node) && [ts.SyntaxKind.EqualsEqualsEqualsToken, ts.SyntaxKind.ExclamationEqualsEqualsToken].includes(node.operatorToken.kind)) {
+      const access = ts.isPropertyAccessExpression(node.left) ? node.left : ts.isPropertyAccessExpression(node.right) ? node.right : undefined;
+      const literal = ts.isStringLiteralLike(node.right) ? node.right : ts.isStringLiteralLike(node.left) ? node.left : undefined;
+      if (access?.name.text === "state" && literal !== undefined && ["rejected", "conflict"].includes(literal.text)) {
+        const type = checker?.getTypeAtLocation(access.expression);
+        if (checker === undefined || (type !== undefined && canonical !== undefined
+          && !(type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never)) && checker.isTypeAssignableTo(type, canonical))) {
+          const key = receiverSymbol(access.expression) ?? access.expression.getText(parsed);
+          const found = arms.get(key) ?? new Set<string>();
+          found.add(literal.text); arms.set(key, found);
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(parsed);
+  return [...arms.values()].some((found) => found.size === 1);
+}
+
+const COMMAND_PROOFS = {
+  alias: 'import type { CommandResult as Result } from "../../rules/commands/commands.js"; type Alias = Result; export function bad(result: Alias) { return result.state === "rejected"; }',
+  namespace: 'import type * as command from "../../rules/commands/commands.js"; export function bad(result: command.CommandResult) { return result.state === "conflict"; }',
+  presentation: 'type CommandResult = { state: "conflict" | "refused" }; export function view(result: CommandResult) { return result.state === "conflict"; }',
+  coexist: 'import type { CommandResult } from "../../rules/commands/commands.js"; type Save = { state: "conflict" | "refused" }; export function bad(save: Save, result: CommandResult) { if (save.state === "conflict") return; if (result.state === "rejected") return; }',
+  shadow: 'import type { CommandResult } from "../../rules/commands/commands.js"; export function view() { type CommandResult = { state: "conflict" | "refused" }; function local(result: CommandResult) { return result.state === "conflict"; } return local; }',
+  scopes: 'import type { CommandResult } from "../../rules/commands/commands.js"; export function first(result: CommandResult) { return result.state === "rejected"; } export function second(result: CommandResult) { return result.state === "conflict"; }',
+  aliasedClean: 'import type { CommandResult } from "../../rules/commands/commands.js"; export function view(result: CommandResult) { const alias = result; return result.state === "rejected" || alias.state === "conflict"; }',
+  separate: 'import type { CommandResult } from "../../rules/commands/commands.js"; export function bad(first: CommandResult, second: CommandResult) { return first.state === "rejected" || second.state === "conflict"; }',
+  clean: 'import type { CommandResult } from "../../rules/commands/commands.js"; export function view(result: CommandResult) { return result.state === "rejected" || result.state === "conflict"; }',
+} as const;
+let commandAudit: { program: ts.Program; checker: ts.TypeChecker; canonical: ts.Type } | undefined;
+function commandContext() {
+  if (commandAudit !== undefined) return commandAudit;
+  const options: ts.CompilerOptions = { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, jsx: ts.JsxEmit.ReactJSX, strict: true, skipLibCheck: true };
+  const virtual = new Map(Object.entries(COMMAND_PROOFS).map(([name, text]) => [resolve(REPO_ROOT, `src/dashboard/guard-proofs/${name}.tsx`), text]));
+  const host = ts.createCompilerHost(options);
+  const read = host.readFile.bind(host);
+  host.readFile = (file) => virtual.get(file) ?? read(file);
+  const program = ts.createProgram([...sourceFiles(SCAN_ROOT), ...virtual.keys()], options, host);
+  const checker = program.getTypeChecker();
+  const declaration = program.getSourceFile(resolve(REPO_ROOT, "src/rules/commands/commands.ts"))?.statements.find((node) => ts.isTypeAliasDeclaration(node) && node.name.text === "CommandResult");
+  expect(declaration).toBeDefined();
+  const canonical = checker.getTypeAtLocation(declaration!);
+  commandAudit = { program, checker, canonical };
+  return commandAudit;
+}
+function canonicalDecision(path: string): boolean {
+  const { program, checker, canonical } = commandContext();
+  const source = program.getSourceFile(resolve(REPO_ROOT, path));
+  expect(source).toBeDefined();
+  return decidesSettlementAlone(source!.text, source, checker, canonical);
 }
 
 /**
@@ -181,7 +241,7 @@ describe("command-result-exhaustive (D253)", () => {
     const offenders = sourceFiles(SCAN_ROOT)
       .map((path) => relative(REPO_ROOT, path))
       .filter((path) => !EXEMPT.has(path))
-      .filter((path) => decidesSettlementAlone(readFileSync(join(REPO_ROOT, path), "utf8")));
+      .filter(canonicalDecision);
     expect(offenders, offenders.join("\n")).toEqual([]);
   });
 
@@ -199,6 +259,11 @@ describe("command-result-exhaustive (D253)", () => {
     )).toBe(false);
   });
 
+  it("binds raw refusal checks to canonical results and each receiver", () => {
+    for (const name of ["alias", "namespace", "coexist", "separate", "scopes"] as const) expect(canonicalDecision(`src/dashboard/guard-proofs/${name}.tsx`), name).toBe(true);
+    for (const name of ["presentation", "shadow", "clean", "aliasedClean"] as const) expect(canonicalDecision(`src/dashboard/guard-proofs/${name}.tsx`), name).toBe(false);
+  });
+
   it("every dashboard module folds at least as many commands as it posts (D3)", () => {
     const offenders = sourceFiles(SCAN_ROOT)
       .map((path) => relative(REPO_ROOT, path))
@@ -210,7 +275,7 @@ describe("command-result-exhaustive (D253)", () => {
   it("proves admitted forwarding layers forward command execution and their callers settle them", () => {
     for (const path of FORWARDING_LAYERS) {
       const text = readFileSync(join(REPO_ROOT, path), "utf8");
-      expect(decidesSettlementAlone(text), `${path} must not decide settlement alone`).toBe(false);
+      expect(canonicalDecision(path), `${path} must not decide settlement alone`).toBe(false);
       expect(
         /return\s+(await\s+)?(commands|client)\.executeCommand|:\s*\(input.*?\)\s*=>\s*client\.executeCommand/u.test(text),
         `${path} must return or forward executeCommand`,

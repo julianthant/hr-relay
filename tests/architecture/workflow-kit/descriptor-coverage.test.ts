@@ -488,7 +488,7 @@ describe("descriptor coverage", () => {
     // came to exist without ever running.
     const pkg = z.object({ scripts: z.record(z.string(), z.string()) })
       .parse(JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8")));
-    assert.match(pkg.scripts["build:manifest:check"] ?? "", /generate-build-manifest\.ts --check/);
+    assert.match(pkg.scripts["build:manifest:check"] ?? "", /generate-workflow-manifest\.ts --check/);
   });
 
   it("changes a browser-task fingerprint when its driver interpreter closure changes", () => {

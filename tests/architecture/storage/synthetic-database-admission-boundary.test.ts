@@ -73,7 +73,7 @@ describe("synthetic database fixture admission import boundary", () => {
   });
 
   it("launch fixtures retain real authority admission without unrelated command compositions", () => {
-    const fixture = "tests/integration/fixtures/source-bound-fixtures.ts";
+    const fixture = "tests/support/fixtures/integration/source-bound-fixtures.ts";
     const closure = valueClosure("tests/support/fixtures/run-launch-fixtures.ts");
     for (const required of [fixture, narrowHelper, "src/backend/storage/sqlite/authority-database.ts", "src/backend/storage/admission/admission.ts"]) assert.ok(closure.has(required), required);
     assert.deepEqual(forbiddenReach(closure), []);

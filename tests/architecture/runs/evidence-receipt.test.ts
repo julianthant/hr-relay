@@ -46,6 +46,7 @@ import {
 } from "../../../src/models/trust/evidence-classification.js";
 import { EVIDENCE_OBLIGATIONS } from "../../../src/models/trust/evidence-obligations.js";
 import { RunEvidenceReceiptSchema } from "../../../src/models/trust/evidence.js";
+import { RedactedFieldSchema, retainLocalEvidenceValue } from "../../../src/rules/redaction/redaction.js";
 import { SECRET_SPECS } from "../../../src/models/config/secrets.js";
 import { buildRunEvidenceReceipt } from "../../../src/backend/runs/provenance/evidence-receipt.js";
 import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry.js";
@@ -476,10 +477,18 @@ describe("evidence receipt — redaction", () => {
     assert.ok(JSON.stringify(redacted).includes(CANARIES.ssn));
   });
 
-  it("admits complete values for every classification and refuses malformed declarations", () => {
+  it("keeps declarations closed and retains complete local values for every classification", () => {
     const scope = EvidenceValueScopeSchema.parse({ kind: "workflow-input", workflowId: "person-lookup" });
     for (const classification of ["secret", "credential-file", "direct-identifier", "sensitive-hr", "safe-diagnostic"] as const) {
-      const declaration = { scope, path: "supplied", classification, transform: "allow" };
+      const transform = classification === "safe-diagnostic" ? "allow" : "drop";
+      const declaration = { scope, path: "supplied", classification, transform };
+      const value = { supplied: CANARIES, nested: [classification, 42, null] };
+      const retained = { key: "supplied", ...retainLocalEvidenceValue(classification, "allow", value) };
+      assert.deepEqual(retained, { key: "supplied", state: "allowed", classification, transform: "allow", value });
+      assert.deepEqual(RedactedFieldSchema.parse(retained), retained);
+      if (classification !== "safe-diagnostic") {
+        assert.equal(EvidenceFieldClassificationSchema.safeParse({ ...declaration, transform: "allow" }).success, false);
+      }
       assert.deepEqual(EvidenceFieldClassificationSchema.parse(declaration), declaration);
       for (const invalid of [
         { ...declaration, classification: "undeclared-classification" },
