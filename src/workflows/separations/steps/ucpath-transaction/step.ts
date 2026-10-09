@@ -1,59 +1,4 @@
-/**
- * `separations-ucpath-termination` — chunk 4 of the separations migration: the
- * UCPath termination WRITE, provable alone.
- *
- * ## The graph
- *
- * ```
- *   job-summary ───┐
- *   name-search ───┼─► comparison ──┐
- *   termination-type ───────────────┴─► GATE identity-approval ─► approval
- *                                                                    │
- *                            ┌───────────────────────────────────────┘
- *                            ▼
- *        clear-pending (TXN) ─► file-termination (TXN) ─► result
- * ```
- *
- * ## Why the identity gate is in a "write chunk"
- *
- * Ref write-safety §14 requires typed identity authority before a filing. The
- * supplied-EID arm uses exact UCPath read-back; the name-resolved arm uses the
- * real operator gate. `identity-gate-before-commit` enforces that every
- * transaction and identity-bearing result is dominated by the shared authority
- * task, and pins the gate's exact name-only condition.
- *
- * ## Why `termination-type` hangs off the GATE and not off the transaction
- *
- * A §4a map refusal must land BEFORE any fence, and the strongest place to put
- * it is before the human is asked at all: an unmapped or republished
- * *Type of Termination* should not cost an operator a decision it will not be
- * able to act on. Declaring it in the gate's `dependsOn` does that AND satisfies
- * the guard's real property — data must not reach a commit that the operator
- * never saw. _(CLOSED 2026-08-14 by chunk 6a: the composed `separations` graph
- * renders the resolved `{template, reasonCode}` INTO ref write-safety §14.2's packet
- * through `SeparationWritePlanSchema`, so "you are approving a `UC_INVOL_TERM`
- * effective 06/11/2026" is on the screen and inside the digest the approval
- * binds to — D211, ref write-safety §14.10. This descriptor stays the proving harness and
- * declares `plan: not-composed` with its reason.)_
- *
- * ## Two transaction nodes, in this order, and the sweep is genuinely first
- *
- * Ref write-safety §5 wants BOTH probe kinds ported. The date-agnostic one is the pending
- * sweep — legacy's `deletePendingTransaction`, which deletes every in-progress
- * `Terminat*` row for the EID and is, in legacy, *the first mutation the run
- * performs* with no fence and no read-back (**S30/S31**). A delete is an
- * external write, so it is its own transaction with its own key and its own
- * verifier, composed BEFORE the filing rather than hidden inside its prepare.
- *
- * ## dryRun
- *
- * `stop-after-prepare` on both. A dry run reads UCPath, parks at the gate only
- * for name-resolved identity, then walks the whole three-page wizard and the sweep selection — then
- * stops with no intent, no fence, no click and nothing durable, because the
- * 2026-08-13 live check proved the wizard persists nothing before an explicit
- * Save. That makes this the first workflow in the tree whose dry run exercises
- * a real, complete preparation of a real HR transaction.
- */
+/** `separations-ucpath-termination` — the UCPath termination WRITE, provable alone. Identity authority (§14) gates it; two transaction nodes — the pending sweep first (legacy's unfenced first mutation), then the filing — dryRun stop-after-prepare. */
 import { z } from "zod";
 import { defineWorkflow } from "../../../../workflow-kit/workflow-definition.js";
 import { SeparationsMatchIdentity } from "../../../../models/workflows/separations/match-identity.js";
@@ -96,17 +41,8 @@ import {
   pendingSetNode,
   UCPATH_TRANSACTION_STEP,
 } from "../../workflow.js";
-/**
- * The ingress. It is the identity-check ingress plus exactly the facts a
- * termination needs that no read on this graph produces: the empl record, the
- * two dates, and the comment text.
- *
- * `template` and `reasonCode` are deliberately NOT here. They are DERIVED from
- * the document's verbatim *Type of Termination* through §4a's exact-match map,
- * because an ingress that accepted them directly would let a caller file a
- * reason code the map never sanctioned — which is dangerous pattern D1 wearing
- * a different hat.
- */
+/** The ingress: the identity-check ingress plus the termination facts no read here produces
+ *  (empl record, two dates, comment text). `template`/`reasonCode` are DERIVED through §4a's exact-match map, never ingested. */
 const TerminationInputShape = {
   documentNumber: KualiDocumentNumberSchema,
   employeeName: z.string().min(1),
@@ -207,27 +143,20 @@ export const separationsUcpathTerminationWorkflow = defineWorkflow({
     {
       key: "transaction-id",
       label: "Transaction",
-      // A transaction node's field paths are the COMMIT contract's bare output
-      // (D144), which is `{ receipt }` — not the `TypedTransactionOutcome`
-      // envelope the graph scope carries.
+      // Field paths address commit output, not the transaction outcome envelope.
       source: { nodeId: TERMINATION_NODE, fieldPath: "receipt.transactionId" },
       display: "text",
     },
   ],
   identity: {
-    /**
-     * The ITEM is the person and the effective date — the same natural key the
-     * commit's permanent key uses, one layer up. Keying it by the document
-     * instead would let two documents file two terminations for one person on
-     * one date and call them different items.
-     */
+    // Key by person and effective date so duplicate documents cannot double-file.
     matchKey: (input) => `separations-ucpath-termination:${input.emplId}:${input.effectiveDate}`,
   },
   presentation: {
     title: (input) => `${input.employeeName} (${input.emplId})`,
     subtitle: (input) => `Termination effective ${input.effectiveDate}`,
   },
-  /** D229 — the descriptor's own words about each node, projected by the explorer. */
+  /** The descriptor's own words about each node, projected by the explorer. */
   nodePurposes: [
     {
       nodeId: "job-summary",
@@ -291,20 +220,10 @@ export const separationsUcpathTerminationWorkflow = defineWorkflow({
     "separations-ucpath-termination/pending-sweep-refuses-unreadable-scan",
   ],
   input: SeparationsUcpathTerminationInput,
-  // A proving harness for one step of `separations`, never a peer workflow (D219) —
-  // the step it proves is the folder it lives in, read from that folder's own
-  // declaration rather than re-typed here (D265 §1.2.2 rule 3).
   role: defineWorkflowRole({ kind: "chunk-harness", of: "separations", step: UCPATH_TRANSACTION_STEP.key }),
   steps: ({ task, gate, transaction, result }) => {
-    /**
-     * The Identity check, Job summary and Kuali extraction nodes, wired straight
-     * from the harness ingress where the composition resolves them from the
-     * Kuali reads. They are AUTHORED INLINE here rather than passed as those
-     * steps' shared identities: this harness declares one timeline group — its
-     * own step — and a group may claim only its own step's identities. Same id,
-     * same contract, same label, same replay policy, so the graph the harness
-     * proves is the graph the composition runs (D265 §1.2.2 rule 3).
-     */
+    /** Identity check, Job summary and Kuali extraction nodes wired from the harness ingress;
+     *  AUTHORED INLINE (a group claims only its own step's identities) with the same id/contract/label/replay as the composition. */
     const jobSummary = task({
       id: JOB_SUMMARY_NODE,
       contract: UcpathReadJobSummary,
@@ -348,13 +267,7 @@ export const separationsUcpathTerminationWorkflow = defineWorkflow({
         "this chunk files the UCPath termination alone; the composed `separations` graph is where the whole write plan — the Kuali finalization included — exists to show",
       ),
     }));
-    /**
-     * `termination-type` is referenced by the GATE and not by the transaction:
-     * a §4a map refusal must land before the human is asked at all, and the
-     * gate's references are what put it there while still satisfying the
-     * guard's real property — data must not reach a commit the operator never
-     * saw.
-     */
+    // Resolve termination type before approval; commits must use the evidence shown.
     const identityGate = gate({
       id: GATE_NODE,
       label: "Identity Approval",

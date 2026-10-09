@@ -16,12 +16,7 @@ import {
 import type { IdleRefreshCadence, LoginResult } from "../models/sessions/session.js";
 import type { BrowserDriver } from "./task.js";
 
-/**
- * Proof that a worker browser resource is REALLY gone. Every field is a
- * required literal on the success path: a close that cannot assert page and
- * context closure must throw instead of returning a weaker proof, and the
- * session manager then retains the resource as poisoned (ref execution-and-sessions §4).
- */
+// Unproved page/context closure poisons the retained resource.
 export interface BrowserSessionCloseProof {
   readonly sessionId: BrowserSessionId;
   readonly system: BrowserSystemId;
@@ -38,12 +33,7 @@ export type BrowserSessionCloseReason =
   | "operator-reopen"
   | "login-failed";
 
-/**
- * One authenticated worker-owned browser session for one system (ref execution-and-sessions §1).
- * The D116 reuse identity is part of the resource itself: `instance` and
- * `configFingerprint` and `browserMode` record exactly which resolved instance and immutable
- * run-config snapshot the session was authenticated under.
- */
+/** One authenticated worker-owned browser session for one system; the reuse identity (`instance`/`configFingerprint`/`browserMode`) records the exact instance and run-config it authenticated under. */
 export interface WorkerBrowserResource {
   readonly sessionId: BrowserSessionId;
   readonly system: BrowserSystemId;
@@ -67,11 +57,7 @@ export interface WorkerBrowserResource {
     Promise<BrowserSessionCloseProof>;
 }
 
-/**
- * The one concrete browser-creation port. The worker session manager is the
- * only caller (driver-lease-boundary guard); implementations own launch,
- * profile isolation, authentication dispatch, and provable teardown.
- */
+/** The one concrete browser-creation port: the worker session manager is its only caller; implementations own launch, profile isolation, auth dispatch and provable teardown. */
 export interface WorkerBrowserSessionFactory {
   readonly open: (input: Readonly<{
     workerId: WorkerId;
@@ -83,22 +69,10 @@ export interface WorkerBrowserSessionFactory {
     acceptDownloads: boolean;
     exclusive: boolean;
     signal: AbortSignal;
-    /**
-     * D267 (ref execution-and-sessions §10): the Duo ceremony lease gate for
-     * this acquisition. The factory hands it to the login recipe's context;
-     * the worker session manager opens one gate per acquisition and HOLDS it
-     * across the fresh-profile-once retry, which is why it is an input rather
-     * than something the factory mints.
-     */
+    /** The Duo ceremony lease gate for this acquisition: the manager opens one per acquisition and holds it across the fresh-profile-once retry, so it is an input. */
     duoCeremony: DuoCeremonyGate;
   }>) => Promise<WorkerBrowserResource>;
-  /**
-   * D267 §10.5: remove and recreate the SAME profile directory after Duo
-   * refused the assertion (a refused profile is burned). Optional on the
-   * port because a fixture factory has no directory; the manager REFUSES the
-   * recovery by name when a factory that observed a refusal lacks it — it
-   * never skips the retry silently.
-   */
+// Duo refusal burns the profile; recreate it before the single retry.
   readonly discardProfile?: (input: Readonly<{
     workerId: WorkerId;
     system: BrowserSystemId;
@@ -113,11 +87,7 @@ export interface SessionLoginOptions {
   readonly signal?: AbortSignal;
 }
 
-/**
- * Authentication belongs to the worker-owned browser resource, not to a task.
- * A concrete browser factory supplies this handle after opening its isolated
- * context; each system provider owns the corresponding login recipe.
- */
+/** Authentication belongs to the worker-owned browser resource, not a task: a factory supplies this handle after opening its isolated context, and each system provider owns the login recipe. */
 export interface BrowserAuthenticationHandle {
   readonly authenticate: (
     system: BrowserSystemId,
@@ -166,16 +136,12 @@ export function defineUnwiredSessionProvider<S extends BrowserSystemId>(
     system,
     ...options,
     async login() {
-      throw new Error(`${system} session login is declared but unwired in Phase 1d`);
+      throw new Error(`${system} session login is declared but unwired`);
     },
   });
 }
 
-/**
- * The Phase-1f runtime provider. It is intentionally small: browser/context
- * creation stays with the worker session factory, while the provider performs
- * exactly one bounded authentication against that owned handle.
- */
+/** The runtime session provider: small by design — browser/context creation stays with the worker session factory, and the provider performs one bounded authentication against that handle. */
 export function defineWorkerSessionProvider<S extends BrowserSystemId>(
   system: S,
   options: Readonly<{

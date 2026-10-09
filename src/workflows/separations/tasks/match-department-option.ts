@@ -5,11 +5,7 @@ import {
 } from "../../../models/workflows/separations/match-department-option.js";
 import { resolveKualiDepartmentOption } from "../../../rules/separations/department-option.js";
 
-/**
- * S55's upstream refusal, executed. Nothing here decides anything — the fold
- * does — and that is deliberate: this file's whole job is to turn the pure
- * resolution into a run outcome carrying the right durable code.
- */
+/** The department-option fold's refusal, executed. Nothing here decides — the fold does; this file turns a pure resolution into a run outcome with the right durable code. */
 export const matchDepartmentOptionTask = defineTask(SeparationsMatchDepartmentOption, {
   sessions: [],
   async run({ input, ctx }) {

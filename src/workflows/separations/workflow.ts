@@ -1,95 +1,4 @@
-/**
- * `separations` — chunk 6 of the separations migration
- * (`docs/migrations/separations.md` §3): the COMPOSITION. One Kuali RRSS
- * separation document → one terminated employee, across three systems.
- *
- * ## The graph
- *
- * ```
- *   document ─┬─► plan ─┬─► name-search ─┐
- *             │         │                ├─► subject ─► job-summary ─► employment ─┐
- *             │         │   (document) ──┘                   │                     │
- *             │         └─► timecard-search ─► timecard ─► dates                   │
- *             └─► termination-type                    department-option ◄──────────┘
- *                              └────────────┬───────────────┘
- *                                           ▼
- *                                      comparison ─► GATE identity-approval ─► approval
- *                                                                                 │
- *        ┌──────────────────────────────────────────────────────────────────────--┘
- *        ▼
- *   clear-pending (TXN) ─► file-termination (TXN) ─► receipt ─► finalize-kuali (TXN) ─► result
- * ```
- *
- * ## §3's answer to item 10, applied exactly: ONE descriptor over reused tasks
- *
- * §5 item 10's recorded answer is **no delegation**. The `ChildRunExecutor` seam
- * stays unwired and this migration does not own wiring it; recomposition (§3.1)
- * means assembling a DESCRIPTOR from proven chunks and store tasks, which is the
- * mechanism this tree has built and proved. So every node below is a task an
- * earlier chunk authored and live-proved, plus five pure folds that only a
- * composition could need — and the five sub-workflow descriptors stay exactly
- * what §3 said they were: the scaffolding that made each piece provable.
- *
- * ## No branch; one identity-origin condition
- *
- * §4b's hard-fail removed the legacy arm that skipped Kronos for a non-HDH
- * department. The only declared condition is the operator identity gate: it is
- * required for `name-resolved` identity and skipped for an independently
- * supplied EID that UCPath actually reads back. No run mode, caller or frontend
- * controls that condition.
- *
- * ## The reads all land first, and the GATE sits in the gap they leave
- *
- * §4e is normative: every read lands as a typed variable before anything is
- * written, and the whole write half consumes those variables rather than
- * re-deriving anything at fill time. Identity authority sits between the two
- * halves — ref write-safety §14.3, and D26, which forbids any park between
- * `prepare` and `commit`. The operator gate opens there only for name-resolved
- * identity; supplied-EID machine verification settles at the same seam.
- *
- * §5A widened that gap on purpose (`maxAgeMs: Infinity` on the three reads —
- * the separation document is a saved, stable artifact and refresh is a
- * deliberate operator RE-RUN, never an age check firing mid-run), which is what
- * makes the packet's write-plan block load-bearing: the authority task verifies
- * those VALUES, and §14.5's digest binds either machine or operator authority
- * to them.
- *
- * ## Three transaction nodes, in ref write-safety's order
- *
- * `clear-pending` (S30/S31 — legacy's first mutation, unfenced and unverified)
- * → `file-termination` (the real HR write) → `finalize-kuali` (§4e's one save
- * over twelve staged fields). Each carries its own permanent key, its own probe and
- * its own landing proof, and each is a node chunk 4 or chunk 5 already proved
- * alone against a real authority database.
- *
- * `receipt` sits between the last two on purpose. §5 item 2's answer is that the
- * UCPath receipt is the PAIR `(transactionNumber, approvalStatus)` and never the
- * number alone, because D130 proved a **Denied** transaction carries a
- * well-formed `T…`. §9.11 recorded that binding both belongs here; this node is
- * that binding, and it refuses to hand the Kuali write a number that records a
- * termination UCPath did not put into effect.
- *
- * ## §4c, honestly
- *
- * A post-fence Kuali uncertainty PARKS (chunk 5 proved that arm against the real
- * sequencer). A pre-fence refusal after the termination committed terminalizes
- * `failed` — and the receipt pair is durable on `file-termination`'s own
- * checkpoint before `finalize-kuali` is ever entered, which is exactly what §4c
- * asks for ("durable authority rather than a remembered fact"). A re-run of the
- * same item replays that checkpoint and re-enters only the finalization, under
- * its own permanent key, with the gate re-crossed (§4d).
- *
- * ## The re-read affordance (§"the re-run wall" item 2)
- *
- * A checkpoint is keyed `(workflow, itemId, node, attempt)` with no run id, so a
- * second run of one document is the same ITEM and replays the first run's reads
- * — whose `observedAt` differs by construction, which is the wall chunks 2 and 3
- * both hit. `reRead` is the operator's explicit "read it again": it is part of
- * the canonical input, so it is part of `matchKey`, so it is a NEW logical item
- * with its own checkpoints and its own gate. It changes no permanent key —
- * those are derived from the EID, the effective date and the document, so a
- * re-read can never file a second termination.
- */
+/** `separations` — one Kuali separation document → one terminated employee across three systems; reads before writes, gated by operator approval. */
 import { z } from "zod";
 import { OmittedStepResultArmSchema } from "../../models/workflow/step-omission.js";
 import { defineWorkflow, defineStepEntries } from "../../workflow-kit/workflow-definition.js";
@@ -178,15 +87,7 @@ import {
   UcpathVerifyTerminationFilingPresent,
 } from "../../models/systems/ucpath/verify-termination-filing-present.js";
 
-/* ── The timeline's step identities ─────────────────────────────────────────
- *
- * D312/D315 — this one file authors the composition's whole timeline — each
- * step's group, node ids, entry identities and (where the step is omittable) its
- * D307 omission, in timeline order — then the `defineWorkflow` call that wires them.
- * The chunk harnesses under `./<step>/workflow.ts` IMPORT the identities of the
- * step they prove from here (D265 §1.2.2 rule 3) and wire them from their own
- * ingress; nothing under a step folder authors an identity of its own.
- * ────────────────────────────────────────────────────────────────────────── */
+/* ── the timeline's step identities: authored here in timeline order; a step's harness imports its own ── */
 
 /* ── step `kuali-extraction` — group, node ids, entry identities ── */
 
@@ -195,55 +96,21 @@ export const KUALI_EXTRACTION_STEP = defineWorkflowStep({
   label: "Kuali extraction",
 });
 
-/** The step's node ids, declared apart from the entries so an omission declaration and every bind can name them (D307). */
+/** The step's node ids, declared apart from the entries so an omission declaration and every bind can name them. */
 export const ACTION_NODE = "resolve-action";
 export const DOCUMENT_NODE = "document";
 export const PLAN_NODE = "plan";
 export const TERMINATION_TYPE_NODE = "termination-type";
 
-/**
- * D265 §1.2.2 rule 2 — the *Kuali extraction* step's entry identities: what the
- * composition (this file) and the step's harness (`./<step>/workflow.ts`) each apply to
- * their own graph, wired from their own upstreams.
- *
- * An entry identity owns a node's IDENTITY — id, contract, label, replay — and
- * takes its WIRING (references + bind) from the workflow definition that uses
- * it (`defineStepEntries`, D315). The rationale for each node's replay
- * policy lives here, beside the policy; the rationale for what feeds a node
- * lives beside the bind that feeds it.
- */
 const kualiExtractionEntries = defineStepEntries(KUALI_EXTRACTION_STEP);
 
-/**
- * D261's head node. It turns the one number a human knows into the address
- * Kuali actually answers to, by filtering the Action List's own search box
- * and reading the matched row's `href` — no click into a document, nothing
- * staged, nothing written.
- *
- * `replay: "checkpoint"` for `document`'s reason, one node later: the node's
- * product is a VALUE, so restoring it into a fresh browser leaves nothing
- * broken, and the gate releases every session on the way in. The value CAN go
- * stale between the checkpoint and a post-gate finalization — an action id
- * names a workflow step — and that is exactly the case `openDocument` refuses
- * loudly on, by proving the document number off the page's own heading. A
- * freshness bound here would replace a precise refusal with a timer, and §5A
- * already ruled that out for this graph.
- */
+// Checkpointed addresses are revalidated by openDocument.
 export const actionNode = kualiExtractionEntries.task(ACTION_NODE, KualiSearchSeparationAction, {
   label: "Kuali Action",
   replay: "checkpoint",
 });
 
-/**
- * Chunk 2's argument verbatim: this node's product is its VALUE, not browser
- * state, so restoring the checkpoint into a fresh browser leaves nothing
- * broken. Nothing downstream stands on the page it opened — the consumers are
- * pure folds — and in the composition every read upstream of the gate is
- * replayed into a browser that has never seen these pages, because the gate
- * parks and the executor releases every session on the way in. Chunk 1's rule
- * ("a node whose real product is BROWSER state may not be `replay:
- * "checkpoint"`") is the same rule read the other way.
- */
+// Checkpoints restore values, not browser selection.
 export const documentNode = kualiExtractionEntries.task(DOCUMENT_NODE, KualiReadSeparationDocument, {
   label: "Separation Document",
   replay: "checkpoint",
@@ -266,40 +133,16 @@ export const IDENTITY_CHECK_STEP = defineWorkflowStep({
   label: "Identity check",
 });
 
-/** The step's node ids, declared apart from the entries so an omission declaration and every bind can name them (D307). */
+/** The step's node ids, declared apart from the entries so an omission declaration and every bind can name them. */
 export const NAME_SEARCH_NODE = "name-search";
 export const SUBJECT_NODE = "subject";
 export const COMPARISON_NODE = "comparison";
 export const GATE_NODE = "identity-approval";
 export const APPROVAL_NODE = "approval";
 
-/**
- * D265 §1.2.2 rule 2 — the *Identity check* step's entry identities: UCPath's
- * own search for the name the Kuali form claims, the reduction to ONE subject,
- * the evidence packet, the conditional name-only gate and the shared identity
- * authority check.
- *
- * An entry identity owns a node's IDENTITY — id, contract, label, replay, or
- * the gate's status key and result schema — and takes its WIRING (references
- * + bind) from the workflow definition that uses it (`defineStepEntries`,
- * D315). The composition wires these from the Kuali reads upstream; the
- * identity-check harness (`./identity-check/workflow.ts`) wires them from its
- * own ingress and binds the comparison to `noSeparationWritePlan` because it
- * files nothing and has no whole plan to show (rule 3: a harness IMPORTS these
- * identities rather than restating them).
- */
 const identityCheckEntries = defineStepEntries(IDENTITY_CHECK_STEP);
 
-/**
- * Every graph that applies this node binds `keepNonHdh: true` and runs it
- * UNCONDITIONALLY — chunk 3's two sharpest choices. Legacy searches only when
- * its name tier came back `different`, so the alternative candidate
- * `T002173685` turned on exists only on the runs a Levenshtein threshold
- * happened to select; and an HDH filter would hide exactly the career
- * employee a common name matched. The HDH filter exists so person-lookup can
- * pick a preferred candidate; here the point is to SHOW the operator every
- * person this name resolves to.
- */
+// Keep all candidates; filtering HDH would hide matching career employees.
 export const nameSearchNode = identityCheckEntries.task(NAME_SEARCH_NODE, SearchPersonOrg, {
   label: "Name Search",
   replay: "checkpoint",
@@ -315,15 +158,7 @@ export const comparisonNode = identityCheckEntries.task(COMPARISON_NODE, Separat
   replay: "checkpoint",
 });
 
-/**
- * When the declared source is `name-resolved`, `resolvedBy: "operator"` and
- * nothing else can resolve it (ref write-safety §14.4). Not a retry, not a bump,
- * not a cascade from a parent, not AI (charter
- * §23 / D60), and not a generic "Done" — the kernel's ONLY path into
- * `gate_results` is the typed `resolve-gate` command, which parses this exact
- * schema and CASes the run version. A supplied-EID packet makes the condition
- * false; the executor records no gate result or operator decision.
- */
+// Name-resolved identity requires operator approval through the version-checked command.
 export const identityApprovalGate = identityCheckEntries.operatorGate(GATE_NODE, {
   label: "Identity Approval",
   statusKey: "awaitingIdentityApproval",
@@ -331,11 +166,7 @@ export const identityApprovalGate = identityCheckEntries.operatorGate(GATE_NODE,
   when: { kind: "equals", of: { from: "node", nodeId: COMPARISON_NODE, path: "packet.emplIdSource" }, value: "name-resolved" },
 });
 
-/**
- * `always-rerun`, deliberately: this node's whole job is to compare a stored
- * gate result against re-derived evidence, and a replayed checkpoint would be
- * the previous comparison's ANSWER standing in for the comparison.
- */
+// Recheck stored approval against current evidence; checkpoints preserve only the prior answer.
 export const approvalNode = identityCheckEntries.task(APPROVAL_NODE, SeparationsVerifyIdentityApproval, {
   label: "Approval Check",
   replay: "always-rerun",
@@ -348,33 +179,14 @@ export const JOB_SUMMARY_STEP = defineWorkflowStep({
   label: "Job summary",
 });
 
-/** The step's node ids, declared apart from the entries so an omission declaration and every bind can name them (D307). */
+/** The step's node ids, declared apart from the entries so an omission declaration and every bind can name them. */
 export const JOB_SUMMARY_NODE = "job-summary";
 export const EMPLOYMENT_NODE = "employment";
 export const DEPARTMENT_NODE = "department-option";
 
-/**
- * D265 §1.2.2 rule 2 — the *Job summary* step's entry identities: UCPath's Job
- * Summary grid read verbatim, and the two pure folds over it — the one active
- * employment the filing is against and the Kuali department option it maps to.
- *
- * An entry identity owns a node's IDENTITY — id, contract, label, replay — and
- * takes its WIRING (references + bind) from the workflow definition that uses
- * it (`defineStepEntries`, D315). This step has no harness of its own: the
- * composition wires `job-summary` from the resolved subject, and the
- * identity-check harness wires it straight from its ingress EID (rule 3 — it
- * IMPORTS the identity rather than restating it).
- */
 const jobSummaryEntries = defineStepEntries(JOB_SUMMARY_STEP);
 
-/**
- * `replay: "checkpoint"` is safe here for chunk 2's reason read the same way:
- * this node's product is its VALUE, not browser state. Nothing downstream
- * stands on the page it opened — the consumers are pure folds and one operator
- * gate — and a gate resume ALWAYS lands in a fresh browser, because the
- * executor releases every session on the way into a park. A node whose
- * product were browser state could not be replayed across a park at all.
- */
+// Downstream nodes need the value, not this browser page.
 export const jobSummaryNode = jobSummaryEntries.task(JOB_SUMMARY_NODE, UcpathReadJobSummary, {
   label: "Job Summary",
   replay: "checkpoint",
@@ -397,50 +209,20 @@ export const KRONOS_TIMECARD_STEP = defineWorkflowStep({
   label: "Kronos timecard",
 });
 
-/** The step's node ids, declared apart from the entries so an omission declaration and every bind can name them (D307). */
+/** The step's node ids, declared apart from the entries so an omission declaration and every bind can name them. */
 export const TIMECARD_SEARCH_NODE = "timecard-search";
 export const TIMECARD_NODE = "timecard";
 export const DATES_NODE = "dates";
 
-/**
- * D265 §1.2.2 rule 2 — the *Kronos timecard* step's entry identities: the New
- * Kronos employee search that leaves the subject SELECTED, the timecard read
- * over the separation window, and the pure date reconciliation over it.
- *
- * An entry identity owns a node's IDENTITY — id, contract, label, replay —
- * and takes its WIRING (references + bind) from the workflow definition that
- * uses it (`defineStepEntries`, D315). The harness in this folder uses
- * `timecard` from its own ingress; its search node is `search` / "Employee
- * Search" — a different id and label, so a different node identity — and stays
- * authored there rather than being passed off as this step's `timecard-search`.
- */
 const kronosTimecardEntries = defineStepEntries(KRONOS_TIMECARD_STEP);
 
-/**
- * `always-rerun`, and chunk 1 paid for the rule live (`sk-124132-9beb`): the
- * search's OUTPUT is durable but its POINT is a side effect that is not — it
- * leaves the employee selected in the WFD panel, which is the only thing that
- * enables Go To. **A node whose real product is BROWSER state may not be
- * `replay: "checkpoint"`.**
- *
- * The composition pays a real cost for that: a gate resume re-runs this node
- * (the timecard replays from its checkpoint, so nothing consumes the panel),
- * which is one New Kronos session per gated run. The alternative is a
- * checkpoint that restores a selection into a browser that never made one, and
- * that is the failure chunk 1 already recorded.
- */
+// The search's point is the panel selection, not a restorable value.
 export const timecardSearchNode = kronosTimecardEntries.task(TIMECARD_SEARCH_NODE, NewKronosSearchEmployee, {
   label: "Timecard Search",
   replay: "always-rerun",
 });
 
-/**
- * The timecard visit begins from the selection the search node left in the
- * panel, so every graph that applies it depends on that search structurally as
- * well as semantically, and its bind reads the search's own `matched` fact
- * through `requireFact` — Go To is disabled without the selection, and a
- * disabled Go To is a loud failure, never an empty card.
- */
+// The visit needs the search's selection; a disabled Go To fails loudly.
 export const timecardNode = kronosTimecardEntries.task(TIMECARD_NODE, NewKronosReadSeparationTimecard, {
   label: "Timecard",
   replay: "checkpoint",
@@ -451,16 +233,7 @@ export const datesNode = kronosTimecardEntries.task(DATES_NODE, SeparationsReadS
   replay: "checkpoint",
 });
 
-/**
- * D307 — omitting the Kronos timecard step.
- *
- * The operator types the last day worked and the separation date; the step's
- * one pure fold (`dates`) is rebuilt from them over the plan the Kuali read
- * produced. The two browser reads (`timecard-search`, `timecard`) are simply
- * not run — nothing downstream reads them except this fold — and the
- * rebuilt dates say so in their own leaves (no leave, no pay codes, a comment
- * that cites operator entry, never a timesheet).
- */
+// Omission: operator entries rebuild the date fold; browser reads are skipped.
 function isJsonObject(value: JsonValue): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -511,26 +284,12 @@ export const UCPATH_TRANSACTION_STEP = defineWorkflowStep({
   label: "UCPath transaction",
 });
 
-/** The step's node ids, declared apart from the entries so an omission declaration and every bind can name them (D307). */
+/** The step's node ids, declared apart from the entries so an omission declaration and every bind can name them. */
 export const PENDING_SET_NODE = "pending-set";
 export const SWEEP_NODE = "clear-pending";
 export const TERMINATION_NODE = "file-termination";
 export const RECEIPT_NODE = "receipt";
 
-/**
- * D265 §1.2.2 rule 2 — the *UCPath transaction* step's entry identities, in ref
- * write-safety's order: the pending-termination sweep (S30/S31 — legacy's first
- * mutation, unfenced and unverified), the termination filing itself, and the
- * receipt check that binds `(transactionNumber, approvalStatus)` as a PAIR
- * (D130 proved a **Denied** transaction carries a well-formed `T…`).
- *
- * An entry identity owns a node's IDENTITY — id, contracts, label and, for a
- * transaction, its whole write policy (dry-run shape, probe policy, the
- * probe-to-fence budget) — and takes its WIRING (references + binds) from the
- * workflow definition that uses it (`defineStepEntries`, D315). The
- * composition binds the filing from the reconciled folds; the harness in this
- * folder binds it from its own ingress (rule 3).
- */
 const ucpathTransactionEntries = defineStepEntries(UCPATH_TRANSACTION_STEP);
 
 export const pendingSetNode = ucpathTransactionEntries.task(PENDING_SET_NODE, UcpathReadPendingTerminationSet, {
@@ -538,16 +297,7 @@ export const pendingSetNode = ucpathTransactionEntries.task(PENDING_SET_NODE, Uc
   replay: "checkpoint",
 });
 
-/**
- * `probePolicy: "always"`: the sweep's probe is one page read that the
- * termination's probe needs anyway, and paying it on the first attempt too is
- * what closes the crash window before the first fence.
- *
- * Budget measured live 2026-08-13 (§9.7): probe search open 4.6 s + search run
- * 7.4 s + detail 4.9 s ≈ 17 s to read the grid, then the selection itself is
- * checkbox clicks. 90 s is ~5x that, and short enough that a stalled page
- * loses its selection rather than deleting on a stale probe.
- */
+// The probe serves the termination's own probe; the budget covers a stalled page.
 export const clearPendingNode = ucpathTransactionEntries.transaction(SWEEP_NODE, {
   label: "Clear Pending Terminations",
   prepare: UcpathStagePendingTerminationSweep,
@@ -557,10 +307,7 @@ export const clearPendingNode = ucpathTransactionEntries.transaction(SWEEP_NODE,
   probeToFenceMaxMs: 90_000,
 });
 
-/**
- * The real HR write. Budget measured live 2026-08-13 (§9.7): ≈32.4 s of live
- * wizard staging on top of ≈17 s of probe, and 120 s is ~3.7x that.
- */
+/** The real HR write: its probe-to-fence budget gives the live wizard staging and the probe ample headroom. */
 export const fileTerminationNode = ucpathTransactionEntries.transaction(TERMINATION_NODE, {
   label: "File Termination",
   prepare: UcpathStageTermination,
@@ -570,27 +317,13 @@ export const fileTerminationNode = ucpathTransactionEntries.transaction(TERMINAT
   probeToFenceMaxMs: 120_000,
 });
 
-/**
- * `always-rerun`, for `approval`'s reason: this node's job is to CHECK a proof,
- * and a replayed checkpoint would be the previous check's answer standing in
- * for the check. It is a pure fold over a durable proof, so re-running it costs
- * nothing and reaches no browser.
- */
+// Recheck the proof every run; a checkpoint would stand in for the check.
 export const receiptNode = ucpathTransactionEntries.task(RECEIPT_NODE, SeparationsVerifyTerminationReceipt, {
   label: "Termination Receipt",
   replay: "always-rerun",
 });
 
-/**
- * D307 — omitting the UCPath transaction step.
- *
- * Neither transaction runs and neither mints an outcome (D144: only the write
- * sequencer's row may say a write happened). The operator types the
- * transaction number and its approval status, and the step's pure receipt
- * fold is rebuilt from them over the identity approval and the reconciled
- * dates this run still holds — the same two facts a live receipt is checked
- * against. The receipt's `disposition` names the assertion.
- */
+// Omission: operator entries rebuild the receipt; neither transaction runs.
 const UcpathTransactionFactsSchema = z.strictObject({
   transactionNumber: z.string().min(1),
   approvalStatus: z.string().min(1),
@@ -633,48 +366,25 @@ export const KUALI_FINALIZATION_STEP = defineWorkflowStep({
   label: "Kuali finalization",
 });
 
-/** The step's node ids, declared apart from the entries so an omission declaration and every bind can name them (D307). */
+/** The step's node ids, declared apart from the entries so an omission declaration and every bind can name them. */
 export const FILING_PRESENCE_NODE = "filing-presence";
 export const FINALIZE_NODE = "finalize-kuali";
 
-/**
- * D265 §1.2.2 rule 2 — the *Kuali finalization* step's one entry identity: §4e's
- * one save over twelve staged fields, proved by a reload read-back (D128/S59).
- *
- * An entry identity owns a node's IDENTITY — id, contracts, label and the whole
- * write policy — and takes its WIRING (references + binds) from the workflow
- * definition that uses it (`defineStepEntries`, D315). The composition binds
- * the variables from the reconciled folds and the receipt; the harness in this
- * folder binds them from its own ingress (rule 3). `existingComments` is the
- * one pure fold only this step's binds consume, so it lives here.
- */
 const kualiFinalizationEntries = defineStepEntries(KUALI_FINALIZATION_STEP);
 
-/**
- * Always re-read the durable UCPath filing immediately before finalization.
- * Replaying a checkpoint would make an old observation authorize a new Kuali
- * write after the filing had moved, disappeared, or become denied.
- */
+// Re-read the filing so a stale observation cannot authorize the write.
 export const filingPresenceNode = kualiFinalizationEntries.task(
   FILING_PRESENCE_NODE,
   UcpathVerifyTerminationFilingPresent,
   { label: "Verify Current UCPath Filing", replay: "always-rerun" },
 );
 
-/** `""` when the control was empty — S56's baseline, which is a real value. */
+  // `""` when the control was empty; a real value, not a default.
 export function existingComments(comments: { state: "present"; value: string } | { state: "absent" }): string {
   return comments.state === "present" ? comments.value : "";
 }
 
-/**
- * `probePolicy: "always"` (§5 item 3's recorded answer): separations files a
- * real, hard-to-reverse termination and this write is what records its
- * transaction number on the source document; a probe is one document read
- * against a page the run is already on.
- *
- * Budget CONFIRMED live 2026-08-14 (§9.12 item 6): probe 3.30 s + prepare
- * 8.06 s = 11.4 s worst legs against 45 000 ms, ~4x headroom.
- */
+// The probe is one read of a page the run is already on.
 export const finalizeKualiNode = kualiFinalizationEntries.transaction(FINALIZE_NODE, {
   label: "Finalize Kuali Document",
   prepare: KualiStageSeparationFinalization,
@@ -684,71 +394,25 @@ export const finalizeKualiNode = kualiFinalizationEntries.transaction(FINALIZE_N
   probeToFenceMaxMs: 45_000,
 });
 
-/**
- * D307 — omitting the Kuali finalization step.
- *
- * Nothing downstream reads the finalization but the terminal result, so the
- * step needs no typed fact: the transaction is simply not run, and the result
- * carries an `omitted` arm where the saved-state proof would be. The operator
- * finalizes the document by hand.
- */
+// Omission: the write is skipped and the result carries an omitted arm.
 export const KUALI_FINALIZATION_OMISSION: StepOmissionDeclaration = {
   form: { fields: [] },
   produces: {},
 };
 
-/**
- * How long a New Kronos search may go without answering EITHER WAY. Chunk 1's
- * value and chunk 1's argument: the genuine no-results sentinel surfaced in
- * 548 ms live, so this is the line past which silence becomes its own reported
- * failure rather than a fabricated negative (S35).
- */
+// Search silence is a reported timeout, never a fabricated no-result.
 const SEARCH_TIMEOUT_DEFAULT_MS = 15_000;
 
-/**
- * The operator's explicit "read it again" — §"the re-run wall" item 2.
- *
- * `ordinal` is what makes each re-read its OWN logical item; `reason` is what
- * makes it a decision somebody recorded rather than a button somebody found.
- * Both ride in the canonical input, so `explain run` answers "why was this
- * document read a second time" without archaeology.
- */
+// A re-read is a new logical item, so it can never double-file.
 const SeparationReReadSchema = z.strictObject({
   ordinal: z.number().int().min(1).max(99),
   reason: z.string().min(1).max(200),
 });
 
 const SeparationsInputShape = {
-  /**
-   * The ONE varying value a run carries — D261, and the operator's ruling of
-   * 2026-08-20: *"document number should work. no need action id."*
-   *
-   * Kuali's `actionId` used to sit beside it, because `…/actions/<actionId>` is
-   * the only address Kuali offers. D260 measured the consequence: two varying
-   * values per run, and therefore no typed start box, because `EntryRule.emit`
-   * is a single field and `constants[]` can only carry a value that does not
-   * vary. The id is now a GRAPH OUTPUT — the `resolve-action` node reads it off
-   * the Action List's own row — so this schema has exactly one required field
-   * that varies per run and the modal has a box.
-   *
-   * The number keeps doing its old job unchanged: it is the run's own CLAIM,
-   * proved against the document's level-1 heading before anything else runs
-   * (D129 — an `actionId` names a workflow STEP, not a document). Resolving the
-   * id from the number does not weaken that check; it is now proved TWICE, once
-   * against the Action-List link's anchored accessible name and once against
-   * the opened document's heading.
-   */
+    // Only the document number varies per run; the id is a graph output.
   documentNumber: KualiDocumentNumberSchema,
-  /**
-   * The timekeeper this separation is filed by: staged into the Kuali document
-   * and the source of the initials that sign every audit line.
-   *
-   * It is INGRESS rather than config for chunk 5's reason, one level up: the
-   * finalization descriptor already takes it as a per-run variable, and a value
-   * retained in the canonical input is one `explain run` can show for the run
-   * that used it. Legacy reads `TIMEKEEPER_NAME` from the environment, which is
-   * a fact about the machine rather than about the transaction.
-   */
+    // The timekeeper is retained input so `explain run` can show it.
   timekeeperName: KualiTimekeeperNameSchema,
 } as const;
 
@@ -779,13 +443,13 @@ export const SeparationsCanonicalInput = defineCanonicalInput(
   ],
 );
 
-// D307 — the performed arms below keep their pre-D307 shape byte for byte, so
-// every earlier result still parses; the omitted arm is the domain's.
+// The performed arms below keep their shape byte for byte, so every earlier result still
+// parses; the omitted arm is the domain's.
 export const SeparationsResultSchema = z.strictObject({
   documentNumber: z.string().min(1),
   /** The subject established by machine verification or operator approval. */
   approved: ResolvedIdentitySubjectSchema,
-  /** The one employment row the termination was filed against (S23). */
+  // The one employment row the termination was filed against.
   employment: z.strictObject({
     emplRecord: z.string().min(1),
     payrollTitleCode: z.string().min(1),
@@ -814,12 +478,9 @@ export const SeparationsResultSchema = z.strictObject({
     }),
     OmittedStepResultArmSchema,
   ]),
-  /**
-   * §4c's completion shape: the receipt PAIR, checked rather than carried. The
-   * number alone is never a proof (D130).
-   */
+  /** §4c's completion shape: the receipt PAIR, checked rather than carried — the number alone is never a proof. */
   termination: TerminationReceiptSchema,
-  /** The finalization's landing proof — always the reload read-back's (D128/S59). */
+  // The landing proof is always the reload read-back's.
   finalization: z.union([
     z.strictObject({
       disposition: z.enum(["committed", "already-present"]),
@@ -830,13 +491,7 @@ export const SeparationsResultSchema = z.strictObject({
 });
 
 
-/**
- * D307 — a terminal derive reads an omitted node as `undefined` even though
- * the scope type says otherwise (the factory admits the `step-omitted` arm
- * only for nodes of an omittable step). Widening here is a declared read of
- * that arm, not a fallback: the value is either the node's real output or the
- * named omission, never a default.
- */
+// An omitted node reads as `undefined` in the terminal derive.
 function omittedOr<T, R>(
   value: T,
   step: string,
@@ -868,54 +523,21 @@ export const separationsWorkflow = defineWorkflow({
   protectedInputs: [{ inputPath: "timekeeperName", name: "timekeeperName" }],
   inputSubject: "document",
   surface: { shape: "single" },
-  /**
-   * `reject-active` per item — and the item is the document plus the operator's
-   * re-read ordinal. Two concurrent runs on one separation document is never
-   * intended, and ref write-safety's same-key mutex refuses the second fence anyway;
-   * **S5** is why the mutex matters more than the enqueue policy, because
-   * legacy's enqueue-supersede only cancels non-terminal prior runs, so a
-   * completed document could be re-run with nothing but two live page probes
-   * standing between it and a second termination.
-   */
+  // One document runs at a time; the mutex refuses the second fence.
   enqueue: "reject-active",
   actions: STANDARD_WORKFLOW_ACTIONS,
-  /**
-   * **The one-box door (D261).** D260 refused to build this surface and stated
-   * exactly what would unblock it: `inputRun` carries ONE varying value per
-   * run, and `separations` needed two. The operator ruled *"document number
-   * should work. no need action id."*, the graph's new head node resolves the
-   * action from the number, and the schema now has exactly one required field
-   * that varies — so the modal has a box and the rule D260 wrote is unchanged.
-   *
-   * D331: the server binds `timekeeperName` from protected settings at admission.
-   * This browser-safe descriptor carries only the setting name and input path.
-   */
+  // The start box takes only the document number; the id is a graph output.
   surfaces: {
     inputRun: {
       placeholder: "Enter Kuali document numbers, semicolon-separated (e.g. 4502; 4510)",
       parser: {
         split: { kind: "delimited", delimiters: [";", "\n"] },
-        /**
-         * ONE rule and NO `otherwise` arm, deliberately. A separation is filed
-         * against a Kuali document and there is no second thing this box could
-         * mean, so an entry that is not a document number refuses the whole box
-         * and starts nothing — which `inputRunParserLabel` says out loud before
-         * an operator pastes forty lines. An `otherwise` arm here would send
-         * arbitrary text into `documentNumber` for the input schema to refuse
-         * one layer later, with a worse message.
-         */
+        // Anything that is not a document number refuses the whole box.
         rules: [
           { when: { kind: "pattern", pattern: "document-number" }, emit: "documentNumber" },
         ],
       },
-      /**
-       * D250. Both texts are real document numbers this migration has read live
-       * (4502 on 2026-08-12 and again on 2026-08-20; 4510 on 2026-08-12), and
-       * the factory proves each one parses AND satisfies `SeparationsInput`
-       * before this descriptor exists. The pair shows the one thing a
-       * placeholder cannot: that the SAME box starts several separations at
-       * once, one run per document.
-       */
+      // Examples must parse and satisfy `SeparationsInput`; one box starts several runs.
       examples: [
         {
           key: "one-document",
@@ -933,16 +555,7 @@ export const separationsWorkflow = defineWorkflow({
       ],
     },
   },
-  /**
-   * No `capabilities` block, and here it is a SAFETY property. Every value this
-   * graph would let Edit Data patch is a value some read established: the punch
-   * date, the department, the EID, the payroll title. Correcting one of those
-   * without a live read behind it is exactly the substitution §4b removed from
-   * the timecard path, arriving through the correction rail instead. The one
-   * thing an operator may change about a run is the gate decision, and that goes
-   * through the typed gate command; the one way to get fresh reads is `reRead`,
-   * which is a NEW run over a new item rather than a patch over an old one.
-   */
+  // No Edit Data: patching read-established values without a live read is unsafe.
   verdicts: [
     { key: "name-differs", label: "Name differs from UCPath", tone: "warning", tag: true },
     { key: "eid-name-resolved", label: "EID resolved by name", tone: "warning", tag: true },
@@ -988,8 +601,8 @@ export const separationsWorkflow = defineWorkflow({
     },
     {
       key: "transaction-id",
-      // A transaction node's field paths are the COMMIT contract's bare output
-      // (D144) — `{ receipt }`, not the `TypedTransactionOutcome` envelope.
+        // A transaction node's field paths are the COMMIT contract's bare output
+        // — `{ receipt }`, not the `TypedTransactionOutcome` envelope.
       label: "Transaction",
       source: { nodeId: TERMINATION_NODE, fieldPath: "receipt.transactionId" },
       display: "text",
@@ -1001,28 +614,10 @@ export const separationsWorkflow = defineWorkflow({
       display: "text",
     },
   ],
-  /**
-   * Ref dashboard-surfaces §1.2: the queue row starts as `Separation 4502` — the only thing the
-   * start input knows — and becomes the PERSON the moment UCPath's Job Summary
-   * has answered. Three separations rows on one real day carried the same
-   * document number, so the column an operator scans distinguished nothing.
-   *
-   * `job-summary.displayedName` and not the Kuali document's own employee name:
-   * the whole point of the identity chunk is that the Kuali form's name is the
-   * CLAIM and UCPath's is the record, and the queue row must not print a name
-   * the gate has not yet compared. Before that node runs, the document number
-   * stands.
-   */
+  // Queue row shows the document number until Job Summary answers.
   subjectProjection: { nodeId: JOB_SUMMARY_NODE, fieldPath: "displayedName" },
   identity: {
-    /**
-     * The ITEM is the DOCUMENT — one separation document is one separation — and
-     * the operator's explicit re-read ordinal, which is §"the re-run wall" item
-     * 2's whole affordance: a re-read is a new logical item with fresh
-     * checkpoints and its own gate, not a replay collision against reads whose
-     * `observedAt` differs by construction. It changes no permanent key, so a
-     * re-read can never file a second termination.
-     */
+    // The item is document + re-read ordinal, so a re-read cannot double-file.
     matchKey: (input) => (input.reRead === undefined
       ? `separations:${input.documentNumber}`
       : `separations:${input.documentNumber}#re-read-${String(input.reRead.ordinal)}`),
@@ -1033,7 +628,7 @@ export const separationsWorkflow = defineWorkflow({
       ? undefined
       : `re-read ${String(input.reRead.ordinal)} — ${input.reRead.reason}`),
   },
-  /** D229 — the descriptor's own words about each node, projected by the explorer. */
+  /** The descriptor's own words about each node, projected by the explorer. */
   nodePurposes: [
     {
       nodeId: "resolve-action",
@@ -1147,7 +742,7 @@ export const separationsWorkflow = defineWorkflow({
   ],
   input: SeparationsInput,
   // The composed graph the five separations chunk harnesses each prove a step
-  // of — the `of` target every one of them names (D219).
+  // of — the `of` target every one of them names.
   role: defineWorkflowRole({ kind: "composition" }),
   scenarios: [
     "separations/action-resolved",
@@ -1185,7 +780,7 @@ export const separationsWorkflow = defineWorkflow({
       employeeName: outputs[DOCUMENT_NODE].employee.name,
       lastDayWorked: outputs[DOCUMENT_NODE].separation.lastDayWorked,
       separationDate: outputs[DOCUMENT_NODE].separation.separationDate,
-      // S7's reference is the READ's own instant, not a clock: the refusal then
+      // The reference is the READ's own instant, not a clock: the refusal then
       // says what is true — *as of the moment this run read the document*.
       observedAt: outputs[DOCUMENT_NODE].observedAt,
     }));
@@ -1226,9 +821,7 @@ export const separationsWorkflow = defineWorkflow({
       ({ input, outputs }) => ({
       deptId: outputs[EMPLOYMENT_NODE].deptId,
       department: outputs[EMPLOYMENT_NODE].department,
-      // This document's OWN control, read this run — never a captured constant,
-      // because a new campus department is a legitimate option nobody has to
-      // teach this repository about before somebody can be separated.
+      // Read current department options; new campus departments must not require code changes.
       observedOptions: outputs[DOCUMENT_NODE].options.department,
       documentNumber: input.documentNumber,
       }),
@@ -1238,9 +831,7 @@ export const separationsWorkflow = defineWorkflow({
       searchTimeoutMs: input.searchTimeoutMs,
     }));
     const timecard = task(timecardNode, [subject, plan, timecardSearch], ({ outputs }) => {
-      // Reading the search's own match is what makes the dependency load-bearing
-      // rather than decorative: Go To is disabled without the selection, and a
-      // disabled Go To is a loud failure, never an empty card.
+      // Go To requires this search selection; failed selection is never an empty timecard.
       requireFact(outputs[TIMECARD_SEARCH_NODE].matched, TIMECARD_SEARCH_NODE, "matched");
       return {
         emplId: outputs[SUBJECT_NODE].emplId,
@@ -1256,7 +847,7 @@ export const separationsWorkflow = defineWorkflow({
       holidayDates: outputs[TIMECARD_NODE].grid.holidayDates,
       unclassifiedPayCodes: outputs[TIMECARD_NODE].grid.unclassifiedPayCodes,
       // The window the grid was PROVED to be showing, not the one asked for
-      // (S40) — a leave day outside it is a year-stamp defect, not a leave day.
+      // — a leave day outside it is a year-stamp defect, not a leave day.
       observedWindow: {
         start: outputs[TIMECARD_NODE].range.observedStart,
         end: outputs[TIMECARD_NODE].range.observedEnd,
@@ -1267,12 +858,8 @@ export const separationsWorkflow = defineWorkflow({
       [document, plan, subject, jobSummary, nameSearch, terminationType, departmentOption, employment, dates],
       ({ input, outputs, protectedInputBindings }) => ({
       ...(protectedInputBindings === undefined ? {} : { protectedBindings: [...protectedInputBindings] }),
-    /**
-     * Everything identity authority consumes depends INTO this node. That is
-     * what makes `identity-gate-before-commit` pass on a graph with three
-     * transaction nodes: no write can consume a value outside the packet that
-     * machine verification or the operator decision was bound to.
-     */
+    /** Everything identity authority consumes depends INTO this node — so `identity-gate-before-commit`
+     *  passes with three transaction nodes: no write consumes a value outside the bound packet. */
       documentNumber: input.documentNumber,
       documentName: outputs[PLAN_NODE].employeeName,
       documentEid: outputs[DOCUMENT_NODE].employee.eid,
@@ -1280,13 +867,7 @@ export const separationsWorkflow = defineWorkflow({
       emplIdSource: outputs[SUBJECT_NODE].emplIdSource,
       jobSummary: outputs[JOB_SUMMARY_NODE],
       nameSelection: outputs[NAME_SEARCH_NODE].selection,
-      /**
-       * **What the writes will consume.** Chunks 4 and 5 both recorded this as
-       * the composition's job in the same words, and §14.5's digest is why it
-       * matters: the approval binds to these values, so a date that moves after
-       * approval re-opens the gate instead of being filed on a click that never
-       * saw it.
-       */
+      // Approval binds to these values, so a moved date re-opens the gate.
       plan: {
         state: "planned" as const,
         termination: {
@@ -1373,7 +954,7 @@ export const separationsWorkflow = defineWorkflow({
       },
     );
     const receipt = task(receiptNode, [approval, dates, fileTermination], ({ outputs }) => ({
-      // A transaction node's scope value is the typed outcome envelope (D144);
+      // A transaction node's scope value is the typed outcome envelope;
       // `output` is the COMMIT contract's own bare output.
       proof: outputs[TERMINATION_NODE].output.receipt,
       disposition: outputs[TERMINATION_NODE].disposition,
@@ -1396,12 +977,7 @@ export const separationsWorkflow = defineWorkflow({
         payrollTitleCode: outputs[EMPLOYMENT_NODE].payrollTitleCode,
         payrollTitle: outputs[EMPLOYMENT_NODE].payrollTitle,
         timekeeperName: input.timekeeperName,
-        // §4e's 2026-08-14 amendment — legacy's step-13 write-backs, staged
-        // from the RECONCILED variables and UNCONDITIONALLY. When nothing
-        // moved these equal what the document already carries, so the save
-        // writes the same string back and the read-back proves it either way;
-        // a conditional stage would need an expectation composed from the
-        // page's own prior value, which is the re-read §4e forbids.
+        // Stage reconciled values unconditionally; conditional staging would require another live read.
         lastDayWorked: outputs[DATES_NODE].lastDayWorked,
         separationDate: outputs[DATES_NODE].separationDate,
         terminationEffectiveDate: outputs[DATES_NODE].terminationEffectiveDate,
@@ -1417,12 +993,7 @@ export const separationsWorkflow = defineWorkflow({
         observedExistingComments: existingComments(outputs[DOCUMENT_NODE].timekeeper.comments),
       },
     }),
-    /**
-     * The SAME target the prepare staged, bound from workflow input plus the
-     * gate-approved identity and the folds — never from the prepare's own
-     * output. That is what makes the permanent key stable before any page
-     * mutation (ref workflow-model §3.1), and what the beat-⑥ read-back compares against.
-     */
+    // The commit target is bound from input and folds, keeping the key stable.
     commitBind: ({ input, outputs, protectedInputBindings }) => ({
       ...(protectedInputBindings === undefined ? {} : { protectedBindings: [...protectedInputBindings] }),
       actionId: outputs[ACTION_NODE].actionId,
@@ -1433,7 +1004,7 @@ export const separationsWorkflow = defineWorkflow({
         payrollTitleCode: outputs[EMPLOYMENT_NODE].payrollTitleCode,
         payrollTitle: outputs[EMPLOYMENT_NODE].payrollTitle,
         timekeeperName: input.timekeeperName,
-        // §4e's 2026-08-14 amendment, bound identically to the prepare's.
+        // §4e's amendment, bound identically to the prepare's.
         lastDayWorked: outputs[DATES_NODE].lastDayWorked,
         separationDate: outputs[DATES_NODE].separationDate,
         terminationEffectiveDate: outputs[DATES_NODE].terminationEffectiveDate,
@@ -1485,7 +1056,7 @@ export const separationsWorkflow = defineWorkflow({
         lastDayWorkedChanged: outputs[DATES_NODE].lastDayWorkedChanged,
         separationDateChanged: outputs[DATES_NODE].separationDateChanged,
       },
-      // D307 — an omitted write step's node is absent from the scope (the
+      // An omitted write step's node is absent from the scope (the
       // factory admits it as `step-omitted`); the result names the step.
       pendingSweep: omittedOr(outputs[SWEEP_NODE], UCPATH_TRANSACTION_STEP.key, (sweep) => ({
         disposition: sweep.disposition,

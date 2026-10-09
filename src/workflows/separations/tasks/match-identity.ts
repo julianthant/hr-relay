@@ -8,17 +8,7 @@ import {
   deriveIdentityEvidenceDigest,
 } from "../../../rules/separations/identity-evidence.js";
 
-/**
- * The decision packet, executed.
- *
- * The two refusals are both about the fold's own INPUTS being coherent, never
- * about what they say. A packet whose job summary is for a different person than
- * the run checked would present one person's employment as another's — the
- * `T002173685` shape, one layer in — and an `emplIdSource` that disagrees with
- * the document's own EID field would make the gate's `eid` comparison a lie.
- * Everything else the fold finds (a different name, no active job, two active
- * jobs, an unreadable department) is DATA and travels to the operator.
- */
+/** The decision packet, executed. Its two refusals only guard input coherence (subject match, emplIdSource vs document EID); everything else is DATA that reaches the operator. */
 export const matchIdentityTask = defineTask(SeparationsMatchIdentity, {
   sessions: [],
   async run({ input, ctx }) {

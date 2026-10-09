@@ -1,81 +1,4 @@
-/**
- * `separations-kuali-finalization` — chunk 5 of the separations migration: the
- * Kuali finalization WRITE, provable alone.
- *
- * ## The graph
- *
- * ```
- *   job-summary ───┐
- *   name-search ───┼─► comparison ──┐
- *   department-option ──────────────┴─► GATE identity-approval ─► approval
- *                                                                    │
- *                                  ┌─────────────────────────────────┘
- *                                  ▼
- *                    finalize-kuali (TXN) ─► result
- * ```
- *
- * ## ONE transaction node, and that is §4e's answer
- *
- * The staged-variables model is normative: every read lands first as a typed
- * variable, ONE prepare stages all twelve Kuali fields in one pass from those
- * variables, ONE save, ONE reload read-back comparing every written field
- * against the exact staged variables. That answers §5 item 1D as well —
- * mutations C and D collapse into ONE Kuali transaction node, and legacy's early
- * org-data write (its step 4, before Kronos and UCPath) does not port as a
- * separate save.
- *
- * It is Option A's rule ("one reload read-back per commit node") applied to a
- * graph with exactly one commit node — **not** Option B, whose trailing verify
- * over several fences could not say which fence landed. §4e's caveat is carried
- * as-is and is a first-live-dry-run finding, not a design assumption: if the
- * fields turn out to span sections owned by DIFFERENT Kuali workflow steps, one
- * save cannot carry them and this node splits into one (save, read-back) pair
- * per step, each with its own fence and its own permanent key. 5c DISCHARGED it
- * for the ten fields staged then (three sections, all `edit` at both live steps,
- * §9.12 item 1); §4e's 2026-08-14 amendment RE-OPENS it for exactly two, because
- * `Last Day Worked` and `Separation Date` sit in the *Employee Information*
- * block whose section id nothing has read.
- *
- * ## Why a "Kuali write chunk" carries the identity gate
- *
- * Ref write-safety §14 requires typed identity authority before finalization
- * records a real termination on the source document. The supplied-EID arm uses
- * UCPath read-back; the name-resolved arm uses the operator gate.
- * `identity-gate-before-commit` enforces the shared authority task structurally
- * for the transaction and terminal result.
- *
- * §4d remains absolute about authority: no preset, prefill, resume path or run
- * mode controls the condition. §4c's resume — UCPath filed, Kuali finalization
- * parked — re-enters this node under its own permanent key and proves identity
- * from its declared origin. Legacy's `txnNumberPrefilled ⇒ skip identity`
- * derivation (pattern D7) does not port.
- *
- * ## Why `department-option` hangs off the GATE
- *
- * Same argument chunk 4 makes for `termination-type`: an S55 refusal must land
- * BEFORE any fence, and the strongest place to put it is before a human is asked
- * at all. Declaring it in the gate's `dependsOn` does that AND satisfies the
- * guard's real property — the department the write stages is data the operator
- * saw, not a side read hanging off the graph root.
- *
- * _(CLOSED 2026-08-14 by chunk 6a: the composed `separations` graph renders the
- * resolved option INTO ref write-safety §14.2's packet, so "you are finalizing document
- * 4510 against `000412 - Housing/Dining/Hospitality`" is on the screen and
- * inside the digest the approval binds to — D211, ref write-safety §14.10. This descriptor
- * stays the proving harness and declares `plan: not-composed` with its
- * reason.)_
- *
- * ## dryRun
- *
- * `stop-after-prepare`. A dry run reads UCPath, parks at the gate only for a
- * name-resolved EID, then stages all twelve Kuali controls and reads every one back —
- * then stops with no intent, no fence, no click and nothing durable. A Kuali
- * Build document holds staged edits in its own in-page form model until an
- * explicit `Save`, so the document is unchanged afterwards. Legacy makes the
- * same claim about its drafts and **S61** records that the claim is *stated,
- * never verified*; chunk 5c's dry run re-opens the document and checks, which is
- * the verification legacy never did.
- */
+/** `separations-kuali-finalization` — the Kuali finalization WRITE, provable alone. ONE transaction node (§4e): stage all fields, one save, one reload read-back; identity authority (§14) gates it, and dryRun stop-after-prepare. */
 import { z } from "zod";
 import { defineWorkflow } from "../../../../workflow-kit/workflow-definition.js";
 import { SeparationsMatchDepartmentOption } from "../../../../models/workflows/separations/match-department-option.js";
@@ -125,22 +48,7 @@ import {
   finalizeKualiNode,
   KUALI_FINALIZATION_STEP,
 } from "../../workflow.js";
-/**
- * The ingress: the identity-check ingress, plus exactly the staged variables no
- * read on THIS graph produces.
- *
- * Every one of them is a value some earlier chunk read — chunk 2's document read
- * supplies the department option list and the existing comments, chunk 4's
- * termination supplies the transaction number, chunk 1 and the date
- * reconciliation supply the effective date. §3's lego rule is what makes that an
- * ingress rather than a graph: chunk 6 composes those outputs into this input,
- * and this descriptor stays provable alone.
- *
- * `department` is deliberately NOT here as an option text. It is DERIVED from the
- * UCPath dept id through the exact-code fold, because an ingress that accepted
- * the option directly would let a caller file a separation against a department
- * nothing matched — S55 wearing a different hat.
- */
+/** The ingress: the identity-check ingress plus the staged variables no read on THIS graph produces, each a value an earlier chunk composed into this input. `department` is DERIVED, never option text. */
 const FinalizationInputShape = {
   actionId: KualiActionIdSchema,
   documentNumber: KualiDocumentNumberSchema,
@@ -148,7 +56,7 @@ const FinalizationInputShape = {
   emplId: EidSchema,
   emplIdSource: IdentityEidSourceSchema,
   documentEid: KualiEidFieldSchema,
-  /** The UCPath *Dept ID* and *Department* cells, with their absent arms (S24). */
+  // The UCPath Dept ID and Department cells, with their absent arms.
   ucpathDeptId: UcpathJobCellSchema,
   ucpathDepartment: UcpathJobCellSchema,
   /** Every option the document's `Department*` control carried when it was read (§3.2). */
@@ -156,22 +64,17 @@ const FinalizationInputShape = {
   payrollTitleCode: KualiPayrollTitleCodeSchema,
   payrollTitle: KualiPayrollTitleSchema,
   timekeeperName: KualiTimekeeperNameSchema,
-  /**
-   * §4e's 2026-08-14 amendment: legacy's step-13 date write-backs, as staged
-   * variables. Both are the RECONCILED values — chunk 6's `dates` node output —
-   * and are staged unconditionally, so this ingress carries them like any other
-   * variable no read on THIS graph produces.
-   */
+  // Stage reconciled dates unconditionally; conditional staging would require another live read.
   lastDayWorked: KualiFormDateSchema,
   separationDate: KualiFormDateSchema,
   terminationEffectiveDate: KualiFormDateSchema,
   /** §4c's receipt: the finalization is never entered without the filed transaction. */
   transactionNumber: KualiTransactionNumberSchema,
-  /** The other half of D130's receipt pair; a number alone is not filing authority. */
+  /** The other half of the receipt pair; a number alone is not filing authority. */
   transactionApprovalStatus: UcpathApprovalStatusSchema,
   /** The COMPLETE final comments text, composed upstream from the read below. */
   timekeeperComments: KualiFinalizationCommentsSchema,
-  /** What that read saw in the comments control, verbatim — S56's baseline. */
+  // What the read saw in the comments control, verbatim.
   observedExistingComments: z.string().max(4000),
 } as const;
 
@@ -223,10 +126,8 @@ export const SeparationsKualiFinalizationResultSchema = z.strictObject({
     option: z.string().min(1),
     departmentCode: z.string().min(1),
   }),
-  /**
-   * The finalization's landing proof. `proof` is always the reload read-back's
-   * — the commit's own output is a claim nothing promotes (D128/S59).
-   */
+  /** The finalization's landing proof — `proof` is always the reload read-back's; the commit's
+   *  own output is a claim nothing promotes. */
   finalization: z.strictObject({
     disposition: z.enum(["committed", "already-present"]),
     proof: KualiSavedFinalizationProofSchema,
@@ -286,9 +187,7 @@ export const separationsKualiFinalizationWorkflow = defineWorkflow({
     {
       key: "transaction-number",
       label: "Transaction",
-      // A transaction node's field paths are the COMMIT contract's bare output
-      // (D144), which is `{ savedState }` — not the `TypedTransactionOutcome`
-      // envelope the graph scope carries.
+      // Field paths address commit output, not the transaction outcome envelope.
       source: {
         nodeId: FINALIZE_NODE,
         fieldPath: "savedState.fields.transactionNumber",
@@ -297,12 +196,7 @@ export const separationsKualiFinalizationWorkflow = defineWorkflow({
     },
   ],
   identity: {
-    /**
-     * The ITEM is the document and the transaction it is being finalized
-     * against — the same natural key the commit's permanent key uses, one layer
-     * up. Keying it by the person instead would call two separations of two
-     * different employments one item.
-     */
+    // Key by document and transaction; one person can have multiple employment separations.
     matchKey: (input) =>
       `separations-kuali-finalization:${input.documentNumber}:${input.transactionNumber}`,
   },
@@ -310,7 +204,7 @@ export const separationsKualiFinalizationWorkflow = defineWorkflow({
     title: (input) => `Kuali ${input.documentNumber} finalization`,
     subtitle: (input) => `${input.employeeName} — ${input.transactionNumber}`,
   },
-  /** D229 — the descriptor's own words about each node, projected by the explorer. */
+  /** The descriptor's own words about each node, projected by the explorer. */
   nodePurposes: [
     {
       nodeId: "job-summary",
@@ -373,24 +267,14 @@ export const separationsKualiFinalizationWorkflow = defineWorkflow({
     "separations-kuali-finalization/save-not-landed-parks",
   ],
   input: SeparationsKualiFinalizationInput,
-  // A proving harness for one step of `separations`, never a peer workflow (D219) —
-  // the step it proves is the folder it lives in, read from that folder's own
-  // declaration rather than re-typed here (D265 §1.2.2 rule 3).
   role: defineWorkflowRole({
     kind: "chunk-harness",
     of: "separations",
     step: KUALI_FINALIZATION_STEP.key,
   }),
   steps: ({ task, gate, transaction, result }) => {
-    /**
-     * The Identity check and Job summary nodes, wired straight from the harness
-     * ingress where the composition resolves them from the Kuali reads. They
-     * are AUTHORED INLINE here rather than passed as those steps' shared
-     * identities: this harness declares one timeline group — its own step — and
-     * a group may claim only its own step's identities. Same id, same contract,
-     * same label, same replay policy, so the graph the harness proves is the
-     * graph the composition runs (D265 §1.2.2 rule 3).
-     */
+    /** Identity check + Job summary nodes wired from the harness ingress; authored INLINE here
+     *  (a group claims only its own step's identities) with the same id/contract/label/replay as the composition. */
     const jobSummary = task(
       {
         id: JOB_SUMMARY_NODE,
@@ -415,10 +299,8 @@ export const separationsKualiFinalizationWorkflow = defineWorkflow({
         keepNonHdh: true,
       }),
     );
-    // This harness receives the selected UCPath row and Kuali option list as
-    // canonical ingress, but the fold is still downstream of this run's live
-    // job-summary read. Naming that dependency gives its derived checkpoint a
-    // real observation clock instead of pretending an input-only fold is live.
+    // The fold is downstream of this run's live job-summary read, so naming that dependency
+    // gives its derived checkpoint a real observation clock instead of pretending an input-only fold is live.
     const departmentOption = task(
       {
         id: DEPARTMENT_NODE,
@@ -455,13 +337,7 @@ export const separationsKualiFinalizationWorkflow = defineWorkflow({
         ),
       }),
     );
-    /**
-     * `department-option` is referenced by the GATE and not by the transaction:
-     * an S55 refusal must land before a human is asked at all, and the gate's
-     * references are what put it there while still satisfying the guard's real
-     * property — the department the write stages is data the operator saw, not
-     * a side read hanging off the graph root.
-     */
+    // Referenced by the GATE, not the transaction, so its refusal precedes any fence.
     const identityGate = gate(
       {
         id: GATE_NODE,

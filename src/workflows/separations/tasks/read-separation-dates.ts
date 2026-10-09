@@ -5,12 +5,7 @@ import {
 } from "../../../models/workflows/separations/read-separation-dates.js";
 import { reconcileSeparationDates } from "../../../rules/separations/separation-dates.js";
 
-/**
- * The write's payload, executed. `no-punch-in-window` is the durable code §4b's
- * answer produces when the card opened and established no worked day — the one
- * arm where legacy proceeds on the Kuali date and writes a "per Kronos
- * timesheet" comment citing a card that showed nothing.
- */
+// No worked day in the observed window must refuse, never invent filing dates.
 export const readSeparationDatesTask = defineTask(SeparationsReadSeparationDates, {
   sessions: [],
   async run({ input, ctx }) {

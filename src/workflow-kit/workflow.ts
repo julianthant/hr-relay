@@ -7,25 +7,6 @@ import {
 import { validateRerunValueMappings } from "../models/validation/rerun-values.js";
 import { retainedRunProtectedBindings } from "../models/write-safety/protected-input.js";
 import { ProtectedInputDeclarationSchema, type ProtectedInputBinding, type ProtectedInputDeclaration } from "../models/write-safety/protected-input.js";
-/**
- * Descriptor assembly — ref workflow-model §1.1's `WorkflowDescriptor` and the factory that
- * validates one.
- *
- * A descriptor is ONE client-safe declaration per workflow. Every parallel
- * registry the legacy dashboard hand-maintained (icons, instance labels, input
- * and upload panels, step-label switches, the status index, the `:stop`
- * scripts) becomes a projection of this object, so adding a workflow is one
- * module rather than ten synchronized lists (ref workflow-model §1.3).
- *
- * The factory is where "derived, not declared" becomes real. `steps`, `gates`,
- * `systems`, and `requires` are computed from the node tuple — a hand-written
- * `systems:` list is exactly the drift D2/D15 deleted. Everything the factory
- * cannot derive it *proves*: detail and artifact paths resolve in the producing
- * node's real output schema, parser fields resolve in the input schema, and
- * identity/presentation/subject run against the audited canonical-input samples
- * so a derive that throws or returns an unusable id fails at build rather than
- * at enqueue.
- */
 import { z } from "zod";
 import { JsonValueSchema, canonicalJsonStringify } from "../rules/validation/canonical-json.js";
 import type {
@@ -129,11 +110,7 @@ import type {
 
 /* ── the authored halves that stay typed over the graph ──────────────────── */
 
-/**
- * A detail projection names a node the graph actually declares. Typing `nodeId`
- * over `keyof S` is what makes a renamed node a compile error here; the runtime
- * half additionally proves the field path exists in that node's output schema.
- */
+// Compile error when a node is renamed; the factory proves the path exists.
 export interface DetailProjectionSpec<S> {
   readonly key: string;
   readonly label: string;
@@ -141,25 +118,13 @@ export interface DetailProjectionSpec<S> {
   readonly display: "text" | "eid" | "date" | "count" | "badge";
 }
 
-/**
- * The one leaf at which THIS graph resolves its subject's display name — the
- * declared seam behind ref dashboard-surfaces §1.2's queue-row title. `nodeId` is typed over
- * `keyof S` exactly as a detail's is, so a renamed node is a compile error
- * here; the factory additionally proves the path is OFFERED by that node's
- * output schema (see `SubjectProjectionSpecRuntimeSchema` for why `offers` and
- * not `owns`).
- */
+// Resolves the subject's display name; the factory proves the path is offered.
 export interface SubjectProjectionSpec<S> {
   readonly nodeId: keyof S & string;
   readonly fieldPath: string;
 }
 
-/**
- * The authored (unbranded) face of `WorkflowCapabilitiesSchema`, the way
- * `DetailProjectionSpec` is the authored face of its runtime schema — the
- * factory parses the value through the schema, so the brands are enforced at
- * definition time without every descriptor literal having to spell them.
- */
+// Brands are enforced by parsing through the schema.
 export interface WorkflowCapabilitiesSpec {
   readonly review: boolean;
   readonly editData:
@@ -184,51 +149,19 @@ export interface InputPreset<Input> {
   readonly value: Input;
 }
 
-/**
- * The logical-item identity. Retries of the same work share the match key;
- * rerun-with-different-input produces a different one and therefore a fresh
- * item with zero checkpoints by construction.
- *
- * Deviation from ref workflow-model §1.1, which pairs `matchKey` with a `deriveItemId`
- * returning an `ItemId`. A descriptor is bundle-safe and cannot hash, so it
- * cannot mint a UUID; and two independent derivations of one identity are a
- * drift surface by construction. The descriptor therefore declares the match key
- * only, and the kernel mints `ItemId` from `(workflowId, matchKey)` at enqueue —
- * one derivation, one place. Fan-out `deriveItemId` (ref dashboard-surfaces §4.1) is unaffected:
- * completion derives are server-side.
- */
+// The match key identifies the logical item; the kernel mints the ItemId.
 export interface WorkflowIdentitySpec<Input> {
   readonly matchKey: (input: Input) => string;
 }
 
-/**
- * D265 §1.2.2 rule 2 — declare a composition's STEP from the folder that is it.
- *
- * A step folder under `src/workflows/<workflow>/<step>/` owns one timeline
- * category, and `step.ts` is where the category's two naming facts are written
- * once: the kebab-case key (the folder's own name) and the operator-approved
- * label. The composition spreads the result into its `timeline` entry and adds
- * `nodes`; the harness that lives in the folder reads `.key` for its
- * `chunk-harness.step`. Parsing here is what makes a mis-typed key a load-time
- * throw naming the offender rather than a category nothing declares.
- *
- * It is `src/workflow-kit/` and not `src/models/` for the same reason `flow` is: a
- * descriptor value-imports it, so it has to sit inside the browser-safe closure,
- * beside the other builders a descriptor is allowed to reach.
- */
+// Owns the step's kebab key and operator label.
 export function defineWorkflowStep<const Key extends string>(
   step: Readonly<{ key: Key; label: string }>,
 ): WorkflowStepOf<Key> {
   return Object.freeze(WorkflowStepOfSchema(step.key).parse(step));
 }
 
-/**
- * Read a fact a bind depends on, or fail loud naming the node and path.
- *
- * This is the `require()` of ref workflow-model §8. Substituting a plausible default for a
- * person nobody selected is the charter's single most dangerous pattern, so the
- * only alternative to a value here is a thrown error.
- */
+// Missing operator-selected facts must fail, never default.
 export function requireFact<Value>(
   value: Value | null | undefined,
   nodeId: string,
@@ -283,35 +216,15 @@ export interface WorkflowDescriptor<
   readonly details: readonly DetailProjectionSpec<S>[];
   /** Ref dashboard-surfaces §1.2: where the RUN resolves the subject's name, if it ever does. */
   readonly subjectProjection?: SubjectProjectionSpec<S>;
-  /**
-   * D225 — the run-detail timeline's categorical shape, DERIVED by the factory:
-   * the spec's declared categories normalized with member labels, or the
-   * one-category-per-node default. Always present, always exhaustive.
-   */
+   /** The run-detail timeline's categorical shape, DERIVED by the factory: the declared
+    * categories with member labels, or the one-per-node default. Always exhaustive. */
   readonly timeline: readonly TimelineCategoryProjection[];
-  /**
-   * D265 — whether the timeline above was DECLARED or DERIVED.
-   *
-   * `timeline` cannot say: the factory always produces one, so a declared
-   * category and a default keyed by a node id are the same shape. Ref
-   * workflow-model §1.2.2 rule 2 bites exactly when a timeline is declared —
-   * a workflow that declared none has no step folders, and a `chunk-harness`
-   * of it is claiming a folder that does not exist. One boolean is the whole
-   * fact the registry's audit is missing; the keys themselves are already here.
-   */
+   // Distinguishes a declared timeline from the factory default.
   readonly timelineDeclared: boolean;
-  /**
-   * D307 — the steps an operator may omit at start, each with its typed form
-   * and the task nodes its producers rebuild. Derived from the timeline
-   * declarations a step folder authored; empty when no step is omittable.
-   */
+   /** The steps an operator may omit at start, with their typed form and the task nodes
+    * their producers rebuild; empty when no step is omittable. */
   readonly stepOmissions: readonly StepOmissionSpec[];
-  /**
-   * D229 — the descriptor's own sentence about what this workflow does, and one
-   * about each node. Plain data, DERIVED by the factory into an exhaustive,
-   * frozen list: a partial declaration would leave some nodes silently
-   * prose-less on the one surface whose job is to explain them.
-   */
+   // Exhaustive so no node is silently prose-less.
   readonly summary?: string;
   readonly nodePurposes: readonly NodePurposeSpec[];
   readonly enqueue: EnqueuePolicy;
@@ -327,17 +240,7 @@ export interface WorkflowDescriptor<
   readonly operationDisplay?: WorkflowOperationDisplay;
 }
 
-/**
- * The broad runtime view a composition root, projection, or guard switches on.
- *
- * It is declared structurally rather than as `WorkflowDescriptor<z.ZodType, …>`
- * for the same reason `RuntimeFlowNode` is: `S` appears contravariantly in
- * `result.derive` and in `details`' `keyof S`, so an exact descriptor is NOT
- * assignable to a "broad" instantiation of its own generic. This view carries
- * the fields a runtime consumer actually reads, and the exact descriptor is
- * assignable to it. Everything generic — `result`, `identity`, `presentation`,
- * `presets` — stays behind the exact type, where reading it is typed.
- */
+// Runtime reader view; the exact descriptor assigns to it.
 export interface AnyWorkflowDescriptor {
   readonly id: WorkflowId;
   readonly version: number;
@@ -365,25 +268,21 @@ export interface AnyWorkflowDescriptor {
     source: Readonly<{ nodeId: string; fieldPath: string }>;
     display: string;
   }>[];
-  /**
-   * Plain data, so it rides the BROAD view (unlike `presentation`, whose title
-   * and subtitle are functions of the exact input type). The run/queue
-   * projection is the reader, and it holds descriptors as
-   * `AnyWorkflowDescriptor`.
-   */
+   /** Plain data, so it rides the BROAD view (unlike `presentation`, whose title/subtitle are
+    * functions of the exact input type). The run/queue projection reads it. */
   readonly subjectProjection?: Readonly<{ nodeId: string; fieldPath: string }>;
-  /** D225 — plain data like `subjectProjection`, so it rides the broad view. */
+  /** Plain data like `subjectProjection`, so it rides the broad view. */
   readonly timeline: readonly Readonly<{
-    /** D265 — the category's stable anchor: the step folder's name, and what a `chunk-harness.step` names. */
+    /** The category's stable anchor: the step folder's name, and what a `chunk-harness.step` names. */
     key: string;
     label: string;
     nodes: readonly Readonly<{ id: string; label: string }>[];
   }>[];
-  /** D265 — DECLARED or DERIVED; the composition root's role audit is the reader. */
+  /** DECLARED or DERIVED; the composition root's role audit is the reader. */
   readonly timelineDeclared: boolean;
-  /** D307 — omittable steps with their forms and producers; empty when none. */
+  /** Omittable steps with their forms and producers; empty when none. */
   readonly stepOmissions: readonly StepOmissionSpec[];
-  /** D229 — the descriptor's own prose; plain data, so it rides the broad view. */
+  /** The descriptor's own prose; plain data, so it rides the broad view. */
   readonly summary?: string;
   readonly nodePurposes: readonly Readonly<{ nodeId: string; purpose: string }>[];
   readonly enqueue: EnqueuePolicy;
@@ -417,28 +316,16 @@ export interface WorkflowDescriptorSpec<
   readonly contractFingerprint: string;
   /** Parsed into branded `ScenarioId`s by the factory, the way contracts do. */
   readonly scenarios: readonly [string, ...string[]];
-  /**
-   * D225/D265 — the authored form: a `key` (the step's stable anchor, and the
-   * name of the step folder that holds its nodes), a `label` (what the operator
-   * reads) and the node-id list it covers. Optional; a
-   * graph small enough to read per-node declares nothing and gets the default.
-   * If declared, the factory demands it name every node exactly once. Plain
-   * strings here — the factory parses them into branded node ids the same way
-   * it parses scenario ids.
-   */
+   // Optional; declaring it demands every node exactly once.
   readonly timeline?: readonly Readonly<{
     key: string;
     label: string;
     nodes: readonly string[];
-    /** D307 — present iff the step folder declared the step omittable. */
+    /** Present iff the step folder declared the step omittable. */
     omission?: StepOmissionDeclaration;
   }>[];
-  /**
-   * D229 — the authored form: one sentence per node, keyed by node id. Plain
-   * strings, parsed by the factory into branded ids exactly as `timeline` is.
-   * Optional so a fixture graph need not carry prose, and EXHAUSTIVE when
-   * declared: a partial list would leave some nodes silently prose-less.
-   */
+   /** The authored prose: one sentence per node, keyed by node id. Optional, and EXHAUSTIVE
+    * when declared — a partial list would leave nodes silently prose-less. */
   readonly nodePurposes?: readonly Readonly<{ nodeId: string; purpose: string }>[];
   /** The built graph — its exact node tuple, result spec, and accumulators. */
   readonly flow: BuiltFlow<InputSchema, ResultSchema, Nodes, S, D>;
@@ -449,34 +336,18 @@ export interface WorkflowDescriptorSpec<
 export interface WorkflowProjections {
   readonly steps: readonly StepProjection[];
   readonly gates: readonly GateProjectionDefinition[];
-  /** Browser systems only — service and `workflow:<id>` stores contribute none (D2/D15). */
+  /** Browser systems only — service and `workflow:<id>` stores contribute none. */
   readonly systems: readonly string[];
   readonly requires: readonly string[];
   readonly coveragePoints: readonly GraphCoveragePoint[];
   /** Registered graph scenarios unioned with every used task contract's scenarios. */
   readonly scenarios: readonly ScenarioId[];
   readonly contracts: readonly AnyTaskContract[];
-  /** D209 — whether this GRAPH can be previewed, and where a preview stops. */
+  /** Whether this GRAPH can be previewed, and where a preview stops. */
   readonly dryRun: WorkflowDryRunSupport;
 }
 
-/**
- * D209 — dry-runnability is a property of the GRAPH, not of the start surface.
- *
- * The question a start plan asks is "can this workflow be run without touching a
- * live HR system", and only the node tuple can answer it: a transaction node is
- * the one node kind that can commit externally, and its own `dryRun` declaration
- * says whether it has a preview arm. Binding the answer to
- * `surfaces.inputRun?.supportsDryRun` bound it instead to whether an operator can
- * paste a line into a textbox, which is why all three registered write workflows
- * — every one of them `surfaces: {}` by design — were structurally un-previewable
- * through the pipeline (`docs/migrations/separations.md` §9.9 gap 1).
- *
- * A graph with NO transaction node is `no-transaction-node`, which is a REFUSAL
- * and not a trivial yes: a dry run of such a graph is byte-for-byte an ordinary
- * run, so answering "supported" would silently redefine what the operator asked
- * for. Refusing names the reason instead.
- */
+// Preview requires transaction nodes; read-only graphs refuse it.
 export type WorkflowDryRunSupport =
   | Readonly<{
     state: "supported";
@@ -491,13 +362,7 @@ export type WorkflowDryRunSupport =
     nodeId: string;
   }>;
 
-/**
- * Every transaction node must declare `stop-after-prepare`, not just the first
- * one a preview would reach. A graph whose second write says `unsupported` is a
- * graph that cannot be previewed to its end, and reporting it as previewable
- * because the run happens to stop earlier is the same class of true-about-the-
- * wrong-thing statement D205 was written about. The first offender is named.
- */
+// Every transaction must support preview, including later writes.
 function deriveDryRunSupport(nodes: readonly RuntimeFlowNode[]): WorkflowDryRunSupport {
   const transactions = nodes.filter((node) => node.kind === "transaction");
   const [first] = transactions;
@@ -515,18 +380,7 @@ export function workflowDryRunSupport(descriptor: AnyWorkflowDescriptor): Workfl
   return workflowProjections(descriptor).dryRun;
 }
 
-/**
- * The typed reads a planner needs, captured while the exact generic type is
- * still in scope.
- *
- * `AnyWorkflowDescriptor` deliberately omits `identity` and `presentation`
- * because `S` appears contravariantly in them, so a runtime consumer holding the
- * broad view cannot call them without an assertion. Closing over the exact
- * descriptor at definition time is the alternative to that assertion: each
- * function below re-parses its argument through the descriptor's own canonical
- * schema before handing it to the authored callback, so a wrong value fails
- * loud here rather than reaching a bind.
- */
+// Re-parses through the canonical schema before handing to authored callbacks.
 export interface WorkflowPlanning {
   readonly parseInput: (raw: unknown) => unknown;
   readonly parseCanonicalInput: (value: unknown) => unknown;
@@ -536,11 +390,7 @@ export interface WorkflowPlanning {
   readonly inputSubject: (parsed: unknown) => InputSubject;
 }
 
-/**
- * Factory-authenticated terminal-result execution data. The broad executor
- * reads dependency metadata here; exact typed derivation and its opaque
- * authorization seal remain inside the descriptor factory.
- */
+/** Factory-authenticated terminal-result data: the broad executor reads dependency metadata here, while exact typed derivation and its authorization seal stay inside the descriptor factory. */
 export interface WorkflowTerminalResultExecution<Input = never, Outputs = never, Result = unknown> {
   readonly schema: z.ZodType;
   readonly schemaHash: Fingerprint;
@@ -548,9 +398,9 @@ export interface WorkflowTerminalResultExecution<Input = never, Outputs = never,
   readonly dependencies: readonly Readonly<{
     nodeId: NodeId;
     notRunReason?: "condition-false" | "branch-not-selected";
-    /** D307 — the node may be absent as `step-omitted` (its step is omittable and no producer rebuilds it). */
+    /** The node may be absent as `step-omitted` (its step is omittable and no producer rebuilds it). */
     omittable?: true;
-    /** D307 — the node may arrive `asserted` (its step is omittable and a producer rebuilds it). */
+    /** The node may arrive `asserted` (its step is omittable and a producer rebuilds it). */
     assertable?: true;
   }>[];
   readonly parseResult: (candidate: unknown) => unknown;
@@ -560,12 +410,7 @@ export interface WorkflowTerminalResultExecution<Input = never, Outputs = never,
     evidence: unknown,
     clock: TerminalResultClock,
   ) => Readonly<{ record: RunResultRecord; authorization: object }>;
-  /**
-   * D210 — the terminal record of a run that stopped at its transaction node
-   * under `envelope.dryRun`. It shares `build`'s seal and every identity check;
-   * what it does NOT share is the authored `derive`, because a preview has no
-   * commit output to fold and inventing one is the banned fabrication.
-   */
+   // A preview shares the seal and identity checks but not the derive.
   readonly buildPreview: (
     currentRun: WorkflowTerminalRun,
     preview: unknown,
@@ -585,9 +430,9 @@ interface WorkflowTerminalRun {
     contractFingerprint: string;
     configFingerprint: string;
     configSnapshotId: string;
-    /** D210 — the one durable record of what the operator asked for (D6). */
+    /** The one durable record of what the operator asked for. */
     dryRun: boolean;
-    /** D307 — the steps this run omitted; an asserted dependency must name one of them. */
+    /** The steps this run omitted; an asserted dependency must name one of them. */
     stepOmissions?: readonly Readonly<{ step: string }>[];
   }>;
   readonly input: Readonly<{
@@ -610,11 +455,7 @@ const RUN_RESULT_AUTHORIZATIONS = new WeakMap<
   Readonly<{ result: string; currentRun: string }>
 >();
 
-/**
- * Prove that an initial success was constructed by an exact descriptor's
- * sealed derive path. The token has no structural fields to forge; membership
- * in this module-private WeakMap is the authority.
- */
+// WeakMap membership authenticates the result; copied tokens carry no authority.
 export function assertWorkflowRunResultAuthorization(
   authorization: object | undefined,
   result: RunResultRecord,
@@ -686,13 +527,7 @@ export function deriveWorkflowTerminalResult<
 
 /* ── runtime node view ───────────────────────────────────────────────────── */
 
-/**
- * The one place the exact node tuple is widened to the runtime switch union.
- * Ref workflow-model §1.1 allows exactly this direction: the composition root switches
- * exhaustively at runtime, and the widened view is never fed back into
- * descriptor inference. `kind` is re-parsed first, so a hand-rolled node object
- * that skipped the builder is rejected instead of falling through a switch.
- */
+// Widening happens once; `kind` is re-parsed first.
 function runtimeNodes(nodes: readonly GraphNodeBase[]): readonly RuntimeFlowNode[] {
   for (const node of nodes) {
     GraphNodeKindSchema.parse(node.kind);
@@ -709,14 +544,7 @@ function contractsOf(node: RuntimeFlowNode): readonly AnyTaskContract[] {
   }
 }
 
-/**
- * "Which schema owns this node's output FIELD PATHS" — the question a detail or
- * surface asks. For a transaction node that is the COMMIT contract's output,
- * because a detail names `savedState.timekeeperName`, not the kernel wrapper
- * around it. This is deliberately NOT the same question as "which schema is this
- * node's durable checkpoint bound to" (see `terminalEvidenceOf`); conflating the
- * two is what left a transaction node unable to be a terminal dependency (D144).
- */
+/** "Which schema owns this node's output FIELD PATHS" — for a transaction, the COMMIT contract's output (e.g. `savedState.timekeeperName`), not the wrapper or the checkpoint schema. */
 function outputSchemaOf(node: RuntimeFlowNode): z.ZodType | undefined {
   switch (node.kind) {
     case "task": return node.uses.output;
@@ -726,23 +554,7 @@ function outputSchemaOf(node: RuntimeFlowNode): z.ZodType | undefined {
   }
 }
 
-/**
- * D144 — what a node's DURABLE checkpoint is bound to, and how that stored value
- * becomes the scope value the authored `derive` reads.
- *
- * For a task or gate the two coincide: the row stores the contract's own parsed
- * output under that schema's hash, and the scope value is that output verbatim.
- *
- * For a transaction node they do not, and the row is right: ref write-safety beat ⑦ stores
- * the full durable `TransactionOutcome`, so the row's `output.schemaHash` is that
- * envelope's hash — the only hash that truthfully describes the bytes stored.
- * Demanding the commit contract's bare output hash here would have required a
- * checkpoint the sequencer never wrote, which D110/D114 forbid outright. The
- * commit contract's identity is not lost, it is checked one level down by
- * `projectTransactionOutcome`, which then lowers the envelope onto the
- * `TypedTransactionOutcome<C>` shape the descriptor authored against — the same
- * shape the interpreter puts in every other consumer's scope.
- */
+// Transactions checkpoint the whole outcome, then project the derive value.
 type TerminalEvidenceBinding = Readonly<{
   /** The schema the durable checkpoint row is bound to. */
   checkpointSchema: z.ZodType;
@@ -770,15 +582,7 @@ function terminalEvidenceOf(node: RuntimeFlowNode): TerminalEvidenceBinding | un
   }
 }
 
-/**
- * The node's display label, following ref workflow-model §1.5's precedence: an authored
- * `label`, else the contract's own `title`, else the node id.
- *
- * Exported so every surface that names a step names it identically — the
- * explorer's node panel, the timeline's segments and (D252) the Data rail's
- * origin line. Three private copies of this switch is three ways for one node
- * to be called three things.
- */
+// One label rule shared by every surface.
 export function runtimeNodeLabel(node: RuntimeFlowNode): string {
   switch (node.kind) {
     case "task": return node.label ?? node.uses.title;
@@ -819,11 +623,7 @@ function deriveSteps(nodes: readonly RuntimeFlowNode[]): readonly StepProjection
   return Object.freeze(steps);
 }
 
-/**
- * D307 — validate and retain each omittable step's declaration. Producers may
- * name only TASK nodes of their own step: a gate is never substituted (D77)
- * and a transaction's outcome is the write sequencer's to mint (D144).
- */
+// Omission producers cannot mint gate or transaction authority.
 function deriveStepOmissions(
   id: string,
   nodes: readonly RuntimeFlowNode[],
@@ -840,7 +640,7 @@ function deriveStepOmissions(
       }
       const node = nodeByIdOrThrow(id, nodes, NodeIdSchema.parse(produced), `step "${category.key}" omission`);
       if (node.kind !== "task") {
-        throw new Error(`${id}: step "${category.key}" omission produces ${node.kind} node "${produced}"; only task nodes are ever asserted (D307)`);
+        throw new Error(`${id}: step "${category.key}" omission produces ${node.kind} node "${produced}"; only task nodes are ever asserted`);
       }
       if (typeof category.omission.produces[produced] !== "function") {
         throw new Error(`${id}: step "${category.key}" omission producer for "${produced}" is not a function`);
@@ -851,26 +651,15 @@ function deriveStepOmissions(
   return Object.freeze(specs);
 }
 
-/**
- * D225 — normalize the declared timeline categories, or derive the per-node
- * default. A declared timeline is EXHAUSTIVE: every node appears in exactly one
- * category, checked here so a node cannot silently vanish from the surface
- * whose whole job is to say what a run does. Gate and transaction nodes are
- * ordinary members — a gate folds into its category as the waiting state
- * rather than taking a segment of its own (the demo's "a wait is a state of a
- * step, not a step of its own").
- */
+// A declared timeline is exhaustive and assigns each node one category.
 function deriveTimeline(
   id: string,
   nodes: readonly RuntimeFlowNode[],
   declared: readonly Readonly<{ key: string; label: string; nodes: readonly string[] }>[] | undefined,
 ): readonly TimelineCategoryProjection[] {
   if (declared === undefined) {
-    // D265 — the per-node default's key is the NODE ID, which is already the
-    // kebab-case anchor this workflow's nodes are named by. A workflow that
-    // declares nothing has no step folders, so nothing else can name these
-    // keys; deriving them from the label instead would invent a second
-    // spelling of a name the graph already owns.
+    // The per-node default's key is the NODE ID (the kebab anchor the nodes are already named by);
+    // deriving from the label instead would invent a second spelling of a name the graph already owns.
     return Object.freeze(nodes.map((node) => TimelineCategoryProjectionSchema.parse({
       key: String(node.id),
       label: labelOf(node),
@@ -900,7 +689,7 @@ function deriveTimeline(
   const missing = nodes.map((node) => String(node.id)).filter((nodeId) => !seen.has(nodeId));
   if (missing.length > 0) {
     throw new Error(
-      `${id}: a declared timeline is exhaustive (D225) and this one does not cover: ${missing.join(", ")}`,
+      `${id}: a declared timeline is exhaustive and this one does not cover: ${missing.join(", ")}`,
     );
   }
   assertUnique(id, "timeline category keys", categories.map((category) => category.key));
@@ -908,15 +697,7 @@ function deriveTimeline(
   return Object.freeze(categories);
 }
 
-/**
- * D229 — normalize the descriptor's per-node prose.
- *
- * A declared list is EXHAUSTIVE for the same reason D225's timeline is: the
- * explorer's whole job is to explain a graph, and a node quietly missing its
- * sentence is a node the surface stops explaining while every gate stays green.
- * A descriptor that declares nothing gets an empty list, and the explorer says
- * so by name rather than composing a sentence from the label.
- */
+// A declared list is exhaustive; an undeclared list is empty.
 function deriveNodePurposes(
   id: string,
   nodes: readonly RuntimeFlowNode[],
@@ -939,7 +720,7 @@ function deriveNodePurposes(
   const missing = nodes.map((node) => String(node.id)).filter((nodeId) => !seen.has(nodeId));
   if (missing.length > 0) {
     throw new Error(
-      `${id}: a declared node-purpose list is exhaustive (D229) and this one does not cover: ${missing.join(", ")}`,
+      `${id}: a declared node-purpose list is exhaustive and this one does not cover: ${missing.join(", ")}`,
     );
   }
   return Object.freeze(purposes);
@@ -1014,18 +795,7 @@ function assertNodeFieldPath(
   else assertSchemaOwnsPath(schema, fieldPath, `${id}: ${owner}`);
 }
 
-/**
- * D250 — an example is a button that types for the operator, so it must be
- * TYPEABLE, and this is the only place that can prove it.
- *
- * Both halves are the run's own path, run at build time: the surface's own
- * parser (which is what the box does on every keystroke) and the workflow's own
- * input schema (which is what `planStart` parses each submission with, at
- * `services/start/plan.ts`'s one and only ingress parse). An example that clears
- * both cannot fill the box with something the plan will refuse; an example that
- * clears neither is a lie about what this workflow accepts, and a lie a guard
- * can catch is not one worth shipping.
- */
+// Examples must pass the operator-facing parser and input schema.
 function assertInputRunExamples(id: string, input: z.ZodType, inputRun: InputRunSurface, protectedInputs: readonly ProtectedInputDeclaration[]): void {
   const examples = inputRun.examples;
   if (examples === undefined) return;
@@ -1095,10 +865,10 @@ export function defineWorkflowDescriptor<
 ): WorkflowDescriptor<InputSchema, ResultSchema, Nodes, Completion, S, D> {
   const id = WorkflowIdSchema.parse(spec.id);
   const contractFingerprint = FingerprintSchema.parse(spec.contractFingerprint);
-  // The ONE code declaration site (D242). Uniqueness across the registry is
+  // The ONE code declaration site. Uniqueness across the registry is
   // the composition root's — a descriptor cannot see its siblings.
   if (!WorkflowCodeSchema.safeParse(spec.code).success) {
-    throw new Error(`${id}: code must be two to four lowercase letters (ref workflow-model §1.1, D242)`);
+    throw new Error(`${id}: code must be two to four lowercase letters`);
   }
   if (spec.label.trim().length === 0) throw new Error(`${id}: label is required`);
   if (!Number.isInteger(spec.version) || spec.version < 1) {
@@ -1119,11 +889,8 @@ export function defineWorkflowDescriptor<
   const nodes = runtimeNodes(spec.flow.nodes);
   assertContractPlacement(id, nodes);
 
-  // The terminal result and every gate result are durable, replayable values —
-  // a parent reads the first as its child's typed output, and the second is
-  // stored run-state a resume re-parses. Both go through the same recursive
-  // strictness audit as a contract boundary, so neither can carry an open
-  // record, an `any`, or a value SQLite cannot round-trip.
+  // The terminal result and gate results are durable, replayable and go through the boundary
+  // strictness audit — no open record, `any`, or a value SQLite cannot round-trip.
   assertContractBoundarySchema(spec.flow.result.schema, `${id}: workflow result`);
   for (const node of nodes) {
     if (node.kind === "gate") assertContractBoundarySchema(node.result, `${id}: gate ${node.id} result`);
@@ -1142,18 +909,7 @@ export function defineWorkflowDescriptor<
   for (const verdict of spec.verdicts ?? []) VerdictDefinitionSchema.parse(verdict);
   assertUnique(id, "verdict keys", (spec.verdicts ?? []).map((verdict) => verdict.key));
 
-  /**
-   * D228 — a declared `when` names a real field of a real schema, checked here
-   * the same way a detail's path is. The closure form could only fail at run
-   * time, on the one run whose input finally reached the node; a declaration is
-   * refused at `defineWorkflowDescriptor`, which is module load and therefore
-   * every test.
-   *
-   * `owns` for the arms that read a VALUE (a condition reading a field only one
-   * union arm carries would throw mid-run on the other arm) and `offers` for
-   * `is-present` / `is-absent`, whose entire question is whether the field is
-   * there.
-   */
+    // A declared `when` names a real schema field, refused at definition time.
   for (const node of nodes) {
     if ((node.kind !== "task" && !(node.kind === "gate" && node.resolvedBy === "operator")) || node.when === undefined) continue;
     const condition = node.when;
@@ -1182,12 +938,7 @@ export function defineWorkflowDescriptor<
   }
   assertUnique(id, "detail keys", spec.details.map((detail) => detail.key));
 
-  /**
-   * Ref dashboard-surfaces §1.2's subject seam. `offers` on purpose: a resolved subject name
-   * lives on one arm of a present/absent union far more often than not, and
-   * that absent arm IS the "the run has not resolved a subject" state the queue
-   * projection reads as *keep the title the start input composed*.
-   */
+    // Absent subject arm keeps the start title.
   if (spec.subjectProjection !== undefined) {
     SubjectProjectionSpecRuntimeSchema.parse(spec.subjectProjection);
     assertNodeFieldPath(
@@ -1202,11 +953,8 @@ export function defineWorkflowDescriptor<
 
   const editData = spec.capabilities?.editData;
   if (typeof editData === "object") {
-    // Ref data-intake-and-edit-data §6.2/§6.3 (D166): every declared editable path must resolve
-    // through the producing node's own output schema — a path the schema does
-    // not own could never re-parse — and only a READ task node's output is
-    // correctable: a transaction node's output is a write proof, and proof
-    // fields are structurally non-editable.
+    // Ref data-intake-and-edit-data §6.2/§6.3: an editable path must resolve through the producing
+    // node's own output schema, and only a READ task node's output is correctable (a write proof isn't).
     for (const field of editData.fields) {
       const owner = nodeByIdOrThrow(id, nodes, field.nodeId, "editData field");
       if (owner.kind !== "task") {
@@ -1216,20 +964,15 @@ export function defineWorkflowDescriptor<
         );
       }
       if (owner.replay !== "checkpoint") {
-        // An always-rerun node structurally never replays its checkpoint, so a
-        // correction to it could never be consumed — the executor would refuse
-        // the leftover patch at resume. Refusing the DECLARATION is earlier
-        // and clearer than refusing every save made against it.
+        // An always-rerun node never replays its checkpoint, so a correction could never be
+        // consumed (the executor refuses the leftover patch at resume); refuse the declaration instead.
         throw new Error(
           `${id}: editData field "${field.fieldPath}" names node "${String(field.nodeId)}" with replay `
           + `"${owner.replay}"; only a checkpoint-replayed node's recorded output is correctable — `
           + "an always-rerun node takes its value from the live read",
         );
       }
-      // `offers`, not `owns`: a correctable value routinely sits on one arm of
-      // a present/absent union, and the save re-parses the WHOLE post-patch
-      // output — a patch naming an arm the stored outcome does not hold fails
-      // there, loudly, against the actual bytes rather than the declaration.
+      // Union arms may offer correctable paths; saving revalidates the entire patched outcome.
       assertNodeFieldPath(id, nodes, field.nodeId, field.fieldPath, "editData field", "offers");
     }
   }
@@ -1262,9 +1005,7 @@ export function defineWorkflowDescriptor<
 
   assertSurfaceFields(id, spec.flow.input, spec.surfaces, spec.protectedInputs ?? []);
 
-  // The identity/presentation proof stays inside the factory so `spec` keeps
-  // its exact `InputSchema`: a helper would have to widen the parsed value, and
-  // a widened value proves nothing about the functions that consume it.
+  // Keep the exact input type here; widening would invalidate the authored-function proof.
   for (const [index, sample] of canonicalInputSamples(spec.canonicalInput).entries()) {
     const parsed = spec.canonicalInput.parse(sample);
     const where = `${id}: canonical input sample ${String(index)}`;
@@ -1303,23 +1044,15 @@ export function defineWorkflowDescriptor<
     .map((name) => SecretNameSchema.parse(name)))].sort());
 
   const dryRun = deriveDryRunSupport(nodes);
-  /**
-   * D209 — `supportsDryRun` is DERIVED here and may not be authored. The
-   * dashboard's run-start surface composes `surfaces.inputRun` client-side off
-   * the bundled descriptor, so the flag has to keep existing where that reader
-   * looks; what changes is that the graph, not the author, decides its value.
-   * An authored one is refused rather than overwritten — silently replacing a
-   * declaration is how a descriptor comes to say one thing and mean another.
-   */
+  // Preview support is derived, never authored.
   if (spec.surfaces.inputRun !== undefined && "supportsDryRun" in spec.surfaces.inputRun) {
     throw new Error(
-      `${id}: surfaces.inputRun.supportsDryRun is derived from the graph (D209) and cannot be authored; `
+      `${id}: surfaces.inputRun.supportsDryRun is derived from the graph and cannot be authored; `
       + "delete it — whether this workflow can be previewed is decided by its transaction nodes",
     );
   }
-  // D307 — which nodes an omitted step rebuilds (asserted) and which it simply
-  // leaves unread (omitted). Derived once here so the terminal-dependency
-  // authentication and the descriptor's retained declaration agree by construction.
+  // Which nodes an omitted step rebuilds (asserted) and which it leaves unread (omitted); derived
+  // once so the terminal-dependency authentication and the retained declaration agree.
   const stepOmissions = deriveStepOmissions(id, nodes, spec.timeline);
   const rerunValues = spec.rerunValues === undefined ? undefined : validateRerunValueMappings({
     input: spec.flow.input, nodes, stepOmissions,
@@ -1382,14 +1115,7 @@ export function defineWorkflowDescriptor<
   const branchTargets = new Set(nodes.flatMap((node) => node.kind === "branch"
     ? Object.values(node.cases).flat()
     : []));
-  /**
-   * The factory-authenticated dependency SPEC for an arbitrary node-id list —
-   * which nodes are expected, and the one closed `not-run` reason each may
-   * legitimately carry. `build` asks it for the terminal `dependsOn`; D210's
-   * `buildPreview` asks it for the transaction node's own `dependsOn`, which is
-   * the exact set that node's `prepare`/`commit` binds read. ONE implementation
-   * on purpose: a second copy would be a second answer to disagree with.
-   */
+  // Share dependency rules between full and preview results.
   const dependencySpecFor = (
     nodeIds: readonly NodeId[],
     purpose: string,
@@ -1418,11 +1144,7 @@ export function defineWorkflowDescriptor<
     }),
   );
   const terminalDependencies = dependencySpecFor(terminalDependsOn, "terminal result");
-  /**
-   * Every identity check a terminal settlement makes about the RUN itself,
-   * shared by `build` and D210's `buildPreview` so the two can never diverge on
-   * what "this run may settle against this descriptor" means.
-   */
+  /** The RUN identity checks shared by `build` and `buildPreview`, so the two never diverge on what "this run may settle against this descriptor" means. */
   const assertTerminalRunBinding = (currentRun: WorkflowTerminalRun): z.output<typeof spec.canonicalInput> => {
     if (currentRun.lifecycle.state !== "running") {
       throw new Error(
@@ -1445,13 +1167,7 @@ export function defineWorkflowDescriptor<
     return spec.canonicalInput.parse(currentRun.input.parsed.value);
   };
 
-  /**
-   * Resolve caller-supplied evidence against a factory-authenticated dependency
-   * spec, producing both the durable dependency identities and the scope values.
-   * `purpose` only names the thing in refusals; the CHECKS are identical, which
-   * is the point — a preview's upstream facts are held to exactly the bar a
-   * terminal result's are.
-   */
+    // Preview and terminal results use identical dependency checks.
   const resolveTerminalDependencies = (
     currentRun: WorkflowTerminalRun,
     evidenceInput: unknown,
@@ -1606,7 +1322,7 @@ export function defineWorkflowDescriptor<
             workflowId: checkpoint.workflowId,
             itemId: checkpoint.itemId,
             attempt: checkpoint.attempt,
-            // D214 — cite the EXECUTION, not merely the attempt. Absent only
+            // Cite the EXECUTION, not merely the attempt. Absent only
             // when the cited row itself predates the component.
             ...(checkpoint.claimGeneration === undefined
               ? {}
@@ -1625,12 +1341,7 @@ export function defineWorkflowDescriptor<
     return Object.freeze({ outputs, dependencies });
   };
 
-  /**
-   * The unforgeable seal D110/D114 requires: membership in a module-private
-   * WeakMap over the EXACT stored bytes and the exact run they settle. Both
-   * builders go through it, so a preview record is authority in precisely the
-   * same sense a derived result is.
-   */
+    // WeakMap membership binds authority to exact result bytes and the settling run.
   const sealTerminalRecord = (
     currentRun: WorkflowTerminalRun,
     result: RunResultRecord,
@@ -1660,9 +1371,7 @@ export function defineWorkflowDescriptor<
       );
 
       const scopeCandidate = Object.freeze({ input, outputs: Object.freeze(outputs) });
-      // This checked identity bridge preserves the exact generic scope needed by
-      // the authored derive only after every key and value above was validated
-      // against the factory's own dependency list and node output schemas.
+      // Preserve the derive scope only after validating every dependency and output.
       const ExactTerminalScopeSchema = z.custom<Parameters<typeof spec.flow.result.derive>[0]>(
         (candidate) => candidate === scopeCandidate,
         "terminal derive scope was not assembled by the descriptor factory",
@@ -1749,12 +1458,7 @@ export function defineWorkflowDescriptor<
       clock: TerminalResultClock,
     ) => {
       assertTerminalRunBinding(currentRun);
-      /**
-       * A preview result may only be built for a run the OPERATOR enqueued as a
-       * dry run. `envelope.dryRun` is the durable, immutable record of that
-       * request (D6), and it is the run's own field rather than a caller claim —
-       * the same reason beat ② re-reads it before a real write.
-       */
+      // Preview requires a run the operator enqueued as a dry run.
       if (!currentRun.envelope.dryRun) {
         throw new Error(
           `run ${currentRun.envelope.runId} is not a dry run; a preview result may not be built for it`,
@@ -1766,11 +1470,7 @@ export function defineWorkflowDescriptor<
         );
       }
       const preview = TransactionDryRunPreviewSchema.parse(previewInput);
-      /**
-       * The preview must name the node the executor could actually have stopped
-       * at. A preview claiming a different node would put an unreachable stop
-       * point on a durable record nobody can check later.
-       */
+      // A preview must name the node the executor could actually stop at.
       if (preview.nodeId !== dryRun.stopsAt) {
         throw new Error(
           `preview for run ${currentRun.envelope.runId} stopped at "${preview.nodeId}", but ${id} previews `
@@ -1781,12 +1481,8 @@ export function defineWorkflowDescriptor<
       if (stopNode.kind !== "transaction") {
         throw new Error(`${id}: dry-run preview node ${preview.nodeId} is a ${stopNode.kind} node`);
       }
-      /**
-       * The preview's dependencies are the transaction node's OWN `dependsOn` —
-       * the exact upstream facts its `prepare` and `commit` binds read. They are
-       * not `terminalDependsOn`, because the authored `derive` never ran; saying
-       * otherwise would claim a derivation that did not happen.
-       */
+      /** The preview's dependencies are the transaction node's OWN `dependsOn` (the facts its
+       *  prepare/commit read), not `terminalDependsOn` — the authored `derive` never ran. */
       const { dependencies } = resolveTerminalDependencies(
         currentRun,
         evidenceInput,
@@ -1803,8 +1499,7 @@ export function defineWorkflowDescriptor<
         preview,
       }));
       // The hash of the bytes actually stored — never the descriptor's declared
-      // result hash, which would make a preview readable as a completed
-      // workflow (D144's rule applied to the terminal row).
+      // result hash, which would make a preview readable as a completed workflow.
       const schemaHash = deriveSchemaHash(RunDryRunPreviewResultSchema, "output");
       const resultValue = { schemaHash, value: previewValue,
         ...(retainedRunProtectedBindings(currentRun).length === 0 ? {} :

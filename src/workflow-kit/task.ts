@@ -32,11 +32,7 @@ export type SystemOnlyDriver<S extends BrowserSystemId> = Readonly<{ system: S }
 
 const driverType: unique symbol = Symbol("task-driver-type");
 
-/**
- * A factory-owned declaration that carries the concrete system-driver API without exposing a
- * browser implementation to bundle-safe contracts. The private identity function makes Driver
- * invariant, so a task bound to one concrete driver API cannot be registered against another.
- */
+/** Factory-owned declaration of the concrete system-driver API, without exposing a browser implementation to bundle-safe contracts; the private identity keeps a task bound to one driver API. */
 export interface DriverDeclaration<Driver extends BrowserDriver> {
   readonly system: Driver["system"];
   readonly status: "unwired" | "semantic-ready";
@@ -131,7 +127,7 @@ export interface TaskCtxCommon<Codes extends readonly string[]> {
     message: string,
     options?: Readonly<{ subject?: string; transient?: boolean; cause?: unknown }>,
   ) => never;
-  /** Executor-owned, strict task-output provenance collection (D115). */
+  /** Executor-owned, strict task-output provenance collection. */
   readonly recordData: (point: DataPoint | readonly DataPoint[]) => void;
   /** Present for complete frozen operation displays; legacy invocations have no structured action proof. */
   readonly confirmed?: ConfirmedTaskActions;

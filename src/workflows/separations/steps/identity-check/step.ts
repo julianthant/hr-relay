@@ -1,62 +1,4 @@
-/**
- * `separations-identity-check` — chunk 3 of the separations migration
- * (`docs/migrations/separations.md` §3): the UCPath identity passage, provable
- * ALONE, strictly read-only, and carrying ref write-safety §14's identity
- * authority policy.
- *
- * ## The graph, with one authority condition
- *
- * ```
- *   job-summary ─┐
- *                ├─► comparison ─► GATE identity-approval ─► approval ─► result
- *   name-search ─┘        (packet + digest)   (name-only)    (machine or human)
- * ```
- *
- * There is no branch and exactly one declared `when`: the operator gate runs
- * when `comparison.packet.emplIdSource === "name-resolved"`. No run mode,
- * preset, caller or frontend controls that condition. Every run still reads the
- * job summary, searches the document's name and builds the same packet. An
- * independently supplied EID continues only when UCPath's actual read-back
- * matches; a name-derived EID parks for the real operator command.
- *
- * `name-search` running unconditionally is the sharpest instance. Legacy
- * performs it only when its name tier came back `different`
- * (`legacy:src/workflows/separations/workflow.ts:211-269`, commit `1bffbd65`) —
- * so the alternative candidate that the `T002173685` incident turned on exists
- * only on the runs a Levenshtein threshold happened to select, and S15's
- * `similar` arm is precisely the case where it does NOT run. Running it every
- * time costs one UCPath search and makes ref write-safety §14.2's two-candidate
- * side-by-side presentation a property of the graph.
- *
- * ## Why identity authority is the last thing before the result
- *
- * This chunk files nothing, so §14.3's "before the transaction node, never
- * inside it" has no transaction to sit before. What it has instead is the
- * obligation that makes the composition safe: this workflow's terminal result
- * is a resolved identity with an explicit `machine-verification` or
- * `operator-approval` discriminator. It is graph-reachable only through the
- * authority task. The composed descriptor consumes that subject as the
- * `expected` side of the write's binding proof. `identity-gate-before-commit`
- * asserts the authority dominance and the exact name-only gate condition.
- *
- * ## What this chunk deliberately does NOT do
- *
- * - **It resolves nothing by itself (S18).** The run is told which EID to check
- *   AND where that EID came from (`emplIdSource`). Legacy's fallback — a blank
- *   or short Kuali EID delegating to person-lookup — is a *resolution* step over
- *   the Kuali document read, which is chunk 2's output and the composition's
- *   job. What this chunk owes is that the origin remains typed: an EID the
- *   document did not supply requires the name-only operator gate.
- * - **It never writes a name (S15).** Legacy rewrites the UCPath spelling into
- *   the live Kuali document on the `similar` tier, with no review, in dry-run
- *   too. There is no `prepare` node and no `commit` node in this graph.
- * - **It does not decide "already terminated" (S21/S22).** It reports the whole
- *   employment grid and its classification. Business-rule refusal remains
- *   independent from identity authority.
- *
- * This module is bundle-safe: it value-imports only zod, `src/domain/**`, and
- * the audited `src/base` builders.
- */
+/** `separations-identity-check` — the UCPath identity passage, provable ALONE and read-only, carrying write-safety §14's identity-authority policy: one gate condition, and a result no write binds without authority. */
 import { z } from "zod";
 import { defineWorkflow } from "../../../../workflow-kit/workflow-definition.js";
 import { EidSchema } from "../../../../rules/identity/ids.js";
@@ -84,16 +26,7 @@ import {
   nameSearchNode,
 } from "../../workflow.js";
 
-/**
- * The ingress.
- *
- * `emplIdSource` is not decoration: S18 and S19 are the same page of legacy
- * behaviour read from two sides, and the difference between them is *where the
- * EID came from*. A run that says `document-eid` is claiming the separation
- * document itself named this person, and the `superRefine` below makes that
- * claim checkable rather than decorative — a mis-stated source would put a
- * one-click approve in front of an identity nothing confirmed.
- */
+/** The ingress. `emplIdSource` is not decoration: it records *where the EID came from*, and `superRefine` makes that claim checkable rather than decorative. */
 const IdentityCheckInputShape = {
   documentNumber: KualiDocumentNumberSchema,
   /** The employee name the separation document carries, verbatim. */
@@ -174,7 +107,7 @@ export const SeparationsIdentityCheckResultSchema = z.strictObject({
   documentNumber: z.string().min(1),
   /** The subject established by machine verification or operator approval. */
   approved: ResolvedIdentitySubjectSchema,
-  /** The employment picture that approval was granted over (S21–S24). */
+  // The employment picture approval was granted over.
   jobs: JobSummaryClassificationSchema,
 });
 
@@ -194,23 +127,10 @@ export const separationsIdentityCheckWorkflow = defineWorkflow({
   surface: { shape: "single" },
   enqueue: "reject-active",
   actions: STANDARD_WORKFLOW_ACTIONS,
-  /**
-   * No `inputRun` surface: the input is five correlated values and a
-   * paste-a-line parser splits one token per item, so a parser here would have
-   * to invent the four it did not receive. Runs start through the generic
-   * start-plan / command path, and the queue and run-detail wires render this
-   * workflow off the registry.
-   */
+  /** No `inputRun` surface: the input is five correlated values a paste-a-line parser can't
+   *  reconstruct; runs start through the generic start-plan/command path. */
   surfaces: {},
-  /**
-   * No `capabilities` block, and here that is a SAFETY property rather than a
-   * scoping one. An Edit Data field on this graph would let an operator patch a
-   * checkpoint scalar — the displayed name, the EID, a job row's status —
-   * without any live read behind it, which is the wrong-person class arriving
-   * through the correction rail instead of through a name search. The one thing
-   * an operator may change about this run is the gate decision, and that goes
-   * through the typed gate command.
-   */
+  // Identity evidence cannot be corrected without a live read.
   verdicts: [
     {
       key: "no-active-job",
@@ -257,13 +177,8 @@ export const separationsIdentityCheckWorkflow = defineWorkflow({
       display: "text",
     },
   ],
-  /**
-   * Ref dashboard-surfaces §1.2. The start input's `employeeName` is the KUALI FORM'S CLAIM —
-   * it is the thing this chunk exists to check, so a row that kept printing it
-   * would be titling itself with the unverified half of its own question. Once
-   * Job Summary has answered, the row states UCPath's record instead; before
-   * that, the claim stands, which is all the run knows.
-   */
+  /** Ref dashboard-surfaces §1.2: the start input's `employeeName` is the KUALI FORM'S CLAIM, so before
+   *  Job Summary answers the row keeps the claim; after, it states UCPath's record instead. */
   subjectProjection: { nodeId: "job-summary", fieldPath: "displayedName" },
   identity: {
     matchKey: (input) =>
@@ -273,7 +188,7 @@ export const separationsIdentityCheckWorkflow = defineWorkflow({
     title: (input) => `${input.employeeName} (${input.emplId})`,
     subtitle: (input) => `Separation document ${input.documentNumber}`,
   },
-  /** D229 — the descriptor's own words about each node, projected by the explorer. */
+  /** The descriptor's own words about each node, projected by the explorer. */
   nodePurposes: [
     {
       nodeId: "job-summary",
@@ -320,19 +235,12 @@ export const separationsIdentityCheckWorkflow = defineWorkflow({
     "separations-identity-check/gate-evidence-moved",
   ],
   input: SeparationsIdentityCheckInput,
-  // A proving harness for one step of `separations`, never a peer workflow (D219) —
-  // the step it proves is the folder it lives in, read from the composition's own
-  // declaration rather than re-typed here (D265 §1.2.2 rule 3).
   role: defineWorkflowRole({
     kind: "chunk-harness",
     of: "separations",
     step: IDENTITY_CHECK_STEP.key,
   }),
   steps: ({ task, gate, result }) => {
-    // The composition's own step identities (`../workflow.ts`) and the Job
-    // summary step's read, wired straight from the harness ingress: the EID and
-    // the name are the run's input here, where the composition resolves them
-    // from the Kuali reads.
     const jobSummary = task(jobSummaryNode, [], ({ input }) => ({
       emplId: input.emplId,
     }));
@@ -368,21 +276,13 @@ export const separationsIdentityCheckWorkflow = defineWorkflow({
       }),
     );
     return {
-      // Two groups, both the composition's: the Job summary read this harness
-      // proves for the step that has no harness of its own (D265 mapping), then
-      // the identity step itself. Job summary first keeps the graph in the
-      // order the hand-authored descriptor listed its nodes.
+      // Keep Job Summary before identity checks to preserve graph order.
       steps: [
         [JOB_SUMMARY_STEP, [jobSummary]],
         [IDENTITY_CHECK_STEP, [nameSearch, comparison, identityGate, approval]],
       ],
-      /**
-       * Depends on `approval` and NOTHING else — the guard caught the first
-       * draft, which read the document number and employment picture straight
-       * off the comparison node. The authority node carries those facts
-       * forward, so both the machine and human arms dominate the run's whole
-       * product.
-       */
+      /** Depends on `approval` and NOTHING else: the authority node carries the facts forward, so
+       *  both the machine and human arms dominate the run's whole product. */
       result: result(
         SeparationsIdentityCheckResultSchema,
         [approval],

@@ -5,11 +5,7 @@ import {
 } from "../../../models/workflows/separations/match-active-employment.js";
 import { selectSeparationEmployment } from "../../../rules/separations/employment-selection.js";
 
-/**
- * S23/S24's refusal, executed. The gate still shows the operator every row —
- * `match-identity` carries the whole classification — so what this node decides
- * is only whether there is a single employment to file against.
- */
+/** The employment fold's refusal, executed. The gate still shows every row (match-identity carries the classification); this node only decides single-employment existence. */
 export const matchActiveEmploymentTask = defineTask(SeparationsMatchActiveEmployment, {
   sessions: [],
   async run({ input, ctx }) {
