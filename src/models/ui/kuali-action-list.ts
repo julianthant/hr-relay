@@ -1,41 +1,4 @@
-/**
- * Kuali Build — the Action List, read as a DOCUMENT → ACTION resolver (D261).
- *
- * ## Why this surface exists at all
- *
- * Kuali's only address for a document is `…/actions/<actionId>`, and an
- * `actionId` names a workflow STEP rather than a document (2026-08-04,
- * `src/backend/systems/kuali/CLAUDE.md`). So until this module a separations run had to
- * be handed BOTH identifiers, which is what **D260** measured as two varying
- * values per run and therefore no typed start box. The operator's ruling of
- * 2026-08-20 — *"document number should work. no need action id."* — is
- * **D261**: the action is RESOLVED by the graph, from the one number a human
- * knows, through the Action List's own search box.
- *
- * ## What the page actually carries (live-verified 2026-08-20)
- *
- * `…/build/space/<space>/actions` renders a table whose every cell is an
- * anchor at that row's document, so the action id is on the page as an `href`
- * and needs no click to read:
- *
- * ```
- * <a href="/build/space/5e47…/actions/6a766ae6f0549046f7f0dc06">4502</a>
- * ```
- *
- * A row publishes its number TWICE — once in `Document #` and once in
- * `Document Title` — so two matched links for one document is the ORDINARY
- * observation, not an ambiguity. What would be an ambiguity is two DISTINCT
- * action ids behind one number, and that is what this module refuses on.
- *
- * ## The read classifies nothing (D201)
- *
- * The driver returns `KualiActionListObservation` — the matched links verbatim,
- * plus every bare-number link the filtered list rendered — and
- * `classifyKualiActionResolution` decides what it means. The refusal is the
- * load-bearing half: reading a document that is not in the list as "some other
- * action id" would open a DIFFERENT person's separation, so every negative is a
- * named verdict and none of them is a fallback.
- */
+/** Kuali Build — the Action List, read as a DOCUMENT → ACTION resolver: strictly read-only, with the action id on the page as the row's own link href. */
 import { z } from "zod";
 import { IsoInstantSchema, PageStateIdSchema, ScreenIdSchema } from "../../rules/identity/ids.js";
 import { ElementIdSchema, ObservationIdSchema } from "../../rules/identity/ids.js";
@@ -65,13 +28,7 @@ export const KualiSpaceIdSchema = z.string().regex(
   "Kuali space id must be 24 hex characters",
 );
 
-/**
- * ONE Action-List link, verbatim.
- *
- * `href` is nullable because an anchor without one is a REAL rendering — a
- * Kuali row whose cell is not linked — and the honest record of it is `null`,
- * not an invented path. `classifyKualiActionResolution` refuses on it by name.
- */
+/** ONE Action-List link, verbatim; `href` is nullable because an anchor without one is a REAL rendering. */
 export const KualiActionListLinkSchema = z.strictObject({
   /** The link's accessible name, trimmed. */
   name: z.string(),
@@ -80,10 +37,7 @@ export const KualiActionListLinkSchema = z.strictObject({
 });
 export type KualiActionListLink = z.infer<typeof KualiActionListLinkSchema>;
 
-/**
- * What the driver saw after filtering the Action List to one document number.
- * It states what is on the page and decides nothing.
- */
+/** What the driver saw after filtering the Action List to one document number; it states what is on the page and decides nothing. */
 export const KualiActionListObservationSchema = z.strictObject({
   pageStateId: z.literal(KUALI_ACTION_LIST_READY),
   /** The space whose Action List was read — the path prefix every href must carry. */
@@ -92,12 +46,7 @@ export const KualiActionListObservationSchema = z.strictObject({
   requestedDocumentNumber: KualiDocumentNumberSchema,
   /** Every link whose accessible name is EXACTLY the requested number (anchored). */
   matchedLinks: z.array(KualiActionListLinkSchema),
-  /**
-   * Every bare-number link the filtered list rendered, in page order and with
-   * duplicates kept. On a miss it is what the refusal shows the operator: the
-   * Action List's substring search returns neighbours, so "4502 is not here,
-   * these are" is a legible sentence and "not found" is not.
-   */
+    /* Every bare-number link the filtered list rendered, in page order and with duplicates kept; on a miss it is what the refusal shows the operator, because the Action List search returns neighbours. */
   listedDocumentNumbers: z.array(z.string()),
   observedAt: IsoInstantSchema,
 });
@@ -117,10 +66,7 @@ export const KualiActionResolutionSchema = z.strictObject({
 });
 export type KualiActionResolution = z.infer<typeof KualiActionResolutionSchema>;
 
-/**
- * The verdict. Every negative names itself, and there is no arm that answers
- * with an action id the page did not show.
- */
+/** The verdict; every negative names itself, and there is no arm that answers with an action id the page did not show. */
 export const KualiActionResolutionVerdictSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("resolved"), resolution: KualiActionResolutionSchema }),
   z.strictObject({
@@ -144,15 +90,7 @@ export const KualiActionResolutionVerdictSchema = z.discriminatedUnion("state", 
 ]);
 export type KualiActionResolutionVerdict = z.infer<typeof KualiActionResolutionVerdictSchema>;
 
-/**
- * Parse an Action-List href into its action id.
- *
- * The whole path is required to match `…/build/space/<space>/actions/<24 hex>`.
- * A looser parse — "the last path segment" — would happily read an id out of a
- * pagination or profile link and hand a run a plausible address for the wrong
- * thing, which is the substitution this program bans. Returns `undefined` so
- * the caller decides; it never throws and never guesses.
- */
+/** Parse an Action-List href into its action id; the whole path is required to match the documented action-link shape. */
 export function parseKualiActionHref(
   href: string,
   space: string,
@@ -162,9 +100,7 @@ export function parseKualiActionHref(
   const expected = `/build/space/${space}/actions/`;
   if (!path.startsWith(expected)) return undefined;
   const rest = path.slice(expected.length);
-  // Kuali redirects a document route to `…/<actionId>/view`; both spellings
-  // name the same action, so the trailing view segment is accepted and nothing
-  // else is.
+  // Accept the same action's /view redirect; no other route suffix is valid.
   const segments = rest.split("/");
   const candidate = segments[0];
   if (candidate === undefined) return undefined;
@@ -174,23 +110,12 @@ export function parseKualiActionHref(
   return parsed.success ? parsed.data : undefined;
 }
 
-/**
- * An href that is neither an absolute path nor an absolute URL is an address
- * this module cannot read. `URL.canParse` ASKS the question rather than
- * throwing it, so there is no catch here to mistake for a swallow — the
- * `undefined` is a verdict the caller turns into a named refusal.
- */
+/** An href that is neither an absolute path nor an absolute URL is an address this module cannot read; the check ASKS the question rather than throwing it. */
 function safePathname(href: string): string | undefined {
   return URL.canParse(href) ? new URL(href).pathname : undefined;
 }
 
-/**
- * Decide what the observation means. Pure, exhaustive, and refusal-first.
- *
- * Two links for one document is the ORDINARY row (Kuali publishes the number in
- * both `Document #` and `Document Title`), so the ambiguity test is on DISTINCT
- * action ids — the thing a wrong answer would actually be wrong about.
- */
+/** Decide what the observation means: pure, exhaustive, and refusal-first; two links for one document is the ORDINARY row, and two DISTINCT action ids is the refusal. */
 export function classifyKualiActionResolution(
   observation: KualiActionListObservation,
 ): KualiActionResolutionVerdict {

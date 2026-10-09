@@ -7,39 +7,7 @@ import { ConfigSchema } from "./schema.js";
 import { RetiredAiProviderConfigSchema, currentProviderConfig } from "./retired-ai-config.js";
 import { ConfigSchema as HistoricalConfigSchema } from "./settings-v29-schema.js";
 
-/**
- * THE CONFIG SCHEMA'S OWN VERSION LINE, INDEPENDENT OF THE SQLITE MIGRATION
- * CHAIN (D133, ref clock-config-secrets §4.1).
- *
- * A `settings_snapshots` row is EVIDENCE of the configuration one run executed
- * under. Three facts make it un-rewritable:
- *
- *  1. `ConfigSnapshotRecord.fingerprint` is a SHA-256 over exactly the stored
- *     `config` bytes (`./resolve.ts`), and the run envelope retains that same
- *     fingerprint. Editing the row breaks the binding it exists to prove.
- *  2. `settings_snapshots` is an insert-only authority repository. Nothing in the
- *     runtime may UPDATE it, so a migration that did would contradict the store.
- *  3. Back-filling today's default MISSTATES HISTORY. A pre-D125 run had no
- *     `timeouts.sessionAcquireMs` at all — that absence is the whole reason a
- *     dead CRM session burned 262.9s inside `withDriver` on the live exit run.
- *     Writing `60000` into that row would claim the run held a bound it did not.
- *
- * So adding a required config leaf changes no TABLE — it changes what a stored
- * ROW must contain — and it is versioned HERE rather than in
- * `src/backend/storage/sqlite/migrations.ts`. Each generation names the decision that
- * introduced it, lists the leaves it introduced, and pins the exact leaf set of
- * the config AT that generation. A snapshot captured at an older generation is
- * read FORWARD: the leaves later generations introduced are permitted to be
- * absent, `configSnapshotAbsentLeaves` reports exactly which, and no value is
- * invented for them. Every OTHER shape defect — a missing baseline leaf, a
- * missing group, an unknown key, a wrong type — still fails loud at database
- * open, because that is corruption rather than schema evolution.
- *
- * Generation 1 is the shape the 2026-08-04 Phase-1 exit database actually
- * carries (`.tracker/phase1-exit-state.db`). Anything older is not
- * represented by a surviving database and is deliberately NOT tolerated: an
- * unverifiable historical shape gets a loud refusal, not a guess.
- */
+/** The config schema's own version line, independent of the SQLite migration chain: a stored snapshot is un-rewritable evidence, read forward and never back-filled. */
 export const ConfigSnapshotGenerationSchema = z.strictObject({
   generation: z.number().int().positive(),
   /** The decision that introduced this generation's leaves. */
@@ -112,10 +80,7 @@ export const CONFIG_SNAPSHOT_GENERATIONS = deepFreeze([
 
 export const CURRENT_CONFIG_SNAPSHOT_GENERATION = 6;
 
-/**
- * The leaves introduced after the baseline generation — precisely the leaves a
- * stored snapshot is permitted to lack, and nothing else.
- */
+/** The leaves introduced after the baseline generation — precisely the leaves a stored snapshot is permitted to lack. */
 export const POST_BASELINE_CONFIG_LEAVES = deepFreeze(
   CONFIG_SNAPSHOT_GENERATIONS.flatMap(({ generation, introduced }) => generation === 1 ? [] : [...introduced]),
 );
@@ -128,28 +93,11 @@ export function configLeafDigest(paths: readonly string[]): string {
     .digest("hex");
 }
 
-/**
- * `ConfigSchema` as a STORED SNAPSHOT ROW must contain it. Two deliberate
- * differences from the live schema:
- *
- *  1. EVERY GROUP DEFAULT IS STRIPPED. `ConfigSchema`'s `.default(...)`s exist
- *     so a fresh resolve can start from nothing; applying them while READING a
- *     durable row silently fabricates a whole group the run never had. That is
- *     how `browser.headless` / `browser.closeProofMs` slipped in without a
- *     brick — pre-`browser` rows quietly read back as today's launch policy.
- *     A stored row must carry its own values or fail loud.
- *  2. EXACTLY the registered post-baseline leaves are optional, so a genuine
- *     older snapshot is readable while any other hole is still a hard failure.
- *
- * The stored bytes are never modified — `sessionAcquireMs` stays absent in the
- * parsed value, so `configSnapshotAbsentLeaves` can report the truth and the
- * stored fingerprint keeps hashing exactly what it hashed at capture.
- */
+/** A stored snapshot row's shape: every group default is stripped, exactly the registered post-baseline leaves are optional, and the stored bytes are never modified. */
 const CurrentStoredConfigSchema = z.strictObject({
   actor: ConfigSchema.shape.actor.unwrap(),
   urls: ConfigSchema.shape.urls.unwrap(),
-  // Generation 2 (D125) introduced `timeouts.sessionAcquireMs`; generation 3
-  // (D267) introduced `timeouts.duoCeremonyLeaseGraceMs`.
+  // Later generations' optional leaves: `timeouts.sessionAcquireMs`, `timeouts.duoCeremonyLeaseGraceMs`.
   timeouts: ConfigSchema.shape.timeouts.unwrap().partial({ sessionAcquireMs: true, duoCeremonyLeaseGraceMs: true }),
   paths: ConfigSchema.shape.paths,
   annualDates: ConfigSchema.shape.annualDates.unwrap(),
@@ -164,7 +112,7 @@ const CurrentStoredConfigSchema = z.strictObject({
   providers: z.union([ConfigSchema.shape.providers.unwrap(), RetiredAiProviderConfigSchema]),
 });
 
-/** Parse-only compatibility for immutable snapshots written before D294. */
+/** Parse-only compatibility for immutable snapshots written before the capture-leaves retirement. */
 const RetiredPhoneCaptureConfigSchema = z.strictObject({
   ingress: z.enum(["disabled", "on-demand-ngrok", "forwarded"]),
   forwardedUrl: z.url().refine((value) => value.startsWith("https://"), "URL must use HTTPS").optional(),
@@ -179,13 +127,13 @@ const RetiredPhoneCaptureConfigSchema = z.strictObject({
   maxSlices: z.number().int().positive(),
 });
 
-/** Previously captured run snapshots retain their test-route member for readback only. */
+/** Stored snapshots retain their test-route member for readback only. */
 const PreRouteStoredConfigSchema = z.strictObject({
   ...CurrentStoredConfigSchema.shape,
   urls: HistoricalConfigSchema.shape.urls.unwrap(),
 });
 
-/** D331's accepted historical exposure is read verbatim, never invented or rewritten. */
+/** The accepted historical exposure is read verbatim, never invented or rewritten. */
 const PreFloorStoredConfigSchema = z.strictObject({
   ...PreRouteStoredConfigSchema.shape,
   operator: z.strictObject({ timekeeperName: z.string() }),
@@ -219,11 +167,7 @@ export function executionConfigFromStored(config: unknown): z.output<typeof Conf
   return ExecutionConfigFromStoredSchema.parse(config);
 }
 
-/**
- * The registered leaves this stored config DOES NOT CARRY — "these did not
- * exist when the snapshot was captured", which is a different fact from "these
- * were set to today's default".
- */
+/** The registered leaves this stored config does NOT carry — "these did not exist when it was captured", not "set to today's default". */
 export function configSnapshotAbsentLeaves(config: StoredConfig): readonly string[] {
   const present = new Set(configLeafPaths(config));
   return Object.freeze(POST_BASELINE_CONFIG_LEAVES.filter((leaf) => !present.has(leaf)));
@@ -242,13 +186,7 @@ export function configSnapshotGeneration(config: StoredConfig): number {
   return generation;
 }
 
-/**
- * The ratchet: the CURRENT config's leaf set must be exactly what the newest
- * generation pinned, and every older generation's pinned set must still be
- * reconstructible by reversing additions and retirements after it. Adding a required
- * leaf without registering it changes the current digest and fails HERE, before
- * it can reach a durable row and brick every existing authority database.
- */
+/** The ratchet: the current config's leaf set must match the newest generation's pinned set, and every older set must still reconstruct. */
 export function auditConfigSnapshotGenerations(currentLeafPaths: readonly string[]): readonly string[] {
   const violations: string[] = [];
   const generations = CONFIG_SNAPSHOT_GENERATIONS;

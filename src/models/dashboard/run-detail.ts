@@ -65,44 +65,17 @@ export const RunIdentityWireSchema = z.strictObject({
   attempt: z.number().int().positive(),
 });
 
-/**
- * The closed `not-run` reasons a conditional node can record (ref workflow-model §5.5,
- * mirrored by `RunResultRecord`'s `not-run` arm). This is the SAME vocabulary
- * the durable result uses; the timeline never invents a third value.
- */
+/** The closed `not-run` reasons a conditional node can record — the SAME vocabulary the durable result uses; the timeline never invents a third value. */
 export const TimelineNotRunReasonSchema = z.enum(["condition-false", "branch-not-selected", "operator-asserted", "step-omitted"]);
 
-/**
- * How long ONE step took, or why that is not a number.
- *
- * It is the executor's own span measurement — `span.ended` minus `span.started`
- * for the SAME `(attempt, spanPath)` identity (ref dashboard-surfaces §1.1) — and never the
- * gap between two consecutive timeline events, which measures the space
- * between steps and would attribute a worker's idle time to whichever node
- * happened to follow it.
- *
- * The absence arms are the interesting half, and each names a genuinely
- * different fact: a step still running has no end yet; a step whose
- * `span.started` never reached the fold has no start to subtract from; a gate
- * is not a task span at all; and an end that precedes its start is a clock
- * anomaly that must surface as an anomaly rather than as a clamped zero.
- */
+/** How long ONE step took, or why that is not a number: the executor's own span measurement for the SAME `(attempt, spanPath)` identity, never a wall-clock reconstruction. */
 export const TimelineDurationSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("present"), ms: z.number().int().nonnegative() }),
   z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
 ]);
 export type TimelineDuration = z.infer<typeof TimelineDurationSchema>;
 
-/**
- * Read a timeline event's duration FORWARD (D133).
- *
- * `durationMs` is optional on the wire for exactly one reason: an archived run
- * freezes a whole `RunDetailWire` into an immutable record, and a record
- * written before this leaf existed must still parse. Nothing may back-fill it
- * — a duration nobody measured is not zero — so a record that predates the
- * measurement reports that, by name. The live query always emits the leaf, and
- * `run-detail-timeline` pins that it does.
- */
+/** Read a timeline event's duration FORWARD: `durationMs` is optional on the wire only so a record frozen into an archived run before the leaf existed still parses. */
 export function timelineEventDuration(
   event: Readonly<{ durationMs?: TimelineDuration }>,
 ): TimelineDuration {
@@ -117,29 +90,14 @@ export const TimelineEventWireSchema = z.strictObject({
   sequence: z.number().int().nonnegative(),
   at: IsoInstantSchema,
   label: z.string().min(1),
-  /**
-   * `skipped` is its own arm and is NOT a flavour of `cancelled` (ref dashboard-surfaces §9
-   * D-status vocabulary: `Cancelled` means *"You stopped it"*). A node whose
-   * `when` was false, or that a branch did not select, was never started by
-   * anyone — presenting it as an act the operator took is exactly the kind of
-   * lie the charter forbids, independently of the durable result being right.
-   */
+    /* `skipped` is its own arm and is NOT a flavour of `cancelled`: a node whose `when` was false was never started by anyone. */
   state: z.enum(["pending", "active", "done", "failed", "blocked", "cancelled", "skipped"]),
-  /**
-   * WHY a `skipped` step did not run, carried through from the executor's span
-   * rather than re-derived. Absence stays explicit and reasoned: a span that
-   * recorded no reason must say so, never borrow a plausible one.
-   */
+    /* WHY a `skipped` step did not run, carried through from the executor's span rather than re-derived; absence stays explicit, never borrowing a plausible reason. */
   notRun: z.discriminatedUnion("state", [
     z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
     z.strictObject({ state: z.literal("present"), reason: TimelineNotRunReasonSchema }),
   ]),
-  /**
-   * This step's OWN measured duration. Optional on the wire only so a
-   * `RunDetailWire` frozen into an archived record before the leaf existed
-   * still parses (D133); read it through `timelineEventDuration`, never
-   * directly, so the read-forward absence stays a reasoned one.
-   */
+    /* This step's OWN measured duration; optional on the wire only for read-forward, and read through the helper so a reasoned absence stays reasoned. */
   durationMs: TimelineDurationSchema.optional(),
 }).superRefine((event, context) => {
   if (event.state !== "skipped" && event.notRun.state === "present") {
@@ -150,52 +108,24 @@ export const TimelineEventWireSchema = z.strictObject({
     });
   }
 });
-/**
- * `replayed` is its own arm, and it is NOT a flavour of `pending` (D259).
- *
- * A node whose checkpoint this run replayed emits NO spans, by design (ref workflow-model
- * §5.3), and the timeline folds spans — so a step that replayed had nothing to
- * render and came out `pending` on a run that had already finished. `pending`
- * means *this has not happened yet*, which is false twice over on a terminal
- * run: it did happen, and the fact it produced is the one the run consumed.
- */
+/** `replayed` is its own arm, and it is NOT a flavour of `pending`: a replayed node emits NO spans by design, so the fold had nothing to measure. */
 const TimelineStepStateSchema = z.enum(["pending", "active", "done", "failed", "blocked", "cancelled", "skipped", "replayed"]);
 
-/**
- * WHERE a replayed step's stored fact came from — the checkpoint row's own
- * identity, never a derived one. `attempt` is the item's attempt that wrote it
- * (D221) and `claimGeneration` is WHICH execution of that attempt (D214),
- * absent for a row written before D214 because that row names none and a
- * fabricated `1` would be a claim nobody recorded.
- */
+/** WHERE a replayed step's stored fact came from — the checkpoint row's own identity, never a derived one, with the claim generation absent for a row that names none. */
 export const TimelineReplaySourceSchema = z.strictObject({
   attempt: z.number().int().positive(),
   claimGeneration: z.number().int().positive().optional(),
 });
 
-/**
- * ONE member node's contribution to a categorical step (D225) — served so the
- * step's hover/accessible detail can name what folded into it without the
- * client re-deriving the graph.
- */
+/** ONE member node's contribution to a categorical step, served so the step's hover detail can name what folded into it without the client re-deriving the graph. */
 export const TimelineStepMemberWireSchema = z.strictObject({
   label: z.string().min(1),
   state: TimelineStepStateSchema,
   /** Sum of this node's measured execution durations; absent when none measured. */
   durationSec: z.number().int().nonnegative().optional(),
-  /** D259 — present exactly when this member replayed; see the refinement. */
+  /** Present exactly when this member replayed; see the refinement. */
   replayedFrom: TimelineReplaySourceSchema.optional(),
-  /**
-   * D307 — WHY a `skipped` member did not run, read off its span's own closed
-   * reason and never re-derived. It is what lets the strip draw an
-   * `operator-asserted` member (the operator omitted its step and typed the
-   * facts its producer rebuilt the output from) distinctly from a
-   * `step-omitted` one (nothing rebuilt it and it did not run at all) — two
-   * completely different facts that both fold to `skipped`.
-   *
-   * Absent when the span recorded no reason, which stays exactly that: a
-   * member whose reason authority does not hold, never a plausible one.
-   */
+    /* WHY a `skipped` member did not run, read off its span's own closed reason and never re-derived; it is what lets the strip draw an operator-asserted member distinctly. */
   notRunReason: TimelineNotRunReasonSchema.optional(),
 }).superRefine((member, context) => {
   if (member.state !== "skipped" && member.notRunReason !== undefined) {
@@ -213,9 +143,7 @@ export const TimelineStepMemberWireSchema = z.strictObject({
     });
   }
   if (member.state === "replayed" && member.durationSec !== undefined) {
-    // A replayed node emitted no span, so nothing measured it. `0` would read
-    // as "it ran instantly", which is the `took 0s` this decision exists to
-    // delete from the surface.
+    // Replay has no measured duration; zero would claim instantaneous execution.
     context.addIssue({
       code: "custom",
       path: ["durationSec"],
@@ -224,20 +152,7 @@ export const TimelineStepMemberWireSchema = z.strictObject({
   }
 });
 
-/**
- * D225 — the CATEGORICAL timeline step. The run-detail strip renders these,
- * one segment per descriptor-declared category (or per node for a workflow
- * that declares nothing), never one per raw execution: the composed
- * separations graph drew eighteen truncated stubs before this. State is a fold
- * over the member nodes' own states; `executions` carries the demo's `×N`
- * marker when any member ran more than once (a gate park/resume re-running an
- * `always-rerun` node is the ordinary cause), so a re-execution folds into its
- * category instead of drawing a duplicate segment.
- *
- * A category is `replayed` (D259) only when EVERY member replayed; one member
- * that executed makes the category `done`, and the member list carries the
- * breakdown either way.
- */
+/** The CATEGORICAL timeline step: one segment per descriptor-declared category (or per node for a workflow that declares nothing), never one per raw execution. */
 export const TimelineStepWireSchema = z.strictObject({
   label: z.string().min(1),
   state: TimelineStepStateSchema,
@@ -251,12 +166,7 @@ export type TimelineStepWire = z.infer<typeof TimelineStepWireSchema>;
 
 export const TimelineWireSchema = z.strictObject({
   events: z.array(TimelineEventWireSchema),
-  /**
-   * D225's categorical steps. Optional on the wire ONLY so a `RunDetailWire`
-   * frozen into an archived record before the field existed still parses
-   * (D133) — the client falls back to the per-event strip for exactly those
-   * records, and a live serve always carries it.
-   */
+    /* Categorical steps, optional on the wire ONLY so a record frozen before the field existed still parses; a live serve always carries it. */
   steps: z.array(TimelineStepWireSchema).optional(),
 })
   .superRefine((timeline, context) => {
@@ -264,54 +174,16 @@ export const TimelineWireSchema = z.strictObject({
     const sequences = timeline.events.map(({ sequence }) => sequence);
     if (new Set(ids).size !== ids.length) context.addIssue({ code: "custom", path: ["events"], message: "timeline note ids must be unique" });
     if (new Set(sequences).size !== sequences.length) context.addIssue({ code: "custom", path: ["events"], message: "timeline sequences must be unique" });
-    // Step labels are DISPLAY values and may legitimately repeat: the derived
-    // per-node default labels a node by its contract title, and two nodes may
-    // share one. Declared category labels are author-controlled and the
-    // factory demands THOSE unique; the wire does not re-litigate it.
+    // Derived display labels may repeat; declared category uniqueness is factory-owned.
   });
 
-/**
- * D237 — the `resolved` arm carries the APPROVER.
- *
- * `resolvedBy` is REQUIRED and that is safe to require rather than read
- * forward: until D237 this arm was structurally unreachable (the command
- * service emits `resolutionKey: "resolved"` for every gate and the server
- * mapped only the literal keys `approved`/`rejected`), so no served wire and no
- * archived record can hold a `resolved` gate that predates the field. Making it
- * optional would have bought read-forward safety for a shape nothing ever
- * wrote, at the cost of a settled gate that can render without naming a human —
- * which is the whole defect this arm exists to close.
- *
- * The three facts are one durable row's, never three surfaces': the kernel
- * writes `resolvedBy`/`resolvedAt` onto the `gate_results` row inside the same
- * transaction that stores the result (D202), and the verdict comes from D204's
- * declared arm table over that row's own payload — the same source the evidence
- * receipt derives its decision row from.
- */
+/** The `resolved` arm carries the APPROVER: `resolvedBy` is REQUIRED and safe to require, because the arm is newly reachable and no stored record predates the field. */
 export const GateDecisionWireSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
   z.strictObject({ state: z.literal("open"), gateId: NoteIdSchema, label: z.string().min(1), openedAt: IsoInstantSchema, revision: RecordRevisionSchema }),
   z.strictObject({ state: z.literal("resolved"), gateId: NoteIdSchema, label: z.string().min(1), resolution: z.enum(["approved", "rejected"]), resolvedBy: ActorIdSchema, resolvedAt: IsoInstantSchema, revision: RecordRevisionSchema }),
 ]);
-/**
- * D238 — a REHEARSAL's terminal outcome.
- *
- * `rehearsal` states that this run's terminal record is a dry-run PREVIEW: the
- * envelope asked for a dry run and the stored terminal row is bound to the
- * preview schema (D210's coherence pair). It is not a sixth `result` and not a
- * new confidence tier — the verdict itself stays in the receipt's own closed
- * vocabulary, and a previewed run takes `partial`, which is exactly what
- * `buildRunEvidenceReceipt` derives for the same run (its terminal-result
- * obligation is `unknown` and its `DRY_RUN_PREVIEW` warning is load-bearing).
- * The refinement below is the load-bearing half: `verified-done` is reserved for
- * an independently verified REAL completion, so a rehearsal may never wear it.
- *
- * `z.literal(true).optional()` rather than a boolean: absence is the only other
- * spelling of "not a rehearsal", so `false` would be a second one. Optional for
- * D133 read-forward — a `RunDetailWire` frozen into an archived record before
- * this field existed still parses, and its silence is not a claim that the run
- * was real.
- */
+/** A REHEARSAL's terminal outcome: `rehearsal` states that this run's terminal record is a dry-run PREVIEW, so nothing downstream reads it as a completed workflow. */
 export const OutcomeWireSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
   z.strictObject({
@@ -354,17 +226,7 @@ function sectionsCompatible(panelKind: z.infer<typeof PanelKindSchema>, sections
   return !sections.includes("review");
 }
 
-/**
- * Every section a panel of this kind may ADVERTISE, derived from the same
- * compatibility rule the wire refinement above enforces (D274 item 4).
- *
- * It exists so a reference surface can print a panel kind's section set without
- * authoring one: an authored list is a second source that goes stale the day
- * `sectionsCompatible` gains an arm, and a catalog documenting a section set the
- * wire would refuse teaches the operator a product that does not exist. This is
- * the CEILING, not a promise — a real run advertises the subset its descriptor
- * actually produced, which is why the surface says so in its own words.
- */
+/** Every section a panel of this kind may ADVERTISE, derived from the same compatibility rule the wire refinement enforces. */
 export function sectionsForPanelKind(
   panelKind: z.infer<typeof PanelKindSchema>,
 ): readonly z.infer<typeof RunDetailSectionSchema>[] {
@@ -380,19 +242,9 @@ export const RunDetailWireSchema = z.strictObject({
   gate: GateDecisionWireSchema,
   outcome: OutcomeWireSchema,
   context: ContextSummaryWireSchema,
-  /** Optional only for archived records frozen before DCA3; every live read emits it. */
+  /** Historical archives may omit captures; every live read emits them. */
   captures: RunCaptureAvailabilityWireSchema.optional(),
-  /**
-   * D307 — the timeline steps this run OMITTED at start, by descriptor key.
-   *
-   * Keys only. The operator's typed facts are the run's input to those steps
-   * and never cross this wire: what a panel needs to say is WHICH steps nobody
-   * read, and the timeline's own members say what each node of them did.
-   *
-   * Present only when the run omitted something (`.min(1)`), so absence is one
-   * fact and not two: no run before D307 could omit a step, so an archived
-   * record frozen without this field omitted none either.
-   */
+    /* The timeline steps this run OMITTED at start, by descriptor key; keys only — the operator's typed facts are the run's input and never cross this wire. */
   omittedSteps: z.array(TimelineCategoryKeySchema).min(1).optional(),
   availableSections: z.array(RunDetailSectionSchema),
 }).superRefine((detail, context) => {
@@ -408,11 +260,7 @@ export const RunDetailWireSchema = z.strictObject({
   if (detail.outcome.state === "terminal" && detail.gate.state === "open") {
     context.addIssue({ code: "custom", path: ["gate"], message: "terminal detail cannot retain an open gate" });
   }
-  /*
-   * D307 — a run that read a step from an operator's form is not a verified
-   * completion, exactly as D238's rehearsal is not. Structural, so no producer
-   * can serve the two together by forgetting the rule.
-   */
+    /* A run that read a step from an operator's form is not a verified completion, exactly as a rehearsal is not; structural, so no producer can serve the two together. */
   if (detail.omittedSteps !== undefined && detail.outcome.state === "terminal" && detail.outcome.result === "verified-done") {
     context.addIssue({
       code: "custom",
@@ -432,12 +280,7 @@ export const NoteWireSchema = z.strictObject({
   fields: z.array(NoteFieldWireSchema).optional(),
 });
 
-/**
- * The one lazy-log row vocabulary. Notes retain their existing wire under the
- * `note` arm while the span stream supplies recorded page observations and the
- * durable fence beat. A row carries its own sequence because notes and spans
- * are one ordered log, not two independently paged feeds.
- */
+/** Notes and spans share one sequenced log; notes retain their own wire arm. */
 const LogRowBase = {
   logId: NoteIdSchema,
   sequence: z.number().int().nonnegative(),
@@ -499,12 +342,7 @@ export const NotePageSchema = z.strictObject({
   confirmedActions: z.array(ConfirmedActionEventSchema).optional(),
   /** Live Logs always send this; older frozen archive pages predate it. */
   operationStructure: RunOperationStructureWireSchema.optional(),
-  /**
-   * D270 / L3 — the one combined page. Optional only so a frozen archive
-   * written before observed-log rows existed remains readable; a live query
-   * always sends it. `notes` below stays as an exact compatibility mirror for
-   * the renderer that predates this row vocabulary.
-   */
+    /* The one combined page; optional only so a frozen archive written before observed-log rows existed remains readable, and `notes` stays as an exact compatibility mirror. */
   rows: z.array(LogRowWireSchema).optional(),
   notes: z.array(NoteWireSchema),
   nextCursor: z.discriminatedUnion("state", [
@@ -600,23 +438,7 @@ const ContextDataCheckpointSchema = z.discriminatedUnion("state", [
   }),
 ]);
 
-/**
- * D252 — WHERE a ledger value came from: the step that recorded it, whether
- * that step READ it or WROTE it, and the system it was recorded against.
- *
- * Every leaf is DECLARED, not sniffed. `dir` is the producing node's own task
- * `effect` (`read` on a task node, `commit` on a transaction node), which is
- * the contract's word for what it does to the world — the rail's header used
- * to say "nothing durable says whether a recorded field was read or written",
- * and that was true of the CHECKPOINT ROW and false of the descriptor that
- * produced it. `system` is the driver system of the store that implements the
- * task, the same binding the explorer's node panel reads; a headless store
- * owns none, so the field is absent rather than a fabricated "internal".
- *
- * The whole block is optional and read forward (D133): an entry recorded under
- * an earlier descriptor has no field identity, so this entry cannot be
- * attributed to a producing step.
- */
+/** WHERE a ledger value came from: the step that recorded it, whether it READ or WROTE it, and the system against it; every leaf is DECLARED, not sniffed. */
 const ContextDataOriginSchema = z.strictObject({
   nodeId: NodeIdSchema,
   /** The node's display label — what the timeline calls the same step. */
@@ -625,25 +447,7 @@ const ContextDataOriginSchema = z.strictObject({
   system: BrowserSystemIdSchema.optional(),
 });
 
-/**
- * D252 — the REUSE bound this value is recorded under (ref workflow-model §5.5).
- *
- * `maxAge` and `override` are the producing read contract's own
- * `FreshnessPolicy`, resolved at this entry's exact field path by the same
- * `byField`-beats-default rule `auditCheckpointFreshness` applies, so the
- * sentence the rail prints and the rule the executor enforces are one
- * declaration. `feeds` is the static set of commit nodes the value can reach —
- * the walk that decides whether the bound BITES at all, since a fact that
- * reaches no write is never refused for age.
- *
- * `Number.POSITIVE_INFINITY` is a legal limit and `JSON.stringify` turns it
- * into `null`, which would arrive as a MISSING bound rather than a deliberate
- * one, so an unbounded policy travels as the word (the explorer wire's rule).
- *
- * Absent for an entry whose producing node declares no freshness policy at
- * all — a `prepare` or `commit` contract has none, because a write is not a
- * fact anyone reuses.
- */
+/** The REUSE bound this value is recorded under — `maxAge` and `override` from the producing read contract's own policy, resolved at this entry's exact field path. */
 const ContextDataFreshnessSchema = z.strictObject({
   maxAge: z.union([z.number().int().nonnegative(), z.literal("unbounded")]),
   override: z.enum(["forbidden", "audited"]),
@@ -717,33 +521,10 @@ export const ContextDataSectionSchema = z.strictObject({
 });
 export type ContextDataSectionWire = z.infer<typeof ContextDataSectionSchema>;
 
-/**
- * The receipt section serves the WHOLE `RunEvidenceReceipt` (D140), not a
- * pointer to it. Ref operator-trust §2.2 puts redaction at capture time — "Redaction is
- * not deferred to the UI" — and the receipt's every value is already a
- * `RedactedField` carrying its own classification and transform, so there is
- * nothing left for a wire projection to strip and nothing a second projection
- * could do except lose the classification that makes the value readable.
- */
+/** The receipt section serves the WHOLE receipt rather than a pointer: redaction is at capture time, so every value already carries its own classification and transform. */
 const ReceiptSectionSchema = RunEvidenceReceiptSchema;
 
-/**
- * The failure section serves CONTENT, not `{ runId, failureId }` (D142).
- *
- * Every field below is one the schema itself made display-safe: subject
- * identity travels as a digest plus an already-redacted display suffix, the
- * page as `urlRedacted`/`titleRedacted`, the input as a fingerprint. The
- * projection copies exactly those and NOTHING else off the `FailureRecord` —
- * an unclassified field is dropped by omission from this strict schema rather
- * than passed through, which is the ref clock-config-secrets rule applied structurally instead
- * of by a filter someone has to remember to update.
- *
- * `sameFingerprintSeen` is ref operator-trust §2.1's "same failure seen before" as a
- * COUNT rather than a list: the count is what the operator acts on, and it is
- * answerable without projecting other runs' subjects onto this one's panel.
- * `diagnosticBundle` is an explicit absence union — the capture trigger is a
- * separate 2g slice, so an absent bundle says why instead of rendering empty.
- */
+/** The failure section serves CONTENT, not a pointer; every field below is one the schema itself made display-safe. */
 export const FailureDetailWireSchema = z.strictObject({
   display: FailureDisplaySchema.optional(),
   resolution: z.strictObject({capability:FailureResolutionCapabilitySchema,capture:FailureResolutionCaptureSchema}).optional(),
@@ -758,11 +539,7 @@ export const FailureDetailWireSchema = z.strictObject({
   code: ErrorCodeSchema,
   summary: z.string().min(1),
   transient: z.boolean(),
-  /**
-   * Ref dashboard-surfaces D18's write-state sentence renders UNCONDITIONALLY in the stream —
-   * "what this run left behind" is the difference between a safe retry and a
-   * duplicate termination, so it can never sit behind a disclosure.
-   */
+    /* The write-state sentence renders UNCONDITIONALLY in the stream — what this run left behind is the difference between a safe retry and a duplicate termination. */
   writeState: WriteStateSchema,
   subject: z.discriminatedUnion("state", [
     z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
@@ -802,7 +579,7 @@ export const FailureDetailWireSchema = z.strictObject({
   }
 });
 
-/** D292: provenance is a closed membership, not failure detail or actor data. */
+/** Provenance is a closed membership, not failure detail or actor data. */
 export const RunCaptureOriginWireSchema = z.strictObject({
   operation: DeclaredActionIdentitySchema.optional(),
   capturedAt: IsoInstantSchema.optional(),
@@ -852,23 +629,7 @@ export const CaptureListSchema = z.strictObject({
 
 /* ── the parked-write vocabulary, mirrored across the browser boundary ────── */
 
-/**
- * Ref write-safety's park codes and subject-binding evidence, RE-DECLARED here rather
- * than imported, and pinned to the durable originals by `wire-connectivity`.
- *
- * The import would be the obvious move and it is not available: both live in
- * `write-safety.ts`, which imports `node:crypto`, and this module is in the
- * dashboard bundle's reach — a `node:*` binding several modules deep is the
- * exact defect ref frontend-backend-integration §8.13 exists for. Hoisting them into the browser-safe
- * `write-safety-primitives.ts` is the structurally right fix and is
- * deliberately NOT taken here: that file is inside every workflow descriptor's
- * source closure, so editing it moves `contractFingerprint`, which the
- * Workflow Explorer and archive surfaces RENDER — the parity corpus drifts on
- * a hash even though not one pixel of layout moves. That is a real finding
- * about the corpus, not a licence to re-freeze it, so the copy stays and the
- * guard makes it provable instead of hopeful: a member added to either
- * original and not to its mirror fails.
- */
+/** The park codes and subject-binding evidence, RE-DECLARED here rather than imported, and pinned to the durable originals by the wire-connectivity test. */
 const ParkedWriteCodeSchema = z.enum([
   "unknown",
   "ambiguous",
@@ -896,26 +657,7 @@ export const ParkedWriteSubjectEvidenceSchema = z.discriminatedUnion("kind", [
   }),
 ]);
 
-/**
- * WHO the fenced write was bound to, in the only form a surface may see it.
- *
- * A `subject-match` binding proof carries `expected` AND `observed` subject
- * evidence, and its own `superRefine` already refuses any proof whose two
- * halves differ — so projecting ONE value is not a shortcut, it is the whole
- * fact: the proof exists precisely because the two agreed.
- *
- * The evidence is served in the DURABLE `SubjectEvidence` shape, member for
- * member, not as a second projection of it. That shape is display-safe by
- * construction — a binding digest plus a bounded suffix, a branded artifact
- * id, or a closed catalog key — so re-shaping it into `{ digest,
- * displayRedacted }` would claim a redaction this projection did not perform
- * and would drop the digest that makes the value checkable against the
- * failure panel's copy.
- *
- * The `unscoped` arm is ref write-safety's reviewed no-subject commit. It has no subject
- * to redact and must not pretend to one: it names the reviewed reason id from
- * the closed registry, which is repository-authored text by construction.
- */
+/** WHO the fenced write was bound to, in the only form a surface may see it; a binding proof carries both the expected and the observed subject evidence. */
 export const ParkedWriteSubjectWireSchema = z.discriminatedUnion("state", [
   z.strictObject({
     state: z.literal("subject-match"),
@@ -932,18 +674,9 @@ export const ParkedWriteSubjectWireSchema = z.discriminatedUnion("state", [
   }),
 ]);
 
-/* ── the completion proof contract (ref write-safety §4.1, D245) ───────────────────── */
+/* ── the completion proof contract (ref write-safety §4.1) ───────────────────── */
 
-/**
- * One leaf of the proof a confirmed-present resolution carries, addressed by
- * the dot path it occupies in the proof value.
- *
- * The server derives these from the commit contract's own
- * `writeSafety.completion.proofSchema` (`describeProofShape`); nothing here is
- * authored. A `fixed` leaf is NOT an operator input — it is a literal the
- * schema pins, and a form that let a person type it would be offering a choice
- * the schema does not have.
- */
+/** One leaf of the proof a confirmed-present resolution carries, addressed by the dot path it occupies; the server derives these from the commit contract's own schema. */
 export const ProofFieldWireSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("fixed"),
@@ -958,11 +691,7 @@ export const ProofFieldWireSchema = z.discriminatedUnion("kind", [
     /** The regex SOURCE — a client cannot be handed a zod schema. */
     pattern: z.string().min(1).optional(),
     format: z.literal("iso-datetime").optional(),
-    /**
-     * The leaf carries a `.refine()`, which no wire can transport. The surface
-     * says the server checks more than the box does rather than implying its
-     * own green tick is the verdict; the kernel's parse is the authority.
-     */
+      /* The leaf carries a `.refine()`, which no wire can transport; the kernel's parse is the authority, not the surface's own green tick. */
     serverOnlyRules: z.boolean(),
   }),
   z.strictObject({
@@ -980,32 +709,13 @@ export const ProofFieldWireSchema = z.discriminatedUnion("kind", [
 ]);
 export type ProofFieldWire = z.infer<typeof ProofFieldWireSchema>;
 
-/**
- * WHAT A CONFIRMED-PRESENT RESOLUTION MUST CARRY (D245).
- *
- * `resolvePresent` refuses any proof whose `schemaHash` is not the commit
- * contract's own and then parses the value through that exact schema. Serving
- * neither half is why the present arm was unreachable from every surface in the
- * build: a client could compose neither, and minting a plausible `schemaHash`
- * to make a button clickable is the fabricated constant this program exists to
- * refuse.
- *
- * The `unavailable` arm is a REASON, never an empty form. A parked write whose
- * workflow is no longer registered, whose transaction node no longer commits
- * this task, or whose proof schema this build cannot describe still gets its
- * panel and still gets the confirmed-ABSENT arm — what it does not get is a
- * form that would compose something the kernel will not accept.
- */
+/** WHAT A CONFIRMED-PRESENT RESOLUTION MUST CARRY: the resolution refuses any proof whose `schemaHash` is not the commit contract's own, and parses the value through that exact schema. */
 export const ProofContractWireSchema = z.discriminatedUnion("state", [
   z.strictObject({
     state: z.literal("served"),
     /** The commit contract the proof belongs to, for the operator's record. */
     commitTaskId: TaskIdSchema,
-    /**
-     * How this write WOULD have proved itself unattended. It is context the
-     * operator needs: `save-verify` means a reload read-back is the only
-     * landing proof, which is exactly what they are standing in for.
-     */
+      /* How this write WOULD have proved itself unattended; context the operator needs, because `save-verify` means a reload read-back is the only landing proof. */
     completionKind: z.enum(["receipt", "save-verify", "upload-verify"]),
     /** The exact value the resolution's `proof.schemaHash` must equal. */
     schemaHash: FingerprintSchema,
@@ -1015,32 +725,7 @@ export const ProofContractWireSchema = z.discriminatedUnion("state", [
 ]);
 export type ProofContractWire = z.infer<typeof ProofContractWireSchema>;
 
-/**
- * The parked-write section (ref write-safety §4.1, ref frontend-backend-integration §3.3/§8.5).
- *
- * A run in `parked-write` is the one lifecycle whose ordinary controls are
- * REFUSED BY NAME: the kernel rejects generic retry for it, because a fenced
- * write that may or may not exist in a real HR system is not a thing anyone
- * gets to "try again". Until this section existed the operator saw a run
- * rendered as generic `blocked` with two typed resolutions implemented, tested
- * and unreachable — the same "built one half, never connected" shape D181 and
- * D187 each found once.
- *
- * Every field is a durable fact re-read from authority at request time: the
- * `run_operations` row is the write-safety authority, and a cached copy of it is
- * exactly the value nobody may act on. `expectedVersion` on the served actions
- * is the RUN's version, which is what both resolutions CAS against.
- *
- * **There is no negative-settlement/`wait` block here, deliberately.** Ref write-safety
- * §4's `wait` decision is a scheduler answer that *changes no durable state* —
- * `createWriteRecovery` returns it and writes nothing, by design, so the run
- * stays unclaimable under its park. Nothing durable records that a probe ran,
- * how many qualifying observations it has, or when the next one is due, so a
- * `nextProbeAt` on this wire could only be re-derived from a policy the query
- * cannot reach or invented outright — the banned constant. When §4 recovery
- * gets a production caller that retains its probe verdicts, THAT is the commit
- * that earns this block; see the `pending-wire-bindings` note.
- */
+/** The parked-write section: a `parked-write` run is the one lifecycle whose ordinary controls are REFUSED BY NAME, because a fenced write may already exist in a real HR system. */
 export const ParkedWriteDetailWireSchema = z.strictObject({
   runId: RunIdSchema,
   writeIntentId: WriteIntentIdSchema,
@@ -1058,20 +743,9 @@ export const ParkedWriteDetailWireSchema = z.strictObject({
   /** A repository-authored digest projection; authority retains the original park evidence. */
   parkedMessage: z.string().min(1),
   subject: ParkedWriteSubjectWireSchema,
-  /**
-   * D245 — what a confirmed-PRESENT resolution has to carry, derived from the
-   * commit contract this intent names. Before it, the present arm was drawn
-   * disabled on every parked run in the build (`proof-contract-unserved`), so
-   * a write that DID land could only be recorded as absent — a durable lie —
-   * or left parked forever.
-   */
+    /* What a confirmed-PRESENT resolution has to carry, derived from the commit contract this intent names; before it, a write that DID land could only be recorded as absent. */
   proofContract: ProofContractWireSchema,
-  /**
-   * Ref frontend-backend-integration §8.5: an interactive control exists only because the SERVER
-   * described it. Both typed resolutions are always served for a parked run —
-   * which one is right is a question only the operator's look at the target
-   * system can answer, so hiding either would be this wire pre-deciding it.
-   */
+    /* An interactive control exists only because the SERVER described it; both typed resolutions are always served for a parked run, because hiding either would pre-decide the operator's question. */
   actions: z.array(ActionDescriptorWireSchema).min(1),
 }).superRefine((parked, context) => {
   if (Date.parse(parked.parkedAt) < Date.parse(parked.fencedAt)) {
@@ -1094,31 +768,7 @@ export const ParkedWriteDetailWireSchema = z.strictObject({
   }
 });
 
-/**
- * The identity-approval gate section (ref write-safety §14.4, separations §3's chunk-3
- * directive: "a command arm plus wire state ONLY").
- *
- * This is the whole server side of the approval UI a later slice will build.
- * Every fact a surface needs to render the decision and compose a legal
- * `resolve-gate` command is here, because the alternative — a client that knows
- * how to build a gate payload — would put the gate's contract in two places.
- *
- * **The packet is served WHOLE and unredacted, and that is deliberate.** Every
- * other person-bearing wire in this tree redacts (the parked-write subject
- * serves a digest and a bounded suffix). This one cannot: §14.4's acceptance
- * standard is that the operator decides *without leaving the dashboard*, and a
- * wrong-person control whose evidence is redacted is a control that cannot be
- * exercised. The names, EIDs, departments and titles ARE the decision.
- *
- * **`resultSchemaHash` is served rather than derived by the caller.** The kernel
- * refuses a `resolve-gate` payload whose `result.schemaHash` is not the
- * descriptor's exact gate schema hash; a client computing that hash would be a
- * second implementation of the descriptor's identity. The server states it.
- *
- * **`options` is the checkable half of `chosenFrom`.** Each entry pairs an EID
- * the packet actually showed with the label the identity-authority node will verify, so a
- * surface cannot invent a label and cannot offer an EID the run never read.
- */
+/** The identity-approval gate section: the whole server side of the approval UI — a command arm plus wire state ONLY. */
 export const IdentityGateOptionWireSchema = z.strictObject({
   eid: z.string().regex(/^\d{8}$/),
   /** The label a `resolve-gate` payload must carry for this EID. */
@@ -1144,10 +794,7 @@ export const IdentityGateDetailWireSchema = z.strictObject({
   evidenceDigest: FingerprintSchema,
   packet: IdentityEvidencePacketSchema,
   options: z.array(IdentityGateOptionWireSchema).min(1),
-  /**
-   * §14.6 risk 1: the SERVER decides how much ceremony the decision costs, so a
-   * surface cannot quietly turn a risky approval into one click.
-   */
+    /* The SERVER decides how much ceremony the decision costs, so a surface cannot quietly turn a risky approval into one click. */
   approvalShape: z.enum(["one-click", "choose-a-candidate", "type-the-eid"]),
   /** Ref frontend-backend-integration §8.5: an interactive control exists only because the server said so. */
   actions: z.array(ActionDescriptorWireSchema).min(1),

@@ -1,18 +1,4 @@
-/**
- * `ucpath/verify-pending-terminations-cleared` — the sweep's beat-⑥ read-back.
- *
- * A separate contract from `ucpath/match-pending-terminations` for the same
- * reason the termination's verifier is separate from its probe: the kernel
- * calls them at different beats with different leases, and a contract that
- * pointed its `verify` at its own probe would be a verifier that never
- * re-read.
- *
- * Its `present` arm is the honest one to state plainly: it means the grid, read
- * again after the delete, shows **no in-progress termination rows for this
- * person**. Anything else parks — including a scan that could not be read,
- * because "we could not check whether the rows are gone" and "the rows are
- * gone" are the two answers a delete verifier must never merge.
- */
+/** The sweep's beat-⑥ read-back: `present` means the grid, read again after the delete, shows no in-progress termination rows for this person; anything else parks. */
 import { EidSchema, ObservationIdSchema, taskId } from "../../../rules/identity/ids.js";
 import {
   UCPATH_SS_SMART_HR_DISPLAYED_NAME,

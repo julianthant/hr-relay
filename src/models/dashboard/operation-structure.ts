@@ -1,9 +1,5 @@
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
-/**
- * One browser-safe structure vocabulary for the static Explorer and the
- * retained, observed Logs view.  The definition is the immutable operation
- * snapshot, never today's registry reconstructed for a historical run.
- */
+/** One browser-safe structure vocabulary for the static Explorer and the retained, observed Logs view; the definition is the immutable operation snapshot. */
 import { JsonValueSchema } from "../../rules/validation/canonical-json.js";
 import { z } from "zod";
 import { IsoInstantSchema, NoteIdSchema, RunIdSchema } from "../../rules/identity/ids.js";
@@ -25,11 +21,7 @@ const BrowserActionKindSchema = z.enum([
   "read", "computed", "verified", "branched", "joined", "gated", "delegated", "session",
 ]);
 
-/**
- * Logs retain exact source identity but do not promote a raw driver value to a
- * new operator surface. Protected input stays redacted; other raw captures
- * need a later explicit presentation classification before they can be shown.
- */
+/** Logs retain exact source identity but do not promote a raw driver value to a new operator surface; protected input stays redacted. */
 const OperationActionValueWireSchema = z.strictObject({
   slot: OperationValueIdSchema,
   fieldPath: ContractFieldPathSchema,
@@ -131,11 +123,7 @@ function declaredKindsFor(observed: z.infer<typeof BrowserActionKindSchema>): re
   }
 }
 
-/**
- * A Logs projection is only valid when every retained action occurrence
- * resolves to one exact frozen invocation/action.  It refuses unknown joins
- * instead of matching a similarly named current workflow action.
- */
+/** A Logs projection is only valid when every retained action occurrence resolves to one exact frozen invocation/action; it refuses unknown joins. */
 export const ObservedOperationStructureWireSchema = z.strictObject({
   state: z.literal("observed"),
   runId: RunIdSchema,

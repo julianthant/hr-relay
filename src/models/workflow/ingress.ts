@@ -1,19 +1,4 @@
-/**
- * Run-surface ingress: `InputParserSpec`, `UploadFieldSpec`, `FileAcceptSpec`,
- * and `TextTemplate` (ref workflow-model §1.1).
- *
- * These are **closed, serializable domain unions with exhaustive interpreters**.
- * They contain no workflow callback, no endpoint function, and no component
- * reference, which is what lets one declaration drive both the server's start
- * command and the client's panel: the same spec, two interpreters, no per
- * workflow-id switch and no side registry. A genuinely new run-surface behavior
- * extends the union and both interpreters.
- *
- * The parser deliberately does NOT produce a workflow input value. It produces
- * typed *entries*; the caller assembles a submission and parses it with the
- * workflow's own `input` schema (ref workflow-model §2). A parser that could mint a
- * validated input would be a second, unaudited ingress path.
- */
+/** Run-surface ingress: closed, serializable domain unions with exhaustive interpreters, so one declaration drives both the server's start command and the client's panel. */
 import { z } from "zod";
 import { PositiveIntSchema } from "../../rules/identity/ids.js";
 
@@ -44,12 +29,7 @@ export type TextTemplate = z.infer<typeof TextTemplateSchema>;
 
 /* ── the typed values both interpreters exchange ─────────────────────────── */
 
-/**
- * One resolved surface value. A closed union rather than `JsonValue`: a run
- * surface collects text, flags, choices, and counts — nothing that needs an
- * open record, and an open record at this boundary is exactly how a stray
- * `__runtimeOptions` rode along in the legacy shape.
- */
+/** Closed values cannot carry undeclared runtime options. */
 export const SurfaceValueSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("text"), text: z.string() }),
   z.strictObject({ kind: z.literal("boolean"), value: z.boolean() }),
@@ -104,20 +84,11 @@ export function renderTextTemplate(
 
 /* ── typed-text ingress ──────────────────────────────────────────────────── */
 
-/**
- * The closed pattern vocabulary. A free regex would be a serialized callback —
- * unreviewable, and a ReDoS surface reachable from operator-typed text.
- */
+/** Closed patterns prevent operator input from reaching arbitrary regex execution. */
 export const ENTRY_PATTERNS = Object.freeze({
   eid: /^10\d{6}$/,
   digits: /^\d+$/,
-  /**
-   * A Kuali Build document number (D261). It is `KualiDocumentNumberSchema`'s
-   * own rule restated as an ingress pattern — three to eight digits — and the
-   * two are pinned equal by `tests/unit/ingress-parser-prose.test.ts`, because
-   * a box that accepted a shape the workflow's schema then refused would be a
-   * modal lying about what it starts.
-   */
+    /* A Kuali Build document number — `KualiDocumentNumberSchema`'s own three-to-eight-digit rule, pinned equal by a guard so the box cannot accept a shape the workflow refuses. */
   "document-number": /^\d{3,8}$/,
   email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
   "non-empty": /\S/,
@@ -125,21 +96,7 @@ export const ENTRY_PATTERNS = Object.freeze({
 export const EntryPatternNameSchema = z.enum(["eid", "digits", "document-number", "email", "non-empty"]);
 export type EntryPatternName = z.infer<typeof EntryPatternNameSchema>;
 
-/**
- * The operator's words for each pattern — D250.
- *
- * It sits BESIDE `ENTRY_PATTERNS` on purpose. The run modal's typed box needs
- * to say what it accepts ("employee IDs, semicolon-separated — an employee ID
- * is eight digits beginning 10"), and the demo's oracle carries that as an
- * authored `parserLabel` string per method. An authored sentence can disagree
- * with the rule it describes, and a sentence that misstates what a box accepts
- * is a wrong value about what is being started; a legend keyed by the CLOSED
- * pattern enum cannot, because the words and the regex are declared together
- * and `ingress-parser-prose.test.ts` pins the two key sets equal.
- *
- * `shape` describes the regex one line above it, so a pattern whose regex moves
- * has its description in the same diff.
- */
+/** The operator's words for each pattern, declared beside the regex so words and rule move together and a guard pins the two key sets equal. */
 const ENTRY_PATTERN_PROSE = Object.freeze({
   eid: { one: "an employee ID", many: "employee IDs", shape: "eight digits beginning 10" },
   digits: { one: "a number", many: "numbers", shape: "digits only" },
@@ -212,12 +169,7 @@ function matchRule(spec: InputParserSpec, entry: string): EntryRule | undefined 
     || ENTRY_PATTERNS[rule.when.pattern].test(entry));
 }
 
-/**
- * Interpret operator-typed text into one entry per intended run.
- *
- * Fails loud on empty text and on an entry no rule claims: a silently dropped
- * entry is an EID the operator believes is queued and that never runs.
- */
+/** Interpret operator-typed text into one entry per intended run; fails loud on empty text and on an entry no rule claims. */
 export function parseInputRunText(
   spec: InputParserSpec,
   text: string,
@@ -253,16 +205,9 @@ export function toRawSubmission(entry: ParsedInputEntry): unknown {
   return submission;
 }
 
-/* ── the parser, described to the operator (D250) ────────────────────────── */
+/* ── the parser, described to the operator ────────────────────────── */
 
-/**
- * What this box accepts, as a plural noun phrase — the demo's `START_VALUE_NOUN`
- * half of its Field label, derived rather than authored.
- *
- * A spec whose only rule is `otherwise` claims nothing about its values, so it
- * gets "entries": the honest word for "whatever you type, one per entry". It is
- * not a fabricated constant — it is the absence of a pattern claim, stated.
- */
+/** What this box accepts, as a plural noun phrase, derived rather than authored. */
 export function inputRunValueNoun(spec: InputParserSpec): string {
   const nouns = [...new Set(spec.rules.flatMap((rule) =>
     rule.when.kind === "pattern" ? [ENTRY_PATTERN_PROSE[rule.when.pattern].many] : []))];
@@ -276,20 +221,7 @@ export function inputRunSeparatorLabel(spec: InputParserSpec): string {
   return `separated by ${listPhrase(shown)}`;
 }
 
-/**
- * The rules, stated. This is the demo's `parserLabel`, derived from the ordered
- * rule list instead of authored per workflow.
- *
- * The last clause is load-bearing and is the reason this is worth deriving at
- * all: a spec with NO `otherwise` rule refuses the whole text when one entry
- * matches nothing (`parseInputRunText` throws by design), and an operator who
- * was never told that reads the refusal as a bug. A spec WITH one takes
- * anything, which is equally worth saying before they paste forty lines.
- *
- * Field names never appear: `rule.emit` is an input-schema identifier, and the
- * factory already binds it (`assertSurfaceFields`). The operator is choosing
- * what to type, not which field it lands in.
- */
+/** The rules, stated — including whether an entry matching none refuses the whole box. */
 export function inputRunParserLabel(spec: InputParserSpec): string {
   const shapes = [...new Set(spec.rules.flatMap((rule) => rule.when.kind === "pattern"
     ? [`${ENTRY_PATTERN_PROSE[rule.when.pattern].one} is ${ENTRY_PATTERN_PROSE[rule.when.pattern].shape}`]
@@ -344,12 +276,7 @@ export const UploadedFileSchema = z.strictObject({
 });
 export type UploadedFile = z.infer<typeof UploadedFileSchema>;
 
-/**
- * Interpret submitted upload-panel values. Unknown fields, missing required
- * values, and out-of-vocabulary select values all throw: an upload panel that
- * silently dropped a field would start a run against data the operator never
- * confirmed.
- */
+/** Interpret submitted upload-panel values; unknown fields, missing required values and out-of-vocabulary selects all throw. */
 export function resolveUploadFields(
   specs: readonly UploadFieldSpec[],
   submitted: readonly SurfaceField[],
@@ -414,17 +341,7 @@ export function assertFileAccepted(accepts: readonly FileAcceptSpec[], file: Upl
 
 /* ── the descriptor's `surfaces` container ───────────────────────────────── */
 
-/**
- * One example the run modal offers as a button that TYPES FOR THE OPERATOR
- * (D250). It carries the exact `text` the box receives — never a value list the
- * surface re-joins with a delimiter, because reconstructing the separator on the
- * client re-implements `splitEntries` outside the boundary that owns it, and a
- * client that split differently would fill the box with something the server
- * never receives (R8 finding 17's argument, from the writing side).
- *
- * `note` is the button's `title`: what this example demonstrates, so an operator
- * can tell "two ordinary values" from "one that gets refused" before clicking.
- */
+/** One example the run modal offers as a button that types for the operator, carrying the exact `text` the box receives. */
 export const InputRunExampleSchema = z.strictObject({
   key: z.string().regex(/^[a-z][a-z0-9-]*$/),
   label: z.string().min(1),
@@ -436,26 +353,9 @@ export type InputRunExample = z.infer<typeof InputRunExampleSchema>;
 export const InputRunSurfaceSchema = z.strictObject({
   placeholder: z.string().min(1),
   parser: InputParserSpecSchema,
-  /**
-   * D250 — declared, and PROVED typeable by `defineWorkflowDescriptor`: every
-   * example's text must parse under this surface's own parser AND every entry it
-   * yields must satisfy the workflow's own input schema. An example that does
-   * not is a button that fills the box with a refusal, which teaches the
-   * operator the modal is lying about what it accepts.
-   *
-   * Optional: a workflow with nothing worth demonstrating declares none and the
-   * row simply does not render — never a fabricated sample identifier.
-   */
+    /* Declared, and proved typeable by `defineWorkflowDescriptor`: every example's text must parse under this surface's own parser and satisfy the workflow's input schema. */
   examples: z.array(InputRunExampleSchema).min(1).optional(),
-  /**
-   * **DERIVED, never authored (D209).** `defineWorkflowDescriptor` stamps this
-   * from the graph — every transaction node declaring `dryRun:"stop-after-prepare"`
-   * — and REFUSES a descriptor that declares it, because whether a workflow can
-   * be previewed is a property of what it writes, not of how an operator types
-   * into it. It stays on this surface because the run-start surface composes
-   * `surfaces.inputRun` client-side off the bundled descriptor and reads the flag
-   * there; the value that reader sees is now the graph's answer.
-   */
+    /* DERIVED, never authored: stamped from the graph's `dryRun: "stop-after-prepare"` transaction nodes, because previewability is a property of what a workflow writes. */
   supportsDryRun: z.boolean().optional(),
   emptyOpensUpload: z.boolean().optional(),
 });

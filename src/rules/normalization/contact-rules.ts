@@ -1,16 +1,4 @@
-/**
- * Deterministic contact-normalization rules (ref data-intake-and-edit-data §4.2) — the pure half of
- * legacy's `normalize-contact.ts`, ported with provenance (D93):
- * `legacy:src/services/llm/normalize-contact.ts` at commit `0034671d` and
- * `legacy:src/services/address/format.ts` at commit `ab9ab5ab`.
- *
- * Every rule here is ADVICE with a named rule id — the caller records a
- * `NormalizationChange` per applied rule and the review gate shows
- * before/after/source. A rule that cannot decide answers `null`/`undefined`
- * honestly rather than guessing; nothing in this module reaches a provider.
- *
- * Canonical phones contain digits; consuming workflows own display formatting.
- */
+/** Deterministic contact normalization only. */
 import { z } from "zod";
 
 /** Shared field vocabulary for contact rules and normalization tasks. */
@@ -52,7 +40,7 @@ export function normalizeCountryHint(raw: string | null | undefined): string | n
   return trimmed;
 }
 
-/** Absent country reads as US — legacy's rule for domestic HR paper. */
+/** Absent country means US for domestic HR paper. */
 export function isUsCountry(country: string | null | undefined): boolean {
   if (country === null || country === undefined || country.trim() === "") return true;
   const normalized = normalizeCountryHint(country);
@@ -61,12 +49,7 @@ export function isUsCountry(country: string | null | undefined): boolean {
   return US_ALIASES.has(normalized.toLowerCase());
 }
 
-/**
- * US-shaped ZIP/state fallback when no explicit country is present. The
- * absence checks are explicit (never `?? ""`): an absent field and an empty
- * field both mean "this fact was not given", and the distinction stays
- * visible in the code.
- */
+/** US-shaped ZIP/state fallback when no explicit country is present; the absence checks are explicit, because an absent field and an empty field both mean the fact was not given. */
 export function isLikelyUsAddress(input: Readonly<{
   country?: string | null;
   zip?: string | null;
@@ -84,12 +67,7 @@ export function isLikelyUsAddress(input: Readonly<{
 
 /* ── phone (normalize-contact.ts @ 0034671d, digits-canonical variant) ───── */
 
-/**
- * Legacy's digit extraction with the leading-1 strip, WITHOUT the display
- * formatting: a 10-digit US number (after dropping a leading country 1) or
- * an 11–15 digit international number is returned as bare digits; anything
- * else is `null` — never a guessed number.
- */
+/** Digit extraction with the leading-1 strip and no display formatting: a 10-digit US number or an 11–15 digit international number, or `null` — never a guessed number. */
 export function normalizePhoneDigitsRule(raw: string | null | undefined): string | null {
   if (raw === null || raw === undefined) return null;
   let digits = raw.trim().replace(/\D/gu, "");
@@ -159,12 +137,7 @@ const RELATIONSHIP_RULES: Readonly<Record<string, CanonicalRelationship>> = Obje
   guardian: "Guardian", other: "Other",
 });
 
-/**
- * Rule-table canonicalization only — the LLM fallback did not port. The
- * in-law check runs BEFORE the substring pass (legacy's own comment: without
- * it "mother-in-law" collapses to Parent). `null` means the table cannot
- * decide, which the caller surfaces as `ambiguous` — never a guess.
- */
+/** Rule-table canonicalization only: the in-law check runs BEFORE the substring pass, and `null` means the table cannot decide, which the caller surfaces as `ambiguous`. */
 export function canonicalizeRelationshipRule(raw: string | null | undefined): CanonicalRelationship | null {
   if (raw === null || raw === undefined) return null;
   const lowered = raw.trim().toLowerCase();

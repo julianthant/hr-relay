@@ -58,12 +58,7 @@ export const CRM_ONBOARDING_DISPLAYED_EID = ObservationIdSchema.parse(
   "crm.onboarding.displayed-eid",
 );
 
-/**
- * A CRM extraction is load-bearing only when the driver proves which displayed
- * person it observed immediately before reading the record. Keeping expected
- * and observed EIDs beside the output prevents a stale open record from being
- * flattened into an apparently valid task result.
- */
+/** A CRM extraction is load-bearing only when the driver proves which displayed person it observed immediately before reading the record. */
 export const CrmSubjectBindingSchema = z.discriminatedUnion("state", [
   z.strictObject({
     state: z.literal("displayed-record"),
@@ -99,10 +94,7 @@ const ReadOnboardingDatesOperationSchema = z.custom<(
   input: z.output<typeof CrmReadOnboardingDates.input>,
 ) => Promise<CrmOnboardingDatesRead>>((value) => typeof value === "function");
 
-/**
- * CRM's task-facing semantic surface. Raw browser primitives remain in the store's driver folder;
- * the contract-bound methods here are the only operations Person Lookup tasks can invoke.
- */
+/** CRM's task-facing semantic surface; the contract-bound methods here are the only operations Person Lookup tasks can invoke. */
 export const CrmOnboardingDriverSchema = z.strictObject({
   system: z.literal("crm"),
   readOnboardingRecord: ReadOnboardingRecordOperationSchema,

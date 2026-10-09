@@ -1,52 +1,14 @@
-/**
- * What happens to an archived run's data, and WHEN — ref dashboard-surfaces §10.4's retention
- * policy (D86) rendered as computed instants per record rather than as prose
- * the surface would then be free to get wrong.
- *
- * The policy has four halves and they do NOT share a shape:
- *
- * - **the archived row** — schema v13 aborts UPDATE and DELETE on
- *   `archived_runs` in SQL, so nothing purges it, ever;
- * - **`notes/` and `spans/`** — the JSONL this run's log lines and timeline
- *   were folded from prune at 30 days BY FILE DATE, so this is the one half
- *   that has an instant to name;
- * - **evidence** (the content-addressed capture bytes and the checkpoint rows
- *   the pointers name) — retained "until purge", which is an operator ACT
- *   (`cli purge-run`) and not a schedule, so there is no instant and saying
- *   "never" would be a different lie;
- * - **the ledger** — never archived, never pruned (ref dashboard-surfaces §2.1 D21).
- *
- * Four outcomes, four arms. Collapsing "nothing will ever purge this" into
- * "no date is scheduled" would let the Retention card tell an operator their
- * screenshots are safe forever when a single command removes them.
- *
- * Everything here is a pure function of the archived record's own fields plus
- * the policy constants plus `now`. That is deliberate and load-bearing:
- * `buildArchivedRunDetail` resolves NOTHING outside the archive tables (ref dashboard-surfaces
- * §10.2, proved by reading a record back with the registry emptied), so a
- * retention block that read the artifact store back would break the one
- * property the archive exists to have.
- */
+/** Retention outlook per archived run: computed instants per record, a pure function of the record's fields, the policy constants, and `now`. */
 import { z } from "zod";
 import { localDatePart } from "../../rules/time/clock.js";
 import { IsoInstantSchema } from "../../rules/identity/ids.js";
 
-/**
- * D86 (ref dashboard-surfaces §2.1 / §10.4): `notes/` and `spans/` both prune at 30 days.
- * `pruneEventStreams` is the implementation and imports this constant, so the
- * date this module computes and the date that sweep acts on are one number.
- */
+/** The sweep imports this constant, so the date this module computes and the date it acts on are one number. */
 export const EVENT_STREAM_RETENTION_DAYS = 30;
 
 const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
 
-/**
- * What will happen to one class of a run's data.
- *
- * `basis` rides the three SETTLED arms rather than only the refusal, because a
- * date with no derivation beside it is a number an operator cannot check;
- * `reason` rides `unknown` because an absence must name what it is missing.
- */
+/** What will happen to one class of a run's data: four arms, each carrying its derivation. */
 export const RetentionOutlookSchema = z.discriminatedUnion("state", [
   /** A sweep purges it, and this is the earliest instant it can. */
   z.strictObject({
@@ -63,11 +25,7 @@ export const RetentionOutlookSchema = z.discriminatedUnion("state", [
 ]);
 export type RetentionOutlook = z.infer<typeof RetentionOutlookSchema>;
 
-/**
- * The retention block one archived run carries. `pointers` is the demo's
- * "N of M still retained" count, and its `basis` states the DERIVATION rather
- * than claiming an observation: nothing here reads a byte back.
- */
+/** The retention block one archived run carries; every basis states a derivation, never an observation. */
 export const ArchiveRetentionWireSchema = z.strictObject({
   computedAt: IsoInstantSchema,
   /** The archived record itself — ref dashboard-surfaces §10.2's audit copy. */
@@ -94,18 +52,7 @@ export const ArchiveRetentionWireSchema = z.strictObject({
 });
 export type ArchiveRetentionWire = z.infer<typeof ArchiveRetentionWireSchema>;
 
-/**
- * The earliest instant `pruneEventStreams` can delete a partition dated
- * `localDate`.
- *
- * The sweep removes a file when `file.date < localDatePart(now - 30d)`, so a
- * partition survives the whole of its 30th day and goes on the first sweep of
- * the LOCAL day after that. The instant returned is the start of that local
- * day — the earliest moment the file becomes eligible, which is the honest
- * bound. It is a bound and not a promise: the sweep runs at dashboard boot
- * (`src/backend/app/dashboard/compose.ts`), so the file survives until the next
- * boot on or after it, and `basis` says so.
- */
+/** The earliest instant `pruneEventStreams` can delete a partition: a file survives its retention day and goes on the first sweep of the day after. */
 export function eventStreamPurgeInstant(localDate: string, retentionDays: number): string {
   const parsed = /^(\d{4})-(\d{2})-(\d{2})$/.exec(localDate);
   if (parsed === null) throw new Error(`${localDate} is not a local partition date`);
@@ -116,20 +63,11 @@ export function eventStreamPurgeInstant(localDate: string, retentionDays: number
   return new Date(day.getTime() + (retentionDays + 1) * MILLISECONDS_PER_DAY).toISOString();
 }
 
-/*
- * NOT exported: this is one pure function's argument, not a boundary. Every
- * value in it is already schema-bound by the archived record it is read off,
- * and exporting it would claim a contract nothing crosses.
- */
+/* Not exported: every value here is already schema-bound by the archived record it is read off. */
 interface ArchiveRetentionInput {
   /** When this block was computed — the surface renders relative to it. */
   readonly now: string;
-  /**
-   * The run's own end instant, or the reason the row carries none. A run with
-   * no end has no partition to date its event streams from, and that is the
-   * `unknown` arm rather than a substituted `archivedAt`: archiving is a
-   * display act and says nothing about when the events were written.
-   */
+    /* The run's own end instant, or the reason the row carries none; no end is the `unknown` arm, not a substituted `archivedAt`. */
   readonly endedAt: Readonly<{ state: "present"; value: string } | { state: "absent"; reason: string }>;
   /** Every evidence pointer the archived record names, by kind. */
   readonly pointerCounts: Readonly<{
@@ -141,9 +79,7 @@ interface ArchiveRetentionInput {
   readonly retentionDays?: number;
 }
 
-/**
- * The whole retention block for one archived run, computed.
- */
+/** The whole retention block for one archived run, computed. */
 export function archiveRetention(input: ArchiveRetentionInput): ArchiveRetentionWire {
   const retentionDays = z.number().int().positive().parse(input.retentionDays ?? EVENT_STREAM_RETENTION_DAYS);
   const { pointerCounts } = input;
@@ -159,7 +95,7 @@ export function archiveRetention(input: ArchiveRetentionInput): ArchiveRetention
     : {
       state: "scheduled",
       purgeAt: eventStreamPurgeInstant(localDatePart(new Date(input.endedAt.value)), retentionDays),
-      basis: `notes/ and spans/ prune at ${String(retentionDays)} days by file date (D86, ref dashboard-surfaces §2.1). This is `
+      basis: `notes/ and spans/ prune at ${String(retentionDays)} days by file date. This is `
         + "the earliest instant the partition holding this run's last events becomes eligible; the sweep runs "
         + "at dashboard boot, so the file survives until the first boot on or after it",
     });
@@ -171,7 +107,7 @@ export function archiveRetention(input: ArchiveRetentionInput): ArchiveRetention
     }
     : {
       state: "on-request",
-      basis: "captured bytes and checkpoint rows are retained until purge (ref dashboard-surfaces §10.4) — an operator act "
+      basis: "captured bytes and checkpoint rows are retained until purge — an operator act "
         + "(`cli purge-run`), not a schedule, so there is no instant to name",
     };
 
@@ -180,25 +116,18 @@ export function archiveRetention(input: ArchiveRetentionInput): ArchiveRetention
     row: {
       state: "permanent",
       basis: "authority schema v13 aborts UPDATE and DELETE on archived_runs in SQL, not by convention "
-        + "(D179) — an archived row is the audit copy and nothing purges it",
+        + "— an archived row is the audit copy and nothing purges it",
     },
     eventStreams,
     evidence,
     ledger: {
       state: "permanent",
-      basis: "the write ledger is never archived and never pruned (ref dashboard-surfaces §2.1 D21) — what was filed in a "
+      basis: "the write ledger is never archived and never pruned — what was filed in a "
         + "real HR system outlives every display lifecycle",
     },
     pointers: {
       total,
-      /*
-       * Derived from the two guarantees above, and SAID to be derived: no
-       * scheduled sweep purges an archived run's evidence, and there is no
-       * read-back on this path to observe one that an operator removed by
-       * hand. Claiming an observed count here would be the accessibility-tree
-       * mistake of D187 in a different costume — a number that agrees with
-       * itself and with nothing on disk.
-       */
+            /* Derived from the two guarantees above, and said to be derived: no sweep purges an archived run's evidence. */
       retained: total,
       basis: "derived from the policy, not observed: no sweep purges an archived run's evidence, and the "
         + "archived detail reads nothing outside the archive tables, so no byte is read back to confirm it",

@@ -1,25 +1,4 @@
-/**
- * The read-only Workflow Explorer wire (ref operator-trust §5.2 Phase A, D176).
- *
- * This is a projection of registration state, never a second authority. The
- * explorer is derived at the server from the one composition root
- * (`WORKFLOW_MODULES`), the descriptors' own factory-sealed projections, the
- * generated build manifest, and the on-disk inventories. Nothing here is hand-maintained, and
- * `workflow-editor-compile-integrity` proves that in both directions.
- *
- * This module is browser-reachable, so it imports zod and pure domain modules
- * only — no Node built-in may enter its closure (ref frontend-backend-integration §8.13).
- *
- * ## Why so many facts are a closed union rather than a string
- *
- * The explorer's whole job is to let a person or an AI resolve "the failure is
- * at `<workflow> → <node> → <task>`" to stable ids and source locations. A fact
- * it renders as free text is a fact nothing can check, so every policy value
- * below travels as the same closed vocabulary its owning schema declares. What
- * genuinely cannot be projected — an authored `bind`, `choose`, `when` or
- * `derive` closure — is reported as its PRESENCE and its source file, never as
- * a decompiled approximation of what the function does.
- */
+/** The read-only Workflow Explorer wire: a projection of registration state derived at the server from the one composition root, never a second authority. */
 import { z } from "zod";
 import { ContractSchemaLeafKindSchema } from "../validation/contract-boundary.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
@@ -53,12 +32,7 @@ import {
 import { DashboardWireVersionSchema } from "./primitives.js";
 import { ExplorerOperationStructureWireSchema } from "./operation-structure.js";
 
-/**
- * A repository-relative source path. Anchored and slash-separated, with no
- * `..` segment and no leading slash: this value is rendered to an operator as
- * "the file that owns this fact", so a path that could escape the repo would be
- * pointing at something the explorer never read.
- */
+/** A repository-relative source path, anchored and slash-separated with no `..` segment and no leading slash: it is rendered as "the file that owns this fact". */
 export const SourcePathSchema = z
   .string()
   .regex(
@@ -68,16 +42,7 @@ export const SourcePathSchema = z
   .brand<"SourcePath">();
 export type SourcePath = z.infer<typeof SourcePathSchema>;
 
-/**
- * Where a named source file was looked for, and whether it was found.
- *
- * A miss is NEVER silent and never guessed: the explorer resolves a candidate
- * path against a real listing (the build manifest's own source closure, or the
- * scenario directory) and reports `unresolved` with the path it tried. Printing
- * a plausible-but-absent path would send a reader — or a code-changing AI — to
- * a file that does not exist, which is exactly the plausible-wrong-value
- * failure this program forbids.
- */
+/** Where a named source file was looked for, and whether it was found; a miss is NEVER silent and never guessed — it is resolved against a real listing. */
 export const SourceLinkWireSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("resolved"), path: SourcePathSchema }),
   z.strictObject({
@@ -88,12 +53,7 @@ export const SourceLinkWireSchema = z.discriminatedUnion("state", [
 ]);
 export type SourceLinkWire = z.infer<typeof SourceLinkWireSchema>;
 
-/**
- * A UI id a browser task uses, reversed out of the generated catalog's own
- * `taskUses` index (ref operator-trust §1.3). The explorer never re-derives this
- * relationship — the catalog entry already declares it, and inventing a second
- * derivation is how the two would disagree.
- */
+/** A UI id a browser task uses, reversed out of the generated catalog's own index; the explorer never re-derives this relationship. */
 export const ExplorerUiLinkWireSchema = z.strictObject({
   catalogId: z.string().min(1),
   kind: z.enum(["screen", "element", "page-state", "observation"]),
@@ -105,14 +65,7 @@ export const ExplorerUiLinkWireSchema = z.strictObject({
 });
 export type ExplorerUiLinkWire = z.infer<typeof ExplorerUiLinkWireSchema>;
 
-/**
- * Where a contract's implementation lives, and whether one exists at all.
- *
- * `pending` is `config/pending-impl-bindings.json`'s own entry, carried through
- * verbatim (D107). Surfacing it honestly is the point: a descriptor may
- * legitimately name a contract no store implements yet, and an explorer that
- * hid that would describe a workflow which cannot run as one that can.
- */
+/** Where a contract's implementation lives, and whether one exists at all; a pending entry is carried through verbatim, because surfacing it honestly is the point. */
 export const ExplorerTaskBindingWireSchema = z.discriminatedUnion("state", [
   z.strictObject({
     state: z.literal("bound"),
@@ -147,17 +100,7 @@ export const ExplorerSubjectWireSchema = z.discriminatedUnion("kind", [
 ]);
 export type ExplorerSubjectWire = z.infer<typeof ExplorerSubjectWireSchema>;
 
-/**
- * The write-safety declaration of a `commit` contract (ref write-safety), reduced to the
- * facts that are DATA.
- *
- * `idempotency.key`, `proofFromOutput` and their siblings are authored
- * closures, so the explorer reports the shape they sit in and the source file
- * that owns them — never a rendering of what the function computes. What is
- * genuinely projectable is the whole fail-closed skeleton: which read task
- * probes, which read task verifies, and what the kernel does when the write's
- * proof is ABSENT after the fence.
- */
+/** The write-safety declaration of a `commit` contract, reduced to the facts that are DATA. */
 export const ExplorerWriteSafetyWireSchema = z.strictObject({
   completionKind: z.enum(["receipt", "save-verify", "upload-verify"]),
   /** The read contract that proves the write landed; `receipt` needs none. */
@@ -180,14 +123,7 @@ export const ExplorerWriteSafetyWireSchema = z.strictObject({
 });
 export type ExplorerWriteSafetyWire = z.infer<typeof ExplorerWriteSafetyWireSchema>;
 
-/**
- * A freshness bound, JSON-safe.
- *
- * `FreshnessPolicySchema` admits `Number.POSITIVE_INFINITY`, which
- * `JSON.stringify` turns into `null` — so an unbounded policy crossing this
- * wire as a raw number would arrive as "no value" and read as a MISSING bound
- * rather than a deliberate one. It travels as the word instead.
- */
+/** A freshness bound, JSON-safe; an unbounded policy crossing this wire is stated as such rather than serialized to `null`. */
 export const ExplorerFreshnessLimitWireSchema = z.union([
   z.number().int().nonnegative(),
   z.literal("unbounded"),
@@ -213,22 +149,7 @@ export const ExplorerProvenanceWireSchema = z.strictObject({
 });
 export type ExplorerProvenanceWire = z.infer<typeof ExplorerProvenanceWireSchema>;
 
-/**
- * How ONE field of a contract gets recorded — the "Recorded" column of the
- * explorer's field table (ref operator-trust §5.9).
- *
- * The demo's third column carries the value a RUN recorded. No run is laid over
- * this graph (§5.7's first exclusion), so what is honestly servable is the fact
- * the descriptor declares about the field's PROVENANCE: whether the value is
- * observed live from the system or derived from other facts, and the freshness
- * bound it is observed under. Every arm below is a statement the registry can
- * actually make; there is no arm that guesses.
- *
- * `unknown` is deliberately reachable. A read contract's freshness and
- * provenance policies are optional on this wire, so a contract that carried
- * neither would leave its outputs undeclared — and the column then says so by
- * name rather than printing the `live` that most reads happen to declare.
- */
+/** How ONE field of a contract gets recorded — the "Recorded" column of the explorer's field table; no run is laid over the contract to fill it. */
 export const ExplorerFieldRecordedWireSchema = z.discriminatedUnion("state", [
   z.strictObject({
     state: z.literal("observed"),
@@ -240,22 +161,13 @@ export const ExplorerFieldRecordedWireSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("bound"), reason: z.string().min(1) }),
   /** A prepare arm's output: `checkpoint: in-memory-only`, so nothing stores it. */
   z.strictObject({ state: z.literal("not-recorded"), reason: z.string().min(1) }),
-  /** A commit arm's output: stored inside the transaction outcome (D144). */
+  /** A commit arm's output: stored inside the transaction outcome. */
   z.strictObject({ state: z.literal("checkpointed"), reason: z.string().min(1) }),
   z.strictObject({ state: z.literal("unknown"), reason: z.string().min(1) }),
 ]);
 export type ExplorerFieldRecordedWire = z.infer<typeof ExplorerFieldRecordedWireSchema>;
 
-/**
- * One FIELD of a task arm's contract — the row the demo's node panel draws
- * (`Field · System · Recorded`), derived from the contract's own zod shape.
- *
- * `kind` and `presence` come from `contractSchemaLeaves`, which walks the SAME
- * schema object `inputSchemaHash` / `outputSchemaHash` fingerprint — one shape,
- * described once. An array is ONE field, matching the rule `evidenceLeaves` and
- * the freshness / provenance `byField` prefix already use, so a `Recorded`
- * verdict resolves at exactly the granularity a policy can name.
- */
+/** One FIELD of a task arm's contract, derived from the contract's own zod shape; `kind` and `presence` come from the same schema walk the hash uses. */
 export const ExplorerContractFieldWireSchema = z.strictObject({
   path: ContractFieldPathSchema,
   side: z.enum(["input", "output"]),
@@ -296,25 +208,12 @@ export const ExplorerTaskWireSchema = z.strictObject({
 });
 export type ExplorerTaskWire = z.infer<typeof ExplorerTaskWireSchema>;
 
-/**
- * The control-shape of a node, one arm per graph node kind.
- *
- * Every arm carries the DOWNSTREAM node ids its controller names (D104's
- * forward references) so the surface can draw the real structure — a branch's
- * cases, a parallel's branches — rather than inferring nesting from `dependsOn`
- * alone, which cannot distinguish "runs after" from "is selected by".
- */
+/** The control-shape of a node, one arm per graph node kind; every arm carries the DOWNSTREAM node ids its controller names, so the surface can draw the real structure. */
 export const ExplorerNodeShapeWireSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("task"),
     replay: z.enum(["checkpoint", "always-rerun"]),
-    /**
-     * D228 — the node's `when`, served as the DECLARATION the executor
-     * evaluates. It replaced a `conditional: boolean` beside an opaque closure,
-     * which is why the surface can now say what the condition is: the client
-     * renders it through `describeNodeCondition`, the one projection of the one
-     * declaration, so the sentence cannot disagree with the rule.
-     */
+      /* The node's `when`, served as the DECLARATION the executor evaluates; the client renders it through the one projection of that declaration. */
     condition: NodeConditionSchema.optional(),
   }),
   z.strictObject({
@@ -360,16 +259,7 @@ export const ExplorerNodeShapeWireSchema = z.discriminatedUnion("kind", [
 ]);
 export type ExplorerNodeShapeWire = z.infer<typeof ExplorerNodeShapeWireSchema>;
 
-/**
- * The descriptor's own words about a workflow or a node (D229).
- *
- * `absent` is an arm rather than a throw on purpose. The explorer serves every
- * registered workflow in ONE document, so refusing the whole surface over a
- * missing sentence would take the operator's index of the system down for a
- * piece of prose. Saying *which* descriptor owes a sentence is the honest and
- * strictly more useful answer, and `explorer-prose-declared` makes the arm
- * unreachable for a registered workflow by failing the build instead.
- */
+/** The descriptor's own words about a workflow or a node; `absent` is an arm rather than a throw, because the explorer serves every registered workflow in ONE document. */
 export const ExplorerProseWireSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("authored"), text: z.string().min(1) }),
   z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
@@ -379,7 +269,7 @@ export type ExplorerProseWire = z.infer<typeof ExplorerProseWireSchema>;
 export const ExplorerNodeWireSchema = z.strictObject({
   id: NodeIdSchema,
   label: z.string().min(1),
-  /** D229 — the descriptor's own sentence about why this node exists. */
+  /** The descriptor's own sentence about why this node exists. */
   purpose: ExplorerProseWireSchema,
   dependsOn: z.array(NodeIdSchema),
   shape: ExplorerNodeShapeWireSchema,
@@ -405,12 +295,7 @@ export const ExplorerNodeWireSchema = z.strictObject({
 });
 export type ExplorerNodeWire = z.infer<typeof ExplorerNodeWireSchema>;
 
-/**
- * An edge the surface draws. `depends-on` is the execution edge every node
- * declares; `branch-case` and `parallel-branch` are the CONTROL edges a
- * controller names downstream, and they are kept distinct because they mean
- * different things: one is "after", the others are "instead of" and "alongside".
- */
+/** An edge the surface draws; the execution edge and the CONTROL edges are kept distinct because they mean different things: one is "after", the others "instead of" and "alongside". */
 export const ExplorerEdgeWireSchema = z.strictObject({
   from: NodeIdSchema,
   to: NodeIdSchema,
@@ -420,16 +305,7 @@ export const ExplorerEdgeWireSchema = z.strictObject({
 });
 export type ExplorerEdgeWire = z.infer<typeof ExplorerEdgeWireSchema>;
 
-/**
- * A registered scenario id and the executable file that walks it.
- *
- * What a scenario CLAIMS to cover is deliberately absent. Those claims live in
- * the executable corpus (`tests/scenario/coverage-claims.ts`), `scenario-coverage`
- * already audits them against the graph in both directions, and `src/` importing
- * a test module to re-serve them would put a second copy of that relationship in
- * the product. The node's own derived coverage points are served instead — those
- * come from the graph, which is where they are true.
- */
+/** A registered scenario id and the executable file that walks it; what a scenario CLAIMS to cover is deliberately absent from this wire. */
 export const ExplorerScenarioWireSchema = z.strictObject({
   scenarioId: ScenarioIdSchema,
   source: SourceLinkWireSchema,
@@ -439,20 +315,12 @@ export type ExplorerScenarioWire = z.infer<typeof ExplorerScenarioWireSchema>;
 export const ExplorerWorkflowWireSchema = z.strictObject({
   id: WorkflowIdSchema,
   label: z.string().min(1),
-  /** D229 — the descriptor's own sentence about what this workflow does. */
+  /** The descriptor's own sentence about what this workflow does. */
   summary: ExplorerProseWireSchema,
   code: WorkflowCodeSchema,
   icon: z.string().min(1),
   category: z.string().min(1),
-  /**
-   * The module's declared taxonomy (ref workflow-model §1.2.1, D219), served RAW beside the
-   * category exactly as the bootstrap wire serves it.
-   *
-   * The explorer is one of the three workflow-listing surfaces D219 names, so
-   * it must carry the same fact the rail and the picker do — a surface that had
-   * to infer membership from an id prefix would be the second answer that
-   * eventually disagrees with the first.
-   */
+    /* The module's declared taxonomy, served RAW beside the category exactly as the bootstrap wire serves it. */
   role: WorkflowModuleRoleSchema,
   version: z.number().int().positive(),
   contractFingerprint: FingerprintSchema,
@@ -506,19 +374,10 @@ export const ExplorerWorkflowWireSchema = z.strictObject({
       }),
     ]),
   }),
-  /**
-   * `SurfaceShape` is either a declared row shape or `by-input`, which resolves
-   * per run. The explorer reports which of the two the descriptor declared and
-   * never resolves the second against a fabricated input.
-   */
+    /* `SurfaceShape` is either a declared row shape or `by-input`, which resolves per run; the explorer reports which of the two the descriptor declared and never resolves the second. */
   surfaceShape: z.enum(["single", "preview", "operation", "operation-member", "by-input"]),
   enqueue: z.string().min(1),
-  /**
-   * `inputSubject` is either a constant the descriptor declared or a function
-   * of the input. A function's RESULT depends on a run's input, so the explorer
-   * reports which of the two it is and never evaluates it against a fabricated
-   * input to print a specimen answer.
-   */
+    /* `inputSubject` is either a constant the descriptor declared or a function of the input; the explorer reports which of the two it is and never evaluates it against a fabricated input. */
   inputSubject: z.discriminatedUnion("state", [
     z.strictObject({ state: z.literal("fixed"), value: z.string().min(1) }),
     z.strictObject({ state: z.literal("derived") }),
@@ -614,14 +473,7 @@ export const ExplorerWorkflowWireSchema = z.strictObject({
 });
 export type ExplorerWorkflowWire = z.infer<typeof ExplorerWorkflowWireSchema>;
 
-/**
- * The whole projection, served in one document.
- *
- * Every registered workflow travels together because the surface's spine needs
- * the list and the payload is static registration metadata — there is no
- * per-workflow authority read to defer, and a second round trip to open a
- * neighbouring workflow would buy nothing.
- */
+/** The whole projection, served in one document; every registered workflow travels together because the surface's spine needs the list and the payload is static registration metadata. */
 export const WorkflowExplorerWireSchema = z.strictObject({
   wireVersion: DashboardWireVersionSchema,
   generatedAt: IsoInstantSchema,
@@ -632,10 +484,7 @@ export const WorkflowExplorerWireSchema = z.strictObject({
   if (new Set(ids).size !== ids.length) {
     context.addIssue({ code: "custom", path: ["workflows"], message: "workflow identities must be unique" });
   }
-  // The same refusal the bootstrap wire makes (D219): a harness whose `of` is
-  // not a composition in THIS document leaves the one grouping rule with a
-  // parent it cannot find. The composition root already refuses that shape at
-  // load; this is the wire declining to describe a nesting nothing could draw.
+    // Harness parents must be compositions in this document or nesting is unrenderable.
   const compositions = new Set(
     wire.workflows.filter(({ role }) => role.kind === "composition").map(({ id }) => String(id)),
   );
@@ -673,16 +522,9 @@ export const WorkflowExplorerWireSchema = z.strictObject({
 });
 export type WorkflowExplorerWire = z.infer<typeof WorkflowExplorerWireSchema>;
 
-/* ── the Explorer safe-edit protocol (D186/D283) ────────────────────────── */
+/* ── the Explorer safe-edit protocol ────────────────────────── */
 
-/**
- * One operator-authored presentation label.
- *
- * The value is deliberately narrower than an arbitrary string: surrounding
- * whitespace, non-normalized text and control characters are all refused at
- * the wire boundary so the atomic override never persists a value whose
- * visible form differs from the bytes the operator reviewed.
- */
+/** One operator-authored presentation label; deliberately narrower than an arbitrary string — surrounding whitespace, non-normalized text and control characters are all refused. */
 export const ExplorerPresentationLabelSchema = z.string().max(120).superRefine((value, context) => {
   if (value.trim() !== value || value.length === 0) {
     context.addIssue({ code: "custom", message: "Explorer presentation labels must be non-empty and already trimmed" });
@@ -711,11 +553,7 @@ export const ExplorerEditChangeSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("edit-data-fields"), fields: z.array(EditDataFieldSchema).min(1) }),
 ]);
 
-/**
- * A draft is always based on BOTH identities the running descriptor stamps
- * onto a run plus the presentation override revision the Explorer served.
- * Omitting any one would turn a stale review into a current mutation.
- */
+/** A draft is always based on BOTH identities the running descriptor stamps onto a run plus the presentation override revision the Explorer served. */
 export const ExplorerEditDraftSchema = z.strictObject({
   draftVersion: z.literal(1),
   workflowId: WorkflowIdSchema,
@@ -731,12 +569,7 @@ const ExplorerEditReasonSchema = z.string().min(1).max(500).refine(
   "operator reason must already be trimmed",
 );
 
-/**
- * The durable Explorer apply identity. This is intentionally the complete
- * strict command envelope rather than a command id plus a derived draft: a
- * crash replay may not change WHO requested the reviewed mutation, where it
- * came from, when it was requested, why, or any reviewed CAS basis.
- */
+/** The durable Explorer apply identity: the complete strict command envelope rather than a command id plus a derived draft, so a crash replay may not change WHO requested the mutation. */
 export const ExplorerEditApplyRequestSchema = z.strictObject({
   commandId: CommandIdSchema,
   requestedAt: IsoInstantSchema,
@@ -798,14 +631,7 @@ export const ExplorerSemanticDiffEntrySchema = z.strictObject({
   after: z.string(),
 });
 
-/**
- * The source-authored compile surface a presentation-only edit leaves byte-identical.
- *
- * `held` is deliberately not `passed`: validate does not run Vitest inside the BFF. It
- * re-derives the live factory/schema/graph registry facts and binds them to the exact
- * descriptor fingerprint, while a source change below explicitly requires the complete
- * source-authored gate family to run again.
- */
+/** Held compile bytes are not passed validation; live registry facts must be re-derived. */
 export const ExplorerCompileAttestationSchema = z.strictObject({
   attestationVersion: z.literal(2),
   workflowId: WorkflowIdSchema,

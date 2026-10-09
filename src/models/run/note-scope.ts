@@ -1,33 +1,4 @@
-/**
- * The `notes/` partitions ONE run's log lines may occupy — the ONE function the
- * logs READER opens partitions with and every note PRODUCER asserts against
- * (ref dashboard-surfaces §2.1, D5 audit P3).
- *
- * `notes/` is partitioned append-at-now: the writer files a line under
- * `localDatePart(clock.now())` at the moment of the write
- * (`src/backend/storage/events/note-jsonl-writer.ts`). The reader cannot afford to open
- * every day of every workflow to serve one run's thirteen lines, so it opens a
- * WINDOW composed from the run's durable instants — and nothing but this module
- * binds the two halves together. A note filed outside the window the reader
- * would open is a line that exists on disk and can never be served: the silent
- * drop this repository forbids.
- *
- * So the contract is structural rather than a comment. The scope arithmetic
- * lives here once; the reader composes its instants as a SUPERSET of the ones
- * `runRecordNoteScopeInstants` derives from authority alone (it adds the span
- * fold's), and a producer asserts against the authority-only scope. A minimum
- * over a superset can only be smaller and a maximum only larger, so the
- * producer's scope is contained in the reader's by construction — a note the
- * assertion admits is a note the reader opens the partition for. Authority's
- * `updatedAt` only moves forward, so the reader's window only widens with time;
- * it can never retreat past a note already admitted.
- *
- * The window is composed from DURABLE instants rather than from the wall clock,
- * because "now" is not a fact about the run and would re-widen the scope for
- * every old run an operator opens. An instant that cannot be parsed fails loud:
- * skipping a partition on the strength of a timestamp nobody could read is how
- * a run's real history gets reported as absent.
- */
+/** The `notes/` partitions one run's log lines may occupy: structural scope arithmetic that keeps a note the reader would never open from being written. */
 import { z } from "zod";
 import { localDatePart } from "../../rules/time/clock.js";
 import type { RunRecord } from "./record.js";
@@ -40,12 +11,7 @@ export const RunNoteScopeInstantSchema = z.strictObject({
 });
 export type RunNoteScopeInstant = z.infer<typeof RunNoteScopeInstantSchema>;
 
-/**
- * The `(workflow, date-range)` partition selection — structurally the
- * `EventStreamScope` the reader hands `readScopedEventStreamLines`, restated in
- * `domain` so that a note PRODUCER (which lives above `infra`) can compute the
- * same value without importing the stream reader.
- */
+/** The `(workflow, date-range)` partition selection, restated so a note producer can compute it without importing the stream reader. */
 export const RunNotePartitionScopeSchema = z.strictObject({
   workflow: z.string().min(1),
   /** Inclusive `YYYY-MM-DD` lower bound on the partition date. */
@@ -55,25 +21,7 @@ export const RunNotePartitionScopeSchema = z.strictObject({
 });
 export type RunNotePartitionScope = z.infer<typeof RunNotePartitionScopeSchema>;
 
-/**
- * The margin on each end of a run's own activity window, and it is DELIBERATELY
- * asymmetric — the two ends carry different risks.
- *
- * **Below, none is needed.** A note is addressed to a run id, so it cannot have
- * been written before the run existed, and the window's lower end is the OLDEST
- * of the run's instants — its enqueue among them. A partition earlier than that
- * cannot hold a line about this run, so opening one would be reading for the
- * sake of it.
- *
- * **Above, one day.** A worker that writes its last note milliseconds after the
- * transition that closed the run files it on the NEXT day's partition when that
- * transition lands near midnight. One day covers that whole class; it is not a
- * guess at how long a straggler can lag, it is the width of the one boundary
- * the writer's clock and the run's last durable instant can fall either side
- * of. It stays until something durable records which partitions a run wrote —
- * a margin is the honest price of not having that fact, and the alternative is
- * a logs page that silently drops the last thing a run said.
- */
+/** The margin on each end of a run's activity window, deliberately asymmetric: none below, one day above the last durable instant. */
 export const NOTE_PARTITION_MARGIN_DAYS_BEFORE = 0;
 export const NOTE_PARTITION_MARGIN_DAYS_AFTER = 1;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -89,14 +37,7 @@ function instantMs(runId: string, instant: RunNoteScopeInstant): number {
   return parsed;
 }
 
-/**
- * The durable instants EVERY holder of a run record has — the half a producer
- * computes its scope from, and a strict subset of the reader's set.
- *
- * `createdAt` is the run's enqueue (the same fact the span fold names
- * `run.queued`), so the authority-only window is self-sufficient for a producer
- * that holds no projection.
- */
+/** The durable instants every holder of a run record has — the half a producer computes its scope from. */
 export function runRecordNoteScopeInstants(authority: RunRecord): readonly RunNoteScopeInstant[] {
   const instants: RunNoteScopeInstant[] = [
     { label: "authority createdAt", at: authority.createdAt },
@@ -129,16 +70,7 @@ export function runNotePartitionScope(input: {
   });
 }
 
-/**
- * The producer-side half of the contract: refuse, by name, a note whose
- * append-at-now partition falls outside the window the logs reader would open
- * for this run.
- *
- * `at` is the instant the note WILL be partitioned at — the writer's own
- * `clock.now()`, not the instant a caller would like it to have. Every producer
- * of a run-addressed note calls this before the append; the alternative is a
- * line on disk that the run's own logs tab can never show.
- */
+/** The producer-side half: refuse, by name, a note whose append-at-now partition falls outside the window the reader would open. */
 export function assertNoteWithinRunScope(
   authority: RunRecord,
   note: { readonly runId: string; readonly workflow: string; readonly at: Date },

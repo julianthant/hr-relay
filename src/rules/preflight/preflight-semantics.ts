@@ -1,11 +1,4 @@
-/**
- * Browser-safe semantic authority for preflight reports.
- *
- * This module names only the closed report identity, mandatory authority and
- * feature expansion rules. Runtime detectors, paths, secrets and runner
- * mechanics remain in `runtime-dependencies.ts`; that registry is audited
- * against these expectations instead of becoming a browser import.
- */
+/** Browser-safe semantic authority for preflight reports: the closed report identity, authority and feature expansion rules, with runtime mechanics kept in `runtime-dependencies.ts`. */
 import { z } from "zod";
 import { deepFreeze } from "../validation/immutability.js";
 
@@ -41,8 +34,6 @@ const PreflightCheckSemanticExpectationSchema = z.strictObject({
   mandatoryFor: RuntimeCapabilitySchema.array(),
 });
 export type PreflightCheckSemanticExpectation = z.infer<typeof PreflightCheckSemanticExpectationSchema>;
-
-
 
 const SystemIds = [
   "ucpath",
@@ -259,8 +250,7 @@ export function validatePreflightReportSemantics(report: PreflightReportSemantic
   }
 }
 
-/** An unqualified provider pass retains its existing meaning: every declared feature is available.
- * A partial provider pass explicitly narrows that promise; it never certifies an omitted feature. */
+/** A full pass certifies all declared features; a partial pass certifies only those listed. */
 export function providerSupportsFeature(
   availableFor: readonly (never)[] | undefined,
   feature: never,

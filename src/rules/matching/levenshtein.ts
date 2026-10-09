@@ -1,13 +1,4 @@
-/**
- * Iterative two-row Levenshtein distance. O(n*m) time, O(min(n,m)) space.
- * Pure utility — no domain knowledge.
- *
- * Ported VERBATIM from the legacy repository (D93 — copy with provenance,
- * never link): `legacy:src/services/matching/levenshtein.ts` at commit
- * `c5caad80`. Only the index-access style moved (`.charAt`/non-null reads)
- * to satisfy this tree's `noUncheckedIndexedAccess`; the algorithm is
- * byte-for-byte the same.
- */
+/** Iterative two-row Levenshtein distance: O(n*m) time, O(min(n,m)) space, pure utility with no domain knowledge, ported verbatim from the legacy implementation. */
 export function levenshteinDistance(a: string, b: string): number {
   if (a === b) return 0;
   if (a.length === 0) return b.length;

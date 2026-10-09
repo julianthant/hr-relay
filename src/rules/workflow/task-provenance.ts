@@ -4,15 +4,7 @@ import { SnapshotWorkflowValueReferenceSchema } from "../../models/workflow/oper
 import { OperationInputLineageSchema, OperationChildResultIdentitySchema, DeclaredActionIdentitySchema } from "../../models/workflow/operation-action-identity.js";
 export { DeclaredActionIdentitySchema } from "../../models/workflow/operation-action-identity.js";
 export type { DeclaredActionIdentity } from "../../models/workflow/operation-action-identity.js";
-/**
- * Task-execution provenance collection (refs task-contract/workflow-model, D115).
- *
- * `recordData` accepts only the small, strict point below. The executor-owned
- * collector adds the run/node/task identity and Clock timestamp, then refuses
- * to finalize a read whose output is not completely covered by the contract's
- * declared provenance policy. Log prose is never inspected and a missing
- * collector is not representable in `TaskCtxCommon`.
- */
+/** Finalize reads only when declared provenance covers the complete output. */
 import { z } from "zod";
 import { GateIdSchema } from "../identity/ids.js";
 import { JsonValueSchema } from "../validation/canonical-json.js";
@@ -58,11 +50,7 @@ export const TaskExecutionIdentitySchema = z.strictObject({
 });
 export type TaskExecutionIdentity = z.infer<typeof TaskExecutionIdentitySchema>;
 
-/**
- * The immediate source a declared browser field consumed.  A task-output or
- * transformation reference remains a navigable source reference; it never
- * pretends an older page observation is the later value actually entered.
- */
+/** The immediate source a declared browser field consumed; a task-output or transformation reference never pretends an older page observation is the later value entered. */
 export const ActionValueProducerSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("run-input"), path: ContractFieldPathSchema }),
   z.strictObject({ kind: z.literal("configuration"), key: ConfigurationReferenceKeySchema, schemaHash: FingerprintSchema }),
@@ -94,10 +82,7 @@ export const ActionValueProvenanceSchema = z.strictObject({
 });
 export type ActionValueProvenance = z.infer<typeof ActionValueProvenanceSchema>;
 
-/**
- * Identity for one completed declared driver gesture.  It is self-contained so
- * a retained note can be joined to its frozen structure without current code.
- */
+/** Identity for one completed declared driver gesture, self-contained so a retained note can be joined to its frozen structure without current code. */
 export const DeclaredActionOccurrenceSchema = DeclaredActionIdentitySchema.safeExtend({
   value: ActionValueProvenanceSchema.optional(),
 });
@@ -115,36 +100,14 @@ export const TaskProvenanceResultSchema = z.strictObject({
 });
 export type TaskProvenanceResult = z.infer<typeof TaskProvenanceResultSchema>;
 
-/**
- * Whole authority checkpoints supplied as evidence by the later executor.
- * The expected dependency ids deliberately do not live in this caller-owned
- * boundary: the collector resolves them from factory-authenticated descriptor
- * metadata and checks this evidence against that authoritative set.
- */
+/** Whole authority checkpoints supplied as evidence by the later executor; the collector resolves the expected dependency ids from factory-authenticated descriptor metadata. */
 export const TaskUpstreamCheckpointEvidenceSchema = z.strictObject({
   checkpoints: z.array(RunCheckpointRecordSchema),
   children: z.array(z.strictObject({ nodeId: NodeIdSchema, parentRunId: RunIdSchema, edgeId: DelegationEdgeIdSchema,
     result: RunResultRecordSchema, results: z.array(RunResultRecordSchema).max(16), checkpoints: z.array(RunCheckpointRecordSchema).max(256) })).max(16).optional(),
   /** A false descriptor condition, re-evaluated by the collector; no operator fact. */
   skippedGates: z.array(GateIdSchema).default([]),
-  /**
-   * A GATE dependency's durable evidence, which is not a checkpoint and never
-   * will be.
-   *
-   * A gate produces a `gate_results` row — an operator decision under the run's
-   * identity — not a `run_checkpoints` row, so a task that declares a gate as a
-   * dependency could not satisfy read-completion validation at all. The live
-   * chunk-3 run found that: the post-gate node refused with "declared dependency
-   * has no checkpoint record to hand to the provenance collector", which is a
-   * true statement about a record that cannot exist.
-   *
-   * The fix is D144's shape read again: the READER moves. A gate's row is
-   * admitted as its own kind of upstream evidence, contributing exactly one
-   * `operator`-sourced fact dated at `resolvedAt`. It contributes no output
-   * leaves, because a gate has none to date — what it dates is the DECISION.
-   * Fabricating a checkpoint row for it would have made a durable record claim
-   * a shape it does not have, which is what D144 refused.
-   */
+    /* A GATE dependency's durable evidence: a gate produces an operator decision, not a checkpoint row, so it is admitted as its own kind of upstream evidence contributing one `operator`-sourced fact. */
   gateResults: z.array(GateResultRecordSchema).default([]),
 }).superRefine((evidence, context) => {
   const checkpointNodes = new Set<string>();

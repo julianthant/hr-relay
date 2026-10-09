@@ -1,60 +1,13 @@
-/**
- * The roster match composition — ref data-intake-and-edit-data §4's scoring, REDESIGNED.
- *
- * Ref data-intake-and-edit-data §4 splits the port precisely: the confidence→tier mapping and the
- * name primitives carry legacy's live-verified knowledge (`match-confidence.ts`,
- * `name-match.ts`, each with provenance), while THIS composition — how EID
- * and name evidence combine into one per-subject verdict — is NEW code,
- * flagged as redesigned and re-verified against real rosters at the roster
- * migration (ref data-intake-and-edit-data §7's honest residual). It is pure: no I/O, no clock, so
- * the store task stays a thin edge and every arm pins in a unit test.
- *
- * The verdict rules, in order:
- *
- * 1. Subject carries an EID found in the roster → the EID is the key.
- *    - no subject name → matched on the EID alone (1.0; a roster EID is a
- *      unique key, and there is no name to disagree with);
- *    - names `same` → 1.0, `similar` → 0.9 (legacy's spelling-drift rule:
- *      same person, fix the spelling downstream);
- *    - every row with that EID reads `different` → `name-eid-conflict`,
- *      `matchedEid: null`, confidence 0. A conflicted identity is REFUSED,
- *      never scored partially — a number implying partial trust on a
- *      conflicting EID is how a wrong person gets paid.
- * 2. Otherwise the subject's name scores against every roster row that has a
- *    usable EID (`scoreNameMatch`, legacy's five tiers):
- *    - best < 0.85 (legacy's auto-accept floor) → `no-match`,
- *      `matchedEid: null`, confidence = best score — the near-miss number is
- *      honest evidence for the operator, and the caller falls through to
- *      person-lookup, NEVER a fabricated EID;
- *    - best ≥ 0.85 with MORE THAN ONE distinct EID tied at the top →
- *      `ambiguous`, `matchedEid: null` — a tie between people is an operator
- *      decision, not a coin flip;
- *    - best ≥ 0.85, one EID → matched. If the subject ALSO claimed an EID
- *      (one the roster does not contain), a name-matched DIFFERENT EID is a
- *      `name-eid-conflict`, not a silent override of what the subject wrote.
- * 3. A subject with neither name nor EID cannot be matched (the contract
- *    refuses it at parse; this module still answers `no-match` at 0 so the
- *    function is total).
- */
+// Refuse conflicting identity evidence; near misses require person lookup, never a fabricated EID.
 import { z } from "zod";
 import { EidSchema, ItemIdSchema, StableRecordIdSchema } from "../identity/ids.js";
 import { MatchConfidenceTierSchema, matchConfidenceTier } from "./match-confidence.js";
 import { classifyNameSimilarity, scoreNameMatch } from "./name-match.js";
 
-/**
- * Legacy's auto-accept floor for a name-only roster match — ported fact, not
- * a new choice: `legacy:src/services/matching/match.ts` at `ab9ab5ab`
- * ("Auto-accept threshold for roster matching is 0.85").
- */
+/** The auto-accept floor for a name-only roster match — a ported fact, not a new choice. */
 export const ROSTER_ACCEPT_THRESHOLD = 0.85;
 
-/**
- * Who a subject is to its caller: an intake row (`ItemId`) or an admitted
- * OCR record (`StableRecordId`). Ref data-intake-and-edit-data §4's sketch named a `StableItemId`
- * that was never built; the union of the two REAL identities is the as-built
- * resolution (ref data-intake-and-edit-data §4, D163). The matcher never interprets it — it is
- * echoed back verbatim so the caller can correlate.
- */
+/** Who a subject is to its caller: an intake row or an admitted OCR record; the matcher never interprets it and echoes it back verbatim. */
 export const RosterSubjectIdSchema = z.union([ItemIdSchema, StableRecordIdSchema]);
 export type RosterSubjectId = z.infer<typeof RosterSubjectIdSchema>;
 
@@ -65,11 +18,7 @@ export const RosterMatchSubjectSchema = z.strictObject({
 });
 export type RosterMatchSubject = z.infer<typeof RosterMatchSubjectSchema>;
 
-/**
- * One roster data row after mapping + coercion. `eid`/`name` are `null` when
- * the cell was empty or failed its canonical coercion — the row stays in the
- * set (its OTHER field may still match) but can never emit what it lacks.
- */
+/** One roster data row after mapping + coercion; `eid`/`name` are `null` when the cell was empty or failed coercion, and the row stays but can never emit what it lacks. */
 export const RosterRowFactsSchema = z.strictObject({
   /** 1-based row number in the SOURCE file, for operator-legible diagnostics. */
   sourceRow: z.number().int().positive(),
@@ -148,9 +97,7 @@ function matchOneSubject(
   if (tiedEids.size > 1) return verdict(subject.subjectId, null, top.score, "ambiguous");
 
   if (subject.eid !== undefined && top.row.eid !== subject.eid) {
-    // The subject CLAIMED an EID the roster lacks, and the name points at a
-    // different one. Silently overriding what the subject wrote is exactly
-    // the wrong-person failure this program exists to prevent.
+    // Name evidence must not overwrite a conflicting subject-supplied EID.
     return verdict(subject.subjectId, null, 0, "name-eid-conflict");
   }
 

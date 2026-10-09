@@ -1,9 +1,4 @@
-/**
- * Historical v19 Explorer review/outbox storage shapes ONLY.
- * The immutable migration and stored record validation retain the DCC4
- * contract from 49c6206c. No command, query, or service consumes these shapes;
- * active Explorer edits use explorer.ts and the file-first override store.
- */
+/** Historical Explorer review/outbox storage shapes only, retained for migration and stored-record validation; no command, query or service consumes them. */
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { ContractFieldPathSchema } from "../task/task-contract.js";

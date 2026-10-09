@@ -1,61 +1,7 @@
-/**
- * Describe a commit contract's COMPLETION PROOF schema as a flat list of typed
- * fields, so ref write-safety §4.1's confirmed-present resolution can be composed by an
- * operator instead of only by the kernel (D245).
- *
- * ## Why this exists
- *
- * `resolvePresent` takes `payload.proof` as a `SchemaBoundCanonicalValue` and
- * refuses any proof whose `schemaHash` is not the commit contract's own. Until
- * this file existed the parked-write wire served neither the hash nor the
- * shape, so no client could compose either half — and the surface said so, in
- * as many words, with a disabled control. A proof is schema-bound BY
- * CONSTRUCTION, which is exactly why the answer is "serve the schema", not "let
- * the operator paste JSON": a free-text blob is a client authoring a durable
- * record about a real HR transaction with nothing but its own opinion of the
- * shape.
- *
- * ## What it will and will not describe
- *
- * It describes what the four commit contracts in this tree actually declare —
- * strict objects of literals, constrained strings, enums, integers, booleans,
- * and ONE level of nested strict object (`KualiSavedFinalizationProofSchema`
- * carries its twelve `fields` that way). Every other shape is REFUSED BY NAME
- * with the path and the zod type, and the caller serves that refusal to the
- * operator rather than a half-form. Two rules make that honest rather than
- * lazy:
- *
- *  - **An undescribable shape must never become a describable-looking one.**
- *    Guessing that an unrecognised leaf is "some string" would produce a form
- *    that composes a value the kernel then rejects — or worse, accepts.
- *  - **No arm is added before a producer needs it.** `optional`, `nullable`,
- *    arrays, unions and records have no producer among today's proof schemas,
- *    so they refuse by name; the day one appears, the refusal names it and the
- *    arm is built against a real shape rather than an imagined one.
- *
- * ## `serverOnlyRules` — the one honest half-measure
- *
- * A `.refine()` is a function; nothing can be transported to a browser that
- * would let a form re-check it. Two of the finalization's leaves carry one
- * (Kuali's blank-sentinel refusal, and the comments' no-padding rule). Such a
- * field is still described — refusing the whole contract over a rule the SERVER
- * enforces anyway would strand the arm — but it is flagged, so a surface can
- * say "the server checks more than this box does" instead of implying its own
- * green tick is the verdict. The kernel's parse is the authority either way;
- * client-side validation here is a courtesy that fails EARLY, never a gate.
- *
- * Zod's internal definition shape is read here, which is why this file lives in
- * `src/domain/validation/` beside `schema-path.ts` — the one directory that owns it.
- */
+/** Describe a commit contract's COMPLETION PROOF schema as a flat list of typed fields, so a confirmed-present resolution can be composed by an operator instead of only by the kernel. */
 import type { z } from "zod";
 
-/**
- * One leaf of a proof, addressed by the dot path it occupies in the proof
- * value. `fixed` is not an operator input: it is a literal the schema pins
- * (a discriminator like `kind`, or the `source` the contract declares its
- * proofs are read from), and a form that let the operator type it would be
- * offering a choice the schema does not have.
- */
+/** One leaf of a proof, addressed by its dot path; `fixed` is not an operator input — it is a literal the schema pins. */
 export type ProofShapeField =
   | { readonly kind: "fixed"; readonly path: string; readonly value: string | number | boolean }
   | {
@@ -148,9 +94,7 @@ function describeString(path: string, definition: { readonly [key: string]: unkn
         break;
       }
       case "custom":
-        // A `.refine()` cannot cross a wire. Described, and flagged — see the
-        // module header: refusing the whole contract over a rule the kernel
-        // enforces anyway would strand the arm this file exists to open.
+        // Describe refinements; the kernel enforces rules that cannot cross the wire.
         serverOnlyRules = true;
         break;
       default:
@@ -276,14 +220,7 @@ function describeObject(path: string, schema: z.core.$ZodType, depth: number): P
   return fields;
 }
 
-/**
- * The ordered field list of a proof schema, or a named reason it has none.
- *
- * Order is the schema's own declaration order, which is the order the contract
- * author wrote and therefore the order the page it describes reads in — there
- * is nothing better to sort by, and sorting alphabetically would scatter a
- * document's identity across its values.
- */
+/** The ordered field list of a proof schema, or a named reason it has none; order is the schema's own declaration order. */
 export function describeProofShape(schema: z.core.$ZodType): ProofShape {
   try {
     const fields = describeObject("", schema, 1);

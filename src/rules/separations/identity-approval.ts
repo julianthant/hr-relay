@@ -1,33 +1,4 @@
-/**
- * Separations identity authority: the typed operator result for a name-only
- * selection and the fold that either verifies supplied-EID evidence or consumes
- * that result — ref write-safety §14.4/§14.5.
- *
- * ## What the payload carries, and what it deliberately does NOT
- *
- * §14.4 draws the result with `approvedBy: ActorId` and `approvedAt: Instant`
- * on the payload. **They are not on the payload here, and the control is
- * STRONGER for it.** The command kernel writes a `GateResultRecord` whose
- * `resolvedBy` is `request.requestedBy` and whose `resolvedAt` is the kernel's
- * own `now`, in the same transaction that stores the result and resumes the run
- * (`src/backend/runs/command-kernel.ts`, `executeResolveGate`). A caller-supplied
- * `approvedBy` would be a CLAIM sitting next to that authority — schema-valid,
- * unverifiable, and free to disagree with it. D110/D114 settled this shape
- * already: "a schema-valid caller-built result is not authority." §14.6 risk 6
- * ("who approved is lost") is answered by the durable row, which is where
- * `explain run` and the receipt read it from.
- *
- * What the payload MUST carry is the thing only the approver knows: which EID
- * they chose, where they chose it from, and **the digest of the exact packet
- * they were looking at** (§14.5). That digest is the whole staleness mechanism.
- *
- * ## Rejection is a terminal failure, not a quiet stop
- *
- * §14.4: "`rejected` terminalizes the run; it never falls through to a write."
- * Here the rejection arm becomes a `FailureRecord` whose message names what the
- * operator saw — the packet's disagreements — because a rejection with no
- * reason recorded is indistinguishable from a run that died.
- */
+/** Separations identity authority: the typed operator result for a name-only selection and the fold that either verifies supplied-EID evidence or consumes that result. */
 import { z } from "zod";
 import { EidSchema, FingerprintSchema, type Fingerprint } from "../identity/ids.js";
 import { directIdentifierDisplay } from "../redaction/redaction.js";
@@ -89,12 +60,7 @@ export const ResolvedIdentitySubjectSchema = z.discriminatedUnion("authority", [
   VerifiedIdentitySubjectSchema,
 ]);
 
-/**
- * The literal tuple a contract's `errorCodes` needs, and the schema derived
- * FROM it — one source, both shapes. Written this way round because
- * `defineTaskContract` binds an exact readonly tuple, while every runtime check
- * wants the enum; deriving the tuple from the enum loses the literal types.
- */
+/** The literal tuple a contract's `errorCodes` needs, and the schema derived FROM it — one source, both shapes, so the literal types survive. */
 export const IDENTITY_APPROVAL_REFUSAL_CODES = [
   "identity-approval-rejected",
   "identity-approval-evidence-moved",
@@ -125,27 +91,7 @@ function choiceFor(packet: IdentityEvidencePacket, eid: string): IdentityApprova
   return packet.approvableEids.includes(EidSchema.parse(eid)) ? "manual" : undefined;
 }
 
-/**
- * The identity-authority check, run as a real node so every refusal has a
- * durable code. A supplied EID yields machine-verification authority only after
- * the packet and actual UCPath read-back agree. A name-resolved EID has no such
- * arm: it requires the stored operator result.
- *
- * Four things are checked and none of them is ceremony:
- *
- * 1. **The decision.** `rejected` refuses, naming the operator's reason and the
- *    disagreements the packet led with.
- * 2. **The digest** (§14.5). The packet is re-derived from the run's own stored
- *    outputs; an approval bound to different bytes approved something else.
- * 3. **The EID was SHOWN.** §14.4 allows a manually typed EID only when it has
- *    been "re-validated against a live read" — this chunk performs no second
- *    live read, so an EID the packet never displayed cannot be approved here.
- *    That is a narrower rule than §14.4's, and it is narrow in the safe
- *    direction: it refuses rather than filing against an unread person.
- * 4. **`chosenFrom` agrees with where the EID actually came from.** A label the
- *    packet contradicts would make the receipt state something false — the exact
- *    defect D197 found on the first live receipt.
- */
+/** The identity-authority check, run as a real node so every refusal has a durable code: the decision, the packet digest, that the EID was SHOWN, and that `chosenFrom` agrees. */
 export function verifyIdentityApproval(
   packetInput: IdentityEvidencePacket,
   result: IdentityApprovalResult | undefined,

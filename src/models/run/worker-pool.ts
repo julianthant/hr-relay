@@ -1,29 +1,4 @@
-/**
- * The worker POOL — the operator's declared worker count for ONE workflow, and
- * the CAS basis the spawn control needs (ref execution-and-sessions §11.5,
- * D269).
- *
- * `plan-worker-count` and `spawn-worker` target `{workflowId, expectedVersion}`
- * and, until this row existed, nothing in authority carried a version for that
- * target: `WorkerLeaseRecord.version` is ONE worker's row, so a frontend that
- * sent an `expectedVersion` would have been inventing the exact fact the CAS
- * exists to check — which is why there is no `+ Add workers` control. This
- * record is that fact. One row per workflow, keyed on the workflow id,
- * UPDATED under a version CAS (the design, not a weakened ledger — a pool is a
- * standing declaration, not a history), never deleted.
- *
- * A workflow with NO row is at version 0 and has declared nothing. That is a
- * legitimate CAS basis rather than a gap: the control sends `expectedVersion:
- * 0` and the first plan creates the row at version 1. Nothing seeds rows at
- * boot — a `desiredWorkers` nobody planned would be a fabricated operator
- * intent, and the runtime's composed single worker is a fact about the
- * PROCESS (P3's reconciliation), not about this table.
- *
- * `desiredWorkers` is a declaration; what is actually running is read from
- * the worker leases (§3). The two are kept apart for the reason the lease
- * separates `control` from `lifecycle`: a command writes what the operator
- * asked for, and only a worker writes what is true.
- */
+/** The worker POOL — the operator's declared worker count for ONE workflow, and the CAS basis the spawn control needs. */
 import { z } from "zod";
 import { ActorIdSchema, IsoInstantSchema, PositiveIntSchema, WorkflowIdSchema } from "../../rules/identity/ids.js";
 

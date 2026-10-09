@@ -1,27 +1,4 @@
-/**
- * `ucpath/verify-termination` — the `save-verify` READ-BACK at ref write-safety beat ⑥.
- *
- * It is a separate contract from the idempotency probe even though both return
- * the same verdict shape, because the kernel calls them at different beats for
- * different reasons: the probe runs at ① on its own read lease and may navigate
- * freely; the verifier runs immediately after the click and is the ONLY thing
- * that may turn a submitted wizard into `done`. A contract that pointed its
- * `verify` at the probe would be a verifier that never re-read.
- *
- * ## Every non-`present` verdict parks. That is the whole scenario set.
- *
- * | Scenario | Legacy | Here |
- * |---|---|---|
- * | **S51** submit times out, no banner, no confirmation | throws — "PeopleSoft's outcome is unknown, refusing to report success" | `unknown` ⇒ **park**. Legacy's best line, kept as a kernel state instead of a throw |
- * | **S52** submit confirmed, `T#` unreadable in 15 s | throws before Kuali finalization | `unknown` ⇒ **park**. The write may have landed; only an operator resolves it |
- * | **S50** submit produces an error banner | logged, empty `T#`, **Kuali still written blank** | `absent` ⇒ **park** (never `done`), and no downstream node runs |
- * | **S47** `Create Transaction` reports failure | same silent-risk path | refused in `prepare`, before any fence |
- * | **S53** any other exception | caught, screenshotted, **swallowed** | a structured failure; there is no blanket catch |
- *
- * The one thing this contract may never do is report success from a number
- * alone. `present` requires the `T…` **and** an approval status, because a
- * `Denied` transaction carries a perfectly well-formed number.
- */
+/** The `save-verify` READ-BACK: `present` requires the `T…` AND an approval status, and every non-`present` verdict parks. */
 import { EidSchema, ObservationIdSchema, taskId } from "../../../rules/identity/ids.js";
 import {
   UCPATH_SS_SMART_HR_DISPLAYED_NAME,

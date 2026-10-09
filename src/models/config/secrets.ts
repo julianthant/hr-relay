@@ -148,14 +148,10 @@ export function assertNoMigratedEnvironmentKeys(
   if (migrated !== undefined) throw migratedEnvironmentRefusal(migrated);
 }
 
-/**
- * D341: test-target inputs are no longer protected Settings. Their retired
- * environment names are refused by name with a distinct reason so an operator
- * is pointed at ignored `config/test-data.local.json`, never at Settings.
- */
+/** Test-target inputs are no longer protected Settings; their retired environment names are refused by name so an operator is pointed at the ignored private config. */
 const RETIRED_TEST_TARGET_ENVIRONMENT_KEY_SET: ReadonlySet<string> = new Set(RETIRED_TEST_TARGET_ENVIRONMENT_KEYS);
 export function retiredTestTargetEnvironmentRefusal(key: string): string {
-  return `retired test-target environment key ${key} is refused; test-target inputs live in config/test-data.local.json (D341), so remove it`;
+  return `retired test-target environment key ${key} is refused; test-target inputs live in config/test-data.local.json, so remove it`;
 }
 
 function registeredSecretSpec(name: SecretName): SecretSpec {
@@ -235,14 +231,7 @@ export function optionalSecret(
   return resolveSecretValue(name, source);
 }
 
-/**
- * D324: the production resolution environment for a composition that resolves
- * config — the ONE sanctioned environment after the host's primary display has
- * been established in it (`establishHostPrimaryDisplay`: a parent's published
- * value is kept, otherwise the injected probe runs once and its encoding is
- * published for every child process). This is the only environment WRITE in
- * the tree, and it lives here because this file is its only permitted owner.
- */
+/** The production resolution environment: the ONE sanctioned environment, after the host's primary display has been established in it. */
 export function hostAwareResolutionEnvironment(
   probe: HostDisplayProbe,
   env: NodeJS.ProcessEnv = process.env,
@@ -263,11 +252,7 @@ export function requireSecret(
   return value;
 }
 
-/**
- * D288's exact secret composition. The public generation must be configured
- * beside the key; neither value has a default, and the returned domain exposes
- * no key-reading operation.
- */
+/** The public generation must be configured beside the key; neither value has a default, and the returned domain exposes no key-reading operation. */
 export function requireActivityPersonPseudonymDomain(
   source: ProtectedSecretSource,
 ): ActivityPersonPseudonymDomain {
@@ -309,16 +294,7 @@ export function requireSecretFile(
   }
 }
 
-/**
- * The PUBLIC half of a WebAuthn credential, which is all an identity needs.
- * `credentialId` travels to the relying party in cleartext on every assertion
- * and `rpId` is the relying party's own name; the private key is never read
- * into the identity and never leaves this function. The file is Duo
- * Autopilot's own format (`duo-autopilot/src/background.js` `isValidCredential`:
- * one object, an array, or `{credentials: [...]}`), not one of this repo's
- * boundaries, so the two fields are read by type guard rather than by a zod
- * record that would have to be open to admit the secret fields beside them.
- */
+/** The credential file is Duo Autopilot's own format (one object, an array, or `{credentials: [...]}`), so its identity fields are read by type guard rather than an open record. */
 function isUnknownArray(value: unknown): value is readonly unknown[] {
   return Array.isArray(value);
 }
@@ -342,15 +318,7 @@ function webauthnCredentialIdentity(entry: unknown): Readonly<{ rpId: string; cr
   return { rpId, credentialId };
 }
 
-/**
- * D267 (ref execution-and-sessions §10.1): the IDENTITY of a credential file —
- * a SHA-256 over the sorted `(rpId, credentialId)` pairs it holds — resolved
- * through this module because it is the only permitted credential-file reader.
- * It is what the Duo ceremony lease is keyed on: per CREDENTIAL, never per
- * worker, system or profile. The digest carries no secret byte, and a file
- * whose identity cannot be resolved THROWS; it never yields a substitute key,
- * because a per-worker key is the unserialized behaviour wearing a lease's name.
- */
+/** The IDENTITY of a credential file — a SHA-256 over the sorted `(rpId, credentialId)` pairs it holds — resolved here because this module is the only permitted credential-file reader. */
 export function resolveSecretFileIdentity(
   name: SecretFileName,
   config: Config,
@@ -380,11 +348,7 @@ export function resolveSecretFileIdentity(
     .digest("hex"));
 }
 
-
-/** Closed worker bootstrap: OS lookup/home/temp/locale mechanics plus D324's display channel.
- * NODE_OPTIONS and arbitrary parent bindings are deliberately not process mechanics here.
- * The child admits provider keys from its own fixed .env.providers after launch.
- */
+/** Closed worker bootstrap: OS lookup/home/temp/locale mechanics plus the display channel; NODE_OPTIONS and arbitrary parent bindings are not process mechanics. */
 export const WORKER_PROCESS_MECHANIC_KEYS = Object.freeze(["PATH", "HOME", "TMPDIR", "TMP", "TEMP", "SystemRoot", "WINDIR", "COMSPEC", "PATHEXT", "LANG", "LC_ALL", "TZ"] as const);
 
 export function workerBootstrapEnvironment(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {

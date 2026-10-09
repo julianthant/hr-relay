@@ -1,9 +1,4 @@
-/**
- * The closed wire-status fold and its operator-facing words.
- *
- * This is browser-safe so a report caveat and the dashboard pills can share
- * one display vocabulary without making the domain contract import React.
- */
+/** The closed wire-status fold and its operator-facing words, browser-safe so a report caveat and the dashboard pills share one vocabulary. */
 import type { z } from "zod";
 import type { QueueStatusSchema } from "./projection.js";
 
@@ -48,11 +43,7 @@ export function displayStatusOf(status: QueueStatus): DisplayStatus {
   return WIRE_TO_DISPLAY_STATUS[status];
 }
 
-/**
- * The same closed vocabulary in sentence case. `waiting` keeps the operator's
- * established prose, while the parked arm keeps the pill's words in sentence
- * case. The exact pill label remains available from `DISPLAY_STATUS_LABELS`.
- */
+/** The same closed vocabulary in sentence case; the exact pill label remains in `DISPLAY_STATUS_LABELS`. */
 export function displayStatusProseLabelOf(status: QueueStatus): string {
   switch (displayStatusOf(status)) {
     case "queued": return "queued";

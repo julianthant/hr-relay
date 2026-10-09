@@ -1,34 +1,4 @@
-/**
- * The unified completion (fan-out / approval) contract — ref dashboard-surfaces §4, adopted into
- * ref workflow-model's descriptor as `completion`.
- *
- * This replaces the legacy `approveTo` / `approveDocumentTo` /
- * `completeDelegatedRun` trio with ONE typed program in two arms:
- *
- * - `staged-fanout` — the approval gate resolves into an ORDERED stage list.
- *   Stage N+1's derive receives the itemIds stage N **actually enqueued**, not
- *   the operator's selected set: a record filtered out by `eligible` is never
- *   enqueued and never reaches a later stage (ref dashboard-surfaces §4.1, as-built
- *   `approve.ts:306` / `oath.ts:455`).
- * - `complete-then-enqueue` — i9's shape: no approval gate exists, so there is
- *   nothing to approve; the enqueue happens at the prepare seam once the
- *   delegated run completes, and unsearchable pages become task-less
- *   display-only failed rows.
- *
- * Two shapes deliberately have NO program and are pinned as such by the guard:
- * oath-upload (a sibling born-at-upload subscriber, ref dashboard-surfaces §4.5) and verify
- * (in-run enrichment through child-run nodes, ref dashboard-surfaces §4.6).
- *
- * **Cross-spec borrowing is closed structurally (ref dashboard-surfaces §4.2).**
- * `defineCompletionProgram` returns a SEALED handle: its type exposes `mode` and
- * `gate` and nothing else, so `otherDescriptor.completion.stages[0].eligible` is
- * a type error rather than a convention. The one way back to the program is
- * `revealCompletionProgram`, which the composition root calls and a workflow
- * module may not (`descriptor-coverage` checks the call sites). Eligibility
- * predicates are first-class named exports minted by `definePredicate`, so two
- * workflows share a predicate by importing the same shared module — never by
- * fishing one out of another workflow's config.
- */
+/** The unified completion contract — ONE typed program in two arms, where a later stage receives the items the preceding stage ACTUALLY enqueued. */
 import { z } from "zod";
 import {
   ActorIdSchema,
@@ -48,11 +18,7 @@ import type { AnyWorkflowRef } from "./graph.js";
 
 /* ── the values a program's derives read ─────────────────────────────────── */
 
-/**
- * One extracted field. A closed `present`/`absent` union rather than an
- * optional string: "the extractor read an empty box" and "the extractor never
- * saw this field" must stay distinguishable at the boundary.
- */
+/** One extracted field: a closed `present`/`absent` union rather than an optional string, because "read an empty box" and "never saw this field" are different facts. */
 export const ExtractedFieldSchema = z.strictObject({
   key: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "extracted field key must be kebab-case"),
   value: z.discriminatedUnion("state", [
@@ -62,12 +28,7 @@ export const ExtractedFieldSchema = z.strictObject({
 });
 export type ExtractedField = z.infer<typeof ExtractedFieldSchema>;
 
-/**
- * A record admitted by extraction and shown in Review. `recordId` is minted at
- * admission from the source-artifact digest plus stable page/form identity, so
- * item identity can be derived from it without ever touching an array index or
- * a run id (ref dashboard-surfaces §4.1).
- */
+/** A record admitted by extraction and shown in Review; `recordId` is minted at admission from the source-artifact digest plus stable page/form identity, never an array index. */
 export const PreviewRecordSchema = z.strictObject({
   recordId: StableRecordIdSchema,
   sourceArtifactId: ArtifactIdSchema,
@@ -95,22 +56,14 @@ export const ApprovedDocumentSeedSchema = z.strictObject({
 });
 export type ApprovedDocumentSeed = z.infer<typeof ApprovedDocumentSeedSchema>;
 
-/**
- * The per-document stage's input. `perRecordItemIds` is the ACTUALLY-enqueued
- * set from the preceding record stage — the whole reason stages are ordered.
- */
+/** The per-document stage's input: `perRecordItemIds` is the ACTUALLY-enqueued set from the preceding record stage, which is the whole reason stages are ordered. */
 export const ApprovedDocumentSchema = z.strictObject({
   ...ApprovedDocumentSeedSchema.shape,
   perRecordItemIds: z.array(ItemIdSchema),
 });
 export type ApprovedDocument = z.infer<typeof ApprovedDocumentSchema>;
 
-/**
- * One member of a completed delegated run's plan, consumed by
- * `complete-then-enqueue` at the prepare seam. It carries its own `itemId`
- * because the plan is minted into the durable manifest before dispatch; the
- * person stage therefore derives input, never identity.
- */
+/** One member of a completed delegated run's plan, consumed at the prepare seam; it carries its own `itemId` because the plan is minted before dispatch. */
 export const MemberPlanEntrySchema = z.strictObject({
   recordId: StableRecordIdSchema,
   itemId: ItemIdSchema,
@@ -126,11 +79,7 @@ export type MemberPlanEntry = z.infer<typeof MemberPlanEntrySchema>;
 
 /* ── named predicates (ref dashboard-surfaces §4.2 mechanism 1) ──────────────────────────── */
 
-/**
- * A shared eligibility predicate. It exists as a named export in a shared
- * module so two workflows can agree on "signed with a resolved EID" without
- * either importing the other's configuration.
- */
+/** A shared eligibility predicate, a named export in a shared module so two workflows can agree on "signed with a resolved EID" without importing each other's configuration. */
 export interface NamedPredicate {
   readonly id: z.infer<typeof PredicateIdSchema>;
   readonly test: (record: PreviewRecord) => boolean;
@@ -208,11 +157,7 @@ export type CompletionProgram =
 const COMPLETION_REVEAL: unique symbol = Symbol("completion-program-reveal");
 export type CompletionRevealKey = typeof COMPLETION_REVEAL;
 
-/**
- * What a descriptor carries. `mode` and `gate` are the projection-visible facts
- * ref dashboard-surfaces reads; the stages, derives, and predicates are not structurally
- * reachable, which is what makes cross-spec borrowing a compile error.
- */
+/** What a descriptor carries; the stages, derives, and predicates are not structurally reachable, which is what makes cross-spec borrowing a compile error. */
 export interface SealedCompletionProgram<Program extends CompletionProgram> {
   readonly kind: "sealed-completion-program";
   readonly mode: Program["mode"];
@@ -229,12 +174,7 @@ export function revealCompletionProgram<Program extends CompletionProgram>(
 
 /* ── construction, with the stage chain proven at build ──────────────────── */
 
-/**
- * One sample per program arm. Without it "the derive typechecks" is a claim
- * about the shape of a function, not about the value it produces — and a bad
- * derive would surface as a durable failed approval at the first real upload
- * instead of at build.
- */
+/** One sample per program arm: without it "the derive typechecks" is a claim about the shape of a function, not about the value it produces. */
 export const CompletionProgramSampleSchema = z.discriminatedUnion("mode", [
   z.strictObject({
     mode: z.literal("staged-fanout"),
@@ -311,13 +251,7 @@ function proveCompleteThenEnqueue(
   program.then.to.input.parse(program.then.derive(sample.plan));
 }
 
-/**
- * Build a completion program, prove it against one sample, and seal it.
- *
- * The returned handle keeps `Program` exact — the concrete heterogeneous stage
- * tuple — so renaming a field on a target's input schema fails `tsc` at the
- * `derive` site rather than silently producing an unparseable child input.
- */
+/** Build a completion program, prove it against one sample, and seal it; the returned handle keeps the exact stage tuple, so a renamed field fails `tsc` at the derive site. */
 export function defineCompletionProgram<const Program extends CompletionProgram>(
   program: Program,
   sampleInput: z.input<typeof CompletionProgramSampleSchema>,
@@ -358,11 +292,6 @@ export const CompletionConsumptionSpecSchema = z.strictObject({
 });
 export type CompletionConsumptionSpec = z.infer<typeof CompletionConsumptionSpecSchema>;
 
-/**
- * A `display` coordinator is an operation row with no daemon task: its
- * `run.queued` carries `displayOnly`, no `run.claimed` follows, and completion
- * is the members-terminal rollup. Dependency edges are not created for it by
- * type, not by probing for a missing task row.
- */
+/** A `display` coordinator is an operation row with no daemon task: its `run.queued` carries `displayOnly` and completion is the members-terminal rollup. */
 export const CoordinatorPolicySchema = z.enum(["display", "task"]);
 export type CoordinatorPolicy = z.infer<typeof CoordinatorPolicySchema>;

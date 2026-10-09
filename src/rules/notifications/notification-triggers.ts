@@ -1,25 +1,4 @@
-/**
- * Ref dashboard-surfaces §2.6 + §10.4 (D79b/D86) and ref operator-trust §6 — the pure projection from a
- * durable server-side event onto the ONE notification row it owns.
- *
- * Three rules are structural here, not conventions:
- *
- *  1. **The trigger set is closed.** Ref dashboard-surfaces §2.6 names run failure, subject
- *     mismatch, open operator gate, unknown write outcome, storage
- *     degradation, stalled lease/outbox, failed backup, and ref operator-trust §6 adds the
- *     repeat-threshold and the verified-done receipt. D79b routes all of them
- *     onto seven `NotificationTrigger` keys; A46 adds the closed backfill-gap
- *     safety arm. This module owns that routing so no caller invents an eighth.
- *  2. **A notification message carries no free text.** Every event arm is ids,
- *     closed codes, and counts; the title/summary are composed from those.
- *     There is deliberately no `message: string` channel, because ref dashboard-surfaces §2.6
- *     forbids raw secrets and captured form contents in notification text and
- *     the only way to guarantee that is to give leakage nowhere to enter.
- *  3. **Dedupe identity excludes the occurrence.** The fingerprint covers what
- *     makes two firings "the same trigger" and never the instant, the attempt,
- *     or the count — otherwise every repeat would mint a row and ref dashboard-surfaces's "must
- *     not spam the inbox" would be unenforceable.
- */
+/** The pure projection from a durable server-side event onto the ONE notification row it owns; the trigger set is closed, so a concern that is not on the list is a new decision. */
 import { z } from "zod";
 import { canonicalJsonStringify } from "../validation/canonical-json.js";
 import {
@@ -38,11 +17,7 @@ import {
 import { NotificationRecordSchema, NotificationTriggerSchema } from "../../models/notifications/notifications.js";
 import { sha256Hex } from "../validation/sha256.js";
 
-/**
- * Ref dashboard-surfaces §2.6's "storage degradation, stalled lease/outbox, failed backup",
- * enumerated. A concern that is not on this list is not a notification — it is
- * a new decision.
- */
+/** The enumerated concerns — storage degradation, stalled lease/outbox, failed backup — and a concern that is not on this list is not a notification. */
 export const StorageHealthConcernSchema = z.enum([
   "disk-space",
   "wal-growth",
@@ -134,11 +109,7 @@ export const NotificationProjectionSchema = z.strictObject({
 });
 export type NotificationProjection = z.infer<typeof NotificationProjectionSchema>;
 
-/**
- * The identity two firings share when they are "the same trigger". Domain
- * separated and versioned so a later identity change is a visible migration
- * rather than a silent re-partition of the inbox.
- */
+/** The identity two firings share when they are "the same trigger": domain separated and versioned, so a later identity change is a visible migration. */
 export function deriveNotificationDedupeFingerprint(input: unknown): string {
   const event = NotificationTriggerEventSchema.parse(input);
   const identity = ((): Record<string, string> => {
@@ -173,11 +144,7 @@ export function deriveNotificationDedupeFingerprint(input: unknown): string {
   ));
 }
 
-/**
- * D79b's ratified routing: failed · gate-waiting · write-parked · repeating ·
- * storage → Ping; verified-done → Inbox only. `NotificationRecordSchema`
- * re-checks the pairing, so a wrong channel here fails at the boundary too.
- */
+/** The ratified routing, re-checked by the durable record, so a wrong channel here fails at the boundary too. */
 export function projectNotificationTrigger(input: unknown): NotificationProjection {
   const event = NotificationTriggerEventSchema.parse(input);
   const projection = ((): Omit<NotificationProjection, "dedupeFingerprint"> => {
@@ -260,12 +227,7 @@ export const NotificationDeliverabilitySchema = z.discriminatedUnion("state", [
 ]);
 export type NotificationDeliverability = z.infer<typeof NotificationDeliverabilitySchema>;
 
-/**
- * D79b: snooze suppresses DELIVERY and nothing else. Read state is not
- * consulted — a read row that fires again is unread again by the fold, and a
- * row the operator already read is not re-delivered because it does not fire.
- * There is no arm here that could return "do not record it".
- */
+/** Snooze suppresses DELIVERY and nothing else; read state is not consulted, and there is no arm that could return "do not record it". */
 export function notificationDeliverability(recordInput: unknown, nowInput: unknown): NotificationDeliverability {
   const record = NotificationRecordSchema.parse(recordInput);
   const now = Date.parse(IsoInstantSchema.parse(nowInput));

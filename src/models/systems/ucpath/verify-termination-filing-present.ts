@@ -1,8 +1,4 @@
-/**
- * Freshly prove that the exact durable UCPath filing still exists before a
- * Kuali finalization may cite it. This read never files or repairs anything;
- * its output is authority only for the downstream Kuali precondition.
- */
+/** Freshly prove that the exact durable UCPath filing still exists before a Kuali finalization may cite it; this read never files or repairs anything. */
 import { taskId, ObservationIdSchema } from "../../../rules/identity/ids.js";
 import { TerminationReceiptSchema } from "../../../rules/separations/termination-receipt.js";
 import {

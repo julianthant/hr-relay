@@ -1,7 +1,4 @@
-/**
- * The strict provenance vocabulary crosses server-resolved config and browser
- * Settings wires. Resolver implementation stays server-only.
- */
+/** The strict provenance vocabulary carried by both server-resolved config and browser Settings wires; resolver implementation stays server-only. */
 import { z } from "zod";
 
 export const ConfigProvenanceSchema = z.enum(["settings", "default"]);

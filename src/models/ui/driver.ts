@@ -11,15 +11,7 @@ import type { Fingerprint, PositiveInt } from "../../rules/identity/ids.js";
 
 declare const mutationCapabilityBrand: unique symbol;
 
-/**
- * Created only by the fenced write sequencer (Phase 1f). The brand symbol is
- * declare-only, so the TYPE cannot make a token unforgeable — the runtime
- * registry in `src/base/mutation-capability.ts` does, through a module-private
- * WeakSet. That registry lives outside `domain` for two reasons: minting needs
- * a type assertion, which no domain boundary source may contain, and the
- * VERIFIER has to be callable from a `stores/**` driver before its click,
- * which the layer matrix forbids reaching into `core` for.
- */
+/** Created only by the fenced write sequencer; the brand symbol is declare-only, so the runtime registry in `mutation-capability.ts` makes a token unforgeable through a module-private WeakSet. */
 export type MutationCapability = Readonly<{
   intentGeneration: PositiveInt;
   bindingDigest: Fingerprint;
@@ -56,7 +48,7 @@ export interface SystemDriver<
   click(id: Clicks): Promise<UiActionProof>;
 }
 
-/** Phase 1f may implement this only after runtime-minted token validation exists. */
+/** Implementable only after runtime-minted token validation exists. */
 export interface CommitCapableSystemDriver<Commits extends ElementId = never> {
   commit(id: Commits, capability: MutationCapability): Promise<UiActionProof>;
 }

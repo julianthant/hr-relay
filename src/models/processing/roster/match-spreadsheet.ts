@@ -1,34 +1,4 @@
-/**
- * `roster/match-spreadsheet` — ref data-intake-and-edit-data §4's roster match contract.
- *
- * One dataset matched against another: the caller's subjects (intake rows or
- * admitted OCR records) against an operator-mapped roster spreadsheet,
- * producing one per-subject verdict with confidence, tier, and a FIRST-CLASS
- * mismatch field. A match the roster cannot make is `matchedEid: null` +
- * `mismatch: "no-match"` — the caller then falls through to person-lookup,
- * never a fabricated EID (ref data-intake-and-edit-data §7 vector #7).
- *
- * As-built deviations from ref data-intake-and-edit-data §4's sketch, recorded under D163:
- * - `subjectId` is the union of the two REAL caller identities (`ItemId` |
- *   `StableRecordId`) — the sketch's `StableItemIdSchema` was never built;
- * - the output is wrapped (`{ matches: [...] }`) so the one array leaf has a
- *   named field path for provenance and the shape can grow without a
- *   breaking re-parse;
- * - `readAt` joins the input (the canonical cell coercers demand the
- *   observation instant so a replayed match coerces exactly as the original
- *   did — the same rule intake validation follows), and `sheet` joins it for
- *   multi-worksheet roster files (same semantics as `extraction/
- *   extract-spreadsheet`);
- * - `mapping-mismatch` and `no-eid-column` join the error codes: a mapping
- *   that does not fit these exact bytes, and a mapping with no EID binding,
- *   are distinct refusals worth naming — shoehorning either into
- *   `roster-unreadable` would hide what the operator must fix.
- *
- * Freshness is a FINITE 24h (ref data-intake-and-edit-data §4, resolved 2026-07-22): a roster match
- * may feed a WRITE (an OnBase upload keyed on the matched EID), and a stale
- * match must not silently ride into that write on resume. A consuming
- * workflow may narrow it, never widen it without a reviewed policy change.
- */
+/** Unmatched roster subjects retain no-match and null EID, never fabricated identity. */
 import { z } from "zod";
 import { ArtifactRefSchema } from "../../artifacts/artifacts.js";
 import { CANONICAL_FIELDS } from "../../fields/registry.js";
@@ -42,7 +12,7 @@ import { defineTaskContract } from "../../task/task-contract.js";
 
 export const RosterMatchSubjectInputSchema = z.strictObject({
   subjectId: RosterSubjectIdSchema,
-  /** Composed from the canonical field registry by identity (D147). */
+  /** Composed from the canonical field registry by identity. */
   name: CANONICAL_FIELDS.fullName.schema.optional(),
   eid: CANONICAL_FIELDS.eid.schema.optional(),
 }).refine(

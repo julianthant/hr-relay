@@ -1,19 +1,4 @@
-/**
- * `workflow:separations/verify-termination-receipt` — §4c's receipt PAIR, read
- * as a decision rather than carried as a value.
- *
- * §5 item 2: the UCPath termination's receipt is the pair
- * `(transactionNumber, approvalStatus)`, **never the number alone**, because a
- * **Denied** transaction carries a perfectly well-formed `T…` (D130, live
- * `T002204014`). §9.11 recorded that binding both belongs to the composition,
- * because the composition is the only graph that holds the termination's result
- * AND the Kuali write that consumes it.
- *
- * This node is the consequence: it stands between the two transactions and
- * refuses to hand the finalization a number that records a termination UCPath
- * did not put into effect, a number about a different person, or one about a
- * different effective date.
- */
+/** Require a receipt proving effective termination for this subject and date. */
 import { z } from "zod";
 import { EidSchema, taskId } from "../../../rules/identity/ids.js";
 import {

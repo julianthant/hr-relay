@@ -1,12 +1,4 @@
-/**
- * `crm/read-onboarding-dates` — the optional dates step behind
- * person-lookup's `includeCrmDates` flag (ref workflow-model §8).
- *
- * Each date is an explicit present/absent arm rather than an optional string.
- * A blank start date and an unrecorded start date look identical once flattened,
- * and the difference decides whether an operator chases the record or the
- * person.
- */
+/** The optional dates step behind person-lookup's `includeCrmDates` flag; each date is an explicit present/absent arm, because a blank and an unrecorded date look identical once flattened. */
 import { z } from "zod";
 import { DateOnlySchema, EidSchema, ObservationIdSchema, taskId } from "../../../rules/identity/ids.js";
 import { ContractFieldPathSchema, defineTaskContract } from "../../task/task-contract.js";

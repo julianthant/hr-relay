@@ -1,17 +1,4 @@
-/**
- * `ucpath/search-person-org` — ref task-contract §9.1's contract, consumed verbatim by
- * ref workflow-model §8's person-lookup graph.
- *
- * The selection is a discriminated union, not "a candidate or null with a
- * status beside it". Resolved, ambiguous, and not-found are three different
- * outcomes with three different downstream consequences, and a shape that lets
- * `selected: null` coexist with `status: "resolved"` is a shape where a caller
- * can act on a person nobody chose.
- *
- * `not-found` is a genuinely valid expected state — a search that returns no
- * rows really did succeed — so it is an outcome, not a throw. Ambiguity is
- * likewise an outcome, and one nothing downstream may auto-resolve.
- */
+/** A discriminated union, not "a candidate or null with a status beside it": resolved, ambiguous and not-found are three outcomes, and ambiguity is one nothing downstream may auto-resolve. */
 import { z } from "zod";
 import { EidSchema, taskId } from "../../../rules/identity/ids.js";
 import { defineTaskContract } from "../../task/task-contract.js";
@@ -73,9 +60,7 @@ export const SearchPersonOrg = defineTaskContract({
   input: SearchPersonOrgInputSchema,
   output: SearchPersonOrgOutputSchema,
   errorCodes: ["search-unavailable", "unexpected-page-state"],
-  // The search IS the identity-resolution step, so there is no prior subject to
-  // bind against: the by-name arm has no EID to expect, and requiring one would
-  // force every caller to already know the answer.
+  // Name search resolves identity; it cannot require an already-known EID.
   subject: { kind: "none", reason: "the person search resolves identity rather than confirming it" },
   freshness: {
     // Person/org rows change on HR action, not continuously; four hours is short
@@ -154,9 +139,7 @@ export const SearchPersonOrg = defineTaskContract({
     "person-lookup/happy-by-eid",
     "person-lookup/ambiguous-name",
     "person-lookup/not-found",
-    // The drill-back subject check is this contract's own behaviour: a detail
-    // page displaying a different EID never becomes a candidate. It mirrors
-    // `person-lookup/crm-subject-mismatch` on the two CRM read contracts.
+    // Reject drill-back details whose EID differs from the selected row.
     "person-lookup/ucpath-drill-subject-mismatch",
   ],
   example: {

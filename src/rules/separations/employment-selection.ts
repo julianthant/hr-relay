@@ -1,44 +1,4 @@
-/**
- * **S23/S24, decided** — which employment row a separation is filed against.
- *
- * ## Why this refuses where chunk 3 reports
- *
- * `separations-identity-check` deliberately does NOT decide "already
- * terminated": it reports the whole grid and its classification, *"whether a
- * person with no active job should be separated anyway is a question for the
- * human at the gate."* That is right for a workflow whose product is an approved
- * subject and that files nothing.
- *
- * The composition files. A UCPath termination needs ONE `Empl Record` number,
- * and a Kuali finalization needs ONE payroll title code and title — so a grid
- * this fold cannot reduce to one row is a run that cannot compute what it is
- * about to write. It therefore refuses BEFORE the gate opens, which is chunk 4's
- * argument for `termination-type` and chunk 5's for `department-option` applied
- * a third time: a refusal the operator cannot act on should not cost them a
- * decision first. The classification the operator DOES see at the gate still
- * carries every row, so nothing is hidden — the fold only decides whether there
- * is a single row to file against.
- *
- * ## Exactly one active row, or refuse. That is legacy's rule too.
- *
- * Legacy throws on "all rows Terminated" and on "2+ non-terminated rows"
- * (`legacy:src/systems/ucpath/job-summary.ts:278-292` @ `1bffbd65…`, and D201
- * records that it only computes them when the search happened to render a
- * multi-row grid). This fold computes them unconditionally from
- * `classifyJobSummary`, which is D201's whole point. Legacy's other half —
- * "pick the effective-dated row at or before the separation date" — is NOT
- * ported: it is a tiebreak for a case legacy also throws on, and inventing a
- * date-based picker for concurrent employments would be deciding which of a
- * person's two jobs to end. A real concurrent case is a §3.1 recomposition.
- *
- * ## The consumer that NEEDS a cell is the one that refuses (D201)
- *
- * The payroll title code and title are staged into a live Kuali document, so an
- * unreadable one refuses HERE, by name. The Dept ID and Department cells travel
- * onward AS CELLS — `match-department-option` already owns their refusal
- * (`department-code-unreadable`), and duplicating it would give one fact two
- * durable codes.
- */
+/** Which employment row a separation is filed against: exactly one active row or refuse, computed unconditionally from the grid classification, while the operator still sees every row at the gate. */
 import { z } from "zod";
 import type { UcpathJobRow } from "../../models/ui/ucpath-job-summary.js";
 import { UcpathJobCellSchema } from "../../models/ui/ucpath-job-summary.js";
@@ -49,15 +9,15 @@ import {
 import { classifyJobSummary } from "./job-summary-classification.js";
 
 export const EMPLOYMENT_SELECTION_REFUSAL_CODES = [
-  /** No row is active — S21/S22. There is no employment to end. */
+  /** No active employment remains to end. */
   "no-active-employment",
-  /** Two or more active rows — S23. Which job is being separated is not derivable. */
+  /** Multiple active rows cannot identify the job to end. */
   "concurrent-active-employments",
-  /** At least one row's HR status is outside the ported vocabulary. */
+  /** HR status falls outside the accepted vocabulary. */
   "indeterminate-employment-status",
-  /** The active row's Job Code is blank or cannot be staged into Kuali (S24). */
+  /** The active Job Code is blank or cannot be staged. */
   "payroll-title-code-unreadable",
-  /** The active row's Job Title is blank or cannot be staged into Kuali (S24). */
+  /** The active Job Title is blank or cannot be staged. */
   "payroll-title-unreadable",
 ] as const;
 export const EmploymentSelectionRefusalCodeSchema = z.enum(EMPLOYMENT_SELECTION_REFUSAL_CODES);

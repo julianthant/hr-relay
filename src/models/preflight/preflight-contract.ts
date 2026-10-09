@@ -1,9 +1,4 @@
-/**
- * Browser-safe names shared by preflight registry metadata, command results,
- * and dashboard wire schemas. The executable registry deliberately lives in
- * `runtime-dependencies.ts`; importing an id must not import its server-only
- * environment, secret, or filesystem inspectors.
- */
+/** Browser-safe names shared by preflight registry metadata, command results and dashboard wire schemas; the executable registry lives in `runtime-dependencies.ts`. */
 import { z } from "zod";
 import { InstanceSelectionSchema } from "../run/envelope.js";
 import {
@@ -56,11 +51,7 @@ function duplicateValues(values: readonly string[]): readonly string[] {
   }))];
 }
 
-/**
- * The browser receives the exact report bytes but cannot compose the runtime
- * registry that gives those bytes their semantic authority. Keep structural
- * strictness here and layer registry validation in `preflight.ts` on the server.
- */
+/** The browser receives the exact report bytes but cannot compose the runtime registry; structural strictness stays here and registry validation layers on the server. */
 export const PreflightReportWireSchema = z.strictObject({
   configFingerprint: FingerprintSchema,
   descriptorFingerprint: FingerprintSchema.optional(),

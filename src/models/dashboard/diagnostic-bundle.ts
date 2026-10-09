@@ -1,11 +1,4 @@
-/**
- * The browser-safe read model for one D137 diagnostic bundle.
- *
- * This is deliberately not the durable `DiagnosticBundle` schema. The durable
- * row includes provenance the dialog does not need, while this wire names the
- * exact stored attachment identities and the capture-time redaction facts the
- * operator needs to assess an exported manifest.
- */
+/** The browser-safe read model for one diagnostic bundle: the exact stored attachment identities and capture-time redaction facts, without the durable row's provenance. */
 import { z } from "zod";
 import {
   ArtifactIdSchema,
@@ -50,7 +43,7 @@ export const DiagnosticBundleWireSchema = z.strictObject({
   capturedAt: IsoInstantSchema,
   /** Sum of the attachment byte lengths recorded by the durable bundle. */
   byteSize: z.number().int().nonnegative(),
-  /** D137's content address, re-derived before this response is served. */
+  /** The content address, re-derived before this response is served. */
   contentDigest: FingerprintSchema,
   redaction: RedactionResultSchema,
   contents: z.array(DiagnosticBundleContentWireSchema).max(20),

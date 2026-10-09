@@ -34,9 +34,7 @@ export function deriveRunSummary(source: RunSummarySource, sourceGeneration: num
   return { ...summary, sourceDigest: RunSummarySchema.shape.sourceDigest.parse(runSummaryDigest(summary)) };
 }
 
-/** Versioned digest of contributing summary facts, excluding publication and heartbeat clocks.
- * This is only the derived read model's integrity boundary, never an archive/source proof.
- */
+/** Versioned digest of contributing summary facts, excluding publication and heartbeat clocks; only the derived read model's integrity boundary. */
 export function runSummaryDigest(summary: RunSummary): string {
   const {sourceDigest:_digest,sourceGeneration:_generation,updatedAt:_updatedAt,...facts}=summary;
   const lifecycle={...facts.lifecycle};

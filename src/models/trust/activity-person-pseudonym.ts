@@ -79,11 +79,7 @@ export interface ActivityPersonPseudonymDomain {
 
 const AUTHENTIC_ACTIVITY_PERSON_PSEUDONYM_DOMAINS = new WeakSet<object>();
 
-/**
- * The persistence authority accepts only a domain minted by the dedicated
- * HMAC factory. A structurally similar object could otherwise return any
- * caller-chosen 64-hex value while falsely claiming the reviewed derivation.
- */
+/** The persistence authority accepts only a domain minted by the dedicated HMAC factory; a structurally similar object could otherwise return any caller-chosen 64-hex value. */
 export function assertAuthenticActivityPersonPseudonymDomain(
   domain: ActivityPersonPseudonymDomain,
 ): void {
@@ -101,11 +97,7 @@ export function activityPersonPseudonymEvidenceKey(
   return `${runId}:${keyGeneration}`;
 }
 
-/**
- * D288's dedicated secret-backed HMAC domain. The key is captured inside this
- * closure and cannot be read back; only the public generation and keyed
- * pseudonym evidence cross the boundary.
- */
+/** The dedicated secret-backed HMAC domain: the key is captured inside the closure and cannot be read back; only the public generation and keyed pseudonym evidence cross. */
 export function createActivityPersonPseudonymDomain(input: unknown): ActivityPersonPseudonymDomain {
   const configured = ActivityPersonPseudonymDomainSecretSchema.parse(input);
   const keyBytes = Buffer.from(configured.keyHex, "hex");

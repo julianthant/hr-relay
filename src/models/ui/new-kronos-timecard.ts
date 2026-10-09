@@ -1,48 +1,4 @@
-/**
- * New Kronos (UKG Dimensions / WFD) — the two page visits the separations
- * timecard read touches, and the semantic vocabulary its driver resolves.
- *
- * TWO screens, therefore TWO tasks (D194 / ref task-contract §2.8): the **Employee Search
- * results** panel and the **Timecard**. Everything a run does on the timecard —
- * Go To, the subject proof, the range apply, the grid read — is one visit to
- * one page, because none of those steps can be re-entered without redoing the
- * whole navigation; doc `separations.md` §2.4's five-task draft predates the
- * extraction-width rule ratified later in the same document.
- *
- * Facts that shape every recipe below, each live-verified read-only on
- * **2026-08-12** against `https://ucsd-sso.prd.mykronos.com/wfd/home`:
- *
- *  - **The search panel renders in TWO contexts and the driver must probe both.**
- *    On a fresh home load it is inside `iframe[name^="portal-frame-"]` (the
- *    suffix is session-scoped — `portal-frame-172554836363` and
- *    `portal-frame-227531434843` in two sessions minutes apart). After a
- *    timecard navigation it renders TOP-LEVEL and the page has **no named
- *    frames at all**. Legacy learned this the hard way (`locator.fill: Timeout`,
- *    2026-06-18); it is re-confirmed here rather than inherited.
- *  - **A timeout is never a negative.** The genuine "no such employee" sentinel
- *    (`There are no items to display.`) surfaced in **548 ms** for EID
- *    `99999999`. Legacy waits 15 s and reports silence as `found:false`
- *    (**S35** / pattern D5); here silence is its own outcome and the task fails
- *    loud with that reason.
- *  - **The Go To button proves the SELECTION, not the click.**
- *    `#goToDropdownButton` resolves to exactly ONE node in whichever context
- *    hosts the panel and is `ng-disabled` until a slat is selected — verified
- *    live moving `Selected [0] → Selected [1]`. Enabled is the only evidence
- *    that Angular registered the pick.
- *  - **The timecard grid is VIRTUALIZED.** A 73-day window renders 51 date rows
- *    at `scrollTop: 0`. The driver scrolls and accumulates; the fold refuses a
- *    day set that does not cover the applied window (see
- *    `../kronos/separation-timecard.ts`).
- *  - **The applied range is proved by VALUE.** After Apply the period label
- *    reads `6/01/2026 - 8/12/2026`, so S40 is answered by parsing the label and
- *    comparing calendar days — not by legacy's "the label is different now".
- *
- * Every recipe is role- or id-anchored with no `.or()` chain and no `.first()`
- * on an ambiguous match: each one was counted live and resolves to exactly one
- * node. The one legacy recipe that did NOT (`timecard.payPeriodTriggerButton()`
- * matches both the icon button and `#_timeFrame`) is narrowed, and the
- * narrowing is recorded on the port.
- */
+/** New Kronos (UKG Dimensions / WFD) — the two page visits the separations timecard read touches, and the semantic vocabulary its driver resolves. */
 import { z } from "zod";
 import {
   EidSchema,
@@ -118,36 +74,23 @@ export const NEW_KRONOS_TIMECARD_RANGE_APPLIED = PageStateIdSchema.parse(
   "new-kronos.timecard.range-applied",
 );
 
-/**
- * The SUBJECT of every timecard read. `.emp-nav-id` is the timecard's own
- * identity header, and it is the wrong-person control S37 names: page-wide text
- * is forbidden here because the searched EID lingers in the search chrome, which
- * is exactly how legacy read one employee's punches onto another's separation.
- */
+/** The SUBJECT of every timecard read: `.emp-nav-id` is the timecard's own identity header, and page-wide text is forbidden because the searched EID lingers in the search chrome. */
 export const NEW_KRONOS_TIMECARD_DISPLAYED_EID = ObservationIdSchema.parse(
   "new-kronos.timecard.displayed-eid",
 );
 
 /** The employee-search input's own accessible name, used to prove the panel is up. */
 export const NEW_KRONOS_SEARCH_QUERY_LABEL = "Search by Employee Name or ID";
-/** The literal no-results sentinel, live-verified 2026-08-12. */
+/** The literal no-results sentinel. */
 export const NEW_KRONOS_NO_RESULTS_SENTINEL = "There are no items to display.";
-/**
- * The COMPLETE Go To option list, mapped live 2026-08-12 (§3.2 MAP EVERYTHING).
- * Recorded whole so a later migration knows what else that menu can reach;
- * this chunk uses only `Timecard`.
- */
+/** Preserve the complete observed menu; this operation uses only Timecard. */
 export const NEW_KRONOS_GO_TO_OPTIONS = Object.freeze([
   "Timecard",
   "Schedule",
   "People",
   "Reports",
 ] as const);
-/**
- * The COMPLETE pay-period dropdown option list, mapped live 2026-08-12.
- * This chunk uses none of them — it always applies an explicit custom range —
- * but the list is the raw material a later chunk would otherwise re-map.
- */
+/** Retain the observed options; this operation applies an explicit custom range. */
 export const NEW_KRONOS_PERIOD_OPTIONS = Object.freeze([
   "Previous Pay Period",
   "Current Pay Period",
@@ -183,24 +126,14 @@ export const NewKronosSearchCandidateSchema = z.strictObject({
 });
 export type NewKronosSearchCandidate = z.infer<typeof NewKronosSearchCandidateSchema>;
 
-/**
- * What one visit to the Employee Search results panel yields.
- *
- * FOUR states, deliberately distinct (S34/S35 — "the day the operator flags a
- * real special case, those are the values the new composition will be selected
- * on"): `resolved` — the queried EID is among the rendered rows; `no-match` —
- * rows rendered but none of them is this person; `no-results` — WFD's own
- * sentinel rendered, a REAL negative; `no-signal` — neither surfaced inside the
- * bound, which is "the check could not run" and never "this person is not
- * timekept here".
- */
+/** What one visit to the Employee Search results panel yields: FOUR states, deliberately distinct, so a run that could not search is never reported as a person who is not timekept. */
 export const NewKronosSearchReadSchema = z.discriminatedUnion("state", [
   z.strictObject({
     state: z.literal("resolved"),
     query: z.string().min(1),
     /** WFD's own `Total [N]` counter, verbatim as a number. */
     totalCount: z.number().int().nonnegative(),
-    /** Every rendered candidate, in render order — the D194 full surface. */
+    /** Every rendered candidate, in render order — the full surface. */
     candidates: z.array(NewKronosSearchCandidateSchema).min(1),
     /** The row whose employee id equals the queried EID. */
     matched: NewKronosSearchCandidateSchema,
@@ -258,7 +191,7 @@ export const NewKronosAppliedRangeSchema = z.strictObject({
   observedLabel: z.string().min(1),
   observedStart: TimecardDateSchema,
   observedEnd: TimecardDateSchema,
-  /** True only when the observed bounds are the requested calendar days (S40). */
+  /** True only when observed bounds equal the requested calendar days. */
   applied: z.literal(true),
 });
 export type NewKronosAppliedRange = z.infer<typeof NewKronosAppliedRangeSchema>;
@@ -299,16 +232,7 @@ const ReadSeparationTimecardOperationSchema = z.custom<(
   input: Readonly<{ employeeId: string; rangeStart: string; rangeEnd: string }>,
 ) => Promise<NewKronosTimecardRead>>((value) => typeof value === "function");
 
-/**
- * New Kronos's task-facing semantic surface.
- *
- * Two operations, one per page visit. Raw Playwright — the `portal-frame`
- * probe, the virtualized-grid scroll loop, the keystroke date entry — stays in
- * `stores/new-kronos/driver/interpreter.ts`; a task can reach neither.
- *
- * There is no `commit` and no `fill`: this store is read-only for the whole of
- * chunk 1, and adding a mutating operation is a separate, gated slice.
- */
+/** New Kronos's task-facing semantic surface; two operations, one per page visit. */
 export const NewKronosTimecardDriverSchema = z.strictObject({
   system: z.literal("new-kronos"),
   searchEmployee: SearchEmployeeOperationSchema,

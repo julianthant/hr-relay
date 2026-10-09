@@ -1,9 +1,4 @@
-/**
- * Cross-date run search: the strict browser/server contract over durable run
- * authority. Public declared subject names and authentic recorded actors are
- * explicit metadata. Raw inputs, private person IDs, row titles and artifact
- * content never enter the index or matching surface.
- */
+/** Cross-date run search: the strict browser/server contract over durable run authority; raw inputs, private person IDs, row titles and artifact content never enter the index. */
 import { z } from "zod";
 import {
   IsoInstantSchema,
@@ -24,7 +19,7 @@ export const CrossDateSearchScopeSchema = z.enum(["all", "run", "trace", "workfl
 export const CROSS_DATE_SEARCH_PAGE_LIMIT = 50;
 export const CROSS_DATE_SEARCH_QUERY_LIMIT = 160;
 
-/** Task 3.1.12: all registered/historical workflows and the closed supported metadata vocabulary. */
+/** Registered/historical workflows and supported metadata only. */
 export const CrossDateSearchWorkflowFacetSchema = WorkflowIdSchema;
 export const CrossDateSearchStateFacetSchema = z.enum(["queued", "claimed", "validating", "running", "parked-gate", "parked-write", "done", "failed", "cancelled", "discarded", "superseded", "interrupted"]);
 export const CrossDateSearchShapeFacetSchema = RunShapeSchema;
@@ -61,11 +56,7 @@ export const CrossDateSearchQuerySchema = z.strictObject({
 export type CrossDateSearchQuery = z.infer<typeof CrossDateSearchQuerySchema>;
 export type CrossDateSearchQueryInput = z.input<typeof CrossDateSearchQuerySchema>;
 
-/**
- * The current bounded corpus is a shared search contract, not a dashboard
- * branch. Browser surfaces consume this exact authority-shaped default without
- * carrying a registered workflow identity of their own.
- */
+/** The current bounded corpus is a shared search contract, not a dashboard branch. */
 export function currentCorpusSearchQuery(query: string): CrossDateSearchQueryInput {
   return {
     q: query.trim(),
