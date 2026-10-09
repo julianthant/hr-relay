@@ -127,7 +127,7 @@ async function unchanged(f: ReturnType<typeof fixture>) {
   return report.protectedSettings;
 }
 
-describe("D336 credential presence doctor", () => {
+describe("credential presence doctor", () => {
   it("reports every name and presence without a credential value or identity", async () => {
     const f = fixture();
     const record = writeCredentials(f, {
@@ -209,7 +209,7 @@ describe("D336 credential presence doctor", () => {
 });
 
 
-describe("D332 read-only upgrade phase reporting", () => {
+describe("read-only upgrade phase reporting", () => {
   it("projects baseline and each upgrade phase through doctor, browser wire and preflight without private journal payload", async () => {
     const f = fixture(55);
     const baseline = await doctorAuthorityStorage(f.options);

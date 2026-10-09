@@ -286,12 +286,7 @@ describe("semantic UI registry architecture", () => {
   });
 
   it("rejects New Kronos evidence whose timecard fact is rebound to the search screen or a search port", () => {
-    // Both halves of a New Kronos assertion are load-bearing, and each is
-    // asserted through the SAME entry point the green arm uses: the screen names
-    // which surface was actually observed, and the port-map rows name which
-    // legacy key the observation discharges. The timecard's subject observation
-    // is the one that matters most — it is the wrong-person control — so it is
-    // the fact both negative controls mutate.
+
     const wrongScreen = structuredClone(newKronosEvidenceBindingInput()) as {
       evidenceByRef: Record<string, { assertions: { semanticId: string; screen: string }[] }>;
     };
@@ -312,8 +307,7 @@ describe("semantic UI registry architecture", () => {
     portAssertion.portMapRows = [{ system: "new-kronos", legacyKey: "search.firstResultSlat()" }];
     assert.match(auditNewKronosUiEvidenceBindings(wrongPortRow).join("\n"), /assertion port-map rows drifted/);
 
-    // And a ported row whose canonical id is dropped must refuse rather than
-    // leave the element silently unbound.
+
     const missingBinding = structuredClone(newKronosEvidenceBindingInput()) as {
       portBindings: { legacyKey: string }[];
     };

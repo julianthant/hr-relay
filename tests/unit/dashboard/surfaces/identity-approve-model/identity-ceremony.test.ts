@@ -1,15 +1,4 @@
-/**
- * THE THREE IDENTITY-APPROVAL CEREMONIES (ref write-safety §14.6 risk 1, D226).
- *
- * The current separations gate fires for a name-resolved EID and uses the
- * typed-EID ceremony. The other server-shaped ceremonies remain strict wire
- * compatibility arms. The client must obey whichever shape was served; these
- * tests make every refusal explicit.
- *
- * The load-bearing assertions here are the REFUSALS. A composer that answered
- * where the server asked a question would be the exact rot §14.6 predicts, and
- * it would pass every other gate in the tree.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { CommandRequestSchema } from "../../../../../src/rules/commands/commands.js";
@@ -56,13 +45,7 @@ function jobRows() {
   ], 0)];
 }
 
-/**
- * A packet whose shape is DERIVED, never asserted.
- *
- * `deriveApprovalShape` is the server's own policy and these fixtures feed it
- * real inputs, so a change to that policy moves these tests rather than leaving
- * them agreeing with a stale constant.
- */
+
 function packetOf(input: {
   readonly documentName: string;
   readonly searchResolvesEid: string;
@@ -103,7 +86,7 @@ function packetOf(input: {
 const ONE_CLICK = packetOf({ documentName: "Hernandez, Jose Santos", searchResolvesEid: CHECKED });
 /** the name agrees, but a search on it resolves a DIFFERENT person */
 const CHOOSE = packetOf({ documentName: "Hernandez, Jose Santos", searchResolvesEid: NAME_SEARCH });
-/** the names do not match at all — S17's shape, and the riskiest one */
+/** Names that do not match. */
 const TYPE_EID = packetOf({ documentName: "Okonkwo, Adaeze", searchResolvesEid: NAME_SEARCH });
 
 function gateDetail(packet: IdentityEvidencePacket, overrides: Record<string, unknown> = {}): IdentityGateDetail {
@@ -118,10 +101,7 @@ function gateDetail(packet: IdentityEvidencePacket, overrides: Record<string, un
     resultSchemaHash: RESULT_SCHEMA_HASH,
     evidenceDigest: deriveIdentityEvidenceDigest(packet),
     packet,
-    // The SERVER's own mapping (`run-detail.ts`): the checked EID is `checked`,
-    // the one a name search resolved is `name-search`. A surface may not invent
-    // either label — the post-gate node re-derives it and refuses a
-    // contradiction as `identity-approval-choice-mismatch`.
+
     options: packet.approvableEids.map((eid) => ({
       eid: String(eid),
       chosenFrom: String(eid) === String(packet.emplId)
@@ -180,9 +160,7 @@ describe("identityCeremonyFor — the server names the ceremony (ref write-safet
   });
 
   it("REFUSES an approvalShape this build has no control for — it never falls back to one click", () => {
-    // A wire value can outrun a bundle: a server upgraded ahead of a browser
-    // tab serves a shape this build never compiled. Approving under a ceremony
-    // nobody implemented is §14.6 risk 1 with the server's own guard removed.
+
     const forged = { ...gateDetail(CHOOSE), approvalShape: "biometric-scan" } as unknown as IdentityGateDetail;
     const ceremony = identityCeremonyFor(forged, "approved");
     assert.equal(ceremony.kind, "unsupported");
@@ -218,8 +196,7 @@ describe("identityDraftProblem — the bounds, stated where the value is typed",
   it("asks for eight digits, and then for an EID THE PACKET SHOWED", () => {
     const ceremony = identityCeremonyFor(gateDetail(TYPE_EID), "approved");
     assert.match(identityDraftProblem(ceremony, { eid: "107792", reason: "" }) ?? "", /8-digit/);
-    // The narrow rule D202 #2 records: this chunk performs no second live read,
-    // so an EID nothing here looked at cannot be approved from here.
+
     assert.match(
       identityDraftProblem(ceremony, { eid: "99999999", reason: "" }) ?? "",
       /identity-approval-eid-not-shown/,
@@ -252,7 +229,7 @@ describe("identityDraftProblem — the bounds, stated where the value is typed",
   });
 });
 
-describe("composeCommandRequest — the three ceremonies reach the real command endpoint (D226)", () => {
+describe("composeCommandRequest — the three ceremonies reach the real command endpoint", () => {
   it("composes a CHOSEN candidate under the server's own chosenFrom label", () => {
     const detail = gateDetail(CHOOSE);
     const composed = composeCommandRequest(

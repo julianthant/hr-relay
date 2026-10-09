@@ -1,21 +1,5 @@
 // @vitest-environment jsdom
-/**
- * D308's ARCHIVE DELETE, PRESSED.
- *
- * The kernel's arm is proved against real authority in `archive-model.test.ts`;
- * this file proves the only half a kernel test cannot see — that an operator
- * can reach it, that they cannot reach it by accident, that the envelope
- * carries the digest the page actually read, and that the answer they get is
- * the answer the kernel gave.
- *
- * It mounts the real `ArchiveWorkspace` against a stub client and presses real
- * controls, for the reason `archive-bump-round-trip-press.test.ts` gives: the
- * standing rule that behaviour belongs to the parity lane is about PIXELS, and
- * "does the confirm gate the send" is not a pixel.
- *
- * Each case was run against a mutation of the line it pins; the mutation is
- * named in the case.
- */
+
 import assert from "node:assert/strict";
 import { act } from "react";
 import { type Root } from "react-dom/client";
@@ -54,13 +38,9 @@ Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
 /** The archived record's own digest — what the delete has to cite back. */
 
-/**
- * The kernel's own `schema-mismatch` sentence, shortened exactly as
- * `executeArchivedRunDelete` shortens it. It is the refusal both Archive doors
- * are built to produce: the record moved under the page that read it.
- */
 
-/** The ledger after the delete lands: the record this case removed is gone. */
+
+
 
 /** The same record, having filed one real write — the case the confirm warns about. */
 
@@ -77,7 +57,7 @@ afterEach(async () => {
 
 /* ── the copy ────────────────────────────────────────────────────────────── */
 
-describe("D308 — the archived delete's confirm copy", () => {
+describe("the archived delete's confirm copy", () => {
   it("names what leaves, what the released key costs, and that there is no undo", () => {
     const copy = archivedDeleteConfirm({ workflowLabel: "Person Lookup" });
 

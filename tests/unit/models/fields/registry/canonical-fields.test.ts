@@ -1,13 +1,4 @@
-/**
- * The per-cell coercion core (ref data-intake-and-edit-data §2.4) and the canonical field registry
- * (ref data-intake-and-edit-data §1), tested where they are dangerous: on the cells that LOOK
- * coercible.
- *
- * Every case below is one where a "best effort" implementation would have
- * produced a plausible wrong value on a live HR transaction — a rolled-over
- * calendar date, a guessed century, an Excel serial read as a day, an EID with
- * its punctuation stripped into a different person's number.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import {
@@ -70,19 +61,14 @@ describe("ref data-intake-and-edit-data §2.4 per-cell coercion", () => {
     assert.equal(coercionFailure("eid", "20456712").reason.includes("not a UCPath EID"), true);
   });
 
-  it("resolves a two-digit year against WHEN the value was read (D155)", () => {
-    // Real paper: detect-test.pdf page 5 is dated `11/3/21`, single-oath.pdf
-    // `4-23-26`. Both are the normal way these forms are filled in, and both
-    // were being refused while the extraction brief told producers to expect
-    // them.
+  it("resolves a two-digit year against WHEN the value was read", () => {
+
     assert.equal(parseUsOrIsoDate("11/3/21", REF), "2021-11-03");
     assert.equal(parseUsOrIsoDate("4-23-26", REF), "2026-04-23");
     assert.equal(coerceAndParse("signatureDate", "11/3/21"), "2021-11-03");
     assert.equal(coerceAndParse("signatureDate", "4-23-26"), "2026-04-23");
 
-    // The window: the 2000s reading unless it lands more than a year ahead of
-    // the observation. Read in 2026, `27` is next year's appointment; `28` is
-    // seventy years ago.
+    // Resolve two-digit years against observation time, allowing at most one year ahead.
     assert.equal(parseUsOrIsoDate("1/2/27", REF), "2027-01-02");
     assert.equal(parseUsOrIsoDate("1/2/28", REF), "1928-01-02");
     assert.equal(parseUsOrIsoDate("1/2/98", REF), "1998-01-02");
@@ -179,9 +165,7 @@ describe("ref data-intake-and-edit-data §1 canonical field registry shape", () 
   });
 
   it("carries every recognized legacy roster header as a suggestion alias", () => {
-    // These eight spellings are legacy `COLUMN_PATTERNS`; operator mapping
-    // replaces the regexes, but the knowledge they encoded must survive as
-    // suggestions rather than being lost.
+
     const owns = (id: (typeof CANONICAL_FIELD_IDS)[number], header: string): boolean =>
       CANONICAL_FIELDS[id].aliases.some((alias) => normalizeHeader(alias) === normalizeHeader(header));
     assert.equal(owns("eid", "UCPath ID"), true);

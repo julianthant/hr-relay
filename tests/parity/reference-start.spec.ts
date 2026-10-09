@@ -64,13 +64,7 @@ test.describe("separations start-run continuity", () => {
         await assertThemeApplied(page, theme satisfies ParityTheme);
 
         await expect(page.getByRole("dialog", { name: "Start a run", exact: true })).toContainText("New work · Separations");
-        // D296's negative control, and it belongs HERE because the picker
-        // opens on Person Lookup, which DOES declare an intake projection.
-        // Separations declares none, so its method set is a set of one and the
-        // strip is not drawn at all — the demo's own condition. A strip on this
-        // workflow would mean the door came from somewhere other than the
-        // served `spreadsheetIntake`, and it would offer an intake the kernel
-        // refuses by name.
+
         await expect(page.getByRole("tablist", { name: "How to start this run" })).toHaveCount(0);
         const typedDocument = page.getByPlaceholder(
           "Enter Kuali IDs, semicolon-separated (e.g. 4502; 4510)",
@@ -94,11 +88,7 @@ test.describe("separations start-run continuity", () => {
 
 
 
-        // D307 — the omission itself. Unchecking an omittable step draws the
-        // step folder's OWN declared form inline, and the run reads what is
-        // typed there instead of the step. Separations is the only workflow
-        // that declares omissions, and Kronos timecard is the one whose form
-        // has fields to photograph.
+
         await page.getByRole("checkbox", { name: "Kronos timecard" }).uncheck();
         await expect(page.getByText("5 / 6 included", { exact: true })).toBeVisible();
         await page.getByRole("textbox", { name: "Last day worked", exact: true }).fill("06/30/2026");

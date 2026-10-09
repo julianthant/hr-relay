@@ -9,23 +9,7 @@ import { seedSyntheticRuntimeConfig } from "../../../../../support/fixtures/oper
 import { HASH_B, UUID_4 } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
 import { WorkerControlRefusal } from "../../../../../../src/models/run/worker-control.js";
 import { RunRecordService } from "../../../../../../src/backend/runs/lifecycle/run-record-service.js";
-/**
- * W3 (ref execution-and-sessions §11, D271): the dashboard's REAL worker
- * process control, composed exactly as production composes it —
- * `composeWorkerProcessControl` over a real temp-file `AuthorityDatabase`,
- * wrapped by the real pool executor and adopted by the real command kernel's
- * async `executeWorkerPool` door. Only the process edges are fakes (the
- * spawner, the scheduler, the clock), so a pass here pins production wiring:
- *
- * - a spawn acknowledges ONLY after the child's own durable lease proves its
- *   pid (no journal row, no audit, no reply before process evidence);
- * - the graceful-stop channel writes the durable lease directive at EXACTLY
- *   the kernel command's `now` (the W1/W2 requestedAt==command-now pin);
- * - an externally started worker refuses end-to-end: no adoption, no
- *   directive written, no journal row;
- * - dashboard shutdown closes the supervisor after ingress and before the
- *   process lock releases, and still-live children reach the fault path.
- */
+
 import assert from "node:assert/strict";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -94,7 +78,7 @@ afterEach(async () => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-/* ── fakes at the process boundary (the W2 pattern) ──────────────────────── */
+
 
 class FakeWorkerChild implements SpawnedWorkerHandle {
   readonly pid: number | undefined;
@@ -136,11 +120,7 @@ interface ControlHarness {
 }
 
 interface ControlHarnessOptions {
-  /**
-   * Wraps the pool seam the kernel adopts — the hook a test uses to run an
-   * out-of-band authority write between the kernel's phases, exactly the way
-   * another process would land one.
-   */
+
   readonly interceptPool?: (
     pool: WorkerPoolRuntimeSeam,
     edges: Readonly<{ database: AuthorityDatabase; clock: TestClock }>,
@@ -182,14 +162,7 @@ function openControlHarness(options?: ControlHarnessOptions): ControlHarness {
       faults.push(error);
     },
   });
-  /**
-   * The alias-breaker: the manual wall clock ADVANCES before every
-   * directive-writing pool effect runs, so a channel (or a phase-C write)
-   * that stamps its own clock read instead of the command's own `now`
-   * produces a postdated instant the seam's guards must trip on. Without
-   * this, every requestedAt==command-now pin holds vacuously, because every
-   * clock read in the flow aliases to the same frozen instant.
-   */
+  // Advance the wall clock inside effects to catch timestamps recomputed after dispatch.
   const aliasBrokenPool: WorkerPoolRuntimeSeam = {
     ...control.workerRuntime.pool,
     stopPoolWorker: async (context) => {
@@ -235,9 +208,7 @@ function openControlHarness(options?: ControlHarnessOptions): ControlHarness {
         throw new Error("unused in this suite");
       },
     },
-    // EXACTLY what src/backend/app/composition/dashboard/compose.ts adopts: the pool executor
-    // over the composed supervisor, behind the explicit adoption wrapper —
-    // plus the test-only alias-breaking clock advance around the seam.
+
     workerRuntime: { pool },
     settings: {
       validateRequest: () => undefined,
@@ -303,11 +274,7 @@ function fireBirthPoll(harness: ControlHarness): void {
   for (const entry of harness.scheduler.pending()) entry.fire();
 }
 
-/**
- * The composed spawn happy path: submit through the kernel's pool door, let
- * the child "boot", prove its birth by writing the SAME durable lease the real
- * worker CLI writes, and tick the poll.
- */
+
 async function spawnPoolWorker(
   harness: ControlHarness,
   member: typeof MEMBER_1 = MEMBER_1,
@@ -459,8 +426,7 @@ describe("the composed worker process control through the kernel pool door", () 
     });
     await settleMicrotasks();
 
-    // The process was launched with the exact argv — but with NO birth
-    // evidence yet, nothing is journaled and nothing has been acknowledged.
+
     assert.equal(harness.spawnRequests.length, 1);
     assert.deepEqual([...harness.spawnRequests[0]?.args ?? []], [
       "--import", "tsx", "src/cli.ts",
@@ -518,8 +484,7 @@ describe("the composed worker process control through the kernel pool door", () 
     }).state, "started");
 
     const spawnId = nextCommandId();
-    // The kernel's own authority validation refuses BEFORE the supervisor is
-    // consulted — a typed rejection, and no process was launched.
+
     const rejected = await harness.kernel.executeWorkerPool({
       ...envelope(harness, spawnId),
       type: "spawn-worker",
@@ -619,12 +584,7 @@ describe("the composed worker process control through the kernel pool door", () 
     await spawnPoolWorker(harness, MEMBER_1);
     await spawnPoolWorker(harness, MEMBER_2);
 
-    // Two plans against the SAME basis (pool version 0), in flight together.
-    // The first keeps both running workers; the second would stop worker 2 as
-    // excess. Without per-workflow serialization across phases A→C, both pass
-    // the phase-A CAS, both run process effects, and the loser's durable stop
-    // directive plus armed escalation stand against a member the winning plan
-    // still desires — while its phase C rolls back without a journal trace.
+
     const keepBothId = nextCommandId();
     const keepBoth = harness.kernel.executeWorkerPool({
       ...envelope(harness, keepBothId),
@@ -667,9 +627,7 @@ describe("the composed worker process control through the kernel pool door", () 
         ...pool,
         planPoolWorkerCount: async (context) => {
           const acknowledgement = await pool.planPoolWorkerCount(context);
-          // Another PROCESS plans the pool after this command's phase-A CAS
-          // passed and before its phase-C write — outside what the in-process
-          // serialization can see, so phase C is where it must surface, typed.
+
           assert.equal(edges.database.authority.workerPools.plan({
             workflow: WORKFLOW,
             expectedVersion: 0,
@@ -784,10 +742,7 @@ describe("the composed worker process control through the kernel pool door", () 
       now: stoppedNow,
     }).state, "applied");
 
-    // A NEW stop naming the same actor and reason is NOT a re-delivery of
-    // anything: the dead lease's directive is stale evidence, and converging
-    // on it would journal "applied" for a command that stopped nothing. The
-    // honest answer is the sync path's own typed stopped-worker refusal.
+
     harness.clock.advanceWall(30_000);
     const commandId = nextCommandId();
     const result = await harness.kernel.executeWorkerPool({
@@ -831,10 +786,7 @@ describe("the composed worker process control through the kernel pool door", () 
         ...pool,
         stopPoolWorker: async (context) => {
           const acknowledgement = await pool.stopPoolWorker(context);
-          // An unrelated lease bump (the worker's own lifecycle report)
-          // lands AFTER the durable directive write and BEFORE phase C. The
-          // audit must record the directive write's versions, not absorb
-          // this bump into the command's claimed change.
+
           const bumpNow = edges.clock.now().toISOString();
           assert.equal(edges.database.authority.workerLeases.reportLifecycle({
             workerId: WORKER_1,
@@ -879,9 +831,7 @@ describe("the composed worker process control through the kernel pool door", () 
       affectedTargets: [{ family: "worker-browser", workerId: WORKER_1 }],
     });
     const afterPause = harness.database.authority.workerLeases.get(WORKER_1);
-    // The durable directive IS the command — its instant the command's own
-    // `now` (the alias-breaker advanced the wall clock inside the effect, so
-    // a phase-C write stamping a fresh clock read would postdate this).
+
     assert.deepEqual(afterPause?.control, {
       directive: "pause", requestedAt: pauseAt, requestedBy: "local-operator", reason: "operator break",
     });
@@ -1183,9 +1133,7 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
     const lockFile = join(repoRoot, rebuildRuntimeIsolation.processLockRoot, "server.lock.json");
     const lockRecord = (): { releasedAt: string | null } =>
       JSON.parse(readFileSync(lockFile, "utf8")) as { releasedAt: string | null };
-    // Port 0: the OS assigns an ephemeral port, so this test never contends
-    // with a concurrently running rebuild dashboard on the machine-wide
-    // isolation port — and never silently passes vacuous because of one.
+    // Port 0 asks the OS for an ephemeral port, isolating this proof from a running dashboard.
     const runtime: DashboardRuntime = await composeDashboardRuntime({ admission, preflightRunnerFactory: healthyRuntimePreflightRunners,
       isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0,

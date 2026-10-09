@@ -1,12 +1,4 @@
-/**
- * Ref data-intake-and-edit-data §3 header discovery, and §7 vector #9 in particular.
- *
- * Legacy located the header row by finding a RECOGNIZED column name, so a
- * spreadsheet full of novel headings had no header row at all and the file was
- * rejected before the operator could say what anything meant. These cases pin
- * the replacement: structure decides, aliases only help, and an unclear answer
- * is returned as a choice rather than as a guess.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import {
@@ -108,9 +100,7 @@ describe("ref data-intake-and-edit-data §3 header discovery", () => {
   });
 
   it("does not penalize a header for spanning more columns than its data fills", () => {
-    // Measured on a real UCSD onboarding roster (2026-08-05): 30 headings over
-    // data rows filling ~12 cells. The symmetric width rule scored that header
-    // 0.00 and lost the sheet; a header spanning more than its data is normal.
+
     const headings = Array.from({ length: 12 }, (_, index) => `Column ${String(index + 1)}`);
     const sparse = (seed: number) => [
       `value-${String(seed)}`, "Yes", "", "", "HDH", "", "", "", "", "", "", "",
@@ -122,9 +112,7 @@ describe("ref data-intake-and-edit-data §3 header discovery", () => {
   });
 
   it("separates a header from its data on values that appear in no other row", () => {
-    // The dominant signal, and a principle rather than a fit: a heading is a
-    // LABEL and does not appear among the data, while a status or department
-    // repeats down its column. Real roster: header 0.97–1.00, data 0.27–0.52.
+
     const rows = [
       ["EID", "Legal Name", "Dept", "Status"],
       ["10456712", "Cleckoa, Crithe", "HDH", "Active"],
@@ -149,9 +137,7 @@ describe("ref data-intake-and-edit-data §3 header discovery", () => {
     const blind = rankHeaderRows(rows, NO_ALIASES);
     assert.equal(blind.candidates[0].rowIndex, 0);
     assert.equal(blind.candidates[0].signals.soleUse, 1, "the duplicate heading must not self-penalize");
-    // With three rows of entirely unique data there is little structural
-    // evidence either way, so blind ranking puts the header first but declines
-    // to preselect. That is the designed degradation, not a defect.
+
     assert.equal(blind.headerRowIndex, null);
     assert.equal(blind.reason, "ambiguous-candidates");
 

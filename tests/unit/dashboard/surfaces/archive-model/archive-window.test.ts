@@ -1,14 +1,4 @@
-/**
- * The archive table's window (D274 item 1).
- *
- * The whole mechanic is arithmetic over two DECLARED row heights, so it is
- * pinned here as arithmetic rather than photographed: what the flat item list
- * contains, which items a viewport can see, what the two spacer heights are,
- * and — the half a fold test cannot see on its own — that the two restated
- * pixel constants are the values `ds/tokens.css` actually sets on the rows.
- * A spacer computed from a height the rows do not have is a table that slides
- * under its own scrollbar, and nothing else in the suite could fail on it.
- */
+
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";

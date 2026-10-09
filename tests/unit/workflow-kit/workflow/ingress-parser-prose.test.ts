@@ -1,10 +1,4 @@
-/**
- * D250 — what the typed box SAYS about itself, and what its examples promise.
- *
- * Two halves of one decision, pinned together because they fail in opposite
- * directions: the prose is derived so it cannot disagree with the parser, and
- * the examples are authored so they must be PROVED against it.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { z } from "zod";
@@ -28,7 +22,7 @@ import { personLookupDescriptor } from "../../../support/helpers/registered-work
 
 const parser = (spec: unknown) => InputParserSpecSchema.parse(spec);
 
-describe("the parser, described to the operator (D250)", () => {
+describe("the parser, described to the operator", () => {
   it("legends exactly the closed pattern vocabulary — no arm without words, no words without an arm", () => {
     // The whole reason the prose is derived rather than authored: this pair of
     // key sets is what makes a sentence unable to describe a rule that is gone.
@@ -101,8 +95,7 @@ describe("the parser, described to the operator (D250)", () => {
       })),
       "An employee ID is eight digits beginning 10; anything else is taken exactly as typed.",
     );
-    // WITHOUT one: `parseInputRunText` throws on the WHOLE text, so an operator
-    // who was never told that reads a correct refusal as a bug.
+
     assert.equal(
       inputRunParserLabel(parser({
         split: { kind: "delimited", delimiters: [";"] },
@@ -124,7 +117,7 @@ describe("the parser, described to the operator (D250)", () => {
   });
 });
 
-describe("a declared input-run example (D250)", () => {
+describe("a declared input-run example", () => {
   const Input = z.union([
     z.strictObject({ emplId: EidSchema, keepNonHdh: z.boolean().default(false) }),
     z.strictObject({ note: z.string().min(3), keepNonHdh: z.boolean().default(false) }),
@@ -200,9 +193,7 @@ describe("a declared input-run example (D250)", () => {
   });
 
   it("REFUSES an example the workflow's own input schema will not accept", () => {
-    // This parses fine — the `otherwise` rule claims it — and `planStart` would
-    // then refuse it `input-invalid`. A button that fills the box with a
-    // guaranteed refusal is a lie about what this workflow takes.
+
     assert.throws(
       descriptorWith([{ key: "empty-note", label: "Bad", text: "10800000; x", note: "n" }]),
       /input-run example "empty-note" entry 2 \("x"\) is refused by this workflow's own input schema/u,

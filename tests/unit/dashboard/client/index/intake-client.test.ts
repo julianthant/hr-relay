@@ -1,14 +1,4 @@
-/**
- * 2i-E3 — the intake half of the ONE typed client.
- *
- * The upload route is the only place in the product where the response STATUS
- * is the answer rather than a transport detail: the same session wire comes
- * back whether a session was CREATED for these bytes or an open one was
- * JOINED, and the difference is the whole message to the operator. So these
- * cases are about the status line, and about what happens when it is a status
- * the contract does not admit — which must fail loud rather than fall through
- * to the nearest plausible outcome.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { createDashboardClient, DashboardClientError } from "../../../../../src/dashboard/client/index.js";
@@ -76,7 +66,7 @@ describe("the intake upload's status IS the outcome", () => {
     const { client, calls } = clientOver(() => ({ status: 201, body: FIXTURE_INTAKE_MAPPING }));
     await upload(client);
     assert.equal(calls.length, 1);
-    // The file name is REQUIRED by the route (D171) and must survive a space.
+
     assert.equal(
       calls[0].url,
       "http://bff.test/api/v1/intake/files?workflow=person-lookup&filename=cohort%207.csv",
@@ -104,11 +94,7 @@ describe("the intake upload's status IS the outcome", () => {
     });
   });
 
-  /**
-   * The load-bearing negative. A permissive client would treat any non-2xx as
-   * "refused", which reports a server defect as the operator's bad file — and
-   * the operator would go looking at a spreadsheet that is perfectly fine.
-   */
+
   it("throws on a status outside {201, 200, 422} rather than calling it a refusal", async () => {
     const { client } = clientOver(() => ({
       status: 500,

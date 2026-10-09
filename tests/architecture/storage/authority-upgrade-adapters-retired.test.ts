@@ -9,7 +9,7 @@ import { describe, it } from "vitest";
 import ts from "typescript";
 import { walkFiles } from "../support/helpers/guard-files.js";
 
-/** D332.9: expired settings imports are absent; supported recovery remains stopped. */
+
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 
 const STORAGE_COMPOSE = "src/backend/app/composition/storage-compose.ts";

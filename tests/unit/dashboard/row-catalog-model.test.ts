@@ -1,9 +1,4 @@
-/**
- * The row-and-panel catalog documents the SERVED vocabulary or it documents
- * nothing (D274 item 4). Every assertion here is about that: the page's kinds
- * come off the schemas, its display order names every one of them, and its
- * derived tab strips agree with the run-detail wire's own compatibility rule.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { ContainmentSchema } from "../../../src/models/dashboard/projection.js";
@@ -62,10 +57,7 @@ describe("row/panel catalog — the vocabulary is read off the schemas", () => {
     assert.equal(specs.length, ROW_SURFACE_ORDER.length);
     assert.deepEqual(specs.map((spec) => spec.key), [...ROW_SURFACE_ORDER]);
     assert.equal(new Set(ROW_SURFACE_ORDER).size, ROW_SURFACE_ORDER.length);
-    // The four the projector's `surfaceKindOf` folds a run shape into. A fifth
-    // arm on the wire union is a typecheck failure in the model; this is the
-    // other direction — an arm dropped from the ORDER list, which the compiler
-    // cannot see.
+
     assert.deepEqual([...ROW_SURFACE_ORDER].toSorted(), ["member", "operation", "preview", "single"]);
   });
 
@@ -99,9 +91,7 @@ describe("row/panel catalog — a tab strip the product would refuse cannot be d
   });
 
   it("omits the tab whose section that panel kind may NOT advertise", () => {
-    // The negative control. Without it, a `tabsForPanelKind` that returned
-    // every tab for every kind would pass the assertion above only if the wire
-    // were permissive — so the refused pairings are named here directly.
+
     const byKind = new Map(panelKindSpecs().map((spec) => [spec.key, spec.tabs.map((tab) => tab.key)]));
     for (const [kind, tabs] of byKind) {
       const refused = kind === "group" ? "review" : kind === "review" ? "people" : undefined;
@@ -111,12 +101,7 @@ describe("row/panel catalog — a tab strip the product would refuse cannot be d
   });
 
   it("draws the tabs in the panel's own TAB_ORDER, never a second copy of it", () => {
-    // The catalog used to iterate a hand-copied `["review","people","logs",
-    // "receipt"]`. The per-kind lists above pin the ORDER, but only against the
-    // copy — so this asserts the shared array is the one being read, and that
-    // it still covers every tab the panel can draw.
-    // `PANEL_TAB_LABEL` is a `Record<PanelTab, string>`, so its keys ARE the
-    // union — a fifth tab is a typecheck failure there and shows up here.
+
     for (const spec of panelKindSpecs()) {
       const positions = spec.tabs.map((tab) => TAB_ORDER.indexOf(tab.key));
       assert.equal(positions.includes(-1), false, `${spec.key} draws a tab TAB_ORDER does not name`);

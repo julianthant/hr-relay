@@ -1,4 +1,4 @@
-// Frozen D331 producer/schema from e314fb0d; historical fixtures/upgrade readers only. Phase 2.6 owns removal.
+
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import {
   closeSync,
@@ -32,7 +32,7 @@ import {
   type SettingsApplyRefusal,
   type SettingsFileRecord,
 } from "../../../src/models/config/settings.js";
-// D341: the D331 producer writes the FROZEN legacy protected family (7 names), as it did historically.
+
 import {
   LEGACY_PROTECTED_SETTINGS_SCHEMA_HASH as PROTECTED_SETTINGS_SCHEMA_HASH,
   LegacyProtectedSettingsApplyInputSchema as ProtectedSettingsApplyInputSchema,
@@ -73,7 +73,7 @@ export interface SettingsFileAuthorityHooks {
   /** Test-only crash seams around durability of a newly created stale-reaper claim. */
   readonly beforeReaperFsync?: () => void;
   readonly afterReaperFsync?: () => void;
-  /** Test-only race seam immediately before a verified stale main lock is removed. */
+
   readonly beforeStaleLockRemoval?: () => void;
   /** Test-only crash seams around stale-reaper main-lock reacquisition. */
   readonly beforeMainLockReacquisition?: () => void;
@@ -517,14 +517,7 @@ function initializationBytes(ordinary: SettingsRootAuthority["ordinary"], protec
 
 type SettingsDirectoryIdentity = ReadonlyMap<string, Readonly<{ device: number; inode: number }>>;
 
-/**
- * POSIX mode-bit boundary against other UIDs, not root/same-UID or ACL interference.
- * Walk from the root BEFORE creating anything: a private leaf is replaceable when an
- * ancestor is writable. Sticky ancestors protect the trusted-owner child, but the
- * authority directory itself must never admit foreign entries. Root-owned system
- * symlinks (e.g. macOS /var) are allowed only under root-owned parents; their targets
- * undergo the same walk. Retain every pathname's inode across admissions/settlement.
- */
+// Verify POSIX ancestor permissions before creation; a private leaf can be replaced through a writable parent.
 function verifySettingsDirectory(
   directory: string,
   prior?: SettingsDirectoryIdentity,
@@ -549,8 +542,7 @@ function verifySettingsDirectory(
       if (prior !== undefined) {
         throw new Error(`settings directory ${path} disappeared after its identity was bound`, { cause: error });
       }
-      // All existing ancestors are already verified. Create only this missing
-      // component; never chmod or remove pre-existing evidence.
+
       try {
         mkdirSync(path, { mode: 0o700 });
       } catch (creationError) {
@@ -2098,9 +2090,7 @@ function createDocumentAuthority<Record extends DocumentRecord, Request extends 
           return Object.freeze({
             state: "applied",
             record: current,
-            // The first attempt crossed the file boundary before its command
-            // journal committed. Recovery journals it now and must not undo it
-            // if that second journal attempt also fails.
+            // The file boundary may precede journal commit; recovery must not undo an already crossed boundary.
             rollback: settlement.rollback,
             commit: settlement.settle,
           });
@@ -2447,10 +2437,7 @@ export function createProtectedSettingsFileAuthority(options: ProtectedSettingsF
   });
 }
 
-/** P16: observe a stable settled authority without acquiring a lock or repairing any evidence.
- * Pending transitions and unrecognized crash artifacts are unavailable until their owning
- * writer settles them. The callback authenticates the private record in a read-only DB snapshot.
- */
+
 export function inspectProtectedSettingsFilesReadOnly<Result>(
   stateRoot: string,
   authenticate: (record: ProtectedStoreRecord) => Result,

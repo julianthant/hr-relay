@@ -447,7 +447,7 @@ const SQLITE_OPAQUE_RECORD = {
   payload: { schemaHash: HASH_A, value: { reserved: true } },
   createdAt: NOW,
 };
-/** D179: the real plan row, whose fingerprint the schema recomputes. */
+
 const SQLITE_VERSION_PLAN = VERSION_PLAN_ROW;
 const SQLITE_ARTIFACT_OUTBOX = {
   outboxId: UUID_1,
@@ -664,9 +664,7 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "VersionPlanStorageRecord", schema: VersionPlanStorageRecordSchema, fixtures: [SQLITE_VERSION_PLAN] },
   { name: "VersionBumpPlan", schema: VersionBumpPlanSchema, fixtures: [VERSION_BUMP_PLAN] },
   { name: "VersionBumpApplication", schema: VersionBumpApplicationSchema, fixtures: [VERSION_BUMP_APPLICATION] },
-  // `input.raw` is the operator's exact submission and `input.parsed.value` is
-  // a schema-bound canonical value — both are open JSON by contract (ref workflow-model
-  // §2), which is precisely why the archive keeps them beside their hashes.
+  // Raw submissions and canonical inputs are open JSON by contract, not unvalidated wire mirrors.
   {
     name: "ArchivedRunRecord",
     schema: ArchivedRunRecordSchema,
@@ -1241,10 +1239,7 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   // The dashboard composition seam handed to the CLI (1g): a process-lifetime
   // handle (port + stop), operational like RebuildRuntimeStart, not wire data.
   "src/backend/app/composition/runtime-composition.ts:RunningDashboard",
-  // The dashboard's shutdown seam: one `subscribe` FUNCTION returning its
-  // disposer, so like the clock it is an injected in-process dependency and no
-  // schema can describe it. Nothing here is stored or served — the values that
-  // cross are the OS signal names, already a closed literal union.
+  // The injected subscription function and disposer remain in-process and cannot be schema-described.
   "src/backend/app/composition/runtime-composition.ts:RuntimeShutdownSignals",
   "src/rules/validation/canonical-json.ts:JsonObject",
   "src/rules/time/clock.ts:Clock",
@@ -1261,11 +1256,7 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   // In-process admission capability consumes a strict retained preflight report.
   "src/rules/preflight/preflight-admission.ts:PreflightAdmission",
   "src/models/preflight/preflight.ts:PreflightRunnerContext",
-  // D228 — the AUTHORED faces of `NodeConditionSchema`, exactly as
-  // `WorkflowCapabilitiesSpec` is the authored face of its runtime schema. They
-  // exist so a descriptor literal need not spell a brand; `parseNodeCondition`
-  // runs the schema before anything durable, wire-bound, or executable sees the
-  // value, and the schema-derived `NodeCondition` is what every consumer holds.
+
   "src/models/workflow/node-condition.ts:NodeConditionOperandSpec",
   "src/models/workflow/node-condition.ts:NodeConditionSpec",
   "src/models/ui/driver.ts:MutationCapability",
@@ -1276,20 +1267,12 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   "src/models/ui/ucpath-person-org.ts:UcpathPersonOrgFields",
   "src/models/ui/ucpath-person-org.ts:UcpathPersonOrgObservations",
   "src/models/ui/ucpath-person-org.ts:UcpathPersonOrgDriver",
-  // Chunk 4's Smart HR family, for the same reason as its Person Org sibling
-  // above: these are DRIVER-SHAPE types — screen/state/observation unions and a
-  // surface of functions — not data crossing a boundary. Every value they carry
-  // IS schema-described (`UcpathTerminationTargetSchema`,
-  // `UcpathTerminationStagingSchema`, `UcpathTransactionScanSchema`,
-  // `UcpathTerminationProofSchema`, `UcpathPendingSweepProofSchema`), and a
-  // schema over the driver itself would be describing a set of functions.
+
   "src/models/ui/ucpath-smart-hr-termination.ts:UcpathSmartHrScreens",
   "src/models/ui/ucpath-smart-hr-termination.ts:UcpathSmartHrStates",
   "src/models/ui/ucpath-smart-hr-termination.ts:UcpathSmartHrObservations",
   "src/models/ui/ucpath-smart-hr-termination.ts:UcpathSmartHrTerminationDriver",
-  // The JOIN of the store's two driver halves (D197 rule 1: one declaration per
-  // store). It adds no data of its own — it is the intersection of the two
-  // allowlisted surfaces plus the shared `SystemDriver` navigation seam.
+
   "src/models/ui/ucpath-driver.ts:UcpathStoreDriver",
   "src/models/task/task-contract.ts:ReadTaskContract",
   "src/models/task/task-contract.ts:PrepareTaskContract",
@@ -1312,16 +1295,7 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   "src/models/task/write-safety.ts:WriteSafety",
   "src/rules/identity/ids.ts:LiteralTaskId",
   "src/models/sessions/session.ts:SessionNeed",
-  // Workflow graph nodes carry pure functions (bind/choose/resolve) and are
-  // generic over contract/schema type parameters, so no zod schema can describe
-  // them. Their DURABLE halves do have schemas: DelegationPolicySchema,
-  // DelegationManifestRefSchema, ParallelBranchSpecSchema, GraphNodeKindSchema,
-  // transactionOutcomeSchema(), and childRunOutcomeSchema() are all catalogued.
-  // A schema TYPE, like CanonicalJsonSchema above — it describes a validator,
-  // not a value that crosses a boundary, so it cannot itself be schema-derived.
-  // D355/D356 authoring and compiler APIs carry Zod validators and pure functions.
-  // Only their recursively strict, integrity-checked snapshot is stored or served;
-  // workflow-operation-display-boundary proves that crossing and compiler provenance.
+  // Graph bind, choose and resolve functions are generic in-process values; crossing data uses strict schemas.
   "src/models/workflow/operation-display.ts:OperationActionKind",
   "src/models/workflow/operation-display.ts:WorkflowCompositionActionKind",
   "src/models/workflow/operation-display.ts:LogicalSessionReference",
@@ -1353,11 +1327,7 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   // both fields and compares them with the schema-validated durable snapshot.
   "src/models/workflow/operation-display-snapshot.ts:OperationDisplaySnapshotIdentity",
   "src/models/workflow/canonical-input.ts:CanonicalInputSchema",
-  // D341 test-data inputs: `TestDataLocalInputEntry` is a generic projection of
-  // the schema-derived `TestDataLocalInputs` (one entry, keyed by input name),
-  // and `TestDataInputSource` is the in-process read port over the ignored
-  // private file — a port like the credential authority above. Its data schema
-  // (`TestDataLocalConfigSchema`) is proven at its owner, tests/unit/test-data-config.test.ts.
+
   "src/models/config/test-data.ts:TestDataLocalInputEntry",
   "src/models/config/test-data.ts:TestDataInputSource",
   "src/models/workflow/graph.ts:ProofOf",
@@ -1379,20 +1349,12 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   "src/models/workflow/graph.ts:ExternalGateNode",
   "src/models/workflow/graph.ts:AnyGateNode",
   "src/models/workflow/graph.ts:RuntimeFlowNode",
-  // The pre-write fan-out plan is generic over its target workflow, so no static
-  // schema describes it. Its DURABLE counterpart is `DelegationManifestSchema`
-  // in `src/rules/workflow/dependencies.ts`, which is catalogued.
+  // Fan-out plans are generic in-process values; their durable manifests are schema-bound.
   "src/models/workflow/delegation.ts:PlannedChild",
   "src/models/workflow/delegation.ts:DelegationPlan",
   "src/models/workflow/delegation.ts:DelegationFanOutRequest",
   "src/models/workflow/delegation.ts:DelegationJoin",
-  // The completion program is generic over its target workflow refs and carries
-  // pure derive/eligibility functions, so no static schema describes it. What
-  // DOES cross a boundary has one: PreviewRecordSchema, ApproveContextSchema,
-  // ApprovedDocumentSchema, MemberPlanEntrySchema, CompletionProgramSampleSchema,
-  // CompletionConsumptionSpecSchema, and CoordinatorPolicySchema are catalogued.
-  // `SealedCompletionProgram` is deliberately opaque — a schema for it would
-  // re-expose exactly the structure ref dashboard-surfaces §4.2 closes.
+  // Completion programs carry in-process derivation functions; crossing values remain schema-bound.
   "src/models/workflow/completion.ts:NamedPredicate",
   "src/models/workflow/completion.ts:PerRecordStage",
   "src/models/workflow/completion.ts:PerDocumentStage",
@@ -1403,53 +1365,28 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   "src/models/workflow/completion.ts:CompletionProgram",
   "src/models/workflow/completion.ts:CompletionRevealKey",
   "src/models/workflow/completion.ts:SealedCompletionProgram",
-  // The checkpoint LOAD result and its migrations are generic over the producing
-  // contract's exact output type, which no static schema describes — that is the
-  // point of the discriminated `{found}` union. The durable halves have schemas:
-  // RunCheckpointRecordSchema, FactProvenanceSchema, CheckpointExpectationSchema,
-  // CheckpointMissReasonSchema, and FreshnessOverrideSchema are catalogued.
+  // Checkpoint load results are generic over the producing output schema.
   "src/models/workflow/checkpoint.ts:CheckpointLoad",
   "src/models/workflow/checkpoint.ts:CheckpointMigration",
   "src/models/workflow/checkpoint.ts:CanonicalInputSnapshotMigration",
   "src/models/workflow/checkpoint.ts:ReplayedCheckpoint",
   "src/models/workflow/checkpoint.ts:FreshnessWalkInput",
-  // A canonical field carries a `coerce` FUNCTION and is generic over the exact
-  // zod schema it owns, so no schema can describe it — describing it would mean
-  // describing a validator, like `CanonicalJsonSchema` above. `CellLocation` is
-  // the in-process address of one cell during validation; it is never stored
-  // and never served. What DOES become durable has schemas: RowRejectSchema and
-  // IntakePlanManifestSchema carry the same facts and are catalogued.
+  // Canonical fields carry coercion functions and their own schema, so no static data schema describes them.
   "src/models/fields/registry.ts:CanonicalField",
   "src/models/fields/cell-coercion.ts:CellLocation",
-  // An intake projection holds the workflow's own zod schema and a lookup
-  // FUNCTION, so like the graph nodes above it cannot be schema-described. Its
-  // durable half is `IntakeTargetSchema`, and the fingerprint it derives is
-  // what a saved `ColumnMapping` actually stores.
+  // Intake projections carry a live schema and lookup function; their durable representation is schema-bound.
   "src/models/intake/projection.ts:IntakeProjection",
-  // The validation pass is an in-process call: its input carries the workflow's
-  // own `deriveItemId` FUNCTION and a live `IntakeProjection`, and its result is
-  // consumed by `buildIntakeManifest` in the same call stack. Nothing here is
-  // stored or served. The DURABLE halves all have schemas: IntakePlanManifest,
-  // RowReject, ValidRow, SourceRowDisposition and IntakeCorrection.
+  // Validation inputs carry derivation functions and are consumed in-process.
   "src/models/intake/validate.ts:IntakeValidationInput",
   "src/models/intake/validate.ts:ValidatedRow",
   "src/models/intake/validate.ts:IntakeValidationResult",
-  // Same shape one level up (D171): the enqueue derivation takes a live
-  // `IntakeProjection` and the workflow's own `deriveItemId` FUNCTION, and hands
-  // back the manifest plus its readiness verdict in the same call stack. Both
-  // durable halves ARE schema-described — `IntakePlanManifestSchema` is what the
-  // authority row stores and `EnqueueReadinessSchema` is what gates it.
+
   "src/models/intake/enqueue.ts:IntakeEnqueueSessionView",
   "src/models/intake/enqueue.ts:IntakeEnqueuePlan",
   "src/models/intake/enqueue.ts:IntakeEnqueuePlanInput",
-  // D288's pseudonym domain holds a secret key inside an in-process closure and
-  // exposes one derivation FUNCTION. Its only crossing values are described by
-  // ActivityPersonPseudonymEvidenceSchema and the strict backfill schemas.
+  // The identity domain retains a secret in a closure; only its schema-bound derivation crosses boundaries.
   "src/models/trust/activity-person-pseudonym.ts:ActivityPersonPseudonymDomain",
-  // D307 — a step omission's declaration carries per-node PRODUCER functions
-  // and the plan/cascade are in-process values over Maps; their crossing halves
-  // ARE schema-described: StepOmissionFormSchema (the form a step declares),
-  // StepOmissionsSchema (the envelope entries), and the not-run reason enums.
+  // Omission declarations carry producer functions and plans use Maps; crossing values have strict schemas.
   "src/models/workflow/step-omission.ts:StepOmissionProduceContext",
   "src/models/workflow/step-omission.ts:StepOmissionDeclaration",
   "src/models/workflow/step-omission.ts:StepOmissionSpec",

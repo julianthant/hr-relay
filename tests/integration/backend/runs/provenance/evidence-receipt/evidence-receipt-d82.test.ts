@@ -1,16 +1,4 @@
-/**
- * D82's acceptance test, stated as the operator's own question.
- *
- * > "Can I finish my double-check from the receipt alone, without opening
- * >  UCPath, CRM, or Kuali?"
- *
- * Every assertion below reads ONLY the receipt. The run record, the checkpoint
- * rows and the write intent are used to SEED authority; once the receipt is
- * built, nothing else is consulted. A test that reached back into the
- * checkpoints to check an answer would be proving that authority is correct —
- * which other suites already do — rather than proving the receipt is
- * sufficient, which is the whole of D82.
- */
+
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -58,8 +46,7 @@ function openDatabase(): AuthorityDatabase {
   return database;
 }
 
-/** Ordinary caller input carries an explicit source declaration after D331 admission.
- * Protected and unmarked historical rows are covered by evidence-receipt-write-proof. */
+
 function ordinaryRun(value: unknown): RunRecord {
   const run = RunRecordSchema.parse(value);
   return { ...run, input: { ...run.input, parsed: { ...run.input.parsed, protectedBindings: [...protectedInputBindings(run.input.parsed.value)] } } };
@@ -112,7 +99,7 @@ function assertNoLeakage(receipt: RunEvidenceReceipt): void {
 
 /* ── run 1: the live person-lookup exit run ──────────────────────────────── */
 
-describe("D82 — the live person-lookup exit run explains itself", () => {
+describe("the live person-lookup exit run explains itself", () => {
   it("answers the operator's whole double-check from the receipt alone", () => {
     const database = openDatabase();
     const seeded = seedPersonLookupExitRun(database);
@@ -175,7 +162,7 @@ describe("D82 — the live person-lookup exit run explains itself", () => {
       "the verdict's own reason names the CRM record it was cross-verified against",
     );
 
-    // ── "was any of this stale, or replayed from the failed attempt?" ────
+
     const searchReuse = receipt.reuse.find((entry) => entry.freshnessLimitMs === 4 * 60 * 60 * 1000);
     assert.ok(searchReuse !== undefined, "the UCPath search's freshness budget is on the receipt");
     assert.equal(searchReuse.kind, "checkpoint", "attempt 1's search was REPLAYED, not re-observed");
@@ -248,7 +235,7 @@ describe("D82 — the live person-lookup exit run explains itself", () => {
 
 /* ── run 2: the Kuali separation finalization ────────────────────────────── */
 
-describe("D82 — the Kuali finalization write explains itself", () => {
+describe("the Kuali finalization write explains itself", () => {
   it("answers the write double-check from the receipt alone", () => {
     const evidence = kualiReceiptEvidence();
     const receipt = buildRunEvidenceReceipt({
@@ -263,7 +250,7 @@ describe("D82 — the Kuali finalization write explains itself", () => {
     assert.equal(receipt.result, "verified-done");
     assert.equal(receipt.confidence, "verified");
 
-    // ── "did it really write, or was the key already satisfied?" ─────────
+
     const commit = receipt.actions.find((action) => action.kind === "commit");
     assert.ok(commit !== undefined, "the receipt names the commit action");
     assert.equal(commit.writeState, "verified", "committed AND proved, not merely clicked");
@@ -285,8 +272,7 @@ describe("D82 — the Kuali finalization write explains itself", () => {
     assert.match(dedupe.reason, /not already satisfied/);
     assert.match(dedupe.reason, /normal-output/);
 
-    // ── "was it the right person's document?" — the SUBJECT and the proof
-    //    source that matched it, both on the receipt.
+
     const identityDecision = decisionOf(receipt, "identity", "binding digest");
     assert.equal(identityDecision.outcome, "approved");
     assert.match(identityDecision.reason, /eid ending "0000"/);
@@ -353,7 +339,3 @@ describe("D82 — the Kuali finalization write explains itself", () => {
     assert.equal(receipt.result, "partial", "a parked external write is never a clean done");
   });
 });
-
-/* This fixture pins receipt interpretation over seeded rows. D144's current
- * executor → checkpoint → terminal → receipt chain is independently proved by
- * `separations-kuali-finalization-terminal-proof.test.ts`. */

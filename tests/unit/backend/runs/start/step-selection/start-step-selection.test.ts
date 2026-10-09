@@ -39,7 +39,7 @@ describe("start step selection", () => {
     );
   });
 
-  it("projects Separations' three omittable write-side steps and keeps its read steps required (D307)", () => {
+  it("projects Separations' three omittable write-side steps and keeps its read steps required", () => {
     const steps = projectStartSteps(separationsDescriptor);
     assert.deepEqual(
       steps.map(({ key, control }) => [key, control.state]),
@@ -67,14 +67,8 @@ describe("start step selection", () => {
   });
 });
 
-/**
- * D307 — the third control arm and the plan-time reconciliation behind it.
- *
- * The registry declares no omissions yet, so every assertion here runs against
- * the fixture descriptors: the arms would otherwise be unreachable, and a
- * suite that never reaches an arm is not evidence it works.
- */
-describe("start step omission projection (D307)", () => {
+
+describe("start step omission projection", () => {
   it("projects a declared omission whose cascade is clean as omittable", () => {
     const steps = projectStartSteps(omissionAssertingDescriptor);
     assert.deepEqual(
@@ -114,7 +108,7 @@ describe("start step omission projection (D307)", () => {
     );
   });
 
-  it("leaves Person Lookup's arms exactly where D285 put them", () => {
+  it("leaves Person Lookup steps locked", () => {
     assert.ok(
       projectStartSteps(personLookupDescriptor).every(({ control }) => control.state !== "omittable"),
       String(personLookupDescriptor.id),
@@ -135,7 +129,7 @@ function refusal(run: () => unknown): StartStepOmissionRefusedError {
   return assert.fail("the omission was accepted");
 }
 
-describe("resolveStartStepOmissions (D307)", () => {
+describe("resolveStartStepOmissions", () => {
   it("returns the omitted steps in timeline order, whatever order they were submitted in", () => {
     assert.deepEqual(
       resolveStartStepOmissions(
@@ -245,9 +239,7 @@ describe("resolveStartStepOmissions (D307)", () => {
   });
 
   it("refuses an omission the operator's own selection leaves unread", () => {
-    // `folding` is omittable here and the projection says omitting `reading`
-    // FORCES it out; a client that ignored `forces` and selected it anyway
-    // is refused by the same planner the executor runs.
+
     const error = refusal(() => resolveStartStepOmissions(
       omissionCascadingDescriptor,
       ["folding", "auditing"],

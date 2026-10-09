@@ -14,7 +14,7 @@ import {
 } from "../../../src/backend/storage/sqlite/migrations.js";
 import { walkFiles } from "../support/helpers/guard-files.js";
 
-/** D336: ordinary settings are SQLite authority; file formats survive only as frozen readers. */
+
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 
 const RETIRED_RUNTIME_MODULES = new Set([

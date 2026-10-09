@@ -38,7 +38,7 @@ async function setBrowserZoom(worker: Worker, pageUrl: string, factor: number) {
   }, { pageUrl, factor });
 }
 
-test.describe("Queue authority, live commands, and desktop parity (P5)", () => {
+test.describe("Queue authority, live commands, and desktop parity", () => {
   let server: QueueAuthorityServer;
 
   test.beforeAll(async () => {
@@ -146,7 +146,7 @@ test.describe("Queue authority, live commands, and desktop parity (P5)", () => {
       target: { runId },
     });
 
-    // Row is removed from the DOM
+
     await expect(page.locator(`[data-demo-row-id='${runId}']`)).toHaveCount(0);
 
     // Authority has insert-only tombstone
@@ -358,7 +358,7 @@ test.describe("Queue authority, live commands, and desktop parity (P5)", () => {
       }
       await expect(rerunDialog).toHaveCount(0);
 
-      // Verify no run was created
+
       const genAfter = db.getMeta().authorityGeneration;
       expect(genAfter).toBe(genBefore);
     }

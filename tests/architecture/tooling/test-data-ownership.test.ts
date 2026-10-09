@@ -1,14 +1,4 @@
-/**
- * D341 — test inputs have one owner each and the private half never leaks.
- *
- * 1. Cross-tier code never imports unit-only fixtures or helpers.
- * 2. Shared imports have no private-input or runtime effects; recorded capabilities
- *    remain deferred. Executable process fixtures are child entrypoints only.
- * 3. The tracked shared inputs are visible to git, the private file is ignored,
- *    the example carries placeholders only, and every declared shared file is a
- *    tracked file inside the repository.
- * 4. The shared-fixture README names every shared module, so the interface stays discoverable.
- */
+
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
@@ -266,7 +256,7 @@ function isIgnored(path: string): boolean {
   }
 }
 
-describe("D341 test-data ownership", () => {
+describe("test-data ownership", () => {
   it("no cross-tier module imports a unit-only fixture or helper", () => {
     const observed: { importer: string; module: string }[] = [];
     for (const path of sourceFiles(CROSS_TIER_ROOTS)) {

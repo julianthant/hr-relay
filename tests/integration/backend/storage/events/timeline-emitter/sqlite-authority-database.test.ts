@@ -370,11 +370,7 @@ function openDatabaseWithoutMigration(
   return database;
 }
 
-/**
- * Historical migration tests exercise the immutable SQL bytes directly now
- * that production open is forbidden from crossing the v30 floor. Task 6's
- * stopped-system upgrade is the production owner of this same chain.
- */
+
 function applyReleasedMigrationChainForTest(path: string, fromVersion: number): void {
   const database = new DatabaseSync(path);
   database.exec("BEGIN EXCLUSIVE");
@@ -480,7 +476,7 @@ function assertD290RefusalWithoutMutation(path: string, source: "DCR" | "DCC1" |
   const before = readFileSync(path);
   assert.throws(
     () => openDatabase(path),
-    new RegExp(`D290 divergent post-v18 migration suffix: ${source} v${String(version)}`),
+    new RegExp(`divergent post-v18 migration suffix: ${source} v${String(version)}`),
   );
   assert.deepEqual(readFileSync(path), before);
 }
@@ -540,9 +536,7 @@ function assertD294RefusalWithoutMutation(path: string, dependency: RetiredPhone
     () => applyReleasedMigrationChainForTest(path, 27),
     /phone capture retirement refuses a database containing capture authority/u,
   );
-  // SQLite may advance a file-header change counter while rolling back the
-  // exclusive migration transaction. Atomicity here is durable authority
-  // semantics: the schema/version and every dependent row remain unchanged.
+  // SQLite may change its file header on rollback; assert durable authority semantics rather than file identity.
   const unchanged = new DatabaseSync(path, { readOnly: true });
   try {
     assert.equal(Reflect.get(unchanged.prepare("PRAGMA user_version").get() ?? {}, "user_version"), 27);
@@ -875,7 +869,7 @@ describe("native SQLite authority schema", () => {
     }
   });
 
-  it("A3 drops only the dead v33 mirror and preserves canonical bytes and generation across reopen", () => {
+  it("drops only the dead v33 mirror and preserves canonical bytes and generation across reopen", () => {
     const path = databasePath("a3-v33.sqlite");
     createExactReleasedDatabase(path, 33);
     const raw = new DatabaseSync(path);
@@ -1083,8 +1077,7 @@ describe("native SQLite authority schema", () => {
       assert.deepEqual(readFileSync(path), before);
     }
     const corrupt = new DatabaseSync(path);
-    // The legacy update trigger is deliberately obeyed: invalid metadata must
-    // fail the reader even when SQL's revision fence accepts the row.
+
     corrupt.prepare("UPDATE protected_settings_current SET revision = 3, record_json = ?")
       .run(JSON.stringify({ ...protectedSettings, revision: 3, privateUnknown: "must-refuse" }));
     corrupt.close();
@@ -1104,7 +1097,7 @@ describe("native SQLite authority schema", () => {
     assert.deepEqual(readFileSync(path), before);
   });
 
-  it.each([27, 28, 29] as const)("M21 admits exact v%s before traversing the released chain to the floor", (version) => {
+  it.each([27, 28, 29] as const)("admits exact v%s before traversing the released chain to the floor", (version) => {
     const path = databasePath(`m21-chain-v${String(version)}.sqlite`);
     createExactReleasedDatabase(path, version);
     const before = readFileSync(path);
@@ -1113,8 +1106,7 @@ describe("native SQLite authority schema", () => {
     admitted.close();
     assert.deepEqual(readFileSync(path), before);
 
-    // Task 6 owns the production upgrade command. This test-only seam runs
-    // the ordinary immutable chain only AFTER real read-only admission.
+
     applyReleasedMigrationChainForTest(path, version);
     const upgraded = openDatabase(path);
     assert.equal(upgraded.getMeta().schemaVersion, NORMAL_AUTHORITY_SCHEMA_VERSION);
@@ -1122,7 +1114,7 @@ describe("native SQLite authority schema", () => {
       AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).sort());
   });
 
-  it("M21 refuses an extra table in exact v29 before admission or migration changes any bytes", () => {
+  it("refuses an extra table in exact v29 before admission or migration changes any bytes", () => {
     const path = databasePath("m21-extra-table-v29.sqlite");
     createExactReleasedDatabase(path, 29);
     const raw = new DatabaseSync(path);
@@ -1131,7 +1123,7 @@ describe("native SQLite authority schema", () => {
     const before = readFileSync(path);
     assert.throws(
       () => openDatabaseWithoutMigration(path, "storage-upgrade-preflight-read-only-no-migrate"),
-      /D290 divergent post-v18 migration suffix: DCC1 v29/u,
+      /divergent post-v18 migration suffix: DCC1 v29/u,
     );
     assert.deepEqual(readFileSync(path), before);
   });
@@ -1492,7 +1484,7 @@ describe("native SQLite authority schema", () => {
     assert.equal(AuthorityDatabase.inspectExistingReadOnly(path).schemaVersion, NORMAL_AUTHORITY_SCHEMA_VERSION);
   });
 
-  it("invalidates exact v5 start plans that cannot retain D109 raw ingress and boots requiring re-plan", () => {
+  it("invalidates v5 start plans lacking raw ingress and requires replanning", () => {
     const path = databasePath("d109-v5-start-plan.sqlite");
     const legacy = new DatabaseSync(path);
     legacy.exec("BEGIN EXCLUSIVE");
@@ -1955,7 +1947,7 @@ describe("authority generation accounting", () => {
     },
     { table: "workflow_run_batches", mutate: (db) => { db.authority.runSessions.insert(RUN_SESSION); } },
     {
-      // D308 — the tombstone is written by the delete cascade and by nothing else.
+
       table: "deleted_runs",
       prepare: (db) => {
         const run = prepareRunning(db);
@@ -2491,18 +2483,8 @@ describe("authority persistence invariants", () => {
   });
 });
 
-/**
- * D230 — the run ORDINAL a queue footer prints as `#N`.
- *
- * The counter has exactly the shape D221's item attempt has one scope up, and
- * these cases pin the three properties that make it usable as a name: it is
- * per-WORKFLOW, it is reserved inside the inserting transaction, and a number
- * a workflow has spent can never be handed out twice. The read-forward arm is
- * the fourth: a record carrying no ordinal is accepted, stored as SQL NULL, and
- * does not move the counter — because back-filling one would mint a number that
- * was never true of that run.
- */
-describe("D230 run ordinals", () => {
+
+describe("run ordinals", () => {
   const RUN_ID_2 = "aaaaaaaa-0002-4000-8000-000200000000";
   const RUN_ID_3 = "aaaaaaaa-0003-4000-8000-000300000000";
 
@@ -2575,10 +2557,7 @@ describe("D230 run ordinals", () => {
       itemId: UUID_8, traceId: "pl-170003-0003", runNumber: 1,
     }));
     assert.equal(database.authority.runs.get(RUN_ID_3)?.runNumber, 1);
-    // Re-opening runs the whole invariant sweep, which now includes the
-    // null-safe `run_number IS NOT json_extract(record_json, '$.runNumber')`
-    // comparison — so a stamped row, an unstamped row and the column mirror
-    // are proven to agree rather than assumed to.
+
     database.close();
     openDatabase(path);
   });

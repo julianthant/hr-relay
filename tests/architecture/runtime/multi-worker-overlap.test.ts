@@ -1,28 +1,5 @@
 import { testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
-/**
- * D182 — ref execution-and-sessions §7.1 rows C1–C4: the OVERLAP half of the 2j concurrency matrix.
- *
- * Everything else in this tree exercises concurrency one caller at a time: a
- * second `claimNext` issued by the test, a sweep run between two statements, a
- * heartbeat fired by hand. That proves the STORE refuses an illegal pair. It
- * does not prove the loop — the thing that actually runs in production — never
- * asks for one, because a single-worker fixture can satisfy `(runId, worker)`
- * uniqueness by never having a second worker.
- *
- * So these arms run REAL `runWorkerLoop` instances, more than one at a time,
- * against ONE shared `AuthorityDatabase`, and sample the durable claim set at
- * every span event and every driver call. Two facts have to hold at once and
- * they pull in opposite directions: no worker may ever hold two active rows
- * (ref execution-and-sessions §0.3), and the workers must genuinely overlap (ref execution-and-sessions §7's
- * "parallelism silently serializes" risk) — a matrix that only proved the first
- * would be satisfied by a runtime that ran everything on one worker.
- *
- * `composeWorkerRuntime` cannot be used here: it derives its id from
- * `phase1WorkerId(workflowId)`, so two composed workers on one workflow collide
- * on the authority worker LEASE by design. N-worker overlap is `runWorkerLoop`
- * called N times with distinct `workerId`s over one database — which is exactly
- * the shape ref execution-and-sessions §2 says a future phase spawns.
- */
+// Use distinct worker ids over shared authority; composed single-workflow workers share a lease identity.
 import { fixtureDuoCeremonyGates } from "../../support/helpers/duo-ceremony-fixtures.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
@@ -81,10 +58,7 @@ function runIdOf(record: RunRecord): string {
   return record.envelope.runId;
 }
 
-/**
- * The durable claim set, grouped by owner. This reads AUTHORITY — not an
- * in-memory counter a loop could keep consistent while the database disagreed.
- */
+
 function activeClaimsByWorker(database: AuthorityDatabase): ReadonlyMap<string, readonly string[]> {
   const held = new Map<string, string[]>();
   for (const record of database.authority.runs.listByWorkflow(WORKFLOW_ID)) {
@@ -102,12 +76,7 @@ interface OverlapObserver {
   readonly samples: () => number;
 }
 
-/**
- * Samples the durable claim set and fails LOUD, at the sampling instant, the
- * moment any worker owns two rows — never by inspecting a report afterwards,
- * because a double claim that was released before the run ended would be
- * invisible to a post-hoc read.
- */
+
 function overlapObserver(database: AuthorityDatabase): OverlapObserver {
   let maximum = 0;
   let samples = 0;
@@ -137,12 +106,7 @@ interface LoopHarness {
   readonly stop: AbortController;
 }
 
-/**
- * One worker's whole dependency set over the SHARED authority handle. Each
- * worker gets its own session factory (ref execution-and-sessions §6.1 — one worker never shares a
- * page) and its own id prefix, so a collision in checkpoints or spans would be
- * a real defect rather than a fixture artifact.
- */
+
 function workerHarness(
   authority: AuthorityHarness,
   workerSuffix: string,
@@ -215,7 +179,7 @@ function gatedUcpathSessions(hooks: Readonly<{
   });
 }
 
-describe("D182 C1 — two live worker loops drain one queue", () => {
+describe("two live worker loops drain one queue", () => {
   it("executes every run exactly once, one active claim per worker, and genuinely overlaps", async () => {
     const authority = sharedAuthority();
     const observer = overlapObserver(authority.database);
@@ -234,12 +198,10 @@ describe("D182 C1 — two live worker loops drain one queue", () => {
       sessions: gatedUcpathSessions({ onCall: observer.sample }),
     });
 
-    // Both loops are started before either is awaited: `runWorkerLoop` claims
-    // its first row synchronously, so this is a real race for the head of one
-    // queue, not two drains stitched together.
+    // Start both loops before awaiting either; claimNext takes its first row synchronously.
     const reports = await Promise.all([runWorkerLoop(first.deps), runWorkerLoop(second.deps)]);
 
-    // Every enqueued run was executed, exactly once, across the union.
+
     const executed = reports.flatMap((report) => report.outcomes.map(({ runId }) => runId));
     assert.equal(new Set(executed).size, executed.length, "a run was executed twice");
     assert.deepEqual([...executed].sort(), [...enqueued].sort());
@@ -248,8 +210,7 @@ describe("D182 C1 — two live worker loops drain one queue", () => {
       for (const outcome of report.outcomes) assert.equal(outcome.state, "done");
     }
 
-    // No run was ever claimed by two workers: the `run.claimed` spans are the
-    // durable account of what each worker took, and each run appears once.
+
     const claims = authority.database.authority.timelineEvents.page({})
       .flatMap((record) => record.payload.kind === "span" ? [record.payload.event] : [])
       .filter((event) => event.t === "run.claimed")
@@ -275,7 +236,7 @@ describe("D182 C1 — two live worker loops drain one queue", () => {
   });
 });
 
-describe("D182 C2 — a live loop's row is invisible to every other claimer", () => {
+describe("a live loop's row is invisible to every other claimer", () => {
   it("never serves the held row to a sibling worker and refuses a second claim for the holder", async () => {
     const authority = sharedAuthority();
     const { database } = authority;
@@ -327,7 +288,7 @@ describe("D182 C2 — a live loop's row is invisible to every other claimer", ()
   });
 });
 
-describe("D182 C3 — a claim sweep concurrent with a live heartbeat", () => {
+describe("claim sweep overlaps a live heartbeat", () => {
   it("leaves the freshly renewed claim alone and requeues only the genuinely stale one", async () => {
     const authority = sharedAuthority();
     const { database, clock } = authority;
@@ -375,7 +336,7 @@ describe("D182 C3 — a claim sweep concurrent with a live heartbeat", () => {
       now,
     });
 
-    // Exactly one row was reachable by the sweep, and it is not the live one.
+
     assert.equal(swept.length, 1);
     assert.equal(swept[0]?.state, "requeued");
     assert.equal(swept[0] === undefined ? "" : runIdOf(swept[0].run), staleRunId);
@@ -405,7 +366,7 @@ describe("D182 C3 — a claim sweep concurrent with a live heartbeat", () => {
   });
 });
 
-describe("D182 C4 — a heartbeat that lost its row never renews it", () => {
+describe("a heartbeat that lost its row never renews it", () => {
   it("reports lost to the live loop after a sweep re-owned the run, and never resurrects the claim", async () => {
     const authority = sharedAuthority();
     const { database, clock } = authority;

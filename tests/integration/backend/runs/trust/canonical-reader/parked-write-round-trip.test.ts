@@ -6,22 +6,7 @@ import { SectionUnavailableError } from "../../../../../../src/backend/runs/comm
 import { RunRecordService } from "../../../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { lifecycleCommandId } from "../../../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { testRunContinuation, testRunLifecycle, testWorkerPorts } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
-/**
- * The full parked-write round trip across every landed seam, with nothing
- * faked but the browser, clock, ids, timers, and span sink:
- *
- *   worker loop → interpreter → write sequencer parks after the fence
- *   → the interpreter's typed `parked-write` OUTCOME arm (never an escaping
- *     error, never a failure terminalization)
- *   → the durable run row is `parked-write` and the intent is `parked`
- *   → the command kernel's ref write-safety §4.1 typed resolutions — executed by
- *     `createWriteResolutionExecutor` over the SAME AuthorityDatabase instance
- *     the kernel's transaction runs on
- *   → the run is resumable (`queued`, resuming AT the transaction node).
- *
- * The park is a post-fence indeterminate state, so the arms proven here are
- * exactly the ones that must never invent a terminal outcome.
- */
+
 import { fixtureDuoCeremonyGates } from "../../../../../support/helpers/duo-ceremony-fixtures.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -78,11 +63,7 @@ interface RoundTrip {
   readonly park: () => Promise<WorkerLoopReport>;
 }
 
-/**
- * `resolutionDescriptor` is the build the OPERATOR resolves under, which is not
- * necessarily the build the run parked under: a parked write waits for a human,
- * and the tree moves meanwhile (D136).
- */
+// Operator resolution may use a newer build than the build retained by the parked run.
 function roundTrip(resolutionDescriptor: AnyWorkflowDescriptor = writeFixtureDescriptor, resolutionHooks?: WriteSequencerHooks): RoundTrip {
   const root = mkdtempSync(join(tmpdir(), "hrauto-parked-write-"));
   roots.push(root);
@@ -287,7 +268,7 @@ describe("post-fence park → typed outcome arm → typed operator resolution", 
     assert.equal(run.lifecycle.writeIntentId, intent.writeIntentId);
     assert.equal(run.lifecycle.code, "unknown");
 
-    // Nothing terminal was invented: no failure record, no result, no outbox.
+
     assert.deepEqual(harness.database.authority.failures.listByRun(WRITE_FIXTURE_RUN_ID), []);
     assert.equal(harness.database.authority.runResults.get(WRITE_FIXTURE_RUN_ID), undefined);
     assert.equal(harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID)?.completion, undefined);
@@ -363,14 +344,7 @@ describe("post-fence park → typed outcome arm → typed operator resolution", 
     assert.equal(harness.database.getMeta().authorityGeneration, generation);
   });
 
-  /*
-   * D136 — the stranded-intent path. This is the exact live shape recorded in
-   * ref write-safety's Phase-2 as-built: an intent parked on 2026-08-04, then unrelated
-   * work touched a file in the descriptor's ~31-file contract closure before
-   * the operator got to it. Under the old whole-closure binding the typed
-   * resolutions refused forever and the only way out was hand-editing rows or
-   * restoring the tree; both arms must now go through.
-   */
+
   it("resolves confirmed-absent after an unrelated edit moved the contract closure", async () => {
     const harness = roundTrip(writeFixtureDescriptorAfterUnrelatedEdit);
     await harness.park();
@@ -395,9 +369,7 @@ describe("post-fence park → typed outcome arm → typed operator resolution", 
     const resumed = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
     assert.ok(resumed && resumed.lifecycle.state === "queued");
     assert.equal(resumed.envelope.startAt, WRITE_FIXTURE_NODE_ID);
-    // The resolution releases the WRITE; it never re-plans the run. The run
-    // keeps the contract identity it was enqueued under, so ref workflow-model §5.3's
-    // replay binding stays exactly as strict as it was (see ref write-safety §4.1).
+
     assert.equal(resumed.envelope.contractFingerprint, parked.envelope.contractFingerprint);
   });
 
@@ -450,7 +422,7 @@ describe("post-fence park → typed outcome arm → typed operator resolution", 
         return true;
       },
     );
-    // Nothing moved: the park is exactly as it was.
+
     assert.equal(harness.database.authority.writeIntents.get(intent.writeIntentId)?.status, "parked");
     assert.equal(harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID)?.lifecycle.state, "parked-write");
   });
@@ -494,18 +466,8 @@ describe("post-fence park → typed outcome arm → typed operator resolution", 
   });
 });
 
-/**
- * D245 — a confirmed-present proof that does not fit is an ORDINARY ANSWER, so
- * it comes back as a typed `rejected` the dialog can print with a code, not as
- * an escaping error the dialog can only describe as a transport failure.
- * `executeResolveGate` has answered `schema-mismatch` for the identical
- * situation one command over since the gate landed.
- *
- * Both cases assert the same second thing: the refusal unwound everything. A
- * parked write that refuses a bad answer must still be parked, at the same
- * generation, on the same run version.
- */
-describe("a confirmed-present proof that does not fit (ref write-safety §4.1, D245)", () => {
+
+describe("a confirmed-present proof that does not fit", () => {
   async function refusedPresent(payload: Record<string, unknown>) {
     const harness = roundTrip();
     await harness.park();
@@ -553,18 +515,8 @@ describe("a confirmed-present proof that does not fit (ref write-safety §4.1, D
   });
 });
 
-/**
- * D246. The record this closes read: *"Cancelling a parked-write run strands
- * the intent with no exit."* Ref write-safety §4.1's "cancel cannot alter the intent" was
- * honoured exactly — and the cancel still took both resolutions away with it,
- * because a terminal run serves no parked-write section and
- * `executeWriteResolution` refuses every lifecycle but `parked-write`.
- *
- * Every case here asserts the same two things after the refusal: NOTHING moved
- * (the run is still parked, the intent still unresolved) and the refusal names
- * the intent, so an operator reading it knows which write to go answer.
- */
-describe("cancel over an unresolved fenced write (ref write-safety §4.1, D246)", () => {
+
+describe("cancel over an unresolved fenced write", () => {
   function cancelCommand(runId: string, expectedVersion: number) {
     return {
       commandId: nextCommandId(),
@@ -602,10 +554,7 @@ describe("cancel over an unresolved fenced write (ref write-safety §4.1, D246)"
     const harness = roundTrip();
     await harness.park();
     const parkedIntentRecord = parkedIntent(harness.database);
-    // `reopenParkedAttempt` is the CAS `resolvePresent` itself performs before
-    // beat ⑦ accepts an attestation, so this is the real shape of an
-    // `attempting` row rather than a hand-built one. A run holding one serves
-    // no parked-write section, which is why cancelling it is the worse case.
+
     const attempting = harness.database.withAuthorityTransaction((repositories) =>
       repositories.writeIntents.reopenParkedAttempt({
         writeIntentId: parkedIntentRecord.writeIntentId,

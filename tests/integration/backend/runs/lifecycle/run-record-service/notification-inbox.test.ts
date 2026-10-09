@@ -1,13 +1,5 @@
 import { RunRecordService } from "../../../../../../src/backend/runs/lifecycle/run-record-service.js";
-/**
- * 2i-B: the notification lifecycle arms and the day-wire mapping.
- *
- * Read/unread and snooze are INDEPENDENT axes (D138): marking read preserves
- * the snooze, snoozing preserves the read state, and a snoozed row reads as
- * `snoozed` on the wire only while the snooze is in force — an expired
- * snooze reads as its underlying status again. Every arm CASes on the row
- * version and belongs to exactly one actor.
- */
+
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

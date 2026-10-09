@@ -131,14 +131,14 @@ describe("independent protected Settings reader", () => {
     assert.equal(snapshot.record.entries.ucpathPassword?.value, "synthetic-protected-readback");
     assert.equal(JSON.stringify(snapshot).includes("synthetic-protected-readback"), true);
   });
-  it("P21 verifies exact retry and refuses value-divergent reuse", () => {
+  it("verifies exact retry and refuses value-divergent reuse", () => {
     const f = fixture(); const command = f.protectedCommand("synthetic-first-value"); f.execute(command);
     assert.equal(f.execute(command).state, "already-applied");
     const divergent = structuredClone(command); divergent.payload.entries.ucpathPassword = { set: "synthetic-different-value" };
     assert.equal(f.execute(divergent).state, "rejected");
     assert.equal(requireSecret("ucpathPassword", createCredentialSecretSource(f.store)), "synthetic-first-value");
   });
-  it("D336 replaces P27: independent committed credentials remain available without a SQLite audit", () => {
+  it("independent committed credentials remain available without a SQLite audit", () => {
     const f = fixture(); const command = f.protectedCommand("synthetic-before-audit");
     const result = f.store.apply(ProtectedSettingsApplyInputSchema.parse({ ...command.payload, commandId: command.commandId,
       commandFingerprint: deriveSettingsCommandFingerprint(command), expectedRevision: command.target.expectedRevision, updatedAt: command.requestedAt }));

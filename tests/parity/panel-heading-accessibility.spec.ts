@@ -1,9 +1,4 @@
-/**
- * Product panels are navigational landmarks inside their takeover or shell.
- * Their titles must therefore be semantic peer headings, not styled text. This
- * test uses the built dashboard and role queries so a title that looks right
- * while dropping out of the accessibility tree fails loud.
- */
+
 import { expect,test,type Page } from "@playwright/test";
 import { gotoAppState } from "./helpers/app-driver.js";
 import { PARITY_DIST_DIR,ensureParityBundle } from "./helpers/bundle.js";
@@ -41,7 +36,7 @@ test("production PanelHeaders use explicit semantic heading levels", async ({ pa
   await expect(page.getByRole("heading", { name: "Explorer", level: 1, exact: true })).toBeVisible();
   await expectPanelHeading(page, "Open browser sessions");
 
-  // D298 — `?intake=` is always a session id; the upload page it used to open is gone.
+
   await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, intake: FIXTURE_INTAKE_IDS.mapping });
   await expectPanelHeading(page, "Spreadsheet intake");
 

@@ -11,32 +11,12 @@ import {
   frozenLegacyPaths,
 } from "../support/helpers/frozen-legacy-architecture-provenance.js";
 
-/**
- * D58 inventories LEGACY capability surfaces — the things the rebuild must
- * replace. Post-D93 those surfaces are preserved as a fixed in-repo provenance
- * snapshot, while every
- * DISPOSITION target names a path in THIS repo. Single-rooted per field by
- * construction, so paths stay unprefixed (see `helpers/guard-files.ts` for the
- * `legacy:` scheme used by the inventories that mix both repos).
- *
- * D184 adds the cutover-readiness half ref guards-and-tests §3.11 has described since round
- * 8 and nothing implemented: a disposition must resolve, agree with its own
- * status, cite evidence that exists, and — the arm this guard exists for — an
- * entry may not stay `open` while the milestone that owns it has already been
- * reported complete by the runtime.
- */
+
 function discoveredCapabilityPaths(): string[] {
   return [...frozenLegacyPaths(FROZEN_LEGACY_ARCHITECTURE_PROVENANCE.capabilities.discoveredPaths)];
 }
 
-/**
- * The phase docs' ordered work items, in delivery order (roadmap §Phases at a glance, doc 01's
- * spine table, and §Phase-2's deferred-base-tails table). The ORDER is what
- * makes "this milestone already shipped" derivable instead of hand-typed: the
- * completed set is everything at or before whatever the runtime itself reports
- * as `completedThrough`, so closing a tail is what arms the next sweep. Adding
- * a work item to a phase doc means adding it here, in position.
- */
+// Milestone ordering determines completion; compare positions, not lexical labels.
 const MilestoneSchema = z.enum([
   "1a",
   "1b",
@@ -56,12 +36,7 @@ const MilestoneSchema = z.enum([
 type Milestone = z.infer<typeof MilestoneSchema>;
 const MILESTONE_ORDER: readonly Milestone[] = MilestoneSchema.options;
 
-/**
- * `status` is the cutover flag the envelope's `cutoverRequiresZeroOpen` reads,
- * and it is a PROJECTION of the disposition rather than a second opinion. One
- * table owns the correspondence in both directions, so an entry cannot claim
- * to be closed while its disposition still says nobody decided.
- */
+
 const STATUS_FOR_DISPOSITION = {
   open: "open",
   native: "implemented",
@@ -73,9 +48,7 @@ const STATUS_FOR_DISPOSITION = {
 const StatusSchema = z.enum(["open", "implemented", "retired", "retirement-candidate"]);
 
 const DispositionSchema = z.discriminatedUnion("kind", [
-  // An open entry must say WHY its milestone is the milestone. A bare
-  // `{kind, milestone}` is how 73 entries came to name shipped milestones:
-  // there was nothing to contradict.
+
   z.strictObject({ kind: z.literal("open"), milestone: MilestoneSchema, reason: z.string().min(1) }),
   z.strictObject({ kind: z.literal("native"), milestone: MilestoneSchema, targetIds: z.array(z.string().min(1)).min(1) }),
   z.strictObject({
@@ -120,21 +93,10 @@ const CapabilityInventorySchema = z.strictObject({
 type CapabilityInventory = z.infer<typeof CapabilityInventorySchema>;
 type CapabilityEntry = z.infer<typeof CapabilityEntrySchema>;
 
-/**
- * `completedThrough` must be a phase-doc work item, because the whole sweep is
- * its position in that order. `active` deliberately is NOT: once the program
- * leaves Phase 2 the active item is a MIGRATION identifier from §3.3's order,
- * not a base work item, and a guard that parsed it strictly would refuse to
- * run the moment the marker advanced past 2j — turning an unrelated schema
- * into a gate on the program's own progress.
- */
+// completedThrough names an ordered work item; active may name a later milestone.
 const PhaseStatusSchema = z.object({ completedThrough: MilestoneSchema, active: z.string().min(1) });
 
-/**
- * The completed set comes from the RUNTIME's own marker, read through the same
- * `phase` command an operator runs — never from a list typed into this file. A
- * hand-typed list is a second answer that can disagree with the product.
- */
+
 async function runtimeCompletedThrough(): Promise<Milestone> {
   const written: string[] = [];
   await startRebuildRuntime({
@@ -168,11 +130,7 @@ export interface CapabilityClosureFacts {
   readonly legacyPathExists: (path: string) => boolean;
 }
 
-/**
- * The evidence grammar. Every token is one of four checkable forms; anything
- * else is a sentence nobody can verify, which is what `verificationEvidence`
- * degraded into (73 of 78 entries cited only "the legacy file still exists").
- */
+// Evidence tokens must resolve to checked artifacts, not prose claims.
 function auditEvidenceToken(entry: CapabilityEntry, token: string, facts: CapabilityClosureFacts): string | undefined {
   const npmRun = /^npm run ([a-z][a-z0-9:-]*)(?: -- .+)?$/u.exec(token);
   if (npmRun !== null) {
@@ -198,7 +156,7 @@ function auditEvidenceToken(entry: CapabilityEntry, token: string, facts: Capabi
     : `${entry.id}: evidence "${token}" resolves to nothing — expected a repo path, an npm script, or a legacy-source-present:/ported-with-provenance: token`;
 }
 
-/** Evidence that the REBUILD holds something, as opposed to legacy still holding it. */
+
 function citesRebuildProof(entry: CapabilityEntry, facts: CapabilityClosureFacts): boolean {
   return entry.verificationEvidence.some((token) =>
     /^npm run /u.test(token) || (!token.includes(":") && facts.repoPaths.has(token))
@@ -228,9 +186,7 @@ export function auditCapabilityClosure(
       );
     }
 
-    // 3. A native/replaced target must resolve to a real path in THIS repo. A
-    //    target that does not resolve is a replacement claim with nothing
-    //    behind it — strictly worse than an honest open entry.
+
     const targets = disposition.kind === "native"
       ? disposition.targetIds
       : disposition.kind === "replaced"
@@ -252,9 +208,7 @@ export function auditCapabilityClosure(
       }
     }
 
-    // 5. Every evidence token must name something that exists, and a decided
-    //    entry must cite proof in the REBUILD rather than only asserting that
-    //    the legacy source it replaces is still on disk.
+
     for (const token of entry.verificationEvidence) {
       const violation = auditEvidenceToken(entry, token, facts);
       if (violation !== undefined) violations.push(violation);
@@ -290,7 +244,7 @@ function entryOf(draft: CapabilityInventory, id: string): CapabilityEntry {
   return entry;
 }
 
-describe("D58 legacy capability disposition", () => {
+describe("legacy capability disposition", () => {
   it("covers every reviewed capability surface exactly once", () => {
     const owned = parsedInventory.entries.flatMap(({ sourcePaths }) => sourcePaths).sort();
     assert.equal(new Set(owned).size, owned.length, "a legacy capability path is owned more than once");
@@ -301,8 +255,7 @@ describe("D58 legacy capability disposition", () => {
     const ids = parsedInventory.entries.map(({ id }) => id);
     assert.equal(new Set(ids).size, ids.length, "capability ids must be unique");
     assert.equal(parsedInventory.proxyDispositionAllowed, false);
-    // `proxy` is not in the disposition union at all after D184 — the schema
-    // is the enforcement, and this asserts the union stayed closed.
+
     assert.throws(
       () => DispositionSchema.parse({ kind: "proxy", milestone: "2i" }),
       /invalid|expected|union/iu,
@@ -312,11 +265,11 @@ describe("D58 legacy capability disposition", () => {
     }
   });
 
-  it("closes every disposition against the as-built (D184)", () => {
+  it("closes every disposition against the as-built", () => {
     assert.deepEqual(auditCapabilityClosure(parsedInventory, closureFacts), []);
   });
 
-  it("leaves no entry open on a milestone the runtime already completed (D184)", () => {
+  it("leaves no entry open on a milestone the runtime already completed", () => {
     const completedIndex = MILESTONE_ORDER.indexOf(closureFacts.completedThrough);
     const stranded = parsedInventory.entries.filter(
       (entry) => entry.status === "open" && MILESTONE_ORDER.indexOf(entry.ownerMilestone) <= completedIndex,
@@ -330,14 +283,8 @@ describe("D58 legacy capability disposition", () => {
     );
   });
 
-  it("never blocks the phase marker's next advance (D184)", () => {
-    // `cutoverRequiresZeroOpen` gates CUTOVER — doc 05 §Exit criteria's whole-program flip
-    // — not a Phase-2 tail. An entry left sitting on a tail is therefore a
-    // record-keeping defect that must never become a gate on the program's own
-    // progress, so the sweep is run AHEAD against every base work item through
-    // 2j, the last of them. This is what makes advancing the marker in
-    // `src/backend/app/composition/runtime-composition.ts` a one-line change rather than an
-    // archaeology exercise.
+  it("never blocks the phase marker's next advance", () => {
+
     for (const completedThrough of MILESTONE_ORDER.slice(0, MILESTONE_ORDER.indexOf("2j") + 1)) {
       assert.deepEqual(
         auditCapabilityClosure(parsedInventory, { ...closureFacts, completedThrough }),

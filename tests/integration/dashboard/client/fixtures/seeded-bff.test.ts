@@ -1,10 +1,4 @@
-/**
- * Proves parity adapter #2 (ref frontend-backend-integration §7.2) serves the REAL production BFF over
- * real HTTP/SSE from state produced only by production transitions and the
- * production span/note writers — every assertion below parses the owning wire
- * schema, so a seed that drifts from the contract fails here, not in a
- * screenshot diff.
- */
+
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -86,7 +80,7 @@ describe("seeded parity BFF (adapter #2 — real machinery)", () => {
     expect(member?.lineage).toEqual({ state: "child", parentRunId: server.runIds.groupRun });
   });
 
-  it("keeps counts on the one D81 path, excluding member surfaces", async () => {
+  it("keeps counts on the one path, excluding member surfaces", async () => {
     const server = await boot();
     const day = DashboardDayWireSchema.parse(
       await (await fetch(`${server.baseUrl}/api/v1/dashboard?day=${server.day}`)).json(),
@@ -136,14 +130,7 @@ describe("seeded parity BFF (adapter #2 — real machinery)", () => {
     expect(logs.payload.notes.some(({ level }) => level === "error")).toBe(true);
   });
 
-  /**
-   * W2. The seed has transitioned this run to `parked-write` since it was
-   * written, and `availableSections` advertises the section from that lifecycle
-   * ALONE — while the serving arm re-reads the `run_operations` row the park
-   * names and throws by design when authority does not hold it. Nothing in the
-   * corpus had ever opened this run, so the 500 sat there unmet. This case is
-   * what makes the fenced row a requirement of the seed rather than a detail.
-   */
+
   it("serves the parked run's section from a real fenced-and-parked write intent", async () => {
     const server = await boot();
     const runId = server.runIds.parkedRun;
@@ -152,8 +139,7 @@ describe("seeded parity BFF (adapter #2 — real machinery)", () => {
       await (await fetch(`${server.baseUrl}/api/v1/runs/${runId}`)).json(),
     );
     expect(detail.availableSections).toContain("parked-write");
-    // The coarse queue status is unchanged; the SECTION is what makes the park
-    // addressable, which is the whole D198 (a) claim.
+
     expect(detail.header.status).toBe("blocked");
 
     const response = await fetch(`${server.baseUrl}/api/v1/runs/${runId}/parked-write`);

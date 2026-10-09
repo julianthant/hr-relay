@@ -1,18 +1,4 @@
-/**
- * What the Session Panel says about a worker (D248/D249).
- *
- * Two halves are pinned here, and both are pure by design so a test can reach
- * them: the SERVER's fold from the durable lease to the card, and the CLIENT's
- * folds from the card to the words on it. This tree renders no React in the
- * unit lane, so an operator-facing sentence is only as pinned as the parity
- * corpus unless it is extracted — D187's lesson, applied to the five sentences
- * a worker card can carry.
- *
- * The lease fixtures are PARSED by `WorkerLeaseRecordSchema`, so a case cannot
- * express a lease authority would refuse (a `stopped` lifecycle carrying a
- * `run` directive, a `busy` state with no run id), and every card is what
- * `WorkerCardWireSchema.parse` produced rather than a hand-built object.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { WorkerLeaseRecordSchema } from "../../../../../src/models/run/worker.js";
@@ -48,7 +34,7 @@ function leaseOf(overrides: Readonly<Record<string, unknown>> = {}): ReturnType<
 }
 
 const NO_TRACE = (): undefined => undefined;
-describe("the card the projector composes from a lease (D248)", () => {
+describe("the card the projector composes from a lease", () => {
   it("accepts the descriptor browser systems the worker persisted at launch", () => {
     const parsed = WorkerLeaseRecordSchema.safeParse({
       ...leaseOf(),
@@ -92,9 +78,7 @@ describe("the card the projector composes from a lease (D248)", () => {
   });
 
   it("says WHICH run it holds when the spans for it have not been folded", () => {
-    // Reachable in production: a worker claimed a run whose spans this process
-    // has not tailed, or whose stream was pruned. "No claimed run" over a
-    // worker that has one is the wrong sentence, so the card names the run.
+
     const card = workerCardOf({
       lease: leaseOf({ lifecycle: { state: "busy", startedAt: STARTED, heartbeatAt: STARTED, runId: RUN } }),
       fold: undefined,
@@ -159,7 +143,7 @@ describe("the card the projector composes from a lease (D248)", () => {
   });
 });
 
-describe("the browser span path is read, never guessed (D248)", () => {
+describe("the browser span path is read, never guessed", () => {
   it("reads the system and session id the emitter composed", () => {
     assert.deepEqual(
       browserSessionOfSpanPath(`worker/person-lookup/person-lookup-worker-1/browser:ucpath#${SESSION}`, "ucpath"),
@@ -168,9 +152,7 @@ describe("the browser span path is read, never guessed (D248)", () => {
   });
 
   it("refuses a path that names no session, rather than folding a guessed one", () => {
-    // The pre-D248 fixtures spelled `worker/<worker>/<system>`, which carries
-    // no session identity: folded under a guessed id, a tile could never be
-    // closed by the span that closes it.
+
     assert.throws(
       () => browserSessionOfSpanPath("worker/person-lookup-worker-1/ucpath"),
       /does not name a session/,
@@ -185,7 +167,7 @@ describe("the browser span path is read, never guessed (D248)", () => {
   });
 });
 
-describe("the words the card carries (D249)", () => {
+describe("the words the card carries", () => {
   const live = workerCardOf({
     lease: leaseOf(),
     fold: undefined,
@@ -200,8 +182,7 @@ describe("the words the card carries (D249)", () => {
       resolveTrace: NO_TRACE,
     });
     assert.equal(workerDirectiveNote(pausing), "Pausing after this item");
-    // A settled lease takes no directives, so it carries no pending note —
-    // the stop it was asked for has already happened.
+
     const settled = workerCardOf({
       lease: leaseOf({
         lifecycle: { state: "stopped", startedAt: STARTED, stoppedAt: STARTED, reason: "shutdown" },
@@ -242,16 +223,13 @@ describe("the words the card carries (D249)", () => {
       fold: undefined,
       resolveTrace: NO_TRACE,
     });
-    // D124's rule one surface over: `now − startedAt` for something that has
-    // ended grows forever and answers a question nobody asks.
+
     assert.equal(workerElapsedSeconds(dead, "2026-08-20T18:00:00.000Z"), 60);
     assert.equal(workerElapsedSeconds(live, "2026-08-20T16:00:45.000Z"), 45);
   });
 
   it("has a word for every state and every recorded stop reason", () => {
-    // Both tables are `Record`s over closed wire vocabularies, so a member
-    // added to either fails `tsc` rather than rendering a hole — this pins the
-    // half a type cannot: that every word is present and distinct.
+
     const labels = Object.values(WORKER_TONE).map(({ label }) => label);
     assert.equal(new Set(labels).size, labels.length);
     const reasons = Object.values(WORKER_STOP_REASON_LABEL);

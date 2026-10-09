@@ -1,10 +1,4 @@
-/**
- * Ref data-intake-and-edit-data §4.2's deterministic rules and the ported street/confidence
- * primitives, pinned against the legacy suites' own cases (match.test.ts,
- * normalize-contact.test.ts, street.test.ts, resolve.test.ts) so a drift
- * from the ported behaviour fails by name. The street-safety arms pin the
- * 2026-07-13 incident rules exactly.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import {
@@ -56,7 +50,7 @@ describe("contact rules — state / zip / country / relationship", () => {
   it("normalizes country aliases and treats an absent country as US", () => {
     assert.equal(normalizeCountryHint("people's republic of china"), "CN");
     assert.equal(normalizeCountryHint("United Kingdom"), "GB");
-    // The two-letter check runs BEFORE the alias table — legacy's exact order.
+
     assert.equal(normalizeCountryHint("uk"), "UK");
     assert.equal(isUsCountry(undefined), true);
     assert.equal(isUsCountry("U.S.A."), true);
@@ -76,7 +70,7 @@ describe("contact rules — state / zip / country / relationship", () => {
   });
 });
 
-describe("street safety — the 2026-07-13 incident rules", () => {
+describe("street normalization refuses unsafe address shapes", () => {
   it("parses house numbers including letter and range forms", () => {
     assert.equal(parseHouseNumber("9500 Gilman Dr"), "9500");
     assert.equal(parseHouseNumber("221B Baker St"), "221B");

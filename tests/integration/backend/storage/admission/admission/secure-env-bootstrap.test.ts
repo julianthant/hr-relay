@@ -150,8 +150,7 @@ describe("secure environment bootstrap", () => {
 
   it.each([
     ["storage", "doctor"], ["storage", "backup"], ["storage", "upgrade"], ["storage", "restore"],
-    // D341: `test-data check` and `test-data migrate` read the private file and
-    // the credential store only; neither may load provider `.env.providers`.
+
     ["test-data", "check"], ["test-data", "migrate"],
   ])("isolates %s %s from provider environment admission", async (command, operation) => {
     const original = [...process.argv]; const events: string[] = [];
@@ -302,9 +301,7 @@ describe("secure environment bootstrap", () => {
       secureEnvironmentEntrypoint("test-target-document-number"),
       "test-target-document-number",
     );
-    // The retired person-secret selector is refused like any other arbitrary
-    // string (D300): the smoke it named no longer exists, and a bootstrap that
-    // still accepted it would resolve to nothing at all.
+
     for (const refused of [
       "../../../../../../src/arbitrary.ts",
       "test-target-person-secrets",

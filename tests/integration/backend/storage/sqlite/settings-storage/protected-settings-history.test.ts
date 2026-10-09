@@ -30,11 +30,7 @@ import {
 import { sha256Hex } from "../../../../../../src/rules/validation/sha256.js";
 import { AuthorityDatabase } from "../../../../../support/helpers/synthetic-storage-admission.js";
 
-/**
- * D341 — historical journal readability is permanent. A pre-D341 protected-settings command
- * named the two retired canaries in its marked form; the live grammar refuses that row, so the
- * frozen arm in commands-history reads it and the D341 refusal happens by name afterwards.
- */
+
 const now = "2026-09-01T09:00:00.000Z";
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -65,7 +61,7 @@ function liveCommand() {
   });
 }
 
-describe("pre-D341 marked protected-settings commands", () => {
+describe("marked protected-settings commands with test-target names", () => {
   it("parse only through the frozen historical arm and never carry a value", () => {
     const command = historicalCommand();
     for (const name of RETIRED_TEST_TARGET_PROTECTED_NAMES) assert.deepEqual(command.payload.entries[name], { set: "<set>" });
@@ -84,7 +80,7 @@ describe("pre-D341 marked protected-settings commands", () => {
     assert.equal(HistoricalProtectedSettingsCommandSchema.safeParse({ ...valued, payload: { ...valued.payload, entries: { ...valued.payload.entries, unknownName: { set: "<set>" } } } }).success, false);
   });
 
-  it("derive the same journal form and fingerprint the pre-D341 kernel recorded", () => {
+  it("derives the journal form and fingerprint retained by the historical kernel", () => {
     const command = historicalCommand();
     assert.deepEqual(journaledSettingsCommand(command), command, "a historical row is already marked");
     assert.equal(

@@ -51,7 +51,7 @@ const crmRecord = ReadOnboardingRecordOutputSchema.parse({
 
 if (crmRecord.state !== "found") throw new Error("CRM found-record fixture did not parse as found");
 
-describe("Phase 1f Person Lookup task implementations", () => {
+describe("Person Lookup task implementations", () => {
   it("keeps genuine unresolved and inactive outcomes distinct", async () => {
     const unresolved = await readActiveStatusTask.impl.run({
       input: {

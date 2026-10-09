@@ -11,32 +11,10 @@ const servers = registerReferenceServers(["server"]);
 registerReferenceScenes(SCENES, () => servers.server, ANCHORS);
 
 
-/**
- * THE QUEUE, UNOCCLUDED (W2).
- *
- * Every `queue-*` and `run-*` reference above keeps the floating Workflow
- * Panel, and at every reference viewport that window sits OVER the queue
- * column. That is the right default — the queue is what the window is FOR, and
- * a reference that dismissed it would document a state the operator only
- * reaches by clicking away. But it means the queue's own rows have never been
- * photographed with nothing on top of them: their status clusters, their
- * wrapping footers and the group wells behind the window are, in the corpus as
- * it stands, covered pixels. A defect there is invisible to the pixel half and
- * agreed with by the a11y half, which is the exact shape D187 and D195 each
- * found once.
- *
- * So this ADDS a second photograph of two states rather than moving either
- * one: the day queue at rest, and a queue with a run open beside it. One
- * viewport, both themes — the occlusion is a function of the layout, not of
- * the width, and 1440x900 is the width the window overlaps most.
- */
+// Dismiss the floating Workflow Panel before capturing the unoccluded queue.
 
 
-/**
- * The two access variants ref frontend-backend-integration §7.1 names. Both are captured at one viewport
- * and one theme: they are about behavior (where focus goes, whether motion
- * runs), and photographing them six more times would only add pixels to review.
- */
+
 test.describe("access variants", () => {
   test("keyboard-only skip link lands on the workspace", async ({ page }) => {
     const errors = failOnPageErrors(page);
@@ -91,7 +69,7 @@ test.describe("access variants", () => {
 });
 
 
-// D340 is desktop-window resizing, not a mobile-device test variant.
+
 for (const theme of PARITY_THEMES) {
   test(`desktop canvas holds its side-by-side floor — ${theme.name}`, async ({ page }) => {
     await page.setViewportSize({ width: 1024, height: 720 });

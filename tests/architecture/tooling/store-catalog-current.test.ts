@@ -1,12 +1,4 @@
-/**
- * D312 (doc 03.2 Task 2) — ref stores §2 is GENERATED from `taskStoreRegistry`, not written.
- *
- * The reuse index is the one document an author consults before minting a task. A hand-maintained
- * index goes stale silently, and a stale index is exactly what mints a second implementation of a
- * page visit D194 says must exist once. This guard fails on stale checked-in bytes, proves the
- * renderer refuses a shape it cannot derive rather than printing a placeholder, and proves every
- * registered task appears in the block exactly once.
- */
+
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";

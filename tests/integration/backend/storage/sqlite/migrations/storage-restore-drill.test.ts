@@ -11,26 +11,7 @@ import { RunRecordService, workerRunLifecyclePort, sweepWorkerClaims } from "../
 import { randomUUID } from "node:crypto";
 import { upgradeStorage } from "../../../../../support/helpers/synthetic-storage-admission.js";
 import { createTimelineEmitter } from "../../../../../../src/backend/storage/events/timeline-emitter.js";
-/**
- * The 2j restore drill, driven through the OPERATOR'S OWN COMMAND (D181).
- *
- * Doc 02 §Exit criteria asks that "a real-shaped copied authority DB passes
- * corruption → read-only degraded mode → checksummed-backup restore →
- * projection rebuild with claims/dependencies/checkpoints/intents and outboxes
- * intact". `storage-recovery.test.ts` already proves the
- * offline restore SERVICE against that shape. What it cannot prove — because
- * the wiring did not exist — is that an operator with a corrupt database and a
- * shell can actually get there: `cli storage restore` was unbuilt, and
- * `RecoveryStopProofStore` refused every proof because nothing in production
- * had ever recorded a runtime-lock snapshot.
- *
- * So this file drills the whole path through `composeStorageCommand`, over a
- * real authority database seeded with one row in each family the exit
- * criterion names. Nothing is stubbed except the clock: the corruption is real
- * bytes written over a real SQLite file, the checksum is really re-verified,
- * the projections are really rebuilt against the staged copy, and the swap is
- * the real atomic rename.
- */
+
 import assert from "node:assert/strict";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import {
@@ -168,11 +149,7 @@ function seededCommandId(): string {
   return CommandIdentitySchema.parse(COMMAND_FIXTURES[0]).commandId;
 }
 
-/**
- * One row in each durable family doc 02 §Exit criteria names, written through the
- * real repositories. `claimNext` is what makes the claim REAL — a hand-written
- * claim column would not be the thing the sweeper and the executor read.
- */
+
 function seedRealShapedAuthority(database: AuthorityDatabase): Readonly<{
   claimGeneration: number;
   runId: string;
@@ -205,12 +182,7 @@ async function takeBackup(database: AuthorityDatabase, paths: DrillPaths): Promi
   return join(paths.backupDirectory, `${manifest.backupFileName}.manifest.json`);
 }
 
-/**
- * Corruption, not truncation. Overwriting the interior pages while leaving the
- * SQLite header intact is what produces `database disk image is malformed`
- * from `quick_check` rather than "file is not a database" from the very first
- * byte — the harder of the two for the doctor to name correctly.
- */
+
 function corrupt(paths: DrillPaths): void {
   const bytes = readFileSync(paths.authorityPath);
   bytes.fill(0x5a, 4096, Math.min(bytes.length, 40_960));
@@ -276,9 +248,7 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
     const retainedTimeline = database.authority.timelineEvents.page({});
     const generation = database.getMeta().authorityGeneration;
     const manifestPath = await takeBackup(database, paths);
-    // A row written AFTER the backup is the control: it must be gone
-    // afterwards, because a restore that silently kept it would not be a
-    // restore of the bytes the manifest checksums.
+
     database.authority.notifications.create(NOTIFICATION);
     database.close();
     const before = readFileSync(paths.authorityPath);
@@ -299,8 +269,7 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
     assert.equal(authority["state"], "degraded");
     const cause = authority["cause"] as Record<string, unknown>;
     assert.equal(cause["code"], "authority-corrupt");
-    // …and it left the corrupt bytes exactly as they were: a doctor that
-    // repaired anything would destroy the evidence the restore quarantines.
+
     assert.equal(
       readFileSync(paths.authorityPath).equals(before),
       false,
@@ -531,8 +500,7 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
       held.release();
     }
 
-    // Released, the same command succeeds — the refusal was about the lock,
-    // not about the backup.
+
     const after = await composeStorageCommand(
       rebuildRuntimeIsolation,
       ["restore", "--from", manifestPath],
@@ -999,7 +967,7 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
     assert.equal(usage.exitCode, 1);
     assert.match(
       usage.output,
-      /authority, recovery inspection, credentials and span reconciliation are healthy; backup is reported, not gated \(D322\)/u,
+      /authority, recovery inspection, credentials and span reconciliation are healthy; backup is reported, not gated/u,
     );
   });
 
@@ -1063,11 +1031,7 @@ function pretendAliveIdentity(pid: number) {
   };
 }
 
-/**
- * A pid that is certainly not running. Node reserves nothing here, so the loop
- * walks upward until the OS reports `ESRCH`; on a machine where every id is
- * taken the test fails loudly rather than silently choosing a live process.
- */
+
 function deadPid(): number {
   for (let candidate = 2 ** 21; candidate < 2 ** 21 + 512; candidate += 1) {
     if (!pidExists(candidate)) return candidate;

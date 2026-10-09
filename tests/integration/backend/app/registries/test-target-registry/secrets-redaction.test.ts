@@ -50,8 +50,7 @@ describe("closed secret access", () => {
   it("keeps protected registry names one-to-one", () => {
     assert.equal(new Set(SECRET_SPECS.map(({ name }) => name)).size, SECRET_SPECS.length);
     assert.equal(SECRET_SPECS.every(({ source }) => source === "protected-store"), true);
-    // D341: the two test-target canaries are no longer secrets at all; the
-    // protected registry carries only credentials and the timekeeper name.
+
     for (const retired of ["separationsKualiFinalizationCanaryDocumentNumber", "personLookupCanaryEid"]) {
       assert.equal(SECRET_SPECS.some(({ name }) => (name as string) === retired), false, retired);
     }
@@ -214,9 +213,7 @@ describe("closed secret access", () => {
   });
 
   it("refuses a present number whose composed subject does not resolve ready", async () => {
-    // Presence is not admission: the smoke exits 0 only when the composed
-    // separations subject resolves through the real registry too, so a blocked
-    // or defected resolution cannot read as a green preflight.
+    // Secret presence alone is insufficient; the composed subject must resolve before readiness passes.
     for (const resolution of ["blocked", "defect"] as const) {
       const output: string[] = [];
       const exitCode = await runTestTargetDocumentNumberSmoke({
@@ -233,9 +230,8 @@ describe("closed secret access", () => {
     }
   });
 
-  it("refuses the retired test-target environment keys by name, independently of the catalog (D341)", () => {
-    // The canary rows left the catalog; their old `.env` names must still be
-    // refused loudly so a stale `.env` cannot silently feed a run.
+  it("refuses the retired test-target environment keys by name, independently of the catalog", () => {
+
     assert.deepEqual([...RETIRED_TEST_TARGET_ENVIRONMENT_KEYS], [
       "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER",
       "HRAUTO_TEST_SUBJECT_PERSON_LOOKUP_CANARY_EID",
@@ -247,23 +243,18 @@ describe("closed secret access", () => {
         (error: unknown) => {
           const diagnostic = String(error);
           assert.match(diagnostic, new RegExp(`retired test-target environment key ${key} is refused`, "u"));
-          assert.match(diagnostic, /config\/test-data\.local\.json \(D341\)/u);
+          assert.match(diagnostic, /config\/test-data\.local\.json, so remove it/u);
           assert.equal(diagnostic.includes(value), false);
           return true;
         },
         key,
       );
-      assert.equal(retiredTestTargetEnvironmentRefusal(key).includes("D341"), true);
+      assert.equal(retiredTestTargetEnvironmentRefusal(key), `retired test-target environment key ${key} is refused; test-target inputs live in config/test-data.local.json, so remove it`);
     }
   });
 
   it("does not accept an arbitrary secret-file path", () => {
-    // The registered path is pointed at something that provably does not exist.
-    // Before D115/D116 resolved `paths.duoCredential` absolutely this test read
-    // a RELATIVE path and passed only because nothing was there — so on a
-    // machine that had actually enrolled Duo it started finding the real
-    // credential and stopped asserting anything. A guard whose outcome depends
-    // on the developer's filesystem is not a guard.
+
     const resolved = resolveConfigWithProvenance({}, hostConfigFacts({}), manualClock(new Date("2026-08-10T12:00:00-07:00"))).config;
     const config = {
       ...resolved,

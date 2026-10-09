@@ -167,7 +167,7 @@ describe("workflow definition registry conformance", () => {
   });
 });
 
-describe("registry-wide conformance covers every explicit entry kind (D315)", () => {
+describe("registry-wide conformance covers every explicit entry kind", () => {
   it("projects a definition using task, parallel, delegate, gate and transaction entries through bootstrap/start, Explorer and the detail timeline", () => {
     const compiled = compileFixtureWorkflow(everyEntryKindWorkflow);
     const fixtureModule = composeWorkflowModule(compiled, taskStoreRegistry.stores);

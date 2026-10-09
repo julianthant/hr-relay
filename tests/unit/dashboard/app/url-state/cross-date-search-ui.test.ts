@@ -1,9 +1,4 @@
-/**
- * DCR4's Top Bar search state and navigation handoff.
- *
- * These tests stay at the two operator-confirmed public seams: the control's
- * query/mode contract and the exact addressable route a result opens.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { routeForCrossDateSearchResult, routeToSearch } from "../../../../../src/dashboard/app/navigation/url-state.js";

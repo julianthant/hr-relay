@@ -1,10 +1,4 @@
-/**
- * D307 — `runQueuedSpanEvent` projects a committed run's identity into its
- * write-once queue-root span. The step-omission envelope entry carries the
- * OPERATOR'S TYPED FACTS (`facts`), which may be sensitive HR values (a
- * separation date, an EID, a note) — the span may name WHICH steps were
- * omitted, and must never leak what the operator typed into them.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { runQueuedSpanEvent } from "../../../../../../src/backend/runs/commands/run-queued-span.js";
@@ -22,7 +16,7 @@ function runWithOmissions(stepOmissions: readonly Readonly<{ step: string; facts
   });
 }
 
-describe("runQueuedSpanEvent (D307, D314)", () => {
+describe("runQueuedSpanEvent", () => {
   it("emits omittedSteps as the step keys only, never the operator's typed facts", () => {
     const run = runWithOmissions([
       { step: "kronos-timecard", facts: { lastDayWorked: "06/18/2026", separationDate: SENSITIVE_FACT_VALUE } },
@@ -43,7 +37,7 @@ describe("runQueuedSpanEvent (D307, D314)", () => {
     assert.equal(Object.hasOwn(event, "omittedSteps"), false);
   });
 
-  it("projects a D314 restart-from-start recovery choice onto the queue root, and omits the key for a resume or ordinary start", () => {
+  it("projects a restart-from-start recovery choice onto the queue root, and omits the key for a resume or ordinary start", () => {
     const priorRunId = "aaaaaaaa-0007-4000-8000-000000000007";
     const restarted = RunRecordSchema.parse({
       ...QUEUED_RUN,

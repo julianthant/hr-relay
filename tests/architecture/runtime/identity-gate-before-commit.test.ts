@@ -1,21 +1,4 @@
-/**
- * Ref write-safety §14's identity authority cannot be bypassed by graph shape.
- * Every separation commit and identity-bearing terminal result must cross the
- * `verify-identity-approval` task. That task produces one of two explicit
- * authorities: machine verification of an independently supplied EID against
- * UCPath's actual read-back, or an operator approval for a name-resolved EID.
- *
- * The name-only branch remains a real operator gate. Its condition is graph
- * data, fixed to `comparison.packet.emplIdSource === "name-resolved"`; neither
- * a caller nor the dashboard can suppress it. The supplied-EID branch skips
- * that gate without manufacturing a human decision, then the same authority
- * task validates the packet and produces machine-verification provenance.
- *
- * The ancestry walk also catches a side read added after identity resolution:
- * a transaction may consume only facts that were inputs to the authority task.
- * This preserves the original D77 guard's useful dominance property while
- * replacing its superseded claim that every separation requires a human gate.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../src/workflow-kit/workflow.js";

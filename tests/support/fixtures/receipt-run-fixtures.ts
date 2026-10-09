@@ -1,22 +1,4 @@
-/**
- * The two runs THIS program actually produced, as receipt evidence.
- *
- * 1. **The live person-lookup exit run** (doc 01 §Exit criteria): EID
- *    10873698, trace `pl-000619-4ebf`, terminal `done` at ATTEMPT 2 after the
- *    CRM browser died mid-run, `crm-dates` skipped `condition-false`, result
- *    `activeStatus.state = "active"` cross-verified against CRM record
- *    `a1ZVr000004Xoq9MAC`. This one is seeded through the REAL authority
- *    database and the REAL D110/D114 terminalization — nothing is hand-built.
- *
- * 2. **A deterministic separations Kuali finalization**: the real chunk-5
- *    descriptor, save contract, transaction node, twelve-field reload proof,
- *    and fenced write records over synthetic identifiers.
- *
- *    Its terminal result comes from the REAL `buildRunResult` over the real
- *    transaction checkpoint. The dependency identities and every digest are
- *    the descriptor factory's own; only process-edge ids and values are
- *    deterministic test data.
- */
+
 import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { CrmReadOnboardingRecord } from "../../../src/models/systems/crm/read-onboarding-record.js";
@@ -171,12 +153,7 @@ export interface SeededExitRun {
   readonly checkpoints: readonly unknown[];
 }
 
-/**
- * Seed both attempts through the REAL authority database: write searching in
- * attempt 1, requeue and claim attempt 2, write its two checkpoints, then
- * terminalize through the D110/D114 composite with
- * a factory-sealed result. Nothing about the terminal row is hand-built.
- */
+
 export function seedPersonLookupExitRun(
   database: AuthorityDatabase,
 ): SeededExitRun {
@@ -442,11 +419,7 @@ export interface KualiReceiptEvidence {
   readonly writes: readonly ReceiptWriteEvidence[];
 }
 
-/**
- * The exact durable shapes the controlled commit left behind, plus the
- * terminal rows the run WOULD carry once a transaction node can be a terminal
- * dependency. See this module's header for what is real and what stands in.
- */
+
 export function kualiReceiptEvidence(
   input?: Readonly<{ readonly contractFingerprint?: string }>,
 ): KualiReceiptEvidence {
@@ -600,10 +573,7 @@ export function kualiReceiptEvidence(
     updatedAt: KUALI_CONFIRMED_AT,
   };
 
-  // The terminal record is built by the REAL descriptor factory over the REAL
-  // stored checkpoint (D144). Nothing about it is typed here — not the value,
-  // not the dependency identities, not the digests — so if the factory's
-  // terminal contract moves, this fixture moves with it or fails loud.
+
   const built = buildRunResult(
     descriptor,
     { ...run, lifecycle: RUNNING_LIFECYCLE, version: 4 },
@@ -728,12 +698,7 @@ export function kualiReceiptEvidence(
   };
 }
 
-/**
- * The claim the terminal record is built against. The Kuali run's own terminal
- * lifecycle is the settled state AFTER the build; `buildRunResult` refuses any
- * run that is not `running` under a live claim, which is exactly the check that
- * makes this fixture's record a real one rather than a shape.
- */
+
 const RUNNING_LIFECYCLE = Object.freeze({
   state: "running",
   workerId: "kuali-receipt-worker-1",
@@ -742,7 +707,7 @@ const RUNNING_LIFECYCLE = Object.freeze({
   currentNodeId: "finalize-kuali",
 });
 
-/* ── separations-identity-check: the gated run (D204) ────────────────────── */
+
 
 /** The live chunk-3 approval, at the ids and instants that run actually had. */
 export const GATE_RUN_ID = "774cb34c-c684-44d7-9c43-b4d460c8a51c";
@@ -759,25 +724,11 @@ export interface IdentityGateReceiptEvidence {
   readonly result: unknown;
   readonly checkpoints: readonly unknown[];
   readonly gateResults: readonly unknown[];
-  /** The exact evidence digest the approval was bound to. */
+
   readonly evidenceDigest: string;
 }
 
-/**
- * A settled `separations-identity-check` run whose ALWAYS-GATE was resolved by
- * a real operator — the shape ref write-safety §14.6 risk 6 is about.
- *
- * The gate's payload and the post-gate node's output are bound to each other
- * the way a real run binds them: the approval's `evidenceDigest` is the one the
- * `approval` node carried forward, so a receipt that printed one without the
- * other would be visibly wrong here. The post-gate output is the CONTRACT's own
- * sealed example, so a contract that grows a field grows this fixture with it
- * rather than drifting away from it.
- *
- * Only the `approval` node has a checkpoint. That is not a shortcut: it is the
- * only terminal dependency, and it makes this fixture also cover the arm where
- * a gate is the ONLY evidence a receipt has for the middle of the graph.
- */
+
 export function identityGateReceiptEvidence(): IdentityGateReceiptEvidence {
   const descriptor = separationsIdentityCheckDescriptor;
   const approvalOutput = SeparationsVerifyIdentityApproval.example;

@@ -1,8 +1,4 @@
-/**
- * Shared durable fixtures for the write-safety and subject-binding guards: a
- * crashed fenced write (running run parked the way the D118 sweep parks it,
- * with its `attempting` intent retained) and a same-key foreign fence input.
- */
+
 import assert from "node:assert/strict";
 import type { TestClock } from "../../../../src/rules/time/clock.js";
 import { deriveWriteBindingProofDigest } from "../../../../src/rules/write-safety/write-safety.js";
@@ -82,10 +78,7 @@ export function foreignAttemptingIntent(runId: string, attemptId: string) {
   return { intent, attempt };
 }
 
-/**
- * Enqueue + claim + run the fixture run, fence its `attempting` intent, then
- * park the run exactly the way the D118 sweep's `parked:true` arm does.
- */
+
 export function parkedAttemptingWriteFixture(
   database: AuthorityDatabase,
   clock: TestClock,

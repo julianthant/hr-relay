@@ -1,17 +1,4 @@
-/**
- * UF-SET-2 — a takeover the Top Bar's switcher does not name presses NOTHING.
- *
- * The defect this pins: `shellView` folded `settings` and `intake` (and, until
- * D295 moved it inside Settings, the UI catalog) onto `"queue"`, so `ShellViewSwitcher`'s `aria-pressed={view === candidate}`
- * lit `Dashboard` at the same moment the gear was lit — two simultaneous
- * "you are here" claims with a takeover covering the dashboard, and only one of
- * them true. The demo has never done this (legacy `1ec1d870`
- * `src/dashboard/components/dev/rebuild-demo/DemoShell.tsx:560-573`).
- *
- * Every arm is driven from a ROUTE rather than from the takeover token, because
- * the claim is about what the operator sees after following a link, and the
- * precedence between two keys on one link is part of that answer.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { parseArchiveBrowse } from "../../../../../src/dashboard/app/navigation/archive-route-model.js";
@@ -20,12 +7,7 @@ import { SHELL_VIEWS, type ShellViewSelection } from "../../../../../src/dashboa
 
 const BASE = { start: false } as const;
 
-/**
- * The whole `ActiveTakeover` union against the segment the switcher must press
- * for each arm. `satisfies Record<ActiveTakeover, ShellViewSelection>` pins it
- * in both directions: a sixth takeover added to the union fails to compile
- * here until this table names its segment, and a key the union drops fails too.
- */
+
 const SEGMENT_OF = {
   settings: "none",
   intake: "none",
@@ -57,20 +39,12 @@ describe("the Top Bar switcher's pressed segment", () => {
   });
 
   it("follows the route's own precedence rather than a second copy of it", () => {
-    // A link may carry more than one key. The segment must light the region
-    // that actually renders — `settings` outranks `archive`, so the switcher
-    // presses nothing even though `?archive=` is present.
+
     assert.equal(shellViewOf(activeTakeover({ ...BASE, settings: "", archive: "index" })), "none");
     assert.equal(shellViewOf(activeTakeover({ ...BASE, archive: "index", explore: "separations" })), "none");
   });
 
-  /**
-   * The arm table, asserted per takeover. Its predecessor only checked that the
-   * result was a member of `[...SHELL_VIEWS, "none"]`, which the return type
-   * already guarantees — a test tsc owned, that could not go red for any wiring
-   * mistake (unit U4b). This one names the expected segment for each arm, so a
-   * takeover folded onto the wrong one fails here.
-   */
+
   it("presses the segment its arm names, for every takeover in the union", () => {
     for (const [takeover, segment] of Object.entries(SEGMENT_OF) as readonly (readonly [
       ActiveTakeover,

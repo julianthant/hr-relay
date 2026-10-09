@@ -1,9 +1,4 @@
-/**
- * The JSONL span/note writers (ref dashboard-surfaces §2.1): O_APPEND lines under the state
- * root, append-at-now partitioning, write-once identity enforcement at emit,
- * schema-owned note redaction with visible drops, the D218 cursor-based tail
- * reader, and the D86 30-day prune.
- */
+
 import assert from "node:assert/strict";
 import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, truncateSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -113,7 +108,7 @@ function queuedEvent(clock: { now(): Date }): Record<string, unknown> {
 }
 
 describe("span JSONL writer", () => {
-  it("appends one strict pid-stamped line per event and feeds NO projector — the fold reads disk (D218)", () => {
+  it("appends one strict pid-stamped line per event and feeds NO projector — the fold reads disk", () => {
     const root = stateRoot();
     const clock = manualClock(AT);
     const writer = createSpanJsonlWriter({ stateRoot: root, clock, pid: 4242 });
@@ -168,14 +163,8 @@ describe("span JSONL writer", () => {
     });
   });
 
-  /**
-   * D254 — the writer's declared-detail-key enforcement retired WITH the
-   * `span.patched` arm it guarded. What replaces it is the stronger statement:
-   * the event does not parse at all, so no detail line can reach disk under
-   * any key. The disk assertion is the load-bearing half — a schema that
-   * refused after the append would still have written history nobody can fold.
-   */
-  it("refuses a span.patched event outright and writes nothing (D254 retirement)", () => {
+
+  it("refuses a span.patched event outright and writes nothing", () => {
     const root = stateRoot();
     const clock = manualClock(AT);
     const writer = createSpanJsonlWriter({ stateRoot: root, clock, pid: 1 });
@@ -190,7 +179,7 @@ describe("span JSONL writer", () => {
     assert.equal(patched.length, 0);
   });
 
-  it("writes classified observations and refuses unclassified leaf shapes (D270)", () => {
+  it("writes classified observations and refuses unclassified leaf shapes", () => {
     const root = stateRoot();
     const clock = manualClock(AT);
     const writer = createSpanJsonlWriter({ stateRoot: root, clock, pid: 1 });
@@ -206,9 +195,7 @@ describe("span JSONL writer", () => {
       { key: "selection.eid", state: "transformed", classification: "direct-identifier", transform: "last4", value: "6712" },
       { key: "selection.eidDigest", state: "transformed", classification: "direct-identifier", transform: "digest", value: "c".repeat(64) },
     ]));
-    // The point is emitted at RECORD time, so the arm must survive being
-    // written many times under one span identity — unlike an open or a close,
-    // an observation is not once-per-span.
+
     writer.emit(observed([
       { key: "selection.status", state: "allowed", classification: "safe-diagnostic", transform: "allow", value: "ambiguous" },
     ]));
@@ -226,7 +213,7 @@ describe("span JSONL writer", () => {
     assert.equal(after.length, 2);
   });
 
-  it("refuses a raw EID disguised as a last4 value before appending it (D270)", () => {
+  it("refuses a raw EID disguised as a last4 value before appending it", () => {
     const root = stateRoot();
     const clock = manualClock(AT);
     const writer = createSpanJsonlWriter({ stateRoot: root, clock, pid: 1 });
@@ -247,7 +234,7 @@ describe("span JSONL writer", () => {
     assert.equal(readEventStreamLines(root, "spans").length, 0);
   });
 
-  it("refuses a non-SHA-256 string disguised as a digest before appending it (D270)", () => {
+  it("refuses a non-SHA-256 string disguised as a digest before appending it", () => {
     const root = stateRoot();
     const clock = manualClock(AT);
     const writer = createSpanJsonlWriter({ stateRoot: root, clock, pid: 1 });
@@ -268,7 +255,7 @@ describe("span JSONL writer", () => {
     assert.equal(readEventStreamLines(root, "spans").length, 0);
   });
 
-  it("the durable redaction schema accepts exactly the canonical redaction pairs (D270)", () => {
+  it("the durable redaction schema accepts exactly the canonical redaction pairs", () => {
     for (const classification of CLASSIFICATIONS) for (const transform of TRANSFORMS) {
       const pair = `${classification}/${transform}`;
       const value = redactedPairValue(classification, transform);
@@ -283,7 +270,7 @@ describe("span JSONL writer", () => {
     }
   });
 
-  it("the observed-event wire twin accepts exactly the canonical redaction pairs (D270)", () => {
+  it("the observed-event wire twin accepts exactly the canonical redaction pairs", () => {
     for (const classification of CLASSIFICATIONS) for (const transform of TRANSFORMS) {
       const pair = `${classification}/${transform}`;
       const event = observedPairEvent(redactedPairValue(classification, transform));
@@ -293,7 +280,7 @@ describe("span JSONL writer", () => {
     }
   });
 
-  it("the JSONL writer refuses every forbidden redaction pair before append (D270)", () => {
+  it("the JSONL writer refuses every forbidden redaction pair before append", () => {
     const root = stateRoot();
     const clock = manualClock(AT);
     const writer = createSpanJsonlWriter({ stateRoot: root, clock, pid: 1 });
@@ -388,9 +375,7 @@ describe("note JSONL writer and classified fields", () => {
     emit("at the run's own day");
     clock.setWall(new Date(AT.getTime() + 3 * 24 * 60 * 60 * 1000));
     emit("three days later");
-    // Generic `emitNote` is for callers that do not hold run authority. The
-    // production task producer uses `emitRunNote` to assert the same append
-    // instant against the run's partition scope.
+
     assert.deepEqual(listEventStreamFiles(root, "notes").map(({ date }) => date), ["2026-08-03", "2026-08-06"]);
   });
 
@@ -542,7 +527,7 @@ describe("note JSONL writer and classified fields", () => {
   });
 });
 
-describe("the D218 cursor-based tail reader", () => {
+describe("cursor-based tail reader", () => {
   it("reads only what landed since the cursors, and resumes without re-reading a line", () => {
     const root = stateRoot();
     appendEventStreamLine(root, "spans", "person-lookup", "2026-08-03", `{"n":1}`);
@@ -591,7 +576,7 @@ describe("the D218 cursor-based tail reader", () => {
   });
 });
 
-describe("stream files and the D86 prune", () => {
+describe("stream file retention", () => {
   it("prunes span/note files strictly older than 30 days and fails loud on a foreign file", () => {
     const root = stateRoot();
     const clock = manualClock(AT);
@@ -619,7 +604,7 @@ describe("stream files and the D86 prune", () => {
   });
 });
 
-describe("the D5 scoped reader — one workflow, one date range", () => {
+describe("scoped reader covers one workflow and one date range", () => {
   /** Four partitions across two workflows and three days, one line each. */
   function corpus(): string {
     const root = stateRoot();
@@ -670,9 +655,7 @@ describe("the D5 scoped reader — one workflow, one date range", () => {
 
   it("does not read a partition outside the scope — a corrupt one there cannot be observed", () => {
     const root = corpus();
-    // Unreadable bytes on a day the scope excludes: a reader that opened it
-    // would hand this to its caller's parse, so serving the in-scope lines is
-    // proof the file was never touched.
+
     appendEventStreamLine(root, "notes", "person-lookup", "2026-08-13", "{ this is not json");
     const lines = readScopedEventStreamLines(root, "notes", {
       workflow: "person-lookup",

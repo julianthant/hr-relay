@@ -1,10 +1,4 @@
-/**
- * A `min`/`max` handed to the DS date primitives is SUPPLIED CONFIGURATION, not
- * a draft. The nullable draft parser legitimately returns `null` for a value the
- * operator has not finished typing. The same parser on a bound is the opposite
- * of useful: a bound the picker cannot read is silently dropped, so a caller
- * that said "not after October 20th" gets a calendar that allows the whole year.
- */
+
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act, createElement, type ReactElement } from "react";

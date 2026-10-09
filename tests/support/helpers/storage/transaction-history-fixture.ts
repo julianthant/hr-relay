@@ -37,7 +37,7 @@ export function historyWorld() {
   };
 }
 
-/** Released v39 source plus pinned migrated schema-46 facts; explicit sourceVersion keeps expiry cases below the floor. */
+
 export function historicalWorld(options: { files?: boolean; confirmation?: boolean; archive?: boolean; sourceVersion?: 39 | 46; missingFile?: boolean } = {}) {
   const world = historyWorld();
   const fixtures = [world.commit(101, { confirmedAt: "2026-07-31T17:30:00.000Z" }),

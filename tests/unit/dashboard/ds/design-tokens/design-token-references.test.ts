@@ -1,25 +1,4 @@
-/**
- * EVERY `var(--ds-…)` A SURFACE READS MUST BE A TOKEN THAT EXISTS.
- *
- * CSS custom properties fail silently by design: `bg-[var(--ds-bg-raised)]`
- * against a name nothing defines is not an error, it is a declaration the
- * browser DROPS — so the element paints nothing and inherits whatever sits
- * behind it. That is the fail-loud rule's exact shape in CSS: a missing value
- * substituted with a plausible-looking result nobody notices.
- *
- * It is not hypothetical. The run-detail step disclosure shipped reading
- * `--ds-bg-raised`, a name that was never a token, so the hover card floated
- * over the timeline TRANSPARENT and its members read through the row beneath
- * it. Four more (`--ds-bg`, `--ds-bg-inset`, `--ds-text-lg`,
- * `--ds-status-warning-fg`) were sitting in the tree beside it, each a surface
- * quietly painting nothing. Fixing five without pinning the class would only
- * schedule the sixth.
- *
- * A token set at RUNTIME by a component's inline `style` is legitimately
- * absent from `tokens.css`; the allowlist below names those and where they are
- * written, so "declared in JS" stays a deliberate, reviewed answer rather than
- * an escape hatch.
- */
+
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { relative, resolve } from "node:path";

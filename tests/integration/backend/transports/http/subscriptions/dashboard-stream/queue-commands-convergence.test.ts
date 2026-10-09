@@ -1,18 +1,4 @@
-/**
- * Stream convergence proof across Queue commands, lifecycle, delete, archive,
- * and reconnect (S5, P4).
- *
- * Covers:
- *  - Snapshot protocol convergence: count-bearing create, update, archive, and delete
- *    emit fresh authoritative snapshots.
- *  - Non-resurrection: late patches or responses cannot resurrect rows or corrupt state.
- *  - Reconnect convergence: cursor resume across snapshots delivers fresh authority;
- *    expired or foreign cursors deliver fresh snapshot.
- *  - Lost wakeups and duplicate cursors: reconnected or concurrent clients converge to
- *    the same authoritative state.
- *  - Backpressure & generation reset: bounded subscriber queue enforces reset-required
- *    on buffer overflow and generation increments.
- */
+
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 
@@ -91,7 +77,7 @@ function applyEnvelope(
   return day;
 }
 
-describe("P4 · Stream convergence: authoritative snapshots across create, delete, and archive", () => {
+describe("Stream convergence: authoritative snapshots across create, delete, and archive", () => {
   it("converges to authoritative snapshot on create, status transition, delete, and archive", async () => {
     const { w, hub } = harness();
     queuedEventOf(w, { seed: 1 });
@@ -140,7 +126,7 @@ describe("P4 · Stream convergence: authoritative snapshots across create, delet
       { ...freshAfterComplete, snapshotCursor: "pc:1" },
     );
 
-    // 3. Deletion of run 2 -> removed from authority records
+
     const run2Id = runRecordOf({ seed: 2 }).envelope.runId;
     w.authority.records.delete(run2Id);
     w.projection.refreshRun(run2Id);

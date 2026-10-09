@@ -4,23 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { REPO_ROOT } from "../support/helpers/guard-files.js";
 
-/**
- * Gate-coverage guard, re-derived for this repository (D93, ref guards-and-tests §5 #6/#8).
- *
- * The legacy original exists because the dashboard spent months excluded from
- * every type gate: the root tsconfig excluded it and `typecheck:all` was
- * byte-identical to `typecheck`, so the "full" gate never checked the frontend
- * (100 errors accumulated invisibly while Vite's type-blind build stayed
- * green). Same story for lint: warnings were reported but never failed, so 375
- * piled up. The lesson is not about the dashboard — it is that a gate whose
- * SCOPE nobody pins will quietly stop covering things.
- *
- * This repo has one tsc program and no debt manifest, so the shape it must pin
- * is different from the legacy one: every authored root is inside the type
- * program AND the lint command AND the typed ESLint config, warnings are fatal,
- * and the coverage lane is registered. The `*:rebuild` script names retire with
- * D93 — the plain family IS the gate family here.
- */
+
 
 const pkg = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8")) as {
   scripts: Record<string, string>;
@@ -81,10 +65,7 @@ describe("gate coverage", () => {
         `tsconfig include must carry ${root}/**/* — an un-included root is un-typechecked`,
       );
     }
-    // The legacy repo needed `typecheck:all` because it had TWO programs and
-    // the composite gate silently dropped one. One program, one gate here — so
-    // a resurrected `typecheck:all` would mean a second program appeared
-    // without this guard being told about it.
+
     assert.equal(pkg.scripts["typecheck:all"], undefined,
       "a second tsc program appeared; pin its composition here before adding the script");
     assert.equal(tsconfig.exclude, undefined,
@@ -137,12 +118,10 @@ describe("gate coverage", () => {
   });
 
   it("carries no legacy debt-manifest escape hatch", () => {
-    // D93 §1.1: this tree is zero-debt from its first file. The legacy repo
-    // keeps the fingerprint ratchet; a copy appearing HERE would mean debt was
-    // imported along with the code.
+
     const scripts = Object.keys(pkg.scripts).join("\n");
     assert.doesNotMatch(scripts, /legacy-tests-ratchet/);
-    assert.doesNotMatch(scripts, /:rebuild/, "the *:rebuild script names retire with D93");
+    assert.doesNotMatch(scripts, /:rebuild/, "the gate family uses plain script names");
   });
 
 });

@@ -1,4 +1,4 @@
-/** A08/A09 acceptance over the registered graph and the accepted SQLite command seam. */
+
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { join } from "node:path";

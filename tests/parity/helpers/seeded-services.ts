@@ -49,31 +49,7 @@ export function composeSeededServices({ database, clock, stateRoot, root, projec
   const runReader = sqliteRunReader(database, clock);
   const trust = createReceiptService({ database, runReader, descriptors: [personLookupDescriptor] });
 
-  /**
-   * THE DONE RUN'S EVIDENCE RECEIPT IS PART OF THE SEED, not a side effect of
-   * whoever loaded a page first.
-   *
-   * The queue row's D7 outcome chips come from `#facts` in
-   * `run-queue-projection.ts`, which looks a receipt UP (`getReceipt`) and never
-   * derives one — D141 makes derivation an act that writes an authority row, and
-   * a projection may not write. The only thing that derives one here is the
-   * panel's own `GET /api/v1/runs/:runId/receipt`, and that request lands AFTER
-   * the day snapshot `/events/v1` built for the page it is opening. So without
-   * this line the row's chips depend on whether an EARLIER page load against
-   * this same server happened to derive the receipt first, and the seeded server
-   * lives for a whole Playwright worker — which Playwright replaces after any
-   * failed test. That is exactly how the corpus came to hold two references for
-   * ONE state that disagree: `run-receipt-populated--graphite-warm` (captured
-   * first, on a cold server) records the row with no chips, and
-   * `--paper-ink` (captured second, on the warm one) records them.
-   *
-   * Deriving it here through the production `ReceiptService` — the same thing
-   * `tests/perf/dashboard-fixture.ts` does — makes the state determinate and
-   * matches what the state CLAIMS to be: a run whose receipt is populated and on
-   * screen. The assertion is the point: a seed that silently produced a
-   * receipt with no output facts would photograph an empty row and call it a
-   * populated receipt.
-   */
+
   const doneReceipt = trust.ensureReceipt(runIds.doneRun);
   if (doneReceipt.output.length === 0) {
     throw new Error(
@@ -174,9 +150,7 @@ export function composeSeededServices({ database, clock, stateRoot, root, projec
     bootstrap: {
       appVersion: SEEDED_APP_VERSION,
       clock,
-      // D219 — the bootstrap document is built from MODULE views now, because
-      // the served `role` is the module's declaration. This harness serves the
-      // one standalone workflow the parity corpus runs.
+
       modules: [{ descriptor: personLookupDescriptor, role: defineWorkflowRole({ kind: "standalone" }) }],
       descriptorSetHash: descriptorSetHash([CONTRACT_FINGERPRINT]),
       settingsSchemaHash: descriptorSetHash(["settings-schema"]),
@@ -212,9 +186,7 @@ export function composeSeededServices({ database, clock, stateRoot, root, projec
     commands,
     startPlans,
     hub,
-    // D274 item 6 — the read-only Settings status sections read the SAME
-    // resolved config and descriptor tuple this harness composes everything else
-    // from, so nothing on that page can be true here and false in production.
+
     settings: { config: resolveConfigWithProvenance({}, hostConfigFacts({}), clock).config, descriptors: [personLookupDescriptor] },
     settingsEditor: {
       protectedSettings: createProtectedSettingsRuntimeReader({ read: initialProtectedStoreRecord }),

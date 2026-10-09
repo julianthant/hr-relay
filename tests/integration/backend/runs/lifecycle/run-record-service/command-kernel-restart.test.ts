@@ -1,13 +1,5 @@
 import { RunRecordService } from "../../../../../../src/backend/runs/lifecycle/run-record-service.js";
-/**
- * D314 — the command kernel's two ordinary recovery choices.
- *
- * `retry` (Resume from checkpoints) and `restart` (Restart from start) share
- * one door: both mint the ITEM's next attempt as a fresh run, keep the logical
- * item, canonical input, dry-run flag and omission bundle byte for byte, and
- * link back through `retryOf`. Only `restart` stamps `recovery:
- * "restart-from-start"`, and neither is admitted for a parked unknown write.
- */
+
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -227,11 +219,10 @@ function recoveredRun(harness: Harness, type: "retry" | "restart", target: { run
   return run;
 }
 
-describe("command-kernel recovery choices (D314)", () => {
+describe("command-kernel recovery choices", () => {
   it("restart mints the item's next attempt with recovery: restart-from-start and carries input, dryRun and omissions unchanged", () => {
     const harness = createHarness();
-    // D209: this transaction-free fixture cannot be started as a dry run, so the
-    // carried flag is proved on its only admissible value.
+
     const target = startTerminalRun(harness, { dryRun: false, omit: true });
     const original = harness.database.authority.runs.get(target.runId);
     assert.ok(original !== undefined);

@@ -1,19 +1,4 @@
-/**
- * Track F row F2 — the intake facts the wire served and no pixel showed.
- *
- * Nine ledger rows (03a §Served-and-dropped: IN8, IN9, IN53, IN82, IN106,
- * IN121, IN126, IN127, IN131) were each a value already on
- * `IntakeSessionWire` that `surfaces/intake.tsx` read past. What these cases
- * pin is the half a screenshot cannot reach: three of the nine appear only on
- * states the parity corpus does not hold — a session with corrections, and an
- * enqueued session — so the sentence they compose is pinned HERE or nowhere
- * (D187's lesson, restated by D237/D238).
- *
- * The negative arms are the ones that matter. A rank must never round to a
- * probability, a layout echo must be ABSENT rather than empty before a header
- * row is settled, and a manifest's `created` must come from the manifest, not
- * from the upload that preceded it.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import {
@@ -51,7 +36,7 @@ import {
   suggestionProposalText,
 } from "../../../../../src/dashboard/surfaces/intake/intake-model.js";
 
-describe("IN95 / IN99–IN122 — rejection review uses the demo's one vocabulary and one eligibility door", () => {
+describe("rejection review uses the demo's one vocabulary and one eligibility door", () => {
   it("pins every visible label in the table, editors, review acknowledgement and Well summaries", () => {
     assert.deepEqual(INTAKE_REVIEW_COPY, {
       tableLabel: "Rejected rows",
@@ -180,7 +165,7 @@ describe("intake evidence lists stay locally bounded without hiding rows", () =>
   });
 });
 
-describe("IN53 — a header candidate's rank, in the one place D173 left for it", () => {
+describe("ranks header candidates beside their mapping", () => {
   it("prints the row 1-based, the rank at two places, and the row's own cells after it", () => {
     assert.equal(
       headerCandidateOptionLabel({ rowIndex: 3, cells: ["Employee ID", "", "Legal Name"], confidence: 0.9612 }),
@@ -202,7 +187,7 @@ describe("IN53 — a header candidate's rank, in the one place D173 left for it"
   });
 });
 
-describe("IN82 — a proposal's reason and its rank are one thought", () => {
+describe("a proposal's reason and its rank are one thought", () => {
   it("parenthesises the score after the reasons, in the scorer's own order", () => {
     assert.equal(
       suggestionProposalText(
@@ -228,7 +213,7 @@ describe("IN82 — a proposal's reason and its rank are one thought", () => {
   });
 });
 
-describe("IN8 / IN9 — the layout every decision on the screen is fenced against", () => {
+describe("the layout every decision on the screen is fenced against", () => {
   it("echoes the header row 1-based and the fingerprint's first eight", () => {
     assert.deepEqual(layoutMetaItems(FIXTURE_INTAKE_MAPPING), [
       `header row ${String((FIXTURE_INTAKE_MAPPING.headerRowIndex ?? 0) + 1)}`,
@@ -251,7 +236,7 @@ describe("IN8 / IN9 — the layout every decision on the screen is fenced agains
   });
 });
 
-describe("IN121 — a correction is listed, and the half nothing serves is not invented", () => {
+describe("a correction is listed, and the half nothing serves is not invented", () => {
   it("names the field the operator corrected and the value they put there", () => {
     assert.equal(
       correctionText(
@@ -335,10 +320,8 @@ const TERMINAL_MANIFEST = {
   ],
 };
 
-describe("IN126 / IN127 / IN131 — the manifest block, from the wire and nowhere else", () => {
-  // Parsed rather than spread-and-cast: the enqueued shape is exactly what the
-  // route would serve, so a schema change reaches these cases instead of being
-  // typed around.
+describe("the manifest block, from the wire and nowhere else", () => {
+
   const enqueued: IntakeSessionWire = IntakeSessionWireSchema.parse({
     ...FIXTURE_INTAKE_VALIDATED,
     state: "enqueued",
@@ -406,7 +389,7 @@ describe("IN126 / IN127 / IN131 — the manifest block, from the wire and nowher
     );
   });
 
-  it("names a pre-D171 file as one that predates the field, never as a blank", () => {
+  it("names a file without enqueue history as predating that field", () => {
     const unnamed: IntakeSessionWire = { ...enqueued, sourceName: undefined };
     const source = manifestFacts(unnamed).find((fact) => fact.key === "source");
     assert.ok(source !== undefined);
@@ -414,7 +397,7 @@ describe("IN126 / IN127 / IN131 — the manifest block, from the wire and nowher
   });
 });
 
-describe("IN123 / IN125 — a manifest identity is reserved before it is committed", () => {
+describe("a manifest identity is reserved before it is committed", () => {
   it("says reserved, never committed, while a validated session holds its preflight identity", () => {
     const reserved: IntakeSessionWire = IntakeSessionWireSchema.parse({
       ...FIXTURE_INTAKE_VALIDATED,
@@ -432,7 +415,7 @@ describe("IN123 / IN125 — a manifest identity is reserved before it is committ
   });
 });
 
-describe("IN123 / IN124 / IN128–IN136 — a terminal manifest is rendered from its terminal projection", () => {
+describe("a terminal manifest is rendered from its terminal projection", () => {
   const enqueued: IntakeSessionWire = IntakeSessionWireSchema.parse({
     ...FIXTURE_INTAKE_VALIDATED,
     state: "enqueued",
@@ -490,7 +473,7 @@ describe("IN123 / IN124 / IN128–IN136 — a terminal manifest is rendered from
   });
 });
 
-describe("IN139 / IN142 / IN143 — rerun is a named absence, or its exact changed evidence", () => {
+describe("rerun is a named absence, or its exact changed evidence", () => {
   it("keeps a source with no earlier manifest as an explicit empty state", () => {
     assert.deepEqual(rerunStage(FIXTURE_INTAKE_VALIDATED), { kind: "none" });
   });
@@ -558,11 +541,7 @@ describe("IN139 / IN142 / IN143 — rerun is a named absence, or its exact chang
 });
 
 describe("the rejection badge names what an operator can act on", () => {
-  /**
-   * D276 item 1, ledger 3 row IN101. The badge printed the wire's own
-   * discriminant, which names the validator that refused the row rather than
-   * the thing in the spreadsheet that is wrong.
-   */
+
   const servedKinds = RowRejectSchema.options.map((option) => option.shape.kind.value);
 
   it("answers every kind the schema can serve, and no kind it cannot", () => {

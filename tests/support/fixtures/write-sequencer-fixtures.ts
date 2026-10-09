@@ -1,12 +1,5 @@
 import { sourceBoundReadContract } from "./source-bound-read-fixtures.js";
-/**
- * Synthetic transaction corpus for the write-sequencer / write-recovery tests
- * and the ref guards-and-tests §3.3/§3.9 guards: a real sealed prepare/commit/probe/verify
- * contract set, a real browser store over a recording fake driver, a real
- * descriptor with one transaction node, and harness builders over the REAL
- * AuthorityDatabase + WorkerSessionManager. Only the process edges (browser,
- * clock, ids, timers, span sink) are fakes.
- */
+
 import { fixtureDuoCeremonyGates } from "../helpers/duo-ceremony-fixtures.js";
 import { z } from "zod";
 import { flow } from "../../../src/workflow-kit/flow.js";
@@ -335,9 +328,7 @@ function createFixtureDriver(world: WriteFixtureWorld): WriteFixtureDriver {
     recordBrowserAction("typed", id, WRITE_FIXTURE_EID);
     return { filled: true };
   };
-  // The read-less variant deliberately violates the driver interface so the
-  // sequencer's "no semantic read()" refusal has a real target; the single
-  // assertion mirrors what a mis-built production driver would look like.
+
   if (world.omitDriverRead) return { system: "ucpath", prepare, commit } as WriteFixtureDriver;
   return { system: "ucpath", read, prepare, commit };
 }
@@ -463,13 +454,7 @@ const WriteFixtureCanonicalInput = defineCanonicalInput(
   [{ eid: WRITE_FIXTURE_EID }],
 );
 
-/**
- * D136 knobs. `contractFingerprint` models an edit ANYWHERE in the descriptor's
- * ~31-file source closure (the incidental case a parked write must survive);
- * `version` and `commitEid` model the two semantic moves that must still refuse
- * — a declared version bump, and a `commit.bind` that makes the permanent key
- * name a DIFFERENT external transaction.
- */
+
 interface FixtureDescriptorOptions {
   readonly contractFingerprint?: string;
   readonly version?: number;
@@ -478,7 +463,7 @@ interface FixtureDescriptorOptions {
   readonly omittable?: boolean;
   readonly enqueue?: "reject-active" | "allow-parallel";
   readonly commitEid?: string;
-  /** D209 negative control — a transaction node with no preview arm. */
+
   readonly dryRun?: "stop-after-prepare" | "unsupported";
 }
 
@@ -542,21 +527,13 @@ export const writeFixtureMemoDescriptor = buildDescriptor("receipt", { memo: tru
 export const writeFixtureDocumentDescriptor = buildDescriptor("receipt", { documentNumber: true });
 export const writeFixtureParallelDescriptor = buildDescriptor("receipt", { enqueue: "allow-parallel" });
 
-/**
- * D209's negative control: the same graph whose one transaction node declares
- * `dryRun:"unsupported"`. A dry-run start must refuse naming THAT node — the
- * refusal has to point at the fact that decided it, not at the workflow.
- */
+
 export const writeFixtureDescriptorWithoutDryRunArm = buildDescriptor("receipt", {
   contractFingerprint: FingerprintSchema.parse("d".repeat(64)),
   dryRun: "unsupported",
 });
 
-/**
- * D209's other half: a descriptor that AUTHORS `supportsDryRun`. It is a
- * function rather than a value because construction is what must throw, and a
- * module-level `const` would take the whole fixture module down with it.
- */
+// Construct the unsupported definition inside the test; a module-level throw would prevent collection.
 export function defineAuthoredDryRunDescriptor(): AnyWorkflowDescriptor {
   return defineWorkflowDescriptor({
     id: WorkflowIdSchema.parse("authored-dry-run-fixture"),
@@ -578,7 +555,7 @@ export function defineAuthoredDryRunDescriptor(): AnyWorkflowDescriptor {
           split: { kind: "whole-text" },
           rules: [{ when: { kind: "pattern", pattern: "eid" }, emit: "eid" }],
         },
-        // The one thing D209 refuses: a hand-declared answer to a graph question.
+
         supportsDryRun: true,
       },
     },
@@ -604,7 +581,7 @@ export function defineAuthoredDryRunDescriptor(): AnyWorkflowDescriptor {
 }
 export const writeFixtureSaveDescriptor = buildDescriptor("save-verify");
 
-/* ── D136 drift variants ─────────────────────────────────────────────────── */
+
 
 /** What an unrelated edit to `src/rules/identity/ids.ts` looks like to a stored run. */
 export const WRITE_FIXTURE_MOVED_FINGERPRINT = FingerprintSchema.parse("f".repeat(64));

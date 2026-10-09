@@ -1,13 +1,4 @@
-/**
- * D240 — the Activity report's CSV export.
- *
- * The recorded condition on building it (`994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/findings/activity.md`) was that
- * an export carrying the numbers without the rules is the lying artifact this
- * surface's design exists to prevent, so the load-bearing assertions here are
- * about what travels WITH the numbers: the named window, every caveat sentence
- * the panel shows behind its ⓘ, the honest absence reasons, and the write
- * ledger's own statement that it is a different authority.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import {
@@ -103,7 +94,7 @@ function lines(csv: string): readonly string[] {
   return csv.split("\r\n");
 }
 
-describe("the Activity report's CSV export (D240)", () => {
+describe("the Activity report's CSV export", () => {
   it("uses the shared display vocabulary and sentence treatment for all closed statuses", () => {
     const caveat = activityReportCaveats(FILLED).find((value) => value.startsWith("Error rate counts"));
     assert.ok(caveat);
@@ -151,8 +142,7 @@ describe("the Activity report's CSV export (D240)", () => {
         `the export must carry the rule verbatim: ${caveat}`,
       );
     }
-    // AHEAD of the numbers: a reader who stops after one screen has still read
-    // the rules the numbers were counted by.
+
     assert.ok(rows.indexOf("How this report is counted") < rows.indexOf("Totals"));
     // The error rate is the tile's own derivation, not a second rounding.
     assert.ok(rows.includes("Error rate %,50"));

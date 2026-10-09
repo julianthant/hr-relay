@@ -208,14 +208,7 @@ function writeFixture(root: string, path: string, content: string): void {
 
 describe("reviewed architecture guard manifest", () => {
   it("records every retirement as an explicit replacement rather than a silent shrink", () => {
-    // Ref guards-and-tests §3.13: a retirement is only legitimate BECAUSE the inventory still
-    // carries the entry, its retiring DECISION, and where the invariant went. A
-    // guard that simply vanished from this file would be indistinguishable from
-    // an accident.
-    //
-    // The rule is "names a decision", not "names D93". Pinning the literal was
-    // an assertion that could only hold until the second retirement — exactly
-    // the shape of check this program keeps finding and replacing.
+
     const retired = inventory.guards.filter(({ status }) => status === "retired");
     const activeNames = new Set(
       inventory.guards.filter(({ status }) => status === "active").map(({ name }) => name),

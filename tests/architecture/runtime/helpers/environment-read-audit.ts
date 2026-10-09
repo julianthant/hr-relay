@@ -1,23 +1,13 @@
 import { createHash } from "node:crypto";
 import ts from "typescript";
-/**
- * Static string resolution for environment-key expressions.
- *
- * Ported from the retired cross-tree isolation scanner (D93), whose resolver
- * this inventory shared. It is kept here, beside its only remaining consumer,
- * so the environment audit does not depend on a guard that no longer exists.
- */
+
 export interface StaticResolution {
   readonly values: readonly string[];
   readonly resolved: boolean;
   readonly exactValue: boolean;
 }
 
-/**
- * Shared finite static-string resolver for architecture scanners.  Callers own
- * lexical scope discovery; this keeps string/template/concatenation semantics
- * identical to the runtime-isolation audit instead of growing a second parser.
- */
+
 
 interface StaticEnvironment {
   readonly strings: ReadonlyMap<string, StaticResolution>;
@@ -50,10 +40,7 @@ function staticResolution(node: ts.Node, environment: StaticEnvironment): Static
     || ts.isNonNullExpression(node)) {
     return staticResolution(node.expression, environment);
   }
-  // The retired cross-tree scanner also resolved `contract.<member>` against a
-  // runtime-binding table. Nothing in the environment inventory ever supplied
-  // one — the sole caller passed an empty map — so a property access is simply
-  // unresolved here, exactly as it always evaluated.
+  // The environment inventory supplies no runtime-binding table, so member access remains unresolved.
   if (ts.isPropertyAccessExpression(node)) {
     return { values: [], resolved: false, exactValue: false };
   }

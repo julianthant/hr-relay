@@ -56,7 +56,7 @@ function fixture(version?: number) {
   const input = { stateRoot: root, processLockRoot: join(root, "locks"), environmentFile: join(root, ".env"), plan: false };
   return { repoRoot, root, path, input, backup: () => backupStoppedAuthority(root, clock), run: (plan = false) => upgradeStorage({ ...input, plan }, clock) };
 }
-/** Reconstruct the released singleton columns solely for old-layout fixture assertions. */
+
 function retainedSettingsRows(database:DatabaseSync,table:string) {
   if(table!=="settings_current"&&table!=="runtime_config")return database.prepare(`SELECT * FROM ${table}`).all();
   const app=readAppSettings(database);
@@ -73,7 +73,7 @@ function read(f: ReturnType<typeof fixture>) {
   finally { database.close(); }
 }
 
-/** Exact synthetic migrated output captured before removing the settings importer. */
+
 function seedRetainedSettings(path: string): void {
   const { tables } = z.object({ tables: z.record(z.string(), z.array(z.record(z.string(), z.union([z.string(), z.number(), z.null()])))) }).parse(
     JSON.parse(readFileSync(new URL("../../../../../support/fixtures/integration/migration/migrated-settings.json", import.meta.url), "utf8")));
@@ -86,8 +86,8 @@ function seedRetainedSettings(path: string): void {
   } finally { database.close(); }
 }
 
-describe("D336 stopped SQLite upgrade", () => {
-  it("M2 preserves a stale claimed lifecycle row byte-for-byte without performing recovery", async () => {
+describe("stopped SQLite upgrade", () => {
+  it("preserves a stale claimed lifecycle row byte-for-byte without performing recovery", async () => {
     const f = fixture(46); const seedPath = join(f.root, "seed.db");
     const seed = AuthorityDatabase.open({ path: seedPath, busyTimeoutMs: 500, migrationOwner: "historical-claim-fixture" }, clock);
     try {
@@ -106,7 +106,7 @@ describe("D336 stopped SQLite upgrade", () => {
     const after = new DatabaseSync(f.path);
     try { assert.deepEqual(after.prepare("SELECT * FROM workflow_runs").get(), prior); } finally { after.close(); }
   });
-  it("M13 preserves historical snapshot bytes and reports retained exposure without disclosing its value", async () => {
+  it("preserves historical snapshot bytes and reports retained exposure without disclosing its value", async () => {
     const f = fixture(46);
     const config = { ...CONFIG_SNAPSHOT.config, operator: { timekeeperName: "synthetic-retained-historical-name" } };
     const snapshot = { ...CONFIG_SNAPSHOT, config, fingerprint: sha256Hex(canonicalJsonStringify(config)) };
@@ -188,7 +188,7 @@ describe("D336 stopped SQLite upgrade", () => {
     let pending: Record<string, unknown>;
     try { pending = JSON.parse(String(source.prepare("SELECT record_json FROM database_upgrades WHERE phase='committed'").get()?.record_json)) as Record<string, unknown>; }
     finally { source.close(); }
-    delete pending.timelineImport; // This historical receipt predates timeline conversion.
+    delete pending.timelineImport;
     delete pending.explorerImport; // It also predates the v51 Explorer importer.
     const f = fixture(version);
     const raw = new DatabaseSync(f.path);
@@ -220,7 +220,7 @@ describe("D336 stopped SQLite upgrade", () => {
     createCredentialStore({ stateRoot: f.root }).bindUpgrade("a".repeat(64), { ucpathPassword: { set: "synthetic-independent-credential" } });
     const credentialPath = join(f.root, "credentials", "protected.json");
     const credentialBytes = readFileSync(credentialPath);
-    // Retired import material must not override current SQLite settings.
+
     writeFileSync(f.input.environmentFile, "HRAUTO_DEFAULT_WORKERS=9\n", { mode: 0o600 });
     await f.backup();
     const plan = await f.run(true);
@@ -235,8 +235,7 @@ describe("D336 stopped SQLite upgrade", () => {
     assert.deepEqual(readFileSync(credentialPath), credentialBytes);
     assert.equal((await f.run()).state, "already-upgraded");
   });
-  // F02 retains successful private-import settlement and its interruption proofs. The
-  // finished release cannot complete those receipts, even when old private bytes survive.
+
   it.each(["post-sqlite", "beforeCommit", "afterCommit", "removed protected input", "changed ordinary input", "missing private binding", "rename", "audit"])(
     "refuses expired private-import recovery at %s without rebinding or settling", async boundary => {
       const f = fixture(46); await f.backup(); await f.run();
@@ -325,7 +324,7 @@ const RENAMED_TABLES = [
   ["start_plans", "workflow_run_requests"],
 ] as const;
 
-/** Build historical rows through real repositories, then copy their complete SQL shape. */
+
 async function populatedWorkerRenameFixture(version: 33 | 34 | 35 | 36 | 37 | 46 | 47 | 48) {
   const seed = fixture();
   await seed.run();
@@ -516,7 +515,7 @@ function timelineImportFixture(version = 37) {
   return { ...f, sourcePath, bytes, events };
 }
 
-describe("T1 retained timeline after stopped importer expiry", () => {
+describe("retained timeline after stopped importer expiry", () => {
   async function refused(f: ReturnType<typeof timelineImportFixture>) {
     const before = storageTree(f.root);
     for (const plan of [true, false]) await assert.rejects(f.run(plan), /authority-below-floor.*schemaVersion: 37.*original compatible release/u);

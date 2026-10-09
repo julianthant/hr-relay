@@ -1,9 +1,4 @@
-/**
- * D307 — Separations' omittable steps (slice one: Kronos timecard, UCPath
- * transaction, Kuali finalization). Proves the declarations the step folders
- * author, the plan and cascade the real graph yields, the pure builders the
- * producers rebuild from, and the result's omitted arms.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { descriptorRuntimeNodes } from "../../../../../src/workflow-kit/workflow.js";
@@ -44,7 +39,7 @@ function graphView(): StepOmissionGraphView {
   };
 }
 
-describe("separations omittable steps (D307, slice one)", () => {
+describe("separations omittable write steps", () => {
   it("declares exactly the three write-side steps, in timeline order", () => {
     assert.deepEqual(
       separationsDescriptor.stepOmissions.map(({ step }) => step),
@@ -89,7 +84,7 @@ describe("separations omittable steps (D307, slice one)", () => {
     ]);
     assert.deepEqual(all.refusals, []);
 
-    // A read step nothing declares stays exactly as locked as D285 left it.
+
     const identity = planStepOmissions(view, [{ step: "identity-check", facts: {} }]);
     assert.deepEqual(identity.refusals.map(({ code }) => code), ["step-not-omittable"]);
     // The UCPath approval status is closed to the statuses a receipt may carry.

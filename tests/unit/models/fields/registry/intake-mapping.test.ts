@@ -1,12 +1,4 @@
-/**
- * Ref data-intake-and-edit-data §2 — the intake projection, the column-mapping identity scheme, the
- * fail-closed reuse resolver, and the suggestion scorer.
- *
- * The cases that matter are the ones where a permissive implementation would
- * still have produced a mapping: a structurally identical schema copy, a
- * reordered export, two columns both called `Name`, and a header that matches
- * a field whose data it cannot possibly hold.
- */
+
 import assert from "node:assert/strict";
 import { z } from "zod";
 import { describe, it } from "vitest";
@@ -67,9 +59,7 @@ describe("ref data-intake-and-edit-data §1 intake projection", () => {
   });
 
   it("refuses a structurally identical schema COPY", () => {
-    // The dangerous case: this regex is byte-identical to the canonical one
-    // today. Accepting it means the two can drift apart in one commit with
-    // nothing to notice — ref data-intake-and-edit-data §7 vector #6.
+
     const CopiedInput = z.strictObject({ emplId: z.string().regex(/^10\d{6}$/) });
     assert.throws(
       () => defineIntakeProjection(CopiedInput, { emplId: CANONICAL_FIELDS.eid }),
@@ -92,7 +82,7 @@ describe("ref data-intake-and-edit-data §1 intake projection", () => {
     );
   });
 
-  it("keeps two targets sharing one canonical concept independent (D66)", () => {
+  it("keeps two targets sharing one canonical concept independent", () => {
     const ContactInput = z.strictObject({
       employeeName: CANONICAL_FIELDS.fullName.schema,
       contactName: CANONICAL_FIELDS.fullName.schema,
@@ -125,13 +115,8 @@ describe("ref data-intake-and-edit-data §1 intake projection", () => {
     assert.notEqual(required.fingerprint, workStudyIntake.fingerprint);
   });
 
-  /**
-   * D172 — the union arm. `PersonLookupInput` is the real motivator: a workflow
-   * that accepts "a name" or "an EID (plus an optional name)" is exactly the
-   * shape a roster fans out over, and refusing to traverse the union would have
-   * made the whole class unmappable.
-   */
-  describe("a union input schema (D172)", () => {
+
+  describe("a union input schema", () => {
     const Named = z.strictObject({
       name: CANONICAL_FIELDS.fullName.schema,
       department: CANONICAL_FIELDS.department.schema.optional(),
@@ -149,9 +134,7 @@ describe("ref data-intake-and-edit-data §1 intake projection", () => {
         name: CANONICAL_FIELDS.fullName,
       });
       assert.deepEqual(projection.targets.map((target) => target.targetFieldId), ["emplId", "name"]);
-      // Neither is required: no single path is present-and-mandatory in EVERY
-      // accepted input, so demanding a column for one would reject rows the
-      // workflow itself accepts.
+
       assert.deepEqual(requiredTargetIds(projection), []);
     });
 
@@ -329,10 +312,7 @@ describe("ref data-intake-and-edit-data §2.3 saved-mapping reuse is fail-closed
   });
 
   it("unbinds a binding whose column is gone, and never falls back to its stored index", () => {
-    // The layout gate normally catches this; the second gate exists because a
-    // mapping file is operator-greppable configuration and can disagree with
-    // itself. Here the fingerprint matches the CURRENT columns while a binding
-    // still points at a column that is not among them.
+
     const corrupt = ColumnMappingSchema.parse({
       ...saved,
       bindings: [
@@ -347,8 +327,7 @@ describe("ref data-intake-and-edit-data §2.3 saved-mapping reuse is fail-closed
     const unbound = reuse.resolutions.filter((entry) => entry.state === "unbound");
     assert.equal(unbound.length, 1);
     assert.equal(unbound[0].state === "unbound" && unbound[0].reason, "column-absent");
-    // `emplId` is required, so Run stays blocked rather than launching against
-    // whatever column sits at the old index.
+
     assert.deepEqual(reuse.unboundRequired, ["emplId"]);
     assert.equal(reuse.readyToRun, false);
   });
@@ -420,9 +399,7 @@ describe("ref data-intake-and-edit-data §2.5 suggestions propose and cannot bin
   });
 
   it("cannot disconfirm a field whose schema accepts any text — and does not pretend to", () => {
-    // `department` is one of the `audit-at-migration` text fields, so a date is
-    // a schema-valid department. The scorer therefore reports a header-only
-    // match rather than inventing evidence, and the operator still confirms.
+    // A schema-valid date in an audit text field is a header-only suggestion, not proof of matching data.
     const misleading = detectColumns(["Dept"], [["07/01/2026", "08/01/2026"]]);
     const DeptOnly = z.strictObject({ department: CANONICAL_FIELDS.department.schema });
     const projection = defineIntakeProjection(DeptOnly, { department: CANONICAL_FIELDS.department });

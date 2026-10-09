@@ -61,7 +61,7 @@ const crmDates = ReadOnboardingDatesOutputSchema.parse({
   completedOn: { state: "absent", reason: "CRM history has no Completed transition" },
 });
 
-describe("Phase 1f Person Lookup task implementations", () => {
+describe("Person Lookup task implementations", () => {
   it("fails CRM reads when the displayed subject or extracted output EID differs", async () => {
     const observedWrong = createDeterministicCrmOnboardingDriver({
       record: crmRecord,

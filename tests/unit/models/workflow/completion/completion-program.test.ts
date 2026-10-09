@@ -154,8 +154,7 @@ describe("completion program", () => {
     });
     assert.deepEqual(seen, [itemIdFromRecord(record(RECORD_ID, "10873698"))]);
 
-    // A record the predicate rejects is NOT enqueued, so its id does not reach
-    // the document stage — the as-built rule the legacy approve route missed.
+
     defineCompletionProgram(program, {
       mode: "staged-fanout",
       record: record(OTHER_RECORD_ID, undefined),

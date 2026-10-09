@@ -64,11 +64,7 @@ export const ContextualElementPortBindingSchema = z.array(z.strictObject({
   context: z.enum([
     "search-results-view-toggle",
     "employment-instances-view-toggle",
-    // Separations chunk 4 (D206): `ssSmartHRTransactions.emplIdInput()` names
-    // TWO live controls. Legacy fills the Smart HR WIZARD's Page-B Empl ID with
-    // the SS Smart HR SEARCH form's key, and live they are
-    // `#HR_TBH_WRK_EMPLID_PROMPT2` and `#UC_SS_TBH_DVW_EMPLID`. Binding both by
-    // context is what keeps one of them from being demoted to a "fallback".
+    // The Smart HR search key names two controls; the wizard requires its own context-qualified key.
     "smart-hr-wizard-details",
     "ss-smart-hr-search",
   ]),
@@ -202,7 +198,7 @@ function parseCatalog(system: keyof typeof EXPECTED_COUNTS, catalog: string): re
   return entries;
 }
 
-/** Rebuild the safe candidate inventory from its checked-in exact legacy blobs. */
+
 export function buildLegacySelectorPortMap(
   frozen = FROZEN_LEGACY_ARCHITECTURE_PROVENANCE.selector,
 ): LegacySelectorPortMap {

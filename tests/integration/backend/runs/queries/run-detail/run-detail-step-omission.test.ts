@@ -1,13 +1,4 @@
-/**
- * D307 — what the RUN DETAIL wire says about an omitted step.
- *
- * Two halves. The SERVED fold: a run whose envelope omits a step names those
- * steps by key, carries each skipped member's own closed reason, and may not
- * wear `verified-done` — nothing verified the values typed in the omitted
- * step's place. The STRUCTURAL half: the wire itself refuses the combinations
- * that would let a producer say otherwise, so the rule does not depend on one
- * query remembering it.
- */
+
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { RunDetailWireSchema } from "../../../../../../src/models/dashboard/run-detail.js";
@@ -51,11 +42,7 @@ const OMITTED_STEP = "kronos-timecard";
 /** What the operator typed for the omitted step. It never crosses this wire. */
 const TYPED_FACT = "09/30/2026";
 
-/**
- * A settled run that omitted one step: its `timecard` node was rebuilt from the
- * typed facts (`operator-asserted`) and its `reconcile` node was not rebuilt at
- * all (`step-omitted`), exactly as the executor's spans record them.
- */
+
 function omittedRun(w: DashboardWorld): void {
   queuedEventOf(w, { seed: 1, lifecycle: TERMINAL_DONE });
   claimEventOf(w, 1);
@@ -84,7 +71,7 @@ function detailOf(w: DashboardWorld) {
   );
 }
 
-describe("run detail under step omission (D307)", () => {
+describe("run detail under step omission", () => {
   it("names the omitted step keys and carries none of the typed facts", () => {
     const w = world();
     omittedRun(w);
@@ -118,8 +105,7 @@ describe("run detail under step omission (D307)", () => {
     assert.equal(outcome.state, "terminal");
     assert.ok(outcome.state === "terminal");
     assert.equal(outcome.result, "partial");
-    // `rehearsal` names a DRY RUN. This run was real; it only read one step
-    // from a form, and blurring the two would lose which happened.
+
     assert.equal(outcome.rehearsal, undefined);
   });
 
@@ -135,28 +121,14 @@ describe("run detail under step omission (D307)", () => {
     assert.equal(detail.outcome.result, "verified-done");
   });
 
-  /*
-   * D307 — the contradiction the projection used to drop on the floor. Both
-   * timeline readers asked "is this fold skipped?" before reading the span's
-   * reason, so a span saying BOTH "I did not run, for this reason" and "I
-   * finished" simply lost the reason: the strip drew a step that ran, and the
-   * wire's own refinement never saw the pair because the half that would have
-   * tripped it had already been discarded.
-   */
+
   it("refuses a span that recorded a not-run reason beside an outcome that RAN", () => {
     const w = world();
     queuedEventOf(w, { seed: 1, lifecycle: TERMINAL_DONE });
     claimEventOf(w, 1);
     taskEventsOf(w, 1, "timecard", "skipped", "operator-asserted");
 
-    /*
-     * The pair cannot be EMITTED: `SpanEventWireSchema` refuses a not-run
-     * reason on a non-skipped task span at the write boundary. It can be HELD:
-     * `TaskSpanFoldSchema` — the schema the projection persists and restores a
-     * fold row through — pairs the two fields with no refinement between them,
-     * so a durable row is exactly where this contradiction reaches
-     * `buildRunDetail`. The fold row is mutated here to be that row.
-     */
+    // The emit schema rejects contradictory reasons; retained fold data can still contain them.
     const fold = w.projection.runFold(uuidOf(1));
     const span = fold?.taskSpans.find((entry) => entry.name === "timecard");
     assert.ok(span !== undefined, "the fixture must have folded a timecard span");
@@ -203,7 +175,7 @@ const BASE_DETAIL = {
   availableSections: ["logs"],
 } as const;
 
-describe("run detail wire refusals under step omission (D307)", () => {
+describe("run detail wire refusals under step omission", () => {
   it("refuses verified-done beside an omitted step", () => {
     assert.throws(
       () => RunDetailWireSchema.parse({ ...BASE_DETAIL, omittedSteps: [OMITTED_STEP] }),
@@ -240,7 +212,7 @@ describe("run detail wire refusals under step omission (D307)", () => {
 
 /* ── the archived page's own words ───────────────────────────────────────── */
 
-describe("archived run notes under step omission (D307)", () => {
+describe("archived run notes under step omission", () => {
   it("says which of the two kinds of skip each step was", () => {
     assert.match(ARCHIVED_NOT_RUN_NOTE["operator-asserted"], /the operator asserted its facts at start/u);
     assert.match(ARCHIVED_NOT_RUN_NOTE["step-omitted"], /its step was omitted at start/u);

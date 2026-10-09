@@ -175,13 +175,7 @@ const IDENTITY_JOBS = {
   unreadableCells: [],
 } as const;
 
-/**
- * The comparison node's checkpoint, with provenance for every output leaf.
- *
- * The leaf rule is the collector's own (an array is a leaf, an object recurses),
- * so the provenance is DERIVED from the value rather than hand-listed — a
- * hand-listed table would drift on the first field the packet gained.
- */
+
 function identityComparisonCheckpoint(): RunCheckpointRecord {
   const value = JsonValueSchema.parse(MatchIdentityOutputSchema.parse({
     packet: IDENTITY_PACKET,
@@ -210,10 +204,7 @@ function identityComparisonCheckpoint(): RunCheckpointRecord {
   });
 }
 
-/**
- * D270 — the collector's record-time sink. An explicit recording fake, never a
- * no-op: a missing runtime sink must not be able to hide behind one.
- */
+
 const observedBatches: RecordedDataBatch[] = [];
 const recordBatch = (batch: RecordedDataBatch): void => { observedBatches.push(batch); };
 
@@ -286,7 +277,7 @@ function dependencyCheckpoints(): Readonly<{
 }
 
 describe("task provenance collector", () => {
-  it("hands each recordData CALL to the sink at record time, under ONE shared instant (D270)", () => {
+  it("hands each recordData CALL to the sink at record time, under ONE shared instant", () => {
     observedBatches.length = 0;
     const baseClock = manualClock(new Date(NOW));
     let clockReads = 0;
@@ -328,7 +319,7 @@ describe("task provenance collector", () => {
     assert.equal(clockReads, 1);
   });
 
-  it("calls the sink once per CALL, not once per task (D270)", () => {
+  it("calls the sink once per CALL, not once per task", () => {
     observedBatches.length = 0;
     const provenance = collector("searching", SearchPersonOrg.id, []);
     provenance.recordData({ direction: "read", field: "results", value: person.results });
@@ -352,15 +343,7 @@ describe("task provenance collector", () => {
     assert.deepEqual(result.points[0]?.execution, execution("searching", SearchPersonOrg.id));
   });
 
-  /**
-   * A GATE dependency's evidence is a `gate_results` row, and there is no
-   * checkpoint for it — ever. The first live chunk-3 run found that the hard
-   * way: the post-gate node refused with "declared dependency has no checkpoint
-   * record", a true statement about a record that cannot exist. The collector
-   * now admits the gate row as its own kind of upstream evidence, and this runs
-   * against the REAL gated descriptor rather than a fixture, because the shape
-   * that broke is a real descriptor's shape.
-   */
+  // Gate evidence lives in gate_results, never in a checkpoint row.
   it("accepts a gate result as a declared dependency's upstream evidence, and only a declared one", () => {
     const gateNow = "2026-08-02T19:00:00.000Z";
     const gateResult = {
@@ -408,10 +391,7 @@ describe("task provenance collector", () => {
       { direction: "read", field: "jobs", value: output.jobs },
     ]);
     const result = gated.finalizeRead(output);
-    // The derived leaves keep the OLDEST original observation, which is the
-    // comparison's live read — an approval is always at least as new as the
-    // evidence it was granted on, so a gate can never make an output look
-    // fresher than the facts under it.
+
     assert.equal(result.provenance.every(({ originalObservedAt }) => originalObservedAt === EARLIER), true);
 
     // Without the gate row the node is unrunnable — which is exactly the live

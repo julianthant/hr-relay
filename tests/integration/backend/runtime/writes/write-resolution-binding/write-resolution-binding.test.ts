@@ -1,15 +1,4 @@
-/**
- * D136 — a parked write's resolvability binds to the semantic surface a
- * resolution consumes, not to the descriptor's whole source-closure hash.
- *
- * Both directions are pinned here, because both are safety properties:
- *   - an INCIDENTAL closure move (an unrelated module in the same import
- *     graph) leaves every named check held, so the ref write-safety §4.1 arms stay open;
- *   - a SEMANTIC move (version bump, the transaction's commit task, the
- *     canonical-input schema, the permanent key, the retained binding proof)
- *     refuses, names the exact check that moved, and never reports an
- *     unevaluated check as held.
- */
+
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -61,11 +50,7 @@ afterEach(() => {
   for (const dispose of disposers.splice(0)) dispose();
 });
 
-/**
- * The evaluation only READS durable state, and the fixture transaction node
- * depends on nothing — but a real repository pair is used anyway so a future
- * dependency edge exercises the real reader instead of a stub that lies.
- */
+
 function repositories(): WriteBindingRepositories {
   const clock = manualClock(new Date(WRITE_FIXTURE_NOW));
   const root = mkdtempSync(join(tmpdir(), "hrauto-write-binding-"));
@@ -156,7 +141,7 @@ function stateOf(binding: WriteResolutionBinding, check: WriteBindingCheck): str
   return result.state;
 }
 
-describe("D136 write-resolution binding — what a parked write may survive", () => {
+describe("write-resolution binding — what a parked write may survive", () => {
   it("reports identical when the contract closure is byte-identical", () => {
     const binding = evaluate(writeFixtureDescriptor);
     assert.equal(binding.state, "identical");
@@ -176,7 +161,7 @@ describe("D136 write-resolution binding — what a parked write may survive", ()
     assert.equal(binding.storedContractFingerprint, writeFixtureDescriptor.contractFingerprint);
     assert.equal(binding.currentContractFingerprint, WRITE_FIXTURE_MOVED_FINGERPRINT);
     assert.deepEqual(binding.checks.filter((check) => check.state !== "held"), []);
-    // The load-bearing evidence: the permanent key was RE-DERIVED, not assumed.
+
     const key = binding.checks.find((check) => check.check === "permanent-key-identity");
     assert.ok(key, "the check table must report permanent-key-identity");
     assert.equal(key.detail.includes(WRITE_FIXTURE_KEY), false);

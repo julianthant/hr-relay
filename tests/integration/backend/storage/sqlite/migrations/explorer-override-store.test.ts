@@ -1,4 +1,4 @@
-/** Replaces the retired file-claim writer's proofs with stopped conversion safety. */
+
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";

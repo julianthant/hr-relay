@@ -1,12 +1,4 @@
-/**
- * 2i-G — the two read-only reference routes (D176/D177).
- *
- * The projection's ACCURACY against the descriptors is held by
- * `workflow-editor-compile-integrity`, which asserts it over the real registry
- * in both directions. What is pinned here is everything around that: the routes
- * serve a wire that parses, and the honest-miss arms report what they looked
- * for rather than inventing it.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { z } from "zod";
@@ -236,7 +228,7 @@ function syntheticDelegationExplorerWire() {
   });
 }
 
-describe("the contract field census (D227)", () => {
+describe("the contract field census", () => {
   it("gives every arm a field for every leaf of both its schemas", () => {
     for (const task of allTasks()) {
       assert.ok(
@@ -292,9 +284,7 @@ describe("the contract field census (D227)", () => {
     const commit = allTasks().find((task) => task.effect === "commit");
     assert.ok(prepare !== undefined && commit !== undefined);
     for (const field of prepare.fields.filter((one) => one.side === "output")) {
-      // A prepare's product is browser state, and its checkpoint is
-      // in-memory-only — so nothing durable holds the field, and the column
-      // says that rather than leaving a blank a reader would read as "none".
+
       assert.equal(field.recorded.state, "not-recorded");
     }
     for (const field of commit.fields.filter((one) => one.side === "output")) {
@@ -491,7 +481,7 @@ describe("the workflow explorer projection", () => {
     const resolveAction = entry.nodes.find(
       (node) => node.id === "resolve-action",
     );
-    assert.ok(resolveAction, "the D261 head node is missing from the Explorer");
+    assert.ok(resolveAction, "the ingress head node is missing from the Explorer");
     assert.equal(resolveAction.purpose.state, "authored");
     if (resolveAction.purpose.state !== "authored") return;
     assert.match(
@@ -500,11 +490,7 @@ describe("the workflow explorer projection", () => {
     );
   });
 
-  /**
-   * D219 — the explorer is one of the three workflow-listing surfaces, so it
-   * carries the same `role` fact the rail and the picker do, and refuses the
-   * same nesting no surface could draw.
-   */
+
   it("serves each module's declared role and refuses a harness with no composition beside it", () => {
     const wire = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH));
     const roles = new Map(
@@ -740,9 +726,7 @@ describe("the workflow explorer projection", () => {
       () =>
         buildWorkflowExplorer({
           ...deps,
-          // Strip every module's stores: the boot audit would refuse this
-          // composition, and the explorer must refuse it too rather than
-          // rendering a workflow whose contracts resolve to nothing.
+
           modules: deps.modules.map((module) => ({ ...module, stores: [] })),
         }),
       /no module store implements it/u,

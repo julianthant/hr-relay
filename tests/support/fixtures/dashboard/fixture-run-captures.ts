@@ -1,6 +1,4 @@
-/** Opt-in D292 Receipt evidence. Existing corpus records and image files stay unchanged.
- * Image bytes are the encoder-produced diagnostic corpus; dimensions come from
- * their real format headers, never synthetic DOM metadata. */
+
 import { createHash } from "node:crypto";
 import { DashboardDayWireSchema } from "../../../../src/models/dashboard/projection.js";
 import {

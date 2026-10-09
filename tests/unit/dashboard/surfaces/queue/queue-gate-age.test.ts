@@ -1,17 +1,4 @@
-/**
- * The gate age in the queue row's ACCESSIBLE NAME (ledger 1 B31).
- *
- * `statusAccessibleName(status, age?)` has taken the argument since D124, and
- * the row never gave it one: the age reached the screen only through the D12
- * pill, which is a visual chip no assistive technology reaches. So an operator
- * driving the queue by ear heard `waiting on you` on a gate opened two minutes
- * ago and on one opened four hours ago — the same sentence for the two rows the
- * whole band exists to separate.
- *
- * Both halves are pinned here: `queueGateAge` is the one fold the pill and the
- * name share (so they cannot disagree about one gate), and QueueRow consumes
- * `queueRowAccessibleName` rather than reconstructing it in the test.
- */
+
 import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -69,7 +56,7 @@ function surface(input: Record<string, unknown>) {
   });
 }
 
-describe("queueGateAge (ledger 1 B31)", () => {
+describe("queueGateAge", () => {
   it("measures the SERVED gate instant against the panel's calibrated now", () => {
     const row = surface({
       gateOpenedAt: { state: "present", value: "2026-08-14T16:42:00.000Z" },
@@ -85,8 +72,7 @@ describe("queueGateAge (ledger 1 B31)", () => {
 });
 
 describe("the row's accessible name carries the age", () => {
-  // The STATUS WORD is this tree's own (`review` where the demo says `waiting
-  // on you`) and is not what B31 is about — only the ` · {age}` suffix is.
+  // Check the age suffix independently of the status wording.
   it("reads `{title} — {status} · {age}` (DemoQueue.tsx:818)", () => {
     const row = surface({
       gateOpenedAt: { state: "present", value: "2026-08-14T16:42:00.000Z" },

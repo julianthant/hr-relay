@@ -1,8 +1,4 @@
-/**
- * Private A08–A10 host. Explorer/catalog reads, validation, command ingress,
- * command service/kernel and SQLite are production code. Only surrounding
- * shell, Settings, Archive and SSE responses use the existing reference BFF.
- */
+
 import { Hono } from "hono";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

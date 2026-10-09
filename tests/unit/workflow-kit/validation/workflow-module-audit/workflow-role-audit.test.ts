@@ -1,24 +1,4 @@
-/**
- * D265 / ref workflow-model §1.2.2 rule 2 — "the rule bites exactly when a
- * timeline is DECLARED."
- *
- * `auditWorkflowModuleRoles` checks a `chunk-harness`'s `step` against its
- * composition's timeline. That timeline is the FACTORY's, and the factory
- * always produces one: a descriptor that declared nothing gets the D225 default
- * of one category per node. So an audit that reads `descriptor.timeline` alone
- * cannot tell "this composition declared `kuali-extraction`" from "this
- * composition declared nothing and happens to own a node called
- * `kuali-extraction`" — and the second is not a step at all. It has no step
- * folder, the harness has nowhere to live, and §1.2.2's whole claim (the tree
- * IS the timeline) is false for it.
- *
- * The descriptor therefore records whether the timeline was DECLARED, and the
- * audit refuses a harness of a composition that declared none, by name, rather
- * than silently accepting a node id as a step key.
- *
- * The real registered tuple is audited by `descriptor-coverage`; these are
- * synthetic descriptors, so the two states can both be built here.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { z } from "zod";
@@ -105,7 +85,7 @@ function descriptorNamed(
 
 const HARNESS = descriptorNamed("role-fixture-harness", "rfh");
 
-describe("WorkflowModuleRoleSchema — D266 retirement", () => {
+describe("WorkflowModuleRoleSchema excludes proving roles", () => {
   it("rejects the retired proving role", () => {
     assert.equal(WorkflowModuleRoleSchema.safeParse({ kind: "proving" }).success, false);
   });
@@ -121,7 +101,7 @@ function views(compositionId: string, step: string, composition: WorkflowRoleVie
   ];
 }
 
-describe("auditWorkflowModuleRoles — a harness's step (D265, §1.2.2 rule 2)", () => {
+describe("auditWorkflowModuleRoles — a harness's step", () => {
   it("accepts a step its composition DECLARES", () => {
     const composition = descriptorNamed("role-fixture-declared", "rfd", [
       { key: "kuali-extraction", label: "Kuali extraction", nodes: ["kuali-extraction"] },
@@ -144,13 +124,7 @@ describe("auditWorkflowModuleRoles — a harness's step (D265, §1.2.2 rule 2)",
     assert.match(violations[0] ?? "", /it declares: kuali-extraction/);
   });
 
-  /**
-   * The finding this file exists for: `role-fixture-none` declares no timeline,
-   * so the factory derived one category per node — `kuali-extraction` and
-   * `identity-check` are NODE IDS, not steps. Before the fix the audit read the
-   * normalized timeline and accepted either one, admitting a harness of a
-   * workflow that has no step folders at all.
-   */
+
   it("refuses ANY step of a composition that declared no timeline", () => {
     const composition = descriptorNamed("role-fixture-none", "rfn");
     for (const step of ["kuali-extraction", "identity-check"]) {
@@ -166,20 +140,8 @@ describe("auditWorkflowModuleRoles — a harness's step (D265, §1.2.2 rule 2)",
   });
 });
 
-/**
- * The U1b review finding: role → path was not injective yet.
- *
- * §1.2.2 rule 3 makes a harness's `(of, step)` its ADDRESS —
- * `src/workflows/<of>/<step>/` is where its `descriptor.ts` and `module.ts`
- * sit. Two harnesses claiming the same pair therefore claim the same two
- * files, which is a state the filesystem cannot represent: one of them is not
- * where it says it is, and `workflow-layout`'s arm (a) would read that folder's
- * descriptor, find the OTHER id declared, and report the mismatch against
- * whichever module it happened to visit first. Refusing the collision here
- * names both ids instead, at the composition root, before any guard has to
- * guess which of the two is the impostor.
- */
-describe("auditWorkflowModuleRoles — two harnesses cannot share one step (D265, §1.2.2 rule 3)", () => {
+
+describe("auditWorkflowModuleRoles — two harnesses cannot share one step", () => {
   const composition = descriptorNamed("role-fixture-declared", "rfd", [
     { key: "kuali-extraction", label: "Kuali extraction", nodes: ["kuali-extraction"] },
     { key: "identity-check", label: "Identity check", nodes: ["identity-check"] },
@@ -221,11 +183,7 @@ describe("auditWorkflowModuleRoles — two harnesses cannot share one step (D265
     );
   });
 
-  /**
-   * A duplicate that is ALSO not a declared step must still be refused as a
-   * duplicate. Reporting only "not a step" would leave the collision standing
-   * the moment somebody added the missing folder.
-   */
+
   it("reports the collision even when the shared step is not declared", () => {
     const noTimeline = descriptorNamed("role-fixture-none", "rfn");
     const violations = auditWorkflowModuleRoles([

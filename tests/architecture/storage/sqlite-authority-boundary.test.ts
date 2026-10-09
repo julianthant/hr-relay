@@ -6,8 +6,7 @@ import ts from "typescript";
 import { describe, it } from "vitest";
 import { gitVisibleFiles, REPO_ROOT } from "../support/helpers/guard-files.js";
 
-// Private adapter modules have no raw connection in the public SQLite entrypoint.
-// D336 historical backup readers remain; stopped conversion adapters expire in 2.6.
+
 const PRIVATE_SQLITE_ADAPTERS = [
   "src/backend/storage/compatibility/archive-upgrade-journal.ts",
   "src/backend/storage/compatibility/backup-inspection.ts",

@@ -1,13 +1,4 @@
-/**
- * The BFF's throw → status mapping (Track D row D2, audit C3).
- *
- * The mapping used to be a substring table over the thrown MESSAGE, so the
- * status a caller saw was a property of an operator-facing sentence. The cases
- * below pin the two halves of the fix that matter: a declared refusal keeps its
- * status no matter how it is worded, and a plain `Error` wearing one of the
- * retired phrases is an unclassified defect — a 500 — rather than a 404 the
- * caller would act on.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { z } from "zod";
@@ -21,7 +12,7 @@ import {
 } from "../../../../../../../src/backend/runs/commands/refusals.js";
 import { StartStepOmissionRefusedError } from "../../../../../../../src/backend/runs/start/step-selection.js";
 
-/** Every phrase the retired `NOT_FOUND_MARKERS` table and its two siblings keyed on. */
+
 const RETIRED_MARKERS = [
   "is not registered",
   "does not exist",
@@ -45,15 +36,13 @@ describe("failureStatus", () => {
     }
   });
 
-  it("answers 400 for a D307 step-omission refusal, distinguishable from a shape failure", () => {
+  it("answers 400 for a step-omission refusal, distinguishable from a shape failure", () => {
     const { status, body } = failureStatus(new StartStepOmissionRefusedError(
       "facts-invalid",
       "separations start step kronos-timecard omission facts are invalid at: lastDayWorked",
     ));
     assert.equal(status, 400);
-    // Same 400 family as a schema failure, its OWN code: a surface that only
-    // saw SCHEMA_INVALID could not tell "this body is malformed" from "this
-    // omission does not reconcile with the descriptor".
+
     assert.equal(body.code, "START_STEP_OMISSION_REFUSED");
     const shapeFailure = failureStatus(z.strictObject({ step: z.string() }).safeParse({}).error);
     assert.equal(shapeFailure.status, 400);
@@ -105,11 +94,8 @@ describe("failureStatus", () => {
     assert.equal(failureStatus(new DiagnosticBundleCorruptError(message)).body.code, "DIAGNOSTIC_BUNDLE_CORRUPT");
   });
 
-  it("classifies buildActivityReportWire's degraded refusal as PROJECTION_DEGRADED, not the plain-Error 500 it was", () => {
-    // Pins the exact producer: `buildActivityReportWire` (run-queue-projection.ts) used to throw a
-    // plain `Error` for this wording, so /api/v1/reports/activity and .csv answered
-    // INTERNAL_FAILURE/retryable:false during a degraded fold instead of PROJECTION_DEGRADED/
-    // retryable:true — the sibling `counts` producer was re-kinded, this one was not.
+  it("classifies buildActivityReportWire degraded refusal as PROJECTION_DEGRADED", () => {
+
     const activityAggregatesDegraded = failureStatus(
       new ProjectionDegradedError(
         "the run/queue projection is degraded and refuses to serve activity aggregates: unknown",
@@ -121,9 +107,7 @@ describe("failureStatus", () => {
   });
 
   it("answers 500 for an untyped throw even when it wears a retired marker", () => {
-    // This is the whole defect, from the other side: before D2 each of these
-    // was a 404/409/500-retryable decided by prose, and a caller could not
-    // tell a real absence from a bug in this process.
+
     for (const marker of RETIRED_MARKERS) {
       const { status, body } = failureStatus(new Error(`run 0f2c ${marker} on this host`));
       assert.equal(status, 500, marker);

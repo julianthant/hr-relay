@@ -1,17 +1,4 @@
-/**
- * D269 (ref execution-and-sessions §11) — the AUTHORITY half of parallel runs:
- * the per-workflow worker POOL declaration (the CAS basis the spawn control
- * needs) and the durable run SESSION whose membership is DERIVED from the run
- * row. Written first (TDD): every case below failed before the two
- * repositories and schema v17 existed.
- *
- * The load-bearing cases: a stale pool version is refused NAMING the current
- * one (0 for a workflow with no row); a session stores no member list, so its
- * membership is whatever run rows carry the id — and survives a reopen; a run
- * that names a session authority never wrote is refused at the insert; and a
- * run row without `sessionId` (every pre-v17 row, D133) parses and reads as
- * "no session".
- */
+
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -187,7 +174,7 @@ describe("workflow_run_batches — a durable group whose membership is the run t
     );
   });
 
-  it("reads a pre-v17 run row — one whose record carries no sessionId — as no session (D133)", () => {
+  it("reads a pre-v17 run row — one whose record carries no sessionId — as no session", () => {
     const path = databasePath();
     const database = open(path);
     database.authority.runs.enqueue(queuedRun(RUN_ID, {}));

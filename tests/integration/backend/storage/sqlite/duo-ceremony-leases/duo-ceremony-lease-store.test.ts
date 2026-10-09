@@ -1,14 +1,4 @@
-/**
- * Ref execution-and-sessions §10 (D267): the Duo ceremony lease store — one
- * ceremony at a time per CREDENTIAL, durable in authority.
- *
- * Written first (TDD): every case below failed before the repository existed.
- * The load-bearing cases are the ones a second process would reach — a second
- * acquirer is refused NAMING the holder; an expired row is taken over at the
- * next generation; a release under a superseded generation is reported rather
- * than overwriting the successor's row; and the token the store mints is the
- * ONLY thing `assertDuoCeremonyLeaseToken` accepts.
- */
+
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -147,7 +137,7 @@ describe("duo_ceremony_leases — acquire / release / takeover", () => {
     if (takeover.state !== "acquired") return;
     assert.equal(takeover.lease.generation, 2);
     assert.deepEqual(takeover.tookOver, { generation: 1, holder: { workerId: "worker-a", system: "ucpath" } });
-    // The superseded holder's release is REPORTED, never written over the successor.
+
     const stale = database.authority.duoCeremonyLeases.release({ token: first.token, now: at(TTL_MS + 5) });
     assert.equal(stale.state, "superseded");
     if (stale.state !== "superseded") return;

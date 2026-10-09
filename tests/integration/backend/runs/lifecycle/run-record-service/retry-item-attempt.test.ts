@@ -1,45 +1,7 @@
 import { seedSyntheticRuntimeConfig } from "../../../../../support/fixtures/operator-command-fixtures.js";
 import { RunRecordService } from "../../../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { testRunLifecycle } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
-/**
- * D221 — a RETRY of a failed item re-executes its `always-rerun` nodes without
- * colliding with the run it retries.
- *
- * D214 closed the collision one ATTEMPT could hold (a gate park and its resume).
- * This is the same collision one level up, across RUNS of one item, and chunk 6c
- * found it live: `run`/`retry` minted a new run for the same logical item born at
- * attempt 1 and claim generation 1, so the retry's `always-rerun` node
- * re-executed against the ORIGINAL run's key and the immutable insert refused it:
- *
- *   run checkpoint separations\0…\0timecard-search\0 1 \0 1 already exists with
- *   different content
- *
- * Run `555ba4b4` died that way in 1.89 s retrying `12a5cd3e`, having replayed the
- * whole read chain from the first run's checkpoints — so a separations run that
- * failed at or after `timecard-search` could not be retried at all
- * (`docs/rebuild/migrations/separations.md` §9.17 item 8).
- *
- * This file is that exact shape as a fixture walk — a read → an `always-rerun`
- * node → a node that FAILS on the first run and succeeds on the retry — over the
- * REAL interpreter, the REAL authority database, the REAL command kernel's retry
- * arm and REAL task contracts. Every assertion is about durable rows and emitted
- * spans:
- *
- *   1. the retry reaches terminal `done`, and both executions of the
- *      `always-rerun` node are stored, distinct, and neither overwritten;
- *   2. cross-run replay still works — the `replay:"checkpoint"` ancestor replays
- *      the FAILED run's row and never re-opens its browser;
- *   3. terminal evidence cites the RETRY's execution, and `latest` agrees;
- *   4. the two runs' executions are distinguishable in the span stream;
- *   5. the pre-fix shape is refused at the door, and the immutable insert is
- *      still the backstop underneath it.
- *
- * It reproduces the live failure rather than describing it: with D221 reverted
- * (the retry minted at `attempt: 1`, the enqueue refusal removed) case 1 dies
- * exactly where `555ba4b4` did, verbatim —
- * `run checkpoint retry-attempt-fixture …\0live-probe\0 1 \0 1 already exists
- * with different content` — checked 2026-08-14 before this file was committed.
- */
+
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
@@ -102,22 +64,13 @@ const retryFlow = flow(RetryInput)
     replay: "checkpoint",
     bind: ({ input }) => ({ kind: "by-eid" as const, emplId: input.emplId }),
   })
-  /**
-   * The `timecard-search` stand-in: a node whose product is BROWSER state, so
-   * chunk 1's rule makes it `always-rerun` and it re-executes on every run of the
-   * item by design (§5.3). This is the node the live retry died on.
-   */
+  // Browser-state nodes always rerun; their outputs cannot be replay checkpoints.
   .step("live-probe", SearchPersonOrg, {
     dependsOn: ["searching"],
     replay: "always-rerun",
     bind: ({ input }) => ({ kind: "by-eid" as const, emplId: input.emplId }),
   })
-  /**
-   * The `clear-pending` stand-in: the node the first run FAILS at, which is what
-   * makes the run retryable in the first place. It sits downstream of the
-   * always-rerun node — the whole point of §9.17 item 8 is that a failure at or
-   * after such a node made the item permanently unretryable.
-   */
+
   .step("cross-verify", CrmReadOnboardingRecord, {
     dependsOn: ["searching", "live-probe"],
     replay: "checkpoint",
@@ -129,8 +82,7 @@ const retryFlow = flow(RetryInput)
   })
   .build({
     schema: z.strictObject({ probed: z.boolean(), crmState: z.string() }),
-    // `live-probe` is a terminal dependency ON PURPOSE: D110/D114 evidence must
-    // resolve the execution THIS run consumed, across two runs of one item.
+    // Retain the probe as a terminal dependency so evidence resolves the execution consumed by this run.
     dependsOn: ["live-probe", "cross-verify"],
     derive: ({ outputs }) => ({
       probed: outputs["live-probe"].selection.selected !== null,
@@ -167,11 +119,7 @@ function unreachable(arm: string): () => never {
   };
 }
 
-/**
- * One CRM session factory that explodes on its FIRST open and is healthy on its
- * second: the first run fails at `cross-verify`, the retry gets through. UCPath
- * counts its searches so a replayed ancestor is provable rather than assumed.
- */
+
 function harness(): Readonly<{
   database: AuthorityDatabase;
   now: () => string;
@@ -317,7 +265,7 @@ function failThenRetry(h: ReturnType<typeof harness>): Promise<Readonly<{
   })();
 }
 
-describe("D221 — a retry re-executes an always-rerun node without colliding", () => {
+describe("a retry re-executes an always-rerun node without colliding", () => {
   it("walks fail → retry → terminal done, storing BOTH executions of the item", async () => {
     const h = harness();
     const { first, retried } = await failThenRetry(h);
@@ -327,8 +275,7 @@ describe("D221 — a retry re-executes an always-rerun node without colliding", 
     assert.equal(retried.envelope.attempt, 2, "a retry takes the ITEM's next attempt");
     assert.equal(retried.envelope.itemId, first.envelope.itemId, "and it is the SAME logical item");
 
-    // The failed run's always-rerun row, captured byte for byte BEFORE the
-    // retry runs: nothing may rewrite it (D144/D199).
+
     const itemId = first.envelope.itemId;
     const beforeRetry = h.database.authority.runCheckpoints.get(WORKFLOW_ID, itemId, "live-probe", 1, 1);
     assert.ok(beforeRetry !== undefined, "the failed run stored its always-rerun execution");
@@ -349,9 +296,7 @@ describe("D221 — a retry re-executes an always-rerun node without colliding", 
       executions.map((record) => [record.attempt, record.claimGeneration, record.runId]),
       [[1, 1, RUN_ID], [2, 1, retried.envelope.runId]],
     );
-    // Same claim generation on both — which is exactly why D214's component
-    // could not tell these two apart, and why the attempt had to become the
-    // item's. The pre-fix key `(item, node, 1, 1)` still names the FIRST row.
+
     assert.equal(
       canonicalJsonStringify(h.database.authority.runCheckpoints.get(WORKFLOW_ID, itemId, "live-probe", 1, 1)),
       beforeBytes,
@@ -377,8 +322,7 @@ describe("D221 — a retry re-executes an always-rerun node without colliding", 
     assert.ok(dependency?.state === "resolved");
     assert.equal(dependency.checkpoint.attempt, 2);
     assert.equal(dependency.checkpoint.runId, retried.envelope.runId);
-    // `latest` agrees — `attempt DESC, claim_generation DESC` is a real order
-    // now, where two runs at attempt 1 were a tie SQLite broke arbitrarily.
+
     const latest = h.database.authority.runCheckpoints.latest(WORKFLOW_ID, itemId, "live-probe");
     assert.equal(latest?.attempt, 2);
     assert.equal(latest?.runId, retried.envelope.runId);
@@ -394,12 +338,7 @@ describe("D221 — a retry re-executes an always-rerun node without colliding", 
     const paths = [...new Set(h.emitter.events()
       .filter((event) => event.spanPath.includes("/live-probe#"))
       .map((event) => event.spanPath))];
-    /*
-     * D123 one level up: the projector folds by `(runId, attempt, spanPath)`.
-     * Two runs of one item already differ in every one of those — a span path is
-     * rooted in the run's OWN trace id — and the attempt now differs too, so no
-     * surface can report a retry as another attempt 1.
-     */
+
     assert.deepEqual(paths, [
       taskSpanPath(TraceIdSchema.parse(first.envelope.traceId), node, 1, 1),
       taskSpanPath(TraceIdSchema.parse(retried.envelope.traceId), node, 1, 1),
@@ -412,12 +351,7 @@ describe("D221 — a retry re-executes an always-rerun node without colliding", 
     const { first, retried } = await failThenRetry(h);
     const itemId = first.envelope.itemId;
 
-    /*
-     * The pre-fix shape, stated exactly: a second run of this item born at the
-     * attempt the item already spent. Authority refuses it at the insert —
-     * before a worker, a browser, or a checkpoint — naming the item and the
-     * attempt.
-     */
+
     assert.throws(
       () => h.database.authority.runs.enqueue({
         ...queuedRun(),
@@ -437,13 +371,7 @@ describe("D221 — a retry re-executes an always-rerun node without colliding", 
       "the item has spent attempts 1 and 2",
     );
 
-    /*
-     * And the backstop the live run actually hit is still there: a row that
-     * names an execution some other row already owns is refused by content, not
-     * folded. This is §9.17's verbatim message, reproduced through the same
-     * repository — which is what a pre-fix retry ran into on its first
-     * `always-rerun` node.
-     */
+
     const stored = h.database.authority.runCheckpoints.get(WORKFLOW_ID, itemId, "live-probe", 1, 1);
     assert.ok(stored !== undefined);
     assert.throws(
@@ -454,8 +382,7 @@ describe("D221 — a retry re-executes an always-rerun node without colliding", 
       }),
       /already exists with different content/,
     );
-    // D133 read-forward: the key that row was written under is unchanged by
-    // this decision — the key SHAPE never moved, so nothing stored had to.
+
     assert.equal(
       checkpointLookupKey(WORKFLOW_ID, itemId, "live-probe", 1, 1),
       [WORKFLOW_ID, itemId, "live-probe", "1", "1"].join("\u0000"),

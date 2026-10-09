@@ -15,15 +15,7 @@ import { composeActivity } from "../../../../../../src/backend/app/composition/d
 import { ActorIdSchema as PublicationActorIdSchema } from "../../../../../../src/rules/identity/ids.js";
 import { RunRecordService } from "../../../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { hostConfigFacts } from "../../../../../../src/models/config/host-display.js";
-/**
- * The BFF spine end-to-end over REAL machinery: the D109 planner + a real
- * authority database + the D113 kernel behind POST /api/v1/start-plans and
- * POST /api/v1/commands, run.queued span emission into SQLite, THE
- * projection serving GET /api/v1/dashboard, run detail + note-backed logs,
- * and strict route refusals. No projection fake, no kernel fake — the only
- * fakes are the process seams (worker supervisor, write sequencer) that 1g
- * leaves typed.
- */
+
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -191,7 +183,7 @@ function harness(options: {
   readonly intake?: IntakeService;
   /** Wrap the real start-plan service (e.g. to observe whether admission reached it). */
   readonly startPlans?: (real: StartPlanService) => StartPlanService;
-  /** An advisory seam; absent by default (D178: no provider is composed here). */
+
   /** An Explorer safe-edit validation seam; absent by default. */
   readonly explorerEdits?: DashboardAppDeps["explorerEdits"];
   /** The hub's per-subscriber pending bound; the hub default when absent. */
@@ -273,8 +265,7 @@ function harness(options: {
     },
     descriptors,
   });
-  // D218: no in-process hook — the command service ticks the projection's
-  // database cursor after emitting, exactly as production wires it.
+
   const spans = createTimelineEmitter({
     repository: database.authority.timelineEvents,
     clock,
@@ -309,9 +300,7 @@ function harness(options: {
   const credentials = createCredentialStore({ stateRoot });
   const settingsFile = {
     read: () => {
-      // Applying a revision does not mutate the running process. This test
-      // harness therefore models the same persisted/active split as the real
-      // runtime instead of serving a stale identity as a false "current".
+      // Persisted settings do not mutate the running process; model active and saved revisions separately.
       const record = readSettings(database.authority);
       const persisted = settingsRuntimeIdentity(record, resolveConfigWithProvenance(record.settings, hostConfigFacts({}), clock).fingerprint);
       if (
@@ -453,9 +442,7 @@ function harness(options: {
     ...(options.explorerEdits === undefined ? {} : { explorerEdits: options.explorerEdits }),
     hub,
     runLogsHub,
-    // D274 item 6 — the read-only Settings status sections read the SAME
-    // resolved config and descriptor tuple this harness composes everything else
-    // from, so nothing on that page can be true here and false in production.
+
     settings: { config: resolveConfigWithProvenance({}, hostConfigFacts({}), clock).config, descriptors: [fixtureDescriptor] },
     settingsEditor: { settings: settingsFile, protectedSettings: createProtectedSettingsRuntimeReader(credentials),
       environment: {}, clock },
@@ -550,12 +537,7 @@ async function json(response: Response): Promise<Record<string, unknown>> {
   return (await response.json()) as Record<string, unknown>;
 }
 
-/**
- * D288's real storage-to-route proof needs current Separations authority rows,
- * not the projection fake used by the fold unit tests. These rows retain the
- * current descriptor identity and canonical result shape that the production
- * pseudonym write capability revalidates before it persists evidence.
- */
+
 function currentSeparationsRun(input: Readonly<{
   seed: number;
   shape: "single" | "operation" | "operation-member";
@@ -762,9 +744,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const operation = currentSeparationsRun({ seed: 311, shape: "operation" });
     const firstMember = currentSeparationsRun({ seed: 312, shape: "operation-member", parent: operation });
     const secondMember = currentSeparationsRun({ seed: 313, shape: "operation-member", parent: operation });
-    // This persisted row is outside the canonical date range. If the
-    // repository ignores its requested run ids, the route sees foreign
-    // evidence and must become unavailable instead of returning this count.
+
     const foreign = currentSeparationsRun({ seed: 314, shape: "single", enqueuedAt: "2026-08-02T17:00:00.000Z" });
 
     seedCurrentSeparationsRun(h, standalone, "10800000");
@@ -1496,11 +1476,11 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
           mediaType: attachment.mediaType,
         },
       },
-    ], "selected success performs one E29 verification and one fresh exact-ref preparation");
+    ], "selected success performs one artifact verification and one fresh exact-ref preparation");
     assert.deepEqual(
       h.artifactSourceReads,
       [envelopeByteLength, envelopeByteLength],
-      "selected preparation performs a fresh source read after E29",
+      "selected preparation performs a fresh source read after artifact verification",
     );
 
     const foreign = await h.app.request(
@@ -1766,7 +1746,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(response.headers.get("cache-control"), "no-store");
   });
 
-  it("distinguishes physical missing bytes during E29 and fresh selected preparation", async () => {
+  it("distinguishes physical missing bytes during diagnostic readback and fresh selected preparation", async () => {
     for (const [failOnRead, phase] of [[1, "E29"], [2, "fresh selected prepare"]] as const) {
       let reads = 0;
       const operations: ("verify" | "prepare")[] = [];
@@ -2328,7 +2308,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const runId = created.envelope.runId;
     const detail = await json(await h.app.request(`/api/v1/runs/${runId}`));
     assert.equal((detail.header as { title: string }).title, "Fixture 10873698");
-    // DCA3: a live read must state absence, not omit capture availability.
+    // A live read states capture absence explicitly.
     assert.deepEqual(detail.captures, {
       state: "absent", reason: "this run has no indexed diagnostic capture artifacts",
     });
@@ -2378,12 +2358,8 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     connection.close();
   });
 
-  it("serves the timeline for task spans committed through another authority connection (D218)", async () => {
-    // The regression the cross-process tail exists for: the run is enqueued
-    // by THIS process, its task spans are appended by ANOTHER process (the
-    // worker), and the run detail must still serve a timeline — before D218
-    // the projection folded only its own emissions and `timeline.events`
-    // stayed [] for every run enqueued after boot.
+  it("serves the timeline for task spans committed through another authority connection", async () => {
+
     const h = harness();
     const plan = await json(await h.app.request("/api/v1/start-plans", {
       method: "POST",
@@ -3369,11 +3345,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(storage.authority, "healthy");
     assert.equal(storage.backup, "missing");
     const sections = boot.settingsSections as { id: string; label: string }[];
-    // The LABEL is asserted with the id, because it is served here and rendered
-    // verbatim by `buildSettingsNav` — the surface authors none of it. `Storage
-    // health` is the demo's one name for the entry and the page it opens
-    // (UF-SET-9); the two used to disagree because only the panel header was
-    // ported (D276 item 4).
+
     assert.deepEqual(sections, [
       { id: "storage", label: "Storage checks", revision: 1 },
       { id: "workflow-capabilities", label: "Workflow capabilities", revision: 1 },
@@ -3518,8 +3490,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(review.status, 409);
     assert.equal((await json(review)).code, "SECTION_UNAVAILABLE");
 
-    // A receipt states a SETTLED verdict, so a queued run's absence names the
-    // state rather than a missing feature (D141).
+
     const receipt = await json(await h.app.request(`/api/v1/runs/${runId}/receipt`));
     assert.deepEqual(receipt.payload, {
       state: "missing",
@@ -3534,7 +3505,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.deepEqual(entries[0], { label: "current-attempt", valueRedacted: "1" });
   });
 
-  it("serves the Activity report over a NAMED range and refuses one the caller never named (D180)", async () => {
+  it("serves the Activity report over a NAMED range and refuses one the caller never named", async () => {
     const h = harness();
     const planResponse = await json(await h.app.request("/api/v1/start-plans", {
       method: "POST",
@@ -3578,9 +3549,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(report.terminalRuns, 0);
     assert.equal(report.durations.medianMs.state, "absent");
 
-    // A missing bound is never "today" or "this month": the route refuses and
-    // says which parameters it needs, rather than answering a different
-    // question than the link the operator followed asked.
+
     const halfRange = await h.app.request(`/api/v1/reports/activity?from=${DAY}`);
     assert.equal(halfRange.ok, false);
     assert.match(String((await json(halfRange)).message), /requires both from= and to=/);
@@ -3599,14 +3568,8 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(inverted.ok, false);
     assert.match(String((await json(inverted)).message), /ends before it starts/);
   });
-  /**
-   * D240 — the SAME report as a file. The route is tested for the two things
-   * that make an export honest: it refuses a half-named window exactly as the
-   * JSON route does (an export travels further than a page, so a silently
-   * defaulted window would too), and the artifact carries the rules beside the
-   * numbers.
-   */
-  it("serves the Activity report as a CSV that carries its own caveats (D240)", async () => {
+
+  it("serves the Activity report as a CSV that carries its own caveats", async () => {
     const h = harness();
     const activityReport = ActivityReportSelectionSchema.parse(
       await (await h.app.request(`/api/v1/reports/activity?from=${DAY}&to=${DAY}`)).json(),
@@ -3780,7 +3743,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(workbook[1]?.data.length, 3);
   });
 
-  it("executes a bulk cancel as N CAS-bound children and answers the per-run vector (D235)", async () => {
+  it("executes a bulk cancel as N CAS-bound children and answers the per-run vector", async () => {
     const h = harness();
 
     // Three real runs through the real plan -> start doors, one per subject.
@@ -4021,8 +3984,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal((concurrentNew[0].payload.results as Record<string, unknown>[])[0].replayed, false);
     assert.equal((concurrentNew[1].payload.results as Record<string, unknown>[])[0].replayed, true);
 
-    // Fail the second real child inside its command/audit transaction. Prior success
-    // remains durable, the failed child rolls back, and the third is never attempted.
+
     const runE = await startRun("10873702", "1a000000-0000-4000-8000-000000000006");
     const runF = await startRun("10873703", "1a000000-0000-4000-8000-000000000007");
     const failureBody = { ...envelope, commandId: "1a000000-0000-4000-8000-00000000000e", bulkCommandId: "1a000000-0000-4000-8000-00000000000e", targets: [runD, runE, runF].map((runId) => ({ runId, expectedVersion: versionOf(runId) })) };
@@ -4046,15 +4008,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     } finally { raw.close(); }
 
   });
-  /**
-   * The remaining browser-reachable POSTs (ref frontend-backend-integration §3.4 admission table):
-   * a start plan persists durable authority, an intake upload creates or joins a
-   * session with bytes, Explorer validation reconciles authority claims, and the
-   * advisory spends a constrained provider. A hostile page can reach loopback
-   * with a simple no-CORS POST and a JSON-shaped `text/plain` body that
-   * `c.req.json()` parses anyway, so the Host/Origin pair must refuse BEFORE a
-   * byte of body, query, authority or provider is touched.
-   */
+
   const FOREIGN_ORIGIN_CASES = [
     ["missing Origin", { host: "localhost" }],
     ["foreign Origin", { host: "localhost", origin: "https://hostile.example" }],
@@ -4244,9 +4198,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.deepEqual(initial.map(({ type }) => type), ["hello", "snapshot", "health"]);
     assert.equal(h.hub.subscriberCount(), 1);
 
-    // Six count-bearing changes while nobody reads: an eager push loop would
-    // deliver six snapshots; the bounded bridge delivers at most what its
-    // highWaterMark already pulled, then exactly one reset-required.
+
     const runs = Array.from({ length: 6 }, (_, index) => {
       const runId = `9e8d7c6b-5a49-4382-9170-2f3e4d5c6c0${String(index)}`;
       h.database.authority.runs.enqueue(personLookupQueuedRun({

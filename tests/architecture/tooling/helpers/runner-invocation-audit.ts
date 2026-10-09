@@ -169,12 +169,7 @@ function staticLocalSpecifiers(source: RunnerSource): readonly string[] {
   return [...specifiers];
 }
 
-/**
- * The package scripts are the authority for executable Vite configuration.
- * Every declared config outside src/scripts joins the production runner scan;
- * an absent or shell-computed path refuses the guard rather than becoming an
- * unreviewed hole in that scan.
- */
+
 export function packageDeclaredExternalProductionSources(
   scripts: PackageScripts,
   readSource: (path: string) => string,
@@ -305,11 +300,7 @@ function lineOf(source: ts.SourceFile, node: ts.Node): number {
   return source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1;
 }
 
-/**
- * Prove the secure bootstrap is the sole production invoker of both admitted
- * runners. This follows AST import provenance and local aliases; text that only
- * resembles a call has no symbol origin and is ignored.
- */
+
 export function auditSoleRunnerInvocation(
   sources: readonly RunnerSource[],
 ): readonly string[] {

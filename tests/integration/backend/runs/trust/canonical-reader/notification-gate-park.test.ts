@@ -1,16 +1,7 @@
 import { createTrustRunReader } from "../../../../../../src/backend/runs/trust/canonical-reader.js";
 import { personLookupQueuedRun } from "../../../../../support/helpers/phase1f-executor-harness.js";
 import { RunRecordSchema } from "../../../../../../src/models/run/record.js";
-/**
- * D262: the needs-you watch — ref dashboard-surfaces §2.6's open operator gate, produced.
- *
- * The transition rule is the whole contract and it is pinned without a
- * database, because the notifier holds no authority handle: it is handed the
- * parked set and decides what has NOT been reported yet. What the database arm
- * below pins instead is the half a fake inbox cannot — that the published event
- * really lands as a durable `gate-waiting` row carrying a run link, and that a
- * second observation of the same standing park writes nothing at all.
- */
+
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -33,11 +24,7 @@ afterEach(() => {
 const PARK_A = { runId: UUID_1, workflowId: "separations", gateId: "identity-approval" } as const;
 const PARK_B = { runId: UUID_2, workflowId: "person-lookup", gateId: "identity-approval" } as const;
 
-/**
- * A recording inbox. Deliberately explicit rather than a no-op: a double that
- * silently succeeded would make "publishes exactly once" untestable, which is
- * the same defect as the missing producer this decision fixes.
- */
+
 function recordingInbox(): {
   published: unknown[];
   publish(event: unknown): Promise<NotificationPublishReport>;
@@ -101,8 +88,7 @@ describe("gate-park notifier: a park publishes on the transition, exactly once",
       gateId: PARK_A.gateId,
     }]);
 
-    // The run is STILL parked; a second tick must write nothing, or the D134
-    // fold would mark the row unread again every 5 seconds forever.
+
     const second = await notifier.observed([PARK_A]);
     assert.deepEqual(second.published, []);
     assert.deepEqual(second.standing, [PARK_A]);
@@ -205,12 +191,7 @@ describe("gate-park notifier: the durable row it actually writes", () => {
     assert.equal(after[0]?.count, 1);
   });
 
-  /**
-   * D262's surface half. The bell's navigate affordance has existed since 2i-B
-   * and was UNREACHABLE, because nothing put a link on the wire — so a needs-you
-   * alert could only ever be marked read. This pins the derivation the button
-   * reaches, including the approved Storage destination without a run.
-   */
+
   it("serves exact run and Storage destinations without diagnostic prose", async () => {
     const { clock, inbox } = realWorld();
     const notifier = createGateParkNotifier({ inbox });

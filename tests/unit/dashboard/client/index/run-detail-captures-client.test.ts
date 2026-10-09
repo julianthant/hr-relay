@@ -1,5 +1,4 @@
-/** DCA3 cases retained by intent from 7a85bbd596f00ba4052ce1dddd13cd40c8a897ac;
- * D292 preserves the exact server-owned origin set through the client. */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { createDashboardClient, DashboardClientError } from "../../../../../src/dashboard/client/index.js";
@@ -36,7 +35,7 @@ function identityError(code: string) {
   };
 }
 
-describe("DCA3/D292 capture client", () => {
+describe("capture client", () => {
   it("rejects a foreign initial run's capture capability", async () => {
     const client = clientReturning({ ...DETAIL, runId: FOREIGN, header: { ...DETAIL.header, runId: FOREIGN } });
     await assert.rejects(() => client.runDetail(RUN), identityError("RUN_DETAIL_IDENTITY_MISMATCH"));
@@ -76,7 +75,7 @@ describe("DCA3/D292 capture client", () => {
     assert.equal(received, controller.signal);
     assert.equal(String(path), `http://fixture.test/api/v1/runs/${RUN}/captures`);
   });
-  it("builds only exact DCA1 artifact byte URLs", () => {
+  it("builds only exact artifact byte URLs", () => {
     const client = clientReturning(SECTION);
     assert.equal(client.artifactUrl(ARTIFACT), `http://fixture.test/artifacts/v1/${ARTIFACT}`);
     assert.throws(() => client.artifactUrl("../../latest"), /uuid|invalid/iu);

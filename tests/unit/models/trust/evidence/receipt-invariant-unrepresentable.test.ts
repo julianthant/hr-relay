@@ -1,25 +1,4 @@
-/**
- * The RECORD behind a deliberate non-port — 03a fidelity ledger 2 row D11,
- * ruled by D273 item 7: "port every served receipt cue, NEVER the
- * unrepresentable invariant banner".
- *
- * The demo draws a client-side Banner when a receipt fails its own invariant
- * ("This receipt fails its own invariant — the verdict is not printed as
- * fact"). The audit's complaint was never that the check is missing here — it
- * was that nothing in this tree wrote down WHY it cannot fire, which leaves a
- * deliberate omission indistinguishable from an oversight. This file is that
- * record, in the only form that cannot go quietly stale.
- *
- * The claim: every clause of the demo's banner is refused at the WIRE.
- * `ReceiptSectionSchema` IS `RunEvidenceReceiptSchema` (`domain/dashboard/run-detail.ts`),
- * so a receipt that fails the invariant throws at parse with the offending path
- * named and never reaches `receipt.tsx` at all.
- *
- * This overlaps `trust-records.test.ts` on two assertions by design: that file
- * pins the durable SCHEMA, this one pins a SURFACE decision that depends on it.
- * If the invariant is ever relaxed, the surface owes the operator a banner
- * again — and this file, not that one, is what says so.
- */
+
 import { describe, expect, it } from "vitest";
 import { RunEvidenceReceiptSchema } from "../../../../../src/models/trust/evidence.js";
 
@@ -69,7 +48,7 @@ const VERIFIED_DONE = {
   result: "verified-done",
 } as const;
 
-describe("the receipt invariant is unrepresentable, so the demo's banner cannot fire (D11)", () => {
+describe("the receipt invariant is unrepresentable, so the demo's banner cannot fire", () => {
   it("admits a receipt that meets the invariant — the control", () => {
     expect(RunEvidenceReceiptSchema.safeParse(VERIFIED_DONE).success).toBe(true);
   });

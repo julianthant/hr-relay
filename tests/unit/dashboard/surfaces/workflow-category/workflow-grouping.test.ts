@@ -1,19 +1,4 @@
-/**
- * The ONE workflow-listing rule, pinned as a pure function (ref dashboard-surfaces §Shell,
- * D219 — "a chunk harness is a step of its composition, never a peer
- * workflow").
- *
- * Three surfaces call `groupWorkflowsByCategory` — the Workflow Panel's rail,
- * the Run Modal's picker over BOTH its lists, and the Explorer — and the whole
- * point of one function is that none of them can answer differently. So what
- * is pinned here is the function's ANSWER, not any surface's markup: the
- * category order, the nesting, the ordering stability that keeps the rail from
- * reshuffling when a harness registers, and the orphan arm a filtered list
- * reaches when it genuinely omits a composition.
- *
- * Roles are parsed through `defineWorkflowRole`, so a fixture cannot state a
- * role no module could declare.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { defineWorkflowRole, type WorkflowModuleRole } from "../../../../../src/workflow-kit/validation/module-role.js";
@@ -33,11 +18,7 @@ interface Entry {
 
 const STANDALONE = defineWorkflowRole({ kind: "standalone" });
 const COMPOSITION = defineWorkflowRole({ kind: "composition" });
-/**
- * Grouping keys on `of` alone — a harness nests under the composition it names
- * — so these fixtures carry one arbitrary well-formed `step` (D265). A test
- * that varied it would be asserting nothing this surface reads.
- */
+
 const harnessOf = (of: string, step = "a-step"): WorkflowModuleRole =>
   defineWorkflowRole({ kind: "chunk-harness", of, step });
 
@@ -84,7 +65,7 @@ describe("groupWorkflowsByCategory — the category half", () => {
   });
 });
 
-describe("groupWorkflowsByCategory — the membership half (D219)", () => {
+describe("groupWorkflowsByCategory — the membership half", () => {
   it("nests a harness under its composition instead of listing it as a peer", () => {
     const groups = groupWorkflowsByCategory([
       entry("separations", "separation", COMPOSITION, "Separations"),

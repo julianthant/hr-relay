@@ -1,19 +1,4 @@
-/**
- * D307 — what the RECEIPT and EXPLAIN say about an omitted step.
- *
- * The seam is the pair of projections an operator reads after the fact:
- * `buildRunEvidenceReceipt` and `buildExplainRunView`. Both are given real
- * authority records — the seeded person-lookup exit run, its real terminal
- * result and its real checkpoint rows — with ONE node turned into what the
- * executor writes for an omitted step's producer (a marked checkpoint whose
- * every provenance leaf is operator-sourced) and ONE turned into a node of
- * that step nothing rebuilt.
- *
- * The question every assertion answers is the same: can either surface be read
- * as saying a system was checked? An asserted value is `present` and named as
- * the operator's; it is never `verified`, never dated as an observation, never
- * an action anyone took, and never freshness anyone reused.
- */
+
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -73,18 +58,13 @@ function openDatabase(): AuthorityDatabase {
   return database;
 }
 
-/**
- * The seeded run, rewritten into the shape the executor leaves behind for an
- * omitted step: the envelope carries the omission, the producer's node carries
- * a MARKED checkpoint with operator provenance, and the terminal record cites
- * one node `asserted` and the other `not-run` for `step-omitted`.
- */
+
 function omittedStepFixture(overrides?: Readonly<{
   stepOmissions?: readonly { readonly step: string; readonly facts: Record<string, string> }[];
   dropAssertedCheckpoint?: boolean;
   citeAssertedAsResolved?: boolean;
   dropAssertionMarker?: boolean;
-  /** Cite a DIFFERENT output schema than the row was parsed with. */
+
   citeForeignSchemaHash?: boolean;
   /** Cite a DIFFERENT output digest than the row's own value hashes to. */
   citeForeignOutputDigest?: boolean;
@@ -185,7 +165,7 @@ function nodeObligation(receipt: RunEvidenceReceipt, nodeId: string) {
   return row;
 }
 
-describe("evidence receipt under step omission (D307)", () => {
+describe("evidence receipt under step omission", () => {
   it("states an asserted node as present, mandatory, and sourced from the operator", () => {
     const receipt = buildRunEvidenceReceipt(receiptInput(omittedStepFixture()));
 
@@ -233,16 +213,10 @@ describe("evidence receipt under step omission (D307)", () => {
     assert.equal(obligation.mandatory, false);
     const decision = receipt.decisions.find((entry) => entry.reason.includes(`node "${OMITTED_NODE}"`));
     assert.ok(decision !== undefined);
-    /*
-     * D307 — the EXACT `NOT_RUN_SENTENCE["step-omitted"]` sentence, not a
-     * substring of it. `NOT_RUN_SENTENCE` is a closed map with five reasons
-     * whose sentences differ only in their tail, so a loose match would still
-     * pass if `step-omitted` were wired to the `operator-asserted` sentence
-     * ("the operator asserted its facts at start") or to a defaulted one.
-     */
+
     assert.equal(
       decision.reason,
-      `node "${OMITTED_NODE}" did not run: the operator omitted its step at start (D307)`,
+      `node "${OMITTED_NODE}" did not run: the operator omitted its step at start`,
     );
     assert.equal(decision.kind, "branch");
     assert.equal(decision.outcome, "not-taken");
@@ -307,13 +281,7 @@ describe("evidence receipt under step omission (D307)", () => {
     );
   });
 
-  /*
-   * The third direction of the same reconciliation. There is no arm for it
-   * inside the asserted emitter on purpose — the derivation binding refuses the
-   * whole receipt first — and this test is what proves that claim rather than
-   * leaving it as a comment: a declared dependency the terminal record does not
-   * cite never reaches a `present` obligation.
-   */
+
   it("refuses a marked row the terminal record leaves out of a dependency the derive declares", () => {
     assert.throws(
       () => buildRunEvidenceReceipt(receiptInput(omittedStepFixture({ dropAssertedDependency: true }))),
@@ -354,7 +322,7 @@ describe("evidence receipt under step omission (D307)", () => {
   });
 });
 
-describe("explain run under step omission (D307)", () => {
+describe("explain run under step omission", () => {
   function explainView() {
     const fixture = omittedStepFixture();
     return buildExplainRunView({

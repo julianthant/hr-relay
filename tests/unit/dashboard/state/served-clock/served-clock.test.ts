@@ -1,18 +1,4 @@
-/**
- * The dashboard's ONE live instant (D256, ref dashboard-surfaces §"Wave-2 connection-proof
- * presentation deltas").
- *
- * The defect these pin, measured on the Track C connection proof (separations
- * §9.22 item 2): the app derived every live elapsed from `boot.serverClock.now`
- * — the instant ONE bootstrap fetch carried — so a parked run read **`0s` for
- * over two minutes** (the tab had loaded before the run started, so the
- * difference was negative and the clamp made it a plausible zero), and a plain
- * reload made the same row jump to `2m 54s` and freeze there.
- *
- * This tree renders no React in the unit lane, so the hook's fold is exported
- * as a pure function and pinned here; the hook around it is three lines of
- * calibration that the parity lane executes for real.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { deriveServedNow } from "../../../../../src/dashboard/state/served-clock.js";
@@ -47,7 +33,7 @@ const parkedRow = {
   endedAt: { state: "absent", reason: "run is awaiting-approval and has not ended" },
 } as const;
 
-describe("the served clock (D256)", () => {
+describe("the served clock", () => {
   it("is EXACTLY the served instant when no monotonic time has passed", () => {
     assert.equal(deriveServedNow(BOOTSTRAP_INSTANT, 0), "2026-08-20T15:03:32.000Z");
   });
@@ -66,17 +52,13 @@ describe("the served clock (D256)", () => {
     assert.throws(() => deriveServedNow("shortly after lunch", 0), /not an ISO instant/);
   });
 
-  /**
-   * The whole defect in one case: the same row, on the same page, read through
-   * a frozen clock and through a ticking one.
-   */
+
   it("makes a run that started AFTER page load report its real age instead of 0s", () => {
     const frozen = runTiming(parkedRow, deriveServedNow(BOOTSTRAP_INSTANT, 0), isTerminalQueueStatus);
     // 15:03:32 + 11m 43s of ticking = 15:15:15, the instant the proof reloaded at.
     const ticking = runTiming(parkedRow, deriveServedNow(BOOTSTRAP_INSTANT, 703_000), isTerminalQueueStatus);
     assert.deepEqual(ticking, { text: "2m 58s" });
-    // The frozen reading is what the proof saw, and it is no longer `0s`: an
-    // elapsed measured backwards now SAYS so instead of wearing a zero.
+
     assert.deepEqual(frozen, { text: "-8m 45s" });
   });
 
@@ -93,7 +75,7 @@ describe("the served clock (D256)", () => {
   });
 });
 
-describe("a backwards elapsed is drawn, not clamped (D256)", () => {
+describe("a backwards elapsed is drawn, not clamped", () => {
   it("returns the SIGNED interval so 'the clock is behind' cannot read as 'just now'", () => {
     assert.equal(elapsedSecondsBetween(RUN_STARTED, BOOTSTRAP_INSTANT), -525);
     assert.equal(elapsedSecondsBetween(BOOTSTRAP_INSTANT, RUN_STARTED), 525);

@@ -1,18 +1,6 @@
 import { RuntimeAdmission } from "../../../../../../src/backend/storage/admission/admission.js";
 import { testRunLifecycle } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
-/**
- * D162 executor capability wiring (ref data-intake-and-edit-data §4.11): the run executor mints
- * admitted provider clients per task invocation over the run's RETAINED
- * config snapshot, injects the kernel's content-addressed writer, and every
- * unwired or unreadable-snapshot arm refuses with a structured node failure
- * — never a bypass around admission, never a substituted client or writer.
- *
- * Every fixture contract borrows the manifest-known id `ocr/extract-form-page`
- * with test-local schemas: `interpret` builds checkpoint expectations for
- * every task node UP FRONT via `resolveTaskImplFingerprint`, which fails loud
- * on an id the generated manifest does not carry — so even the refusal arms
- * need a manifest id, and the arms are told apart by their failure messages.
- */
+
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -437,14 +425,13 @@ describe("executor capability wiring, wired", () => {
     assert.equal(calls.length, 1);
     assert.deepEqual(calls[0]?.request, { capability: "geocode.census", payload: PAYLOAD });
 
-    // Admission settled durably in authority: the reservation was consumed and
-    // the outcome recorded against the minted admission id.
+
     const admission = database.authority.providerAdmissions.get(
       ProviderAdmissionIdSchema.parse("00000000-0000-4000-8000-000000000001"),
     );
     assert.ok(admission !== undefined);
     assert.equal(admission.lifecycle.state, "settled");
-    // A run-node identity, not D178's operator-advisory arm.
+
     assert.ok(isRunNodeExecutionIdentity(admission.execution));
     assert.equal(admission.execution.taskId, "ocr/extract-form-page");
     assert.equal(admission.execution.nodeId, "extract");

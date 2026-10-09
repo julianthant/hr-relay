@@ -1,6 +1,6 @@
 import { RuntimeAdmission } from "../../../../../../src/backend/storage/admission/admission.js";
 import { createTrustRunReader } from "../../../../../../src/backend/runs/trust/canonical-reader.js";
-/** E29/D291: durable D137 bundle readback through request-local verified-byte passes and leases. */
+
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -178,8 +178,8 @@ async function collectBytes(body: ReadableStream<Uint8Array>): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
-describe("E29 diagnostic bundle readback", () => {
-  it("round-trips the D137 writer through verified bytes and canonical manifest", async () => {
+describe("diagnostic bundle readback", () => {
+  it("round-trips the writer through verified bytes and canonical manifest", async () => {
     const value = fixture();
     const bundle = await captureService(value).capture({
       trigger: "operator-request",

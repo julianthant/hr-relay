@@ -37,13 +37,9 @@ interface SurfaceSeed {
   readonly parentSeed?: number;
   readonly subtitle?: string | { absent: string };
   readonly liveMessage?: string | { absent: string };
-  /** D6 — the rehearsal flag. Every envelope carries it; the corpus pins both arms. */
+
   readonly dryRun?: boolean;
-  /**
-   * D22/D126 — the `△ N` chip's real count and the first warning's sentence.
-   * Deliberately NOT `1` on the row that carries it: a corpus whose served
-   * count equals the constant it replaced cannot tell the two renderings apart.
-   */
+  // Use more than one warning so the corpus detects a hardcoded count.
   readonly warnings?: { count: number; first: string };
   readonly pipeline?: readonly [PipelineState, PipelineState, PipelineState, PipelineState];
   readonly startedMinute?: number;
@@ -80,12 +76,7 @@ function surfaceOf(input: SurfaceSeed): Record<string, unknown> {
     : typeof input.liveMessage === "string"
       ? present(input.liveMessage)
       : absent(input.liveMessage.absent);
-  /**
-   * D12 — an `awaiting-approval` row is the ONLY row that may date a gate, and
-   * the instant comes from the gate's own record rather than from `updatedAt`.
-   * The fixture opens the gate two minutes after the run started so the age is
-   * a real interval and not a zero.
-   */
+
   const gateOpenedAt = input.status === "awaiting-approval"
     ? present(at(Math.min(startedMinute + 2, 59)))
     : absent(`run is ${input.status} and is not waiting on a gate`);
@@ -106,9 +97,7 @@ function surfaceOf(input: SurfaceSeed): Record<string, unknown> {
       ? { state: "root" }
       : { state: "child", parentRunId: uuidOf(input.parentSeed) },
     actorId: "local-operator",
-    // D179: the row carries the build the RUN was enqueued under. The corpus
-    // pins one stamped row and one unstamped one so both arms of the union are
-    // photographed — a run from before the stamp existed is a real state.
+
     appVersion: input.seed === 4
       ? { state: "absent", reason: "enqueued before runs stamped their app build (D179)" }
       : { state: "present", value: FIXTURE_APP_VERSION },
@@ -119,22 +108,14 @@ function surfaceOf(input: SurfaceSeed): Record<string, unknown> {
       { system: "ucpath", instance: "prod" },
       { system: "crm", instance: "prod" },
     ],
-    // D6: the flag lives on the envelope, so every row carries it and there is
-    // no absent arm — a rehearsal that renders like a real filing is the
-    // cheapest way to read a dry run as a submitted transaction.
+
     dryRun: input.dryRun ?? false,
     priority: input.seed === 9 ? "bulk" : "interactive",
-    /*
-     * D230: the corpus pins BOTH arms for the same reason it pins both arms of
-     * `appVersion` — a run enqueued before schema v15 carries no ordinal, and a
-     * reference set that only ever photographed the present arm would not show
-     * what the footer does when the number is genuinely absent.
-     */
+
     runNumber: input.seed === 4
       ? { state: "absent", reason: "enqueued before runs carried a workflow ordinal (D230)" }
       : { state: "present", value: input.seed },
-    // D269: the parity corpus predates run sessions and no surface reads the
-    // field yet; an absent arm keeps every frozen reference byte-identical.
+    // Keep session absence in this corpus; no surface consumes the field.
     session: { state: "absent", reason: "fixture row predates run sessions (D269)" },
     containment: kind === "member" ? "member" : "root",
     linkedRuns: [],
@@ -142,13 +123,7 @@ function surfaceOf(input: SurfaceSeed): Record<string, unknown> {
       ? { state: "absent", reason: "this run's evidence receipt records no output fact" }
       : { state: "absent", reason: `run is ${input.status} and has not produced a terminal result` },
     startedAt: at(startedMinute),
-    // D124: a settled run carries its own terminal instant, so the row can
-    // show what it TOOK instead of counting since it started, and the
-    // terminal-authority contract makes `updatedAt` that same instant. The
-    // durations deliberately DIFFER per row — a corpus where every finished
-    // run took the same time would render identically whether the row read
-    // `endedAt` or any other constant. An in-flight row states the absence
-    // and why, and may not carry a terminal instant at all.
+
     updatedAt: at(settledMinute),
     endedAt: TERMINAL.has(input.status)
       ? { state: "present", value: at(settledMinute) }
@@ -167,17 +142,7 @@ function surfaceOf(input: SurfaceSeed): Record<string, unknown> {
     availableSections: input.status === "failed"
       ? ["logs", "receipt", "context-data", "context-attempts", "failure"]
       : ["logs", "receipt", "context-data", "context-attempts"],
-    /**
-     * The row's served controls, built by the PRODUCTION projection helper over
-     * this workflow's real `WorkflowActionPolicy` — never a hand-listed corpus
-     * copy. A parity reference exists to photograph what an operator sees, and a
-     * fixture that authored its own action set would photograph the fixture's
-     * opinion of the contract instead of the contract.
-     *
-     * `parkedWrite` is `false` throughout: a `blocked` seed does not declare
-     * which lifecycle it is (parked-write or interrupted), and the flag changes
-     * only the confirm dialog's body sentence, which no reference captures.
-     */
+
     actions: queueRowActions(personLookupDescriptor.actions, {
       status: input.status,
       rowRevision: input.seed,
@@ -314,12 +279,7 @@ const rawSurfaces: Record<string, unknown>[] = [
 ];
 
 
-/**
- * D81 count semantics, mirrored from the real projection
- * (src/server/dashboard/projectors/run-queue-projection.ts): delegated
- * members are contained in their operation's rollup and EXCLUDED from
- * workflowCounts, statusCounts, and the day total.
- */
+
 const countableSurfaces = (surfaces: readonly Record<string, unknown>[]): Record<string, unknown>[] =>
   surfaces.filter((surface) => surface.surfaceKind !== "member");
 
@@ -348,9 +308,7 @@ export const FIXTURE_DAY_WIRE: DashboardDayWire = DashboardDayWireSchema.parse({
     { day: "2026-08-02", count: 9 },
     { day: FIXTURE_DAY, count: TOP_LEVEL_COUNT },
   ],
-  // One workflow in the fixture, so its per-workflow status dimension IS the
-  // day's — which is exactly the agreement the real projection's single fold
-  // guarantees (R2 D5-D12 widened this array; R4-1 reads the same entries).
+
   workflowCounts: [{
     workflowId: WORKFLOW_ID,
     count: countableSurfaces(rawSurfaces).length,
@@ -358,14 +316,7 @@ export const FIXTURE_DAY_WIRE: DashboardDayWire = DashboardDayWireSchema.parse({
   }],
   statusCounts: statusCountsOf(countableSurfaces(rawSurfaces) as { status: string }[]),
   queueSurfaces: rawSurfaces,
-  /**
-   * D248 — five cards, chosen so the corpus photographs every arm the wire can
-   * reach: a busy worker holding two sessions, an idle one holding an odd
-   * single observed tile beside its unopened requirement, a `starting` daemon
-   * whose two required browser slots have opened nothing yet, a worker whose process DIED (`crashed`, which is what the
-   * attention chip counts), and a live worker carrying a standing `pause`
-   * directive beside a state word that is still `idle`.
-   */
+
   workerPools: [],
   workerCards: [
     {
@@ -438,12 +389,7 @@ export const FIXTURE_DAY_WIRE: DashboardDayWire = DashboardDayWireSchema.parse({
 });
 
 
-/**
- * A46's deterministic browser-proof profile. It is deliberately separate
- * from the ordinary queue corpus, so adding the pinned safety state cannot
- * redraw unrelated references. The strict parse proves the production wire
- * accepts exactly the closed arm the browser receives.
- */
+// Keep the safety profile separate so its state cannot change ordinary queue captures.
 export const BACKFILL_GAP_DAY_WIRE: DashboardDayWire = DashboardDayWireSchema.parse({
   ...FIXTURE_DAY_WIRE,
   notifications: FIXTURE_BACKFILL_NOTIFICATIONS,
@@ -456,14 +402,7 @@ export const FIXTURE_IDS = Object.freeze({
   doneRun: uuidOf(3),
   failedRun: uuidOf(4),
   openGateRun: uuidOf(5),
-  /**
-   * The SECOND gated run (D226) — a delegated member of the rehire sweep,
-   * already in the day wire since the corpus was written and until now with no
-   * detail behind it. It carries the OTHER approval ceremony, and reusing an
-   * existing row is what keeps the queue references byte-identical: a new
-   * top-level row would move every count, every band and every queue capture
-   * to photograph a dialog.
-   */
+
   gateTypedEidRun: uuidOf(44),
   parkedRun: uuidOf(6),
   cancelledRun: uuidOf(7),

@@ -1,9 +1,4 @@
-/**
- * D341 — `cli test-data check|migrate` composition. Runs against a copied
- * checkout root under a private temp directory: the real tracked
- * `config/test-data.json` and synthetic PDF, a synthetic private file and a
- * synthetic pre-D341 credential document. Never the operator's `.tracker`.
- */
+
 import assert from "node:assert/strict";
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -77,7 +72,7 @@ function noValues(report: unknown): void {
   assert.equal(text.includes(SYNTHETIC_EID), false, "EID leaked");
 }
 
-describe("cli test-data (D341)", () => {
+describe("cli test-data", () => {
   it("refuses unknown or incomplete options with exit 2 before any work, naming the usage", async () => {
     const root = checkout();
     const cases: readonly (readonly string[])[] = [
@@ -117,7 +112,7 @@ describe("cli test-data (D341)", () => {
     assert.equal(blocked.exitCode, 1);
     assert.equal(blocked.report.status, "blocked");
     assert.deepEqual(blocked.report.subjects, [{ label: "person-lookup-canary", workflow: "person-lookup", state: "blocked",
-      reason: "blocked: needs person-lookup-canary; its UCPath employee id is not configured — set personLookupCanaryEid in config/test-data.local.json (D341)" }]);
+      reason: "blocked: needs person-lookup-canary; its UCPath employee id is not configured — set personLookupCanaryEid in config/test-data.local.json" }]);
 
     const unknown = await run(root, ["check", "--json", "--subject", "nobody"]);
     assert.equal(unknown.exitCode, 1);
@@ -151,7 +146,7 @@ describe("cli test-data (D341)", () => {
     const arms = otherArm.report.subjects as { workflow: string; state: string; reason?: string }[];
     assert.deepEqual(arms.map(({ workflow, state }) => ({ workflow, state })), [
       { workflow: "separations", state: "blocked" }, { workflow: "separations-kuali-finalization", state: "blocked" }]);
-    assert.equal(arms[0]?.reason, "blocked: needs finalization-canary; its Kuali document number is not configured — set separationsKualiFinalizationCanaryDocumentNumber in config/test-data.local.json (D341)");
+    assert.equal(arms[0]?.reason, "blocked: needs finalization-canary; its Kuali document number is not configured — set separationsKualiFinalizationCanaryDocumentNumber in config/test-data.local.json");
 
     chmodSync(testDataLocalPath(root), 0o644);
     const loose = await run(root, ["check", "--json", "--subject", "person-lookup-canary"]);

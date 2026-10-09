@@ -1,14 +1,4 @@
-/**
- * D235 — the bulk plan/compose layer, pinned at its two load-bearing rules.
- *
- * OFFERED vs ELIGIBLE is the pair the strip has to say out loud: a verb is
- * offered when at least one selected row serves it, and its target set is the
- * INTERSECTION of the selection with the rows whose own `actions[]` admit it —
- * a row outside that intersection is SKIPPED and named, never silently dropped
- * and never sent. And a plan with nothing eligible REFUSES to become an
- * envelope, because "nothing happened" must never be mistakable for "it
- * worked".
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 
@@ -47,7 +37,7 @@ function row(runId: string, title: string, actions: readonly ActionDescriptorWir
   return { runId, title, actions };
 }
 
-describe("planBulkVerb — the intersection and the named skips (D235)", () => {
+describe("planBulkVerb — the intersection and the named skips", () => {
   it("offers cancel only; Rerun needs individual review", () => {
     assert.deepEqual(BULK_STRIP_VERBS, ["cancel"]);
   });
@@ -103,13 +93,7 @@ describe("planBulkVerb — the intersection and the named skips (D235)", () => {
   });
 });
 
-/**
- * The THIRD bucket, and the one the strip used to lose entirely: a selected id
- * the current day serves no row for. It is neither eligible nor skipped —
- * `skipped` means "the server described this row and it does not offer the
- * verb" — so before this it fell out of every plan, out of every count, and out
- * of the confirm copy, leaving `Cancel 3 · 1 skipped` under `6 selected`.
- */
+
 describe("planBulkVerb — selected rows the day no longer serves", () => {
   it("names a selected id with no served row instead of dropping it", () => {
     const plan = planBulkVerb(
@@ -155,7 +139,7 @@ describe("planBulkVerb — selected rows the day no longer serves", () => {
   });
 });
 
-describe("the complete bulk result vector (D235)", () => {
+describe("the complete bulk result vector", () => {
   it("keeps every outcome bucket, including zeros, and distinguishes a clean pass", () => {
     const response = BulkRunCommandResponseSchema.parse({
       state: "vector",
@@ -203,7 +187,7 @@ describe("the complete bulk result vector (D235)", () => {
   });
 });
 
-describe("composeBulkRunCommand — a plan with nothing eligible refuses (D235)", () => {
+describe("composeBulkRunCommand — a plan with nothing eligible refuses", () => {
   const context = { actorId: "local-operator", source: "queue" } as const;
 
   it("refuses an empty selection and a selection where nothing serves the verb, with different reasons", () => {
@@ -248,7 +232,7 @@ describe("composeBulkRunCommand — a plan with nothing eligible refuses (D235)"
   });
 });
 
-describe("the confirm copy and the frozen subjects (D235)", () => {
+describe("the confirm copy and the frozen subjects", () => {
   it("states the count, the per-run transition, and how many rows are left alone", () => {
     const plan = planBulkVerb(
       [

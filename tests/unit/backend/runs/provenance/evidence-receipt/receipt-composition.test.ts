@@ -20,7 +20,7 @@ function derive(composition: 1 | 2 | 3 | 4 | 5) {
   }, composition);
 }
 
-describe("D361 receipt composition", () => {
+describe("receipt composition", () => {
   it.each([1, 2, 3, 4] as const)("preserves exact composition %i bytes frozen from the pre-amendment source", composition => {
     assert.equal(sha256Hex(canonicalJsonStringify(derive(composition))), historicalDigests[composition - 1]);
   });

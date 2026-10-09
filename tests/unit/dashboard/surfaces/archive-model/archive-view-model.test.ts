@@ -1,8 +1,4 @@
-/**
- * Track F's archive facts are presentation over frozen wire values. These
- * tests pin every union arm and enum fold in the plain sibling model so the
- * React surface cannot recover a raw transport word or an invented fallback.
- */
+
 import { describe, expect, it } from "vitest";
 import { ArchivedRunDetailWireSchema } from "../../../../../src/models/dashboard/archive.js";
 import { RunWarningsWireSchema } from "../../../../../src/models/dashboard/projection.js";
@@ -191,7 +187,7 @@ describe("version-bump labels", () => {
   });
 });
 
-describe("the archived capture viewer (D274 item 10)", () => {
+describe("the archived capture viewer", () => {
   const tile = (() => {
     const sections = FIXTURE_ARCHIVED_RUN.sections;
     if (sections.state !== "present" || sections.value.captures.state !== "present") {
@@ -259,7 +255,7 @@ describe("the archived capture viewer (D274 item 10)", () => {
   });
 });
 
-describe("the version-bump dialog's kind semantics (D274 item 2)", () => {
+describe("the version-bump dialog's kind semantics", () => {
   const states = FIXTURE_ARCHIVE_INDEX.versionState.map((state) => ({ ...state, archivable: 4 }));
 
   it("gives a MAJOR bump the assessment's runs, exactly as resolveBumpEffect does", () => {
@@ -320,7 +316,7 @@ describe("the version-bump dialog's kind semantics (D274 item 2)", () => {
   });
 });
 
-describe("the change record the primary button can be pressed without (VB41)", () => {
+describe("the change record the primary button can be pressed without", () => {
   it("composes a complete record, absent commit included", () => {
     const composed = composeBumpChangeRecord({
       kind: "major",

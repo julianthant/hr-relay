@@ -1,11 +1,4 @@
-/**
- * The S55 upstream fold — `resolveKualiDepartmentOption`.
- *
- * Every arm below is a statement about MATCHING POLICY, which is the only thing
- * this fold owns. The live data is §9.3's `Department*` capture (2026-08-12,
- * real RRSS documents 4510/4502/4495), including the double space legacy's
- * ISS-B05 note records on `000719`.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import {
@@ -16,7 +9,7 @@ import {
 } from "../../../../../src/rules/separations/department-option.js";
 import type { UcpathJobCell } from "../../../../../src/models/ui/ucpath-job-summary.js";
 
-/** §9.3's S55 list, verbatim — `000719`'s double space included. */
+/** The department list preserves `000719`'s double space. */
 const LIVE_OPTIONS: readonly string[] = Object.freeze([
   "- - -",
   "000141 - Early Childhood Education Center",
@@ -97,7 +90,7 @@ describe("resolveKualiDepartmentOption", () => {
     assert.equal(resolution.option, "000412 - Housing/Dining/Hospitality");
   });
 
-  it("refuses an unreadable Dept ID and names the cell's own reason (S24)", () => {
+  it("refuses an unreadable Dept ID and names the cell's own reason", () => {
     const resolution = resolve(absent("the grid rendered this cell empty"));
     assert.equal(resolution.state, "refused");
     if (resolution.state !== "refused") return;
@@ -123,9 +116,7 @@ describe("resolveKualiDepartmentOption", () => {
   });
 
   it("NEVER falls back to the description — the deleted fuzzy tier stays deleted", () => {
-    // Legacy's tier 1 matches "Housing/Dining/Hospitality" ⊆ the option text and
-    // would resolve this happily, filing a real separation against department
-    // 000141. The name agrees; the identity does not.
+
     const misfiled = ["- - -", "000141 - Housing/Dining/Hospitality"];
     const resolution = resolve(present("000412"), present("HOUSING/DINING/HOSPITALITY"), misfiled);
     assert.equal(resolution.state, "refused");
@@ -193,8 +184,7 @@ describe("resolveKualiDepartmentOption", () => {
     assert.equal(resolution.state, "resolved");
     if (resolution.state !== "resolved") return;
     assert.equal(resolution.option, "000412 - Housing/Dining/Hospitality");
-    // The absence travels as its own reason — never as a blank, and never as a
-    // guess at what the department was called.
+
     assert.equal(resolution.ucpathDepartment, "(unreadable: the grid rendered this cell empty)");
   });
 });

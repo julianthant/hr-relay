@@ -1,31 +1,5 @@
 import { testRunLifecycle } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
-/**
- * D214 — a run ATTEMPT is not one execution of its graph, and the composed
- * separations graph is the proof: chunk 6b's run `00419600` read thirteen nodes
- * live, parked at the ALWAYS-GATE, took a real approval, resumed, and then died
- * one node later with
- *
- *   run checkpoint separations 2ebcfbf7… timecard-search 1 already exists with
- *   different content
- *
- * because a gate resume advances no attempt, `timecard-search` is `always-rerun`
- * by chunk 1's rule, and the checkpoint key was `(workflow, item, node,
- * attempt)`. The sibling run `6a6c6f44` only survived by accident: a killed
- * worker bumped the attempt, so its re-execution landed under a key nothing
- * owned. A crash is not a recovery path.
- *
- * This file is that exact shape as a fixture walk — read → read → an
- * `always-rerun` node → a gate → a node downstream of the gate — over the REAL
- * interpreter, the REAL authority database and REAL task contracts. Every
- * assertion is about durable rows and emitted spans, never about a log line:
- *
- *   1. the gate resume passes on the NORMAL path, with no crash and no attempt
- *      bump, and both executions of the always-rerun node are stored;
- *   2. the two executions are distinguishable in the span stream;
- *   3. terminal evidence cites the LATEST execution, and authority re-reads that
- *      exact row before it will settle the run;
- *   4. a node that did NOT re-run keeps replaying its single stored checkpoint.
- */
+
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
@@ -89,11 +63,7 @@ const gateResumeFlow = flow(GateInput)
       return { eid: selected.emplId, name: selected.name };
     },
   })
-  /**
-   * The `timecard-search` stand-in. Chunk 1's rule — a node whose product is
-   * BROWSER state may not be `replay:"checkpoint"` — is what puts an
-   * `always-rerun` node upstream of the gate in the first place.
-   */
+
   .step("live-status", ReadActiveStatus, {
     dependsOn: ["searching", "cross-verify"],
     replay: "always-rerun",
@@ -109,11 +79,7 @@ const gateResumeFlow = flow(GateInput)
     resolvedBy: "operator",
     result: ApprovalSchema,
   })
-  /**
-   * The `clear-pending` stand-in: a node the resume must actually REACH. Without
-   * one the gate would be the last node, `resumeAt` would fold back onto the
-   * gate itself, and the walk would never exercise a replayed gate result.
-   */
+
   .step("after-approval", CrmReadOnboardingRecord, {
     dependsOn: ["searching", "approval"],
     replay: "checkpoint",
@@ -125,10 +91,7 @@ const gateResumeFlow = flow(GateInput)
   })
   .build({
     schema: z.strictObject({ hdh: z.boolean(), reReadState: z.string() }),
-    // `live-status` is a terminal dependency ON PURPOSE: D110/D114 evidence must
-    // resolve the LATEST execution of a node that ran twice. (A GATE is not a
-    // terminal dependency — it owns no checkpoint, which is D203's whole point —
-    // so the post-gate READ carries the approved half of the result.)
+
     dependsOn: ["live-status", "after-approval"],
     derive: ({ outputs }) => ({
       hdh: outputs["live-status"].state === "active",
@@ -237,7 +200,7 @@ function approve(database: AuthorityDatabase, version: number, now: string): voi
   });
 }
 
-describe("D214 — a gate resume re-executes an always-rerun node without colliding", () => {
+describe("a gate resume re-executes an always-rerun node without colliding", () => {
   it("walks park → approve → resume to terminal done, storing BOTH executions", async () => {
     const h = harness();
     h.database.authority.runs.enqueue(queuedRun());
@@ -262,14 +225,7 @@ describe("D214 — a gate resume re-executes an always-rerun node without collid
     });
     assert.equal(resumed.state, "applied");
 
-    /*
-     * Time passes while a run sits parked — that is the whole point of a gate —
-     * so the re-execution's observation is genuinely DIFFERENT bytes, exactly as
-     * a real second read of a live page is. Without this the two rows would be
-     * byte-identical and the immutable insert would fold them into one, which
-     * would make this test pass for a reason that has nothing to do with the
-     * defect.
-     */
+
     h.clock.advanceWall(90_000);
     const second = claim(h.database, h.now());
     // The attempt did NOT move — this is the same attempt, re-claimed. That is
@@ -292,11 +248,7 @@ describe("D214 — a gate resume re-executes an always-rerun node without collid
       executions.map((record) => record.claimGeneration),
       [first.claim.claimGeneration, second.claim.claimGeneration],
     );
-    /*
-     * And they are genuinely different bytes — which is what made the old key a
-     * REFUSAL rather than a harmless duplicate. Nothing was overwritten: the
-     * parked execution's row still says exactly what it said (D144/D199).
-     */
+
     assert.notEqual(executions[0]?.writtenAt, executions[1]?.writtenAt);
     assert.equal(executions[0]?.runId, RUN_ID);
     assert.equal(executions[1]?.runId, RUN_ID);
@@ -334,12 +286,7 @@ describe("D214 — a gate resume re-executes an always-rerun node without collid
     const paths = h.emitter.events()
       .filter((event) => event.spanPath.includes("/live-status#"))
       .map((event) => event.spanPath);
-    /*
-     * D123's lesson one level in: the projector folds by `(runId, attempt,
-     * spanPath)` and the timeline seeds React by the same triple, so two
-     * executions that share a span path are one row on every surface. Before
-     * D214 both of these read `…/live-status#1`.
-     */
+
     assert.deepEqual([...new Set(paths)], [
       taskSpanPath(trace, node, 1, first.claim.claimGeneration),
       taskSpanPath(trace, node, 1, second.claim.claimGeneration),
@@ -373,9 +320,7 @@ describe("D214 — a gate resume re-executes an always-rerun node without collid
       second.claim.claimGeneration,
       "the terminal record cites the execution this run actually consumed, not the parked one",
     );
-    // `#assertStoredTerminalDependencies` already re-read that exact key inside
-    // the settling transaction — the run could not have reached `done` otherwise
-    // — and `latest` agrees with it.
+
     const latest = h.database.authority.runCheckpoints.latest(
       WORKFLOW_ID,
       second.run.envelope.itemId,

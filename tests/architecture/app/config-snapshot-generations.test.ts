@@ -10,7 +10,7 @@ function currentLeafPaths(): readonly string[] {
 }
 
 describe("durable config-leaf generations", () => {
-  it("P38/M14 retains the retired timekeeper leaf only in immutable pre-floor snapshots", () => {
+  it("retains the timekeeper leaf only in immutable pre-floor snapshots", () => {
     const current = ConfigSchema.parse({ paths: defaultRuntimePaths() });
     const historical = { ...current, operator: { timekeeperName: "synthetic historical timekeeper" } };
     assert.equal(ConfigSchema.safeParse(historical).success, false);
@@ -29,9 +29,7 @@ describe("durable config-leaf generations", () => {
   });
 
   it("fails loud when a required leaf is added without a generation bump", () => {
-    // The exact shape of the D125 defect: a leaf lands inside an already
-    // existing group, every stored snapshot silently stops validating, and the
-    // authority database is unopenable. It must die here instead.
+
     const added = auditConfigSnapshotGenerations([...currentLeafPaths(), "timeouts.sessionReleaseMs"]);
     assert.equal(added.length > 0, true);
     assert.match(added.join("\n"), /register every added leaf in CONFIG_SNAPSHOT_GENERATIONS/);
@@ -61,8 +59,7 @@ describe("durable config-leaf generations", () => {
 
     const { sessionAcquireMs: _bound, ...withoutBound } = config.timeouts;
     assert.equal(StoredConfigSchema.safeParse({ ...config, timeouts: withoutBound }).success, true);
-    // D267: a generation-2 snapshot (no grace leaf) and a generation-1 snapshot
-    // (neither leaf) both still parse — read forward, never back-filled.
+
     const { duoCeremonyLeaseGraceMs: _grace, ...withoutGrace } = config.timeouts;
     assert.equal(StoredConfigSchema.safeParse({ ...config, timeouts: withoutGrace }).success, true);
     const { sessionAcquireMs: _b, duoCeremonyLeaseGraceMs: _g, ...baseline } = config.timeouts;

@@ -3,19 +3,7 @@ import { deriveCanonicalPerson } from "../../../../../../src/backend/runs/projec
 import { activityPersonPseudonymResultRecord, CURRENT_SEPARATIONS_RESULT } from "../../../../../support/fixtures/integration/activity-person-pseudonym-fixtures.js";
 import type { RunResultRecord } from "../../../../../../src/models/run/result.js";
 import { RunRecordSchema, RunLifecycleSchema } from "../../../../../../src/models/run/record.js";
-/**
- * The Activity report (D180, ref frontend-backend-integration §5/§6.7) — the range rendering of THE ONE
- * run/queue projection.
- *
- * The report is not a second counting path, so the assertions below are mostly
- * about AGREEMENT: the same archived row and contained member that
- * leave `buildDashboardDayWire` leave every aggregate here, once, at the same
- * instant, because the exclusion is decided in one place and inherited. The
- * other half is D124 at scale — a terminal run whose surface carries no end
- * instant is reported as unmeasured and is never counted as a zero, because a
- * median over a denominator that quietly swallowed the unknowns is a lie the
- * operator cannot see.
- */
+
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import type { AnyWorkflowDescriptor } from "../../../../../../src/workflow-kit/workflow.js";
@@ -80,10 +68,7 @@ afterEach(() => {
   for (const w of worlds.splice(0)) w.dispose();
 });
 
-/**
- * Two REAL descriptors plus the graph fixture, spanning search, separation,
- * and generic operations categories.
- */
+
 const REGISTRY = {
   resolve: (workflowId: string): AnyWorkflowDescriptor | undefined => {
     if (workflowId === "person-lookup") return personLookupDescriptor;
@@ -137,15 +122,7 @@ function personResult(w: DashboardWorld, seed: number, identity: string) {
   canonicalResults.get(w)?.set(run.envelope.runId,result);
 }
 
-/**
- * A three-day range with one row of every kind the report must decide about.
- *
- * D0: 1 done (5s) · 2 failed/transient (20s) · 3 HIDDEN
- * D1: 4 failed/transient (60s, kuali) · 5 failed/permanent (10s, kuali) · 6 ARCHIVED
- * D2: 7 terminal-interrupted on a RETIRED workflow · 8 running (fixture-graph)
- *     · 9 operation + 10/11 its MEMBERS
- * D3: 12 done — outside the range entirely
- */
+// The seeded days intentionally cross lifecycle and workflow categories.
 function seedActivityWorld(w: DashboardWorld): void {
   atDayOffset(w, 0);
   queuedEventOf(w, { seed: 1 });
@@ -201,8 +178,7 @@ function seedActivityWorld(w: DashboardWorld): void {
   w.authority.archived.add(uuidOf(6));
 
   atDayOffset(w, 2);
-  // A workflow that has since been retired from the registry. Its run still
-  // happened and still counts; only its label and category are unavailable.
+  // An unregistered workflow still counts; its label and category remain unavailable.
   queuedEventOf(w, { seed: 7, workflow: "retired-flow" });
   w.authority.put(runRecordOf({
     seed: 7,
@@ -238,7 +214,7 @@ function seedActivityWorld(w: DashboardWorld): void {
   }));
 }
 
-describe("the Activity report (D180)", () => {
+describe("the Activity report", () => {
   it("refuses the old receipt-digest path when validated canonical identity is missing", () => {
     const w = world({ descriptors: REGISTRY });
     atDayOffset(w, 0);
@@ -334,17 +310,11 @@ describe("the Activity report (D180)", () => {
 
     const report = ActivityReportWireSchema.parse(w.projection.buildActivityReportWire(D0, D2));
 
-    // 8 top-level rows: the archived row, the two members and the out-of-range
-    // day are all gone, and the schema's own superRefine has
-    // already asserted that statuses sum to this number and that terminal +
-    // in-flight partition it.
+
     assert.equal(report.totalRuns, 8);
     assert.equal(report.terminalRuns, 5);
     assert.equal(report.inFlightRuns, 3);
-    // The seeded rows are non-Separations workflows. D288 does not re-derive
-    // identities from their receipts, so this range honestly contains no
-    // current Separations person-bearing rows rather than an unavailable
-    // partial People axis.
+
     assert.deepEqual(report.people, { state: "present", distinct: 0, evidenceRows: 0 });
     assert.deepEqual(report.days, [
       { day: D0, runs: 3 },
@@ -352,10 +322,7 @@ describe("the Activity report (D180)", () => {
       { day: D2, runs: 3 },
     ]);
 
-    // The workflow axis CROSSED with the status axis, in the one pass. The
-    // schema's own refinements have already asserted that each row's buckets
-    // partition its own `runs` and that the four rows reconcile column by
-    // column with the whole-report totals below.
+
     const clean = { readBack: 0, warnings: 0, warningsUnknown: 0 };
     assert.deepEqual(report.workflows, [
       {
@@ -369,9 +336,7 @@ describe("the Activity report (D180)", () => {
         workflowId: "person-lookup",
         registration: { state: "registered", label: "Person Lookup", code: "pl", categoryId: "search" },
         runs: 4,
-        // The one `done` run has no derived receipt, so its warning set is
-        // UNREAD — never folded into `readBack`, which would report a run
-        // nobody checked as one that came back clean.
+
         completion: { readBack: 0, warnings: 0, warningsUnknown: 1 },
         failed: 1, cancelled: 0, partial: 0, open: 2,
       },
@@ -383,10 +348,7 @@ describe("the Activity report (D180)", () => {
         },
         runs: 1,
         completion: clean,
-        // Terminal by LIFECYCLE, `blocked` by STATUS: an interrupted run may
-        // still be requeued, so the column that asks "what is still open"
-        // counts it and the one that asks "what has settled" does too. The
-        // two axes are different questions and the report keeps them apart.
+        // Interrupted is terminal lifecycle but still requeueable, so status and open-work columns differ.
         failed: 0, cancelled: 0, partial: 0, open: 1,
       },
       {
@@ -399,8 +361,7 @@ describe("the Activity report (D180)", () => {
     ]);
     assert.deepEqual(report.completion, { readBack: 0, warnings: 0, warningsUnknown: 1 });
 
-    // Registered workflows fold into their declared categories, and the
-    // retired workflow's run lands in the explicitly-unregistered bucket.
+
     assert.deepEqual(report.categories, [
       { category: { state: "registered", categoryId: "operations" }, runs: 1 },
       { category: { state: "registered", categoryId: "search" }, runs: 4 },
@@ -455,8 +416,7 @@ describe("the Activity report (D180)", () => {
   it("refuses to report a failure breakdown with a hole in it", () => {
     const w = world({ descriptors: REGISTRY });
     seedActivityWorld(w);
-    // The run settled against a failure id authority no longer holds. Reporting
-    // "2 failures" over three failed runs would understate the day silently.
+
     w.authority.failures.delete(uuidOf(9002));
     assert.throws(
       () => w.projection.buildActivityReportWire(D0, D2),
@@ -464,17 +424,12 @@ describe("the Activity report (D180)", () => {
     );
   });
 
-  it("measures the durations it can and REPORTS the ones it cannot (D124 at scale)", () => {
+  it("measures the durations it can and REPORTS the ones it cannot", () => {
     const w = world({ descriptors: REGISTRY });
     seedActivityWorld(w);
     const report = w.projection.buildActivityReportWire(D0, D2);
 
-    // Four terminal rows carry a start and an end; the interrupted one carries
-    // no terminal instant on its surface, because an interrupted run may still
-    // be requeued and a row that says "it ended at X" would be claiming a
-    // verdict nobody reached. It is counted as unmeasured — never as a zero,
-    // which would drag the median down, and never as `now − startedAt`, which
-    // would grow on every refresh.
+
     assert.equal(report.durations.measuredRuns, 4);
     assert.equal(report.durations.unmeasuredRuns, 1);
     assert.equal(report.durations.measuredRuns + report.durations.unmeasuredRuns, report.terminalRuns);
@@ -512,9 +467,7 @@ describe("the Activity report (D180)", () => {
   it("splits the done runs three ways and never reports an unread one as clean", () => {
     const w = world({ descriptors: REGISTRY });
     atDayOffset(w, 0);
-    // Three runs settled `done` on the same workflow, one per arm of the
-    // completion split: a receipt with warnings, a receipt with none, and a
-    // run for which no receipt has been derived at all.
+
     for (const seed of [31, 32, 33]) {
       queuedEventOf(w, { seed });
       runEndedEventOf(w, seed, "done");
@@ -532,17 +485,12 @@ describe("the Activity report (D180)", () => {
 
     const report = ActivityReportWireSchema.parse(w.projection.buildActivityReportWire(D0, D0));
 
-    // ONE warned run, not two: the column counts RUNS, and run 31 carries two
-    // warnings. And run 33 sits in its own column — folding it into `readBack`
-    // would put "3 came back clean" on a supervisor's copy over a run whose
-    // warning set nobody has read.
+
     assert.deepEqual(report.completion, { readBack: 1, warnings: 1, warningsUnknown: 1 });
     assert.deepEqual(report.workflows[0].completion, { readBack: 1, warnings: 1, warningsUnknown: 1 });
     assert.deepEqual(report.statuses, [{ status: "done", runs: 3, sample: [] }]);
 
-    // The row chip and the report column are the SAME derivation, so the two
-    // cannot disagree about a run: the queue says warned, the report counts it
-    // in the warned column, and neither counts the receipt-less run as clean.
+
     const dayRows = w.projection.buildDashboardDayWire(D0).queueSurfaces;
     const armOf = (seed: number): string => {
       const row = dayRows.find((surface) => surface.runId === uuidOf(seed));
@@ -554,14 +502,12 @@ describe("the Activity report (D180)", () => {
     assert.equal(armOf(33), "no evidence receipt has been derived for this run, so its warning set is unknown");
   });
 
-  it("refuses a per-workflow cross-tab that disagrees with the totals it is part of (D81)", () => {
+  it("refuses a per-workflow cross-tab that disagrees with the totals it is part of", () => {
     const w = world({ descriptors: REGISTRY });
     seedActivityWorld(w);
     const report = w.projection.buildActivityReportWire(D0, D2);
 
-    // Every arm below is a payload the schema must REFUSE. A report whose rows
-    // and totals disagree is the count/badge divergence D81 exists to make
-    // unrepresentable, so it never reaches a surface that would have to pick.
+
     const refusals: [string, ActivityReportWire, RegExp][] = [
       [
         "a row that does not partition its own runs",
@@ -621,7 +567,7 @@ describe("the Activity report (D180)", () => {
   });
 });
 
-describe("the Activity report inherits the day's exclusions rather than re-deciding them (D81)", () => {
+describe("the Activity report inherits the day's exclusions rather than re-deciding them", () => {
   it("agrees with the day payload it summarises, row for row and count for count", () => {
     const w = world({ descriptors: REGISTRY });
     seedActivityWorld(w);
@@ -651,8 +597,7 @@ describe("the Activity report inherits the day's exclusions rather than re-decid
     assert.equal(before.totalRuns, 8);
     assert.equal(w.projection.buildDashboardDayWire(D0).queueSurfaces.length, 3);
 
-    // D80/D179: one version bump archives the run. Nothing re-runs, nothing
-    // re-decides — the next read of either surface simply does not see it.
+
     w.authority.archived.add(uuidOf(1));
     const after = w.projection.buildActivityReportWire(D0, D2);
     assert.equal(after.totalRuns, 7);
@@ -721,25 +666,15 @@ describe("the Activity report refuses rather than inventing a window", () => {
   it("keeps an out-of-range row out of the range even when authority never held it", () => {
     const w = world({ descriptors: REGISTRY });
     seedActivityWorld(w);
-    // The day payload refuses a span-known run authority does not hold. The
-    // report bounds its range FIRST, so a stale row on some other day cannot
-    // make an unrelated week unanswerable.
+
     w.authority.records.delete(uuidOf(12));
     assert.equal(w.projection.buildActivityReportWire(D0, D2).totalRuns, 8);
     assert.equal(w.projection.buildActivityReportWire(D3, D3).totalRuns, 0);
   });
 });
 
-/**
- * D236 — the write-ledger block: the ONE total on this payload that does not
- * descend from the run/queue fold.
- *
- * Both cases below exist because the two corpora genuinely do not cover the
- * same rows. The block is read over the same window and reported BESIDE the
- * totals, and the wire deliberately asserts no relationship between them —
- * which is exactly why a range holding zero runs can still hold entries.
- */
-describe("the Activity report's write-ledger block (D236)", () => {
+// Write history outlives run history; an empty run range may still contain filed transactions.
+describe("the Activity report's write-ledger block", () => {
   function fileLedgerEntry(
     w: DashboardWorld,
     seq: number,
@@ -768,10 +703,7 @@ describe("the Activity report's write-ledger block (D236)", () => {
 
   it("still reports entries over a window whose runs are all gone", () => {
     const w = world({ descriptors: REGISTRY });
-    // No spans at all — the run corpus is empty for this range, which is also
-    // what an archived-away week looks like. A ledger entry outlives the run
-    // that filed it, so reporting "nothing was filed" here would be a false
-    // statement about a real HR transaction.
+
     fileLedgerEntry(w, 0, { system: "kuali", confirmedAt: instantOffsetOf(1) });
 
     const report = w.projection.buildActivityReportWire(D0, D2);

@@ -25,13 +25,7 @@ export function registerFixtureActivityRoutes({ app }: { app: Hono }): void {
     return c.json({...report,snapshot:{from:report.from,to:report.to,generatedAt:report.generatedAt,expiresAt:"2099-01-01T00:00:00.000Z",sourceIdentity:"a".repeat(64),authorityGeneration:1,reportDigest:createHash("sha256").update(JSON.stringify(report)).digest("hex"),token:"as1.fixture.selection"}});
   });
 
-  /**
-   * D240's export, over the SAME fixture payload. The parity lane never clicks
-   * it, and it is here anyway: a fixture server that answered the report and
-   * 404'd its export would make the Export button dead in the one environment
-   * the surface is photographed in, which is a surface state nobody would
-   * notice until an operator pressed it.
-   */
+
   app.get("/api/v1/reports/activity.csv", (c) => {
     const from = c.req.query("from");
     const to = c.req.query("to");

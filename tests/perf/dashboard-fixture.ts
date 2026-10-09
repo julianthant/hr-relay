@@ -1,26 +1,5 @@
 import { sqliteRunReader } from "../support/helpers/canonical-run-reader.js";
-/**
- * The §7.4 measurement fixture: ONE seeded state root at legacy's real
- * volume — 1,240 queue rows on ONE day, an operation with 108 members, a
- * ≥20,000-line note corpus, and three neighbouring days so day-scoping is a
- * filter that has something to filter.
- *
- * Every row here is produced by the PRODUCTION machinery: `AuthorityDatabase`
- * with its real migrations, `runs.enqueue` / `claimNext` / `transition`, the
- * D110/D114 atomic terminalizations, the real span and note JSONL writers, and
- * the real `RunQueueProjection` folding what those writers put on disk. Nothing
- * here writes SQL, and nothing hand-builds a wire payload — a fixture that
- * bypassed a schema invariant would measure a system this repository does not
- * have. Where a builder refuses, this module throws by name.
- *
- * It is deterministic: a `manualClock`, seeded identities, and a fixed
- * composition, so two runs of `npm run perf:dashboard` measure the same world
- * and the numbers are comparable across commits. That is the whole point —
- * Track D's D4/D5 re-run this same seed and the delta is the evidence.
- *
- * Ref: `docs/plans/2026-08-20-dashboard-architecture-audit.md` §3.3 P1–P5;
- * `ref frontend-backend-integration` §7.4 (D264).
- */
+
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -48,16 +27,7 @@ import { personLookupDescriptor } from "../support/helpers/registered-workflows.
 
 /* ── the declared shape ──────────────────────────────────────────────────── */
 
-/**
- * The fixture's declared volume. `tests/integration/backend/storage/events/jsonl-streams/dashboard-perf-fixture-shape.test.ts`
- * asserts the seeded world matches this exactly, so a silent drift in the
- * seeder cannot quietly change what a baseline number is a number OF.
- *
- * The composition is legacy's real shape, not a round number pulled apart at
- * random: most of a day's rows are settled by the time an operator looks at
- * them, a handful are in flight, and one bulk operation carries the long tail
- * of members.
- */
+
 export const PERF_FIXTURE_PROFILE = Object.freeze({
   /** The day every measurement is taken over. */
   day: "2026-08-12",
@@ -78,20 +48,9 @@ export const PERF_FIXTURE_PROFILE = Object.freeze({
     awaitingApproval: 3,
     queued: 183,
   }),
-  /**
-   * How many `done` runs carry a DERIVED evidence receipt. D141 makes
-   * derivation an on-demand act (opening a run's Receipt tab), so a day where
-   * every settled run had one would be a day nobody worked: a quarter is the
-   * realistic mix, and it is what puts BOTH `#warningVerdict` arms —
-   * `present` and `unread` — on the same wire.
-   */
+
   receiptRunCount: 175,
-  /**
-   * Note lines per run, and how many runs carry them. Every seeded run gets a
-   * trail: legacy's own corpus is ~187k lines a month, and a corpus concentrated
-   * on a handful of runs would make the whole-corpus scan (P3) look cheaper than
-   * it is by shrinking the number of FILES the reader opens.
-   */
+
   notesPerRun: 13,
   noteBearingRunCount: 1600,
   /** The floor the corpus must clear; the seeder's own arithmetic must beat it. */
@@ -191,9 +150,7 @@ function enqueueRun(context: SeedContext, spec: RunSpec): RunRecord {
   const shape = spec.shape ?? "single";
   const at = instantOf(spec.day, spec.seed);
   const now = at.toISOString();
-  // The span writer names its stream file from the clock, and the projection
-  // buckets a row by its `run.queued` ts — so the two must agree or a row
-  // would land in a file whose date it does not belong to.
+  // Use the same instant for file partitioning and queue bucketing so fixture rows land on the measured day.
   context.clock.setWall(at);
   const parent = spec.parentSeed === undefined
     ? undefined
@@ -231,11 +188,7 @@ function enqueueRun(context: SeedContext, spec: RunSpec): RunRecord {
     },
     lifecycle: { state: "queued" },
     claimGeneration: 0,
-    // D179: every real enqueue stamps the build it was enqueued under
-    // (`command-kernel.ts`, `run-fan-out.ts`). Omitting it here would seed
-    // every run onto the pre-D179 "absent" arm — a state production has not
-    // produced since — and understate what the archive/version-bump reads
-    // this fixture measures actually do.
+
     appVersion: APP_VERSION,
     runNumber: context.database.authority.runs.nextWorkflowRunNumber(PERF_FIXTURE_WORKFLOW),
     version: 1,
@@ -501,14 +454,7 @@ function remember(tally: SeedTally, run: RunRecord, day: string): void {
   else tally.neighbouringRunCount += 1;
 }
 
-/**
- * Pass A — every run that gets CLAIMED, on every day.
- *
- * It runs before pass B for one reason that is not cosmetic: `claimNext` takes
- * the OLDEST queued row for the workflow, so a row that must STAY queued cannot
- * exist while any claim is still to be made. Seeding the two passes in the other
- * order would silently hand a claim the wrong run and mislabel its status.
- */
+
 function seedClaimedRuns(context: SeedContext, tally: SeedTally): void {
   const { day, neighbouringDays, daySingles } = PERF_FIXTURE_PROFILE;
   let workerTurn = 0;
@@ -674,11 +620,7 @@ function seedNotes(context: SeedContext, tally: SeedTally): number {
 
 /* ── composition ─────────────────────────────────────────────────────────── */
 
-/**
- * Seeds the fixture and returns the production query surfaces bound to it.
- * The caller MUST `close()`: the state root is a `mkdtemp` directory, never
- * `.tracker`, so a benchmark can never touch a real runtime's state.
- */
+
 export function seedDashboardPerfFixture(): PerfFixture {
   const root = mkdtempSync(join(tmpdir(), "hrauto-perf-dashboard-"));
   const stateRoot = join(root, "state");
@@ -700,7 +642,7 @@ export function seedDashboardPerfFixture(): PerfFixture {
   if (noteLines < PERF_FIXTURE_PROFILE.minimumNoteLines) {
     throw new Error(
       `the perf fixture seeded ${String(noteLines)} note lines, below its declared floor of `
-      + `${String(PERF_FIXTURE_PROFILE.minimumNoteLines)}; the P3 scan would be measured over a corpus `
+      + `${String(PERF_FIXTURE_PROFILE.minimumNoteLines)}; the logs scan would be measured over a corpus `
       + "smaller than the one the finding is about",
     );
   }
@@ -733,15 +675,11 @@ export function seedDashboardPerfFixture(): PerfFixture {
     },
     descriptors,
   });
-  // D218: the production feed is the SQLite cursor feed. Every span above is already on
-  // disk, so ONE ingest folds the whole corpus through the same path a booting
-  // dashboard uses.
+
   projection.ingestFromTimeline();
 
   const trust = createReceiptService({ database, runReader: sqliteRunReader(database, clock), descriptors: [personLookupDescriptor] });
-  // D141: a receipt exists because somebody opened the run. Deriving a subset
-  // is what a real day looks like, and it is what puts both `#warningVerdict`
-  // arms on one wire.
+
   for (const runId of tally.doneRunIds.slice(0, PERF_FIXTURE_PROFILE.receiptRunCount)) {
     trust.ensureReceipt(runId);
   }

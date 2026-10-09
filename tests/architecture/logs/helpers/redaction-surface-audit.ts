@@ -2,66 +2,7 @@ import { CompositeStreamEnvelopeSchema } from "../../../../src/models/dashboard/
 import { OperationSourceResponseSchema } from "../../../../src/models/dashboard/operation-structure.js";
 import { CalendarWireSchema } from "../../../../src/models/dashboard/calendar.js";
 import { ExplorerOverrideImportReceiptSchema } from "../../../../src/models/dashboard/explorer-override.js";
-/**
- * Ref guards-and-tests §3.15 / D183 — the redaction surface scan's declaration half.
- *
- * `src/rules/redaction/redaction.ts` owns the ONE transform implementation and three
- * tables declare `(classification, transform)` per field:
- * `src/models/trust/evidence-classification.ts` (the receipt),
- * `src/models/fields/registry.ts` (canonical intake fields). What none of them
- * answered until D183 is the question this module exists to force:
- *
- *   **for every value that reaches a wire, a durable file, a notification or a
- *   provider — where did that string come from?**
- *
- * A redacted value is self-describing (it carries its own classification and
- * transform), and a closed vocabulary, a branded id, a count or an instant
- * cannot hold a person's data. Everything else is a free-text or open-JSON
- * leaf, and every one of those must be DISPOSITIONED here with a declared
- * origin. The audit is driven off the schema itself — `z.toJSONSchema` over the
- * registered surface — so a field ADDED to a wire schema appears as a new
- * undispositioned leaf and the guard goes red. That is the whole point: a guard
- * that only knows today's fields is a guard that cannot fail tomorrow.
- *
- * ## The origins
- *
- * They are ordered by how much this repository controls the bytes:
- *
- * - `repository-authored` — composed inside `src/` from string literals, closed
- *   vocabularies, branded ids and numbers. It cannot carry a value captured
- *   from an external system or typed by a person.
- * - `operator-authored` — typed by the local operator into a strict schema
- *   that rejects credential/regulated-value shapes before durable storage.
- * - `declared-redacted` — the value went through `redactValue` under a declared
- *   `(classification, transform)` pair, or is a `*Redacted`-suffixed scalar
- *   whose producer applies a bounded projection before it is stored.
- * - `local-filesystem-name` — the name of a file this repository itself created.
- * - `captured-hr-value` — read from an external HR system, or from the
- *   operator's own uploaded file, and shown deliberately.
- * - `external-text` — free text authored OUTSIDE this repository and copied
- *   verbatim: a thrown error's `message`, a page title, a provider's answer.
- *   Nobody here controls what it contains, which is why it is the class that
- *   needs an explicit exception the moment it becomes durable or leaves.
- *
- * ## The egress classes, and why the matrix is shaped the way it is
- *
- * `operator-loopback` is the dashboard bound to `127.0.0.1` (ref clock-config-secrets §6.1) and
- * read by the single operator who is authorized to see this data — so every
- * origin is admissible there and the teeth are (a) every leaf is dispositioned
- * at all and (b) the canary sweep. The classes that actually let a value ESCAPE
- * are narrow on purpose: `process-egress` (an AI provider) admits only what
- * this repository wrote or explicitly redacted, and `os-notification` — text
- * that can render on a lock screen — admits only repository-authored strings,
- * which is exactly ref dashboard-surfaces §2.6's "no raw secrets or captured form contents in
- * notification text" expressed as a schema property rather than a promise.
- *
- * This module deliberately does NOT re-implement redaction, re-derive a
- * classification, or restate `no-secret-values-in-logs.test.ts` (env-sourced
- * credentials in log calls), `secrets-single-source.test.ts`,
- * `evidence-receipt.test.ts` (the receipt's own canaries and its
- * declaration-time refusals) or `notification-durability.test.ts`. It audits the SURFACES those guards
- * each look at one at a time, in one sweep, in both directions.
- */
+
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { z } from "zod";
@@ -124,10 +65,7 @@ export const LeafOriginSchema = z.enum([
 ]);
 export type LeafOrigin = z.infer<typeof LeafOriginSchema>;
 
-/**
- * `permitted` needs nothing; `exception` needs a written reason on the row;
- * `refused` cannot be written down at all — the field has to change.
- */
+
 const ORIGIN_RULE_BY_EGRESS: Readonly<
   Record<SurfaceEgress, Readonly<Record<LeafOrigin, "permitted" | "exception" | "refused">>>
 > = Object.freeze({
@@ -212,16 +150,7 @@ function asNode(value: unknown): JsonSchemaNode | undefined {
     : undefined;
 }
 
-/**
- * A redaction arm is recognised STRUCTURALLY — every arm of the union declares
- * `state`, `classification` and `transform` — rather than by comparing against
- * a pre-serialized `RedactedFieldSchema`. The comparison would be the more
- * obvious check and it does not work: once the schema is embedded inside a
- * larger surface, `z.toJSONSchema` may hoist shared subtrees behind `$ref`, so
- * a byte comparison silently stops matching and every redacted value would
- * decompose into a free-text `key` plus an open `value`. The signature is what
- * makes the value self-describing, so the signature is what is matched.
- */
+// Recognize redaction structurally so extended arms cannot escape through a different serialized schema.
 function isRedactionArmUnion(node: JsonSchemaNode): boolean {
   const arms = node.anyOf ?? node.oneOf;
   if (!Array.isArray(arms) || arms.length === 0) return false;
@@ -304,12 +233,7 @@ const LEAF_KIND_SEVERITY: Readonly<Record<SurfaceLeafKind, number>> = Object.fre
   "open-json": 2,
 });
 
-/**
- * Every leaf of a surface, one row per path, keeping the STRICTEST kind a path
- * reaches. A union arm that spells one path as an enum and another as a bare
- * string must be audited as the bare string — taking the last (or first) match
- * would let an absent/present union hide its free-text half.
- */
+
 export function surfaceLeaves(schema: z.ZodType): readonly SurfaceLeaf[] {
   const json = z.toJSONSchema(schema, { io: "output", unrepresentable: "any", cycles: "ref" });
   const collected: SurfaceLeaf[] = [];
@@ -348,12 +272,7 @@ export interface RedactionSurface {
   readonly schema: z.ZodType;
 }
 
-/**
- * A field whose NAME promises redaction and whose producer does not deliver
- * it. Waiving one is a deliberate, named act; the reason has to say what the
- * value really is and why the surface may carry it, because the danger of a
- * `*Redacted` field that is not redacted is precisely that nobody looks twice.
- */
+
 export const RedactedNameWaiverSchema = z.strictObject({
   field: z.string().regex(/Redacted$/),
   reason: z.string().min(60),
@@ -468,16 +387,9 @@ export function auditSurfaceOrigins(
   return violations;
 }
 
-/* ── 3a. D331's newly served closed/identifier-free settings fields ─────── */
 
-/**
- * D331 P41 is narrower and stricter than the general origin audit above. Its
- * settings additions are deliberately value-free, so each named field must be
- * either a closed schema vocabulary or a dynamic identity/fact that cannot
- * contain a classified HR value. Keeping this as a separate schema-derived
- * table prevents generic `closed` leaf handling from silently skipping a new
- * presence field, runtime identity, display fact, or refusal literal.
- */
+
+
 export const D331ServedValueClassSchema = z.enum(["closed-literal", "identifier-free"]);
 export type D331ServedValueClass = z.infer<typeof D331ServedValueClassSchema>;
 
@@ -605,12 +517,7 @@ function schemaLeafPaths(schema: z.ZodType): ReadonlySet<string> {
   return new Set(surfaceLeaves(schema).map(({ path }) => path));
 }
 
-/**
- * P41's reviewed table. Rows stay literal: generating them from the schemas
- * would let a newly added name/code approve itself without review. The audit's
- * expected side is schema-derived, so additions, removals, and wrong classes
- * all make the guard red.
- */
+
 export const D331_SERVED_LEAF_DISPOSITIONS: readonly D331ServedLeafDisposition[] = Object.freeze(
   D331ServedLeafDispositionSchema.array().parse([
     { surface: "protected-settings-doctor", path: "state", valueClass: "closed-literal" },
@@ -694,14 +601,14 @@ export function auditD331ServedLeafDispositions(
     ["EditableSettingsWireSchema", editorLeaves, "sections[].leaves[].effectiveValue"],
   ];
   for (const [schema, leaves, path] of requiredAnchors) {
-    if (!leaves.has(path)) violations.push(`${schema} no longer carries required P41 leaf "${path}"`);
+    if (!leaves.has(path)) violations.push(`${schema} no longer carries required redaction leaf "${path}"`);
   }
 
   const parsed: D331ServedLeafDisposition[] = [];
   for (const [index, value] of input.entries()) {
     const result = D331ServedLeafDispositionSchema.safeParse(value);
     if (!result.success) {
-      violations.push(`D331 disposition row ${String(index)} is invalid: ${result.error.issues[0]?.message ?? "invalid row"}`);
+      violations.push(`settings disposition row ${String(index)} is invalid: ${result.error.issues[0]?.message ?? "invalid row"}`);
       continue;
     }
     parsed.push(result.data);
@@ -721,7 +628,7 @@ export function auditD331ServedLeafDispositions(
     const key = d331DispositionKey(entry);
     const disposition = declared.get(key);
     if (disposition === undefined) {
-      violations.push(`${key}: carries no D331 P41 disposition (${entry.evidence})`);
+      violations.push(`${key}: carries no served-settings disposition (${entry.evidence})`);
     } else if (disposition.valueClass !== entry.valueClass) {
       violations.push(
         `${key}: ${disposition.valueClass} contradicts ${entry.valueClass} (${entry.evidence})`,
@@ -730,19 +637,14 @@ export function auditD331ServedLeafDispositions(
   }
   for (const entry of declared.values()) {
     const key = d331DispositionKey(entry);
-    if (!expectedKeys.has(key)) violations.push(`${key}: disposition names no current D331 served leaf`);
+    if (!expectedKeys.has(key)) violations.push(`${key}: disposition names no current served settings leaf`);
   }
   return Object.freeze(violations);
 }
 
 /* ── 4. the module ratchet ────────────────────────────────────────────────── */
 
-/**
- * Every module that can declare a wire or durable surface, and what this guard
- * does about it. A NEW file under one of the scanned roots is a guard failure
- * until it is either audited or explicitly deferred with a reason — otherwise a
- * whole new surface could ship without one leaf being reviewed.
- */
+
 export const SurfaceModuleDispositionSchema = z.strictObject({
   module: z.string().min(1),
   state: z.enum(["audited", "no-surface"]),
@@ -780,14 +682,7 @@ export function scannedSurfaceModules(): readonly string[] {
 
 /* ── 5. the canaries ──────────────────────────────────────────────────────── */
 
-/**
- * Ref clock-config-secrets §6: "Tests seed canary passwords, cookies, storage state, SSNs, DOBs,
- * and private keys and scan every produced note/failure/screenshot metadata/
- * bundle/notification." Each value below is deliberately impossible in real
- * data — an unissued SSN area, an impossible birth date, a nonsense name — so a
- * hit is never a coincidence, and each is long enough that a `last4`, a digest
- * or a basename of it cannot contain the whole sentinel.
- */
+
 export const REDACTION_CANARIES = Object.freeze({
   password: "Tr0ub4dor-CANARY-PASSWORD-3xk9qz",
   cookie: "PS_TOKEN=CANARYc0okie9f3a1b7d2e",
@@ -806,7 +701,7 @@ export const ALL_CANARY_NAMES: readonly CanaryName[] = Object.freeze(
   Object.keys(REDACTION_CANARIES) as CanaryName[],
 );
 
-/** Closed Explorer-label and transaction-field validation controls, independent of D361 local evidence capture. */
+
 export const UNIVERSAL_CANARY_NAMES: readonly CanaryName[] = Object.freeze([
   "password",
   "cookie",
@@ -841,9 +736,7 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "wire/cross-date-search", egress: "operator-loopback", module: "src/models/dashboard/search.ts", schema: CrossDateSearchPageSchema },
   { id: "wire/action-descriptor", egress: "operator-loopback", module: "src/models/dashboard/actions.ts", schema: ActionDescriptorWireSchema },
   { id: "wire/artifact-resource", egress: "operator-loopback", module: "src/models/dashboard/artifacts.ts", schema: ArtifactResourceWireSchema },
-  // Declared, strict-schema-tested, and not yet served by any route. It is
-  // registered anyway: a surface reviewed before it ships is the only kind that
-  // cannot ship unreviewed.
+
   { id: "wire/capture-pointer", egress: "operator-loopback", module: "src/models/dashboard/artifacts.ts", schema: CapturePointerWireSchema },
   { id: "wire/storage-doctor", egress: "operator-loopback", module: "src/models/dashboard/storage.ts", schema: StorageDoctorWireSchema },
   { id: "wire/storage-doctor-latest", egress: "operator-loopback", module: "src/models/dashboard/storage.ts", schema: StorageDoctorLatestWireSchema },
@@ -877,18 +770,13 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "file/ledger-entry", egress: "durable-file", module: "src/rules/runs/ledger.ts", schema: LedgerEntrySchema },
   { id: "durable/explorer-overrides", egress: "durable-authority", module: "src/models/dashboard/explorer.ts", schema: ExplorerWorkflowOverrideSchema },
   { id: "durable/explorer-import-receipt", egress: "durable-authority", module: "src/models/dashboard/explorer-override.ts", schema: ExplorerOverrideImportReceiptSchema },
-  // Read-only historical conversion source; current writes use the two SQLite surfaces above.
+
   { id: "file/explorer-overrides", egress: "durable-file", module: "src/models/dashboard/explorer.ts", schema: ExplorerOverrideDocumentSchema },
   { id: "os/notification-projection", egress: "os-notification", module: "src/rules/notifications/notification-triggers.ts", schema: NotificationProjectionSchema },
   { id: "os/notification-trigger-event", egress: "os-notification", module: "src/rules/notifications/notification-triggers.ts", schema: NotificationTriggerEventSchema },
 ] satisfies readonly RedactionSurface[]);
 
-/**
- * Where every free-text and open-JSON leaf of every registered surface comes
- * from. Generated ONCE from the schemas and then reviewed line by line; it is
- * maintained by hand from here, because the value of the table is precisely
- * that a human answered the question for each row.
- */
+
 export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   SurfaceLeafOriginSchema.array().parse([
   {"surface": "wire/run-logs-stream", "path": "envelope.payload.captures.message", "origin": "repository-authored"},
@@ -1104,14 +992,10 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/run-detail", path: "timeline.events[].notRun.reason", origin: "repository-authored" },
   { surface: "wire/run-detail", path: "captures.message", origin: "repository-authored" },
   { surface: "wire/run-detail", path: "captures.reason", origin: "repository-authored" },
-  // D292 payload.artifacts[].origins[] carries only format-constrained bundleId
-  // and closed originKind leaves. The scanner classifies these mechanically;
-  // no actor/failure detail or new free-text origin exception is introduced.
+
 
   { surface: "wire/run-detail-section", path: "payload.entries[].label", origin: "repository-authored" },
-  // D252 — a step's display name and a commit node's, both `runtimeNodeLabel`
-  // over an authored `label` or the task contract's own `title`. Repository
-  // source in every arm: the fallback is the node ID, which is authored too.
+
   { surface: "wire/run-detail-section", path: "payload.entries[].origin.step", origin: "repository-authored" },
   { surface: "wire/run-detail-section", path: "payload.entries[].freshness.feeds[].label", origin: "repository-authored" },
   { surface: "wire/run-detail-section", path: "payload.entries[].valueRedacted", origin: "captured-hr-value" },
@@ -1132,7 +1016,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/run-detail-section", path: "payload.value.output[].source.eventId", origin: "captured-hr-value" },
   { surface: "wire/run-detail-section", path: "payload.value.output[].source.sourceId", origin: "captured-hr-value" },
 
-  // D346 serves credential and provider values to the local operator.
+
   { surface: "wire/editable-settings", path: "catalog[].schema", origin: "repository-authored" },
   { surface: "wire/editable-settings", path: "deployment", origin: "repository-authored" },
   { surface: "wire/editable-settings", path: "protectedSettings.readback.entries", origin: "repository-authored" },
@@ -1211,24 +1095,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/archived-run-detail", path: "sections.value.logs.value.operationStructure.observations[].occurrence.value.reason", origin: "repository-authored" },
   { surface: "wire/archived-run-detail", path: "sections.value.logs.value.operationStructure.reason", origin: "repository-authored" },
 
-  /*
-   * The parked-write section (ref write-safety §4.1). Its served actions are the same
-   * server-authored `ActionDescriptorWire` leaves already dispositioned under
-   * `wire/action-descriptor`, reached one level deeper.
-   *
-   * `payload.parkedMessage` is `external-text` and NOT repository-authored,
-   * which is the disposition that matters here: ref write-safety §4's `park()` builds it
-   * by interpolating a thrown driver error's `message` and a probe verdict's
-   * own `reason`. Nobody in this repository controls those bytes. It stays on
-   * the loopback surface because "why did this stop" is the whole question the
-   * panel answers, and loopback admits every origin.
-   *
-   * `payload.subject` needs no entry at all, and that is the point of serving
-   * the DURABLE `SubjectEvidenceSchema` verbatim: every one of its arms is a
-   * digest, a branded id, or a pattern-bounded string, so the walker decides
-   * them without a human disposition. A re-projection would have introduced
-   * exactly the free-text leaves this table exists to interrogate.
-   */
+
   { surface: "wire/run-detail-section", path: "payload.actions[].confirm.body", origin: "repository-authored" },
   { surface: "wire/run-detail-section", path: "payload.actions[].confirm.confirmLabel", origin: "repository-authored" },
   { surface: "wire/run-detail-section", path: "payload.actions[].confirm.title", origin: "repository-authored" },
@@ -1238,46 +1105,13 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/run-detail-section", path: "payload.actions[].navigate.runId", origin: "repository-authored" },
   { surface: "wire/run-detail-section", path: "payload.parkedMessage", origin: "external-text" },
 
-  /*
-   * D245's proof contract. Every leaf here is DERIVED FROM A SCHEMA THIS
-   * REPOSITORY DECLARES — `describeProofShape` walks a commit contract's own
-   * `completion.proofSchema` — so none of it can carry a person's data: the
-   * bytes are literal discriminators, regex sources, and enum option lists that
-   * a contract author typed into `src/domain/contracts/**`.
-   *
-   * `reason` is the same authorship one level over. It is composed by
-   * `parkedWriteProofContract` from the workflow id, the intent's task id, and
-   * the describer's own refusal sentence — all repository-authored — and its
-   * whole job is to name what this build cannot describe, which is a fact about
-   * the build rather than about the run's subject.
-   *
-   * The thing to check on any future edit is exactly that provenance: if a
-   * describer ever carried a zod `.default()`, an example, or an error message
-   * built from parsed DATA, these stop being repository-authored and this table
-   * has to say so.
-   */
+
   { surface: "wire/run-detail-section", path: "payload.proofContract.fields[].options[]", origin: "repository-authored" },
   { surface: "wire/run-detail-section", path: "payload.proofContract.fields[].pattern", origin: "repository-authored" },
   { surface: "wire/run-detail-section", path: "payload.proofContract.fields[].value", origin: "repository-authored" },
   { surface: "wire/run-detail-section", path: "payload.proofContract.reason", origin: "repository-authored" },
 
-  /*
-   * The identity-approval gate section (ref write-safety §14.4, separations chunk 3).
-   *
-   * This is the one loopback payload that carries a person's identity in the
-   * CLEAR, and the disposition is the review of exactly that: §14.4's acceptance
-   * standard is that the operator decides who is being separated *without
-   * leaving the dashboard*, so names, EIDs, departments and titles are the
-   * decision rather than incidental detail. Every one of them is
-   * `captured-hr-value` — read off UCPath or off the separation document — and
-   * loopback is the only egress that may carry them. Nothing here may be
-   * re-exported to a wider surface without re-deciding this table's rows.
-   *
-   * The split is the same one D197 settled on the Kuali read: a value the PAGE
-   * showed is `captured-hr-value`; a sentence this repository composed ABOUT
-   * that value (a comparison's `note`, an option's `origin`, an action's copy)
-   * is `repository-authored`, even when it interpolates a captured value.
-   */
+
   { surface: "wire/run-detail-section", path: "payload.value.label", origin: "repository-authored" },
   { surface: "wire/run-detail-section", path: "payload.value.actions[].confirm.body", origin: "repository-authored" },
   { surface: "wire/run-detail-section", path: "payload.value.actions[].confirm.confirmLabel", origin: "repository-authored" },
@@ -1304,13 +1138,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/run-detail-section", path: "payload.value.packet.jobs.rows[].jobTitle", origin: "captured-hr-value" },
   { surface: "wire/run-detail-section", path: "payload.value.packet.jobs.rows[].effectiveDate", origin: "captured-hr-value" },
   { surface: "wire/run-detail-section", path: "payload.value.packet.jobs.unreadableCells[]", origin: "repository-authored" },
-  // The gate packet's WRITE PLAN block (chunk 6, `write-plan.ts`) — what the
-  // two writes will consume, rendered so the operator approves the VALUES and
-  // not only the person. It rides the same operator-loopback section as the
-  // rest of the packet and for the same reason (§14.4: the operator decides
-  // without leaving the dashboard). Templates, reason codes and comment text
-  // are repository-authored; every date, code, title and department came off a
-  // real page.
+
   { surface: "wire/run-detail-section", path: "payload.value.packet.plan.reason", origin: "repository-authored" },
   { surface: "wire/run-detail-section", path: "payload.value.packet.plan.termination.terminationType", origin: "captured-hr-value" },
   { surface: "wire/run-detail-section", path: "payload.value.packet.plan.termination.template", origin: "repository-authored" },
@@ -1354,15 +1182,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/queue-surface", path: "memberPreview.reason", origin: "repository-authored" },
   { surface: "wire/queue-surface", path: "memberPreview.value", origin: "captured-hr-value" },
 
-  /*
-   * The queue row's own served controls (ref frontend-backend-integration §8.5). Every leaf is authored
-   * by `server/dashboard/projectors/queue-row-actions.ts` — a fixed label set
-   * plus confirm copy whose only interpolations are the workflow's DESCRIPTOR
-   * label and a member COUNT. No captured HR value reaches it, and that is a
-   * deliberate constraint of that module rather than an accident of the current
-   * copy: the row's own title is rendered by `ConfirmCommandDialog` as a
-   * separate subject line, so a served body never has to name the person.
-   */
+
   { surface: "wire/queue-surface", path: "actions[].confirm.body", origin: "repository-authored" },
   { surface: "wire/queue-surface", path: "actions[].confirm.confirmLabel", origin: "repository-authored" },
   { surface: "wire/queue-surface", path: "actions[].confirm.title", origin: "repository-authored" },
@@ -1530,44 +1350,18 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
 
   { surface: "wire/bootstrap", path: "actor.label", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "featureAvailability[].availability.reason", origin: "repository-authored" },
-  // The doctor's four free-text leaves. Every one is written in THIS
-  // repository's own check table — the label names a check, the detail states
-  // what it found about the local environment, `blocks` names the workflows a
-  // failure would break, and `remediation` is the fix somebody wrote down. A
-  // preflight check reads local configuration and never a person's record, so
-  // none of these may ever carry a captured HR value; a check that wanted to
-  // quote one would need its own origin row and a reviewer.
+
   { surface: "wire/bootstrap", path: "preflight[].blocks[]", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "preflight[].detail", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "preflight[].label", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "preflight[].remediation", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "settingsSections[].label", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "systemInstances[].test.reason", origin: "repository-authored" },
-  // `workflowCategories[].label` retired with R2 D17/D18: the server invented
-  // that heading from the id, and the display label + order are the
-  // frontend's (`dashboard/surfaces/workflow-category.ts`).
+
   { surface: "wire/bootstrap", path: "workflows[].availability.reason", origin: "repository-authored" },
-  // `workflows[].code` needs no row on ANY surface: `WorkflowCodeSchema`
-  // constrains it to two-to-four lowercase letters at the wire boundary
-  // (D242), so the scan does not read it as a free-text leaf.
+  // WorkflowCodeSchema limits values to lowercase short codes, so no free-text disposition is required.
   { surface: "wire/bootstrap", path: "workflows[].label", origin: "repository-authored" },
-  /**
-   * D264/D11 — the served start block. Every leaf of it is a DESCRIPTOR
-   * CONSTANT: a sentence, a placeholder, a delimiter or a worked example that a
-   * developer typed into `src/workflows/<id>/descriptor.ts` and this repository
-   * ships. Nothing here is read from UCPath, Kuali or an operator's box — the
-   * block moved onto the wire precisely so the browser would stop holding the
-   * descriptors that declare it, and moving a constant does not change where its
-   * bytes came from.
-   *
-   * The one leaf that needs saying out loud is `examples[].text`: it is the
-   * text the modal TYPES FOR the operator (D250), so it looks like a subject
-   * identifier and is not one — `defineWorkflowDescriptor` proves every example
-   * parses and satisfies the workflow's own input schema, and the values are
-   * the fabricated demonstration EIDs and names the descriptor authors chose.
-   * A real person's identifier in an example would be a repository defect, not
-   * a wire one.
-   */
+
   { surface: "wire/bootstrap", path: "workflows[].start.summary", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "workflows[].start.inputRun.placeholder", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "workflows[].start.inputRun.parser.split.delimiters[]", origin: "repository-authored" },
@@ -1578,13 +1372,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/bootstrap", path: "workflows[].start.steps[].label", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "workflows[].start.steps[].control.inputField", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "workflows[].start.steps[].control.reason", origin: "repository-authored" },
-  /**
-   * D307 — the omission form a STEP FOLDER declares, served so the Steps
-   * screen can draw it. Every leaf is descriptor source: the field's operator
-   * label, its optional help sentence, and the closed enum values it accepts.
-   * The operator's typed ANSWERS never come back this way — they ride the
-   * start-plan request, and the plan wire deliberately does not echo input.
-   */
+
   { surface: "wire/bootstrap", path: "workflows[].start.steps[].control.form.fields[].label", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "workflows[].start.steps[].control.form.fields[].help", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "workflows[].start.steps[].control.form.fields[].values[]", origin: "repository-authored" },
@@ -1596,9 +1384,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/activity-report", path: "workflows[].registration.label", origin: "repository-authored" },
   { surface: "wire/activity-report", path: "workflows[].registration.reason", origin: "repository-authored" },
 
-  // Cross-date search exposes only server-authored prose and one HMAC-signed,
-  // process-local continuation. No row title, subject value or artifact fact
-  // is admitted by the schema.
+
   { surface: "wire/cross-date-search", path: "nextCursor.reason", origin: "repository-authored" },
   { surface: "wire/cross-date-search", path: "nextCursor.value", origin: "repository-authored" },
   { surface: "wire/cross-date-search", path: "snapshot.token", origin: "repository-authored" },
@@ -1624,8 +1410,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/artifact-resource", path: "message", origin: "repository-authored" },
   { surface: "wire/artifact-resource", path: "reason", origin: "repository-authored" },
 
-  // D183: queries/archive.ts composes the exact-id URL and fixed availability
-  // copy; no stored capture value, filesystem path, or caught error is copied.
+
   { surface: "wire/archived-capture-resource", path: "resource.downloadUrl", origin: "repository-authored" },
   { surface: "wire/archived-capture-resource", path: "resource.message", origin: "repository-authored" },
   { surface: "wire/archived-capture-resource", path: "resource.reason", origin: "repository-authored" },
@@ -1661,10 +1446,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/storage-doctor", path: "previousLocationBackups[].manifestFileName", origin: "local-filesystem-name" },
   { surface: "wire/storage-doctor", path: "service.message", origin: "repository-authored" },
   { surface: "wire/storage-doctor", path: "service.reason", origin: "repository-authored" },
-  // D282 diagnostics are loopback-only. Parser/read failures can contribute
-  // external text, while filenames and authority keys are separately typed
-  // origins; the wire schema additionally refuses a full UCPath identifier in
-  // either message leaf.
+
   { surface: "wire/storage-doctor", path: "spanAuthority.problems[].recordKey", origin: "repository-authored" },
 
   { surface: "wire/storage-doctor-latest", path: "report.authorityUpgrades.cause.code", origin: "repository-authored" },
@@ -1717,9 +1499,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/workflow-explorer", path: "workflows[].nodes[].details[].label", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].nodes[].editableFields[].label", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].nodes[].label", origin: "repository-authored" },
-  // D229 — the descriptor's own prose, and the projection's own sentence naming
-  // the file that owes one. Both are written in this repository; neither can
-  // carry a value read off a page, a run, or a person.
+
   { surface: "wire/workflow-explorer", path: "workflows[].nodes[].purpose.text", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].nodes[].purpose.reason", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].summary.text", origin: "repository-authored" },
@@ -1727,16 +1507,11 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/workflow-explorer", path: "workflows[].nodes[].shape.branches[].id", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].nodes[].shape.cases[].name", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].nodes[].shape.edgeId", origin: "repository-authored" },
-  // D228 — the scalar a declared `when` compares against, written in the
-  // descriptor's own source. A condition is data about the GRAPH; nothing about
-  // a run, a person, or a page can reach it.
+
   { surface: "wire/workflow-explorer", path: "workflows[].nodes[].shape.condition.value", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].nodes[].shape.statusKey", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].nodes[].tasks[].binding.note", origin: "repository-authored" },
-  // D227 — a field census leaf. `options[]` is the closed vocabulary an enum or
-  // literal declares IN THE SOURCE, and `recorded.reason` is one of a handful of
-  // sentences this repository's own projection composes. Neither can carry a
-  // value read off a live page: the census walks a schema, not a run.
+
   { surface: "wire/workflow-explorer", path: "workflows[].nodes[].tasks[].fields[].options[]", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].nodes[].tasks[].fields[].recorded.reason", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].nodes[].tasks[].binding.storeNamespace", origin: "repository-authored" },
@@ -1763,10 +1538,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
 
   { surface: "wire/explorer-edit-validation", path: "brief.failedObligations[]", origin: "repository-authored" },
   { surface: "wire/explorer-edit-validation", path: "brief.reason", origin: "repository-authored" },
-  // D283 — compile evidence and code-change briefs are assembled only from the
-  // registered descriptor/module/scenario graph and the protocol's closed
-  // literals. The canonical patch expressions are serialized by the service;
-  // they are never free-form operator TypeScript.
+
   { surface: "wire/explorer-edit-validation", path: "brief.baseAttestation.checks.graph.coveragePointIds[]", origin: "repository-authored" },
   { surface: "wire/explorer-edit-validation", path: "brief.patch.canonicalDescriptorJson", origin: "repository-authored" },
   { surface: "wire/explorer-edit-validation", path: "brief.patch.changes[].fields[].label", origin: "repository-authored" },
@@ -1900,18 +1672,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/archive-index", path: "versionState[].blockers[].title", origin: "captured-hr-value" },
   { surface: "wire/archive-index", path: "versionState[].workflowLabel", origin: "repository-authored" },
 
-  /*
-   * D223's frozen sections. Every leaf below is the SAME leaf the live
-   * run-detail section carries, frozen — so each takes the disposition its
-   * live twin already has, and the two lists are read together on purpose: a
-   * frozen copy that quietly relaxed an origin would be a redaction downgrade
-   * nobody reviewed.
-   *
-   * `captures[].system.value` is `repository-authored` because it is the
-   * declared store half of a `TaskIdSchema` (`<registered-store>/<operation>`),
-   * which is a closed set this repository owns — not a value any external
-   * system supplied.
-   */
+
   { surface: "wire/archived-run-detail", path: "workflowCode.reason", origin: "repository-authored" },
   { surface: "wire/archived-run-detail", path: "sections.reason", origin: "repository-authored" },
   { surface: "wire/archived-run-detail", path: "sections.value.logs.reason", origin: "repository-authored" },
@@ -1920,9 +1681,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/archived-run-detail", path: "sections.value.logs.value.notes[].fields[].value", origin: "external-text" },
   { surface: "wire/archived-run-detail", path: "sections.value.data.reason", origin: "repository-authored" },
   { surface: "wire/archived-run-detail", path: "sections.value.data.value.entries[].label", origin: "repository-authored" },
-  // D252 — a step's display name and a commit node's, both `runtimeNodeLabel`
-  // over an authored `label` or the task contract's own `title`. Repository
-  // source in every arm: the fallback is the node ID, which is authored too.
+
   { surface: "wire/archived-run-detail", path: "sections.value.data.value.entries[].origin.step", origin: "repository-authored" },
   { surface: "wire/archived-run-detail", path: "sections.value.data.value.entries[].freshness.feeds[].label", origin: "repository-authored" },
   { surface: "wire/archived-run-detail", path: "sections.value.data.value.entries[].valueRedacted", origin: "captured-hr-value" },
@@ -1949,12 +1708,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/stream-envelope", path: "payload.captures.reason", origin: "repository-authored" },
   { surface: "wire/stream-envelope", path: "payload.replacement.captures.message", origin: "repository-authored" },
   { surface: "wire/stream-envelope", path: "payload.replacement.captures.reason", origin: "repository-authored" },
-  /*
-   * Charter §25's change record. `what`, `why` and `commit.value` are typed by
-   * the OPERATOR, so they are `external-text` on the same terms as an
-   * operator-assigned `displayName`: free text this repository did not author
-   * and may not claim to have bounded. The two `reason` halves are ours.
-   */
+
   { surface: "wire/archive-index", path: "sweeps[].changeRecord.reason", origin: "repository-authored" },
   { surface: "wire/archive-index", path: "sweeps[].changeRecord.value.what", origin: "external-text" },
   { surface: "wire/archive-index", path: "sweeps[].changeRecord.value.why", origin: "external-text" },
@@ -2059,9 +1813,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/intake-session", path: "corrections[].correctedValue", origin: "captured-hr-value" },
   { surface: "wire/intake-session", path: "exclusions[].reason", origin: "repository-authored" },
   { surface: "wire/intake-session", path: "headerCandidates[].cells[]", origin: "captured-hr-value" },
-  // Terminal valid inputs come from the immutable manifest loaded by exact id;
-  // rerun removed rows are those same durable facts, while added rows are the
-  // canonical inputs revalidated from the session's immutable source artifact.
+
   { surface: "wire/intake-session", path: "manifest.validRows[].parsedInput", origin: "captured-hr-value" },
   { surface: "wire/intake-session", path: "rerun.diff.added[].parsedInput", origin: "captured-hr-value" },
   { surface: "wire/intake-session", path: "rerun.diff.changes[].now", origin: "captured-hr-value" },
@@ -2078,10 +1830,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/intake-session", path: "validation.rejected[].path[]", origin: "repository-authored" },
   { surface: "wire/intake-session", path: "validation.rejected[].reason", origin: "repository-authored" },
 
-  // E29 derives the display key/detail around a closed attachment kind, its
-  // stored metadata and a verified digest; neither is captured page text.
-  // Media types are driver declarations, and D137 warnings are emitted by the
-  // capture-time classifier rather than copied from an inspected page.
+
   { surface: "wire/diagnostic-bundle", path: "contents[].key", origin: "repository-authored" },
   { surface: "wire/diagnostic-bundle", path: "contents[].detail", origin: "repository-authored" },
   { surface: "wire/diagnostic-bundle", path: "contents[].mediaType", origin: "repository-authored" },
@@ -2116,9 +1865,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
 
   { surface: "durable/diagnostic-bundle", path: "redaction.warnings[]", origin: "repository-authored" },
 
-  // DCR5 retains the exact operator query only in insert-only evidence; it is
-  // deliberately absent from workbook cells because it may itself be an
-  // identifier. Attachment syntax and sheet names are closed composition facts.
+  // The operator query is retained only in insert-only evidence; workbook cells exclude this possible identifier.
   { surface: "durable/run-search-index", path: "metadata.actor.value", origin: "captured-hr-value" },
   { surface: "durable/run-search-index", path: "metadata.subject.value", origin: "captured-hr-value" },
   { surface: "durable/run-search-declaration", path: "subjectProjection.nodeId", origin: "repository-authored" },
@@ -2155,9 +1902,9 @@ export const SURFACE_MODULE_DISPOSITIONS: readonly SurfaceModuleDisposition[] = 
     { module: "src/models/dashboard/archive.ts", state: "audited", reason: "the archive index and detail re-serve retired runs; capture resources report exact-byte availability" },
     { module: "src/models/dashboard/artifacts.ts", state: "audited", reason: "artifact resources point at downloadable run output" },
     { module: "src/models/dashboard/bootstrap.ts", state: "audited", reason: "bootstrap carries the actor, the workflow registry and feature availability" },
-    { module: "src/models/dashboard/diagnostic-bundle.ts", state: "audited", reason: "D137 readback carries only verified attachment metadata and capture-time redaction facts" },
-    { module: "src/models/dashboard/explorer-edit.ts", state: "audited", reason: "D290 preserves the superseded DCC4 schema declarations only through source ancestry; no integrated durable surface or active runtime repository uses them" },
-    { module: "src/models/dashboard/explorer-override.ts", state: "audited", reason: "D337 transaction ports use the existing strict override values; the durable stopped-import receipt retains only that safe presentation document and source/backup digests" },
+    { module: "src/models/dashboard/diagnostic-bundle.ts", state: "audited", reason: "Diagnostic-bundle readback carries only verified attachment metadata and capture-time redaction facts" },
+    { module: "src/models/dashboard/explorer-edit.ts", state: "audited", reason: "DCC4 schema declarations remain only as source ancestry; no integrated durable surface or active runtime repository uses them" },
+    { module: "src/models/dashboard/explorer-override.ts", state: "audited", reason: "Transaction ports use the existing strict override values; the durable stopped-import receipt retains only that safe presentation document and source/backup digests" },
     { module: "src/models/dashboard/explorer.ts", state: "audited", reason: "the explorer projects descriptors, contracts and semantic UI task links" },
     { module: "src/models/dashboard/operation-structure.ts", state: "audited", reason: "shared Explorer and Logs structure carries only canonical frozen declarations and already-redacted action provenance" },
     { module: "src/models/dashboard/item-attempt-history.ts", state: "audited", reason: "the attempt-history wire serves retained per-item status and dates" },
@@ -2195,16 +1942,7 @@ export const SURFACE_MODULE_DISPOSITIONS: readonly SurfaceModuleDisposition[] = 
 
 /* ── 8. the producer-side half of the `*Redacted` promise ─────────────────── */
 
-/**
- * A `<name>Redacted` PROPERTY ASSIGNMENT anywhere in `src/` that is not a
- * schema declaration. The declaration audit can only see the shape; this sees
- * the write. Today `FailureRecord.page.urlRedacted`,
- * `page.titleRedacted` and `subject.*.displayRedacted` have NO producer at all
- * — they are declared, consumed by the run-detail wire and the advisory's
- * `drop` table, and never filled — so the first code that fills one is the code
- * this arm exists to stop: a `urlRedacted: page.url()` satisfies every schema
- * in the tree and is a raw query string on a durable record.
- */
+
 export const RedactedProducerSiteSchema = z.strictObject({
   file: z.string().min(1),
   line: z.number().int().positive(),

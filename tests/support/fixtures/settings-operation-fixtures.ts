@@ -1,7 +1,7 @@
 import { SETTINGS_CATALOG } from "../../../src/models/config/catalog.js";
 import { SettingsPatchSchema, type SettingsPatch } from "../../../src/models/config/settings.js";
 
-/** Adapt persisted-settings-shaped test input into D331 leaf set operations. */
+
 export function settingsSetOperations(settings: unknown): SettingsPatch {
   const existing = SettingsPatchSchema.safeParse(settings);
   if (existing.success) return existing.data;

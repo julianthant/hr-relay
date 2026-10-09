@@ -1,18 +1,4 @@
-/**
- * The three folds the COMPOSITION needs and no chunk owned: which person the
- * separation is about (S18/S19), which employment it is filed against
- * (S23/S24), and whether the UCPath receipt may be written onto the Kuali
- * document (D130).
- *
- * Each is a decision legacy makes somewhere else or not at all:
- *
- * - the subject fork is legacy's conditional person-lookup delegation, which §5
- *   item 10's answer replaces with an inline resolution handed to the gate;
- * - the employment selection is legacy's two THROWS inside its Job Summary page
- *   module, which D201 moved out of the read and this fold turns into refusals;
- * - the receipt check is nowhere in legacy — its `interpretPostSubmitTxnReadback`
- *   tests only `/^T\d{6,}$/`, which is exactly why D130 exists.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { EidSchema } from "../../../../../src/rules/identity/ids.js";
@@ -86,7 +72,7 @@ function resolveSubject(
   });
 }
 
-describe("the separation SUBJECT fork (S18/S19)", () => {
+describe("the separation SUBJECT fork", () => {
   it("takes the document's own EID and says so — the one-click-eligible shape", () => {
     const resolution = resolveSubject(eidCell(DOCUMENT_EID), {
       status: "resolved",
@@ -101,9 +87,7 @@ describe("the separation SUBJECT fork (S18/S19)", () => {
   });
 
   it("takes the NAME SEARCH when the document names nobody, and labels it so", () => {
-    // `deriveApprovalShape` turns `name-resolved` into a `type-the-eid` gate,
-    // which is the whole safety property: an EID nobody wrote on the form can
-    // never be approved by one click.
+
     const resolution = resolveSubject(noCell("the EID control was empty"), {
       status: "resolved",
       selected: CANDIDATE,
@@ -116,9 +100,7 @@ describe("the separation SUBJECT fork (S18/S19)", () => {
   });
 
   it("prefers the DOCUMENT's EID even when the name resolves somebody else", () => {
-    // The disagreement is not resolved here — it is the packet's job to show it
-    // (`documentEidConflicts`, and the `name-search` comparison row). This fold
-    // only says which EID the run is CHECKING.
+
     const resolution = resolveSubject(eidCell(DOCUMENT_EID), {
       status: "resolved",
       selected: CANDIDATE,
@@ -159,7 +141,7 @@ describe("the separation SUBJECT fork (S18/S19)", () => {
   });
 });
 
-describe("the EMPLOYMENT selection (S23/S24)", () => {
+describe("the EMPLOYMENT selection", () => {
   it("selects the single active row and passes its dept cells through untouched", () => {
     const selection = selectSeparationEmployment([
       row({ rowIndex: 0, emplRecord: "1", hrStatus: "Terminated" }),
@@ -189,7 +171,7 @@ describe("the EMPLOYMENT selection (S23/S24)", () => {
     }
   });
 
-  it("refuses an unreadable job code or title, because both are STAGED into Kuali (S24)", () => {
+  it("refuses an unreadable job code or title, because both are STAGED into Kuali", () => {
     for (const [code, overrides] of [
       ["payroll-title-code-unreadable", { jobCode: noCell("the grid rendered this cell empty") }],
       ["payroll-title-unreadable", { jobTitle: noCell("the grid rendered this cell empty") }],
@@ -209,7 +191,7 @@ describe("the EMPLOYMENT selection (S23/S24)", () => {
   });
 });
 
-describe("the termination RECEIPT check (D130)", () => {
+describe("the termination RECEIPT check", () => {
   it("accepts a Pending receipt — the ordinary state of a transaction just filed", () => {
     const verification = verifyTerminationReceipt({
       proof: proof(),
@@ -223,10 +205,8 @@ describe("the termination RECEIPT check (D130)", () => {
     assert.equal(verification.receipt.approvalStatus, "Pending");
   });
 
-  it("REFUSES a Denied receipt, which is the whole of D130", () => {
-    // The live proof: `T002204014` is a perfectly well-formed T-number on a
-    // transaction UCPath refused. It reaches here through the `already-present`
-    // arm — `ucpathTerminationVerdict` returns whatever status the row carried.
+  it("refuses a Denied termination receipt", () => {
+
     for (const status of ["Denied", "Error", "Pushed Back"] as const) {
       const verification = verifyTerminationReceipt({
         proof: proof({ approvalStatus: status, transactionId: "T002204014" }),
@@ -277,9 +257,7 @@ describe("the termination RECEIPT check (D130)", () => {
   });
 
   it("refuses a T-number UCPath accepts that the Kuali control cannot hold", () => {
-    // UCPath's own schema is `T\d{6,}`; the Kuali *Transaction Number* control
-    // is `T\d{6,12}`. The two genuinely disagree, and truncating would file a
-    // number that names no transaction.
+    // UCPath accepts unbounded T-number digits; Kuali caps them at twelve, so incompatible values must refuse.
     const verification = verifyTerminationReceipt({
       proof: proof({ transactionId: "T0022096311234" }),
       disposition: "committed",

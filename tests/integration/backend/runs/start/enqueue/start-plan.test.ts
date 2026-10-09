@@ -1,11 +1,4 @@
-/**
- * Start planning and plan consumption (ref frontend-backend-integration §5.1).
- *
- * The property under test throughout is that the operator acts on the truth:
- * what the plan says will start is what starts, what it refuses is named with a
- * reason, and a confirmation that no longer describes reality refuses rather
- * than starting something else.
- */
+
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -163,7 +156,7 @@ describe("start planning", () => {
     assert.equal(Object.hasOwn(historical, "captureBrowserScreenshots"), false);
   });
 
-  it("retains the operator's step omissions on the plan record, byte for byte (D307)", () => {
+  it("retains the operator's step omissions on the plan record, byte for byte", () => {
     const database = openDatabase();
     const stepOmissions = [{ step: "kronos-timecard", facts: { lastDayWorked: "06/18/2026", separationDate: "06/19/2026" } }];
     const plan = planStart(plannerDeps(database), baseRequest([{ emplId: "10873698" }], { stepOmissions }));
@@ -173,7 +166,7 @@ describe("start planning", () => {
     assert.equal(Object.hasOwn(plain, "stepOmissions"), false);
   });
 
-  it("buildQueuedRun carries stepOmissions onto the run envelope byte for byte (D307)", () => {
+  it("buildQueuedRun carries stepOmissions onto the run envelope byte for byte", () => {
     const database = openDatabase();
     const itemId = deriveItemId("person-lookup", PERSON_EID_MATCH_KEY);
     const stepOmissions = [{ step: "kronos-timecard", facts: { lastDayWorked: "06/18/2026", separationDate: "06/19/2026" } }];
@@ -299,9 +292,9 @@ describe("start planning", () => {
       shape: "single",
       priority: "bulk",
       dryRun: false,
-      // D221 — the item's first attempt; nothing has run for it yet.
+
       attempt: database.authority.runs.nextItemAttempt({ workflow: "person-lookup", itemId }),
-      // D230 — the workflow's first ordinal, read the same way.
+
       runNumber: database.authority.runs.nextWorkflowRunNumber("person-lookup"),
       now: NOW,
     }));
@@ -313,7 +306,7 @@ describe("start planning", () => {
     assert.match(plan.refused[0].message, /pl-170000-aaaa/);
   });
 
-  it("refuses a dry run the GRAPH does not offer, and says which fact refused it (D209)", () => {
+  it("refuses a dry run the GRAPH does not offer, and says which fact refused it", () => {
     const database = openDatabase();
     // Person Lookup is read-only. A dry run of it would execute exactly the same
     // nodes as a real run, so "supported" would silently redefine the request.
@@ -329,24 +322,12 @@ describe("start planning", () => {
     assert.match(plan.refused[0].message, /has no transaction node/);
   });
 
-  /**
-   * D209's whole point, stated as a test on the SHIPPED descriptors: dry-run
-   * support is a property of what the graph WRITES, never of whether an
-   * operator can paste a line into a textbox.
-   *
-   * Two of these three still carry `surfaces: {}` and are previewable anyway,
-   * which is the original claim. **`separations` now carries a typed box (D261)
-   * and is previewable for exactly the same reason** — the surface changed and
-   * the derivation did not — so it is asserted from the other side: the point
-   * is the INDEPENDENCE of the two, and a list where every member lacked a
-   * surface could no longer show it.
-   */
-  it("makes all three registered write workflows dry-startable through the graph (D209)", () => {
+
+  it("makes all three registered write workflows dry-startable through the graph", () => {
     for (const descriptor of [
       separationsUcpathTerminationDescriptor,
       separationsKualiFinalizationDescriptor,
-      // The composition, whose three transaction nodes each declare the arm —
-      // D209's "every transaction node, not only the first a preview reaches".
+
       separationsDescriptor,
     ]) {
       assert.equal(supportsDryRun(descriptor), true, `${descriptor.id} must be previewable`);
@@ -362,10 +343,10 @@ describe("start planning", () => {
     // The independence, stated in both directions on the shipped set.
     assert.deepEqual(separationsUcpathTerminationDescriptor.surfaces, {});
     assert.deepEqual(separationsKualiFinalizationDescriptor.surfaces, {});
-    assert.notEqual(separationsDescriptor.surfaces.inputRun, undefined, "D261 gave separations a box");
+    assert.notEqual(separationsDescriptor.surfaces.inputRun, undefined, "Separations declares typed ingress");
   });
 
-  it("refuses a graph whose transaction node declares no preview arm, by node name (D209)", () => {
+  it("refuses a graph whose transaction node declares no preview arm, by node name", () => {
     assert.deepEqual(workflowDryRunSupport(writeFixtureDescriptorWithoutDryRunArm), {
       state: "unsupported",
       reason: "node-declares-unsupported",
@@ -378,10 +359,10 @@ describe("start planning", () => {
     );
   });
 
-  it("refuses an AUTHORED supportsDryRun rather than overwriting it (D209)", () => {
+  it("refuses an AUTHORED supportsDryRun rather than overwriting it", () => {
     assert.throws(
       () => defineAuthoredDryRunDescriptor(),
-      /surfaces\.inputRun\.supportsDryRun is derived from the graph \(D209\) and cannot be authored/,
+      /surfaces\.inputRun\.supportsDryRun is derived from the graph and cannot be authored/,
     );
   });
 
@@ -563,8 +544,8 @@ describe("start plan consumption", () => {
     assert.throws(() => database.withAuthorityTransaction(() => {
       const consumed = database.authority.startPlans.consume(consumeRequest(plan));
       assert.equal(consumed.state, "consumed");
-      throw new Error("inject later D113 enqueue failure");
-    }), /inject later D113 enqueue failure/);
+      throw new Error("inject later enqueue failure");
+    }), /inject later enqueue failure/);
     const retry = database.authority.startPlans.consume(consumeRequest(plan));
     assert.equal(retry.state, "consumed");
   });

@@ -19,11 +19,7 @@ import { wireError } from "../../../../../support/fixtures/dashboard/fixture-wir
 export function registerFixtureArchiveRoutes({ app, archiveEvidence, archivedRun, input }: { app: Hono; archiveEvidence: boolean; archivedRun: typeof FIXTURE_ARCHIVED_RUN; input: Pick<FixtureBffOptions, "savedArchiveFileResponse" | "archiveComparison"> }): void {
 
 
-  /**
-   * The Archive and Activity pair (2i-G, D179/D180). The archived detail is
-   * served by exact run id: a fixture that answered any id with the same
-   * record would let a surface pass while addressing the wrong run.
-   */
+
   app.get("/api/v1/archive/reports/:runId/files/:digest", c => c.json({ runId: c.req.param("runId"), digest: c.req.param("digest"),
     resource: { state: "missing", reason: "The retained synthetic attachment is missing. Saved report remains readable." } }));
 

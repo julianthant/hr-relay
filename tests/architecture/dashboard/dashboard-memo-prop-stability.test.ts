@@ -1,32 +1,4 @@
-/**
- * Track D row D4 (ref frontend-backend-integration §7.4; audit finding P1) —
- * a `memo` is only as real as the props handed to it.
- *
- * `QueuePanel`, `WorkspaceRail` and `LogPanel` are `memo`'d. `memo` compares props by
- * `Object.is`, so ONE prop slot that mints a fresh reference every render turns
- * the whole wrapper into pure overhead — the panel re-renders exactly as often
- * as before, every gate stays green, and nothing on any surface looks wrong.
- *
- * The rule: inside a prop expression of one of those three elements, in any
- * dashboard `.tsx` module that renders one, there may be no object literal,
- * array literal, arrow function, function expression or `new` — the five
- * constructs that are PROVABLY a new reference on every evaluation. Every
- * caller is in scope, the workflow mocks included: a mock is the surface the
- * operator reads to approve a workflow, so a fresh prop there is the same defect.
- *
- * **What this guard deliberately does NOT claim.** It says nothing about a
- * CALL in a prop slot (`workflowLabelOf(activeWorkflowId)`), because a call is
- * not provably unstable — it may return a primitive, or the very same
- * reference each time, and only its body can say which.
- *
- * A JSX SPREAD is judged through, not at: `{...(cond ? {} : { filter: x })}`
- * spreads keys into props, so the literal is a container that is destructured
- * away and never becomes a prop value — its property VALUES are what get
- * judged, by the same rules.
- *
- * Both arms run against checked-in fixtures — one violating in every way the
- * rule can break, one clean — so a walker that resolved nothing could not pass.
- */
+
 import { describe, expect, it } from "vitest";
 import ts from "typescript";
 import { readFileSync } from "node:fs";
@@ -46,13 +18,7 @@ const UNSTABLE: ReadonlyArray<readonly [(node: ts.Node) => boolean, string]> = [
   [ts.isNewExpression, "a `new` expression"],
 ];
 
-/**
- * Walks one prop expression for the five provably-fresh constructs.
- *
- * `container` is true only while descending a JSX spread, where an object
- * literal is destructured away rather than becoming a prop value; its property
- * initializers are then judged on their own, as containers no longer.
- */
+// JSX spread containers disappear; judge their property values for reference stability.
 function unstableConstructs(expr: ts.Expression, container: boolean): string[] {
   const found: string[] = [];
   const visit = (node: ts.Node, inContainer: boolean): void => {
@@ -126,7 +92,7 @@ function callerFiles(): string[] {
   return CALLER_ROOTS.flatMap(root => walkFiles(join(REPO_ROOT, root), { extensions: [".tsx"] }).map(file => relative(REPO_ROOT, file)));
 }
 
-describe("dashboard memo prop stability (Track D D4, ref frontend-backend-integration §7.4)", () => {
+describe("dashboard memo prop stability", () => {
   it("the three memoized panels are handed no provably-fresh prop", () => {
     const files = callerFiles();
     expect(files.length).toBeGreaterThan(0);

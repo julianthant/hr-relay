@@ -1,15 +1,4 @@
-/**
- * D312/D316 — the author-experience proof: a grouping/options-only change to
- * a workflow definition changes ONLY the definition, and the compiler carries
- * it to every generic product without another authored file.
- *
- * Two definitions share the exact same entries, binds, result and
- * presentation; they differ only in how the tuples group and label those
- * entries. The compiled graph — node ids, kinds, edges, contracts — is
- * identical byte for byte; the timeline, the start/run-modal step projection
- * and the Explorer grouping follow the definition. Nothing else in the
- * repository is consulted, which is what "change only `workflow.ts`" means.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { z } from "zod";
@@ -72,7 +61,7 @@ function variant(id: string, code: string, grouping: Grouping) {
   });
 }
 
-describe("grouping/options-only change (D312/D316)", () => {
+describe("grouping/options-only change", () => {
   it("changes only the definition: the compiled graph is identical while every generic grouping projection follows the tuples", () => {
     const twoGroups = compileFixtureWorkflow(variant("grouping-proof-two", "gpa", ({ search, verify }) => [
       [{ key: "search", label: "Search" }, [search]],

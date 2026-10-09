@@ -2,33 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 import ts from "typescript";
 
-/**
- * Operational isolation — the half of D88 that a repository boundary does NOT
- * hold for you (D93, ref guards-and-tests §3.13).
- *
- * The original `runtime-isolation` guard was two things bolted together: a
- * whole-tree AST scan proving neither side could reach the other through a
- * dynamic import, process spawn, filesystem read, HTTP call, or route proxy —
- * and a configuration audit proving the two sides bind DIFFERENT state roots,
- * artifact roots, ports, process locks, and browser profiles.
- *
- * D93 retires the first half outright: two repositories share no module graph,
- * so a legacy->rebuild import is not a violation to catch, it is an expression
- * that cannot resolve. Retiring it is an explicit recorded replacement, not a
- * silent shrink — this file is that replacement, and the guard inventory names
- * it.
- *
- * The second half survives UNCHANGED, because both worlds still run on ONE
- * machine. A shared port, lock file, state root, or Chromium profile is a real
- * collision that no repository boundary prevents. So the executable-binding
- * proof stays exactly as strict as it was: an exported direct-`const`
- * `defineRuntimeIsolation` call with the exact isolated literal values, and a
- * composition root that consumes it through unshadowed named imports in one
- * direct call inside the declared exported runner — awaited or not, because
- * the runner owns the `dashboard` command's whole lifetime and must return its
- * promise. Secure environment admission owns invocation of that runner; a
- * mention or another function is not proof.
- */
+
 
 export const SUPPORTED_MODULE_FAMILIES = [
   "filesystem",
@@ -224,10 +198,7 @@ function hasExactExportedRunnerCompositionCall(
     || !hasExactAdmissionParameter(source, runner, importerFile, admissionFile)) return false;
   const matchingCalls = runner.body.statements.filter((statement) => {
     if (!ts.isExpressionStatement(statement)) return false;
-    // `await startRebuildRuntime(...)` is the same one direct call: the runner
-    // returns the runtime's lifetime promise, so awaiting it is required, not a
-    // second indirection. Everything else about the call stays exactly as
-    // strict — same identifier, same unshadowed binding argument.
+    // Awaiting the direct runner call preserves ownership of its lifetime promise.
     const expression = ts.isAwaitExpression(statement.expression)
       ? statement.expression.expression
       : statement.expression;
@@ -373,18 +344,10 @@ function validateCommands(
 
 /** Resources that must differ between the two runtimes on one machine. */
 export const DISTINCT_RESOURCE_KEYS = [
-  // `stateRoot` left this list with D321 (operator decision, 2026-09-03): both
-  // repos name their state root `.tracker`, and a repo-relative root never
-  // collides across checkouts. The artifact root, the lock root, both ports
-  // and the session namespace below still differ and stay audited.
+  // Repository-relative state roots do not collide across checkouts.
   "artifactRoot",
   "processLockRoot",
-  // `browserProfileRoot` left this list with D216 (operator decision,
-  // 2026-08-14): both repos name their profile root `.auth`, which never
-  // collides on disk because the roots are repo-relative. The browser-state
-  // identity that MUST stay distinct is `browserSessionNamespace` below —
-  // that is what keeps a session opened in the wrong checkout from reusing
-  // the other runtime's authenticated state.
+  // Repository-relative profiles stay separate on disk; session namespaces prevent cross-runtime reuse.
   "browserSessionNamespace",
 ] as const;
 
@@ -405,18 +368,11 @@ function validateDistinctResources(
   if (contract.legacy.frontendPort === contract.rebuild.frontendPort) {
     addViolation(output, "runtime-binding", repoRoot, contractFile, "frontendPort must differ between the two runtimes");
   }
-  // D247: command NAMES are not an isolation resource; each declared command
-  // is still audited byte-exactly against its own checkout's scripts.
+  // Command names may coincide; each checkout must retain its own exact launch scripts.
   return output;
 }
 
-/**
- * Audits THIS repo's rebuild runtime binding plus the cross-runtime resource
- * distinctness the machine still needs. `legacyScripts` is the legacy repo's
- * own `package.json` scripts map — the declared launch commands must stay
- * exact on both sides (D247: exact, not distinct), which is only checkable with
- * both in hand.
- */
+
 export function auditOperationalIsolation(
   repoRoot: string,
   contract: OperationalIsolationContract,

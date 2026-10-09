@@ -1,26 +1,4 @@
-/**
- * `npm run perf:dashboard` — the §7.4 measurement instrument.
- *
- * It seeds ONE deterministic world (`dashboard-fixture.ts`: 1,240 rows on one
- * day, a 108-member operation, 20,800 note lines, three neighbouring days) and
- * times the five hot paths the 2026-08-20 architecture audit named, through the
- * PRODUCTION functions the BFF calls — no browser, no HTTP, no re-implementation:
- *
- *   A  `buildDashboardDayWire(day)`          — audit P2/P4, the whole day snapshot
- *   B  `applyDashboardDayPatch(day, patch)`  — audit P1, one SSE row patch
- *   C  `buildRunSection(run, "logs")`        — audit P3, one logs GET
- *   D  `archiveSnapshots.snapshot(run)`      — audit P3, the version-bump freeze
- *   E  `queueSurface(operation)` vs a single — audit P2, the member preview
- *
- * Every timing is the median and p95 of `--iterations` measured runs after one
- * discarded warm-up. Every query count is exact and taken once, because the
- * seeded world is deterministic and a count that varied between iterations
- * would mean the measurement had a side effect.
- *
- * These are BEFORE numbers. Track D's D4/D5 re-run this same command against the
- * same seed, and the delta is the evidence those rows owe
- * (`ref frontend-backend-integration` §7.4, D264).
- */
+
 import { execFileSync } from "node:child_process";
 import { realpathSync, statSync, writeFileSync } from "node:fs";
 import { cpus, totalmem } from "node:os";
@@ -50,7 +28,7 @@ import { assertStatementCounterObserves, countSqliteStatements } from "./sqlite-
 interface Timing {
   readonly iterations: number;
   readonly medianMs: number;
-  /** Nearest-rank p95 over the samples — at small `iterations` this IS the slowest. */
+
   readonly p95Ms: number;
 }
 
@@ -75,30 +53,13 @@ function round(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
-/* ── the zod parse spy (audit P1) ────────────────────────────────────────── */
 
-/**
- * Counts `DashboardDayWireSchema.parse` calls while `work` runs.
- *
- * The whole P1 finding was that a SINGLE-ROW patch re-validated the WHOLE day,
- * so the number that matters is not the milliseconds alone — it is the count,
- * and the thing counted is 1,240 rows wide. The spy installs an own property
- * that shadows zod's prototype method.
- *
- * **After D4 the honest answer is ZERO**, which is exactly the answer a broken
- * spy also gives — so this window may not assert its own result. Its liveness
- * is proved separately by `selfCheckDayWireParseSpy`, against a parse the
- * harness performs itself and therefore knows happened; only then is a zero
- * from this window reportable. Asserting `parses > 0` here, as this harness did
- * while the whole-day parse existed, would now be a check that can only fail.
- */
+
+
 function countDayWireParses<Result>(work: () => Result): { readonly value: Result; readonly parses: number } {
   const schema = DashboardDayWireSchema as unknown as { parse: (input: unknown) => unknown };
   const original = schema.parse.bind(DashboardDayWireSchema);
-  // Restore whatever was there — an OWN descriptor if zod defines `parse` per
-  // instance, and nothing at all if it lives on the prototype. Blind-deleting
-  // would strip the method itself in the first case, leaving every later parse
-  // in this process broken.
+  // Restore the original own descriptor; deleting parse blindly can erase a real schema method.
   const ownDescriptor = Object.getOwnPropertyDescriptor(schema, "parse");
   let parses = 0;
   Object.defineProperty(schema, "parse", {
@@ -118,15 +79,7 @@ function countDayWireParses<Result>(work: () => Result): { readonly value: Resul
   }
 }
 
-/**
- * The parse window's own precondition, in the same shape as
- * `selfCheckStatementCounter`: it must observe a `DashboardDayWireSchema.parse`
- * this harness KNOWS it performed, before any zero taken through it is
- * reported. Without this, a spy that failed to install (a future zod defining
- * `parse` unwritably, a frozen schema object) would print `dayWireSchemaParses
- * 0` for the D4 row and read as the improvement rather than as a broken
- * instrument.
- */
+
 function selfCheckDayWireParseSpy(wire: DashboardDayWire): void {
   const probe = countDayWireParses(() => DashboardDayWireSchema.parse(wire));
   if (probe.parses !== 1) {
@@ -177,11 +130,7 @@ function selfCheckSpanEventParseSpy(fixture: PerfFixture): void {
 const ReportSchema = z.strictObject({
   measuredAt: z.string(),
   commit: z.string(),
-  /**
-   * Whether the TRACKED tree matches `commit`. Untracked files are excluded on
-   * purpose: a git worktree carries an untracked `node_modules` symlink, and a
-   * baseline that reported every worktree as dirty would say nothing.
-   */
+  // Exclude untracked dependency symlinks when comparing the measured tracked tree with its revision.
   trackedTreeClean: z.boolean(),
   machine: z.strictObject({
     node: z.string(),
@@ -205,11 +154,7 @@ const ReportSchema = z.strictObject({
     id: z.string(),
     label: z.string(),
     auditFinding: z.string(),
-    /**
-     * Absent for a measurement whose finding is a COUNT, not a duration. An
-     * optional field rather than a zeroed one: `0.00 ms` in a baseline table
-     * is a number somebody will later compare against.
-     */
+    // Omit duration when the finding is a count; zero milliseconds would invent a measurement.
     timing: z.strictObject({
       iterations: z.number().int().positive(),
       medianMs: z.number(),
@@ -302,18 +247,7 @@ function noteCorpus(fixture: PerfFixture): { files: number; lines: number; bytes
   };
 }
 
-/**
- * The partitions ONE logs GET is allowed to open, taken through the production
- * decision function (`runNotePartitionScope`) rather than re-derived here — a
- * benchmark that re-implemented the rule would report the rule it wrote, not
- * the one the BFF applies.
- *
- * It is still a derived fact and not a syscall-level observation, for the
- * reason the baseline paragraph already gives: Node snapshots ESM named
- * imports of `node:fs` and no in-process counter can honestly watch that read.
- * `…Available` above is the whole corpus; `…InScope` is what the reader may
- * touch, and the gap between the two is the D5 finding stated as a count.
- */
+
 function noteScopeForMeasuredRun(fixture: PerfFixture, runId: string): { files: number; lines: number } {
   const row = fixture.runDetail.projection.runFold(runId);
   const authority = fixture.runDetail.authority.getRun(runId);
@@ -342,14 +276,7 @@ function rejectedSpanScopeForMeasuredRun(fixture: PerfFixture, runId: string): {
 
 /* ── the self-check (finding 1) ──────────────────────────────────────────── */
 
-/**
- * The counting window's own precondition: it must observe a statement it
- * knows was executed, BEFORE this harness reports any count taken through it.
- * A bypassed `DatabaseSync.prototype.prepare` patch (a future Node routing
- * statements a different way, a runtime that freezes the prototype) would
- * otherwise print `sqliteStatements 0` for every row below — a check that
- * cannot fail, and exactly the kind this repository bans.
- */
+
 function selfCheckStatementCounter(fixture: PerfFixture): void {
   assertStatementCounterObserves({
     prepareProbe: () => {
@@ -398,10 +325,7 @@ function measure(fixture: PerfFixture, iterations: number): Report["measurements
       + `${String(PERF_FIXTURE_PROFILE.dayRunCount)}; every number below would be about a different day`,
     );
   }
-  // The day-wire path is the one this section leads with (P2/P4) — assert its
-  // own counter directly, not only through the shared self-check probe, so a
-  // regression specific to THIS call site cannot hide behind a passing probe
-  // taken on a different query.
+
   if (dayWireCount.count.statements === 0) {
     throw new Error(
       "the SQLite statement counter observed 0 statements while building the day wire; a bypassed "
@@ -432,7 +356,7 @@ function measure(fixture: PerfFixture, iterations: number): Report["measurements
   }
   if (logsSection.payload.notes.length === 0) {
     throw new Error(
-      `run ${measuredRun} served an empty logs page; the P3 scan would be timed over a run with no `
+      `run ${measuredRun} served an empty logs page; the logs scan would be timed over a run with no `
       + "notes, which is not the read the finding is about",
     );
   }
@@ -475,10 +399,7 @@ function measure(fixture: PerfFixture, iterations: number): Report["measurements
       auditFinding: "P1",
       timing: patchTiming,
       counters: {
-        // A fixture fact (how many rows the seeded day wire holds), not an
-        // observation of how many rows `applyDashboardDayPatch` revalidated —
-        // it would print the same 1,240 after D4 scopes the patch, unlike
-        // `dayWireSchemaParses` below, which really is counted per call.
+
         rowsAvailable: wire.queueSurfaces.length,
         dayWireSchemaParses: patchParses.parses,
       },
@@ -493,15 +414,7 @@ function measure(fixture: PerfFixture, iterations: number): Report["measurements
       timing: logsTiming,
       counters: {
         notesServed: logsSection.payload.notes.length,
-        // The corpus's SIZE (a fixture fact from `noteCorpus`, taken independently
-        // of the timed call), not an in-process OBSERVATION of what
-        // `noteLinesForRun` actually read — Node snapshots ESM named imports of
-        // `node:fs`, so there is no seam to wrap the reader through the way
-        // `countSqliteStatements` wraps `DatabaseSync.prototype.prepare`. As long
-        // as `noteLinesForRun` stays unscoped (true of this commit — read the
-        // source, not this counter, to re-confirm) these equal what it reads; once
-        // D5 scopes the reader they would print the same numbers regardless, which
-        // is exactly why they are named `…Available` and not `…Scanned`/`…Read`.
+
         corpusLinesAvailable: corpus.lines,
         corpusBytesAvailable: corpus.bytes,
         corpusFilesAvailable: corpus.files,

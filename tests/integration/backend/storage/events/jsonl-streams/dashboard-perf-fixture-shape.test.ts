@@ -1,17 +1,4 @@
-/**
- * The §7.4 measurement fixture produces the shape it DECLARES.
- *
- * `npm run perf:dashboard` prints numbers, and a number is only meaningful if
- * everybody agrees what it is a number of. This suite is the agreement: it
- * seeds the real fixture once and asserts, against the production day wire and
- * the production span fold, that the world really is 1,240 rows on one day with
- * a 108-member operation and a ≥20,000-line note corpus. A seeder that quietly
- * shrank would otherwise make a baseline look like an improvement.
- *
- * It is deliberately a SHAPE test and not a timing test — this lane runs in the
- * ordinary unit project on shared CI-shaped hardware, where a duration
- * assertion would be flaky and would say nothing about the code under it.
- */
+
 import assert from "node:assert/strict";
 import { afterAll, beforeAll, describe, it } from "vitest";
 import { readEventStreamLines } from "../../../../../../src/backend/storage/events/jsonl-streams.js";
@@ -26,14 +13,7 @@ import {
   type PerfFixture,
 } from "../../../../../perf/dashboard-fixture.js";
 
-// The fixture buckets rows by `localDatePart`, which reads the HOST timezone
-// (`Date#getFullYear`/`getMonth`/`getDate`). Its instants are minted at
-// `09:00-07:00` on `PERF_FIXTURE_PROFILE.day`, so a host west of roughly
-// UTC-9 or east of UTC+7 would land some seeded rows on the neighbouring
-// calendar date and this suite's exact row counts would fail on that
-// machine alone. Pin the same `TZ=UTC` the `perf:dashboard` script pins, so
-// the day boundary this test asserts is a property of the fixture, not of
-// whoever's laptop runs it.
+// The fixture uses host-local dates; align its instants with the measurement timezone.
 process.env.TZ = "UTC";
 
 let fixture: PerfFixture;
@@ -90,8 +70,7 @@ describe("the §7.4 dashboard perf fixture", () => {
     const members = wire.queueSurfaces.filter((surface) => surface.surfaceKind === "member");
     assert.equal(members.length, PERF_FIXTURE_PROFILE.operationMemberCount);
 
-    // The fold, not the wire: `#memberPreview` walks THIS list, so it is the
-    // list the P2 measurement is a measurement of.
+
     const fold = fixture.projection.runFold(fixture.runIds.operationRun);
     assert.notEqual(fold, undefined);
     assert.equal(fold?.memberRunIds.length, PERF_FIXTURE_PROFILE.operationMemberCount);
@@ -125,8 +104,7 @@ describe("the §7.4 dashboard perf fixture", () => {
     }
     assert.equal(fixture.seeded.receiptCount, PERF_FIXTURE_PROFILE.receiptRunCount);
 
-    // D141: both `#warningVerdict` arms must be on ONE wire, or the P4 double
-    // receipt read would be measured over a day where the lookup always missed.
+
     const done = wire.queueSurfaces.filter((surface) => surface.status === "done");
     assert.ok(done.some((surface) => surface.facts.state === "present"));
     assert.ok(done.some((surface) => surface.facts.state === "absent"));

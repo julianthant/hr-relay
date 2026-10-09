@@ -115,7 +115,7 @@ function conversion(path: string) {
   finally { raw.close(); }
 }
 
-describe("C P2/P3/P4 historical completion conversion", () => {
+describe("historical completion conversion", () => {
   for (const [kind, schemaVersion] of [["success", 39], ["failure", 39], ["success", 40], ["failure", 40]] as const) {
     it(`${kind} ${String(schemaVersion)} → retained 46: expiry, supported conversion, lost acknowledgement replay, archive identity, restore and no-write repeat`, async () => {
       const f = fixture(kind, schemaVersion);
@@ -210,7 +210,7 @@ describe("C P2/P3/P4 historical completion conversion", () => {
     });
   }
 
-  it("P3 preserves active, queued, requeued, cancelled and interrupted rows without inventing completion", () => {
+  it("preserves active, queued, requeued, cancelled and interrupted rows without inventing completion", () => {
     const f = fixture("success");
     const raw = new DatabaseSync(f.path);
     const original = f.saved.rows.workflow_runs?.[0]; assert.ok(original);
@@ -249,7 +249,7 @@ describe("C P2/P3/P4 historical completion conversion", () => {
   });
 
   for (const fault of ["missing-authorization", "missing-result", "changed-outbox", "changed-claim", "unaccounted-version", "missing-failure"] as const) {
-    it(`P3 refuses ${fault} atomically with source bytes retained`, () => {
+    it(` refuses ${fault} atomically with source bytes retained`, () => {
       const f = fixture(fault === "missing-failure" ? "failure" : "success");
       const raw = new DatabaseSync(f.path); raw.exec("PRAGMA foreign_keys=OFF");
       if (fault === "missing-authorization") raw.exec("DELETE FROM run_terminal_authorizations");
@@ -264,7 +264,7 @@ describe("C P2/P3/P4 historical completion conversion", () => {
     });
   }
 
-  it("P3 preserves projected historical receipt bytes and P6 current schemas refuse fabricated/missing completion", () => {
+  it("preserves projected historical receipt bytes and current schemas refuse fabricated or missing completion", () => {
     const f = fixture("success"); const raw = new DatabaseSync(f.path);
     const projected = { state: "projected", projectedAt: "2026-08-01T00:00:00.000Z", projectionFingerprint: "a".repeat(64) };
     raw.prepare("UPDATE run_terminal_outbox SET state='projected', record_json=json_set(record_json,'$.projection',json(?))").run(canonicalJsonStringify(projected));

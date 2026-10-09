@@ -70,9 +70,7 @@ function corruptRunConsequence(
   const path = join(roots.at(-1) ?? "", "authority.sqlite");
   const raw = new DatabaseSync(path);
   try {
-    // These fixtures model offline corruption after write-time guards have run.
-    // Removing only the monotonic trigger lets each strict record mismatch stay
-    // independent instead of forcing an unrelated version increment.
+    // Remove only the monotonic trigger to model independent offline record corruption.
     raw.exec("DROP TRIGGER tasks_monotonic_counters_update; DROP TRIGGER workflow_runs_completion_update; DROP TRIGGER workflow_runs_completion_immutable");
     const row = raw.prepare("SELECT record_json FROM workflow_runs WHERE record_key = ?")
       .get(RUN_ID) as { record_json: string } | undefined;
@@ -660,7 +658,7 @@ describe("atomic success terminal authority", () => {
 });
 
 
-describe("C P2 public settlement write boundaries", () => {
+describe("public settlement write boundaries", () => {
   for (const kind of ["success", "failure"] as const) {
     for (const table of [kind === "success" ? "run_results" : "run_failures", "workflow_runs", "timeline_events", "commands", "command_audits"]) {
       it(`${kind} rolls back completion, consequence, timeline and journal after ${table} write`, () => {

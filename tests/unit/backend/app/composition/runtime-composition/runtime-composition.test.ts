@@ -19,11 +19,7 @@ interface SignalSeamFake {
   readonly counts: { subscriptions: number; disposals: number };
 }
 
-/**
- * The injected shutdown seam. It records subscription and disposal counts so a
- * test can prove the listeners outlive `stop()` (a second signal DURING a stop
- * must be absorbed, not fall through to Node's default terminate).
- */
+
 function signalSeamFake(): SignalSeamFake {
   const handlers: ((signal: "SIGINT" | "SIGTERM") => void)[] = [];
   const counts = { subscriptions: 0, disposals: 0 };
@@ -44,11 +40,7 @@ function signalSeamFake(): SignalSeamFake {
   };
 }
 
-/**
- * The real-`process` signal tests observe exact listener counts, so a handler
- * the runner itself registered would make those counts unreadable. Fail loud
- * rather than measure against a moving baseline.
- */
+// Use an injected signal seam when observing real-process listener counts.
 function assertNoProcessSignalListeners(): void {
   assert.equal(
     process.listenerCount("SIGINT"),
@@ -75,12 +67,7 @@ describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
       browserSessionNamespace: "hrauto-rebuild",
     });
     assert.match(runtimeHelp(rebuildRuntimeIsolation), /1g-spine/);
-    // The transaction proof (D135) and tail 2g (D134–D145) completed
-    // 2026-08-04; the marker advanced with the first 2h-A slice (D160) and
-    // again at 2j, which CLOSED Phase 2 (D181–D189). `active` names the PHASE,
-    // not a workflow: ref workflow-model §1.6.2 governs admission while the operator picks
-    // which one starts, so a workflow id here would be the runtime asserting a
-    // decision it does not own.
+
     assert.match(
       runtimeHelp(rebuildRuntimeIsolation),
       /complete through 2j; active 3-workflow-migration/,
@@ -477,19 +464,7 @@ describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
     assert.equal(signals.counts.disposals, 1, "a failed stop still removes its signal listeners");
   });
 
-  /**
-   * The PRODUCTION signal seam, exercised with no injected `signals`. An
-   * injected fake proves the branch's ordering but cannot see which `process`
-   * registration `processShutdownSignals` actually makes: with
-   * `process.once`, the first signal removes its own listener, and a signal
-   * with ZERO listeners falls back to Node's default disposition — so a second
-   * Ctrl+C during a long drain kills the process mid-`stop()`, abandoning the
-   * authority handle and leaving the lock at `releasedAt: null`.
-   *
-   * Both tests assert a clean listener baseline first, and both clear the
-   * signal listeners in `finally`, so a failing assertion cannot leak a handler
-   * into another test in this process.
-   */
+
   it("keeps the real SIGINT listener subscribed across the drain and absorbs a second Ctrl+C", async () => {
     assertNoProcessSignalListeners();
     let stops = 0;
@@ -594,9 +569,7 @@ describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
   });
 
   it("falls back to the real process argv and stdout writer the entrypoint relies on", async () => {
-    // `src/cli.ts` calls `startRebuildRuntime` with neither `args` nor
-    // `write`, so both defaults ARE the production path — they must be
-    // exercised here or the only executed CLI surface would be the injected one.
+
     const written: string[] = [];
     const originalWrite = process.stdout.write.bind(process.stdout);
     const originalArgv = process.argv;

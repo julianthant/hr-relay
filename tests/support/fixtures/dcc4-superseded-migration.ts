@@ -1,9 +1,4 @@
-/**
- * Exact source-lineage bytes from DCC4 commit 68386456 migration v19.
- * D290 supersedes this suffix: it is never part of the integrated registry,
- * but remains executable here so open-time refusal is proven against the
- * actual divergent schema rather than a synthetic version-number stub.
- */
+// Keep the divergent migration statements exact; they probe refusal of a real incompatible schema.
 export const DCC4_SUPERSEDED_V19_MIGRATION = Object.freeze({
   version: 19,
   statements: Object.freeze([

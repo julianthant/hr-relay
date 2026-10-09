@@ -1,7 +1,7 @@
 import { RuntimeAdmission } from "../../../../../../src/backend/storage/admission/admission.js";
 import { historicalArchiveAuthority } from "../../../../../support/helpers/integration/historical-archive-authority.js";
 import { sqliteRunReader } from "../../../../../support/helpers/canonical-run-reader.js";
-/** DCA4: the real HTTP boundary over an immutable test archive repository. */
+
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -72,11 +72,7 @@ function recordWithTile(
   return ArchivedRunRecordSchema.parse({ ...content, contentDigest: archivedRunContentDigest(content) });
 }
 
-/**
- * Seal deliberately malformed boundary data without invoking an archive schema.
- * Otherwise the fixture throws before production sees it, or an old digest
- * rejects it for a different reason than the schema restriction under test.
- */
+// Seal malformed data without parsing it first so the production boundary receives the corruption.
 function rawArchiveContentDigest(content: unknown): string {
   return createHash("sha256")
     .update(`hrauto:archived-run:v1\0${canonicalJsonStringify(content)}`)
@@ -217,7 +213,7 @@ async function assertError(response: Response, status: number, code: string) {
   return error;
 }
 
-describe("DCA4 exact archived capture routes", () => {
+describe("exact archived capture routes", () => {
   it("serves exact Archive bytes through the production reader and real node HTTP adapter", async () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-archive-reader-http-"));
     cleanups.push(() => rmSync(root, { recursive: true, force: true }));
@@ -446,7 +442,7 @@ describe("DCA4 exact archived capture routes", () => {
       it("rejects an active document media type from a malformed repository result before byte open", async () => {
         const { contentDigest: projectedDigest, ...content } = recordWithTile();
         assert.equal(archivedRunContentDigest(content), projectedDigest);
-        // Prove the historical raw seal is accepted before changing only MIME.
+
         const originalDigest = rawArchiveContentDigest(content);
         const valid = fixture({ lookup: () => ({ ...content, contentDigest: originalDigest }) });
         assert.equal((await valid.app.request(url)).status, 200);

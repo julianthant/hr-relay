@@ -6,10 +6,7 @@ export interface QueueAuthorityServer extends SeededServer {
   readonly authority: () => AuthorityDatabase;
 }
 
-/**
- * Real SQLite authority server for queue commands, live deletion,
- * stream convergence, and desktop parity proof (S6, P5).
- */
+
 export async function startQueueAuthorityServer(
   options: { distDir?: string; bundle?: ParityBundleProof } = {},
 ): Promise<QueueAuthorityServer> {

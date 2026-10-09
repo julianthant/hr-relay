@@ -1,9 +1,4 @@
-/**
- * D324: the host's primary display probe. The OS tools are injected; what is
- * proved is the parser discipline — a recognized answer becomes a detected
- * logical resolution, a host without a display is `unavailable`, and any
- * unrecognized shape is a thrown error naming the tool, never a guess.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { probePrimaryDisplay, type HostCommandRunner } from "../../../../../../src/backend/app/host/primary-display.js";
@@ -24,7 +19,7 @@ function runner(answers: Readonly<Record<string, string | Error>>): HostCommandR
   };
 }
 
-describe("primary display probe (D324)", () => {
+describe("primary display probe", () => {
   it("reads the macOS main display's LOGICAL resolution, not its backing pixels", () => {
     const observation = probePrimaryDisplay("darwin", runner({ system_profiler: darwinReport([EXTERNAL, MAIN_LCD]) }));
     assert.deepEqual(observation, { state: "detected", screenWidth: 1512, screenHeight: 982, source: "system_profiler" });

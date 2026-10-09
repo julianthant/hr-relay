@@ -1,22 +1,4 @@
-/**
- * Item 1e's real-scale type-inference proof (doc 01 §"Item 1e begins
- * with a new real-scale type-inference proof").
- *
- * This file compiles a representative 21-node graph exercising every builder
- * transform — read steps, a prepare/commit transaction pair, an output-dependent
- * branch, fork/join, typed child runs at both cardinalities and both await
- * modes, operator/children/external gates, decorations, and a terminal result —
- * and pins the negative controls that would otherwise let a transform silently
- * collapse to a top type.
- *
- * The controls matter as much as the graph: `@ts-expect-error` fails the build
- * when the error it expects STOPS happening, so a transform that erodes to
- * `any`/`unknown`/`RuntimeFlowNode` fails this proof itself rather than passing
- * it vacuously. `tests/integration/backend/flow-type-budget/flow-type-budget.test.ts` records the compile cost.
- *
- * The D71 disposable 40-node simplified chain is a feasibility floor, not a
- * substitute — this file uses the REAL contract factory and the REAL builder.
- */
+// The real-scale graph pins builder inference and negative controls; an expected compiler error must remain an error.
 import { z } from "zod";
 import { flow } from "../../src/workflow-kit/flow.js";
 import type { NodeEntry, OutputsOf } from "../../src/workflow-kit/flow.js";
@@ -449,11 +431,7 @@ export function assertConcreteOutputs(
 
 /* ── NEGATIVE controls — each must keep failing ──────────────────────────── */
 
-/*
- * Every expression below is deliberately ill-typed, so TypeScript gives it the
- * error type and the `no-unsafe-*` rules fire on the very thing the control is
- * asserting. The file contains no runtime behaviour — it is compiled, never run.
- */
+
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
 
 const negatives = flow(WORKFLOW_INPUT)

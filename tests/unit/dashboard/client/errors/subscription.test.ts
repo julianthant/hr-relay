@@ -1,18 +1,4 @@
-/**
- * The dashboard-day subscription's two protocol duties that no fold can hold:
- * a cursor it has already seen changes nothing, and a stream failure it cannot
- * retry stops LOUDLY instead of reconnecting forever.
- *
- * Both are only visible at this seam. `day-state.ts` decides what a patch does
- * to a held day; it cannot see that the patch is a replay. `transport.ts`
- * decides how a stream ends; it cannot see what the subscription then does with
- * that ending. So the fake transport below hands the test the two levers the
- * real one has — push an envelope, settle `done` — and every assertion is about
- * what `subscribeDashboardDay` did with them: how many days reached `onDay`,
- * which state reached `onState`, and whether another stream was opened at all.
- *
- * ref frontend-backend-integration §3.5.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { DashboardClientError } from "../../../../../src/dashboard/client/errors.js";
@@ -246,9 +232,7 @@ describe("dashboard day subscription — cursor idempotence", () => {
     assert.equal(h.days.length, 2);
     assert.equal(h.days[1].queueSurfaces.length, 0);
 
-    // A replay of the SAME removal: `applyDashboardDayPatch` would throw a
-    // protocol error for a run the day no longer holds, and the subscription
-    // would answer it by throwing the whole day away and resnapshotting.
+
     h.streams[0].push(removePatch("pc:2", 2));
     assert.equal(h.days.length, 2);
     assert.equal(h.streams.length, 1);
@@ -266,14 +250,7 @@ describe("dashboard day subscription — cursor idempotence", () => {
   });
 
   it("applies a snapshot at the HELD cursor, because one projection batch stamps both", () => {
-    // `#notify` stamps EVERY change of one batch with the SAME cursor, and a
-    // count-neutral member change followed by a count-bearing one yields
-    // `patch pc:N` then `snapshot pc:N`. The snapshot is the authoritative
-    // whole-day payload for that cursor: worker cards, pools and the count
-    // rollups only move on the snapshot, so dropping it as a "duplicate"
-    // leaves them stale behind a Live dot with no envelope left to correct
-    // them. Re-applying an equal-cursor snapshot is idempotent by
-    // construction — it REPLACES the day rather than editing it.
+
     const h = liveAtCursorTwo();
     h.streams[0].push(snapshotEnvelope("pc:2", [surfaceOf(9)]));
     assert.equal(h.days.length, 3);
@@ -315,13 +292,7 @@ describe("dashboard day subscription — cursor idempotence", () => {
     h.streams[0].push(replacePatch("pc:4", 4));
     assert.deepEqual(h.scheduled, [0]);
 
-    // `resnapshot` CLOSED that stream, and the transport resolves an aborted
-    // stream's `done` with exactly the value a server-side EOF settles it with
-    // (`transport.ts`: the abort arm returns rather than throwing). So the old
-    // stream's settlement arrives one microtask later, and it belongs to a
-    // stream this subscription has already replaced: it must schedule nothing
-    // and must report nothing, or the state flaps `connecting → reconnecting`
-    // and the resnapshot the gap demanded is replaced by a resume.
+
     await tick();
     assert.deepEqual(h.scheduled, [0]);
     assert.deepEqual(h.states.map(({ state }) => state), ["connecting", "connecting"]);
@@ -334,9 +305,7 @@ describe("dashboard day subscription — cursor idempotence", () => {
 
   it("applies a REPLACEMENT generation's first snapshot even at a lower cursor", () => {
     const h = liveAtCursorTwo();
-    // The hub restarted: a new projection generation numbers its cursors from
-    // scratch, and hello is what says so. Without its clear, the guard above
-    // would ignore the new generation's whole history.
+
     h.streams[0].push(hello("pc:1", 8));
     h.streams[0].push(snapshotEnvelope("pc:1", [surfaceOf(5)]));
     assert.equal(h.days.length, 3);
@@ -359,12 +328,7 @@ describe("dashboard day subscription — stream failure classification", () => {
   });
 
   it("resumes and absorbs the REPLAYED envelope for free — the whole point of the cursor guard", async () => {
-    // The motivating case, end to end. The held state came from a REMOVAL, so
-    // its replay is the envelope `applyDashboardDayPatch` refuses by name: a
-    // run the day no longer holds. If anything let it through — the guard, or a
-    // hello that cleared cursor authority on a SAME-generation handshake — the
-    // protocol failure would resnapshot, and a correct resume would cost a full
-    // day payload every single time.
+
     const h = subscribe();
     h.streams[0].push(hello("pc:1"));
     h.streams[0].push(snapshotEnvelope("pc:1", [surfaceOf(1)]));
@@ -389,9 +353,7 @@ describe("dashboard day subscription — stream failure classification", () => {
     assert.deepEqual(h.scheduled, [1000]);
     assert.deepEqual(h.states.at(-1), { state: "reconnecting" });
 
-    // And the stream is live: the NEXT cursor still applies. (A snapshot, not
-    // a replace patch — the run this day held was REMOVED, so a replace naming
-    // it is the protocol failure the removal case above is about.)
+
     h.streams[1].push(snapshotEnvelope("pc:3", [surfaceOf(3)]));
     assert.equal(h.days.length, 3);
     assert.equal(h.days[2].queueSurfaces[0].rowRevision, 3);
@@ -416,9 +378,7 @@ describe("dashboard day subscription — stream failure classification", () => {
 
   it("STOPS on an HTTP stream failure, even one the server calls retryable", async () => {
     const h = liveAtCursorTwo();
-    // `retryable` is the SERVER's hint about re-issuing one request; it is not
-    // a claim that reopening this stream will ever succeed. Honouring it here
-    // is how a 503 becomes an endless reconnect loop nothing on screen reports.
+
     const error = new DashboardClientError({
       kind: "http",
       status: 503,

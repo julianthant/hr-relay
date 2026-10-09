@@ -1,19 +1,4 @@
-/**
- * The identity-approval gate run-detail section (ref write-safety §14.4; separations §3's
- * chunk-3 directive, "a command arm plus wire state ONLY").
- *
- * The approval UI is a later slice, so what this suite pins is the whole SERVER
- * half a frontend will bind to without any further server change: the section is
- * advertised exactly when a run is parked on a gate, the packet it serves is the
- * one authority stored rather than one this query composed, the schema hash it
- * publishes is the exact value the command kernel will demand, and every way the
- * composition can fail to describe the gate is a `missing` with a reason instead
- * of a half panel an operator could act on.
- *
- * The last property is the one that matters most. A gate section is the surface
- * on which somebody authorises a real termination against a named human; a panel
- * that renders with the evidence quietly absent is strictly worse than no panel.
- */
+
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { CommandRequestSchema } from "../../../../../../src/rules/commands/commands.js";
@@ -254,8 +239,7 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
     seed(w);
     const detail = buildRunDetail(depsOf(w), RUN_ID);
     assert.ok(detail.availableSections.includes("identity-gate"));
-    // The coarse queue status stays what it already was; the section is what
-    // makes the decision addressable.
+
     assert.equal(detail.header.status, "awaiting-approval");
 
     const queued = world();
@@ -293,9 +277,7 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
     if (payload.state !== "available") throw new Error("unreachable");
     assert.equal(payload.value.resultSchemaHash, RESULT_SCHEMA_HASH);
 
-    // And a command built straight off this payload parses through the kernel's
-    // own request schema unchanged — which is what "no further server change"
-    // means for the approval surface.
+
     const command = CommandRequestSchema.parse({
       commandId: uuidOf(31),
       family: "gate",
@@ -353,18 +335,7 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
     assert.equal(approve?.kind === "command" ? approve.confirm?.tone : undefined, "destructive");
   });
 
-  /**
-   * The parity corpus's adapter #1 AUTHORS this section — it holds no authority
-   * rows to derive one from — so its option mapping and its two `resolve-gate`
-   * descriptors are a COPY of the ones this query builds. A copy nobody
-   * compares is a reference that documents last month's copy.
-   *
-   * The comparison is EXACT rather than normalized, because it can be: the
-   * server is seeded with the fixture's own packet, so every interpolated name,
-   * document number and disagreement list is the same on both sides. Only the
-   * run version differs, and the fixture's copy is asked for the one the query
-   * served rather than pinned to a seed.
-   */
+
   it("pins the parity fixture's gate descriptors and option labels to this query's", () => {
     for (const fixture of [FIXTURE_IDENTITY_GATE, FIXTURE_IDENTITY_GATE_TYPED_EID]) {
       const w = world();
@@ -427,8 +398,7 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
     assert.equal(missingLink.state, "missing");
     assert.match(missingLink.state === "missing" ? missingLink.reason : "", /0 of them hold an identity decision packet/);
 
-    // (d) a current-looking checkpoint whose implementation binding no longer
-    //     matches the registered task cannot supply the gate's decision packet.
+
     const changedBinding = world();
     seed(changedBinding);
     const altered = RunCheckpointRecordSchema.parse({

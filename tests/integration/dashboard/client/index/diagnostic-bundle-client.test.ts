@@ -1,4 +1,4 @@
-/** E29's exact-id route/client/download contract over the deterministic production fixture. */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { createDashboardClient, DashboardClientError } from "../../../../../src/dashboard/client/index.js";
@@ -18,7 +18,7 @@ function fixtureClient() {
   });
 }
 
-describe("E29 diagnostic bundle client and fixture route", () => {
+describe("diagnostic bundle client and fixture route", () => {
   it("forwards an optional diagnostic read signal without adding one to ordinary reads", async () => {
     const supplied = new AbortController();
     const observed: (AbortSignal | null | undefined)[] = [];

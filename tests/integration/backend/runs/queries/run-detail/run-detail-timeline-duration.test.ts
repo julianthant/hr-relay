@@ -1,17 +1,4 @@
-/**
- * Per-step durations on the run-detail timeline (ref dashboard-surfaces §1.1 span identity;
- * `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/findings/archive.md` "Per-step durations in the archived timeline").
- *
- * The measurement is the executor's OWN pair of instants for one span —
- * `span.ended` minus `span.started` at the same `(attempt, spanPath)` — and
- * the whole point of these cases is that it is NOT the gap between adjacent
- * timeline events. The two agree only when nothing sits between two steps, so
- * every case here puts something between them.
- *
- * The absence arms carry as much weight as the present one: a step still
- * running, a step whose start never reached the fold, a gate, and two instants
- * that disagree are four different facts, and none of them is zero.
- */
+
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { buildRunDetail } from "../../../../../../src/backend/runs/queries/run-detail.js";
@@ -69,10 +56,7 @@ describe("a timeline event's own measured duration", () => {
     seedRun(w);
     const ts = (): string => w.clock.now().toISOString();
 
-    // A 2s read, then FIVE MINUTES of the worker doing something else, then a
-    // 3s read. Differencing consecutive events would report the first step as
-    // 5m 2s — a real number about the wrong thing, and the exact defect this
-    // leaf exists to close.
+
     w.writer.emit({ ...spanBase(1, "ucpath-person"), t: "span.started", ts: ts(), name: "ucpath-person" });
     w.clock.advanceWall(2_000);
     w.writer.emit({ ...spanBase(1, "ucpath-person"), t: "span.ended", ts: ts(), outcome: "done" });
@@ -99,8 +83,7 @@ describe("a timeline event's own measured duration", () => {
     const event = detailOf(w).timeline.events.find((candidate) => candidate.label === "ucpath-person");
     const measured = timelineEventDuration({ durationMs: event?.durationMs });
     assert.equal(measured.state, "absent");
-    // Never `now − startedAt`: an unfinished step has no duration, and the
-    // running clock is a different fact (D124's queue-row lesson, one level in).
+    // Unfinished steps have no measured duration; their running clock is a separate fact.
     assert.match(measured.state === "absent" ? measured.reason : "", /has not ended/);
   });
 
@@ -141,9 +124,7 @@ describe("a timeline event's own measured duration", () => {
 
     const events = detailOf(w).timeline.events;
     assert.equal(events.length > 0, true);
-    // The leaf is optional ONLY so a pre-D133 archived record parses. A LIVE
-    // detail that omitted it would make "not measured" indistinguishable from
-    // "frozen before the measurement existed".
+    // Optional duration fields admit archived bytes; live details must declare measured or unmeasured.
     for (const event of events) {
       assert.notEqual(event.durationMs, undefined, `${event.label} carries no duration leaf`);
     }
@@ -173,8 +154,7 @@ describe("a timeline event's own measured duration", () => {
   });
 
   it("reads a FROZEN record with no duration leaf forward, by name", () => {
-    // The D133 arm: an archived `RunDetailWire` written before the leaf
-    // existed. Nothing back-fills it — a duration nobody measured is not zero.
+
     const measured = timelineEventDuration({});
     assert.equal(measured.state, "absent");
     assert.match(measured.state === "absent" ? measured.reason : "", /frozen before per-step durations/);

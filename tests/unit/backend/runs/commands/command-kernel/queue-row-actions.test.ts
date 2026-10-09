@@ -1,15 +1,4 @@
-/**
- * The per-row action projection (ref dashboard-surfaces §2.4, ref frontend-backend-integration §3.2/§8.5).
- *
- * The load-bearing arm here is the LAST one. A queue row's controls are the one
- * place in this product where a projection decides what an operator may do to a
- * real HR run, and the failure mode a unit test can catch is a descriptor that
- * looks perfectly well-formed and names a command nothing behind it accepts —
- * a button that 422s, or worse, one whose verb the kernel does not implement at
- * all. So every served descriptor is walked all the way to a `CommandRequest`
- * the kernel's own union parses, and the check is run against a synthesized
- * violation so it cannot be a check that has never been observed to fail.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { z } from "zod";
@@ -112,25 +101,15 @@ function surfaceFor(status: Status, over: Partial<QueueRowActionFacts> = {}): un
 }
 
 describe("queue-row action descriptors — the per-status set", () => {
-  /**
-   * Every status, stated as a table rather than derived, because the point of
-   * the table is that somebody read it: the sets below ARE the contract, and a
-   * kernel precondition that moves must move a line here in the same commit.
-   */
+  // The explicit status table is an independent contract, not a derivation from the implementation.
   const EXPECTED: Readonly<Record<Status, readonly string[]>> = {
-    // `bump` needs a queued lifecycle (`executeBump`'s own refusal names it).
-    // `rename` is on EVERY status: `executePresentation` has no state
-    // precondition, so a run that has already written to UCPath can still be
-    // named — which is the whole reason a rename is safe to offer (D233).
+
     queued: ["bump", "cancel", "rename"],
     running: ["cancel", "rename"],
     cancelling: ["cancel", "rename"],
     blocked: ["cancel", "rename"],
     "awaiting-approval": ["cancel", "rename"],
-    // Terminal: nothing to cancel, nothing to bump, a re-run is possible — and
-    // since D308, the run can be DELETED. `delete` is last in `SERVED_ORDER`
-    // so its 🗑 sits at the right end of the footer, after the ✕.
-    // D335: eligible sources open Rerun; cancelled sources are not eligible.
+
     done: ["rerun", "rename", "delete"],
     failed: ["rerun", "rename", "delete"],
     cancelled: ["rename", "delete"],
@@ -149,12 +128,7 @@ describe("queue-row action descriptors — the per-status set", () => {
     }
   });
 
-  /**
-   * Ref frontend-backend-integration §1: the demo is the visual oracle, and its footer set is per status
-   * — a queued row shows `≫` and `×`, a finished row shows `↺` and `🗑`.
-   * Everything served is also at `menu`, which is what makes the right-click
-   * the row's FULL set rather than a second vocabulary.
-   */
+
   it("puts the demo's frequent commands in the footer and everything in the menu", () => {
     const placements = (status: Status): Record<string, readonly string[]> =>
       Object.fromEntries(
@@ -170,7 +144,7 @@ describe("queue-row action descriptors — the per-status set", () => {
     assert.deepEqual(placements("done"), {
       rerun: ["footer", "menu", "data"],
       rename: ["menu"],
-      // D308's 🗑, back in the footer slot D234 emptied.
+
       delete: ["footer", "menu"],
     });
     for (const status of QueueStatusSchema.options) {
@@ -183,23 +157,13 @@ describe("queue-row action descriptors — the per-status set", () => {
     }
   });
 
-  /**
-   * `executeRetry` refuses a delegated child by name ("child retries route
-   * through their delegation edge policy, not generic retry"), so a member row
-   * that drew a `↺` would be drawing a button that always refuses.
-   */
+
   it("drops Rerun for a delegated child, and keeps rename", () => {
     assert.deepEqual(keysFor("failed", { isChild: true }), ["rename"]);
     assert.deepEqual(keysFor("failed"), ["rerun", "rename", "delete"]);
   });
 
-  /**
-   * A MEMBER row loses `rename`, and it is the one narrowing in this file that
-   * is not a kernel precondition. `displayName` REPLACES the title on the row
-   * it rides, so naming a member would put free text where the group's list
-   * prints the person that item is about. A `linked` child keeps its control:
-   * it is a row read on its own, not one line of somebody's tally.
-   */
+
   it("drops rename for a delegated MEMBER, and keeps it for every other row", () => {
     assert.deepEqual(keysFor("running", { isMember: true }), ["cancel"]);
     assert.deepEqual(keysFor("running", { isChild: true }), ["cancel", "rename"]);
@@ -214,17 +178,7 @@ describe("queue-row action descriptors — the per-status set", () => {
     assert.equal(labelFor(true), "Rename run\u2026");
   });
 
-  /**
-   * D308's terminal-only 🗑, both halves.
-   *
-   * The kernel's `executeDelete` refuses a non-terminal run ("cancel it
-   * first") and refuses ANY run whose `envelope.parent` is set ("delete the
-   * group"), which the projector mirrors as `terminal && !isChild` —
-   * `isChild` being the exact projection of `envelope.parent !== undefined`.
-   * The member arm is the one that would be easy to get subtly wrong: a
-   * `linked` child is not a `member`, so an admission written against
-   * `isMember` would serve a 🗑 the kernel refuses on every click.
-   */
+
   it("never offers Archive in dashboard actions", () => {
     for (const status of QueueStatusSchema.options) {
       const archive = queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor(status)).find(action => action.key === "archive");
@@ -255,12 +209,7 @@ describe("queue-row action descriptors — the per-status set", () => {
     }
   });
 
-  /**
-   * The sentence the operator has to read before an irreversible act. It is
-   * UNCONDITIONAL: this projector knows the run is terminal, not whether it
-   * reached a fenced write, and a warning that appeared only when the row
-   * looked like it had written would be a guess about write-safety authority.
-   */
+  // The delete warning is unconditional; the projector cannot know whether a terminal run fenced a write.
   it("names the released idempotency key, the rows, and the group in the delete confirm", () => {
     const single = queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor("done"))
       .find(({ key }) => key === "delete");
@@ -301,10 +250,7 @@ describe("queue-row action descriptors — the per-status set", () => {
     assert.match(cancel.confirm?.body ?? "", /12 delegated members/);
   });
 
-  /**
-   * The one difference a rehearsal makes to a control: a dry run's re-run
-   * cannot file anything, and the dialog's tone is the last place that shows.
-   */
+
   it("opens the source-bound modal for live and rehearsal sources; blocks uncertain writes", () => {
     const real = queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor("failed"))[0];
     const rehearsal = queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor("failed", { dryRun: true }))[0];
@@ -313,14 +259,7 @@ describe("queue-row action descriptors — the per-status set", () => {
     assert.equal(real.navigate.expectedVersion, 7); assert.equal(rehearsal.navigate.expectedVersion, 7);
     assert.equal(keysFor("failed", { parkedWrite: true }).includes("rerun"), false);
 
-    /*
-     * D246: the parked-write body used to warn that cancelling "does not answer
-     * whether that transaction landed" — accurate, and short of the truth,
-     * because the cancel also made it unanswerable. The kernel refuses that
-     * cancel now, so the copy has to say the control will refuse and what to do
-     * first. The control is still SERVED: only the kernel's transaction can see
-     * whether the intent is still unresolved when the command lands.
-     */
+
     const parked = queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor("blocked", { parkedWrite: true }))[0];
     assert.ok(parked?.kind === "command" && parked.command === "cancel");
     assert.match(parked.confirm?.body ?? "", /outcome is UNKNOWN/);
@@ -328,12 +267,7 @@ describe("queue-row action descriptors — the per-status set", () => {
     assert.match(parked.confirm?.body ?? "", /present or absent/);
   });
 
-  /**
-   * A workflow this build cannot describe gets no controls. Guessing a default
-   * set onto a run whose descriptor is not registered would be inventing a
-   * policy the workflow never declared — the same refusal `#pipeline` makes
-   * when it serves only observed nodes.
-   */
+
   it("serves nothing for a workflow with no registered descriptor", () => {
     assert.deepEqual(queueRowActions(undefined, factsFor("queued")), []);
   });
@@ -348,9 +282,7 @@ describe("queue-row action descriptors — the per-status set", () => {
       queueRowActions(policy, factsFor(status)).map(({ key }) => key);
     assert.deepEqual(keys("awaiting-approval"), ["cancel", "rename"]);
     assert.deepEqual(keys("running"), ["rename"], "a condition that does not hold must remove the action");
-    // The projection cannot add an action a descriptor never declared, and the
-    // narrowing runs both ways: enabling something the projection never serves
-    // cannot conjure it either.
+
     const wide = WorkflowActionPolicySchema.parse({
       enabled: ["retry", "cancel", "bump", "rename", "edit-checkpoint", "open-review", "open-evidence"],
     });
@@ -362,12 +294,7 @@ describe("queue-row action descriptors — the per-status set", () => {
 });
 
 describe("queue-row action descriptors — the CAS binding", () => {
-  /**
-   * Ref frontend-backend-integration §3.2: the row carries "a monotonic `rowRevision` used by commands
-   * and patches". A descriptor is the thing that CARRIES that revision to the
-   * command, so a projection that stamped anything else would produce controls
-   * that conflict on click for a reason the operator cannot see.
-   */
+
   it("binds every served descriptor to the row's own revision", () => {
     for (const status of QueueStatusSchema.options) {
       for (const revision of [1, 7, 4096]) {
@@ -424,14 +351,7 @@ describe("queue-row action descriptors — every served verb has a command behin
     }
   });
 
-  /**
-   * The whole path, not just the vocabulary: a served descriptor must compose
-   * into an envelope `CommandRequestSchema` parses. This is what proves the
-   * control is reachable rather than merely well-named — `command-dispatch.ts`
-   * is exhaustive over the served vocabulary and REFUSES the verbs whose
-   * payloads it cannot compose from served facts, so a projection that started
-   * serving one of those would fail here rather than on the operator's click.
-   */
+
   it("composes every served descriptor into a request the kernel's own union parses", () => {
     for (const action of served) {
       if (action.kind === "navigation") {
@@ -446,9 +366,7 @@ describe("queue-row action descriptors — every served verb has a command behin
         {
           actorId: "local-operator",
           source: "queue",
-          // The one served verb carrying a value only a human authors (D233).
-          // Supplying it here is what makes this a composition test rather
-          // than a re-assertion of the refusal the next case owns.
+
           renameAnswer: "Friday exception pack",
         },
       );
@@ -462,13 +380,7 @@ describe("queue-row action descriptors — every served verb has a command behin
     }
   });
 
-  /**
-   * D233's refusal, through the same entry point. A `rename` descriptor can
-   * reach the generic dispatcher — from the row's context menu, if a surface
-   * forgets to intercept it — and the only honest answer there is a refusal:
-   * a name this composer chose would be a value nobody authored landing on a
-   * run record, which is the substitution the gate's own arms already refuse.
-   */
+
   it("refuses a rename with no name, and one the display-name schema would reject", () => {
     const rename = served.find((action) => action.kind === "command" && action.command === "rename");
     assert.ok(rename?.kind === "command", "the projection served no rename to test");
@@ -509,20 +421,7 @@ describe("queue-row action descriptors — every served verb has a command behin
     assert.equal(parsed.data.target.expectedVersion, rename.expectedVersion);
   });
 
-  /**
-   * The negative control, through the SAME entry point. A check that has never
-   * been observed to fail is indistinguishable from one that cannot — and the
-   * verbs below are exactly the ones a future projection would be tempted to
-   * serve from a row: the two write resolutions are answered by the
-   * parked-write dialog, which is the only surface that can carry the evidence
-   * note, and `edit-checkpoint` is answered by the Data section that composes
-   * its patches.
-   *
-   * `unhide` used to lead this list, exempted because no queue row could exist
-   * for a hidden run. D234 retired it along with `hide`, so the exemption is
-   * gone rather than restated: there are runs and archived runs, and every run
-   * this projection folds gets a row.
-   */
+
   it("catches a synthesized descriptor whose verb this path cannot send", () => {
     const unreachable = ["edit-checkpoint", "resolve-write-present", "resolve-write-absent"] as const;
     for (const command of unreachable) {
@@ -531,16 +430,13 @@ describe("queue-row action descriptors — every served verb has a command behin
         `the projection serves "${command}", which this test asserts it must not`,
       );
     }
-    // D334 retires the checkpoint-save vocabulary and its row command.
+
     assert.ok(!(PHASE1_ACTIVE_COMMAND_ARMS.run as readonly string[]).includes("edit-checkpoint"));
     // (b) a verb the kernel does not implement at all must fail the vocabulary
     //     check — this is the arm that catches an invented control.
     assert.ok(!(ActionCommandKeySchema.options as readonly string[]).includes("force-done"));
     assert.ok(!(PHASE1_ACTIVE_COMMAND_ARMS.run as readonly string[]).includes("force-done"));
-    // (c) the two write resolutions are in the vocabulary AND active, and the
-    //     dispatcher still refuses them by name — so serving one from a row
-    //     would produce a control that cannot send, and this is the check that
-    //     would catch it.
+
     const refused = composeCommandRequest(
       ActionDescriptorWireSchema.parse({
         kind: "command", command: "resolve-write-absent", key: "x", label: "x",

@@ -1,36 +1,4 @@
-/**
- * Graph-level scenario coverage across the registered descriptor set (doc 01 §1c · 1d · 1e
- * item 1e; ref operator-trust §3.2).
- *
- * Task-level coverage is `defineTaskContract`'s job. What no contract can see
- * is the GRAPH: a branch arm nobody exercises, a gate nobody resolves, a
- * delegation whose declared failure policy never fires. Those paths are derived
- * from the node tuple and checked in BOTH directions — an uncovered path fails,
- * and so does a claim on a path that no longer exists, because a renamed branch
- * arm would otherwise keep a deleted path looking covered.
- *
- * `person-lookup` is four read steps and therefore derives zero graph paths;
- * that is the correct answer for it, not a pass by absence. The rule is proven
- * against `fixtureDescriptor`, whose fifteen points span every path-bearing node
- * kind.
- *
- * D185 adds the third direction, over the corpus DIRECTORY. The manifest audit
- * above is keyed on the REGISTERED set, so a `tests/scenario/*.scenario.test.ts`
- * that nothing registers — or an `it` inside a registered file naming an id
- * nobody registered — is invisible to every one of its three checks. (That was
- * not hypothetical: `person-lookup/ucpath-drill-subject-mismatch` had been
- * executing unregistered since it landed.) `auditScenarioCorpusLayout` closes
- * both directions and, with it, names the corpus's second deliberate kind: an
- * INTEGRATION WALK (`*.walk.test.ts`), which crosses slices instead of walking
- * one graph and therefore claims no coverage point and carries no manifest row.
- *
- * R10 §10.9's T2 tier is the THIRD kind — a DASHBOARD scenario at
- * `dashboard/<feature>/<name>.scenario.test.ts`, driving a feature through the
- * real projection and the real command service. It carries the walk's
- * obligations for the same reason the walk does: it walks no graph, so a
- * coverage claim or a manifest row on one would be a path nobody executed
- * counted as executed.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { DESCRIPTORS } from "../../../src/backend/app/registries/workflow-registry.js";
@@ -57,11 +25,7 @@ import type { ScenarioCorpusFile } from "../../../src/workflow-kit/validation/sc
 import { taskStoreRegistry } from "../../../src/backend/app/registries/task-registry.js";
 import { fixtureDescriptor } from "../../support/fixtures/descriptor-fixtures.js";
 
-/**
- * A synthetic full-coverage corpus, used only to exercise the audit's own
- * failure modes. The REAL corpus is `SCENARIO_COVERAGE_CLAIMS`, whose rows each
- * executable scenario in `tests/scenario/` observes as it walks its path.
- */
+
 function fullClaims(pointIds: readonly string[]): readonly ScenarioCoverageClaim[] {
   return pointIds.map((pointId, index) => ({
     scenarioId: ScenarioIdSchema.parse(`fixture-graph/point-${String(index)}`),
@@ -69,19 +33,7 @@ function fullClaims(pointIds: readonly string[]): readonly ScenarioCoverageClaim
   }));
 }
 
-/**
- * Every scenario production code references.
- *
- * Descriptors are one source; the composition root's TASK STORE REGISTRY is the
- * other, and it has to be, because a store contract can legitimately land
- * before the descriptor that will consume it — the extraction store is exactly
- * that case, and D107's `pending-impl-bindings.json` is the mirror image of it
- * (a descriptor contract with no impl yet).
- *
- * A registered store contract is production surface either way: it is in the
- * one `TASK_STORES` tuple the runtime resolves against. The orphan rule keeps
- * its teeth — a scenario referenced by NEITHER source is still dead weight.
- */
+
 function productionScenarioReferences(): readonly string[] {
   return [...new Set([
     ...[...DESCRIPTORS, ...HISTORICAL_STEP_PROOF_DESCRIPTORS].flatMap((descriptor) => [
@@ -110,13 +62,7 @@ function scenarioCorpusFiles(): readonly ScenarioCorpusFile[] {
   return [...byFile].map(([file, itTitles]) => ({ file, itTitles }));
 }
 
-/**
- * Collected scenarios are offline evidence. An EID-shaped fixture therefore
- * comes only from the reserved synthetic ranges established by R5a; a value
- * observed from a real system belongs exclusively to an uncollected T1b run.
- * Diagnostics name only source locations so an accidental identifier never
- * becomes test output of its own.
- */
+
 function nonSyntheticScenarioEidLocations(
   sources: readonly Readonly<{ file: string; source: string }>[],
 ): readonly string[] {
@@ -233,16 +179,7 @@ describe("scenario coverage", () => {
     );
   });
 
-  /**
-   * The disjointness check above walks the LIVE corpus, so it can only ever
-   * prove "the files that happen to exist today don't collide" — a real
-   * near-miss shape (a dashboard-nested walk file, a workflow-folder graph
-   * file whose suffix drifted) would stay invisible until someone happened to
-   * create one. This table is synthetic on purpose: it exercises the three
-   * patterns' full pairwise matrix (GRAPH∧DASHBOARD, WALK∧DASHBOARD,
-   * GRAPH∧WALK) against shapes chosen to be plausible near-misses, independent
-   * of whatever the corpus directory currently contains.
-   */
+
   it("keeps the three corpus file patterns pairwise disjoint over a synthetic path table", () => {
     const SYNTHETIC_PATHS: readonly string[] = [
       `${SCENARIO_ROOT}/dashboard/separations/x.scenario.test.ts`, // dashboard
@@ -271,9 +208,7 @@ describe("scenario coverage", () => {
   });
 
   it("reads an `it` title as a scenario CLAIM only when its head is a scenario id", () => {
-    // The separator is what makes "unregistered id" and "sentence" different
-    // facts. A typo stays a claim on purpose — it must fail, not be silently
-    // reclassified as prose.
+    // The separator distinguishes an unregistered id from prose explaining one.
     assert.equal(claimedScenarioId("person-lookup/not-found — the other arm"), "person-lookup/not-found");
     assert.equal(claimedScenarioId("person-lookup/typo — x"), "person-lookup/typo");
     assert.equal(claimedScenarioId("covers every point the graph derives"), undefined);
@@ -288,9 +223,7 @@ describe("scenario coverage", () => {
       ])),
       /helpers\.test\.ts is neither a graph scenario .* nor an integration walk/,
     );
-    // A dashboard scenario one folder too shallow is a stray kind, not a T2
-    // file: §10.9's path is `dashboard/<feature>/<name>.scenario.test.ts`, and
-    // a `<feature>` that is really the file name owns no feature.
+
     assert.match(
       corpusViolations(corpusWith((files) => [
         ...files,
@@ -372,8 +305,7 @@ describe("scenario coverage", () => {
       corpusViolations(corpusWith((files) => [...files, { file, itTitles: [] }])),
       /pretend\.scenario\.test\.ts declares no test/,
     );
-    // The manifest schema refuses a T2 path outright — the same rule from the
-    // other side, so a row can never point at a file that walks no graph.
+
     assert.throws(
       () => ExecutableScenarioSpecSchema.parse({ scenarioId: claimed, file }),
       /invalid_format|regex/u,

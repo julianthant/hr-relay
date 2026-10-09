@@ -1,9 +1,4 @@
-/**
- * Clean fixture for `dashboard-refresh-boundary.test.ts` — everything a surface
- * module MAY export: components (declared, wrapped, re-exported) and types. The
- * module-private hook and constant are the shape the rule asks for when a
- * surface needs them and no `-model.ts` sibling exists yet.
- */
+
 import { memo, forwardRef, useState, type ReactElement } from "react";
 
 export type SurfaceProps = { label: string };

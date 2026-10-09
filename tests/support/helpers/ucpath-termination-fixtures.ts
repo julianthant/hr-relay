@@ -1,18 +1,5 @@
 import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
-/**
- * The separations chunk-4 UCPath transaction harness.
- *
- * Same shape and same claim as the Kuali one it is modelled on: nothing here is
- * synthetic except the process edges. The contracts, the store, the driver
- * semantics, the descriptor and BOTH transaction nodes are the REGISTERED
- * production ones; only the browser (a deterministic Smart HR world), the
- * clock, the id source, the timer and the span sink are fakes. That is what
- * lets a scenario say "zero rows in `run_operations`" about the real authority
- * database rather than about a mock.
- *
- * The identity below is synthetic on purpose. The live surface was verified
- * read-only and NOTHING was ever submitted; no real EID belongs in the tree.
- */
+
 import { fixtureDuoCeremonyGates } from "./duo-ceremony-fixtures.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -344,10 +331,7 @@ export function terminationContext(
   };
 }
 
-/**
- * The durable-absence assertion the dry-run and wrong-subject proofs turn on:
- * NOTHING about this transaction exists in the authority database.
- */
+
 export function terminationDurableFootprint(
   harness: TerminationHarness,
   nodeId: string,

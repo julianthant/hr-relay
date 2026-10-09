@@ -96,9 +96,7 @@ function enqueueRun(world: SeedWorld, spec: SeedSpec): RunRecord {
     },
     lifecycle: { state: "queued" },
     claimGeneration: 0,
-    // D230: taken from the REAL counter, inside the same store production
-    // reads it from, so the seeded corpus photographs the ordinals a live day
-    // would carry rather than a hand-numbered fixture's opinion of them.
+
     runNumber: world.database.authority.runs.nextWorkflowRunNumber(WORKFLOW_ID),
     version: 1,
     createdAt: SEEDED_NOW,
@@ -227,15 +225,7 @@ function claimOf(run: RunRecord): { workerId: string; claimGeneration: number } 
 }
 
 
-/**
- * Fence a permanent write against this run and park it — the ref write-safety §4 shape,
- * through the production repository's own CAS pair.
- *
- * The binding proof is a `subject-match`, which is the arm the operator surface
- * has the most to render: it pins `expected` and `observed` as canonically
- * identical (its own `superRefine` refuses a proof where they differ), so the
- * served subject is a whole fact rather than half of one.
- */
+
 function fenceAndParkWrite(world: SeedWorld, run: RunRecord): void {
   const runId = run.envelope.runId;
   const idempotencyKey = "10555121|termination|2026-08-03";
@@ -314,7 +304,7 @@ function fenceAndParkWrite(world: SeedWorld, run: RunRecord): void {
 }
 
 
-/** The real D110/D114 atomic failure terminalization. */
+
 function terminalizeFailed(world: SeedWorld, run: RunRecord, failureId: string): void {
   const summary = "CRM onboarding dates were unavailable";
   world.database.terminalizeFailure(personLookupDescriptor, {
@@ -356,7 +346,7 @@ function terminalizeFailed(world: SeedWorld, run: RunRecord, failureId: string):
 }
 
 
-/** The real D110/D114 atomic success terminalization, sealed by the descriptor factory. */
+
 function terminalizeDone(world: SeedWorld, run: RunRecord, _outboxId: string): void {
   const checkpoint = RunCheckpointRecordSchema.parse({
     workflowId: run.envelope.workflow,
@@ -409,25 +399,9 @@ function terminalizeDone(world: SeedWorld, run: RunRecord, _outboxId: string): v
 }
 
 
-/**
- * Seeds one run per status the projection can genuinely reach, plus an
- * operation group with members. Order matters: `claimNext` takes the OLDEST
- * queued row, so every run that must LEAVE the queue is enqueued and claimed
- * before the rows that must stay queued are enqueued at all.
- */
+// claimNext chooses the oldest queued row, so seed order controls which run is claimed.
 export function seed(world: SeedWorld): Record<string, string> {
-  /*
-   * The worker's own spans, composed by the SAME functions the executor emits
-   * them with. They were hand-written paths until D248 gave the browser path a
-   * reader (`worker/<workflow>/<worker>/browser:<system>#<sessionId>` carries
-   * the session identity the tile grid folds), and a fixture that spells a path
-   * production never emits is a fixture asserting over a shape the projector
-   * would refuse in the field.
-   *
-   * The card itself is the LEASE (D248): the run below claims through the real
-   * `runs.claimNext`, so authority already holds a `person-lookup-worker-1`
-   * lease by the time the day is built.
-   */
+
   const workerSpan = workerSpanPath(
     WorkflowIdSchema.parse(WORKFLOW_ID),
     WorkerIdSchema.parse("person-lookup-worker-1"),
@@ -502,19 +476,7 @@ export function seed(world: SeedWorld): Record<string, string> {
   });
   if (gatedTransition.state !== "applied") throw new Error("fixture gate transition failed");
 
-  // blocked — a real parked-write lifecycle transition, over a real fenced
-  // and parked `run_operations` row.
-  //
-  // THE ROW IS NOT OPTIONAL, and its absence was a live defect (W2). This
-  // adapter has transitioned run 6 to `parked-write` since the seed was
-  // written, and `availableSections` advertises the parked-write section from
-  // that lifecycle alone — but the serving arm re-reads the intent the park
-  // NAMES and throws by design when authority does not hold it (ref write-safety §4.1: a
-  // parked run with no intent is a lie, not an empty panel). Nothing had ever
-  // opened this run, so nobody had met the 500. It goes through the production
-  // repository's own `fenceAttempt` → `parkAttempt` CAS pair rather than an
-  // INSERT, because a hand-written row would be exactly the "adapter #2 fakes
-  // a state the machinery cannot reach" this file exists to refuse.
+
   const parked = startRunning(world, { seed: 6, title: "EID 10555121" }, "person-lookup-worker-4", "cross-verify");
   taskSpan(world, parked, "searching", "done");
   fenceAndParkWrite(world, parked);

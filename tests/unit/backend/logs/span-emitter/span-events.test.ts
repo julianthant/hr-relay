@@ -1,12 +1,4 @@
-/**
- * The span/notes wire leaf (ref dashboard-surfaces §1.1).
- *
- * `src/models/events/types.ts` restates its id patterns locally so it can stay a
- * zod-only leaf; the parity cases here pin that restatement against the domain
- * vocabulary byte-for-byte, so the two can never quietly fork. The rest is
- * boundary strictness: unknown keys, identity keys on patches, and executor
- * event compatibility.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import {
@@ -65,14 +57,7 @@ const QUEUED = {
 } as const;
 
 
-/**
- * Every legal `(classification, transform)` pair, produced through the ONE
- * shared transform implementation. D215's lesson is that a parity claim is only
- * as wide as its cases, so the `data.observed` arm is walked over the PRODUCT
- * of the redaction table rather than over a sampled shape: an arm the kernel
- * can emit and the wire leaf cannot parse is exactly the fork that killed a
- * live worker once already.
- */
+
 const REDACTED_VALUES = DataClassificationSchema.options.flatMap((classification) =>
   EvidenceTransformSchema.options
     .filter((transform) => evidenceTransformAllowed(classification, transform))
@@ -86,7 +71,7 @@ describe("span wire leaf parity with the domain vocabulary", () => {
     assert.deepEqual(SpanBrowserSystemSchema.options, BrowserSystemIdSchema.options);
     assert.deepEqual(SpanRequeueCauseSchema.options, RequeueCauseSchema.options);
     assert.deepEqual(SpanOutcomeWireSchema.options, SpanOutcomeSchema.options);
-    // D270 — the observed-point leaf restates three more domain vocabularies.
+
     assert.deepEqual(SpanDataClassificationSchema.options, DataClassificationSchema.options);
     assert.equal(SpanTaskIdSchema.parse("workflow:separations/match-identity"), "workflow:separations/match-identity");
     assert.throws(() => SpanTaskIdSchema.parse("Not/A-Task"));
@@ -98,10 +83,8 @@ describe("span wire leaf parity with the domain vocabulary", () => {
     assert.deepEqual([...RunOutcomeSchema.options, "skipped"].sort(), [...SpanOutcomeWireSchema.options].sort());
   });
 
-  it("pins ONE not-run vocabulary across the durable result, the span, and the timeline (D123)", () => {
-    // A skip is one fact. If the durable result said `condition-false` and a
-    // surface could say something else, the two would disagree about the same
-    // node — which is exactly the class of defect this arm exists to stop.
+  it("pins ONE not-run vocabulary across the durable result, the span, and the timeline", () => {
+
     assert.deepEqual(SpanNotRunReasonSchema.options, TerminalNotRunReasonSchema.options);
     assert.deepEqual(ExecutorNotRunReasonSchema.options, TerminalNotRunReasonSchema.options);
     assert.deepEqual(TimelineNotRunReasonSchema.options, TerminalNotRunReasonSchema.options);
@@ -116,8 +99,7 @@ describe("span wire leaf parity with the domain vocabulary", () => {
       SpanEventWireSchema.parse({ ...ended, outcome: "skipped", notRunReason: "condition-false" }).t,
       "span.ended",
     );
-    // Absence is legal and means "no reason was recorded"; it is never
-    // back-filled downstream.
+
     assert.equal(SpanEventWireSchema.parse({ ...ended, outcome: "skipped" }).t, "span.ended");
     assert.throws(() => SpanEventWireSchema.parse({ ...ended, outcome: "done", notRunReason: "condition-false" }));
     assert.throws(() => SpanEventWireSchema.parse({ ...ended, outcome: "skipped", notRunReason: "gave-up" }));
@@ -137,11 +119,7 @@ describe("span wire leaf parity with the domain vocabulary", () => {
       { t: "gate.opened", ts: BASE.ts, workflow: BASE.workflow, ...RUN_IDENTITY, gate: "approval" },
       { t: "span.started", kind: "worker", ts: BASE.ts, workflow: BASE.workflow, workerId: "person-lookup-worker-1", spanPath: "worker/person-lookup/person-lookup-worker-1", name: "person-lookup" },
       { t: "span.ended", kind: "browser", ts: BASE.ts, workflow: BASE.workflow, workerId: "person-lookup-worker-1", spanPath: "worker/person-lookup/person-lookup-worker-1/browser:ucpath#" + RUN_ID, outcome: "failed", errorSummary: "browser session closed as poisoned" },
-      // `transaction.previewed` had NO case here, and that is how D215's fourth
-      // subject verdict reached the kernel's union without reaching this wire
-      // leaf: the first preview that ever settled live threw inside the JSONL
-      // writer. Every verdict the kernel can emit is walked, so the pair the
-      // file header promises cannot fork on this arm again.
+
       ...(["match", "mismatch", "unscoped", "not-observed"] as const).map((subject) => ({
         t: "transaction.previewed", ts: BASE.ts, workflow: BASE.workflow, ...RUN_IDENTITY,
         node: "clear-pending", subject, externalCommit: "none",
@@ -151,11 +129,7 @@ describe("span wire leaf parity with the domain vocabulary", () => {
         spanPath: `${TRACE}/clear-pending/commit`, parentSpanPath: TRACE,
         node: "clear-pending", taskId: "ucpath/delete-pending-terminations",
       },
-      /*
-       * D270 — the observed-log arm, walked over every DIRECTION and every
-       * legal `(classification, transform)` pair, plus a point whose value is a
-       * populated object (many leaves under one recorded field).
-       */
+
       ...(["read", "write"] as const).map((direction) => ({
         t: "data.observed", ts: BASE.ts, workflow: BASE.workflow, ...RUN_IDENTITY,
         spanPath: `${TRACE}/searching#1.1`, parentSpanPath: TRACE,
@@ -204,7 +178,7 @@ describe("the transaction fence beat", () => {
   });
 });
 
-describe("the observed-log arm (D270)", () => {
+describe("the observed-log arm", () => {
   const OBSERVED = {
     t: "data.observed", ts: BASE.ts, workflow: BASE.workflow, ...RUN_IDENTITY,
     spanPath: `${TRACE}/searching#1.1`,
@@ -224,7 +198,7 @@ describe("the observed-log arm (D270)", () => {
     assert.throws(() => SpanEventWireSchema.parse({ ...OBSERVED, points: [], pid: BASE.pid }));
   });
 
-  it("refuses a point with no values, and a point carrying a system (D106/D252)", () => {
+  it("refuses a point with no values, and a point carrying a system", () => {
     assert.throws(() => ObservedDataPointSchema.parse({ direction: "read", field: "results", values: [] }));
     assert.throws(() => ObservedDataPointSchema.parse({
       direction: "read", field: "results", system: "ucpath",
@@ -319,13 +293,7 @@ describe("span wire strictness", () => {
     assert.throws(() => SpanEventWireSchema.parse(withoutRunId));
   });
 
-  /**
-   * D254 — `span.patched` is RETIRED, so the wire owes a NEGATIVE control: the
-   * arm nothing ever emitted must now be refused by name rather than silently
-   * re-admitted by a future edit. Both shapes the old arm accepted (a declared
-   * detail key, an identity key it always refused) are refused identically,
-   * because there is no longer an arm to distinguish them.
-   */
+
   it("refuses every span.patched shape — the retired detail channel is not in the union", () => {
     for (const key of ["resolvedName", "selection-status", "runId", "traceId", "contractFingerprint"]) {
       assert.throws(() => SpanEventWireSchema.parse({

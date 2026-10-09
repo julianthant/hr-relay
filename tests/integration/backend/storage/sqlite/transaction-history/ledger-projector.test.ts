@@ -1,4 +1,4 @@
-/** Retired projector guarantees now belong to stopped conversion and atomic history. */
+
 import assert from "node:assert/strict";
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";

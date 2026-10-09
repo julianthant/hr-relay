@@ -1,11 +1,6 @@
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
-/**
- * The dry-run admission fixture every T1b composition proof shares: a selected
- * SQLite ordinary settings journaled through the REAL settings kernel arm and
- * activated through the existing dashboard activation contract — never an
- * alternate runtime writer — plus a read-only view of the start-effect tables.
- */
+
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";

@@ -46,7 +46,7 @@ export function valueShapeHarness() {
       .step("later", valueContract, { dependsOn: ["read"], replay: "checkpoint", bind: ({ input }) => input })
       .build({ schema: Output, dependsOn: ["read"], derive: ({ outputs }) => outputs.read }),
   });
-  // Historical checkpoint fixture: no runtime implementation or external session is available.
+
   return sourceBoundHarness(descriptor, () => defineTaskStoreRegistry([], { scenarioIds: [], tasks: [] }));
 }
 

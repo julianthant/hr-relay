@@ -385,7 +385,7 @@ async function takeBackup(world: ReturnType<typeof openCurrentWorld>) {
   };
 }
 
-describe("D336 DB-only authority backups", () => {
+describe("DB-only authority backups", () => {
   it("writes manifest v3 and never reads or copies settings or credentials", async () => {
     const world = openCurrentWorld();
     const canary = "CANARY-CREDENTIAL-must-not-enter-backup";
@@ -577,7 +577,7 @@ describe("D336 DB-only authority backups", () => {
     );
   });
 
-  it("admits only the pinned pre-D350 Settings shape in historical v2 backups", async () => {
+  it("admits only the pinned earlier Settings shape in historical v2 backups", async () => {
     const root = temporaryRoot("hrauto-d350-v2-backup-");
     const stateRoot = join(root, ".tracker");
     const directory = join(stateRoot, "backups", "authority");

@@ -107,8 +107,7 @@ describe("canonical notification producers", () => {
         const storage = f.reader.lifecycleStorage(), snapshot = storage.capture(run.envelope.runId);
         const report = captureArchiveReport({ snapshot, transferId: id(800 + seed), capturedAt: f.clock.now().toISOString(), sections: [], files: [] });
         transferArchiveReport(storage, report, snapshot.run.version);
-        // Publication must use current canonical archive membership even though
-        // its source was observed while this run was live.
+
         for (const item of before.observations) await f.inbox.publish(item.event, item.source);
         expect(readNotificationSources(f.db, f.reader)).toEqual(before);
       }

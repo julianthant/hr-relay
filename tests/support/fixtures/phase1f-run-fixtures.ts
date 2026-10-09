@@ -1,11 +1,4 @@
-/**
- * Shared run/worker fixtures for the 1f claim store.
- *
- * These are deliberately the *minimum* legal shapes: a queued first-attempt run
- * and a worker-start request. Every test that needs a claimed, parked, or
- * terminal row derives it by driving the real repository, so no test can assert
- * against a state the production transitions cannot actually produce.
- */
+
 import { HASH_A, HASH_B, HASH_C, LATER, NOW, UUID_2, UUID_3, UUID_4, UUID_5 } from "./phase1c-contract-fixtures.js";
 import {
   deriveCanonicalInputDigest,
@@ -13,11 +6,7 @@ import {
   PlannedRunSchema,
 } from "../../../src/models/run/start-plan.js";
 
-/**
- * A deterministic id source. Services take an `IdFactory` for exactly this
- * reason: a durable record minted from `crypto.randomUUID()` cannot be asserted
- * against byte for byte.
- */
+
 export function sequentialIdFactory(prefix = "a"): { readonly uuid: () => string; readonly minted: () => readonly string[] } {
   const minted: string[] = [];
   let next = 0;
@@ -125,7 +114,7 @@ export const WORKER_START_REQUEST = {
   now: NOW,
 };
 
-/** D269 — a dashboard-started group of runs; `QUEUED_RUN` carries no session (pre-v17 shape). */
+
 export const RUN_SESSION_ID = "99999999-9999-4999-8999-999999999999";
 export const RUN_SESSION = {
   sessionId: RUN_SESSION_ID,

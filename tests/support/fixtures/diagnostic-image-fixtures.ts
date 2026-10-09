@@ -1,44 +1,6 @@
 import { deflateSync } from "node:zlib";
 
-/**
- * REAL image fixtures for diagnostic and run-capture evidence.
- *
- * Every constant below is a genuine file produced by a real encoder, not a
- * hand-rolled header — a truncated stub proves nothing about a parser that
- * has to survive a real image upload, and a refusal arm driven by a fake file
- * is a refusal arm that has never seen the thing it refuses.
- *
- * Produced 2026-08-09 on macOS 15 (Darwin 25.5.0), regenerable byte-for-byte
- * from two 8-bit RGB source images — `a` is 16x12 with pixel
- * `(x*16, y*21, 200-x*8)`, `b` is 10x14 with `(255-x*25, 40+y*15, x*20)`:
- *
- * | constant            | how                                                            |
- * |---------------------|----------------------------------------------------------------|
- * | `BASELINE_JPEG`     | `sips -s format jpeg a.png --out a.jpg` (macOS ImageIO)        |
- * | `TRUECOLOUR_PNG`    | `sips -s format png b.png --out b.png` (carries sRGB + eXIf)    |
- * | `GRAYSCALE_JPEG`    | Pillow 12.2.0 `a.convert("L").save(quality=80)`                 |
- * | `CMYK_JPEG`         | Pillow `a.convert("CMYK").save(quality=80)` — Adobe APP14       |
- * | `PROGRESSIVE_JPEG`  | Pillow `a.save(progressive=True)` — SOF2                        |
- * | `RGBA_PNG`          | Pillow `a.convert("RGBA").save()` — colour type 6               |
- * | `PALETTE_PNG`       | Pillow `a.convert("P", colors=16).save()` — colour type 3       |
- * | `SIXTEEN_BIT_PNG`   | Pillow `Image.new("I;16", (16,12)).save()` — bit depth 16       |
- * | `TRNS_PNG`          | Pillow `a.save(transparency=(0,0,200))` — tRNS chunk            |
- * | `INTERLACED_PNG`    | hand-built Adam7 (see below)                                    |
- * | `syntheticDashboardPngBytes()` | deterministic 1280x720 RGB parity-only dashboard image |
- *
- * `INTERLACED_PNG` is the one file no installed encoder would emit: neither
- * `sips` nor Pillow writes interlaced PNG. It is therefore a genuine 4x4
- * Adam7 PNG built with Python `zlib` — real pass layout, real filter bytes,
- * real CRCs — and the generator PROVED it by re-opening it with Pillow and
- * asserting every pixel round-trips and `info["interlace"] === 1`.
- *
- * Verified at generation (`SOF`/`IHDR` read back off the bytes):
- * `BASELINE_JPEG` SOF0 8-bit 16x12 3 components; `GRAYSCALE_JPEG` SOF0
- * 1 component; `CMYK_JPEG` SOF0 4 components + APP14 `Adobe` transform 0;
- * `PROGRESSIVE_JPEG` SOF2; `TRUECOLOUR_PNG` 10x14/8/type 2/interlace 0;
- * `RGBA_PNG` type 6; `PALETTE_PNG` type 3 depth 4; `SIXTEEN_BIT_PNG` type 0
- * depth 16; `TRNS_PNG` type 2 + tRNS; `INTERLACED_PNG` type 2 interlace 1.
- */
+
 
 /** A 16x12 baseline (SOF0) JPEG written by macOS ImageIO through `sips`. */
 export const BASELINE_JPEG_BASE64 = [
@@ -152,11 +114,7 @@ function pngChunk(type: string, data: Uint8Array): Buffer {
   return Buffer.concat([length, typeBytes, data, crc]);
 }
 
-/**
- * A deterministic, synthetic 1280x720 PNG for parity gallery thumbnails and
- * lightboxes. Its source is code-owned fixture input, never a parity reference
- * that the update lane can rewrite while another worker is importing it.
- */
+
 export function syntheticDashboardPngBytes(): Uint8Array {
   const width = 1280;
   const height = 720;

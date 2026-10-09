@@ -1,29 +1,4 @@
-/**
- * THE DESIGN-SYSTEM SPECIMEN PAGE (D274 item 3, ledger 3 UK146–UK157).
- *
- * `kit.html` is a third Vite entry whose closure is `ds/**` plus `lib/**` and
- * nothing else — no client, no served fact, no surface. It is the visual proof
- * that the system renders and the catalogue `DESIGN.md` points a builder at,
- * and it was built, shipped and never once photographed: the whole reference
- * corpus is of SURFACES, so a primitive that regressed in a state no surface
- * currently uses (a disabled Select, an indeterminate Checkbox, the loading
- * Button, the refusal Banner) changed nothing the lane could see.
- *
- * FULL PAGE, deliberately, and it is the only reference in the corpus that is.
- * Every operator surface is a fixed shell that must FIT its viewport, so a
- * full-page shot of one would photograph a scroll height rather than a layout.
- * The specimen page is the opposite: one scrolling column whose subject is the
- * whole column, and whose top 900px is a masthead and an anchor nav.
- *
- * ONE THEME, and the page itself is why. `kit.html` stamps `data-demo-theme`
- * statically on `<html>` and `<body>` and ships no toggle and no stored
- * preference — the theme is a fact about the page, not a state of it — so
- * `installTheme`, which seeds the operator app's `localStorage` key, has
- * nothing to seed here. Photographing Paper Ink would mean the HARNESS
- * rewriting the product's attributes, which is precisely the move D187 caught:
- * the lane would be photographing a theme the page never selected. The
- * capture therefore asserts the page's OWN stamped theme and records it.
- */
+
 import { expect,test } from "@playwright/test";
 import { createHash } from "node:crypto";
 import { resolve } from "node:path";
@@ -37,11 +12,7 @@ const REFERENCES = resolve(import.meta.dirname, "references");
 /** The entry's own path — the page is served as itself, never through a route. */
 const KIT_ENTRY = "/kit.html";
 
-/**
- * What `kit.html` stamps on `<html>` and `<body>`, and the corpus theme name it
- * corresponds to. Named here so the assertion below compares the page against a
- * stated expectation rather than against whatever it happens to say.
- */
+
 const KIT_THEME = { attribute: "dark", name: "graphite-warm" } as const;
 
 let server: FixtureServer;
@@ -65,14 +36,7 @@ test("ds-kit specimen page", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto(`${server.baseUrl.replace(/\/$/u, "")}${KIT_ENTRY}`, { waitUntil: "domcontentloaded" });
 
-  /*
-    The page has no `data-parity-ready` flag because it resolves nothing: there
-    is no bootstrap and no day to wait for, only React mounting. So readiness is
-    the LAST section's own heading — waiting on the bottom of the column proves
-    the whole specimen mounted, which is exactly the claim a full-page capture
-    of it makes. `main.tsx` throws on a missing container, so a page that
-    painted nothing fails loud in `errors` rather than photographing a blank.
-  */
+  // The specimen resolves no bootstrap; wait for its layout contract after React mounts.
   await expect(page.getByRole("heading", { name: "Rebuild demo — design system", level: 1 })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Foundations", level: 2 })).toBeVisible();
 

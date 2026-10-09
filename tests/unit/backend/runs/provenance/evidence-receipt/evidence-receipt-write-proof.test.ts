@@ -1,18 +1,4 @@
-/**
- * The derivation half of the action write proof (Track F's BE line, ledger 2
- * D16–D22): composition 2 introduced what PROVED the write; composition 3
- * preserves that derivation and adds the diagnostic-safe operator boundary.
- * write on the commit action itself, read only from durable authority rows —
- * the fenced intent's identity, the transaction outcome's proof source,
- * proof value and instant, and the commit contract's declared completion arm.
- *
- * The other half of this file is the DURABILITY argument (D141/D199, the D13
- * lesson): a receipt already stored at composition 1 must keep re-deriving
- * byte-identically under its own composition, so growing the derivation can
- * strand no settled run. `ensureRunEvidenceReceipt` re-derives a stored
- * receipt AT THE COMPOSITION IT WAS STORED UNDER and only a run with no
- * stored receipt gets the latest one.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import {
@@ -263,10 +249,7 @@ describe("composition 4 — the commit action carries what proved the write", ()
   });
 
   it("REFUSES a settled outcome no intent row pairs with — corruption may not render as documented absence", () => {
-    // The checkpoint stores a SETTLED TransactionOutcome, so a durable intent
-    // row MUST exist: the sequencer records the intent before it settles.
-    // Deriving `proved: undefined` here made a recorder/store failure print as
-    // "no settled write intent reached it" — both halves false.
+    // A settled transaction checkpoint requires its durable intent, recorded before settlement.
     assert.throws(
       () => buildRunEvidenceReceipt({
         descriptor: separationsKualiFinalizationDescriptor,
@@ -304,11 +287,7 @@ describe("the intent join — one commit contract, exactly one intent row", () =
   it("REFUSES two intents for one commit contract instead of attributing the first one's fence identity", () => {
     const first = evidence.writes[0];
     assert.ok(first !== undefined);
-    // A second, genuinely distinct durable intent for the SAME task: a
-    // different natural key mints a different intent id and digest. Authority
-    // keys an intent by (workflow, item, task, system, key), so two rows for
-    // one commit contract is a supply/recorder defect — and the checkpoint
-    // carries no intent id, so nothing can say WHICH fence proved the write.
+
     const duplicateKey = `${KUALI_IDEMPOTENCY_KEY}::duplicate`;
     const duplicate = WriteIntentRecordSchema.parse({
       ...first.intent,
@@ -466,7 +445,7 @@ describe("ensureRunEvidenceReceipt — a stored composition-1 receipt is never s
     };
   }
 
-  it("preserves a stored composition-1 receipt and refuses to restate it through D309's moved schema", () => {
+  it("preserves a stored composition-1 receipt and refuses to restate it through a moved schema", () => {
     const { parked } = parkedReceiptEvidence();
     const writes = [{ intent: parked, attempts: [] }];
     const storedV1 = frozenPreD309Receipt(1);
@@ -485,7 +464,7 @@ describe("ensureRunEvidenceReceipt — a stored composition-1 receipt is never s
     );
   });
 
-  it("preserves a stored composition-2 receipt and refuses to restate it through D309's moved schema", () => {
+  it("preserves a stored composition-2 receipt and refuses to restate it through a moved schema", () => {
     const { parked } = parkedReceiptEvidence();
     const writes = [{ intent: parked, attempts: [] }];
     const storedV2 = frozenPreD309Receipt(2);

@@ -1,10 +1,4 @@
-/**
- * D341 P1/P2 — the shared test-data config, the ignored private file, the
- * synthetic PDF consumer, and the private merge planner/writer.
- *
- * Every value here is synthetic. The private-file proofs write only into
- * temporary roots; nothing reads the developer's own `config/test-data.local.json`.
- */
+
 import assert from "node:assert/strict";
 import {
   chmodSync,
@@ -99,7 +93,7 @@ const configuredInputs = {
   personLookupCanaryEid: { valueId: VALUE_ID_2, value: SYNTHETIC_EID, updatedAt: NOW },
 };
 
-describe("D341 shared test-data config", () => {
+describe("shared test-data config", () => {
   it("is the tracked, frozen owner of the public subject registry, files and samples", () => {
     assert.equal(TEST_DATA_CONFIG_PATH, "config/test-data.json");
     assert.equal(TEST_DATA.configPath, join(REPO_ROOT, TEST_DATA_CONFIG_PATH));
@@ -228,7 +222,7 @@ describe("D341 shared test-data config", () => {
   });
 });
 
-describe("D341 private test-data file", () => {
+describe("private test-data file", () => {
   it("treats an absent file as a truthful absent state, never a default", () => {
     const root = scratch("hrauto-test-data-absent-");
     const outcome = readTestDataLocalConfig(testDataLocalPath(root));
@@ -359,7 +353,7 @@ describe("D341 private test-data file", () => {
   });
 });
 
-describe("D341 private merge planner and writer", () => {
+describe("private merge planner and writer", () => {
   const candidates = [
     { name: "separationsKualiFinalizationCanaryDocumentNumber" as const, valueId: VALUE_ID_1, value: SYNTHETIC_DOCUMENT, updatedAt: NOW },
     { name: "personLookupCanaryEid" as const, valueId: VALUE_ID_2, value: SYNTHETIC_EID, updatedAt: NOW },
@@ -415,7 +409,7 @@ describe("D341 private merge planner and writer", () => {
     if (written.state !== "valid") throw new Error("expected the written file");
     assert.deepEqual(written.config, next);
     assert.deepEqual(readdirSync(join(root, "config")), ["test-data.local.json"], "no staging residue");
-    // Equal rewrite is allowed and idempotent; a rewrite whose prior no longer matches stops.
+
     writeTestDataLocalConfig(path, next, written);
     assert.throws(
       () => writeTestDataLocalConfig(path, next, prior),

@@ -62,29 +62,7 @@ const SPECS: Readonly<Record<RebuildRatchetName, RebuildRatchetSpec>> = {
       expected: /waitForTimeout/,
     },
   },
-  /*
-   * SCOPE DECISION (2026-08-14, ref guards-and-tests §"the driver half of inline-selectors"):
-   * this arm stays scoped to `/tasks/` and is NOT widened to a store's `driver`
-   * directory. Ref guards-and-tests's fate table wants "driver selector literals must belong
-   * to the canonical UI registry entry they implement", and the survey that
-   * question demands answers it in the other direction: a driver's registry
-   * INTERPRETER is built out of `page.locator(recipe.selector)` —
-   * `crm/driver/interpreter.ts`, `kuali/driver/interpreter.ts`,
-   * `new-kronos/driver/interpreter.ts` and `ucpath/driver/registry-locators.ts`
-   * all resolve recipes exactly that way — so a widened arm would fire on the
-   * mechanism it exists to enforce, plus every legitimate structural bind
-   * (`:scope > td`, `row.locator("tr")`, `page.locator("body")`).
-   *
-   * The invariant it would have carried is not abandoned, it is relocated: a
-   * store driver binds through the registry wherever a registry element covers
-   * the anchor, and every remaining anchor is declared ONCE in a named table
-   * with the reason it cannot be a registry element (the ucpath termination
-   * family's `DRIVER_ANCHOR` is the worked example — legacy has no key for
-   * those controls, and `ElementDefinitionSchema` requires a ported legacy
-   * provenance). What went wrong before was not the missing ratchet, it was a
-   * module header CLAIMING registry purity while binding eight anchors inline;
-   * a table cannot make that claim without also showing the exceptions.
-   */
+  // The inline-selector arm covers tasks; driver recipe anchors enforce the separate driver contract.
   "inline-selectors-workflows": {
     roots: ["src/backend/systems", "src/backend/processing", "src/workflows"],
     select: (path) => path.includes("/tasks/"),
@@ -129,10 +107,7 @@ const SPECS: Readonly<Record<RebuildRatchetName, RebuildRatchetSpec>> = {
   "code-conventions": {
     roots: ["src"],
     fixture: {
-      // The second file carries a REAL NUL byte (the escape below evaluates to
-      // one before the fixture is written), because the control-byte arm's whole
-      // subject is bytes that make a file invisible to text tooling — a fixture
-      // spelled with the escape would test nothing.
+      // The escape becomes a real NUL when the fixture is written; the control must probe bytes, not escape spelling.
       files: {
         "src/core/Bad_name.ts": "const value = true; export default value;\n",
         "src/core/nul-carrier.ts": "export const separator = \"\u0000\";\n",
@@ -143,10 +118,7 @@ const SPECS: Readonly<Record<RebuildRatchetName, RebuildRatchetSpec>> = {
   "frontend-tailwind-compliance": {
     roots: ["src/dashboard"],
     fixture: {
-      // ONE fixture that violates all FOUR checks, and an expectation that
-      // requires all four to be reported. A fixture tripping only the palette
-      // rule would let the other three rot back out silently — which is exactly
-      // how three of them were lost in the port in the first place.
+
       files: {
         "src/dashboard/Bad.tsx": [
           "export function Bad() {",
@@ -420,15 +392,7 @@ function auditLayering(files: readonly string[], root: string): string[] {
   return violations;
 }
 
-/*
-  Raw control bytes make a SOURCE file invisible to the tools that audit it:
-  one literal NUL and git/grep/rg classify the file as binary and silently skip
-  it — every in-tree search stops seeing it, diffs render as "Bin", and a guard
-  that greps its text matches nothing. Found live three times in one day
-  (context-rail.tsx, then two fresh helpers that inherited the idiom), each a
-  string literal typed as the actual byte instead of the escape. Tab, CR and LF
-  are the only control bytes with any business in source.
-*/
+// Raw control bytes make audit tools classify source as binary and skip it.
 function hasRawControlByte(text: string): boolean {
   for (const character of text) {
     const code = character.codePointAt(0) ?? 0;
@@ -438,19 +402,7 @@ function hasRawControlByte(text: string): boolean {
   return false;
 }
 
-/*
-  The five committed carriers found the day the check landed (2026-08-12) were
-  PINNED for one afternoon rather than fixed in the same commit, because four
-  sit inside descriptor source closures: fixing their bytes moves
-  contractFingerprints, which regenerates generated-build-manifest.ts and drifts
-  every a11y reference that renders a fingerprint - and the manifest was
-  carrying another session's uncommitted work at the time. That debt was PAID by
-  separations chunk 2 (the closure edit, `build:manifest`, and the deliberate
-  parity re-freeze in one unit), so the pin set is gone and this is a plain
-  invariant again: NO source file carries a raw control byte, full stop. Do not
-  reintroduce a pin list - a carrier that cannot be fixed today is a carrier
-  that hides the file from every audit today.
-*/
+
 
 function auditConventions(files: readonly string[], root: string): string[] {
   const violations: string[] = [];
@@ -477,27 +429,7 @@ function auditConventions(files: readonly string[], root: string): string[] {
   return violations;
 }
 
-/*
-  The port of this arm originally kept ONE of the four checks its source had.
 
-  Legacy's `frontend-tailwind-compliance.test.ts` runs four: reduced-motion
-  coverage over animation, the z-index scale, image loading discipline, and the
-  palette/hex rule. Only the last came across at first, and DESIGN.md asserted
-  "guard enforced" for the first two by name regardless — a document claiming a
-  guard that does not run is worse than no claim, because the next reader
-  believes it. Commit `5cc035b9` (2026-08-12) closed the gap: today ALL FOUR
-  run (narrower than legacy's originals — see below), and DESIGN.md's "guard
-  enforced" claims are now true.
-
-  The tree happens to be clean on all four today. That is not the same as being
-  held to them — which is the whole argument of DESIGN.md's own "if it is
-  true, hold it with a test" line (~:100).
-
-  Palette and hex stay on the AST (a colour only means something inside a string
-  literal or JSX text). The other three read raw text on purpose: the
-  reduced-motion rule is a statement about what appears on the SAME LINE as an
-  `animate-*` class, and `@keyframes` is not a TypeScript node at all.
-*/
 function auditFrontend(files: readonly string[]): string[] {
   const palette = /\b(?:bg|text|border|ring|from|to|via|fill|stroke)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-(?:50|100|200|300|400|500|600|700|800|900|950)\b/;
   const hex = /#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?\b/;
@@ -509,10 +441,7 @@ function auditFrontend(files: readonly string[]): string[] {
         if (hex.test(node.text.replace(/#4ade80|#fbbf24/gi, ""))) violations.push(`${file}: raw hex color`);
         return;
       }
-      // Images go through the AST rather than a text match on purpose: the
-      // first text-based draft of this check reported a legacy image client for
-      // the sentence "an `<img src>` cannot carry a header" in a comment. A
-      // guard that reads prose as code teaches people to work around it.
+      // Inspect image elements through the AST so prose mentioning an img tag cannot count as a client.
       if (!ts.isJsxSelfClosingElement(node) && !ts.isJsxOpeningElement(node)) return;
       if (node.tagName.getText(node.getSourceFile()) !== "img") return;
       const named = node.attributes.properties.filter(ts.isJsxAttribute);
@@ -529,14 +458,7 @@ function auditFrontend(files: readonly string[]): string[] {
 function auditFrontendText(file: string, text: string): string[] {
   const violations: string[] = [];
 
-  /*
-    MOTION. DESIGN.md's five classes are all TRANSITIONS, which is what makes
-    them interruptible; key-frames are banned outright under `src/dashboard/**`.
-    The Tailwind animation utilities that remain (a spinner, mostly) must pair
-    with an explicit reduced-motion arm, because `prefers-reduced-motion` has to
-    zero both the clock AND the distance — an unpaired `animate-spin` keeps
-    spinning for an operator who asked the machine to stop moving.
-  */
+  // Design-system motion uses interruptible transitions; keyframes remain forbidden.
   if (/@keyframes\b/.test(text)) violations.push(`${file}: @keyframes is banned in dashboard code`);
   if (/\banimation\s*:/.test(text)) violations.push(`${file}: raw animation property`);
   if (/\banimate-\[[^\]]+\]/.test(text)) violations.push(`${file}: arbitrary animation utility`);
@@ -547,13 +469,7 @@ function auditFrontendText(file: string, text: string): string[] {
     violations.push(`${file}:${String(index + 1)}: animate-* without reduced-motion coverage`);
   });
 
-  /*
-    LAYERING. `dsLayer` is a five-step scale (sticky/menu/drawer/modal/toast) and
-    an arbitrary `z-[…]` is how a control ends up above a modal by accident — the
-    stack is a shared resource, so it cannot be negotiated one file at a time.
-    `flex-shrink-0` rides along because the tree standardised on `shrink-0` and
-    two spellings of one idea is how a grep stops finding things.
-  */
+
   if (/\bz-\[[^\]]+\]/.test(text)) violations.push(`${file}: arbitrary z-index outside dsLayer`);
   if (/\bflex-shrink-0\b/.test(text)) violations.push(`${file}: flex-shrink-0, use shrink-0`);
 

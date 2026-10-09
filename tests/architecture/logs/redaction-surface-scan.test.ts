@@ -1,48 +1,7 @@
 import { MAXIMAL_FAILURE } from "../../support/fixtures/advisory-prompt-fixtures.js";
 import { historicalArchiveAuthority } from "../../support/helpers/integration/historical-archive-authority.js";
 import { sqliteRunReader } from "../../support/helpers/canonical-run-reader.js";
-/**
- * Ref guards-and-tests §3.15 / D183 — the redaction surface scan.
- *
- * The 2j checklist asks for "a sweep proving no classified leaf reaches any
- * wire/log/notification/ledger/advisory surface unredacted". Until D183 that
- * sentence had no owner: redaction appeared as a CLAUSE inside four other
- * guards, each looking at one producer. Four partial views of a rule are not
- * the rule, and none of them could answer "what about the surface nobody
- * thought of?".
- *
- * This guard has two halves, and neither is sufficient alone.
- *
- * **(a) The declaration audit** walks every registered surface's own schema and
- * demands a declared ORIGIN for every free-text and open-JSON leaf, then holds
- * that origin against the surface's egress class. It catches the leak that has
- * not happened yet: a field added to a wire schema is a new undispositioned
- * leaf and the guard goes red before the field can ship. It cannot catch a
- * producer that writes a value the schema permits but the declaration did not
- * anticipate.
- *
- * **(b) The canary sweep** plants impossible-by-construction sentinels — a
- * password, a cookie, a storage-state blob, a private key, a credential file
- * path, an unissued SSN, an impossible DOB (ref clock-config-secrets §6's exact list) — into the
- * real producers and scans the produced bytes. It catches what the declarations
- * missed, and it cannot tell you anything about a field nobody has written to
- * yet.
- *
- * Every mechanical arm below carries a negative control, because an arm that
- * would pass a deliberately-leaking fixture is not enforcement (the same reason
- * `ratchet-arms.ts` executes each ratchet against a violating fixture).
- *
- * ## What this guard deliberately does NOT restate
- *
- * - `no-secret-values-in-logs.test.ts` — a credential interpolated into a `log.*`
- *   call. That is a source-shape ratchet over `src/`; this is a surface audit.
- * - `secrets-single-source.test.ts` — who may read `process.env`.
- * - `evidence-receipt.test.ts` — the receipt's own canaries, its
- *   declaration-time refusal of a forbidden `(classification, transform)` pair,
- *   and its undeclared-leaf failure.
- * - `advisory-redaction.test.ts` (unit) — the advisory's name/EID leak arms.
- * - `notification-durability.test.ts`, `phone-capture-retired.test.ts`.
- */
+
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -103,7 +62,7 @@ function pathCoveredBy(candidate: string, owned: readonly string[]): boolean {
 
 /* ── (a) the declaration audit ───────────────────────────────────────────── */
 
-describe("redaction surface scan — the declaration audit (ref guards-and-tests §3.15, D183)", () => {
+describe("redaction surface scan — the declaration audit", () => {
   it("refuses every universal credential/regulated-value canary as an operator-authored Explorer label", () => {
     for (const name of UNIVERSAL_CANARY_NAMES) {
       assert.equal(
@@ -119,17 +78,17 @@ describe("redaction surface scan — the declaration audit (ref guards-and-tests
     assert.deepEqual(violations, [], `redaction surface audit:\n  ${violations.join("\n  ")}`);
   });
 
-  it("dispositions every D331 P41 served settings leaf as closed-literal or identifier-free", () => {
+  it("dispositions every served settings leaf as closed-literal or identifier-free", () => {
     const violations = auditD331ServedLeafDispositions(D331_SERVED_LEAF_DISPOSITIONS);
-    assert.deepEqual(violations, [], `D331 P41 disposition audit:\n  ${violations.join("\n  ")}`);
+    assert.deepEqual(violations, [], `served-settings disposition audit:\n  ${violations.join("\n  ")}`);
   });
 
-  it("makes an omitted D331 P41 leaf, a wrong class, and an unreviewed class red", () => {
+  it("makes an omitted leaf, a wrong class, and an unreviewed class red", () => {
     const omitted = D331_SERVED_LEAF_DISPOSITIONS.filter((entry) =>
       entry.surface !== "protected-settings-readback" || entry.path !== "entries.ucpathPassword.valueId");
     assert.equal(omitted.length, D331_SERVED_LEAF_DISPOSITIONS.length - 1);
     assert.deepEqual(auditD331ServedLeafDispositions(omitted), [
-      "protected-settings-readback|entries.ucpathPassword.valueId: carries no D331 P41 disposition "
+      "protected-settings-readback|entries.ucpathPassword.valueId: carries no served-settings disposition "
       + "(ProtectedSettingsNameSchema × ProtectedSettingsPresenceSchema)",
     ]);
 
@@ -146,12 +105,12 @@ describe("redaction surface scan — the declaration audit (ref guards-and-tests
       ? { ...entry, valueClass: "captured-value" }
       : entry);
     const unreviewedViolations = auditD331ServedLeafDispositions(unreviewedClass);
-    assert.ok(unreviewedViolations.some((violation) => violation.includes("D331 disposition row")));
+    assert.ok(unreviewedViolations.some((violation) => violation.includes("settings disposition row")));
     assert.ok(unreviewedViolations.some((violation) =>
-      violation.includes("frontend-bootstrap|protectedSchemaHash: carries no D331 P41 disposition")));
+      violation.includes("frontend-bootstrap|protectedSchemaHash: carries no served-settings disposition")));
   });
 
-  it("refuses every independently omitted P16 doctor leaf", () => {
+  it("refuses every independently omitted doctor leaf", () => {
     const doctor = D331_SERVED_LEAF_DISPOSITIONS.filter(({ surface }) => surface === "protected-settings-doctor");
     assert.equal(doctor.length, 5);
     for (const omitted of doctor) {
@@ -163,9 +122,7 @@ describe("redaction surface scan — the declaration audit (ref guards-and-tests
   });
 
   it("audits a real surface rather than an empty set", () => {
-    // A registry that silently emptied would make the arm above vacuously
-    // green. The counts are floors, not pins: adding a surface must not force
-    // an edit here, removing every one of them must.
+
     assert.ok(REDACTION_SURFACES.length >= 20, "the surface registry collapsed");
     assert.ok(SURFACE_LEAF_ORIGINS.length >= 200, "the disposition table collapsed");
     const audited = REDACTION_SURFACES.flatMap((surface) => decidableLeaves(surface.schema));
@@ -316,11 +273,7 @@ describe("redaction surface scan — the declaration audit (ref guards-and-tests
   });
 
   it("covers every exported *WireSchema by a registered surface", async () => {
-    // Coverage is checked across the WHOLE registry, not module by module: a
-    // shared primitive is declared in one module and embedded by another, and
-    // `FeatureAvailabilityWireSchema` (primitives) reaching the wire only
-    // through `FrontendBootstrapWireSchema` (bootstrap) is the normal case, not
-    // an escape.
+
     const owned = REDACTION_SURFACES.flatMap((surface) => surfaceLeaves(surface.schema).map(({ path }) => path));
     const registered = new Set(REDACTION_SURFACES.map(({ schema }) => schema));
     const uncovered: string[] = [];
@@ -331,9 +284,7 @@ describe("redaction surface scan — the declaration audit (ref guards-and-tests
         if (!name.endsWith("WireSchema") || !(value instanceof z.ZodType)) continue;
         if (registered.has(value)) continue;
         const paths = surfaceLeaves(value).map(({ path }) => path);
-        // A schema whose only leaf is the root is a bare scalar or union — it
-        // declares no field of its own, so it cannot introduce an unreviewed
-        // one; whatever embeds it audits the field it lands in.
+        // Root-only schemas declare no field; their embedding surfaces audit the leaf.
         if (paths.length === 1 && paths[0] === "") continue;
         const missing = paths.filter((path) => !pathCoveredBy(path, owned));
         if (missing.length > 0) {
@@ -349,9 +300,7 @@ describe("redaction surface scan — the declaration audit (ref guards-and-tests
   });
 
   it("refuses an undispositioned leaf, a refused origin, and a missing exception", () => {
-    // Negative controls: each arm of `auditSurfaceOrigins` is executed against a
-    // fixture that violates exactly it. An audit that stayed green on these
-    // would be a table nobody has to keep true.
+
     const leakyWire = z.strictObject({ ok: z.enum(["yes", "no"]), note: z.string().min(1) });
     const loopback: RedactionSurface = {
       id: "fixture/loopback",
@@ -422,10 +371,7 @@ describe("redaction surface scan — the declaration audit (ref guards-and-tests
   });
 
   it("holds a *Redacted field name to what its producer actually does", () => {
-    // Two halves of one promise. The declaration half is inside
-    // `auditSurfaceOrigins` (a `*Redacted` leaf declared as anything but
-    // `declared-redacted` fails unless the NAME is waived with a reason); this
-    // is the producer half, which the shape audit cannot see.
+
     const sites = redactedProducerSites(join(REPO_ROOT, "src"));
     const violations = auditRedactedProducers(sites);
     assert.deepEqual(violations, [], `unredacted *Redacted writes:\n  ${violations.join("\n  ")}`);
@@ -473,11 +419,7 @@ describe("redaction surface scan — the declaration audit (ref guards-and-tests
   });
 
   it("reads a redacted value as self-describing wherever it is embedded", () => {
-    // The walk must recognise a `RedactedField` by its arm SIGNATURE, because
-    // `z.toJSONSchema` hoists shared subtrees behind `$ref` once a schema is
-    // embedded — a byte comparison against a standalone serialization stops
-    // matching exactly when the surface grows, and every redacted value would
-    // decompose into a free-text `key` and an open `value`.
+
     const receipt = REDACTION_SURFACES.find(({ id }) => id === "durable/evidence-receipt");
     assert.ok(receipt !== undefined);
     const kinds = surfaceLeaves(receipt.schema);
@@ -668,7 +610,7 @@ function canaryArtifactReader(
   });
 }
 
-describe("redaction surface scan — archived capture resource canaries (D183/DCA4)", () => {
+describe("redaction surface scan — archived capture resource canaries", () => {
   it("serves only the exact-id URL after verifying canary-bearing archived bytes", async () => {
     const { database, record, bytes, ref } = seedCanaryArchive();
     const open = vi.fn(async () => Readable.from([bytes]));
@@ -744,9 +686,7 @@ describe("redaction surface scan — archived capture resource canaries (D183/DC
 
 describe("redaction surface scan — the canary sweep (ref clock-config-secrets §6)", () => {
   it("plants a sentinel in every free-text leaf the failure record has", () => {
-    // The plant is asserted before anything is derived from it. A sweep whose
-    // sentinels never made it into the source proves nothing about the
-    // producers, and would go green forever the day a fixture field is renamed.
+
     const planted = canariesIn(canonicalJsonStringify(CANARY_FAILURE));
     for (const name of ["personName", "ssn", "dob", "cookie", "storageState", "credentialPath", "privateKey", "emplId"] as const) {
       assert.ok(planted.includes(name), `the ${name} canary never reached the failure record`);
@@ -754,10 +694,7 @@ describe("redaction surface scan — the canary sweep (ref clock-config-secrets 
   });
 
   it("leaves no notification arm where a captured value could be written", () => {
-    // D138's rule stated as a property of the schema rather than of the
-    // current call sites: every trigger arm is ids, closed codes and counts, so
-    // there is nowhere to put free text even on purpose. That, not review, is
-    // what makes "notification text carries no captured form contents" true.
+
     const accepted: string[] = [];
     for (const event of TRIGGER_EVENTS) {
       const projected = projectNotificationTrigger(event);
@@ -794,9 +731,7 @@ describe("redaction surface scan — the canary sweep (ref clock-config-secrets 
       "a filed-transaction record is a transaction fact, never a credential",
     );
 
-    // The ledger file is never pruned (ref write-safety §6), so a value that reached it
-    // is permanent. `LedgerEntrySchema` re-parses through the strict schema, which
-    // is what makes an extra key on the row unable to ride along.
+
     const smuggled = {
       ...outbox,
       payload: {
@@ -811,10 +746,7 @@ describe("redaction surface scan — the canary sweep (ref clock-config-secrets 
   });
 
   it("retains the exit run's supplied person identifiers in its evidence receipt", () => {
-    // The REAL 2026-08-04 exit run through the REAL derivation. Its subject's
-    // name is the canary: it is genuinely present in the stored checkpoints and
-    // is declared `direct-identifier`/`last4`, so a receipt that still spells it
-    // means the declared transform did not run on the path that matters.
+
     const database = openDatabase();
     const seeded = seedPersonLookupExitRun(database);
     const subjectName = "Battistessa, Johnnie";
@@ -849,9 +781,7 @@ describe("redaction surface scan — the canary sweep (ref clock-config-secrets 
   });
 
   it("detects a planted sentinel when one really is present", () => {
-    // The negative control for the whole sweep: `canariesIn` must fire. Every
-    // assertion above is of the form "nothing found", which is exactly the
-    // shape that passes when the instrument is broken.
+
     const allowed = redactValue("safe-diagnostic", "allow", REDACTION_CANARIES.ssn);
     assert.deepEqual(canariesIn(canonicalJsonStringify(allowed)), ["ssn"]);
     assert.deepEqual(

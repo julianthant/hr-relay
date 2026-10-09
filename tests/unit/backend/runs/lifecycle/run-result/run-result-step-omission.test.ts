@@ -1,11 +1,4 @@
-/**
- * D307 — `resolveTerminalDependencies` (src/workflow-kit/workflow.ts), reached through
- * `buildRunResult`, is the sealed factory's gate on an `asserted` or
- * `not-run/step-omitted` terminal-dependency claim. Every refusal here is a
- * fabrication the factory must catch: a node no omission can produce, a
- * schema/step mismatch, a step the run's own envelope never omitted, or a
- * non-omittable node dressed up as step-omitted.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { buildRunResult } from "../../../../../../src/backend/runs/lifecycle/run-result.js";
@@ -72,7 +65,7 @@ const RESOLVED_READ = { state: "resolved" as const, nodeId: "read", checkpoint: 
 /** `skip` belongs to the "skipping" omittable step, which produces nothing for it — always legally step-omitted here. */
 const NOT_RUN_SKIP = { state: "not-run" as const, nodeId: "skip", reason: "step-omitted" as const };
 
-describe("resolveTerminalDependencies under step omission (D307)", () => {
+describe("resolveTerminalDependencies under step omission", () => {
   it("resolves a well-formed asserted dependency for an omitted, produced step", () => {
     const { record } = buildRunResult(
       stepOmissionTerminalDescriptor,

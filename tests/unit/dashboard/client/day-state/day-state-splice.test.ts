@@ -1,23 +1,4 @@
-/**
- * D4 — the SSE day patch is a SPLICE, not a whole-day re-parse.
- *
- * Track D row D4 (ref frontend-backend-integration §7.4; audit finding P1). A
- * single-row patch used to run `DashboardDayWireSchema.parse` over the entire
- * day — 1,240 rows re-validated to change one — and, because zod's `parse`
- * returns a fresh object graph, it also handed every UNTOUCHED row a new
- * reference, so no `memo` downstream could ever hold. Both halves are pinned
- * here: zero whole-day parses per patch, and reference equality for everything
- * the patch did not name.
- *
- * The safety argument the removal rests on, stated as tests rather than as a
- * comment: the patch itself is still strictly parsed (its replacement row goes
- * through `QueueSurfaceWireSchema`, and the schema's own refinement pins the
- * replacement's identity and revision to the target's), the held day was parsed
- * whole when the snapshot arrived, and `DashboardDayWireSchema`'s only
- * cross-row invariant over `queueSurfaces` is `runId` uniqueness — which a
- * replace-in-place under the SAME id and a removal both preserve by
- * construction. Anything that does not fit fails loud into the resnapshot path.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { applyDashboardDayPatch, type DashboardDayPatch } from "../../../../../src/dashboard/client/queries/day-state.js";
@@ -91,14 +72,7 @@ function threeRowDay(): DashboardDayWire {
   });
 }
 
-/**
- * Counts `DashboardDayWireSchema.parse` calls while `work` runs.
- *
- * Same shape as the §7.4 harness's spy, and for the same reason: the finding is
- * a COUNT, so a spy that could silently observe nothing would be a check that
- * cannot fail. Every caller below proves the window is live with a known parse
- * before believing a zero — see `assertSpyObserves`.
- */
+
 function countDayWireParses<Result>(work: () => Result): { readonly value: Result; readonly parses: number } {
   const schema = DashboardDayWireSchema as unknown as { parse: (input: unknown) => unknown };
   const original = schema.parse.bind(DashboardDayWireSchema);
@@ -127,7 +101,7 @@ function assertSpyObserves(day: DashboardDayWire): void {
   assert.equal(probe.parses, 1, "the day-wire parse spy is not installed; a zero below would prove nothing");
 }
 
-describe("D4 — applyDashboardDayPatch splices one row (audit P1)", () => {
+describe("applyDashboardDayPatch splices one row", () => {
   it("replaces the named row with NO whole-day re-parse and leaves every other row reference-equal", () => {
     const day = threeRowDay();
     assertSpyObserves(day);
@@ -156,7 +130,7 @@ describe("D4 — applyDashboardDayPatch splices one row (audit P1)", () => {
     assert.equal(next.statusCounts, day.statusCounts);
     assert.equal(next.workerCards, day.workerCards);
     assert.equal(next.notifications, day.notifications);
-    // D81: a patch is count-neutral by protocol — nothing here recomputes one.
+
     assert.deepEqual(next.statusCounts, day.statusCounts);
   });
 
@@ -202,9 +176,7 @@ describe("D4 — applyDashboardDayPatch splices one row (audit P1)", () => {
     assert.throws(() => applyDashboardDayPatch(day, {
       operation: "replace-queue-surface",
       target: { runId: RUN_IDS[1], rowRevision: 4 },
-      // `rowRevision` disagrees with the target — the patch schema's own
-      // refinement. With the whole-day parse gone, THIS is the check that
-      // stands between a malformed payload and the held snapshot.
+
       replacement: surfaceOf(RUN_IDS[1], 5, "EID 10873691"),
     } as unknown as DashboardDayPatch));
     assert.throws(() => applyDashboardDayPatch(day, {
@@ -230,10 +202,7 @@ describe("D4 — applyDashboardDayPatch splices one row (audit P1)", () => {
       replacement: surfaceOf(RUN_IDS[1], 3, "EID 10873691"),
     } as unknown as DashboardDayPatch));
     assert.equal(replayed.parses, 0);
-    // The held day is returned BY REFERENCE: nothing moved, so no consumer of
-    // this fold should re-render. Keeping the fresher row is not "keeping a
-    // stale row" — the stale thing is the replayed patch, and a Last-Event-ID
-    // resume replaying it is a documented, expected state (§3.5).
+
     assert.equal(replayed.value, fresh);
     assert.equal(replayed.value.queueSurfaces[1].rowRevision, 9);
   });

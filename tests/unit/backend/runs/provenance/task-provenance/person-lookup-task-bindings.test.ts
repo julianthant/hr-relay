@@ -73,7 +73,7 @@ function collectorFor(
       checkpoints: [...checkpoints],
     },
     clock: manualClock(new Date(NOW)),
-    // D270 — an explicit recording sink; the collector has no no-op default.
+
     onRecord: (batch) => { observedBatches.push(batch); },
   });
 }
@@ -136,7 +136,7 @@ const crmDates = ReadOnboardingDatesOutputSchema.parse({
   completedOn: { state: "absent", reason: "CRM history has no Completed transition" },
 });
 
-describe("Phase 1f Person Lookup task implementations", () => {
+describe("Person Lookup task implementations", () => {
   it("executes UCPath and CRM reads only through their typed semantic drivers", async () => {
     const ucpath = createDeterministicUcpathPersonOrgDriver(person);
     const crm = createDeterministicCrmOnboardingDriver({ record: crmRecord, dates: crmDates });

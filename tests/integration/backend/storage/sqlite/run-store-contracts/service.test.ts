@@ -110,7 +110,7 @@ function created(service: RunRecordService, request: CreateRunRequest) {
   return outcome.run;
 }
 
-/** Seed a released journal/lineage; never exercise retired creation as a fixture producer. */
+
 function historicalRelaunch(service: RunRecordService, database: AuthorityDatabase, input: unknown) {
   const request = CanonicalRelaunchRequestSchema.parse(input);
   const run = created(service, { ...request.create, commandId: lifecycleCommandId("historical-fixture", request.commandId) });
@@ -516,7 +516,7 @@ describe("canonical run-record service", () => {
     assert.equal(created(service, request).envelope.attempt, 1);
   });
 
-  it("P33 refuses an absent runtime token and preserves queued authority", () => {
+  it("refuses an absent runtime token and preserves queued authority", () => {
     const { service, request, database } = fixture();
     const run = created(service, request);
     const before = database.getMeta().authorityGeneration;
@@ -688,7 +688,7 @@ describe("canonical run-record service", () => {
     assert.equal(renewed.run.lifecycle.state, "claimed");
   });
 
-  it("D330.9 floor permits source deletion while relaunch lineage remains", () => {
+  it("permits archived source deletion while relaunch lineage remains", () => {
     const { root } = fixture();
     const raw = new DatabaseSync(join(root, "state.db"), { readOnly: true });
     try {
@@ -696,7 +696,7 @@ describe("canonical run-record service", () => {
         from: z.string(), to: z.string(), on_update: z.string(), on_delete: z.string(), match: z.string(),
       })).parse(raw.prepare("PRAGMA foreign_key_list(archive_relaunches)").all());
       assert.deepEqual(rows.filter((row) => row.from === "archived_run_id"), [],
-        "D330.9 requires archived source removal with descendant lineage retained; the source FK prevents it");
+        "archived source removal retains descendant lineage; the source FK prevents it");
     } finally { raw.close(); }
   });
 
@@ -1196,7 +1196,7 @@ describe("canonical run-record service", () => {
     assert.equal(JSON.stringify(journal).includes("10873698"), false);
   });
 
-  it("D333 refuses cross-kind ids and fails loud for every partial or mismatched journal pair", () => {
+  it("refuses cross-kind ids and fails loud for every partial or mismatched journal pair", () => {
     const crossKind = fixture();
     crossKind.database.withAuthorityTransaction(({ commands }) => {
       commands.insert(COMMAND_FIXTURES[0]);
@@ -1476,7 +1476,7 @@ describe("canonical run-record service", () => {
     }).length, 1);
   });
 
-  it("#13/#14/#18/#19/#20 preserves historical relaunch replay and lineage when the archived source is deleted", () => {
+  it("preserves historical relaunch replay and lineage when the archived source is deleted", () => {
     const { service, request, database, runtimeConfig } = fixture(undefined, undefined, true);
     const source = created(service, {
       ...request,
@@ -1893,10 +1893,9 @@ describe("canonical run-record service", () => {
     assert.equal(service.read(run.envelope.runId).state, "deleted");
   });
 
-  it("#25 reads historical NULL ordinals without inventing a spent value", () => {
+  it("reads historical NULL ordinals without inventing a spent value", () => {
     const { service, request, database, root } = fixture();
-    // Reproduce the old cascade's retained shape, with no recovered span-root
-    // ordinals. The run originates in the service; all protective triggers stay.
+
     const run = created(service, request);
     service.transition({ commandId: UUID_5, runId: run.envelope.runId, expectedVersion: 1,
       lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } });
@@ -1943,7 +1942,7 @@ describe("canonical run-record service", () => {
     assert.deepEqual(database.authority.runSessions.get(RUN_SESSION_ID), session);
   });
 
-  it("#21 ignores a retired file root in canonical reads and current storage health", async () => {
+  it("ignores a file root in canonical reads and current storage health", async () => {
     const { service, request, root, clock } = fixture();
     const runId = UUID_5;
     const traceId = "pl-120021-0000";
@@ -1982,7 +1981,7 @@ describe("canonical run-record service", () => {
     assert.equal(countTasks(), 0);
   });
 
-  it("D330.10 table-class coverage drives every public service method and its generation class", () => {
+  it("table-class coverage drives every public service method and generation class", () => {
     const { service, request, runtimeConfig, database } = fixture(undefined, undefined, true);
     const covered = new Set<string>();
     let commandSequence = 100;
@@ -2185,7 +2184,7 @@ describe("worker lifecycle service capability", () => {
     assert.equal(database.getMeta().authorityGeneration, after);
   });
 
-  it("D118 finds attempting evidence from an absent run before releasing or cancelling the same item", () => {
+  it("finds attempting evidence from an absent run before releasing or cancelling the same item", () => {
     const { database, service, request, runtimeConfig } = fixture();
     const run = created(service, request);
     const claimed = requireLifecycleApplied(service.claimNext({ commandId: UUID_5, workflow: WORKFLOW_ID,
@@ -2212,7 +2211,7 @@ describe("worker lifecycle service capability", () => {
     const result = service.requeue({ commandId: lifecycleCommandId("recovery", run.envelope.runId),
       runId: run.envelope.runId, expectedVersion: requested.version, cause: "recovery", staleBefore: LATER });
     assert.equal(result.state, "recovery-required");
-    if (result.state !== "recovery-required") throw new Error("D118 did not refuse release");
+    if (result.state !== "recovery-required") throw new Error("Unfinished write intent did not refuse release");
     assert.equal(result.parked, false);
     assert.deepEqual(result.run, requested);
     assert.equal(database.getMeta().authorityGeneration, generation);
@@ -2221,7 +2220,7 @@ describe("worker lifecycle service capability", () => {
 
 
 for (const finishingGeneration of [2, 3]) {
-  it(`C P1/P4 rejects A generation1 after reassignment; generation${finishingGeneration} finishes and Retry preserves completion`, () => {
+  it(`rejects generation1 after reassignment; generation${finishingGeneration} finishes and Retry preserves completion`, () => {
     const f = fixture(); let next = 20;
     const id = () => `99000000-0000-4000-8000-${String(next++).padStart(12, "0")}`;
     let running = runningRun(f.service, f.request, f.runtimeConfig);
@@ -2262,7 +2261,7 @@ for (const finishingGeneration of [2, 3]) {
   });
 }
 
-it("C P1 competing connections cannot accept conflicting failure settlements", async () => {
+it("competing connections cannot accept conflicting failure settlements", async () => {
   const f = fixture(); const running = runningRun(f.service, f.request, f.runtimeConfig);
   const firstRequest = failureTerminalRequest(running, "99000000-0000-4000-8000-000000000051");
   const secondRequest = failureTerminalRequest(running, "99000000-0000-4000-8000-000000000052");
