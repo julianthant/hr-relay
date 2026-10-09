@@ -119,7 +119,7 @@ function runnerInvocationProductionSources(): readonly { readonly path: string; 
 }
 
 describe("secrets single source", () => {
-  it("admits the fixed local environment before importing either allowlisted runtime", () => {
+  it("refuses migrated environment keys before importing either admitted runtime", () => {
     const cli = readFileSync(join(REPO_ROOT, "src/cli.ts"), "utf8");
     const smoke = readFileSync(join(REPO_ROOT, "scripts/verify/test-target-document-number.ts"), "utf8");
     assert.equal(cli.includes("assertLocalEnvironmentFile"), false);
@@ -128,6 +128,29 @@ describe("secrets single source", () => {
     assert.equal(smoke.includes("process.argv[1]"), false);
 
     assert.deepEqual(auditSoleRunnerInvocation(runnerInvocationProductionSources()), []);
+  });
+
+  it("rejects key-refusal, admission, selector and wrapper tampering", () => {
+    const path = "src/backend/app/bootstrap/secure-env-bootstrap.ts";
+    const content = readFileSync(join(REPO_ROOT, path), "utf8");
+    const audit = (candidate: string) => auditSoleRunnerInvocation([{ path, content: candidate }]);
+    assert.deepEqual(audit(content), []);
+    for (const candidate of [
+      content.replace("assertNoMigratedEnvironmentKeys()))", "(() => undefined)()))"),
+      content.replace('entrypointArgs[0] === "test-data"', 'entrypointArgs[0] === "dashboard"'),
+      content.replace("acquireEntrypointAdmission(workspace, requested)", "undefined"),
+      content.replace('if (selector === "cli" || selector === "test-target-document-number") return selector;', 'return "cli";'),
+      content.replace('from "../../../models/config/secrets.js"', 'from "../../../models/config/forged-secrets.js"'),
+      content.replace("const runCli =", "assertNoMigratedEnvironmentKeys = () => undefined; const runCli ="),
+      content.replace('import { assertNoMigratedEnvironmentKeys }', 'import { assertNoMigratedEnvironmentKeys as forged }'),
+      content.replace('await runCli(admission);', 'await runCli(admission); await runCli(admission);'),
+    ]) assert.ok(audit(candidate).length > 0, candidate);
+    const wrapperPath = "scripts/dev/secure-env-bootstrap.ts";
+    const wrapper = readFileSync(join(REPO_ROOT, wrapperPath), "utf8");
+    assert.deepEqual(auditSoleRunnerInvocation([{ path, content }, { path: wrapperPath, content: wrapper }]), []);
+    for (const candidate of [wrapper + '\nawait runSecureEnvironmentBootstrap();', wrapper.replace('entryPath !== undefined &&', ''), wrapper.replace('bootstrap/secure-env-bootstrap.js', 'bootstrap/forged.js')]) {
+      assert.ok(auditSoleRunnerInvocation([{ path, content }, { path: wrapperPath, content: candidate }]).length > 0);
+    }
   });
 
   it("rejects every AST-level attempt to invoke or relay an admitted runner", () => {
@@ -164,22 +187,11 @@ describe("secrets single source", () => {
       "const payload = { runCli: cli.runCli }; payload.runCli();",
       "const payload = [cli.runCli]; payload[0]();",
     ]) {
-      const bootstrap = [
-        'import { admitLocalEnvironmentFile } from "../src/models/config/secrets.js";',
-        "declare function repositoryEnvironmentFilePath(): string;",
-        "export async function main(): Promise<void> {",
-        "  const path = repositoryEnvironmentFilePath();",
-        "  admitLocalEnvironmentFile(path);",
-        '  const cli = await import("../src/cli.js");',
-        "  await cli.runCli();",
-        `  ${packedInvocation}`,
-        '  const smoke = await import("./smoke-test-target-document-number.js");',
-        "  await smoke.runTestTargetDocumentNumberSmoke();",
-        "}",
-      ].join("\n");
+      const bootstrap = readFileSync(join(REPO_ROOT, "src/backend/app/bootstrap/secure-env-bootstrap.ts"), "utf8")
+        .replace("await runCli(admission);", `await runCli(admission); const cli = { runCli }; ${packedInvocation}`);
       assert.match(
         auditSoleRunnerInvocation([
-          { path: "scripts/dev/secure-env-bootstrap.ts", content: bootstrap },
+          { path: "src/backend/app/bootstrap/secure-env-bootstrap.ts", content: bootstrap },
           { path: "src/cli.ts", content: "export function runCli(): void {}" },
           {
             path: "scripts/verify/test-target-document-number.ts",
@@ -187,7 +199,7 @@ describe("secrets single source", () => {
           },
           {
             path: "src/models/config/secrets.ts",
-            content: "export function admitLocalEnvironmentFile(path: string): void { void path; }",
+            content: "export function assertNoMigratedEnvironmentKeys(): void {}",
           },
         ]).join("\n"),
         /runCli must have one canonical dynamic import and one direct invocation/u,
@@ -202,22 +214,11 @@ describe("secrets single source", () => {
       "const payload = [cli.runCli]; const [invoke] = payload; invoke();",
       "const runtimeKey = String(Date.now()); const payload = { [runtimeKey]: cli.runCli }; const { invoke } = payload; invoke();",
     ]) {
-      const bootstrap = [
-        'import { admitLocalEnvironmentFile } from "../src/models/config/secrets.js";',
-        "declare function repositoryEnvironmentFilePath(): string;",
-        "export async function main(): Promise<void> {",
-        "  const path = repositoryEnvironmentFilePath();",
-        "  admitLocalEnvironmentFile(path);",
-        '  const cli = await import("../src/cli.js");',
-        "  await cli.runCli();",
-        `  ${packedInvocation}`,
-        '  const smoke = await import("./smoke-test-target-document-number.js");',
-        "  await smoke.runTestTargetDocumentNumberSmoke();",
-        "}",
-      ].join("\n");
+      const bootstrap = readFileSync(join(REPO_ROOT, "src/backend/app/bootstrap/secure-env-bootstrap.ts"), "utf8")
+        .replace("await runCli(admission);", `await runCli(admission); const cli = { runCli }; ${packedInvocation}`);
       assert.match(
         auditSoleRunnerInvocation([
-          { path: "scripts/dev/secure-env-bootstrap.ts", content: bootstrap },
+          { path: "src/backend/app/bootstrap/secure-env-bootstrap.ts", content: bootstrap },
           { path: "src/cli.ts", content: "export function runCli(): void {}" },
           {
             path: "scripts/verify/test-target-document-number.ts",
@@ -225,7 +226,7 @@ describe("secrets single source", () => {
           },
           {
             path: "src/models/config/secrets.ts",
-            content: "export function admitLocalEnvironmentFile(path: string): void { void path; }",
+            content: "export function assertNoMigratedEnvironmentKeys(): void {}",
           },
         ]).join("\n"),
         /runCli must have one canonical dynamic import and one direct invocation/u,
@@ -257,7 +258,7 @@ describe("secrets single source", () => {
     ];
     assert.match(
       auditSoleRunnerInvocation(sources).join("\n"),
-      /vite\.dashboard\.config\.ts:1: admitted runner is reachable outside scripts\/secure-env-bootstrap\.ts/u,
+      /vite\.dashboard\.config\.ts:1: admitted runner is reachable outside src\/backend\/app\/bootstrap\/secure-env-bootstrap\.ts/u,
     );
   });
 
@@ -300,7 +301,7 @@ describe("secrets single source", () => {
     assert.equal(reads.includes("vite"), false, "package dependencies are intentionally outside the local closure");
     assert.match(
       auditSoleRunnerInvocation(sources).join("\n"),
-      /vite-support\/nested-config\.ts:1: admitted runner is reachable outside scripts\/secure-env-bootstrap\.ts/u,
+      /vite-support\/nested-config\.ts:1: admitted runner is reachable outside src\/backend\/app\/bootstrap\/secure-env-bootstrap\.ts/u,
     );
   });
 
@@ -340,7 +341,7 @@ describe("secrets single source", () => {
     );
     assert.match(
       auditSoleRunnerInvocation(sources).join("\n"),
-      /vite-support\/nested-config\.cts:1: admitted runner is reachable outside scripts\/secure-env-bootstrap\.ts/u,
+      /vite-support\/nested-config\.cts:1: admitted runner is reachable outside src\/backend\/app\/bootstrap\/secure-env-bootstrap\.ts/u,
     );
   });
 
@@ -566,4 +567,19 @@ describe("secrets single source", () => {
       [],
     );
   });
+});
+
+it("terminates cyclic packed properties without losing a runner on the other branch", () => {
+  for (const packed of [
+    "const box = { run: cli.runCli }; box.loop = box; box.loop.loop.run();",
+    "const box = { nested: { run: cli.runCli } }; box.nested.loop = box.nested; box.nested.loop.run();",
+    "const box = { run: cli.runCli }; box.loop = box; const alias = { ...box.loop }; alias.run();",
+  ]) {
+    const violations = auditSoleRunnerInvocation([
+      { path: "src/backend/app/future.ts", content: 'import * as cli from "../../cli.js"; ' + packed },
+      { path: "src/cli.ts", content: "export function runCli(): void {}" },
+      { path: "scripts/verify/test-target-document-number.ts", content: "export function runTestTargetDocumentNumberSmoke(): void {}" },
+    ]);
+    assert.match(violations.join("\n"), /admitted runner is reachable outside src\/backend\/app\/bootstrap\/secure-env-bootstrap\.ts/u, packed);
+  }
 });

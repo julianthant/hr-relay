@@ -8,7 +8,8 @@ export interface RunnerSource {
 
 export type PackageScripts = Readonly<Record<string, string>>;
 
-const BOOTSTRAP = "scripts/dev/secure-env-bootstrap.ts";
+const BOOTSTRAP = "src/backend/app/bootstrap/secure-env-bootstrap.ts";
+const BOOTSTRAP_WRAPPER = "scripts/dev/secure-env-bootstrap.ts";
 const SECRET_OWNER = "src/models/config/secrets.ts";
 const RUNNERS = [
   { module: "src/cli.ts", exportName: "runCli" },
@@ -18,7 +19,7 @@ const RUNNERS = [
   },
 ] as const;
 type RunnerName = typeof RUNNERS[number]["exportName"];
-type Origin = `module:${string}` | `runner:${RunnerName}` | "admission";
+type Origin = `module:${string}` | `runner:${RunnerName}` | "admission" | "runtime-admission";
 
 const LOCAL_SOURCE_EXTENSIONS = [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"] as const;
 const MAX_EXTERNAL_SOURCE_CLOSURE_FILES = 256;
@@ -386,10 +387,13 @@ export function auditSoleRunnerInvocation(
         if (module === SECRET_OWNER && bindings !== undefined && ts.isNamedImports(bindings)) {
           for (const element of bindings.elements) {
             if (!element.isTypeOnly
-              && (element.propertyName?.text ?? element.name.text) === "admitLocalEnvironmentFile") {
+              && (element.propertyName?.text ?? element.name.text) === "assertNoMigratedEnvironmentKeys") {
               addOrigins(element.name.text, ["admission"]);
             }
           }
+        }
+        if (module === "src/backend/storage/admission/bootstrap-admission.ts" && bindings !== undefined && ts.isNamedImports(bindings)) {
+          for (const element of bindings.elements) if (!element.isTypeOnly && (element.propertyName?.text ?? element.name.text) === "acquireEntrypointAdmission") addOrigins(element.name.text, ["runtime-admission"]);
         }
         if (!RUNNERS.some((runner) => runner.module === module)) continue;
         if (bindings !== undefined && ts.isNamespaceImport(bindings)) {
@@ -473,67 +477,76 @@ export function auditSoleRunnerInvocation(
       }
       return ts.isComputedPropertyName(name) ? staticSpecifier(name.expression) : undefined;
     };
+    const activeProperties = new Map<ts.Expression, Set<string>>();
     const packedPropertyValues = (
       raw: ts.Expression,
       property: string,
       resolving: ReadonlySet<ts.Node>,
     ): readonly ts.Expression[] => {
       const expression = unwrapped(raw);
-      if (ts.isObjectLiteralExpression(expression)) {
-        const values: ts.Expression[] = [];
-        for (const member of expression.properties) {
-          if (ts.isSpreadAssignment(member)) {
-            values.push(...packedPropertyValues(member.expression, property, resolving));
-          } else if (ts.isPropertyAssignment(member)) {
-            const memberName = packedPropertyName(member.name);
-            if (memberName === undefined || memberName === property) {
-              values.push(member.initializer);
+      const active = activeProperties.get(expression) ?? new Set<string>();
+      if (active.has(property)) return [];
+      active.add(property); activeProperties.set(expression, active);
+      try {
+        if (ts.isObjectLiteralExpression(expression)) {
+          const values: ts.Expression[] = [];
+          for (const member of expression.properties) {
+            if (ts.isSpreadAssignment(member)) {
+              values.push(...packedPropertyValues(member.expression, property, resolving));
+            } else if (ts.isPropertyAssignment(member)) {
+              const memberName = packedPropertyName(member.name);
+              if (memberName === undefined || memberName === property) {
+                values.push(member.initializer);
+              }
+            } else if (ts.isShorthandPropertyAssignment(member)
+              && member.name.text === property) {
+              values.push(member.name);
             }
-          } else if (ts.isShorthandPropertyAssignment(member)
-            && member.name.text === property) {
-            values.push(member.name);
           }
+          return values;
         }
-        return values;
-      }
-      if (ts.isArrayLiteralExpression(expression) && /^\d+$/u.test(property)) {
-        const target = Number(property);
-        if (expression.elements.some((element) => ts.isSpreadElement(element))) {
-          return expression.elements.map((element) => ts.isSpreadElement(element)
-            ? element.expression
-            : element);
+        if (ts.isArrayLiteralExpression(expression) && /^\d+$/u.test(property)) {
+          const target = Number(property);
+          if (expression.elements.some((element) => ts.isSpreadElement(element))) {
+            return expression.elements.map((element) => ts.isSpreadElement(element)
+              ? element.expression
+              : element);
+          }
+          const selected = expression.elements[target];
+          return selected !== undefined && ts.isExpression(selected) ? [selected] : [];
         }
-        const selected = expression.elements[target];
-        return selected !== undefined && ts.isExpression(selected) ? [selected] : [];
-      }
-      if (ts.isIdentifier(expression)) {
-        const values: ts.Expression[] = [];
-        for (const sourceBinding of packedBindings.get(expression.text) ?? []) {
-          if (resolving.has(sourceBinding.node)) continue;
-          values.push(...packedPropertyValues(
-            sourceBinding.expression,
-            property,
-            new Set([...resolving, sourceBinding.node]),
-          ));
+        if (ts.isIdentifier(expression)) {
+          const values: ts.Expression[] = [];
+          for (const sourceBinding of packedBindings.get(expression.text) ?? []) {
+            if (resolving.has(sourceBinding.node)) continue;
+            values.push(...packedPropertyValues(
+              sourceBinding.expression,
+              property,
+              new Set([...resolving, sourceBinding.node]),
+            ));
+          }
+          for (const assignment of packedAssignments.get(expression.text)?.get(property) ?? []) {
+            if (!resolving.has(assignment.node)) values.push(assignment.expression);
+          }
+          return values;
         }
-        for (const assignment of packedAssignments.get(expression.text)?.get(property) ?? []) {
-          if (!resolving.has(assignment.node)) values.push(assignment.expression);
+        if (ts.isPropertyAccessExpression(expression) || ts.isElementAccessExpression(expression)) {
+          const receiverProperty = propertyText(expression, staticSpecifier);
+          if (receiverProperty === undefined) return [];
+          return packedPropertyValues(expression.expression, receiverProperty, resolving)
+            .flatMap((value) => packedPropertyValues(value, property, resolving));
         }
-        return values;
+        if (ts.isConditionalExpression(expression)) {
+          return [
+            ...packedPropertyValues(expression.whenTrue, property, resolving),
+            ...packedPropertyValues(expression.whenFalse, property, resolving),
+          ];
+        }
+        return [];
+      } finally {
+        active.delete(property);
+        if (active.size === 0) activeProperties.delete(expression);
       }
-      if (ts.isPropertyAccessExpression(expression) || ts.isElementAccessExpression(expression)) {
-        const receiverProperty = propertyText(expression, staticSpecifier);
-        if (receiverProperty === undefined) return [];
-        return packedPropertyValues(expression.expression, receiverProperty, resolving)
-          .flatMap((value) => packedPropertyValues(value, property, resolving));
-      }
-      if (ts.isConditionalExpression(expression)) {
-        return [
-          ...packedPropertyValues(expression.whenTrue, property, resolving),
-          ...packedPropertyValues(expression.whenFalse, property, resolving),
-        ];
-      }
-      return [];
     };
     const packedAllValues = (
       raw: ts.Expression,
@@ -757,6 +770,12 @@ export function auditSoleRunnerInvocation(
     };
     visit(source);
 
+    if (path === BOOTSTRAP_WRAPPER) {
+      const compact = ts.createPrinter({ removeComments: true }).printFile(source).replace(/\s+/gu, "");
+      const expected = 'import{pathToFileURL}from"node:url";import{runSecureEnvironmentBootstrap}from"../../src/backend/app/bootstrap/secure-env-bootstrap.js";export{runSecureEnvironmentBootstrap,secureEnvironmentEntrypoint,}from"../../src/backend/app/bootstrap/secure-env-bootstrap.js";exporttype{SecureEnvironmentBootstrapDependencies,SecureEnvironmentEntrypoint,}from"../../src/backend/app/bootstrap/secure-env-bootstrap.js";constentryPath=process.argv[1];if(entryPath!==undefined&&pathToFileURL(entryPath).href===import.meta.url){awaitrunSecureEnvironmentBootstrap();}';
+      if (compact !== expected) violations.push(`${path}: bootstrap wrapper must retain only canonical exports and the direct-entry invocation`);
+    }
+
     if (path !== BOOTSTRAP) {
       for (const node of unresolvedDynamicImports) {
         violations.push(
@@ -782,21 +801,35 @@ export function auditSoleRunnerInvocation(
       );
     }
 
-    const pathCalls: ts.CallExpression[] = [];
     const admissionCalls: ts.CallExpression[] = [];
+    const runtimeAdmissionCalls: ts.CallExpression[] = [];
     const visitBootstrap = (node: ts.Node): void => {
+      if (ts.isBinaryExpression(node) && node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment && node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
+        && [...expressionOrigins(node.left)].some(origin => origin === "admission" || origin === "runtime-admission")) violations.push(`${path}: canonical admission binding cannot be reassigned`);
+      if (ts.isParameter(node) && ts.isIdentifier(node.name) && [...expressionOrigins(node.name)].some(origin => origin === "admission" || origin === "runtime-admission")) violations.push(`${path}: canonical admission binding cannot be shadowed`);
       if (ts.isCallExpression(node)) {
-        if (ts.isIdentifier(node.expression)
-          && node.expression.text === "repositoryEnvironmentFilePath") pathCalls.push(node);
         if ([...expressionOrigins(node.expression)].includes("admission")) admissionCalls.push(node);
+        if ([...expressionOrigins(node.expression)].includes("runtime-admission")) runtimeAdmissionCalls.push(node);
       }
       ts.forEachChild(node, visitBootstrap);
     };
     visitBootstrap(source);
-    if (pathCalls.length !== 1 || admissionCalls.length !== 1) {
-      violations.push(
-        `${path}: secure environment admission must have one repository-path call and one canonical admission call`,
-      );
+    const compact = (node: ts.Node): string => ts.createPrinter({ removeComments: true }).printNode(ts.EmitHint.Unspecified, node, source).replace(/\s+/gu, "");
+    let keyRefusal = 0, mainAdmission = 0;
+    const topology = (node: ts.Node): void => {
+      if (ts.isIfStatement(node) && ts.isBlock(node.parent) && ts.isTryStatement(node.parent.parent) && compact(node.expression) === '!(entrypoint==="cli"&&(entrypointArgs[0]==="storage"||entrypointArgs[0]==="test-data"))'
+        && compact(node.thenStatement) === '{(dependencies.assertEnvironment??(()=>assertNoMigratedEnvironmentKeys()))();}' && node.elseStatement === undefined) keyRefusal += 1;
+      if (ts.isVariableDeclaration(node) && node.name.getText(source) === "admission" && node.initializer !== undefined
+        && compact(node.initializer) === '(dependencies.acquireAdmission??((requested)=>acquireEntrypointAdmission(workspace,requested)))(mode)') mainAdmission += 1;
+      ts.forEachChild(node, topology);
+    };
+    topology(source);
+    const selector = source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === "secureEnvironmentEntrypoint");
+    const selectorValid = selector !== undefined && ts.isFunctionDeclaration(selector) && selector.body?.statements.length === 2
+      && ts.isIfStatement(selector.body.statements[0]) && compact(selector.body.statements[0].expression) === 'selector==="cli"||selector==="test-target-document-number"'
+      && compact(selector.body.statements[0].thenStatement) === 'returnselector;' && selector.body.statements[0].elseStatement === undefined && ts.isThrowStatement(selector.body.statements[1]);
+    if (admissionCalls.length !== 1 || runtimeAdmissionCalls.length !== 2 || keyRefusal !== 1 || mainAdmission !== 1 || !selectorValid) {
+      violations.push(`${path}: secure environment bootstrap requires canonical key refusal, exact storage/test-data exemptions, strict selector and canonical runtime admission`);
     }
     const admissionPosition = admissionCalls[0]?.getStart(source);
     for (const runner of RUNNERS) {

@@ -144,7 +144,7 @@ describe("the Duo ceremony lease is structural", () => {
     assert.ok(read(LEASE_STORE).includes(MINT_FUNCTIONS[0]), "the lease store must be the minter");
     assert.match(
       auditMintingCallers("src/backend/runtime/workers/worker-sessions.ts", "const token = mintDuoCeremonyLeaseToken(input);").join("\n"),
-      /only src\/infra\/sqlite\/authority-database\.ts may mint/,
+      /only src\/backend\/storage\/sqlite\/authority-database\.ts may mint/,
     );
   });
 
