@@ -1311,11 +1311,12 @@ describe("failure, retry, and resume", () => {
 
     // Classification stays declared per leaf; the original is retained for the operator.
     const values = new Map(event.points.flatMap((point) => point.values.map((value) => [value.key, value])));
-    assert.equal(values.get("results")?.transform, "count");
+    assert.equal(values.get("results")?.transform, "allow");
+    assert.equal(values.get("results")?.state, "allowed");
     assert.equal(values.get("selection.status")?.state, "allowed");
     const emplId = values.get("selection.selected.emplId");
-    assert.equal(emplId?.transform, "last4");
-    assert.equal(emplId?.state === "transformed" ? String(emplId.value).length : -1, 4);
+    assert.equal(emplId?.transform, "allow");
+    assert.equal(emplId?.state, "allowed");
 
     // A point covering a populated object contributes one value PER LEAF, in
     // the same path vocabulary a `FactProvenance` row is written under.
@@ -1328,7 +1329,7 @@ describe("failure, retry, and resume", () => {
     const recorded = JSON.stringify(checkpoint?.output.value ?? {});
     const wholeEid = /"emplId":"(\d+)"/.exec(recorded)?.[1];
     assert.ok(wholeEid !== undefined && wholeEid.length > 4);
-    assert.equal(emplId?.rawValue, wholeEid);
+    assert.equal(emplId?.state === "allowed" ? emplId.value : undefined, wholeEid);
     assert.equal(JSON.stringify(event).includes(wholeEid), true);
   });
 
@@ -1343,8 +1344,8 @@ describe("failure, retry, and resume", () => {
     const points = harness.emitter.events().flatMap((event) => event.t === "data.observed" ? event.points : []);
     const identifiers = points.flatMap((point) => point.values).filter(({ key }) => key.endsWith("emplId"));
     assert.ok(identifiers.length > 0);
-    assert.ok(identifiers.every(({ rawValue }) => rawValue !== undefined));
-    assert.ok(identifiers.some(({ rawValue }) => rawValue === "10873698"));
+    assert.ok(identifiers.every((value) => value.state === "allowed" && value.value !== undefined));
+    assert.ok(identifiers.some((value) => value.state === "allowed" && value.value === "10873698"));
     assert.deepEqual(database.authority.runs.get(RUN_ID)?.input.parsed.protectedBindings, [binding]);
   });
 

@@ -25,7 +25,7 @@ const event = ConfirmedActionEventSchema.parse({ version: 1, kind: "trace", stat
 const authority = { envelope: { runId: RUN, workflow: "onboarding", traceId: "fpo-120000-0002",
   contractFingerprint: HASH, attempt: 1,
   operationDisplaySnapshot: { invocations: [{ id: "first-operation", entryId: "first",
-    taskId: "ucpath/read-write-fixture", occurrencePath: ["first"], operation: { system: "ucpath",
+    taskId: "ucpath/read-write-fixture", occurrencePath: ["first"], bindings: [{ slot: "field-value", value: { kind: "run-input", path: "emplId" } }], operation: { system: "ucpath",
       session: { kind: "browser", id: "browser-session", system: "ucpath" },
       actions: [{ id: "read-field", target: "unregistered.private" }] } }] } },
   createdAt: AT, updatedAt: AT, lifecycle: { state: "running" } } as unknown as RunRecord;
@@ -43,6 +43,66 @@ describe("confirmed action note append boundary", () => {
     assert.equal(stored.confirmedAction?.action.value, undefined);
     assert.equal(note.confirmedAction?.action.value, undefined);
     assert.equal(lines[0].includes("private-data"), false);
+  });
+
+  it.each(["protection-unresolved", "classification-required"] as const)("persists the canonical withheld reason %s without raw values", (reason) => {
+    const lines: string[] = [];
+    const writer = createNoteJsonlWriter({ stateRoot: "unused", clock: manualClock(new Date(AT)),
+      pid: 1, appendLine: (_workflow, _date, line) => { lines.push(line); } });
+    const occurrence = { ...event.action, state: "completed" as const,
+      value: { slot: "field-value", fieldPath: "emplId", producer: { kind: "run-input" as const, path: "emplId" },
+        consumed: { state: "withheld" as const, reason } } };
+    const note = writer.emitRunAction({ workflow: "onboarding", address: { runId: RUN, attempt: 1,
+      traceId: "fpo-120000-0002", spanPath: "first" },
+      action: { kind: "typed", targetId: "unregistered.private", at: AT, operation: occurrence } }, authority);
+    assert.equal(lines.length, 1);
+    const stored = NoteWireSchema.parse(JSON.parse(lines[0]));
+    assert.deepEqual(stored.action?.operation?.value, occurrence.value);
+    assert.deepEqual(note.action?.operation?.value, occurrence.value);
+    assert.equal(lines[0].includes("private-data"), false);
+    for (const consumed of [{ state: "withheld", reason: "arbitrary" },
+      { state: "withheld", reason, extra: true }, { state: "withheld", reason, value: "private-data" }]) {
+      assert.equal(NoteWireSchema.safeParse({ ...stored, action: { ...stored.action,
+        operation: { ...occurrence, value: { ...occurrence.value, consumed } } } }).success, false);
+    }
+  });
+
+  it.each(["browser", "headless"] as const)("retains eligible %s local consumption through the frozen append boundary", (source) => {
+    const lines: string[] = [];
+    const writer = createNoteJsonlWriter({ stateRoot: "unused", clock: manualClock(new Date(AT)), pid: 1,
+      appendLine: (_workflow, _date, line) => { lines.push(line); } });
+    const target = source === "browser" ? "ucpath.person-org.eid-input" : "read-local";
+    const frozenInvocation = authority.envelope.operationDisplaySnapshot!.invocations[0];
+    const session = source === "browser" ? frozenInvocation.operation.session : { kind: "local", id: "browser-session" };
+    const frozen = { ...authority, envelope: { ...authority.envelope, operationDisplaySnapshot: {
+      ...authority.envelope.operationDisplaySnapshot, invocations: [{ ...frozenInvocation,
+        operation: { ...frozenInvocation.operation, system: source === "browser" ? "ucpath" : "local", session,
+          actions: [{ id: "read-field", target, valueSlot: "field-value" }],
+          values: [{ id: "field-value", source: { kind: "contract-input", path: "emplId" } }] } }] } } } as unknown as RunRecord;
+    const { physicalSessionId, ...headlessAction } = event.action;
+    const local = ConfirmedActionEventSchema.parse({ ...event,
+      source: source === "browser" ? event.source : { kind: "headless", system: "workflow" },
+      action: { ...(source === "browser" ? { ...headlessAction, physicalSessionId } : headlessAction), value: { ...action.value, consumed: { state: "observed", value: { supplied: "complete" } } } } });
+    const stored = writer.emitConfirmedAction(local, frozen);
+    assert.deepEqual(stored.confirmedAction?.action.value?.consumed, { state: "observed", value: { supplied: "complete" } });
+    assert.deepEqual(NoteWireSchema.parse(JSON.parse(lines[0])).confirmedAction?.action.value?.consumed,
+      { state: "observed", value: { supplied: "complete" } });
+    const missingSlot = { ...frozen, envelope: { ...frozen.envelope, operationDisplaySnapshot: {
+      ...frozen.envelope.operationDisplaySnapshot, invocations: [{ ...frozen.envelope.operationDisplaySnapshot!.invocations[0],
+        operation: { ...frozen.envelope.operationDisplaySnapshot!.invocations[0].operation, values: [] } }] } } } as unknown as RunRecord;
+    assert.throws(() => writer.emitConfirmedAction(local, missingSlot), /frozen-value-slot-mismatch/u);
+    const missingDeclaration = { ...frozen, envelope: { ...frozen.envelope, operationDisplaySnapshot: {
+      ...frozen.envelope.operationDisplaySnapshot, invocations: [{ ...frozen.envelope.operationDisplaySnapshot!.invocations[0],
+        operation: { ...frozen.envelope.operationDisplaySnapshot!.invocations[0].operation,
+          actions: [{ id: "read-field", target }] } }] } } } as unknown as RunRecord;
+    assert.throws(() => writer.emitConfirmedAction(local, missingDeclaration), /frozen-value-slot-mismatch/u);
+    assert.equal(lines.length, 1);
+    for (const value of [{ ...local.action.value!, slot: "forged" }, { ...local.action.value!, fieldPath: "foreign" },
+      { ...local.action.value!, producer: { kind: "run-input", path: "foreign" } },
+      { ...local.action.value!, producer: { kind: "task-output", entryId: "first", path: "emplId" } }]) {
+      assert.throws(() => writer.emitConfirmedAction({ ...local, action: { ...local.action, value } } as typeof local, frozen), /frozen-value-(slot|producer)-mismatch/u);
+    }
+    assert.throws(() => writer.emitConfirmedAction({ ...local, action: { ...local.action, logicalActionId: "forged" } }, frozen), /frozen-action-mismatch/u);
   });
 
   it("throws on append failure and refuses a foreign frozen run before any append", () => {
@@ -76,10 +136,10 @@ describe("confirmed action note append boundary", () => {
     const frozen = { ...authority, envelope: { ...authority.envelope,
       operationDisplaySnapshot: { invocations: [
         { id: "commit-operation", entryId: "first", taskId: "ucpath/fixture-commit",
-          occurrencePath: ["first"], operation: { system: "ucpath", session: { kind: "browser", id: "browser-session", system: "ucpath" },
+          occurrencePath: ["first"], bindings: [{ slot: "field-value", value: { kind: "run-input", path: "emplId" } }], operation: { system: "ucpath", session: { kind: "browser", id: "browser-session", system: "ucpath" },
             actions: [{ id: "submit", target: "unregistered.private" }] } },
         { id: "verify-operation", entryId: "first", taskId: "ucpath/fixture-verify",
-          occurrencePath: ["first"], operation: { system: "ucpath", session: { kind: "browser", id: "browser-session", system: "ucpath" },
+          occurrencePath: ["first"], bindings: [{ slot: "field-value", value: { kind: "run-input", path: "emplId" } }], operation: { system: "ucpath", session: { kind: "browser", id: "browser-session", system: "ucpath" },
             actions: [{ id: "saved", target: "unregistered.private" }] } },
       ] } } } as unknown as RunRecord;
     const stored = writer.emitConfirmedAction(submit, frozen).confirmedAction;
