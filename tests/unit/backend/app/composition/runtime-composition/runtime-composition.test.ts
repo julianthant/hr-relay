@@ -251,7 +251,7 @@ describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
       },
     });
     await settleEventLoop();
-    assert.deepEqual(output, []);
+    assert.equal(output.length, 0);
     assert.ok(finish);
     finish(report);
     await running;
@@ -284,7 +284,7 @@ describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
           isolation: rebuildRuntimeIsolation, args: [command, "registered-argument"], write: value => output.push(value),
         }), /needs its composition seam/u);
       }
-      assert.deepEqual(output, []);
+      assert.equal(output.length, 0);
       runtime.registerExplainComposer((isolation, args) => { record("explain", isolation, args); return "explain"; });
       runtime.registerOcrComposer(args => { assert.deepEqual(args, ["registered-argument"]); seen.push("ocr"); return { output: "ocr", exitCode: 0 }; });
       runtime.registerStorageComposer((isolation, args) => { record("storage", isolation, args); return Promise.resolve({ output: "storage", exitCode: 0 }); });
