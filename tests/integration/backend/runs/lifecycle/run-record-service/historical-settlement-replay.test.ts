@@ -21,7 +21,7 @@ it("replays an actual released settlement after conversion without rewriting its
   const fixture = z.object({ bundle: z.object({ run: z.unknown(), checkpoint: z.unknown(), commit: z.unknown() }),
     transition: z.object({ kind: z.literal("advance-running"), claim: z.object({ workerId: z.string(), claimGeneration: z.number() }), claimedAt: z.string() }),
     tables: z.record(z.string(), z.array(z.record(z.string(), z.union([z.string(), z.number(), z.null()])))),
-  }).parse(JSON.parse(readFileSync(new URL("../../../../../../../../../support/fixtures/historical-settlement-replay.json", import.meta.url), "utf8")));
+  }).parse(JSON.parse(readFileSync(new URL("../../../../../support/fixtures/historical-settlement-replay.json", import.meta.url), "utf8")));
   const root = mkdtempSync(join(tmpdir(), "historical-settlement-")); const path = join(root, "state.db");
   const bundle = SequencedWriteCommitInputSchema.parse({ ...fixture.bundle, commit: currentAtomicWriteFixture(fixture.bundle.commit) });
   const clock = manualClock(new Date(bundle.commit.confirmedAt));
@@ -44,7 +44,7 @@ it("replays an actual released settlement after conversion without rewriting its
     const original=readFileSync(path);
     await assert.rejects(upgradeStorage({stateRoot:root,processLockRoot:join(root,"locks"),environmentFile:join(root,".env"),plan:false},clock),/authority-below-floor/u);
     assert.deepEqual(readFileSync(path),original);
-    restoreRetainedFixture(path,new URL("../../../../../../../../fixtures/migration/migrated-settlement.json",import.meta.url));
+    restoreRetainedFixture(path,new URL("./fixtures/migrated-settlement.json",import.meta.url));
     assert.deepEqual(journal(),before);
     await backupStoppedAuthority(root, clock);
     assert.equal((await upgradeStorage({ stateRoot: root, processLockRoot: join(root, "locks"), environmentFile: join(root, ".env"), plan: false }, clock)).state, "converted");

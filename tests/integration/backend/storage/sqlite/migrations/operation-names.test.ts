@@ -13,7 +13,7 @@ import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../../../../../src/rules/time/clock.js";
 import { AuthorityDatabase } from "../../../../../support/helpers/synthetic-storage-admission.js";
 import { inspectAuthorityBackupReadOnly } from "../../../../../support/helpers/synthetic-storage-admission.js";
-import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../../../../../src/backend/storage/sqlite/migrations.js";
+import { AUTHORITY_APPLICATION_ID, NORMAL_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../../../../../src/backend/storage/sqlite/migrations.js";
 import { backupStoppedAuthority, upgradeStorage } from "../../../../../support/helpers/synthetic-storage-admission.js";
 import { NOW, WRITE_INTENT_ATTEMPTING } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
 import { createOperationRenameSource, operationFixtureId, OPERATION_TABLE_RENAMES } from "../../../../../support/helpers/integration/operation-names-fixture.js";
@@ -91,7 +91,7 @@ function supportedFixture() {
   const f = fixture();
   rmSync(f.path);
   const facts = z.record(z.string().regex(/^[a-z_]+$/u), z.array(z.record(z.string(), z.union([z.string(), z.number(), z.null()])))).parse(
-    JSON.parse(readFileSync(new URL("../../../../../../../../fixtures/migration/migrated-operations.json", import.meta.url), "utf8")));
+    JSON.parse(readFileSync(new URL("./fixtures/migrated-operations.json", import.meta.url), "utf8")));
   const raw = new DatabaseSync(f.path);
   try {
     raw.exec("PRAGMA foreign_keys=OFF");
@@ -178,7 +178,7 @@ describe("operation table names", () => {
     assertConvertedRows(f.path, prior);
     assert.deepEqual(rows(f.path, "deleted_runs"), receipts);
     const after = inspectAuthorityBackupReadOnly(f.path);
-    assert.equal(after.schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    assert.equal(after.schemaVersion, NORMAL_AUTHORITY_SCHEMA_VERSION);
     const { durableOutbox: historicalPending, runTerminalOutbox: historicalTerminal, ...currentCounts } = historical.counts;
     assert.equal(historicalTerminal, 0);
     assert.equal(historicalPending, 1);
@@ -205,7 +205,7 @@ describe("operation table names", () => {
     await f.backup();
     await assert.rejects(upgradeStorage({ ...f.input, hooks: { [boundary]: () => { throw new Error("injected-operation-rename"); } } }, clock), /injected-operation-rename/u);
     const version = new DatabaseSync(f.path, { readOnly: true });
-    try { assert.equal(version.prepare("PRAGMA user_version").get()?.user_version, boundary === "beforeCommit" ? 46 : CURRENT_AUTHORITY_SCHEMA_VERSION); }
+    try { assert.equal(version.prepare("PRAGMA user_version").get()?.user_version, boundary === "beforeCommit" ? 46 : NORMAL_AUTHORITY_SCHEMA_VERSION); }
     finally { version.close(); }
     if (boundary === "beforeCommit") {
       assert.deepEqual(currentOperationRows(f.path), retained);

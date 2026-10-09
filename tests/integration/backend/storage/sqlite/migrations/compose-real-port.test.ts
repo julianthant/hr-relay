@@ -20,6 +20,7 @@ import {
   mkdtempSync,
   openSync,
   readdirSync,
+  realpathSync,
   readFileSync,
   rmSync,
   statSync,
@@ -29,6 +30,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import * as explorerComposition from "../../../../../../src/backend/app/composition/dashboard/explorer.js";
 import { afterEach, describe, it, vi } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../../../../src/backend/app/config/runtime-isolation.js";
 import { DESCRIPTORS } from "../../../../../../src/backend/app/registries/workflow-registry.js";
@@ -366,7 +368,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       backendPortOverride: 0,
       env: {},
       repoRoot,
-    }), /settings authority is missing despite durable revision evidence/u);
+    }), /settings-current-missing-with-history/u);
     const lock = JSON.parse(readFileSync(join(repoRoot, rebuildRuntimeIsolation.processLockRoot, "server.lock.json"), "utf8")) as Record<string, unknown>;
     assert.equal(typeof lock.releasedAt, "string");
   });
@@ -789,13 +791,48 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     assert.deepEqual(card?.browsers, []);
   }, 20_000);
 
+  function observeExplorerSnapshot(authorityPath: string, onCommit?: () => void) {
+    const statements: string[] = [];
+    const expectedPath = realpathSync(authorityPath);
+    let readingExplorer = false;
+    const reader: { connection?: DatabaseSync } = {};
+    const compose = explorerComposition.composeExplorer;
+    vi.spyOn(explorerComposition, "composeExplorer").mockImplementation((input) => {
+      const composed = compose(input);
+      const snapshot = <Result,>(read: () => Result): Result => {
+        assert.equal(readingExplorer, false);
+        readingExplorer = true;
+        try { return read(); }
+        finally { readingExplorer = false; }
+      };
+      const readAll = composed.routes.explorer.overrides.readAll;
+      const validate = composed.routes.explorerEdits.validate;
+      return { ...composed, routes: {
+        explorer: { ...composed.routes.explorer, overrides: {
+          readAll: () => snapshot(() => readAll()),
+        } },
+        explorerEdits: { validate: (draft) => snapshot(() => validate(draft)) },
+      } };
+    });
+    const execute = Reflect.get(DatabaseSync.prototype, "exec");
+    vi.spyOn(DatabaseSync.prototype, "exec").mockImplementation(function (this: DatabaseSync, sql) {
+      if (readingExplorer && reader.connection === undefined && sql === "BEGIN"
+        && this.location() === expectedPath) reader.connection = this;
+      const tagged = readingExplorer && this === reader.connection;
+      if (tagged) statements.push(sql);
+      Reflect.apply(execute, this, [sql]);
+      if (tagged && sql === "COMMIT") onCommit?.();
+    });
+    return statements;
+  }
+
   it.each(["GET", "validate"] as const)("serves one SQLite snapshot and no historical file reads per Explorer %s request", async operation => {
     const fixture = committedExplorer(); journalExplorer(fixture);
     for (const suffix of ["", ".claim", ".pending", ".claim.pending"]) writeFileSync(`${fixture.path}${suffix}`, "inert historical bytes");
+    const sql = observeExplorerSnapshot(join(fixture.repoRoot, ".tracker", "state.db"));
     const runtime = await composeDashboardRuntime({ isolation: rebuildRuntimeIsolation, env: {}, repoRoot: fixture.repoRoot, backendPortOverride: 0,
       clock: manualClock(new Date(fixture.request.requestedAt)) });
     try {
-      const sql = vi.spyOn(DatabaseSync.prototype, "exec");
       vi.mocked(readFileSync).mockClear();
       const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(runtime.port)}` });
       for (const requestCount of [1, 2]) {
@@ -809,8 +846,8 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
           assert.equal(validation.state, "ready-to-apply");
           if (validation.state === "ready-to-apply") assert.equal(validation.override.revision, 2);
         }
-        assert.equal(sql.mock.calls.filter(([statement]) => statement === "BEGIN IMMEDIATE").length, 0);
-        assert.equal(sql.mock.calls.filter(([statement]) => statement === "BEGIN").length, requestCount);
+        assert.equal(sql.filter(statement => statement === "BEGIN IMMEDIATE").length, 0);
+        assert.equal(sql.filter(statement => statement === "BEGIN").length, requestCount);
         assert.equal(vi.mocked(readFileSync).mock.calls.filter(([path]) => String(path).startsWith(fixture.path)).length, 0);
       }
     } finally { await runtime.stop(); }
@@ -818,6 +855,8 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
 
   it.each(["GET", "validate"] as const)("keeps the captured Explorer %s view across a concurrent commit and sees it on the next request", async operation => {
     const fixture = committedExplorer(); journalExplorer(fixture);
+    let committed: (() => void) | undefined;
+    observeExplorerSnapshot(join(fixture.repoRoot, ".tracker", "state.db"), () => committed?.());
     const runtime = await composeDashboardRuntime({ isolation: rebuildRuntimeIsolation, env: {}, repoRoot: fixture.repoRoot, backendPortOverride: 0,
       clock: manualClock(new Date(fixture.request.requestedAt)) });
     try {
@@ -830,17 +869,12 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
         versionChanges: [{ target: { family: "explorer", workflowId: request.target.workflowId, revision: 2 }, before: 1, after: 2 }] });
       const writer = AuthorityDatabase.open({ path: join(fixture.repoRoot, ".tracker", "state.db"), busyTimeoutMs: 250, migrationOwner: "concurrent-explorer" });
       try {
-        const execute: unknown = Object.getOwnPropertyDescriptor(DatabaseSync.prototype, "exec")?.value;
-        assert.equal(typeof execute, "function");
         let crossed = false;
-        vi.spyOn(DatabaseSync.prototype, "exec").mockImplementation(function (this: DatabaseSync, sql) {
-          if (typeof execute !== "function") throw new Error("SQLite exec is unavailable");
-          Reflect.apply(execute, this, [sql]);
-          if (sql === "COMMIT" && !crossed) {
-            crossed = true;
-            writer.withAuthorityTransaction(repositories => { repositories.commands.insert(request); repositories.explorerOverrides.replace(request, override); repositories.commandAudits.insert(audit); });
-          }
-        });
+        committed = () => {
+          if (crossed) return;
+          crossed = true;
+          writer.withAuthorityTransaction(repositories => { repositories.commands.insert(request); repositories.explorerOverrides.replace(request, override); repositories.commandAudits.insert(audit); });
+        };
         const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(runtime.port)}` });
         const draft = { draftVersion: 1, workflowId: request.target.workflowId, baseDescriptorVersion: request.target.expectedVersion,
           baseContractFingerprint: request.target.contractFingerprint, baseOverrideRevision: 1, changes: [{ kind: "workflow-label", value: "Reviewed search" }] };

@@ -103,7 +103,7 @@ describe("task, store, session, provider, and artifact seams", () => {
       "../../../../../../../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.ts",
       import.meta.url,
     ).href;
-    const admissionModuleUrl = new URL("../../../../../../../../../../src/backend/storage/admission/admission.ts", import.meta.url).href;
+    const admissionModuleUrl = new URL("../../../../../../src/backend/storage/admission/admission.ts", import.meta.url).href;
     const childSource = `
       import { createContentAddressedArtifactWriter } from ${JSON.stringify(writerModuleUrl)};
       import { RuntimeAdmission } from ${JSON.stringify(admissionModuleUrl)};

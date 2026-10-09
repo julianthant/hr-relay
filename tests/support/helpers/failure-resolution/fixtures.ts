@@ -101,7 +101,7 @@ import { fork } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { CommandResultSchema } from "../../../../src/rules/commands/commands.js";
 export function resolutionPeer(path: string) {
-  const child = fork(fileURLToPath(new URL("../../../helpers/backend/failure-resolution-peer.ts", import.meta.url)), [path], { execArgv: ["--import", "tsx"], silent: true });
+  const child = fork(fileURLToPath(new URL("../backend/failure-resolution-peer.ts", import.meta.url)), [path], { execArgv: ["--import", "tsx"], silent: true });
   let failure = "";
   child.stderr?.on("data", chunk => { failure += String(chunk); });
   const exited = new Promise<void>((resolve, reject) => {

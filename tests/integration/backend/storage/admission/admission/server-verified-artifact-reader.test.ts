@@ -400,7 +400,7 @@ describe("server verified artifact reader", () => {
     assert.deepEqual(peaks, [4 * 64 * 1024, 4 * 64 * 1024, 4 * 64 * 1024]);
 
     const source = await readFile(
-      new URL("../../../../../../../../../src/backend/storage/artifacts/server-verified-artifact-reader.ts", import.meta.url),
+      new URL("../../../../../../src/backend/storage/artifacts/server-verified-artifact-reader.ts", import.meta.url),
       "utf8",
     );
     assert.doesNotMatch(source, /\breadFile(?:Sync)?\s*\(|Buffer\.concat\s*\(|Readable\.from\s*\(/u);

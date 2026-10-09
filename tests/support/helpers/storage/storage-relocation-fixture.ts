@@ -172,10 +172,10 @@ export function plan(workspace: string, desiredPair: Readonly<{ stateRoot: strin
 
 export function leaveStoppedWal(workspace: string, authorityPath: string): string {
   const notificationId = randomUUID();
-  const script = `const { AuthorityDatabase } = await import("../../../integration/storage/helpers/src/backend/storage/sqlite/authority-database.ts");
-    const { acquireSharedRuntimeAdmission } = await import("../../../integration/storage/helpers/src/backend/storage/admission/admission.ts");
-    const { NotificationRecordSchema } = await import("../../../integration/storage/helpers/src/models/notifications/notifications.ts");
-    const { manualClock } = await import("../../../integration/storage/helpers/src/rules/time/clock.ts");
+  const script = `const { AuthorityDatabase } = await import("./src/backend/storage/sqlite/authority-database.ts");
+    const { acquireSharedRuntimeAdmission } = await import("./src/backend/storage/admission/admission.ts");
+    const { NotificationRecordSchema } = await import("./src/models/notifications/notifications.ts");
+    const { manualClock } = await import("./src/rules/time/clock.ts");
     const admission = acquireSharedRuntimeAdmission(process.argv[1]);
     const database = AuthorityDatabase.open(admission,
       { path: process.argv[2], busyTimeoutMs: 250, migrationOwner: "offline-relocation-wal-child" },

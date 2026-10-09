@@ -51,7 +51,7 @@ function fixture(kind: "root" | "reconstructed" | "missing" | "duplicate" | "mis
 }
 
 const preserved = z.object({cases:z.array(z.object({sourceKind:z.enum(["root","reconstructed","missing"]),tombstone:DeletedRunRecordSchema}))})
-  .parse(JSON.parse(readFileSync(new URL("../../../../../../../../fixtures/migration/migrated-tombstones.json",import.meta.url),"utf8")));
+  .parse(JSON.parse(readFileSync(new URL("./fixtures/migrated-tombstones.json",import.meta.url),"utf8")));
 
 describe("D332 retained tombstone evidence after importer retirement", () => {
   it.each(["root", "reconstructed", "missing"] as const)("preserves migrated %s ordinals, trigger protections and doctor evidence", async kind => {

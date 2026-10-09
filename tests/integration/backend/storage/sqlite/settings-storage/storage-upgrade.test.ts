@@ -76,7 +76,7 @@ function read(f: ReturnType<typeof fixture>) {
 /** Exact synthetic migrated output captured before removing the settings importer. */
 function seedRetainedSettings(path: string): void {
   const { tables } = z.object({ tables: z.record(z.string(), z.array(z.record(z.string(), z.union([z.string(), z.number(), z.null()])))) }).parse(
-    JSON.parse(readFileSync(new URL("../../../../../../../../fixtures/migration/migrated-settings.json", import.meta.url), "utf8")));
+    JSON.parse(readFileSync(new URL("../../../../../support/fixtures/integration/migration/migrated-settings.json", import.meta.url), "utf8")));
   const database = new DatabaseSync(path);
   try {
     for (const table of ["commands", "command_audits", "app_settings"]) for (const row of tables[table] ?? []) {
@@ -120,19 +120,37 @@ describe("D336 stopped SQLite upgrade", () => {
     const after = new DatabaseSync(f.path);
     try { assert.equal(after.prepare("SELECT record_json FROM settings_snapshots").get()?.record_json, bytes); } finally { after.close(); }
   });
-  it("M25 activates the converted ordinary revision at the next real dashboard boot", async () => {
+  it("refuses boot when converted saved revision lacks its selected runtime snapshot", async () => {
     const f = fixture(46);
     writeFileSync(f.input.environmentFile, "HRAUTO_DEFAULT_WORKERS=3\n", { mode: 0o600 });
     seedRetainedSettings(f.path);
     await f.backup(); await f.run();
-    const before = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 500, migrationOwner: "before-activation" }, clock);
-    try { assert.equal(before.authority.runtimeConfig.get(), undefined); assert.equal(readSettings(before.authority).revision, 2); } finally { before.close(); }
-    const runtime = await composeDashboardRuntime({ admission: syntheticStateRoot(f.root), isolation: rebuildRuntimeIsolation, repoRoot: f.repoRoot, env: {}, clock, backendPortOverride: 0, frontendPortOverride: 0 });
-    try {
-      const after = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 500, migrationOwner: "after-activation" }, clock);
-      try { assert.equal(after.authority.runtimeConfig.get()?.settingsRevision, 2); assert.equal(readSettings(after.authority).settings.concurrency?.defaultWorkers, 3); } finally { after.close(); }
-    } finally { await runtime.stop(); }
-    assert.equal(readFileSync(f.input.environmentFile, "utf8"), "HRAUTO_DEFAULT_WORKERS=3\n");
+    const historical = readFileSync(f.input.environmentFile);
+    const stored = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 500, migrationOwner: "before-refused-boot" }, clock);
+    try { assert.equal(stored.authority.runtimeConfig.get(), undefined); assert.equal(readSettings(stored.authority).revision, 2); }
+    finally { stored.close(); }
+    const before = readFileSync(f.path);
+    const rawBefore = new DatabaseSync(f.path);
+    const authorityBefore = { meta: rawBefore.prepare("SELECT * FROM database_state").all(),
+      runtimeVersions: rawBefore.prepare("SELECT * FROM runtime_versions ORDER BY record_key").all(),
+      settings: rawBefore.prepare("SELECT * FROM app_settings").all(),
+      snapshots: rawBefore.prepare("SELECT * FROM settings_snapshots ORDER BY 1").all() };
+    rawBefore.close();
+    await assert.rejects(composeDashboardRuntime({ admission: syntheticStateRoot(f.root), isolation: rebuildRuntimeIsolation,
+      repoRoot: f.repoRoot, env: {}, clock, backendPortOverride: 0, frontendPortOverride: 0 }),
+    /dashboard settings\/runtime authority is missing despite durable revision evidence/u);
+    assert.deepEqual(readFileSync(f.path), before);
+    const rawAfter = new DatabaseSync(f.path);
+    try { assert.deepEqual({ meta: rawAfter.prepare("SELECT * FROM database_state").all(),
+      runtimeVersions: rawAfter.prepare("SELECT * FROM runtime_versions ORDER BY record_key").all(),
+      settings: rawAfter.prepare("SELECT * FROM app_settings").all(),
+      snapshots: rawAfter.prepare("SELECT * FROM settings_snapshots ORDER BY 1").all() }, authorityBefore); }
+    finally { rawAfter.close(); }
+    assert.deepEqual(readFileSync(f.input.environmentFile), historical);
+    const after = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 500, migrationOwner: "after-refused-boot" }, clock);
+    try { assert.equal(after.authority.runtimeConfig.get(), undefined); assert.equal(readSettings(after.authority).revision, 2);
+      assert.equal(readSettings(after.authority).settings.concurrency?.defaultWorkers, 3); }
+    finally { after.close(); }
   });
   it("plans a fresh root without files, creates the current schema directly, and reruns without writes", async () => {
     const f = fixture(); const before = readdirSync(f.root);
@@ -545,7 +563,7 @@ describe("T1 retained timeline after stopped importer expiry", () => {
     });
   it.each([46, 47, 48])("preserves exact migrated multi-day events through supported v%s conversion and replay", async version => {
     const f = timelineImportFixture(version);
-    const retained = z.object({ events: z.array(TimelineEventRecordSchema) }).parse(JSON.parse(readFileSync(new URL("../../../../../../../../fixtures/migration/migrated-timeline.json", import.meta.url), "utf8"))).events;
+    const retained = z.object({ events: z.array(TimelineEventRecordSchema) }).parse(JSON.parse(readFileSync(new URL("./fixtures/migrated-timeline.json", import.meta.url), "utf8"))).events;
     const raw = new DatabaseSync(f.path);
     try {
       for (const record of retained) raw.prepare(`INSERT INTO timeline_events(cursor,record_key,workflow,run_id,worker_id,retention_date,retention_class,record_json,created_at)

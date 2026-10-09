@@ -34,8 +34,8 @@ import { describe, it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../../../../../src/backend/app/config/runtime-isolation.js";
 import { writeDashboardBuildIdentity } from "../../../../../../../src/backend/app/composition/dashboard/build-identity.js";
 
-const REPO_ROOT = fileURLToPath(new URL("../../../../../../../../../../../..", import.meta.url));
-const BOOTSTRAP = join(REPO_ROOT, "scripts", "secure-env-bootstrap.ts");
+const REPO_ROOT = fileURLToPath(new URL("../../../../../../..", import.meta.url));
+const BOOTSTRAP = join(REPO_ROOT, "scripts", "dev", "secure-env-bootstrap.ts");
 /** Ignored stdin and readable output streams; an optional fourth descriptor carries owned IPC. */
 type DashboardChild = ChildProcessByStdio<null, Readable, Readable>;
 
@@ -146,10 +146,9 @@ function createScratchRepoRoot(): string {
   writeDashboardBuildIdentity({ repoRoot: root, distDir: bundleRoot });
   mkdirSync(join(root, "config"), { recursive: true });
   cpSync(join(REPO_ROOT, "config", "test-data.json"), join(root, "config", "test-data.json"));
-  cpSync(join(REPO_ROOT, "config", "pending-impl-bindings.json"), join(root, "config", "pending-impl-bindings.json"));
   symlinkSync(join(REPO_ROOT, "node_modules"), join(root, "node_modules"), "dir");
-  mkdirSync(join(root, "scripts"));
-  cpSync(BOOTSTRAP, join(root, "scripts", "secure-env-bootstrap.ts"));
+  mkdirSync(join(root, "scripts", "dev"), { recursive: true });
+  cpSync(BOOTSTRAP, join(root, "scripts", "dev", "secure-env-bootstrap.ts"));
   cpSync(join(REPO_ROOT, ".env.example"), join(root, ".env.providers"));
   chmodSync(join(root, ".env.providers"), 0o600);
   writeFileSync(join(root, ".env"), REFERENCE_ENVIRONMENT, { mode: 0o600 });
@@ -264,7 +263,7 @@ describe("the `dashboard` CLI command's shutdown lifecycle", () => {
       // process the signal must reach and the lock record must name.
       const child = spawn(
         process.execPath,
-        ["--import", "tsx", join(scratchRoot, "scripts", "secure-env-bootstrap.ts"), "cli", "dashboard", "--prod"],
+        ["--import", "tsx", join(scratchRoot, "scripts", "dev", "secure-env-bootstrap.ts"), "cli", "dashboard", "--prod"],
         { cwd: scratchRoot, stdio: ["ignore", "pipe", "pipe", "ipc"] },
       ) as DashboardChild;
       const readiness = new Promise<unknown>((resolve, reject) => {
@@ -294,7 +293,7 @@ describe("the `dashboard` CLI command's shutdown lifecycle", () => {
 
         const duplicate = spawn(
           process.execPath,
-          ["--import", "tsx", join(scratchRoot, "scripts", "secure-env-bootstrap.ts"), "cli", "dashboard", "--prod"],
+          ["--import", "tsx", join(scratchRoot, "scripts", "dev", "secure-env-bootstrap.ts"), "cli", "dashboard", "--prod"],
           { cwd: scratchRoot, stdio: ["ignore", "pipe", "pipe"] },
         );
         const duplicateOutput = captureOutput(duplicate);
@@ -372,7 +371,7 @@ describe("the `dashboard` CLI command's shutdown lifecycle", () => {
     try {
       const child = spawn(
         process.execPath,
-        ["--import", "tsx", join(scratchRoot, "scripts", "secure-env-bootstrap.ts"), "cli", "dashboard", "--prod"],
+        ["--import", "tsx", join(scratchRoot, "scripts", "dev", "secure-env-bootstrap.ts"), "cli", "dashboard", "--prod"],
         { cwd: scratchRoot, stdio: ["ignore", "pipe", "pipe"] },
       );
       const output = captureOutput(child);

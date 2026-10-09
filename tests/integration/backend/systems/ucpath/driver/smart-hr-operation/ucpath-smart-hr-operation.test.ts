@@ -264,12 +264,12 @@ function singleResultAutoDrillPage(
 
 describe("SS Smart HR transaction scan", () => {
   it("settles visible rows, auto-detail and empty states after tsx browser serialization, but rejects hidden signals", async () => {
-    const root = fileURLToPath(new URL("../../../../../../../../../../../..", import.meta.url));
+    const root = fileURLToPath(new URL("../../../../../../..", import.meta.url));
     // Import through the real CLI compiler, capture its actual callback, then
     // exercise it in a fresh browser-like realm with no __name helper.
     const browserPredicateSource = JSON.parse(execFileSync(process.execPath, [
       "--import", "tsx", "--input-type=module", "-e", `
-        import { scanTerminationTransactionsOnPage } from "../../../../../../../../../../src/backend/systems/ucpath/driver/smart-hr-operation.ts";
+        import { scanTerminationTransactionsOnPage } from "./src/backend/systems/ucpath/driver/smart-hr-operation.ts";
         let captured;
         const locator = {
           first() { return this; }, async waitFor() {}, async fill() {},

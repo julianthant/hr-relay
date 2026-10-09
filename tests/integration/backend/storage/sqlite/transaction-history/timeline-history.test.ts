@@ -61,9 +61,9 @@ describe("SQLite timeline delivery", () => {
     const path = join(root(), "cross-process.db");
     const first = AuthorityDatabase.open({ path, busyTimeoutMs: 500, migrationOwner: "timeline-process-test" }, manualClock(new Date(ts)));
     const script = `
-      import { AuthorityDatabase } from '../../../../../../../events/src/backend/storage/sqlite/authority-database.ts';
-      import { createTimelineEmitter } from '../../../../../../../events/src/backend/storage/events/timeline-emitter.ts';
-      import { manualClock } from '../../../../../../../events/src/rules/time/clock.ts';
+      import { AuthorityDatabase } from './tests/support/helpers/synthetic-database-admission.ts';
+      import { createTimelineEmitter } from './src/backend/storage/events/timeline-emitter.ts';
+      import { manualClock } from './src/rules/time/clock.ts';
       const clock = manualClock(new Date(process.argv[2]));
       const db = AuthorityDatabase.open({ path: process.argv[1], busyTimeoutMs: 500, migrationOwner: 'timeline-child' }, clock);
       try {

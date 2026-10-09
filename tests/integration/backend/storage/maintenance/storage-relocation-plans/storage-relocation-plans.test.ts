@@ -15,6 +15,12 @@ import { AuthorityDatabase } from "../../../../../../src/backend/storage/sqlite/
 import { acquireInstallation } from "../../../../../../src/backend/storage/admission/installation.js";
 import { acquireRuntimeRestoreAdmission } from "../../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { RuntimeAdmission } from "../../../../../../src/backend/storage/admission/admission.js";
+import { resolveConfigWithProvenance } from "../../../../../../src/backend/app/config/resolve.js";
+import { hostConfigFacts } from "../../../../../../src/models/config/host-display.js";
+import { sha256Hex } from "../../../../../../src/rules/validation/sha256.js";
+import { canonicalJsonStringify } from "../../../../../../src/rules/validation/canonical-json.js";
+import { ConfigSnapshotWriteSchema } from "../../../../../../src/models/config/snapshot.js";
+import { acquireEntrypointAdmission } from "../../../../../../src/backend/storage/admission/bootstrap-admission.js";
 
 const cleanups: Array<() => void> = [];
 afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });
@@ -23,7 +29,7 @@ function fixture() {
   const workspace = realpathSync(mkdtempSync(join(tmpdir(), "relocation-plan-")));
   cleanups.push(() => rmSync(workspace, { recursive: true, force: true }));
   const pair = { stateRoot: join(workspace, ".tracker"), artifactRoot: join(workspace, ".tracker", "artifacts") };
-  const adoption = acquireInstallation(workspace, "exclusive", { defaultPair: pair }); adoption.release();
+  const adoption = acquireEntrypointAdmission(workspace, "exclusive"); adoption.release();
   const lease = acquireInstallation(workspace, "shared"); cleanups.push(() => lease.release());
   const admission = RuntimeAdmission.fromInstallationLease(lease);
   const clock = manualClock(new Date("2026-09-26T12:00:00.000Z"));
@@ -72,15 +78,36 @@ function activateArtifactPlan(f: ReturnType<typeof fixture>, request: StorageRel
     expectedRevision: request.target.expectedRevision, requestFingerprint: request.payload.requestFingerprint,
     desiredDigest: request.payload.desiredDigest, ...bindingPatch };
   const operationId = moving.beginRelocation(destination, binding, held);
-  mkdirSync(destination.artifactRoot, { recursive: true, mode: 0o700 });
-  copyFileSync(join(moving.locator.artifactRoot, ".runtime-owner.json"), join(destination.artifactRoot, ".runtime-owner.json"));
+  moving.prepareDestinationRoots();
+  moving.recordVerifiedPreparation(() => ({ operationId, installationId: moving.locator.installationId,
+    sourceGeneration: moving.locator.generation,
+    source: { stateRoot: moving.locator.stateRoot, artifactRoot: moving.locator.artifactRoot }, destination, plan: binding,
+    sourceDatabaseIdentity: "e".repeat(64), sourceSchemaVersion: 56, sourceAuthorityGeneration: 0,
+    sourceAuthorityContentFingerprint: "f".repeat(64), backupReceiptId: "synthetic-preupgrade-backup",
+    backupManifestPath: join(moving.locator.stateRoot, "backups", "authority", "preupgrade.manifest.json"),
+    backupManifestSha256: "1".repeat(64), backupFilePath: join(moving.locator.stateRoot, "backups", "authority", "preupgrade.sqlite"),
+    backupFileSha256: "2".repeat(64) }));
+  const resolved = resolveConfigWithProvenance({}, hostConfigFacts({}), f.clock, destination);
+  const configFingerprint = sha256Hex(canonicalJsonStringify(resolved.config));
+  const configSnapshotId = "11111111-1111-4111-8111-111111111111";
+  moving.recordActivationIntent(() => ({ operationId, installationId: moving.locator.installationId,
+    sourceGeneration: moving.locator.generation,
+    source: { stateRoot: moving.locator.stateRoot, artifactRoot: moving.locator.artifactRoot }, destination, plan: binding,
+    stageAuthority: { manifestPath: join(moving.locator.stateRoot, "backups", "authority", "stage.manifest.json"),
+      manifestSha256: "1".repeat(64), backupPath: join(moving.locator.stateRoot, "backups", "authority", "stage.sqlite"),
+      backupSha256: "2".repeat(64) }, stageArchive: null,
+    nativeDestinationPath: join(destination.stateRoot, "state.db"), nativeDestinationSha256: null,
+    preAuthorityGeneration: 0, preAuthorityContentFingerprint: "3".repeat(64), managedInventoryDigest: "4".repeat(64),
+    settingsRevision: 1, settingsFingerprint: "5".repeat(64), priorActive: null,
+    snapshot: ConfigSnapshotWriteSchema.parse({ configSnapshotId, revision: 1, fingerprint: configFingerprint,
+      capturedAt: f.clock.now().toISOString(), capturedBy: "local-operator", config: resolved.config, provenance: resolved.provenance }) }));
   const verify = () => ({ operationId, installationId: moving.locator.installationId,
     sourceGeneration: moving.locator.generation,
     source: { stateRoot: moving.locator.stateRoot, artifactRoot: moving.locator.artifactRoot },
     destination, plan: binding, stagingReceiptId: "synthetic-stage", stagingDigest: "a".repeat(64),
     backupReceiptId: "synthetic-backup", backupDigest: "b".repeat(64),
     finalDatabasePath: join(destination.stateRoot, "state.db"),
-    configSnapshotId: "11111111-1111-4111-8111-111111111111", configFingerprint: "c".repeat(64),
+    configSnapshotId, configFingerprint,
     authorityVersion: 56 as const, databaseIdentity: "synthetic-authority", managedStateEntries: [] });
   moving.recordVerifiedStage(verify);
   moving.fenceRelocationSource();

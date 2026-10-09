@@ -29,7 +29,7 @@ const clock=manualClock(new Date(NOW));
 const RowsSchema=z.object({rows:z.record(z.string(),z.array(z.record(z.string(),z.union([z.string(),z.number(),z.null()]))))});
 function fixture(){
  const root=mkdtempSync(join(tmpdir(),"foundation-mixed-"));const stateRoot=join(root,".tracker");mkdirSync(stateRoot);for(const file of ["package.json","package-lock.json"])copyFileSync(join(process.cwd(),file),join(root,file));
- const saved=RowsSchema.parse(JSON.parse(readFileSync(new URL("../../../../../../../fixtures/run-completion/schema40-failure.json",import.meta.url),"utf8")));
+ const saved=RowsSchema.parse(JSON.parse(readFileSync(new URL("./fixtures/schema40-failure.json",import.meta.url),"utf8")));
  const path=join(stateRoot,"state.db");const db=new DatabaseSync(path);db.exec("PRAGMA foreign_keys=OFF");
  for(const migration of SQLITE_MIGRATIONS.filter(m=>m.version<=40))for(const sql of migration.statements)db.exec(sql);
  for(const [table,rows] of Object.entries(saved.rows))for(const original of rows){const row={...original};
@@ -59,7 +59,7 @@ function fixture(){
 }
 function supportedFixture(unavailable=false) {
  const f=fixture();
- const retained=RowsSchema.extend({generated:GeneratedSourceManifestSchema}).parse(JSON.parse(readFileSync(new URL(`../fixtures/migrated-mixed-${unavailable?"unavailable":"available"}.json`,import.meta.url),"utf8")));
+ const retained=RowsSchema.extend({generated:GeneratedSourceManifestSchema}).parse(JSON.parse(readFileSync(new URL(`../../../../../support/fixtures/integration/migration/migrated-mixed-${unavailable?"unavailable":"available"}.json`,import.meta.url),"utf8")));
  copyFileSync(f.path,join(f.stateRoot,"retired-source.sqlite"));rmSync(f.path);
  const raw=new DatabaseSync(f.path);raw.exec("PRAGMA foreign_keys=OFF");
  try{
@@ -72,7 +72,9 @@ function supportedFixture(unavailable=false) {
  if(unavailable)rmSync(join(f.stateRoot,"artifacts",`${f.digest}.artifact`));
  for(const file of retained.generated.files)writeFileSync(join(f.stateRoot,"artifacts",`${file.ref.sha256}.artifact`),JSON.stringify(file));
  const {generatedSourceDirectory:_expired,...input}=f.input;
- return {...f,input};
+ const request=ProviderAdmissionRecordSchema.parse(z.object({record:z.unknown()}).parse(JSON.parse(String(retained.rows.provider_requests?.find(row=>row.record_key===id(60))?.record_json))).record);
+ const snapshot=JSON.parse(String(retained.rows.settings_snapshots?.find(row=>row.record_key===id(90))?.record_json)) as typeof f.snapshot;
+ return {...f,input,request,snapshot};
 }
 describe("F populated mixed-domain stopped conversion",()=>{
  it("preserves imports, OCR, provider history, settings, outputs and protected retired history across faults and exact restore",async()=>{

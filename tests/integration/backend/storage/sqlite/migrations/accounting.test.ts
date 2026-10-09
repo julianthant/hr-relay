@@ -132,7 +132,7 @@ describe("P concurrency and historical conversion",()=>{
    const cases=[100,101].map(n=>({...admission(f,n),budgets:admission(f,n).budgets.map(b=>({...b,windows:b.windows.map(w=>({...w,limit:{...w.limit,value:1}}))}))}));
    const ready:Promise<void>[]=[];const results:Promise<z.infer<typeof RaceResult>>[]=[];const exits:Promise<void>[]=[];
    for(const request of cases){
-    const child=fork(new URL("../../../../../../../../support/processes/provider-accounting-race.ts",import.meta.url),[],{execArgv:["--import","tsx"],stdio:["ignore","ignore","pipe","ipc"]});children.push(child);
+    const child=fork(new URL("../../../../../support/processes/provider-accounting-race.ts",import.meta.url),[],{execArgv:["--import","tsx"],stdio:["ignore","ignore","pipe","ipc"]});children.push(child);
     let stderr="";child.stderr?.on("data",(chunk:Buffer)=>{stderr+=chunk.toString();});
     ready.push(new Promise((resolve,reject)=>{child.on("message",(m:unknown)=>{if(z.object({state:z.literal("ready")}).safeParse(m).success)resolve();});child.on("error",reject);child.on("exit",code=>{if(code!==0)reject(new Error(`race child failed ${code}: ${stderr}`));});}));
     results.push(new Promise((resolve,reject)=>{child.on("message",(m:unknown)=>{const result=RaceResult.safeParse(m);if(result.success)resolve(result.data);});child.on("error",reject);child.on("exit",code=>{if(code!==0)reject(new Error(`race child failed ${code}: ${stderr}`));});}));
@@ -168,28 +168,41 @@ describe("P concurrency and historical conversion",()=>{
    const expired=storageTree(f.input.stateRoot);
    for(const plan of [true,false])await assert.rejects(upgradeStorage({...f.input,plan},f.clock),/authority-below-floor.*original compatible release/u);
    assert.deepEqual(storageTree(f.input.stateRoot),expired);
-   const pinned=z.object({rows:z.record(z.string().regex(/^[a-z_]+$/u),z.array(z.record(z.string(),z.union([z.string(),z.number(),z.null()]))))}).parse(JSON.parse(readFileSync(new URL("../../../../../../../fixtures/migration/migrated-provider.json",import.meta.url),"utf8")));
+   const pinned=z.object({rows:z.record(z.string().regex(/^[a-z_]+$/u),z.array(z.record(z.string(),z.union([z.string(),z.number(),z.null()]))))}).parse(JSON.parse(readFileSync(new URL("./fixtures/migrated-provider.json",import.meta.url),"utf8")));
    f.raw.close();copyFileSync(f.historicalPath,join(f.input.stateRoot,"retired-source.sqlite"));rmSync(f.historicalPath);f.reopenRaw();
    for(const migration of SQLITE_MIGRATIONS.filter(m=>m.version<=46))for(const sql of migration.statements)f.raw.exec(sql);
    for(const [table,rows]of Object.entries(pinned.rows))for(const row of rows){const columns=Object.keys(row);f.raw.prepare(`INSERT INTO ${table}(${columns.join(",")}) VALUES(${columns.map(()=>"?").join(",")})`).run(...Object.values(row));}
    f.raw.prepare("INSERT INTO database_state(singleton_id,schema_version,authority_generation,updated_at) VALUES(1,46,7,?)").run(NOW);
    f.raw.exec(`PRAGMA application_id=${String(AUTHORITY_APPLICATION_ID)};PRAGMA user_version=46`);
    assert.equal(inspectAuthorityBackupReadOnly(f.historicalPath).schemaVersion,46);
+   const migratedRetained=f.raw.prepare("SELECT record_key,record_json FROM provider_requests ORDER BY record_key").all();
+   const migratedBlocked=ProviderBudgetCounterSchema.parse(z.object({record:z.unknown()}).parse(JSON.parse(String(f.raw.prepare("SELECT record_json FROM provider_usage").get()?.record_json))).record);
+
    const source=readFileSync(f.historicalPath);const backup=await backupStoppedAuthority(f.input.stateRoot,f.clock);const manifest=backup.manifests[0];assert.ok(manifest);const path=join(f.input.stateRoot,"backups","authority",manifest.backupFileName);const backupBytes=readFileSync(path);
    await assert.rejects(upgradeStorage({...f.input,hooks:{beforeCommit:()=>{throw new Error("provider-before-commit");}}},f.clock),/provider-before-commit/u);assert.deepEqual(readFileSync(f.historicalPath),source);
    await assert.rejects(upgradeStorage({...f.input,hooks:{afterCommit:()=>{throw new Error("provider-after-commit");}}},f.clock),/provider-after-commit/u);
    assert.equal((await upgradeStorage(f.input,f.clock)).state,"converted");const committed=readFileSync(f.historicalPath);assert.equal((await upgradeStorage(f.input,f.clock)).state,"already-upgraded");assert.deepEqual(readFileSync(f.historicalPath),committed);
    const db=AuthorityDatabase.open({path:f.historicalPath,busyTimeoutMs:250,migrationOwner:"provider-history"},f.clock);
    try{
-    for(const row of retained){const r=readProviderRequest(f.raw,String(row.record_key));assert.equal(r?.kind,"legacy-capability");if(r?.kind!=="legacy-capability")throw new Error("history absent");assert.deepEqual(r.record,JSON.parse(String(row.record_json)));assert.equal(r.origin,"pre-tracking");assert.deepEqual(r.attribution,{kind:"legacy-capability",capability:"ocr.extract"});}
-    const u=readProviderUsage(f.raw,"ocr.extract");assert.equal(u?.kind,"legacy-capability");if(u?.kind!=="legacy-capability")throw new Error("history absent");assert.deepEqual(u.cumulative,{requests:0,chargedUsdMicros:0});assert.equal(u.tracking.coverage,"historical-gaps");assert.deepEqual(u.record,blocked);
-    assert.equal(db.authority.providerAdmissions.reserve(legacyRequest(f)).state,"existing");
-    db.authority.providerAdmissions.settle({admissionId:id(60),expectedVersion:1,actualUsage:{requestCount:1,costUsdMicros:0},adapterDisposition:"produced",evidence:{summary:"late pre-tracking result",capturedAt:NOW},now:NOW});
-    const after=readProviderUsage(f.raw,"ocr.extract");assert.equal(after?.kind,"legacy-capability");if(after?.kind!=="legacy-capability")throw new Error("history absent");assert.deepEqual(after.cumulative,{requests:0,chargedUsdMicros:0});assert.equal(after.record.activeReservations,0);
+    for(const row of migratedRetained){const r=readProviderRequest(f.raw,String(row.record_key));assert.equal(r?.kind,"legacy-capability");if(r?.kind!=="legacy-capability")throw new Error("history absent");assert.deepEqual(r.record,z.object({record:z.unknown()}).parse(JSON.parse(String(row.record_json))).record);assert.equal(r.origin,"pre-tracking");assert.deepEqual(r.attribution,{kind:"legacy-capability",capability:"ocr.extract"});}
+    const u=readProviderUsage(f.raw,"ocr.extract");assert.equal(u?.kind,"legacy-capability");if(u?.kind!=="legacy-capability")throw new Error("history absent");assert.deepEqual(u.cumulative,{requests:0,chargedUsdMicros:0});assert.equal(u.tracking.coverage,"historical-gaps");assert.deepEqual(u.record,migratedBlocked);
+    const retainedRequest=ProviderAdmissionRecordSchema.parse(z.object({record:z.unknown()}).parse(JSON.parse(String(migratedRetained[0]?.record_json))).record);
+    const generation=db.getMeta().authorityGeneration;
+    const historyBefore=f.raw.prepare("SELECT * FROM provider_requests ORDER BY record_key").all();
+    const accountingBefore=f.raw.prepare("SELECT * FROM provider_usage ORDER BY record_key").all();
+    assert.throws(()=>db.authority.providerAdmissions.reserve({admissionId:retainedRequest.admissionId,execution:retainedRequest.execution,
+      capability:retainedRequest.capability,configSnapshotId:retainedRequest.configSnapshotId,configFingerprint:retainedRequest.configFingerprint,
+      requestFingerprint:retainedRequest.requestFingerprint,estimate:retainedRequest.estimate,
+      leaseExpiresAt:retainedRequest.lifecycle.state==="reserved"?retainedRequest.lifecycle.leaseExpiresAt:NOW,
+      deadlineAt:retainedRequest.lifecycle.state==="reserved"?retainedRequest.lifecycle.deadlineAt:NOW,now:retainedRequest.createdAt}),
+      (error:unknown)=>error instanceof z.ZodError && error.issues.some(issue=>issue.code==="invalid_value" && issue.path[0]==="capability"));
+    assert.deepEqual(f.raw.prepare("SELECT * FROM provider_requests ORDER BY record_key").all(),historyBefore);
+    assert.deepEqual(f.raw.prepare("SELECT * FROM provider_usage ORDER BY record_key").all(),accountingBefore);
+    assert.equal(db.getMeta().authorityGeneration,generation);
    }finally{db.close();}
    assert.deepEqual(readFileSync(path),backupBytes);assert.equal(inspectAuthorityBackupReadOnly(path).schemaVersion,46);
    f.raw.close();copyFileSync(path,f.historicalPath);rmSync(join(f.input.stateRoot,"archive.sqlite"),{force:true});rmSync(join(f.input.stateRoot,"archive-files"),{recursive:true,force:true});f.reopenRaw();assert.equal((await upgradeStorage(f.input,f.clock)).state,"converted");
-   for(const row of retained){const r=readProviderRequest(f.raw,String(row.record_key));assert.equal(r?.kind,"legacy-capability");if(r?.kind!=="legacy-capability")throw new Error("restored history absent");assert.deepEqual(r.record,JSON.parse(String(row.record_json)));}
+   for(const row of migratedRetained){const r=readProviderRequest(f.raw,String(row.record_key));assert.equal(r?.kind,"legacy-capability");if(r?.kind!=="legacy-capability")throw new Error("restored history absent");assert.deepEqual(r.record,z.object({record:z.unknown()}).parse(JSON.parse(String(row.record_json))).record);}
   }finally{f.dispose();}
  });
 });

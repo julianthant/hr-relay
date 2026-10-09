@@ -60,8 +60,8 @@ function fixture(
   const root = mkdtempSync(join(tmpdir(), "run-record-service-"));
   cleanups.push(() => rmSync(root, { recursive: true }));
   const clock = manualClock(new Date(NOW));
-  const database = historical ? historicalArchiveAuthority(join(root, "authority.sqlite"), clock) : AuthorityDatabase.open(
-    { path: join(root, "authority.sqlite"), migrationOwner: "unit-test", busyTimeoutMs: 250 },
+  const database = historical ? historicalArchiveAuthority(join(root, "state.db"), clock) : AuthorityDatabase.open(
+    { path: join(root, "state.db"), migrationOwner: "unit-test", busyTimeoutMs: 250 },
     clock,
     undefined,
     terminalizationHooks,
@@ -410,7 +410,7 @@ const RaceEventSchema = z.discriminatedUnion("type", [
 ]);
 
 function raceConnection(data: unknown) {
-  const worker = new Worker(new URL("../../../../../../../../support/processes/run-record-race-worker.ts", import.meta.url), { workerData: data, execArgv: ["--import", "tsx"] });
+  const worker = new Worker(new URL("../../../../../support/processes/run-record-race-worker.ts", import.meta.url), { workerData: data, execArgv: ["--import", "tsx"] });
   const events = on(worker, "message");
   return {
     worker,
@@ -690,7 +690,7 @@ describe("canonical run-record service", () => {
 
   it("D330.9 floor permits source deletion while relaunch lineage remains", () => {
     const { root } = fixture();
-    const raw = new DatabaseSync(join(root, "authority.sqlite"), { readOnly: true });
+    const raw = new DatabaseSync(join(root, "state.db"), { readOnly: true });
     try {
       const rows = z.array(z.strictObject({ id: z.number(), seq: z.number(), table: z.string(),
         from: z.string(), to: z.string(), on_update: z.string(), on_delete: z.string(), match: z.string(),
@@ -1226,7 +1226,7 @@ describe("canonical run-record service", () => {
       result: { kind: "run", runId: UUID_5, appliedVersion: 1 },
       completedAt: NOW,
     });
-    const auditOnlySqlite = new DatabaseSync(join(auditOnly.root, "authority.sqlite"));
+    const auditOnlySqlite = new DatabaseSync(join(auditOnly.root, "state.db"));
     try {
       auditOnlySqlite.exec("PRAGMA foreign_keys = OFF");
       auditOnlySqlite.prepare(`
@@ -1296,7 +1296,7 @@ describe("canonical run-record service", () => {
     it(`rolls back ${operation} state and journal when required timeline persistence fails`, () => {
       const f = fixture();
       const run = operation === "enqueue" ? undefined : created(f.service, f.request);
-      const raw = new DatabaseSync(join(f.root, "authority.sqlite"));
+      const raw = new DatabaseSync(join(f.root, "state.db"));
       try {
         raw.exec("CREATE TRIGGER injected_timeline_failure BEFORE INSERT ON timeline_events BEGIN SELECT RAISE(ABORT, 'injected timeline failure'); END");
         const before = f.database.getMeta();
@@ -1349,7 +1349,7 @@ describe("canonical run-record service", () => {
   it("rolls back gate parking when its required opened event fails", () => {
     const f = fixture();
     const running = runningRun(f.service, f.request, f.runtimeConfig);
-    const raw = new DatabaseSync(join(f.root, "authority.sqlite"));
+    const raw = new DatabaseSync(join(f.root, "state.db"));
     try {
       raw.exec("CREATE TRIGGER injected_gate_event BEFORE INSERT ON timeline_events WHEN json_extract(NEW.record_json, '$.payload.event.t') = 'gate.opened' BEGIN SELECT RAISE(ABORT, 'injected gate event'); END");
       const before = f.database.getMeta();
@@ -1805,7 +1805,7 @@ describe("canonical run-record service", () => {
       if (kind === "claim") created(service, request);
       const releases = [new SharedArrayBuffer(4), new SharedArrayBuffer(4)];
       const connections = releases.map((release, index) => raceConnection({
-        path: join(root, "authority.sqlite"), now: NOW, release,
+        path: join(root, "state.db"), now: NOW, release,
         runId: `c0000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
         operation: kind === "create" ? { kind, request: { ...request,
           commandId: `d0000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
@@ -1904,7 +1904,7 @@ describe("canonical run-record service", () => {
       runId: run.envelope.runId, workflow: WORKFLOW_ID, traceId: run.envelope.traceId,
       origin: "queue", commandId: UUID_1, deletedAt: NOW, removed: [{ table: "workflow_runs", rows: 1 }],
     };
-    const raw = new DatabaseSync(join(root, "authority.sqlite"));
+    const raw = new DatabaseSync(join(root, "state.db"));
     try {
       raw.prepare(`INSERT INTO deleted_runs
         (record_key, workflow, trace_id, origin, command_id, deleted_at, record_json, created_at,
@@ -1947,7 +1947,7 @@ describe("canonical run-record service", () => {
     const { service, request, root, clock } = fixture();
     const runId = UUID_5;
     const traceId = "pl-120021-0000";
-    const authorityPath = join(root, "authority.sqlite");
+    const authorityPath = join(root, "state.db");
     const countTasks = () => {
       const sqlite = new DatabaseSync(authorityPath, { readOnly: true });
       try {
@@ -1973,7 +1973,7 @@ describe("canonical run-record service", () => {
       stateRootTrustAnchor: root,
       stateRoot: root,
       authorityPath,
-      backupDirectory: join(root, "backups"),
+      backupDirectory: join(root, "backups", "authority"),
       maxBackupAgeMs: 60_000,
       busyTimeoutMs: 250,
     }, clock);
@@ -2270,7 +2270,7 @@ it("C P1 competing connections cannot accept conflicting failure settlements", a
   secondRequest.terminal.authorization.failureId = UUID_5;
   const releases = [new SharedArrayBuffer(4), new SharedArrayBuffer(4)];
   const connections = [firstRequest, secondRequest].map((request, index) => raceConnection({
-    path: join(f.root, "authority.sqlite"), now: NOW, release: releases[index], runId: running.envelope.runId,
+    path: join(f.root, "state.db"), now: NOW, release: releases[index], runId: running.envelope.runId,
     operation: { kind: "terminal-failure", request: { commandId: request.commandId, terminal: request.terminal } },
   }));
   const [first, second] = connections; assert.ok(first && second && releases[0] && releases[1]);

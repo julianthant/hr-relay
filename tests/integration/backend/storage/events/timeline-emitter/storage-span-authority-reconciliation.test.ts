@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { AuthorityDatabase as ProductionAuthorityDatabase } from "../../../../../../src/backend/storage/sqlite/authority-database.js";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -59,7 +60,7 @@ function fixture(
       createSpanJsonlWriter({ stateRoot: root, clock, pid: 4242 }).emit(event),
     read: async () => (await doctorAuthorityStorage({
       stateRootTrustAnchor: root, stateRoot: root, authorityPath,
-      backupDirectory: join(root, "backups"), maxBackupAgeMs: 60_000, busyTimeoutMs: 500,
+      backupDirectory: join(root, "backups", "authority"), maxBackupAgeMs: 60_000, busyTimeoutMs: 500,
     }, clock)).spanAuthority,
   };
 }
@@ -110,9 +111,9 @@ describe("storage doctor span/authority reconciliation", () => {
   it("withholds mixed-snapshot reconciliation after a concurrent authority commit", async () => {
     const f = fixture();
     f.emit(rootEvent());
-    const inspect = AuthorityDatabase.inspectSpanRunAuthorityReadOnly.bind(AuthorityDatabase);
+    const inspect = ProductionAuthorityDatabase.inspectSpanRunAuthorityReadOnly.bind(ProductionAuthorityDatabase);
     let committed = false;
-    const spy = vi.spyOn(AuthorityDatabase, "inspectSpanRunAuthorityReadOnly").mockImplementation((...args) => {
+    const spy = vi.spyOn(ProductionAuthorityDatabase, "inspectSpanRunAuthorityReadOnly").mockImplementation((...args) => {
       if (!committed) {
         committed = true;
         f.emit({ t: "span.started", kind: "worker", ts: NOW, workflow: "person-lookup",
@@ -131,8 +132,8 @@ describe("storage doctor span/authority reconciliation", () => {
     f.emit(rootEvent());
     f.emit({ t: "span.started", kind: "worker", ts: NOW, workflow: "person-lookup",
       workerId: "snapshot-worker", spanPath: "worker/snapshot-worker", name: "Original" });
-    const inspect = AuthorityDatabase.inspectSpanRunAuthorityReadOnly.bind(AuthorityDatabase);
-    const spy = vi.spyOn(AuthorityDatabase, "inspectSpanRunAuthorityReadOnly").mockImplementation((...args) => {
+    const inspect = ProductionAuthorityDatabase.inspectSpanRunAuthorityReadOnly.bind(ProductionAuthorityDatabase);
+    const spy = vi.spyOn(ProductionAuthorityDatabase, "inspectSpanRunAuthorityReadOnly").mockImplementation((...args) => {
       const raw = new DatabaseSync(f.authorityPath);
       const row = raw.prepare("SELECT cursor,record_json FROM timeline_events ORDER BY cursor DESC LIMIT 1").get();
       assert.ok(row);

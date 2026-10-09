@@ -162,12 +162,12 @@ describe("D336 SQLite settings authority", () => {
     const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", `
       import assert from 'node:assert/strict';
       import { randomUUID } from 'node:crypto';
-      import { AuthorityDatabase } from '../../../../../../../../src/backend/storage/sqlite/authority-database.ts';
-      import { manualClock } from '../../../../../../../../src/rules/time/clock.ts';
-      import { resolveConfigWithProvenance } from '../../../../../../../../src/backend/app/config/resolve.ts';
-      import { executeSettingsCommand } from '../../../../../../../../src/backend/runs/commands/command-kernel.ts';
-      import { createCredentialStore } from '../../../../../../../../../support/helpers/synthetic-storage-admission.js';
-      import { createSettingsApplicationExecutor } from '../../../../../../../../src/backend/runs/commands/settings-service.ts';
+      import { AuthorityDatabase } from './tests/support/helpers/synthetic-database-admission.ts';
+      import { manualClock } from './src/rules/time/clock.ts';
+      import { resolveConfigWithProvenance } from './src/backend/app/config/resolve.ts';
+      import { executeSettingsCommand } from './src/backend/runs/commands/command-kernel.ts';
+      import { createCredentialStore } from './tests/support/helpers/synthetic-storage-admission.ts';
+      import { createSettingsApplicationExecutor } from './src/backend/runs/commands/settings-service.ts';
       const clock = manualClock(new Date('2026-09-06T12:00:00Z'));
       const db = AuthorityDatabase.open({ path: ${JSON.stringify(f.path)}, busyTimeoutMs: 50, migrationOwner: 'r9-child' }, clock);
       try {
@@ -175,7 +175,7 @@ describe("D336 SQLite settings authority", () => {
         const result = executeSettingsCommand({ authority: db, clock, ids: { uuid: randomUUID }, settings }, ${JSON.stringify(foreign)});
         assert.equal(result.state, 'rejected'); assert.equal(result.code, 'command-divergent');
       } finally { db.close(); }
-    `], { cwd: fileURLToPath(new URL("../../../../../../../../../..", import.meta.url)), encoding: "utf8" });
+    `], { cwd: fileURLToPath(new URL("../../../../../../", import.meta.url)), encoding: "utf8" });
     assert.equal(child.status, 0, child.stderr);
     assert.deepEqual(readFileSync(path), bytes);
     assert.equal(f.database.getMeta().authorityGeneration, generation);

@@ -12,6 +12,9 @@ import {
 import { DatabaseSync } from "node:sqlite";
 import { AuthorityUpgradeRecordSchema } from "../../../../../../src/models/config/authority.js";
 import { buildStorageDoctor } from "../../../../../../src/backend/runs/queries/storage.js";
+import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../../../../../src/backend/storage/sqlite/migrations.js";
+import { createRunSearchIndex } from "../../../../../../src/backend/storage/sqlite/run-search-index.js";
+import { randomUUID } from "node:crypto";
 import { systemClock } from "../../../../../../src/rules/time/clock.js";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -37,10 +40,28 @@ afterEach(() => {
   cleanups.length = 0;
 });
 
-function fixture() {
+function fixture(version: 55 | 56 = 56) {
   const root = mkdtempSync(join(tmpdir(), "hr-credential-doctor-"));
   cleanups.push(() => rmSync(root, { recursive: true, force: true }));
   const authorityPath = join(root, "state.db");
+  if (version === 55) {
+    const raw = new DatabaseSync(authorityPath);
+    try {
+      raw.exec("BEGIN EXCLUSIVE");
+      for (const migration of SQLITE_MIGRATIONS.filter(entry => entry.version <= 55)) {
+        for (const statement of migration.statements) raw.exec(statement);
+      }
+      const recordedAt = systemClock.now().toISOString();
+      raw.prepare("INSERT INTO database_state(singleton_id,schema_version,authority_generation,updated_at) VALUES(1,55,0,?)").run(recordedAt);
+      const baseline = { recordKey: randomUUID(), upgradeId: "fresh", phase: "baseline", fromSchemaVersion: 0,
+        toSchemaVersion: 55, by: "local-operator", recordedAt };
+      raw.prepare("INSERT INTO database_upgrades(record_key,upgrade_id,phase,record_json,created_at) VALUES(?,?,?,?,?)")
+        .run(baseline.recordKey, baseline.upgradeId, baseline.phase, JSON.stringify(baseline), recordedAt);
+      createRunSearchIndex(raw).initialize(0, recordedAt);
+      raw.exec(`PRAGMA application_id=${String(AUTHORITY_APPLICATION_ID)}; PRAGMA user_version=55; COMMIT`);
+    } finally { raw.close(); }
+  }
+
   const database = AuthorityDatabase.open({
     path: authorityPath,
     busyTimeoutMs: 100,
@@ -54,7 +75,7 @@ function fixture() {
     authorityPath,
     stateRoot: root,
     stateRootTrustAnchor: root,
-    backupDirectory: join(root, "backups"),
+    backupDirectory: join(root, "backups", "authority"),
     busyTimeoutMs: 100,
   };
   return { root, database, credentialDirectory, credentialPath, credentialStore, options };
@@ -190,7 +211,7 @@ describe("D336 credential presence doctor", () => {
 
 describe("D332 read-only upgrade phase reporting", () => {
   it("projects baseline and each upgrade phase through doctor, browser wire and preflight without private journal payload", async () => {
-    const f = fixture();
+    const f = fixture(55);
     const baseline = await doctorAuthorityStorage(f.options);
     assert.equal(baseline.authorityUpgrades.state, "available");
     if (baseline.authorityUpgrades.state !== "available") throw new Error("baseline missing");
