@@ -244,6 +244,59 @@ describe("redaction surface scan — the declaration audit (ref guards-and-tests
     });
   }
 
+  it("holds exact membership for current operation, action, display and notification leaves", () => {
+    const currentLeaves = [
+      "wire/operation-source|structure.definition.invocations[].label",
+      "wire/run-detail-section|payload.confirmedActions[].action.value.consumed.value",
+      "wire/run-detail-section|payload.confirmedActions[].durableProof.checkpointNodeId",
+      "wire/run-detail-section|payload.confirmedActions[].durableProof.writeIntentId",
+      "wire/run-detail-section|payload.confirmedActions[].eventId",
+      "wire/run-detail-section|payload.confirmedActions[].proof.verifier.value.consumed.value",
+      "wire/run-detail-section|payload.confirmedActions[].reason",
+      "wire/run-detail-section|payload.confirmedActions[].stepOccurrence",
+      "wire/run-detail-section|payload.confirmedActions[].workerStreamId",
+      "wire/run-detail-section|payload.operationStructure.definition.invocations[].label",
+      "wire/run-detail-section|payload.value.display.observation",
+      "wire/run-detail-section|payload.value.display.title",
+      "wire/dashboard-day|notifications[].context.subject",
+      "wire/dashboard-day|notifications[].context.workflow",
+      "wire/stream-envelope|payload.confirmedActions[].action.value.consumed.value",
+      "wire/stream-envelope|payload.confirmedActions[].durableProof.checkpointNodeId",
+      "wire/stream-envelope|payload.confirmedActions[].durableProof.writeIntentId",
+      "wire/stream-envelope|payload.confirmedActions[].eventId",
+      "wire/stream-envelope|payload.confirmedActions[].proof.verifier.value.consumed.value",
+      "wire/stream-envelope|payload.confirmedActions[].reason",
+      "wire/stream-envelope|payload.confirmedActions[].stepOccurrence",
+      "wire/stream-envelope|payload.confirmedActions[].workerStreamId",
+      "wire/stream-envelope|payload.notifications[].context.subject",
+      "wire/stream-envelope|payload.notifications[].context.workflow",
+      "wire/stream-envelope|payload.operationStructure.definition.invocations[].label",
+      "wire/workflow-explorer|workflows[].definitionPreview.groups[].key",
+      "wire/workflow-explorer|workflows[].definitionPreview.groups[].label",
+      "wire/workflow-explorer|workflows[].definitionPreview.reason",
+      "wire/workflow-explorer|workflows[].operationStructure.definition.invocations[].label",
+      "wire/archived-run-detail|failure.value.display.observation",
+      "wire/archived-run-detail|failure.value.display.title",
+      "wire/archived-run-detail|sections.value.logs.value.confirmedActions[].action.value.consumed.value",
+      "wire/archived-run-detail|sections.value.logs.value.confirmedActions[].durableProof.checkpointNodeId",
+      "wire/archived-run-detail|sections.value.logs.value.confirmedActions[].durableProof.writeIntentId",
+      "wire/archived-run-detail|sections.value.logs.value.confirmedActions[].eventId",
+      "wire/archived-run-detail|sections.value.logs.value.confirmedActions[].proof.verifier.value.consumed.value",
+      "wire/archived-run-detail|sections.value.logs.value.confirmedActions[].reason",
+      "wire/archived-run-detail|sections.value.logs.value.confirmedActions[].stepOccurrence",
+      "wire/archived-run-detail|sections.value.logs.value.confirmedActions[].workerStreamId",
+      "wire/archived-run-detail|sections.value.logs.value.operationStructure.definition.invocations[].label",
+    ];
+    assert.equal(new Set(currentLeaves).size, currentLeaves.length);
+    for (const identity of currentLeaves) {
+      const remaining = SURFACE_LEAF_ORIGINS.filter(entry => `${entry.surface}|${entry.path}` !== identity);
+      assert.equal(remaining.length, SURFACE_LEAF_ORIGINS.length - 1, identity);
+      const violations = auditSurfaceOrigins(REDACTION_SURFACES, remaining);
+      assert.equal(violations.length, 1, identity);
+      assert.match(violations[0] ?? "", /carries no declared origin/u);
+    }
+  });
+
   it("registers every surface-bearing module in both directions", () => {
     const scanned = scannedSurfaceModules();
     const declared = SURFACE_MODULE_DISPOSITIONS.map(({ module }) => module).sort();
