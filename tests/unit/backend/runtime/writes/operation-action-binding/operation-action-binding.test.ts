@@ -47,6 +47,29 @@ describe("exact expected-effect confirmation", () => {
     const incarnation = fixture(); incarnation.complete("save"); incarnation.complete("check-save", "00000000-0000-4000-8000-000000000003");
     assert.throws(() => incarnation.action("save", "confirmed", incarnation.proof), /confirmation-mismatch/u);
   });
+  it("refuses to relabel other gesture kinds as a declared save click", () => {
+    const f = fixture();
+    for (const kind of ["selected", "pressed", "branched", "joined", "gated", "delegated", "session"] as const) {
+      assert.throws(() => f.binder({ kind, targetId: "save", declaredActionId: "save", state: "started",
+        at: "2026-09-29T12:00:00.000Z", physicalSessionId: "00000000-0000-4000-8000-000000000002" }),
+      new RegExp(`browser action ${kind} save is not declared for operation`, "u"));
+    }
+    const saved = f.complete("save").operation;
+    assert.ok(saved);
+    assert.equal(saved.logicalActionId, "save");
+    assert.equal(saved.occurrence, 1, "refused gestures never start or consume a declared occurrence");
+  });
+  it("keeps supporting field clears unbound and refuses a concurrent declared start", () => {
+    const f = fixture();
+    const clear: BrowserAction = { kind: "cleared", targetId: "save", at: "2026-09-29T12:00:00.000Z" };
+    assert.equal(f.binder(clear), clear, "a supporting clear cannot acquire a save identity");
+    f.action("save", "started");
+    assert.throws(() => f.action("save", "started"), /started concurrently within one invocation/u);
+    const completed = f.action("save", "completed").operation;
+    assert.ok(completed);
+    assert.equal(completed.logicalActionId, "save");
+    assert.equal(completed.occurrence, 1, "the admitted start remains the sole pending occurrence");
+  });
   it("rejects confirmed identity without proof and nonconfirmed identity carrying proof", () => {
     const f = fixture(); const identity = f.complete("save").operation!;
     assert.equal(DeclaredActionIdentitySchema.safeParse({ ...identity, state: "confirmed" }).success, false);
