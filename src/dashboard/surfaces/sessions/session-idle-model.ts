@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { systemClock, type Clock } from '../../../rules/time/clock.js';
 import type { SessionsViewState } from './sessions-view-model.js';
 import type { SessionPreviewOperation, SessionPreviewRequest } from './session-preview-command-model.js';
 
@@ -35,16 +36,16 @@ export class IdleSessionSchedule {
   }
 }
 
-export function useIdleSessionRefresh(data: SessionsViewState, operations: Readonly<Record<string, SessionPreviewOperation>>, send: (request: SessionPreviewRequest) => Promise<void>) {
+export function useIdleSessionRefresh(data: SessionsViewState, operations: Readonly<Record<string, SessionPreviewOperation>>, send: (request: SessionPreviewRequest) => Promise<void>, clock: Clock = systemClock) {
   const schedule = useRef(new IdleSessionSchedule());
   const latest = useRef({ data, operations, send });
   const [countdowns, setCountdowns] = useState<Readonly<Record<string, IdleSessionCountdown>>>({});
   useEffect(() => { latest.current = { data, operations, send }; }, [data, operations, send]);
   // Only new session data changes deadlines; callback or operation identity alone must not re-render the countdown.
-  useEffect(() => { schedule.current.sync(data, Date.now()); setCountdowns(schedule.current.view(Date.now())); }, [data]);
+  useEffect(() => { const now = clock.nowMs(); schedule.current.sync(data, now); setCountdowns(schedule.current.view(now)); }, [data, clock]);
   useEffect(() => {
     const timer = setInterval(() => {
-      const now = Date.now();
+      const now = clock.nowMs();
       schedule.current.sync(latest.current.data, now);
       for (const request of schedule.current.due(now, target => {
         const operation = latest.current.operations[target];
@@ -53,6 +54,6 @@ export function useIdleSessionRefresh(data: SessionsViewState, operations: Reado
       setCountdowns(schedule.current.view(now));
     }, 1000);
     return () => clearInterval(timer);
-  }, []);
-  return { countdowns, confirmed: (request: SessionPreviewRequest) => { schedule.current.sync(latest.current.data, Date.now()); schedule.current.confirm(request, Date.now()); } };
+  }, [clock]);
+  return { countdowns, confirmed: (request: SessionPreviewRequest) => { const now = clock.nowMs(); schedule.current.sync(latest.current.data, now); schedule.current.confirm(request, now); } };
 }

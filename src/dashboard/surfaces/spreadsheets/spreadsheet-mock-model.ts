@@ -1,3 +1,4 @@
+import { systemClock, type Clock } from "../../../rules/time/clock.js";
 import { cellText, type EditableWorkbook } from "./spreadsheet-editor-model.js";
 import { useSyncExternalStore } from "react";
 import { MOCK_ROSTER_ROWS, ROSTER_FIELDS, ROSTER_SHEETS } from "./spreadsheet-mock-data.js";
@@ -46,7 +47,7 @@ export function spreadsheetMappingErrors(sheets: readonly SpreadsheetSheet[]): s
   if (!sheets.some(sheet => sheet.mapping.some(field => field !== NOT_MAPPED && field !== WORKBOOK_ONLY))) errors.push("Map at least one column to a named field.");
   return errors;
 }
-export function registerMockSpreadsheet(file: Omit<RegisteredSpreadsheet, "id">, existingId?: string): RegisteredSpreadsheet {
+export function registerMockSpreadsheet(file: Omit<RegisteredSpreadsheet, "id">, existingId?: string, clock: Clock = systemClock): RegisteredSpreadsheet {
   const type = state.types.find(entry => entry.id === file.typeId);
   if (!type) throw new Error("SPREADSHEET_TYPE_NOT_FOUND");
   if (!file.name.trim()) throw new Error("SPREADSHEET_NAME_REQUIRED");
@@ -54,7 +55,7 @@ export function registerMockSpreadsheet(file: Omit<RegisteredSpreadsheet, "id">,
   if (errors.length) throw new Error(errors.join(" "));
   if (file.sheets.some(sheet => sheet.mapping.some(field => field !== NOT_MAPPED && field !== WORKBOOK_ONLY && !type.fields.includes(field)))) throw new Error("SPREADSHEET_FIELD_NOT_FOUND");
   if (existingId && !state.files.some(entry => entry.id === existingId)) throw new Error("SPREADSHEET_NOT_FOUND");
-  const record = { addedAt: state.files.find(entry => entry.id === existingId)?.addedAt ?? new Date().toISOString(), ...structuredClone(file), sheets: file.sheets.map((sheet, index) => ({ ...sheet, bindings: sheet.columns.map((sourceHeader, column) => ({ id: `sheet-${index + 1}:column:${column}`, sourceColumn: column, sourceHeader, fieldId: [NOT_MAPPED, WORKBOOK_ONLY].includes(sheet.mapping[column]) ? null : fieldForSpreadsheetHeader(sheet.mapping[column])!.id, basis: 'manual' as const })) })), id: existingId ?? `mock-import-${state.files.length + 1}` };
+  const record = { addedAt: state.files.find(entry => entry.id === existingId)?.addedAt ?? clock.now().toISOString(), ...structuredClone(file), sheets: file.sheets.map((sheet, index) => ({ ...sheet, bindings: sheet.columns.map((sourceHeader, column) => ({ id: `sheet-${index + 1}:column:${column}`, sourceColumn: column, sourceHeader, fieldId: [NOT_MAPPED, WORKBOOK_ONLY].includes(sheet.mapping[column]) ? null : fieldForSpreadsheetHeader(sheet.mapping[column])!.id, basis: 'manual' as const })) })), id: existingId ?? `mock-import-${state.files.length + 1}` };
   publish({ ...state, files: existingId ? state.files.map(entry => entry.id === existingId ? record : entry) : [record, ...state.files] });
   return record;
 }
@@ -102,11 +103,11 @@ function localSpreadsheetSheets(document: EditableWorkbook): SpreadsheetSheet[] 
 function withColumnBindings(document: EditableWorkbook): EditableWorkbook {
   return { ...document, sheets: document.sheets.map(sheet => sheet.columnBindings ? sheet : setSpreadsheetHeaderRow(sheet, sheet.headerRow ?? 1)) };
 }
-export function registerLocalSpreadsheet(document: EditableWorkbook, existingId?: string): RegisteredSpreadsheet {
+export function registerLocalSpreadsheet(document: EditableWorkbook, existingId?: string, clock: Clock = systemClock): RegisteredSpreadsheet {
   const existing = existingId ? state.files.find(file => file.id === existingId) : undefined;
   if (existingId && !existing) throw new Error('SPREADSHEET_NOT_FOUND');
   document = withColumnBindings(document);
-  const file: RegisteredSpreadsheet = { id: existingId ?? crypto.randomUUID(), name: document.name, typeId: 'local', addedAt: existing?.addedAt ?? new Date().toISOString(), sheets: localSpreadsheetSheets(document) };
+  const file: RegisteredSpreadsheet = { id: existingId ?? crypto.randomUUID(), name: document.name, typeId: 'local', addedAt: existing?.addedAt ?? clock.now().toISOString(), sheets: localSpreadsheetSheets(document) };
   localWorkbooks.set(file.id, { ...structuredClone(document), libraryId: file.id });
   publish({ ...state, files: existingId ? state.files.map(entry => entry.id === existingId ? file : entry) : [file, ...state.files] });
   return file;
