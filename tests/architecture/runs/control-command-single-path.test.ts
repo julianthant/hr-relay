@@ -34,6 +34,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { afterEach, describe, it } from "vitest";
+import ts from "typescript";
 import { createCommandKernel, PHASE1_ACTIVE_COMMAND_ARMS, PHASE1_DEFERRED_COMMAND_ARMS, type CommandKernel } from "../../../src/backend/runs/commands/command-kernel.js";
 import { CommandRequestSchema, CommandResultSchema, COMMAND_FAMILY_REGISTRY } from "../../../src/rules/commands/commands.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
@@ -45,6 +46,73 @@ import { COMMAND_FIXTURES, HASH_B, NOW, UUID_2, UUID_4 } from "../../support/fix
 import { QUEUED_RUN, sequentialIdFactory } from "../../support/fixtures/phase1f-run-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../../support/fixtures/intake-kernel-seams.js";
 import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../../support/fixtures/archive-fixtures.js";
+
+function withoutReadOnlyHistoryFacade(content: string): string {
+  const source = ts.createSourceFile("candidate.ts", content, ts.ScriptTarget.Latest, true);
+  const compact = (node: ts.Node): string => node.getText(source).replace(/\s+/gu, "");
+  const readonlyImport = source.statements.some(node => ts.isImportDeclaration(node)
+    && ts.isStringLiteral(node.moduleSpecifier) && node.moduleSpecifier.text === "../compatibility/backup-inspection.js"
+    && node.importClause?.namedBindings !== undefined && ts.isNamedImports(node.importClause.namedBindings)
+    && node.importClause.namedBindings.elements.some(binding => binding.name.text === "withAuthorityDatabaseReadOnly" && binding.propertyName === undefined));
+  if (!readonlyImport) return content;
+  let unsafe = false;
+  let admittedReads = 0;
+  function inspect(node: ts.Node): void {
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+      && /^(?:exec|run|insert|execute|consume)$/u.test(node.expression.name.text)) unsafe = true;
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "readHistory") {
+      let parent: ts.Node | undefined = node.parent;
+      while (parent !== undefined && !ts.isArrowFunction(parent)) parent = parent.parent;
+      if (parent !== undefined && ts.isArrowFunction(parent) && ts.isCallExpression(parent.parent)
+        && parent.parent.expression.getText(source) === "withAuthorityDatabaseReadOnly"
+        && parent.parent.arguments.length === 3 && parent.parent.arguments[2] === parent
+        && compact(parent.parent.arguments[0]) === "copyAdmission" && compact(parent.parent.arguments[1]) === "backupPath"
+        && compact(node) === "readHistory(database)") admittedReads += 1;
+      else unsafe = true;
+    }
+    if ((ts.isVariableDeclaration(node) || ts.isFunctionDeclaration(node)) && node.name?.getText(source) === "withAuthorityDatabaseReadOnly") unsafe = true;
+    ts.forEachChild(node, inspect);
+  }
+  inspect(source);
+  if (unsafe || admittedReads !== 1
+    || !compact(source).includes('constcopyAdmission=admission.verifiedReadOnlyCopy(backupPath,input.verifiedBackup.manifest.sha256,"authority");')
+    || !compact(source).includes('finally{copyAdmission.release();}')) return content;
+  const functions = source.statements.filter(ts.isFunctionDeclaration).filter(node => node.name?.text === "readHistory");
+  if (functions.length !== 1) return content;
+  const fn = functions[0];
+  if (fn.parameters.length !== 1 || compact(fn.parameters[0]) !== "database:DatabaseSync"
+    || fn.type?.getText(source) !== "StorageRelocationHistoryRepositories" || fn.body?.statements.length !== 5) return content;
+  const [commands, audits, index, fold, result] = fn.body.statements;
+  const reads = [
+    [commands, "commands", "SELECT record_key, family, record_json FROM commands WHERE family = 'storage-relocation' OR json_extract(record_json, '$.family') = 'storage-relocation' ORDER BY rowid",
+      'constrow=CommandRow.parse(raw);constrequest=StorageRelocationCommandRequestSchema.parse(JSON.parse(row.record_json));if(row.record_key!==request.commandId||row.family!==request.family)refuse("commandstoragekeymismatch");returnrequest;'],
+    [audits, "audits", "SELECT audit.record_key, audit.command_id, audit.record_json FROM command_audits AS audit JOIN commands AS command ON command.record_key = audit.command_id WHERE command.family = 'storage-relocation' ORDER BY audit.rowid",
+      'constrow=AuditRow.parse(raw);constaudit=CommandAuditRecordSchema.parse(JSON.parse(row.record_json));if(row.record_key!==audit.auditId||row.command_id!==audit.request.commandId)refuse("auditstoragekeymismatch");returnaudit;'],
+  ] as const;
+  for (const [statement, name, sql, mapping] of reads) {
+    if (!ts.isVariableStatement(statement) || (statement.declarationList.flags & ts.NodeFlags.Const) === 0
+      || statement.declarationList.declarations.length !== 1) return content;
+    const declaration = statement.declarationList.declarations[0];
+    const map = declaration.initializer;
+    if (declaration.name.getText(source) !== name || map === undefined || !ts.isCallExpression(map)
+      || !ts.isPropertyAccessExpression(map.expression) || map.expression.name.text !== "map" || map.arguments.length !== 1
+      || !ts.isArrowFunction(map.arguments[0]) || compact(map.arguments[0].parameters[0]) !== "raw"
+      || !ts.isBlock(map.arguments[0].body) || compact(map.arguments[0].body).slice(1, -1) !== mapping) return content;
+    const all = map.expression.expression;
+    if (!ts.isCallExpression(all) || all.arguments.length !== 0 || !ts.isPropertyAccessExpression(all.expression)
+      || all.expression.name.text !== "all") return content;
+    const prepare = all.expression.expression;
+    if (!ts.isCallExpression(prepare) || compact(prepare.expression) !== "database.prepare" || prepare.arguments.length !== 1
+      || !ts.isNoSubstitutionTemplateLiteral(prepare.arguments[0])
+      || prepare.arguments[0].text.replace(/\s+/gu, " ").trim() !== sql) return content;
+  }
+  if (compact(index) !== 'constbyCommand=newMap<string,(typeofaudits)[number]>();'
+    || compact(fold) !== 'for(constauditofaudits){if(byCommand.has(audit.request.commandId))refuse("duplicaterelocationcommandaudit");byCommand.set(audit.request.commandId,audit);}'
+    || compact(result) !== 'return{commands:{listStorageRelocationCommands:()=>commands},commandAudits:{findByCommand:(commandId)=>byCommand.get(commandId)},};') return content;
+  // Only this SELECT-derived facade's property is removed; all other accesses remain in the scan.
+  const offset = content.indexOf("commandAudits", result.getStart(source));
+  return content.slice(0, offset) + content.slice(offset + "commandAudits".length);
+}
 
 const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
   ...COMMAND_FIXTURES,
@@ -292,6 +360,21 @@ describe("control-command-single-path", () => {
     assert.equal(new Set(partitioned).size, partitioned.length);
   });
 
+  it("allows only the closed SELECT-derived command/audit history facade", () => {
+    const source = readFileSync(join(REPO_ROOT, "src/backend/storage/sqlite/relocation-restore-candidate.ts"), "utf8");
+    assert.ok(!withoutReadOnlyHistoryFacade(source).includes("commandAudits"));
+    for (const bad of [
+      source.replace("SELECT audit.record_key", "DELETE audit.record_key"),
+      source.replace(".all().map((raw)", ".run().map((raw)"),
+      source.replace("byCommand.get(commandId)", "database.exec(commandId)"),
+      source.replace("return {\n    commands:", 'database.exec("DELETE FROM command_audits"); return {\n    commands:'),
+      source.replace("withAuthorityDatabaseReadOnly(copyAdmission, backupPath", "withAuthorityDatabaseReadOnly(input.admission, backupPath"),
+      source.replace('from "../compatibility/backup-inspection.js"', 'from "./forged-readonly.js"'),
+      `${source}\nfunction arbitrary(repo: any) { repo.commandAudits.insert({}); }`,
+      `${source}\nconst forged = { commandAudits: { findByCommand: () => undefined } };`,
+    ]) assert.ok(withoutReadOnlyHistoryFacade(bad).includes("commandAudits"), "mutating or unrelated audit authority must remain visible");
+  });
+
   it("keeps the command journal, audit, and start-plan consumption on exactly one executing path", () => {
     const allowed = new Set([
       "src/backend/runs/commands/command-kernel.ts",
@@ -324,7 +407,7 @@ describe("control-command-single-path", () => {
           }
           continue;
         }
-        if (content.includes(token)) violations.push(`${path} reaches ${token} outside the command kernel`);
+        if ((token === "commandAudits" ? withoutReadOnlyHistoryFacade(content) : content).includes(token)) violations.push(`${path} reaches ${token} outside the command kernel`);
       }
     }
     assert.deepEqual(violations, []);
