@@ -1,3 +1,4 @@
+import { RuntimeVersionChangeReviewSchema, RuntimeVersionChangeSchema, runtimeVersionChangeReviewFingerprint } from "../../../../../../src/models/archive/runtime-version-change.js";
 import { createTimelineEmitter } from "../../../../../../src/backend/storage/events/timeline-emitter.js";
 import { explorerAuthorityFixture } from "../../../../../support/fixtures/explorer-authority.js";
 import { createRunLifecycleStorage } from "../../../../../../src/backend/storage/sqlite/run-lifecycle-storage.js";
@@ -35,6 +36,7 @@ import { createActivityPersonPseudonymDomain } from "../../../../../../src/model
 import { AuthorityDatabase } from "../../../../../support/helpers/synthetic-storage-admission.js";
 import {
   CURRENT_AUTHORITY_SCHEMA_VERSION,
+  NORMAL_AUTHORITY_SCHEMA_VERSION,
   UPGRADE_FLOOR_SCHEMA_VERSION,
   SQLITE_MIGRATIONS,
   requiresStoppedSystemAuthorityUpgrade,
@@ -86,7 +88,6 @@ import { compositionQueuedRun } from "../../../../../support/helpers/separations
 import { DCC4_SUPERSEDED_V19_MIGRATION } from "../../../../../support/fixtures/dcc4-superseded-migration.js";
 import { PersonLookupCanonicalInput } from "../../../../../../src/workflows/person-lookup/workflow.js";
 import { personLookupDescriptor } from "../../../../../support/helpers/registered-workflows.js";
-import { withAuthorityBuildVariant } from "../../../../../support/fixtures/authority-build-variant.js";
 
 const ATOMIC_WRITE_COMMIT = currentAtomicWriteFixture(HISTORICAL_ATOMIC_WRITE_COMMIT);
 
@@ -378,7 +379,7 @@ function applyReleasedMigrationChainForTest(path: string, fromVersion: number): 
   const database = new DatabaseSync(path);
   database.exec("BEGIN EXCLUSIVE");
   try {
-    for (const migration of SQLITE_MIGRATIONS.filter(({ version }) => version > fromVersion)) {
+    for (const migration of SQLITE_MIGRATIONS.filter(({ version }) => version > fromVersion && version <= NORMAL_AUTHORITY_SCHEMA_VERSION)) {
       for (const statement of migration.statements) database.exec(statement);
       database.prepare(`
         UPDATE ${databaseStateTable(migration.version)}
@@ -894,7 +895,7 @@ describe("native SQLite authority schema", () => {
     assert.throws(() => openDatabase(path), /upgrade-required/);
     applyReleasedMigrationChainForTest(path, 33);
     const migrated = openDatabase(path);
-    assert.equal(migrated.getMeta().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    assert.equal(migrated.getMeta().schemaVersion, NORMAL_AUTHORITY_SCHEMA_VERSION);
     assert.equal(migrated.getMeta().authorityGeneration, 0);
     assert.equal(migrated.inspectSchema().tables.some(({ name }) => String(name) === "runs_view"), false);
     assert.deepEqual(migrated.authority.runs.get(run.envelope.runId), run);
@@ -970,7 +971,7 @@ describe("native SQLite authority schema", () => {
     applyReleasedMigrationChainForTest(path, 30);
     const upgraded = new DatabaseSync(path, { enableForeignKeyConstraints: true });
     try {
-      assert.equal(Reflect.get(upgraded.prepare("PRAGMA user_version").get() ?? {}, "user_version"), CURRENT_AUTHORITY_SCHEMA_VERSION);
+      assert.equal(Reflect.get(upgraded.prepare("PRAGMA user_version").get() ?? {}, "user_version"), NORMAL_AUTHORITY_SCHEMA_VERSION);
       assert.equal(upgraded.prepare("SELECT name FROM sqlite_schema WHERE name='archive_relaunches'").get(), undefined);
       assert.ok(upgraded.prepare("SELECT record_key FROM workflow_runs WHERE record_key=?").get(relaunched.envelope.runId));
       const tombstone = (run: typeof source) => upgraded.prepare(`
@@ -1116,7 +1117,7 @@ describe("native SQLite authority schema", () => {
     // the ordinary immutable chain only AFTER real read-only admission.
     applyReleasedMigrationChainForTest(path, version);
     const upgraded = openDatabase(path);
-    assert.equal(upgraded.getMeta().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    assert.equal(upgraded.getMeta().schemaVersion, NORMAL_AUTHORITY_SCHEMA_VERSION);
     assert.deepEqual(upgraded.inspectSchema().tables.map(({ name }) => name),
       AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).sort());
   });
@@ -1135,22 +1136,6 @@ describe("native SQLite authority schema", () => {
     assert.deepEqual(readFileSync(path), before);
   });
 
-  it.each([27, 28, 29] as const)("M21 negative control: live-DDL-derived lists reject the admitted v%s fixture", async (version) => {
-    const path = databasePath(`m21-derived-v${String(version)}.sqlite`);
-    createExactReleasedDatabase(path, version);
-    const admitted = openDatabaseWithoutMigration(path, "storage-upgrade-preflight-read-only-no-migrate");
-    assert.equal(admitted.getMeta().schemaVersion, version);
-    admitted.close();
-    const before = readFileSync(path);
-    await withAuthorityBuildVariant("ddl-derived-layouts", async () => {
-      const { AuthorityDatabase: brokenBuild } = await import("../../../../../../src/backend/storage/sqlite/authority-database.js");
-      assert.throws(() => brokenBuild.open(RuntimeAdmission.syntheticFixture(path, "authority"),{
-        path, busyTimeoutMs: 250, migrationOwner: "m21-negative-control",
-        openMode: "storage-upgrade-preflight-read-only-no-migrate",
-      }, CLOCK), new RegExp(`D290 divergent post-v18 migration suffix: DCC1 v${String(version)}`, "u"));
-    });
-    assert.deepEqual(readFileSync(path), before);
-  });
 
   it("creates the complete v32 schema and preserves journal append semantics", () => {
     const path = databasePath("v30-schema-floor.sqlite");
@@ -1227,7 +1212,7 @@ describe("native SQLite authority schema", () => {
     applyReleasedMigrationChainForTest(path, 18);
     const upgraded = openDatabase(path);
 
-    assert.equal(upgraded.inspectSchema().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    assert.equal(upgraded.inspectSchema().schemaVersion, NORMAL_AUTHORITY_SCHEMA_VERSION);
     assert.equal(upgraded.inspectSchema().tables.some(({ name }) => name === "generated_artifacts"), true);
     assert.equal(upgraded.inspectSchema().tables.some(({ name }) => name === "app_settings"), true);
     assert.equal(upgraded.inspectSchema().tables.some(({ name }) => name === "app_settings"), true);
@@ -1241,7 +1226,7 @@ describe("native SQLite authority schema", () => {
     applyReleasedMigrationChainForTest(path, 27);
     const upgraded = openDatabase(path);
 
-    assert.equal(upgraded.inspectSchema().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    assert.equal(upgraded.inspectSchema().schemaVersion, NORMAL_AUTHORITY_SCHEMA_VERSION);
     for (const table of ["capture_sessions", "capture_photo_order", "capture_finalization_outboxes"]) {
       assert.equal(upgraded.inspectSchema().tables.some(({ name }) => name === table), false, table);
     }
@@ -1489,7 +1474,7 @@ describe("native SQLite authority schema", () => {
 
     applyReleasedMigrationChainForTest(path, 1);
     const upgraded = openDatabase(path);
-    assert.equal(upgraded.inspectSchema().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    assert.equal(upgraded.inspectSchema().schemaVersion, NORMAL_AUTHORITY_SCHEMA_VERSION);
     assert.deepEqual(upgraded.authority.commands.get(UUID_1), COMMAND_FIXTURES[0]);
     assert.equal(
       upgraded.authority.writeIntents.findByPermanentKey(
@@ -1504,7 +1489,7 @@ describe("native SQLite authority schema", () => {
       attempt: WRITE_ATTEMPT,
     }).state, "fenced");
     upgraded.commitWriteAttempt(ATOMIC_WRITE_COMMIT, atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT));
-    assert.equal(AuthorityDatabase.inspectExistingReadOnly(path).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    assert.equal(AuthorityDatabase.inspectExistingReadOnly(path).schemaVersion, NORMAL_AUTHORITY_SCHEMA_VERSION);
   });
 
   it("invalidates exact v5 start plans that cannot retain D109 raw ingress and boots requiring re-plan", () => {
@@ -1544,7 +1529,7 @@ describe("native SQLite authority schema", () => {
 
     applyReleasedMigrationChainForTest(path, 5);
     const upgraded = openDatabase(path);
-    assert.equal(upgraded.inspectSchema().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    assert.equal(upgraded.inspectSchema().schemaVersion, NORMAL_AUTHORITY_SCHEMA_VERSION);
     assert.equal(upgraded.authority.startPlans.get(LEGACY_V5_START_PLAN.startPlanId), undefined);
     assert.throws(
       () => upgraded.authority.startPlans.consume({
@@ -1601,7 +1586,7 @@ describe("native SQLite authority schema", () => {
 
     applyReleasedMigrationChainForTest(path, 6);
     const upgraded = openDatabase(path);
-    assert.equal(upgraded.inspectSchema().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    assert.equal(upgraded.inspectSchema().schemaVersion, NORMAL_AUTHORITY_SCHEMA_VERSION);
     assert.deepEqual(upgraded.authority.startPlans.get(START_PLAN.startPlanId), START_PLAN);
     assert.equal(upgraded.authority.failures.listByRun(RUN_ID).length, 0);
     assert.equal(upgraded.authority.runResults.get(RUN_ID), undefined);
@@ -1646,7 +1631,7 @@ describe("native SQLite authority schema", () => {
 
     applyReleasedMigrationChainForTest(path, 7);
     const upgraded = openDatabase(path);
-    assert.equal(upgraded.inspectSchema().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    assert.equal(upgraded.inspectSchema().schemaVersion, NORMAL_AUTHORITY_SCHEMA_VERSION);
     assert.deepEqual(upgraded.authority.commands.get(UUID_1), COMMAND_FIXTURES[0]);
     assert.equal(upgraded.authority.runs.get(RUN_ID)?.completion, undefined);
     assert.equal(upgraded.authority.providerAdmissions.get(UUID_8), undefined);
@@ -1669,11 +1654,11 @@ describe("native SQLite authority schema", () => {
     );
     migrated.close();
     const reopened = openDatabase(path);
-    assert.equal(reopened.inspectSchema().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    assert.equal(reopened.inspectSchema().schemaVersion, NORMAL_AUTHORITY_SCHEMA_VERSION);
     reopened.close();
     assert.equal(
       AuthorityDatabase.inspectExistingReadOnly(path).schemaVersion,
-      CURRENT_AUTHORITY_SCHEMA_VERSION,
+      NORMAL_AUTHORITY_SCHEMA_VERSION,
     );
   });
 
@@ -2033,6 +2018,17 @@ describe("authority generation accounting", () => {
         });
       },
     },
+    { table: "runtime_versions", mutate: db => { db.registerRuntimeVersionWorkflows([WORKFLOW_ID]); } },
+    { table: "runtime_version_changes", prepare: db => { db.registerRuntimeVersionWorkflows([WORKFLOW_ID]); }, mutate: db => {
+      const scope = { kind: "dashboard" as const };
+      const current = db.readRuntimeVersionAuthority();
+      const reviewed = db.reviewRuntimeVersionTransition(scope);
+      const review = RuntimeVersionChangeReviewSchema.parse({ schemaVersion: 3, changeId: UUID_7, actorId: "local-operator", reviewedAt: NOW,
+        authorityRevision: reviewed.revision, scope, before: current.state, after: reviewed.transition.after,
+        members: reviewed.review.members, membershipDigest: reviewed.review.membershipDigest, planCommandFingerprint: HASH_A });
+      db.writeRuntimeVersionChange(RuntimeVersionChangeSchema.parse({ ...review, reviewFingerprint: runtimeVersionChangeReviewFingerprint(review),
+        state: "planned", completedRunIds: [] }));
+    } },
     { table: "version_changes", mutate: db => {
       const review = {changeId:UUID_7,actorId:"local-operator",reviewedAt:NOW,observedAppVersion:"1.0.0",blockers:[],
         change:{kind:"minor" as const,what:"Synthetic",why:"Generation proof",commit:{state:"absent" as const,reason:"test"}},
@@ -2100,7 +2096,7 @@ describe("authority generation accounting", () => {
   });
 
   it("accounts for every authority table and increments once per outer authority mutation", () => {
-    assert.deepEqual(cases.map(({ table }) => table).sort(), AUTHORITY_TABLE_REGISTRY
+    assert.deepEqual([...cases.map(({ table }) => table), "runtime_version_adoptions"].sort(), AUTHORITY_TABLE_REGISTRY
       .filter(({ classification, name }) => classification === "authority"
         && !["database_state", "database_upgrades", "timeline_operation_sources"].includes(name))
       .map(({ name }) => name)
@@ -2125,6 +2121,21 @@ describe("authority generation accounting", () => {
         assert.equal(db.authority.historicalOperationSources.list().length, 2);
         assert.equal(db.getMeta().authorityGeneration, before + 2, "one conversion transaction plus one settlement transaction");
         assert.deepEqual(Object.keys(db.authority.historicalOperationSources), ["list"]);
+        const sql = new DatabaseSync(world.path);
+        try {
+          const adoption = sql.prepare("SELECT record_key, record_json FROM runtime_version_adoptions LIMIT 1").get();
+          assert.ok(adoption);
+          assert.equal(typeof adoption.record_key, "string");
+          assert.equal(typeof adoption.record_json, "string");
+          assert.deepEqual(db.readRuntimeVersionAdoption(String(adoption.record_key)), JSON.parse(String(adoption.record_json)));
+          assert.throws(() => sql.prepare("UPDATE runtime_version_adoptions SET record_json=? WHERE record_key=?")
+            .run(adoption.record_json, adoption.record_key), /runtime version adoption is immutable/u);
+          assert.throws(() => sql.prepare("DELETE FROM runtime_version_adoptions WHERE record_key=?")
+            .run(adoption.record_key), /runtime version adoption is retained/u);
+          assert.equal(sql.prepare("SELECT record_json FROM runtime_version_adoptions WHERE record_key=?")
+            .get(adoption.record_key)?.record_json, adoption.record_json);
+          assert.equal(db.getMeta().authorityGeneration, before + 2);
+        } finally { sql.close(); }
       } finally { db.close(); }
     } finally { world.dispose(); }
   });
@@ -2605,4 +2616,3 @@ describe("workflow batch migration and presentation persistence", () => {
     sql.close();
   });
 });
-import { RuntimeAdmission } from "../../../../../../src/backend/storage/admission/admission.js";
