@@ -8,7 +8,7 @@ import { descriptorRuntimeNodes } from "../../../../../../src/workflow-kit/workf
 import { ExplorerCodeChangeBriefSchema, ExplorerWorkflowWireSchema, type ExplorerNodeWire } from "../../../../../../src/models/dashboard/explorer.js";
 import { buildWorkflowExplorer, EXPLORER_SOURCE_ROOT } from "../../../../../../src/backend/runs/queries/explorer.js";
 import { buildUiTaskLinks } from "../../../../../../src/backend/systems/ui-task-links.js";
-import { createExplorerEditService } from "../../../../../../src/backend/runs/commands/explorer-edit-service.js";
+import { buildExplorerCompileAttestation, createExplorerEditService } from "../../../../../../src/backend/runs/commands/explorer-edit-service.js";
 import { explorerAuthorityFixture } from "../../../../../support/fixtures/explorer-authority.js";
 import { explorerQueryDeps } from "../../../../../support/fixtures/explorer-seams.js";
 import { FingerprintSchema } from "../../../../../../src/rules/identity/ids.js";
@@ -68,10 +68,14 @@ describe("Explorer registered graph and service acceptance", () => {
             assert.equal(view.shape.dryRun, node.dryRun);
           }
         }
-        for (const source of [served.sources.descriptor, served.sources.module, ...served.scenarios.map(s => s.source),
-          ...served.nodes.flatMap(n => n.tasks.flatMap(t => [t.contractSource, t.implSource]))]) {
+        for (const source of [served.sources.descriptor, served.sources.module, ...served.nodes.flatMap(n => n.tasks.flatMap(t => [t.contractSource, t.implSource]))]) {
           assert.equal(source.state, "resolved");
           if (source.state === "resolved") assert.ok(existsSync(join(EXPLORER_SOURCE_ROOT, source.path)), source.path);
+        }
+        for (const scenario of served.scenarios) {
+          assert.equal(scenario.source.state, "unresolved");
+          if (scenario.source.state !== "unresolved") throw new Error("scenario source must remain absent");
+          assert.ok(scenario.source.reason.length > 0);
         }
         for (const task of served.nodes.flatMap(n => n.tasks)) {
           assert.deepEqual(task.ui.map(link => link.catalogId).sort(), uiTaskLinks
@@ -95,15 +99,28 @@ describe("Explorer registered graph and service acceptance", () => {
     } finally { f.dispose(); }
   });
 
-  it.each(["manifest", "scenario"] as const)("refuses %s source drift before effects, then accepts the unchanged registered control", fault => {
+  it("refuses manifest source drift before effects, then accepts the unchanged registered control", () => {
     const f = explorerAuthorityFixture();
     try {
       const query = explorerQueryDeps(f.clock, FingerprintSchema.parse("b".repeat(64)));
-      const broken = { ...query, ...(fault === "manifest" ? { buildManifest: { ...GENERATED_BUILD_MANIFEST, workflows: GENERATED_BUILD_MANIFEST.workflows.map(w => ({ ...w, sources: [{ path: "src/missing-workflow.ts" }] })) } } : { listScenarioSources: () => [] }) };
+      const broken = { ...query, buildManifest: { ...GENERATED_BUILD_MANIFEST, workflows: GENERATED_BUILD_MANIFEST.workflows.map(w => ({ ...w, sources: [{ path: "src/missing-workflow.ts" }] })) } };
       const projected = buildWorkflowExplorer(broken);
-      assert.ok(projected.workflows.some(w => fault === "manifest" ? w.sources.descriptor.state === "unresolved" : w.scenarios.some(s => s.source.state === "unresolved")));
+      assert.ok(projected.workflows.some(w => w.sources.descriptor.state === "unresolved"));
       const service = createExplorerEditService({ explorer: broken, overrides: f.database.authority.explorerOverrides });
       assert.throws(() => service.validate(draft(f)), /compile attestation.*source.*unresolved/u);
+      untouched(f);
+      validControl(f);
+    } finally { f.dispose(); }
+  });
+
+  it("refuses served scenario registration drift before effects while accepting absent physical scenario sources", () => {
+    const f = explorerAuthorityFixture();
+    try {
+      const query = explorerQueryDeps(f.clock, FingerprintSchema.parse("b".repeat(64)));
+      const workflow = buildWorkflowExplorer(query).workflows.find(w => w.id === f.descriptor.id);
+      assert.ok(workflow);
+      assert.doesNotThrow(() => buildExplorerCompileAttestation(query, workflow));
+      assert.throws(() => buildExplorerCompileAttestation(query, { ...workflow, scenarios: [] }), /served scenario registrations differ/u);
       untouched(f);
       validControl(f);
     } finally { f.dispose(); }
