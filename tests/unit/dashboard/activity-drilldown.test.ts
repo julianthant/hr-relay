@@ -5,8 +5,9 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, it, vi } from 'vitest';
 import { ActivityReport } from '../../../src/dashboard/surfaces/activity/activity.js';
 import { ActivityDrilldown } from '../../../src/dashboard/surfaces/activity/activity-drilldown.js';
-import { activitySample, ACTIVITY_SAMPLE_RANGE } from '../../../src/dashboard/surfaces/activity/activity-fixture.js';
+import { activitySample, ACTIVITY_SAMPLE_RANGE, ACTIVITY_SAMPLE_TODAY } from '../../../src/dashboard/surfaces/activity/activity-fixture.js';
 import { activityDrilldown, activityOrderValue, setActivityOrder, ACTIVITY_RUN_PAGE_SIZE, type ActivityBrowse, type ActivitySelectionHandler } from '../../../src/dashboard/surfaces/activity/activity-drilldown-model.js';
+import { activityPresetRange, activityRangeValue } from '../../../src/dashboard/surfaces/activity/activity-model.js';
 import { parseViewRoute } from '../../../src/dashboard/app/navigation/view-route-model.js';
 import { parseRoute, routeToSearch } from '../../../src/dashboard/app/navigation/url-state.js';
 
@@ -209,6 +210,46 @@ describe('Activity drilldown records and navigation', () => {
       const overview = [...breadcrumbs()!.querySelectorAll('button')].find(button => button.textContent === 'Analytics'); assert(overview);
       await act(async () => overview.click());
       assert(host.querySelector('button[aria-label="View completed runs (38)"]'));
+    } finally { await act(async () => root.unmount()); host.remove(); }
+  });
+  it('keeps Custom selected when its applied dates equal a preset', async () => {
+    const host = document.createElement('div'); document.body.append(host);
+    const root = createRoot(host);
+    const changes: string[] = [];
+    const preset = activityPresetRange('this-week', ACTIVITY_SAMPLE_TODAY);
+    const applied = activityRangeValue(preset);
+    const fullDayLabel = (day: string) => new Intl.DateTimeFormat('en-US', {
+      timeZone: 'UTC', weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+    }).format(new Date(`${day}T00:00:00Z`));
+    const rangeCell = (day: string) => {
+      const label = fullDayLabel(day);
+      const cells = [...document.body.querySelectorAll<HTMLElement>('[aria-label]')].filter(element =>
+        element.getAttribute('aria-label')?.includes(label) === true && element.textContent?.trim() === String(Number(day.slice(8))));
+      assert.equal(cells.length, 1, `expected one range cell for "${label}", found ${String(cells.length)}`);
+      const found = cells[0];
+      assert.ok(found, `no range cell for "${label}"`);
+      return found;
+    };
+    try {
+      await act(async () => { root.render(createElement(ActivityReport, { range: applied, onRange: next => { changes.push(next); } })); });
+      const period = () => host.querySelector<HTMLElement>('button[aria-label="Report period"]');
+      const periodValue = () => host.querySelector<HTMLElement>('button[aria-label="Report period"] [data-slot="select-value"]')?.textContent?.trim();
+      assert.equal(period()?.getAttribute('data-value'), 'this-week');
+      assert.equal(periodValue(), 'This week');
+      // The operator picks Custom first, then edits dates — the ordinary way to name a range by hand.
+      await act(async () => { period()!.click(); });
+      const custom = [...document.body.querySelectorAll<HTMLElement>('[role="option"]')].find(option => option.textContent?.trim() === 'Custom range');
+      assert.ok(custom, 'the period control offers its Custom range preset');
+      await act(async () => { custom.click(); });
+      assert.equal(period()?.getAttribute('data-value'), 'custom');
+      assert.deepEqual(changes, [], 'choosing Custom edits no range on its own');
+      const trigger = host.querySelector<HTMLButtonElement>('button[aria-label="Choose start date range"]');
+      assert.ok(trigger, 'the range control owns its calendar trigger');
+      await act(async () => { trigger.click(); });
+      for (const day of [preset.from, preset.to]) await act(async () => { rangeCell(day).click(); });
+      assert.deepEqual(changes, [applied], 'the applied range is exactly the preset it equals');
+      assert.equal(period()?.getAttribute('data-value'), 'custom', 'an applied range equal to a preset keeps the operator\'s Custom choice');
+      assert.equal(periodValue(), 'Custom range');
     } finally { await act(async () => root.unmount()); host.remove(); }
   });
 });

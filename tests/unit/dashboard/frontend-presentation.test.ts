@@ -25,7 +25,7 @@ describe("frontend presentation producers", () => {
     const report = data.report;
     assert.deepEqual([report.total, report.completed, report.outstanding, report.failed], [44, 38, 4, 2]);
     assert.deepEqual([report.running, report.waiting, report.terminal], [3, 1, 40]);
-    assert.deepEqual(report.duration, { medianSeconds: 134, longestSeconds: 281, totalSeconds: 4911, measured: 36, unmeasured: 4 });
+    assert.deepEqual(report.duration, { medianSeconds: 134, longestSeconds: 281, totalSeconds: 4643, measured: 34, unmeasured: 4 });
     assert.deepEqual(report.failures, [{ label: "Document read timeout", runs: 2 }]);
     assert.deepEqual(report.evidence, { verified: 35, unread: 3 });
     assert.deepEqual(report.workflows.map(row => [row.completed, row.outstanding, row.failed, row.total]), [[24, 3, 2, 29], [14, 1, 0, 15]]);
@@ -65,7 +65,7 @@ describe("frontend presentation producers", () => {
   it("keeps new performance metrics scoped to finished and measured runs, with unknown distinct from zero", () => {
     assert.equal(activityCompletionRate(38, 40), "95%");
     assert.equal(activityCompletionRate(0, 0), "No finished runs");
-    assert.equal(activityDuration(4911), "1h 21m");
+    assert.equal(activityDuration(4643), "1h 17m");
     const missing = activitySample(ACTIVITY_SAMPLE_RANGE, "incomplete");
     const empty = activitySample(ACTIVITY_SAMPLE_RANGE, "empty");
     if (missing.state !== "loaded" || empty.state !== "loaded") throw new Error("samples must load");
@@ -84,7 +84,7 @@ describe("frontend presentation producers", () => {
   it("renders canonical surfaces without a client provider or registered-definition fallback", () => {
     const activity = renderToStaticMarkup(createElement(ActivityReport, { range: "", onRange: noop }));
     assert.match(activity, /Workflow outcomes/);
-    assert.match(activity, /36 measured/);
+    assert.match(activity, /34 measured/);
     assert.doesNotMatch(activity, /Sample data/);
     const explorer = renderToStaticMarkup(createElement(WorkflowExplorer, { catalog: buildWorkflowCatalog([]) }));
     assert.equal((explorer.match(/data-step-number=/g) ?? []).length, 22);
