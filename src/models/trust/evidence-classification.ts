@@ -911,11 +911,11 @@ export function classifyEvidenceLeaf(
 ): EvidenceFieldClassification {
   const entry = BY_SCOPE_AND_PATH.get(`${evidenceScopeKey(scope)}\u0000${path}`);
   if (entry === undefined) {
-    throw new Error(
+    throw new z.ZodError([{ code: "custom", path: [path], message:
       `no declared evidence classification for ${evidenceScopeKey(scope)} field "${path}"; `
-      + "add it to src/domain/trust/evidence-classification.ts — neither a receipt nor an "
+      + "add it to src/models/trust/evidence-classification.ts — neither a receipt nor an "
       + "observed log ever drops a leaf silently",
-    );
+    }]);
   }
   return entry;
 }

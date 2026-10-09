@@ -1139,7 +1139,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
   }
 
   function failureMessage(error: unknown): string {
-    return error instanceof Error ? error.message : "non-Error thrown";
+    return error instanceof Error || error instanceof z.ZodError ? error.message : "non-Error thrown";
   }
 
   function containsSchemaFailure(error: unknown): boolean {
