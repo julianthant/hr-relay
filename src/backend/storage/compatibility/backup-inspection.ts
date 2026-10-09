@@ -286,7 +286,11 @@ function schemaSnapshot(database: DatabaseSync): string {
   return canonicalJsonStringify({ tables, indexes, triggers });
 }
 
+const expectedSchemaSnapshots = new Map<number, string>();
+
 function expectedSchemaSnapshot(schemaVersion: number): string {
+  const cached = expectedSchemaSnapshots.get(schemaVersion);
+  if (cached !== undefined) return cached;
   const database = new DatabaseSync(":memory:", {
     enableForeignKeyConstraints: true,
     enableDoubleQuotedStringLiterals: false,
@@ -305,7 +309,9 @@ function expectedSchemaSnapshot(schemaVersion: number): string {
       for (const statement of migration.statements) database.exec(statement);
     }
     database.exec("COMMIT");
-    return schemaSnapshot(database);
+    const snapshot = schemaSnapshot(database);
+    expectedSchemaSnapshots.set(schemaVersion, snapshot);
+    return snapshot;
   } finally {
     database.close();
   }
