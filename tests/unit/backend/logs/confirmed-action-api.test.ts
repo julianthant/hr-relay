@@ -32,7 +32,7 @@ const snapshot = snapshotForTest();
 
 function harness(capacity = 32, frozen = snapshot,
   onEvent?: (event: import("../../../../src/models/events/confirmed-action.js").ConfirmedActionEvent) => void,
-  taskInput = input) {
+  taskInput = input, registeredDriverSystem?: "ucpath") {
   const clock = manualClock(new Date("2026-10-02T12:00:00.000Z"));
   const publisherClock = manualClock(new Date("2026-10-02T12:00:00.000Z"));
   const events: Array<import("../../../../src/models/events/confirmed-action.js").ConfirmedActionEvent> = [];
@@ -41,11 +41,12 @@ function harness(capacity = 32, frozen = snapshot,
   const invoke = async (nodeId: "first" | "second", task: ReturnType<typeof syntheticTask>, onNotes?: (notes: readonly BrowserAction[]) => void) => {
     const invocation = createConfirmedInvocation({ binding: { snapshot: frozen, runId, attempt: 2, claimGeneration: 3, taskAttempt: 4,
       nodeId, taskId: plan1Contract.id, contractRole: "task", parsedInput: taskInput, protectedBindings: [] },
-      publisher, clock, headlessSystem: "service", traceId: "fpo-120000-0002" });
-    return await invocation.withNotes(() => invocation.bind(() => task.impl.run({ input: taskInput,
+      publisher, clock, ...(registeredDriverSystem === undefined ? { headlessSystem: "service" } : { registeredDriverSystem }), traceId: "fpo-120000-0002" });
+    const execute = () => invocation.bind(() => task.impl.run({ input: taskInput,
       ctx: { signal: new AbortController().signal, log: { debug() {}, info() {}, warn() {} },
         fail: (code, message) => { throw new Error(`${code}: ${message}`); }, recordData() {}, providers: {}, confirmed: invocation.actions },
-    })), notes => { onNotes?.(notes); });
+    }));
+    return await invocation.withNotes(() => registeredDriverSystem === undefined ? execute() : withBrowserActionSession(browserSession, execute), notes => { onNotes?.(notes); });
   };
   return { clock, publisherClock, events, publisher, invoke };
 }
@@ -223,13 +224,13 @@ describe("confirmed action production invocation API", () => {
     const secretFill = "fixture-restricted-fill-text";
     const frozen = WorkflowOperationDisplaySnapshotSchema.parse({ ...snapshot,
       invocations: snapshot.invocations.map(invocation => invocation.entryId === "first"
-        ? { ...invocation, operation: { ...invocation.operation, actions: [
+        ? { ...invocation, operation: { ...invocation.operation, system: "ucpath", session: { kind: "browser", id: "fixture-session", system: "ucpath" }, actions: [
           { id: "read-disposition", kind: "read-field", valueSlot: "disposition", confirmationActionId: "verify-read-disposition" },
           { id: "verify-read-disposition", kind: "verify" },
           { id: "fill-text", kind: "fill-field", valueSlot: "text", confirmationActionId: "verify-fill-text" },
           { id: "verify-fill-text", kind: "verify" },
         ] } } : invocation) });
-    const h = harness(32, frozen, undefined, { ...input, text: secretFill });
+    const h = harness(32, frozen, undefined, { ...input, text: secretFill }, "ucpath");
     const notes: BrowserAction[] = [];
     const task = defineTask(plan1Contract, { sessions: [], async run({ input: value, ctx }) {
       if (ctx.confirmed === undefined) throw new Error("confirmed context unavailable");
@@ -247,6 +248,22 @@ describe("confirmed action production invocation API", () => {
     assert.equal(JSON.stringify({ events: h.events, notes }).includes(secretFill), false);
     assert.ok(notes.some(note => note.operation?.value?.consumed.state === "withheld"
       && note.operation.value.consumed.reason === "classification-required"));
+  });
+
+  it("retains eligible local input values with their frozen slot lineage", async () => {
+    const h = harness();
+    const notes: BrowserAction[] = [];
+    await h.invoke("first", syntheticTask(async () => true), emitted => { notes.push(...emitted); });
+    const note = notes.find(entry => entry.operation?.logicalActionId === "consume-text" && entry.operation.value?.consumed.state === "observed");
+    assert.ok(note);
+    assert.equal(note.operation?.value?.consumed.state, "observed");
+    if (note.operation?.value?.consumed.state !== "observed") throw new Error("local value missing");
+    assert.equal(note.operation.value.consumed.value, input.text);
+    assert.equal(note.operation.value.slot, "text");
+    assert.equal(note.operation.value.fieldPath, "text");
+    assert.deepEqual(note.operation.value.producer, { kind: "run-input", path: "text" });
+    assert.equal(h.events.filter(event => event.kind === "fact").length, 1);
+    assert.ok(JSON.stringify(h.events).includes(input.text));
   });
 
   it("retains a declared scalar value for a registered public field", async () => {
@@ -276,7 +293,7 @@ describe("confirmed action production invocation API", () => {
   it("classifies raw driver values even when a frozen action has no value slot", async () => {
     const cases = [
       { name: "restricted", system: "ucpath" as const, target: UCPATH_SMART_HR_DETAILS_EID_INPUT, visible: false },
-      { name: "hr", system: "ucpath" as const, target: UCPATH_PERSON_ORG_EID_INPUT, visible: false },
+      { name: "hr", system: "ucpath" as const, target: UCPATH_PERSON_ORG_EID_INPUT, visible: true },
       { name: "unclassified", system: "ucpath" as const, target: "fixture.unclassified", visible: false },
       { name: "public", system: "kuali" as const, target: KUALI_ACTION_LIST_SEARCH_INPUT, visible: true },
     ];
