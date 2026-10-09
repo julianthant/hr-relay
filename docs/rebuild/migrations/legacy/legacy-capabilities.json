@@ -16,14 +16,14 @@
       "disposition": {
         "kind": "replaced",
         "milestone": "1f",
-        "replacement": "src/backend/app/worker-compose.ts",
+        "replacement": "src/backend/app/composition/worker-compose.ts",
         "differencesAccepted": "Legacy's detached per-workflow daemon — spawned by daemon-registry, owning its own HTTP control surface, lockfile, session and claim loop — is replaced by a FOREGROUND `cli worker <workflow-id> --pool-index <positive-int> [--drain]` process. Control moves off HTTP onto the one idempotent actor-stamped command family plus the authority's own claim leases. Each worker start owns a durable process record under .tracker/locks/workers; D181 strictly aggregates those records into one restore-safety observation while identity collision remains the authority lease's job. There is no per-daemon stdout log file: a worker's events reach the operator only through the ONE projection."
       },
       "ownerMilestone": "1f",
       "verificationEvidence": [
         "legacy-source-present:src/cli-daemon.ts",
-        "src/backend/app/worker-compose.ts",
-        "src/backend/app/runtime-composition.ts",
+        "src/backend/app/composition/worker-compose.ts",
+        "src/backend/app/composition/runtime-composition.ts",
         "src/backend/storage/sqlite/runtime-process-locks.ts",
         "npm run cli"
       ],
@@ -46,7 +46,7 @@
       "ownerMilestone": "workflow-admission-backlog",
       "verificationEvidence": [
         "legacy-source-present:src/cli.ts",
-        "src/backend/app/runtime-composition.ts",
+        "src/backend/app/composition/runtime-composition.ts",
         "npm run cli"
       ],
       "status": "open"
@@ -88,7 +88,7 @@
         "evidence": [
           "legacy-source-present:src/dashboard/components/capture",
           "docs/rebuild/reference/dashboard-surfaces.md",
-          "tests/unit/architecture/phone-capture-retired.test.ts"
+          "tests/architecture/dashboard/phone-capture-retired.test.ts"
         ],
         "reason": "D294 (operator, 2026-08-31): the mobile document-capture product is retired from the rebuild. Diagnostic bundle screenshots, receipt/run-detail captures and Archive evidence remain distinct retained surfaces; this decision does not authorize deleting legacy source."
       },
@@ -96,7 +96,7 @@
       "verificationEvidence": [
         "legacy-source-present:src/dashboard/components/capture",
         "docs/rebuild/reference/dashboard-surfaces.md",
-        "tests/unit/architecture/phone-capture-retired.test.ts"
+        "tests/architecture/dashboard/phone-capture-retired.test.ts"
       ],
       "status": "retired"
     },
@@ -115,7 +115,7 @@
         "evidence": [
           "legacy-source-present:src/dashboard/components/dev",
           "legacy-source-present:src/dashboard/App.tsx",
-          "src/dashboard/surfaces/context-rail.tsx"
+          "src/dashboard/surfaces/run-detail/log-panel.tsx"
         ],
         "reason": "Both views are dev-only scaffolding: legacy App.tsx reaches them solely through a `?view=` gate and marks them TEMPORARY in source with an explicit removal instruction. `dev/rebuild-demo/` was a SYNTHETIC PREVIEW OF THIS REPO's surfaces and was consumed as their port source — the provenance headers on src/dashboard/surfaces/*.tsx name legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc's rebuild-demo files — so it cannot exist in the rebuild by construction. `UiGallery`'s job, seeing every primitive in both themes, is held by src/dashboard/ds/ plus the frozen `npm run test:parity` corpus, which asserts rather than rewrites. Retirement is a decision about the TARGET only: nothing here authorizes deleting the legacy source, which stays the D89 rollback asset."
       },
@@ -146,9 +146,9 @@
       "verificationEvidence": [
         "legacy-source-present:src/dashboard/components/hooks",
         "src/dashboard/client/index.ts",
-        "src/dashboard/client/subscription.ts",
+        "src/dashboard/client/subscriptions/subscription.ts",
         "src/dashboard/state/use-bootstrap.ts",
-        "src/dashboard/state/use-run-detail.ts"
+        "src/dashboard/state/async-resource.ts"
       ],
       "status": "implemented"
     },
@@ -169,7 +169,7 @@
       "ownerMilestone": "workflow-admission-backlog",
       "verificationEvidence": [
         "legacy-source-present:src/dashboard/components/log-panel",
-        "src/dashboard/surfaces/log-panel.tsx",
+        "src/dashboard/surfaces/run-detail/log-panel.tsx",
         "npm run test:parity"
       ],
       "status": "open"
@@ -191,9 +191,9 @@
       "ownerMilestone": "workflow-admission-backlog",
       "verificationEvidence": [
         "legacy-source-present:src/dashboard/components/navigation",
-        "src/dashboard/surfaces/top-bar.tsx",
-        "src/dashboard/surfaces/shortcuts.tsx",
-        "src/dashboard/surfaces/shell.tsx"
+        "src/dashboard/surfaces/shell/navigation-controls.tsx",
+        "src/dashboard/app/navigation/global-keys.ts",
+        "src/dashboard/app/dashboard-app.tsx"
       ],
       "status": "open"
     },
@@ -250,14 +250,14 @@
       "disposition": {
         "kind": "replaced",
         "milestone": "1i-spine",
-        "replacement": "src/dashboard/surfaces/shell.tsx",
+        "replacement": "src/dashboard/app/dashboard-app.tsx",
         "differencesAccepted": "Legacy's single OverviewPanel is split along the line the rebuild's projection already draws. The per-workflow counts are 1i-spine's Workflow Panel counts — the workflow rail plus the status filters in shell.tsx — and the range totals it also carried are D180's Activity report (src/dashboard/surfaces/activity.tsx), which is computed INSIDE run-queue-projection.ts so a second summation path cannot disagree with the day it summarises."
       },
       "ownerMilestone": "1i-spine",
       "verificationEvidence": [
         "legacy-source-present:src/dashboard/components/overview",
-        "src/dashboard/surfaces/shell.tsx",
-        "src/dashboard/surfaces/activity.tsx",
+        "src/dashboard/app/dashboard-app.tsx",
+        "src/dashboard/surfaces/activity/activity.tsx",
         "npm run test:parity"
       ],
       "status": "implemented"
@@ -275,17 +275,17 @@
         "kind": "native",
         "milestone": "1i-spine",
         "targetIds": [
-          "src/dashboard/surfaces/queue.tsx",
-          "src/dashboard/surfaces/status.tsx",
-          "src/dashboard/surfaces/actions.tsx"
+          "src/dashboard/surfaces/queue/queue.tsx",
+          "src/dashboard/surfaces/shared/status/status.tsx",
+          "src/dashboard/surfaces/shared/actions/actions.tsx"
         ]
       },
       "ownerMilestone": "1i-spine",
       "verificationEvidence": [
         "legacy-source-present:src/dashboard/components/queue-panel",
-        "src/dashboard/surfaces/queue.tsx",
-        "src/dashboard/surfaces/status.tsx",
-        "src/dashboard/surfaces/actions.tsx",
+        "src/dashboard/surfaces/queue/queue.tsx",
+        "src/dashboard/surfaces/shared/status/status.tsx",
+        "src/dashboard/surfaces/shared/actions/actions.tsx",
         "npm run test:parity"
       ],
       "status": "implemented"
@@ -302,15 +302,15 @@
       "disposition": {
         "kind": "replaced",
         "milestone": "1i-spine",
-        "replacement": "src/dashboard/surfaces/log-panel.tsx",
+        "replacement": "src/dashboard/surfaces/run-detail/log-panel.tsx",
         "differencesAccepted": "Run detail is an INLINE panel in the main column rather than a modal (ref frontend-backend-integration s3.3), with run identity in src/dashboard/surfaces/run-identity.tsx; the modal shape is reserved for run START (run-start.tsx, run-start-kit.tsx). SharePointDownloadButton and the OnBase form-type picker are workflow affordances rather than shell, so they land with legacy-workflow-sharepoint-download and legacy-workflow-onbase."
       },
       "ownerMilestone": "1i-spine",
       "verificationEvidence": [
         "legacy-source-present:src/dashboard/components/run-modal",
-        "src/dashboard/surfaces/log-panel.tsx",
-        "src/dashboard/surfaces/run-identity.tsx",
-        "src/dashboard/surfaces/run-start.tsx",
+        "src/dashboard/surfaces/run-detail/log-panel.tsx",
+        "src/dashboard/surfaces/run-detail/identity/run-identity.tsx",
+        "src/dashboard/surfaces/run-start/run-start.tsx",
         "npm run test:parity"
       ],
       "status": "implemented"
@@ -332,8 +332,8 @@
       "ownerMilestone": "workflow-admission-backlog",
       "verificationEvidence": [
         "legacy-source-present:src/dashboard/components/settings",
-        "src/dashboard/surfaces/settings.tsx",
-        "src/backend/runs/dashboard/queries/storage.ts"
+        "src/dashboard/surfaces/settings/settings.tsx",
+        "src/backend/runs/queries/storage.ts"
       ],
       "status": "open"
     },
@@ -356,8 +356,8 @@
       "verificationEvidence": [
         "legacy-source-present:src/dashboard/components/shared",
         "src/dashboard/ds/ui.tsx",
-        "src/dashboard/ds/primitives-core.tsx",
-        "src/dashboard/surfaces/actions.tsx",
+        "src/dashboard/ds/primitives/primitives-core.tsx",
+        "src/dashboard/surfaces/shared/actions/actions.tsx",
         "npm run test:parity"
       ],
       "status": "implemented"
@@ -374,13 +374,13 @@
       "disposition": {
         "kind": "replaced",
         "milestone": "1i-spine",
-        "replacement": "src/dashboard/surfaces/shell.tsx",
+        "replacement": "src/dashboard/surfaces/sessions/session-panel.tsx",
         "differencesAccepted": "The drawer's worker/browser/workflow cards are 1i-spine's Session Panel (SessionPanel and WorkerCard in shell.tsx). The daemon stdout console has no counterpart BY CONSTRUCTION: legacy daemons were detached processes tee'd to .tracker/daemons/<workflow>-<ISO>.log, whereas a rebuild worker is a foreground process whose events reach the operator only through the ONE projection's spans and notes, so there is no second log stream to drawer."
       },
       "ownerMilestone": "1i-spine",
       "verificationEvidence": [
         "legacy-source-present:src/dashboard/components/terminal-drawer",
-        "src/dashboard/surfaces/shell.tsx",
+        "src/dashboard/surfaces/sessions/session-panel.tsx",
         "npm run test:parity"
       ],
       "status": "implemented"
@@ -404,8 +404,8 @@
       "verificationEvidence": [
         "legacy-source-present:src/dashboard/components/ui",
         "src/dashboard/ds/ui.tsx",
-        "src/dashboard/ds/tokens.ts",
-        "src/dashboard/surfaces/top-bar.tsx",
+        "src/dashboard/ds/theme/tokens.ts",
+        "src/dashboard/surfaces/shell/navigation-controls.tsx",
         "npm run test:parity"
       ],
       "status": "implemented"
@@ -427,8 +427,8 @@
       "ownerMilestone": "workflow-admission-backlog",
       "verificationEvidence": [
         "legacy-source-present:src/dashboard/components/workflow-modifier",
-        "src/dashboard/surfaces/explorer.tsx",
-        "tests/unit/architecture/workflow-editor-compile-integrity.test.ts"
+        "src/dashboard/surfaces/explorer/explorer.tsx",
+        "tests/architecture/workflow-kit/workflow-editor-compile-integrity.test.ts"
       ],
       "status": "open"
     },
@@ -505,17 +505,23 @@
         "dashboard-route:ai-assist"
       ],
       "disposition": {
-        "kind": "open",
+        "kind": "retired",
         "milestone": "workflow-admission-backlog",
-        "reason": "POST /api/v1/runs/:runId/advisory serves failure triage (D178) and the bootstrap reports ai-advisory availability for THIS process. `sanity`, `selector` and `summarize` have no producer: D178 records all three as remaining without a producer and without a surface arm, and AdvisorySurfaceIdSchema is a closed two-value enum, so each is a declared schema change plus a redaction declaration rather than wiring. Ref workflow-model §1.6.3 calls these adapters OPTIONAL with the deterministic paths primary, so closure here is a build-or-retire decision at the plan's explicit non-workflow capability closure."
+        "evidence": [
+          "docs/rebuild/guard-inventory.json",
+          "src/rules/commands/commands-history.ts",
+          "tests/integration/backend/runs/start/provider-admission/retired-evidence.test.ts"
+        ],
+        "reason": "Brief R retires AI advisory production and provider adapters. Historical marked evidence remains readable; active command and admission schemas reject new retired work."
       },
       "ownerMilestone": "workflow-admission-backlog",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/ai-assist.ts",
-        "src/backend/runs/dashboard/queries/advisory.ts",
-        "src/domain/trust/advisory.ts"
+        "docs/rebuild/guard-inventory.json",
+        "src/rules/commands/commands-history.ts",
+        "tests/integration/backend/runs/start/provider-admission/retired-evidence.test.ts"
       ],
-      "status": "open"
+      "status": "retired"
     },
     {
       "id": "legacy-route-base",
@@ -534,8 +540,8 @@
       "ownerMilestone": "workflow-admission-backlog",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/base.ts",
-        "src/backend/runs/dashboard/queries/bootstrap.ts",
-        "src/backend/runs/dashboard/queries/run-detail.ts"
+        "src/backend/runs/queries/bootstrap.ts",
+        "src/backend/runs/queries/run-detail.ts"
       ],
       "status": "open"
     },
@@ -554,7 +560,7 @@
         "evidence": [
           "legacy-source-present:src/tracker/dashboard/hono/routes/capture.ts",
           "docs/rebuild/reference/dashboard-surfaces.md",
-          "tests/unit/architecture/phone-capture-retired.test.ts"
+          "tests/architecture/dashboard/phone-capture-retired.test.ts"
         ],
         "reason": "D294 (operator, 2026-08-31): the mobile document-capture route family is retired from the rebuild. The remaining diagnostic and Archive evidence routes are separate verified-byte resources, not a continuation of the phone product."
       },
@@ -562,7 +568,7 @@
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/capture.ts",
         "docs/rebuild/reference/dashboard-surfaces.md",
-        "tests/unit/architecture/phone-capture-retired.test.ts"
+        "tests/architecture/dashboard/phone-capture-retired.test.ts"
       ],
       "status": "retired"
     },
@@ -578,14 +584,14 @@
       "disposition": {
         "kind": "replaced",
         "milestone": "2i",
-        "replacement": "src/backend/runs/dashboard/commands/command-service.ts",
+        "replacement": "src/backend/runs/commands/command-service.ts",
         "differencesAccepted": "Legacy's dedicated POST /api/daemon/stop is replaced by the ONE idempotent actor-stamped command endpoint (POST /api/v1/commands) carrying the `worker-browser` family's stop-worker type, so every product mutation is validated by the same authority-transactional kernel instead of by a per-action route with its own ad-hoc checks."
       },
       "ownerMilestone": "2i",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/daemon-stop.ts",
-        "src/backend/runs/dashboard/commands/command-service.ts",
-        "src/domain/commands.ts"
+        "src/backend/runs/commands/command-service.ts",
+        "src/rules/commands/commands.ts"
       ],
       "status": "implemented"
     },
@@ -606,7 +612,7 @@
       "ownerMilestone": "workflow-admission-backlog",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/daemon-stop-instance.ts",
-        "src/domain/commands.ts"
+        "src/rules/commands/commands.ts"
       ],
       "status": "open"
     },
@@ -622,15 +628,15 @@
       "disposition": {
         "kind": "replaced",
         "milestone": "1g-spine",
-        "replacement": "src/backend/runs/dashboard/commands/start-plan-service.ts",
+        "replacement": "src/backend/runs/commands/start-plan-service.ts",
         "differencesAccepted": "Enqueue is TWO steps, not one: POST /api/v1/start-plans mints a confirmable plan that retains the exact raw JSON ingress beside the schema-bound canonical snapshot and binds both schema hashes plus the canonical digest (D109), and POST /api/v1/commands then consumes that plan under the `start` family inside its own authority transaction (D113). A single fire-and-forget enqueue cannot bind the confirmation revision the terminal authority later requires."
       },
       "ownerMilestone": "1g-spine",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/enqueue.ts",
-        "src/backend/runs/dashboard/commands/start-plan-service.ts",
+        "src/backend/runs/commands/start-plan-service.ts",
         "src/backend/runs/start/plan.ts",
-        "src/backend/runs/dashboard/commands/command-service.ts"
+        "src/backend/runs/commands/command-service.ts"
       ],
       "status": "implemented"
     },
@@ -646,14 +652,14 @@
       "disposition": {
         "kind": "replaced",
         "milestone": "1g-spine",
-        "replacement": "src/backend/runs/dashboard/projectors/run-queue-projection.ts",
+        "replacement": "src/backend/runs/projections/run-queue-projection.ts",
         "differencesAccepted": "This legacy module registers no route: it assembles the dashboard row payload for the entries SSE topic inside the route layer, and caches cross-workflow counts beside it. The rebuild builds every row and every total INSIDE the one projection (D81, and D180 for the range aggregates), so there is no second assembly path and no separate count cache that could disagree with the day it summarises."
       },
       "ownerMilestone": "1g-spine",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/entries-payload.ts",
-        "src/backend/runs/dashboard/projectors/run-queue-projection.ts",
-        "src/backend/transports/dashboard/subscriptions/dashboard-stream.ts"
+        "src/backend/runs/projections/run-queue-projection.ts",
+        "src/backend/transports/http/subscriptions/dashboard-stream.ts"
       ],
       "status": "implemented"
     },
@@ -674,7 +680,7 @@
       "ownerMilestone": "workflow-admission-backlog",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/files.ts",
-        "src/domain/dashboard/artifacts.ts",
+        "src/models/dashboard/artifacts.ts",
         "src/backend/storage/artifacts/content-addressed-artifact-writer.ts"
       ],
       "status": "open"
@@ -692,14 +698,14 @@
         "kind": "native",
         "milestone": "1g-spine",
         "targetIds": [
-          "src/backend/transports/dashboard/subscriptions/dashboard-stream.ts",
-          "src/backend/transports/dashboard/routes/api.ts"
+          "src/backend/transports/http/subscriptions/dashboard-stream.ts",
+          "src/backend/transports/http/routes/api.ts"
         ]
       },
       "ownerMilestone": "1g-spine",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/hub.ts",
-        "src/backend/transports/dashboard/subscriptions/dashboard-stream.ts",
+        "src/backend/transports/http/subscriptions/dashboard-stream.ts",
         "src/dashboard/client/subscriptions/subscription.ts"
       ],
       "status": "implemented"
@@ -762,8 +768,8 @@
       "ownerMilestone": "workflow-admission-backlog",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/ops.ts",
-        "src/domain/commands.ts",
-        "src/backend/runs/dashboard/commands/command-service.ts"
+        "src/rules/commands/commands.ts",
+        "src/backend/runs/commands/command-service.ts"
       ],
       "status": "open"
     },
@@ -780,15 +786,15 @@
         "kind": "native",
         "milestone": "1g-spine",
         "targetIds": [
-          "src/backend/runs/dashboard/projectors/run-queue-projection.ts",
-          "src/backend/transports/dashboard/routes/api.ts"
+          "src/backend/runs/projections/run-queue-projection.ts",
+          "src/backend/transports/http/routes/api.ts"
         ]
       },
       "ownerMilestone": "1g-spine",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/projection.ts",
-        "src/backend/runs/dashboard/projectors/run-queue-projection.ts",
-        "src/backend/runs/dashboard/queries/storage.ts"
+        "src/backend/runs/projections/run-queue-projection.ts",
+        "src/backend/runs/queries/storage.ts"
       ],
       "status": "implemented"
     },
@@ -809,7 +815,7 @@
       "ownerMilestone": "workflow-admission-backlog",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/screenshots.ts",
-        "src/domain/dashboard/artifacts.ts"
+        "src/models/dashboard/artifacts.ts"
       ],
       "status": "open"
     },
@@ -830,8 +836,8 @@
       "ownerMilestone": "workflow-admission-backlog",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/search.ts",
-        "src/backend/runs/dashboard/queries/ui-catalog.ts",
-        "src/backend/runs/dashboard/queries/run-detail.ts"
+        "docs/rebuild/reference/operator-trust.md",
+        "src/backend/runs/queries/run-detail.ts"
       ],
       "status": "open"
     },
@@ -852,8 +858,8 @@
       "ownerMilestone": "workflow-admission-backlog",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/settings.ts",
-        "src/backend/runs/dashboard/queries/storage.ts",
-        "src/domain/commands.ts"
+        "src/backend/runs/queries/storage.ts",
+        "src/rules/commands/commands.ts"
       ],
       "status": "open"
     },
@@ -890,16 +896,16 @@
         "kind": "native",
         "milestone": "workflow-admission-backlog",
         "targetIds": [
-          "src/backend/transports/dashboard/static-bundle.ts"
+          "src/backend/transports/http/static-bundle.ts"
         ]
       },
       "ownerMilestone": "workflow-admission-backlog",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/static.ts",
-        "src/backend/transports/dashboard/static-bundle.ts",
-        "src/backend/app/dashboard/compose.ts",
+        "src/backend/transports/http/static-bundle.ts",
+        "src/backend/app/composition/dashboard/compose.ts",
         "npm run dashboard:prod",
-        "tests/unit/server/static-bundle.test.ts"
+        "tests/integration/backend/app/composition/dashboard/build-identity/static-bundle.test.ts"
       ],
       "status": "implemented"
     },
@@ -915,15 +921,15 @@
       "disposition": {
         "kind": "replaced",
         "milestone": "2i",
-        "replacement": "src/backend/runs/dashboard/queries/explorer.ts",
+        "replacement": "src/backend/runs/queries/explorer.ts",
         "differencesAccepted": "Legacy's /api/task-dependencies computed a dependency graph inside the route. The rebuild derives task, contract, delegation and scenario facts from the composition root plus each descriptor's factory-sealed projections and the fingerprinted build manifest at GET /api/v1/explorer (D176) — no literal node list, no per-workflow switch — so there is no second answer that could disagree with the descriptor, and a source link that does not resolve reports `unresolved` with the path it tried instead of interpolating a plausible one."
       },
       "ownerMilestone": "2i",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/tasks.ts",
-        "src/backend/runs/dashboard/queries/explorer.ts",
-        "src/domain/dashboard/explorer.ts",
-        "tests/unit/architecture/workflow-editor-compile-integrity.test.ts"
+        "src/backend/runs/queries/explorer.ts",
+        "src/models/dashboard/explorer.ts",
+        "tests/architecture/workflow-kit/workflow-editor-compile-integrity.test.ts"
       ],
       "status": "implemented"
     },
@@ -944,7 +950,7 @@
       "ownerMilestone": "workflow-admission-backlog",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/workflow-design.ts",
-        "src/backend/runs/dashboard/queries/explorer.ts"
+        "src/backend/runs/queries/explorer.ts"
       ],
       "status": "open"
     },
@@ -965,8 +971,8 @@
       "ownerMilestone": "workflow-admission-backlog",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/workflow-presentation.ts",
-        "src/backend/runs/dashboard/queries/bootstrap.ts",
-        "src/backend/runs/dashboard/queries/explorer.ts"
+        "src/backend/runs/queries/bootstrap.ts",
+        "src/backend/runs/queries/explorer.ts"
       ],
       "status": "open"
     },
@@ -982,17 +988,17 @@
       "disposition": {
         "kind": "replaced",
         "milestone": "2h",
-        "replacement": "src/domain/normalization/contact-rules.ts",
+        "replacement": "src/rules/normalization/contact-rules.ts",
         "differencesAccepted": "Legacy's address service bundled parsing, cleanup and an LLM fallback behind one call. The rebuild splits them: deterministic canonical rules in src/domain/normalization/ (contact-rules, street-safety, geocode), two admitted geocode providers under D112 budget admission (geocode.census and geocode.nominatim in src/backend/processing/providers/geocode-adapters.ts), and an optional advisory arm that is deliberately NARROWER than legacy's — only fields whose canonical transform is `allow` are asked about, so `relationship`, the one field the legacy LLM fallback existed for, stays `ambiguous` for the operator (D178). Contact-normalization parity against a real consumer is proved at OCR order 3."
       },
       "ownerMilestone": "2h",
       "verificationEvidence": [
         "legacy-source-present:src/services/address",
-        "src/domain/normalization/contact-rules.ts",
-        "src/domain/normalization/geocode.ts",
+        "src/rules/normalization/contact-rules.ts",
+        "src/rules/normalization/geocode.ts",
         "src/backend/processing/providers/geocode-adapters.ts",
-        "tests/unit/domain/normalization/normalization-rules.test.ts",
-        "tests/scenario/normalization-contact.scenario.test.ts"
+        "tests/unit/rules/normalization/contact-rules/normalization-rules.test.ts",
+        "docs/rebuild/reference/operator-trust.md"
       ],
       "status": "implemented"
     },
@@ -1011,7 +1017,7 @@
         "evidence": [
           "legacy-source-present:src/services/capture",
           "docs/rebuild/reference/dashboard-surfaces.md",
-          "tests/unit/architecture/phone-capture-retired.test.ts"
+          "tests/architecture/dashboard/phone-capture-retired.test.ts"
         ],
         "reason": "D294 (operator, 2026-08-31): the rebuild retires the mobile document-capture service rather than carrying its session, token, photo and finalization authority forward. Diagnostic and Archive evidence storage remain because they serve a different product boundary."
       },
@@ -1019,7 +1025,7 @@
       "verificationEvidence": [
         "legacy-source-present:src/services/capture",
         "docs/rebuild/reference/dashboard-surfaces.md",
-        "tests/unit/architecture/phone-capture-retired.test.ts"
+        "tests/architecture/dashboard/phone-capture-retired.test.ts"
       ],
       "status": "retired"
     },
@@ -1063,17 +1069,17 @@
       "disposition": {
         "kind": "replaced",
         "milestone": "2h",
-        "replacement": "src/domain/matching/roster-match.ts",
+        "replacement": "src/rules/matching/roster-match.ts",
         "differencesAccepted": "Legacy's matching service carried hardcoded header matchers beside its identity comparison. The rebuild's identity matching is pure Clock-free domain logic (levenshtein, name-match, match-confidence, roster-match) over the canonical field registry, header discovery is owned by intake (src/domain/intake/header-discovery.ts) with generic duplicate-safe column mapping, and the roster read sits behind a store contract (src/backend/processing/roster/tasks/match-spreadsheet.ts). Ref workflow-model §1.6.3's 'no hardcoded header matcher survives' therefore holds structurally; each real consumer closes during orders 3-9."
       },
       "ownerMilestone": "2h",
       "verificationEvidence": [
         "legacy-source-present:src/services/matching",
-        "src/domain/matching/roster-match.ts",
-        "src/domain/matching/match-confidence.ts",
-        "src/domain/intake/header-discovery.ts",
-        "tests/unit/domain/matching/roster-match.test.ts",
-        "tests/scenario/roster-match.scenario.test.ts"
+        "src/rules/matching/roster-match.ts",
+        "src/rules/matching/match-confidence.ts",
+        "src/rules/intake/header-discovery.ts",
+        "tests/unit/rules/matching/match-confidence/roster-match.test.ts",
+        "docs/rebuild/reference/operator-trust.md"
       ],
       "status": "implemented"
     },
@@ -1090,10 +1096,10 @@
         "kind": "native",
         "milestone": "2h",
         "targetIds": [
-          "src/domain/ocr/extraction.ts",
-          "src/domain/ocr/form-registry.ts",
-          "src/domain/ocr/instruction.ts",
-          "src/domain/ocr/stack.ts",
+          "src/models/ocr/extraction.ts",
+          "src/models/ocr/form-registry.ts",
+          "src/models/ocr/instruction.ts",
+          "src/models/ocr/stack.ts",
           "src/backend/transports/cli/ocr.ts",
           "src/backend/processing/ocr/tasks/extract-form-page.ts",
           "src/workflow-kit/providers.ts"
@@ -1102,10 +1108,10 @@
       "ownerMilestone": "2h",
       "verificationEvidence": [
         "legacy-source-present:src/services/ocr",
-        "src/domain/ocr/extraction.ts",
+        "src/models/ocr/extraction.ts",
         "src/backend/transports/cli/ocr.ts",
-        "tests/unit/domain/ocr/ocr-extraction-admission.test.ts",
-        "tests/scenario/ocr-extraction.scenario.test.ts",
+        "tests/unit/models/ocr/extraction/ocr-extraction-admission.test.ts",
+        "docs/rebuild/reference/operator-trust.md",
         "tests/unit/backend/processing/ocr/task-registry/disconnected-client.test.ts"
       ],
       "status": "implemented"
@@ -1123,7 +1129,7 @@
         "kind": "native",
         "milestone": "1d",
         "targetIds": [
-          "src/domain/timecard-period.ts",
+          "src/rules/time/timecard-period.ts",
           "src/backend/systems/kronos-shared/timecard.ts"
         ]
       },
@@ -1131,8 +1137,8 @@
       "verificationEvidence": [
         "legacy-source-present:src/services/timecard",
         "ported-with-provenance:793abe1f8265f3213ffe8a80d6cfd9860a32a1dc:src/services/timecard/index.ts:91c5b930a77dcc40c4185475ab59d720edcc90b7",
-        "tests/unit/domain/timecard-period/timecard-period.test.ts",
-        "tests/unit/backend/systems/kronos-shared/timecard-check.test.ts"
+        "tests/unit/rules/time/timecard-period/timecard-period.test.ts",
+        "tests/unit/backend/systems/kronos-shared/timecard/timecard-check.test.ts"
       ],
       "status": "implemented"
     },
@@ -1153,7 +1159,7 @@
       "ownerMilestone": "workflow-admission-backlog",
       "verificationEvidence": [
         "legacy-source-present:src/scripts/codegen/export-schemas.ts",
-        "src/domain/trust/advisory.ts"
+        "docs/rebuild/reference/workflow-model.md"
       ],
       "status": "open"
     },
@@ -1169,14 +1175,14 @@
       "disposition": {
         "kind": "open",
         "milestone": "workflow-admission-backlog",
-        "reason": "A NAMED supported diagnostic in legacy — src/scripts/CLAUDE.md documents map/test/explore as the selector-discovery and isolation path — so ref workflow-model §1.6.3's 'port only if a named supported diagnostic remains' applies rather than retirement. The rebuild covers selector discovery with `npm run selector:search` plus the pre-authorized playwright-cli loop, and login with scripts/live-browser-login-smoke.ts, but the Kronos timecard isolation run has no counterpart. Old Kronos closes at order 2 and New Kronos at order 8."
+        "reason": "A named supported diagnostic in legacy — src/scripts/CLAUDE.md documents map/test/explore as the selector-discovery and isolation path — so ref workflow-model §1.6.3's named-supported-diagnostic requirement applies. The 2026-10-01 UI catalog retirement removed selector search; semantic UI registries and the pre-authorized playwright-cli verification loop remain. Login verification is owned by scripts/verify/browser-login.ts, but the Kronos timecard isolation diagnostic has no counterpart. The capability remains open for its workflow admission owner."
       },
       "ownerMilestone": "workflow-admission-backlog",
       "verificationEvidence": [
         "legacy-source-present:src/scripts/debug/kronos.ts",
-        "scripts/search-ui.ts",
-        "scripts/live-browser-login-smoke.ts",
-        "npm run selector:search"
+        "docs/rebuild/reference/operator-trust.md",
+        "src/backend/systems/ucpath/driver/ui-registry.ts",
+        "scripts/verify/browser-login.ts"
       ],
       "status": "open"
     },
@@ -1192,14 +1198,14 @@
       "disposition": {
         "kind": "replaced",
         "milestone": "1a",
-        "replacement": "scripts/scope-files.ts",
+        "replacement": "scripts/test/scope-files.ts",
         "differencesAccepted": "Legacy's main-module helper answered 'was this module executed directly'. `isDirectExecution(moduleUrl)` in scripts/scope-files.ts answers the same question for the one consumer that has it (scripts/suite-size.ts). src/ has no direct-execution branch at all, because every runtime entry point is src/cli.ts and every composition root is invoked from there rather than guessing whether it was imported."
       },
       "ownerMilestone": "1a",
       "verificationEvidence": [
         "legacy-source-present:src/scripts/main-module.ts",
-        "scripts/scope-files.ts",
-        "scripts/suite-size.ts"
+        "scripts/test/scope-files.ts",
+        "scripts/test/suite-size.ts"
       ],
       "status": "implemented"
     },
@@ -1220,7 +1226,7 @@
       "ownerMilestone": "workflow-admission-backlog",
       "verificationEvidence": [
         "legacy-source-present:src/scripts/ops/clean-tracker.ts",
-        "src/backend/logs/trust/diagnostic-retention.ts"
+        "src/backend/logs/diagnostics/diagnostic-retention.ts"
       ],
       "status": "open"
     },
@@ -1283,15 +1289,15 @@
         "milestone": "workflow-admission-backlog",
         "evidence": [
           "legacy-source-present:src/scripts/ops/sanity-check-record.ts",
-          "src/domain/separations/identity-approval.ts",
-          "src/domain/trust/advisory.ts"
+          "src/rules/separations/identity-approval.ts",
+          "docs/rebuild/reference/write-safety.md"
         ],
         "reason": "Operator ruling 2026-08-18 (ref operator-trust §4.4): no AI feature — D192's deferral condition ('renders beside the order-8 ALWAYS-GATE identity approval') was met DETERMINISTICALLY by the ref write-safety §14.2 gate packet's server-computed comparisons array, which puts the disconfirming Kuali-beside-UCPath evidence in exactly the slot the AI prose was reserved for. The deterministic comparison IS the sanity check. AdvisorySurfaceIdSchema stays closed at its D178 two-value shape; no surface arm is ever added. Reopening requires a fresh decision, not a build."
       },
       "ownerMilestone": "workflow-admission-backlog",
       "verificationEvidence": [
         "legacy-source-present:src/scripts/ops/sanity-check-record.ts",
-        "src/domain/trust/advisory.ts"
+        "docs/rebuild/reference/write-safety.md"
       ],
       "status": "retired"
     },
@@ -1309,16 +1315,18 @@
         "milestone": "workflow-admission-backlog",
         "evidence": [
           "legacy-source-present:src/scripts/ops/selector-suggest.ts",
-          "scripts/search-ui.ts",
-          "npm run selector:search"
+          "docs/rebuild/reference/operator-trust.md",
+          "src/backend/systems/ucpath/driver/ui-registry.ts",
+          "tests/architecture/systems/semantic-ui-registry.test.ts"
         ],
-        "reason": "D192 (operator, 2026-08-12): retired as an OPERATOR surface. An operator-facing LLM selector suggestion is an unverified selector reaching a live driver — the exact fail-loud, no-unverified-fallback pattern this repo bans — so it never becomes a runtime surface. The DETERMINISTIC catalog half stays primary and closed (`npm run selector:search`, see legacy-tool-selectors-search); selector discovery and repair remain the dev-time live-verification loop root `CLAUDE.md`'s 'Live verification' section pre-authorizes. AdvisorySurfaceIdSchema stays closed at its D178 two-value shape; no surface arm is added."
+        "reason": "D192 (operator, 2026-08-12) retires the operator-facing LLM selector suggestion: an unverified selector must never reach a live driver. The operator-approved UI catalog retirement amendment of 2026-10-01 also retires deterministic catalog search. Semantic UI registries and dev-time live verification retain selector recipe, provenance and write-proof authority; this retired operator surface has no current producer."
       },
       "ownerMilestone": "workflow-admission-backlog",
       "verificationEvidence": [
         "legacy-source-present:src/scripts/ops/selector-suggest.ts",
-        "scripts/search-ui.ts",
-        "npm run selector:search"
+        "docs/rebuild/reference/operator-trust.md",
+        "src/backend/systems/ucpath/driver/ui-registry.ts",
+        "tests/architecture/systems/semantic-ui-registry.test.ts"
       ],
       "status": "retired"
     },
@@ -1358,7 +1366,7 @@
         "milestone": "workflow-admission-backlog",
         "evidence": [
           "legacy-source-present:src/scripts/ops/summarize-run.ts",
-          "src/backend/runs/evidence-receipt.ts",
+          "src/backend/runs/provenance/evidence-receipt.ts",
           "src/backend/runs/explain/explain-run.ts"
         ],
         "reason": "D192 (operator, 2026-08-12): retired rather than built. `RunEvidenceReceipt` (D141/D144) is already the run's structured, byte-reproducible, per-field-redaction-declared summary, derived from authority and served by both `cli explain run <traceId|runId>` and the run-detail receipt section — an LLM digest over the same facts would duplicate it and reintroduce paraphrase risk on the exact surface D141 built to eliminate. AdvisorySurfaceIdSchema stays closed at its D178 two-value shape; no surface arm is added."
@@ -1366,7 +1374,7 @@
       "ownerMilestone": "workflow-admission-backlog",
       "verificationEvidence": [
         "legacy-source-present:src/scripts/ops/summarize-run.ts",
-        "src/backend/runs/evidence-receipt.ts",
+        "src/backend/runs/provenance/evidence-receipt.ts",
         "src/backend/runs/explain/explain-run.ts",
         "npm run cli"
       ],
@@ -1410,19 +1418,25 @@
         "tool:src/scripts/selectors/catalog.ts"
       ],
       "disposition": {
-        "kind": "replaced",
+        "kind": "retired",
         "milestone": "1d",
-        "replacement": "scripts/generate-ui-catalog.ts",
-        "differencesAccepted": "The legacy tool scraped TypeScript property paths out of src/systems/<sys>/selectors.ts by AST and emitted SELECTORS.md. The rebuild generates generated/ui-catalog.json plus per-system UI-CATALOG.md from the server-only semantic registry, so catalog identity is a stable semantic id rather than a source property path (ref operator-trust s1.1/s1.3) and private locator/state/read recipes are omitted."
+        "evidence": [
+          "docs/rebuild/reference/operator-trust.md",
+          "tests/architecture/systems/semantic-ui-registry.test.ts",
+          "src/backend/systems/ucpath/driver/ui-registry.ts",
+          "tests/unit/backend/systems/ucpath/driver/ui-registry.test.ts"
+        ],
+        "reason": "The operator-approved UI catalog retirement amendment of 2026-10-01 in ref operator-trust retires the catalog generator, selector-search command, generated JSON and per-system catalog documents. Semantic UI registries, stable IDs, selector recipes, verification provenance, effect classification and write proofs remain authoritative."
       },
       "ownerMilestone": "1d",
       "verificationEvidence": [
         "legacy-source-present:src/scripts/selectors/catalog.ts",
-        "npm run ui:catalog",
-        "tests/unit/ui-catalog-cli.test.ts",
-        "tests/unit/architecture/semantic-ui-registry.test.ts"
+        "docs/rebuild/reference/operator-trust.md",
+        "tests/architecture/systems/semantic-ui-registry.test.ts",
+        "src/backend/systems/ucpath/driver/ui-registry.ts",
+        "tests/unit/backend/systems/ucpath/driver/ui-registry.test.ts"
       ],
-      "status": "implemented"
+      "status": "retired"
     },
     {
       "id": "legacy-tool-selectors-search",
@@ -1434,18 +1448,25 @@
         "tool:src/scripts/selectors/search.ts"
       ],
       "disposition": {
-        "kind": "replaced",
+        "kind": "retired",
         "milestone": "1d",
-        "replacement": "scripts/search-ui.ts",
-        "differencesAccepted": "The legacy CLI searched selector source plus LESSONS markdown. The rebuild resolves operator language against the recipe-free generated catalog only, fails loud on a stale catalog, and fails loud on zero matches instead of printing an empty result. Lesson search returns with the 2i knowledge surfaces."
+        "evidence": [
+          "docs/rebuild/reference/operator-trust.md",
+          "tests/architecture/systems/semantic-ui-registry.test.ts",
+          "src/backend/systems/ucpath/driver/ui-registry.ts",
+          "tests/unit/backend/systems/ucpath/driver/ui-registry.test.ts"
+        ],
+        "reason": "The operator-approved UI catalog retirement amendment of 2026-10-01 in ref operator-trust retires the catalog generator, selector-search command, generated JSON and per-system catalog documents. Semantic UI registries, stable IDs, selector recipes, verification provenance, effect classification and write proofs remain authoritative."
       },
       "ownerMilestone": "1d",
       "verificationEvidence": [
         "legacy-source-present:src/scripts/selectors/search.ts",
-        "npm run selector:search",
-        "tests/unit/ui-catalog-cli.test.ts"
+        "docs/rebuild/reference/operator-trust.md",
+        "tests/architecture/systems/semantic-ui-registry.test.ts",
+        "src/backend/systems/ucpath/driver/ui-registry.ts",
+        "tests/unit/backend/systems/ucpath/driver/ui-registry.test.ts"
       ],
-      "status": "implemented"
+      "status": "retired"
     },
     {
       "id": "legacy-tool-selectors-search-lib",
@@ -1457,18 +1478,25 @@
         "tool:src/scripts/selectors/search-lib.ts"
       ],
       "disposition": {
-        "kind": "replaced",
+        "kind": "retired",
         "milestone": "1d",
-        "replacement": "src/backend/systems/ucpath/driver/catalog.ts",
-        "differencesAccepted": "The legacy weighted title/tag/body scorer over indexed markdown sections is not ported. Ranking now runs over the closed catalog projection's id/label/searchTerms, which are curated vocabulary rather than scraped prose, so substring stemming heuristics are unnecessary; a search-term collision fails catalog generation instead of being resolved by score."
+        "evidence": [
+          "docs/rebuild/reference/operator-trust.md",
+          "tests/architecture/systems/semantic-ui-registry.test.ts",
+          "src/backend/systems/ucpath/driver/ui-registry.ts",
+          "tests/unit/backend/systems/ucpath/driver/ui-registry.test.ts"
+        ],
+        "reason": "The operator-approved UI catalog retirement amendment of 2026-10-01 in ref operator-trust retires the catalog generator, selector-search command, generated JSON and per-system catalog documents. Semantic UI registries, stable IDs, selector recipes, verification provenance, effect classification and write proofs remain authoritative."
       },
       "ownerMilestone": "1d",
       "verificationEvidence": [
         "legacy-source-present:src/scripts/selectors/search-lib.ts",
-        "tests/unit/backend/systems/ucpath/ui-registry.test.ts",
-        "tests/unit/ui-catalog-cli.test.ts"
+        "docs/rebuild/reference/operator-trust.md",
+        "tests/architecture/systems/semantic-ui-registry.test.ts",
+        "src/backend/systems/ucpath/driver/ui-registry.ts",
+        "tests/unit/backend/systems/ucpath/driver/ui-registry.test.ts"
       ],
-      "status": "implemented"
+      "status": "retired"
     },
     {
       "id": "legacy-tool-workflow-design-build-data-bank",
@@ -1487,7 +1515,7 @@
       "ownerMilestone": "workflow-admission-backlog",
       "verificationEvidence": [
         "legacy-source-present:src/scripts/workflow-design/build-data-bank.ts",
-        "src/backend/runs/dashboard/queries/explorer.ts"
+        "src/backend/runs/queries/explorer.ts"
       ],
       "status": "open"
     },
@@ -1729,8 +1757,8 @@
       "verificationEvidence": [
         "legacy-source-present:src/workflows/person-lookup",
         "src/workflows/person-lookup/workflow.ts",
-        "tests/scenario/workflows/person-lookup/structural.scenario.test.ts",
-        "tests/scenario/workflows/person-lookup/dry-run.scenario.ts"
+        "docs/rebuild/reference/operator-trust.md",
+        "docs/rebuild/reference/operator-trust.md"
       ],
       "status": "open"
     },
