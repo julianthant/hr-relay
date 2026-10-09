@@ -214,3 +214,32 @@ it("preserves capability-validating driver commits while rejecting raw methods i
     assert.match(auditTaskDriverBoundary(root).join("\n"), /runtime\/settings\/reader\.ts: raw browser member \.locator/u);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+it("admits only a canonical action binder with a closed completed-gesture body", () => {
+  const root = resolve(tmpdir(), `hrauto-note-binder-${String(process.pid)}-${String(Date.now())}`);
+  const action = resolve(root, "src/backend/systems/browser-shared/action-notes.ts");
+  const factory = resolve(root, "src/backend/runtime/writes/operation-action-binding.ts");
+  const consumer = resolve(root, "src/backend/runtime/execution/future.ts");
+  try {
+    for (const path of [action, factory, consumer]) mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(action, 'export interface BrowserAction { kind: "clicked" | "typed"; operation?: { state: "completed" | "failed" } }');
+    writeFileSync(factory, 'import type { BrowserAction } from "../../systems/browser-shared/action-notes.js"; export function createDeclaredActionBinder(): (note: BrowserAction) => BrowserAction { return note => note; }');
+    const source = 'import type { BrowserAction } from "../../systems/browser-shared/action-notes.js"; import { createDeclaredActionBinder as factory } from "../writes/operation-action-binding.js"; const committedGestures: BrowserAction[] = []; const binders = { commit: factory() }; export const tracked = { commit: (note: BrowserAction): BrowserAction => { const bound = binders.commit(note); if (bound.kind === "clicked" && bound.operation?.state === "completed") committedGestures.push(bound); return bound; } };';
+    writeFileSync(consumer, source);
+    assert.deepEqual(auditTaskDriverBoundary(root), []);
+    for (const bad of [
+      source.replace('(note: BrowserAction)', '(note: any)'),
+      source.replace('): BrowserAction =>', '): any =>'),
+      source.replace('commit: factory()', 'commit: (note: BrowserAction) => note'),
+      source.replace('return bound;', 'console.log(bound); return bound;'),
+      source.replace('return bound;', 'return note;'),
+      source.replace('"clicked" &&', '"typed" &&'),
+      source.replace('committedGestures.push(bound)', 'mutate(bound)'),
+      source.replace('import type { BrowserAction } from "../../systems/browser-shared/action-notes.js";', 'interface BrowserAction { kind: "clicked"; operation?: { state: "completed" } }'),
+      source.replace('return bound;', 'page.click(); return bound;'),
+    ]) {
+      writeFileSync(consumer, bad);
+      assert.match(auditTaskDriverBoundary(root).join("\n"), /a commit implementation must live/u);
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

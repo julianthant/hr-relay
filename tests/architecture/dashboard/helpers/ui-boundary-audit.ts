@@ -137,6 +137,54 @@ function durableArchiveCommit(checker: ts.TypeChecker, node: ts.Node): boolean {
   return !unsafe;
 }
 
+function actionNoteCommit(checker: ts.TypeChecker, node: ts.Node): boolean {
+  if (!ts.isPropertyAssignment(node) || !ts.isArrowFunction(node.initializer)) return false;
+  const fn = node.initializer;
+  const parameter = fn.parameters[0];
+  const actionOwner = "src/backend/systems/browser-shared/action-notes.ts";
+  if (fn.parameters.length !== 1 || parameter === undefined || !ts.isIdentifier(parameter.name)
+    || parameter.type === undefined || !ts.isTypeReferenceNode(parameter.type)
+    || !declaredSymbol(checker, parameter.type.typeName, "BrowserAction", actionOwner)
+    || fn.type === undefined || !ts.isTypeReferenceNode(fn.type)
+    || !declaredSymbol(checker, fn.type.typeName, "BrowserAction", actionOwner)
+    || !ts.isBlock(fn.body) || fn.body.statements.length !== 3) return false;
+  const [bind, retain, returned] = fn.body.statements;
+  if (bind === undefined || !ts.isVariableStatement(bind) || bind.declarationList.declarations.length !== 1
+    || (bind.declarationList.flags & ts.NodeFlags.Const) === 0) return false;
+  const binding = bind.declarationList.declarations[0];
+  if (binding === undefined || !ts.isIdentifier(binding.name) || binding.initializer === undefined
+    || !ts.isCallExpression(binding.initializer)) return false;
+  const call = binding.initializer;
+  if (call.arguments.length !== 1 || call.arguments[0].getText() !== parameter.name.text
+    || !ts.isPropertyAccessExpression(call.expression) || call.expression.name.text !== "commit") return false;
+  const symbol = checker.getSymbolAtLocation(call.expression.name);
+  if (symbol?.declarations?.some(declaration => ts.isPropertyAssignment(declaration)
+    && ts.isCallExpression(declaration.initializer)
+    && declaredSymbol(checker, declaration.initializer.expression, "createDeclaredActionBinder", "src/backend/runtime/writes/operation-action-binding.ts")) !== true) return false;
+  if (returned === undefined || !ts.isReturnStatement(returned) || returned.expression?.getText() !== binding.name.text
+    || retain === undefined || !ts.isIfStatement(retain) || retain.elseStatement !== undefined) return false;
+  const condition = retain.expression;
+  function equals(expression: ts.Expression, member: string, value: string): boolean {
+    return ts.isBinaryExpression(expression) && expression.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken
+      && expression.left.getText().replaceAll("?.", ".") === `${binding.name.getText()}.${member}`
+      && ts.isStringLiteral(expression.right) && expression.right.text === value;
+  }
+  if (!ts.isBinaryExpression(condition) || condition.operatorToken.kind !== ts.SyntaxKind.AmpersandAmpersandToken
+    || !equals(condition.left, "kind", "clicked") || !equals(condition.right, "operation.state", "completed")) return false;
+  const retained = retain.thenStatement;
+  if (!ts.isExpressionStatement(retained) || !ts.isCallExpression(retained.expression)) return false;
+  const push = retained.expression;
+  if (!ts.isPropertyAccessExpression(push.expression) || push.expression.name.text !== "push"
+    || push.arguments.length !== 1 || push.arguments[0].getText() !== binding.name.text) return false;
+  const collection = checker.getSymbolAtLocation(push.expression.expression);
+  return collection?.declarations?.some(declaration => ts.isVariableDeclaration(declaration)
+    && declaration.type !== undefined && ts.isArrayTypeNode(declaration.type)
+    && ts.isTypeReferenceNode(declaration.type.elementType)
+    && declaredSymbol(checker, declaration.type.elementType.typeName, "BrowserAction", actionOwner)
+    && declaration.initializer !== undefined && ts.isArrayLiteralExpression(declaration.initializer)
+    && declaration.initializer.elements.length === 0) === true;
+}
+
 function rawBrowserAstIssues(path: string, source: ts.SourceFile, checker: ts.TypeChecker): readonly string[] {
   const issues: string[] = [];
   const rawOwner = isRawBrowserOwner(path);
@@ -197,7 +245,7 @@ function rawBrowserAstIssues(path: string, source: ts.SourceFile, checker: ts.Ty
       || (ts.isPropertyAssignment(node) && node.name.getText(source) === "commit"
         && (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer)))
       || (ts.isFunctionDeclaration(node) && node.name?.getText(source) === "commit" && node.body !== undefined);
-    if (commitImplementation && !durableArchiveCommit(checker, node)
+    if (commitImplementation && !durableArchiveCommit(checker, node) && !actionNoteCommit(checker, node)
       && !(DRIVER_OWNER_PATTERN.test(path) && source.getFullText().includes("assertMintedMutationCapability"))) {
       issues.push(
         `${path}: a commit implementation must live in a store driver owner and validate its `
