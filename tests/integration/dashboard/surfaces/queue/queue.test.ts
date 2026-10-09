@@ -82,7 +82,7 @@ describe("Queue consumes the served day boundary", () => {
     for (const memberRunId of operation.memberRunIds) {
       assert.equal((markup.match(new RegExp(`data-demo-row-id="${memberRunId}"`, "gu")) ?? []).length, 1);
     }
-    assert.match(markup, /3 members/u);
+    assert.match(markup, new RegExp(`${operation.memberRollup.terminal} of ${operation.memberRollup.total} finished; ${operation.memberRollup.failed} failed`, "u"));
   });
 
   it("retains every row when bounded summary pages are assembled, then applies only the requested scope", () => {
@@ -156,14 +156,13 @@ describe("Queue consumes the served day boundary", () => {
       assert.equal(host.querySelectorAll("[data-demo-row-id]").length, 1);
       assert.equal(host.querySelector("[data-demo-row-id]")?.getAttribute("data-demo-row-id"), String(newest.runId));
       assert.equal(host.querySelector("[data-demo-row-id]")?.getAttribute("aria-label"), queueRowAccessibleName(newest, FIXTURE_NOW));
-      assert.match(host.textContent ?? "", /Attempts · 2/u);
+      assert.equal(host.querySelector("button[title=\"Attempt 2\"]")?.textContent?.trim(), "#2");
       const trigger = host.querySelector<HTMLButtonElement>(`button[aria-label="Attempts for ${queueRowTitle(newest)}"]`);
       assert.ok(trigger);
       await act(async () => trigger.click());
-      const attempt = document.body.querySelector<HTMLButtonElement>(
-        `button[aria-label="Open ${queueRowTitle(newest)} — attempt ${String(first.attempt)} — failed"]`,
-      );
+      const attempt = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(node => node.textContent?.includes(`#${first.attempt}`));
       assert.ok(attempt);
+      assert.match(attempt.textContent ?? "", new RegExp(`#${String(first.attempt)}.*Failed`, "u"));
       await act(async () => attempt.click());
       assert.deepEqual(opened, [String(first.runId)]);
       assert.deepEqual(groupQueueAttempts([first, newest])[0]?.attempts.map((entry) => entry.runId), [first.runId, newest.runId]);

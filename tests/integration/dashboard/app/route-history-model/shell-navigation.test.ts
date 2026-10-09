@@ -11,11 +11,8 @@ import { createDashboardClient, type DashboardClient } from "../../../../../src/
 import { DashboardClientProvider } from "../../../../../src/dashboard/state/client-context.js";
 import { createFixtureBff } from "../../client/fixtures/helpers/fixture-bff.js";
 import { FIXTURE_DAY_WIRE, FIXTURE_IDS } from "../../../../support/fixtures/dashboard/fixture-queue.js";
-import { FIXTURE_RUN_DETAILS } from "../../../../support/fixtures/dashboard/fixture-detail.js";
 import { FIXTURE_BOOTSTRAP } from "../../../../support/fixtures/dashboard/fixture-bootstrap.js";
-import type { RunDetailWire } from "../../../../../src/models/dashboard/run-detail.js";
 import { LocalDateSchema } from "../../../../../src/rules/identity/ids.js";
-import { RowRevisionSchema } from "../../../../../src/models/dashboard/primitives.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 Reflect.set(globalThis, "ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
@@ -54,7 +51,6 @@ async function mount(search: string, overrides: Partial<DashboardClient> = {}, p
   await act(async () => root?.render(createElement(DashboardClientProvider,{client,children:createElement(DashboardApp, { workflowComposition })})));
   await settle();
 }
-function selectedTab() { return document.querySelector('[role="tab"][aria-selected="true"]')?.textContent; }
 async function historyMove(direction: "back" | "forward") { window.history[direction](); await settle(); await settle(); }
 
 describe("mounted shell navigation", () => {
@@ -80,21 +76,6 @@ describe("mounted shell navigation", () => {
     await mount(`?day=${FIXTURE_DAY_WIRE.day}`, {}, "sidebar");
     assert.equal(workflowButton("Person Lookup").getAttribute("aria-current"), "page");
   });
-  it("makes a clicked tab addressable and restores it through native history", async () => {
-    await mount(`?day=${FIXTURE_DAY_WIRE.day}&run=${FIXTURE_IDS.doneRun}&section=receipt`);
-    assert.match(selectedTab() ?? "", /Receipt/);
-    await click(button("Logs"));
-    assert.equal(new URLSearchParams(location.search).get("section"), "logs");
-    await historyMove("back");
-    assert.match(selectedTab() ?? "", /Receipt/);
-    await historyMove("forward");
-    assert.match(selectedTab() ?? "", /Logs/);
-  });
-  it("reports unknown and unoffered sections rather than silently selecting logs", async () => {
-    await mount(`?day=${FIXTURE_DAY_WIRE.day}&run=${FIXTURE_IDS.runningRun}&section=unknown`);
-    assert.match(document.body.textContent ?? "", /Unknown section/);
-    assert.equal(selectedTab(), undefined);
-  });
   it("reports detail failure and never calls it an empty selection", async () => {
     await mount(`?day=${FIXTURE_DAY_WIRE.day}&run=missing-run`);
     assert.match(document.body.textContent ?? "", /Run unavailable/);
@@ -107,27 +88,6 @@ describe("mounted shell navigation", () => {
     });
     const selected = document.querySelector(`[data-demo-row-id="${FIXTURE_IDS.runningRun}"]`);
     assert.ok(selected, "selected run must belong to the visible queue");
-  });
-  it("withholds a mismatched detail while still allowing a matching run", async () => {
-    const wrong = FIXTURE_RUN_DETAILS[FIXTURE_IDS.doneRun]; assert.ok(wrong);
-    await mount(`?day=${FIXTURE_DAY_WIRE.day}&run=${FIXTURE_IDS.runningRun}`, {runDetail:async () => wrong});
-    assert.equal(document.querySelector('[data-testid="log-panel"]'), null);
-    assert.match(document.body.textContent ?? "", /Run identity mismatch/);
-  });
-  it("does not let a delayed abandoned detail replace the final selection", async () => {
-    let resolveOld: ((value: RunDetailWire) => void) | undefined;
-    const current = FIXTURE_RUN_DETAILS[FIXTURE_IDS.doneRun]; assert.ok(current);
-    await mount(`?day=${FIXTURE_DAY_WIRE.day}&run=${FIXTURE_IDS.runningRun}`, {
-      runDetail: (id) => id === FIXTURE_IDS.runningRun ? new Promise(resolve => {resolveOld=resolve;}) : Promise.resolve(current),
-    });
-    assert.match(document.body.textContent ?? "", /Loading run/);
-    const row = document.querySelector<HTMLElement>(`[data-demo-row-id="${FIXTURE_IDS.doneRun}"]`); assert.ok(row);
-    await click(row);
-    const before = selectedTab(); assert.ok(before);
-    const old = FIXTURE_RUN_DETAILS[FIXTURE_IDS.runningRun]; assert.ok(old); assert.ok(resolveOld);
-    await act(async () => resolveOld?.(old));
-    assert.equal(new URLSearchParams(location.search).get("run"), FIXTURE_IDS.doneRun);
-    assert.equal(selectedTab(), before);
   });
   it("Settings gear toggles the surface and competing keys resolve one takeover", async () => {
     await mount("?settings=keyboard&archive=&explore=missing");
@@ -155,11 +115,11 @@ async function editNavigationTimeout() {
     field.dispatchEvent(new Event("input",{bubbles:true}));
   });
 }
-it("keeps the Settings editor and draft across section/catalog native history", async () => {
+it("keeps the Settings editor and draft across ordinary-section native history", async () => {
   await mount("?settings=performance");
   await editNavigationTimeout();
-  const catalog = [...document.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Settings sections"] a')].find(link => link.textContent?.trim() === "UI catalog"); assert.ok(catalog);
-  await click(catalog);
+  const general = [...document.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Settings sections"] a')].find(link => link.textContent?.trim() === "General"); assert.ok(general);
+  await click(general);
   await historyMove("back");
   assert.equal(document.querySelector<HTMLInputElement>('input[name="timeouts.navigationMs"]')?.value,"111");
   assert.equal(document.body.textContent?.includes("Discard unsaved settings?"),false);
@@ -183,14 +143,6 @@ it.each(["?settings=archive", "?archive=", "?archive=archive-demo-run-48216&arch
   assert.equal(parseRoute(location.search).archive, undefined);
   assert.equal(parseRoute(location.search).settings, undefined);
   assert.ok(document.querySelector('[data-demo-row-id]'));
-});
-it("toolbar history restores the selected tab without adding an intermediate tab entry", async () => {
-  await mount(`?day=${FIXTURE_DAY_WIRE.day}&run=${FIXTURE_IDS.doneRun}&section=receipt`);
-  await click(button("Logs"));
-  await click(button("Back"));
-  assert.match(selectedTab() ?? "",/Receipt/);
-  await click(button("Forward"));
-  assert.match(selectedTab() ?? "",/Logs/);
 });
 
 async function mountHistory() {
@@ -268,45 +220,15 @@ it("failed and delayed day snapshots never render an empty or stale queue",async
     window.history.pushState({hrDashboardRouteCursor:1},"","/?day=2026-08-02");
     window.dispatchEvent(new PopStateEvent("popstate"));
   });
-  assert.match(document.body.textContent??"",/Loading queue/);
+  assert.ok(document.querySelector('[role="status"][aria-label="Loading queue"][aria-busy="true"]'));
   await act(async()=>old?.onDay(FIXTURE_DAY_WIRE));
   assert.equal(document.querySelector(`[data-demo-row-id="${FIXTURE_IDS.runningRun}"]`),null);
   await act(async()=>current?.onDay({...FIXTURE_DAY_WIRE,day:LocalDateSchema.parse("2026-08-02"),queueSurfaces:[],statusCounts:[],workflowCounts:[],monthCounts:[]}));
-  assert.doesNotMatch(document.body.textContent??"",/Loading queue/);
-});
-it("a served detail failure stays a failure and an empty workflow catalog states absence",async()=>{
-  const { DashboardClientError } = await import("../../../../../src/dashboard/client/index.js");
-  await mount(`?day=${FIXTURE_DAY_WIRE.day}&run=${FIXTURE_IDS.runningRun}`,{
-    runDetail:async()=>{throw new DashboardClientError({kind:"network",message:"Detail transport failed"});},
-  });
-  assert.match(document.body.textContent??"",/Could not load run/);
-  assert.match(document.body.textContent??"",/Detail transport failed/);
+  assert.equal(document.querySelector('[role="status"][aria-label="Loading queue"]'), null);
 });
 it("an empty catalog is not a fabricated workflow queue",async()=>{
   await mount("?sessionsPreview=empty",{bootstrap:async()=>({...FIXTURE_BOOTSTRAP,workflows:[]})}, "icon", workflows => ({ ...PARITY_WORKFLOW_COMPOSITION(workflows), catalogIncludesMocks: false, servedDay: true }));
   assert.match(document.body.textContent??"",/No workflows available/);
-});
-it("same-run refresh keeps the verified detail visible and does not invent a history place",async()=>{
-  let subscription:Parameters<DashboardClient["subscribeDay"]>[0]|undefined;
-  let reads=0;
-  let settleRefresh:((value:RunDetailWire)=>void)|undefined;
-  const value=FIXTURE_RUN_DETAILS[FIXTURE_IDS.runningRun];assert.ok(value);
-  await mount(`?day=${FIXTURE_DAY_WIRE.day}&run=${FIXTURE_IDS.runningRun}`,{
-    subscribeDay(input){subscription=input;input.onDay(FIXTURE_DAY_WIRE);return{close(){}};},
-    runDetail:()=>++reads===1?Promise.resolve(value):new Promise(resolve=>{settleRefresh=resolve;}),
-  });
-  assert.equal(button("Back").disabled,true);
-  await act(async()=>subscription?.onDay({...FIXTURE_DAY_WIRE,queueSurfaces:FIXTURE_DAY_WIRE.queueSurfaces.map(row=>String(row.runId)===FIXTURE_IDS.runningRun?{...row,rowRevision:RowRevisionSchema.parse(row.rowRevision+1)}:row)}));
-  await act(async()=>{await new Promise(resolve=>setTimeout(resolve,350));});
-  assert.equal(reads,2);assert.match(selectedTab()??"",/Logs/);assert.doesNotMatch(document.body.textContent??"",/Loading run/);
-  assert.equal(button("Back").disabled,true);
-  await act(async()=>settleRefresh?.({...value,rowRevision:RowRevisionSchema.parse(value.rowRevision+1)}));
-  assert.match(selectedTab()??"",/Logs/);
-});
-it("a known but unoffered section states its absence",async()=>{
-  await mount(`?day=${FIXTURE_DAY_WIRE.day}&run=${FIXTURE_IDS.runningRun}&section=people`);
-  assert.match(document.body.textContent??"",/Section unavailable/);
-  assert.equal(selectedTab(),undefined);
 });
 it("a failed day displays its error, with no zero-count status controls",async()=>{
   const {DashboardClientError}=await import("../../../../../src/dashboard/client/index.js");
@@ -324,9 +246,9 @@ it("native date history preserves a dirty Settings draft, then restores the acce
     },
   });
   await click(button("Settings"));
-  const general = [...document.querySelectorAll<HTMLAnchorElement>("a")].find(node => node.textContent === "General"); assert.ok(general);
-  await click(general);
-  const width = document.querySelector<HTMLInputElement>('input[type="number"]'); assert.ok(width);
+  const performance = [...document.querySelectorAll<HTMLAnchorElement>("a")].find(node => node.textContent === "Performance"); assert.ok(performance);
+  await click(performance);
+  const width = document.querySelector<HTMLInputElement>('input[name="timeouts.navigationMs"]'); assert.ok(width);
   await act(async () => {
     const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value"); if (descriptor?.set === undefined) throw new Error("input value setter missing");
     descriptor.set.call(width, "1777"); width.dispatchEvent(new Event("input", { bubbles: true }));

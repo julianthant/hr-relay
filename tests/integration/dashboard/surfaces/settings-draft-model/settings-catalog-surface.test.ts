@@ -80,16 +80,12 @@ describe("typed Settings catalog controls", () => {
     assert.ok(dateSegments.every(segment => segment.getAttribute("aria-required") === "true"));
     assert.doesNotMatch(mounted.host.textContent ?? "", /Kronos|Add fiscal year|New fiscal year|FY202[0-9]/u);
   });
-  it("folds Display into General and omits the observed-host page", async () => {
+  it("shows current General browser controls and omits display dimensions and observed host", async () => {
     const authority = syntheticSettingsAuthority(); cleanups.push(authority.close);
     const mounted = await mountSettingsHarness(authority, "general"); cleanups.push(mounted.close);
-    const width = mounted.host.querySelector('[data-settings-path="display.screenWidth"]'); assert.ok(width);
-    assert.equal(width.querySelector("input")?.value, "1920");
-    const height = mounted.host.querySelector('[data-settings-path="display.screenHeight"]'); assert.ok(height);
-    assert.equal(height.querySelector("input")?.value, "1080");
-    assert.notEqual(width.querySelector("input")?.id, height.querySelector("input")?.id);
-    assert.equal((width as HTMLLabelElement).htmlFor, width.querySelector("input")?.id);
-    assert.equal((height as HTMLLabelElement).htmlFor, height.querySelector("input")?.id);
+    assert.ok(mounted.host.querySelector('[data-settings-path="browser.headless"] [role="switch"]'));
+    assert.equal(mounted.host.querySelector('[data-settings-path="display.screenWidth"]'), null);
+    assert.equal(mounted.host.querySelector('[data-settings-path="display.screenHeight"]'), null);
     assert.doesNotMatch(mounted.host.textContent ?? "", /Observed host/u);
   });
   it("toggles and autosaves each General browser switch", async () => {
@@ -304,7 +300,20 @@ describe("typed Settings catalog controls", () => {
         return result;
       };
       await settingsAction(() => h.controller().update("actor.label", "Unconfirmed draft")); await settingsAction(() => h.controller().submit());
-      assert.equal(h.controller().save.state, "unconfirmed"); assert.equal(h.controller().dirtyCount, 1);
+      assert.equal(h.controller().save.state, failure === "intervening-writer" ? "conflict" : "unconfirmed"); assert.equal(h.controller().dirtyCount, 1);
+      if (failure === "intervening-writer") {
+        assert.deepEqual(h.controller().draft["actor.label"], { kind: "set", raw: "Unconfirmed draft" });
+        assert.equal(h.authority.read().revision, original.revision + 2);
+        const editor = h.controller().editor; assert.equal(editor.state, "loaded");
+        if (editor.state !== "loaded") throw new Error("current settings unavailable");
+        assert.equal(editor.document.sections.flatMap(section => section.leaves).find(leaf => leaf.path === "actor.label")?.effectiveValue, "Later writer");
+        assert.match(h.host.textContent ?? "", /Settings changed/u);
+        h.ports.read = h.authority.read; h.ports.execute = h.authority.execute;
+        await settingsAction(() => h.controller().submit());
+        assert.equal(h.controller().save.state, "applied");
+        assert.equal(SettingsCommandRequestSchema.parse(h.commands[1]).target.expectedRevision, original.revision + 2);
+        return;
+      }
       assert.doesNotMatch(h.host.textContent ?? "", /synthetic-sensitive-server-message/u);
       const exact = structuredClone(h.commands[0]);
       await settingsAction(() => h.controller().update("actor.label", "Divergent edit"));
