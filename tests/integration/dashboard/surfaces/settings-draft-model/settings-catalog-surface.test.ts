@@ -320,7 +320,7 @@ describe("typed Settings catalog controls", () => {
       assert.deepEqual(h.controller().draft["actor.label"], { kind: "set", raw: "Unconfirmed draft" });
       h.ports.read = h.authority.read; h.ports.execute = h.authority.execute;
       await settingsAction(() => h.controller().retry()); assert.deepEqual(h.commands[1], exact);
-      assert.equal(h.controller().save.state, failure === "intervening-writer" ? "unconfirmed" : "applied");
+      assert.equal(h.controller().save.state, "applied");
     });
   }
 });
