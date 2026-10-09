@@ -14,6 +14,7 @@ import { EVENT_STREAM_RETENTION_DAYS } from "../../../models/archive/retention.j
 
 export const EVENT_STREAMS = ["spans", "notes"] as const;
 export type EventStream = (typeof EVENT_STREAMS)[number];
+const EventStreamSchema = z.enum(EVENT_STREAMS);
 
 const STREAM_FILE_PATTERN = /^([a-z0-9]+(?:-[a-z0-9]+)*)-(\d{4}-\d{2}-\d{2})\.jsonl$/;
 const DateOnlySchema = z.iso.date();
@@ -23,7 +24,7 @@ export function eventStreamFileName(workflow: string, date: string): string {
 }
 
 export function eventStreamDirectory(stateRoot: string, stream: EventStream): string {
-  return join(stateRoot, stream);
+  return join(stateRoot, EventStreamSchema.parse(stream));
 }
 
 /**
@@ -322,7 +323,8 @@ export function pruneEventStreams(input: Readonly<{
   const cutoff = new Date(input.clock.now().getTime() - retentionDays * 24 * 60 * 60 * 1000);
   const cutoffDate = localDatePart(cutoff);
   const removed: string[] = [];
-  for (const stream of input.streams ?? EVENT_STREAMS) {
+  const streams = z.array(EventStreamSchema).parse(input.streams ?? EVENT_STREAMS);
+  for (const stream of streams) {
     for (const file of listEventStreamFiles(input.stateRoot, stream)) {
       if (file.date < cutoffDate) {
         unlinkSync(file.path);
