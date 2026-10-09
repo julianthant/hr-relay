@@ -504,9 +504,6 @@ async function composeDashboardRuntimeStartup(
     database.close();
     databaseClosed = true;
   });
-  database.registerRuntimeVersionWorkflows(DESCRIPTORS.map((descriptor) => descriptor.id));
-  const protectedSettingsAuthority = createCredentialStore({ admission, stateRoot });
-  const protectedSecrets = createCredentialSecretSource(protectedSettingsAuthority);
   const bootConfig = (() => {
     const persistedSettings = database.withAuthorityTransaction((repositories) => readBootSettings(repositories));
     return Object.freeze({
@@ -515,6 +512,9 @@ async function composeDashboardRuntimeStartup(
     });
   })();
   const { persistedSettings, resolved } = bootConfig;
+  database.registerRuntimeVersionWorkflows(DESCRIPTORS.map((descriptor) => descriptor.id));
+  const protectedSettingsAuthority = createCredentialStore({ admission, stateRoot });
+  const protectedSecrets = createCredentialSecretSource(protectedSettingsAuthority);
   const storageRelocationPlans = createStorageRelocationPlanReader({ authority: database, admission, workspace: repoRoot });
   const settingsBoundary = composeSettings({ database, hostFacts, clock, active: activeSettingsRuntimeIdentity,
     environment: env, credentials: protectedSettingsAuthority,
