@@ -347,7 +347,7 @@ describe("workflow definition public equivalence characterization", () => {
           { kind: "headless", namespace: "workflow:separations" },
         ],
       },
-      registryIndex: 6,
+      registryIndex: 1,
     });
   });
 

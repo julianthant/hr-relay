@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { MOCK_WORKFLOWS, mockWorkflow, type MockWorkflowId } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.js";
-import { approveMockRun, initialMockDraft, mockRunLog, mockRunPipeline, mockRunsForDraft, mockWorkflowCounts, seedMockRuns, type MockDraft, type MockRun } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
+import { approveMockRun, initialMockDraft, mockRunLog, mockRunPipeline, mockRunsForDraft, mockStepState, mockWorkflowCounts, seedMockRuns, type MockDraft, type MockRun } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
 import { mockOperationValue, mockOperations } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-operation-model.js";
 import { discardMockReview, editReviewRecord, reviewRecords, updateMockReview } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-review-model.js";
+import { manualReadFields, editableMockDraft, mockStepInputError } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-manual-model.js";
 import { activeCount, workflowStatusCounts } from "../../../src/dashboard/surfaces/shell/shell-model.js";
 import { buildWorkflowMock, initialWorkflowChoices, updateWorkflowChoice, workflowContractSource } from "../../../src/dashboard/surfaces/explorer/explorer-workflow-model.js";
 import { allFields } from "../../../src/dashboard/surfaces/explorer/explorer-flow-model.js";
@@ -59,9 +60,20 @@ describe("source-backed workflow operation detail", () => {
     const transaction = log.timeline.find(stage => stage.label === "Submit hire")!;
     expect(transaction.state).toBe("skipped"); expect(transaction.substeps.find(step => step.label === "Job Data")!.state).toBe("completed");
     expect(transaction.substeps.find(step => step.label === "Save and Submit")!.state).toBe("skipped");
-    for (const run of [completed("onboarding", { dryRun: true, hireType: "rehire" })[0], completed("onboarding", { dryRun: true, selectedSteps: ["crm-auth"] })[0]]) {
-      const i9 = mockRunLog(run).timeline.find(stage => stage.label === "Create I-9 profile")!; expect(i9.substeps.every(step => step.state === "skipped")).toBe(true);
-    }
+    const missingI9 = { ...initialMockDraft("onboarding"), text: mockWorkflow("onboarding").example,
+      selectedSteps: mockWorkflow("onboarding").steps.filter(step => step.key !== "i9-creation").map(step => step.key) };
+    expect(mockStepInputError("onboarding", missingI9)).toBe("Create I-9 profile is required.");
+    expect(() => create("onboarding", missingI9)).toThrow("Create I-9 profile is required.");
+    expect(editableMockDraft("onboarding", missingI9).selectedSteps).toContain("i9-creation");
+    const rehire = completed("onboarding", { dryRun: true, hireType: "rehire" })[0];
+    const i9 = mockRunLog(rehire).timeline.find(stage => stage.label === "Create I-9 profile")!;
+    expect(i9.substeps.every(step => step.state === "skipped")).toBe(true);
+    const readValues = Object.fromEntries(manualReadFields("onboarding", "crm-search")
+      .map(field => [field.key, field.options?.[0] ?? (field.token === "$email" ? "sam.rivera@example.com" : "None")]));
+    const omitted = completed("onboarding", { dryRun: true,
+      selectedSteps: mockWorkflow("onboarding").steps.filter(step => step.key !== "crm-search").map(step => step.key),
+      manualSteps: ["crm-search"], manualValues: { "crm-search": readValues } })[0];
+    expect(mockStepState(omitted, mockWorkflow("onboarding").steps.find(step => step.key === "crm-search")!)).toBe("skipped");
     const concurrent = completed("onboarding", { dryRun: true, hireType: "rehire" })[0];
     expect(clicks(concurrent)).toContain("Cancel unsubmitted draft"); expect(clicks(concurrent)).not.toContain("Save and Submit");
     expect(fields(concurrent)).toEqual(expect.arrayContaining([expect.objectContaining({ label: "Draft status", value: "Cancelled" })]));
@@ -77,11 +89,11 @@ describe("source-backed workflow operation detail", () => {
   });
   it("preserves extracted identity history and passes edited contact data to a separate person run", () => {
     const runs = create("emergency-contact"), ocr = runs[1], original = reviewRecords(ocr)[0];
-    const changed = editReviewRecord(editReviewRecord(editReviewRecord(original, "employeeId", "010000009"), "contactName", "Sam Lee"), "sameAddress", "false");
+    const changed = editReviewRecord(editReviewRecord(editReviewRecord(original, "employeeId", "10000009"), "contactName", "Sam Lee"), "sameAddress", "false");
     const edited = updateMockReview(runs, ocr.id, [changed]), history = fields(edited[1]);
     expect(history).toEqual(expect.arrayContaining([expect.objectContaining({ label: "Employee ID", value: "10000001" })]));
     const child = approveMockRun(edited, ocr.id).find(run => run.role === "person")!;
-    expect(fields(child)).toEqual(expect.arrayContaining([expect.objectContaining({ label: "Contact name", value: "Sam Lee" }), expect.objectContaining({ label: "Employee ID", value: "010000009" })]));
+    expect(fields(child)).toEqual(expect.arrayContaining([expect.objectContaining({ label: "Contact name", value: "Sam Lee" }), expect.objectContaining({ label: "Employee ID", value: "10000009" })]));
     expect(mockRunLog(child).steps.flatMap(step => step.entries).some(entry => entry.kind === "fields" && entry.title === "Contact address")).toBe(true);
     expect(mockRunLog(person("emergency-contact")).steps.flatMap(step => step.entries).some(entry => entry.kind === "fields" && entry.title === "Contact address")).toBe(false);
   });

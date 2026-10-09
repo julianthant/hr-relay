@@ -152,7 +152,13 @@ describe("RunEvidenceReceiptSchema.composition", () => {
     assert.equal(projectReceiptForOperator(parsed).state, "available");
   });
 
-  it("withholds immutable composition 1/2/3 rows from operator projection without rewriting them", () => {
+  it("composition 5 — the current composition — reaches the operator projection", () => {
+    const parsed = RunEvidenceReceiptSchema.parse({ ...RECEIPT_IDENTITY, composition: 5 });
+    assert.equal(parsed.composition, 5);
+    assert.equal(projectReceiptForOperator(parsed).state, "available");
+  });
+
+  it("serves immutable composition 1/2/3 rows to the operator without rewriting them", () => {
     const legacyRaw = "ucpath:termination|10812345|2026-08-29";
     for (const composition of [undefined, 2, 3] as const) {
       const receipt = RunEvidenceReceiptSchema.parse({
@@ -168,15 +174,20 @@ describe("RunEvidenceReceiptSchema.composition", () => {
       });
       const immutableBytes = JSON.stringify(receipt);
       const projected = projectReceiptForOperator(receipt);
-      assert.equal(projected.state, "withheld");
-      assert.equal(JSON.stringify(projected).includes(legacyRaw), false);
+      assert.equal(projected.state, "available");
+      if (projected.state !== "available") throw new Error("a retained receipt must reach the operator");
+      assert.deepEqual(projected.value, receipt);
+      assert.equal(JSON.stringify(projected).includes(legacyRaw), true);
       assert.equal(JSON.stringify(receipt), immutableBytes);
     }
   });
 
   it("refuses a composition this builder never produced", () => {
-    assert.throws(() => RunEvidenceReceiptSchema.parse({ ...RECEIPT_IDENTITY, composition: 5 }));
+    // Composition 1 is the ABSENT state — never a stored literal.
     assert.throws(() => RunEvidenceReceiptSchema.parse({ ...RECEIPT_IDENTITY, composition: 1 }));
+    // No builder has produced 6: a value past the current composition is refused forward.
+    assert.throws(() => RunEvidenceReceiptSchema.parse({ ...RECEIPT_IDENTITY, composition: 6 }));
+    assert.throws(() => RunEvidenceReceiptSchema.parse({ ...RECEIPT_IDENTITY, composition: 0 }));
   });
 });
 
