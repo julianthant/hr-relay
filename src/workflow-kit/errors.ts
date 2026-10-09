@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { TaskId } from "../rules/identity/ids.js";
 
 export interface TaskErrorOptions {
@@ -23,6 +24,6 @@ export class TaskError<Code extends string = string> extends Error {
 }
 
 export function wrapUnhandledTaskError(taskId: TaskId, error: unknown): TaskError<"unhandled"> {
-  if (error instanceof Error) return new TaskError(taskId, "unhandled", error.message, { cause: error });
+  if (error instanceof Error || error instanceof z.ZodError) return new TaskError(taskId, "unhandled", error.message, { cause: error });
   return new TaskError(taskId, "unhandled", "task threw a non-Error value", { cause: error });
 }
