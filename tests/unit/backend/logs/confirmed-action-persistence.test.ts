@@ -4,6 +4,8 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 import { ConfirmedActionEventSchema, confirmedStepOccurrence } from "../../../../src/models/events/confirmed-action.js";
 import { NoteWireSchema } from "../../../../src/models/events/types.js";
 import { createNoteJsonlWriter } from "../../../../src/backend/storage/events/note-jsonl-writer.js";
+import { DeclaredActionOccurrenceSchema } from "../../../../src/rules/workflow/task-provenance.js";
+import { OperationActionIdSchema } from "../../../../src/models/workflow/operation-display.js";
 import type { RunRecord } from "../../../../src/models/run/record.js";
 
 const RUN = "11111111-1111-4111-8111-111111111111";
@@ -49,9 +51,9 @@ describe("confirmed action note append boundary", () => {
     const lines: string[] = [];
     const writer = createNoteJsonlWriter({ stateRoot: "unused", clock: manualClock(new Date(AT)),
       pid: 1, appendLine: (_workflow, _date, line) => { lines.push(line); } });
-    const occurrence = { ...event.action, state: "completed" as const,
+    const occurrence = DeclaredActionOccurrenceSchema.parse({ ...event.action, state: "completed" as const,
       value: { slot: "field-value", fieldPath: "emplId", producer: { kind: "run-input" as const, path: "emplId" },
-        consumed: { state: "withheld" as const, reason } } };
+        consumed: { state: "withheld" as const, reason } } });
     const note = writer.emitRunAction({ workflow: "onboarding", address: { runId: RUN, attempt: 1,
       traceId: "fpo-120000-0002", spanPath: "first" },
       action: { kind: "typed", targetId: "unregistered.private", at: AT, operation: occurrence } }, authority);
@@ -102,7 +104,33 @@ describe("confirmed action note append boundary", () => {
       { ...local.action.value!, producer: { kind: "task-output", entryId: "first", path: "emplId" } }]) {
       assert.throws(() => writer.emitConfirmedAction({ ...local, action: { ...local.action, value } } as typeof local, frozen), /frozen-value-(slot|producer)-mismatch/u);
     }
-    assert.throws(() => writer.emitConfirmedAction({ ...local, action: { ...local.action, logicalActionId: "forged" } }, frozen), /frozen-action-mismatch/u);
+    assert.throws(() => writer.emitConfirmedAction({ ...local, action: { ...local.action, logicalActionId: OperationActionIdSchema.parse("forged") } }, frozen), /frozen-action-mismatch/u);
+  });
+
+  it.each(["browser", "headless"] as const)("binds eligible %s constant consumption to its exact frozen digest", (source) => {
+    const lines: string[] = [];
+    const writer = createNoteJsonlWriter({ stateRoot: "unused", clock: manualClock(new Date(AT)), pid: 1,
+      appendLine: (_workflow, _date, line) => { lines.push(line); } });
+    const invocation = authority.envelope.operationDisplaySnapshot!.invocations[0];
+    const frozen = { ...authority, envelope: { ...authority.envelope, operationDisplaySnapshot: {
+      invocations: [{ ...invocation, bindings: [{ slot: "field-value", value: { kind: "constant", valueDigest: HASH } }],
+        operation: { ...invocation.operation, system: source === "browser" ? "ucpath" : "local",
+          session: source === "browser" ? invocation.operation.session : { kind: "local", id: "browser-session" },
+          actions: [{ id: "read-field", target: source === "browser" ? "ucpath.person-org.eid-input" : "read-local", valueSlot: "field-value" }],
+          values: [{ id: "field-value", source: { kind: "contract-input", path: "emplId" } }] } }] } } } as unknown as RunRecord;
+    const { physicalSessionId: _physicalSessionId, ...headless } = event.action;
+    const local = ConfirmedActionEventSchema.parse({ ...event,
+      source: source === "browser" ? event.source : { kind: "headless", system: "workflow" },
+      action: { ...(source === "browser" ? event.action : headless), value: { ...event.action.value!,
+        producer: { kind: "constant", valueDigest: HASH }, consumed: { state: "observed", value: { complete: ["constant", 1] } } } } });
+    const stored = writer.emitConfirmedAction(local, frozen).confirmedAction;
+    assert.deepEqual(stored?.action.value?.consumed, local.action.value?.consumed);
+    assert.equal(stored?.action.logicalSessionId, local.action.logicalSessionId);
+    assert.equal(stored?.action.definitionFingerprint, HASH);
+    assert.equal(stored?.action.runId, RUN);
+    assert.throws(() => writer.emitConfirmedAction({ ...local, action: { ...local.action, value: {
+      ...local.action.value!, producer: { kind: "constant", valueDigest: "b".repeat(64) } } } } as typeof local, frozen), /frozen-value-producer-mismatch/u);
+    assert.equal(lines.length, 1);
   });
 
   it("throws on append failure and refuses a foreign frozen run before any append", () => {

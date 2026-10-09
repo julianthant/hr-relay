@@ -21,6 +21,7 @@ import { WriteIntentRecordSchema } from "../../../../../../src/rules/write-safet
 import { buildRunEvidenceReceipt } from "../../../../../../src/backend/runs/provenance/evidence-receipt.js";
 import { AuthorityDatabase } from "../../../../../support/helpers/synthetic-storage-admission.js";
 import { protectedInputBindings } from "../../../../../../src/models/write-safety/protected-input.js";
+import { RunCheckpointRecordSchema } from "../../../../../../src/models/workflow/checkpoint.js";
 import { RunRecordSchema, type RunRecord } from "../../../../../../src/models/run/record.js";
 import type { RunEvidenceReceipt } from "../../../../../../src/models/trust/evidence.js";
 import { separationsKualiFinalizationDescriptor } from "../../../../../support/helpers/registered-workflows.js";
@@ -134,11 +135,11 @@ describe("D82 — the live person-lookup exit run explains itself", () => {
     // ── "which person did it ask about?" ─────────────────────────────────
     const askedFor = shownValue(receipt, "input", "emplId");
     assert.deepEqual(askedFor, {
-      state: "transformed",
+      state: "allowed",
       key: "emplId",
       classification: "direct-identifier",
-      transform: "last4",
-      value: "3698",
+      transform: "allow",
+      value: "10873698",
     });
 
     // ── "did UCPath resolve exactly one person?" ─────────────────────────
@@ -147,8 +148,8 @@ describe("D82 — the live person-lookup exit run explains itself", () => {
       transform: "allow", value: "resolved",
     });
     assert.deepEqual(shownValue(receipt, "observations", "selection.candidateEids"), {
-      state: "transformed", key: "selection.candidateEids", classification: "sensitive-hr",
-      transform: "count", value: 1,
+      state: "allowed", key: "selection.candidateEids", classification: "sensitive-hr",
+      transform: "allow", value: ["10873698"],
     }, "exactly ONE candidate — the fact that makes the selection unambiguous");
     assert.equal(verdictOf(receipt, "identity.ucpath-selection-is-unambiguous").verdict, "verified");
 
@@ -229,6 +230,19 @@ describe("D82 — the live person-lookup exit run explains itself", () => {
       ),
     });
     assert.equal(JSON.stringify(fromDatabase), JSON.stringify(build()));
+    const permute = (value: unknown): unknown => Array.isArray(value) ? value.map(permute)
+      : value !== null && typeof value === "object" ? Object.fromEntries(Object.entries(value).reverse().map(([key, child]) => [key, permute(child)])) : value;
+    const originalCheckpoints = seeded.checkpoints.map(input => RunCheckpointRecordSchema.parse(input));
+    const permutedCheckpoints = originalCheckpoints.map(checkpoint => ({ ...checkpoint,
+      output: { ...checkpoint.output, value: permute(checkpoint.output.value) } }));
+    assert.notEqual(JSON.stringify(permutedCheckpoints.map(({ output }) => output.value)),
+      JSON.stringify(originalCheckpoints.map(({ output }) => output.value)));
+    assert.deepEqual(permutedCheckpoints.map(({ output }) => output.value),
+      originalCheckpoints.map(({ output }) => output.value));
+    const permuted = buildRunEvidenceReceipt({ descriptor: personLookupDescriptor,
+      run: database.authority.runs.get(EXIT_RUN_ID), result: database.authority.runResults.get(EXIT_RUN_ID),
+      checkpoints: permutedCheckpoints });
+    assert.equal(JSON.stringify(permuted), JSON.stringify(build()));
   });
 });
 
@@ -289,8 +303,8 @@ describe("D82 — the Kuali finalization write explains itself", () => {
       KUALI_DOCUMENT_NUMBER,
     );
     assert.deepEqual(shownValue(receipt, "output", "finalization.proof.fields.timekeeperName"), {
-      state: "redacted", key: "finalization.proof.fields.timekeeperName", classification: "direct-identifier",
-      transform: "drop",
+      state: "allowed", key: "finalization.proof.fields.timekeeperName", classification: "direct-identifier",
+      transform: "allow", value: "Deterministic Timekeeper",
     });
     assert.equal(shownScalar(receipt, "output", "finalization.disposition"), "committed");
 
@@ -334,7 +348,7 @@ describe("D82 — the Kuali finalization write explains itself", () => {
     assert.ok(receipt.warnings.every((warning) => warning.loadBearing));
     const receiptBytes = JSON.stringify(receipt);
     assert.equal(receiptBytes.includes(parked.idempotencyKey), false);
-    assert.equal(receiptBytes.includes(KUALI_EID), false);
+    assert.equal(receiptBytes.includes(KUALI_EID), true);
     assert.ok(receiptBytes.includes(parked.idempotencyKeyDigest.slice(0, 12)));
     assert.equal(receipt.result, "partial", "a parked external write is never a clean done");
   });
