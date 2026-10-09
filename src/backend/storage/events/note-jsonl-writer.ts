@@ -7,8 +7,6 @@
  * values for the local operator; invalid diagnostic fields remain counted.
  */
 import { z } from "zod";
-import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { sha256Hex } from "../../../rules/validation/sha256.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { localDatePart } from "../../../rules/time/clock.js";
 import { ClassifiedDiagnosticValueSchema } from "../../../rules/redaction/redaction.js";
@@ -68,14 +66,14 @@ function safeConfirmedAction(input: ConfirmedActionEvent, authority: RunRecord):
       throw new Error("confirmed-action-frozen-value-slot-mismatch");
     }
     const reference = slot.source.kind === "contract-output"
-      ? { kind: "task-output", entryId: invocation!.entryId, path: slot.source.path }
+      ? { kind: "task-output" as const, entryId: invocation!.entryId, path: slot.source.path }
       : invocation?.bindings.find(binding => binding.slot === slot.id)?.value;
     const producer = action.value.producer;
     const matches = reference !== undefined && producer.kind === reference.kind && (() => {
       switch (reference.kind) {
         case "run-input": return producer.kind === "run-input" && producer.path === reference.path;
         case "configuration": return producer.kind === "configuration" && producer.key === reference.key && producer.schemaHash === reference.schemaHash;
-        case "constant": return producer.kind === "constant" && producer.valueDigest === sha256Hex(canonicalJsonStringify(reference.value));
+        case "constant": return producer.kind === "constant" && producer.valueDigest === reference.valueDigest;
         case "task-output": case "child-output": return (producer.kind === "task-output" || producer.kind === "child-output")
           && producer.entryId === reference.entryId && producer.path === reference.path;
         case "transformation": return producer.kind === "transformation" && producer.transformId === reference.transformId && producer.path === reference.path;

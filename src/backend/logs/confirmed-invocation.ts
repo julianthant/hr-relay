@@ -40,7 +40,7 @@ export function createConfirmedInvocation(input: Readonly<{
         const sensitivity = registeredUiSensitivity(input.registeredDriverSystem, targetId);
         return sensitivity === "public" || sensitivity === "hr";
       }
-      const actions = (rows: typeof invocation.operation.actions): typeof invocation.operation.actions =>
+      const actions = (rows: readonly (typeof invocation.operation.actions)[number][]): typeof invocation.operation.actions =>
         rows.flatMap(action => [action, ...actions(action.children ?? [])]);
       return actions(invocation.operation.actions).some(action => (action.target ?? action.id) === targetId
         && action.valueSlot !== undefined && invocation.operation.values.some(slot => slot.id === action.valueSlot));
