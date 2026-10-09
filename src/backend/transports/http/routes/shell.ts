@@ -70,7 +70,8 @@ export function registerShellRoutes(app: DashboardApp, deps: ShellRouteDeps): vo
   });
 
   app.get("/events/v1", async (c) => {
-    const topics = z.string().max(150).parse(c.req.query("topics"));
+    const topics = z.string().max(150).refine(value => TOPICS_PATTERN.test(value)
+      || RUN_LOG_TOPICS_PATTERN.test(value), "events-topics-invalid").parse(c.req.query("topics"));
     const match = TOPICS_PATTERN.exec(topics);
     if (match === null) {
       const mixed = RUN_LOG_TOPICS_PATTERN.exec(topics);
