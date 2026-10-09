@@ -1,4 +1,4 @@
-import { plan1SeparationWorkflow, plan1SeparationStores, fictionalSeparationDrivers } from "./plan1-separation-operation.js";
+import { plan1SeparationWorkflow, plan1SeparationStores, fictionalSeparationDrivers } from "../plan1-separation-operation.js";
 import { createReceiptService } from "../../../../src/backend/runs/trust/receipt-service.js";
 import { readScopedEventStreamLines } from "../../../../src/backend/storage/events/jsonl-streams.js";
 import { runNotePartitionScope, runRecordNoteScopeInstants } from "../../../../src/models/run/note-scope.js";
@@ -7,8 +7,8 @@ import { createDiagnosticCaptureService } from "../../../../src/backend/logs/dia
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { createServerVerifiedArtifactReader } from "../../../../src/backend/storage/artifacts/server-verified-artifact-reader.js";
 import { syntheticStateRoot } from "../../helpers/synthetic-storage-admission.js";
-import type { FictionalFormDriver } from "./plan1-browser-operation.js";
-import { plan1BrowserStores, plan1BrowserWorkflow, fictionalFormDriver } from "./plan1-browser-operation.js";
+import type { FictionalFormDriver } from "../plan1-browser-operation.js";
+import { plan1BrowserStores, plan1BrowserWorkflow, fictionalFormDriver } from "../plan1-browser-operation.js";
 import { registerTrustRoutes } from "../../../../src/backend/transports/http/routes/trust.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
@@ -41,8 +41,8 @@ import { CONFIG_SNAPSHOT } from "../phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../phase1f-run-fixtures.js";
 import { testRunLifecycle, testRunService } from "../run-lifecycle-fixtures.js";
 import { openAuthorityHarness, sessionManagerFor, ManualScheduler, recordingLogger, sessionFactoryHarness } from "../../helpers/phase1f-executor-harness.js";
-import { plan1Parent, plan1Workflows, Plan1Input, Plan1CanonicalInput } from "./plan1-operation-workflows.js";
-import { fixtureBuildManifest } from "./workflow-definition-fixtures.js";
+import { plan1Parent, plan1Workflows, Plan1Input, Plan1CanonicalInput } from "../plan1-operation-workflows.js";
+import { fixtureBuildManifest } from "../workflow-definition-fixtures.js";
 import { PARITY_DIST_DIR } from "../../../integration/dashboard/client/fixtures/helpers/bundle.js";
 import { FIXTURE_BOOTSTRAP } from "./fixture-bootstrap.js";
 import { startFixtureServer } from "../../../integration/dashboard/client/fixtures/helpers/fixture-bff.js";
