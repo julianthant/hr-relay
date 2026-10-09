@@ -101,6 +101,6 @@ describe("expired A0/A1 sources refuse before file or journal recovery", () => {
     const f=fixture();chmodSync(join(f.root,"settings.json.authority.json"),0o644);await refused(f);
     symlinkSync(join(f.root,"absent"),join(f.root,".env"));await refused(f);
     const g=fixture(),alias=join(g.root,"alias");symlinkSync(f.root,alias,"dir");const before=f.snapshot();
-    await assert.rejects(upgradeStorage({stateRoot:alias,processLockRoot:join(alias,"locks"),environmentFile:join(alias,".env"),plan:false},clock),/source-integrity/u);assert.deepEqual(f.snapshot(),before);
+    await assert.rejects(upgradeStorage({stateRoot:alias,processLockRoot:join(alias,"locks"),environmentFile:join(alias,".env"),plan:false},clock),/runtime-admission: unsafe synthetic fixture ancestor/u);assert.deepEqual(f.snapshot(),before);
   });
 });

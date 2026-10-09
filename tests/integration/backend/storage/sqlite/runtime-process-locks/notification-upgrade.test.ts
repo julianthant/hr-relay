@@ -8,7 +8,7 @@ import { upgradeStorage } from "../../../../../support/helpers/synthetic-storage
 import { createNotificationInbox } from "../../../../../../src/backend/runs/notifications/inbox.js";
 import { sequentialIdFactory } from "../../../../../support/fixtures/phase1f-run-fixtures.js";
 import { NOTIFICATION } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION, UPGRADE_FLOOR_SCHEMA_VERSION } from "../../../../../../src/backend/storage/sqlite/migrations.js";
+import { NORMAL_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS, UPGRADE_FLOOR_SCHEMA_VERSION } from "../../../../../../src/backend/storage/sqlite/migrations.js";
 
 describe("notification schema upgrade and recovery", () => {
   it.each([0, 46, 47, 48, 49, 50, 51])("preserves old inbox exactly through supported source %s", async version => {
@@ -25,7 +25,7 @@ describe("notification schema upgrade and recovery", () => {
       try {
         expect(db.authority.notificationPublications.list()).toEqual([]);
         if (version > 0) expect(db.authority.notifications.get(NOTIFICATION.notificationId)).toEqual(NOTIFICATION);
-        expect(CURRENT_AUTHORITY_SCHEMA_VERSION).toBe(52); expect(UPGRADE_FLOOR_SCHEMA_VERSION).toBe(46);
+        expect(SQLITE_MIGRATIONS.some(migration => migration.version === 52)).toBe(true); expect(db.getMeta().schemaVersion).toBe(NORMAL_AUTHORITY_SCHEMA_VERSION); expect(UPGRADE_FLOOR_SCHEMA_VERSION).toBe(46);
       } finally { db.close(); }
     } finally { f.dispose(); }
   });

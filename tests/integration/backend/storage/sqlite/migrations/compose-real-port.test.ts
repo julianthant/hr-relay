@@ -805,6 +805,8 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
         try { return read(); }
         finally { readingExplorer = false; }
       };
+      assert.ok(composed.routes.explorer.overrides);
+      assert.ok(composed.routes.explorerEdits);
       const readAll = composed.routes.explorer.overrides.readAll;
       const validate = composed.routes.explorerEdits.validate;
       return { ...composed, routes: {

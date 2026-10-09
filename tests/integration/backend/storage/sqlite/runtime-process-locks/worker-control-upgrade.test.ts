@@ -6,7 +6,7 @@ import { storageRecoveryFixture } from "../../../../../support/helpers/integrati
 import { AuthorityDatabase, OfflineAuthorityRestoreService, RecoveryStopProofStore } from "../../../../../support/helpers/synthetic-storage-admission.js";
 import { observeRuntimeLockSnapshot } from "../../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { upgradeStorage } from "../../../../../support/helpers/synthetic-storage-admission.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION, UPGRADE_FLOOR_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../../../../../src/backend/storage/sqlite/migrations.js";
+import { NORMAL_AUTHORITY_SCHEMA_VERSION, UPGRADE_FLOOR_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../../../../../src/backend/storage/sqlite/migrations.js";
 
 const WORKER = "person-lookup-worker-1";
 function controlRecord(now: string) {
@@ -40,7 +40,7 @@ describe("worker control supported storage upgrade", () => {
       const db = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 250, migrationOwner: "worker-control-upgrade" }, f.clock);
       try {
         expect(db.authority.workerControls.list()).toEqual([]);
-        expect(CURRENT_AUTHORITY_SCHEMA_VERSION).toBe(53); expect(UPGRADE_FLOOR_SCHEMA_VERSION).toBe(46);
+        expect(SQLITE_MIGRATIONS.some(migration => migration.version === 53)).toBe(true); expect(db.getMeta().schemaVersion).toBe(NORMAL_AUTHORITY_SCHEMA_VERSION); expect(UPGRADE_FLOOR_SCHEMA_VERSION).toBe(46);
         if (version > 0) {
           expect(db.authority.workerLeases.get(WORKER)?.controlRevision).toBeUndefined();
           expect(() => db.authority.workerLeases.reserveControl(WORKER,{ leaseGeneration: 1, controlRevision: 1 },randomUUID(),now)).toThrow("worker-control-target-unavailable");

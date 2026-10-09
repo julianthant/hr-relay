@@ -8,6 +8,8 @@ import { storageRecoveryFixture } from "../../../../../support/helpers/integrati
 
 // Operator-approved complete inventory: independent literals detect missing and extra tables.
 const CURRENT_TABLES = [
+  "run_search_actors", "run_search_declarations", "run_search_grams", "run_search_index", "run_search_publication",
+  "runtime_version_adoptions", "runtime_version_changes", "runtime_versions", "transaction_selection", "worker_controls", "worker_browsers",
   "app_settings", "archive_transfers", "checkpoint_payloads", "command_audits", "commands",
   "database_state", "database_upgrades", "delegation_dependencies", "deleted_runs", "diagnostic_files",
   "diagnostic_snapshots", "dryrun_results", "explorer_overrides", "extracted_artifacts", "generated_artifacts", "imported_artifacts",

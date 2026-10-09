@@ -23,6 +23,7 @@ import { AuthorityDatabase } from "../../../../../support/helpers/synthetic-stor
 import {
   AUTHORITY_APPLICATION_ID,
   CURRENT_AUTHORITY_SCHEMA_VERSION,
+  NORMAL_AUTHORITY_SCHEMA_VERSION,
   SQLITE_MIGRATIONS,
 } from "../../../../../../src/backend/storage/sqlite/migrations.js";
 import { inspectAuthorityBackupReadOnly } from "../../../../../support/helpers/synthetic-storage-admission.js";
@@ -316,7 +317,7 @@ describe("D336 stopped-upgrade admission matrix", () => {
       assert.deepEqual(plan, {
         state: "planned",
         fromSchemaVersion: version,
-        toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION,
+        toSchemaVersion: NORMAL_AUTHORITY_SCHEMA_VERSION,
         importedKeys: [],
         sourceFiles: [],
         envKeysToRemove: [],
@@ -338,10 +339,10 @@ describe("D336 stopped-upgrade admission matrix", () => {
       assert.deepEqual(applied, { ...plan, state: "converted" });
       assert.equal(
         AuthorityDatabase.inspectExistingReadOnly(fixture.path).schemaVersion,
-        CURRENT_AUTHORITY_SCHEMA_VERSION,
+        NORMAL_AUTHORITY_SCHEMA_VERSION,
       );
       assert.deepEqual(readMeta(fixture.path), {
-        schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION,
+        schema_version: NORMAL_AUTHORITY_SCHEMA_VERSION,
         authority_generation: 9,
       });
       assertOnlyExpectedRowsRemain(fixture);
@@ -350,7 +351,7 @@ describe("D336 stopped-upgrade admission matrix", () => {
       for (const record of upgrades) {
         assert.equal("format" in record && record.format, 3);
         assert.equal(record.fromSchemaVersion, version);
-        assert.equal(record.toSchemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+        assert.equal(record.toSchemaVersion, NORMAL_AUTHORITY_SCHEMA_VERSION);
       }
       assert.equal(
         (await verifyBackupManifestAtPath(manifestPath)).manifest.schemaVersion,
@@ -510,7 +511,7 @@ describe("D336 stopped-upgrade admission matrix", () => {
     assert.equal(retried.state, "converted");
     assert.equal(
       AuthorityDatabase.inspectExistingReadOnly(fixture.path).schemaVersion,
-      CURRENT_AUTHORITY_SCHEMA_VERSION,
+      NORMAL_AUTHORITY_SCHEMA_VERSION,
     );
     assertOnlyExpectedRowsRemain(fixture);
   });
