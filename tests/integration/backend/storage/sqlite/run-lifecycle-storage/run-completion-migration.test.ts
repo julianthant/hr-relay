@@ -21,7 +21,7 @@ import { AuthorityDatabase } from "../../../../../support/helpers/synthetic-stor
 import { OfflineAuthorityRestoreService } from "../../../../../support/helpers/synthetic-storage-admission.js";
 import { RecoveryStopProofStore } from "../../../../../../src/backend/storage/sqlite/recovery-stop-proof.js";
 import { observeRuntimeLockSnapshot } from "../../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
-import { SQLITE_MIGRATIONS, AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../../../src/backend/storage/sqlite/migrations.js";
+import { SQLITE_MIGRATIONS, AUTHORITY_APPLICATION_ID, NORMAL_AUTHORITY_SCHEMA_VERSION } from "../../../../../../src/backend/storage/sqlite/migrations.js";
 import { convertRunCompletions } from "../../../../../../src/backend/storage/sqlite/completion-conversion.js";
 import { backupStoppedAuthority, upgradeStorage } from "../../../../../support/helpers/synthetic-storage-admission.js";
 import { inspectAuthorityBackupReadOnly } from "../../../../../support/helpers/synthetic-storage-admission.js";
@@ -40,7 +40,7 @@ const FixtureSchema = z.object({
   rows: z.record(z.string().regex(/^[a-z_]+$/u), z.array(z.record(z.string().regex(/^[a-z_]+$/u), z.union([z.string(), z.number(), z.null()])))),
 });
 function fixture(kind: "success" | "failure", schemaVersion: 39 | 40 = 40) {
-  const saved = FixtureSchema.parse(JSON.parse(readFileSync(new URL(`./run-completion-fixtures/schema40-${kind}.json`, import.meta.url), "utf8")));
+  const saved = FixtureSchema.parse(JSON.parse(readFileSync(new URL(kind === "success" ? "../../../../../support/fixtures/integration/run-completion/schema40-success.json" : "./fixtures/schema40-failure.json", import.meta.url), "utf8")));
   const root = mkdtempSync(join(tmpdir(), "run-completion-migration-")); roots.push(root);
   const stateRoot = join(root, ".tracker"); mkdirSync(stateRoot);
   for (const file of ["package.json", "package-lock.json"]) copyFileSync(join(process.cwd(), file), join(root, file));
@@ -72,7 +72,7 @@ function fixture(kind: "success" | "failure", schemaVersion: 39 | 40 = 40) {
 }
 function loadSupportedCompletion(f: ReturnType<typeof fixture>, kind: "success" | "failure") {
   const retained = z.object({ schemaVersion: z.literal(46), rows: FixtureSchema.shape.rows }).parse(
-    JSON.parse(readFileSync(new URL(`./fixtures/migrated-completion-${kind}.json`, import.meta.url), "utf8")));
+    JSON.parse(readFileSync(new URL(`../../../../../support/fixtures/integration/migration/migrated-completion-${kind}.json`, import.meta.url), "utf8")));
   copyFileSync(f.path, join(f.stateRoot, "retired-source.sqlite"));
   rmSync(f.path);
   const raw = new DatabaseSync(f.path); raw.exec("PRAGMA foreign_keys=OFF");
@@ -102,7 +102,7 @@ function conversion(path: string) {
   try {
     raw.exec("PRAGMA foreign_keys=ON; BEGIN EXCLUSIVE");
     convertRunCompletions(raw);
-    for (const migration of SQLITE_MIGRATIONS.filter(({ version }) => version > 40)) for (const statement of migration.statements) {
+    for (const migration of SQLITE_MIGRATIONS.filter(({ version }) => version > 40 && version <= NORMAL_AUTHORITY_SCHEMA_VERSION)) for (const statement of migration.statements) {
       if (migration.version === 42 && statement === "DROP TABLE intake_sessions") convertImportedArtifacts(raw);
       if (migration.version === 43 && statement === "DROP TABLE provider_admissions") convertProviderStorage(raw,clock.now().toISOString());
       if (migration.version === 44 && statement === "DROP TABLE runtime_config") convertAppSettings(raw);
@@ -110,7 +110,7 @@ function conversion(path: string) {
       if (migration.version === 47 && statement === "DROP TABLE spans") assertFoundationRetirement(RuntimeAdmission.syntheticFixture(path, "authority"),raw,undefined);
       raw.exec(statement);
     }
-    raw.exec(`UPDATE database_state SET schema_version=${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}; PRAGMA user_version=${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}; COMMIT`);
+    raw.exec(`UPDATE database_state SET schema_version=${String(NORMAL_AUTHORITY_SCHEMA_VERSION)}; PRAGMA user_version=${String(NORMAL_AUTHORITY_SCHEMA_VERSION)}; COMMIT`);
   } catch (error) { raw.exec("ROLLBACK"); throw error; }
   finally { raw.close(); }
 }

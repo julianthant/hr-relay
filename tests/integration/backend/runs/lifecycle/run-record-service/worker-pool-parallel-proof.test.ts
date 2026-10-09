@@ -93,7 +93,7 @@ const PL_2 = plMember(2);
 const PL_3 = plMember(3);
 const SEP_1 = sepMember(1);
 
-const STUB_CLI_PATH = join(process.cwd(), "tests", "process-fixtures", "worker-stub-cli.ts");
+const STUB_CLI_PATH = join(process.cwd(), "tests", "support", "processes", "worker-stub-cli.ts");
 const REPO_ROOT = process.cwd();
 
 function required<T>(value: T | undefined, what: string): T {

@@ -863,7 +863,7 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
     const fixturePath = join(
       process.cwd(),
       "tests",
-      "process-fixtures",
+      "support", "processes",
       "runtime-lock-contender.ts",
     );
     const children: ChildProcessWithoutNullStreams[] = [];

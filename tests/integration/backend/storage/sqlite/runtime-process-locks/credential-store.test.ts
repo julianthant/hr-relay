@@ -76,6 +76,7 @@ function crashAfterCredentialRename(stateRoot: string, input: ProtectedSettingsA
   const moduleUrl = pathToFileURL(join(
     process.cwd(),
     "tests",
+    "support",
     "helpers",
     "synthetic-storage-admission.ts",
   )).href;
@@ -96,6 +97,7 @@ function crashBeforeCredentialRename(stateRoot: string, input: ProtectedSettings
   const moduleUrl = pathToFileURL(join(
     process.cwd(),
     "tests",
+    "support",
     "helpers",
     "synthetic-storage-admission.ts",
   )).href;
