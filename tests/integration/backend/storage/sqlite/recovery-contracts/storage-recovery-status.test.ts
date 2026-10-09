@@ -14,6 +14,8 @@ import { archiveFixture, attachFile } from "../../../../../support/helpers/archi
 import { doctorAuthorityStorage } from "../../../../../support/helpers/synthetic-storage-admission.js";
 import { AuthorityDatabase } from "../../../../../support/helpers/synthetic-storage-admission.js";
 import { backupStoppedAuthority } from "../../../../../support/helpers/synthetic-storage-admission.js";
+import { inspectAuthorityBackupReadOnly } from "../../../../../../src/backend/storage/compatibility/backup-inspection.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION, isNormalAuthoritySchemaVersion } from "../../../../../../src/backend/storage/sqlite/migrations.js";
 import { buildStorageDoctor } from "../../../../../../src/backend/runs/queries/storage.js";
 
 // Preserve every byte except SQLite's documented shared reader marks (existing doctor proof).
@@ -123,16 +125,17 @@ for (const fault of ["directory", "symlink", "permissions"] as const) it(`never 
   } finally { f.dispose(); }
 });
 
-for (const version of [45, 46, 50, 51, 52]) it(`distinguishes byte verification from release eligibility at schema ${String(version)}`, async () => {
-  const f = storageRecoveryFixture(version);
+for (const version of [45, 46, 50, 51, 52, CURRENT_AUTHORITY_SCHEMA_VERSION]) it(`distinguishes byte verification from release eligibility at schema ${String(version)}`, async () => {
+  const f = storageRecoveryFixture(version === CURRENT_AUTHORITY_SCHEMA_VERSION ? 0 : version);
   try {
+    if (version === CURRENT_AUTHORITY_SCHEMA_VERSION) AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 500, migrationOwner: "current-eligibility" }, f.clock).close();
     await f.backup();
     const report = await doctorAuthorityStorage(options(f.root), f.clock);
     assert.equal(report.recovery.state, "clear");
     const candidate = report.restoreCandidates[0];
     assert.ok(candidate?.state === "verified-compatible");
     assert.equal(candidate.schemaVersion, version);
-    assert.equal(candidate.restoreEligibility.state, version < 46 ? "unsupported" : version < 52 ? "requires-upgrade" : "eligible");
+    assert.equal(candidate.restoreEligibility.state, version < 46 ? "unsupported" : isNormalAuthoritySchemaVersion(version) ? "eligible" : "requires-upgrade");
   } finally { f.dispose(); }
 });
 
@@ -178,8 +181,9 @@ for (const pending of [false, true]) {
 }
 
 it("withholds absence of custody for an unreadable live database and inaccessible backup directory", async () => {
-  const f = storageRecoveryFixture(52);
+  const f = storageRecoveryFixture();
   try {
+    AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 500, migrationOwner: "current-custody-control" }, f.clock).close();
     await f.backup();
     writeFileSync(f.path, "corrupt synthetic authority");
     const report = await doctorAuthorityStorage(options(f.root), f.clock);
@@ -195,11 +199,29 @@ it("withholds absence of custody for an unreadable live database and inaccessibl
 });
 
 it.each(["explorer_overrides", "notification_publications", "notification_health"])("does not hide a missing current authority table %s after historical fingerprint correction", table => {
-  const f = storageRecoveryFixture(52);
+  const f = storageRecoveryFixture();
   try {
+    AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 500, migrationOwner: "current-table-control" }, f.clock).close();
     AuthorityDatabase.inspectSpanRunAuthorityReadOnly(f.path, [], 500);
     const database = new DatabaseSync(f.path);
     try { database.exec(`DROP TABLE ${table}`); } finally { database.close(); }
     assert.throws(() => AuthorityDatabase.inspectSpanRunAuthorityReadOnly(f.path, [], 500), new RegExp(`authority database tables do not match registry:.*expected=.*${table}`, "u"));
   } finally { f.dispose(); }
+});
+
+
+it("rechecks every actual schema after priming immutable expected identities for mixed versions", () => {
+  for (const version of [45, 52, 46, 52]) {
+    const f = storageRecoveryFixture(version);
+    const admission = syntheticStateRoot(f.root);
+    try {
+      assert.equal(inspectAuthorityBackupReadOnly(admission, f.path).schemaVersion, version);
+      assert.equal(inspectAuthorityBackupReadOnly(admission, f.path).schemaVersion, version);
+      const raw = new DatabaseSync(f.path);
+      try { raw.exec("CREATE TABLE forged_schema (value TEXT) STRICT"); } finally { raw.close(); }
+      const before = readFileSync(f.path);
+      assert.throws(() => inspectAuthorityBackupReadOnly(admission, f.path), /does not match its immutable migration replay/u);
+      assert.deepEqual(readFileSync(f.path), before);
+    } finally { admission.release(); f.dispose(); }
+  }
 });
