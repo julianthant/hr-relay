@@ -1184,7 +1184,10 @@ export function deriveRunEvidenceReceipt(
     confidence,
     result: receiptResult,
   };
-  const receipt = RunEvidenceReceiptSchema.parse(receiptData);
+  const parsedReceipt = RunEvidenceReceiptSchema.parse(receiptData);
+  const receipt = composition === LATEST_RECEIPT_COMPOSITION
+    ? RunEvidenceReceiptSchema.parse(JSON.parse(canonicalJsonStringify(parsedReceipt)))
+    : parsedReceipt;
   assertEvidenceRefsResolve(receipt);
   return Object.freeze({ receipt, checks: binding.checks });
 }
