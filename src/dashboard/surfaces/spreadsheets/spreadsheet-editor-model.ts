@@ -55,7 +55,7 @@ export function spreadsheetForeground(background: string | undefined): string | 
   const hex = background?.match(/#[0-9a-f]{6}/i)?.[0];
   if (!hex) return undefined;
   const [r, g, b] = [1, 3, 5].map(index => parseInt(hex.slice(index, index + 2), 16));
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b < 140 ? '#ffffff' : '#171717';
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b < 140 ? 'var(--ds-sheet-contrast-light)' : 'var(--ds-sheet-contrast-dark)';
 }
 export function cellText(cell: SheetCell): string {
   return cell.value instanceof Date ? cell.value.toISOString().slice(0, 10) : cell.value === null ? '' : String(cell.value);

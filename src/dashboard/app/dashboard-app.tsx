@@ -1,3 +1,4 @@
+import { dsLayer } from "../ds/theme/tokens.js";
 import { productWorkflowComposition, workflowSource, type WorkflowComposition } from "./workflow-sources.js";
 import { runDisplayId } from "../surfaces/shared/status/run-display-model.js";
 import type { NavbarSearchResult } from "../surfaces/shell/search/navbar-view-model.js";
@@ -1139,7 +1140,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
         const target = document.getElementById(takeover === "settings" ? "dashboard-settings-content" : DASHBOARD_MAIN_REGION_ID);
         if (!target) throw new Error("DASHBOARD_SKIP_TARGET_UNAVAILABLE");
         target.focus({ preventScroll: true });
-      }} className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[1000] focus:rounded-lg focus:bg-ui-panel focus:px-4 focus:py-2 focus:text-ui-primary focus:outline-2 focus:outline-ui-info">Skip to content</a>
+      }} className={`${dsLayer.skipFocus} sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:rounded-lg focus:bg-ui-panel focus:px-4 focus:py-2 focus:text-ui-primary focus:outline-2 focus:outline-ui-info`}>Skip to content</a>
       <div className="dashboard-workspace relative flex min-h-0 min-w-0 flex-1 flex-col">
       <WorkspaceRail workflows={workflowCatalog} counts={servedWorkflowCounts} previewCounts={previewCounts} active={activeWorkflowId} preview={railPreview}
         onSelect={onRailSelect} onPreview={onRailPreview} settingsOpen={settingsOpen} notifications={notifications} onOpenNotification={openNotification} searchData={searchData} onSearch={onSearch} />

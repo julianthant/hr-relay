@@ -181,11 +181,7 @@ export const dsTravel = {
   md: "var(--ds-travel-md)",
 } as const;
 
-/* -------------------------------------------------------------------------
- * LAYERING — arbitrary z-index values are banned by the architecture guard,
- * so the demo uses Tailwind's own scale. These five names are the whole
- * stack; anything not listed sits at auto.
- * ---------------------------------------------------------------------- */
+/* Named stacking roles; values and focus behavior live in tokens.css. */
 export const dsLayer = {
   /** sticky table headers, panel toolbars, the row action bar */
   sticky: "z-10",
@@ -197,6 +193,9 @@ export const dsLayer = {
   modal: "z-40",
   /** toasts — always above everything, including a modal */
   toast: "z-50",
+  skipFocus: "ds-layer-skip-focus",
+  toastViewport: "ds-layer-toast-viewport",
+  toastCard: "ds-layer-toast-card",
 } as const;
 
 /* -------------------------------------------------------------------------

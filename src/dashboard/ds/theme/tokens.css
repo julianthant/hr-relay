@@ -60,6 +60,11 @@
    ========================================================================== */
 
 :root {
+  --ds-layer-skip-focus: 1000;
+  --ds-layer-toast-viewport: 100;
+  --ds-layer-toast-card: 1000;
+  --ds-sheet-contrast-light: #ffffff;
+  --ds-sheet-contrast-dark: #171717;
   /* D340: desktop canvas; smaller browser windows scroll this geometry. */
   --ds-w-desktop-min: 1024px;
   --ds-h-desktop-min: 720px;
@@ -2374,3 +2379,7 @@ body[data-demo-theme],
 .ds-search-field .ds-search-clear svg { width: 14px; height: 14px; }
 .ds-search-field[data-empty="true"] .ds-search-clear { display: none; }
 .ds-search-field .ds-search-clear:hover { background: var(--ds-surface-3); color: var(--ds-fg); }
+
+.ds-layer-skip-focus:focus { z-index: var(--ds-layer-skip-focus); }
+.ds-layer-toast-viewport { z-index: var(--ds-layer-toast-viewport); }
+.ds-layer-toast-card { z-index: calc(var(--ds-layer-toast-card) - var(--toast-index)); }
