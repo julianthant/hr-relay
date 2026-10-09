@@ -2,7 +2,7 @@ import {
   RunDetailWireSchema,
   type RunDetailWire,
   type TimelineStepWire,
-} from "../../../../src/domain/dashboard/run-detail.js";
+} from "../../../../src/models/dashboard/run-detail.js";
 import { at,traceOf,uuidOf,WORKFLOW_ID } from "../fixture-identity.js";
 import type { Status } from "../fixture-queue.js";
 import { absent,FIXTURE_IDS } from "../fixture-queue.js";

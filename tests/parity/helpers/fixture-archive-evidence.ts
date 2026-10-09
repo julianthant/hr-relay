@@ -13,15 +13,15 @@ import {
 ArchivedRunContentSchema,
 ArchivedRunRecordSchema,
 archivedRunContentDigest,
-} from "../../../src/domain/archive/model.js";
-import { archiveRetention } from "../../../src/domain/archive/retention.js";
-import { ArchivedCaptureTileSchema } from "../../../src/domain/archive/sections.js";
+} from "../../../src/models/archive/model.js";
+import { archiveRetention } from "../../../src/models/archive/retention.js";
+import { ArchivedCaptureTileSchema } from "../../../src/models/archive/sections.js";
 import {
 ArchiveIndexWireSchema,
 ArchivedRunDetailWireSchema,
 type ArchivedRunDetailWire,
-} from "../../../src/domain/dashboard/archive.js";
-import { ARCHIVED_RUN_WITH_SECTIONS } from "../../fixtures/archive-fixtures.js";
+} from "../../../src/models/dashboard/archive.js";
+import { ARCHIVED_RUN_WITH_SECTIONS } from "../../support/fixtures/archive-fixtures.js";
 import { FIXTURE_ARCHIVE_INDEX } from "./fixture-archive.js";
 import { FIXTURE_DAY,FIXTURE_DESCRIPTOR_HASH } from "./fixture-identity.js";
 

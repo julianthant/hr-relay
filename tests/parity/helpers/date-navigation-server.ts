@@ -1,10 +1,10 @@
-import { DashboardStreamEnvelopeSchema } from "../../../src/domain/dashboard/subscription.js";
-import type { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
-import type { Clock } from "../../../src/domain/clock.js";
-import { RunRecordSchema } from "../../../src/domain/run/record.js";
-import { queryActivitySummaries, queryQueueSummaries } from "../../../src/server/dashboard/queries/run-summaries.js";
-import { createTransactionHistory } from "../../../src/infra/sqlite/transaction-history.js";
-import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
+import { DashboardStreamEnvelopeSchema } from "../../../src/models/dashboard/subscription.js";
+import type { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
+import type { Clock } from "../../../src/rules/time/clock.js";
+import { RunRecordSchema } from "../../../src/models/run/record.js";
+import { queryActivitySummaries, queryQueueSummaries } from "../../../src/backend/runs/queries/run-summaries.js";
+import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
+import { sqliteRunReader } from "../../support/helpers/canonical-run-reader.js";
 
 export const DATE_HISTORY = ["2024-12-31", "2025-01-02", "2026-06-15", "2026-07-01", "2026-07-30"] as const;
 export const dateRunId = (index: number) => `00000000-0000-4000-8000-${String(700000 + index).padStart(12, "0")}`;

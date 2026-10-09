@@ -1,31 +1,32 @@
-import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
-import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
-import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint, type SettingsPatch } from "../../../src/domain/config/settings.js";
-import { executeSettingsCommand } from "../../../src/core/command-kernel.js";
-import { createSettingsApplicationExecutor } from "../../../src/server/dashboard/commands/settings-service.js";
-import { createCredentialStore } from "../../helpers/synthetic-storage-admission.js";
-import { readSettings } from "../../../src/server/settings-runtime.js";
+import { seedInitialSettingsRuntimeConfig } from "../../support/fixtures/operator-command-fixtures.js";
+import { hostConfigFacts } from "../../../src/models/config/host-display.js";
+import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
+import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint, type SettingsPatch } from "../../../src/models/config/settings.js";
+import { executeSettingsCommand } from "../../../src/backend/runs/commands/command-kernel.js";
+import { createSettingsApplicationExecutor } from "../../../src/backend/runs/commands/settings-service.js";
+import { createCredentialStore } from "../../support/helpers/synthetic-storage-admission.js";
+import { readSettings } from "../../../src/backend/runtime/settings/settings-runtime.js";
 /** Private launch fixture: real SQLite, planner, command kernel, projection and controlled executor. */
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createServer, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { extname, join, normalize } from "node:path";
-import { launchHarness } from "../../unit/fixtures/run-launch-fixtures.js";
-import { createRunQueueProjection } from "../../../src/server/dashboard/projectors/run-queue-projection.js";
-import { createTransactionHistory } from "../../../src/infra/sqlite/transaction-history.js";
-import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
-import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
-import { FrontendBootstrapWireSchema } from "../../../src/domain/dashboard/bootstrap.js";
-import { DashboardStreamEnvelopeSchema } from "../../../src/domain/dashboard/subscription.js";
+import { launchHarness } from "../../support/fixtures/run-launch-fixtures.js";
+import { createRunQueueProjection } from "../../../src/backend/runs/projections/run-queue-projection.js";
+import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
+import { sqliteRunReader } from "../../support/helpers/canonical-run-reader.js";
+import { descriptorSetHash } from "../../../src/backend/app/composition/dashboard/compose.js";
+import { FrontendBootstrapWireSchema } from "../../../src/models/dashboard/bootstrap.js";
+import { DashboardStreamEnvelopeSchema } from "../../../src/models/dashboard/subscription.js";
 import { FIXTURE_BOOTSTRAP } from "./fixture-bootstrap.js";
 import { createFixtureBff } from "./fixture-bff.js";
 import { assertServedBundle, PARITY_DIST_DIR } from "./bundle.js";
 
 export async function startRunRerunServer() {
   assertServedBundle(PARITY_DIST_DIR, { proof: "working-tree" });
-  const h = launchHarness(); const source = await h.completeSource();
-  const stateRoot = mkdtempSync(join(tmpdir(), "hrauto-launch-projection-"));
+  const h = launchHarness("reject-active", seedInitialSettingsRuntimeConfig); const source = await h.completeSource();
+  const stateRoot = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-launch-projection-")));
   const database = h.database; const descriptorHash = descriptorSetHash([h.descriptor.contractFingerprint]);
   const day = h.clock.now().toISOString().slice(0, 10);
   const projection = createRunQueueProjection({ timeline: database.authority.timelineEvents,
@@ -33,6 +34,7 @@ export async function startRunRerunServer() {
     ledger: createTransactionHistory(database.authority), descriptors: { resolve: (id) => id === h.descriptor.id ? h.descriptor : undefined },
     authority: {
       listNotifications: (actorId) => database.authority.notifications.listByActor(actorId),
+      listNotificationCheckpoints: (workflowId, itemId, nodeId, attempt) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt),
       listLiveWorkerLeases: () => database.authority.workerLeases.listLive(), getWorkerLease: (id) => database.authority.workerLeases.get(id),
       listWorkerPools: () => database.authority.workerPools.list(), listRunBatches: () => database.authority.runSessions.list(),
       getRunBatch: (id) => database.authority.runSessions.get(id), getFailure: (id) => database.authority.failures.get(id),

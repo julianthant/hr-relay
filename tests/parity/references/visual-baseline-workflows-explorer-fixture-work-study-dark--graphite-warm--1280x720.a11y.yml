@@ -1,0 +1,143 @@
+# visual-baseline-workflows-explorer-fixture-work-study-dark--graphite-warm--1280x720
+# adapter: fixture
+# fixture: visual-baseline-workflows.spec.ts:mounted Logs and all Explorer workflows @ dark
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#dashboard-settings-content"
+- main:
+  - region "Settings":
+    - navigation "Settings sections":
+      - heading "Settings" [level=2]
+      - button "Back to dashboard"
+      - group:
+        - searchbox "Search settings"
+      - text: Personal
+      - link "General":
+        - /url: "?settings=general"
+      - link "Credentials":
+        - /url: "?settings=credentials"
+      - text: Advanced
+      - link "Performance":
+        - /url: "?settings=performance"
+      - link "Paths":
+        - /url: "?settings=paths"
+      - link "Routes":
+        - /url: "?settings=routes"
+      - text: Data
+      - link "Spreadsheets":
+        - /url: "?settings=spreadsheets"
+      - link "Explorer":
+        - /url: "?settings=explorer"
+      - link "Analytics":
+        - /url: "?settings=activity"
+      - text: Status
+      - link "Storage checks":
+        - /url: "?settings=storage"
+      - link "Preflight":
+        - /url: "?settings=preflight"
+      - text: Help
+      - link "Keyboard":
+        - /url: "?settings=keyboard"
+    - region "Workflow explorer preview":
+      - heading "Explorer" [level=1]
+      - paragraph: Browse workflows, their steps and field sources. Fictional preview data.
+      - combobox "Explorer workflow": Work-Study
+      - list "Workflow steps":
+        - listitem:
+          - heading "Work-Study" [level=2]
+          - text: You
+          - paragraph: Updates PayPath Position Data effective date, reason JRL and pool F, then files the transaction with matching comments. This workflow has no dry-run option.
+        - listitem:
+          - heading "Parse input" [level=2]
+          - text: UCPath
+          - paragraph: Turn the typed EIDs — or an accepted spreadsheet import — into one run per person.
+          - group:
+            - strong: Parse input
+            - text: Read and process People typed 1
+        - listitem:
+          - heading "Member fan-out" [level=2]
+          - text: Local
+          - paragraph: Enqueue one member run per person. Each walks the per-person path on its own row.
+        - listitem:
+          - heading "UCPath auth" [level=2]
+          - text: UCPath
+          - paragraph: Reach an authenticated UCPath session and land on the person the run carries.
+          - group:
+            - strong: UCPath auth
+            - text: Read and process Employee ID 10000001
+          - text: Open UCPath
+          - group:
+            - strong: Session
+            - text: Read System UCPath Authentication Authenticated Identity Demo operator
+        - listitem:
+          - heading "Transaction" [level=2]
+          - text: UCPath
+          - paragraph: Fill Position Data, Job Data comments and Initiator comments; verify and Save and Submit.
+          - group:
+            - strong: Transaction
+            - text: Fill and verify
+            - button "Show source for Change reason": Change reason JRL
+            - button "Show source for Job Data comments": Job Data comments Updated pool id to F per work study award 08/03/2026
+            - button "Show source for Initiator comments": Initiator comments Updated pool id to F per work study award 08/03/2026
+          - text: "Verify: staged form readback and submission confirmation. HR Tasks → PayPath/Additional Pay → PayPath Actions"
+          - group:
+            - strong: Employee search
+            - text: Fill
+            - button "Show source for Employee ID": Employee ID 10000001
+          - text: Search
+          - group:
+            - strong: Employee header
+            - text: Read Employee Jordan Lee
+          - group:
+            - strong: Position Data
+            - text: Fill
+            - button "Show source for Effective date": Effective date 08/03/2026
+            - button "Show source for Position change reason": Position change reason JRL
+            - button "Show source for Position pool": Position pool F
+          - text: Job Data
+          - group:
+            - strong: Job Data comments
+            - text: Fill
+            - button "Show source for Comments": Comments Updated pool id to F per work study award 08/03/2026
+          - text: Additional Pay Data
+          - group:
+            - strong: Initiator comments
+            - text: Fill
+            - button "Show source for Comments": Comments Updated pool id to F per work study award 08/03/2026
+          - text: Save and Submit
+          - group:
+            - strong: Transaction outcome
+            - text: Read Outcome Submitted
+        - listitem:
+          - heading "Rollup" [level=2]
+          - text: Local
+          - paragraph: Close the coordinator once every member is terminal.
+      - paragraph: Fictional workflow path complete. No external system contacted.
+- region "Session Panel":
+  - group "Session actions":
+    - button "Sessions"
+    - text: 2 running 1 starting 1 idle
+    - button "Add workers"
+    - button "Settings" [pressed]
+- region "Notifications"
+- listbox:
+  - group:
+    - option "Person Lookup"
+    - option "I-9 Lookup"
+    - option "Separations"
+    - option "I-9 Check"
+    - option "Onboarding"
+    - option "Oath Signature"
+    - option "Oath Upload"
+    - option "Emergency Contact"
+    - option "Work-Study" [selected]
+    - option "Kronos Pay Rule"
+    - option "OCR"
+    - option "CRM Doc Download"
+    - option "SharePoint Download"
+    - option "OnBase"
+    - option "Old Kronos Reports"

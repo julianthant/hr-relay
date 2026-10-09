@@ -1,4 +1,4 @@
-import { runTestProcess, testRunsDirectory } from "./test-runner.js";
+import { runTestProcess, testRunsDirectory } from "./test/runner.js";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
@@ -17,7 +17,7 @@ import {
 import { dirname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { systemClock } from "../src/domain/clock.js";
+import { systemClock } from "../src/rules/time/clock.js";
 
 export const PARITY_JSON_REPORT = "tests/parity/.output/results.json";
 export const PARITY_REQUIRED_A11Y_ANNOTATION = "required-a11y-evidence";

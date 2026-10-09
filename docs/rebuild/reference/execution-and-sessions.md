@@ -23,13 +23,14 @@ static per-system capacity design is retired and stays retired (§0).
 Four dated Phase-1 stage blocks (1d's seam ratification, the 1f runtime, the 1f concrete factory and
 D125's bound) stood above §0 until 2026-08-21; their contracts are folded into §2, §4, §4.1 and §4.3
 and the originals are preserved verbatim in
-`history/superseded/2026-08-21-execution-and-sessions-phase-1-stage-ratifications.md`.
+`994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/history/superseded/2026-08-21-execution-and-sessions-phase-1-stage-ratifications.md`.
 
 ## Ownership (D1)
 
 | This doc **OWNS** (siblings reference, never redefine) |
 |---|
 | Worker claim/heartbeat/recovery behavior and the one-item-in-flight invariant |
+| D364 worker-local confirmed-action stream identity and publisher lifetime (§3) |
 | Browser-session ownership, reuse, reset/close discipline, and explicit fresh-session boundaries |
 | Worker spawning and queue dispatch/backpressure |
 | The speed contract: condition waits, sleep-tax removal, and bounded operations |
@@ -90,8 +91,7 @@ graph branches. Those uses do not describe executor capacity and are unaffected.
 ---
 
 ## 1. Units, named precisely
-<!-- roadmap: phase-1 -->
-<!-- roadmap: parallel-runs -->
+
 
 - **Run** — one item's execution of a workflow.
 - **Worker** — one long-lived process assigned to one workflow. It owns at most one active run and
@@ -121,16 +121,7 @@ graph branches. Those uses do not describe executor capacity and are unaffected.
 ---
 
 ## 2. Workflow session contract
-<!-- roadmap: p1-authority -->
 
-<!-- roadmap-status: p1-authority -->
-- [x] ONE imported `SessionNeed` (D96), owned by ref task-contract and never redefined here (`src/domain/session.ts:4`)
-- [x] all nine browser systems declare exactly one session provider, OnBase alone `exclusive:true`, enforced at `defineSessionProvider` and by the `task-store-boundaries` guard
-- [x] `session` is authored as a string literal or supplied by the schema default; a computed value is refused (`fresh-session-boundary`)
-- [ ] the descriptor-level node-execution-ordering arm of `fresh-session-boundary` — no workflow authors a `session:"fresh"` node yet, so the arm has nothing to execute
-- [ ] the OnBase identity lease (D15): `onbaseSession` declares `exclusive:true` and the store is a three-line stub with no driver and no login (`src/stores/onbase/session.ts`)
-> 2026-08-21 | docs-cohesion execution-and-sessions | verified against src/domain/session.ts, src/base/session.ts, src/stores/*/session.ts and guard-inventory.json; the 1d block's "every placeholder login rejects with 'declared but unwired in Phase 1d'" is no longer true of any store — that refusal moved to the factory
-<!-- /roadmap-status -->
 
 The descriptor compiler resolves every browser-backed node to an explicit policy. The type is
 **imported from ref task-contract, never restated** (D96) — this doc owns worker/session BEHAVIOR
@@ -176,7 +167,7 @@ bound today — **ucpath, crm, kuali, new-kronos** (`src/infra/browser/system-bi
 servicenow, old-kronos, onbase and sharepoint declare a provider and refuse at open.
 
 ### 2.1 Gates and parks
-<!-- roadmap: p1-kernel -->
+
 
 A parked run owns no browser resources. Before parking, the worker resets/closes active sessions
 according to the provider policy and releases identity leases. Resume is a fresh claim. An overnight
@@ -192,7 +183,7 @@ registered and poisoned — §7.1 row C6/C7 execute both.
 
 ## 3. Worker lifecycle and claiming
 
-**Worker-table naming amendment (2026-09-08; [side/worker-names](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/history/worker-names.md)).**
+**Worker-table naming amendment (2026-09-08; side/worker-names (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/history/worker-names.md`)).**
 Since schema 35, the worker lifecycle authority is named `workflow_workers` (formerly `leases`)
 and the credential-scoped Duo lock is named `worker_auth` (formerly `duo_ceremony_leases`).
 `worker_pools` retains its name and declaration/CAS role. Worker repository interfaces,
@@ -200,19 +191,7 @@ lease generations, heartbeats, directives, authentication scope and timings are 
 `worker_auth` holds one expiring authentication lock per credential across workers and
 systems; it stores no password. Historical schema, trigger names and dated evidence retain
 released names. D267 and D269's behavior below is unchanged.
-<!-- roadmap: p1-kernel -->
 
-<!-- roadmap-status: p1-kernel -->
-- [x] the one-item worker loop: directive → claim → one awaited run → heartbeat, with every wait bounded (`runWorkerLoop`, `src/core/worker-loop.ts:190`)
-- [x] the claim protocol in authority — owner, attempt, claim generation, heartbeat renewal, fenced terminalization, dead-worker recovery (1c/1f; `run-authority.test.ts`)
-- [x] D118 — an expired claim holding an `attempting` write intent reaches ref write-safety recovery before any queued/claimable transition (`claim-sweep-recovery.test.ts`)
-- [x] D200 — the startup self-sweep, scoped by `workerId` because the won lease is the evidence (§3.0; `src/server/worker/compose.ts:472`)
-- [x] D116 — the claimed run's immutable `configFingerprint` is bound for exactly the execution window through the one shared `withBoundRunConfigFingerprint` helper (`src/core/worker-sessions.ts:245`)
-- [x] the callback-leased browser sessions, their poison rule and their proven close (§4; `src/core/worker-sessions.ts`)
-- [x] the content-level authentication proof on every return path (§4.1; `authentication-proof-not-url`)
-- [ ] more than one worker per workflow reachable from a surface — the kernel takes N loops today (§7.1), the runtime composes ONE (§0 item 4, §11)
-> 2026-08-21 | docs-cohesion execution-and-sessions | verified against src/core/worker-loop.ts, src/core/worker-sessions.ts, src/server/worker/compose.ts and src/infra/sqlite/run-store-contracts.ts; the illustrative loop snippet that stood here named three functions that do not exist and was replaced by the real shape
-<!-- /roadmap-status -->
 
 Each worker is workflow-scoped and runs the claim-generation protocol. The shape, as built
 (`runWorkerLoop`, `src/core/worker-loop.ts`):
@@ -238,6 +217,15 @@ while (!stopSignal.aborted) {
 await sessions.closeAll("worker-stop");
 ```
 
+#### D364 — worker-local confirmed-action publisher (2026-10-02)
+
+Each worker loop creates one confirmed-action publisher with its worker id, a fresh stream-incarnation
+id and a capacity of 256. The publisher assigns increasing sequence numbers within that incarnation.
+The loop closes it on every exit before closing browser sessions and warns if events remain pending.
+Its injected append path is optional; this worker-local queue and identity do not claim persisted
+ordered streaming, which belongs to Phase 4 (ref dashboard-surfaces D364). Saturation and append
+health are diagnostics and never settle a run or external write.
+
 - Claim authority is SQLite with owner, attempt, claim generation, heartbeat renewal, fenced
   terminalization, dead-worker recovery, and bounded re-poll.
 - A worker renews exactly its one active claim. A renewal that reports the claim LOST aborts the
@@ -262,7 +250,7 @@ await sessions.closeAll("worker-stop");
   parks/refuses; it never means “no unfinished write.”
 
 ### 3.0 A worker sweeps its OWN id before its first claim (D200)
-<!-- roadmap: p1-kernel -->
+
 
 `claimNext` refuses while a worker id still owns a non-terminal run — §0.3's "one worker, one active
 item", enforced as a throw, not a typed outcome. The D118 sweep that would release such a row lives
@@ -307,7 +295,7 @@ carries the exclusivity as a `superRefine`: exactly one of `staleBefore` / `work
 and never neither.
 
 ### 3.1 Dispatch and fairness
-<!-- roadmap: p1-kernel -->
+
 
 Within a workflow queue, claim order is priority then FIFO — literally
 `ORDER BY CASE priority WHEN 'interactive' THEN 0 ELSE 1 END, created_at, record_key`
@@ -339,7 +327,7 @@ worker. (`src/core/provider-admission.ts`; `provider-admission.test.ts`, `provid
 ---
 
 ## 4. Browser-session behavior
-<!-- roadmap: p1-kernel -->
+
 
 **A browser session is a callback LEASE, not a handle a caller holds.**
 `WorkerSessionManager.withDriver(need, instance, signal, operation)` is the whole surface
@@ -455,7 +443,7 @@ passing one. `stop-worker` and `pause-worker` reach the lease from the panel; `s
 process (§11 owns the spawn half).
 
 ### 4.1 Authentication is a content-level observation, never a URL (D120)
-<!-- roadmap: p1-kernel -->
+
 
 **A session is authenticated only when the page proves it. A URL never proves it.** A URL is chosen
 by whoever served the redirect; a system's sign-in page and its application routinely share a host,
@@ -553,16 +541,7 @@ workflows' workers cold-start together. §10 is the serialization that closes it
 ---
 
 ### 4.3 Session acquisition is bounded separately from the task (D125)
-<!-- roadmap: p1-exit -->
 
-<!-- roadmap-status: p1-exit -->
-- [x] `timeouts.sessionAcquireMs` exists as its own leaf, default 60 000 ms (`src/domain/config/schema.ts:196`)
-- [x] the bound is scheduler-armed and the acquisition runs under its OWN linked signal, so a cooperative recipe cancels itself rather than only being raced (`#acquireBounded`, `src/core/worker-sessions.ts:449`)
-- [x] an acquisition that lands AFTER its bound is poison-closed, never inherited as a warm reuse (`#abandonAcquisition`)
-- [x] the refusal names both leaves and says what to raise for a hands-on Duo deployment (`src/core/worker-sessions.ts:144`)
-- [x] D243 corrected the message this bound used to be blamed for: a REFUSED Duo ceremony now refuses on content in ~9.5 s (§4.2)
-> 2026-08-21 | docs-cohesion execution-and-sessions | verified against src/domain/config/schema.ts (60 000 / 180 000 / 15 000 / 180 / 60) and src/core/worker-sessions.ts; folded here from the dated block that stood above §0
-<!-- /roadmap-status -->
 
 **`timeouts.sessionAcquireMs` (default 60 000 ms) bounds ONE browser-session acquisition — the
 factory `open` plus that system's login recipe — and it is a different bound from
@@ -609,17 +588,7 @@ would report D125's message instead of naming the holder.
 ---
 
 ## 5. Speed engineering
-<!-- roadmap: phase-1 -->
 
-<!-- roadmap-status: phase-1 -->
-- [x] the fixed-sleep tax is removed, not reduced: zero `sleepMs` on every task span of the exit run, and no `sleepMs` field exists in `src/` at all
-- [x] `waitForTimeout` is forbidden outright by the `wait-for-timeout-allowlist` ratchet arm over `src/stores`, executed against a violating fixture by `guard-manifest.test.ts`
-- [x] every task invocation runs under an immutable scheduler-armed abortable deadline (`bounded-task-deadline`), and a task that ignores its signal still lands terminal `failed` with its session poison-closed
-- [x] item 5's per-invocation bound is what `bounded-task-deadline`'s invariant cites as "§5.5" — this section has no §5.5; the numbered item is the reference
-- [-] item 4's span sleep budget: RETIRED with the `sleep-budget` guard (D188, 2026-08-09) — there is no authored sleep left for a budget to measure
-- [ ] the arm's roots are `src/stores`; `src/infra/browser/**` is outside its reach and contains no `waitForTimeout` today
-> 2026-08-21 | docs-cohesion execution-and-sessions | verified against tests/unit/architecture/helpers/ratchet-arms.ts:53, guard-inventory.json (sleep-budget retired) and a tree-wide grep for sleepMs, which finds none in src/
-<!-- /roadmap-status -->
 
 Removing lanes does not preserve the fixed-sleep tax:
 
@@ -661,7 +630,7 @@ exercise with its own evidence, not something this criterion has already claimed
 ---
 
 ## 6. Failure isolation
-<!-- roadmap: p1-kernel -->
+
 
 ### 6.1 Page/subject-isolation invariant
 
@@ -720,19 +689,7 @@ risk register those guards answer.
 | OnBase overlap | **NOT BUILT.** `onbaseSession` declares `exclusive:true` and nothing else exists — no driver, no login recipe, no identity lease, no test. D15 stands unbuilt |
 
 ### 7.1 The 2j concurrency matrix — executed (D182)
-<!-- roadmap: p2-2j -->
 
-<!-- roadmap-status: p2-2j -->
-- [x] C1–C4, the dependency half, against real `runWorkerLoop` instances over one authority database (`tests/unit/architecture/multi-worker-overlap.test.ts`)
-- [x] C5–C8, the control half — teardown, `closeAll` re-entry, an unprovable poison-close, and the bounded fleet soak (`tests/unit/architecture/worker-teardown-soak.test.ts`)
-- [x] C9–C10, the intake half (`tests/unit/concurrency-matrix.test.ts`)
-- [x] every other test this table cites resolves at HEAD: `run-authority`, `claim-sweep-recovery`, `kuali-transaction-proof`, `architecture/ledger-projector`, `worker-sessions`, `worker-composition`, `worker-loop`, `capture-durability`, `intake-session`, `intake-command-arms`
-- [x] C11, the Duo ceremony lease — two real `runWorkerLoop`-equivalent `WorkerSessionManager`s over ONE authority database, the second's ceremony beginning after the first's verifier returned, plus the waiter refusal and the TTL takeover (`tests/unit/duo-ceremony-gate.test.ts`, `1c244a40`)
-- [x] the standing rule's §11 pool row: C12, the W5 two-child parallel proof over the composed kernel pool door, with REAL child processes (`tests/unit/server/worker-pool-parallel-proof.test.ts`)
-> 2026-08-25 | parallel-runs P3 follow-up | `composeWorkerRuntime` now requires a pool index and derives a distinct stable worker id; concurrent process admission is per worker process and duplicate identity reaches the authority lease. `createPhase1WorkerRuntimeExecutor` remains the explicitly one-worker compatibility arm
-> 2026-08-26 | W5 parallel proof | C12 landed: two real spawned worker children prove birth via their own durable leases under their own OS pids, the W3b per-workflow mutex is observed at the door (same workflow serializes, different workflows interleave), locks release at shutdown with close() evidence on the fault sink, and spawn ENOENT / undelivered signal / stop-channel throw each surface typed — never as an applied ack. Measured numbers in this section's 2026-08-26 as-built note
-> 2026-08-26 | C12 live extension (W6) | the same door driven LIVE: two panel-spawned separations workers ran two composed dry runs concurrently against real Kuali/UCPath/New Kronos — simultaneously `running` 19:32:18→19:32:48Z, C11's lease serializing ceremony generations g1…g8 across both workers with one by-name waiter refusal and no counter burn, the identity gate approved through the ceremony and its resume claimed by the OTHER member, 0/0/0 write rows. Evidence: docs/rebuild/migrations/separations.md §9.27
-<!-- /roadmap-status -->
 
 The table above names *risks*. This one names **cases**, and every row names the exact test that
 executes it. A risk table can be satisfied by a plausible-sounding sentence; a case table cannot,
@@ -904,20 +861,7 @@ decision:
 ---
 
 ## 10. The Duo ceremony lease — one ceremony at a time per credential (R12)
-<!-- roadmap: duo-lease -->
 
-<!-- roadmap-status: duo-lease -->
-- [x] BE `duo_ceremony_leases` in authority, keyed on the CREDENTIAL, with acquire / release / expire and a generation (`bfc7d318` — schema v16, `AuthorityDatabase.authority.duoCeremonyLeases`)
-- [x] BE the `DuoCeremonyLeaseToken` the SSO helpers require, minted only by the lease store and unforgeable at runtime (`bfc7d318` mint/retire, `cb7f17f8` the helpers assert it)
-- [x] BE bounded waiters that refuse by name before the acquisition envelope fires, naming the holder (`cb7f17f8` — `DuoCeremonyLeaseHeldError`, `src/core/duo-ceremony-gate.ts`)
-- [x] BE the fresh-profile-once recovery, holding the lease across the retry and failing by name on the second refusal (`cb7f17f8` — `WorkerSessionManager.#openAndLogin`, `PlaywrightWorkerSessionFactory.discardProfile`)
-- [x] BE the grace leaf, registered as a post-baseline optional leaf so an existing `config_snapshots` row still parses (D133) (`bfc7d318` — `timeouts.duoCeremonyLeaseGraceMs`, generation 3)
-- [x] BE the guard, with a violating fixture, registered in `guard-inventory.json` in the same commit (`37e747f0` — `duo-ceremony-lease`)
-- [x] PROOF two workers' cold starts serialize — unit, manual clock (`1c244a40`, `tests/unit/duo-ceremony-gate.test.ts`) AND the LIVE two-worker cold start, 2026-08-21: `live-a` / `live-b`, one credential, lease generations 3 → 4, no overlap, zero waiter refusals (§Live proof below)
-- [x] DOCS the decision — this section is its normative text; `reference/decisions.md` gets the pointer line in the same commit (D267)
-> 2026-08-21 | duo-lease E1 | built as-built in five commits (bfc7d318 store+token+leaf, cb7f17f8 gate+wiring+recovery, 37e747f0 guard, 1c244a40 proof, 23231b37 compose seam + manifest); the live two-worker cold start is the one box left open and is documented below
-> 2026-08-21 | duo-lease E2 | the LIVE two-worker cold start RAN against real UCPath SSO and real Duo — both workers `logged-in`, ceremonies serialized at generations 3 → 4 with no overlap; the record, both timings and the one harness change it needed are §Live proof below
-<!-- /roadmap-status -->
 
 **AS-BUILT (D267, 2026-08-21).** This section is the owning contract for the tree's `{#duo-lease}`
 node and the normative text of D267. Everything below exists in `src/` at the cited commits.
@@ -1105,23 +1049,7 @@ advances across profiles.
 ---
 
 ## 11. Sessions and the worker pool (R11)
-<!-- roadmap: parallel-runs -->
 
-<!-- roadmap-status: parallel-runs -->
-- [x] BE the worker pool — N workers per workflow, spawned and stopped from the dashboard: the W4 Session Panel controls (`b45431db`) over the W3 supervisor's real `child_process` spawn (`src/server/dashboard/compose.ts`), live-exercised end to end 2026-08-26 (plan 2 → spawn ×2 → D271 replacement spawn ×2 → stop ×2, all from the panel — `docs/rebuild/migrations/separations.md` §9.27)
-- [x] BE pool-indexed worker ids: the CLI requires a positive pool index and composition carries `<workflow>-worker-<index>` into the authority lease; distinct indices retain distinct rows and duplicate ownership is refused
-- [x] BE the projection serves a worker-POOL version — `worker_pools` (schema v17) is the CAS basis: `plan-worker-count` and `spawn-worker` target `{workflowId, expectedVersion}` where `expectedVersion` is the POOL row's version (0 for an unplanned workflow), the kernel refuses a stale one with `conflict` naming the current version BEFORE the runtime seam, and the day wire serves `workerPools[]` (`93b7b18e` store · `b4f30ea0` kernel · `24b04dfa` wire — D269)
-- [x] BE a durable session record and its grouping, membership derived from authority — `run_sessions` (schema v17, insert-only, member-less) written by `fanOutQueuedRuns` BEFORE its first member; every run row carries `sessionId` (`tasks.session_id`, read forward) and `runs.listBySession` IS the membership; a retry inherits its session; the queue row serves `session` (`93b7b18e` · `57f2bb9c` · `24b04dfa` — D269)
-- [x] FE the session view — worker cards show authority membership and what each worker is doing; groups exact queue-row session ids, joins the claiming card by exact `runId`, preserves absent reasons and distinguishes declared pool size from non-terminal authority worker cards (`97a55b07`)
-- [x] PROOF two separations dry-run scenarios in parallel, recorded; plus a §7.1 row in the same commit — LIVE 2026-08-26: docs 4502 (preview terminal, gate approved through the ceremony) and 4495 (the genuine S7 refusal) simultaneously `running` 19:32:18.305→19:32:48.009Z on `separations-worker-1`/`-2` under one D269 session, ceremonies serialized g1…g8 with no overlap and no counter burn; the §7.1 row is C12 (W5), whose live extension note cites the same evidence (`docs/rebuild/migrations/separations.md` §9.27)
-- [x] needs §10 first — the pool multiplies the hazard the lease removes (§10 landed, D267)
-> 2026-08-21 | docs-cohesion execution-and-sessions | DESIGNED, NOT BUILT — verified the five kernel command arms exist and validate (src/domain/commands.ts:181), createDashboardWorkerSupervisor refuses spawn BY NAME (src/server/dashboard/compose.ts:322) and createPhase1WorkerRuntimeExecutor refuses desiredWorkers !== 1 (src/core/worker-loop.ts:379)
-> 2026-08-21 | parallel-runs P12 | the AUTHORITY half is built (D269): schema v17 `worker_pools` + `run_sessions` + `tasks.session_id` (93b7b18e), the pool CAS in the kernel (b4f30ea0), the session written at every fan-out and inherited by retry (57f2bb9c), the day wire's `workerPools[]` block and the row's `session` (24b04dfa); left: the pool PROCESS (spawn + pool-indexed ids, P3), the FE session view (P4), the parallel PROOF
-> 2026-08-25 | parallel-runs P3 | pool-indexed identity is built: `worker <workflow> --pool-index N` validates positive N, derives the stable id and starts authority under that lease identity. The dashboard process supervisor, FE session view and parallel proof remain unbuilt
-> 2026-08-25 | parallel-runs P3 review | worker processes use per-start durable records aggregated into D181's unchanged restore arm; distinct indices coexist and duplicate identity reaches authority. Singleton admission is an atomic filesystem claim (16 synchronized processes admit one), generation 1 is reserved for never-run so first start is 2, restore holds exclusive admission through staged checksum verification and swap, runtime starts check before/after their record, and ownership binds PID to OS process birth (Darwin C/UTC epoch seconds, with honest one-second resolution). Pool supervision, FE and parallel proof remain unbuilt
-> 2026-08-25 | parallel-runs P4 | the FE session view reads only the D269 day wire (`97a55b07`): `QueueSurface.session.sessionId` groups membership, `WorkerCard.currentRun.runId` joins a claiming worker, and the absent session arm retains its served reason. Pool declaration and non-terminal authority worker cards remain separate facts; no process command is exposed
-> 2026-08-26 | parallel-runs PROOF | the live two-worker pass (§9.27): pool planned+spawned+stopped from the Session Panel, two dashboard-started composed dry runs concurrently `running` for 29.7 s on distinct pool identities under one session, the D267 waiter refusal and the D214 cross-worker park+resume both exercised live, 0/0/0 write rows. Found and NAMED, not fixed: the Duo preflight proves the config credential instead of the packaged one a worktree lacks; macOS timer throttling starves an idle spawned worker's heartbeat until a peer's sweep stops its lease; a cold system's first `plan-worker-count` is unreachable from the panel
-<!-- /roadmap-status -->
 
 **AUTHORITY HALF AS-BUILT (D269, 2026-08-21); POOL-INDEXED IDENTITY AND FE VIEW AS-BUILT
 (P3/P4, 2026-08-25); the dashboard process supervisor AS-BUILT and the parallel PROOF RECORDED
@@ -1330,7 +1258,7 @@ not misrepresent the already queued runs as rejected or claim an unproved worker
 ### Session controls amendment — 2026-09-18
 
 **Operator-approved requirements; implementation pending in
-[3.1.11](../plans/phase-3/3.1-finish-the-dashboard/task-11-finish-sessions-worker-pools-and-browser-lifecycle.md#approved-execution-brief--2026-09-18).**
+3.1.11 (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-3/3.1-finish-the-dashboard/task-11-finish-sessions-worker-pools-and-browser-lifecycle.md`).**
 Choices 1 A and 2 A amend the existing worker-control basis and browser-control semantics. D269's
 pool declaration, D271's process ownership and stop policy, and the session manager's exclusive
 resource/transaction rules remain binding.
@@ -1385,12 +1313,12 @@ still belongs to the phase's 3.1.18 harness and 3.1.19 execution.
 ## Provider storage foundation
 
 **2026-09-08 — approved, pending implementation.**
-[Side task `side/provider-usage`](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/provider-usage.md) owns the successor to
+Side task `side/provider-usage` (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/provider-usage.md`) owns the successor to
 D112's two storage tables: `provider_admissions` → `provider_requests` and
 `provider_budget_counters` → `provider_usage`. The operator explicitly limited this assignment to
 provider-neutral tables/storage logic and compatibility; real API keys, provider-specific adapters,
 pool selection, quota retrieval and presentation remain future work. The
-[parallel execution binding](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md) assigns shared schema/conversion and legacy adapters to
+parallel execution binding (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md`) assigns shared schema/conversion and legacy adapters to
 prerequisite B, then generic accounting to the independently testable provider-usage peer.
 
 Request records retain exact execution/config/request identity, budgets, reservations, lifecycle
@@ -1428,11 +1356,11 @@ legacy capability mapping; P owns generic accounting on those frozen interfaces.
 cannot reset provider usage or invent credential/model attribution. L's cleanup port preserves
 cumulative usage and rejects late settlement for deleted owners.
 
-This is the C0-admitted target contract, not a claim of implemented behavior. The [Phase 2.6 owner](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md) binds sequential prerequisites, focused development proof and final 2.6.9 acceptance. Released evidence and migrations remain immutable.
+This is the C0-admitted target contract, not a claim of implemented behavior. The Phase 2.6 owner (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md`) binds sequential prerequisites, focused development proof and final 2.6.9 acceptance. Released evidence and migrations remain immutable.
 
 ### F implementation baseline — 2026-09-09
 
 F supplies retained-snapshot session/resource factories and separate S-owned selection/claim hooks, preserving current ownership fences, accepted replay and UNKNOWN refusal. This is the working extraction baseline; S owns its remaining activation/retry/child policy.
 
-Implementation, frozen interfaces and focused evidence: [F execution owner](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/foundation.md#f-execution-record--2026-09-09).
+Implementation, frozen interfaces and focused evidence: F execution owner (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/foundation.md`).
 This records implementation of the approved C0 contract, not a new decision or full-phase acceptance.

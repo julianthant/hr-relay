@@ -1,8 +1,8 @@
 # Workflow authoring — the practical guide
 
-> The one practical path for adding or changing a workflow in this repository. The normative
-> contract is `ref workflow-model` §1.6 (types, compiler products, invariants, refusals); the test
-> obligations are `ref guards-and-tests` §10.3/§10.4/§10.11; the concept boundaries and the change
+> The practical path for adding or changing a workflow in this repository. The normative
+> contract is `ref workflow-model` §1.6 (types, compiler products, invariants, refusals); current
+> verification follows `ref guards-and-tests` and the owning phase; the concept boundaries and the change
 > routing table are doc 03.2 `{#workflow-authoring-model}`. This guide restates none of them as a
 > second opinion — it shows the real files, in the order you touch them, with every code excerpt
 > copied from the tree at the commit named on it. Where this guide and the code disagree, the code
@@ -11,18 +11,28 @@
 Every fenced TypeScript block below that starts with `// from <path> @ <sha>` is a verbatim excerpt
 of that file at that commit (leading indentation aside). Nothing in this guide is a sketch.
 
+**Current paths and test policy — operator amendments 2026-10-01/02:** use the [codebase structure map](../reference/codebase-structure.md)
+for the approved module homes and import direction. The main `workflow.ts` is the browser-safe
+operator-definition entry. A chunk harness lives at `steps/<step>/step.ts`. Workflow-specific task
+implementations and their `task-registry.ts` sit beside the definition but are loaded only by the
+backend composition root. The operator retired `tests/scenario/` and `tests/parity/` on 2026-10-02;
+declared scenario IDs remain contract data, while tests and manifests are not current proof. Missing
+rehearsal manifests report unavailable before execution. Future scenario and visual-test design is
+operator-led. Source excerpts pinned to earlier revisions retain their cited paths and do not
+describe today's filesystem layout.
+
 **Contents**
 
 1. What you author, what is generated, what you never hand-maintain
 2. Before you write code: find, reuse, or build
-3. The four authored artifacts of a reuse-only workflow — and the registration edits
+3. Current authored artifacts — and the registration edits
 4. `defineWorkflow` — the API, entry by entry
-5. The minimal example — Person Lookup (reuse-only, four artifacts)
+5. The minimal example — Person Lookup (reuse-only)
 6. The complete example — Separations (steps, a conditional gate, transactions, omissions, harnesses)
 7. Omissions (D307/D313)
 8. Parallel and delegate entries
 9. The new-task example — a pure fold in a workflow mini-store
-10. Testing: the T1 pair, the subject registry, the live run, the migration record
+10. Verification: retained tests, rehearsal availability and the migration record
 11. Debugging: what each refusal means and which gate goes red
 12. "What file do I change?"
 
@@ -30,20 +40,29 @@ of that file at that commit (leading indentation aside). Nothing in this guide i
 
 ## 1 · What you author, what is generated, what you never hand-maintain
 
-You write **one `workflow.ts`** per workflow and, for a workflow that reuses existing tasks and
-generic surfaces, exactly three more files (§3). Everything else a workflow needs is derived:
+You write one main `workflow.ts` per operator workflow and, when it has retained chunk-harness
+definitions, one `steps/<step>/step.ts` per harness. A reuse-only workflow has a dated migration
+record and any genuinely new task it needs (§3). Scenario IDs in a definition remain contract
+metadata; they are not evidence that tests ran. Everything else a workflow needs is derived:
 
 | You author (the only inputs) | The compiler / runtime generates (never hand-maintain) |
 |---|---|
-| `src/workflows/<id>/workflow.ts`: one `defineWorkflow({...})` — identity, presentation, typed input/result, `role`, `scenarios`, ordered `[timeline group, entries[]]` tuples with typed binds, and (only when the workflow opts into D355 complete format) occurrence bindings/outcomes in `operationDisplay` | the `WorkflowDescriptor` (`compileWorkflow(definition).descriptor`), its `flow`, `timeline`, node graph, `contractFingerprint` and D355 execution projection |
-| `tests/scenario/workflows/<id>/structural.scenario.test.ts` (T1a) | the `WorkflowModule` (`composeWorkflowModule`): which task stores and browser sessions the workflow needs, resolved from the contracts the entries name |
-| `tests/scenario/workflows/<id>/dry-run.scenario.ts` (T1b manifest) | every generic dashboard/Explorer projection: rail entry, picker, start box and run modal, timeline/detail, Steps (omission) screen, Explorer graph and source links |
-| `docs/rebuild/migrations/<id>.md` (the dated record) | `src/domain/workflow/generated-build-manifest.ts` (`npm run build:manifest`) and the `ref stores` §2 task catalog (`npm run stores:catalog`) |
+| `src/workflows/<id>/workflow.ts`: one operator `defineWorkflow({...})` — identity, presentation, typed input/result, `role`, `scenarios`, ordered `[timeline group, entries[]]` tuples with typed binds, and (only when the workflow opts into D355 complete format) occurrence bindings/outcomes in `operationDisplay`; a chunk harness uses `src/workflows/<composition>/steps/<step>/step.ts` | the `WorkflowDescriptor` (`compileWorkflow(definition).descriptor`), its `flow`, `timeline`, node graph, `contractFingerprint` and D355 execution projection |
+| `definition.scenarios` (declared scenario IDs) | contract validation; it does not imply a current test file, executed proof or available rehearsal manifest |
+| `docs/rebuild/migrations/<id>.md` (the dated record) | `src/workflow-kit/validation/generated-build-manifest.ts` (`npm run build:manifest`) and the `ref stores` §2 task catalog (`npm run stores:catalog`) |
 | a new reusable **task** (contract + implementation in the owning store) only when §2's table says BUILD | checkpoints, replay, retry, recovery (resume / restart), gate parking, the write sequencer's fences, receipts, semantic logs, screenshots, notifications, Archive — inherited by every compiled workflow with no per-workflow glue |
 
-**There is no other authoring path.** `src/base/workflow-definition.ts` is the one seam. A
-`descriptor.ts`, `module.ts`, `nodes.ts`, `step.ts`, `node-ids.ts` or `omission.ts` beside a
-`workflow.ts` is refused by the `workflow-layout` guard; a `defineWorkflowDescriptor(` / `flow(` /
+Normal compiled registration supplies `workflowExplorerDeclaration` and its closed
+`definitionPreview` compiled/unavailable contract. Maintain ordered definitions and typed references,
+plus optional `operationDisplay`; do not create an Explorer mapping. Keep descriptor identity and
+full graph coverage intact. Systems derive in first-use order, and omitted `operationDisplay`
+remains explicitly legacy/unavailable. Source jumps require one exact displayed producer. Branch
+choices are hypothetical, and branchless definitions have no `Preview paths` control; neither
+declares run progress.
+
+**There is no other authoring path.** `src/workflow-kit/workflow-definition.ts` is the one seam. A
+`descriptor.ts`, `module.ts`, `nodes.ts`, `node-ids.ts` or `omission.ts` beside a main `workflow.ts`,
+or a `step.ts` outside a declared `steps/<step>/` folder, is refused by `workflow-layout`; a `defineWorkflowDescriptor(` / `flow(` /
 `composeWorkflowModule(` call under `src/workflows/`, a second `defineWorkflow(` in one file, a
 generic dashboard/server branch keyed by a workflow id, or a fifth authored artifact is refused by
 `workflow-authoring-budget` (D312/D316/D317). The retired names (`WorkflowRecipe`,
@@ -56,20 +75,20 @@ anywhere in `src`/`tests`/`scripts`.
 
 Open `docs/rebuild/reference/stores.md` §2 — the **generated task-store catalog** — and search it
 by system, capability, effect (`read` / `prepare` / `commit`), inputs and outputs. It is regenerated
-from `src/stores/index.ts` by `npm run stores:catalog`, and `npm run stores:catalog:check` fails on
+from `src/backend/app/registries/task-registry.ts` by `npm run stores:catalog`, and `npm run stores:catalog:check` fails on
 stale bytes, so what it lists is what the registry binds today. Then classify each operation you
 need with doc 03.2's current task ownership and `ref workflow-model` §1.6.1 (the table is copied here so the decision is made before any file opens):
 
 | Need | Author action | Additional proof |
 |---|---|---|
-| Existing operation, same contract | import the exact task contract into `workflow.ts` | none beyond this workflow's T1 pair |
+| Existing operation, same contract | import the exact task contract into `workflow.ts` | focused contract/definition checks under the owning phase; no current scenario tier |
 | Existing operation with D355 display structure | reuse the task-owned operation; bind its occurrence values and composition-specific outcomes only | compiler fixture/refusal proof; do not copy action children or selectors into `workflow.ts` |
 | Existing operation with an already-declared option | pass the typed option from the workflow definition | option behavior is already task-owned |
-| Same browser operation, legitimate new variant, same output meaning | extend the shared task with a typed option; update that task's tests once | task contract/implementation proof plus affected workflow T1 |
-| Pure workflow-specific calculation | add or reuse a pure task in the workflow mini-store (§9) | pure task tests plus workflow T1 |
+| Same browser operation, legitimate new variant, same output meaning | extend the shared task with a typed option; update that task's tests once | task contract/implementation proof plus affected workflow checks |
+| Pure workflow-specific calculation | add or reuse a pure task in the workflow mini-store (§9) | pure task tests plus affected definition checks |
 | New page operation or different output meaning | add one reusable task contract and driver operation to the owning task store | contract/driver tests and live selector verification |
 | New external write | add an explicit `transaction(...)` backed by prepare/probe/commit/verify | full controlled-write evidence; dry run alone is insufficient |
-| New dashboard interaction or wire arm | extend the generic capability once | one T2/T3 proof; later workflows inherit it |
+| New dashboard interaction or wire arm | extend the generic capability once | focused proof defined by the owning phase; future scenario design requires the operator |
 
 "Similar" is not permission to copy a task: the system interaction and the output contract decide
 whether reuse is honest. A read task's identity is a **page visit** (D194): one task returns the
@@ -78,29 +97,31 @@ a `bind` or a pure fold, never a second scrape.
 
 ---
 
-## 3 · The four authored artifacts — and the registration edits
+## 3 · Current authored artifacts — and the registration edits
 
-A workflow that reuses existing tasks and generic surfaces authors exactly (D312, `ref
-workflow-model` §1.6.1):
+A workflow that reuses existing tasks and generic surfaces currently authors:
 
 | # | Path | What it is |
 |---|---|---|
-| 1 | `src/workflows/<id>/workflow.ts` — for a chunk harness, `src/workflows/<composition-id>/<step-key>/workflow.ts` (`src/domain/workflow/source-layout.ts`) | one `defineWorkflow(...)` call (§4) |
-| 2 | `tests/scenario/workflows/<id>/structural.scenario.test.ts` | the ONE collected structural scenario (§10) |
-| 3 | `tests/scenario/workflows/<id>/dry-run.scenario.ts` | the T1b live manifest — NOT a vitest file (§10) |
-| 4 | `docs/rebuild/migrations/<id>.md` | the dated migration record (§10) |
+| 1 | `src/workflows/<id>/workflow.ts` — for a chunk harness, `src/workflows/<composition-id>/steps/<step-key>/step.ts` (`workflowSourcePath`) | one `defineWorkflow(...)` call (§4) |
+| 2 | `docs/rebuild/migrations/<id>.md` | the dated migration record |
 
-A workflow folder holds **only** `workflow.ts`. A step sub-folder exists only when the step carries
-a chunk harness (its own `workflow.ts`, §6.4); a declared timeline group needs no folder.
+The workflow folder holds the browser-safe `workflow.ts`; it may also contain a workflow-owned
+`task-registry.ts` and `tasks/`, which only the backend loads. A `steps/<step>/` sub-folder exists
+when that declared step has a chunk harness, and holds its `step.ts`; a timeline step without a
+harness has no such folder. `workflowSourceFolder` and `workflowSourcePath` derive source locations
+from role. Scenario-path helpers describe possible role-derived locations only; the scenario suite
+and files are retired pending future operator-led test design.
 
-Only operator workflows are registered. A step proof in a sub-folder is retained for historical
-run reads and isolated tests; it is not added to either active registry tuple.
+Only operator workflows enter the main `WORKFLOW_MODULES` tuple and descriptor registry. Harness
+step modules are composed separately in `STEP_PROOF_MODULES` for historical proof reads and tests;
+they do not add picker entries or operator startability. Their workflow ids remain unchanged.
 
 **Registration is five one-line edits across two files, not authoring.** The composition root is
 the ONE static module tuple, and its own header says so ("adding a workflow is one import plus one
 tuple entry rather than ten synchronized lists"):
 
-- `src/control/workflow-registry.ts` — an import of your `workflow.ts`, an exported
+- `src/backend/app/registries/workflow-registry.ts` — an import of your main `workflow.ts`, an exported
   `<id>Module = composeWorkflowModule(compileWorkflow(<yourWorkflow>), taskStoreRegistry.stores)`
   const, and that const listed in `WORKFLOW_MODULES` (server side; resolves stores);
 - `src/workflows/descriptor-registry.ts` — an import and `compileWorkflow(<yourWorkflow>).descriptor`
@@ -109,29 +130,17 @@ tuple entry rather than ten synchronized lists"):
 
 Then run `npm run build:manifest`. `compileWorkflow` resolves the workflow's `contractFingerprint`
 from the checked-in manifest and throws `workflow <id> has no build-manifest entry — regenerate
-src/domain/workflow/generated-build-manifest.ts before registering it` until you do; the
+src/workflow-kit/validation/generated-build-manifest.ts before registering it` until you do; the
 `descriptor-coverage` guard fails on a stale manifest afterwards.
 
-**The T1b manifest has its own registration surface, outside the four.** The CLI loads a workflow's
-`dry-run.scenario.ts` through `src/server/dry-run-scenario/manifests.ts` (the workflow-id → loader
-`Map`), resolves its subject through `src/server/dry-run-scenario/compose.ts`
-(`resolveDryRunScenarioTarget`), and models the workflow's registry arm in
-`src/control/test-target-registry.ts`. That last file needs, per workflow: a workflow-id const and its
-`MODELLED_WORKFLOWS` entry, a subject-kind enum, the subject's secret-reference schema, an arm schema
-and its key in `TestTargetWorkflowArmsSchema`, a ready-target schema, a resolution schema and the
-resolver — Person Lookup's `PersonLookup*` exports are the template. The `manifests.ts` and
-`compose.ts` sites are closed, decision-cited `GENERIC_WORKFLOW_ID_ALLOWLIST` entries in
-`workflow-authoring-budget` (D318 / `ref guards-and-tests` §10.9), so a new workflow with a T1b
-manifest edits these files and extends the allowlist with the same citation. The former 3c-A
-coordinator sheet that proposed deriving the loader is source-pinned at
-`a2b6df38^:docs/coordinator/phase-3c-migration/decisions/2026-09-02-3c-a-close-questions.md`; it was
-removed with completed coordination artifacts, and no owning decision replaced the explicit map.
-It therefore remains the documented registration step, and Phase 3.2 Task 4-2 must prove it from a
-clean context before candidate freeze.
+**Historical T1b manifest registration (retired 2026-10-02).** D318's old loader, resolver and
+subject-registry procedure is not an active authoring step. No rehearsal manifest is present in the
+current tree; a missing manifest reports unavailable before execution. Do not restore this surface
+until a separate operator-led scenario-design task defines its requirements.
 
-**The two closed lists beside the budget.** A legitimately extra file — a migration-doc supplement
-(`docs/rebuild/migrations/separations-legacy-behavior.md`) or a T2/T3 `tests/scenario/dashboard/<id>/`
-folder — is admitted only through a cited `ARTIFACT_EXEMPTIONS` entry in the same guard. A generic
+**The two closed lists beside the budget.** A legitimately extra file — for example, a migration-doc
+supplement (`docs/rebuild/migrations/separations-legacy-behavior.md`) — is admitted only through a
+cited `ARTIFACT_EXEMPTIONS` entry in the same guard. A generic
 server/dashboard file that must branch on a workflow id under a ratified decision (today D288's
 person-pseudonym fold and backfill, both `separations`) is admitted only
 through a cited `GENERIC_WORKFLOW_ID_ALLOWLIST` entry. Both lists are closed: each entry names its
@@ -142,7 +151,7 @@ dashboard capability is still built generically once.
 
 ## 4 · `defineWorkflow` — the API, entry by entry
 
-The seam is `src/base/workflow-definition.ts`. Its header is the shortest correct description:
+The seam is `src/workflow-kit/workflow-definition.ts`. Its header is the shortest correct description:
 
 ```ts
 // from src/base/workflow-definition.ts @ 16e7e63b
@@ -199,7 +208,8 @@ export interface WorkflowDefinitionSpec<
   view a run replays against. There is deliberately no `dryRun` field: that is envelope state (D6).
 - `role` is `defineWorkflowRole({ kind: "standalone" })`, `{ kind: "composition" }`, or
   `{ kind: "chunk-harness", of: "<composition-id>", step: "<step-key>" }` (§6.4).
-- `scenarios` is the non-empty list of scenario ids the structural scenario must claim (§10).
+- `scenarios` is the declared list of scenario ids retained for contract validation. It is not an
+  executable-test manifest or evidence that a scenario ran; future proof design is operator-led.
 - `intake` (optional) is `defineIntakeProjection(input, { <field>: CANONICAL_FIELDS.<x> })` for a
   spreadsheet-startable workflow.
 
@@ -298,11 +308,11 @@ The pattern for every entry is the same: **identity, references, bind.**
   execution edges. The scope a bind receives is typed from them: `scope.outputs["<id>"]` exists only
   for a referenced entry, and a conditional reference is `T | undefined`.
 - **bind** — a pure function from `{ input, outputs }` to the contract's input. Use
-  `requireFact(value, nodeId, path)` (`src/base/workflow.ts`) for a fact that must be present: it
+  `requireFact(value, nodeId, path)` (`src/workflow-kit/workflow.ts`) for a fact that must be present: it
   throws naming the node and path instead of substituting a default (the charter's single most
   dangerous pattern is a plausible fallback).
 
-Identity shapes (`src/base/workflow-definition.ts` §"entry identities"):
+Identity shapes (`src/workflow-kit/workflow-definition.ts`, §"entry identities\`):
 
 ```ts
 // from src/base/workflow-definition.ts @ 16e7e63b
@@ -365,7 +375,7 @@ owned by the parallel and never listed separately.
 `validateSteps` runs at definition time (module load), so a bad definition fails `tsc`-adjacent —
 the first import — not the first run. Each message names the workflow and the offender:
 
-| Refusal (`src/base/workflow-definition.ts`) | Cause |
+| Refusal (`src/workflow-kit/workflow-definition.ts`) | Cause |
 |---|---|
 | `workflow <id> requires at least one timeline group` / `requires at least one entry` | empty `steps` or a group with no entries (`timeline group "<key>" has no entries`) |
 | `workflow <id> repeats timeline group key "<key>"` / `repeats timeline group label "<label>"` | two tuples with the same key or label |
@@ -410,14 +420,15 @@ recovers the definition; `workflowEntryKinds(definition)` lists the entry kinds 
 
 ---
 
-## 5 · The minimal example — Person Lookup (reuse-only, four artifacts)
+## 5 · The minimal example — Person Lookup (reuse-only)
 
 `person-lookup` is the smallest real workflow: four `task` entries over three stores, one
-conditional node, no gate, no transaction. It is exactly the four artifacts of §3
-(`src/workflows/person-lookup/workflow.ts`, `tests/scenario/workflows/person-lookup/{structural.scenario.test.ts,dry-run.scenario.ts}`,
-`docs/rebuild/migrations/person-lookup.md`) and nothing else. Its head shows the imports a bundle-safe
-`workflow.ts` is allowed (zod, `src/domain/**`, the audited `src/base/**` builders — never a store,
-never Playwright):
+conditional node, no gate, no transaction. Its definition and migration record are the current
+authoring artifacts in §3. The former T1 scenario and rehearsal manifests are retired; the historical
+paths and excerpts below are retained only to explain the model. Its head shows the imports a bundle-safe
+`workflow.ts` is allowed (zod, `src/models/**`, `src/rules/**`, and audited `src/workflow-kit/**`
+builders — never a backend implementation or Playwright). The import list below is a commit-pinned
+historical excerpt:
 
 ```ts
 // from src/workflows/person-lookup/workflow.ts @ 16e7e63b
@@ -523,20 +534,21 @@ once end to end; every comment in it explains a choice you will face again.
 
 **Reuse-only, step by step.** To add a workflow like this one:
 
-1. Find every operation in the catalog (§2). If all are REUSE, you are on the four-artifact path.
+1. Find every operation in the catalog (§2). If all are REUSE, use the reuse-only path in §3.
 2. Write `src/workflows/<id>/workflow.ts`: schemas, presentation, `role`, `scenarios`, `steps`.
 3. Make the registration edits (five lines across the two registry files) and run `npm run build:manifest` (§3).
-4. Write the T1 pair and the migration record (§10); register the live subject label; run it live.
+4. Record the migration and its verified evidence. Scenario proofs and rehearsal manifests are
+   unavailable until future operator-led test design.
 5. Gate: `npm run typecheck && npm run lint && npm run test:coverage`, then
    `npm run build:manifest:check`, `npm run stores:catalog:check` (unchanged — proves you added no
-   task), `npm run roadmap:check`.
+   task).
 
 ---
 
 ## 6 · The complete example — Separations
 
 `separations` is the completeness proof: six timeline groups, nineteen nodes, one conditional
-operator gate, three transactions, three omittable steps, five chunk harnesses. Its one
+operator gate, three transactions, three omittable steps, five chunk harnesses. Its main
 `workflow.ts` (1,509 lines at `16e7e63b`) has three regions: **step identities** (one section per
 group), the **input/result schemas and presentation**, and the **`defineWorkflow` call** whose
 `steps` wires those identities.
@@ -672,26 +684,22 @@ The three omittable groups are wrapped by `group(step, { omission })`; the other
 step values. The result's `references` list every entry the derive reads, and an omitted write step's
 node is read through a declared `omitted` arm (§7.3).
 
-**Chunk harnesses.** Each of the five step folders (`kuali-extraction`, `identity-check`,
-`kronos-timecard`, `ucpath-transaction`, `kuali-finalization`) holds one `workflow.ts` whose
-`role` is `defineWorkflowRole({ kind: "chunk-harness", of: "separations", step:
-KUALI_FINALIZATION_STEP.key })` (the folder name IS the step key; the harness's own workflow id is
-free of it — `separations-kuali-read` lives in `kuali-extraction/`), which IMPORTS the step's
-identities from `../workflow.js` and wires them from its own ingress. A harness is not an operator
-workflow and does not appear in the picker, Explorer, worker controls or rail. Its composition owns
-the step in the run timeline.
-`job-summary` is a declared group with no harness, so it has no folder.
+**Chunk harnesses — current layout, 2026-10-01.** Each of the five step folders (`identity-check`,
+`kronos-timecard`, `kuali-extraction`, `kuali-finalization`, `ucpath-transaction`) holds
+`steps/<step>/step.ts` with one `defineWorkflow(...)` chunk-harness definition. The main
+`separations/workflow.ts` declares each group and its step/node identities; each harness imports its
+identities from the composition and wires them from its own ingress. The former matching structural
+scenario files were retired with the scenario suite; no current test path is implied.
+The harness id remains its run identity and the filesystem move does not change it. Harnesses do not
+appear in the operator picker, Explorer, worker controls or rail; the composition owns the visible
+timeline step. `job-summary` has no harness and no `steps/job-summary/` folder. The examples above
+are source-pinned to `16e7e63b`; use the current source map and these current paths when navigating.
 
-**A harness's artifact budget** is smaller than a rail workflow's: its `workflow.ts` and ONE
-structural scenario at `tests/scenario/workflows/<harness-id>/structural.scenario.test.ts`. It
-carries a `dry-run.scenario.ts` only when it proves a transaction (`separations-kuali-finalization`
-does; the four read/identity harnesses do not) and it shares its composition's migration doc. The
-four older harness scenarios predate the canonical layout and sit at
-`tests/scenario/<harness-id>.scenario.test.ts` under the cited `PRE_CANONICAL_SCENARIOS` list of
-`workflow-authoring-budget`; a new harness uses the canonical path. Note the guard's direction: arm
-(d) refuses a FIFTH artifact, it never requires the four — the T1 pair and the record are required
-by `ref guards-and-tests` §10.11 and doc 03.2's exit gate, and the `test-target-registry` and
-`scenario-coverage` guards are what go red when a pair is missing.
+**A harness's artifact budget** is smaller than a rail workflow's: its `steps/<step>/step.ts`
+definition; it shares its composition's migration record. The `source-layout.ts` scenario helpers
+retain role-derived path functions, but scenario files and suites are absent. Future harness-test
+design is operator-led. Source-pinned examples and historical pre-canonical lists keep their cited
+paths; they are not current requirements.
 
 ---
 
@@ -700,7 +708,7 @@ by `ref guards-and-tests` §10.11 and doc 03.2's exit gate, and the `test-target
 ### 7.1 Declaring one
 
 An omission is declared BESIDE the step's identities as a `StepOmissionDeclaration`
-(`src/domain/workflow/step-omission.ts`): a closed **form** the run modal's Steps screen draws
+(`src/models/workflow/step-omission.ts`): a closed **form** the run modal's Steps screen draws
 (field kinds `text`, `us-date`, `eid`, `integer`, `boolean`, `enum`, `text-list`; every field
 required) and a **`produces`** map keyed by the step's TASK node ids, each a pure function from
 `{ facts, scope, assertedAt }` to that node's COMPLETE, schema-valid output:
@@ -867,8 +875,9 @@ When §2's table says "pure workflow-specific calculation", the task lives in th
 mini-store `workflow:<id>` — sessionless, `effect: "read"`, no browser. Person Lookup's
 `active-status` fold is the whole pattern. Four files, each in its owning place:
 
-**1. The contract** — `src/domain/contracts/person-lookup/read-active-status.ts` (bundle-safe; a
-strict input over the upstream OUTPUT schemas, a closed output union with a reason on every arm):
+**1. The contract** — current path `src/models/workflows/person-lookup/read-active-status.ts`.
+The excerpt is pinned to its cited revision; it shows a bundle-safe strict input over upstream
+output schemas and a closed output union with a reason on every arm:
 
 ```ts
 // from src/domain/contracts/person-lookup/read-active-status.ts @ 16e7e63b
@@ -898,13 +907,13 @@ export const ReadActiveStatus = defineTaskContract({
 });
 ```
 
-**2. The implementation** — `src/stores/person-lookup/tasks/read-active-status.ts`: `defineTask(contract,
-impl)` with `sessions: []`, every output leaf recorded through `ctx.recordData` (a leaf the schema
-has but the implementation never records makes the real executor refuse before checkpointing), and
-a refusal through `ctx.fail` rather than a guessed default:
+**2. The implementation** — current path `src/workflows/person-lookup/tasks/read-active-status.ts`.
+The following excerpt is pinned to the cited revision. It uses `defineTask(contract, impl)` with
+`sessions: []`, records every output leaf through `ctx.recordData` (an unrecorded schema leaf makes
+the executor refuse before checkpointing), and refuses through `ctx.fail` rather than guessing:
 
 ```ts
-// from src/stores/person-lookup/tasks/read-active-status.ts @ 16e7e63b
+// from src/backend/workflow-tasks/person-lookup/tasks/read-active-status.ts @ 16e7e63b
 export const readActiveStatusTask = defineTask(ReadActiveStatus, {
   sessions: [],
   async run({ input, ctx }) {
@@ -921,11 +930,11 @@ export const readActiveStatusTask = defineTask(ReadActiveStatus, {
     };
 ```
 
-**3. The store registration** — `src/stores/person-lookup/index.ts`, then the store in
-`src/stores/index.ts`'s `TASK_STORES` (already there for an existing mini-store):
+**3. The task registration** — `src/workflows/person-lookup/task-registry.ts`, composed through
+`src/backend/app/registries/task-registry.ts` (the following source excerpt shows the earlier path):
 
 ```ts
-// from src/stores/person-lookup/index.ts @ 16e7e63b
+// from src/backend/workflow-tasks/person-lookup/store.ts @ 16e7e63b
 export const personLookupStore = defineWorkflowStore("person-lookup", {
   readActiveStatus: readActiveStatusTask,
 });
@@ -934,92 +943,39 @@ export const personLookupStore = defineWorkflowStore("person-lookup", {
 **4. The workflow entry** — the `activeStatus` task in §5, importing `ReadActiveStatus` by VALUE so
 a renamed field fails `tsc` here rather than at the first run.
 
-Then `npm run stores:catalog` (the catalog gains the row; `stores:catalog:check` is red until you
-commit it) and `npm run build:manifest` (task implementation fingerprints move). A contract a
-workflow uses that NO store implements yet must be listed in `config/pending-impl-bindings.json`
-(D107) — the guard fails in both directions. A browser task is the same pattern with
+Then run `npm run stores:catalog` (the task-store catalog gains the row;
+`npm run stores:catalog:check` detects stale bytes) and `npm run build:manifest` (task implementation
+fingerprints move). A contract a workflow uses that NO store implements yet must be listed in
+`src/backend/app/registries/pending-impl-bindings.json` (D107) — the guard fails in both directions. A browser task is the same pattern with
 `defineTask(driver, contract, impl)` bound to the store's exact `DriverDeclaration`, plus the driver
 operation and its live selector verification (`ref stores` §1, §2b).
 
 ---
 
-## 10 · Testing: the T1 pair, the subject registry, the live run, the record
+## 10 · Current verification and unavailable rehearsal manifests
 
-`ref guards-and-tests` §10.11 is the normative checklist; this is the same loop with the real files.
+The operator retired `tests/scenario/` and `tests/parity/` on 2026-10-02. Their former T1/T2/T3
+procedures are historical and are not current test or acceptance requirements. Future scenario and
+visual-test design is a separate operator-led task; do not recreate those paths or claim their old
+results as current evidence.
 
-**T1a — `tests/scenario/workflows/<id>/structural.scenario.test.ts`.** One collected file. Reach the
-descriptor through `tests/helpers/registered-workflows.ts` (add your `<id>Descriptor` export there;
-it re-exports the registry's modules), walk
-declared paths with `walkDescriptor` (`tests/scenario/helpers/pure-walk.ts`) against caller-supplied
-node outputs re-parsed through their owning schemas, and title each `it` with the scenario id it
-claims (`"person-lookup/happy-by-eid — …"`). Register every scenario id with its file in
-`src/domain/workflow/scenario-execution.ts` (`EXECUTABLE_SCENARIO_MANIFEST`, one `{ scenarioId, file }`
-row each). Every id in the workflow's `scenarios` must be registered there, claimed AND walked, and
-every coverage point the graph derives (branch arms, gate resolutions, delegation
-cardinalities, transaction dispositions) must be claimed — `scenario-coverage` is red in both
-directions. Runtime walks may run the REAL task implementations and REAL driver interpreters against
-deterministic fakes; recovery walks (D314) drive the real executor over a real authority database
-(see `person-lookup/resume-from-checkpoints` and `person-lookup/restart-from-start`). Assert graph
-shape, refusals and idempotency; assert nothing about the world; use synthetic subjects. End the
-file with the T1-pair `it` that proves the manifest is uncollected (copy it from Person Lookup's
-`describe("person-lookup T1 pair")`).
+Workflow definitions retain declared `scenarios` identifiers for contract validation. Those IDs do
+not imply a current proof file or executed coverage. A missing dry-run rehearsal manifest must return
+an explicit unavailable result before execution; do not substitute a fixture, create an ad hoc
+manifest or start browser/runtime work in its place.
 
-**T1b — `tests/scenario/workflows/<id>/dry-run.scenario.ts`.** A DECLARATION, deliberately without
-`.test.`; nothing collected may import it. It exports one `parseDryRunScenarioManifest({...})` with
-exactly one arm chosen from the compiled graph: `dry-run-preview` when the graph has a transaction
-node, `live-read` when it has none (D318). A `live-read` runs with `dryRun: false` and proves zero
-deltas in `write_intents`, `write_attempts` and `durable_outbox` counted by THIS run's intent set;
-adding a no-op transaction to enter the preview arm is forbidden. One case per registry ARM the
-workflow truthfully addresses, each naming `nodesReached`, `nodesExcluded`, `checkpoints`
-(`{ node, attempt, keyedBy }`), `gateResults`, `durableDeltas`, the complete ordered `receipt`
-tuples (obligation, verdict, mandatory — including every `node.*` row) and `terminal`. Person
-Lookup's manifest is the template.
+For current work, use the unit, integration and architecture test files that remain under `tests/`,
+plus focused lint, type, static and generated checks required by the owning phase. The dated migration
+record captures source provenance and completed acceptance evidence; it does not require a scenario
+inventory or T1b result while those suites are retired. The current suite map and retirement owner
+are the [codebase map](../reference/codebase-structure.md) and the 2026-10-02 amendment in the
+backend layout plan (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-3/backend-and-unit-tests.md`).
 
-**The subject registry — `config/test-data.json` (`subjects`).** Labels only. Register a label per
-subject with today's dated availability, an arm per workflow (kind = the manifest's `subjectKind`), and
-any private value as a closed reference `{ name }` resolved only from ignored
-`config/test-data.local.json` through `src/control/test-data.ts` (D341 supersedes both the old `.env`
-source and the protected-store source). The private file is read lazily after availability admission,
-captured once per start and bound as `test-data-local` with an opaque `sourceId`. A new private input
-name requires a `TEST_DATA_INPUT_NAMES` contract decision; do not add an environment key or a Settings
-name. Provider `.env` keys remain separate.
-Protected workflow inputs such as Separations `timekeeperName` use the descriptor's value-free
-`protectedInputs` declaration and the shared server admission adapter. Admission reads once,
-retains the canonical value and binding identity, and refuses caller override. Rerun, retry,
-relaunch and omission evaluation use that retained input. Never put protected values in browser
-constants, titles, fingerprints or diagnostic output; use the retained binding identity.
-A `gone` / `unknown` / `consumed` label resolves `blocked` (`not-started`) before any browser; that is
-a valid recorded outcome, never `failed`. Then register the workflow's T1b loader and resolver (§3).
-
-**Run it live** — pre-authorized, never ask:
-
-```bash
-npm run cli -- dry-run-scenario <workflow> --subject <label>
-```
-
-The runner writes an insert-only `dry_run_scenario_results` row (`met` / `failed` / `blocked`) and
-compares the manifest exactly. Run it on a fresh authority root when the item already completed
-there: a re-run of a completed item is attempt 2 and a first-attempt manifest fails `checkpoints`
-only (recorded, coordinator sheet item 5).
-
-**`docs/rebuild/migrations/<id>.md`.** The dated record: the reuse map (REUSE / CUSTOMIZE / BUILD per
-operation, with legacy commit + path provenance for anything ported), the scenario inventory, the
-T1b result ids (`dry_run_scenario_results` row, run and trace id, attempt, verdict) and the
-capability close. It is what a `PROOF` tick in doc 03.2 or controlled result in doc 03.3 cites.
-
-**The gates a new workflow makes red, and what each means**
-
-| Red gate | It is telling you |
-|---|---|
-| `descriptor-coverage` / `npm run build:manifest:check` | regenerate the build manifest (`npm run build:manifest`) |
-| `tests/unit/workflows/descriptor-registry.test.ts` | the two registration tuples differ (§3) |
-| `scenario-coverage` | a `scenarios` id is unregistered in `EXECUTABLE_SCENARIO_MANIFEST` or unclaimed, a claim is unwalked or names an absent file, or a derived graph point is unclaimed |
-| `test-target-registry` | the manifest's workflow is not modelled, its label is unregistered, or an arm kind mismatches |
-| `workflow-layout` | a file beside `workflow.ts`, a folder that is not a declared step with a harness |
-| `workflow-authoring-budget` | a fifth artifact, a retired name, a hand-authored path, or an unallowlisted workflow-id branch |
-| `pending-impl-bindings` (D107) | a contract with no store task, or a stale pending entry |
-| `npm run stores:catalog:check` | you added or changed a task; regenerate `ref stores` §2 |
-| `workflow-definition-conformance` | a generic projection (run modal, timeline, Explorer) cannot be derived from your definition |
+Definition and registration guards such as `descriptor-coverage`, descriptor tuple equality,
+`workflow-layout`, `workflow-authoring-budget`, `pending-impl-bindings`, store-catalog freshness and
+workflow-definition conformance continue to protect their current contracts. Check
+`docs/rebuild/guard-inventory.json` for the exact active guard set; a retired scenario-only guard is
+not a reason to weaken semantic, import-boundary, provenance or write-safety assertions.
 
 ---
 
@@ -1029,7 +985,7 @@ capability close. It is what a `PROOF` tick in doc 03.2 or controlled result in 
   imports the workflow, read the message — it names the workflow, the entry and the fix.
 - **Bind failures** (`workflow bind requires <node>.<path>, which is null|absent`) mean the upstream
   output legitimately lacks the fact (an unresolved selection, a `not-found` arm). Model the arm in
-  the bind or add the refusal path to the structural scenario; never default it.
+  the bind or record the refusal path for future operator-led scenario design; never default it.
 - **Task-level refusals** (`ctx.fail(code, …)`) surface as the task's declared `errorCodes` on the
   run's failure record and in `npm run cli -- explain <run>`.
 - **Live** — `npm run cli -- dashboard` (BFF) / `npm run dashboard` for the run timeline, detail
@@ -1038,11 +994,9 @@ capability close. It is what a `PROOF` tick in doc 03.2 or controlled result in 
 - **Selector or page-state failures** belong to the owning driver, never to the workflow: use the
   `hr-debug` playbook (`.agents/skill-library/hr-debug/REFERENCE.md`) — headless `playwright-cli`
   snapshot, repair the registry locator, re-verify live, record provenance.
-- **Equivalence checks after a change** — `tests/unit/workflow-definition-equivalence.test.ts`
-  (public descriptor/module/wire of both acceptance workflows), `workflow-definition-mutation-proof`
-  (a grouping/options-only change touches only `workflow.ts`), and `npm run test:parity` when a
-  dashboard-visible field moved (a changed `contractFingerprint` alone re-freezes references through
-  `npm run test:parity:update`, the ONE deliberate way).
+- **Current equivalence checks after a change** — use the retained unit and architecture tests
+  selected by the owning phase, plus generated-manifest and store-catalog checks when affected.
+  Scenario-based proof and visual parity acceptance are retired; future design requires the operator.
 
 ---
 
@@ -1060,7 +1014,7 @@ Doc 03.2's routing table, aligned to D329 — one reason, one owner:
 | add shared authentication behavior | the owning session provider/login declaration |
 | change retry/checkpoint execution mechanics | the shared executor/recovery services |
 | change logs, screenshots, receipts, Archive or generic dashboard rendering | the shared runtime/projection surface |
-| change only workflow grouping/options | **no file besides `workflow.ts`** |
+| change only workflow grouping/options | **no file besides the main `workflow.ts`** |
 
 And the files a workflow author never opens to make a workflow work: a generated descriptor or
 module, a node fragment, a registry row beyond the two import lines, a dashboard adapter, a

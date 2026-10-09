@@ -12,15 +12,15 @@
  * The controls matter as much as the graph: `@ts-expect-error` fails the build
  * when the error it expects STOPS happening, so a transform that erodes to
  * `any`/`unknown`/`RuntimeFlowNode` fails this proof itself rather than passing
- * it vacuously. `tests/unit/flow-type-budget.test.ts` records the compile cost.
+ * it vacuously. `tests/integration/backend/flow-type-budget/flow-type-budget.test.ts` records the compile cost.
  *
  * The D71 disposable 40-node simplified chain is a feasibility floor, not a
  * substitute — this file uses the REAL contract factory and the REAL builder.
  */
 import { z } from "zod";
-import { flow } from "../../src/base/flow.js";
-import type { NodeEntry, OutputsOf } from "../../src/base/flow.js";
-import { ContractFieldPathSchema, defineTaskContract } from "../../src/domain/contracts/base.js";
+import { flow } from "../../src/workflow-kit/flow.js";
+import type { NodeEntry, OutputsOf } from "../../src/workflow-kit/flow.js";
+import { ContractFieldPathSchema, defineTaskContract } from "../../src/models/task/task-contract.js";
 import {
   DelegationEdgeIdSchema,
   EidSchema,
@@ -30,15 +30,15 @@ import {
   TaskIdSchema,
   WorkflowIdSchema,
   taskId,
-} from "../../src/domain/ids.js";
-import type { ItemId } from "../../src/domain/ids.js";
+} from "../../src/rules/identity/ids.js";
+import type { ItemId } from "../../src/rules/identity/ids.js";
 import type {
   ChildRunOutcome,
   DelegationManifestRef,
   DelegationPolicy,
   TypedTransactionOutcome,
   WorkflowRef,
-} from "../../src/domain/workflow/graph.js";
+} from "../../src/models/workflow/graph.js";
 
 /* ── contracts under test ────────────────────────────────────────────────── */
 

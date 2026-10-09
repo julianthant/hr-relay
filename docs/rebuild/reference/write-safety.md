@@ -39,6 +39,7 @@ the kernel does with it, and what may never be substituted for proof.
 |---|
 | The **write-safety contract** — the required `WriteSafety` field on a commit task, typed proof schema for every completion kind, idempotency probe/key, and fail-closed verdict protocol (§2) |
 | The **kernel write sequence** — resolve/probe → prepare → subject bind → fence → external commit → proof → durable commit, and its ordering invariant (§3) |
+| D364 confirmed-submit facts as a projection after durable settlement; logging is never write-outcome authority (§3) |
 | Fresh write-binding enforcement at the write seam, and the subject-match/unscoped proof retained with the intent and the ledger (§2.1, §3 beat ③) |
 | The **crash-window fence** (`write_intents`) and the **crash-recovery replay** — positive proof or stabilized negative proof (§4) |
 | Typed, intent-generation-locked operator resolution for parked writes — confirmed present / confirmed absent, and no generic Done/Retry (§4.1) |
@@ -95,13 +96,7 @@ with each row; §2.2 and §10 say which of those verdicts have since been discha
 ---
 
 ## 1. The one-sentence thesis + the fail-closed guarantee boundary
-<!-- roadmap: phase-1 -->
 
-<!-- roadmap-status: phase-1 -->
-- [x] the four-state `ProbeVerdict` is the mechanism, and it is structural — `present` carries proof, `absent` carries typed evidence, `ambiguous` carries a count and its evidence refs, `unknown` carries a reason and an instant (`src/domain/write-safety-primitives.ts:50-62`)
-- [x] the guarantee boundary is STATED rather than implied — at most one unattended attempt per intent generation, never "exactly once against every remote UI" (D64)
-> 2026-08-21 | docs-cohesion write-safety | verified against `src/domain/write-safety-primitives.ts` (`probeVerdictSchema`, `NegativeSettlementPolicySchema`); left: nothing — the thesis is the standing rule, and every later section is an instance of it
-<!-- /roadmap-status -->
 
 > **Every `effect:"commit"` task declares typed proof-of-landing (a receipt, saved-state proof, or
 > uploaded-artifact proof) and an idempotency probe; the kernel drives a fixed resolve/probe →
@@ -143,19 +138,10 @@ That is enforceable. "Exactly once against every remote UI regardless of consist
 ---
 
 ## 2. The write-safety contract
-<!-- roadmap: p1-authority -->
 
-<!-- roadmap-status: p1-authority -->
-- [x] `WriteSafety` is REQUIRED on every `effect:"commit"` contract with no escape hatch, and `defineTaskContract` parses it at definition time (`src/domain/contracts/base.ts:377-404`, `write-safety-contract` guard)
-- [x] the closed `SubjectProof | UnscopedBindingProof` union, the reviewed unscoped-reason registry, the Clock-injected negative-settlement evaluator and the permanent intent/attempt schemas all exist (`src/domain/write-safety.ts`)
-- [x] the browser-safe half — `SubjectEvidence`, `AbsentEvidence`, `probeVerdictSchema`, `NegativeSettlementPolicy`, `TransactionOutcome`, `TransactionDryRunPreview` — lives in `src/domain/write-safety-primitives.ts` so a descriptor closure can hash it (D144); `write-safety.ts` imports `node:crypto` and re-exports every name, so no address moved
-- [x] the authority storage invariants are built and pinned over real temporary SQLite databases — `BEGIN IMMEDIATE` unseen-key fencing, the durable `(system, idempotency_key)` uniqueness constraint, the four-row atomic commit primitive (`permanent-key-dedupe`, `recovery-negative-proof-settlement`, `atomic-write-outbox`)
-- [ ] `TransactionDryRunPreviewSchema`'s `subject: { state: "mismatch" }` arm has NO producer and NO consumer — see §2.1's *An arm nothing can reach*
-> 2026-08-21 | docs-cohesion write-safety | verified against `src/domain/contracts/write-safety.ts`, `src/domain/write-safety.ts`, `src/domain/write-safety-primitives.ts`, `src/domain/contracts/base.ts`; left: the unreachable preview arm, which is a schema decision rather than a build
-<!-- /roadmap-status -->
 
 ### 2.1 The `WriteSafety` field (owned here; attached to ref task-contract's `CommitTaskContract`)
-<!-- roadmap: p2-proof -->
+
 
 The field is built and is the shape below. Two things differ from the Phase-0 design and both
 tightened it: a probe or verifier is a **`ReadTaskReference`** (`{ taskId, effect: "read" }`) rather
@@ -343,18 +329,7 @@ does today.
 ---
 
 ## 3. The kernel write sequence
-<!-- roadmap: p1-kernel -->
 
-<!-- roadmap-status: p1-kernel -->
-- [x] the seven beats are built in `src/core/write-sequencer.ts` behind the interpreter's `WriteSequencer` seam; §4 recovery and the typed resolutions are `src/core/write-recovery.ts` (D111, Phase 1f)
-- [x] beats ②–⑥ run inside ONE `sessions.withDriver` exclusive transaction lease, so a navigating probe can never destroy a staged form (`write-sequencer.ts:1492-1514`)
-- [x] beat ④'s fence is `writeIntents.fenceAttempt` for an unseen key and `refenceRetryable({expectedVersion, …})` for a retryable one — an optimistic-lock CAS, never a blind update (`write-sequencer.ts:1596-1607`)
-- [x] beat ⑤'s `MutationCapability` is minted by this module and nothing else, over a module-private WeakSet, and a driver asserts it before resolving a locator (`src/base/mutation-capability.ts`)
-- [x] observed probe/prepare/commit/verify beats use explicit task roles; commit `recordData` is stamped at call time but its fallible emission waits until the callback actually settles, outside fence→external-click; neither task deadline nor parent cancellation can release that lane or its transaction session after `retainAfterFence()`
-- [x] beat ⑦ is ONE outer authority transaction over claim revalidation, the four-row primitive, the `TransactionOutcome` checkpoint, both outboxes and the run transition (`executeSequencedWriteCommit`, `write-sequencer.ts:512`)
-- [x] the post-fence park raises `WriteParkedError` and the interpreter has its typed arm; recovery has scheduling priority over claim expiry, and D200's lease-as-evidence sweep releases a claim no live process answers for
-> 2026-08-21 | docs-cohesion write-safety | verified against `src/core/write-sequencer.ts`, `src/core/write-recovery.ts`, `src/base/mutation-capability.ts`, `src/infra/sqlite/migrations.ts:300-327`; left: nothing in the kernel — what remains is per-workflow (§3.2)
-<!-- /roadmap-status -->
 
 - [x] a checkpoint's durable key is `(workflow, item, node, attempt, claimGeneration?)` — the claim generation is what distinguishes a gate resume's re-execution of an `always-rerun` node from the first execution inside the SAME attempt (D214; ref workflow-model §5.7 owns the key)
 - [x] a DRY RUN runs beat ① first, exactly as the real path does, so the ordinary separations subject settles `already-present` before anything is staged instead of refusing in `prepare` (D215; `write-sequencer.ts:1710-1760`)
@@ -470,7 +445,7 @@ instrumentation failure.
 
 **2026-09-08 operation names — combined implementation and independent review accepted; local integration recorded in the task owner.** The current SQL tables are renamed
 `write_intents` → `run_operations`, `write_attempts` → `run_operation_attempts`, and
-`durable_outbox` → `operation_outbox`. [Side task `side/operation-names`](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/history/operation-names.md)
+`durable_outbox` → `operation_outbox`. Side task `side/operation-names` (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/history/operation-names.md`)
 owns execution; the operator authorized isolated parallel implementation on 2026-09-08. The names change no write,
 retry, outbox, deletion or retention behavior. Operations can span workflow retries;
 operation generations and workflow attempt numbers remain distinct. Preserve stored JSON
@@ -538,17 +513,7 @@ again, its input carries a distinct audited correction identity that derives a N
 "void the fence and click again" is not an operation.
 
 ### 3.1 Beat ⑦'s checkpoint IS terminal evidence, and it is bound to the envelope (D144, 2026-08-04)
-<!-- roadmap: p2-2g -->
 
-<!-- roadmap-status: p2-2g -->
-- [x] a transaction node may be named in a descriptor's `flow.result.dependsOn` — the checkpoint row's own schema hash is the `TransactionOutcome` envelope's, and both nested hashes are verified beneath it (D144)
-- [x] the interpreter reads back the exact row beat ⑦ committed and refuses if it is absent or does not project to the settlement just reported; it never mints one (`src/core/run-executor.ts`)
-- [x] `TransactionOutcomeSchema` lives in the browser-safe half so a descriptor closure can hash it without reaching `node:crypto`
-- [x] the evidence receipt derives from authority rather than being minted at settlement, and a gate contributes its own `gate_results` row as evidence (D82, D203, D204 — ref operator-trust owns the receipt)
-- [x] the ordered actor-attributed ledger projector is BUILT with its five durable facts and nine closed degraded reasons (D134; §6.1)
-- [ ] **and nothing in production calls it** — `createLedgerProjector` has only test callers, so beat ⑦'s `ledger-entry` and `write-committed-span` outbox rows stay `pending` while `createLedgerReadThrough` serves the archive and Activity surfaces over files nothing writes (§6.1)
-> 2026-08-21 | docs-cohesion write-safety | verified against `src/domain/write-safety-primitives.ts:88-107`, `src/core/write-sequencer.ts:512-604`, `src/core/run-executor.ts`, and a tree-wide search for `createLedgerProjector`; left: a production tick that drains the ledger outbox, and a health surface for the degraded reasons
-<!-- /roadmap-status -->
 
 A transaction node may be named in a descriptor's `flow.result.dependsOn` exactly like a task node.
 Two things had to be true for that, and neither weakens D110/D114.
@@ -724,16 +689,7 @@ dry run from wearing `verified-done` — a rehearsal that wrote nothing must not
 reserved for an independently verified real completion (ref operator-trust).
 
 ### 3.4 Phase-2 controlled-commit as-built — the evidence of record (D135, 2026-08-04)
-<!-- roadmap: p2-proof -->
-<!-- roadmap: phase-2 -->
 
-<!-- roadmap-status: p2-proof -->
-- [x] §3.2's five parts are ALL met live on `kuali-timekeeper-annotation` — dry run 6.6 s with zero durable rows, a forced mismatch refused at beat ② with zero fence and zero click, ONE commit on real doc **4489** in 16.45 s, an idempotent re-run answering `already-present` in 2 ms with no browser, and both documents restored to `""` with each restore proved by reload read-back (D135)
-- [x] the propagation window measured over four operator-authorized write/restore cycles on real doc **4490**, moving `kuali/save-timekeeper-annotation`'s `recoveryAbsence` from `operator-only` to `stabilized`
-- [x] D128's "the step does not own the field" conclusion is WITHDRAWN — Kuali's own `ActionPage` query reports that step's `sectionSettings` as `edit`; the two real causes were driver defects in THIS repository (the gadget debounce, and `commit` returning at request time)
-- [x] the proof is RECORDED and is not re-runnable — re-running it would be a second real HR write
-> 2026-08-25 | D266 reconciliation | the source contract and test workflow are retired; the dated rows in doc 02 and this section remain the immutable evidence of record. Current Kuali proof ownership is `kuali/save-separation-finalization` and its migration (§3.2)
-<!-- /roadmap-status -->
 
 This is the evidence doc 02 points at for the measured numbers and the durable row ids. Doc 02 owns
 the phase record; this section owns what the numbers CONSTRAIN — D207's propagation transfer (§4.2)
@@ -947,17 +903,24 @@ command that released generation 1, with the same evidence-note requirement.
 
 ---
 
-## 4. Crash-window recovery (positive proof or stabilized negative proof)
-<!-- roadmap: def-propagation -->
+### D364 — confirmed submit fact follows durable settlement (2026-10-02)
 
-<!-- roadmap-status: def-propagation -->
-- [x] the recovery state machine is built (`src/core/write-recovery.ts`) and answers exactly four typed decisions — `backfilled`, `safe-to-retry`, `wait{notBefore, observationsNeeded}`, `parked{code, message}` over the five closed park codes
-- [x] the ONE measured window in this program is Kuali's, from D135's four cycles on doc 4490 — `minSinceFenceMs: 30_000`, 2 reads, 5 000 ms apart, same source state
-- [ ] **UCPath has no measured window and both its commits stay `operator-only`** — the negative there would authorize a SECOND real termination, so §4.2 criterion 3 fails before the other two are asked
-- [ ] **ServiceNow has no measured window and no commit contract yet** — its future admitted workflow packet must own both under `ref workflow-model` §1.6.2
-- [ ] the deferral's trigger: a controlled commit on each system that can record a save-answer latency, a first agreeing server-side read and a first agreeing reload (doc 04 `{#def-propagation}`)
-> 2026-08-21 | docs-cohesion write-safety | verified against `src/core/write-recovery.ts`, `src/domain/contracts/ucpath/{create-termination,delete-pending-terminations}.ts` (both `operator-only`, each with its reason), `src/domain/contracts/kuali/*` (both `stabilized`); left: every non-Kuali window
-<!-- /roadmap-status -->
+A confirmed submit fact is emitted only after the sequencer settles the transaction and the executor
+reads back the exact durable checkpoint. It must bind one frozen external-commit action and one
+completed saved-effect verifier to the same run, attempt, claim generation, node and physical session;
+the durable write-intent proof digest must equal the checkpoint proof digest and the verified proof
+digest. Missing, duplicate or mismatched evidence reports `proof-unavailable` and emits no successful
+submit fact. Already-present and recovery/operator-attested settlements do not manufacture a new
+submit occurrence.
+
+This event reports a settled transaction; it does not perform or authorize one. Queue saturation,
+append failure, or diagnostic reporting failure stays separate from the durable `TransactionOutcome`
+and ledger entry. Raw action-note drain also follows task/transaction settlement and cannot turn a
+committed external write into a failed one. See ref dashboard-surfaces D364 for the event envelope and
+ref execution-and-sessions §3 for worker publisher lifetime.
+
+## 4. Crash-window recovery (positive proof or stabilized negative proof)
+
 
 **The guarantee, stated precisely:** for any real commit, after a crash at *any* point recovery
 selects exactly one of three outcomes and never retries from a single unproven UI miss:
@@ -1034,8 +997,7 @@ observations that qualify against the fence instant, the spacing and the exact k
 state.
 
 ### 4.1 Parked-write resolution is typed and intent-scoped
-<!-- roadmap: p1-kernel -->
-<!-- roadmap: p2-proof -->
+
 
 A parked write does not inherit the queue's ordinary Done/Retry actions. The kernel exposes exactly
 two intent-scoped resolutions, both requiring the current intent generation and an optimistic-lock
@@ -1439,7 +1401,7 @@ that parsed them can drift apart. There is no unchecked cast from the generic ca
 <a id="sqlite-operation-history"></a>
 
 **2026-09-08 — T1 implementation candidate; T2 remains pending.**
-[Side plan `side/timeline-history`](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/history/timeline-t1.md) follows the
+Side plan `side/timeline-history` (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/history/timeline-t1.md`) follows the
 accepted operation-name assignment without amending that assignment. Its first unit introduces
 SQLite timeline events and atomically records required state/event facts while retaining existing
 operation outboxes temporarily. Its second unit replaces ledger-file Activity/archive consumers,
@@ -1479,7 +1441,7 @@ facts before retirement. The unwired ledger projector below remains unwired. Thi
 no external click, retry permission, cutover or operator-database application.
 
 ### 6.1 As-built — the projector exists, and nothing in production runs it (D134, 2026-08-04)
-<!-- roadmap: p2-2g -->
+
 
 Phase-1c Stage A shipped the ledger's at-rest *shape* and explicitly claimed no projector; §3.4's
 exit-criteria table then recorded the projector as NOT BUILDABLE and refused to fake it. D134 built
@@ -1538,7 +1500,7 @@ one.
 ---
 
 ## 7. Fail-closed everywhere — every place `unknown` could leak into `done`, and its exit
-<!-- roadmap: phase-1 -->
+
 
 The operator's core requirement. Exhaustive:
 
@@ -1955,36 +1917,14 @@ built arm. Three are live operator or orchestrator calls, each with the migratio
 
 ## 14. Separation identity authority — the wrong-PERSON control
 
-### D338 — the same HR approval rules for human and agent callers (operator decision, 2026-09-06)
+### HR approval through the dashboard
 
-An agent acting for the operator may resolve every HR gate, authorize a live run and invoke the
-existing evidence-qualified write-resolution actions through the same API as a human. Every action
-passes the same evidence, identity, revision, freshness, approval-shape and submission checks. A
-well-formed agent action that satisfies those checks settles in one operation, exactly as a human
-action does; it does not wait for another actor. Record the actual acting agent in the existing
-resolver/audit fields, never label the action as human-performed.
-
-This supersedes the former Phase-3.4 two-actor proposal/confirmation design and any human-only caller
-interpretation of the operator gate below. It does not remove a gate, grant standing approval to an
-individual HR transaction, turn an observation into an approval, or let an unknown submit be retried.
-D309's independently supplied EID verification and name-resolved gate conditions are unchanged.
-D335's completed-transaction warning and fresh-submission authorization apply equally to both kinds
-of caller. The API caller must supply the same explicit resolution or confirmation the dashboard
-would send. Agent behavior follows the operator's instructions; the product adds no agent-specific
-capability block. Direct API access and actor attribution are owned by ref frontend-backend-integration
-§4. A second confirmer is rejected because the existing shared safeguards already govern the action.
-
-<!-- roadmap: phase0-always-gate -->
-
-<!-- roadmap-status: phase0-always-gate -->
-- [x] designed in Phase 0 as ALWAYS-GATE (D77, 2026-07-26), then corrected by the operator to source-conditioned identity authority (D309, 2026-09-02)
-- [x] BUILT, live-proved and terminal `done` over a real person through the real command endpoint (D202, §14.9)
-- [x] the packet carries §14.10's write plan, so the digest an approval binds to covers the values the writes will consume, not only the person (D211)
-- [x] all three ceremonies exist and an unrecognised `approvalShape` refuses BY NAME (D226, §14.11)
-- [x] the ONE ratified exemption is scoped and its expiry named (D127, §14.8)
-- [x] D309 gates every name-resolved identity regardless of similarity; an independently supplied EID proceeds only after exact UCPath read-back, with explicit machine-verification provenance (§14.12)
-> 2026-08-21 | docs-cohesion write-safety | verified against `src/domain/separations/identity-evidence.ts` (`deriveApprovalShape`), `src/domain/separations/identity-approval.ts` (the three durable codes), `src/domain/trust/gate-decisions.ts`, `src/dashboard/app/identity-ceremony.ts`, `src/dashboard/surfaces/identity-approve.tsx`, `tests/unit/architecture/identity-gate-before-commit.test.ts`; left: nothing in the design — §14.7's two migration values are still unasked
-<!-- /roadmap-status -->
+Only the operator, through the dashboard, resolves HR gates, authorizes a live run and invokes
+evidence-qualified write resolution. Every action retains its evidence, identity, revision,
+freshness, approval-shape and submission checks. Record the actual operator in the resolver/audit
+fields. Observation is not approval; individual transactions require their existing authorization.
+Independently supplied EID verification and name-resolved gate conditions remain required, as do
+the completed-transaction warning and fresh-submission authorization. Never retry an UNKNOWN submit.
 
 Status: **source-conditioned identity authority ratified and built 2026-09-02 (D309).** D77's
 2026-07-24 ALWAYS-GATE trigger is superseded for Separations. A Kuali document EID, or an explicit
@@ -1997,7 +1937,7 @@ exemption remains historical. §§14.1–14.11 preserve the design/build history
 current contract in §14.12 wherever they say every separation opens a gate.
 
 ### 14.1 Why this section exists at all
-<!-- roadmap: phase0-always-gate -->
+
 
 Everything else in this doc guards the *double-file* class. It cannot guard the *wrong-person*
 class, and §0 says so: incident `T002173685` was a **wrong-data** error — a name-search override
@@ -2136,7 +2076,7 @@ distinguishes the two types; the resolver schema is shared either way).
 
 
 ### 14.8 Scope — the Kuali timekeeper-annotation workflow takes NO identity-approval gate (D127)
-<!-- roadmap: p2-proof -->
+
 
 **RETIRED 2026-08-21 (D266).** The workflow this exemption scoped is dismantled (ref workflow-model
 §1.2.1); the exemption has no subject and is kept below as the record of why it existed. §3.4's
@@ -2284,13 +2224,7 @@ the longer side. Legacy fires its wrong-person control only on `different`. A ti
 not have fired on the very case it exists for.
 
 ### 14.11 As-built — the THREE CEREMONIES exist, and an unknown shape refuses (D226, 2026-08-19)
-<!-- roadmap: track-b -->
 
-<!-- roadmap-status: track-b -->
-- [x] B1 — all three gate ceremonies are built and the surface renders exactly the one control the server asked for (`src/dashboard/app/identity-ceremony.ts`, `src/dashboard/surfaces/identity-approve.tsx`); the `choose` ceremony selects no default, and an unrecognised `approvalShape` refuses by name in both the type system and at runtime (D226)
-- [x] the parity corpus photographs the name-resolved typed-EID ceremony that remains reachable under D309; pure client tests retain strict coverage for every supported historical ceremony shape, including fail-loud refusal of an unknown shape
-> 2026-08-21 | docs-cohesion write-safety | verified against `src/domain/separations/identity-evidence.ts:208` and the two dashboard modules; left: nothing in B1 — the rest of Track B is ref dashboard-surfaces's and ref frontend-backend-integration's
-<!-- /roadmap-status -->
 
 - [x] wire square 5.1.4, the gate ceremony, is the one square this doc owns: the approval shape is computed SERVER-side and served, and the client may compose no leaf of the result but the operator's own decision
 - [ ] the other eight wire squares are ref dashboard-surfaces's, ref frontend-backend-integration's and ref operator-trust's
@@ -2520,4 +2454,4 @@ shared report/file references, missing/corrupt ownership, rollback and restart. 
 not mint new permanent write keys or clear uncertainty. Pre-click fencing and UNKNOWN refusal remain
 unchanged; archival or failure resolution never supplies authorization for another external click.
 
-This is the C0-admitted target contract, not a claim of implemented behavior. The [Phase 2.6 owner](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md) binds sequential prerequisites, focused development proof and final 2.6.9 acceptance. Released evidence and migrations remain immutable.
+This is the C0-admitted target contract, not a claim of implemented behavior. The Phase 2.6 owner (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md`) binds sequential prerequisites, focused development proof and final 2.6.9 acceptance. Released evidence and migrations remain immutable.

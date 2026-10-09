@@ -1,4 +1,4 @@
-import { CommandResultSchema,type CommandResult } from "../../../src/domain/commands.js";
+import { CommandResultSchema,type CommandResult } from "../../../src/rules/commands/commands.js";
 import { uuidOf } from "./fixture-identity.js";
 
 

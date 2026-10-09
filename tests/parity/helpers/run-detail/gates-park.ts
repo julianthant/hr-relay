@@ -1,4 +1,4 @@
-import { idempotencyKeyDigestReference } from "../../../../src/domain/redaction.js";
+import { idempotencyKeyDigestReference } from "../../../../src/rules/redaction/redaction.js";
 import { buildFixtureIdentityGate } from "../fixture-gate.js";
 import { at,uuidOf } from "../fixture-identity.js";
 import { FIXTURE_IDS } from "../fixture-queue.js";

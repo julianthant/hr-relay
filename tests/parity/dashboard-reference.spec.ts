@@ -1,18 +1,12 @@
-import { expect,test } from "@playwright/test";
-import { gotoAppState,type AppRoute } from "./helpers/app-driver.js";
-import {
-PARITY_THEMES,
-assertThemeApplied,
-captureParityPair,
-installTheme,
-type ParityTheme
-} from "./helpers/capture.js";
-import { FIXTURE_APP_VERSION,FIXTURE_DAY,FIXTURE_DESCRIPTOR_HASH } from "./helpers/fixture-identity.js";
+import { expect, test } from "@playwright/test";
+import { gotoAppState } from "./helpers/app-driver.js";
+import { PARITY_THEMES, assertThemeApplied, installTheme } from "./helpers/capture.js";
+import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { FIXTURE_IDS } from "./helpers/fixture-queue.js";
-import { assertShellGeometry } from "./helpers/geometry.js";
-import { REFERENCES,dismissWorkflowWindow,dismissWorkflowWindowOverQueue,failOnPageErrors,registerReferenceServers } from "./helpers/reference-harness.js";
+
+import { dismissWorkflowWindow, failOnPageErrors, registerReferenceServers } from "./helpers/reference-harness.js";
 import { registerReferenceScenes } from "./helpers/reference-scenes.js";
-import { ANCHORS,SCENES } from "./helpers/reference-shell-scenes.js";
+import { ANCHORS, SCENES } from "./helpers/reference-shell-scenes.js";
 const servers = registerReferenceServers(["server"]);
 registerReferenceScenes(SCENES, () => servers.server, ANCHORS);
 
@@ -36,42 +30,6 @@ registerReferenceScenes(SCENES, () => servers.server, ANCHORS);
  * viewport, both themes — the occlusion is a function of the layout, not of
  * the width, and 1440x900 is the width the window overlaps most.
  */
-test.describe("panel dismissed", () => {
-  const DISMISSED: readonly { id: string; route: AppRoute }[] = [
-    { id: "queue-day", route: { day: FIXTURE_DAY } },
-    { id: "run-running", route: { day: FIXTURE_DAY, run: FIXTURE_IDS.runningRun } },
-  ];
-  for (const theme of PARITY_THEMES) {
-    for (const state of DISMISSED) {
-      test(`${state.id} @ ${theme.name}`, async ({ page }) => {
-        const errors = failOnPageErrors(page);
-        await page.setViewportSize({ width: 1440, height: 900 });
-        await installTheme(page, theme satisfies ParityTheme);
-        await gotoAppState(page, servers.server.baseUrl, state.route);
-        await dismissWorkflowWindowOverQueue(page);
-        await assertThemeApplied(page, theme satisfies ParityTheme);
-        await page.waitForTimeout(120);
-
-        // The region must still tile with the window GONE. A hole that the
-        // floating panel was covering is still a hole (D195).
-        await assertShellGeometry(page, `${state.id} panel-dismissed @ 1440x900 ${theme.name}`);
-        expect(errors, `page errors while rendering ${state.id} with the panel dismissed`).toEqual([]);
-
-        await captureParityPair(page, REFERENCES, {
-          stateId: state.id,
-          viewport: "1440x900",
-          theme: theme.name,
-          adapter: "fixture",
-          fixtureId: state.id,
-          descriptorHash: FIXTURE_DESCRIPTOR_HASH,
-          appVersion: FIXTURE_APP_VERSION,
-          capturedAt: FIXTURE_DAY,
-          variant: "panel-dismissed",
-        });
-      });
-    }
-  }
-});
 
 
 /**
@@ -80,37 +38,28 @@ test.describe("panel dismissed", () => {
  * runs), and photographing them six more times would only add pixels to review.
  */
 test.describe("access variants", () => {
-  test("keyboard-only focus lands on the queue", async ({ page }) => {
+  test("keyboard-only skip link lands on the workspace", async ({ page }) => {
     const errors = failOnPageErrors(page);
     await page.setViewportSize({ width: 1440, height: 900 });
-    await installTheme(page, PARITY_THEMES[1]);
+    await installTheme(page, PARITY_THEMES[0]);
     await gotoAppState(page, servers.server.baseUrl, { day: FIXTURE_DAY });
-    await assertThemeApplied(page, PARITY_THEMES[1]);
+    await assertThemeApplied(page, PARITY_THEMES[0]);
     await page.keyboard.press("Tab");
-    await page.keyboard.press("Tab");
-    await page.keyboard.press("Tab");
+    await expect(page.getByRole("link", { name: "Skip to content", exact: true })).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(page.locator("#dashboard-main-region")).toBeFocused();
     expect(errors).toEqual([]);
 
-    await captureParityPair(page, REFERENCES, {
-      stateId: "queue-day",
-      viewport: "1440x900",
-      theme: PARITY_THEMES[1].name,
-      adapter: "fixture",
-      fixtureId: "queue-day",
-      descriptorHash: FIXTURE_DESCRIPTOR_HASH,
-      appVersion: FIXTURE_APP_VERSION,
-      capturedAt: FIXTURE_DAY,
-      variant: "keyboard",
-    });
+
   });
 
   test("reduced motion renders the resting state", async ({ page }) => {
     const errors = failOnPageErrors(page);
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.setViewportSize({ width: 1440, height: 900 });
-    await installTheme(page, PARITY_THEMES[1]);
+    await installTheme(page, PARITY_THEMES[0]);
     await gotoAppState(page, servers.server.baseUrl, { day: FIXTURE_DAY });
-    await assertThemeApplied(page, PARITY_THEMES[1]);
+    await assertThemeApplied(page, PARITY_THEMES[0]);
     const reducedMotion = await page.evaluate(() => {
       const styles = getComputedStyle(document.documentElement);
       return {
@@ -137,17 +86,7 @@ test.describe("access variants", () => {
     });
     expect(errors).toEqual([]);
 
-    await captureParityPair(page, REFERENCES, {
-      stateId: "queue-day",
-      viewport: "1440x900",
-      theme: PARITY_THEMES[1].name,
-      adapter: "fixture",
-      fixtureId: "queue-day",
-      descriptorHash: FIXTURE_DESCRIPTOR_HASH,
-      appVersion: FIXTURE_APP_VERSION,
-      capturedAt: FIXTURE_DAY,
-      variant: "reduced-motion",
-    });
+
   });
 });
 
@@ -162,8 +101,8 @@ for (const theme of PARITY_THEMES) {
     const geometry = async () => page.evaluate(() => {
       const root = document.querySelector("[data-app-root]");
       const queue = document.querySelector('[aria-label="Queue"]');
-      const detail = queue?.nextElementSibling;
-      const header = document.querySelector("header");
+      const detail = document.querySelector(".dashboard-log-column");
+      const header = document.querySelector(".workspace-rail-header");
       if (!root || !queue || !detail || !header) throw new Error("Desktop shell is incomplete");
       const box = (element: Element) => {
         const rect = element.getBoundingClientRect();

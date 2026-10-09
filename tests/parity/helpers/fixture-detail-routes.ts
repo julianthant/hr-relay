@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
-import { ItemAttemptHistoryResponseSchema } from "../../../src/domain/dashboard/item-attempt-history.js";
+import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
+import { ItemAttemptHistoryResponseSchema } from "../../../src/models/dashboard/item-attempt-history.js";
 import { restrictedJpegDiagnosticFixture } from "./diagnostic-jpeg-fixture.js";
 import { FIXTURE_RUN_DETAILS,FIXTURE_SECTIONS } from "./fixture-detail.js";
 import {

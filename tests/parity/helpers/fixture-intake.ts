@@ -15,22 +15,22 @@
  * listed twice, and a row with neither identifier — because the states worth
  * photographing are the ones where the operator has to decide something.
  */
-import { CANONICAL_FIELDS } from "../../../src/domain/fields/registry.js";
-import { deriveItemId } from "../../../src/domain/identifiers.js";
-import { ItemIdSchema } from "../../../src/domain/ids.js";
-import { canonicalAliasIndex, rankHeaderRows } from "../../../src/domain/intake/header-discovery.js";
+import { CANONICAL_FIELDS } from "../../../src/models/fields/registry.js";
+import { deriveItemId } from "../../../src/rules/identity/identifiers.js";
+import { ItemIdSchema } from "../../../src/rules/identity/ids.js";
+import { canonicalAliasIndex, rankHeaderRows } from "../../../src/rules/intake/header-discovery.js";
 import {
   ColumnBindingSchema,
   detectColumns,
   headerFingerprint,
   type ColumnBinding,
-} from "../../../src/domain/intake/mapping.js";
-import { suggestBindings } from "../../../src/domain/intake/suggestions.js";
-import { validateIntakeRows } from "../../../src/domain/intake/validate.js";
-import { IntakeSessionWireSchema, type IntakeSessionWire } from "../../../src/domain/intake/wire.js";
-import { workflowPlanning } from "../../../src/base/workflow.js";
+} from "../../../src/models/intake/mapping.js";
+import { suggestBindings } from "../../../src/models/intake/suggestions.js";
+import { validateIntakeRows } from "../../../src/models/intake/validate.js";
+import { IntakeSessionWireSchema, type IntakeSessionWire } from "../../../src/models/intake/wire.js";
+import { workflowPlanning } from "../../../src/workflow-kit/workflow.js";
 import { personLookupIntake } from "../../../src/workflows/person-lookup/workflow.js";
-import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
+import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
 
 /**
  * Two sessions, because the two states worth photographing are two POINTS IN

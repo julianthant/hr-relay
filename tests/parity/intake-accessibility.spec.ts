@@ -1,3 +1,5 @@
+
+import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { createHash } from "node:crypto";
 /**
  * Intake's rejection editors are interaction states, not parity references.
@@ -20,6 +22,7 @@ let server: FixtureServer;
 
 async function openReview(page: Page, viewport: (typeof VIEWPORTS)[number]): Promise<void> {
   await page.setViewportSize({ width: viewport.width, height: viewport.height });
+  await installTheme(page, PARITY_THEMES[0]);
   await gotoAppState(page, server.baseUrl, {
     day: FIXTURE_DAY,
     intake: FIXTURE_INTAKE_IDS.validated,
@@ -53,6 +56,7 @@ test("Fix and Exclude mount one labelled editor and focus its named input", {
   await expect(correctedValue).toHaveAttribute("name", "intake-corrected-value");
   await expect(correctedValue).toHaveAttribute("autocomplete", "off");
 
+
   await page.getByRole("button", { name: "Exclude…" }).first().click();
   const exclusion = page.getByRole("region", { name: /^Exclude row \d+$/u });
   const reason = exclusion.getByRole("textbox", { name: "Reason" });
@@ -61,6 +65,7 @@ test("Fix and Exclude mount one labelled editor and focus its named input", {
   await expect(reason).toBeFocused();
   await expect(reason).toHaveAttribute("name", "intake-exclusion-reason");
   await expect(reason).toHaveAttribute("autocomplete", "off");
+
 
   // Fix's onClick must close a still-open Exclude editor on the same row
   // (intake.tsx:869's `setExclusion(null)`) — otherwise both editors could

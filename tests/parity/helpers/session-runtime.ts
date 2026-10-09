@@ -1,4 +1,4 @@
-import { healthyRuntimePreflightRunners } from "../../fixtures/preflight-seams.js";
+import { healthyRuntimePreflightRunners } from "../../support/fixtures/preflight-seams.js";
 /** Private 3.1.11 runtime: real BFF, child and Chromium, synthetic transaction-free drivers. */
 import assert from "node:assert/strict";
 import { spawn, execFileSync, type ChildProcess } from "node:child_process";
@@ -6,19 +6,19 @@ import { cpSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync,
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { composeDashboardRuntime, type DashboardRuntime } from "../../../src/server/dashboard/compose.js";
-import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
-import { WorkerProcessLockFileSchema } from "../../../src/infra/sqlite/runtime-process-locks.js";
-import { systemClock } from "../../../src/domain/clock.js";
-import { rebuildRuntimeIsolation } from "../../../src/config/runtime-isolation.js";
-import { CommandResultSchema } from "../../../src/domain/commands.js";
-import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../src/domain/config/settings.js";
-import { RunRecordSchema } from "../../../src/domain/run/record.js";
-import { ActorIdSchema } from "../../../src/domain/ids.js";
-import { deriveTraceId } from "../../../src/domain/identifiers.js";
-import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
-import { runQueuedSpanEvent } from "../../../src/server/dashboard/commands/run-queued-span.js";
-import { personLookupQueuedRun } from "../../helpers/phase1f-executor-harness.js";
+import { composeDashboardRuntime, type DashboardRuntime } from "../../../src/backend/app/composition/dashboard/compose.js";
+import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
+import { WorkerProcessLockFileSchema } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { systemClock } from "../../../src/rules/time/clock.js";
+import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
+import { CommandResultSchema } from "../../../src/rules/commands/commands.js";
+import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../src/models/config/settings.js";
+import { RunRecordSchema } from "../../../src/models/run/record.js";
+import { ActorIdSchema } from "../../../src/rules/identity/ids.js";
+import { deriveTraceId } from "../../../src/rules/identity/identifiers.js";
+import { createTimelineEmitter } from "../../../src/backend/storage/events/timeline-emitter.js";
+import { runQueuedSpanEvent } from "../../../src/backend/runs/commands/run-queued-span.js";
+import { personLookupQueuedRun } from "../../support/helpers/phase1f-executor-harness.js";
 import { PARITY_DIST_DIR, ensureParityBundle } from "./bundle.js";
 
 export async function sessionRuntime() {
@@ -64,7 +64,7 @@ export async function sessionRuntime() {
     writeFileSync(join(root, "release-drivers"), "released\n");
     runtime = await composeDashboardRuntime({ preflightRunnerFactory: healthyRuntimePreflightRunners, repoRoot: root, isolation: rebuildRuntimeIsolation, frontend: "built-bundle", backendPortOverride: 0, frontendPortOverride: 0, env: {},
       workerProcess: { launch: { environment: {}, command: process.execPath,
-        prefixArgs: ["--import", "tsx", join(process.cwd(), "tests/fixtures/worker-browser-control-cli.ts"), root], cwd: process.cwd() },
+        prefixArgs: ["--import", "tsx", join(process.cwd(), "tests/support/processes/worker-browser-control-cli.ts"), root], cwd: process.cwd() },
       spawn: (request) => {
         const child = spawn(request.command, [...request.args], { cwd: request.cwd, detached: true, stdio: ["ignore", "pipe", "pipe"] }); children.push(child);
         child.stdout?.on("data", (chunk) => logs.push(String(chunk))); child.stderr?.on("data", (chunk) => logs.push(String(chunk)));

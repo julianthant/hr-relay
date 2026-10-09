@@ -1,18 +1,18 @@
 import {
 FrontendBootstrapWireSchema,
 type FrontendBootstrapWire,
-} from "../../../src/domain/dashboard/bootstrap.js";
+} from "../../../src/models/dashboard/bootstrap.js";
 import {
 DashboardDayWireSchema,
 type DashboardDayWire
-} from "../../../src/domain/dashboard/projection.js";
-import { StartPlanWireSchema as StartPlanResponseSchema,type StartPlanWire as StartPlanResponse } from "../../../src/domain/dashboard/start-plan.js";
-import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
-import { projectStartSteps,startStepWireControl } from "../../../src/services/start/step-selection.js";
+} from "../../../src/models/dashboard/projection.js";
+import { StartPlanWireSchema as StartPlanResponseSchema,type StartPlanWire as StartPlanResponse } from "../../../src/models/dashboard/start-plan.js";
+import { descriptorSetHash } from "../../../src/backend/app/composition/dashboard/compose.js";
+import { projectWorkflowStartSteps } from "../../../src/backend/runs/queries/bootstrap.js";
 import {
 WORKFLOW_MODULES,
-} from "../../../src/control/workflow-registry.js";
-import { separationsDescriptor } from "../../helpers/registered-workflows.js";
+} from "../../../src/backend/app/registries/workflow-registry.js";
+import { separationsDescriptor } from "../../support/helpers/registered-workflows.js";
 import { FIXTURE_BOOTSTRAP } from "./fixture-bootstrap.js";
 import { CONFIG_FINGERPRINT,CONTRACT_FINGERPRINT,uuidOf,WORKFLOW_ID } from "./fixture-identity.js";
 import { FIXTURE_DAY_WIRE } from "./fixture-queue.js";
@@ -46,12 +46,7 @@ export const FIXTURE_START_PICKER_BOOTSTRAP: FrontendBootstrapWire = FrontendBoo
       ...(module.descriptor.summary === undefined ? {} : { summary: module.descriptor.summary }),
       enqueue: module.descriptor.enqueue,
       version: module.descriptor.version,
-      steps: projectStartSteps(module.descriptor).map((step) => ({
-        key: step.key,
-        label: step.label,
-        includedByDefault: step.includedByDefault,
-        control: startStepWireControl(step.control),
-      })),
+      steps: projectWorkflowStartSteps(module.descriptor),
       ...(module.descriptor.surfaces.inputRun === undefined
         ? {}
         : { inputRun: module.descriptor.surfaces.inputRun }),

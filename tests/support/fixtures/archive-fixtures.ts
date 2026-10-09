@@ -1,0 +1,262 @@
+/**
+ * Shared archive fixtures (D179).
+ *
+ * Every value here is parsed through the PRODUCTION schema and every digest is
+ * computed by the PRODUCTION function, so a fixture cannot drift into a shape
+ * authority would refuse — the archive's whole argument is that the stored
+ * bytes are the record, and a hand-written approximation of them would be the
+ * one thing the tests must never assert against.
+ */
+import {
+  archivedRunContentDigest,
+  ArchivedRunContentSchema,
+  ArchivedRunRecordSchema,
+  ArchiveRelaunchRecordSchema,
+  versionBumpPlanFingerprint,
+  VersionBumpApplicationSchema,
+  VersionBumpPlanSchema,
+  type ArchivedRunRecord,
+  type ArchiveRelaunchRecord,
+  type VersionBumpApplication,
+  type VersionBumpPlan,
+} from "../../../src/models/archive/model.js";
+import { VersionPlanStorageRecordSchema } from "../../../src/backend/storage/sqlite/storage-records.js";
+import { HASH_A, HASH_B, HASH_C, NOW, UUID_1, UUID_5, UUID_6, UUID_7 } from "./phase1c-contract-fixtures.js";
+import { ITEM_ID, RUN_ID, RUN_INPUT, TRACE_ID, WORKFLOW_ID } from "./phase1f-run-fixtures.js";
+
+export const ARCHIVE_APPLICATION_ID = UUID_6;
+export const ARCHIVE_PLAN_ID = UUID_7;
+/** The FRESH run a relaunch mints — never the archived run's own identity. */
+export const RELAUNCHED_RUN_ID = UUID_5;
+/** The generation-2 record's own identity — see `ARCHIVED_RUN_WITH_SECTIONS`. */
+export const SECTIONED_RUN_ID = "99999999-0009-4000-8000-999900000009";
+const SECTIONED_TRACE_ID = "pl-170002-9999";
+
+const CURRENT_IDENTITY = {
+  workflowId: WORKFLOW_ID,
+  descriptorVersion: 2,
+  contractFingerprint: HASH_B,
+};
+
+export const VERSION_BUMP_PLAN: VersionBumpPlan = VersionBumpPlanSchema.parse({
+  archiveSchemaGeneration: 1,
+  versionPlanId: ARCHIVE_PLAN_ID,
+  scope: { kind: "workflows", workflowIds: [WORKFLOW_ID] },
+  targetVersion: "0.2.0",
+  changeFingerprint: HASH_C,
+  observedAppVersion: "0.1.0",
+  observedIdentities: [CURRENT_IDENTITY],
+  candidates: [{
+    runId: RUN_ID,
+    traceId: TRACE_ID,
+    workflowId: WORKFLOW_ID,
+    title: "EID 10873698",
+    enqueuedAt: NOW,
+    drift: ["descriptor-version", "contract-fingerprint"],
+  }],
+  blockers: [],
+  plannedBy: "local-operator",
+  plannedAt: NOW,
+});
+
+export const VERSION_PLAN_ROW = VersionPlanStorageRecordSchema.parse({
+  versionPlanId: ARCHIVE_PLAN_ID,
+  version: 1,
+  planFingerprint: versionBumpPlanFingerprint(VERSION_BUMP_PLAN),
+  state: "planned",
+  plan: VERSION_BUMP_PLAN,
+  createdAt: NOW,
+});
+
+export const VERSION_BUMP_APPLICATION: VersionBumpApplication = VersionBumpApplicationSchema.parse({
+  archiveSchemaGeneration: 1,
+  applicationId: ARCHIVE_APPLICATION_ID,
+  versionPlanId: ARCHIVE_PLAN_ID,
+  scope: { kind: "workflows", workflowIds: [WORKFLOW_ID] },
+  targetVersion: "0.2.0",
+  changeFingerprint: HASH_C,
+  appliedAppVersion: "0.1.0",
+  appliedIdentities: [CURRENT_IDENTITY],
+  archivedRunIds: [RUN_ID],
+  appliedBy: "local-operator",
+  appliedAt: NOW,
+});
+
+const ARCHIVED_ROW = {
+  runId: RUN_ID,
+  itemId: ITEM_ID,
+  workflowId: WORKFLOW_ID,
+  traceId: TRACE_ID,
+  attempt: 1,
+  lineage: { state: "root" },
+  actorId: "local-operator",
+  appVersion: { state: "present", value: "0.1.0" },
+  descriptorVersion: 1,
+  descriptorHash: HASH_A,
+  configFingerprint: HASH_B,
+  resolvedInstances: [{ system: "ucpath", instance: "prod" }],
+  dryRun: false,
+  priority: "interactive",
+  runNumber: { state: "present", value: 1 },
+  containment: "root",
+  linkedRuns: [],
+  facts: { state: "absent", reason: "this run's evidence receipt records no output fact" },
+  startedAt: NOW,
+  updatedAt: NOW,
+  endedAt: { state: "present", value: NOW },
+  gateOpenedAt: { state: "absent", reason: "run is done and is not waiting on a gate" },
+  title: "EID 10873698",
+  displayName: { state: "absent", reason: "the operator has not renamed this run" },
+  subtitle: { state: "absent", reason: "the start plan proposed no subtitle" },
+  status: "done",
+  liveMessage: { state: "absent", reason: "an archived run has no live message" },
+  warnings: { state: "absent", reason: "this run's evidence receipt records no warning" },
+  pipeline: [{ id: "ucpath-person", label: "ucpath-person", state: "done" }],
+  panelKind: "run",
+  availableSections: ["logs"],
+  /*
+   * EMPTY, and that is the archive's own contract rather than a gap: the frozen
+   * row is the last row the operator saw, and D179's archived tables abort
+   * UPDATE and DELETE in SQL — there is no command a control here could send.
+   * An archived row that offered `retry` would be offering to run a descriptor
+   * this build may no longer hold.
+   */
+  actions: [],
+  rowRevision: 4,
+  surfaceKind: "single",
+};
+
+const ARCHIVED_DETAIL = {
+  runId: RUN_ID,
+  rowRevision: 4,
+  panelKind: "run",
+  header: {
+    runId: RUN_ID,
+    traceId: TRACE_ID,
+    workflowId: WORKFLOW_ID,
+    actorId: "local-operator",
+    title: "EID 10873698",
+    status: "done",
+    attempt: 1,
+  },
+  timeline: {
+    events: [{
+      noteId: UUID_1,
+      sequence: 0,
+      at: NOW,
+      label: "UCPath person read",
+      state: "done",
+      notRun: { state: "absent", reason: "the step ran" },
+    }],
+  },
+  gate: { state: "absent", reason: "this workflow declares no gate" },
+  outcome: { state: "terminal", result: "verified-done", completedAt: NOW },
+  context: { dataFacts: 4, evidenceFacts: 1, attempts: 1 },
+  availableSections: ["logs"],
+};
+
+const ARCHIVED_CONTENT = ArchivedRunContentSchema.parse({
+  archiveSchemaGeneration: 1,
+  runId: RUN_ID,
+  applicationId: ARCHIVE_APPLICATION_ID,
+  workflowId: WORKFLOW_ID,
+  workflowLabel: { state: "present", value: "Person Lookup" },
+  traceId: TRACE_ID,
+  archivedIdentity: { workflowId: WORKFLOW_ID, descriptorVersion: 1, contractFingerprint: HASH_A },
+  appVersion: { state: "present", value: "0.1.0" },
+  drift: ["descriptor-version", "contract-fingerprint"],
+  archivedAt: NOW,
+  archivedBy: "local-operator",
+  row: ARCHIVED_ROW,
+  detail: ARCHIVED_DETAIL,
+  receipt: { state: "absent", reason: "this run settled before receipts were derived" },
+  failure: { state: "absent", reason: "the run did not fail" },
+  evidence: { artifactIds: [], checkpointNodeIds: ["ucpath-person"], writeIntentIds: [], ledgerPartitions: [] },
+  input: RUN_INPUT,
+});
+
+export const ARCHIVED_RUN: ArchivedRunRecord = ArchivedRunRecordSchema.parse({
+  ...ARCHIVED_CONTENT,
+  contentDigest: archivedRunContentDigest(ARCHIVED_CONTENT),
+});
+
+/**
+ * The same run archived at generation 2 (D223) — the one that carries frozen
+ * sections. `ARCHIVED_RUN` above stays at generation 1 ON PURPOSE: it is the
+ * read-forward witness, and a suite that only ever held the new shape could
+ * not tell whether a pre-D223 record still parses.
+ *
+ * The `runId` differs because both records can be inserted into ONE database:
+ * `archived_runs` is keyed by run, and two rows for one run is not a state the
+ * archive can be in.
+ */
+export const ARCHIVED_RUN_WITH_SECTIONS: ArchivedRunRecord = (() => {
+  const content = ArchivedRunContentSchema.parse({
+    ...ARCHIVED_CONTENT,
+    archiveSchemaGeneration: 2,
+    runId: SECTIONED_RUN_ID,
+    traceId: SECTIONED_TRACE_ID,
+    row: { ...ARCHIVED_ROW, runId: SECTIONED_RUN_ID, traceId: SECTIONED_TRACE_ID },
+    detail: {
+      ...ARCHIVED_DETAIL,
+      runId: SECTIONED_RUN_ID,
+      header: { ...ARCHIVED_DETAIL.header, runId: SECTIONED_RUN_ID, traceId: SECTIONED_TRACE_ID },
+    },
+    sections: {
+      logs: {
+        state: "present",
+        value: {
+          runId: SECTIONED_RUN_ID,
+          notes: [{ noteId: UUID_1, runId: SECTIONED_RUN_ID, sequence: 0, at: NOW, level: "info", message: "frozen log line" }],
+          nextCursor: { state: "absent", reason: "end-of-page" },
+        },
+      },
+      data: {
+        state: "present",
+        value: {
+          runId: SECTIONED_RUN_ID,
+          state: "unavailable",
+          reason: "descriptor-mismatch",
+          entries: [],
+        },
+      },
+      people: { state: "absent", reason: "this run fanned out no member runs" },
+      attempts: {
+        state: "present",
+        value: [{
+          attempt: 1,
+          steps: 1,
+          startedAt: { state: "present", value: NOW },
+          endedAt: { state: "present", value: NOW },
+          outcomes: [{ outcome: "done", count: 1 }],
+          unfinished: 0,
+        }],
+      },
+      captures: { state: "absent", reason: "this run captured no diagnostic artifact" },
+    },
+  });
+  return ArchivedRunRecordSchema.parse({ ...content, contentDigest: archivedRunContentDigest(content) });
+})();
+
+export const ARCHIVE_RELAUNCH: ArchiveRelaunchRecord = ArchiveRelaunchRecordSchema.parse({
+  archiveSchemaGeneration: 1,
+  runId: RELAUNCHED_RUN_ID,
+  archivedRunId: RUN_ID,
+  relaunchedIdentity: CURRENT_IDENTITY,
+  relaunchedBy: "local-operator",
+  relaunchedAt: NOW,
+});
+
+/**
+ * The kernel's archive snapshot seam for suites that never bump a version. It
+ * THROWS rather than returning an empty snapshot: a test that accidentally
+ * reaches the archive path must fail loudly, not archive a blank row.
+ */
+export const UNWIRED_ARCHIVE_SNAPSHOTS = Object.freeze({
+  snapshotBatch(runIds: readonly string[]): never {
+    throw new Error(`this harness composed no archive snapshot source; ${String(runIds.length)} runs cannot be archived here`);
+  },
+  snapshot(runId: string): never {
+    throw new Error(`this harness composed no archive snapshot source; run ${runId} cannot be archived here`);
+  },
+});

@@ -1,0 +1,3166 @@
+{
+ "retired": {
+  "decision": "D150",
+  "retiredAt": "2026-08-05",
+  "reason": "The two repositories no longer touch each other in either direction. This file is a FROZEN historical record of what was reconciled through the split; no guard reads it. Do not extend it."
+ },
+ "schemaVersion": 2,
+ "baselineCommit": "353739ac9e1db01cae9da8a13da53605cd767574",
+ "accountedRoots": [
+  "src",
+  "tests"
+ ],
+ "deletionPolicy": "forbidden-through-initial-cutover",
+ "closedRecheckCatalog": [
+  {
+   "id": "d94-full-gates-2026-07-31",
+   "closedAt": "2026-07-31",
+   "evidence": [
+    "npm run typecheck",
+    "npm run lint",
+    "npm run test",
+    "npm run test:architecture",
+    "npm run test:coverage",
+    "git diff --check"
+   ]
+  },
+  {
+   "id": "d94-full-gates-2026-08-04",
+   "closedAt": "2026-08-04",
+   "evidence": [
+    "npm run typecheck",
+    "npm run lint",
+    "npm run test",
+    "npm run test:architecture",
+    "npm run test:coverage",
+    "npm run test:parity",
+    "994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/reference/decisions.md D130 — the (transactionNumber, approvalStatus) receipt pair is already ratified in the rebuild"
+   ]
+  },
+  {
+   "id": "d94-full-gates-2026-08-05",
+   "closedAt": "2026-08-05",
+   "evidence": [
+    "npm run typecheck",
+    "npm run lint",
+    "npm run test",
+    "npm run test:architecture",
+    "legacy: npx tsc --noEmit (clean)",
+    "legacy: npx eslint src scripts/rebuild --max-warnings 0 (clean)",
+    "legacy: npx vitest run --project unit tests/unit/infra/auth tests/unit/workflows/sharepoint-download (111 passed)",
+    "legacy: npx vitest run tests/unit/infra/auth/duo-arm-before-sso-navigation.test.ts (4 passed)",
+    "Live: SharePoint ADFS login now logs 'Duo WebAuthn armed' BEFORE 'ADFS submit clicked' and settles 'Duo approved via WebAuthn (auto)' with no phone push"
+   ]
+  },
+  {
+   "id": "ucpath-person-search-sidebar-2026-08-05",
+   "closedAt": "2026-08-06",
+   "evidence": [
+    "legacy: npm run typecheck (clean)",
+    "legacy: npm run test (482 test files passed)",
+    "legacy: npm run test:architecture (green; legacy-change-accounting + runtime-isolation re-run in isolation after load-induced timeouts, both passed)",
+    "legacy: npm run selectors:catalog (regenerated, drift guard green)",
+    "legacy: npx eslint src/systems/ucpath/navigate.ts src/systems/ucpath/selectors.ts --max-warnings 0 (clean)",
+    "Live 2026-08-05: HR-Tasks person search click no longer intercepted — collector logs show 'Sidebar collapsed' -> 'Person search form loaded' -> 'Search criteria filled' -> outcome signal read; 23-person I-9 shred-audit collector returning found/not-found/terminated/active results"
+   ]
+  },
+  {
+   "id": "separation-job-comments-audit-2026-09-08",
+   "closedAt": "2026-09-08",
+   "evidence": [
+    "Rebuild D150 and a read-only search of src/, tests/, and scripts/ confirm this manifest has no runtime or guard reader. This is an archival audit required by the operator-provided legacy standing instruction; it does not claim the fix was ported to the rebuild or reactivate cross-repository guards.",
+    "Legacy commit 6c099be49a76a089187c5abef8f41cdd413ae9e2: focused separation tests 165/165; Kuali durable-save tests 3/3; architecture tests 166/166; source lint and backend/dashboard typechecks passed.",
+    "Live read-only dry-runs verified 4605 against T002230487 / employment record 0 / position 10006128 and 4612 against T002230491 / employment record 1 / position 10006092. No UCPath submit or Kuali Save occurred in those test runs.",
+    "Per-path before/after SHA-256 values read from the exact first-parent and commit blobs; 27 changed src/tests paths accounted, with no deletions. Independent review and production integration are pending.",
+    "Final legacy candidate checks: unit 494 files / 4773 tests passed; serial 11 files / 20 tests passed when rerun with its configured single-worker behavior; legacy test-lint ratchet found zero new/replaced diagnostic fingerprints; typecheck:all and source lint passed. The initial four-worker environment override also parallelized the serial lane and exposed first-time worktree tracker-directory creation; those three checks passed in the configured serial rerun."
+   ]
+  },
+  {
+   "id": "separation-standard-comments-audit-2026-09-08",
+   "closedAt": "2026-09-08",
+   "evidence": [
+    "D150 still retires this manifest. This append is archival accounting required by the operator-provided legacy standing instruction; it neither ports production workflow behavior into the rebuild nor reactivates retired cross-repository guards.",
+    "Before/after SHA-256 values and the exact three changed src/tests paths were verified against first-parent and commit blobs.",
+    "Legacy candidate: 69 focused separation tests passed; full unit, configured serial, architecture, source lint, and legacy test-lint ratchet passed. Logs: /tmp/sep-standard-comments-test.txt, /tmp/sep-standard-full-unit.txt, /tmp/sep-standard-serial.txt, /tmp/sep-standard-architecture.txt, /tmp/sep-standard-comments-lint.txt, /tmp/sep-standard-test-lint.txt.",
+    "Live operational verification: seven replacements and ten new separations were read back with correct jobs, dates and exact standard Comments plus Initiator Comments; Kuali Task 1 saves and dashboard plain/typed transaction IDs were independently read back. Candidate code remains pending independent review and integration."
+   ]
+  },
+  {
+   "id": "separation-receipt-review-fixes-2026-09-09",
+   "closedAt": "2026-09-09",
+   "evidence": [
+    "D150 retirement is unchanged. Archival accounting required by the operator standing instruction; no rebuild runtime port or reactivated guard is claimed.",
+    "Exact first-parent and commit blobs checked for all 11 changed src/tests paths.",
+    "Negative controls fail on the prior commit: copied number reuse, omitted canonical text, future reconciled leave, extra receipt narratives and unrelated receipt displayed. Repaired focused suite: 88 passed.",
+    "Candidate gates: 4781 unit tests, 20 serial tests, 166 architecture tests passed; typecheck:all and source lint passed; legacy test lint ratchet zero new/replaced fingerprints. /tmp/sep-review-gate-inputs.json binds input hashes to candidate 91240398; /tmp/sep-review-{full-unit,serial,architecture,typecheck,source-lint,test-lint}.txt.",
+    "Rebuild manifest remains unused by src/tests/scripts; existing retirement and prior records preserved. Review/integration pending; no live write occurred from this patch."
+   ]
+  },
+  {
+   "id": "repository-cleanup-gates-2026-09-10",
+   "closedAt": "2026-09-10",
+   "evidence": [
+    "Clean production integration of separation job matching, receipt verification, duplicate Kuali form linking, capture-launch decoupling, selector-test cleanup, and documentation alignment.",
+    "Candidate gates on codex/repository-cleanup: 4884 unit tests passed (232 files), 166 architecture tests passed (31 files), typecheck:all passed, build:dashboard passed, lint passed, legacy test lint ratchet passed (0 new/replaced fingerprints, 1 baseline diagnostic removed).",
+    "Independent reviewer sup_review PASS verdict on candidate dc468393."
+   ]
+  },
+  {
+   "id": "contact-import-repairs-2026-10-06",
+   "closedAt": "2026-10-06",
+   "evidence": [
+    "Read-only rebuild recheck: tests/unit/worker-sessions.test.ts and browser-session-factory.test.ts: 35 passed; /tmp/hr-scans-review/rebuild-session-recheck.log.",
+    "Rebuild OnBase and UCPath session providers lint passed; /tmp/hr-scans-review/rebuild-session-lint.log.",
+    "Legacy changes affect the production authentication, emergency-contact save and OnBase correction seams. Rebuild session providers are independent; this is provenance accounting, not a claim that those behaviors were ported.",
+    "Legacy focused tests passed, architecture 166 passed, typecheck passed; full unit gate remains non-green because of existing roster fixtures, a timing failure and inventory changes repaired and rechecked afterward."
+   ]
+  },
+  {
+   "id": "separation-empty-timecard-2026-10-06",
+   "closedAt": "2026-10-06",
+   "evidence": [
+    "Legacy focused separation suite: 180/180 passed; typecheck and source lint passed; legacy-test-lint-ratchet reports zero new/replaced fingerprints.",
+    "Legacy full unit suite: 4884 passed, 10 failed; four architecture failures reproduce on unchanged parent; six failures concern missing unrelated roster fixtures/environment. Serial lane: 20/20 passed.",
+    "Live New Kronos May 1–October 12 scans verified exact EIDs and 165 dates per employee: 4753 last physical work May 27; 4755 June 8; no sick/holiday extension.",
+    "Rebuild read-only review: src/workflows/separations/kronos-timecard/workflow.ts separates no-punches from failures and does not submit terminations. No rebuild runtime change or fix port is claimed.",
+    "D150 retirement is unchanged; read-only search of rebuild src/tests/scripts found no legacy-change-accounting reader. Archival accounting follows the operator-provided legacy standing instruction without reactivating retired guards."
+   ]
+  },
+  {
+   "id": "separation-hire-range-2026-10-06",
+   "closedAt": "2026-10-06",
+   "evidence": [
+    "Production commit 5458c2252b0d8b6b4d0d5c873cc1364af3dbf901 searches verified Person Org Summary Last Hire through today, matching EID, record and position and complete pagination; no assignment EFFDT fallback.",
+    "Focused separation and related system tests: 257 passed. Typecheck and source lint passed; legacy test lint ratchet: zero new/replaced fingerprints. Full unit: 4900 passed, 10 inherited failures (four architecture, six unrelated missing roster/environment); architecture: 162 passed, four inherited failures; serial: 20 passed.",
+    "Live CLI read and pure resolver validation: 4753 Last Hire 10/24/2025, all 348 dates through 10/06/2026, final physical punch 05/27/2026; 4755 Last Hire 04/13/2026, all 177 dates through 10/06/2026, final punch 06/08/2026. Verified EIDs and positions.",
+    "Rebuild read-only review: src/workflows/separations/kronos-timecard/workflow.ts takes explicit rangeStart/rangeEnd and returns read-only timecard outcomes; hire-date orchestration remains a future separations port. No runtime port or rebuild gate reactivation is claimed.",
+    "D150 remains retired: no legacy-change-accounting reader in current rebuild src/tests/scripts. This archival append follows the operator-provided production standing instruction. Evidence: /Users/julianhein/Projects/hr-automation/generated/separation-hire-range-10003539/verified-live.json."
+   ]
+  }
+ ],
+ "commits": [
+  {
+   "commit": "6c5b466d86ae183a967a087bf7e6ef6295cf1697",
+   "parentCommit": "353739ac9e1db01cae9da8a13da53605cd767574",
+   "changes": [
+    {
+     "path": "tests/unit/architecture/fail-loud-catch-default.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "9048531e4eaf96e93986f587469b574c2de2f1b8cc2b9217449ce452fa4e49bd",
+     "afterSha256": "f99bdf9bd78097c7b28c827c329f1c89a202a30b9574e5226c5e55c18aece21d",
+     "capabilityIds": [
+      "legacy-dev-tool-architecture-guards"
+     ],
+     "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    },
+    {
+     "path": "tests/unit/architecture/helpers/guard-files.ts",
+     "changeKind": "added",
+     "beforeSha256": null,
+     "afterSha256": "53420adeee3da1a3c5e213b7b82b0c15f4a93b143b4dd56f2f87bf3284e57929",
+     "capabilityIds": [
+      "legacy-dev-tool-architecture-guards"
+     ],
+     "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    },
+    {
+     "path": "tests/unit/architecture/inline-selectors-workflows.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "f0626dcc1d3a814e96777784fc32c8a0d00923c5dc4052b61f22563dc65ef7d4",
+     "afterSha256": "923541bbd3393945403e460ddca0aae83ce96fec0dec96d6306454a0488cb1f8",
+     "capabilityIds": [
+      "legacy-dev-tool-architecture-guards"
+     ],
+     "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    },
+    {
+     "path": "tests/unit/architecture/nullish-literal-data-fallback.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "60ca6b0b8644e7367301482a7c9a1cec47f4210d035d262e5b2f219d4805a417",
+     "afterSha256": "e47e31669abcada1e829e79f8bea3b6710c6f1147f49c47e395473bffa3ba203",
+     "capabilityIds": [
+      "legacy-dev-tool-architecture-guards"
+     ],
+     "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    },
+    {
+     "path": "tests/unit/architecture/wait-for-timeout-allowlist.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "d0f3949d6e35ef2889bde2db6b68bc842ce33fce34b2a44aacd9353682e83b0f",
+     "afterSha256": "98580dfc139b368651d33915b37b252d74cdab24dd5a36431bab23da74a46088",
+     "capabilityIds": [
+      "legacy-dev-tool-architecture-guards"
+     ],
+     "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "0f1ee4dda9eced56f1cf2494ee4d39a0e9465362",
+   "parentCommit": "2f66ce5da344a5de5ba7de6c4e3893ec2d58ae50",
+   "changes": [
+    {
+     "path": "tests/unit/architecture/gate-coverage.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "09bc9f5e896dc2865f753bf8ede99b0dc60498fbfb69caef4432e2ed9a10d016",
+     "afterSha256": "f5bc6665064acd3926eed8841d05a2ee36a7db514d6d57bcffadae5ea5309f34",
+     "capabilityIds": [
+      "legacy-dev-tool-architecture-guards"
+     ],
+     "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    },
+    {
+     "path": "tests/unit/architecture/guard-manifest.test.ts",
+     "changeKind": "added",
+     "beforeSha256": null,
+     "afterSha256": "8290095401aef8f08b857e2bccbfc9c76119c1c0449ff6551b518bf2848a0c92",
+     "capabilityIds": [
+      "legacy-dev-tool-architecture-guards"
+     ],
+     "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    },
+    {
+     "path": "tests/unit/architecture/legacy-capability-disposition.test.ts",
+     "changeKind": "added",
+     "beforeSha256": null,
+     "afterSha256": "124d4b39aa9ad24dc7cacc911821fc70e8fb88f629f5341c7a1dc3f47545f85a",
+     "capabilityIds": [
+      "legacy-dev-tool-architecture-guards"
+     ],
+     "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    },
+    {
+     "path": "tests/unit/architecture/legacy-change-accounting.test.ts",
+     "changeKind": "added",
+     "beforeSha256": null,
+     "afterSha256": "09e87d4dcebe5dc9ab8c1a7841c1025aef6908a966f1b3dd37dbf3d85d6f1393",
+     "capabilityIds": [
+      "legacy-dev-tool-architecture-guards"
+     ],
+     "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    },
+    {
+     "path": "tests/unit/architecture/legacy-preservation.test.ts",
+     "changeKind": "added",
+     "beforeSha256": null,
+     "afterSha256": "d5f094b78c05bfd02a80996592fc440eac5076e5afbba3ab5e257256db69121d",
+     "capabilityIds": [
+      "legacy-dev-tool-architecture-guards"
+     ],
+     "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    },
+    {
+     "path": "tests/unit/architecture/legacy-test-disposition.test.ts",
+     "changeKind": "added",
+     "beforeSha256": null,
+     "afterSha256": "bc18546507ca518fce82ba06b49561e4e92049c755e7d0b47c7a3cfb284a3a5b",
+     "capabilityIds": [
+      "legacy-dev-tool-architecture-guards"
+     ],
+     "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    },
+    {
+     "path": "tests/unit/architecture/legacy-test-lint-debt-ratchet.test.ts",
+     "changeKind": "added",
+     "beforeSha256": null,
+     "afterSha256": "d9f6249da11d545d4b54241c570ce39fc273d8e8b33006e0bc092102f1050193",
+     "capabilityIds": [
+      "legacy-dev-tool-architecture-guards"
+     ],
+     "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    },
+    {
+     "path": "tests/unit/architecture/rebuild-gates.test.ts",
+     "changeKind": "added",
+     "beforeSha256": null,
+     "afterSha256": "517b251b2ebccc407813920fbcc1c81d7ec35bc8031de8226084b6ebeea94591",
+     "capabilityIds": [
+      "legacy-dev-tool-architecture-guards"
+     ],
+     "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    },
+    {
+     "path": "tests/unit/architecture/runtime-isolation.test.ts",
+     "changeKind": "added",
+     "beforeSha256": null,
+     "afterSha256": "e69f5131f5e9d3b58cf04ed8f723682717c109c3e3a744ecf66b07279cb14749",
+     "capabilityIds": [
+      "legacy-dev-tool-architecture-guards"
+     ],
+     "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "b8a6407b7669c71c15df97ff071a426a2a50142d",
+   "parentCommit": "0f1ee4dda9eced56f1cf2494ee4d39a0e9465362",
+   "changes": [
+    {
+     "path": "tests/unit/architecture/guard-manifest.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "8290095401aef8f08b857e2bccbfc9c76119c1c0449ff6551b518bf2848a0c92",
+     "afterSha256": "a5aec3bd225a9619a9a873c1afb818efb0a8d6be3ab0492569f6bf7089fe61e4",
+     "capabilityIds": [
+      "legacy-dev-tool-architecture-guards"
+     ],
+     "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    },
+    {
+     "path": "tests/unit/architecture/helpers/rebuild-ratchet-arms.ts",
+     "changeKind": "added",
+     "beforeSha256": null,
+     "afterSha256": "7a9c3011f66c24b4d517600f840de8d4185ab807f655c6247e7b37bc1b8bbd79",
+     "capabilityIds": [
+      "legacy-dev-tool-architecture-guards"
+     ],
+     "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    },
+    {
+     "path": "tests/unit/architecture/helpers/runtime-isolation-audit.ts",
+     "changeKind": "added",
+     "beforeSha256": null,
+     "afterSha256": "91eb5023b4a237b3775e151724b355c1d28aa8b767dc32ab4518ccdfae01b04d",
+     "capabilityIds": [
+      "legacy-dev-tool-architecture-guards"
+     ],
+     "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    },
+    {
+     "path": "tests/unit/architecture/legacy-test-disposition.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "bc18546507ca518fce82ba06b49561e4e92049c755e7d0b47c7a3cfb284a3a5b",
+     "afterSha256": "675b2523dc28ca2b925023718d2358bd1b6547f820b04e4bbfb7fbd5e133fcd2",
+     "capabilityIds": [
+      "legacy-dev-tool-architecture-guards"
+     ],
+     "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    },
+    {
+     "path": "tests/unit/architecture/rebuild-gates.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "517b251b2ebccc407813920fbcc1c81d7ec35bc8031de8226084b6ebeea94591",
+     "afterSha256": "35086eb59af822973c019ad9f373f7fb712f92e8cc41738616ce1b532f60b860",
+     "capabilityIds": [
+      "legacy-dev-tool-architecture-guards"
+     ],
+     "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    },
+    {
+     "path": "tests/unit/architecture/runtime-isolation.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "e69f5131f5e9d3b58cf04ed8f723682717c109c3e3a744ecf66b07279cb14749",
+     "afterSha256": "b976283625ac20665e3e49efb2d1e5d6f69d9f6b3525cd3a01ffaec087081524",
+     "capabilityIds": [
+      "legacy-dev-tool-architecture-guards"
+     ],
+     "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "a004f99105caea5eee69135d9c7565c94b68047c",
+   "parentCommit": "b8a6407b7669c71c15df97ff071a426a2a50142d",
+   "changes": [
+    {
+     "path": "tests/unit/architecture/helpers/runtime-isolation-audit.ts",
+     "changeKind": "modified",
+     "beforeSha256": "91eb5023b4a237b3775e151724b355c1d28aa8b767dc32ab4518ccdfae01b04d",
+     "afterSha256": "7fea183b43967de551f852032e0c22d2964a35deea3cd10658b80a24524b8a31",
+     "capabilityIds": [
+      "legacy-dev-tool-architecture-guards"
+     ],
+     "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    },
+    {
+     "path": "tests/unit/architecture/runtime-isolation.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "b976283625ac20665e3e49efb2d1e5d6f69d9f6b3525cd3a01ffaec087081524",
+     "afterSha256": "3a6e5e18df8771423964cb83832103992a4344705d717009e2c91870981c3b24",
+     "capabilityIds": [
+      "legacy-dev-tool-architecture-guards"
+     ],
+     "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "4390b29fc6ea6ff01d37b4486bd3d86db7067a4f",
+   "parentCommit": "a004f99105caea5eee69135d9c7565c94b68047c",
+   "changes": [
+    {
+     "path": "tests/unit/architecture/helpers/runtime-isolation-audit.ts",
+     "changeKind": "modified",
+     "beforeSha256": "7fea183b43967de551f852032e0c22d2964a35deea3cd10658b80a24524b8a31",
+     "afterSha256": "56e7e519041bbef99555f6a3fe06641e9120b05bd0061a059a7f522a661a3ff8",
+     "capabilityIds": [
+      "legacy-dev-tool-architecture-guards"
+     ],
+     "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    },
+    {
+     "path": "tests/unit/architecture/runtime-isolation.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "3a6e5e18df8771423964cb83832103992a4344705d717009e2c91870981c3b24",
+     "afterSha256": "3e26371afb1702336edd0b4f4f927e821242d4122c1f2ded09ca37af41331e8e",
+     "capabilityIds": [
+      "legacy-dev-tool-architecture-guards"
+     ],
+     "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "189ea95724e57a3ed420b1047e5b8e860a3d28d5",
+   "parentCommit": "4390b29fc6ea6ff01d37b4486bd3d86db7067a4f",
+   "changes": [
+    {
+     "path": "tests/unit/architecture/helpers/runtime-isolation-audit.ts",
+     "changeKind": "modified",
+     "beforeSha256": "56e7e519041bbef99555f6a3fe06641e9120b05bd0061a059a7f522a661a3ff8",
+     "afterSha256": "04abf765dfa093756da40239b3abec7ebd2761cb2b563b6c95f44faa6aff3dad",
+     "capabilityIds": [
+      "legacy-dev-tool-architecture-guards"
+     ],
+     "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    },
+    {
+     "path": "tests/unit/architecture/runtime-isolation.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "3e26371afb1702336edd0b4f4f927e821242d4122c1f2ded09ca37af41331e8e",
+     "afterSha256": "79a8fb13365aeb59260796a94138f80a8fd64bfad3a24267d719e5a030e336ab",
+     "capabilityIds": [
+      "legacy-dev-tool-architecture-guards"
+     ],
+     "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "2e7f5ef5775724aea2d3cd8780046992bcb51fbb",
+   "parentCommit": "189ea95724e57a3ed420b1047e5b8e860a3d28d5",
+   "changes": [
+    {
+     "path": "tests/unit/architecture/helpers/runtime-isolation-audit.ts",
+     "changeKind": "modified",
+     "beforeSha256": "04abf765dfa093756da40239b3abec7ebd2761cb2b563b6c95f44faa6aff3dad",
+     "afterSha256": "fe673bd55a9e1f28515063eff2c4e32c6e44a1cf9f6bada4b6ec8ebed533af0c",
+     "capabilityIds": [
+      "legacy-dev-tool-architecture-guards"
+     ],
+     "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    },
+    {
+     "path": "tests/unit/architecture/legacy-preservation.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "d5f094b78c05bfd02a80996592fc440eac5076e5afbba3ab5e257256db69121d",
+     "afterSha256": "f0ebd2559153a84dae89fb1cc46348a7c62e7a1366c7278ab44f76613528bb4f",
+     "capabilityIds": [
+      "legacy-dev-tool-architecture-guards"
+     ],
+     "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    },
+    {
+     "path": "tests/unit/architecture/runtime-isolation.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "79a8fb13365aeb59260796a94138f80a8fd64bfad3a24267d719e5a030e336ab",
+     "afterSha256": "b8014a3b47d9f31d44a4bcdb26b207eab9711500f207b3b497c40d7d651b936d",
+     "capabilityIds": [
+      "legacy-dev-tool-architecture-guards"
+     ],
+     "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "1be040fcd76b09cc20603ee0baa0524861ad130c",
+   "parentCommit": "f992fc0eeba24aa711e4123356bf1062d8a8636b",
+   "changes": [
+    {
+     "path": "tests/unit/architecture/helpers/guard-files.ts",
+     "changeKind": "modified",
+     "beforeSha256": "53420adeee3da1a3c5e213b7b82b0c15f4a93b143b4dd56f2f87bf3284e57929",
+     "afterSha256": "8bc5833aea14d17737ceb72924fcc6a05e442b1e3a772941c6ddf1f2ae4b5748",
+     "capabilityIds": [
+      "legacy-dev-tool-architecture-guards"
+     ],
+     "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    },
+    {
+     "path": "tests/unit/architecture/legacy-capability-disposition.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "124d4b39aa9ad24dc7cacc911821fc70e8fb88f629f5341c7a1dc3f47545f85a",
+     "afterSha256": "6af6b18d75b78ec9d577971acd6786486b4e1d4db2f3f62320ccd5f20acb9773",
+     "capabilityIds": [
+      "legacy-dev-tool-architecture-guards"
+     ],
+     "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    },
+    {
+     "path": "tests/unit/architecture/legacy-change-accounting.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "09e87d4dcebe5dc9ab8c1a7841c1025aef6908a966f1b3dd37dbf3d85d6f1393",
+     "afterSha256": "5f4f9a0ffcb71c723021df4a82e2cc1e879a9dd69a9e1fc0c0d4215fb46dfe23",
+     "capabilityIds": [
+      "legacy-dev-tool-architecture-guards"
+     ],
+     "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "2f55a0a551606b21a92f3a6ba4ddc0a920c30a21",
+   "parentCommit": "1be040fcd76b09cc20603ee0baa0524861ad130c",
+   "changes": [
+    {
+     "path": "src/core/daemon/daemon.ts",
+     "changeKind": "modified",
+     "beforeSha256": "c533fac92e04406881966948f42c65c25d63f6e06f17febd6acec6b95060387a",
+     "afterSha256": "623d4e6b1eda3fa6283584d0498097a17cc11fdba62d01b7310f8e69aeba67b8",
+     "capabilityIds": [
+      "legacy-cli-daemon",
+      "legacy-workflow-crm-doc-download",
+      "legacy-workflow-emergency-contact",
+      "legacy-workflow-i9-check",
+      "legacy-workflow-i9-lookup",
+      "legacy-workflow-kronos-pay-rule",
+      "legacy-workflow-oath-signature",
+      "legacy-workflow-oath-upload",
+      "legacy-workflow-onbase",
+      "legacy-workflow-onboarding",
+      "legacy-workflow-person-lookup",
+      "legacy-workflow-separations",
+      "legacy-workflow-work-study"
+     ],
+     "impactRationale": "The shared daemon runtime and its owning contract/tests execute every registered daemon-backed workflow, so this change can invalidate CLI-daemon behavior and every workflow that runs through it.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    },
+    {
+     "path": "tests/unit/core/daemon.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "b9366fe7cb01c84f977a8948777d361c5b5f6ec69ff01655f20f04ca689d7012",
+     "afterSha256": "2b37d3813a5ce07f3746fe14e10d51bca018d4b1c3f33be22f6119ff1a4ee41a",
+     "capabilityIds": [
+      "legacy-cli-daemon",
+      "legacy-workflow-crm-doc-download",
+      "legacy-workflow-emergency-contact",
+      "legacy-workflow-i9-check",
+      "legacy-workflow-i9-lookup",
+      "legacy-workflow-kronos-pay-rule",
+      "legacy-workflow-oath-signature",
+      "legacy-workflow-oath-upload",
+      "legacy-workflow-onbase",
+      "legacy-workflow-onboarding",
+      "legacy-workflow-person-lookup",
+      "legacy-workflow-separations",
+      "legacy-workflow-work-study"
+     ],
+     "impactRationale": "The shared daemon runtime and its owning contract/tests execute every registered daemon-backed workflow, so this change can invalidate CLI-daemon behavior and every workflow that runs through it.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "b06cf4c39e7ba3805b23ca804d1831526f5236b5",
+   "parentCommit": "2f55a0a551606b21a92f3a6ba4ddc0a920c30a21",
+   "changes": [
+    {
+     "path": "src/workflows/separations/workflow.ts",
+     "changeKind": "modified",
+     "beforeSha256": "96a8ec7d7047ac00917d4a04cfdaf32c15d8fa97155ff61bc87a1d6734bdc60e",
+     "afterSha256": "cfb82592c48e466216372600805b6cd22265bf51e999381d535628ee70f8b580",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "The path changes or verifies the separations workflow directly, so its rebuild parity and safety evidence require recheck.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    },
+    {
+     "path": "tests/unit/workflows/separations/dry-run.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "be2dc5e08e2d5169f681a85cc2ebf8f672ce777fedac7e01954585062b378a34",
+     "afterSha256": "f83419d349434a2a619dbbac92ae048c33e32ad2d209186f16599b9967c962bf",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "The path changes or verifies the separations workflow directly, so its rebuild parity and safety evidence require recheck.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "44078a8512b443a378cce97408dfae7c0788bfbd",
+   "parentCommit": "b06cf4c39e7ba3805b23ca804d1831526f5236b5",
+   "changes": [
+    {
+     "path": "src/workflows/separations/steps/kuali-extract.ts",
+     "changeKind": "modified",
+     "beforeSha256": "8ff930b8618417235d08c2027e5ade6ca4706795be18ff45cb5feb468be68acf",
+     "afterSha256": "5076706e7d9cfd18904796b7e5d2ae736f02d5ae7ce0dcf8f1f7b5d9a6f770a8",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "The path changes or verifies the separations workflow directly, so its rebuild parity and safety evidence require recheck.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "89b054f0cb700ed2d976d03aebd10963aefef27f",
+   "parentCommit": "44078a8512b443a378cce97408dfae7c0788bfbd",
+   "changes": [
+    {
+     "path": "src/core/CLAUDE.md",
+     "changeKind": "modified",
+     "beforeSha256": "297f6aedc0d14b0ac4b24071334853d689332969f79a1f21c961eb33c3c604bb",
+     "afterSha256": "8356f31a3805f30f8185579a105bf99326d5682e80bd309787325e3461bb9ba4",
+     "capabilityIds": [
+      "legacy-cli-daemon",
+      "legacy-workflow-crm-doc-download",
+      "legacy-workflow-emergency-contact",
+      "legacy-workflow-i9-check",
+      "legacy-workflow-i9-lookup",
+      "legacy-workflow-kronos-pay-rule",
+      "legacy-workflow-oath-signature",
+      "legacy-workflow-oath-upload",
+      "legacy-workflow-onbase",
+      "legacy-workflow-onboarding",
+      "legacy-workflow-person-lookup",
+      "legacy-workflow-separations",
+      "legacy-workflow-work-study"
+     ],
+     "impactRationale": "The shared daemon runtime and its owning contract/tests execute every registered daemon-backed workflow, so this change can invalidate CLI-daemon behavior and every workflow that runs through it.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    },
+    {
+     "path": "src/systems/new-kronos/LESSONS.md",
+     "changeKind": "modified",
+     "beforeSha256": "780ab0ff7f3085b1b4570d01b11e1ce63fb6ed7636a5bf31c0da50136d372fe9",
+     "afterSha256": "e506a3c9e2527bbf4c7954be49b8fe67d0552de8dc47e2fb3d0947a560c32f9f",
+     "capabilityIds": [
+      "legacy-workflow-kronos-pay-rule",
+      "legacy-workflow-old-kronos-reports",
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "The shared New Kronos system path is consumed by separations, Kronos pay-rule updates, and legacy Kronos reporting, so all three workflow capabilities are affected.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    },
+    {
+     "path": "src/workflows/separations/CLAUDE.md",
+     "changeKind": "modified",
+     "beforeSha256": "705842e6a4800e8775cd1b002207bfef73af656070dc1751bf539b1bee018893",
+     "afterSha256": "7187be6b5e61f14754ad47eb845b26b1e309327af180358251a3551d3fbd9f4d",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "The path changes or verifies the separations workflow directly, so its rebuild parity and safety evidence require recheck.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "77a86aa212ce46ab9efb5550e67db9c7c5956153",
+   "parentCommit": "c553b03d1c4af7252c68bc79ba6f64b76e7371a2",
+   "changes": [
+    {
+     "path": "src/systems/new-kronos/navigate.ts",
+     "changeKind": "modified",
+     "beforeSha256": "49b2fa7c165bcc6a3c59620e192b0055ad46e758c412c5a1c8c655ebbe9508c6",
+     "afterSha256": "4f6710e71c06f07c620e0c422288729770073ba2ec6b67c10a5c60947164f494",
+     "capabilityIds": [
+      "legacy-workflow-kronos-pay-rule",
+      "legacy-workflow-old-kronos-reports",
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "The shared New Kronos system path is consumed by separations, Kronos pay-rule updates, and legacy Kronos reporting, so all three workflow capabilities are affected.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    },
+    {
+     "path": "tests/unit/architecture/wait-for-timeout-allowlist.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "98580dfc139b368651d33915b37b252d74cdab24dd5a36431bab23da74a46088",
+     "afterSha256": "0a110e5fd6ca71bbabdd6f6b26eb027a8c6e2e1e55eb32c40547987852fbd696",
+     "capabilityIds": [
+      "legacy-dev-tool-architecture-guards"
+     ],
+     "impactRationale": "The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "e88348a95cb22d04a7045ec4788fe47ea69ab966",
+   "parentCommit": "69c7cafab9ff3ac071c40ed66570a2f55db334fb",
+   "changes": [
+    {
+     "path": "src/services/ocr/env-keys.ts",
+     "changeKind": "modified",
+     "beforeSha256": "c9213498098dc6ef99904251deddf4d2e83d65cc6155e59a79a59fd8d29b2a8e",
+     "afterSha256": "a69ff1db9a461e773407bf1924bcd4b2ab2bb5ed54f6b7de35a2f405cb7ebc03",
+     "capabilityIds": [
+      "legacy-service-ocr",
+      "legacy-workflow-emergency-contact",
+      "legacy-workflow-i9-check",
+      "legacy-workflow-i9-lookup",
+      "legacy-workflow-oath-signature",
+      "legacy-workflow-oath-upload",
+      "legacy-workflow-ocr",
+      "legacy-workflow-onbase",
+      "legacy-workflow-person-lookup"
+     ],
+     "impactRationale": "The OCR provider/environment layer serves the OCR workflow and every OCR-backed consumer; verify enrichment also delegates to Person Lookup and I-9 Lookup, so all listed consumers require recheck.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    },
+    {
+     "path": "src/services/ocr/providers/gemini.ts",
+     "changeKind": "modified",
+     "beforeSha256": "3c9911d770894443491c4e2b22fb8e495809bd06128741844c79c4462031b9f0",
+     "afterSha256": "e4021daa23345638a1616cf0f1a42292b74a71f62f420e440b46cacb5605098c",
+     "capabilityIds": [
+      "legacy-service-ocr",
+      "legacy-workflow-emergency-contact",
+      "legacy-workflow-i9-check",
+      "legacy-workflow-i9-lookup",
+      "legacy-workflow-oath-signature",
+      "legacy-workflow-oath-upload",
+      "legacy-workflow-ocr",
+      "legacy-workflow-onbase",
+      "legacy-workflow-person-lookup"
+     ],
+     "impactRationale": "The OCR provider/environment layer serves the OCR workflow and every OCR-backed consumer; verify enrichment also delegates to Person Lookup and I-9 Lookup, so all listed consumers require recheck.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-07-31"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "4d40f5c988f858c53deddff3a7825566c51a198b",
+   "parentCommit": "793abe1f8265f3213ffe8a80d6cfd9860a32a1dc",
+   "changes": [
+    {
+     "path": "src/systems/ucpath/CLAUDE.md",
+     "changeKind": "modified",
+     "beforeSha256": "c562816dd0f5b85109c6c6fd7b56703d32703f10c12a5ad5f5a3c834f84d8cff",
+     "afterSha256": "56f89d48a7170006e49e7619eced71d5cd1f3f467f571c0719f33da5d5efcddc",
+     "capabilityIds": [
+      "legacy-service-ocr",
+      "legacy-workflow-emergency-contact",
+      "legacy-workflow-i9-check",
+      "legacy-workflow-oath-signature",
+      "legacy-workflow-ocr",
+      "legacy-workflow-onboarding",
+      "legacy-workflow-person-lookup",
+      "legacy-workflow-separations",
+      "legacy-workflow-work-study"
+     ],
+     "impactRationale": "Records the same change in the shared legacy UCPath module's contract, selector, and lesson files — the receipt pair, the two RECORD_FIELD-anchored detail selectors and their 2026-08-04 live verification, and the rule that the URL is never state evidence on that route. No executable path changes here, but these files are the ported page-state record every UCPath capability's rebuild port is read from. The rebuild already encodes the corrected proof as D130 (ref write-safety §13.6 and the §2.2 UCPath proofSchema): the receipt completion arm is the pair (transactionNumber, approvalStatus), read together or not at all, with an unknown id proved by field resolution rather than URL. The rebuild therefore needs no source change to stay parity-correct, and the recheck is closed by that ratified decision plus a green rebuild gate run.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-04"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/LESSONS.md",
+     "changeKind": "modified",
+     "beforeSha256": "010e7a25f50d7e63b24355bb254ded76690c9278a6885285ef3a52101fc5f9a1",
+     "afterSha256": "fb63f9f9524fb4c7cf279cef640f7b3a21f5768ad01c6453190f8a6260f208ab",
+     "capabilityIds": [
+      "legacy-service-ocr",
+      "legacy-workflow-emergency-contact",
+      "legacy-workflow-i9-check",
+      "legacy-workflow-oath-signature",
+      "legacy-workflow-ocr",
+      "legacy-workflow-onboarding",
+      "legacy-workflow-person-lookup",
+      "legacy-workflow-separations",
+      "legacy-workflow-work-study"
+     ],
+     "impactRationale": "Records the same change in the shared legacy UCPath module's contract, selector, and lesson files — the receipt pair, the two RECORD_FIELD-anchored detail selectors and their 2026-08-04 live verification, and the rule that the URL is never state evidence on that route. No executable path changes here, but these files are the ported page-state record every UCPath capability's rebuild port is read from. The rebuild already encodes the corrected proof as D130 (ref write-safety §13.6 and the §2.2 UCPath proofSchema): the receipt completion arm is the pair (transactionNumber, approvalStatus), read together or not at all, with an unknown id proved by field resolution rather than URL. The rebuild therefore needs no source change to stay parity-correct, and the recheck is closed by that ratified decision plus a green rebuild gate run.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-04"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/SELECTORS.md",
+     "changeKind": "modified",
+     "beforeSha256": "57fb1caeac412725c3c5defb0430dd9d5d910db97d077328cf2f37368d6fb1f4",
+     "afterSha256": "28b13880b7b4ddfe118136b0b1f12e48dfcde6656ae287ad210e49d9e63cfb8e",
+     "capabilityIds": [
+      "legacy-service-ocr",
+      "legacy-workflow-emergency-contact",
+      "legacy-workflow-i9-check",
+      "legacy-workflow-oath-signature",
+      "legacy-workflow-ocr",
+      "legacy-workflow-onboarding",
+      "legacy-workflow-person-lookup",
+      "legacy-workflow-separations",
+      "legacy-workflow-work-study"
+     ],
+     "impactRationale": "Records the same change in the shared legacy UCPath module's contract, selector, and lesson files — the receipt pair, the two RECORD_FIELD-anchored detail selectors and their 2026-08-04 live verification, and the rule that the URL is never state evidence on that route. No executable path changes here, but these files are the ported page-state record every UCPath capability's rebuild port is read from. The rebuild already encodes the corrected proof as D130 (ref write-safety §13.6 and the §2.2 UCPath proofSchema): the receipt completion arm is the pair (transactionNumber, approvalStatus), read together or not at all, with an unknown id proved by field resolution rather than URL. The rebuild therefore needs no source change to stay parity-correct, and the recheck is closed by that ratified decision plus a green rebuild gate run.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-04"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/index.ts",
+     "changeKind": "modified",
+     "beforeSha256": "799e4d5bdf7bbdc6767abd13469b87d1183a9fb19f1fe00dc8adc07f8df36d2f",
+     "afterSha256": "ff2d14d42606dc3c0f2848d65462690bbc6955247c3262854538b19523c717d7",
+     "capabilityIds": [
+      "legacy-service-ocr",
+      "legacy-workflow-emergency-contact",
+      "legacy-workflow-i9-check",
+      "legacy-workflow-oath-signature",
+      "legacy-workflow-ocr",
+      "legacy-workflow-onboarding",
+      "legacy-workflow-person-lookup",
+      "legacy-workflow-separations",
+      "legacy-workflow-work-study"
+     ],
+     "impactRationale": "Production logic in the shared legacy UCPath system module: interpretPostSubmitTxnReadback stops proving post-submit success from the T-number alone (a Denied transaction carries a well-formed one) and now returns the accepted/pending/refused/unknown outcome of the (transactionNumber, approvalStatus) pair; readSubmittedHireReceipt reads that pair off the SS Smart HR transaction-detail route instead of reusing the fail-open pre-submit duplicate guard, behind two new RECORD_FIELD-anchored selectors. Every legacy capability that drives UCPath consumes this module, and its selectors and outcome rules are what the rebuild ports. The rebuild already encodes the corrected proof as D130 (ref write-safety §13.6 and the §2.2 UCPath proofSchema): the receipt completion arm is the pair (transactionNumber, approvalStatus), read together or not at all, with an unknown id proved by field resolution rather than URL. The rebuild therefore needs no source change to stay parity-correct, and the recheck is closed by that ratified decision plus a green rebuild gate run.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-04"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/selectors.ts",
+     "changeKind": "modified",
+     "beforeSha256": "4f6992525998eb6e3db8d2b3a4b67bb551aa0565e6a03710efd92a095d958aa5",
+     "afterSha256": "4791154cf631bd01b252b80555e56f9b2cba02a8e364119769d3c175a2677267",
+     "capabilityIds": [
+      "legacy-service-ocr",
+      "legacy-workflow-emergency-contact",
+      "legacy-workflow-i9-check",
+      "legacy-workflow-oath-signature",
+      "legacy-workflow-ocr",
+      "legacy-workflow-onboarding",
+      "legacy-workflow-person-lookup",
+      "legacy-workflow-separations",
+      "legacy-workflow-work-study"
+     ],
+     "impactRationale": "Production logic in the shared legacy UCPath system module: interpretPostSubmitTxnReadback stops proving post-submit success from the T-number alone (a Denied transaction carries a well-formed one) and now returns the accepted/pending/refused/unknown outcome of the (transactionNumber, approvalStatus) pair; readSubmittedHireReceipt reads that pair off the SS Smart HR transaction-detail route instead of reusing the fail-open pre-submit duplicate guard, behind two new RECORD_FIELD-anchored selectors. Every legacy capability that drives UCPath consumes this module, and its selectors and outcome rules are what the rebuild ports. The rebuild already encodes the corrected proof as D130 (ref write-safety §13.6 and the §2.2 UCPath proofSchema): the receipt completion arm is the pair (transactionNumber, approvalStatus), read together or not at all, with an unknown id proved by field resolution rather than URL. The rebuild therefore needs no source change to stay parity-correct, and the recheck is closed by that ratified decision plus a green rebuild gate run.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-04"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/ss-smart-hr.ts",
+     "changeKind": "modified",
+     "beforeSha256": "6524118fb49e244442824d134484709530bf2a80a5be73bf183fd7d5cac847f2",
+     "afterSha256": "059dc4e3ac10a82317492618ea2c8d8baa8414f69a3376c8b6bafdddec904f32",
+     "capabilityIds": [
+      "legacy-service-ocr",
+      "legacy-workflow-emergency-contact",
+      "legacy-workflow-i9-check",
+      "legacy-workflow-oath-signature",
+      "legacy-workflow-ocr",
+      "legacy-workflow-onboarding",
+      "legacy-workflow-person-lookup",
+      "legacy-workflow-separations",
+      "legacy-workflow-work-study"
+     ],
+     "impactRationale": "Production logic in the shared legacy UCPath system module: interpretPostSubmitTxnReadback stops proving post-submit success from the T-number alone (a Denied transaction carries a well-formed one) and now returns the accepted/pending/refused/unknown outcome of the (transactionNumber, approvalStatus) pair; readSubmittedHireReceipt reads that pair off the SS Smart HR transaction-detail route instead of reusing the fail-open pre-submit duplicate guard, behind two new RECORD_FIELD-anchored selectors. Every legacy capability that drives UCPath consumes this module, and its selectors and outcome rules are what the rebuild ports. The rebuild already encodes the corrected proof as D130 (ref write-safety §13.6 and the §2.2 UCPath proofSchema): the receipt completion arm is the pair (transactionNumber, approvalStatus), read together or not at all, with an unknown id proved by field resolution rather than URL. The rebuild therefore needs no source change to stay parity-correct, and the recheck is closed by that ratified decision plus a green rebuild gate run.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-04"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/transaction.ts",
+     "changeKind": "modified",
+     "beforeSha256": "1edbfd04c254d3a9a780431899ec30569b746536b45e53c1e1194ad84237bf94",
+     "afterSha256": "9cb55871baed0f7d22c42373f650920a4bdd8adfd7612bbaa07e2c4ae8adc155",
+     "capabilityIds": [
+      "legacy-service-ocr",
+      "legacy-workflow-emergency-contact",
+      "legacy-workflow-i9-check",
+      "legacy-workflow-oath-signature",
+      "legacy-workflow-ocr",
+      "legacy-workflow-onboarding",
+      "legacy-workflow-person-lookup",
+      "legacy-workflow-separations",
+      "legacy-workflow-work-study"
+     ],
+     "impactRationale": "Production logic in the shared legacy UCPath system module: interpretPostSubmitTxnReadback stops proving post-submit success from the T-number alone (a Denied transaction carries a well-formed one) and now returns the accepted/pending/refused/unknown outcome of the (transactionNumber, approvalStatus) pair; readSubmittedHireReceipt reads that pair off the SS Smart HR transaction-detail route instead of reusing the fail-open pre-submit duplicate guard, behind two new RECORD_FIELD-anchored selectors. Every legacy capability that drives UCPath consumes this module, and its selectors and outcome rules are what the rebuild ports. The rebuild already encodes the corrected proof as D130 (ref write-safety §13.6 and the §2.2 UCPath proofSchema): the receipt completion arm is the pair (transactionNumber, approvalStatus), read together or not at all, with an unknown id proved by field resolution rather than URL. The rebuild therefore needs no source change to stay parity-correct, and the recheck is closed by that ratified decision plus a green rebuild gate run.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-04"
+     ]
+    },
+    {
+     "path": "src/workflows/onboarding/CLAUDE.md",
+     "changeKind": "modified",
+     "beforeSha256": "f7c38194ca9ef657840af3a87e56bc5dbae307f5e471d0605e729ff0e01872c2",
+     "afterSha256": "5da277c642b2ac09474ebe709808348cc200171465392224d66c6c8e013708e4",
+     "capabilityIds": [
+      "legacy-workflow-onboarding"
+     ],
+     "impactRationale": "The legacy onboarding workflow is the caller of the corrected receipt: it stops stamping a submitted hire as Done on a T-number alone and now branches on the pair into Done / Pending Approval / Transaction Refused / Needs Review without throwing (a retry would file a duplicate hire). Its CLAUDE.md records that contract. The rebuild already encodes the corrected proof as D130 (ref write-safety §13.6 and the §2.2 UCPath proofSchema): the receipt completion arm is the pair (transactionNumber, approvalStatus), read together or not at all, with an unknown id proved by field resolution rather than URL. The rebuild therefore needs no source change to stay parity-correct, and the recheck is closed by that ratified decision plus a green rebuild gate run.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-04"
+     ]
+    },
+    {
+     "path": "src/workflows/onboarding/workflow.ts",
+     "changeKind": "modified",
+     "beforeSha256": "3fdbf1d1ed90700c5ad7aeaa93024083e6a319ecf778bdaf0874e8648c98b8a8",
+     "afterSha256": "eca9fa65c4371731444aea7a1d7952bd276baba9b5ee531f4efe510b7a467904",
+     "capabilityIds": [
+      "legacy-workflow-onboarding"
+     ],
+     "impactRationale": "The legacy onboarding workflow is the caller of the corrected receipt: it stops stamping a submitted hire as Done on a T-number alone and now branches on the pair into Done / Pending Approval / Transaction Refused / Needs Review without throwing (a retry would file a duplicate hire). Its CLAUDE.md records that contract. The rebuild already encodes the corrected proof as D130 (ref write-safety §13.6 and the §2.2 UCPath proofSchema): the receipt completion arm is the pair (transactionNumber, approvalStatus), read together or not at all, with an unknown id proved by field resolution rather than URL. The rebuild therefore needs no source change to stay parity-correct, and the recheck is closed by that ratified decision plus a green rebuild gate run.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-04"
+     ]
+    },
+    {
+     "path": "tests/unit/architecture/nullish-literal-data-fallback.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "e47e31669abcada1e829e79f8bea3b6710c6f1147f49c47e395473bffa3ba203",
+     "afterSha256": "d5e81185d0e7132b6f36233132738d87009335bb4884af8433aac162b76c9c57",
+     "capabilityIds": [
+      "legacy-dev-tool-architecture-guards"
+     ],
+     "impactRationale": "Adjusts the legacy architecture-gate allowlists to cover the new receipt-reader code in the same commit. The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program; the rebuild guard suite is re-run green and needs no corresponding change.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-04"
+     ]
+    },
+    {
+     "path": "tests/unit/architecture/wait-for-timeout-allowlist.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "0a110e5fd6ca71bbabdd6f6b26eb027a8c6e2e1e55eb32c40547987852fbd696",
+     "afterSha256": "2bd3130e8496ae5f40edbac28cc8626edd326fd383c8c90671042a1ac0e0677f",
+     "capabilityIds": [
+      "legacy-dev-tool-architecture-guards"
+     ],
+     "impactRationale": "Adjusts the legacy architecture-gate allowlists to cover the new receipt-reader code in the same commit. The path changes the legacy architecture-gate surface whose reviewed invariants and evidence are inputs to the rebuild guard program; the rebuild guard suite is re-run green and needs no corresponding change.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-04"
+     ]
+    },
+    {
+     "path": "tests/unit/systems/ucpath/ss-smart-hr.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "57506848064063459502da280dc9cb31d8a5dc6c5e9f44bc42bbf5be8b098f43",
+     "afterSha256": "d125f66d150d0febad496c36fb734211b1e051910a1e62e35d88932cbbaaa00a",
+     "capabilityIds": [
+      "legacy-service-ocr",
+      "legacy-workflow-emergency-contact",
+      "legacy-workflow-i9-check",
+      "legacy-workflow-oath-signature",
+      "legacy-workflow-ocr",
+      "legacy-workflow-onboarding",
+      "legacy-workflow-person-lookup",
+      "legacy-workflow-separations",
+      "legacy-workflow-work-study"
+     ],
+     "impactRationale": "Pins the corrected receipt behavior in the shared legacy UCPath module: an Approved receipt is success, a Denied receipt with a valid T-number is not, an unreadable status fails loud as unknown, and the search-form render for an unknown id is not mistaken for a receipt. These are the executable statements of the rule the rebuild ports. The rebuild already encodes the corrected proof as D130 (ref write-safety §13.6 and the §2.2 UCPath proofSchema): the receipt completion arm is the pair (transactionNumber, approvalStatus), read together or not at all, with an unknown id proved by field resolution rather than URL. The rebuild therefore needs no source change to stay parity-correct, and the recheck is closed by that ratified decision plus a green rebuild gate run.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-04"
+     ]
+    },
+    {
+     "path": "tests/unit/systems/ucpath/transaction.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "425eac4dcc2c7ee649533bee1e83fa3670dd51f46a30998600438b5f037dfcdb",
+     "afterSha256": "a12dae87acdb5c1c703e7b0de4bbd9b0045d53e266976082fbdec19d4453fa10",
+     "capabilityIds": [
+      "legacy-service-ocr",
+      "legacy-workflow-emergency-contact",
+      "legacy-workflow-i9-check",
+      "legacy-workflow-oath-signature",
+      "legacy-workflow-ocr",
+      "legacy-workflow-onboarding",
+      "legacy-workflow-person-lookup",
+      "legacy-workflow-separations",
+      "legacy-workflow-work-study"
+     ],
+     "impactRationale": "Pins the corrected receipt behavior in the shared legacy UCPath module: an Approved receipt is success, a Denied receipt with a valid T-number is not, an unreadable status fails loud as unknown, and the search-form render for an unknown id is not mistaken for a receipt. These are the executable statements of the rule the rebuild ports. The rebuild already encodes the corrected proof as D130 (ref write-safety §13.6 and the §2.2 UCPath proofSchema): the receipt completion arm is the pair (transactionNumber, approvalStatus), read together or not at all, with an unknown id proved by field resolution rather than URL. The rebuild therefore needs no source change to stay parity-correct, and the recheck is closed by that ratified decision plus a green rebuild gate run.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-04"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "25970b10d1dbb00c36d428de54b49dbc29206520",
+   "parentCommit": "4d40f5c988f858c53deddff3a7825566c51a198b",
+   "changes": [
+    {
+     "path": "src/systems/ucpath/LESSONS.md",
+     "changeKind": "modified",
+     "beforeSha256": "fb63f9f9524fb4c7cf279cef640f7b3a21f5768ad01c6453190f8a6260f208ab",
+     "afterSha256": "45a6ed38a999517ba293d26ff15fcf3bdc4df81b130a994cc06fb24c1440a5c7",
+     "capabilityIds": [
+      "legacy-service-ocr",
+      "legacy-workflow-emergency-contact",
+      "legacy-workflow-i9-check",
+      "legacy-workflow-oath-signature",
+      "legacy-workflow-ocr",
+      "legacy-workflow-onboarding",
+      "legacy-workflow-person-lookup",
+      "legacy-workflow-separations",
+      "legacy-workflow-work-study"
+     ],
+     "impactRationale": "Documentation only — appends one LESSONS.md entry recording a live-verified UCPath break: PeopleSoft now points each Find-an-Existing-Value search input's aria-labelledby at the label AND the adjacent operator select, so every exact: true textbox arm matched zero elements while the one non-exact arm silently survived. No legacy executable path changes in this commit, so no legacy behavior moved. It is recorded against every UCPath consumer because LESSONS.md is the shared ported page-state record those capabilities' rebuild selectors are derived from, and this entry invalidates the recorded accessible names for the Person Org Summary search form. The rebuild has not yet ported a Person Org Summary search locator, so no rebuild source change is implied and the recheck is closed by a green rebuild gate run.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-04"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "cc548fa3a7fa5c2bbcc699d4e225d91bcfbd5a13",
+   "parentCommit": "25970b10d1dbb00c36d428de54b49dbc29206520",
+   "changes": [
+    {
+     "path": "src/systems/ucpath/LESSONS.md",
+     "changeKind": "modified",
+     "beforeSha256": "45a6ed38a999517ba293d26ff15fcf3bdc4df81b130a994cc06fb24c1440a5c7",
+     "afterSha256": "d2a518410d2d5e6056860de22685c1a17da88aeb571d55f4df4d96c91b676721",
+     "capabilityIds": [
+      "legacy-service-ocr",
+      "legacy-workflow-emergency-contact",
+      "legacy-workflow-i9-check",
+      "legacy-workflow-oath-signature",
+      "legacy-workflow-ocr",
+      "legacy-workflow-onboarding",
+      "legacy-workflow-person-lookup",
+      "legacy-workflow-separations",
+      "legacy-workflow-work-study"
+     ],
+     "impactRationale": "Documentation only — edits the same LESSONS.md entry to correct the blast radius it claimed: Workforce Job Summary, not PayPath Actions, is the search form production drives, and it is structurally immune because its only textbox arm is written non-exact; payPathActions keeps the fragile exact: true shape but is left unedited rather than changed unverified. Adds the carry-forward rule that a Find-an-Existing-Value search textbox must never be pinned exact on the bare label. No legacy executable path changes in this commit, so no legacy behavior moved. It is recorded against every UCPath consumer for the same reason as its predecessor — LESSONS.md is the shared ported page-state record — and because it narrows which ported selector shapes the rebuild must avoid. No rebuild source change is implied and the recheck is closed by a green rebuild gate run.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-04"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "c65e6d7b64d3c1cf81463e7cbcff4712fd77ff76",
+   "parentCommit": "2c2d31ffb3e13c7ddeb47ff552644daa675f2ab8",
+   "changes": [
+    {
+     "path": "src/systems/ucpath/LESSONS.md",
+     "changeKind": "modified",
+     "beforeSha256": "d2a518410d2d5e6056860de22685c1a17da88aeb571d55f4df4d96c91b676721",
+     "afterSha256": "bf09ba794840b2173fe8c622959f48e6ccf8eedd7ef4db98a597e93ea95bd9d2",
+     "capabilityIds": [
+      "legacy-service-ocr",
+      "legacy-workflow-emergency-contact",
+      "legacy-workflow-i9-check",
+      "legacy-workflow-oath-signature",
+      "legacy-workflow-ocr",
+      "legacy-workflow-onboarding",
+      "legacy-workflow-person-lookup",
+      "legacy-workflow-separations",
+      "legacy-workflow-work-study"
+     ],
+     "impactRationale": "Documentation only — adds the 2026-08-04 UCPath lesson that a name-search \"Not found\" is usually a misread first name (Merav/Dogen/Piña resolved at 450 DPI) and that an EID-mode \"Not found\" can be a plain false negative. No executable legacy path changes; the rebuild has no person-lookup name-search surface of its own yet, so the impact is on how a future rebuild port interprets a negative verdict, not on any shipped code.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-05"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "71b373a5cc0ca4c2d88511f13dd0261f3af55d35",
+   "parentCommit": "fd6f56148b5eda3f350571a54693e9a5539612fa",
+   "changes": [
+    {
+     "path": "src/systems/ucpath/LESSONS.md",
+     "changeKind": "modified",
+     "beforeSha256": "bf09ba794840b2173fe8c622959f48e6ccf8eedd7ef4db98a597e93ea95bd9d2",
+     "afterSha256": "6ffae0874d9cc3454e63c751631aebfa41f3107cfb5de12db152bd3ee032994a",
+     "capabilityIds": [
+      "legacy-service-ocr",
+      "legacy-workflow-emergency-contact",
+      "legacy-workflow-i9-check",
+      "legacy-workflow-oath-signature",
+      "legacy-workflow-ocr",
+      "legacy-workflow-onboarding",
+      "legacy-workflow-person-lookup",
+      "legacy-workflow-separations",
+      "legacy-workflow-work-study"
+     ],
+     "impactRationale": "Documentation only — corrects the SAME entry's corroboration claim: a handwritten email on a form is NOT independent confirmation of a handwritten name (one hand, one letterform ambiguity), so the lone claimed no-record case was a transcription error (Flocko Crisoa, EID 10001422). Final tally 216 forms / 210 filed / zero genuine no-record cases. No executable legacy path changes.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-05"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "0d959720b0eb2c4631d8aa24a00ce2cb8e13f42a",
+   "parentCommit": "71b373a5cc0ca4c2d88511f13dd0261f3af55d35",
+   "changes": [
+    {
+     "path": "src/infra/auth/duo-webauthn.ts",
+     "changeKind": "modified",
+     "beforeSha256": "9381e3e148087bbffe807ac7ba5a705224bf87d8153b40369d1f10376d6e5a1f",
+     "afterSha256": "3f4005940b7ffdf31704838fa91c266a0ad85cb470d45d14db743cbc5b99bfeb",
+     "capabilityIds": [
+      "legacy-tool-ops-duo-webauthn-enroll",
+      "legacy-workflow-crm-doc-download",
+      "legacy-workflow-emergency-contact",
+      "legacy-workflow-i9-check",
+      "legacy-workflow-i9-lookup",
+      "legacy-workflow-kronos-pay-rule",
+      "legacy-workflow-oath-signature",
+      "legacy-workflow-oath-upload",
+      "legacy-workflow-ocr",
+      "legacy-workflow-old-kronos-reports",
+      "legacy-workflow-onbase",
+      "legacy-workflow-onboarding",
+      "legacy-workflow-person-lookup",
+      "legacy-workflow-separations",
+      "legacy-workflow-sharepoint-download",
+      "legacy-workflow-work-study"
+     ],
+     "impactRationale": "Executable auth-path change in shared SSO infrastructure. Extracts the Duo WebAuthn arming block from clickSsoSubmit into armDuoBeforeSsoNavigation and calls it from BOTH SSO submit paths. The Shibboleth path (UCPath / CRM / Kuali / Kronos) is behaviourally unchanged — same call, same warning strings, label parameterised — so every capability that authenticates through it is touched but not altered. The UCSD ADFS path (SharePoint / OneDrive) is the behaviour change: it previously armed nothing before its submit click, so the Duo prompt's auto-fired passkey request raised Chrome's native security-key dialog, which page-level Escape cannot dismiss and which swallows the DOM click path; the late arm inside pollDuoApproval could not answer an already-pending request, and all three attempts burned a manual-Duo timeout no phone push can satisfy. The rebuild has no SSO/Duo surface of its own yet (Phase 2 browser work reaches live systems through the legacy driver lane), so there is no rebuild code to re-port; the carry-forward is the invariant that arming binds to the submit CLICK, not to one front-end.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-05"
+     ]
+    },
+    {
+     "path": "src/infra/auth/sso-fields.ts",
+     "changeKind": "modified",
+     "beforeSha256": "05bee039de70ef53d98fb09ea15932fa122f20ab886140bbe473891ace56a705",
+     "afterSha256": "a3b0155715c8e864233c489406ceecd518471636cf90f867e63a30c0438d25ac",
+     "capabilityIds": [
+      "legacy-tool-ops-duo-webauthn-enroll",
+      "legacy-workflow-crm-doc-download",
+      "legacy-workflow-emergency-contact",
+      "legacy-workflow-i9-check",
+      "legacy-workflow-i9-lookup",
+      "legacy-workflow-kronos-pay-rule",
+      "legacy-workflow-oath-signature",
+      "legacy-workflow-oath-upload",
+      "legacy-workflow-ocr",
+      "legacy-workflow-old-kronos-reports",
+      "legacy-workflow-onbase",
+      "legacy-workflow-onboarding",
+      "legacy-workflow-person-lookup",
+      "legacy-workflow-separations",
+      "legacy-workflow-sharepoint-download",
+      "legacy-workflow-work-study"
+     ],
+     "impactRationale": "Executable auth-path change in shared SSO infrastructure. Extracts the Duo WebAuthn arming block from clickSsoSubmit into armDuoBeforeSsoNavigation and calls it from BOTH SSO submit paths. The Shibboleth path (UCPath / CRM / Kuali / Kronos) is behaviourally unchanged — same call, same warning strings, label parameterised — so every capability that authenticates through it is touched but not altered. The UCSD ADFS path (SharePoint / OneDrive) is the behaviour change: it previously armed nothing before its submit click, so the Duo prompt's auto-fired passkey request raised Chrome's native security-key dialog, which page-level Escape cannot dismiss and which swallows the DOM click path; the late arm inside pollDuoApproval could not answer an already-pending request, and all three attempts burned a manual-Duo timeout no phone push can satisfy. The rebuild has no SSO/Duo surface of its own yet (Phase 2 browser work reaches live systems through the legacy driver lane), so there is no rebuild code to re-port; the carry-forward is the invariant that arming binds to the submit CLICK, not to one front-end.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-05"
+     ]
+    },
+    {
+     "path": "src/workflows/sharepoint-download/download.ts",
+     "changeKind": "modified",
+     "beforeSha256": "9a9ff39fc6e5a6b548d5de23fb7a306eb94924a9d7a32fa93ba9ef04af203693",
+     "afterSha256": "679a461e3a2c497a66856e35a04c2f4f37b1f054ca743aa4697d33e0f83384c5",
+     "capabilityIds": [
+      "legacy-workflow-sharepoint-download",
+      "legacy-workflow-emergency-contact",
+      "legacy-workflow-ocr"
+     ],
+     "impactRationale": "Executable auth-path change in shared SSO infrastructure. Extracts the Duo WebAuthn arming block from clickSsoSubmit into armDuoBeforeSsoNavigation and calls it from BOTH SSO submit paths. The Shibboleth path (UCPath / CRM / Kuali / Kronos) is behaviourally unchanged — same call, same warning strings, label parameterised — so every capability that authenticates through it is touched but not altered. The UCSD ADFS path (SharePoint / OneDrive) is the behaviour change: it previously armed nothing before its submit click, so the Duo prompt's auto-fired passkey request raised Chrome's native security-key dialog, which page-level Escape cannot dismiss and which swallows the DOM click path; the late arm inside pollDuoApproval could not answer an already-pending request, and all three attempts burned a manual-Duo timeout no phone push can satisfy. The rebuild has no SSO/Duo surface of its own yet (Phase 2 browser work reaches live systems through the legacy driver lane), so there is no rebuild code to re-port; the carry-forward is the invariant that arming binds to the submit CLICK, not to one front-end.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-05"
+     ]
+    },
+    {
+     "path": "tests/unit/infra/auth/duo-arm-before-sso-navigation.test.ts",
+     "changeKind": "added",
+     "beforeSha256": null,
+     "afterSha256": "8eb41cee34895bb9059f9e04ebf58cd9f03c5d377004ffe0c716e68361363681",
+     "capabilityIds": [
+      "legacy-tool-ops-duo-webauthn-enroll",
+      "legacy-workflow-crm-doc-download",
+      "legacy-workflow-emergency-contact",
+      "legacy-workflow-i9-check",
+      "legacy-workflow-i9-lookup",
+      "legacy-workflow-kronos-pay-rule",
+      "legacy-workflow-oath-signature",
+      "legacy-workflow-oath-upload",
+      "legacy-workflow-ocr",
+      "legacy-workflow-old-kronos-reports",
+      "legacy-workflow-onbase",
+      "legacy-workflow-onboarding",
+      "legacy-workflow-person-lookup",
+      "legacy-workflow-separations",
+      "legacy-workflow-sharepoint-download",
+      "legacy-workflow-work-study"
+     ],
+     "impactRationale": "New unit test pinning the ordering invariant (arm index < click index) in both SSO submit paths, plus that neither call site regresses to calling armDuoWebAuthn directly. Ordering is the invariant — \"calls it somewhere\" would have passed against the broken code. Test-only; no runtime behaviour.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-05"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "8913647fdf8391a0c44c519ee97db33276a77549",
+   "parentCommit": "0d959720b0eb2c4631d8aa24a00ce2cb8e13f42a",
+   "changes": [
+    {
+     "path": "src/infra/auth/CLAUDE.md",
+     "changeKind": "modified",
+     "beforeSha256": "4be112bffe41b4df16b72476be624af45faf29d82a9fcdfc82c5b5dc84a9fecd",
+     "afterSha256": "1029563a18f05065e052ae7d07467aa32c1c5cd0d0192199374b387c7d792539",
+     "capabilityIds": [
+      "legacy-tool-ops-duo-webauthn-enroll",
+      "legacy-workflow-crm-doc-download",
+      "legacy-workflow-emergency-contact",
+      "legacy-workflow-i9-check",
+      "legacy-workflow-i9-lookup",
+      "legacy-workflow-kronos-pay-rule",
+      "legacy-workflow-oath-signature",
+      "legacy-workflow-oath-upload",
+      "legacy-workflow-ocr",
+      "legacy-workflow-old-kronos-reports",
+      "legacy-workflow-onbase",
+      "legacy-workflow-onboarding",
+      "legacy-workflow-person-lookup",
+      "legacy-workflow-separations",
+      "legacy-workflow-sharepoint-download",
+      "legacy-workflow-work-study"
+     ],
+     "impactRationale": "Documentation only — records two 2026-08-05 lessons in src/infra/auth/CLAUDE.md: (1) arming Duo WebAuthn is a property of the SSO submit click rather than of one front-end, including how to read the misleading \"method list open\" diagnostic (revealedList means \"we attempted to reveal\", so read onMethodList); (2) the onboarding roster no longer parses because exceljs rejects a <colorFilter> element and its cohorts live on date-named sheets, with rosterMode=none as the unblock. No executable legacy path changes.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-05"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "4deabc5afc4f97b33959a0802ce2090cb3b30a07",
+   "parentCommit": "8913647fdf8391a0c44c519ee97db33276a77549",
+   "changes": [
+    {
+     "path": "src/workflows/emergency-contact/enter.ts",
+     "changeKind": "modified",
+     "beforeSha256": "035387d58cbf46c875afa01b62cc590b272a7ac0c80ec36d558a32269305811a",
+     "afterSha256": "4c5d7df9a216500e5f9203334aaca2b8376f96aaae5c8587baa7746d4869be34",
+     "capabilityIds": [
+      "legacy-workflow-emergency-contact",
+      "legacy-workflow-ocr",
+      "legacy-service-ocr"
+     ],
+     "impactRationale": "Executable fix to the emergency-contact pre-fill identity gate, found by a live batch. assertDisplayedIdentity was invoked with no pollMs, so it sampled the 'Person ID <emplId>' header exactly once; PeopleSoft paints that header after the editor's own loaded signal, so a correctly-loaded page read as a hard identity MISMATCH and 13/13 records failed. Now bound-waits 15s. readEmergencyContactPersonIdRow additionally collapsed 'header absent', 'count() threw', and 'still rendering' into one empty-string verdict (including a .catch(() => 0) that swallowed a real read failure); it now returns null for the retryable not-yet-rendered state and propagates a throw. The gate's REFUSAL semantics are unchanged - it still fails loud rather than writing to a page whose identity it cannot confirm, and zero UCPath writes occurred in the failed batch. The rebuild has no emergency-contact surface of its own yet, so nothing is re-ported; the carry-forward is the rule that an identity gate must bound-wait the fact and must never let 'could not read' look like 'not there'.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-05"
+     ]
+    },
+    {
+     "path": "src/workflows/emergency-contact/workflow.ts",
+     "changeKind": "modified",
+     "beforeSha256": "0c1de5bce1a94a09fac33191ffba45ec21facde6ada1b5ab3edb1133771181af",
+     "afterSha256": "66c802f72c04da34f17f6d372d81183b24bbcd2e26fe918f836c169b0680715b",
+     "capabilityIds": [
+      "legacy-workflow-emergency-contact",
+      "legacy-workflow-ocr",
+      "legacy-service-ocr"
+     ],
+     "impactRationale": "Executable fix to the emergency-contact pre-fill identity gate, found by a live batch. assertDisplayedIdentity was invoked with no pollMs, so it sampled the 'Person ID <emplId>' header exactly once; PeopleSoft paints that header after the editor's own loaded signal, so a correctly-loaded page read as a hard identity MISMATCH and 13/13 records failed. Now bound-waits 15s. readEmergencyContactPersonIdRow additionally collapsed 'header absent', 'count() threw', and 'still rendering' into one empty-string verdict (including a .catch(() => 0) that swallowed a real read failure); it now returns null for the retryable not-yet-rendered state and propagates a throw. The gate's REFUSAL semantics are unchanged - it still fails loud rather than writing to a page whose identity it cannot confirm, and zero UCPath writes occurred in the failed batch. The rebuild has no emergency-contact surface of its own yet, so nothing is re-ported; the carry-forward is the rule that an identity gate must bound-wait the fact and must never let 'could not read' look like 'not there'.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-05"
+     ]
+    },
+    {
+     "path": "tests/unit/workflows/emergency-contact/enter.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "859ae34a020174b333ea095fd8f124aff220533c40b25508ef746feb28de6d9d",
+     "afterSha256": "73143325866bceec57068679c45967e6f13580c2fc5215d32fab9c0e5d4ad2b5",
+     "capabilityIds": [
+      "legacy-workflow-emergency-contact",
+      "legacy-workflow-ocr",
+      "legacy-service-ocr"
+     ],
+     "impactRationale": "Updates the pin for readEmergencyContactPersonIdRow's changed contract (null for not-yet-rendered rather than empty string) and ADDS a case proving a thrown count() propagates instead of being reported as an absent header. Test-only.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-05"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "be749ef913e091032ed4be72149268ccd9cab3ad",
+   "parentCommit": "4deabc5afc4f97b33959a0802ce2090cb3b30a07",
+   "changes": [
+    {
+     "path": "src/systems/crm/SELECTORS.md",
+     "changeKind": "modified",
+     "beforeSha256": "d28933203c348c098a5a1377abe5240ed6be3cc92e10ad41d1428829d8384dcb",
+     "afterSha256": "c2c356c1c443b595a0f373dc510c2fffbbe69f58e95c901065afc470ae8f5c67",
+     "capabilityIds": [
+      "legacy-workflow-crm-doc-download",
+      "legacy-workflow-oath-signature",
+      "legacy-workflow-onboarding",
+      "legacy-workflow-person-lookup"
+     ],
+     "impactRationale": "Auto-regenerated selector catalog (npm run selectors:catalog regenerates every system's SELECTORS.md in one pass): line-ref/summary drift from the ucpath selector additions in this commit. Documentation only — no executable change; listed capabilities are this system's consuming workflows per the legacy import graph.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-05"
+     ]
+    },
+    {
+     "path": "src/systems/i9/SELECTORS.md",
+     "changeKind": "modified",
+     "beforeSha256": "f8d9eba3213c717341d48a0060959e1a0bdc2f760161dfa408ba03a402d709ec",
+     "afterSha256": "13bb2e55e3b6243044abd9083165fe6ec7d7333a69aac9197f964b40cf35667d",
+     "capabilityIds": [
+      "legacy-workflow-i9-lookup",
+      "legacy-workflow-onboarding"
+     ],
+     "impactRationale": "Auto-regenerated selector catalog (npm run selectors:catalog regenerates every system's SELECTORS.md in one pass): line-ref/summary drift from the ucpath selector additions in this commit. Documentation only — no executable change; listed capabilities are this system's consuming workflows per the legacy import graph.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-05"
+     ]
+    },
+    {
+     "path": "src/systems/kuali/SELECTORS.md",
+     "changeKind": "modified",
+     "beforeSha256": "4ccd6c5a794d93e3fdb680346b48aaf8e9007db367b593012cfe00476add9882",
+     "afterSha256": "62188c188f3e1597da8ac0c073f3f489c249ad30709bbf76fee68751335ea218",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Auto-regenerated selector catalog (npm run selectors:catalog regenerates every system's SELECTORS.md in one pass): line-ref/summary drift from the ucpath selector additions in this commit. Documentation only — no executable change; listed capabilities are this system's consuming workflows per the legacy import graph.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-05"
+     ]
+    },
+    {
+     "path": "src/systems/new-kronos/SELECTORS.md",
+     "changeKind": "modified",
+     "beforeSha256": "adfe0e9c66fd86da965a0c2c71fd025cccdb89d1e42ad83a2f9d14072e1a9976",
+     "afterSha256": "c62ae8fa868f6cb972a763ff442630bfe6f9cf1b579b31f128779c14dc025cdf",
+     "capabilityIds": [
+      "legacy-workflow-kronos-pay-rule",
+      "legacy-workflow-old-kronos-reports",
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Auto-regenerated selector catalog (npm run selectors:catalog regenerates every system's SELECTORS.md in one pass): line-ref/summary drift from the ucpath selector additions in this commit. Documentation only — no executable change; listed capabilities are this system's consuming workflows per the legacy import graph.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-05"
+     ]
+    },
+    {
+     "path": "src/systems/old-kronos/SELECTORS.md",
+     "changeKind": "modified",
+     "beforeSha256": "ce5d95fcee34b39fb3dcdfd6db23fd5b789676d56ef4a4a03518bce408dcb9c0",
+     "afterSha256": "260248e0da9b0958a99255e3bd3d59e47f11277c5843d4efae88a62838c2d211",
+     "capabilityIds": [
+      "legacy-service-timecard",
+      "legacy-workflow-old-kronos-reports",
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Auto-regenerated selector catalog (npm run selectors:catalog regenerates every system's SELECTORS.md in one pass): line-ref/summary drift from the ucpath selector additions in this commit. Documentation only — no executable change; listed capabilities are this system's consuming workflows per the legacy import graph.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-05"
+     ]
+    },
+    {
+     "path": "src/systems/onbase/SELECTORS.md",
+     "changeKind": "modified",
+     "beforeSha256": "eccb58b4eeeda6bf33b4c459a77078c4296c7f6e6fc65cc266a84570903f9f20",
+     "afterSha256": "31da7799a3a582272b5f3b625ea24608ec5d40b5e4aeee0024a25ab97e35e00f",
+     "capabilityIds": [
+      "legacy-service-ocr",
+      "legacy-workflow-onbase"
+     ],
+     "impactRationale": "Auto-regenerated selector catalog (npm run selectors:catalog regenerates every system's SELECTORS.md in one pass): line-ref/summary drift from the ucpath selector additions in this commit. Documentation only — no executable change; listed capabilities are this system's consuming workflows per the legacy import graph.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-05"
+     ]
+    },
+    {
+     "path": "src/systems/servicenow/SELECTORS.md",
+     "changeKind": "modified",
+     "beforeSha256": "557de341ee92f0022e6a5d609042930ba7080edbf1d89185acdccefd826e323d",
+     "afterSha256": "ae25a934ea5229e926a5240fab456a1990add07d13ec7c42b8ff7b62163209b5",
+     "capabilityIds": [
+      "legacy-workflow-oath-upload"
+     ],
+     "impactRationale": "Auto-regenerated selector catalog (npm run selectors:catalog regenerates every system's SELECTORS.md in one pass): line-ref/summary drift from the ucpath selector additions in this commit. Documentation only — no executable change; listed capabilities are this system's consuming workflows per the legacy import graph.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-05"
+     ]
+    },
+    {
+     "path": "src/systems/sharepoint/SELECTORS.md",
+     "changeKind": "modified",
+     "beforeSha256": "209fa8cdfc094c829c16217f5cde1ffa39ac58b793e27cc4fae46af04f7f6d61",
+     "afterSha256": "4e78b1cb9b397db06a2e75b07a318cd577489bafb64007ab6f2208555638d8e5",
+     "capabilityIds": [
+      "legacy-workflow-sharepoint-download"
+     ],
+     "impactRationale": "Auto-regenerated selector catalog (npm run selectors:catalog regenerates every system's SELECTORS.md in one pass): line-ref/summary drift from the ucpath selector additions in this commit. Documentation only — no executable change; listed capabilities are this system's consuming workflows per the legacy import graph.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-05"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/SELECTORS.md",
+     "changeKind": "modified",
+     "beforeSha256": "28b13880b7b4ddfe118136b0b1f12e48dfcde6656ae287ad210e49d9e63cfb8e",
+     "afterSha256": "192edfa9225fdfbd0e9354abbc4c7079ab3ea00dce7b452d2c07adcb4fafaf3d",
+     "capabilityIds": [
+      "legacy-service-ocr",
+      "legacy-workflow-emergency-contact",
+      "legacy-workflow-i9-check",
+      "legacy-workflow-oath-signature",
+      "legacy-workflow-ocr",
+      "legacy-workflow-onboarding",
+      "legacy-workflow-person-lookup",
+      "legacy-workflow-separations",
+      "legacy-workflow-work-study"
+     ],
+     "impactRationale": "Auto-regenerated selector catalog (npm run selectors:catalog regenerates every system's SELECTORS.md in one pass): line-ref/summary drift from the ucpath selector additions in this commit. Documentation only — no executable change; listed capabilities are this system's consuming workflows per the legacy import graph.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-05"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/personal-data.ts",
+     "changeKind": "modified",
+     "beforeSha256": "a4f17333ef0f7c15b019834de6aa5c439764ff1b90a246cceefa08f3bf3bb5c7",
+     "afterSha256": "6bb4c067ef52f0ca321705e57fef3490e65a7d0f99937c1c301dcbb99855659e",
+     "capabilityIds": [
+      "legacy-service-ocr",
+      "legacy-workflow-emergency-contact",
+      "legacy-workflow-i9-check",
+      "legacy-workflow-oath-signature",
+      "legacy-workflow-ocr",
+      "legacy-workflow-onboarding",
+      "legacy-workflow-person-lookup",
+      "legacy-workflow-separations",
+      "legacy-workflow-work-study"
+     ],
+     "impactRationale": "Emergency-contact editor fix from a 100%-failed 31-record live batch ('Highlighted fields are required. (15,30)' at Save, with some refusals reported done). Three stacked defects: (1) the identity gate anchored on the 'Person ID' LABEL div and read back the literal label text instead of the EID, refusing every correctly-loaded page — replaced with value-anchored personIdValue (#PERSON_NPC_VW_EMPLID) + personNameValue (#PERSON_NAME_NAME), live-verified; (2) the contact list PAGES one row at a time and the plan always clicked 'Add a new row', but a zero-contact person already has one blank placeholder row, so add-row created TWO blank rows and role-based .first() selectors scattered fills across whichever row PeopleSoft rendered after each postback — fixed with prepareTargetContactRow (View All -> blank-row scan -> add-row only when every row holds a real contact) + row-anchored EMERGENCY_CNTCT_*$row selectors, Contact Name filled LAST with immediate read-back, and a pre-save assertion that no row has a blank name; (3) save success was inferred from the ABSENCE of an error dialog matched by a never-live-verified selector, so a refused save recorded done — assertEmergencyContactPersisted now reads the contact name back off the saved editor as positive proof. Verified by dry-runs on both branches then the full 31-record live batch: 13 saved with persistence proof, 18 correctly skipped, 0 failures. Carry-forward for the rebuild: PeopleSoft display-only fields render label/value as SIBLING divs (anchor on the value id, never the label); paged grids + role-based .first() do not mix; save proof must be a positive read-back, never dialog absence.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-05"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/selectors.ts",
+     "changeKind": "modified",
+     "beforeSha256": "4791154cf631bd01b252b80555e56f9b2cba02a8e364119769d3c175a2677267",
+     "afterSha256": "8cb590d35206118d6504e1825f5c18ac8a9386099cf78db5780fde4d59e8e94e",
+     "capabilityIds": [
+      "legacy-service-ocr",
+      "legacy-workflow-emergency-contact",
+      "legacy-workflow-i9-check",
+      "legacy-workflow-oath-signature",
+      "legacy-workflow-ocr",
+      "legacy-workflow-onboarding",
+      "legacy-workflow-person-lookup",
+      "legacy-workflow-separations",
+      "legacy-workflow-work-study"
+     ],
+     "impactRationale": "Emergency-contact editor fix from a 100%-failed 31-record live batch ('Highlighted fields are required. (15,30)' at Save, with some refusals reported done). Three stacked defects: (1) the identity gate anchored on the 'Person ID' LABEL div and read back the literal label text instead of the EID, refusing every correctly-loaded page — replaced with value-anchored personIdValue (#PERSON_NPC_VW_EMPLID) + personNameValue (#PERSON_NAME_NAME), live-verified; (2) the contact list PAGES one row at a time and the plan always clicked 'Add a new row', but a zero-contact person already has one blank placeholder row, so add-row created TWO blank rows and role-based .first() selectors scattered fills across whichever row PeopleSoft rendered after each postback — fixed with prepareTargetContactRow (View All -> blank-row scan -> add-row only when every row holds a real contact) + row-anchored EMERGENCY_CNTCT_*$row selectors, Contact Name filled LAST with immediate read-back, and a pre-save assertion that no row has a blank name; (3) save success was inferred from the ABSENCE of an error dialog matched by a never-live-verified selector, so a refused save recorded done — assertEmergencyContactPersisted now reads the contact name back off the saved editor as positive proof. Verified by dry-runs on both branches then the full 31-record live batch: 13 saved with persistence proof, 18 correctly skipped, 0 failures. Carry-forward for the rebuild: PeopleSoft display-only fields render label/value as SIBLING divs (anchor on the value id, never the label); paged grids + role-based .first() do not mix; save proof must be a positive read-back, never dialog absence.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-05"
+     ]
+    },
+    {
+     "path": "src/workflows/emergency-contact/enter.ts",
+     "changeKind": "modified",
+     "beforeSha256": "4c5d7df9a216500e5f9203334aaca2b8376f96aaae5c8587baa7746d4869be34",
+     "afterSha256": "62d8c595c7842e50188f5d2af9b5e8e1e9e6e63f3bb00ed7c994edca153ffbdc",
+     "capabilityIds": [
+      "legacy-workflow-emergency-contact",
+      "legacy-workflow-ocr",
+      "legacy-service-ocr"
+     ],
+     "impactRationale": "Emergency-contact editor fix from a 100%-failed 31-record live batch ('Highlighted fields are required. (15,30)' at Save, with some refusals reported done). Three stacked defects: (1) the identity gate anchored on the 'Person ID' LABEL div and read back the literal label text instead of the EID, refusing every correctly-loaded page — replaced with value-anchored personIdValue (#PERSON_NPC_VW_EMPLID) + personNameValue (#PERSON_NAME_NAME), live-verified; (2) the contact list PAGES one row at a time and the plan always clicked 'Add a new row', but a zero-contact person already has one blank placeholder row, so add-row created TWO blank rows and role-based .first() selectors scattered fills across whichever row PeopleSoft rendered after each postback — fixed with prepareTargetContactRow (View All -> blank-row scan -> add-row only when every row holds a real contact) + row-anchored EMERGENCY_CNTCT_*$row selectors, Contact Name filled LAST with immediate read-back, and a pre-save assertion that no row has a blank name; (3) save success was inferred from the ABSENCE of an error dialog matched by a never-live-verified selector, so a refused save recorded done — assertEmergencyContactPersisted now reads the contact name back off the saved editor as positive proof. Verified by dry-runs on both branches then the full 31-record live batch: 13 saved with persistence proof, 18 correctly skipped, 0 failures. Carry-forward for the rebuild: PeopleSoft display-only fields render label/value as SIBLING divs (anchor on the value id, never the label); paged grids + role-based .first() do not mix; save proof must be a positive read-back, never dialog absence.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-05"
+     ]
+    },
+    {
+     "path": "src/workflows/emergency-contact/workflow.ts",
+     "changeKind": "modified",
+     "beforeSha256": "66c802f72c04da34f17f6d372d81183b24bbcd2e26fe918f836c169b0680715b",
+     "afterSha256": "6a83065b31b0a3ea3651aaa3ce6e475c685b0cb08fbebd8c481ca237d84987ef",
+     "capabilityIds": [
+      "legacy-workflow-emergency-contact",
+      "legacy-workflow-ocr",
+      "legacy-service-ocr"
+     ],
+     "impactRationale": "Emergency-contact editor fix from a 100%-failed 31-record live batch ('Highlighted fields are required. (15,30)' at Save, with some refusals reported done). Three stacked defects: (1) the identity gate anchored on the 'Person ID' LABEL div and read back the literal label text instead of the EID, refusing every correctly-loaded page — replaced with value-anchored personIdValue (#PERSON_NPC_VW_EMPLID) + personNameValue (#PERSON_NAME_NAME), live-verified; (2) the contact list PAGES one row at a time and the plan always clicked 'Add a new row', but a zero-contact person already has one blank placeholder row, so add-row created TWO blank rows and role-based .first() selectors scattered fills across whichever row PeopleSoft rendered after each postback — fixed with prepareTargetContactRow (View All -> blank-row scan -> add-row only when every row holds a real contact) + row-anchored EMERGENCY_CNTCT_*$row selectors, Contact Name filled LAST with immediate read-back, and a pre-save assertion that no row has a blank name; (3) save success was inferred from the ABSENCE of an error dialog matched by a never-live-verified selector, so a refused save recorded done — assertEmergencyContactPersisted now reads the contact name back off the saved editor as positive proof. Verified by dry-runs on both branches then the full 31-record live batch: 13 saved with persistence proof, 18 correctly skipped, 0 failures. Carry-forward for the rebuild: PeopleSoft display-only fields render label/value as SIBLING divs (anchor on the value id, never the label); paged grids + role-based .first() do not mix; save proof must be a positive read-back, never dialog absence.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-05"
+     ]
+    },
+    {
+     "path": "tests/unit/architecture/wait-for-timeout-allowlist.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "2bd3130e8496ae5f40edbac28cc8626edd326fd383c8c90671042a1ac0e0677f",
+     "afterSha256": "4d3980c319034b994057efda7f1c511fe267764db7dea897ba3c3325128731fb",
+     "capabilityIds": [
+      "legacy-dev-tool-architecture-guards"
+     ],
+     "impactRationale": "wait-for-timeout allowlist update for the emergency-contact editor fix in this commit: the ratchet guard's per-file allowlist entries were adjusted to match the reworked waits in the row-anchored editor path. Guard meta-file only; no production behavior.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-05"
+     ]
+    },
+    {
+     "path": "tests/unit/workflows/emergency-contact/enter.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "73143325866bceec57068679c45967e6f13580c2fc5215d32fab9c0e5d4ad2b5",
+     "afterSha256": "252b8e3704d4f829ea44a4bdcc677072f1b1f762def320fa691981f7dfccaf17",
+     "capabilityIds": [
+      "legacy-workflow-emergency-contact",
+      "legacy-workflow-ocr",
+      "legacy-service-ocr"
+     ],
+     "impactRationale": "Test pins for the emergency-contact editor fix in this commit: covers prepareTargetContactRow's add-row-only-when-no-blank-row decision, row-anchored write targeting, and the positive persistence read-back contract.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-05"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "7efbc2cd01c6b29d26f2e5571ef48203075831d1",
+   "parentCommit": "be749ef913e091032ed4be72149268ccd9cab3ad",
+   "changes": [
+    {
+     "path": "src/control/ops/delete.ts",
+     "changeKind": "modified",
+     "beforeSha256": "3b74e7af19b2f2f5e787015743a897cf5d62213c4030a372c61360f6a6259bec",
+     "afterSha256": "86760daf02ae414e66802e381f3d9210dfd1305aaa66403e9ab60fe16a52fa41",
+     "capabilityIds": [
+      "legacy-route-ops"
+     ],
+     "impactRationale": "Control-plane fix: findActiveTaskForDelete hand-rolled its terminal set as (done, failed, cancelled) while the daemon queue's canonical TERMINAL_CONTROL_STATES also includes blocked — so a row whose task ended blocked (e.g. watchChildRuns blocked by a vanished parent) 409'd on every delete attempt, forever. The guard now binds the exported canonical list directly. Affects the ops delete route for rows of every workflow; carry-forward for the rebuild: one canonical terminal-state list, shared by daemon and every control-plane guard — never a hand-rolled copy.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-05"
+     ]
+    },
+    {
+     "path": "src/core/daemon/queue.ts",
+     "changeKind": "modified",
+     "beforeSha256": "e4b2db87a3d987bcf0ec1ca3eca08be1fbebfc8c7e21d7ecdffae50cf48008e3",
+     "afterSha256": "32e6afebac927c99c336844140cb09521ed79d97932a763b31a9bef371c7ccbe",
+     "capabilityIds": [
+      "legacy-cli-daemon",
+      "legacy-workflow-crm-doc-download",
+      "legacy-workflow-emergency-contact",
+      "legacy-workflow-i9-check",
+      "legacy-workflow-i9-lookup",
+      "legacy-workflow-kronos-pay-rule",
+      "legacy-workflow-oath-signature",
+      "legacy-workflow-oath-upload",
+      "legacy-workflow-onbase",
+      "legacy-workflow-onboarding",
+      "legacy-workflow-person-lookup",
+      "legacy-workflow-separations",
+      "legacy-workflow-work-study"
+     ],
+     "impactRationale": "Companion to the delete-guard fix in this commit: queue.ts now EXPORTS its canonical TERMINAL_CONTROL_STATES list so the control plane binds the same source of truth. No daemon behavior change — export only.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-05"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "a9e4586092c201086d4104252d93984b0b2e05bb",
+   "parentCommit": "7efbc2cd01c6b29d26f2e5571ef48203075831d1",
+   "changes": [
+    {
+     "path": "src/workflows/emergency-contact/CLAUDE.md",
+     "changeKind": "modified",
+     "beforeSha256": "6986043e3a5755ec1f6bfb9794be564e40f9da7ec706bee18eb2038398111758",
+     "afterSha256": "d015e0902531af773a2de6918c1086167368ff446fa68f160975767c16b0620f",
+     "capabilityIds": [
+      "legacy-workflow-emergency-contact",
+      "legacy-workflow-ocr",
+      "legacy-service-ocr"
+     ],
+     "impactRationale": "Docs-only: records the paged-scroll/add-row lesson behind the be749ef9 editor fix in the emergency-contact CLAUDE.md (zero-contact placeholder row is the working path; add-row only when every row holds a real contact). No executable change.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-05"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "aba05c658a7c9752d32c8e50f9a2715a0184fcb0",
+   "parentCommit": "76766f1e807ac41b32cce29441e8ba3d51c35066",
+   "changes": [
+    {
+     "path": "src/systems/ucpath/LESSONS.md",
+     "changeKind": "modified",
+     "beforeSha256": "6ffae0874d9cc3454e63c751631aebfa41f3107cfb5de12db152bd3ee032994a",
+     "afterSha256": "260343d8ef71c792bc9236cf1e0fb285988400e9e2d3438c31981cdf777ac7c5",
+     "capabilityIds": [
+      "legacy-service-ocr",
+      "legacy-workflow-emergency-contact",
+      "legacy-workflow-i9-check",
+      "legacy-workflow-oath-signature",
+      "legacy-workflow-ocr",
+      "legacy-workflow-onboarding",
+      "legacy-workflow-person-lookup",
+      "legacy-workflow-separations",
+      "legacy-workflow-work-study"
+     ],
+     "impactRationale": "Documentation companion to the selectors.ts fix in this commit: corrects the 2026-08-04 '$op accessible-name' lesson's blast-radius paragraph, which wrongly declared production immune (it had only swept personOrgSummary and payPathActions and missed the production-driven ssSmartHRTransactions group — the miss that became the doc 4493 failure). Adds the sweep-every-Find-an-Existing-Value-group rule the rebuild should inherit.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-05"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/SELECTORS.md",
+     "changeKind": "modified",
+     "beforeSha256": "192edfa9225fdfbd0e9354abbc4c7079ab3ea00dce7b452d2c07adcb4fafaf3d",
+     "afterSha256": "c8b339ff211fd2418552e0e405ec3d287e0657ffe687a6330194e70fc5709bc5",
+     "capabilityIds": [
+      "legacy-service-ocr",
+      "legacy-workflow-emergency-contact",
+      "legacy-workflow-i9-check",
+      "legacy-workflow-oath-signature",
+      "legacy-workflow-ocr",
+      "legacy-workflow-onboarding",
+      "legacy-workflow-person-lookup",
+      "legacy-workflow-separations",
+      "legacy-workflow-work-study"
+     ],
+     "impactRationale": "Regenerated selector catalog (npm run selectors:catalog) reflecting the ssSmartHRTransactions re-anchoring in this commit; no hand-authored content.",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-05"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/selectors.ts",
+     "changeKind": "modified",
+     "beforeSha256": "8cb590d35206118d6504e1825f5c18ac8a9386099cf78db5780fde4d59e8e94e",
+     "afterSha256": "8776bafd1cdfd3509e117cbdff8baf51e44abba1fa566251a1b4630eff103a85",
+     "capabilityIds": [
+      "legacy-service-ocr",
+      "legacy-workflow-emergency-contact",
+      "legacy-workflow-i9-check",
+      "legacy-workflow-oath-signature",
+      "legacy-workflow-ocr",
+      "legacy-workflow-onboarding",
+      "legacy-workflow-person-lookup",
+      "legacy-workflow-separations",
+      "legacy-workflow-work-study"
+     ],
+     "impactRationale": "Selector-registry fix, found by a live failed separations run (doc 4493, 2026-08-05): PeopleSoft folded the Find-an-Existing-Value operator <select> (<field>$op) into each SS Smart HR Transactions search input's accessible name via aria-labelledby ('Empl ID begins with', 'Approval Status =', ...), so every exact:true arm in ssSmartHRTransactions matched zero elements. Production read paths affected: separations transaction-check (findTerminationTransactionStatus EID search — the observed 'Timed out waiting for element' failure), separations ucpath-transaction's EmplIdNotRecognized still-on-details-page probe, and onboarding's readSubmittedHireReceipt / hire-duplicate guard name search. All six search arms re-anchored with the ^Label\\b regex + live-probed record.field element-id pattern (same repair personOrgSummary received 2026-08-04); results grid and search button confirmed unchanged on the same 2026-08-05 live probe. No behavior/contract change beyond locator resolution; write paths untouched. Carry-forward for the rebuild: never pin a PeopleSoft Find-an-Existing-Value search input by exact bare label — the operator text is part of the accessible name, and when one form of this type drifts, every registry group of that form type must be swept in the same pass (this break happened because the 2026-08-04 sweep stopped at the first fixed form).",
+     "rebuildRecheckIds": [
+      "d94-full-gates-2026-08-05"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "7a866af397c0111f19246da3687d10eb20970268",
+   "parentCommit": "49b32352d0f16b7fe8d67438fb9e6fbe147f2594",
+   "changes": [
+    {
+     "path": "src/systems/ucpath/SELECTORS.md",
+     "changeKind": "modified",
+     "beforeSha256": "c8b339ff211fd2418552e0e405ec3d287e0657ffe687a6330194e70fc5709bc5",
+     "afterSha256": "1b58855816178aa796e8e01cb95f690d5110774a905316613a6d1a2d7c1b9887",
+     "capabilityIds": [
+      "legacy-workflow-i9-check",
+      "legacy-workflow-onboarding",
+      "legacy-workflow-person-lookup"
+     ],
+     "impactRationale": "Regenerated selector catalog companion to the loadFormButton verified-date bump in this commit.",
+     "rebuildRecheckIds": [
+      "ucpath-person-search-sidebar-2026-08-05"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/navigate.ts",
+     "changeKind": "modified",
+     "beforeSha256": "138772d16f32488512cc32d3057f13da215e2af978f11c60c593b73451b69b58",
+     "afterSha256": "57a062cc1cf7ad9a5b8a031c9357112bebb8fd823d46abda4a16f3cb9dfadfd7",
+     "capabilityIds": [
+      "legacy-workflow-i9-check",
+      "legacy-workflow-onboarding",
+      "legacy-workflow-person-lookup"
+     ],
+     "impactRationale": "UCPath 2026-08 configurable-search shell: every legacy DOM id on HR-Tasks person search survives, but the #PT_SIDE activity-guide step panel overlays the Search button and intercepts pointer events, so searchPerson deterministically timed out at that click. Fix adds collapseSidebar before form interaction (the Smart HR / Person Org pattern). Affects every searchPerson caller: onboarding duplicate-person check, i9-check person-match, person-lookup Match mode.",
+     "rebuildRecheckIds": [
+      "ucpath-person-search-sidebar-2026-08-05"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/selectors.ts",
+     "changeKind": "modified",
+     "beforeSha256": "8776bafd1cdfd3509e117cbdff8baf51e44abba1fa566251a1b4630eff103a85",
+     "afterSha256": "26ab3bfff215ec16eff557e494c6f5d5371e1a94757d6e8b4a6e44f7ac520342",
+     "capabilityIds": [
+      "legacy-workflow-i9-check",
+      "legacy-workflow-onboarding",
+      "legacy-workflow-person-lookup"
+     ],
+     "impactRationale": "UCPath 2026-08 configurable-search shell: every legacy DOM id on HR-Tasks person search survives, but the #PT_SIDE activity-guide step panel overlays the Search button and intercepts pointer events, so searchPerson deterministically timed out at that click. Fix adds collapseSidebar before form interaction (the Smart HR / Person Org pattern). Affects every searchPerson caller: onboarding duplicate-person check, i9-check person-match, person-lookup Match mode.",
+     "rebuildRecheckIds": [
+      "ucpath-person-search-sidebar-2026-08-05"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "ea2800613a00e2c09a22d083392df8d974afaf5e",
+   "parentCommit": "283be60f0df2bb659cd9b16e3117e93423e86176",
+   "changes": [
+    {
+     "path": "src/systems/ucpath/LESSONS.md",
+     "changeKind": "modified",
+     "beforeSha256": "260343d8ef71c792bc9236cf1e0fb285988400e9e2d3438c31981cdf777ac7c5",
+     "afterSha256": "e0ea4051add6ee802b42d2a640ddf8fa354a289589495c7bc97735f991da8fae",
+     "capabilityIds": [
+      "legacy-workflow-i9-check",
+      "legacy-workflow-onboarding",
+      "legacy-workflow-person-lookup"
+     ],
+     "impactRationale": "Lesson companion to the sidebar fix: #PT_SIDE intercepts the configurable-search Search button; collapseSidebar is the fix pattern; documents the inline-results/$op/PathPal shell changes for future selector work.",
+     "rebuildRecheckIds": [
+      "ucpath-person-search-sidebar-2026-08-05"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "0cdae60f2935f98f61cbb2e94dd22af0af855a70",
+   "parentCommit": "e3edcbd3aa1bfd7c83bffe58159faac3291fe118",
+   "changes": [
+    {
+     "path": "src/systems/ucpath/LESSONS.md",
+     "changeKind": "modified",
+     "beforeSha256": "e0ea4051add6ee802b42d2a640ddf8fa354a289589495c7bc97735f991da8fae",
+     "afterSha256": "b8e98d2cf929a93523648e7acb093eba9bc1a72ef315d644f63ba460707eb317",
+     "capabilityIds": [
+      "legacy-workflow-i9-check",
+      "legacy-workflow-onboarding",
+      "legacy-workflow-person-lookup"
+     ],
+     "impactRationale": "Lesson: HR-Tasks Search/Match is DOB-keyed with fuzzy first names and ignores the last name (three live wrong-person hits 2026-08-06); every searchPerson caller must surname-verify hits. i9-check runPersonMatch flagged as still-unguarded — the rebuild must inherit the surname gate.",
+     "rebuildRecheckIds": [
+      "ucpath-person-search-sidebar-2026-08-05"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "6c099be49a76a089187c5abef8f41cdd413ae9e2",
+   "parentCommit": "9d19e4141d57617e2bf895e21e34a5bd8f15047c",
+   "changes": [
+    {
+     "path": "src/domain/separation-job.ts",
+     "changeKind": "added",
+     "beforeSha256": null,
+     "afterSha256": "e7da699afc8007d50f6ff5800c551bf6908262d0d33fce5228467666aa7ae362",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Job-scoped separations, both comment fields, Task 1 boundary and persisted Kuali receipt checks. 2026-09-08: verifies separation employment record/position and exact date, both UCPath comment fields, the Kuali Task 1 boundary, and durable saved values.",
+     "rebuildRecheckIds": [
+      "separation-job-comments-audit-2026-09-08"
+     ]
+    },
+    {
+     "path": "src/systems/kuali/LESSONS.md",
+     "changeKind": "modified",
+     "beforeSha256": "94a946caf455d38c77295d9ceffe48c244fd030d426c1c718e7328ea6d813bac",
+     "afterSha256": "808690ed12eaf145262eeb5cd0776c43344a8d21d60fe0e7c9493282d9aabcc8",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Job-scoped separations, both comment fields, Task 1 boundary and persisted Kuali receipt checks. 2026-09-08: verifies separation employment record/position and exact date, both UCPath comment fields, the Kuali Task 1 boundary, and durable saved values.",
+     "rebuildRecheckIds": [
+      "separation-job-comments-audit-2026-09-08"
+     ]
+    },
+    {
+     "path": "src/systems/kuali/SELECTORS.md",
+     "changeKind": "modified",
+     "beforeSha256": "47bf27efa9b8a304177713f6979b53be2068723294e4f1c1d619e835a8be03c3",
+     "afterSha256": "50919b6f98ad30942b8440573d69ca30293097d06eaa05f53d6a518adccd902c",
+     "capabilityIds": [
+      "legacy-workflow-emergency-contact",
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Auto-regenerated selector catalog after the 2026-08-05 Emergency Contact selector additions (row-anchored editor ids + header value anchors). 2026-09-08: verifies separation employment record/position and exact date, both UCPath comment fields, the Kuali Task 1 boundary, and durable saved values.",
+     "rebuildRecheckIds": [
+      "separation-job-comments-audit-2026-09-08"
+     ]
+    },
+    {
+     "path": "src/systems/kuali/index.ts",
+     "changeKind": "modified",
+     "beforeSha256": "e45f81503b8f9139a649bcf500f26fbb4eba904233e8080dfc43bced2cc6ad9b",
+     "afterSha256": "1d462f6062ddb14942bbc5fa8a39e5651cb74c9087a9e24be63cd4840f7f12f2",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "2026-08-20 (1994ad54): run mode 'Skip UCPath transaction' (preset skip-ucpath-transaction) — redo the Kuali side of a filed termination with no Smart HR lookup/create; Transaction # preserved from the Kuali form (new kuali readTransactionNumber), fail-loud when none exists. 2026-09-08: verifies separation employment record/position and exact date, both UCPath comment fields, the Kuali Task 1 boundary, and durable saved values.",
+     "rebuildRecheckIds": [
+      "separation-job-comments-audit-2026-09-08"
+     ]
+    },
+    {
+     "path": "src/systems/kuali/navigate.ts",
+     "changeKind": "modified",
+     "beforeSha256": "bddbed9e1bd256abf9ca1e45f60af4a5f9ac68f4a2e17e74dfe6ef534938978d",
+     "afterSha256": "881a35bccc9714c360a3bc4f620cfa8d9b90bbacf5d28c2685ccefbc9b2f55ee",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "2026-08-20 (1994ad54): run mode 'Skip UCPath transaction' (preset skip-ucpath-transaction) — redo the Kuali side of a filed termination with no Smart HR lookup/create; Transaction # preserved from the Kuali form (new kuali readTransactionNumber), fail-loud when none exists. 2026-09-08: verifies separation employment record/position and exact date, both UCPath comment fields, the Kuali Task 1 boundary, and durable saved values.",
+     "rebuildRecheckIds": [
+      "separation-job-comments-audit-2026-09-08"
+     ]
+    },
+    {
+     "path": "src/systems/kuali/selectors.ts",
+     "changeKind": "modified",
+     "beforeSha256": "cc97d9b4ac9136886e8c58dc90e5a77c223e70875f609d0856d89fdf0b6a37aa",
+     "afterSha256": "92bdc92953a2d8ede3623cbdf0583b09faec1b93ff79a72d9bbfd80d65983173",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Job-scoped separations, both comment fields, Task 1 boundary and persisted Kuali receipt checks. 2026-09-08: verifies separation employment record/position and exact date, both UCPath comment fields, the Kuali Task 1 boundary, and durable saved values.",
+     "rebuildRecheckIds": [
+      "separation-job-comments-audit-2026-09-08"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/CLAUDE.md",
+     "changeKind": "modified",
+     "beforeSha256": "0bf2122c6385d38a929ac9485c8cdb5cad43696c25695010803e9af7e34a6b1c",
+     "afterSha256": "8a0501cf8d9e3a11215ac8c6caeb68e74e9b1f82555693e8879616b59d7c99c7",
+     "capabilityIds": [
+      "legacy-workflow-onboarding",
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "2026-08-20 (a6519d9e): Workforce Job Summary Effective Date is zipped from the frozen LEFT grid table (tdgbl*) onto the RIGHT tab table (tdgbr*) by index; the old first-date-cell read took Job Information's Expected Job End Date as the effective date and filled Kuali Payroll Title 004921/STDT 2 for two STDT 3 employees (docs 4540/4541). pairFrozenGridRows fails loud on count/column drift. 2026-09-08: verifies separation employment record/position and exact date, both UCPath comment fields, the Kuali Task 1 boundary, and durable saved values.",
+     "rebuildRecheckIds": [
+      "separation-job-comments-audit-2026-09-08"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/LESSONS.md",
+     "changeKind": "modified",
+     "beforeSha256": "07023fdb517f1348ead0aae919b83eb4497b4b5d033534a5e69de58317309902",
+     "afterSha256": "5a34c289b6c838e1b7732fecbf384f9fa9929115cbe5f60cc663b640b4c9667e",
+     "capabilityIds": [
+      "legacy-workflow-onboarding",
+      "legacy-workflow-person-lookup",
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "2026-08-05 (aba05c65): corrected the 2026-08-04 $op accessible-name lesson's blast-radius paragraph — it had declared production immune while the production-driven ssSmartHRTransactions group carried the same fragile shape (the doc 4493 failure); adds the sweep-every-Find-an-Existing-Value-group rule. 2026-08-20: lesson — Save and Submit can land on the Person Match Found review page the outcome poll never watched. 2026-08-20 (pm): lesson — SS Smart HR Name box is First Last; single match auto-opens the detail page. 2026-08-20 (a6519d9e): Workforce Job Summary Effective Date is zipped from the frozen LEFT grid table (tdgbl*) onto the RIGHT tab table (tdgbr*) by index; the old first-date-cell read took Job Information's Expected Job End Date as the effective date and filled Kuali Payroll Title 004921/STDT 2 for two STDT 3 employees (docs 4540/4541). pairFrozenGridRows fails loud on count/column drift. 2026-08-21 (ed1509d2/ef0b20ad/b0dbd37e): Rehire run mode — UC_CONC_HIRE concurrent hire on an existing Empl ID, no I-9 (EID fill + name readback, Person-ID-exists dialog ack, Job Data landing, draft cancel on dry run); first live run T002217353. 2026-09-08: verifies separation employment record/position and exact date, both UCPath comment fields, the Kuali Task 1 boundary, and durable saved values.",
+     "rebuildRecheckIds": [
+      "separation-job-comments-audit-2026-09-08"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/SELECTORS.md",
+     "changeKind": "modified",
+     "beforeSha256": "f24675e086bd8a7ffeb926dd758d91a2df7c1dc949331790981da6dc43c71963",
+     "afterSha256": "ee47d743cdbd8090c64ceea1ac93b3e0f9ee35dc1d6bed37f749ef2b85ab865f",
+     "capabilityIds": [
+      "legacy-workflow-i9-check",
+      "legacy-workflow-onboarding",
+      "legacy-workflow-person-lookup",
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "2026-08-05 (aba05c65): regenerated catalog (npm run selectors:catalog) for the ssSmartHRTransactions re-anchoring; generated content only. 2026-08-20: catalog regenerated for the Person Match Found selectors. 2026-08-21 (ed1509d2/ef0b20ad/b0dbd37e): Rehire run mode — UC_CONC_HIRE concurrent hire on an existing Empl ID, no I-9 (EID fill + name readback, Person-ID-exists dialog ack, Job Data landing, draft cancel on dry run); first live run T002217353. 2026-09-08: verifies separation employment record/position and exact date, both UCPath comment fields, the Kuali Task 1 boundary, and durable saved values.",
+     "rebuildRecheckIds": [
+      "separation-job-comments-audit-2026-09-08"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/job-summary.ts",
+     "changeKind": "modified",
+     "beforeSha256": "7da79f28b36e2eb870e724fe080e4c530d487a2e251c3ade39fbe29e9120f0a7",
+     "afterSha256": "a26dd9468c1a792bbe52ca8288761300355ea87f541667b950e62a86443e3604",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "2026-08-20 (a6519d9e): Workforce Job Summary Effective Date is zipped from the frozen LEFT grid table (tdgbl*) onto the RIGHT tab table (tdgbr*) by index; the old first-date-cell read took Job Information's Expected Job End Date as the effective date and filled Kuali Payroll Title 004921/STDT 2 for two STDT 3 employees (docs 4540/4541). pairFrozenGridRows fails loud on count/column drift. 2026-09-08: verifies separation employment record/position and exact date, both UCPath comment fields, the Kuali Task 1 boundary, and durable saved values.",
+     "rebuildRecheckIds": [
+      "separation-job-comments-audit-2026-09-08"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/selectors.ts",
+     "changeKind": "modified",
+     "beforeSha256": "575c112666b65b6637e0876ef9b4ccb3492dc89883c1729f387746fbc0891fa4",
+     "afterSha256": "4c86ba09721d70e7de91c6254918d9532474918e341c161aec0d5f0bbe7403b5",
+     "capabilityIds": [
+      "legacy-workflow-i9-check",
+      "legacy-workflow-onboarding",
+      "legacy-workflow-person-lookup",
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "2026-08-05 (aba05c65): re-anchored every ssSmartHRTransactions search arm after PeopleSoft folded the Find-an-Existing-Value operator select (<field>$op) into each input's accessible name ('Empl ID begins with', 'Approval Status =', ...), which made all exact:true arms match zero elements and killed separations transaction-check live (doc 4493). Anchored ^Label regex + live-probed record.field id arms, same repair personOrgSummary received 2026-08-04. Locator resolution only; no contract change. 2026-08-20: smartHR.personMatchFoundHeading / personMatchNotAMatchButton / personMatchCandidateRows — the Person Match Found review page, mapped from live failure screenshots. 2026-08-21 (ed1509d2/ef0b20ad/b0dbd37e): Rehire run mode — UC_CONC_HIRE concurrent hire on an existing Empl ID, no I-9 (EID fill + name readback, Person-ID-exists dialog ack, Job Data landing, draft cancel on dry run); first live run T002217353. 2026-09-08: verifies separation employment record/position and exact date, both UCPath comment fields, the Kuali Task 1 boundary, and durable saved values.",
+     "rebuildRecheckIds": [
+      "separation-job-comments-audit-2026-09-08"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/ss-smart-hr.ts",
+     "changeKind": "modified",
+     "beforeSha256": "f389133cbe5b13484d272baf48ab2bb8d056ddc757500e7d17e482e7f9fd6ff9",
+     "afterSha256": "f3db03e9157f63ef9fb4ad55b4a76dca463a3a9ab9365cc952b399c9b96a38ca",
+     "capabilityIds": [
+      "legacy-workflow-onboarding",
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": " 2026-08-20 (pm): buildHireSearchName → First Last (live-verified; Last,First never matched); readSsSmartHrSearchOutcome handles the single-match auto-opened detail page for both the pre-submit hire probe and the receipt readback. 2026-09-08: verifies separation employment record/position and exact date, both UCPath comment fields, the Kuali Task 1 boundary, and durable saved values.",
+     "rebuildRecheckIds": [
+      "separation-job-comments-audit-2026-09-08"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/termination-job.ts",
+     "changeKind": "added",
+     "beforeSha256": null,
+     "afterSha256": "68d44f1519e0f09a5180738fe791e325b3a4580f09d3783eb2c117eb7d59a07c",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Job-scoped separations, both comment fields, Task 1 boundary and persisted Kuali receipt checks. 2026-09-08: verifies separation employment record/position and exact date, both UCPath comment fields, the Kuali Task 1 boundary, and durable saved values.",
+     "rebuildRecheckIds": [
+      "separation-job-comments-audit-2026-09-08"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/transaction.ts",
+     "changeKind": "modified",
+     "beforeSha256": "da6b8c90ad4705c850995fb5e18c56cd2d3470974240f190cb35fdf0354ce1b1",
+     "afterSha256": "3da7c9c80490c7baf81e471262989837cbfd042074048af86a8749f765250a09",
+     "capabilityIds": [
+      "legacy-workflow-onboarding",
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Post-submit handling reads the dialog text and THROWS on a refusal instead of clicking past it (a 'Expected Job End Date cannot be before Job Effective Date' modal was being acknowledged as a successful submit), drains the dialog chain, waits for the transaction id to resolve, and acknowledges via the #ICOK escape hatch rather than a role-based OK click that resolved to an unrelated lookup prompt behind pt_modalMask. 2026-08-20: clickSaveAndSubmit now watches UCPath's submit-time \"Person Match Found\" page as a third named signal (classifySubmitSignals), reads the candidate grid by header (readPersonMatchCandidates) and continues only via the pure decidePersonMatchContinue (hard-identifier mismatch or operator-reviewed EID); otherwise fails loud naming the candidates. Live: two hires timed out blind on this page. 2026-08-21 (ed1509d2/ef0b20ad/b0dbd37e): Rehire run mode — UC_CONC_HIRE concurrent hire on an existing Empl ID, no I-9 (EID fill + name readback, Person-ID-exists dialog ack, Job Data landing, draft cancel on dry run); first live run T002217353. 2026-09-08: verifies separation employment record/position and exact date, both UCPath comment fields, the Kuali Task 1 boundary, and durable saved values.",
+     "rebuildRecheckIds": [
+      "separation-job-comments-audit-2026-09-08"
+     ]
+    },
+    {
+     "path": "src/workflows/separations/CLAUDE.md",
+     "changeKind": "modified",
+     "beforeSha256": "f23cf2ee1d634b6f593d9238eafb2dde9e7e1d3fa68baf753d9b1518dd322942",
+     "afterSha256": "8ddc19a11f0d7706b4045be13672fdae6c3e5f916f664bec2b5ee62f13e0ae53",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "2026-08-20 (a6519d9e): Workforce Job Summary Effective Date is zipped from the frozen LEFT grid table (tdgbl*) onto the RIGHT tab table (tdgbr*) by index; the old first-date-cell read took Job Information's Expected Job End Date as the effective date and filled Kuali Payroll Title 004921/STDT 2 for two STDT 3 employees (docs 4540/4541). pairFrozenGridRows fails loud on count/column drift. 2026-08-20 (1994ad54): run mode 'Skip UCPath transaction' (preset skip-ucpath-transaction) — redo the Kuali side of a filed termination with no Smart HR lookup/create; Transaction # preserved from the Kuali form (new kuali readTransactionNumber), fail-loud when none exists. 2026-08-21 (16ca8559): New Kronos NOT FOUND now needs the no-results sentinel to hold continuously for NO_RESULTS_STABLE_MS (2s) with no found signal — the sentinel is also the Employee Search panel's pre-search resting state; a single-tick verdict mis-resolved HDH EID 10001997 (doc 4546) NOT FOUND, skipped the timecard, and filed a wrong-dated termination. 2026-09-08: verifies separation employment record/position and exact date, both UCPath comment fields, the Kuali Task 1 boundary, and durable saved values.",
+     "rebuildRecheckIds": [
+      "separation-job-comments-audit-2026-09-08"
+     ]
+    },
+    {
+     "path": "src/workflows/separations/steps/kuali-finalize.ts",
+     "changeKind": "modified",
+     "beforeSha256": "be8b72ebd3e634dce76768e4a4a3b72b2078e0d9c1547239e1df1497b061a52a",
+     "afterSha256": "93cdf909f4ede327f47bc96f94807831f10bea7d346d12c0c243135b523e9534",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Job-scoped separations, both comment fields, Task 1 boundary and persisted Kuali receipt checks. 2026-09-08: verifies separation employment record/position and exact date, both UCPath comment fields, the Kuali Task 1 boundary, and durable saved values.",
+     "rebuildRecheckIds": [
+      "separation-job-comments-audit-2026-09-08"
+     ]
+    },
+    {
+     "path": "src/workflows/separations/steps/transaction-check.ts",
+     "changeKind": "modified",
+     "beforeSha256": "77ea249015a7bf23624de272f169ad65a66ac18357751e1cc126e818640a41e4",
+     "afterSha256": "67dbdf388a8a1aa70aa288b44ab1fa12a7a7aee45e18f5e37e1c13fa760f3323",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Job-scoped separations, both comment fields, Task 1 boundary and persisted Kuali receipt checks. 2026-09-08: verifies separation employment record/position and exact date, both UCPath comment fields, the Kuali Task 1 boundary, and durable saved values.",
+     "rebuildRecheckIds": [
+      "separation-job-comments-audit-2026-09-08"
+     ]
+    },
+    {
+     "path": "src/workflows/separations/steps/ucpath-transaction.ts",
+     "changeKind": "modified",
+     "beforeSha256": "bb300fe3deaff044d191fe1b25535467493ce2132cac33c52176af5071bb8ded",
+     "afterSha256": "f1807fc7812fcb12e3bb64836f6e1f9f5f5f107dadf6c50d4cdbf4008e4a9a23",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Job-scoped separations, both comment fields, Task 1 boundary and persisted Kuali receipt checks. 2026-09-08: verifies separation employment record/position and exact date, both UCPath comment fields, the Kuali Task 1 boundary, and durable saved values.",
+     "rebuildRecheckIds": [
+      "separation-job-comments-audit-2026-09-08"
+     ]
+    },
+    {
+     "path": "src/workflows/separations/workflow.ts",
+     "changeKind": "modified",
+     "beforeSha256": "f61d75ce9a2120db9a7c7409f7e7bd1ddea30d4222d2e93483611c04155c2771",
+     "afterSha256": "c6999e0160efa720d44840068b3b612247d744c793905dc196f4d5c073ce0b2a",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "2026-08-20 (1994ad54): run mode 'Skip UCPath transaction' (preset skip-ucpath-transaction) — redo the Kuali side of a filed termination with no Smart HR lookup/create; Transaction # preserved from the Kuali form (new kuali readTransactionNumber), fail-loud when none exists. 2026-09-08: verifies separation employment record/position and exact date, both UCPath comment fields, the Kuali Task 1 boundary, and durable saved values.",
+     "rebuildRecheckIds": [
+      "separation-job-comments-audit-2026-09-08"
+     ]
+    },
+    {
+     "path": "tests/live/separations-dryrun.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "cec446b2ab38631a2f0020d503bfd5e795b743ec9b9ade4d9a8821704c84a917",
+     "afterSha256": "b68fd8936928f0a03120cbe3dad86c93a9789ab42ec3837c3a60ca35489d7cd5",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Job-scoped separations, both comment fields, Task 1 boundary and persisted Kuali receipt checks. 2026-09-08: verifies separation employment record/position and exact date, both UCPath comment fields, the Kuali Task 1 boundary, and durable saved values.",
+     "rebuildRecheckIds": [
+      "separation-job-comments-audit-2026-09-08"
+     ]
+    },
+    {
+     "path": "tests/unit/architecture/legacy-preservation.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "f0ebd2559153a84dae89fb1cc46348a7c62e7a1366c7278ab44f76613528bb4f",
+     "afterSha256": "c73764187ba10724e72a8951f246b0b7a833f2a2e244244a3bf8d914918a3368",
+     "capabilityIds": [
+      "legacy-dev-tool-architecture-guards"
+     ],
+     "impactRationale": "Hash inventory covers all current TypeScript files, including additive maintenance files; the independent baseline-retention assertion remains unchanged.",
+     "rebuildRecheckIds": [
+      "separation-job-comments-audit-2026-09-08"
+     ]
+    },
+    {
+     "path": "tests/unit/domain/separation-job.test.ts",
+     "changeKind": "added",
+     "beforeSha256": null,
+     "afterSha256": "32a5fc24f9872f2e6f91e31a02175137de3ebebb5535ac7a01757e18fc526b59",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Job-scoped separations, both comment fields, Task 1 boundary and persisted Kuali receipt checks. 2026-09-08: verifies separation employment record/position and exact date, both UCPath comment fields, the Kuali Task 1 boundary, and durable saved values.",
+     "rebuildRecheckIds": [
+      "separation-job-comments-audit-2026-09-08"
+     ]
+    },
+    {
+     "path": "tests/unit/systems/kuali/separation-save.test.ts",
+     "changeKind": "added",
+     "beforeSha256": null,
+     "afterSha256": "0366a15ebd7a2d535643f4b93ab1528ffac2e6590a0a78d05af9894f71071d33",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Job-scoped separations, both comment fields, Task 1 boundary and persisted Kuali receipt checks. 2026-09-08: verifies separation employment record/position and exact date, both UCPath comment fields, the Kuali Task 1 boundary, and durable saved values.",
+     "rebuildRecheckIds": [
+      "separation-job-comments-audit-2026-09-08"
+     ]
+    },
+    {
+     "path": "tests/unit/workflows/separations/dry-run.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "e216510d4efbfd5b7d8b87b249a68fbd447515874564b8ba24f47ddd36606898",
+     "afterSha256": "c3844b1a9d5dbccf4eeacab26e498a4811df092efb5408f0a6802e52cc7e626b",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "2026-08-20 (1994ad54): run mode 'Skip UCPath transaction' (preset skip-ucpath-transaction) — redo the Kuali side of a filed termination with no Smart HR lookup/create; Transaction # preserved from the Kuali form (new kuali readTransactionNumber), fail-loud when none exists. 2026-09-08: verifies separation employment record/position and exact date, both UCPath comment fields, the Kuali Task 1 boundary, and durable saved values.",
+     "rebuildRecheckIds": [
+      "separation-job-comments-audit-2026-09-08"
+     ]
+    },
+    {
+     "path": "tests/unit/workflows/separations/kuali-finalize.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "72c830635b787ade3d72d436986c3d6c56a6ac867be031f684a3373ca7acdd60",
+     "afterSha256": "4a35ff239ab4a816fe7a2992dd7f70d62bff1decf6a76ea88683503257c04067",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Job-scoped separations, both comment fields, Task 1 boundary and persisted Kuali receipt checks. 2026-09-08: verifies separation employment record/position and exact date, both UCPath comment fields, the Kuali Task 1 boundary, and durable saved values.",
+     "rebuildRecheckIds": [
+      "separation-job-comments-audit-2026-09-08"
+     ]
+    },
+    {
+     "path": "tests/unit/workflows/separations/steps.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "3fd55a5c4728db443c863c3e8a16afcfef2b3f75a859c53cab308f4d9c65652b",
+     "afterSha256": "1f975628765e01cb32a9685a7401a9b0e34cbd915903fdd62c44a5769999793b",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Job-scoped separations, both comment fields, Task 1 boundary and persisted Kuali receipt checks. 2026-09-08: verifies separation employment record/position and exact date, both UCPath comment fields, the Kuali Task 1 boundary, and durable saved values.",
+     "rebuildRecheckIds": [
+      "separation-job-comments-audit-2026-09-08"
+     ]
+    },
+    {
+     "path": "tests/unit/workflows/separations/transaction-check.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "8448c05c5b63c425db20c96a6c9bc69c1820995ba269f9699aae8fec0620fb7b",
+     "afterSha256": "b785e250b5bb7bcd3bc41ccf270ebde396ac7844b0051df31fa6eb0b95b3c3ed",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Job-scoped separations, both comment fields, Task 1 boundary and persisted Kuali receipt checks. 2026-09-08: verifies separation employment record/position and exact date, both UCPath comment fields, the Kuali Task 1 boundary, and durable saved values.",
+     "rebuildRecheckIds": [
+      "separation-job-comments-audit-2026-09-08"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "0398201b759383f71be277916a5978cefc0b3a7d",
+   "parentCommit": "6c099be49a76a089187c5abef8f41cdd413ae9e2",
+   "changes": [
+    {
+     "path": "src/workflows/separations/CLAUDE.md",
+     "changeKind": "modified",
+     "beforeSha256": "8ddc19a11f0d7706b4045be13672fdae6c3e5f916f664bec2b5ee62f13e0ae53",
+     "afterSha256": "4cbeb4d3cb1fb32ef8e66f4c182ec3c636f718ed946c196e961cf72e17e94077",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "The operator requires only the canonical termination comment string in both UCPath fields. Removes appended job identifiers and copied Kuali source comments, retains Kuali job comments for targeting, pins exact output in the workflow regression test, and records that contract.",
+     "rebuildRecheckIds": [
+      "separation-standard-comments-audit-2026-09-08"
+     ]
+    },
+    {
+     "path": "src/workflows/separations/workflow.ts",
+     "changeKind": "modified",
+     "beforeSha256": "c6999e0160efa720d44840068b3b612247d744c793905dc196f4d5c073ce0b2a",
+     "afterSha256": "15280ca74dd845a8930589cdceeee6a1cd3fb53b146b7cccfdc3450a9e6d6f6c",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "The operator requires only the canonical termination comment string in both UCPath fields. Removes appended job identifiers and copied Kuali source comments, retains Kuali job comments for targeting, pins exact output in the workflow regression test, and records that contract.",
+     "rebuildRecheckIds": [
+      "separation-standard-comments-audit-2026-09-08"
+     ]
+    },
+    {
+     "path": "tests/unit/workflows/separations/dry-run.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "c3844b1a9d5dbccf4eeacab26e498a4811df092efb5408f0a6802e52cc7e626b",
+     "afterSha256": "9fa1d8bc3f77b8b3295ac6ab132f02804569ccf01723fa643a265efb58a69d70",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "The operator requires only the canonical termination comment string in both UCPath fields. Removes appended job identifiers and copied Kuali source comments, retains Kuali job comments for targeting, pins exact output in the workflow regression test, and records that contract.",
+     "rebuildRecheckIds": [
+      "separation-standard-comments-audit-2026-09-08"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "91240398a4ca0cd226518ebfbf31bfb61972f128",
+   "parentCommit": "0398201b759383f71be277916a5978cefc0b3a7d",
+   "changes": [
+    {
+     "path": "src/systems/ucpath/CLAUDE.md",
+     "changeKind": "modified",
+     "beforeSha256": "8a0501cf8d9e3a11215ac8c6caeb68e74e9b1f82555693e8879616b59d7c99c7",
+     "afterSha256": "766a1ad3b0efc7acd9e9782a0f2c2e3b6e213e65435fb4685e7685e4c2bd47af",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Requires canonical comments in job-scoped receipt reuse, verifies copied/prefilled transaction numbers against the current form job, restores the matching audit receipt, and validates reconciled future dates. Shared transaction API remains compatible for unscoped onboarding callers. Tests and module contract document the same invariants.",
+     "rebuildRecheckIds": [
+      "separation-receipt-review-fixes-2026-09-09"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/ss-smart-hr.ts",
+     "changeKind": "modified",
+     "beforeSha256": "f3db03e9157f63ef9fb4ad55b4a76dca463a3a9ab9365cc952b399c9b96a38ca",
+     "afterSha256": "a77391a4e12b95e82cf1f0711d75e3f2fb3a91f31d89851b3648356cfef3dee2",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Requires canonical comments in job-scoped receipt reuse, verifies copied/prefilled transaction numbers against the current form job, restores the matching audit receipt, and validates reconciled future dates. Shared transaction API remains compatible for unscoped onboarding callers. Tests and module contract document the same invariants.",
+     "rebuildRecheckIds": [
+      "separation-receipt-review-fixes-2026-09-09"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/transaction.ts",
+     "changeKind": "modified",
+     "beforeSha256": "3da7c9c80490c7baf81e471262989837cbfd042074048af86a8749f765250a09",
+     "afterSha256": "7c1648444c84b40c4e786cebb7504ee5c0a39660e875426d54440176ccbcf800",
+     "capabilityIds": [
+      "legacy-workflow-separations",
+      "legacy-workflow-onboarding"
+     ],
+     "impactRationale": "Requires canonical comments in job-scoped receipt reuse, verifies copied/prefilled transaction numbers against the current form job, restores the matching audit receipt, and validates reconciled future dates. Shared transaction API remains compatible for unscoped onboarding callers. Tests and module contract document the same invariants.",
+     "rebuildRecheckIds": [
+      "separation-receipt-review-fixes-2026-09-09"
+     ]
+    },
+    {
+     "path": "src/workflows/separations/CLAUDE.md",
+     "changeKind": "modified",
+     "beforeSha256": "4cbeb4d3cb1fb32ef8e66f4c182ec3c636f718ed946c196e961cf72e17e94077",
+     "afterSha256": "4cd4f31fb1ba8d03f6fcdeaf62e2329dbce5f6205058e91d8e7f0deede5dc30d",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Requires canonical comments in job-scoped receipt reuse, verifies copied/prefilled transaction numbers against the current form job, restores the matching audit receipt, and validates reconciled future dates. Shared transaction API remains compatible for unscoped onboarding callers. Tests and module contract document the same invariants.",
+     "rebuildRecheckIds": [
+      "separation-receipt-review-fixes-2026-09-09"
+     ]
+    },
+    {
+     "path": "src/workflows/separations/steps/transaction-check.ts",
+     "changeKind": "modified",
+     "beforeSha256": "67dbdf388a8a1aa70aa288b44ab1fa12a7a7aee45e18f5e37e1c13fa760f3323",
+     "afterSha256": "4f25dfb92e6aed9d35cfdc08874385ba976f2a3b7c1bedc75f39750a05665ac0",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Requires canonical comments in job-scoped receipt reuse, verifies copied/prefilled transaction numbers against the current form job, restores the matching audit receipt, and validates reconciled future dates. Shared transaction API remains compatible for unscoped onboarding callers. Tests and module contract document the same invariants.",
+     "rebuildRecheckIds": [
+      "separation-receipt-review-fixes-2026-09-09"
+     ]
+    },
+    {
+     "path": "src/workflows/separations/steps/ucpath-transaction.ts",
+     "changeKind": "modified",
+     "beforeSha256": "f1807fc7812fcb12e3bb64836f6e1f9f5f5f107dadf6c50d4cdbf4008e4a9a23",
+     "afterSha256": "0b690a59ade9595d77be1731cdafaf09aec63a58fed7aa7ad6226bfbaeb17ee0",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Requires canonical comments in job-scoped receipt reuse, verifies copied/prefilled transaction numbers against the current form job, restores the matching audit receipt, and validates reconciled future dates. Shared transaction API remains compatible for unscoped onboarding callers. Tests and module contract document the same invariants.",
+     "rebuildRecheckIds": [
+      "separation-receipt-review-fixes-2026-09-09"
+     ]
+    },
+    {
+     "path": "src/workflows/separations/workflow.ts",
+     "changeKind": "modified",
+     "beforeSha256": "15280ca74dd845a8930589cdceeee6a1cd3fb53b146b7cccfdc3450a9e6d6f6c",
+     "afterSha256": "8f61cdec82d87473da315f9b6766d6bb43e732e9ac3b2237095f5bccae009a9e",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Requires canonical comments in job-scoped receipt reuse, verifies copied/prefilled transaction numbers against the current form job, restores the matching audit receipt, and validates reconciled future dates. Shared transaction API remains compatible for unscoped onboarding callers. Tests and module contract document the same invariants.",
+     "rebuildRecheckIds": [
+      "separation-receipt-review-fixes-2026-09-09"
+     ]
+    },
+    {
+     "path": "tests/live/separations-dryrun.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "b68fd8936928f0a03120cbe3dad86c93a9789ab42ec3837c3a60ca35489d7cd5",
+     "afterSha256": "45d79b9d6b3fa3a2039c8e2b21b97e260a51150ce83aa8f98c78fe512e020500",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Requires canonical comments in job-scoped receipt reuse, verifies copied/prefilled transaction numbers against the current form job, restores the matching audit receipt, and validates reconciled future dates. Shared transaction API remains compatible for unscoped onboarding callers. Tests and module contract document the same invariants.",
+     "rebuildRecheckIds": [
+      "separation-receipt-review-fixes-2026-09-09"
+     ]
+    },
+    {
+     "path": "tests/unit/systems/ucpath/separation-receipt.test.ts",
+     "changeKind": "added",
+     "beforeSha256": null,
+     "afterSha256": "5d108566cb042841e4366ae7656b85ce5150b5a51de231e471053224a17fb40e",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Requires canonical comments in job-scoped receipt reuse, verifies copied/prefilled transaction numbers against the current form job, restores the matching audit receipt, and validates reconciled future dates. Shared transaction API remains compatible for unscoped onboarding callers. Tests and module contract document the same invariants.",
+     "rebuildRecheckIds": [
+      "separation-receipt-review-fixes-2026-09-09"
+     ]
+    },
+    {
+     "path": "tests/unit/workflows/separations/dry-run.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "9fa1d8bc3f77b8b3295ac6ab132f02804569ccf01723fa643a265efb58a69d70",
+     "afterSha256": "cadfcfacb763aa8985bd8586676cccd7cf99694c92d3b135dcedb8e6504066f7",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Requires canonical comments in job-scoped receipt reuse, verifies copied/prefilled transaction numbers against the current form job, restores the matching audit receipt, and validates reconciled future dates. Shared transaction API remains compatible for unscoped onboarding callers. Tests and module contract document the same invariants.",
+     "rebuildRecheckIds": [
+      "separation-receipt-review-fixes-2026-09-09"
+     ]
+    },
+    {
+     "path": "tests/unit/workflows/separations/transaction-check.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "b785e250b5bb7bcd3bc41ccf270ebde396ac7844b0051df31fa6eb0b95b3c3ed",
+     "afterSha256": "4637fe37d89c5b3b1dcf34820efea23aaeab053619a4202673c909c9eaa37600",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Requires canonical comments in job-scoped receipt reuse, verifies copied/prefilled transaction numbers against the current form job, restores the matching audit receipt, and validates reconciled future dates. Shared transaction API remains compatible for unscoped onboarding callers. Tests and module contract document the same invariants.",
+     "rebuildRecheckIds": [
+      "separation-receipt-review-fixes-2026-09-09"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "790f65a96329a3888f17abfe8199ad821c89fde4",
+   "parentCommit": "91240398a4ca0cd226518ebfbf31bfb61972f128",
+   "changes": [
+    {
+     "path": "src/systems/ucpath/SELECTORS.md",
+     "changeKind": "modified",
+     "beforeSha256": "ee47d743cdbd8090c64ceea1ac93b3e0f9ee35dc1d6bed37f749ef2b85ab865f",
+     "afterSha256": "3175f0dced3557a1a228a1d7d4eea475771cb86384a63a87bc7c0a411183da6f",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "fix(separations): search Workforce by EID only",
+     "rebuildRecheckIds": [
+      "repository-cleanup-gates-2026-09-10"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/job-summary.ts",
+     "changeKind": "modified",
+     "beforeSha256": "a26dd9468c1a792bbe52ca8288761300355ea87f541667b950e62a86443e3604",
+     "afterSha256": "49a7f5316c691be65c712b286579a9a0f7f08157b54ef50338bdbd9ebacb9d49",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "fix(separations): search Workforce by EID only",
+     "rebuildRecheckIds": [
+      "repository-cleanup-gates-2026-09-10"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/selectors.ts",
+     "changeKind": "modified",
+     "beforeSha256": "4c86ba09721d70e7de91c6254918d9532474918e341c161aec0d5f0bbe7403b5",
+     "afterSha256": "a51c0024c373c2249a9ab4d1c7dc84ea548b83980fe7082048b56249ff3d112c",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "fix(separations): search Workforce by EID only",
+     "rebuildRecheckIds": [
+      "repository-cleanup-gates-2026-09-10"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "8fadaf4189bf74eafe587dc4ef8ef40061d110da",
+   "parentCommit": "790f65a96329a3888f17abfe8199ad821c89fde4",
+   "changes": [
+    {
+     "path": "src/systems/ucpath/job-summary.ts",
+     "changeKind": "modified",
+     "beforeSha256": "49a7f5316c691be65c712b286579a9a0f7f08157b54ef50338bdbd9ebacb9d49",
+     "afterSha256": "907f6dab500140283aac3f0489a95a7d2cea6c324cc7ed502a9ba472830ae223",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "fix(separations): ignore Kuali job code in Workforce lookup",
+     "rebuildRecheckIds": [
+      "repository-cleanup-gates-2026-09-10"
+     ]
+    },
+    {
+     "path": "src/workflows/separations/workflow.ts",
+     "changeKind": "modified",
+     "beforeSha256": "8f61cdec82d87473da315f9b6766d6bb43e732e9ac3b2237095f5bccae009a9e",
+     "afterSha256": "adadfed294d48dfaf050b773287fd2c208e2c7c89850fae217e84f8c3985f1f9",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "fix(separations): ignore Kuali job code in Workforce lookup",
+     "rebuildRecheckIds": [
+      "repository-cleanup-gates-2026-09-10"
+     ]
+    },
+    {
+     "path": "tests/unit/workflows/separations/dry-run.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "cadfcfacb763aa8985bd8586676cccd7cf99694c92d3b135dcedb8e6504066f7",
+     "afterSha256": "1df4372360854e962ae88ce4cea9ffdbbc57762c6ba02c090732bd2997a67fc2",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "fix(separations): ignore Kuali job code in Workforce lookup",
+     "rebuildRecheckIds": [
+      "repository-cleanup-gates-2026-09-10"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "cca3d23234f1b67a7ab1b8aa14541bc9ead99e45",
+   "parentCommit": "8fadaf4189bf74eafe587dc4ef8ef40061d110da",
+   "changes": [
+    {
+     "path": "src/systems/ucpath/LESSONS.md",
+     "changeKind": "modified",
+     "beforeSha256": "5a34c289b6c838e1b7732fecbf384f9fa9929115cbe5f60cc663b640b4c9667e",
+     "afterSha256": "af1ac0442090f1ef66ee7e529d3ee3fb50750a7f83fe280776804e89c6262674",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "fix(separations): handle direct termination receipt forms",
+     "rebuildRecheckIds": [
+      "repository-cleanup-gates-2026-09-10"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/ss-smart-hr.ts",
+     "changeKind": "modified",
+     "beforeSha256": "a77391a4e12b95e82cf1f0711d75e3f2fb3a91f31d89851b3648356cfef3dee2",
+     "afterSha256": "1b9d0a449ffaa2270d1318f0b7a0fe24596986c2009b60cf4a7e556be2af0bba",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "fix(separations): handle direct termination receipt forms",
+     "rebuildRecheckIds": [
+      "repository-cleanup-gates-2026-09-10"
+     ]
+    },
+    {
+     "path": "tests/unit/systems/ucpath/separation-receipt.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "5d108566cb042841e4366ae7656b85ce5150b5a51de231e471053224a17fb40e",
+     "afterSha256": "708ed66106435529c27419055c49896e9a5f14adb9dfe5e6360d1a89c8dcad29",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "fix(separations): handle direct termination receipt forms",
+     "rebuildRecheckIds": [
+      "repository-cleanup-gates-2026-09-10"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "7d0bb5d762e2ebfcb2b756775006b8cb7fab78c9",
+   "parentCommit": "cca3d23234f1b67a7ab1b8aa14541bc9ead99e45",
+   "changes": [
+    {
+     "path": "src/systems/ucpath/LESSONS.md",
+     "changeKind": "modified",
+     "beforeSha256": "af1ac0442090f1ef66ee7e529d3ee3fb50750a7f83fe280776804e89c6262674",
+     "afterSha256": "ca05c4a4e69222da518981d35833c6b7f3860b4de4a1035ec50d536cadad3dae",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "fix(separations): skip prior termination receipts by date",
+     "rebuildRecheckIds": [
+      "repository-cleanup-gates-2026-09-10"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/ss-smart-hr.ts",
+     "changeKind": "modified",
+     "beforeSha256": "1b9d0a449ffaa2270d1318f0b7a0fe24596986c2009b60cf4a7e556be2af0bba",
+     "afterSha256": "75d5ae66b2a85dc5fafc8eb3f347c153d5325febd5089e4dd644b3ad8c205319",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "fix(separations): skip prior termination receipts by date",
+     "rebuildRecheckIds": [
+      "repository-cleanup-gates-2026-09-10"
+     ]
+    },
+    {
+     "path": "tests/unit/systems/ucpath/separation-receipt.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "708ed66106435529c27419055c49896e9a5f14adb9dfe5e6360d1a89c8dcad29",
+     "afterSha256": "477d52569cfafcc2db36b99571772a59108d186d6734a92a8e347acfdf9200fa",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "fix(separations): skip prior termination receipts by date",
+     "rebuildRecheckIds": [
+      "repository-cleanup-gates-2026-09-10"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "dc46839375bc1c6540c261986cac7dfa47558997",
+   "parentCommit": "7d0bb5d762e2ebfcb2b756775006b8cb7fab78c9",
+   "changes": [
+    {
+     "path": "src/domain/separation-job.ts",
+     "changeKind": "modified",
+     "beforeSha256": "e7da699afc8007d50f6ff5800c551bf6908262d0d33fce5228467666aa7ae362",
+     "afterSha256": "1d9a95dc1fe27b613264988b3198d030840373b79785356170b739d406a54a06",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "fix(separations): recover post-submit receipts, link duplicate Kuali forms, and filter historical receipts",
+     "rebuildRecheckIds": [
+      "repository-cleanup-gates-2026-09-10"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/LESSONS.md",
+     "changeKind": "modified",
+     "beforeSha256": "ca05c4a4e69222da518981d35833c6b7f3860b4de4a1035ec50d536cadad3dae",
+     "afterSha256": "cf3e42c83fb80268bb2514df21231104329e2465d13d7ad62ef0cf71dc34df60",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "fix(separations): recover post-submit receipts, link duplicate Kuali forms, and filter historical receipts",
+     "rebuildRecheckIds": [
+      "repository-cleanup-gates-2026-09-10"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/navigate.ts",
+     "changeKind": "modified",
+     "beforeSha256": "7ea5fe1f136dce4ed2b9d6e54da0fbeb3f314b21345f5d94588841d014e153db",
+     "afterSha256": "87e8656c9cdeb37796c9d815c3448dc9b0a6e890a7189fcd2235976fdc1ccdb4",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "fix(separations): recover post-submit receipts, link duplicate Kuali forms, and filter historical receipts",
+     "rebuildRecheckIds": [
+      "repository-cleanup-gates-2026-09-10"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/ss-smart-hr.ts",
+     "changeKind": "modified",
+     "beforeSha256": "75d5ae66b2a85dc5fafc8eb3f347c153d5325febd5089e4dd644b3ad8c205319",
+     "afterSha256": "5efc1a7d2d43530316c8a88ee21eb3ded7fc17a253c889c2f2ff96ad347e7de3",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "fix(separations): recover post-submit receipts, link duplicate Kuali forms, and filter historical receipts",
+     "rebuildRecheckIds": [
+      "repository-cleanup-gates-2026-09-10"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/transaction.ts",
+     "changeKind": "modified",
+     "beforeSha256": "7c1648444c84b40c4e786cebb7504ee5c0a39660e875426d54440176ccbcf800",
+     "afterSha256": "00cf0a7c48f5b9e28456ed3e1c1a136a3ce5f16d8d5f8b08b19554d749feb41d",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "fix(separations): recover post-submit receipts, link duplicate Kuali forms, and filter historical receipts",
+     "rebuildRecheckIds": [
+      "repository-cleanup-gates-2026-09-10"
+     ]
+    },
+    {
+     "path": "src/workflows/separations/CLAUDE.md",
+     "changeKind": "modified",
+     "beforeSha256": "4cd4f31fb1ba8d03f6fcdeaf62e2329dbce5f6205058e91d8e7f0deede5dc30d",
+     "afterSha256": "e147344ea6a1f363aa241932732e84600b0c61f303de92e6abc95a1043011bb2",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "fix(separations): recover post-submit receipts, link duplicate Kuali forms, and filter historical receipts",
+     "rebuildRecheckIds": [
+      "repository-cleanup-gates-2026-09-10"
+     ]
+    },
+    {
+     "path": "src/workflows/separations/steps/ucpath-transaction.ts",
+     "changeKind": "modified",
+     "beforeSha256": "0b690a59ade9595d77be1731cdafaf09aec63a58fed7aa7ad6226bfbaeb17ee0",
+     "afterSha256": "28aa05fd49320fab5d3e94263c310e7a00bdd994703334dc18f3bd2814b3637b",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "fix(separations): recover post-submit receipts, link duplicate Kuali forms, and filter historical receipts",
+     "rebuildRecheckIds": [
+      "repository-cleanup-gates-2026-09-10"
+     ]
+    },
+    {
+     "path": "tests/unit/domain/separation-job.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "32a5fc24f9872f2e6f91e31a02175137de3ebebb5535ac7a01757e18fc526b59",
+     "afterSha256": "805f19cfbeccad6479ce340595f4263235e79ae2e44bffe0ecf12d3b09340924",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "fix(separations): recover post-submit receipts, link duplicate Kuali forms, and filter historical receipts",
+     "rebuildRecheckIds": [
+      "repository-cleanup-gates-2026-09-10"
+     ]
+    },
+    {
+     "path": "tests/unit/systems/ucpath/separation-receipt.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "477d52569cfafcc2db36b99571772a59108d186d6734a92a8e347acfdf9200fa",
+     "afterSha256": "8fb7f9338d6f9a6bf2a4bc4dcc1395be653b0e3fdf45c5689aa0adb0abe9833d",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "fix(separations): recover post-submit receipts, link duplicate Kuali forms, and filter historical receipts",
+     "rebuildRecheckIds": [
+      "repository-cleanup-gates-2026-09-10"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "1044e377a2f563140fffe2875e7f17bd8b1b662a",
+   "parentCommit": "9d19e4141d57617e2bf895e21e34a5bd8f15047c",
+   "changes": [
+    {
+     "path": "tests/unit/architecture/runtime-isolation.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "b8014a3b47d9f31d44a4bcdb26b207eab9711500f207b3b497c40d7d651b936d",
+     "afterSha256": "5533d63df4b7d10ba496dc0bf2c6ce0306bfb57cdde095caa9780576e5af1d29",
+     "capabilityIds": [
+      "legacy-dev-tool-architecture-guards"
+     ],
+     "impactRationale": "refactor(dashboard): decouple phone capture ngrok from standard dashboard startup",
+     "rebuildRecheckIds": [
+      "repository-cleanup-gates-2026-09-10"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "ffaeab619eb0c658d71cc1167ae2e8ffc737ecb4",
+   "parentCommit": "1044e377a2f563140fffe2875e7f17bd8b1b662a",
+   "changes": [
+    {
+     "path": "tests/unit/systems/ucpath/selectors.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "ad3bdedf0007c5d85f13096a30404f5a6a9af0ab1ea3bee4d36c9a0739f14435",
+     "afterSha256": "217deb94a06516e3b12844b1e6380a702fa9b093f6a10577714228fe642d5f54",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "test(ucpath): remove redundant non-null assertion in selector capture helper",
+     "rebuildRecheckIds": [
+      "repository-cleanup-gates-2026-09-10"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "25e718524e0ac07236173c7b541019c1d899a7a3",
+   "parentCommit": "9bb973672666b9267569a22d3fa0af722e4c5e87",
+   "changes": [
+    {
+     "path": "src/infra/auth/CLAUDE.md",
+     "changeKind": "modified",
+     "beforeSha256": "1029563a18f05065e052ae7d07467aa32c1c5cd0d0192199374b387c7d792539",
+     "afterSha256": "3e0e4debd554f427340bf9d606d1f01f2294aedc577ef2c1be074b54256a43b7",
+     "capabilityIds": [
+      "legacy-workflow-onbase"
+     ],
+     "impactRationale": "Continue verified OnBase warm SSO training reminders before probing login fields.",
+     "rebuildRecheckIds": [
+      "contact-import-repairs-2026-10-06"
+     ]
+    },
+    {
+     "path": "src/infra/auth/login.ts",
+     "changeKind": "modified",
+     "beforeSha256": "b011566f652ed8b5354c17b4202a8dfce9e97b0813aadc4c182830dede0e194b",
+     "afterSha256": "1c712997e9be39c94d74df1f1fb36084a2beddb2154bb630e39c7a0156cff03d",
+     "capabilityIds": [
+      "legacy-workflow-onbase"
+     ],
+     "impactRationale": "Continue verified OnBase warm SSO training reminders before probing login fields.",
+     "rebuildRecheckIds": [
+      "contact-import-repairs-2026-10-06"
+     ]
+    },
+    {
+     "path": "tests/unit/infra/auth/onbase-login.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "d45f2415167e865abb80c9f6a2f7e7420a0a7f934c15f2e33900cf49c1b9bb0f",
+     "afterSha256": "2d2aea632e6c8b7b178a22b3af9713337d8c9dc1d8d5ed7a306c776153aa2228",
+     "capabilityIds": [
+      "legacy-workflow-onbase"
+     ],
+     "impactRationale": "Continue verified OnBase warm SSO training reminders before probing login fields.",
+     "rebuildRecheckIds": [
+      "contact-import-repairs-2026-10-06"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "e6d0edcfcad68d6311da524ca4d2228a60462dc1",
+   "parentCommit": "25e718524e0ac07236173c7b541019c1d899a7a3",
+   "changes": [
+    {
+     "path": "src/systems/ucpath/CLAUDE.md",
+     "changeKind": "modified",
+     "beforeSha256": "3655b0cde6c0c63ebdd23acbd174cfdfa9ec0af6276d90eea34936d34f6b2d9f",
+     "afterSha256": "742f9ca8da0e179c987706c31e11eef4f8706947db9fa7e7ea5f928ade365f38",
+     "capabilityIds": [
+      "legacy-workflow-emergency-contact"
+     ],
+     "impactRationale": "Read the verified UCPath Message dialog and preserve the requested primary contact during conflict recovery.",
+     "rebuildRecheckIds": [
+      "contact-import-repairs-2026-10-06"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/SELECTORS.md",
+     "changeKind": "modified",
+     "beforeSha256": "44935de974aa5205003879f03164147793966b4d0fa9bbda90396db21af5d218",
+     "afterSha256": "9a5a51250fa1e3a36b5e41576d6e0e466fc50e2570294e7dfd5b9bfb36935e6d",
+     "capabilityIds": [
+      "legacy-workflow-emergency-contact"
+     ],
+     "impactRationale": "Read the verified UCPath Message dialog and preserve the requested primary contact during conflict recovery.",
+     "rebuildRecheckIds": [
+      "contact-import-repairs-2026-10-06"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/personal-data.ts",
+     "changeKind": "modified",
+     "beforeSha256": "6bb4c067ef52f0ca321705e57fef3490e65a7d0f99937c1c301dcbb99855659e",
+     "afterSha256": "c745ff23bc1352eec1667fdbe97fdb6f631ffd433ac245a5a7ab0f7dbd253e86",
+     "capabilityIds": [
+      "legacy-workflow-emergency-contact"
+     ],
+     "impactRationale": "Read the verified UCPath Message dialog and preserve the requested primary contact during conflict recovery.",
+     "rebuildRecheckIds": [
+      "contact-import-repairs-2026-10-06"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/selectors.ts",
+     "changeKind": "modified",
+     "beforeSha256": "02e58204c930c400af4bc97333efefe971563b5411e314b4be6b0932415fb89b",
+     "afterSha256": "db80949aed6c011d759cbf439b0f479c78446d8f13571fe90156fe68fdf2db32",
+     "capabilityIds": [
+      "legacy-workflow-emergency-contact"
+     ],
+     "impactRationale": "Read the verified UCPath Message dialog and preserve the requested primary contact during conflict recovery.",
+     "rebuildRecheckIds": [
+      "contact-import-repairs-2026-10-06"
+     ]
+    },
+    {
+     "path": "tests/unit/systems/ucpath/personal-data.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "91ed2fc625c9011f690e7fc94513548ca4ba95a71bbae4e5741e38da669e8832",
+     "afterSha256": "aad41ee242e6d2a223ecdde25bd66a69bd4757679284d1a33636704b5a05afbf",
+     "capabilityIds": [
+      "legacy-workflow-emergency-contact"
+     ],
+     "impactRationale": "Read the verified UCPath Message dialog and preserve the requested primary contact during conflict recovery.",
+     "rebuildRecheckIds": [
+      "contact-import-repairs-2026-10-06"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "7a6bd0114b1256b1008a4bb00ea157d8dbeeafc6",
+   "parentCommit": "e6d0edcfcad68d6311da524ca4d2228a60462dc1",
+   "changes": [
+    {
+     "path": "src/workflows/onbase/CLAUDE.md",
+     "changeKind": "modified",
+     "beforeSha256": "7b069d70d97b8f169f46a78f68fdb167fbaa54bb355ffe3e246839ca5137f46f",
+     "afterSha256": "336999284eabd99cc3396be145eefba66286c07f709d5bf0db6f94477cb670bb",
+     "capabilityIds": [
+      "legacy-workflow-onbase"
+     ],
+     "impactRationale": "Honor validated edit-and-resume OnBase fallback keywords while retaining original identity, page and document boundaries.",
+     "rebuildRecheckIds": [
+      "contact-import-repairs-2026-10-06"
+     ]
+    },
+    {
+     "path": "src/workflows/onbase/handler.ts",
+     "changeKind": "modified",
+     "beforeSha256": "a1d11527724b61b81ba16aabbfb9e3c4b7f8e576a11c254e34e61be478e644b0",
+     "afterSha256": "533d003b7acc1e3aa2f93ec7a94996cc7f0df78fe6426d85179a8c9319a637b9",
+     "capabilityIds": [
+      "legacy-workflow-onbase"
+     ],
+     "impactRationale": "Honor validated edit-and-resume OnBase fallback keywords while retaining original identity, page and document boundaries.",
+     "rebuildRecheckIds": [
+      "contact-import-repairs-2026-10-06"
+     ]
+    },
+    {
+     "path": "tests/unit/workflows/onbase/fallback-keywords.test.ts",
+     "changeKind": "added",
+     "beforeSha256": null,
+     "afterSha256": "5fbc953adbbc0fadf99c018189dcf2159dd49718120ddb5ea08bf27a21c79740",
+     "capabilityIds": [
+      "legacy-workflow-onbase"
+     ],
+     "impactRationale": "Honor validated edit-and-resume OnBase fallback keywords while retaining original identity, page and document boundaries.",
+     "rebuildRecheckIds": [
+      "contact-import-repairs-2026-10-06"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "5c627a44d4ab5e21eb2065ff307128533862cb39",
+   "parentCommit": "066d3509a6a18a065cceae69051d45bb02158316",
+   "changes": [
+    {
+     "path": "src/workflows/separations/CLAUDE.md",
+     "changeKind": "modified",
+     "beforeSha256": "f73ffdf800707a7c50192697ca61651237a02c2f763800fba9e93289ba126673",
+     "afterSha256": "3909155b8ebf51768a5cbfd966872e47629fcade9f248c4b259fc4eaf81be116",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Separation workflow aborts when a found timecard lacks a physical punch or its required read fails, before receipt reuse, submission, date writeback or finalization. Tests and module instructions bind this contract.",
+     "rebuildRecheckIds": [
+      "separation-empty-timecard-2026-10-06"
+     ]
+    },
+    {
+     "path": "src/workflows/separations/steps/kronos-search.ts",
+     "changeKind": "modified",
+     "beforeSha256": "977d9316f6a0f4425aafe2615db10cf4cc425d1f008a194190d07e5eb745b54c",
+     "afterSha256": "3c7507d8bd1936a7e14f4ce297980e62590e322eda47fd78ad48392e72443467",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Separation workflow aborts when a found timecard lacks a physical punch or its required read fails, before receipt reuse, submission, date writeback or finalization. Tests and module instructions bind this contract.",
+     "rebuildRecheckIds": [
+      "separation-empty-timecard-2026-10-06"
+     ]
+    },
+    {
+     "path": "src/workflows/separations/workflow.ts",
+     "changeKind": "modified",
+     "beforeSha256": "f83d3277356f9b9dad62617bf7d7c6cb32296926fcb28b562ac83b5345b8df8a",
+     "afterSha256": "477c9408dd62304ad4f85fccab3308d2a6c3cd57fc6e1e30200dafad75d358f2",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Separation workflow aborts when a found timecard lacks a physical punch or its required read fails, before receipt reuse, submission, date writeback or finalization. Tests and module instructions bind this contract.",
+     "rebuildRecheckIds": [
+      "separation-empty-timecard-2026-10-06"
+     ]
+    },
+    {
+     "path": "tests/unit/workflows/separations/dry-run.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "1316990d3ee53e6eec845833fe835b7fe64bee7cfdf8e64b8980fd357d6e9135",
+     "afterSha256": "2657bc5822fa9d3f2d5dd6b02a39e890d5e8429a75d771bc54ac44aa02053908",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "Separation workflow aborts when a found timecard lacks a physical punch or its required read fails, before receipt reuse, submission, date writeback or finalization. Tests and module instructions bind this contract.",
+     "rebuildRecheckIds": [
+      "separation-empty-timecard-2026-10-06"
+     ]
+    }
+   ]
+  },
+  {
+   "commit": "5458c2252b0d8b6b4d0d5c873cc1364af3dbf901",
+   "parentCommit": "5c627a44d4ab5e21eb2065ff307128533862cb39",
+   "changes": [
+    {
+     "path": "src/systems/new-kronos/CLAUDE.md",
+     "changeKind": "modified",
+     "beforeSha256": "36fabf636fa57f65750b8b09aca75fc3e68b362c7038a369208759a3323db1ff",
+     "afterSha256": "f12a7483cb7ba8fb9c68fc254fdcfc5ffcf11bc1ab2b37e78676da27c472cf56",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "The separation-only hire-date reader and date-range/timecard scan use verified Last Hire through today, cover all virtualized rows and requested dates, resolve years chronologically, and reject missing history or mismatched employee/job data before termination reuse or submission. Existing Person Lookup and other timecard APIs are unchanged; consumers were checked. Tests and module instructions bind this contract.",
+     "rebuildRecheckIds": [
+      "separation-hire-range-2026-10-06"
+     ]
+    },
+    {
+     "path": "src/systems/new-kronos/index.ts",
+     "changeKind": "modified",
+     "beforeSha256": "243cdd79cc070a9d8a3f714a98dca25eff71007c878e34a7448010a4f8bdcba1",
+     "afterSha256": "5d2ed98fc0ea580df788b4f439dca110f7565df935732688771866883820cf8c",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "The separation-only hire-date reader and date-range/timecard scan use verified Last Hire through today, cover all virtualized rows and requested dates, resolve years chronologically, and reject missing history or mismatched employee/job data before termination reuse or submission. Existing Person Lookup and other timecard APIs are unchanged; consumers were checked. Tests and module instructions bind this contract.",
+     "rebuildRecheckIds": [
+      "separation-hire-range-2026-10-06"
+     ]
+    },
+    {
+     "path": "src/systems/new-kronos/navigate.ts",
+     "changeKind": "modified",
+     "beforeSha256": "26f6c3cd0fb621c966312714dabc5481f5b10f676381552097a3fa3f6fb2eeaa",
+     "afterSha256": "37a25de26bbdedd80df6b1dae5cbaae6fc45aea358e28327bceafd2619dd7d09",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "The separation-only hire-date reader and date-range/timecard scan use verified Last Hire through today, cover all virtualized rows and requested dates, resolve years chronologically, and reject missing history or mismatched employee/job data before termination reuse or submission. Existing Person Lookup and other timecard APIs are unchanged; consumers were checked. Tests and module instructions bind this contract.",
+     "rebuildRecheckIds": [
+      "separation-hire-range-2026-10-06"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/index.ts",
+     "changeKind": "modified",
+     "beforeSha256": "6552c36837f5a57391942176221014fad0e42e4b9bb7cd108ae4c1f8cc60dd8a",
+     "afterSha256": "bfe5ae2c490275a7d103e0fdfa9af8dfc9273433c964e53405c80e95a5061246",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "The separation-only hire-date reader and date-range/timecard scan use verified Last Hire through today, cover all virtualized rows and requested dates, resolve years chronologically, and reject missing history or mismatched employee/job data before termination reuse or submission. Existing Person Lookup and other timecard APIs are unchanged; consumers were checked. Tests and module instructions bind this contract.",
+     "rebuildRecheckIds": [
+      "separation-hire-range-2026-10-06"
+     ]
+    },
+    {
+     "path": "src/systems/ucpath/person-org-summary.ts",
+     "changeKind": "modified",
+     "beforeSha256": "456505e908a86bf9f3fd547746bcbed76e1b1ca8924c7e018f54993b8986b804",
+     "afterSha256": "2df2e4912ed39dcd7926ee022832472ec14b26311fd6cddaf9e2729cd6b5f6f6",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "The separation-only hire-date reader and date-range/timecard scan use verified Last Hire through today, cover all virtualized rows and requested dates, resolve years chronologically, and reject missing history or mismatched employee/job data before termination reuse or submission. Existing Person Lookup and other timecard APIs are unchanged; consumers were checked. Tests and module instructions bind this contract.",
+     "rebuildRecheckIds": [
+      "separation-hire-range-2026-10-06"
+     ]
+    },
+    {
+     "path": "src/workflows/separations/CLAUDE.md",
+     "changeKind": "modified",
+     "beforeSha256": "3909155b8ebf51768a5cbfd966872e47629fcade9f248c4b259fc4eaf81be116",
+     "afterSha256": "960352f507fa541b9d01ea1b29db1e79f387019b726b8d05fc5ebf77e4c0386a",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "The separation-only hire-date reader and date-range/timecard scan use verified Last Hire through today, cover all virtualized rows and requested dates, resolve years chronologically, and reject missing history or mismatched employee/job data before termination reuse or submission. Existing Person Lookup and other timecard APIs are unchanged; consumers were checked. Tests and module instructions bind this contract.",
+     "rebuildRecheckIds": [
+      "separation-hire-range-2026-10-06"
+     ]
+    },
+    {
+     "path": "src/workflows/separations/schema.ts",
+     "changeKind": "modified",
+     "beforeSha256": "3f019b96d7f6cf0f6e53a0970b341d0ff6768ec753ace984e94de5b97fc9ba25",
+     "afterSha256": "9478c7b432cc4b3135e23ca5c3a94c007854431a5f260a18315fdb0e430c8bb7",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "The separation-only hire-date reader and date-range/timecard scan use verified Last Hire through today, cover all virtualized rows and requested dates, resolve years chronologically, and reject missing history or mismatched employee/job data before termination reuse or submission. Existing Person Lookup and other timecard APIs are unchanged; consumers were checked. Tests and module instructions bind this contract.",
+     "rebuildRecheckIds": [
+      "separation-hire-range-2026-10-06"
+     ]
+    },
+    {
+     "path": "src/workflows/separations/steps/kronos-search.ts",
+     "changeKind": "modified",
+     "beforeSha256": "3c7507d8bd1936a7e14f4ce297980e62590e322eda47fd78ad48392e72443467",
+     "afterSha256": "a75ec07dac48c8bc1c8dca2f4a8689c8c95f5af4fc48f9dd25869f1a1557250a",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "The separation-only hire-date reader and date-range/timecard scan use verified Last Hire through today, cover all virtualized rows and requested dates, resolve years chronologically, and reject missing history or mismatched employee/job data before termination reuse or submission. Existing Person Lookup and other timecard APIs are unchanged; consumers were checked. Tests and module instructions bind this contract.",
+     "rebuildRecheckIds": [
+      "separation-hire-range-2026-10-06"
+     ]
+    },
+    {
+     "path": "src/workflows/separations/workflow.ts",
+     "changeKind": "modified",
+     "beforeSha256": "477c9408dd62304ad4f85fccab3308d2a6c3cd57fc6e1e30200dafad75d358f2",
+     "afterSha256": "8485e05c96a5db75f183977073c2019027169486bcb810e3e727118154ed9393",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "The separation-only hire-date reader and date-range/timecard scan use verified Last Hire through today, cover all virtualized rows and requested dates, resolve years chronologically, and reject missing history or mismatched employee/job data before termination reuse or submission. Existing Person Lookup and other timecard APIs are unchanged; consumers were checked. Tests and module instructions bind this contract.",
+     "rebuildRecheckIds": [
+      "separation-hire-range-2026-10-06"
+     ]
+    },
+    {
+     "path": "tests/unit/systems/new-kronos/navigate.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "4c5a96d95aa0a210ce35fc2d18a5d77a16e96d128800a204569753f68df5f9ef",
+     "afterSha256": "d785470ce31a6ad3c9429f0b3a341b6f23c86027be2a3e349daebedf234f1817",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "The separation-only hire-date reader and date-range/timecard scan use verified Last Hire through today, cover all virtualized rows and requested dates, resolve years chronologically, and reject missing history or mismatched employee/job data before termination reuse or submission. Existing Person Lookup and other timecard APIs are unchanged; consumers were checked. Tests and module instructions bind this contract.",
+     "rebuildRecheckIds": [
+      "separation-hire-range-2026-10-06"
+     ]
+    },
+    {
+     "path": "tests/unit/systems/ucpath/person-org-summary.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "5f058d55335d4ab827fe96a0d42057bf13bd2d3caf7d6e8f5c55f8106b8998bb",
+     "afterSha256": "2309df6eee346161fbdd7ce9fdaf3dde6c3e27ff63e33559afcb7371a762eed1",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "The separation-only hire-date reader and date-range/timecard scan use verified Last Hire through today, cover all virtualized rows and requested dates, resolve years chronologically, and reject missing history or mismatched employee/job data before termination reuse or submission. Existing Person Lookup and other timecard APIs are unchanged; consumers were checked. Tests and module instructions bind this contract.",
+     "rebuildRecheckIds": [
+      "separation-hire-range-2026-10-06"
+     ]
+    },
+    {
+     "path": "tests/unit/workflows/separations/dry-run.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "2657bc5822fa9d3f2d5dd6b02a39e890d5e8429a75d771bc54ac44aa02053908",
+     "afterSha256": "154687922d88a08d6de38dc0572d5a517db2ef492c1331b3bb41de992816ca15",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "The separation-only hire-date reader and date-range/timecard scan use verified Last Hire through today, cover all virtualized rows and requested dates, resolve years chronologically, and reject missing history or mismatched employee/job data before termination reuse or submission. Existing Person Lookup and other timecard APIs are unchanged; consumers were checked. Tests and module instructions bind this contract.",
+     "rebuildRecheckIds": [
+      "separation-hire-range-2026-10-06"
+     ]
+    },
+    {
+     "path": "tests/unit/workflows/separations/schema.test.ts",
+     "changeKind": "modified",
+     "beforeSha256": "9164d0b51abc4549871a805556dbc1b8e363d081dc36a01efcb14d9deb7664bc",
+     "afterSha256": "496d5906651927d7a048951f51f4b4093e1c86789a01990fc56f2a3a292596a7",
+     "capabilityIds": [
+      "legacy-workflow-separations"
+     ],
+     "impactRationale": "The separation-only hire-date reader and date-range/timecard scan use verified Last Hire through today, cover all virtualized rows and requested dates, resolve years chronologically, and reject missing history or mismatched employee/job data before termination reuse or submission. Existing Person Lookup and other timecard APIs are unchanged; consumers were checked. Tests and module instructions bind this contract.",
+     "rebuildRecheckIds": [
+      "separation-hire-range-2026-10-06"
+     ]
+    }
+   ]
+  }
+ ]
+}

@@ -309,7 +309,7 @@ When asked to record a lesson, reconcile it here rather than expanding `AGENTS.m
   toolbar door being deleted here reverses D281 item 2, which was ratified five days earlier and
   names "reverses D275.1 a third time" as a REJECTED option. The move is still the right one, and
   what makes it a decision rather than a fourth drift is that the door goes because the takeover
-  goes — the catalog gains a destination instead of losing one. `docs/rebuild/reference/decisions.md`
+  goes — the catalog gains a destination instead of losing one. `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/reference/decisions.md`
   and ref dashboard-surfaces §9.5.3 carry it; the superseded items are struck in place rather than
   rewritten, because a reader arriving at D281 item 2 needs to be told where it went.
 
@@ -815,7 +815,7 @@ When asked to record a lesson, reconcile it here rather than expanding `AGENTS.m
   moved, and its emptiness was invisible in the diff. And, at the bottom of the same frame,
   `result partial` under a band reading a green `verified-done`: the run outcome and the receipt
   derive the same verdict two ways and disagree, which is D268's defect one level further out and is
-  now `docs/rebuild/findings/dashboard-projection.md`. That divergence is also why the receipt's own `result`
+  now `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/findings/dashboard-projection.md`. That divergence is also why the receipt's own `result`
   deliberately STAYS on the trailing line instead of being suppressed as a duplicate of the band —
   **before you delete a fact as redundant, check that the two sources actually agree.**
 

@@ -1,17 +1,17 @@
 import { join } from "node:path";
-import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
+import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { randomUUID } from "node:crypto";
 import { startSeededServer } from "./seeded-bff.js";
 import type { ParityBundleProof } from "./bundle.js";
-import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
-import { runRecordOf } from "../../unit/server/helpers/dashboard-harness.js";
-import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
-import { createTransactionHistory } from "../../../src/infra/sqlite/transaction-history.js";
-import { composeActivity } from "../../../src/server/dashboard/compose/activity.js";
-import { createCrossDateSearchService } from "../../../src/server/dashboard/queries/search.js";
-import { createOperatorXlsxExportService } from "../../../src/server/dashboard/exports/operator-xlsx-export-service.js";
-import { exportSearchMetadata } from "../../../src/server/dashboard/exports/search-metadata-export.js";
-import type { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
+import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
+import { runRecordOf } from "../../support/helpers/backend/dashboard-harness.js";
+import { createContentAddressedArtifactWriter } from "../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
+import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
+import { composeActivity } from "../../../src/backend/app/composition/dashboard/activity.js";
+import { createCrossDateSearchService } from "../../../src/backend/runs/queries/search.js";
+import { createOperatorXlsxExportService } from "../../../src/backend/runs/exports/operator-xlsx-export-service.js";
+import { exportSearchMetadata } from "../../../src/backend/runs/exports/search-metadata-export.js";
+import type { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
 
 /** Disposable SQL authority plus production query/export services and the source-bound bundle. */
 export async function startActivitySearchAuthorityServer(input:{distDir:string;bundle:ParityBundleProof}) {

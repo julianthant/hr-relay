@@ -1,0 +1,26 @@
+import type { AuthorityRepositories } from "../../backend/storage/sqlite/authority-database.js";
+export function forbidden(repositories: AuthorityRepositories) {
+  const { transition: mutate } = repositories.runs;
+  mutate({});
+  const insert = repositories.archivedRuns.insert;
+  insert({});
+}
+
+// These aliases expose no direct repository property access to the caller.
+declare const facade: { move: AuthorityRepositories["runs"]["transition"] };
+declare const indexed: { [key: string]: AuthorityRepositories["runs"]["resume"] };
+declare const overloaded: ((value: string) => string) & AuthorityRepositories["runs"]["requeue"];
+export function indirectAliases() {
+  facade.move({});
+  indexed["continue"]({});
+  overloaded({});
+  overloaded("safe");
+}
+
+declare const optional: AuthorityRepositories["runs"]["resume"] | undefined;
+declare const union: AuthorityRepositories["runs"]["resume"] | AuthorityRepositories["runs"]["requeue"];
+export function callableAliases<T extends AuthorityRepositories["runs"]["resume"]>(generic: T) {
+  optional?.({});
+  generic({});
+  union({});
+}

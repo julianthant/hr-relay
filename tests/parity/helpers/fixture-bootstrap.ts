@@ -1,14 +1,14 @@
 import {
 FrontendBootstrapWireSchema,
 type FrontendBootstrapWire,
-} from "../../../src/domain/dashboard/bootstrap.js";
+} from "../../../src/models/dashboard/bootstrap.js";
 import {
   SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID
-} from "../../../src/domain/dashboard/settings.js";
-import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
-import { projectStartSteps,startStepWireControl } from "../../../src/services/start/step-selection.js";
-import { personLookupDescriptor,personLookupModule } from "../../helpers/registered-workflows.js";
-import { at,CONTRACT_FINGERPRINT,FIXTURE_APP_VERSION,FIXTURE_DESCRIPTOR_HASH,FIXTURE_NOW,WORKFLOW_ID } from "./fixture-identity.js";
+} from "../../../src/models/dashboard/settings.js";
+import { descriptorSetHash } from "../../../src/backend/app/composition/dashboard/compose.js";
+import { projectStartSteps,startStepWireControl } from "../../../src/backend/runs/start/step-selection.js";
+import { personLookupDescriptor,personLookupModule } from "../../support/helpers/registered-workflows.js";
+import { at,CONTRACT_FINGERPRINT,FIXTURE_APP_VERSION,FIXTURE_NOW,WORKFLOW_ID } from "./fixture-identity.js";
 
 
 /* ── bootstrap ───────────────────────────────────────────────────────────── */
@@ -16,7 +16,7 @@ import { at,CONTRACT_FINGERPRINT,FIXTURE_APP_VERSION,FIXTURE_DESCRIPTOR_HASH,FIX
 export const FIXTURE_BOOTSTRAP: FrontendBootstrapWire = FrontendBootstrapWireSchema.parse({
   wireVersion: 1,
   appVersion: FIXTURE_APP_VERSION,
-  descriptorHash: FIXTURE_DESCRIPTOR_HASH,
+  descriptorHash: descriptorSetHash([CONTRACT_FINGERPRINT]),
   settingsSchemaHash: descriptorSetHash(["settings-schema"]),
   protectedSchemaHash: descriptorSetHash(["protected-settings-schema"]),
   projectionGeneration: 1,
@@ -79,17 +79,6 @@ export const FIXTURE_BOOTSTRAP: FrontendBootstrapWire = FrontendBootstrapWireSch
   ],
   featureAvailability: [
     { feature: "ocr", availability: { state: "unavailable", code: "deferred", reason: "OCR review lands in 2h" } },
-    // D178: the advisory SHIPPED, so the fixture mirrors what a real process
-    // with no key composed says — `not-configured` naming the family — rather
-    // than a `deferred` milestone the server no longer produces.
-    {
-      feature: "ai-advisory",
-      availability: {
-        state: "unavailable",
-        code: "not-configured",
-        reason: "no GEMINI_API_KEY is set, so no ai.advisory provider is composed in this process",
-      },
-    },
     { feature: "archive", availability: { state: "unavailable", code: "deferred", reason: "archive lands in 2i" } },
     { feature: "workflow-editor", availability: { state: "unavailable", code: "deferred", reason: "the editor lands in a later phase" } },
   ],

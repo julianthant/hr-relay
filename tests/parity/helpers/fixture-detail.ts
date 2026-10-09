@@ -1,4 +1,4 @@
-import type { RunDetailSectionResponse } from "../../../src/domain/dashboard/run-detail.js";
+import type { RunDetailSectionResponse } from "../../../src/models/dashboard/run-detail.js";
 import { FIXTURE_CONTEXT_DATA_SECTIONS } from "./run-detail/context-data.js";
 import { FIXTURE_FAILURE_SECTIONS,FIXTURE_RECEIPT_SECTIONS } from "./run-detail/receipts-failures.js";
 import { FIXTURE_GATE_PARK_SECTIONS } from "./run-detail/gates-park.js";

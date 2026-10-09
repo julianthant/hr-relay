@@ -9,7 +9,7 @@ import { registerFixtureSettingsRoutes } from "../../parity/helpers/fixture-sett
 import { registerFixtureStorageRoutes } from "../../parity/helpers/fixture-storage-routes.js";
 import { registerFixtureExplorerRoutes } from "../../parity/helpers/fixture-explorer-routes.js";
 import { registerFixtureIntakeRoutes } from "../../parity/helpers/fixture-intake-routes.js";
-import { FIXTURE_EXPLORER_WIRE, FIXTURE_UI_CATALOG_WIRE } from "../../parity/helpers/fixture-explorer.js";
+import { FIXTURE_EXPLORER_WIRE } from "../../parity/helpers/fixture-explorer.js";
 import { FIXTURE_INTAKE_IDS } from "../../parity/helpers/fixture-intake.js";
 import { SCENES as shell } from "../../parity/helpers/reference-shell-scenes.js";
 import { SCENES as detail } from "../../parity/helpers/reference-detail-scenes.js";
@@ -41,7 +41,6 @@ describe("released surface fixtures", () => {
       assert.deepEqual(await client.editableSettings(), FIXTURE_EDITABLE_SETTINGS);
       assert.deepEqual(await client.storageDoctor(), FIXTURE_STORAGE_DOCTOR);
       assert.deepEqual(await client.workflowExplorer(), FIXTURE_EXPLORER_WIRE);
-      assert.deepEqual(await client.uiCatalog(), FIXTURE_UI_CATALOG_WIRE);
       assert.equal((await client.intakeSession(FIXTURE_INTAKE_IDS.mapping)).intakeSessionId,
         FIXTURE_INTAKE_IDS.mapping);
       await assert.rejects(() => client.intakeSession("missing-session"), /no fixture intake session/u);

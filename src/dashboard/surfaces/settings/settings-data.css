@@ -1,0 +1,44 @@
+.settings-data-section { min-width: 0; }
+.settings-data-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--ds-space-loose); }
+.settings-heading-actions { align-items: center; }
+.settings-heading-actions > .ds-page-heading-actions { margin-left: auto; }
+.settings-takeover .ds-page-heading { display: flex; align-items: center; }
+.settings-takeover .ds-page-heading-copy { display: flex; flex-direction: column; gap: var(--ds-space-heading-description); }
+.settings-takeover .ds-page-heading-description { margin-top: 0; }
+.settings-heading-select { width: var(--ds-w-body-control-standard); }
+.settings-tab-body .settings-group-heading h2,
+.settings-tab-body .settings-group h3,
+.settings-tab-body .ds-body-section-heading,
+.settings-tab-body h2.text-section,
+.settings-tab-body h3.text-section { font-size: var(--ds-text-title); line-height: var(--ds-lh-title); font-weight: 400; }
+.settings-tab-body .ds-field-label,
+.settings-tab-body .ds-result-row-copy .ds-field-label,
+.settings-tab-body .ds-switch-copy .ds-text-ui,
+.settings-tab-body .ds-radio-label { font-weight: 400; }
+.settings-tab-body .ds-page-heading-description { font-size: var(--ds-text-body-description); font-weight: 400; }
+.activity-header-filters { display: flex; justify-content: space-between; align-items: center; gap: 12px; border-bottom: 1px solid var(--ui-stroke); padding-bottom: 16px; }
+.activity-header-filters > div { max-width: 220px; }
+.settings-shortcuts .shortcut-setting-row { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 18px; }
+.settings-shortcuts .shortcut-setting-row + .shortcut-setting-row { border-top: 1px solid var(--ui-stroke); }
+.shortcut-setting-row p { margin: 0 0 4px; font-size: 14px; font-weight: 400; }
+.shortcut-setting-row span { font-size: 12px; color: var(--ui-muted); }
+.shortcut-setting-row kbd { border: 0; border-radius: 999px; background: var(--ui-hover); padding: 4px 10px; box-shadow: none; }
+
+.activity-header-filters { flex-wrap: wrap; align-items: flex-start; }
+.activity-header-filters > .activity-period-controls { display: flex; flex: 1; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; max-width: none; }
+.activity-period-controls > .ds-select-control { width: 130px; height: var(--ds-h-body-control); border-radius: var(--ds-radius-body-control); background: var(--ds-control-bg); }
+.activity-period-controls .ds-select-control, .activity-period-controls .date-input-group, .activity-period-controls .date-input-group__segment, .activity-period-controls .date-picker__trigger-indicator { font-size: var(--ds-text-ui); line-height: var(--ds-lh-ui); }
+.activity-header-filters > .activity-sample-control { max-width: 190px; }
+.settings-takeover .ds-result-row { align-items: center; padding-block: 18px; }
+.settings-takeover .ds-result-row-side { align-self: center; }
+.settings-takeover .ds-button[data-variant="secondary"] { border-color: var(--ui-stroke); box-shadow: none; }
+.shortcut-reference-copy p { margin: 0 0 4px; font-size: 14px; font-weight: 400; }
+.shortcut-reference-copy span { color: var(--ui-muted); font-size: 12px; }
+.shortcut-reference-card { border: 1px solid var(--ui-stroke); border-radius: 14px; background: var(--ui-panel); padding: 0 18px; }
+.shortcut-reference-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; }
+.shortcut-reference-copy { flex: 1; min-width: 0; }
+.shortcut-reference-row + .shortcut-reference-row { border-top: 1px solid var(--ui-stroke); }
+.shortcut-reference-bindings { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.shortcut-reference-binding { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.shortcut-reference-binding > :last-child { margin-left: 16px; }
+.shortcut-reference-binding kbd { min-width: 32px; border: 0; border-radius: 999px; background: var(--ui-hover); color: var(--ui-secondary); padding: 4px 10px; box-shadow: none; text-align: center; font-size: 12px; }

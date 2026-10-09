@@ -10,13 +10,13 @@ stood in 2026-07 and are read as history, never as claims about the tree._
 
 Status: **historical gap-discovery memo; superseded at its contract seams by 2026-07-22 Round 7.** A principal-architect pass over the
 four written design docs (task-contract, workflow-model, dashboard-surfaces, execution-and-sessions),
-the charter, and the binding reconciliation (`reference/decisions.md` — D1 ownership matrix). This doc **owns
+the charter, and the binding reconciliation (`994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/reference/decisions.md` — D1 ownership matrix). This doc **owns
 nothing**: it is a findings-and-design memo that names what the foundation of a production,
 single-operator, **real-HR-transaction** system needs that no doc currently owns adequately, ranks
 the gaps by risk, and designs the top three. Ref data-intake-and-edit-data (data-intake/Edit-Data) and the master plan
 were planned-but-unwritten at the time. This file is evidence, not an implementation plan; current
 contracts live in `docs/rebuild/reference/`, with build order in the phase docs `docs/rebuild/00`–`05`
-and the plan tree at `docs/roadmap/roadmap.md`. **Paths re-grounded 2026-07-31 (Round 11,
+and the plan tree at `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/roadmap/roadmap.md`. **Paths re-grounded 2026-07-31 (Round 11,
 D93):** the rebuild now lives in its own `hr-automation-rebuild` repo — rebuild code at plain `src/`,
 tests at `tests/`, config at `config/` — so every rebuild path below is repo-relative there. That is
 an address change only; this memo still owns nothing.
@@ -473,7 +473,7 @@ the multi-user phase (D79), which D193 makes a LATER with no owner. §7.4 → pe
 selection is owned by ref clock-config-secrets. §7.5 → the three docs were written and are
 `reference/write-safety.md`, `reference/guards-and-tests.md` and `reference/clock-config-secrets.md`.
 The operator call that IS open moved under D329 to `{#separations-compiled-acceptance}`; its former
-03b record is preserved in `history/superseded/` and this doc holds no status block for it._
+03b record is preserved in the former planning record and this doc holds no status block for it._
 
 
 1. **Kuali & OnBase receipts.** Gap 1 forces a post-submit read-back to prove a filed doc for the

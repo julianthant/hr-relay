@@ -1,5 +1,5 @@
 /** H-owned synthetic document. No current descriptor or live record is needed. */
-import { SavedArchiveReportWireSchema } from "../../../src/domain/dashboard/archive.js";
+import { SavedArchiveReportWireSchema } from "../../../src/models/dashboard/archive.js";
 export const H_REPORT = SavedArchiveReportWireSchema.parse({
   state: "available", runId: "00000000-0000-4000-8000-000000000081",
   title: "Synthetic retained report", workflow: "removed-workflow", descriptorVersion: "retired-v7",

@@ -11,7 +11,7 @@
           "reason": "The unchanged operator-selected private source was admitted on 2026-09-08. The complete headed Separations dry-run rehearsal met all eight T1b assertions, with fifteen fresh checkpoints and exact write-intent/write-attempt/durable-outbox deltas 0/0/0. The accepted result and all failed prior rehearsals are retained in the Task 1.6.7 owner. This available subject authorizes read-only verification only. Historical prior-selection result abe85e59-3e55-4ac0-99e8-ac1a1856ada1 and retained result 05ec70d9-1286-4582-acd6-2378b487e112 failed EMPLOYEE_NOT_FOUND with exact write-intent/attempt/durable-outbox deltas 0/0/0; neither establishes this replacement\u2019s outcome."
         },
         "provenance": {
-          "document": "docs/rebuild/plans/phase-1/1.6-implement-canonical-run-and-settings-authorities/task-7-close-the-rebuilt-foundation.md",
+          "document": "994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-1/1.6-implement-canonical-run-and-settings-authorities/task-7-close-the-rebuilt-foundation.md",
           "section": "Task 1.6.7 full-chain acceptance after observation repair"
         },
         "usagePolicy": "read-only",
@@ -53,7 +53,7 @@
           "reason": "Operator-selected replacement applied to the D341 private source on 2026-09-07. Presence and complete production input admission were verified without exposing the value. Current live acceptance and preserved prior failures are recorded in the Task 1.6.7 owner; this availability entry authorizes read-only verification only."
         },
         "provenance": {
-          "document": "docs/rebuild/plans/phase-1/1.6-implement-canonical-run-and-settings-authorities/task-7-close-the-rebuilt-foundation.md",
+          "document": "994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-1/1.6-implement-canonical-run-and-settings-authorities/task-7-close-the-rebuilt-foundation.md",
           "section": "Network recovery and current live acceptance"
         },
         "usagePolicy": "read-only",
@@ -78,7 +78,7 @@
   },
   "files": {
     "synthetic-sample-pdf": {
-      "path": "../tests/fixtures/documents/synthetic-sample.pdf",
+      "path": "../tests/support/fixtures/documents/synthetic-sample.pdf",
       "kind": "pdf",
       "purpose": "Minimal synthetic one-page PDF proving named path resolution and readable bytes; no HR content."
     }

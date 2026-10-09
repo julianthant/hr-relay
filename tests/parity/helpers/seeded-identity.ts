@@ -1,4 +1,4 @@
-import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
+import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
 
 
 /* ── the pinned instant (aligned with the fixture corpus) ────────────────── */

@@ -24,7 +24,7 @@ export async function shellTextContrast(page:Page){
     const luminance=(paint:number[])=>paint.slice(0,3).reduce((sum,channel,index)=>{
       const value=channel/255;return sum+[0.2126,0.7152,0.0722][index]*(value<=0.04045?value/12.92:((value+0.055)/1.055)**2.4);
     },0);
-    return [...document.querySelectorAll<HTMLElement>('header button:not(:disabled), [aria-label="Filter the queue by status"] button')]
+    return [...document.querySelectorAll<HTMLElement>('.workflow-rail button:not(:disabled), .dashboard-action-panel button:not(:disabled)')]
       .filter(node=>node.textContent?.trim() && node.getBoundingClientRect().width>0)
       .map(node=>{const bg=background(node),fg=composite(rgba(getComputedStyle(node).color),bg);const a=luminance(fg),b=luminance(bg);
         return {name:node.getAttribute("aria-label")??node.textContent?.trim(),ratio:(Math.max(a,b)+0.05)/(Math.min(a,b)+0.05)};});

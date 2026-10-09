@@ -4,7 +4,7 @@
 `02-workflow-model.md` before the 2026-08-20 shelf split). It owns the ONE workflow descriptor, the
 ONE builder API that produces it, the `RunEnvelope`, the run-state machine including gates and
 parks, and the checkpoint/resume model. It is **normative**: where a phase doc, the tree
-(`docs/roadmap/roadmap.md`) or a migration record disagrees about any of those, this doc wins — and
+(`994837d1f65abd9b9e2f546b3ca52bff90646583:docs/roadmap/roadmap.md`) or a migration record disagrees about any of those, this doc wins — and
 where the CODE disagrees, the doc is corrected to say what IS (D252), never left describing an
 intention.
 
@@ -16,11 +16,44 @@ and corrects; it does not renumber.
 **As-built is folded in, not appended.** This doc used to carry four dated `Phase 1e` / `Phase 1f`
 as-built blocks above §0. Each has been folded into the numbered section it amends, so a section
 states the contract AND what the tree actually holds in one place. The chronology header that
-recorded *when* the doc changed is `history/superseded/2026-08-21-workflow-model-status-header.md`.
+recorded *when* the doc changed is `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/history/superseded/2026-08-21-workflow-model-status-header.md`.
 
-**Two workflows are registered** (`src/control/workflow-registry.ts`): `person-lookup` and
-`separations`. The latter owns its declared timeline steps. The five former `separations-*`
-registrations remain as historical step proofs and test fixtures, outside the active registry.
+**Two operator workflows enter**
+(`src/backend/app/registries/workflow-registry.ts`): `person-lookup` and `separations`. Separately,
+`step-proof-modules.ts` composes the five retained Separations chunk-harness definitions for
+historical proof reads; they do not enter the operator workflow registry or become startable, and
+their composition does not claim current scenario-test coverage.
+
+## Current source layout — operator-approved 2026-10-01
+
+The current folder map and dependency rules live in [codebase structure](codebase-structure.md).
+`src/workflow-kit/` owns shared browser-safe workflow authoring and compilation; schema shapes live
+in `src/models/`, and reusable pure decisions live in `src/rules/`. Each operator workflow keeps its
+browser-safe entry at `src/workflows/<id>/workflow.ts`; the workflow-specific `task-registry.ts` and
+`tasks/` are backend-loaded. A chunk harness is `src/workflows/<composition>/steps/<step>/step.ts`.
+For Separations,
+the five step keys are `identity-check`, `kronos-timecard`, `kuali-extraction`, `kuali-finalization`
+and `ucpath-transaction`. `src/workflow-kit/validation/source-layout.ts` derives workflow source and
+potential scenario locations from role, so paths move without changing runtime workflow IDs. The backend
+composition root in `src/backend/app/registries/` binds the main definitions to registered tasks and
+composes retained proofs separately. Renderer and lower-level packages must not import workflow
+implementations, and definitions must not import backend task implementations. The registration
+filename is `task-registry.ts`; task-store types, factories and namespace IDs keep their meanings.
+
+<a id="workflow-model-scenario-test-amendment-2026-10-02"></a>
+
+**Scenario-test amendment — operator-approved 2026-10-02.** `tests/scenario/` and `tests/parity/`
+were retired. `definition.scenarios` IDs remain declaration data for contract validation; they do
+not assert that tests ran. The source-layout scenario helpers do not imply current scenario files or
+coverage. Rehearsal manifests are unavailable before execution when absent. Future scenario and
+visual-test requirements are operator-led. The dated scenario-corpus sections below are historical;
+`scenario-coverage` retains pure graph-point checks and does not assert production scenario
+execution. Unit fixtures that inject scenario inputs remain unit evidence, not production-scenario
+proof. See the
+[current test policy](guards-and-tests.md#scenario-and-parity-suite-retirement--2026-10-02).
+
+The older path diagrams and status snapshots below retain their original decision and behavioral
+evidence. Their directory names are superseded by the current map; they are not a second layout.
 
 ## Ownership (D1)
 
@@ -32,6 +65,7 @@ registrations remain as historical step proofs and test fixtures, outside the ac
 | Run-state machine incl. gate nodes and parks (D5) | |
 | Checkpoint/resume model: store, freshness (D8), scope (D9), task-authoring rule | |
 | Span-id path grammar + attempt semantics (what the engine brackets) | |
+| Frozen action occurrence identity and D364 declared step-result selection | Ref dashboard-surfaces: action/fact event wire schema and timestamps |
 | Workflow terminal result schema and child-run result typing | Ref dashboard-surfaces: command/action/enqueue policy semantics and durable dependency/command storage |
 | | Ref operator-trust: semantic UI registry, scenarios, evidence receipt, explorer/editor projections |
 
@@ -70,26 +104,9 @@ context** (typed data flow between tasks). Time lives in ref dashboard-surfaces'
 
 ## 1. The workflow descriptor
 
-<!-- roadmap: p1-authority -->
-
-<!-- roadmap-status: p1-authority -->
-- [x] ONE bundle-safe descriptor module per workflow, value-importing only zod + `src/domain/**` + the audited `src/base/**` builders — enforced by walking the real import graph (§1.1/§1.2, D106; `src/base/workflow.ts`, `tests/unit/architecture/descriptor-coverage.test.ts` "keeps every descriptor module's value-import closure bundle-safe")
-- [x] `identity` is a MATCH KEY only; the kernel mints `ItemId` from `(workflowId, matchKey)` at enqueue, because a descriptor cannot hash and two derivations of one identity drift (D103, `src/base/workflow.ts:170-183`)
-- [x] the typed DAG builder ships with the exact `S`/`Nodes` accumulators, `build()`-time forward-reference validation for branch and parallel targets (D104) and the mandated real-scale type proof (§3; `src/base/flow.ts`, `tests/types/flow-graph.typecheck.ts`, `tests/unit/flow-type-budget.test.ts`)
-- [x] `descriptor-coverage` is the ONE coverage guard — 17 cases over `DESCRIPTORS`, both directions (§1.4)
-- [x] checkpoint replay with a REQUIRED per-node `replay` policy, the D8 freshness walk, and the item-scoped store (§5.3 · §5.5 · §5.7)
-- [x] labels resolve from exactly two layers and no third (§1.5, D16)
-- [ ] six descriptor fields have ZERO producers among the eight registered workflows and are carried on the strength of the type proof alone: `presets`, `coordinator`, `completionConsumes`, `completion`, `surfaces.uploadRun`, `artifactProjections` (verified by grep over `src/workflows/*/descriptor.ts`) — each is named in place in the section that declares it
-- [ ] three of the six node kinds have zero producers for the same reason: no registered workflow declares a `branch`, a `parallel` or a `child-run` node (37 `.step`, 7 `.transaction`, 4 `.gate`). §3.2's delegation contract is proved by the type suite and `fixtureDescriptor`, never by a run — and of the three gate arms, only `resolvedBy: "operator"` has a producer
-- [ ] the builder's `.auth()` per-system override is UNBUILT (§3): neither `"eager"` nor `"on-first-use"` appears in `src/`, so every workflow acquires each session at the first node that needs it and cannot ask for the eager chain. R12's Duo ceremony lease is its prerequisite
-- [ ] three §1.3 projections have no reader: `cli stop <workflow>` (no `stop` verb in `src/cli.ts`), the exhaustive `Record<IconName, LucideIcon>` (`IconName` is absent from `src/dashboard`), and `sessionLabel` (declared, read by nothing)
-- [ ] §1.5's layer-1 presentation override is unbuilt — no `config/workflow-presentation/` exists and nothing reads one, so every label comes from the descriptor
-> 2026-08-21 | docs-cohesion workflow-model | verified against `src/base/workflow.ts`, `src/base/flow.ts`, `src/control/workflow-registry.ts`, all eight `src/workflows/*/descriptor.ts`, `config/pending-impl-bindings.json` and `tests/unit/architecture/descriptor-coverage.test.ts`; left: the six unproduced fields and the three unproduced node kinds
-<!-- /roadmap-status -->
 
 ### 1.1 Shape
 
-<!-- roadmap: p1-authority -->
 
 One authored module per workflow: `src/workflows/<id>/workflow.ts` — one `defineWorkflow(...)` call
 (§1.6); the `WorkflowDescriptor` this section describes is its compiled product
@@ -473,7 +490,6 @@ proven by a run, and a reader deciding whether to build on one should know that.
 
 #### D260 — `inputRun` carries exactly ONE varying value per run, and `separations` needs two (2026-08-20)
 
-<!-- roadmap: track-c -->
 
 **The RULE below is current and normative; its DISPOSITION is closed by D261, immediately after.**
 Read them in order. D260 established the constraint, proved `separations` could not satisfy it,
@@ -534,18 +550,6 @@ moves the fingerprint, and every checkpoint this database holds for `separations
 
 #### D261 — the action id is a GRAPH OUTPUT, so `separations` starts from one typed number (2026-08-20)
 
-<!-- roadmap: track-c -->
-
-<!-- roadmap-status: track-c -->
-- [x] the rule itself: a workflow is `inputRun`-startable iff its input schema has exactly one required field that varies per run, and `constants[]` may carry only a value that does not (D260, `src/domain/workflow/ingress.ts`)
-- [x] `SeparationsInput` drops `actionId`; the head node `resolve-action` binds `kuali/search-separation-action` and reads the matched Action-List row's `href` (D261; `src/workflows/separations/descriptor.ts:288-307`, `src/domain/contracts/kuali/search-separation-action.ts`)
-- [x] `separations.surfaces.inputRun` exists — one `document-number` rule, no `otherwise` arm, `timekeeperName` as the one constant, and two real document numbers as `examples` (D250/D261; `src/workflows/separations/descriptor.ts:801-838`)
-- [x] the document number is now proved TWICE — against the Action-List link's anchored accessible name and against the opened document's level-1 heading (D129/D261)
-- [x] the refusals carry the value: no action held on a document refuses BY NAME printing the numbers the list did show, and two DISTINCT action ids for one number refuses rather than choosing
-- [!] `timekeeperName` is a per-OPERATOR constant baked into a bundle-safe descriptor (`"Julian Zaw"`). It satisfies the rule and is the weakest thing here; the trigger that ends it is a SECOND timekeeper, at which point it becomes D260 shape 1's typed form field
-- [ ] D260 shape 1 — a third `surfaces` arm, a typed FORM over `UploadFieldSpec` — is unbuilt and has no client renderer; the deferral is real and its trigger is the sentence above
-> 2026-08-21 | docs-cohesion workflow-model | verified against `src/workflows/separations/descriptor.ts`, `src/domain/workflow/ingress.ts` and `src/domain/contracts/kuali/search-separation-action.ts`; left: shape 1, waiting on a second timekeeper
-<!-- /roadmap-status -->
 
 **Read D260 first; this section is the operator exercising the choice it handed them.** They ruled,
 verbatim: *"document number should work. no need action id."* That is D260's **shape 2**, and the
@@ -611,16 +615,6 @@ gets the same hash.
 
 ### 1.1.1 The short code — ONE declaration, two consumers (D242)
 
-<!-- roadmap: track-b -->
-
-<!-- roadmap-status: track-b -->
-- [x] `WorkflowCodeSchema` is the ONE definition of the short code and the descriptor factory, the bootstrap wire and the explorer wire all bind it (`src/domain/workflow/presentation.ts:66`)
-- [x] uniqueness is refused at the COMPOSITION ROOT, in the same shape a dangling module role is, and `descriptor-coverage` runs the same audit (`src/control/workflow-registry.ts`, `auditWorkflowCodes` / `workflowCodeRegistry`)
-- [x] `TraceIdSchema` stays deliberately wider (`[a-z0-9]{2,4}`) because it READS durable stored ids, and a reader narrowed to the writer's current rule refuses history (`src/domain/ids.ts:154-163`, D133)
-- [x] the code is frozen into an archived record beside the label rather than resolved from the live registry (`ArchivedRunContent.workflowCode`, charter §25)
-- [x] B4's queue row and the archive index are its presentation consumers; identity is `deriveTraceId`'s `<code>-<HHMMSS>-<runId4>` (§6)
-> 2026-08-21 | docs-cohesion workflow-model | verified against `src/domain/workflow/presentation.ts`, `src/domain/ids.ts` and `src/control/workflow-registry.ts`; left: nothing in this doc's half of Track B
-<!-- /roadmap-status -->
 
 `code` is the workflow's operator-facing short handle: **two to four lowercase letters**, declared
 on the descriptor, **unique across the registry**. `WorkflowCodeSchema`
@@ -665,16 +659,6 @@ would be a descriptor read on the archived path, which is exactly what charter �
 
 ### 1.2 The bundle crossing
 
-<!-- roadmap: p1-authority -->
-<!-- roadmap: track-d -->
-
-<!-- roadmap-status: track-d -->
-- [x] the composition root is `src/control/workflow-registry.ts` and its `WORKFLOW_MODULES` tuple is the ONE static module list; every server registry derives from it (§1.3)
-- [x] the dashboard imports no workflow MODULE — no store loader, no Playwright, nothing server-side crosses (`dashboard-wire-boundary` walks the entry's reachable closure and fails on any Node built-in)
-- [!] Track D row **D11** — the dashboard DOES bundle the descriptors themselves. `src/workflows/descriptor-registry.ts`'s `WORKFLOW_DESCRIPTORS` is imported by `src/dashboard/app/dashboard-app.tsx:25`, so every descriptor's parsers, surfaces, node purposes and timeline ride the client bundle while the BFF's bootstrap serves only a seven-field row per workflow (`src/server/dashboard/queries/bootstrap.ts:102-110`). D11 moves the tuple out of the bundle and onto that wire; it amends D251 / ref frontend-backend-integration §4, and it is code work this docs pass does not do
-- [ ] `/api/workflow-definitions` — the endpoint this section described for four months — was never built, and nothing serves "a generated, schema-validated client projection plus presentation overrides". D11 is where it lands, if it lands
-> 2026-08-21 | docs-cohesion workflow-model | verified against `src/control/workflow-registry.ts`, `src/workflows/descriptor-registry.ts`, `src/dashboard/app/dashboard-app.tsx` and `src/server/dashboard/queries/bootstrap.ts`; left: D11
-<!-- /roadmap-status -->
 
 ```
 src/workflows/person-lookup/       # rebuild repo (hr-automation-rebuild) — D93
@@ -786,6 +770,19 @@ use their retained descriptors without admitting a new run or worker for those i
 
 #### 1.2.2 The workflow tree IS the rail and the timeline (D265, 2026-08-21)
 
+**Current path/file convention — operator-approved 2026-10-01.** The composition remains
+`src/workflows/<workflow>/workflow.ts`; only chunk-harness source moves to
+`src/workflows/<workflow>/steps/<step>/step.ts`. If future operator-led test design adds structural
+scenarios, the source-layout helper can derive matching role paths; no such files are current.
+`workflowSourceFolder`, `workflowSourcePath`,
+`workflowScenarioFolder` and `workflowStructuralScenarioPath` in
+`src/workflow-kit/validation/source-layout.ts` are the shared derivation for Explorer links, audits
+and authoring-budget checks. The main `WORKFLOW_MODULES` tuple still contains operator workflows;
+`STEP_PROOF_MODULES` separately composes retained harness proofs. Runtime workflow IDs and the
+D106 browser-safe import boundary do not change.
+
+The 2026-08-21/09-02 path discussion below records the prior step folder and entry-file convention;
+its role, timeline and safety decisions remain, but current path statements below follow this amendment.
 
 - [x] the rule, the separations mapping and the `workflow-layout` guard's invariant are written (this section, D265, 2026-08-21)
 - [x] `src/workflows/separations/` holds six step folders and the composition's `timeline` is one category per folder
@@ -815,18 +812,17 @@ rules below still audit those files, but they confer no registration or startabi
 | Path | What it is | Role (§1.2.1) | Where it shows |
 |---|---|---|---|
 | `src/workflows/<workflow>/workflow.ts` (its compiled descriptor + module) | a workflow the RAIL lists | `standalone` · `composition` | the rail, the picker, the Explorer |
-| `src/workflows/<workflow>/<step>/` | one TIMELINE STEP of that workflow — the folder name is the step's key | a folder, with a retained proof definition when present | one segment of that workflow's timeline; no separate picker, Explorer or worker entry (D345) |
+| `src/workflows/<workflow>/steps/<step>/step.ts` | one chunk-harness proof definition for the named timeline step | `chunk-harness` with `{ of, step }` | retained proof composition; no test-coverage claim, operator entry or startability |
 | ~~`src/workflows/proving/<workflow>/`~~ | **RETIRED the same day (D266)** — there is no test equipment: a proof of machinery is a dry-run scenario on the real workflow (ref guards-and-tests §10), never a workflow of its own | — | — |
 
 1. **A top-level folder is a rail entry.** The rail is D220's filter (`standalone` + `composition`),
    and since this ruling that filter is a READ of the tree's top level: nothing may sit at
    `src/workflows/<x>/` that the rail would not list, and nothing the rail lists may live anywhere
-   else. There is no reserved `proving/` arm.
+   else. The operator entry remains `workflow.ts`. There is no reserved `proving/` arm.
 2. **A sub-folder is a timeline step, and the declared timeline is one category per sub-folder.**
    D225 made the timeline categorical — a descriptor declares `timeline: [{ label, nodes }]`, one
-   category per segment, exhaustive over the graph. The step folder is where that category LIVES:
-   it holds the step's node fragments (the `.step()` / `.transaction()` / `.gate()` calls and the
-   pure folds only those nodes consume — what the composition imports to build itself) and the
+   category per segment, exhaustive over the graph. The declared step folder is under `steps/<step>/`; when separately proved it holds the
+   `step.ts` chunk-harness definition. The composition continues to own the step's node identities and the
    composition declares exactly one category per step folder, keyed by the folder name, labelled
    by the folder's own declared label. **D225's exhaustiveness now holds both ways:** a declared
    category with no folder, a folder with no category, or a node owned by two folders each fails
@@ -840,8 +836,7 @@ rules below still audit those files, but they confer no registration or startabi
    > is a declared group with no folder — and the guard's arm (b) below reads: every step folder
    > is a declared group AND a retained proof address; a declared group needs no folder.
 3. **A harness lives inside the step it proves.** D219's sentence — *a chunk harness is a step of
-   its composition* — becomes a path: the harness's `workflow.ts` sits in the step
-   folder, and its role gains the folder, `{ kind: "chunk-harness", of, step }`. The role audit
+   its composition* — becomes a path: the harness's `step.ts` sits under `steps/<step>/`, and its role gains the folder, `{ kind: "chunk-harness", of, step }`. The role audit
    refuses a `step` that `of` does not declare as a timeline category, or an `of` that is not an
    active composition. A harness that needs other steps' nodes IMPORTS
    their entry identities rather than restating them — today the three write harnesses each carry a second
@@ -865,6 +860,9 @@ are under `src/workflows/` and value-import only what a descriptor may.
 
 **The separations mapping — D225's six approved categories, as folders.**
 
+The table below is the prior folder/file mapping retained as D225 history; current harness paths use
+`src/workflows/separations/steps/<step>/step.ts` as specified above.
+
 | `src/workflows/separations/<step>/` | Timeline label (D225) | Nodes | Harness inside (id unchanged) |
 |---|---|---|---|
 | `kuali-extraction/` | Kuali extraction | `action` · `document` · `plan` · `termination-type` | `separations-kuali-read` |
@@ -879,16 +877,16 @@ operator-approved strings and the label/key pair is declared once in the folder.
 becomes `kuali-extraction` because the folder IS the category and the category's name was already
 ruled.
 
-**The guard — `workflow-layout` (`tests/unit/architecture/workflow-layout.test.ts`, active in
+**The guard — `workflow-layout` (`tests/architecture/workflow-kit/workflow-layout.test.ts`, active in
 `docs/rebuild/guard-inventory.json`, owned here).** Four arms, all decided against the real registry
 and the real tree, each with a violating fixture: (a) every active or retained proof module's path matches its
-role's arm above and holds exactly its one `workflow.ts` (D312/D317), and nothing else lives under
+role's arm above and holds exactly its one role-derived definition file (`workflow.ts` or `steps/<step>/step.ts`) (D312/D317), and nothing else lives under
 `src/workflows/` — a stray folder is refused; (b) for every workflow that declares a timeline, every
 step folder is one of its declared groups and the address of a retained `chunk-harness` proof, and a
 workflow with no declared timeline has no step folders (a declared group with no harness has no
 folder — D312 §1.6.1 item 5, 2026-09-02); (c) every `chunk-harness.step` names one of `of`'s declared categories; (d)
 `descriptor-coverage` §1.4 and `workflow-editor-compile-integrity` derive a descriptor's path from
-its ROLE (`src/workflows/<id>/` or `src/workflows/<of>/<step>/`), never from its id alone.
+its ROLE (`src/workflows/<id>/workflow.ts` or `src/workflows/<of>/steps/<step>/step.ts`), never from its id alone.
 
 **Every later migration inherits this shape** through the Phase 4 admission packet (§1.6.2):
 one top-level folder when the workflow is a rail workflow, step folders for its declared timeline,
@@ -896,7 +894,6 @@ harnesses inside the step they prove, and no third source-folder arm.
 
 ### 1.3 Every parallel registry becomes a projection
 
-<!-- roadmap: p1-kernel -->
 
 | Today's hand-list | Becomes | Mechanism |
 |---|---|---|
@@ -925,7 +922,6 @@ neither is a projection that replaced anything yet.
 
 ### 1.4 The ONE coverage guard
 
-<!-- roadmap: p1-authority -->
 
 The rebuild repo's `tests/unit/architecture/descriptor-coverage.test.ts` — a single table-driven
 sweep over `DESCRIPTORS`, seventeen cases at HEAD. **Seven of the ten items below are its; three are
@@ -994,7 +990,6 @@ all fail.
 
 ### 1.5 Labels — exactly two layers (D16, precedence stated once, HERE)
 
-<!-- roadmap: p1-authority -->
 
 A step's display label resolves, highest precedence first:
 
@@ -1015,7 +1010,6 @@ resolves to nothing.
 
 ### 1.6 Workflow definition — the one authoring seam (D311/D317/D329, 2026-09-04)
 
-<!-- roadmap: workflow-authoring-model -->
 
 **Implementation status (2026-09-02 deletion acceptance; current verification pending under D329).** `src/base/workflow-definition.ts`
 is the one seam: `defineWorkflow` / `compileWorkflow` / `WorkflowDefinition` / `CompiledWorkflow`
@@ -1173,18 +1167,40 @@ refactor. The rejected alternatives are keeping the current multi-file assembly 
 API, or replacing the proven runtime with a second workflow engine. The first preserves the cost;
 the second spends write-safety evidence to solve an authoring problem.
 
+**Explorer definition projection (W6, operator-approved 2026-10-03).** Normal compiled registration
+feeds `workflowExplorerDeclaration` and its closed `definitionPreview` compiled/unavailable
+contract. Authors maintain the ordered definition and typed references, plus optional
+`operationDisplay`; they add no second workflow graph or Explorer renderer map. The producer
+requires the descriptor compiled from that definition and refuses identity, timeline
+content/order, or complete graph-coverage mismatches. It derives displayed systems in first-use
+order. Omitted `operationDisplay` remains explicit legacy/unavailable capability, never inferred
+detail. A source jump resolves only through one exact displayed producer; missing, ambiguous or
+retired anchors stay unavailable. Definition choices are hypothetical and confer no run state or
+execution authority. Branchless definitions omit `Preview paths`; declared choices retain their
+exact target. The approved adapter reuses existing Explorer components/design, with input-prop,
+component-instance and layout changes allowed; it adds no component design. See the W6 decision (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/reference/decisions.md`)
+and acceptance (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-3/dashboard-surface-wiring.md`).
+
 #### 1.6.1 The simplicity budget and explicit entry algebra (D312/D315/D316, 2026-09-02)
 
+**Current authoring/testing amendment — operator-approved 2026-10-02.** D312's four-artifact
+workflow surface below included scenario proof files, which were retired with `tests/scenario/`.
+Current authored artifacts are the workflow definition and its migration record, plus any new task
+required by the feature. Declared scenario IDs remain contract-validation data; they do not claim
+test execution. An absent rehearsal manifest is unavailable before execution. Future scenario tests
+are a separate operator-led design task.
+
 For a workflow that reuses existing tasks and generic surfaces, the authored workflow surface is
-exactly four artifacts:
+four artifacts under the former scenario-tier contract:
 
 1. `src/workflows/<id>/workflow.ts` containing one `defineWorkflow(...)` call;
 2. `tests/scenario/workflows/<id>/structural.scenario.test.ts`;
 3. `tests/scenario/workflows/<id>/dry-run.scenario.ts`; and
 4. `docs/rebuild/migrations/<id>.md`.
 
-Generated descriptors, module requirements, registry values, build-manifest rows and generic
-dashboard projections do not count because they are not authored. New driver operations, reusable
+Those T1 files are historical and are not current requirements. Generated descriptors, module
+requirements, registry values, build-manifest rows and generic dashboard projections do not count
+because they are not authored. New driver operations, reusable
 store tasks or genuinely new dashboard capabilities are allowed only when the workflow requires new
 behavior; they may not carry descriptor/module/registry glue under another name. A grouping, label,
 run-option or omission-form change to a reuse-only workflow changes `workflow.ts` once.
@@ -1216,23 +1232,6 @@ describe the analogy, not the model.
 
 #### 1.6.2 Workflow admission before a Phase 4 part (D319/D323, 2026-09-03)
 
-<!-- roadmap: migrations -->
-
-<!-- roadmap-status: migrations -->
-- [ ] Phase 4 starts only after Phase 3.5 closes; optional 3.4 features do not block it (D342)
-- [ ] one complete current-behavior and proposed-definition packet is verified at a time
-- [!] the operator approves the exact candidate boundary before migration implementation is assigned
-> 2026-09-04 | D329 authority move | future-workflow admission remains here; the former active 03c candidate-order narrative is superseded history
-<!-- /roadmap-status -->
-
-<!-- roadmap: workflow-admission -->
-
-<!-- roadmap-status: workflow-admission -->
-- [x] record Background Check as the selected candidate; migration implementation waits for Phase 3 close
-- [ ] verify all nine packet fields without guessing
-- [!] approve the exact boundary and tuple model before assigning 4.1 migration implementation
-> 2026-09-04 | D329 authority move | this section, not the archived 03c plan, owns the next-workflow admission gate
-<!-- /roadmap-status -->
 
 A legacy workflow name, old implementation folder, proposed order row, or partially verified intake
 record is a **workflow candidate**, not a rebuilt workflow and not an admitted Phase 4 part.
@@ -1265,20 +1264,13 @@ may be recorded as tasks beneath the selected subphase before admission. The mig
 gate and Phase 3 prerequisites are unchanged; numbered discovery tasks do not claim admission.
 
 Admission verification and phase completion are different gates. Admission proves that the planned
-workflow is understood well enough to build. Phase completion proves that the rebuilt workflow works
-under T1, live selector verification and controlled-write evidence where applicable. Work done for
-one candidate never silently admits the next candidate.
+workflow is understood well enough to build. Phase completion uses the owning plan's current checks,
+live selector verification and controlled-write evidence where applicable; the retired T1 scenario
+tier is not current evidence or a gate. Future scenario-test requirements need separate operator-led
+design. Work done for one candidate never silently admits the next candidate.
 
 #### 1.6.3 Shared capabilities enter with the first admitted consumer (D319/D329)
 
-<!-- roadmap: cross-cutting -->
-
-<!-- roadmap-status: cross-cutting -->
-- [ ] no unassigned shared-capability backlog becomes implementation authority by itself
-- [ ] an admitted Phase 4 workflow names each shared capability it is the first verified consumer to require
-- [ ] cutover capability dispositions remain explicit until an admitted owner proves or retires them
-> 2026-09-04 | D329 authority move | the old 03c backlog is retained only as historical evidence; admission creates the actionable owner
-<!-- /roadmap-status -->
 
 A shared task-store, dashboard, intake, secret, export, notification, or operator-trust capability
 does not receive a free-standing migration task merely because an old inventory listed it. The first
@@ -1298,9 +1290,19 @@ A workflow's optional `operationDisplay` is the composition layer. Its complete 
 instantiates every task/prepare/commit contract occurrence by stable occurrence path, binds only
 declared value slots, and supplies composition-specific transforms and outcome cases. Its value
 references resolve real run-input, configuration, constant, task-output, transformation, or child-
-output schema paths. Outcome case ids and continuations are display predicates, not executable
-scenario ids; `contract.scenarios` remains the test corpus only. Templates retain literal,
+output schema paths. Outcome case ids and continuations are display predicates, not workflow scenario
+ids; `contract.scenarios` remains declaration data for contract validation, not proof of test execution.
+Templates retain literal,
 variable, and ordered optional segments with closed pure conditions and declared join/trim rules.
+A fill-field action may reference its exact task-owned template through `templateId`. Compiler and
+frozen snapshot validation refuse missing templates or references on other action kinds. The
+optional reference participates in the frozen digest; historical absent references remain absent.
+A compute action may bind an optional exact contract-output `valueSlot`; the compiler refuses
+input or missing slots. The existing occurrence binder classifies and retains its supplied result
+under the same output privacy rules as a read. Absent slots retain their historical meaning; a
+transform declaration alone does not supply an observed result.
+Task authors use the same `renderOperationTemplate` helper to produce runtime text and preview
+text. A display reference alone neither executes a fill nor proves its observed value.
 
 The task-owned operation tree admits open/resume page, click, keypress, read/fill/select/check
 field, compute, verify, branch, join, operator-gate, delegation, and session-lifecycle actions.
@@ -1320,23 +1322,77 @@ freezes a serializable projection of a complete display in each new run envelope
 existing driver and graph execution paths and binds only completed driver gestures to that frozen
 projection. No current descriptor is a substitute for missing historical structure.
 
+
+#### 1.6.6 Expected-effect action confirmation (D359, 2026-09-29)
+
+An optional task action `confirmationActionId` names its frozen same-page verification action.
+`runDeclaredAction` completion proves callback return only. Its optional confirmation callback
+executes that declared verifier after the gesture and retains a separate confirmed occurrence
+linked to the exact verification occurrence and timestamp. The binder requires the declared
+link, later verification, matching physical session incarnation and current action occurrence;
+new starts and failures invalidate old completion evidence, and confirmation is single-use.
+The same consumed value is captured once. Both durable Notes and dashboard wire preserve this
+optional evidence; old observations remain unconfirmed without reconstruction.
+
+Invocation headings retain the sealed entry’s optional human label in the frozen snapshot and
+its digest. Historical snapshots without a label use their stable declared operation identity.
+
+Logs may display successful structured actions only with this evidence. Started and completed
+gestures remain neutral driver diagnostics. Verification failures propagate through the existing
+executor/write authority; confirmation does not create write proof, change fences or enable retries
+of unknown writes. Buffered note drain remains outside the operation's write window.
+
+#### D364 — Confirmed task facts and declared step results (2026-10-02)
+
+On a complete frozen operation invocation, `ctx.confirmed` accepts only references found in that
+invocation's frozen action tree. Its occurrence identity binds the definition fingerprint, run,
+node/task, attempt, claim generation, task attempt, invocation id and path, logical action/session,
+and the browser session incarnation when present. The ordinary step occurrence is
+`runId/attempt/claimGeneration/taskAttempt/occurrencePath`; a protected submit uses
+`runId/attempt/claimGeneration/nodeId/transaction`.
+
+`confirmOutcome` accepts only a frozen declared outcome reference and a completed
+`read-validation` verifier. `result()` uses confirmed evidence from that exact invocation and
+session: one matching declared case yields its frozen `caseId`, label and source; missing or invalid
+evidence yields `unavailable`, duplicate evidence or multiple matches yields `ambiguous`, and no
+matching declared case yields `no-match`. These states stay distinct; no missing observation
+becomes an empty result. The exact method signatures live in ref task-contract §4.2; the v1 event and
+time fields live in ref dashboard-surfaces D364. Protected submit confirmation remains owned by ref
+write-safety §3.
+
+#### 1.6.5 Exact child and derived-result sources (D358, 2026-09-29)
+
+An awaited `one/terminal/one` child may be a terminal result dependency. The existing terminal
+evidence owner admits a distinct `child-resolved` arm, supplied from the actual retained canonical
+child run and result. It retains parent run and declared edge, child run/item/workflow/attempt,
+descriptor version/fingerprint, result schema and result/dependency digests. The sealed descriptor
+factory validates the target workflow/result schema and the retained child envelope/result identity
+before the same terminal derive consumes the successful child outcome. Failed, cancelled, blocked
+or unknown children cannot supply this arm. Other cardinalities and unawaited children cannot use
+a single-child terminal-result dependency; they refuse rather than fabricate one. A child result
+is not a parent task checkpoint. Child output bindings retain the existing declared success path.
+
+The existing `result(schema, references, derive, sources?)` seam may declare direct output sources
+or a `derived` source with a nonempty, uniquely named input list. Every source names an actual
+terminal dependency and schema field. The same derive produces and validates the result once;
+derived lineage does not infer causality by comparing equal outputs. Each declared input retains
+its exact finalized action identity or the named `exact-input-occurrence-not-retained` evidence.
+Result sources and lineage have independent content digests and must belong to the exact retained
+dependency source binding already covered by the terminal dependency digest. Rehashing a foreign
+occurrence cannot make it an admitted input. Optional source fields are read forward; historical
+records are not backfilled or reconstructed.
+
+An action bound to a workflow transformation executes that declaration's existing pure derive
+against its actual declared inputs and validates the consumed output field. Its provenance names
+every declared input, retaining all exact source identities for action-produced inputs, definition
+references for non-action inputs, or named unavailable evidence for missing/ambiguous captures.
+A same-valued observation from another task is not a replacement source. Configuration inputs
+require the actual retained configuration value at execution; examples are not runtime authority.
+
 ---
 
 ## 2. Workflow-constant input + the RunEnvelope
 
-<!-- roadmap: p1-kernel -->
-
-<!-- roadmap-status: p1-kernel -->
-- [x] `RunEnvelopeSchema` is a strict runtime schema and the shape printed below is field-for-field what `src/domain/run/envelope.ts:62-96` declares; `dryRun` is its ONLY home (D6) and no TaskCtx exposes it
-- [x] `attempt` is the ITEM's next unspent attempt, refused at the insert if the item has already spent it (D221, `src/domain/run/envelope.ts:85-95`)
-- [x] previewability is derived from the GRAPH by `workflowDryRunSupport(descriptor)` and both the start plan and the command kernel answer from that one derivation (D209; `src/services/start/plan.ts:115-124`, `src/base/workflow.ts`)
-- [x] the ONE builder API, `build()`'s runtime backstops and the D104 forward-reference rule (§3)
-- [x] the run-state machine's states are the durable enum — `parked-gate` and `parked-write` are states, not sentinel statuses (§4; `src/domain/run/record.ts:63-72`)
-- [x] entry validation aggregates every §5.4 problem into ONE no-node failure record before a browser launches (`src/core/run-executor.ts`)
-- [x] the executor never tracks a run version locally: every node transition re-reads authority and CASes with the constant claim token (§5.7)
-- [ ] the transaction and child-run executor arms are typed seams; the child-run arm still answers `capability-unavailable`, because no registered workflow declares a `child-run` node (§3.2)
-> 2026-08-21 | docs-cohesion workflow-model | verified against `src/domain/run/envelope.ts`, `src/domain/run/record.ts`, `src/core/run-executor.ts` and `src/services/start/plan.ts`; left: the unexercised child-run arm
-<!-- /roadmap-status -->
 
 **The raw submission is stored immutable for audit, then validated once by `descriptor.input`; the
 schema-parsed `z.output` value (defaults/transforms already applied) is stored as the run's canonical
@@ -1588,7 +1644,6 @@ export const PersonLookupInput = z.union([
 
 ## 3. The ONE builder API (absorbs ref task-contract §5)
 
-<!-- roadmap: p1-authority -->
 
 - [x] the composed `separations` descriptor is the builder's real-scale proof in production shape: **19 nodes** — 15 `.step`, 1 `.gate`, 3 `.transaction` — assembled from the five chunk harnesses' proven tasks (`src/workflows/separations/descriptor.ts:288-700`)
 - [x] the identity-authority task dominates both sinks, decision and output: `identity-gate-before-commit` audits terminal results and transactions, and pins the gate's exact name-only condition (D202/D309)
@@ -1830,11 +1885,16 @@ Two deviations from §3's sketch, both as-built:
 
 `tests/types/flow-graph.typecheck.ts` is item 1e's mandated real-scale proof: a 21-node
 representative graph plus sixteen `@ts-expect-error` controls, so a transform that collapses to a top
-type fails the proof rather than passing it vacuously. `tests/unit/flow-type-budget.test.ts` records
+type fails the proof rather than passing it vacuously. `tests/integration/flow-type-budget.test.ts` records
 `tsc --extendedDiagnostics` over that file alone and fails outside the 5s / 1 GiB budget (measured
 0.47s / 215 MiB on the baseline machine).
 
-**Graph scenario coverage** is `src/domain/workflow/scenario-coverage.ts`. Task-level coverage is
+**Historical scenario-coverage implementation.** The design below describes the retired production
+scenario corpus and its former paths. `tests/scenario/` no longer exists; the retained
+`scenario-coverage` guard checks pure graph points and negative controls only, as recorded in the
+[current guard inventory](../guard-inventory.json) and [test policy](guards-and-tests.md#scenario-and-parity-suite-retirement--2026-10-02).
+
+**Graph scenario coverage** was implemented at `src/domain/workflow/scenario-coverage.ts`. Task-level coverage was
 already `defineTaskContract`'s job; what it cannot see is the graph, so
 `deriveGraphCoveragePoints` reads the paths off the runtime node view — one point per branch arm,
 open+resolve per gate, zero/one/many fan-out plus replay per delegation, one per declared policy on
@@ -1865,7 +1925,6 @@ structurally cannot see.
 
 ### 3.1 Task-authoring rule — navigation ownership (review 02 #9)
 
-<!-- roadmap: p1-authority -->
 
 **Every standalone read task owns navigation from the worker session's verified neutral state.**
 It may reuse a healthy worker-owned context only after the prior callback completed its bounded
@@ -1905,7 +1964,7 @@ cleanup resets the page”: they are separate contracts/spans but one scheduling
 <a id="delegation-table-names"></a>
 
 **2026-09-08 delegation names — combined implementation and independent review accepted; local integration recorded in the task owner.**
-[Side task `side/command-groups`](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/history/command-groups.md) renames the
+Side task `side/command-groups` (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/history/command-groups.md`) renames the
 current SQL tables `delegation_manifests` → `run_delegations` and `dependencies` →
 `delegation_dependencies`. They remain separate: an immutable delegation records the
 complete child set and original policy, while each dependency records one relationship
@@ -1988,7 +2047,6 @@ fan-out staying an explicit satisfied join rather than a vanished edge.
 
 ### 3.3 A node's `when` is a DECLARED condition, not a closure (2026-08-19, D228)
 
-<!-- roadmap: track-b -->
 
 `when` was `(scope) => boolean`. That is the right type for a rule nothing but the executor ever
 reads, and the wrong one the moment a surface has to say *what* the rule is: ref operator-trust §5.7 correctly
@@ -2037,7 +2095,6 @@ unchanged — conditionality is still a key-presence fact at the type level.
 
 ## 4. The run-state machine (gates are run-state, not task internals — D5)
 
-<!-- roadmap: p1-kernel -->
 
 Tasks stay run-to-completion with bounded duration (ref task-contract's retry/timeout policy). Long waits —
 OCR approval, oath-upload's child-signature watching, external signals — are **gate nodes** in the
@@ -2135,7 +2192,6 @@ production included (charter §9) — MFA is not a gate and never parks a run.
 
 ## 5. Start-anywhere resumability
 
-<!-- roadmap: p1-authority -->
 
 ### 5.1 The tension, stated precisely
 
@@ -2147,7 +2203,7 @@ silent-fallback class the root CLAUDE.md bans.
 ### 5.2 Mechanisms compared — SETTLED
 
 Three mechanisms were weighed in 2026-07-22 and §5.3 chose the first. The comparison itself is
-`history/superseded/2026-08-21-workflow-model-5.2-mechanisms-compared.md`; the settled result, which
+`994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/history/superseded/2026-08-21-workflow-model-5.2-mechanisms-compared.md`; the settled result, which
 is what a reader needs here, is three sentences.
 
 **A. Checkpoint replay is the model.** Persist every node's schema-parsed output; "start at N" loads
@@ -2171,7 +2227,6 @@ design", which is the one substitution this program bans everywhere.
 
 ### 5.3 Recommendation: checkpoint replay with explicit per-node policy
 
-<!-- roadmap: p1-authority -->
 
 Every resumable read node declares `replay` explicitly — **no default**:
 
@@ -2191,7 +2246,6 @@ intent is reused, an unfinished intent enters recovery, and no path resumes dire
 
 ### 5.4 Exact failure behavior
 
-<!-- roadmap: p1-kernel -->
 
 Entry validation runs at claim time, **before any browser launches** (a doomed resume must not
 spend a Duo). On failure the run lands terminal `failed` with:
@@ -2212,7 +2266,6 @@ problems (no fix-one-refresh-repeat loops).
 
 ### 5.5 Checkpoint freshness (D8 — closes the stale-read→live-write hole)
 
-<!-- roadmap: p1-authority -->
 
 - [x] `ucpath/read-job-summary` returns the whole grid with statuses VERBATIM and classifies nothing; the disposition is a pure unconditional fold, and the absent arms split by what a blank MEANS — empl record, HR status and business unit refuse it, the nine descriptive cells carry `{state:"absent", reason}` (D201)
 - [x] the shared identity-authority task dominates both sinks; the guard also pins `identity-approval` to `packet.emplIdSource == name-resolved` (D202/D309)
@@ -2278,7 +2331,6 @@ Fix: re-run "ucpath-job-summary" (start there, or mark it always-rerun for this 
 
 ### 5.6 The four scenarios
 
-<!-- roadmap: p1-authority -->
 
 1. **Retry a failed node.** Failure at node k ⇒ retry = new attempt, `startAt = k`. The attempt is
    the ITEM's, and a retry is a new RUN that takes the item's next unspent one (**D221**, §5.7) —
@@ -2334,6 +2386,25 @@ Fix: re-run "ucpath-job-summary" (start there, or mark it always-rerun for this 
    remains unchanged. A changed match key derives a new logical item. An unchanged item may retain
    retry lineage, but either path gets its own service-minted run identity only on Confirm.
 
+Retained ordinary configuration fields are resolved from the run's exact validated ConfigSnapshot
+identity and fingerprint. Configuration examples do not substitute for retained values, and protected
+settings are not admitted into this map or the frozen definition. The same pure transform can bind
+runtime text and its display attribution through this scope.
+
+The existing task provenance collector admits actual child-result dependencies and walks exact
+retained checkpoint/result references with 16-result and 256-checkpoint bounds. It preserves the
+original observed time and applies the existing derived freshness rules. SQLite terminal admission
+independently rereads each canonical child result and its dependencies before accepting the seal.
+Action lineage retains immediate child result identities and every exact input; unavailable inputs
+remain unavailable through nested transformations. Protected-derived outputs are conservatively
+redacted; missing upstream protection proof is withheld, even for a local-operator value slot.
+
+Exact source lookup authorizes canonical child membership or an exact source identity retained by
+the current owner's canonical result/dependencies, within one authority read snapshot. The latter
+supports replayed origins without admitting unrelated runs; retained references are bounded to 4096.
+The source's frozen definition, retained attempt/claim and precise observation still own admission.
+Historical archives missing operation evidence report unavailable rather than reconstructing it.
+
 #### 5.6.1 Former two operator recovery choices (D314, 2026-09-02; superseded by D334)
 
 A failed run exposes exactly two ordinary recovery choices when no unknown write is parked:
@@ -2379,7 +2450,6 @@ separate occurrence identity, natural-business-key conflict checks and fresh com
 
 ### 5.7 The checkpoint store — and resume scope (D9)
 
-<!-- roadmap: p1-authority -->
 
 - [x] the durable key is `(workflow, item_id, node_id, attempt, claim_generation)` — migration **v14**, a table rebuild because a UNIQUE constraint cannot be widened in place, copying `record_key` verbatim and every pre-D214 generation as `NULL` (`src/infra/sqlite/migrations.ts:994-1016`)
 - [x] the generation is read-forward: `checkpointLookupKey` appends nothing when it is absent, so every pre-D214 row keeps a byte-identical key — while `runCheckpoints.insert` REFUSES a new record naming no generation, so no further unrecorded row can be written (D133/D214)
@@ -2673,7 +2743,6 @@ parallel joins, child-run manifests, and gate results are durable run-state.
 
 ## 6. Trace + spans — what this doc owns (D10: schema lives in ref dashboard-surfaces)
 
-<!-- roadmap: phase-1 -->
 
 **Ref dashboard-surfaces's discriminated-union event stream is THE wire contract** — event shapes, notes stream,
 storage, SSE. This section keeps only the engine-side semantics THIS doc owns:
@@ -2722,7 +2791,7 @@ storage, SSE. This section keeps only the engine-side semantics THIS doc owns:
 | Crash-mid-write auto-resumes straight into a duplicate submit | transaction recovery runs the commit contract's probe first; there is no independently schedulable commit node and the durable intent key covers committed and attempting states |
 | Actions bypass the wrapped helpers (attribution goes dark) | inline-selector + raw-page-API ban re-implemented in the rebuild repo over its own `src/`; `Page`/`Locator` imports and `page.` members are allowlisted only inside system driver/session internals, never task implementations |
 | Span step-id typos | engine accepts only the descriptor-derived step-id union (compile-time); emit-time assert for dynamic paths |
-| Stub lane quietly narrows to happy-path only | **the stub lane was never ported** — no `maybeWrapE2EStub`, no `StepDataFn`, no runtime reader of a contract's `.example` exists in this tree (`history/superseded/2026-08-20-guards-and-tests-stub-lane.md`). What guards this rot vector instead is `scenario-coverage` over `tests/scenario/`'s two declared kinds, plus R10's dry-run scenario tier (ref guards-and-tests §10) |
+| Stub lane quietly narrows to happy-path only | **the stub lane was never ported** — no `maybeWrapE2EStub`, no `StepDataFn`, no runtime reader of a contract's `.example` exists in this tree (`994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/history/superseded/2026-08-20-guards-and-tests-stub-lane.md`). What guards this rot vector instead is `scenario-coverage` over `tests/scenario/`'s two declared kinds, plus R10's dry-run scenario tier (ref guards-and-tests §10) |
 | A workflow claims the right transaction after acting on the wrong open person/page | every write task declares a ref task-contract subject binding; the kernel records a fresh driver observation after prepare and refuses before the fence on mismatch or unknown identity |
 | Delegated fan-out changes across replay or one failed child disappears from the join | atomic immutable delegation manifests, stable edge/item ids, typed child results, and registered zero/one/many/partial/cancel/retry/replay scenarios |
 | Runtime isolation or cutover interlock drifts | The cross-runtime **import** guard is **retired by D93** — the two repos share no module graph, build, or process, so cross-runtime import/invocation/proxying is structurally impossible. Still gated because both worlds run on ONE machine: distinct commands/entrypoints, state/artifact roots, ports, process locks, and browser profiles/sessions; the rebuild repo accepts only its own native runs; the single global cutover (D89) stops legacy enqueues, reconciles all active/uncertain work, verifies backups, and atomically points the normal production launcher at the rebuild repo so exactly one production authority can start — with the legacy repo preserved wholesale as the rollback asset |
@@ -2731,7 +2800,6 @@ storage, SSE. This section keeps only the engine-side semantics THIS doc owns:
 
 ## 8. Worked example — person-lookup (the Phase-1 exit vertical slice)
 
-<!-- roadmap: p1-exit -->
 
 - [x] `person-lookup` is migrated, registered and live-proved: four nodes, `role: standalone`, `code: "pl"` (`src/workflows/person-lookup/descriptor.ts`)
 - [x] its start surface is the canonical `inputRun`: an `eid` pattern rule with an `otherwise` arm emitting `name`, which is exactly the ONE-varying-value shape D260 states (`:212-213`)
@@ -2855,17 +2923,6 @@ Nothing launched, no Duo spent, no partial run row.
 
 ### 8.1 AS-BUILT — the worked example is the shipped workflow (2j, 2026-08-09)
 
-<!-- roadmap: p1-exit -->
-
-<!-- roadmap-status: p1-exit -->
-- [x] the live exit test passed: run `4ebf7275-0158-49af-a78f-1f37948efb27`, trace `pl-000619-4ebf`, against real UCPath and real CRM on the new executor — recovered a dead CRM session mid-run, terminalized `done` at attempt 2 with a correct result, and rendered all four parity surfaces from the ONE projection (D74, 2026-08-04)
-- [x] the three presentation defects it exposed were fixed the same day: the `skipped` arm and its closed `notRun` reason (D123), the terminal row's own `endedAt` (D124), the accessible-name collision (D126)
-- [x] the two identity defects it exposed are closed at the identity rather than at a store: a span folds by `(runId, attempt, spanPath)` (D121/D122), and the bundle-crossing defect that made the app render nothing became `dashboard-wire-boundary` (D120's sibling)
-- [x] session acquisition gained its own bound, `timeouts.sessionAcquireMs`, because every step inside a login recipe was bounded and nothing bounded the CHAIN (D125)
-- [x] §8 is marked as-built here, which is doc 02 §Exit criteria's own criterion
-- [ ] what this slice cannot exercise, by construction: `person-lookup` declares no branch, gate, delegation or transaction, so it derives ZERO graph coverage points and §5.5's freshness walk passes trivially. D266 moved the write-half structural proof to `separations-kuali-finalization/structural.scenario.test.ts`; its live T1b rehearsal remains pending the §10.5–§10.6 runner
-> 2026-08-21 | docs-cohesion workflow-model | verified against `src/workflows/person-lookup/descriptor.ts` and the D74 run record; left: nothing — Phase 1's exit is closed
-<!-- /roadmap-status -->
 
 **Doc 02 (`02-prove-writes-build-the-tails.md`) §Exit criteria's "ref workflow-model §8 marked
 as-built" is MET here.** The exercise above

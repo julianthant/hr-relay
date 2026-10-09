@@ -2,9 +2,9 @@ import {
 DashboardDayWireSchema,
 type DashboardDayWire,
 type QueueSurfaceWire,
-} from "../../../src/domain/dashboard/projection.js";
-import { queueRowActions } from "../../../src/server/dashboard/projectors/queue-row-actions.js";
-import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
+} from "../../../src/models/dashboard/projection.js";
+import { queueRowActions } from "../../../src/backend/runs/projections/queue-row-actions.js";
+import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
 import { at,CONFIG_FINGERPRINT,FIXTURE_APP_VERSION,FIXTURE_DAY,FIXTURE_DESCRIPTOR_HASH,traceOf,uuidOf,WORKFLOW_ID } from "./fixture-identity.js";
 import { FIXTURE_BACKFILL_NOTIFICATIONS,FIXTURE_NOTIFICATIONS } from "./fixture-notifications.js";
 

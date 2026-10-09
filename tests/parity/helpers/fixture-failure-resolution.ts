@@ -1,8 +1,8 @@
 /** D-local fixture: unchanged shell corpus; actual HTTP admission, kernel and durable failure reads. */
 import { createServer,request as proxyRequest } from "node:http";
-import { SavedArchiveReportWireSchema } from "../../../src/domain/dashboard/archive.js";
-import { buildTrustSection } from "../../../src/server/dashboard/queries/run-trust.js";
-import { resolutionApp,resolutionCommand,resolutionFixture,resolutionPeer,resolutionReadDeps } from "../../unit/failure-resolution/fixtures.js";
+import { SavedArchiveReportWireSchema } from "../../../src/models/dashboard/archive.js";
+import { buildTrustSection } from "../../../src/backend/runs/queries/run-trust.js";
+import { resolutionApp,resolutionCommand,resolutionFixture,resolutionPeer,resolutionReadDeps } from "../../support/helpers/failure-resolution/fixtures.js";
 import type { ParityBundleProof } from "./bundle.js";
 import { FIXTURE_ARCHIVED_RUN,FIXTURE_SAVED_REPORT } from "./fixture-archive.js";
 import { startFixtureServer } from "./fixture-bff.js";

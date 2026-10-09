@@ -1,26 +1,26 @@
-import { buildRunResult } from "../../../src/core/run-result.js";
-import { browserSessionSpanPath,workerSpanPath } from "../../../src/core/span-emitter.js";
-import { manualClock } from "../../../src/domain/clock.js";
-import { ReadActiveStatus } from "../../../src/domain/contracts/person-lookup/read-active-status.js";
+import { buildRunResult } from "../../../src/backend/runs/lifecycle/run-result.js";
+import { browserSessionSpanPath,workerSpanPath } from "../../../src/backend/logs/span-emitter.js";
+import { manualClock } from "../../../src/rules/time/clock.js";
+import { ReadActiveStatus } from "../../../src/models/workflows/person-lookup/read-active-status.js";
 import {
 BrowserSessionIdSchema,
 BrowserSystemIdSchema,
 WorkerIdSchema,
 WorkflowIdSchema,
-} from "../../../src/domain/ids.js";
-import type { RunRecord } from "../../../src/domain/run/record.js";
-import { deriveSchemaHash } from "../../../src/domain/schema-bound-value.js";
-import { RunCheckpointRecordSchema } from "../../../src/domain/workflow/checkpoint.js";
+} from "../../../src/rules/identity/ids.js";
+import type { RunRecord } from "../../../src/models/run/record.js";
+import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
+import { RunCheckpointRecordSchema } from "../../../src/models/workflow/checkpoint.js";
 import {
 deriveIdempotencyKeyDigest,
 deriveWriteAuthorityReason,
 deriveWriteBindingProofDigest,
-} from "../../../src/domain/write-safety.js";
-import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writer.js";
-import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+} from "../../../src/rules/write-safety/write-safety.js";
+import { createNoteJsonlWriter } from "../../../src/backend/storage/events/note-jsonl-writer.js";
+import { createTimelineEmitter } from "../../../src/backend/storage/events/timeline-emitter.js";
+import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/index.js";
 import { PersonLookupCanonicalInput } from "../../../src/workflows/person-lookup/workflow.js";
-import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
+import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
 import { CONFIG_FINGERPRINT,CONFIG_SNAPSHOT_ID,CONTRACT_FINGERPRINT,FAILURE_FINGERPRINT,INGRESS_SCHEMA_HASH,SEEDED_AT,SEEDED_NOW,WORKFLOW_ID } from "./seeded-identity.js";
 
 

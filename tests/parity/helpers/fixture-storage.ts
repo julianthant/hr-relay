@@ -1,8 +1,8 @@
 import {
 FrontendBootstrapWireSchema,
 type FrontendBootstrapWire,
-} from "../../../src/domain/dashboard/bootstrap.js";
-import { StorageDoctorWireSchema } from "../../../src/domain/dashboard/storage.js";
+} from "../../../src/models/dashboard/bootstrap.js";
+import { StorageDoctorWireSchema } from "../../../src/models/dashboard/storage.js";
 import { FIXTURE_BOOTSTRAP } from "./fixture-bootstrap.js";
 import { at,uuidOf } from "./fixture-identity.js";
 

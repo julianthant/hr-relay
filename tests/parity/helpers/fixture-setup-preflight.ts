@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { createServer, request as httpRequest } from "node:http";
 import { Hono } from "hono";
-import { createSoloRequestIdentityCheckpoint } from "../../../src/server/dashboard/request-identity.js";
-import { failureStatus } from "../../../src/server/dashboard/routes/failure-status.js";
-import type { DashboardApp } from "../../../src/server/dashboard/routes/api-types.js";
-import { registerSettingsPreflightRoutes } from "../../../src/server/dashboard/routes/settings-preflight.js";
+import { createSoloRequestIdentityCheckpoint } from "../../../src/backend/transports/http/request-identity.js";
+import { failureStatus } from "../../../src/backend/transports/http/routes/failure-status.js";
+import type { DashboardApp } from "../../../src/backend/transports/http/routes/api-types.js";
+import { registerSettingsPreflightRoutes } from "../../../src/backend/transports/http/routes/settings-preflight.js";
 import { createFixtureBff, startFixtureServer } from "./fixture-bff.js";
 import { PARITY_DIST_DIR, assertParityBundleIsCurrent, readBundleStamp } from "./bundle.js";
-import { servedPreflightRuntime, type SetupScene } from "../../fixtures/preflight/served-runtime.js";
+import { servedPreflightRuntime, type SetupScene } from "../../support/fixtures/preflight/served-runtime.js";
 
 /** Only shell/day/static transport is synthetic; readiness HTTP is the shipped route/service/detectors. */
 export async function startSetupPreflightServer(scene: SetupScene, configureRoutes?: (app: DashboardApp, runtime: Awaited<ReturnType<typeof servedPreflightRuntime>>) => void) {

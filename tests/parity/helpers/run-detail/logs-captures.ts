@@ -1,4 +1,4 @@
-import { NotePageSchema } from "../../../../src/domain/dashboard/run-detail.js";
+import { NotePageSchema } from "../../../../src/models/dashboard/run-detail.js";
 import { at,uuidOf } from "../fixture-identity.js";
 import { FIXTURE_IDS } from "../fixture-queue.js";
 import { sectionResponse } from "./section-wire.js";

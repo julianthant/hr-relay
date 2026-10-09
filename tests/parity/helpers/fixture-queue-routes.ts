@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import type { DashboardDayWire } from "../../../src/domain/dashboard/projection.js";
+import type { DashboardDayWire } from "../../../src/models/dashboard/projection.js";
 import { FIXTURE_DAY } from "./fixture-identity.js";
 import { wireError } from "./fixture-wire-error.js";
 export function registerFixtureQueueRoutes({ app, dayWire }: { app: Hono; dayWire: DashboardDayWire }): void {

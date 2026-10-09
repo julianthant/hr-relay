@@ -7,32 +7,33 @@ import { Hono } from "hono";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createCommandKernel } from "../../../src/core/command-kernel.js";
-import { RunRecordService } from "../../../src/core/run-record-service.js";
-import { CommandRequestSchema } from "../../../src/domain/commands.js";
-import { manualClock } from "../../../src/domain/clock.js";
-import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
-import { composeExplorer } from "../../../src/server/dashboard/compose/explorer.js";
-import { createDashboardCommandService } from "../../../src/server/dashboard/commands/command-service.js";
-import { createSoloRequestIdentityCheckpoint } from "../../../src/server/dashboard/request-identity.js";
-import { registerExplorerRoutes } from "../../../src/server/dashboard/routes/explorer.js";
-import { registerCommandsRoutes } from "../../../src/server/dashboard/routes/commands.js";
-import { operatorMutationIngressGuard } from "../../../src/server/dashboard/routes/operator-mutation-ingress.js";
-import { failureStatus } from "../../../src/server/dashboard/routes/failure-status.js";
-import type { DashboardApp } from "../../../src/server/dashboard/routes/api-types.js";
-import { startDashboardHttpServer } from "../../../src/server/dashboard/http-server.js";
-import { buildWorkflowExplorer } from "../../../src/server/dashboard/queries/explorer.js";
-import { WORKFLOW_MODULES } from "../../../src/control/workflow-registry.js";
-import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
-import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../../fixtures/archive-fixtures.js";
-import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";
+import { createCommandKernel } from "../../../src/backend/runs/commands/command-kernel.js";
+import { RunRecordService } from "../../../src/backend/runs/lifecycle/run-record-service.js";
+import { CommandRequestSchema } from "../../../src/rules/commands/commands.js";
+import { manualClock } from "../../../src/rules/time/clock.js";
+import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
+import { composeExplorer } from "../../../src/backend/app/composition/dashboard/explorer.js";
+import { createDashboardCommandService } from "../../../src/backend/runs/commands/command-service.js";
+import { createSoloRequestIdentityCheckpoint } from "../../../src/backend/transports/http/request-identity.js";
+import { registerExplorerRoutes } from "../../../src/backend/transports/http/routes/explorer.js";
+import { registerCommandsRoutes } from "../../../src/backend/transports/http/routes/commands.js";
+import { operatorMutationIngressGuard } from "../../../src/backend/transports/http/routes/operator-mutation-ingress.js";
+import { failureStatus } from "../../../src/backend/transports/http/routes/failure-status.js";
+import type { DashboardApp } from "../../../src/backend/transports/http/routes/api-types.js";
+import { startDashboardHttpServer } from "../../../src/backend/transports/http/http-server.js";
+import type { ExplorerQueryDeps } from "../../../src/backend/runs/queries/explorer.js";
+import { buildWorkflowExplorer } from "../../../src/backend/runs/queries/explorer.js";
+import { WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-registry.js";
+import { sequentialIdFactory } from "../../support/fixtures/phase1f-run-fixtures.js";
+import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../../support/fixtures/archive-fixtures.js";
+import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../../support/fixtures/intake-kernel-seams.js";
 import { FIXTURE_DESCRIPTOR_HASH } from "./fixture-identity.js";
 import { PARITY_DIST_DIR } from "./bundle.js";
 import { fixtureHelloEnvelope, fixtureSnapshotEnvelope, fixtureHealthEnvelope, startFixtureServer } from "./fixture-bff.js";
 
 function unexpected(): never { throw new Error("Explorer acceptance reached an unrelated effect"); }
 
-export async function startExplorerAuthorityServer(fault?: "empty-registry" | "unresolved-sources" | "stale-catalog" | "malformed-catalog") {
+export async function startExplorerAuthorityServer(fault?: "empty-registry" | "unresolved-sources", operation?: Pick<ExplorerQueryDeps, "modules" | "buildManifest">) {
   const root = mkdtempSync(join(realpathSync(tmpdir()), "explorer-browser-"));
   const clock = manualClock(new Date("2026-09-14T12:00:00Z"));
   const database = AuthorityDatabase.open({ path: join(root, "authority.db"), busyTimeoutMs: 250, migrationOwner: "explorer-browser" }, clock);
@@ -63,20 +64,10 @@ export async function startExplorerAuthorityServer(fault?: "empty-registry" | "u
   const routes = composition.routes;
   registerExplorerRoutes(app, {
     ...routes,
-    explorer: { ...routes.explorer,
+    explorer: { ...routes.explorer, ...operation,
       ...(fault === "empty-registry" ? { modules: [] } : {}),
       ...(fault === "unresolved-sources" ? { listScenarioSources: () => [] } : {}),
     },
-    uiCatalog: { readCatalogJson: () => {
-      if (fault === "malformed-catalog") return "{}";
-      const json = routes.uiCatalog.readCatalogJson();
-      if (fault !== "stale-catalog") return json;
-      const catalog = JSON.parse(json) as { entries: { label: string }[] };
-      const first = catalog.entries[0];
-      if (first === undefined) throw new Error("catalog fault requires an existing entry");
-      first.label = "Stale acceptance label";
-      return JSON.stringify(catalog);
-    } },
   });
   registerCommandsRoutes(app, { clock, commands, commandJournal: database.authority.commands,
     bulkCommandAcceptances: { withTransaction: unexpected },

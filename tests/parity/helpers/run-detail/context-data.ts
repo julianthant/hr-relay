@@ -1,7 +1,7 @@
-import { deriveSchemaHash } from "../../../../src/domain/schema-bound-value.js";
-import { ContractFieldPathSchema } from "../../../../src/domain/contracts/base.js";
-import { NodeIdSchema } from "../../../../src/domain/ids.js";
-import { personLookupDescriptor } from "../../../helpers/registered-workflows.js";
+import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
+import { ContractFieldPathSchema } from "../../../../src/models/task/task-contract.js";
+import { NodeIdSchema } from "../../../../src/rules/identity/ids.js";
+import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { at, CONTRACT_FINGERPRINT, uuidOf } from "../fixture-identity.js";
 import { FIXTURE_IDS } from "../fixture-queue.js";
 import { sectionResponse } from "./section-wire.js";

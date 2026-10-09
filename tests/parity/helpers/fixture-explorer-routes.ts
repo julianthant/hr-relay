@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { FIXTURE_EXPLORER_WIRE,FIXTURE_UI_CATALOG_WIRE } from "./fixture-explorer.js";
+import { FIXTURE_EXPLORER_WIRE } from "./fixture-explorer.js";
 export function registerFixtureExplorerRoutes({ app }: { app: Hono }): void {
 
 
@@ -9,5 +9,4 @@ export function registerFixtureExplorerRoutes({ app }: { app: Hono }): void {
    */
   app.get("/api/v1/explorer", (c) => c.json(FIXTURE_EXPLORER_WIRE as unknown));
 
-  app.get("/api/v1/ui-catalog", (c) => c.json(FIXTURE_UI_CATALOG_WIRE as unknown));
 }

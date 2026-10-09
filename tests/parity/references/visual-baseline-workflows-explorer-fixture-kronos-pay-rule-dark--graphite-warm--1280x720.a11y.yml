@@ -1,0 +1,125 @@
+# visual-baseline-workflows-explorer-fixture-kronos-pay-rule-dark--graphite-warm--1280x720
+# adapter: fixture
+# fixture: visual-baseline-workflows.spec.ts:mounted Logs and all Explorer workflows @ dark
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#dashboard-settings-content"
+- main:
+  - region "Settings":
+    - navigation "Settings sections":
+      - heading "Settings" [level=2]
+      - button "Back to dashboard"
+      - group:
+        - searchbox "Search settings"
+      - text: Personal
+      - link "General":
+        - /url: "?settings=general"
+      - link "Credentials":
+        - /url: "?settings=credentials"
+      - text: Advanced
+      - link "Performance":
+        - /url: "?settings=performance"
+      - link "Paths":
+        - /url: "?settings=paths"
+      - link "Routes":
+        - /url: "?settings=routes"
+      - text: Data
+      - link "Spreadsheets":
+        - /url: "?settings=spreadsheets"
+      - link "Explorer":
+        - /url: "?settings=explorer"
+      - link "Analytics":
+        - /url: "?settings=activity"
+      - text: Status
+      - link "Storage checks":
+        - /url: "?settings=storage"
+      - link "Preflight":
+        - /url: "?settings=preflight"
+      - text: Help
+      - link "Keyboard":
+        - /url: "?settings=keyboard"
+    - region "Workflow explorer preview":
+      - heading "Explorer" [level=1]
+      - paragraph: Browse workflows, their steps and field sources. Fictional preview data.
+      - combobox "Explorer workflow": Kronos Pay Rule
+      - list "Workflow steps":
+        - listitem:
+          - heading "Kronos Pay Rule" [level=2]
+          - text: You
+          - paragraph: Reads a person's union and current pay rule off the elections tracker, decides the correct rule, and updates it in Kronos. The decision is a branch, not a gate — no human is asked — and there is no dry run.
+          - text: Election decision
+          - combobox "Election decision preview": Rule must change
+        - listitem:
+          - heading "CSV lookup" [level=2]
+          - text: Kronos
+          - paragraph: Read the person's union code, the rule they are on today, and their current and new elections.
+          - group:
+            - strong: OT Elections Tracker
+            - text: Read Employee Jordan Lee Employee ID 10000001 Union code SX Current pay rule DEMO-CT-BASE Current election Compensatory time New election Cash
+        - listitem:
+          - heading "Determine action" [level=2]
+          - text: Local
+          - paragraph: Decide the correct rule from the union code and election. A person already on the right rule ends here — a no-op is an outcome, not a write.
+          - group:
+            - strong: Determine action
+            - text: Read and process Target pay rule DEMO-OT-BASE
+          - group:
+            - strong: Election decision
+            - text: Read Old code CT New code OT Current pay rule DEMO-CT-BASE New pay rule DEMO-OT-BASE Effective date 07/01/2026
+        - listitem:
+          - heading "Update pay rule" [level=2]
+          - text: Kronos
+          - paragraph: "Set the new pay rule on the person's Kronos record and read it back. Three readback gates throw rather than stamping 'Updated': the code in the cell, the effective date, and the Save button returning to disabled."
+          - paragraph: "Condition: the target rule differs from the current one."
+          - group:
+            - strong: Update pay rule
+            - text: Fill and verify Shown EID 10000001
+          - text: "Verify: code re-read in the committed grid cell; date re-read in the committed grid cell. Open People → timekeeper workspace"
+          - group:
+            - strong: Employee search
+            - text: Fill
+            - button "Show source for Employee ID": Employee ID 10000001
+          - text: Search and open the employee
+          - group:
+            - strong: Displayed identity
+            - text: Read Employee ID 10000001 Employee Jordan Lee
+          - text: Job Assignment
+          - group:
+            - strong: Pay rule assignment
+            - text: Fill
+            - button "Show source for Pay rule": Pay rule DEMO-OT-BASE
+            - button "Show source for Effective date": Effective date 07/01/2026
+          - text: Save pay rule
+          - group:
+            - strong: Saved assignment
+            - text: Read Pay rule DEMO-OT-BASE Effective date 07/01/2026
+          - text: Employee ID, rule and effective date re-read.
+      - paragraph: Fictional workflow path complete. No external system contacted.
+- region "Session Panel":
+  - group "Session actions":
+    - button "Sessions"
+    - text: 2 running 1 starting 1 idle
+    - button "Add workers"
+    - button "Settings" [pressed]
+- region "Notifications"
+- listbox:
+  - group:
+    - option "Person Lookup"
+    - option "I-9 Lookup"
+    - option "Separations"
+    - option "I-9 Check"
+    - option "Onboarding"
+    - option "Oath Signature"
+    - option "Oath Upload"
+    - option "Emergency Contact"
+    - option "Work-Study"
+    - option "Kronos Pay Rule" [selected]
+    - option "OCR"
+    - option "CRM Doc Download"
+    - option "SharePoint Download"
+    - option "OnBase"
+    - option "Old Kronos Reports"

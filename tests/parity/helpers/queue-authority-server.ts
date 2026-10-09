@@ -1,4 +1,4 @@
-import type { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
+import type { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
 import { ensureParityBundle, PARITY_DIST_DIR, type ParityBundleProof } from "./bundle.js";
 import { startSeededServer, type SeededServer } from "./seeded-bff.js";
 

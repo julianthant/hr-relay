@@ -1,0 +1,51 @@
+# workflow-mocks-rerun-shared-confirm--graphite-warm--1280x720
+# adapter: fixture
+# fixture: workflow-mocks.spec.ts:all workflow previews, Run and Rerun @ dark-1280
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- region "Notifications"
+- dialog "Rerun":
+  - banner:
+    - heading "Rerun" [level=2]
+    - paragraph: Onboarding · Workflow preview
+    - button "Close"
+  - list "Run configuration path":
+    - listitem:
+      - button "1 Steps": Steps
+    - listitem:
+      - button "2 Values": Values
+    - listitem:
+      - button "3 Options": Options
+    - listitem:
+      - button "4 Confirm": Confirm
+  - heading "Review the plan" [level=3]
+  - region "Confirm":
+    - heading "1 run ready to queue" [level=4]
+    - text: bulk
+    - paragraph: A new run linked to the source.
+    - term: Workflow
+    - definition: Onboarding
+    - term: Input
+    - definition: jordan.lee@example.com
+    - term: Steps
+    - definition: "7 / 8 included · Omitted: Sign in to CRM"
+    - term: Queue
+    - definition: Bulk
+    - term: Browser
+    - definition: Headless · screenshots off
+    - term: Dry run
+    - definition: "Off"
+    - term: Hire type
+    - definition: New hire · UC_FULL_HIRE
+    - term: Workers
+    - definition: Auto
+    - term: Source
+    - definition: jordan.lee@example.com
+  - contentinfo:
+    - text: Source run · new runOnboarding1 to create
+    - button "Back"
+    - button "Cancel"
+    - button "Create rerun"

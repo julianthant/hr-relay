@@ -1799,9 +1799,9 @@ Repeated here so the checklist is in one place; the master plan owns the normati
 |---|---|
 | `docs/rebuild/migrations/separations-legacy-behavior.md` | The traced legacy account: the happy path end to end, the **S1–S63 scenario table** (§2), per-scenario detail with source quotations (§3), the eleven dangerous patterns (§4), and the `unknown — needs live observation` list (§5). Every S-number cited above resolves there. |
 | `ref stores` | The derived catalog of what every store has today — §1 "How stores work" (the REUSE/CUSTOMIZE/BUILD rule that §2.6's convention would amend), §2 per-store tables, §3 the two shipped workflows' consumption, §4 the gaps this migration closes. Code wins over that file wherever they disagree. |
-| `docs/rebuild/history/superseded/2026-08-20-master-plan-dissolved.md` | §3.1 the Phase-3 entry block, §3.2 exit criteria (§6 above), §3.3 the migration order, **§3.4 the questionnaire template §5 above instantiates**. |
+| `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/history/superseded/2026-08-20-master-plan-dissolved.md` | §3.1 the Phase-3 entry block, §3.2 exit criteria (§6 above), §3.3 the migration order, **§3.4 the questionnaire template §5 above instantiates**. |
 | `docs/rebuild/reference/write-safety.md` | §2 completion arms, §4/§4.1 recovery and operator resolutions, §5 probe policy, §12 the worked two-transaction separations example, §13 the beat structure, **§14 the ALWAYS-GATE** (and §14.7's two values left to this questionnaire). |
-| `docs/rebuild/reference/decisions.md` | The decision index — **D193** (separations as the Phase-3 entry) and, if §2.6 is confirmed, **D194**. A pointer index only; never implement from it. |
+| `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/reference/decisions.md` | The decision index — **D193** (separations as the Phase-3 entry) and, if §2.6 is confirmed, **D194**. A pointer index only; never implement from it. |
 
 ---
 
@@ -3828,7 +3828,7 @@ and it is the surface an operator uses — but both are false statements on a tr
 - While run `00419600` sat `parked-gate` with `identity-gate` serving the whole packet, run-detail's
   generic `gate` section answered `{state: "absent", reason: "this run declares no operator gate"}`.
   The panel's `status` read `awaiting-approval` off the authority lifecycle, so the two halves of one
-  response disagreed. **Explained, and not by this workflow:** `docs/rebuild/findings/dashboard-projection.md`
+  response disagreed. **Explained, and not by this workflow:** `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/findings/dashboard-projection.md`
   (diagnosed the same day, in parallel) shows the BFF's queue projection folds only spans emitted by
   its OWN process, so `gate.opened` — emitted by the WORKER — is never seen, while `gate.resolved`
   from its own command endpoint is. `openGates` therefore stays empty for every run enqueued after the
@@ -6427,7 +6427,7 @@ is outside u1's no-code/no-config scope and requires a separately authorized dec
 
 > 2026-08-28 — the registry role this section gave 4568 (label `separations-controlled-commit-canary`, the second active canary) was superseded by §9.31 (D284): 4568 ceased to be an active registry identity on 2026-08-28. Everything recorded below stays as recorded.
 
-**Why it ran.** The dry-run-first canary decision (D280; `docs/decisions/live-verification.md`) named Kuali doc **4568** as a
+**Why it ran.** The dry-run-first canary decision (D280; `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/decisions/live-verification.md`) named Kuali doc **4568** as a
 second canary: *"make it the dry run and canary. do it dry run first and then make it canary"* — a
 composed `dryRun=true` audit first, then the controlled commits ②→①→③ with the operator at the
 keyboard, while 4537 keeps its 2026-08-28 role. Unit u23's job was to read 4568's facts LIVE, apply
@@ -6974,7 +6974,7 @@ the requested day”; it now includes the prior value and last observed value, s
 completed doc 4524 (`gone`, last observed 2026-08-14), and 4537 existed only as
 `finalization-canary` under the `separations-kuali-finalization` workflow. The rebuild may not
 substitute a document number or guess across a workflow boundary, so the unit stopped and asked
-(`docs/decisions/live-verification.md` §One active Separations test subject). The operator chose the verify-first option
+(`994837d1f65abd9b9e2f546b3ca52bff90646583:docs/decisions/live-verification.md` §One active Separations test subject). The operator chose the verify-first option
 with an override that became **D284**: after one fresh read-only verification, the active registry
 holds exactly one subject — existing label `finalization-canary`, Kuali doc 4537 — addressable by
 BOTH workflows without cross-workflow guessing; every other active label is removed and its

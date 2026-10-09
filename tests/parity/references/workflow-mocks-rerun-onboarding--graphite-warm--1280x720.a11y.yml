@@ -1,0 +1,61 @@
+# workflow-mocks-rerun-onboarding--graphite-warm--1280x720
+# adapter: fixture
+# fixture: workflow-mocks.spec.ts:all workflow previews, Run and Rerun @ dark-1280
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- region "Notifications"
+- dialog "Rerun":
+  - banner:
+    - heading "Rerun" [level=2]
+    - paragraph: Onboarding · Workflow preview
+    - button "Close"
+  - list "Run configuration path":
+    - listitem:
+      - button "1 Steps": Steps
+    - listitem:
+      - button "2 Values" [disabled]: Values
+    - listitem:
+      - button "3 Options" [disabled]: Options
+    - listitem:
+      - button "4 Confirm" [disabled]: Confirm
+  - heading "Choose what to run again" [level=3]
+  - text: 7 / 8 included
+  - paragraph: Select steps for the new run. Statuses show the source outcome.
+  - region "Steps":
+    - heading "Steps" [level=4]
+    - list:
+      - listitem:
+        - checkbox "Sign in to CRM"
+        - text: Sign in to CRM CRM Skipped
+      - listitem:
+        - checkbox "Find onboarding record" [checked]
+        - text: Find onboarding record CRM Completed
+      - listitem:
+        - checkbox "Read entry sheet" [checked]
+        - text: Read entry sheet CRM Completed
+      - listitem:
+        - checkbox "Download onboarding documents" [checked]
+        - text: Download onboarding documents CRM Completed
+      - listitem:
+        - checkbox "Sign in to UCPath" [checked] [disabled]
+        - text: Sign in to UCPath UCPath · required Completed
+      - listitem:
+        - checkbox "Match existing person" [checked]
+        - text: Match existing person UCPath Completed
+      - listitem:
+        - checkbox "Create I-9 profile" [checked] [disabled]
+        - text: Create I-9 profile Form action · required Completed
+        - checkbox "Enter reading values manually for create i-9 profile"
+        - text: Enter reading values manually for create i-9 profile
+      - listitem:
+        - checkbox "Submit hire" [checked] [disabled]
+        - text: Submit hire Form action · required Completed
+        - checkbox "Enter reading values manually for submit hire"
+        - text: Enter reading values manually for submit hire
+  - contentinfo:
+    - text: Source run · new runOnboarding
+    - button "Cancel"
+    - button "Continue"

@@ -1,4 +1,4 @@
-import { DashboardDayWireSchema } from "../../../src/domain/dashboard/projection.js";
+import { DashboardDayWireSchema } from "../../../src/models/dashboard/projection.js";
 import { at,uuidOf } from "./fixture-identity.js";
 export const FIXTURE_NOTIFICATIONS = DashboardDayWireSchema.shape.notifications.parse([
     {
@@ -9,6 +9,7 @@ export const FIXTURE_NOTIFICATIONS = DashboardDayWireSchema.shape.notifications.
       severity: "warning",
       title: "A write to UCPath is parked pending proof",
       state: "unread",
+      context: { state: "unavailable" },
       occurredAt: at(45),
       revision: 1,
     },
@@ -20,6 +21,7 @@ export const FIXTURE_NOTIFICATIONS = DashboardDayWireSchema.shape.notifications.
       severity: "info",
       title: "Onboarding cohort — July stragglers completed",
       state: "read",
+      context: { state: "unavailable" },
       occurredAt: at(18),
       revision: 1,
     },

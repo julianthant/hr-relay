@@ -1,0 +1,114 @@
+# baseline-settings-spreadsheet-insert-menu--graphite-warm--1280x720
+# adapter: fixture-bff
+# fixture: current-mounted-settings
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#dashboard-settings-content"
+- main:
+  - region "Settings":
+    - navigation "Settings sections":
+      - heading "Settings" [level=2]
+      - button "Back to dashboard"
+      - group:
+        - searchbox "Search settings"
+      - text: Personal
+      - link "General":
+        - /url: "?settings=general"
+      - link "Credentials":
+        - /url: "?settings=credentials"
+      - text: Advanced
+      - link "Performance":
+        - /url: "?settings=performance"
+      - link "Paths":
+        - /url: "?settings=paths"
+      - link "Routes":
+        - /url: "?settings=routes"
+      - text: Data
+      - link "Spreadsheets":
+        - /url: "?settings=spreadsheets"
+      - link "Explorer":
+        - /url: "?settings=explorer"
+      - link "Analytics":
+        - /url: "?settings=activity"
+      - text: Status
+      - link "Storage checks":
+        - /url: "?settings=storage"
+      - link "Preflight":
+        - /url: "?settings=preflight"
+      - text: Help
+      - link "Keyboard":
+        - /url: "?settings=keyboard"
+    - region "Spreadsheets":
+      - button "Open XLSX or CSV"
+      - region "Spreadsheet editor":
+        - navigation "Breadcrumb":
+          - list:
+            - listitem:
+              - button "Spreadsheets"
+            - listitem: Baseline typed.csv
+        - heading "Baseline typed.csv" [level=1]
+        - paragraph: 1 sheet · Edited copy
+        - button "Export copy"
+        - button "Workbook actions"
+        - group "Sheet view":
+          - text: Sheet
+          - combobox "Workbook sheet": Sheet 1
+          - button "Columns"
+        - group "Sheet editing":
+          - button "Insert" [expanded]
+          - menu "Insert":
+            - menuitem "Add row"
+            - menuitem "Add column"
+          - group "Edit history":
+            - button "Undo spreadsheet edit"
+            - button "Redo spreadsheet edit" [disabled]
+        - group:
+          - searchbox "Search spreadsheet cells"
+        - table "Sheet 1 cells":
+          - rowgroup:
+            - row "1 Sort column A Legal Name Sort column B Employee ID Sort column C Personal Email":
+              - columnheader "1"
+              - columnheader "Sort column A Legal Name":
+                - button "Sort column A": A
+                - textbox "A1": Legal Name
+              - columnheader "Sort column B Employee ID":
+                - button "Sort column B": B
+                - textbox "B1": Employee ID
+              - columnheader "Sort column C Personal Email":
+                - button "Sort column C": C
+                - textbox "C1": Personal Email
+          - rowgroup:
+            - row "2 Jordan Lee bad-id jordan@example.com":
+              - rowheader "2"
+              - cell "Jordan Lee":
+                - textbox "A2": Jordan Lee
+              - cell "bad-id":
+                - textbox "B2" [invalid]: bad-id
+              - cell "jordan@example.com":
+                - textbox "C2": jordan@example.com
+            - row "3 Taylor Chen 10000002 taylor@example.com":
+              - rowheader "3"
+              - cell "Taylor Chen":
+                - textbox "A3": Taylor Chen
+              - cell "10000002":
+                - textbox "B3": "10000002"
+              - cell "taylor@example.com":
+                - textbox "C3": taylor@example.com
+        - text: Rows 1–2 of 2 · Cell B2 · Does not match Employee ID (8 digits, starting with 10). Columns 1–3 of 3
+- region "Session Panel":
+  - group "Session actions":
+    - button "Sessions"
+    - text: 2 running 1 starting 1 idle
+    - button "Add workers"
+    - button "Settings" [pressed]
+- region "Notifications"
+- menu "Columns":
+  - group:
+    - searchbox "Find a column"
+  - menuitemcheckbox "A · Legal Name" [checked]
+  - menuitemcheckbox "B · Employee ID" [checked]
+  - menuitemcheckbox "C · Personal Email" [checked]

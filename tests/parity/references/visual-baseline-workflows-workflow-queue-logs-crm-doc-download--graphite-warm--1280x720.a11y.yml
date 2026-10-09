@@ -1,0 +1,192 @@
+# visual-baseline-workflows-workflow-queue-logs-crm-doc-download--graphite-warm--1280x720
+# adapter: fixture
+# fixture: visual-baseline-workflows.spec.ts:mounted Logs and all Explorer workflows @ dark
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#dashboard-main-region"
+- complementary "Workspace":
+  - heading "HR GPT" [level=2]
+  - button "Notifications, 3 unread"
+  - button "Search runs"
+  - navigation "Workflows":
+    - heading "Search" [level=3]
+    - list:
+      - listitem:
+        - button "Person Lookup": Person Lookup 5 · 14
+      - listitem:
+        - button "I-9 Lookup": I-9 Lookup 0 · 1
+    - heading "Separations" [level=3]
+    - list:
+      - listitem:
+        - button "Separations": Separations 0 · 1
+      - listitem:
+        - button "I-9 Check": I-9 Check 1 · 1
+    - heading "Onboarding" [level=3]
+    - list:
+      - listitem:
+        - button "Onboarding": Onboarding 0 · 1
+      - listitem:
+        - button "Oath Signature": Oath Signature 1 · 1
+      - listitem:
+        - button "Oath Upload": Oath Upload 1 · 1
+      - listitem:
+        - button "Emergency Contact": Emergency Contact 1 · 1
+    - heading "Work Study" [level=3]
+    - list:
+      - listitem:
+        - button "Work-Study": Work-Study 0 · 1
+    - heading "Payroll" [level=3]
+    - list:
+      - listitem:
+        - button "Kronos Pay Rule": Kronos Pay Rule 0 · 1
+    - heading "Utils" [level=3]
+    - list:
+      - listitem:
+        - button "OCR": OCR 0 · 5
+      - listitem:
+        - button "CRM Doc Download": CRM Doc Download 0 · 1
+      - listitem:
+        - button "SharePoint Download": SharePoint Download 0 · 1
+    - heading "OnBase" [level=3]
+    - list:
+      - listitem:
+        - button "OnBase": OnBase 1 · 1
+    - heading "Timekeeping" [level=3]
+    - list:
+      - listitem:
+        - button "Old Kronos Reports": Old Kronos Reports 0 · 1
+- main:
+  - heading "CRM Doc Download queue" [level=1]
+  - region "Queue":
+    - text: "Finished 1 08/03/2026: 1 verified"
+    - button "10000001 — done" [pressed]:
+      - text: 10000001 Done 9:10 AM
+      - button "Attempts for 10000001": "#1"
+      - text: CDD35813647 2m 8s
+      - button "Retry"
+      - button "Delete"
+  - region "Action panel":
+    - group "Action panel controls":
+      - button "Start a run"
+      - button "Filter queue by status": Status
+      - combobox "Sort the queue": Newest first
+      - button "Attention first" [pressed]
+    - group "Log date controls":
+      - text: Dashboard date*
+      - group "Dashboard date*":
+        - spinbutton "month, Dashboard date*": "08"
+        - spinbutton "day, Dashboard date*": "03"
+        - spinbutton "year, Dashboard date*": "2026"
+        - button "Choose date Dashboard date*"
+  - region "Selected run logs":
+    - heading "10000001" [level=2]
+    - text: Done
+    - button "Rerun"
+    - navigation "Run timeline":
+      - list:
+        - listitem:
+          - button "Find CRM record · Completed · 09:10:00 · 36s": Find CRM record 36s
+        - listitem:
+          - button "Download documents · Completed · 09:10:36 · 56s": Download documents 56s
+        - listitem:
+          - button "Archive downloaded documents · Completed · 09:11:32 · 36s": Archive downloaded documents 36s
+    - region "Run logs":
+      - region "Find CRM record":
+        - time: 09:10:00
+        - heading "Find CRM record" [level=3]
+        - text: CRM
+        - heading "Roster identity" [level=4]
+        - time: 09:10:00
+        - term: Employee ID
+        - definition: "10000001"
+        - time: 09:10:00
+        - term: Roster email
+        - definition: jordan.lee@example.com
+        - heading "CRM search" [level=4]
+        - time: 09:10:00
+        - term: Email
+        - definition: jordan.lee@example.com
+        - time: 09:10:00
+        - text: Open the matching onboarding record
+        - heading "Search record" [level=4]
+        - time: 09:10:00
+        - term: Email searched
+        - definition: jordan.lee@example.com
+        - time: 09:10:00
+        - term: UCPath Employee ID
+        - definition: "10000001"
+      - region "Download documents":
+        - time: 09:10:36
+        - heading "Download documents" [level=3]
+        - text: CRM
+        - time: 09:10:36
+        - text: Open iDocs and enumerate attachments
+        - heading "Attachments" [level=4]
+        - time: 09:10:36
+        - term: Documents
+        - definition: "2"
+        - time: 09:10:36
+        - term: Selected files
+        - definition: entry-sheet.pdf, onboarding-packet.pdf
+        - time: 09:10:36
+        - text: Download the selected PDFs
+        - heading "Download readback" [level=4]
+        - time: 09:10:36
+        - term: Files
+        - definition: entry-sheet.pdf, onboarding-packet.pdf
+        - time: 09:10:36
+        - term: Folder
+        - definition: Jordan Lee
+        - heading "Download" [level=4]
+        - time: 09:10:36
+        - term: Documents downloaded
+        - definition: entry-sheet.pdf, onboarding-packet.pdf
+        - time: 09:10:36
+        - paragraph: "Readback: each file re-read from the download folder."
+      - region "Archive downloaded documents":
+        - time: 09:11:32
+        - heading "Archive downloaded documents" [level=3]
+        - heading "Archive identity" [level=4]
+        - time: 09:11:32
+        - term: Legal name
+        - definition: Jordan Lee
+        - time: 09:11:32
+        - term: Lived name
+        - definition: Jordan Lee
+        - time: 09:11:32
+        - text: Create the employee's document archive
+        - heading "Archive output" [level=4]
+        - time: 09:11:32
+        - term: PDFs
+        - definition: "2"
+        - time: 09:11:32
+        - term: Folder
+        - definition: Jordan Lee
+        - time: 09:11:32
+        - term: Archive ZIP
+        - definition: Jordan-Lee-documents.zip
+        - time: 09:11:32
+        - paragraph: "Readback: the zip listed back after the move."
+        - time: 09:12:08
+        - term: PDFs
+        - definition: entry-sheet.pdf, onboarding-packet.pdf
+        - time: 09:12:08
+        - term: Folder
+        - definition: Jordan Lee
+    - group:
+      - searchbox "Search logs"
+    - status: 23 actions
+    - status
+    - button "Copy logs"
+    - button "Go to latest action"
+- region "Session Panel":
+  - group "Session actions":
+    - button "Sessions"
+    - text: 2 running 1 starting 1 idle
+    - button "Add workers"
+    - button "Settings"
+- region "Notifications"

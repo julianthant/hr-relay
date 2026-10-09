@@ -27,21 +27,21 @@ import { cpus, totalmem } from "node:os";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { applyDashboardDayPatch } from "../../src/dashboard/client/day-state.js";
+import { applyDashboardDayPatch } from "../../src/dashboard/client/queries/day-state.js";
 import {
   DashboardDayWireSchema,
   type DashboardDayWire,
-} from "../../src/domain/dashboard/projection.js";
-import type { DashboardDayPatchSchema } from "../../src/domain/dashboard/subscription.js";
+} from "../../src/models/dashboard/projection.js";
+import type { DashboardDayPatchSchema } from "../../src/models/dashboard/subscription.js";
 import {
   listEventStreamFiles,
   readEventStreamLines,
   readScopedEventStreamLines,
   scopedEventStreamFiles,
-} from "../../src/infra/events/jsonl-streams.js";
-import { SpanEventWireSchema } from "../../src/events/types.js";
-import { readTimelineRecords } from "../../src/infra/events/timeline-reader.js";
-import { buildRunSection, runNotePartitionScope } from "../../src/server/dashboard/queries/run-detail.js";
+} from "../../src/backend/storage/events/jsonl-streams.js";
+import { SpanEventWireSchema } from "../../src/models/events/types.js";
+import { readTimelineRecords } from "../../src/backend/storage/events/timeline-reader.js";
+import { buildRunSection, runNotePartitionScope } from "../../src/backend/runs/queries/run-detail.js";
 import { PERF_FIXTURE_PROFILE, seedDashboardPerfFixture, type PerfFixture } from "./dashboard-fixture.js";
 import { assertStatementCounterObserves, countSqliteStatements } from "./sqlite-statement-counter.js";
 

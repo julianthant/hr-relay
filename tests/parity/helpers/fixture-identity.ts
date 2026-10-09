@@ -1,5 +1,5 @@
-import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
-import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
+import { MOCK_WORKFLOW_CATALOG } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.js";
+import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
 
 
 /* ── identity helpers (aligned with tests/unit/server/helpers/dashboard-harness.ts) ── */
@@ -26,7 +26,7 @@ export const FIXTURE_APP_VERSION = "0.1.0";
 
 export const CONTRACT_FINGERPRINT = personLookupDescriptor.contractFingerprint;
 
-export const FIXTURE_DESCRIPTOR_HASH = descriptorSetHash([CONTRACT_FINGERPRINT]);
+export const FIXTURE_DESCRIPTOR_HASH = MOCK_WORKFLOW_CATALOG.descriptorSetHash;
 
 export const CONFIG_FINGERPRINT = "b".repeat(64);
 

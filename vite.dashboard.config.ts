@@ -13,12 +13,12 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { resolve } from "node:path";
-import { writeDashboardBuildIdentity } from "./src/server/dashboard/build-identity.js";
+import { writeDashboardBuildIdentity, DASHBOARD_BUILD_COMMAND, type DashboardBuildCommand } from "./src/backend/app/composition/dashboard/build-identity.js";
 import {
   DASHBOARD_FRONTEND_OWNER_PATH,
   DASHBOARD_LAUNCH_NONCE_ENV,
   DashboardLaunchNonceSchema,
-} from "./src/server/dashboard/frontend-owner.js";
+} from "./src/backend/transports/http/frontend-owner.js";
 
 const BACKEND = "http://127.0.0.1:3938";
 const ownerNonceInput = process.env[DASHBOARD_LAUNCH_NONCE_ENV];
@@ -26,7 +26,8 @@ const ownerNonce = ownerNonceInput === undefined
   ? undefined
   : DashboardLaunchNonceSchema.parse(ownerNonceInput);
 
-export default defineConfig({
+export function dashboardConfig(distDir = resolve(import.meta.dirname, "dist/dashboard"), buildScript: DashboardBuildCommand = DASHBOARD_BUILD_COMMAND) {
+return defineConfig({
   root: "src/dashboard",
   plugins: [{
     name: "hrauto-dashboard-launch-owner",
@@ -53,7 +54,8 @@ export default defineConfig({
     closeBundle() {
       writeDashboardBuildIdentity({
         repoRoot: import.meta.dirname,
-        distDir: resolve(import.meta.dirname, "dist/dashboard"),
+        distDir,
+        buildScript,
       });
     },
   }, react(), tailwindcss()],
@@ -63,19 +65,16 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: "../../dist/dashboard",
+    outDir: distDir,
     emptyOutDir: true,
     /**
-     * TWO ENTRIES, ONE BUILD.
+     * The dashboard and DS specimen share one build.
      *
      * `index.html` is the operator dashboard. `kit.html` is the design-system specimen page (ledger 3 UK146–UK157). It
      * is an entry for the same closure reason read the other way round: what it
      * renders is `ds/**` and nothing else, and an entry is what lets
-     * `dashboard-wire-boundary` say so. It is BUILT rather than left to the dev
-     * server — ref frontend-backend-integration §7's parity lane serves `dist/dashboard` as
-     * static files, so a specimen page absent from the build is a page the
-     * parity corpus can never photograph, and `DESIGN.md` is binding while
-     * pointing at it.
+     * `dashboard-wire-boundary` say so. It is built so production static
+     * serving includes the specimen page described by `DESIGN.md`.
      */
     rollupOptions: {
       input: {
@@ -99,3 +98,7 @@ export default defineConfig({
     strictPort: true,
   },
 });
+
+}
+
+export default dashboardConfig();

@@ -1,5 +1,5 @@
-import type { ArchiveGroupQuery } from "../../../src/domain/archive/report.js";
-import type { SavedArchiveReportWire } from "../../../src/domain/dashboard/archive.js";
+import type { ArchiveGroupQuery } from "../../../src/models/archive/report.js";
+import type { SavedArchiveReportWire } from "../../../src/models/dashboard/archive.js";
 
 export function matchesArchiveComparisonQuery(report: SavedArchiveReportWire, query: ArchiveGroupQuery): boolean {
   const lower = (value: string) => value.replace(/[A-Z]/gu, character => character.toLowerCase());

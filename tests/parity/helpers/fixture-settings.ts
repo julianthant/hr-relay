@@ -1,19 +1,17 @@
-import { FingerprintSchema, PositiveIntSchema } from "../../../src/domain/ids.js";
-import { manualClock } from "../../../src/domain/clock.js";
-import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
-import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
-import { buildSettingsEditor } from "../../../src/server/dashboard/queries/settings-editor.js";
-import { SETTINGS_SCHEMA_HASH, derivePersistedSettingsFingerprint, settingsRuntimeIdentity } from "../../../src/domain/config/settings.js";
-import { ConfigSchema, type SettingsOverride } from "../../../src/domain/config/schema.js";
-import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
-import { sha256Hex } from "../../../src/domain/sha256.js";
-import { initialProtectedStoreRecord } from "../../../src/domain/config/protected-settings.js";
-import { createProtectedSettingsRuntimeReader } from "../../../src/server/settings-runtime.js";
-import {
-type SettingsFactsWire
-} from "../../../src/domain/dashboard/settings.js";
-import { buildSettingsFacts } from "../../../src/server/dashboard/queries/settings.js";
-import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
+import { FingerprintSchema, PositiveIntSchema } from "../../../src/rules/identity/ids.js";
+import { manualClock } from "../../../src/rules/time/clock.js";
+import { hostConfigFacts } from "../../../src/models/config/host-display.js";
+import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
+import { buildSettingsEditor } from "../../../src/backend/runs/queries/settings-editor.js";
+import { SETTINGS_SCHEMA_HASH, derivePersistedSettingsFingerprint, settingsRuntimeIdentity } from "../../../src/models/config/settings.js";
+import { ConfigSchema, type SettingsOverride } from "../../../src/models/config/schema.js";
+import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
+import { sha256Hex } from "../../../src/rules/validation/sha256.js";
+import { initialProtectedStoreRecord } from "../../../src/models/config/protected-settings.js";
+import { createProtectedSettingsRuntimeReader } from "../../../src/backend/runtime/settings/settings-runtime.js";
+import { type SettingsFactsWire } from "../../../src/models/dashboard/settings.js";
+import { buildSettingsFacts } from "../../../src/backend/runs/queries/settings.js";
+import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
 import { FIXTURE_NOW } from "./fixture-identity.js";
 
 
@@ -41,11 +39,11 @@ export const FIXTURE_SETTINGS_FACTS: SettingsFactsWire = buildSettingsFacts({
 
 
 /** Synthetic Settings projection built by the complete production fold. Paths have a stable fixture root. */
-export function fixtureSettingsDocument(settings: SettingsOverride = {}, revision = 1, configuredModels?: readonly string[]) {
+export function fixtureSettingsDocument(settings: SettingsOverride = {}, revision = 1) {
   const clock = manualClock(new Date(FIXTURE_NOW));
   const resolve = (overrides: SettingsOverride) => {
     const resolved = resolveConfigWithProvenance(overrides, hostConfigFacts({}), clock);
-    const config = ConfigSchema.parse({ ...resolved.config, ...(configuredModels === undefined || configuredModels.length === 0 ? {} : { providers: { ...resolved.config.providers, gemini: { models: settings.providers?.gemini?.models ?? configuredModels } } }), paths: {
+    const config = ConfigSchema.parse({ ...resolved.config, paths: {
       ...resolved.config.paths,
       reportsDir: overrides.paths?.reportsDir ?? "/tmp/reports",
       downloadsDir: overrides.paths?.downloadsDir ?? "/tmp/settings-fixture/downloads",

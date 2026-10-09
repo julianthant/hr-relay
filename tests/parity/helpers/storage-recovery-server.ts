@@ -1,4 +1,4 @@
-import { syntheticStateRoot } from "../../helpers/synthetic-storage-admission.js";
+import { syntheticStateRoot } from "../../support/helpers/synthetic-storage-admission.js";
 /** Storage-owned test composition: real doctor route; fixture shell/settings/SSE/static responses. */
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -6,20 +6,20 @@ import { createServer, request as httpRequest, type Server } from "node:http";
 import { dirname, join } from "node:path";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { Hono } from "hono";
-import { archiveFixture, attachFile } from "../../unit/archive-transfer/fixtures.js";
+import { archiveFixture, attachFile } from "../../support/helpers/archive-transfer/fixtures.js";
 import { createFixtureBff, startFixtureServer, type FixtureServer } from "./fixture-bff.js";
 import { assertParityBundleIsCurrent, PARITY_DIST_DIR, readBundleStamp } from "./bundle.js";
-import { registerStorageRoutes } from "../../../src/server/dashboard/routes/storage.js";
-import type { DashboardApp } from "../../../src/server/dashboard/routes/api-types.js";
-import { backupStoppedAuthority } from "../../helpers/synthetic-storage-admission.js";
-import { composeStorageCommand } from "../../helpers/synthetic-storage-admission.js";
-import { rebuildRuntimeIsolation } from "../../../src/config/runtime-isolation.js";
-import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
-import { restoreLifecyclePair, verifyLifecyclePair } from "../../helpers/synthetic-storage-admission.js";
-import { RecoveryStopProofStore } from "../../../src/infra/sqlite/recovery-stop-proof.js";
-import { acquireRuntimeProcessLock, observeRuntimeLockSnapshot, type RuntimeProcessLockHandle } from "../../../src/infra/sqlite/runtime-process-locks.js";
-import { createCredentialStore } from "../../helpers/synthetic-storage-admission.js";
-import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema } from "../../../src/domain/config/protected-settings.js";
+import { registerStorageRoutes } from "../../../src/backend/transports/http/routes/storage.js";
+import type { DashboardApp } from "../../../src/backend/transports/http/routes/api-types.js";
+import { backupStoppedAuthority } from "../../support/helpers/synthetic-storage-admission.js";
+import { composeStorageCommand } from "../../support/helpers/synthetic-storage-admission.js";
+import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
+import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
+import { restoreLifecyclePair, verifyLifecyclePair } from "../../support/helpers/synthetic-storage-admission.js";
+import { RecoveryStopProofStore } from "../../../src/backend/storage/sqlite/recovery-stop-proof.js";
+import { acquireRuntimeProcessLock, observeRuntimeLockSnapshot, type RuntimeProcessLockHandle } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { createCredentialStore } from "../../support/helpers/synthetic-storage-admission.js";
+import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema } from "../../../src/models/config/protected-settings.js";
 
 export async function storageRecoveryTarget() {
   const f = archiveFixture({repositoryLayout: true});

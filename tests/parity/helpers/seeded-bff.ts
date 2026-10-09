@@ -1,22 +1,22 @@
-import type { DashboardAppDeps } from "../../../src/server/dashboard/routes/api-types.js";
-import type { Clock } from "../../../src/domain/clock.js";
+import type { DashboardAppDeps } from "../../../src/backend/transports/http/routes/api-types.js";
+import type { Clock } from "../../../src/rules/time/clock.js";
 import { dateNavigationReader, seedDateNavigation } from "./date-navigation-server.js";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createServer,type IncomingMessage,type Server,type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { extname,join,normalize } from "node:path";
-import { manualClock } from "../../../src/domain/clock.js";
-import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writer.js";
-import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
-import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
-import { createTransactionHistory } from "../../../src/infra/sqlite/transaction-history.js";
-import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
-import { createRunQueueProjection } from "../../../src/server/dashboard/projectors/run-queue-projection.js";
-import { type DashboardApp } from "../../../src/server/dashboard/routes/api.js";
-import { seedSyntheticRuntimeConfig } from "../../fixtures/operator-command-fixtures.js";
-import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
-import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
+import { manualClock } from "../../../src/rules/time/clock.js";
+import { createNoteJsonlWriter } from "../../../src/backend/storage/events/note-jsonl-writer.js";
+import { createTimelineEmitter } from "../../../src/backend/storage/events/timeline-emitter.js";
+import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
+import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
+import { descriptorSetHash } from "../../../src/backend/app/composition/dashboard/compose.js";
+import { createRunQueueProjection } from "../../../src/backend/runs/projections/run-queue-projection.js";
+import { type DashboardApp } from "../../../src/backend/transports/http/routes/api.js";
+import { seedInitialSettingsRuntimeConfig } from "../../support/fixtures/operator-command-fixtures.js";
+import { sqliteRunReader } from "../../support/helpers/canonical-run-reader.js";
+import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
 import { assertServedBundle,type ParityBundleProof } from "./bundle.js";
 import { CONTRACT_FINGERPRINT,SEEDED_APP_VERSION,SEEDED_AT,SEEDED_DAY,WORKFLOW_ID } from "./seeded-identity.js";
 import { seed } from "./seeded-lifecycle.js";
@@ -138,7 +138,7 @@ export async function startSeededServer(
     clock,
   );
 
-  seedSyntheticRuntimeConfig(database);
+  seedInitialSettingsRuntimeConfig(database, clock);
   const descriptors = {
     resolve: (workflowId: string) => (workflowId === WORKFLOW_ID ? personLookupDescriptor : undefined),
   };
@@ -152,6 +152,7 @@ export async function startSeededServer(
     ledger: createTransactionHistory(database.authority),
     authority: {
       listNotifications: (actorId: string) => database.authority.notifications.listByActor(actorId),
+      listNotificationCheckpoints: (workflowId, itemId, nodeId, attempt) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt),
       listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
       getWorkerLease: (workerId: string) => database.authority.workerLeases.get(workerId),
       listWorkerPools: () => database.authority.workerPools.list(),
@@ -190,7 +191,7 @@ export async function startSeededServer(
   let selectionServices:Awaited<ReturnType<NonNullable<typeof input.prepareSelection>>>|undefined;
   try {selectionServices=await input.prepareSelection?.({database,clock,root});}
   catch(error) {database.close();rmSync(root,{recursive:true,force:true});throw error;}
-  const { app, hub } = composeSeededServices({database,clock,stateRoot,root,projection,spans,descriptors,runIds,selectionServices});
+  const { app, hub, runLogsHub } = composeSeededServices({database,clock,stateRoot,root,projection,spans,descriptors,runIds,selectionServices});
 
   const server: Server = createServer((req, res) => {
     void (async (): Promise<void> => {
@@ -234,6 +235,7 @@ export async function startSeededServer(
         server.close((error) => (error === undefined ? resolvePromise() : rejectPromise(error)));
       });
       hub.close();
+      runLogsHub.close();
       database.close();
       rmSync(root, { recursive: true, force: true });
     },

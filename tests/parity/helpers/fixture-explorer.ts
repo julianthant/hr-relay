@@ -15,13 +15,12 @@
  * because a wall-clock instant in a rendered surface would differ on every run
  * and turn the whole lane into noise.
  */
-import { manualClock } from "../../../src/domain/clock.js";
+import { manualClock } from "../../../src/rules/time/clock.js";
 import {
 buildWorkflowExplorer,
 type ExplorerQueryDeps,
-} from "../../../src/server/dashboard/queries/explorer.js";
-import { buildUiCatalogWire } from "../../../src/server/dashboard/queries/ui-catalog.js";
-import { explorerQueryDeps,uiCatalogQueryDeps } from "../../fixtures/explorer-seams.js";
+} from "../../../src/backend/runs/queries/explorer.js";
+import { explorerQueryDeps } from "../../support/fixtures/explorer-seams.js";
 import { FIXTURE_DAY,FIXTURE_DESCRIPTOR_HASH } from "./fixture-identity.js";
 
 const FIXTURE_INSTANT = new Date(`${FIXTURE_DAY}T17:04:00.000Z`);
@@ -32,7 +31,6 @@ function deps(): ExplorerQueryDeps {
 
 export const FIXTURE_EXPLORER_WIRE = buildWorkflowExplorer(deps());
 
-export const FIXTURE_UI_CATALOG_WIRE = buildUiCatalogWire(uiCatalogQueryDeps());
 
 /** The workflow the explorer reference opens on — Phase 2's exit-criterion graph. */
 export const FIXTURE_EXPLORER_WORKFLOW_ID = "person-lookup";

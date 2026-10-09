@@ -1,0 +1,163 @@
+import { tmpdir } from "node:os";
+import assert from "node:assert/strict";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import ts from "typescript";
+import { describe, it } from "vitest";
+import { gitVisibleFiles, REPO_ROOT } from "../support/helpers/guard-files.js";
+
+// Private adapter modules have no raw connection in the public SQLite entrypoint.
+// D336 historical backup readers remain; stopped conversion adapters expire in 2.6.
+const PRIVATE_SQLITE_ADAPTERS = [
+  "src/backend/storage/compatibility/archive-upgrade-journal.ts",
+  "src/backend/storage/compatibility/backup-inspection.ts",
+  "src/backend/storage/sqlite/archive-compatibility.ts",
+  "src/backend/storage/sqlite/archive-database.ts",
+  "src/backend/storage/sqlite/authority-database.ts",
+  "src/backend/storage/sqlite/backup-service.ts",
+  "src/backend/storage/sqlite/completion-conversion.ts",
+  "src/backend/storage/sqlite/explorer-override-conversion.ts",
+  "src/backend/storage/sqlite/explorer-overrides.ts",
+  "src/backend/storage/sqlite/failure-resolution.ts",
+  "src/backend/storage/sqlite/foundation-retirement.ts",
+  "src/backend/storage/sqlite/generated-artifacts.ts",
+  "src/backend/storage/sqlite/generated-conversion.ts",
+  "src/backend/storage/sqlite/imported-artifacts.ts",
+  "src/backend/storage/sqlite/notification-publications.ts",
+  "src/backend/storage/sqlite/provider-accounting.ts",
+  "src/backend/storage/sqlite/provider-storage.ts",
+  "src/backend/storage/sqlite/relocation-restore-candidate.ts",
+  "src/backend/storage/sqlite/run-evidence-ownership.ts",
+  "src/backend/storage/sqlite/run-search-index.ts",
+  "src/backend/storage/sqlite/run-summaries.ts",
+  "src/backend/storage/sqlite/runtime-versions.ts",
+  "src/backend/storage/sqlite/settings-activation.ts",
+  "src/backend/storage/sqlite/settings-storage.ts",
+  "src/backend/storage/sqlite/stopped-database-conversion.ts",
+  "src/backend/storage/sqlite/timeline-conversion.ts",
+  "src/backend/storage/sqlite/timeline-repository.ts",
+  "src/backend/storage/sqlite/transaction-selection.ts",
+  "src/backend/storage/sqlite/worker-control.ts",
+  "src/backend/storage/maintenance/upgrade.ts",
+];
+const ADAPTER_PATH = "src/backend/storage/sqlite/authority-database.ts";
+
+function isPrivateMember(member: ts.ClassElement): boolean {
+  const hashPrivate = member.name !== undefined && ts.isPrivateIdentifier(member.name);
+  const keywordPrivate = ts.canHaveModifiers(member)
+    && ts.getModifiers(member)?.some(({ kind }) => kind === ts.SyntaxKind.PrivateKeyword) === true;
+  return hashPrivate || keywordPrivate;
+}
+
+function publicSqliteLeaks(file: string): readonly string[] {
+  const program = ts.createProgram([file], { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, skipLibCheck: true });
+  const checker = program.getTypeChecker();
+  const source = program.getSourceFile(file);
+  if (source === undefined) throw new Error(`missing SQLite boundary source ${file}`);
+  const issues: string[] = [];
+  function rawType(type: ts.Type, location: ts.Node, seen = new Set<ts.Type>(), activeSymbols = new Set<ts.Symbol>()): boolean {
+    if (seen.has(type)) return false;
+    seen.add(type);
+    const symbol = type.getSymbol();
+    if (symbol?.name === "DatabaseSync" || type.aliasSymbol?.name === "DatabaseSync") return true;
+    if (type.isUnionOrIntersection()) return type.types.some(member => rawType(member, location, seen, activeSymbols));
+    if ((type.flags & ts.TypeFlags.Object) === 0) return false;
+    // Inspect generic payloads before cutting recursive container prototypes.
+    if (((type as ts.ObjectType).objectFlags & ts.ObjectFlags.Reference) !== 0
+      && checker.getTypeArguments(type as ts.TypeReference).some(argument => rawType(argument, location, seen, activeSymbols))) return true;
+    if (symbol !== undefined && (activeSymbols.has(symbol)
+      || symbol.declarations?.every(declaration => /\/typescript\/lib\/lib\.[^/]+\.d\.ts$/u.test(declaration.getSourceFile().fileName.replaceAll("\\", "/"))) === true)) return false;
+    if (symbol !== undefined) activeSymbols.add(symbol);
+    try {
+      for (const signature of type.getCallSignatures()) {
+        if (rawType(signature.getReturnType(), location, seen, activeSymbols)
+          || signature.parameters.some(parameter => rawType(checker.getTypeOfSymbolAtLocation(parameter, location), location, seen, activeSymbols))) return true;
+      }
+      return type.getProperties().some(property => {
+        if (property.declarations?.some(declaration => ts.isClassDeclaration(declaration.parent) && isPrivateMember(declaration as ts.ClassElement)) === true) return false;
+        return rawType(checker.getTypeOfSymbolAtLocation(property, location), location, seen, activeSymbols);
+      });
+    } finally { if (symbol !== undefined) activeSymbols.delete(symbol); }
+  }
+  function returnedRaw(node: ts.Node): boolean {
+    if (ts.isReturnStatement(node) && node.expression !== undefined) {
+      let expression = node.expression;
+      while (ts.isAsExpression(expression) || ts.isTypeAssertionExpression(expression) || ts.isParenthesizedExpression(expression)) expression = expression.expression;
+      if (rawType(checker.getTypeAtLocation(expression), expression)) return true;
+    }
+    return ts.forEachChild(node, returnedRaw) === true;
+  }
+  for (const statement of source.statements) {
+    if (!ts.isClassDeclaration(statement) || statement.name?.text !== "AuthorityDatabase") continue;
+    for (const member of statement.members) {
+      if (isPrivateMember(member)) continue;
+      const name = member.name?.getText(source) ?? "constructor";
+      if (ts.isConstructorDeclaration(member)) {
+        if (member.parameters.some(parameter => rawType(checker.getTypeAtLocation(parameter), parameter))) issues.push(`${name}: raw SQLite parameter`);
+      } else if (rawType(checker.getTypeAtLocation(member), member) || returnedRaw(member)) issues.push(`${name}: public SQLite handle escapes`);
+    }
+  }
+  return issues;
+}
+
+describe("SQLite authority boundary", () => {
+  it("keeps node:sqlite and DatabaseSync private to the adapter implementation", () => {
+    const sourceFiles = gitVisibleFiles(["src"]).filter((path) => path.endsWith(".ts") || path.endsWith(".tsx"));
+    const nodeSqliteImports: string[] = [];
+    const databaseSyncIdentifiers: string[] = [];
+    for (const path of sourceFiles) {
+      const source = readFileSync(join(REPO_ROOT, path), "utf8");
+      if (/from\s+["']node:sqlite["']/.test(source)) nodeSqliteImports.push(path);
+      if (/\bDatabaseSync\b/.test(source)) databaseSyncIdentifiers.push(path);
+    }
+    assert.deepEqual(nodeSqliteImports.sort(), [...PRIVATE_SQLITE_ADAPTERS].sort());
+    assert.deepEqual(databaseSyncIdentifiers.sort(), [...PRIVATE_SQLITE_ADAPTERS].sort());
+  });
+
+  it("exports repositories and inspections without a raw connection or SQL escape hatch", () => {
+    const entrypoint = readFileSync(join(REPO_ROOT, "src/backend/storage/sqlite/index.ts"), "utf8");
+    assert.doesNotMatch(entrypoint, /node:sqlite|DatabaseSync|\b(exec|prepare|connection|rawDatabase)\b/);
+
+    const adapterText = readFileSync(join(REPO_ROOT, ADAPTER_PATH), "utf8");
+    const source = ts.createSourceFile(ADAPTER_PATH, adapterText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    const authorityClass = source.statements.find(
+      (statement): statement is ts.ClassDeclaration => ts.isClassDeclaration(statement)
+        && statement.name?.text === "AuthorityDatabase",
+    );
+    assert.ok(authorityClass, "AuthorityDatabase class must exist");
+    assert.deepEqual(publicSqliteLeaks(join(REPO_ROOT, ADAPTER_PATH)), []);
+
+    const publicEscapeHatches = authorityClass.members
+      .filter((member) => !isPrivateMember(member))
+      .map((member) => member.name)
+      .filter((name): name is ts.Identifier => name !== undefined && ts.isIdentifier(name))
+      .map(({ text }) => text)
+      .filter((name) => ["database", "connection", "exec", "prepare", "query", "raw"].includes(name));
+    assert.deepEqual(publicEscapeHatches, []);
+  });
+});
+
+it("allows closed results from private local SQLite use and rejects direct, aliased, field, getter and nested handles", () => {
+  const root = resolve(tmpdir(), `hrauto-sqlite-api-${String(process.pid)}-${String(Date.now())}`);
+  const file = join(root, "boundary.ts");
+  const header = 'declare class DatabaseSync { close(): void; } export class AuthorityDatabase {';
+  try {
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, header + ' classify(): "prestate" | "committed" { const database = new DatabaseSync(); try { return "prestate"; } finally { database.close(); } } }');
+    assert.deepEqual(publicSqliteLeaks(file), []);
+    for (const body of [
+      'open() { const connection = new DatabaseSync(); return Promise.resolve({ wrapped: new Map([["raw", connection]]) }); }',
+      'open() { const connection = new DatabaseSync(); const cycle: { next?: typeof cycle; raw: DatabaseSync } = { raw: connection }; cycle.next = cycle; return cycle; }',
+      'open() { return new DatabaseSync(); }',
+      'open() { const connection = new DatabaseSync(); const alias = connection; return alias; }',
+      'readonly connection = new DatabaseSync();',
+      '#connection = new DatabaseSync(); get value() { return this.#connection; }',
+      'open() { const connection = new DatabaseSync(); return { nested: [connection] }; }',
+      'open(connection: DatabaseSync) { return "prestate"; }',
+      'open() { const connection = new DatabaseSync(); return connection as any; }',
+    ]) {
+      writeFileSync(file, header + body + '}');
+      assert.ok(publicSqliteLeaks(file).length > 0, body);
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

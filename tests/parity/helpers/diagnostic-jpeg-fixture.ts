@@ -1,10 +1,10 @@
 /** The one restricted-JPEG gallery case; never a replacement for the default PNG corpus. */
 import { createHash } from "node:crypto";
-import { DiagnosticBundleWireSchema } from "../../../src/domain/dashboard/diagnostic-bundle.js";
-import { deriveDiagnosticContentDigest } from "../../../src/domain/trust/diagnostic-capture.js";
-import { DiagnosticBundleSchema } from "../../../src/domain/trust/diagnostic.js";
-import { BASELINE_JPEG_BASE64 } from "../../fixtures/diagnostic-image-fixtures.js";
-import { readImageGeometry } from "../../fixtures/image-geometry.js";
+import { DiagnosticBundleWireSchema } from "../../../src/models/dashboard/diagnostic-bundle.js";
+import { deriveDiagnosticContentDigest } from "../../../src/models/trust/diagnostic-capture.js";
+import { DiagnosticBundleSchema } from "../../../src/models/trust/diagnostic.js";
+import { BASELINE_JPEG_BASE64 } from "../../support/fixtures/diagnostic-image-fixtures.js";
+import { readImageGeometry } from "../../support/fixtures/image-geometry.js";
 import { FIXTURE_DIAGNOSTIC_BUNDLE,FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST } from "./fixture-diagnostic.js";
 
 export function restrictedJpegDiagnosticFixture() {

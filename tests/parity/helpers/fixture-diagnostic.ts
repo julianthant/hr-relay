@@ -2,10 +2,10 @@ import { createHash } from "node:crypto";
 import {
 DiagnosticBundleWireSchema,
 type DiagnosticBundleWire,
-} from "../../../src/domain/dashboard/diagnostic-bundle.js";
-import { deriveDiagnosticContentDigest } from "../../../src/domain/trust/diagnostic-capture.js";
-import { DiagnosticBundleSchema,type DiagnosticBundle } from "../../../src/domain/trust/diagnostic.js";
-import { syntheticDashboardPngBytes } from "../../fixtures/diagnostic-image-fixtures.js";
+} from "../../../src/models/dashboard/diagnostic-bundle.js";
+import { deriveDiagnosticContentDigest } from "../../../src/models/trust/diagnostic-capture.js";
+import { DiagnosticBundleSchema,type DiagnosticBundle } from "../../../src/models/trust/diagnostic.js";
+import { syntheticDashboardPngBytes } from "../../support/fixtures/diagnostic-image-fixtures.js";
 import { at,CONFIG_FINGERPRINT,CONTRACT_FINGERPRINT,uuidOf } from "./fixture-identity.js";
 
 

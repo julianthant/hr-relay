@@ -7,44 +7,24 @@ reference, not a second plan or contract: the roadmap, admitted phase doc, and o
 are the pre-1.6 baseline unless they explicitly name a landed 1.6 seam; verify current
 status against the owning phase before implementation.
 
+## Current code paths — 2026-10-01
+
+The current source and dependency map is `docs/rebuild/reference/codebase-structure.md`. Use it
+when an older section names a moved module; dated path narratives preserve their original revision
+evidence. Active checked-in migration/provenance inputs live under
+`docs/rebuild/migrations/legacy/`; canonical field inventory and pending implementation bindings
+now live under `src/models/fields/` and `src/backend/app/registries/`.
+
+The operator retired the `tests/scenario/` and `tests/parity/` suites on 2026-10-02. Their commands,
+layouts and acceptance descriptions below are historical. Do not restore those suites; any future
+scenario or visual-test design requires a separate operator-led task. Workflow scenario IDs remain
+declaration data, not test evidence. The current suite map is
+`docs/rebuild/reference/codebase-structure.md`.
+
 ## Before you start
 
-**The plan is the SSOT — read it, do not re-derive it.** It has three parts: the **tree** at
-`docs/roadmap/roadmap.md` (the machine-readable plan + the site's source + the governance rules), the
-admitted **phase docs** under `docs/rebuild/plans/` (actionable: subphase folders with overviews and optional task files), and the
-**specs** in `docs/rebuild/reference/` (not actionable; cited by slug).
+Read the assigned brief and the relevant owning reference contract before implementation.
 
-- `docs/roadmap/roadmap.md` — the plan as written, in the roadmap notation (headings = nodes,
-  `builds:`/`needs:`/`doc:` lines); `docs/roadmap/index.html` is GENERATED from it by
-  `npm run roadmap`. After `roadmap:end` its **Governance** section owns the one-plan rule, the D1
-  ownership map and D263.
-- The **phase docs** under `docs/rebuild/plans/phase-N/` record tasks, evidence, decisions and exit criteria.
-  [The plans index](../../../docs/rebuild/plans/README.md) routes every existing subphase and former
-  flat path. `/phase-plan` reads the subphase overview and writes the approved assignment into its
-  single owner: the overview for a small plan, or a linked task file for a large one. No assignment
-  is duplicated. Decimal folders cover 0.1–3.5; lettered folders cover 4A, 5A–5B and 6A–6F.
-  D326 supersedes D323/D325's split phase grammar for
-  Phases 0–3: numbered phases contain decimal parts, each part contains numbered supervisor tasks,
-  and each task contains checklist subtasks. The active order is 0.3 authority design, 1.6 authority
-  implementation, 2.6 downstream revalidation, 3.1 dashboard, 3.2 workflow authoring/read-only
-  acceptance/candidate freeze, 3.3 controlled acceptance, optional 3.4 document tools, then 3.5
-  Codex/Claude cooperation (D342). Optional 3.4 never blocks 3.5. For Phase 3, D344 uses actual
-  prerequisites/tasks `3.P.N` and independent parallel children `3.P.N.1`, `3.P.N.2`, etc.
-  From Phase 3.2 onward, the roadmap’s 2026-09-19 amendment supersedes this prerequisite-only
-  shape: tangible tasks/subtasks, explicit Parallel chips, focused checks within a phase and full
-  gates at its exit. The following older shape applies to preserved earlier assignments only.
-  Parents complete before workers launch; new plans place **Finalization** as the last numbered
-  child, requiring every worker. That sequential child combines the group, runs
-  full gates and fixes failures before downstream consumers start. Workers use D191 focused checks; explicit scoped batch exceptions retain their gate timing. The
-  operator chooses launches and integration under Authorized orchestration below. D328's numeric
-  wave members remain valid for Phase 0–2 and preserved in-flight briefs.
-  Phase 4
-  admits later workflows as 4A/4B/4C only after D319 verification and operator approval; Phase 5 is
-  readiness plus the one cutover, and Phase 6 is the desktop app. D329 retires the old 03a–03d
-  filenames and active 3c-A/3c-B labels; their historical evidence lives under `history/superseded/`.
-- `docs/rebuild/reference/decisions.md` — the decision changelog (D1–D332; **D131 is a retired gap —
-  never reuse it**). A **pointer index**, not a spec: it tells you which doc owns a contract. Never
-  implement from it.
 - `docs/rebuild/reference/` — the contracts, each doc owning its own; in prose **`ref <slug>`**:
   `charter` (the operator's vision + the non-negotiables) · `task-contract` (tasks, stores, drivers) ·
   `workflow-model` (the builder, descriptors, the run state machine) · `dashboard-surfaces` (spans,
@@ -52,60 +32,48 @@ admitted **phase docs** under `docs/rebuild/plans/` (actionable: subphase folder
   `data-intake-and-edit-data` (extraction, OCR, intake, Edit Data) · `write-safety` (the write
   sequencer, intents, the ALWAYS-GATE) · `guards-and-tests` (the guard/test architecture) ·
   `clock-config-secrets` (clock, config resolver, secrets) · `operator-trust` (failures, receipts,
-  knowledge, the explorer) · `frontend-backend-integration` (the BFF, the wire, the parity lane) ·
+  knowledge, the explorer) · `frontend-backend-integration` (the BFF and wire) ·
   `foundation-gap-audit` (frozen — a design input, owns nothing) · `stores` (the DERIVED store
   catalog — read it before authoring a task, and remember the code wins over it).
 - `docs/rebuild/reference/lessons.md` — the dated lessons ledger (`ref lessons`), recording
   "X looked safe and did Y", each naming its decision. Before kernel / driver / dashboard /
   write-safety work, search by seam/decision and read the matching entries; do not append historical lessons or retrospective comments as part of ordinary execution.
-- `docs/rebuild/plans/phase-0/`–`phase-6/` — active plan-document folders. D323 maps their owning work into the visible
-  Phase 0–6 hierarchy; D329 aligns every Phase 3 filename to its decimal part. Each phase owns its
-  tasks, decisions and **exit criteria**;
-  `docs/roadmap/roadmap.md` is the summary. The old `07-master-plan.md` was dissolved into them on
-  2026-08-20 and is preserved, with a section-by-section table of where everything went, at
-  `docs/rebuild/history/superseded/2026-08-20-master-plan-dissolved.md`.
 - `docs/rebuild/guard-inventory.json` — the reviewed guard manifest. `tests/unit/architecture/`
   must match it exactly, both directions.
-- `docs/rebuild/history/` — history, organized by kind (`doc-reviews/`, `design-inputs/`,
-  `superseded/`) and indexed by its own `README.md`. Superseded by the owning docs wherever they
-  differ; never cite as normative.
 
 **A decision is not ratified until it lands in its owning doc, in the same commit that records it.**
-`reference/decisions.md` gets a one-line pointer; the owner gets the normative text.
+The owner gets the normative text.
 
 ## Commands
 
 ```bash
 npm run typecheck          # tsc --noEmit over src/, tests/, scripts/ — one program, no exclusions
 npm run lint               # eslint src tests scripts --max-warnings 0 — zero-debt, no manifest
-npm run test               # every vitest project (unit + architecture + scenario)
+npm run test               # registered unit + integration + architecture projects
+npm run test:unit          # deterministic units only; positional file filters allowed
+npm run test:integration   # real-resource and composed workflow proofs; run deliberately
 npm run test:architecture  # the guard suite alone
 npm run test:coverage      # 60/80 lines/statements/functions floors + the suite-size report
 npm run test:watch
 npm run test:reap          # reclaim only validated inactive owned test-run roots; retain live/unknown runs
 
-npm run test:parity        # ref frontend-backend-integration §7 visual/a11y parity lane — builds the bundle, ASSERTS every reference
-npm run test:parity:update # the ONE deliberate way to re-freeze a reference (PARITY_UPDATE=1)
-
 npm run cli               # the runtime CLI (help | phase | dashboard | worker | dry-run-scenario | explain | storage | ocr)
-npm run cli -- dry-run-scenario <workflow> --subject <label> # execute exactly one T1b manifest case
+npm run cli -- dry-run-scenario <workflow> --subject <label> # missing rehearsal manifest reports unavailable before execution
 npm run cli -- storage backup  # the ONLY writer of a verified SQLite backup (D322); `storage doctor` / `storage restore --from` beside it
 npm run dashboard         # the dev dashboard in ONE terminal: BFF (3938) + vite (5174); Ctrl+C stops both
 npm run cli -- dashboard  # the BFF alone; `dashboard:prod` passes --prod and serves dist/dashboard from it (run web:build first)
 npm run web               # the vite dev server alone, proxying /api to a BFF you started yourself
-npm run web:build         # production bundle into dist/dashboard (test:parity builds this itself)
+npm run web:build         # production bundle into dist/dashboard
 
-npm run build:manifest     # regenerate src/domain/workflow/generated-build-manifest.ts
+npm run build:manifest     # regenerate src/workflow-kit/validation/generated-build-manifest.ts
 npm run build:manifest:check # fail if the committed manifest is stale
 npm run stores:catalog     # regenerate the generated §2 task catalog in docs/rebuild/reference/stores.md
 npm run stores:catalog:check # fail if the committed catalog is stale
-npm run roadmap            # render docs/roadmap/index.html from docs/roadmap/roadmap.md (the plan, in the roadmap notation)
-npm run roadmap:check      # fail if the committed site is stale
 ```
 
 `build:manifest` recomputes every descriptor's `contractFingerprint` from its source closure. Run it
-after ANY edit under a descriptor's import closure (which includes `src/base/**` and most of
-`src/domain/**`) — `descriptor-coverage` regenerates and fails on a diff, so a stale manifest is a
+after ANY edit under a descriptor's import closure (including `src/models/**`, `src/rules/**` and
+`src/workflow-kit/**`) — `descriptor-coverage` regenerates and fails on a diff, so a stale manifest is a
 red gate, not a silent drift.
 
 Vitest schedules at most four isolated file forks (or the available CPU count when lower).
@@ -136,15 +104,15 @@ isolation" below for what still MUST differ from the legacy checkout.
 
 - **Never import, invoke, proxy, or read the legacy repo's live state from `src/`.** Two
   repositories share no module graph — this is now structural, not merely banned. Finished lint,
-  type, test, architecture, parity, performance, smoke, Duo, and generated gates are self-contained
+  type, test, architecture, performance, smoke, Duo, and generated gates are self-contained
   too: read-only porting work may consult legacy, but a committed gate may not resolve its checkout.
 - **Porting = copy with provenance.** When you bring verified knowledge across (a selector, a
   parsing rule, a page-state fact), copy it and record **the legacy commit hash and source path** in
   the ported code. Never link it at runtime — which is impossible anyway.
 - **Legacy change accounting is RETIRED (D150, 2026-08-05).** The two repositories no longer touch
   each other in either direction: nothing here reads legacy's working tree, and legacy work never
-  blocks a rebuild gate. `config/legacy-change-accounting.json` is a frozen historical record of
-  what was reconciled through the split — do not extend it. **What replaced it:** the risk was a
+  blocks a rebuild gate. `docs/rebuild/migrations/legacy/legacy-change-accounting.json` is a frozen
+  historical record of what was reconciled through the split — do not extend it. **What replaced it:** the risk was a
   ported selector or page-state fact going stale after legacy fixed it, and that is now covered by
   **live re-verification at each workflow's migration**, which the charter already makes mandatory
   and pre-authorized. A selector checked against the live system beats one diffed against legacy's
@@ -153,13 +121,14 @@ isolation" below for what still MUST differ from the legacy checkout.
   identifier-redacted source snapshots, so legacy moving on cannot invalidate it.
 - **Nothing in the legacy repo may be deleted** during the rebuild or the initial cutover. The whole
   repository is the D89 rollback asset.
-- Architecture guards read `config/ports/legacy-architecture-provenance.json`, whose strict parser
+- Architecture guards read the byte-preserved
+  `docs/rebuild/migrations/legacy/legacy-architecture-provenance.json`; its strict parser
   authenticates every identifier-redacted frozen source and path-inventory snapshot before exposing
   it. The external payload anchor prevents a changed snapshot from authenticating a recomputed
   digest; SSN- and UCSD EID-shaped values must never enter this evidence. Missing, malformed,
   duplicate, reordered, or content-address-mismatched evidence fails loud. Never restore a
   `../hr-automation` or `HRAUTO_LEGACY_REPO` execution dependency to a finished gate.
-- Inventories that span both repos (`src/domain/runtime-environment.ts`) mark legacy paths with an
+- Inventories that span both repos (`src/models/runtime/runtime-environment.ts`) mark legacy paths with an
   explicit **`legacy:` scheme**. Both repos have a `src/` — `src/cli.ts` exists in both — so a bare
   path is ambiguous. Unprefixed always means this repo.
 
@@ -259,45 +228,42 @@ go through `scripts/secure-env-bootstrap.ts`: normal runtime startup refuses mig
 names, opens the fixed provider-only path without following symlinks, validates that descriptor,
 and admits its exact bytes before importing the allowlisted entrypoint. Storage commands bypass
 runtime environment admission so stopped upgrade can inspect historical sources without changing
-them. Ordinary settings come only from SQLite; `src/domain/config/resolve.ts` combines those values
-with defaults. Protected settings come from the independent credential store through the registered
-secret reader. Provider credentials remain environment-owned. The `display` default is the host's
-primary display (D324): `src/infra/host/primary-display.ts` probes it once per process tree,
-`hostAwareResolutionEnvironment` in `src/domain/secrets.ts` publishes it as
+them. Ordinary settings come only from SQLite; `src/backend/app/config/resolve.ts` combines those
+values with defaults. Protected settings come from the independent credential store through the
+registered secret reader. Provider credentials remain environment-owned. The `display` default is the host's
+primary display (D324): `src/backend/app/host/primary-display.ts` probes it once per process tree,
+`hostAwareResolutionEnvironment` in `src/models/config/secrets.ts` publishes it as
 `HRAUTO_HOST_PRIMARY_DISPLAY` for every child process, and 2560×1440 remains only the headless
 fallback — never re-probe in a child, never guess on an unrecognized OS answer;
-`src/domain/secrets.ts` is the **only** module permitted to read a credential from `process.env`
+`src/models/config/secrets.ts` is the **only** module permitted to read a credential from `process.env`
 (`secrets-single-source.test.ts` enforces it). A credential must never be interpolated into a
-message — `no-secret-values-in-logs.test.ts` enforces that half.
+message — `no-secret-values-in-logs.test.ts` enforces that half. D361 permits complete
+classified local values already supplied to an authorized capture or presentation boundary;
+credential discovery/access and D346 provider/OS egress remain separately closed.
 
 Dry-run subjects resolve by label through the typed registry; workflow/kind must match the manifest.
 Unavailable/consumed/unknown subjects and declared-pending leaves block before private reads or a
 browser; malformed available subjects fail by label/date. Subjects and shared data live in
 `config/test-data.json`; private identifiers/paths live only in ignored `config/test-data.local.json`,
-read through `src/control/test-data.ts` (D341, pre-1.6.7 detour). `npm run cli -- test-data check
+read through `src/backend/app/registries/test-data.ts` and the private reader
+`src/backend/storage/configuration/test-data-local.ts` (D341). `npm run cli -- test-data check
 --json` reports names/states only. Read `ref guards-and-tests` §10.5 and `ref clock-config-secrets`
 §D341 for the detour's acceptance evidence. Never source a
 canary from `.env`, expose its value, silently substitute another target, or infer current availability.
 
 ## Coding conventions
 
-- `src/workflows/` has exactly two folder kinds (D265/D266): a top-level folder is a rail workflow,
-  and a child folder is one declared timeline step. A chunk harness lives in the matching step
-  folder with role `{ kind: "chunk-harness", of, step }`; it remains independently startable,
-  nests under its composition in the picker/Explorer, and never appears in the rail. There is no
-  `src/workflows/proving/` and no registered workflow whose purpose is test equipment. Since the
-  2026-09-02 deletion acceptance every workflow folder holds exactly one file, `workflow.ts`; a step
-  folder exists only when it carries a harness (`job-summary` is a declared group with no folder),
-  and the `workflow-layout` guard refuses any other file beside a `workflow.ts`.
-- A workflow's T1 proof lives at
-  `tests/scenario/workflows/<workflow-id>/{structural.scenario.test.ts,dry-run.scenario.ts}`: exactly
-  one collected structural scenario and one sibling T1b live manifest. D318 gives that manifest two
-  exclusive graph-derived arms: `dry-run-preview` for a transaction-bearing graph and `live-read`
-  for a zero-transaction graph. `live-read` runs with `dryRun=false`, requires zero transaction
-  nodes and proves exact zero deltas in all three write-authority tables; never add a no-op
-  transaction to qualify for preview. The live half may write
-  ordinary upstream `run_checkpoints`; its submit-free invariant is zero deltas in
-  `run_operations`, `run_operation_attempts`, and `operation_outbox`.
+- `src/workflows/` uses role-derived source paths: an operator entry is
+  `src/workflows/<id>/workflow.ts`; a retained chunk-harness proof is
+  `src/workflows/<composition>/steps/<step>/step.ts`. The backend composes harnesses separately;
+  they are not operator-startable or picker entries. The composition owns step identities and each
+  harness imports them. An operator workflow folder may also contain its backend-loaded
+  `task-registry.ts` and `tasks/`, but no arbitrary descriptor/module/node files beside the entry.
+  A step folder exists only when it carries a harness (`job-summary` has none). There is no
+  `src/workflows/proving/`.
+- Workflow scenario suites and their T1 proof convention were retired on 2026-10-02. Do not rely on
+  old structural-scenario or parity files as current evidence. Future scenario tests must be designed
+  with the operator; a declared workflow scenario ID alone proves no execution.
 - No default exports.
 - A `src/dashboard/surfaces/*.tsx` or `src/dashboard/app/*.tsx` module exports **components only**;
   its hooks, folds, vocabularies and object constants live in a sibling `<surface>-model.ts`
@@ -313,52 +279,29 @@ canary from `.env`, expose its value, silently substitute another target, or inf
   `defineTask(driver, contract, impl)`; never project a semantic driver down to `{system}` or mint a
   second declaration for tasks registered in the same store. Service/workflow tasks remain
   `defineTask(contract, impl)` and receive no driver.
-- All time reads go through `src/domain/clock.ts` (`clock-single-source.test.ts`); `manualClock` is
-  test-only (`manual-clock-test-only.test.ts`).
-- Registry exports are recursively frozen at module load (`src/domain/immutability.ts`).
+- All time reads go through `src/rules/time/clock.ts` (`clock-single-source.test.ts`); `manualClock`
+  is test-only (`manual-clock-test-only.test.ts`).
+- Registry exports are recursively frozen at module load (`src/rules/validation/immutability.ts`).
 - Structured errors, never `console.*` in `src/`.
-- Workflow definitions remain browser-safe: value imports are restricted to zod, `src/domain/**`,
-  and audited `src/base/**` builders. D311/D317 supersede the old D106 per-workflow `module.ts`
-  attachment instruction: author one `workflow.ts`; `compileWorkflow` derives its module requirements.
+- Workflow definitions remain browser-safe: value imports are restricted to zod, `src/models/**`,
+  `src/rules/**` and audited `src/workflow-kit/**` builders. The current dependency map is
+  `docs/rebuild/reference/codebase-structure.md`. D311/D317 supersede the old D106 per-workflow
+  `module.ts` attachment instruction: author one `workflow.ts`; `compileWorkflow` derives its module requirements.
   Branch cases and parallel branches name nodes downstream of their controller (D104).
 
 - A contract a descriptor uses but no store implements yet must be listed in
-  `config/pending-impl-bindings.json`; the guard fails in both directions (D107).
+  `src/backend/app/registries/pending-impl-bindings.json`; the guard fails in both directions (D107).
 
 ## Authorized orchestration
 
-For newly planned parallel work, [roadmap D344](../../../docs/roadmap/roadmap.md#d344--operator-coordinated-prerequisite-groups-2026-09-08)
-supersedes automatic integration and required coordinator orchestration below. The operator launches tasks
-from accepted prerequisites and assigns the group finalizer. For Phase 3.1, the
-[2026-09-13 cadence](../../../docs/rebuild/plans/phase-3/3.1-finish-the-dashboard/README.md#execution-cadence--operator-amendment-2026-09-13)
-requires focused task/prerequisite checks, typecheck plus focused group integration, full repository
-gates only at 3.1.19 with same-session final repairs, and no independent review.
-It supersedes conflicting review/gate instructions in this reference and personal skills. Elsewhere,
-workers return independently reviewed candidates after focused checks; the finalizer owns full gates,
-fixes and accepted integration.
-Targeted peer coordination is permitted when necessary to resolve blockers, overlap or
-duplicate effort within approved boundaries. Plan changes return to the operator; no taking shared
-files, automatic merging or launching other tasks. Existing
-in-flight work outside Phase 3 keeps its ownership/gates/integration permissions. The four-worktree ceiling
-includes unrelated work; an additional lane requires explicit capacity approval.
+The operator launches tasks and chooses integration. Preserve in-flight ownership and follow the
+assigned brief for prerequisites, gates and review. Planning and execution remain separate intent.
 
-For roadmap work read [roadmap §Plan, implement, review](../../../docs/roadmap/roadmap.md#plan-implement-review-operator-amendment-2026-09-04).
-`/astra-orchestrator` owns execution and replaces `/supervise`. `/plan` and `/phase-plan` remain usable
-alone or within the same root session. Planning, roadmap recording and execution are separate intent:
-plan-only stops; explicitly requested execution continues after required approval, persisted plan and
-verified prerequisites. No fresh root is required between those stages. Existing phase admission,
-review/gate cadence, integration permission and in-flight ownership remain binding.
-
-The orchestrator uses GPT-6 Astra medium. Luna max handles short tasks with a fresh, single-use
-agent for each task; never reuse it after its result. Sol medium handles longer tasks and may work
-back and forth with the orchestrator. Workers own implementation, checks and fixes; the
-root retains consequential decisions, acceptance and authorized integration. Before dispatch, read
-`~/.agents/skill-library/parallel-agent-work/REFERENCE.md` and only the selected worker adapter;
-validate roles when that adapter requires it. User-named providers or models limit eligible routes to
-those choices and any named fallbacks. Read quota routing only after confirmed exhaustion or verified
-route unavailability with an allowed fallback. Standard variants only; no paid overages. The user
-handles root exhaustion.
-Existing admitted sessions keep their assignments; Claude Code's native roles remain unchanged.
+Use the current global workflow instructions for route, worker and model selection. Workers own
+assigned implementation, checks and fixes; the root retains consequential decisions, acceptance
+and authorized integration. Honor user-named providers, models and fallbacks. Existing admitted
+sessions keep their assignments. Use standard variants only; no paid overages. The user handles
+root exhaustion.
 
 When required, independent review runs against a stable candidate without implementation conversation.
 Fix findings, obtain required renewed review and complete assigned checks, authorized integration and

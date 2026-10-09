@@ -4,15 +4,14 @@
 task IS (§2), where its implementation lives (§3), how it is instrumented (§4), what it asks of the
 workflow builder (§5), and how authentication and dry-run reach it (§6). It is a REFERENCE spec —
 cited as `ref task-contract §N`, never actionable on its own. What is scheduled and what is left
-lives in the phase docs `docs/rebuild/00`–`05` and in `docs/roadmap/roadmap.md`.
+lives in the phase docs `docs/rebuild/00`–`05` and in `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/roadmap/roadmap.md`.
 
 **It is as-built, not aspiration.** The contract shipped in Phase 1d (2026-08-01) and has executed
-every run since 1f. At HEAD the tree holds **39 sealed task contracts** under
-`src/domain/contracts/<store>/` — 29 in system stores (`ucpath` 10, `kuali` 10, `crm` 2,
-`new-kronos` 2, `extraction` 2, `normalization` 1, `ocr` 1, `roster` 1) and 10 in the two workflow
-mini-stores (`workflow:separations` 9, `workflow:person-lookup` 1) — bound by 16 store directories
-under `src/stores/`: nine browser stores (one per closed `BrowserSystemId`), four service stores,
-two workflow mini-stores, and `common/`, which is shared leaf code and not a store. Four guards in
+every run since 1f. Current schema and implementation locations are recorded in the
+[codebase structure map](codebase-structure.md): task schemas and contract shapes live under
+`src/models/`; shared task and store factories live under `src/workflow-kit/`; backend-loaded
+system, processing and workflow implementations register through `task-registry.ts` files. The
+store types and namespace IDs retain their existing contract. Four guards in
 `docs/rebuild/guard-inventory.json` name this doc as an owner: `task-contract-sealing`,
 `task-store-boundaries`, `artifact-effect-boundary` and `provider-capability-boundary`.
 
@@ -25,12 +24,7 @@ workflow-model`'s builder, §6 auth and dry-run. §8 is the rot table, §9 three
 the settled questions. Where the code and an earlier sentence disagreed, the sentence was corrected
 to the code (cohesion plan R9/D252) and the correction says which file settled it.
 
-**Status blocks.** A section that describes a tree node carries `<!-- roadmap: <id> -->` and, once
-per node per doc, a `<!-- roadmap-status: <id> -->` checklist the roadmap generator renders in that
-node's drawer. Where a node's checklist lives under a different section of this doc, the section
-says so in one line rather than opening a second block.
-
-Conforms to `reference/charter.md` and the decision ledger `reference/decisions.md`.
+Conforms to `reference/charter.md`.
 
 ## Ownership (D1 — this doc owns / this doc references)
 
@@ -42,6 +36,7 @@ Conforms to `reference/charter.md` and the decision ledger `reference/decisions.
 | Strict runtime-schema rules, branded domain scalar/id policy, absence semantics, and the task-side subject-binding declaration (D46/D47) |
 | The **read-extraction width** convention — one task per page visit, one fixed strict output, consumers project downstream (§2.8, D194), plus the as-built rules the first store BUILT (§2.9, D196), the first store CUSTOMIZED (§2.10, D197), the first store to split judgment out of a read (§2.11, D201) and the first store to gain a WRITE family beside a read family (§2.12, D206) settled |
 | Retry policy |
+| Task-facing confirmed action and declared-result API (`ctx.confirmed` signatures and verifier-purpose rules, D364) |
 | Decoration (`decorateTask`, hook semantics, error-propagation rule) — **designed, not built**; §4 states the absence |
 | Task stores — browser, service, and pure workflow mini-stores (D4/D42), session providers + the single login signature, shared leaf-code homes (`stores/common/`) |
 | The task **boundary** statement — tasks are bounded; what is NOT a task (D5's task side) |
@@ -57,7 +52,7 @@ Conforms to `reference/charter.md` and the decision ledger `reference/decisions.
 ## § numbers, and what moved (2026-08-21)
 
 Section numbers are load-bearing: thirteen tree nodes carry a `ref:task-contract §N` ref that the
-`roadmap-doc-binding` guard resolves against a real heading (§2, §2.1.1, §2.7, §2.8, §2.9, §2.10,
+retired roadmap binding guard resolved against a real heading (§2, §2.1.1, §2.7, §2.8, §2.9, §2.10,
 §2.11, §2.12, §3.1, §6.2, §9.1, §9.1.1, §9.2), and code comments and sibling docs cite others. So
 **no section was renumbered.** What moved is narrative, not numbering:
 
@@ -70,7 +65,7 @@ Section numbers are load-bearing: thirteen tree nodes carry a `ref:task-contract
 | `### Phase 1d as-built — bounded task/store/session/provider/artifact seam` | folded into §2.3 (ctx, artifacts, providers) and §3.2 (the store factories) |
 | `### Phase 1d as-built — the first `stores/common/` leaf` | folded into §3.3 (the port rules it settled) with the layout half in §3.1 |
 | `## Phase 1f executor ratification` | folded into §2.3 — provenance collection and provider admission are both ctx contracts |
-| `## 7. Alternative shapes for the core contract` + `### A/B/C` | `history/superseded/2026-08-21-task-contract-7.md`; shape B is normatively stated in §2.2 |
+| `## 7. Alternative shapes for the core contract` + `### A/B/C` | `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/history/superseded/2026-08-21-task-contract-7.md`; shape B is normatively stated in §2.2 |
 
 `### 2.11` stood between §2.8 and §2.9 since 2026-08-12; the four store sections now read
 §2.9 → §2.10 → §2.11 → §2.12, which is also their chronological order.
@@ -122,17 +117,11 @@ commit's blobs.
 
 ## 2. The Task contract
 
-<!-- roadmap: p1-authority -->
-<!-- roadmap-status: p1-authority -->
-- [x] `defineTaskContract`'s three effect overloads validate, parse the `example`, deep-seal and register the object in a module-private WeakSet, so `defineTask` can refuse anything it did not mint (`src/domain/contracts/base.ts`; D96–D101, Phase 1d)
-- [x] `defineTask`'s four overloads bind an impl to a sealed contract and re-check effect↔access, session system, OnBase-only exclusivity, download↔content-addressed agreement, read-only retry and headless restrictions at runtime (`src/base/task.ts`)
-- [x] the three store factories and the registry's both-directions corpus match — every registered task is in the corpus, every corpus id has an implementation, every scenario/probe/verifier reference resolves (`src/base/store.ts`; guard `task-store-boundaries`)
-- [x] all nine closed browser systems have exactly one store; four carry a `semantic-ready` driver declaration and a bound login recipe (`ucpath`, `crm`, `kuali`, `new-kronos`), five are declaration-only with no `BROWSER_SYSTEM_BINDINGS` entry (`i9`, `onbase`, `old-kronos`, `servicenow`, `sharepoint`)
-- [x] 39 sealed contracts across 10 namespaces at HEAD, all bound: `config/pending-impl-bindings.json` is the checked-in empty set D107 requires
-- [ ] `decorateTask` and its hook semantics (§4) have no module in `src/` — the instrumentation the model describes is not available to a workflow today
-- [ ] the `KnownTaskId` codegen §2.5 and §8 row 2 name as the anti-stringly-dispatch guard was never built
-> 2026-08-21 | docs-cohesion 5.1 task-contract | verified against src/domain/contracts/base.ts, src/base/{task,store,session}.ts, src/stores/*/index.ts and src/infra/browser/system-bindings.ts; left: decoration (§4) and the two generators (§2.5, §2.7), each named where it is promised
-<!-- /roadmap-status -->
+
+**Historical status snapshot — 2026-08-21.** The checklist's 39-contract count and Phase 1 paths
+record that dated tree. Current locations and dependency boundaries are in
+[codebase structure](codebase-structure.md); keep contract/store semantics and acceptance guards
+from this document.
 
 §2.1–§2.7 are the platform half of the contract — the types, the split, the ctx, the errors, the
 naming, the boundary and the authoring floor. §2.8–§2.12 are the **store conventions** the order-8
@@ -141,18 +130,19 @@ is customized, when judgment must leave a read, and when a write family joins a 
 
 ### 2.1 Core types
 
-The shipped types live in `src/domain/contracts/base.ts` (bundle-safe: zod plus `src/domain/**`
-only — no Node built-in, no `src/base/**`) and `src/base/task.ts` (server-side). The sketch below
-is the contract they encode; **where it and the files differ, the files win** and the difference is
+Task and contract shapes live in `src/models/`; task factories and store registration live in
+`src/workflow-kit/`; server-side implementations live under `src/backend/` or beside their workflow
+in `src/workflows/<id>/tasks/`. A workflow main definition is `workflow.ts`; a chunk-harness
+definition is `steps/<step>/step.ts` and remains browser-safe. The sketch below is the contract they encode; **where it and the files differ, the files win** and the difference is
 a defect in this doc.
 
-**Every closed identity is imported, never re-declared (D101).** `src/domain/ids.ts` owns
+**Every closed identity is imported, never re-declared (D101).** `src/rules/identity/ids.ts` owns
 `BrowserSystemId`, `ServiceSystemId`, `ProviderCapabilityId`, `TaskId`, `TaskStoreId`, the semantic
 UI ids and every branded scalar; contract and store modules re-export them and never mint a second
 union. Adding a system is a one-line edit in ONE file (D2).
 
 ```ts
-// src/domain/ids.ts — the closed unions (D2/D101)
+// src/rules/identity/ids.ts — the closed unions (D2/D101)
 BrowserSystemId  = "ucpath" | "crm" | "onbase" | "kuali" | "servicenow"
                  | "i9" | "new-kronos" | "old-kronos" | "sharepoint";   // 9, named after the REAL
                                                                         // systems: old-kronos = UKG,
@@ -170,7 +160,7 @@ const id = taskId("ucpath/search-person-org");
 ```
 
 ```ts
-// src/domain/contracts/base.ts — what every contract carries
+// src/models/task/task-contract.ts — what every contract carries
 interface TaskContractBase<Id, Input, Output, Codes> {
   readonly id: Id;                        // TaskId, parsed by the factory
   readonly title: string;                 // the DEFAULT for the descriptor's step label (D16);
@@ -194,7 +184,7 @@ CommitTaskContract  += { effect: "commit"; writeSafety: WriteSafety<Input, Outpu
 ```
 
 **D355 display structure stays task-owned.** `operation` is an optional, versioned declaration in
-`src/domain/workflow/operation-display.ts`, sealed with this exact contract. It names stable
+`src/models/workflow/operation-display.ts`, sealed with this exact contract. It names stable
 semantic actions, logical session/page/form identity, schema-resolved input/output slots, templates
 and pure transforms; it has no driver implementation, selector, execution authority, or scenario
 id. A complete workflow display instantiates that reusable operation at an occurrence and binds
@@ -249,7 +239,7 @@ timing is refused at definition. A service or workflow contract cannot declare a
 observation at all.
 
 ```ts
-// src/domain/session.ts — what an impl declares it needs (D96)
+// src/models/sessions/session.ts — what an impl declares it needs (D96)
 SessionNeed = { system: BrowserSystemId;
                 access: "read" | "transaction";        // must agree with effect: read→read,
                                                        // prepare/commit→transaction
@@ -276,13 +266,6 @@ recovery is ref write-safety's, never a generic re-run.
 
 ### 2.1.1 Strict schema and absence rules (D46)
 
-<!-- roadmap: p1-base -->
-<!-- roadmap-status: p1-base -->
-- [x] branded schemas for every core id and scalar, canonical JSON, explicit absence/uncertainty and structured boundary failures shipped in 1b (`src/domain/ids.ts`, `src/domain/canonical-json.ts`; 2026-07-31)
-- [x] `assertContractBoundarySchema` audits every contract input/output/proof RECURSIVELY — through arrays, unions, lazy nodes and wrappers — so `any`, `unknown`, an open nested object or a decision-bearing record fails at module load (`src/validation/contract-boundary.ts`; guard `task-contract-sealing`)
-- [x] `strict-boundary-schemas` extends the same rule to every durable, wire and config boundary in the tree, not just contracts
-> 2026-08-21 | docs-cohesion 5.1 task-contract | verified against src/domain/ids.ts, src/domain/canonical-json.ts and src/validation/contract-boundary.ts; the 1b as-built block that stood above §1 is folded in here; left: nothing in this section
-<!-- /roadmap-status -->
 
 - Every contract input/output/proof/example/scenario and every persisted or transported object is
   defined with `z.strictObject(...)` (or a strict discriminated union of strict objects). Plain
@@ -337,7 +320,7 @@ A task is **two files**:
 **There is no contract barrel, and nothing needs one.** `src/domain/contracts/index.ts` re-exports
 `base.ts` and `write-safety.ts` and nothing else; each contract module is imported by name where it
 is used. The **contract corpus** — the closed `(id, effect)` list every reference resolves against
-— is projected from the REGISTERED STORES in `src/stores/index.ts` (`corpusFor`), so a contract
+— is projected from the REGISTERED STORES in `src/backend/app/task-registry.ts` (`corpusFor`), so a contract
 that no store binds is not in the corpus at all, and `defineTaskStoreRegistry` refuses both
 directions: a registered task absent from the corpus, and a corpus id with no implementation. This
 is the correction to a long-standing sentence in this doc: the barrel was the design, the store
@@ -352,7 +335,7 @@ guards read it: `descriptor-coverage` re-parses every registered contract's exam
 `write-safety-contract` runs the commit proof round-trip over it, and `evidence-receipt` walks its
 leaves to prove every one has a declared redaction classification. What does NOT read it is an e2e
 stub lane — `maybeWrapE2EStub` and the per-workflow stub map were designed in D3 and never ported
-(`history/superseded/2026-08-20-guards-and-tests-stub-lane.md`, verified against the tree
+(`994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/history/superseded/2026-08-20-guards-and-tests-stub-lane.md`, verified against the tree
 2026-08-20). Behavioural coverage comes from the registered `ScenarioManifest` corpus (ref
 operator-trust) and, from R10 onward, from live dry-run scenarios; the example is a value fixture
 and never coverage.
@@ -635,13 +618,6 @@ explicitly **not tasks**:
 
 ### 2.7 The authoring floor — three declaration tiers (D79f, 2026-07-24)
 
-<!-- roadmap: phase0-size-model -->
-<!-- roadmap-status: phase0-size-model -->
-- [x] the tier is DERIVED, never declared: `assertCommon` requires a non-empty `scenarios` list for every non-`workflow:` namespace, and the effect decides everything else — a light task cannot opt into a cheaper floor because nothing declares a floor (`src/domain/contracts/base.ts`)
-- [x] the floor held through 39 contracts across 10 namespaces without a per-task exemption
-- [ ] `scaffold new-task` / `scaffold new-workflow` — ratified as part of the base with D79f and never built; there is no generator in `scripts/` and no `scaffold` script in `package.json`
-> 2026-08-21 | docs-cohesion 5.1 task-contract | verified against src/domain/contracts/base.ts (the tier derivation) and package.json/scripts (no generator); the missing generators are the same absence `{#phase0-size-model}`'s own log records
-<!-- /roadmap-status -->
 
 **The problem this solves.** As written across the reference specs, every task owes roughly ten
 artifacts: input/output schemas, `errorCodes`, freshness, provenance classification, subject spec, a
@@ -981,6 +957,32 @@ fall through rather than be widened into.
 
 ### 3.1 Layout in the rebuild repo's `src/`
 
+**Current path amendment — 2026-10-01.** Use the [current codebase map](codebase-structure.md) for
+folders and dependency direction. The tree diagram below is the earlier Phase 1 store snapshot;
+its store boundaries and namespace rules remain, while paths have moved. `src/models/` owns task
+schemas and shared shapes; `src/workflow-kit/` owns task/workflow factories and shared validation;
+`src/backend/systems/<id>/` and `src/backend/processing/<id>/` own system and processing task
+implementations; `src/workflows/<id>/workflow.ts` is the browser-safe operator definition; Separations chunk harnesses
+live at `src/workflows/separations/steps/<step>/step.ts`. Workflow path helpers derive source and
+potential future scenario locations from role; no scenario suite is current after the 2026-10-02
+operator retirement. Workflow IDs do not change. Declared scenario IDs remain contract metadata, not
+test evidence. Missing rehearsal manifests report unavailable before execution; future scenario
+requirements are operator-led. Workflow-specific `task-registry.ts` and `tasks/` remain
+backend-loaded, and renderer/lower-level code cannot import implementations. Registration filename
+`task-registry.ts` replaces the former `store.ts` convention. `RegisteredTaskStore`, store factories,
+and task namespace IDs retain their semantics.
+
+**Scenario-test amendment — operator-approved 2026-10-02.** `tests/scenario/` and `tests/parity/`
+are retired. The dated T1/T2/T3 checklists and corpus claims below are history, not current proof or
+acceptance. `scenario-coverage` retains pure graph checks only; a unit fixture that injects scenario
+data does not establish production scenario execution. See [guards and tests](guards-and-tests.md#scenario-and-parity-suite-retirement--2026-10-02)
+for the current suite and guard policy.
+
+The tree diagram and D4–D42 path statements below are the dated Phase 1 layout snapshot. Keep them
+for their store-boundary history; use the current map and the current-path amendment above for
+implementation paths. Catalog-specific statements there are superseded by the 2026-10-01 operator
+retirement amendment in `ref operator-trust`.
+
 - [ ] BE the `i9` store is a declaration only — `defineBrowserStore("i9", declareDriver("i9", "unwired"), i9Session, {})`, zero tasks, no `driver/`, no `BROWSER_SYSTEM_BINDINGS` entry; order 1 builds its driver, login recipe and tasks into exactly the layout below
 > 2026-08-21 | docs-cohesion 5.1 task-contract | verified against src/stores/i9/{index.ts,session.ts} and src/infra/browser/system-bindings.ts; the rest of order 1 (person-lookup's Search + Match modes) is owned by 03c and ref dashboard-surfaces §9
 
@@ -1035,10 +1037,9 @@ mini-store's contracts sit at `domain/contracts/<workflow-id>/`, not under a `wo
 
 ### 3.2 The store factories — one impl registry per task namespace
 
-<!-- roadmap: p1-authority -->
 
 ```ts
-// src/base/store.ts — three factories, one registry
+// src/workflow-kit/task-registry.ts — three factories, one registry
 defineBrowserStore(namespace, driver, session, tasks) → BrowserTaskStore
 defineServiceStore(namespace, tasks)                  → HeadlessTaskStore
 defineWorkflowStore(workflowId, tasks)                → HeadlessTaskStore<`workflow:${Id}`>
@@ -1061,7 +1062,7 @@ names are load-bearing because the three enforce different things.
   namespace or task id, and then matches the store set against the **corpus** in BOTH directions: a
   registered task missing from the corpus fails, a corpus id with no implementation fails, an effect
   disagreement fails, and `assertTaskContractReferences` resolves every scenario id and every
-  commit's probe/verifier against that corpus. Two registries are composed in `src/stores/index.ts`
+commit's probe/verifier against that corpus. Two registries are composed in `src/backend/app/registries/task-registry.ts`
   — `browserStoreRegistry` (the nine browser stores, the declaration view ref
   execution-and-sessions' coverage guard consumes) and `taskStoreRegistry` (all sixteen, the
   executable task index).
@@ -1075,7 +1076,7 @@ themselves, and one was never built:
 
 | the promise | what enforces it at HEAD |
 |---|---|
-| pairing — every contract bound by exactly one impl, both directions | `defineTaskStoreRegistry`'s corpus match (above) plus `descriptor-coverage`'s D107 audit of `config/pending-impl-bindings.json`, which is checked-in EMPTY and must gain an entry in the same commit as an unbound contract |
+| pairing — every contract bound by exactly one impl, both directions | `defineTaskStoreRegistry`'s corpus match (above) plus `descriptor-coverage`'s D107 audit of `src/backend/app/registries/pending-impl-bindings.json`, which is checked-in EMPTY and must gain an entry in the same commit as an unbound contract |
 | reachability — a task file the store forgot | structural: the corpus is projected FROM `store.tasks`, so a task no store exports does not exist as far as the registry, the descriptor and the dashboard are concerned |
 | bundle safety — a contract reaching server code | `task-contract-sealing`'s AST plus transitive import-graph audit over every `src/**/contracts/**` module (forged seals, casts and dynamic imports included), and `descriptor-coverage`'s bundle-safe value-import closure over every descriptor |
 | the `example` parses through `output` | `descriptor-coverage` re-parses every registered contract's example, and the factory parses it at definition (§2.2) |
@@ -1094,7 +1095,7 @@ themselves, and one was never built:
   legacy moving on cannot invalidate the guard. `ui-registry.ts` assigns stable ref operator-trust
   `ElementId`s; tasks call the typed driver.
 - **Cross-repo change accounting is RETIRED (D150, 2026-08-05).** This section required D90
-  accounting — every legacy maintenance change booked in `config/legacy-change-accounting.json`
+  accounting — every legacy maintenance change booked in `docs/rebuild/migrations/legacy/legacy-change-accounting.json`
   against the affected rebuilt ids — and that is no longer true in either direction: nothing here
   reads legacy's working tree, and legacy work never blocks a rebuild gate. The file remains as a
   frozen historical record and is read by nothing. **What replaced it is stronger for the risk it
@@ -1131,23 +1132,15 @@ themselves, and one was never built:
   active invariant → structured `KnowledgeRecord`; incident-only context → linked incident history;
   superseded/duplicate/incorrect → excluded from the generated active guide. The old LESSONS file
   stays with the legacy repo's store through the single cutover. See ref operator-trust §4.
-- `npm run ui:catalog` generates the per-store `UI-CATALOG.md` (four exist today: ucpath, crm,
-  kuali, new-kronos) and `npm run selector:search` searches canonical ids, labels, search terms,
-  active knowledge and recorded legacy source paths.
-- The inline-selector architecture guard runs over this repo's own `src/stores/*/tasks/**` and
-  workflow code. Raw `Page`/`Locator`, `page.` calls and locator recipes are allowed only under
-  `src/stores/*/driver/**`, a store's `session.ts`, and `src/infra/browser/**`; tasks receive
-  `ctx.driver` and may not reach any of those three transitively (guard `task-driver-boundary`).
+- **Historical catalog note, superseded 2026-10-01:** `ui:catalog`, `selector:search`, generated
+  `UI-CATALOG.md` files and the generated JSON were retired. Semantic registries, selector evidence,
+  provenance, proof and write-safety requirements remain; see `ref operator-trust`'s retirement
+  amendment. The task-store catalog remains generated by `npm run stores:catalog`.
+- The current task/driver boundary and folders are in the [codebase structure map](codebase-structure.md);
+  the source paths named in this Phase 1 snapshot are historical.
 
 ### 3.4 Service stores — system-less work has a home (D4)
 
-<!-- roadmap: p2-2h -->
-<!-- roadmap-status: p2-2h -->
-- [x] all four service stores exist and are registered: `extraction` (2 tasks), `ocr` (1), `roster` (1), `normalization` (1) — `src/stores/{extraction,ocr,roster,normalization}/`
-- [x] each is a `defineServiceStore` whose tasks are sessionless reads by construction, and `ocr/extract-form-page` is the one contract in the tree that declares `providers`
-- [x] the provider seam behind it — admission, budgets, the reviewed adapter list — is ref execution-and-sessions' and is guarded by `provider-capability-boundary`
-> 2026-08-21 | docs-cohesion 5.1 task-contract | verified against src/stores/{extraction,normalization,ocr,roster}/index.ts and src/domain/contracts/ocr/extract-form-page.ts; the intake/Edit-Data half of 2h is ref data-intake-and-edit-data's
-<!-- /roadmap-status -->
 
 Pure compute and non-browser pipelines get **service stores** under the same contract:
 
@@ -1165,8 +1158,8 @@ Pure compute and non-browser pipelines get **service stores** under the same con
   geocoder reads and optional model suggestions return a strict discriminated result with one
   provenance-labelled change per field (`rule|census|nominatim|ai`) plus explicit
   `unchanged|ambiguous|unavailable`; provider exhaustion or error can never become “no change.” The
-  workflow decides whether an advisory enters an approval gate. Shared provider clients live in
-  infra and may also serve OCR; one store never imports another store's implementation.
+  workflow decides whether an advisory enters an approval gate. Shared provider adapters live under
+  `src/backend/processing/providers/` and may also serve OCR; one store never imports another store's implementation.
 
 Rules:
 
@@ -1178,7 +1171,7 @@ Rules:
   cross-system sessions fails both the type and the factory.
 - A service ctx has no driver member (type-level) and no session provider; `defineServiceStore`
   takes no `SessionProvider`. Remote I/O is not ambient: direct provider SDK, `fetch` or
-  HTTP-client imports are confined to `src/infra/providers/**`, a service task declares
+  HTTP-client imports are confined to `src/backend/processing/providers/**`, a service task declares
   `providers`, and `ctx.providers` is narrowed to exactly those capabilities. Pure extraction and
   roster tasks declare none and cannot call the network.
 - Provider adapters apply the immutable Clock/config snapshot, timeout, abort, admission,
@@ -1203,7 +1196,6 @@ boundary (D61).
 
 ### 3.5 Workflow mini-stores — pure specialization, never a system-policy bypass
 
-<!-- roadmap: p1-authority -->
 
 `src/stores/<workflow-id>/` holds only pure, sessionless `effect:"read"` tasks whose contract ids
 use `workflow:<id>/<verb-object>`. These are workflow-specific transforms and joins that are still
@@ -1223,20 +1215,12 @@ reuse cannot create a runtime module cycle.
 
 ## 4. Customization / decoration model
 
-<!-- roadmap: phase-1 -->
-<!-- roadmap-status: phase-1 -->
-- [-] `decorateTask`, `TaskHooks` and `HookCtx` are DESIGNED and not built: there is no `src/base/decorate.ts`, no builder `.decorate()` / `.instrument()`, and no per-task hook of any kind in `src/`. Nothing in Phase 1 needed one, and no descriptor asks for one today
-- [-] the automatic end-of-step and error SCREENSHOTS §4.2 promised to re-home as kernel span hooks do not exist either — the rebuild captures no screenshots at all; the only diagnostic capture is failure-time and redacted (`src/base/diagnostics.ts`, D137)
-- [x] the ONE instrumentation layer that does exist is the kernel's: the executor emits task spans keyed by `(runId, attempt, spanPath)` with the claim generation folded in (D123/D214), which is what every timeline, duration and verdict reads
-> 2026-08-21 | docs-cohesion 5.1 task-contract | verified by absence — no `decorateTask`, `TaskHooks`, `HookCtx`, `.decorate(` or `.instrument(` anywhere in src/, and no screenshot producer; §4.1–§4.3 keep the contract for whoever builds it, marked as the contract rather than as behaviour
-<!-- /roadmap-status -->
 
-**This section is a contract for a mechanism that does not exist yet.** It is kept normative — a
-decoration model that gets invented ad hoc per workflow is exactly the fork this doc was written to
-prevent — but nothing below describes shipped behaviour, and §4.2's "today's automatic screenshots"
-sentence described the LEGACY system, not this one. What to do when a workflow genuinely needs a
-pre/post side action today: put it in the driver operation (where the page is), or make it its own
-node (where the graph can see it). Do not invent a hook.
+**The decorator model below is a contract for a mechanism that does not exist yet.** D364's
+`ctx.confirmed` API is a separate, as-built task boundary and does not add hooks, screenshots, or
+mutable task-output decoration. §4.2's old "today's automatic screenshots" sentence described the
+LEGACY system, not this one. A workflow that needs a side action still puts it in the driver
+operation or makes it a graph node; it does not invent a decorator.
 
 ### 4.1 The invariant
 
@@ -1281,8 +1265,39 @@ export function decorateTask<T extends AnyTask>(
 | Every step of one workflow | `.instrument(hooks)` on ref workflow-model's builder | per-step audit screenshot policy | **no** |
 | Every task everywhere | kernel-level span hooks (ref dashboard-surfaces) | step timing, task/browser/run span kinds | **yes** — the executor's span emission |
 
-The point of the three layers is that per-workflow instrumentation code is not the answer to any of
-them; when the first two are built, they attach at the task boundary rather than inside a handler.
+The table describes decorator hooks; D364's runtime-owned task API is a separate, as-built
+mechanism. `TaskCtxCommon.confirmed` is optional and carries `ConfirmedTaskActions` only for a
+complete frozen operation display; legacy invocations have no structured action proof.
+
+    export interface ConfirmedTaskActions {
+      read<T extends JsonValue>(action: ConfirmedActionRef, perform: () => Promise<T>,
+        verification: ConfirmedVerification): Promise<T>;
+      fill(action: ConfirmedActionRef, expected: JsonValue, perform: () => Promise<unknown>,
+        readback: ConfirmedVerification): Promise<void>;
+      click(action: ConfirmedActionRef, perform: () => Promise<unknown>,
+        verification: ConfirmedVerification): Promise<void>;
+      keypress(action: ConfirmedActionRef, perform: () => Promise<unknown>,
+        verification: ConfirmedVerification): Promise<void>;
+      verify(verification: ConfirmedVerification & Readonly<{ purpose: "read-validation" }>): Promise<JsonValue>;
+      confirmOutcome(reference: ConfirmedOutcomeReference,
+        verification: ConfirmedOutcomeVerification): Promise<ConfirmedOutcomeObservation>;
+      result(): DeclaredStepResult;
+    }
+
+`ConfirmedActionRef` is the frozen action's `{ id, targetId }` pair. `ConfirmedVerification` carries
+its verifier reference, purpose (`read-validation`, `readback`, `interaction-effect` or
+`saved-effect`), async JSON observation and matcher; `ConfirmedOutcomeReference` is a frozen outcome
+value, and its verifier uses `read-validation`. Outcome observations distinguish `value`, `empty` and
+`unavailable`; unavailable is refused for confirmation.
+
+The runtime requires `read-validation` for reads and verification, `readback` for fills, and
+`interaction-effect` for clicks and keypresses; fill also compares the expected JSON value with its
+readback. Click and keypress reject undeclared or `external-commit` targets. `confirmOutcome`
+accepts only a value declared by the frozen invocation. `result()` selects from exact confirmed
+evidence and returns the declared-result union; the frozen identities and selection rules live in ref
+workflow-model, and its wire event and timestamp contract lives in ref dashboard-surfaces. A task
+cannot publish a successful submit through these methods: the protected transaction path owns
+saved-effect proof (ref write-safety §3).
 
 ### 4.3 Why adding a task cannot break neighbors
 
@@ -1303,7 +1318,6 @@ This one IS as built, and it holds without decoration:
 
 ## 5. Composition — what the contract requires of the builder
 
-<!-- roadmap: p1-authority -->
 
 **The workflow builder API itself — read/transaction/branch/fork/child/gate nodes, replay, and
 resume — is owned and specified only by ref workflow-model.** This section states the obligations
@@ -1327,15 +1341,6 @@ task contracts impose on that builder; it deliberately does not publish a second
 
 ## 6. Auth and dry-run as contract concerns
 
-<!-- roadmap: p1-kernel -->
-<!-- roadmap-status: p1-kernel -->
-- [x] the session provider is the store's, the execution is the worker's: `SessionProvider.login(handle, options)` takes a `BrowserAuthenticationHandle`, never a page, and no store declaration imports or exports a raw Playwright object (`src/base/session.ts`, 1d/1f)
-- [x] a descriptor DERIVES its browser-system set, its scenario set, its secret set and its dry-run support from the contracts its nodes compose — there is no hand-kept `systems:` list to fall out of date (`src/base/workflow.ts:1161`, D209)
-- [x] acquisition is bounded and lazy: the interpreter takes a driver inside `WorkerSessionManager.withDriver` at the node that needs it (`src/core/run-executor.ts:1039`), under `timeouts.sessionAcquireMs` (D125)
-- [x] `executeDryRun` is a distinct sequencer arm with zero intent, zero fence and zero commit, and it PROBES before it previews (`src/core/write-sequencer.ts`, D215)
-- [ ] the eager parallel-staggered login chain and the per-workflow `auth(system: "on-first-use")` override this section described are not built and are not needed as written — see §6.1
-> 2026-08-21 | docs-cohesion 5.1 task-contract | verified against src/base/session.ts, src/base/workflow.ts, src/core/{run-executor,write-sequencer,worker-sessions}.ts and src/infra/browser/system-bindings.ts; left: nothing this section owns — the login RECIPES for the five unbound systems are their migration orders'
-<!-- /roadmap-status -->
 
 ### 6.1 Auth: store-provided, kernel-executed, boilerplate deleted
 
@@ -1454,25 +1459,26 @@ exist is worse than no promise, because a reviewer stops looking.
 
 | # | How it rots back | What actually holds it |
 |---|---|---|
-| 1 | **Parallel lists return** — someone hand-maintains a task list beside the stores | Contracts + stores are the only sources. `defineTaskStoreRegistry` matches the store set against the corpus in both directions, the corpus is PROJECTED from `store.tasks`, and `descriptor-coverage` audits `config/pending-impl-bindings.json` (checked-in empty) both ways (§3.2) |
+| 1 | **Parallel lists return** — someone hand-maintains a task list beside the stores | Contracts + stores are the only sources. `defineTaskStoreRegistry` matches the store set against the corpus in both directions, the corpus is PROJECTED from `store.tasks`, and `descriptor-coverage` audits `src/backend/app/registries/pending-impl-bindings.json`
+(checked-in empty) both ways (§3.2) |
 | 2 | **Stringly dispatch** — `switch (taskId)` re-encoding store knowledge (the `operationTraceCode` pattern) | **Partly a gap.** `TaskId` is branded and minted only by `taskId(...)`, which keeps the literal in the type, and every projection derives from the corpus — but the promised `KnownTaskId` codegen and the ratchet forbidding a task-id literal outside contracts/stores/descriptors were never built (§2.5). Nothing in the tree carries such a literal today; nothing would fail if one appeared |
 | 3 | **Silent fallbacks in wrappers** — `catch { return { results: [] } }` in a task shell | The `fail-loud-catch-default` and `nullish-literal-data-fallback` ratchet arms (`tests/unit/architecture/helpers/ratchet-arms.ts`), each executed against a violating fixture by `guard-manifest` so a dead arm cannot stand in for enforcement |
-| 4 | **Effect misdeclaration** — an external write hides in read/prepare code | The FACTORY refuses a verb that disagrees with its effect (`EFFECT_VERBS`, §2.5) — this is definition-time, not a separate grep. `MutationCapability` exists only on `CommitTaskCtx`, is minted only by `src/core/write-sequencer.ts`, and is verified by the driver before its click (`task-driver-boundary`, D122). A dry-run plan contains zero commit nodes (§6.2) |
+| 4 | **Effect misdeclaration** — an external write hides in read/prepare code | The FACTORY refuses a verb that disagrees with its effect (`EFFECT_VERBS`, §2.5) — this is definition-time, not a separate grep. `MutationCapability` exists only on `CommitTaskCtx`, is minted by `src/backend/runtime/writes/write-sequencer.ts` through the shared capability in `src/workflow-kit/mutation-capability.ts`, and is verified by the driver before its click (`task-driver-boundary`, D122). A dry-run plan contains zero commit nodes (§6.2) |
 | 5 | **God tasks** — a task grows into a mini-workflow spanning systems | A browser store's sessions are constrained to its own system in the type AND at binding; service and workflow stores are sessionless with no driver. Cross-system logic can only be graph composition |
 | 6 | **The untyped blob returns** — an `any` / `Record<string, unknown>` side channel for display data | Stronger than the allowlist this row used to promise: `assertContractBoundarySchema` refuses `record`, `map` and `set` OUTRIGHT anywhere in a contract schema, recursively, alongside `any`/`unknown`/open objects; `CanonicalJsonSchema` makes a non-JSON output `never` at compile time; `TaskCtx` has no `updateData` |
-| 7 | **Auth boilerplate re-accretes** — a workflow hand-rolls a login step | There is no login VERB, so a login task contract cannot be named; `task-driver-boundary` refuses a task or workflow module whose import graph reaches a store's `session.ts` or `src/infra/browser/**`; acquisition is the worker's (§6.1) |
+| 7 | **Auth boilerplate re-accretes** — a workflow hand-rolls a login step | There is no login VERB, so a login task contract cannot be named; `task-driver-boundary` refuses a task or workflow module whose import graph reaches a system's `session.ts` or `src/backend/runtime/browser/**`; acquisition is the worker's (§6.1) |
 | 8 | **Retry as a fallback** — cranking attempts to paper over a broken selector | `attempts` is typed `2 \| 3`, `retryOn` has one value, retry is legal only on a read, and a business error is transient only if the throw site says so (§2.1) |
 | 9 | **Decoration forks** — copying a base task file to tweak it | **A gap, and a smaller one than it was.** One task per file plus duplicate-id refusal at registration is what exists; the >90 %-identical-`run`-body heuristic this row promised was never built. It also has nothing to fork yet — decoration itself is unbuilt (§4) |
-| 10 | **Verified legacy knowledge drifts after it is ported** | D93 made cross-runtime import structurally impossible (two repos, no shared module graph). D90 change accounting is RETIRED (D150) and `config/legacy-change-accounting.json` is a frozen record read by nothing; what carries the risk is mandatory **live re-verification at each workflow's migration** plus `legacy-selector-port-provenance`, which pins 406 keys to a FIXED legacy commit's blobs so legacy moving on cannot invalidate it (§3.3) |
+| 10 | **Verified legacy knowledge drifts after it is ported** | D93 made cross-runtime import structurally impossible (two repos, no shared module graph). D90 change accounting is RETIRED (D150) and `docs/rebuild/migrations/legacy/legacy-change-accounting.json` is a frozen record read by nothing; what carries the risk is mandatory **live re-verification at each workflow's migration** plus `legacy-selector-port-provenance`, which pins 406 keys to a FIXED legacy commit's blobs so legacy moving on cannot invalidate it (§3.3) |
 | 11 | **Contract/impl drift** — a contract edited without its impl, or a contract quietly importing server code | The impl's `run` is typed against the contract's schemas, so a schema edit fails `tsc` at the impl; `task-contract-sealing`'s AST + transitive import-graph audit protects every `src/**/contracts/**` module from runtime imports, forged seals, casts and dynamic-import bypasses; the example re-parses on every run of `descriptor-coverage` |
 | 12 | **Stale reads feeding writes** — a resumed run replays an old checkpoint into a commit | `freshness` + `provenance` are mandatory on every read and field-resolved against the exact output schema; derived outputs retain their oldest contributing observation; the enforcement walk is ref workflow-model's; graph dependencies are declared, never inferred by executing bind functions. The `Infinity`-justification ratchet does not exist (§3.2) |
 | 13 | **Undeclared error codes** — `ctx.fail` drifting to arbitrary strings | `const Codes` literal-tuple inference plus the checked-in type-level test `tests/types/task-contracts.typecheck.ts`, whose `@ts-expect-error` arms pin that an undeclared code, a service driver in a browser ctx, `readCtx.mutation`, a `z.any()` output and a cross-system driver binding each fail `tsc` |
 | 14 | **A read task hides a mutable local write** — a retry duplicates a workbook row or overwrites an operator edit | `artifact-effect-boundary`: the writer is the only path, the ref exposes no root or path, and direct mutable filesystem primitives are refused in task and workflow code |
 | 15 | **A TypeScript interface mistaken for runtime validation** | `strict-boundary-schemas` over every durable, wire and config boundary; the kernel parses on ingress and on persistence reads and never falls back to a cast |
 | 16 | **Person input mistaken for page identity** — a stale employee remains open after a search | Explicit `subject` on every contract; `subject-before-fence` proves prepare-end < fresh subject observation < fence < mutation call on one lease, with mismatch/unknown producing zero fence and zero click; `identity-gate-before-commit` proves every separation write and identity-bearing terminal crosses the shared identity-authority task, with the exact name-resolved gate condition pinned separately (D202/D309) |
-| 17 | **Selector duplication returns behind task helpers** | `task-driver-boundary`: raw Playwright, locator/frame/`getBy`/`newPage`/`evaluate`/`$` operations and private driver/session ownership are confined to `src/stores/*/driver/**`, `session.ts` and `src/infra/browser/**`, transitively |
-| 18 | **One example masquerades as behavioral coverage** | `scenario-coverage` — every branch arm, gate open/resolve, delegation and transaction outcome is claimed by a registered scenario, every claim resolves to a file that exists, and the corpus DIRECTORY holds exactly two declared kinds |
-| 19 | **A service task hides provider/network I/O in an import** | `provider-capability-boundary`: capability→budget mapping, one durable admission kernel, whole-`src` and transitive task import scans confining vendor modules to `src/infra/providers/**`, and the D68 declared-inventory reconciliation both ways |
+| 17 | **Selector duplication returns behind task helpers** | `task-driver-boundary`: raw Playwright, locator/frame/`getBy`/`newPage`/`evaluate`/`$` operations and private driver/session ownership are confined to `src/backend/systems/<system>/driver/`, `session.ts` and `src/backend/runtime/browser/`, transitively |
+| 18 | **One example masquerades as behavioral coverage** | `scenario-coverage` retains pure graph-point auditing and negative controls. Scenario-file lookup, registered execution claims and corpus-directory assertions were retired with `tests/scenario/`; see the 2026-10-02 current test amendment above and `ref guards-and-tests` |
+| 19 | **A service task hides provider/network I/O in an import** | `provider-capability-boundary`: capability→budget mapping, one durable admission kernel, whole-`src` and transitive task import scans confining vendor modules to `src/backend/processing/providers/**`, and the D68 declared-inventory reconciliation both ways |
 
 Honest residual risks with no mechanical guard: (a) *output schemas that are too loose*
 (`z.string()` where an enum belongs) — mitigated by review and by the mandatory `example` pinning

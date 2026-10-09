@@ -1,42 +1,43 @@
-import { composeActivity } from "../../../src/server/dashboard/compose/activity.js";
-import { syntheticStateRoot } from "../../helpers/synthetic-storage-admission.js";
-import { createTransactionHistory } from "../../../src/infra/sqlite/transaction-history.js";
-import type { DashboardAppDeps } from "../../../src/server/dashboard/routes/api-types.js";
-import { createCalendarQuery } from "../../../src/server/dashboard/queries/calendar.js";
-import { createProtectedSettingsRuntimeReader } from "../../../src/server/settings-runtime.js";
-import { initialProtectedStoreRecord } from "../../../src/domain/config/protected-settings.js";
+import { createRunLogStreamStore } from "../../../src/backend/logs/run-log-stream.js";
+import { RunLogsStreamHub } from "../../../src/backend/transports/http/subscriptions/run-logs-stream.js";
+import { composeActivity } from "../../../src/backend/app/composition/dashboard/activity.js";
+import { syntheticStateRoot } from "../../support/helpers/synthetic-storage-admission.js";
+import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
+import type { DashboardAppDeps } from "../../../src/backend/transports/http/routes/api-types.js";
+import { createCalendarQuery } from "../../../src/backend/runs/queries/calendar.js";
+import { createProtectedSettingsRuntimeReader } from "../../../src/backend/runtime/settings/settings-runtime.js";
+import { initialProtectedStoreRecord } from "../../../src/models/config/protected-settings.js";
 import { join } from "node:path";
-import { createCommandKernel } from "../../../src/core/command-kernel.js";
-import { RunRecordService } from "../../../src/core/run-record-service.js";
-import type { Clock } from "../../../src/domain/clock.js";
-import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
-import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
-import { initialSettingsFileRecord,settingsRuntimeIdentity } from "../../../src/domain/config/settings.js";
-import { ActorIdSchema as PublicationActorIdSchema } from "../../../src/domain/ids.js";
-import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
-import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
-import { createRunLifecycleStorage } from "../../../src/infra/sqlite/lifecycle-storage.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
-import { createDashboardCommandService } from "../../../src/server/dashboard/commands/command-service.js";
-import { runQueuedSpanEvent } from "../../../src/server/dashboard/commands/run-queued-span.js";
-import { createStartPlanService } from "../../../src/server/dashboard/commands/start-plan-service.js";
-import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
-import { createRunQueueProjection } from "../../../src/server/dashboard/projectors/run-queue-projection.js";
-import { createCrossDateSearchService } from "../../../src/server/dashboard/queries/search.js";
-import { createSoloRequestIdentityCheckpoint } from "../../../src/server/dashboard/request-identity.js";
-import { createDashboardApp } from "../../../src/server/dashboard/routes/api.js";
-import { createDashboardStreamHub } from "../../../src/server/dashboard/subscriptions/dashboard-stream.js";
-import { createReceiptService } from "../../../src/server/trust/receipt-service.js";
-import { createItemAttemptHistoryQuery } from "../../../src/server/dashboard/queries/item-attempt-history.js";
-import { archiveQueryDeps,archiveSnapshots } from "../../fixtures/archive-seams.js";
-import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../fixtures/dashboard-stream-seams.js";
-import { explorerQueryDeps,uiCatalogQueryDeps } from "../../fixtures/explorer-seams.js";
-import { NO_INTAKE_PROJECTIONS,UNSTORED_CONFIG_IDENTITY,UNWIRED_INTAKE_PARSER,UNWIRED_INTAKE_SERVICE } from "../../fixtures/intake-kernel-seams.js";
-import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
-import { healthyDashboardPreflightExecutor,healthyDashboardPreflightReport } from "../../fixtures/preflight-seams.js";
-import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
-import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
-import { CONFIG_FINGERPRINT,CONFIG_SNAPSHOT_ID,CONTRACT_FINGERPRINT,SEEDED_APP_VERSION } from "./seeded-identity.js";
+import { createCommandKernel } from "../../../src/backend/runs/commands/command-kernel.js";
+import { RunRecordService } from "../../../src/backend/runs/lifecycle/run-record-service.js";
+import type { Clock } from "../../../src/rules/time/clock.js";
+import { hostConfigFacts } from "../../../src/models/config/host-display.js";
+import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
+import { initialSettingsFileRecord, settingsRuntimeIdentity } from "../../../src/models/config/settings.js";
+import { ActorIdSchema as PublicationActorIdSchema } from "../../../src/rules/identity/ids.js";
+import { defineWorkflowRole } from "../../../src/workflow-kit/validation/module-role.js";
+import { createTimelineEmitter } from "../../../src/backend/storage/events/timeline-emitter.js";
+import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/index.js";
+import { createDashboardCommandService } from "../../../src/backend/runs/commands/command-service.js";
+import { runQueuedSpanEvent } from "../../../src/backend/runs/commands/run-queued-span.js";
+import { createStartPlanService } from "../../../src/backend/runs/commands/start-plan-service.js";
+import { descriptorSetHash } from "../../../src/backend/app/composition/dashboard/compose.js";
+import { createRunQueueProjection } from "../../../src/backend/runs/projections/run-queue-projection.js";
+import { createCrossDateSearchService } from "../../../src/backend/runs/queries/search.js";
+import { createSoloRequestIdentityCheckpoint } from "../../../src/backend/transports/http/request-identity.js";
+import { createDashboardApp } from "../../../src/backend/transports/http/routes/api.js";
+import { createDashboardStreamHub } from "../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
+import { createReceiptService } from "../../../src/backend/runs/trust/receipt-service.js";
+import { createItemAttemptHistoryQuery } from "../../../src/backend/runs/queries/item-attempt-history.js";
+import { archiveQueryDeps, archiveSnapshots } from "../../support/fixtures/archive-seams.js";
+import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../support/fixtures/dashboard-stream-seams.js";
+import { explorerQueryDeps } from "../../support/fixtures/explorer-seams.js";
+import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER, UNWIRED_INTAKE_SERVICE } from "../../support/fixtures/intake-kernel-seams.js";
+import { sequentialIdFactory } from "../../support/fixtures/phase1f-run-fixtures.js";
+import { healthyDashboardPreflightExecutor, healthyDashboardPreflightReport } from "../../support/fixtures/preflight-seams.js";
+import { sqliteRunReader } from "../../support/helpers/canonical-run-reader.js";
+import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
+import { CONFIG_FINGERPRINT, CONFIG_SNAPSHOT_ID, CONTRACT_FINGERPRINT, SEEDED_APP_VERSION } from "./seeded-identity.js";
 import { uuidOf } from "./seeded-lifecycle.js";
 /** Real service composition; HTTP lifetime and disposable authority custody stay with the caller. */
 export function composeSeededServices({ database, clock, stateRoot, root, projection, spans, descriptors, runIds, selectionServices }: {
@@ -151,7 +152,13 @@ export function composeSeededServices({ database, clock, stateRoot, root, projec
   });
   const hub = createDashboardStreamHub({ projection, backfillGaps: UNOBSERVED_BACKFILL_GAP_NOTIFIER });
 
+  const runLogsHub = new RunLogsStreamHub({ projection, store: createRunLogStreamStore(stateRoot),
+    readRun: runId => {
+      const existence = runReader.read(runId);
+      return existence.state === "present" ? { disposition: existence.disposition, run: existence.run } : undefined;
+    } });
   const app = createDashboardApp({
+    runLogsHub,
     requestIdentity: createSoloRequestIdentityCheckpoint({
       id: "local-operator",
       label: "Local operator",
@@ -178,13 +185,6 @@ export function composeSeededServices({ database, clock, stateRoot, root, projec
       // The seeded adapter runs no backup lane; "missing" is its true state.
       backupSummary: () => "missing",
       preflightReport: () => healthyDashboardPreflightReport(clock),
-      // The parity corpus never composes a provider (D178): a reference must
-      // not depend on a key being present in the environment that captured it.
-      advisoryAvailability: () => ({
-        state: "unavailable",
-        code: "not-configured",
-        reason: "no ai.advisory provider is composed in this harness",
-      }),
     },
     projection,
     calendar: createCalendarQuery(database, clock),
@@ -203,12 +203,12 @@ export function composeSeededServices({ database, clock, stateRoot, root, projec
     activity:composeActivity({database,clock,descriptors,ledger:createTransactionHistory(database.authority)}),
     ...selectionServices,
     runDetail: runDetailDeps,
-    archive: { ...archiveQueryDeps({
+    archive: archiveQueryDeps({
       database,
       clock,
       appVersion: SEEDED_APP_VERSION,
       descriptors: [personLookupDescriptor],
-    }), storage: createRunLifecycleStorage(database) },
+    }),
     commands,
     startPlans,
     hub,
@@ -244,9 +244,8 @@ export function composeSeededServices({ database, clock, stateRoot, root, projec
       }),
     },
     explorer: explorerQueryDeps(clock, descriptorSetHash([CONTRACT_FINGERPRINT])),
-    uiCatalog: uiCatalogQueryDeps(),
   });
 
 
-return { app, hub };
+return { app, hub, runLogsHub };
 }

@@ -121,21 +121,6 @@ means something beside the thing it replaced. Nothing here describes this reposi
 
 ## 2. The Clock
 
-<!-- roadmap: p1-base -->
-<!-- roadmap: p1-authority -->
-
-<!-- roadmap-status: p1-base -->
-- [x] `src/domain/clock.ts` is the sole time source and the sole permitted site of `new Date()` / `Date.now()` / `performance.now()` — 66 lines, `systemClock` frozen at module load, reached by 71 modules under `src/`
-- [x] `clock-single-source` is an AST walk with an EMPTY allowlist, so new `src` code has zero tolerance and an alias, a destructure, a `globalThis.` hop or a `node:perf_hooks` import cannot slip past a grep (`tests/unit/architecture/clock-single-source.test.ts`)
-- [x] `manual-clock-test-only` bans the IDENTIFIER `manualClock` anywhere in `src/**` but `clock.ts` — import, call, re-export and dynamic property access all fail
-- [x] one resolver implements `env > settings.json > default` exactly once, with per-leaf provenance and a canonical fingerprint (§3; `src/domain/config/resolve.ts`)
-- [x] one secrets accessor covers environment secrets, registered key FAMILIES, and the Duo credential file; `secrets-single-source` and `no-secret-values-in-logs` both carry EMPTY allowlists (§6)
-- [x] closed per-system route schemas, explicit prod/test instance refusal, current-fiscal-year validation, the runtime environment/dependency registries and the strict preflight report schemas are all implemented and bidirectionally audited (§3 · §4 · §5 · §6.2)
-- [x] `.tracker/settings.json` (the state root; `config/settings.json` until D321) is one strict revisioned file authority; both composition roots read it before the one resolver runs, and `settings/apply-settings` is its sole producer (§3, D282)
-- [x] `mergeSettings` is compiler-exhaustive over all 16 `ConfigSchema` groups, including `browser`; the focused resolver test pins both browser leaves and their `settings` provenance (§3)
-- [ ] no contract or descriptor declares the secrets its tasks need, so `validateBootSecrets` / `validateDescriptorSecrets` have no production caller and a missing credential surfaces at the first task that needs one (§6)
-> 2026-08-28 | DCC1 | the strict settings producer, restart reader and exhaustive browser merge landed; secret declaration/preflight remains separate
-<!-- /roadmap-status -->
 
 **One injectable interface is the sole permitted site of `new Date()` / `Date.now()` /
 `performance.now()` in `src/`.** Every timestamp the system produces — span `ts`, checkpoint fact
@@ -164,6 +149,7 @@ export interface TestClock extends Clock {
 }
 
 export const systemClock: Clock = Object.freeze({ /* new Date() / Date.now() / performance.now() */ });
+export function capturedInstantClock(instant: string, elapsed?: Pick<Clock, "monotonicMs">): Clock { /* … */ }
 export function manualClock(at: Date, initialMonotonicMs = 0): TestClock { /* … */ }
 ```
 
@@ -171,8 +157,8 @@ Three shape choices are load-bearing. `systemClock` is **frozen at module load**
 monkey-patch the production clock in place and leave it patched for the next file. `TestClock`
 advances wall and monotonic time **independently**, which is what makes skew and elapsed-budget
 behaviour testable without sleeping. And `localDatePart` / `formatTraceTimestamp` are exported pure
-functions taking a `Date`, so the two implementations (`systemClock` and `manualClock`) share one
-formatter rather than agreeing by coincidence.
+functions taking a `Date`, so the clock implementations share one formatter rather than agreeing
+by coincidence.
 
 **Composition with the other contracts (nothing else changes shape — only the `now` input):**
 
@@ -225,27 +211,6 @@ span and freshness check would be wrong in the same way, all at once, with no cr
 
 ## 3. Config resolver
 
-<!-- roadmap: p1-base -->
-<!-- roadmap: p1-spine -->
-<!-- roadmap: def-settings -->
-<!-- roadmap: cross-cutting -->
-
-<!-- roadmap-status: p1-spine -->
-- [x] a path default is a RUNTIME value, so it cannot live in the browser-reachable contract — `ConfigPathsSchema`'s nine leaves are REQUIRED with no `.default()`, and the server-only `src/domain/config/runtime-paths.ts` supplies them (D121, 2026-08-04)
-- [x] the memoized absolute profile root and the `duoCredential` path derived from it live in `runtime-paths.ts:41-61`, parsed through `ConfigPathsSchema` rather than asserted — a default that failed to resolve absolute fails at its source
-- [x] `src/domain/config/resolve.ts:348` is the only caller, and the general rule + its walker live in ref frontend-backend-integration §8.13 (`dashboard-wire-boundary`)
-> 2026-08-21 | docs-cohesion clock-config-secrets | verified against `src/domain/config/schema.ts:105-131,212-214` and `runtime-paths.ts`; the D121 as-built block folded into this section, and the claim that `schema.ts` resolves the isolation root was corrected — it is `runtime-paths.ts` that does
-<!-- /roadmap-status -->
-
-<!-- roadmap-status: def-settings -->
-- [x] the resolver's SETTINGS layer is fully contracted — `SettingsOverrideSchema`, the exhaustive per-group merge in `resolve.ts` and a `"settings"` provenance value every persisted leaf can carry
-- [x] the command boundary hashes the closed `EditableSettingsOverrideSchema`, which deliberately excludes credentials, runtime paths, annual dates and every other environment-owned leaf (`src/domain/config/{schema,settings}.ts`)
-- [x] `apply-settings` is an active single command path: it verifies expected revision plus schema, patch and full command-envelope fingerprints, resolves the fully merged candidate, and persists the whole sparse override atomically
-- [x] dashboard and worker boot both read and reconcile the same revisioned file authority before calling the one resolver; a non-baseline file must match the exact durable command journal, audit and `settings_current` singleton
-- [x] `mergeSettings` applies `browser` and every other resolver-accepted group, preserving `env > settings > default` and exact per-leaf provenance
-- [x] DCC2/DCC3 serve the bounded editor/readback and retained preflight rerun controls; health/doctor stays read-only, and broader legacy settings remain explicit deferrals
-> 2026-08-30 | DCC1 reconciliation | the selected file/current/runtime authority feeds the existing DCC3 wire through a read-only adapter; no second persistence engine
-<!-- /roadmap-status -->
 
 **One resolver implements `env > settings.json > default` exactly once**
 (`src/domain/config/resolve.ts`). No read site repeats the precedence, and the defaults live in
@@ -747,7 +712,8 @@ in the catalog's type — that is how §D331.8's precedence rule is enforced rat
 | `runtime-isolation` | every leaf FIXED BY CODE, where a change is a code change and a new process: the five isolation paths `paths.stateRoot`, `paths.artifactRoot`, `paths.browserProfileRoot`, `paths.duoCredential`, `paths.duoExtensionDir` (D121/D216/D321); the nine `urls.<system>.prod` route sets ("production is the code default", §4); `actor.id` (the fixed local-operator id); and the Duo WebAuthn credential FILE (machine-written under the profile root; `credential-file`, read by `requireSecretFile` only) | `config/runtime-isolation.json` + `runtime-paths.ts` + `schema.ts` defaults (a code change), the ceremony | the resolver (paths, prod routes, actor id — provenance `default`, never overridable by any document) / `requireSecretFile` |
 
 **The environment layer of the resolver is RETIRED for catalogued leaves.** After 1.6,
-`CONFIG_ENV_BINDINGS` is empty and `resolve.ts` takes no environment override input at all; its
+The config environment binding registry and its schema/type are removed. `resolve.ts` takes no
+environment override input at all; its
 inputs are (the ordinary document, the host facts, the contract/runtime-path defaults). What remains
 environment-sourced is exactly: provider API keys (through the secrets accessor, never the
 resolver), the `config-default` host display publication (a DEFAULT, not an override), the
@@ -1102,9 +1068,10 @@ NOT AN INPUT to it.
 
 - The catalog's type admits one `sourceClass` per row (§D331.1), so a second source is
   unrepresentable, not merely unadvised.
-- `CONFIG_ENV_BINDINGS` is empty and its registry type is retained only so the guard can assert
-  emptiness; `runtime-environment.ts`'s `config` channel has zero members; `TIMEKEEPER_NAME`'s
-  `config-and-secret` dual channel is deleted with its leaf.
+- No config environment binding registry or binding schema/type remains. The runtime environment
+  audit directly refuses active `config`, `config-and-secret`, `secret` and `provider-model` exact
+  channels; config modules admit no `process.env` access. Host facts remain an explicit resolver input.
+  `TIMEKEEPER_NAME`'s `config-and-secret` dual channel is deleted with its leaf.
 - Every migrated environment key (the 32 config bindings, `UCPATH_USER_ID`, `UCPATH_PASSWORD`,
   `TIMEKEEPER_NAME`, `ONBOARDING_ROSTER_URL`, the two pseudonym keys, the two canary keys, the five
   `OCR_*_MODELS` chain keys, and the five legacy singular `OCR_*_MODEL` spellings once
@@ -1335,7 +1302,7 @@ deleted or renamed proof is a red guard, not silent drift.
 |---|---|---|---|
 | P1 | The catalog is bidirectionally complete: one row per populated `ConfigSchema` leaf, per `SECRET_SPECS` entry (D341 retired `TEST_TARGET_SECRET_SPECS`; 86 rows), per `SECRET_FAMILY_SPECS` family and per `config-default`/process-ownership channel — and no row without a leaf | enumerate every source at test time (never a hand-kept list) and diff both directions; adding a leaf without a row, or a row naming nothing, is red | NEW guard `tests/unit/architecture/settings-catalog.test.ts` + `docs/rebuild/guard-inventory.json` |
 | P2 | One `sourceClass` per row, the `sensitivity` → `sourceClass` pairing is refused when wrong, and every listed consumer exists while every reader of the key is listed | feed the registry's `superRefine` a `protected-secret` row with `sourceClass: ordinary-settings` (and each other illegal pairing) and assert the parse refuses by key; drop a real reader from `consumers` and the guard is red | `settings-catalog.test.ts`; `src/domain/config/catalog.ts` |
-| P3 | `CONFIG_ENV_BINDINGS` is empty and `runtime-environment.ts`'s `config` channel has zero members (the `config-and-secret` dual channel is gone with its leaf) | assert emptiness and zero cardinality directly; any restored binding is red | `settings-catalog.test.ts`, `tests/unit/architecture/runtime-environment-coverage.test.ts` |
+| P3 | No config environment binding machinery remains; runtime environment exact channels have no active config, dual config/secret, secret or provider-model authority. Every migrated key is explicitly refused. | Direct inventory assertions and restored-channel/missing-refusal negative controls; config source scans reject direct, aliased and computed environment access. | `tests/unit/architecture/runtime-environment-coverage.test.ts`, `secrets-single-source.test.ts`, `composition-reads-no-environment-leaf.test.ts` |
 | P4 | The resolver takes no environment input — `resolveConfig(document, hostFacts, clock?)` — and `ConfigProvenanceSchema` is exactly `"settings" \| "default"` | type-level plus runtime: resolve with a hostile `process.env` populated for every retired key and assert byte-identical output and no `"env"` provenance value anywhere | `src/domain/config/resolve.ts`, `provenance.ts`, `tests/unit/config.test.ts` |
 | P5 | L1 — no catalogued protected name is a `ConfigSchema` leaf; `operator.timekeeperName` is deleted, not emptied | walk the parsed `ConfigSchema` leaf paths against the catalog's protected rows and assert an empty intersection | `settings-catalog.test.ts`, `src/domain/config/schema.ts` |
 | P6 | L2 — no protected value is in the `configFingerprint` preimage | derived from P5: assert the fingerprint preimage is `canonicalJsonStringify(config)` and that `config` contains no protected key | `settings-catalog.test.ts`, `tests/unit/config.test.ts` |
@@ -1388,7 +1355,7 @@ deleted or renamed proof is a red guard, not silent drift.
 
 Each item is also carried as a dated note beside the superseded text, so a reader of that section
 meets the supersession where the old rule stood (the §0 ownership-header row carries a
-parenthetical pointer too); the ledger row (`reference/decisions.md`) points here.
+parenthetical pointer too); the ledger row (`994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/reference/decisions.md`) points here.
 
 1. **§3 "One resolver implements `env > settings.json > default` exactly once"** — the "exactly
    once" half stands; the precedence becomes `settings > default` and the environment is not a
@@ -1766,6 +1733,19 @@ open-ordering closes the old-build path. Neither alone would do.
    never regenerates an entry — the operator enters it through §D331.5's protected arm, and until then
    the first credential-needing action refuses by key name.
 
+### D362 — Bounded normal admission mutex contention · 2026-09-29
+
+Ordinary installation admission and release wait up to five monotonic seconds for an occupied
+admission critical section, sleeping between attempts. Only mkdir EEXIST enters this wait; other
+filesystem failures propagate. Recheck private directory shape during contention, including normal
+holder removal races. Waiting does not steal, delete, or reinterpret a mutex owner. Exclusive
+installation lease conflicts still refuse immediately after entering the critical section.
+
+A typed mutex timeout may enter D354 recovery only after a strict published or interrupted owner
+record proves its exact process birth identity gone or reused. Live, unknown, and empty-owner states
+remain busy without recovery. Malformed custody remains a distinct refusal. The existing fixed
+restore admission and complete stopped-system proof still recheck every recovery prerequisite.
+
 ### D354 — Proven abandoned admission mutex recovery at startup · 2026-09-27
 
 An ordinary runtime entrypoint that encounters an occupied installation admission mutex may run
@@ -1879,6 +1859,10 @@ Before writing that configuration, a durable operation-bound activation checkpoi
 native authority/archive snapshots, nonsecret inventory binding, ordinary Settings revision and
 fingerprint, and the selected configuration snapshot identity, contents, fingerprint, and time.
 Recovery reuses this intent rather than selecting a fresh backup or probing a new host configuration.
+The activation transaction uses `capturedInstantClock` for the intent's validated captured instant,
+so durable snapshot and authority timestamps match that exact checkpoint. Its wall instant is
+immutable and each `now()` returns a fresh Date; elapsed budgets still use the live monotonic
+clock. The production adapter exposes only `Clock`, without test-only advance or set operations.
 It accepts only the exact pre-activation authority or the exact transactionally committed intent;
 a third state refuses. This also applies to artifact-only moves, where activation changes the source
 database itself. Credential bytes are compared privately and do not contribute secret-derived
@@ -2059,6 +2043,24 @@ production run projects the production routes without changing its stored
 fingerprint. Historical test-instance runs refuse execution. No missing or
 corrupt saved settings may fall back to defaults.
 
+### D365 — Accepted Settings save superseded before readback · 2026-10-02
+
+An authenticated accepted command and a later saved revision are a settled save that has been
+superseded, not an unresolved submission. The Settings editor clears that command's submission
+uncertainty, retains the operator's draft for review, and presents the current saved values through
+its existing conflict state. It does not claim that the retained draft is currently saved and never
+automatically resubmits it. A new write requires the operator to review and retry the retained edit
+against current authority.
+
+A missing or mismatched receipt, failed readback, or unverifiable authority remains unconfirmed
+and retains the immutable exact-attempt retry. Revision order alone cannot authenticate a receipt,
+and an opaque provider source token has no ordering semantics. Ordinary settings, credentials and
+provider keys retain their separate authority, replay and confirmation rules. This decision changes
+the supported recovery classification, not the approved components or layout; a new visible state
+requires separate operator design work.
+
+Implementation and check evidence belong to W1 (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-3/dashboard-surface-wiring.md`).
+
 ### D346 — Settings values on the local operator surface · 2026-09-24
 
 The independent protected store remains the authority for credentials and
@@ -2073,19 +2075,6 @@ unclassified JSON value remains visible in its capture warning.
 
 ## 4. Immutable per-run config and instance snapshot — required in Phase 1
 
-<!-- roadmap: p1-base -->
-<!-- roadmap: p1-authority -->
-
-<!-- roadmap-status: p1-authority -->
-- [x] `src/domain/config/snapshot.ts` is the immutable durable snapshot: strict id/revision/fingerprint/`capturedAt`/`capturedBy`, the complete already-resolved non-secret `Config`, and the per-leaf provenance map from the one resolver (Phase 1c Stage A, 2026-07-31)
-- [x] `ConfigSnapshotWriteSchema` refuses to MINT a row missing any current-generation leaf, so §4.1's read tolerance never becomes a licence to persist a hole
-- [x] the envelope retains `configFingerprint` + `configSnapshotId`, and the executor reads the RETAINED row back by id — a missing row refuses the node rather than re-resolving current config (`src/core/run-executor.ts:1150-1156`)
-- [x] D116 reuse identity `(worker, system, resolvedInstance, configFingerprint)`, bound for the claimed run's window by `withBoundRunConfigFingerprint` (`src/core/worker-sessions.ts`), with the fingerprint in the on-disk profile path too
-- [x] the isolation contract is DATA (`config/runtime-isolation.json` v3) reaching the runtime through one exported direct-`const` `defineRuntimeIsolation` call, audited on both real checkouts by `operational-isolation.test.ts` (D88/D216/D247)
-- [ ] the snapshot is captured ONCE per dashboard process at boot (`src/server/dashboard/compose.ts:361-370`, `revision: 1`), not per enqueue — every run started by one process shares one row, and the worker process resolves its own config and inserts nothing
-- [ ] `src/domain/config/instance.ts`'s `resolveInstances` — the arm that proves a requested TEST endpoint EXISTS before the run is queued — has no production caller; enqueue uses `src/services/start/plan.ts:83-95`, which defaults every declared system to `prod` and refuses an undeclared one but performs no URL check, so a `test` request with no distinct test URL is refused at session acquisition instead
-> 2026-08-21 | docs-cohesion clock-config-secrets | verified against `src/domain/config/{snapshot,instance}.ts`, `src/services/start/plan.ts`, `src/core/run-executor.ts`, `src/server/{dashboard,worker}/compose.ts`, `config/runtime-isolation.json` and `tests/unit/architecture/operational-isolation.test.ts`; left: the two as-built gaps above
-<!-- /roadmap-status -->
 
 Every run and ledger entry must say which environment and configuration actually governed it. The
 request may omit instance preferences (meaning production), but a run is always stamped with a
@@ -2267,15 +2256,6 @@ direct call — every other dimension of that proof is unchanged.
 
 ### 4.1 The durable snapshot is versioned by its LEAF SET, not by the migration chain (D133)
 
-<!-- roadmap: p2-proof -->
-
-<!-- roadmap-status: p2-proof -->
-- [x] `src/domain/config/snapshot-generations.ts` is the config schema's own version line, separate from the SQLite migration chain — an ordered append-only registry naming the deciding decision, the leaves it introduced, and a literal SHA-256 over the complete leaf set at that generation (D133, 2026-08-04)
-- [x] exactly ONE leaf is generation-gated today: `timeouts.sessionAcquireMs`, introduced by generation 2 (D125). Generation 1 (D121) is the shape the preserved Phase-1 exit database carries, and `POST_BASELINE_CONFIG_LEAVES` — the complete set a stored row may lack — is that one leaf and nothing else — and, since D267 (2026-08-21), `timeouts.duoCeremonyLeaseGraceMs` by generation 3 (ref execution-and-sessions §10.3)
-- [x] `StoredConfigSchema` strips every group `.default(...)`, so a pre-`browser` row fails loud instead of reading back as today's launch policy
-- [x] `ConfigSnapshotWriteSchema` refuses to MINT a row that omits a current-generation leaf; `auditConfigSnapshotGenerations` is the ratchet, executed by `tests/unit/architecture/config-snapshot-generations.test.ts`
-> 2026-08-21 | docs-cohesion clock-config-secrets | verified against `src/domain/config/snapshot-generations.ts` (the two registered generations and both pinned digests) and `src/domain/config/snapshot.ts`; nothing left — the next required leaf is the next entry
-<!-- /roadmap-status -->
 
 **A stored `config_snapshots` row is evidence of the configuration one run executed under, and it is
 never rewritten.** D125 added the required leaf `timeouts.sessionAcquireMs` with a default for FRESH
@@ -2364,16 +2344,6 @@ half loud.
 
 ## 5. Fiscal-year dates — fail-loud, not silently stale
 
-<!-- roadmap: phase-1 -->
-
-<!-- roadmap-status: phase-1 -->
-- [x] `Config.annualDates` is keyed by fiscal year (`z.record(FiscalYearKeySchema, AnnualDateEntrySchema)`), not a flat literal, and every key and value parses strictly (`src/domain/config/schema.ts:9,72-76,215`)
-- [x] `requireAnnualDates(config, clock)` is the one lookup and it throws by name for a missing year AND for an existing-but-past `jobEndDate` (`src/domain/config/fiscal-year.ts:45-63`)
-- [x] the comparison is pure calendar arithmetic — a strict `M/D/YYYY` parse with leap-year validation, compared as an integer date code against `clock.todayLocal()` — so it needs no `Date` parsing, no timezone and no sleeping test
-- [ ] `annualDates` defaults to `{}` and NO production module calls `requireAnnualDates`: the only caller in the tree is `tests/unit/config.test.ts`. The consumers §1 named (onboarding hire-date fill, Kronos report range) are unmigrated workflows, so the contract is built and unexercised
-- [ ] the `fiscal.current` preflight check is registered as a blocking `workflow`-scope check for `workflow.kuali-fill` (`src/domain/runtime-dependencies.ts:369`) and has no runner — see §6.2
-> 2026-08-21 | docs-cohesion clock-config-secrets | verified against `src/domain/config/fiscal-year.ts` and `schema.ts`, and by grepping the tree for callers; left: the first migrated workflow that fills a fiscal date is what exercises this
-<!-- /roadmap-status -->
 
 Legacy's `ANNUAL_DATES` is a flat, single-year literal with no rollover mechanism, and it was already
 past due when the audit ran (§1). The rebuild makes staleness a **loud failure at the point of use**,
@@ -2435,7 +2405,6 @@ than reading the map, or the staleness half is lost.
 
 ## 6. Secrets accessor
 
-<!-- roadmap: p1-base -->
 
 `src/domain/secrets.ts` is the sole home for every credential this runtime reads, and the ONLY
 module permitted to touch `process.env` at all. It replaces legacy's `validateEnv()` +
@@ -2611,48 +2580,16 @@ source-provenance closure. Runner provenance survives object/array property sele
 destructuring. The current derived root is `vite.dashboard.config.ts`, pinned so package-script
 drift is reviewed. Strings, comments and type-only imports are deliberately inert controls.
 
-Today the tree is stricter than the contract requires: `resolve.ts` takes `env: NodeJS.ProcessEnv`
-as a parameter and reads nothing, so the config owner's permission is currently unexercised.
+The resolver takes ordinary configuration and explicit host facts; it has no environment
+parameter or config environment binding registry.
 
-**`no-secret-values-in-logs.test.ts`** — the companion. `secrets-single-source` decides WHO may read
-a credential; this one decides WHAT may be said about it, because the moment a value is spliced into
-a string it has left the classification behind and every downstream writer copies it verbatim. It
-scans **every template-literal interpolation in `src/**`** (a thrown `Error` message is as durable as
-a log line) and **every argument to a `log.*` / `console.*` call** (so a bare `log.info(password)` is
-caught without a template). A name is sensitive when its normalized form contains one of fourteen
-roots — `password`, `passwd`, `passphrase`, `secret`, `credential`, `privatekey`, `apikey`,
-`accesskey`, `authtoken`, `bearertoken`, `sessiontoken`, `refreshtoken`, `cookie`, `storagestate`,
-`ssn`. Descriptor suffixes exempt the companions that DESCRIBE a credential (`secretName`,
-`credentialPath`, `tokenCount`, `…Spec`, `…Env`, `…Classification`), and `key`/`keys`/`state` are
-deliberately NOT on that list, because `apiKey`, `secretKey`, `privateKey` and `storageState` all
-carry the value. Its allowlist is empty too.
-
-The closed direct-identifier family also covers employee/timekeeper names and the EID spellings
-used by the codebase, including `eid`, `emplId`, `documentEid`, `employeeId`, and the reviewed
-observed/expected/query variants. Presentation templates are exempt only when they are the direct
-return expression that renders typed UI; a nested callback or local template is still a violation.
-Runtime diagnostics project a bounded digest reference instead of a raw identifier, while typed UI
-keeps a full EID as structured React content rather than first collapsing it into an opaque string.
-The direct-identifier allowlist remains empty.
-
-The scanner follows scoped aliases through declarations, assignments, single-return functions,
-destructuring, direct object-literal payloads (property, shorthand, static-computed and spread
-forms), object/array packing and property reads, including locally resolvable computed-key aliases
-at both construction and read, as well as concatenation, conditionals, arrays, `join`, `String` and
-`JSON.stringify`. A computed read whose key remains dynamic fails closed when the container's
-provenance carries a sensitive value. It resolves aliased `Error`, `new Error`, logger/console calls
-and `ctx.fail` as diagnostic sinks; console/logger method identity survives object/array packing,
-property selection, destructuring, aliasing and `call`/`apply`/`bind`, with unresolved selection
-from a sink-bearing container treated as a sink.
-Structural EID/EMPLID suffixes cover target/person/current variants while
-reviewed schema/field/path names and equality predicates remain descriptors. Alias provenance is
-resolved before a descriptor-looking local name can claim an exemption. Natural idempotency-key
-bindings join the closed sensitive family even
-though their stable business identity is still retained in authority. A sanitizer exemption exists
-only when the call resolves to the canonical imported helper in `src/domain/redaction.ts`; a local or
-shadowed look-alike remains a violation. Likewise, the two descriptor-only exceptions are tied to the
-real imported `defineWorkflowDescriptor` call: direct `presentation.title`/`subtitle` returns and the
-durable `identity.matchKey` callback. Look-alike objects and shadowed factories receive no exemption.
+**D361 — complete local supplied values.** The [local-evidence owner](operator-trust.md#d361--complete-local-operator-evidence--2026-10-01)
+permits complete values already supplied to authorized classified local capture and presentation.
+It adds no credential reader or secret lookup. `secrets-single-source` continues to enforce closed
+reader and environment ownership; raw credential-named interpolation still needs a classified
+boundary, with the exact local identifier-display symbol admitted by the retained guard.
+Receipt compositions 1–4 remain exact; new composition 5 retains complete local facts. D346's
+provider transforms and repository-authored OS notifications remain separate and unchanged.
 
 ### The planned successor: the OS keychain, behind this accessor
 
@@ -2685,16 +2622,6 @@ migration safe (one owner, empty allowlist) is the one already green.
 
 ### 6.1 Explicit single-operator/local scope
 
-<!-- roadmap: later-unplanned -->
-
-<!-- roadmap-status: later-unplanned -->
-- [x] the BFF listener is loopback-only in code: it defaults to `127.0.0.1`, admits only `127.0.0.1` or `localhost`, and refuses anything else by name — `the dashboard BFF is loopback-only; refusing to bind <hostname>` (`src/server/dashboard/http-server.ts:45-50`)
-- [x] no accounts, roles, permissions, teams, remote synchronization, high availability, secret manager, certificate management or signed audit anchoring exists, and D193(a) reaffirms that as the standing scope — not a gap
-- [x] the hygiene that local-only does not waive is real: `0700` directories and `0600` files on artifacts, authority backups, restore staging and recovery proofs (`src/infra/artifacts/content-addressed-artifact-writer.ts:71-73,208`, `src/infra/sqlite/{recovery-stop-proof,backup-service,offline-restore}.ts`)
-- [?] D193(a)'s two LATER items — packaging the local app, and a cooperation/multi-user mode ON TOP of solo — carry no owner and no design. The PACKAGING half now has a named successor in the desktop work (`{#desk-secrets}` moves credential storage to the OS keychain behind §6's accessor); the multi-user half does not, and the refusal below stands unchanged
-> 2026-08-21 | docs-cohesion clock-config-secrets | verified against `src/server/dashboard/http-server.ts`, the four `0o700`/`0o600` writers and `src/domain/capture-surface.ts`; nothing left in this section — it describes a decided scope, and `{#later-unplanned}` is `status: never` by design
-
-<!-- /roadmap-status -->
 
 The rebuilt operator dashboard binds loopback only. Phase 1 does not build accounts, roles,
 permissions, teams, remote synchronization, high availability, a secret manager, certificate
@@ -2719,21 +2646,6 @@ also make diagnostic bundles safer to share with an AI assistant.
 
 > 2026-09-04 | D331 | at 1.6 the doctor also reports every `retired-in-target` catalogued key present in the process environment or the admitted `.env` as a named refusal ("set it in Settings, then remove it"), so a stale exported credential or test URL can never shadow a migrated leaf (§D331.8).
 
-<!-- roadmap: cross-cutting -->
-<!-- roadmap: p1-authority -->
-
-<!-- roadmap-status: cross-cutting -->
-- [x] the strict preflight REGISTRY is built and bidirectionally audited: `PreflightCheckSpec` (id, scope, severity, pure/IO runner, dependencies, capabilities, consumer, scenarios, timeout, redaction policy, remediation) and `PREFLIGHT_CHECKS` — twelve explicit checks plus generated per-feature, per-endpoint and per-provider ones (`src/domain/runtime-dependencies.ts:362-383`)
-- [x] `PreflightReportSchema` is closed and refines its own rules — a blocking check cannot be a warning, an optional check cannot fail, and the provider/feature verdicts must agree (`src/domain/preflight.ts:55-208`)
-- [x] preflight scenarios cover missing browser, stale fiscal year, prod/test endpoints, low disk, corrupt DB, missing workflow secret, provider/OCR/AI exhaustion, busy port, runtime mismatch, invalid config and orphan processes (`src/domain/trust/preflight-scenarios.ts`)
-- [x] the dashboard's six selected runners are implemented once from `requiredPreflightChecks(["dashboard.serve"])`: runtime/package-lock, retained config, filesystem, authority/backup/span reconciliation, ports and orphaned worker leases (`src/server/preflight/dashboard-runners.ts`)
-- [x] `createPreflightAuthority` owns execution, report readback and exact command-id replay; dashboard composition runs it at startup, bootstrap serves that report, and `POST /api/v1/preflight/rerun` accepts/returns closed schemas with config + descriptor compare-and-set identity
-- [x] every selected runner's registered timeout is armed through the injected monotonic scheduler; expiry aborts the runner signal but awaits actual settlement, so non-cooperative I/O is never detached and a late healthy-looking return still fails by check id + timeout
-- [x] a selected refresh awaits every runner's settlement before propagating failure; multiple failures retain registry order in a primary-first `AggregateError` whose cause is the primary failure
-- [x] FE the typed dashboard client and Settings control consume the strict rerun route; it binds the active runtime fingerprint and refuses a persisted-but-not-restarted settings revision (DCC3)
-- [ ] BOTH there is no broad `cli doctor` verb and no `test-login`. `cli storage doctor` now consumes the same strict D282 storage reconciliation and health judgment as `authority.health`, but it is not a projection of the complete preflight registry
-> 2026-08-28 | DCC3 Settings caller | strict browser call and rendered control now consume the rerun route; left: non-dashboard capability runners, broad `cli doctor` and `test-login`
-<!-- /roadmap-status -->
 
 The `setup`, `/api/preflight` and `test-login` behaviours legacy grew separately become projections
 of ONE strict preflight registry, not three lists that drift. Each `PreflightCheck` has a stable id,
@@ -2926,14 +2838,14 @@ preserves D331/D336 settings and independent credential authority. Conversion of
 32–36 sources retains the exact ordinary settings revisions/journals and credential bytes;
 it does not replay schema 33's batch defaults or reimport environment values. `config_snapshots`
 keeps its name, rows and references. Existing source-change refusal and interrupted settlement
-remain required. The [side assignment](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/history/worker-names.md) owns execution evidence.
+remain required. The side assignment (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/history/worker-names.md`) owns execution evidence.
 
 ### Phase 2.6 snapshot naming amendment — 2026-09-09
 
 Naming-only 2.6.2 R changes config_snapshots → settings_snapshots, preserving immutable rows,
 existing run bindings, protected-value exclusions and current activation behavior. Released history
 retains its original names. Settings consolidation and no-restart activation remain with F/S after
-C0; R does not implement them. [Approved scope](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/renames.md).
+C0; R does not implement them. Approved scope (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/renames.md`).
 
 ## C0 settings activation and recovery — 2026-09-09
 
@@ -2976,11 +2888,11 @@ transfer/deletion progress and file inventories; restore cannot revive moved/del
 missing ownership. Preserve old backup grammars and settings/credential coupling. No live database
 upgrade is authorized by C0.
 
-This is the C0-admitted target contract, not a claim of implemented behavior. The [Phase 2.6 owner](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md) binds sequential prerequisites, focused development proof and final 2.6.9 acceptance. Released evidence and migrations remain immutable.
+This is the C0-admitted target contract, not a claim of implemented behavior. The Phase 2.6 owner (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md`) binds sequential prerequisites, focused development proof and final 2.6.9 acceptance. Released evidence and migrations remain immutable.
 
 ### F implementation baseline — 2026-09-09
 
 Schema47 F consolidates saved/active authority into app_settings plus retained settings_snapshots and routes save/create/claim/resource calls through S-owned modules. The working baseline still requires restart; S owns the approved no-restart change.
 
-Implementation, frozen interfaces and focused evidence: [F execution owner](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/foundation.md#f-execution-record--2026-09-09).
+Implementation, frozen interfaces and focused evidence: F execution owner (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/foundation.md`).
 This records implementation of the approved C0 contract, not a new decision or full-phase acceptance.

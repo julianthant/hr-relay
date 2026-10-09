@@ -1,0 +1,100 @@
+# visual-baseline-workflows-explorer-fixture-sharepoint-download-dark--graphite-warm--1280x720
+# adapter: fixture
+# fixture: visual-baseline-workflows.spec.ts:mounted Logs and all Explorer workflows @ dark
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#dashboard-settings-content"
+- main:
+  - region "Settings":
+    - navigation "Settings sections":
+      - heading "Settings" [level=2]
+      - button "Back to dashboard"
+      - group:
+        - searchbox "Search settings"
+      - text: Personal
+      - link "General":
+        - /url: "?settings=general"
+      - link "Credentials":
+        - /url: "?settings=credentials"
+      - text: Advanced
+      - link "Performance":
+        - /url: "?settings=performance"
+      - link "Paths":
+        - /url: "?settings=paths"
+      - link "Routes":
+        - /url: "?settings=routes"
+      - text: Data
+      - link "Spreadsheets":
+        - /url: "?settings=spreadsheets"
+      - link "Explorer":
+        - /url: "?settings=explorer"
+      - link "Analytics":
+        - /url: "?settings=activity"
+      - text: Status
+      - link "Storage checks":
+        - /url: "?settings=storage"
+      - link "Preflight":
+        - /url: "?settings=preflight"
+      - text: Help
+      - link "Keyboard":
+        - /url: "?settings=keyboard"
+    - region "Workflow explorer preview":
+      - heading "Explorer" [level=1]
+      - paragraph: Browse workflows, their steps and field sources. Fictional preview data.
+      - combobox "Explorer workflow": SharePoint Download
+      - list "Workflow steps":
+        - listitem:
+          - heading "SharePoint Download" [level=2]
+          - text: You
+          - paragraph: Downloads the current roster export into the roster folder, then reads it back and counts its rows. Every roster-backed start reads whatever this leaves behind. It changes no system of record.
+        - listitem:
+          - heading "Navigate" [level=2]
+          - text: SharePoint
+          - paragraph: Resolve the configured Onboarding Roster destination and authenticate to SharePoint. The operator does not supply a URL.
+          - group:
+            - strong: Configured destination
+            - text: Read Spreadsheet Onboarding Roster Provider SharePoint
+          - text: Open Excel Online
+          - group:
+            - strong: Viewer
+            - text: Read Workbook Onboarding Roster Authentication Authenticated
+        - listitem:
+          - heading "Download" [level=2]
+          - text: SharePoint
+          - paragraph: Download one configured spreadsheet into the local roster directory and record the saved filename and path.
+          - group:
+            - strong: Download
+            - text: File output Roster file Onboarding Roster.xlsx · local roster directory
+          - text: "Verify: download save completed. File → Create a Copy → Download a Copy"
+          - group:
+            - strong: Downloaded workbook
+            - text: Read Spreadsheet Onboarding Roster Filename onboarding-roster.xlsx Saved to Roster folder File validation Workbook readable
+      - paragraph: Fictional workflow path complete. No external system contacted.
+- region "Session Panel":
+  - group "Session actions":
+    - button "Sessions"
+    - text: 2 running 1 starting 1 idle
+    - button "Add workers"
+    - button "Settings" [pressed]
+- region "Notifications"
+- listbox:
+  - group:
+    - option "Person Lookup"
+    - option "I-9 Lookup"
+    - option "Separations"
+    - option "I-9 Check"
+    - option "Onboarding"
+    - option "Oath Signature"
+    - option "Oath Upload"
+    - option "Emergency Contact"
+    - option "Work-Study"
+    - option "Kronos Pay Rule"
+    - option "OCR"
+    - option "CRM Doc Download"
+    - option "SharePoint Download" [selected]
+    - option "OnBase"
+    - option "Old Kronos Reports"

@@ -1,118 +1,145 @@
-# HR Automation rebuild
+# Relay
 
-This rebuild is not production. `/Users/julianhein/Projects/hr-automation` remains the sole
-production authority and rollback asset until the approved all-at-once cutover (D89/D93).
+Relay is the production rebuild of `hr-automation`. It is a local desktop app for one HR operator. It runs on one machine and is never hosted. Until cutover,
+`/Users/julianhein/Projects/hr-automation` is production and the rollback asset.
 
-## Scope and authority
+## What to build
 
-- Start at [docs/README.md](docs/README.md). The roadmap, admitted phase plan and owning reference
-  contract define the work. History and design are not proof of current implementation.
-- Use the exact assigned task and its existing plan/evidence owner. Do not create a competing plan.
-  Ratify contract decisions at their owner and in the decision index in the same commit; never reuse D131.
-- Before changing a module, read its nearest instructions and the relevant owner below. Search the
-  needed section; do not load whole historical ledgers or unrelated session transcripts.
-- Phase 3.2 freezes the candidate; 3.3 consumes it unchanged. Defects return to 3.2. Phase 4 needs
-  D319 admission and operator approval; Phase 5 owns cutover. Follow the roadmap's D342 order.
+- Start with the assigned brief and its folder's README, then the
+  [codebase map](docs/rebuild/reference/codebase-structure.md). Work only on the assigned task.
+- Work assigned through a brief follows that brief and its folder's README. Receipts, notes and
+  handoffs go in the brief's evidence folder, never in the repository.
+- Build the wiring base first: every dashboard component connected to the backend, with no
+  workflow-specific behavior. Then wire workflows one at a time, in this order: Person Lookup,
+  Separations, then the operator's order.
+- A workflow is wired across Run, Rerun, Queue rows, Logs, Explorer, OCR/Records where it has them,
+  notifications and Analytics. It is done after a dry run and operator sign-off.
+- The production codebase (`/Users/julianhein/Projects/hr-automation`) holds each workflow's complete
+  behavior. Read it, and port by copying with the legacy commit and path recorded.
+- A workflow is coded only against its operator-approved walkthrough: steps, sub-steps, log-panel
+  timeline, results and scenarios.
+- Each workflow switches from mock to served data through one static per-workflow switch. Never fall
+  back from served to mock at runtime. A served failure shows its failure state.
 
-## Isolation and completion
+## Codebase
 
-- Never push without explicit instruction. Stage exact paths and commit by logical category.
-  Preserve other sessions' edits; never switch, reset or repurpose their checkouts.
-- Implement on a dedicated branch. The primary checkout is integration-only for Phase 3.1;
-  concurrent, shared or unrelated dirty work requires an owned branch/worktree. Verify base,
-  path, ownership and merge conditions before edits.
-- New worktrees belong under `/Users/julianhein/Projects/hr-automation-rebuild-worktrees/`, named
-  `hr-worktree-<one-or-two-task-words>`. The four-worktree ceiling includes unrelated lanes;
-  additional capacity needs operator approval.
-- Retain evidence under `/Users/julianhein/Projects/hr-automation-rebuild-evidence/<task-date>/`.
-  Resolve moved historical receipts through that parent's `relocation.json`. Preserve evidence
-  and unknown files before cleanup; accepted cleanup removes both worktree registration and folder.
-- Keep existing AGENTS.md / CLAUDE.md twins byte-identical. Change instructions for changed rules;
-  do not add historical lessons or retrospective comments. Comments explain necessary current behavior
-  or constraints only. Keep complete project instruction chains below 32,768 bytes.
-- `/astra-orchestrator` owns execution. Combine it with `/plan` or `/phase-plan` when planning is needed;
-  planning-only, roadmap recording and execution remain separate choices. An explicit plan-and-execute
-  request can continue in the same root after required approval and verified prerequisites.
-- The operator launches tasks and chooses integration. No automatic sibling/next-task dispatch or
-  merge. Phase 3.2 onward uses tangible feature tasks and subtasks; only explicitly labelled Parallel
-  nodes run concurrently. Follow the roadmap’s 2026-09-19 amendment; preserve admitted ownership
-  and dependencies. Earlier assignments retain their owning cadence.
-- Complete only after assigned checks, authorized integration and cleanup, plus review where required.
-  Report compact evidence and any remaining obligations. Use the existing record for routine transfers;
-  use `/handoff` for interrupted unique state. Personal rules own style and worker/reviewer models.
+One person builds and maintains this codebase. Keep it organized, clean and easy to follow.
 
-## Verification cadence
+- Each concept has one home. [docs/rebuild/reference/codebase-structure.md](docs/rebuild/reference/codebase-structure.md)
+  is the map. Update it in the same commit as any move.
+- A change deletes the code it replaces. No shims, parallel old and new paths, commented-out code or
+  unused exports.
+- Add a layer only when it has a second real use. Prefer one cohesive module over many tiny files.
+- Tests mirror the source layout and cover each behavior once. Delete tests for behavior that no
+  longer exists.
+- Add a guard only to prevent a real, recurring mistake, and record its reason in
+  `docs/rebuild/guard-inventory.json`.
+- Comments: only where the code cannot say it, in a few words.
+- Docs describe the system as it is now. When a rule changes, update its owning doc in the same
+  commit. Keep history out of the repository.
+- Instructions live only in `AGENTS.md` files. Never add `CLAUDE.md`.
 
-**Phase 3.1:** use assigned focused task/prerequisite checks and focused group integration.
-No independent review, including finalization. Full repository gates belong only to 3.1.19,
-which repairs final acceptance failures in the same session. The
-[approved cadence](docs/rebuild/plans/phase-3/3.1-finish-the-dashboard/README.md#execution-cadence--operator-amendment-2026-09-13)
-overrides conflicting module/personal review and per-candidate gate rules. Never claim deferred gates passed.
+## Dashboard
 
-**Phase 3.2 onward:** focused tests, lint and affected static/generated checks throughout each phase,
-including prerequisites and intermediate integration. Full typecheck, lint, coverage and applicable
-acceptance gates run at phase exit, with required repairs; see `ref guards-and-tests` §3.14
-[phase-exit cadence](docs/rebuild/reference/guards-and-tests.md#phase-exit-gates-from-3-2).
-Freeze audits and controlled-write/cutover admission retain their existing boundaries.
+- Replace mock data with real data. Keep every component exactly as it is: use all of them, add none,
+  remove none.
+- Wiring changes producers, view-model inputs, ports, client methods, hooks, callbacks and the
+  backend. A component file changes only to receive data instead of importing a mock, and it renders
+  identically.
+- The component set is fixed, but what a workflow shows follows the real workflow. Its Explorer
+  timeline, Run and Rerun steps and Logs steps may change in count, order, text, branches and
+  sources, built only from existing components. Generate the Explorer timeline from the workflow's
+  registered definition, never by hand.
+- If real behavior needs a changed or new component, describe it (what, where, why) and ask the
+  operator. Approved components are built first in a UI-only task (components and mock data, no
+  backend), then wired.
+- Extend `src/dashboard/client/index.ts` and the shared models in `src/models/**`. Never add a second
+  API or type layer. Keep each view model's loading, empty, failure, refusal and uncertain states.
+- Read `src/dashboard/AGENTS.md` before any dashboard change.
 
-**Other work:** follow `ref guards-and-tests` §3.14 D191 and the owning assignment.
-Documentation-only changes use affected checks and verified unchanged-input reuse. Classify by
-affected inputs, not extension.
+## Backend
 
-Update relevant tests for behavior changes; say when none exist. Lint failures are task failures.
-Preserve assertions, test membership, isolation, floors and timeouts. Use at most four test-file workers;
-run coverage without this task's compiler/linter contention. Guard additions/retirements update
-`docs/rebuild/guard-inventory.json` with deciding evidence. Generate derived files at their source.
+- Only the operator, through the dashboard, uses the backend. No agent or external API access.
+- Build for one operator on one machine. Add nothing for several users, remote clients or hosting.
+- Keep every HR write protection: dry runs, write intents and parked writes, receipts and evidence,
+  and never retrying an UNKNOWN submit.
+- The only AI is OCR through the operator's ChatGPT subscription, connected in Settings with OpenAI's
+  open-source "Sign in with ChatGPT" flow (OAuth with PKCE, loopback redirect, Responses API). Store
+  its tokens only in the local credential store. Add no other AI provider.
+- Every failure has a defined error code, and the dashboard shows the text mapped to that code. Add
+  the code and its text together.
+- Use TypeScript, Hono, SQLite, HTTP and SSE. Keep HTTP parsing and app composition thin.
+  Repositories own durable storage.
+- Read `src/backend/AGENTS.md`, and the system's `src/backend/systems/<system>/AGENTS.md` before
+  touching a system driver.
+
+## Git
+
+- Never push without explicit instruction. Work on a dedicated branch, in a separate worktree for
+  concurrent work. Verify base, path and ownership before editing.
+- Stage exact paths and commit by logical category. Never switch, reset or repurpose another
+  checkout.
+- The operator launches every task and chooses every integration into `master`.
+- Evidence goes under `/Users/julianhein/Projects/hr-automation-rebuild-evidence/<task-date>/`.
+  Cleanup removes a worktree's registration and its folder, after its evidence and unknown files are
+  saved.
+
+## Checks
+
+- During a task: focused tests for the changed behavior, `npm run lint`, and the affected static and
+  generated checks. Update tests when behavior changes, and say when none exist.
+- Before work is proposed for `master`: `npm run typecheck`, `npm run lint`, `npm run test:unit`,
+  `npm run test:integration`, `npm run test:architecture`, `npm run web:build`,
+  `npm run test:parity`, then `npm run test:coverage` alone.
+- A lint failure is a task failure. Keep assertions, test membership, isolation, coverage floors and
+  timeouts. Never report an unrun check as passed.
+- Generate derived files at their source. Never hand-edit them.
+
+## Runtime safety
+
+- Fail loud. Missing or corrupt data and failed checks never become defaults, cached values,
+  alternate selectors or swallowed results. Throw a named error, or return a distinct unknown that
+  the caller checks. Allow a fallback only for a valid expected case with recorded verification.
+- Never log secret or canary values.
+- Never import, invoke, proxy or read production (`hr-automation`) state. Port by copying, record the
+  source commit and path, then verify live. Never delete production files. Prefix cross-repo paths
+  with `legacy:`.
+- `config/runtime-isolation.json` owns the rebuild's ports, browser session and state, artifact,
+  lock and auth roots. Read the operating reference before changing authority or path resolution.
+  Preserve settings/database coupling, terminal tombstones, explicit verified backups and the current
+  boot/upgrade authority. Never discard one authority half to hide a mismatch.
+- Never overwrite an existing `.env` or print credentials. Before configuration or live work, read
+  the operating reference's Environment section. An unavailable subject blocks before secret access
+  or browser launch. Never substitute canaries.
+- Read-only selectors, login checks, collectors and dry runs are pre-authorized. Transaction
+  verification uses `dryRun=true`: no UCPath submit, no Kuali finalization. A transaction-free
+  live read creates no transactions and no durable effects. Never retry an UNKNOWN submit.
+- Browser work uses playwright-cli, headless by default. Snapshot before choosing locators. Duo
+  Autopilot needs full Chromium (`duo-autopilot/README.md`). Close only your own sessions, and skip a
+  system that is down while continuing with the rest.
 
 ## Read by task
 
 `ref <slug>` means `docs/rebuild/reference/<slug>.md`. Read only the relevant sections.
 
-| Task | Required owners |
+| Task | Read first |
 | --- | --- |
-| Roadmap planning/supervision | [Plans index](docs/rebuild/plans/README.md), exact task plan, roadmap Governance / Plan-implement-review and D344 |
-| Workflow/task | `ref task-contract`, `ref workflow-model`, `ref stores` (derived; code wins), [authoring guide](docs/rebuild/guides/workflow-authoring.md) |
-| Run, settings, upgrade | `ref dashboard-surfaces` D330/D332, `ref clock-config-secrets` D331/D332, `ref guards-and-tests` §5.2, active phase bindings |
-| Worker, browser, external write | `ref execution-and-sessions`, `ref write-safety`, relevant store instructions |
-| Dashboard, BFF, CLI | `src/dashboard/AGENTS.md`, `src/server/AGENTS.md`, `ref frontend-backend-integration`, `ref dashboard-surfaces`, `ref operator-trust`; use `/ui` for frontend work |
+| Any task | The assigned brief, its folder's README and the [codebase map](docs/rebuild/reference/codebase-structure.md) |
+| Workflow | `ref task-contract`, `ref workflow-model`, `ref stores`, [authoring guide](docs/rebuild/guides/workflow-authoring.md) |
+| Dashboard, client, CLI | `src/dashboard/AGENTS.md`, `ref frontend-backend-integration`, `ref dashboard-surfaces`; use `/ui` for frontend work |
+| Settings, config, secrets | `ref clock-config-secrets` |
+| Worker, browser, external write | `ref execution-and-sessions`, `ref write-safety`, the system's `AGENTS.md` |
 | Intake, OCR, Edit Data | `ref data-intake-and-edit-data` |
-| Tests/guards | `ref guards-and-tests`; `tests/scenario/AGENTS.md` for scenarios |
-| Known failure/lesson | Search `ref lessons` and the module's linked ledger by seam/decision |
-| Environment, isolation, porting, conventions | Relevant section of the [operating reference](.agents/skill-library/repository-work/REFERENCE.md) |
-| Authorized delegation | Operating reference §Authorized orchestration, then the platform's personal `parallel-agent-work` reference |
-
-## Runtime boundaries
-
-- Fail loud. Missing/corrupt data and failed checks must not become plausible defaults, cached/latest
-  values, alternate selectors or swallowed results. A fallback needs a valid expected case and
-  recorded verification: live for page state, tests for pure logic. Otherwise throw a named error or
-  propagate a distinct unknown the caller checks. Never log secret/canary values.
-- Runtime and finished gates never import, invoke, proxy or read legacy live state. Port by copying
-  with legacy commit/path provenance and live reverification. Never delete legacy files or restore
-  its execution dependency. Prefix cross-repo inventory paths with `legacy:`.
-- `config/runtime-isolation.json` owns rebuild ports, browser session and state/artifact/lock/auth roots.
-  Preserve settings/database coupling (D321), terminal tombstones (D308), explicit verified backup
-  (D322) and current boot/upgrade authority (D332). Never discard an authority half to hide a mismatch.
-  Read the operating reference before changing authority/resolution behavior.
-- Never overwrite an existing `.env` or print credentials. Before configuration/live work, read the
-  operating reference's Environment section for bootstrap, credential access and canary resolution.
-  Registry defects throw; unavailable/pending subjects block before secret access or browser launch.
-  Do not silently substitute canaries or treat dated availability as current verification.
-- Read-only selectors, login checks, collectors and dry-runs are pre-authorized. Transaction-bearing
-  verification uses `dryRun=true`: no UCPath submit or Kuali finalization. Transaction-free `live-read`
-  follows D318's zero-transaction graph and durable-effect checks. Never retry an UNKNOWN submit.
-- Browser work uses playwright-cli and its personal playbook. Default headless; snapshot before
-  choosing locators. Duo Autopilot needs full Chromium: see `duo-autopilot/README.md`. Close only owned
-  sessions/orphans, preserve peers, and skip a down system while continuing with the rest.
+| Tests and guards | `ref guards-and-tests` |
+| Environment, porting, conventions | The [operating reference](.agents/skill-library/repository-work/REFERENCE.md) |
 
 ## Commands
 
 | Purpose | Command |
 | --- | --- |
-| Dev BFF + Vite | `npm run dashboard` (Ctrl+C stops both); BFF only: `npm run cli -- dashboard` |
-| Production bundle/server | `npm run web:build`, then `npm run dashboard:prod` |
-| Live dry-run case | `npm run cli -- dry-run-scenario <workflow> --subject <label>` |
-| Desktop visual/a11y | `npm run test:parity`; D340 excludes mobile/coarse-pointer cases but preserves resize, zoom and accessibility. Refreeze deliberately with attribution and phase-required validation. |
-| Descriptor import closure | `npm run build:manifest`, then `npm run build:manifest:check` |
+| Dev backend + Vite | `npm run dashboard` (Ctrl+C stops both) |
+| Production bundle and server | `npm run web:build`, then `npm run dashboard:prod` |
+| Workflow dry run | `npm run cli -- dry-run-scenario <workflow> --subject <label>`; absent manifests must report unavailable before execution |
+| Visual contract | `npm run test:parity` (desktop only) |
+| Workflow manifest | `npm run build:manifest`, then `npm run build:manifest:check` |
 | Store catalog | `npm run stores:catalog`, then `npm run stores:catalog:check` |
-| Roadmap | `npm run roadmap`, then `npm run roadmap:check` |

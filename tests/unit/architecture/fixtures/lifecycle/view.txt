@@ -1,5 +1,0 @@
-import type { ProjectionRepositories } from "../../infra/sqlite/authority-database.js";
-export function forbidden(repositories: ProjectionRepositories) {
-  const view = repositories.runsView;
-  return view.get("run");
-}

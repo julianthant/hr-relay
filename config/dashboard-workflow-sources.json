@@ -1,0 +1,17 @@
+{
+  "separations": "mock",
+  "onboarding": "mock",
+  "person-lookup": "mock",
+  "i9-lookup": "mock",
+  "work-study": "mock",
+  "kronos-pay-rule": "mock",
+  "ocr": "mock",
+  "oath-signature": "mock",
+  "oath-upload": "mock",
+  "emergency-contact": "mock",
+  "onbase": "mock",
+  "i9-check": "mock",
+  "crm-doc-download": "mock",
+  "sharepoint-download": "mock",
+  "old-kronos-reports": "mock"
+}

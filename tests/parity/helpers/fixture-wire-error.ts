@@ -1,4 +1,4 @@
-import { WireErrorSchema } from "../../../src/domain/dashboard/primitives.js";
+import { WireErrorSchema } from "../../../src/models/dashboard/primitives.js";
 
 
 /* ── the API app ─────────────────────────────────────────────────────────── */

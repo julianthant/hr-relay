@@ -1,36 +1,57 @@
 # 10 — Guards & Tests: the test suite and the guard umbrella
 
-Status: **as-built through 2026-09-02, and normative for the testing tiers R10 ratifies.** Every
-guard named here is checked against `docs/rebuild/guard-inventory.json` and
-`tests/unit/architecture/` at HEAD, never against this document's own earlier prose (D252). At HEAD
-the tree carries **81 inventory entries — 70 active, 9 retired, 2 planned**, exactly 70 files under
-`tests/unit/architecture/`, nine executable ratchet arms in
-`tests/unit/architecture/helpers/ratchet-arms.ts`, 17 scenario files under `tests/scenario/`, 222
-parity reference triples, and a measured `test:coverage` of **87.34 % lines / 85.40 % statements /
-89.41 % functions / 76.39 % branches** (28,534 / 33,412 statements). §10 is the normative half:
-`tests/` is organized by **what a test needs**, and every test that must RUN a workflow is a live
-dry-run scenario.
+Status: **guard ownership and gate policy are current; the R10 scenario/parity tier specification is
+historical.** D363 retired `tests/scenario/` and `tests/parity/` on 2026-10-02. Current
+suite roots and boundaries are in the [codebase map](codebase-structure.md); future scenario and
+visual-test design requires a separate operator-led task. Workflow-declared scenario IDs remain
+contract data, not proof that tests executed. If a rehearsal manifest is missing, report it
+unavailable before execution. Unit fixtures that inject scenario inputs prove only their unit
+behavior, not production scenario execution. Counts and gate results below refer to their dated
+evidence, not the current tree.
 
-**Where to start.** §10 if you are writing tests or adding a workflow. §5.1 if you are adding or
+**Where to start.** Current test roots and gate policy are in the codebase map and §3.14. §5.1 if you are adding or
 retiring a guard. §2 and §3 for what each guard actually holds. §11 is the phase-by-phase activation
 ledger — history, kept because "which guard activated when, and what was deliberately NOT activated"
 is the record that stops a planned guard being reported as green.
 
+<a id="scenario-and-parity-suite-retirement--2026-10-02"></a>
+
+## D363 — Scenario and parity suite retirement — 2026-10-02
+
+The operator retired `tests/scenario/`, `tests/parity/`, their exact suite-only cases and the parity
+reference corpus. The [current codebase map](codebase-structure.md) is the single current test-tree
+home. Section 10 and older parity receipts remain dated history, not active commands, coverage
+claims or visual acceptance. Workflow-declared scenario IDs remain contract data, not test evidence;
+synthetic fixtures do not substitute for production scenario proof. An absent rehearsal manifest
+reports unavailable before execution. The Explorer's scenario source links remain unresolved, and
+edits requiring scenario compile evidence are blocked pending operator-led test design.
+
+`parity-reference-authority` retired with its sole parity lane. `scenario-coverage` and
+`test-target-registry` remain active for their retained pure graph and shared test-target invariants;
+five corpus cases and five T1b-manifest cases were retired from those mixed guards. Other semantic,
+import-boundary, provenance and write-safety guards remain. Coverage floors are unchanged. Dashboard
+TSX is no longer excluded solely for the retired parity lane; instrumentation does not itself
+execute UI behavior. Exact suite and sole-consumer case scope is recorded in the
+layout-polish amendment (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-3/backend-and-unit-tests.md`)
+and [retirement ledger](</Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/backend-layout-polish/implementation/retirement-and-freeze.json>);
+the retained/retired cases for `scenario-coverage` and `test-target-registry` are pinned in their
+[guard receipts](</Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/backend-layout-polish/implementation/scenario-guard-retirement.json>)
+and [test-target receipt](</Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/backend-layout-polish/implementation/test-target-guard-retirement.json>).
+
 Owns gap-audit (`08`) BLOCKER #2: ratchet port map, safety guards, descriptor projection coverage,
-guard inventory, TDD topology, the testing tiers, and the live lane.
+guard inventory, current test-scope policy, and gate cadence.
 
 ## Ownership header (D1)
 
 | | |
 |---|---|
-| **This doc OWNS** | The test/guard suite: ratchet inventory, strict-boundary/driver/subject/control/delegation/storage guards, transaction/write/outbox/provenance/artifact safety guards, descriptor projection coverage, accidental-shrink meta-test, **the testing tiers and the `tests/` layout (§10)**, the subject registry, the dry-run scenario contract, and the live lane. |
-| **Imports (never redefines)** | Task contract / `effect` / `example` / `fakeCtx` / mutation primitive / dry-run overloads — **ref task-contract**. Descriptor shape + `descriptor-coverage.test.ts` §1.4 + run-state/checkpoint/delegation — **ref workflow-model**. Span/event schema + command protocol + storage recovery + notifications + completion and the cross-repo runtime/cutover boundary — **ref dashboard-surfaces**. Worker/session/sleep-budget guards, the worker pool and the Duo ceremony lease — **ref execution-and-sessions**. Receipt/idempotency/fence/subject contract and the dry-run beat order — **ref write-safety**. Clock/config/secrets single-source — **ref clock-config-secrets**. Semantic UI registry, scenarios, evidence, knowledge/fix records, editor projections — **ref operator-trust**. The visual/a11y parity lane's own contract — **ref frontend-backend-integration §7**. |
+| **This doc OWNS** | Current guard inventory, ratchet and safety-guard policy, descriptor projection coverage, accidental-shrink protection, current test-scope policy and gate cadence. |
+| **Imports (never redefines)** | Task contract / `effect` / `example` / `fakeCtx` / mutation primitive / dry-run overloads — **ref task-contract**. Descriptor shape + `descriptor-coverage.test.ts` §1.4 + run-state/checkpoint/delegation — **ref workflow-model**. Span/event schema + command protocol + storage recovery + notifications + completion and the cross-repo runtime/cutover boundary — **ref dashboard-surfaces**. Worker/session/sleep-budget guards, the worker pool and the Duo ceremony lease — **ref execution-and-sessions**. Receipt/idempotency/fence/subject contract and the dry-run beat order — **ref write-safety**. Clock/config/secrets single-source — **ref clock-config-secrets**. Semantic UI registry, evidence, knowledge/fix records and editor projections — **ref operator-trust**. |
 | **Charter bindings** | "Same quality umbrella from day one"; "fail loud"; §1a fill/submit split is the dry-run safety model. Descriptor SSOT replaces parity lists in the rebuild repo; the legacy repo's own guard tests remain through initial cutover. |
 
-**One-sentence thesis.** ONE place owns *how* every doc's per-§ guard promise lands in
-`tests/unit/architecture/`, what each of the nine ported ratchet arms scans, why descriptor
-projection coverage replaces parallel parity lists, and — since R10 — **what a test needs in order to
-run**, because that is the only split that tells an agent which suites a change must re-run.
+**Current thesis.** ONE place owns how guard promises are recorded and verified, what each active
+ratchet scans, and the current focused/phase-exit gate cadence. The former scenario/parity tiers are
+preserved below as historical design evidence only.
 
 ---
 
@@ -72,7 +93,6 @@ a new occurrence fails immediately and needs the same review, never a silent add
 
 ### 1.1 Measured pre-rebuild gate baseline (refreshed 2026-07-31)
 
-<!-- roadmap: p1-base -->
 
 This baseline was executed in the **legacy repo**, after the full plan reread, with a clean worktree
 and no rebuild tree present:
@@ -111,15 +131,6 @@ that `npm run lint:tests` passes.
 
 ## 2. Ratchet port map
 
-<!-- roadmap: p1-base -->
-
-<!-- roadmap-status: p1-base -->
-- [x] the nine ratchet arms exist and are executable — each run over the real tree AND its own violating fixture by `guard-manifest` (§2.1, `tests/unit/architecture/helpers/ratchet-arms.ts`)
-- [x] the reviewed guard inventory is the machine SSOT and matches `tests/unit/architecture/` by `deepEqual`, both directions (§5)
-- [x] zero per-file allowlists — the legacy `Record<file,{count,reason}>` shape did not travel
-- [ ] two port-map invariants are held by nothing named: `cancel-mechanism` (one-mechanism cancel) and `tracker-row-emission` (no arm bans an `appendFileSync` to the event JSONL outside the emitter) — §2.1 and §5.1's open list
-> 2026-08-20 | docs-cohesion ref guards-and-tests | verified against `helpers/ratchet-arms.ts`, `guard-manifest.test.ts` and `guard-inventory.json` at HEAD — 9 arms, 75 entries (65 active / 8 retired / 2 planned); left: the two unheld invariants, written down rather than implied
-<!-- /roadmap-status -->
 
 Each existing guard's fate. **Every fail-loud ratchet must cover the rebuild tree from day one**
 (charter): ported grep-ratchets are re-homed into the rebuild repo's own suite scanning its `src/**`,
@@ -205,7 +216,6 @@ field it banned does not exist here. Where each invariant is held today, verifie
 
 #### The driver half of `inline-selectors` — a scope decision, not an oversight
 
-<!-- roadmap: p1-authority -->
 
 **Decided 2026-08-14.** The row above wants "driver selector literals must belong to the canonical UI
 registry entry they implement", and the obvious way to get it is to widen the arm's `select` from
@@ -237,15 +247,6 @@ an authored literal — at which point the driver directory becomes enforceable 
 
 ## 3. The safety guards
 
-<!-- roadmap: p1-authority -->
-
-<!-- roadmap-status: p1-authority -->
-- [x] the safety-guard core is active: strict boundary schemas, the semantic UI registry, the task/driver boundary, canonical-input snapshot, selector port provenance, `descriptor-coverage` (§3.8, §4)
-- [x] `no-positional-identity`, `transaction-pairing`, `permanent-key-dedupe`, `recovery-negative-proof-settlement`, `atomic-write-outbox` all active with violating fixtures
-- [x] D71's type proof exists as `tests/types/{task-contracts,flow-graph}.typecheck.ts` inside the one `tsc` program — a 21-node real-scale graph plus `@ts-expect-error` controls (§3.12 as-built)
-- [ ] D71's BUDGET half is unmeasured — nothing runs `tsc --extendedDiagnostics` against that graph, so the 5 s / 1 GiB acceptance value is unenforced (§3.12)
-> 2026-08-20 | docs-cohesion ref guards-and-tests | verified against the 65 active inventory entries and `tests/types/`; left: the type-budget measurement, and §3.1/§3.6's retirements are recorded in the sections themselves
-<!-- /roadmap-status -->
 
 Each guard below keys off a **closed union** (the contract `effect`, the sealed mutation-primitive
 registry, the descriptor node list) — never a text heuristic — so it cannot false-positive on prose.
@@ -257,7 +258,6 @@ the successor, never a silent shrink (§5).
 
 ### 3.1 `dry-run-composition-submit-free` — charter §1a as a static invariant (RETIRED by D188)
 
-<!-- roadmap: p2-proof -->
 
 **RETIRED 2026-08-09 (D188), replaced by `write-safety-contract` plus the executable
 `separations-kuali-finalization/dry-run-preview` scenario.** The retirement is recorded in
@@ -287,7 +287,6 @@ proof. The live lane asserts prepare spans/preview evidence exist while commit s
 
 ### 3.2 `transaction-pairing.test.ts` — prepare and commit share one lease scope
 
-<!-- roadmap: p1-authority -->
 
 **Thesis: every real submit has a paired fill; you cannot compose a submit whose fill is absent.**
 
@@ -304,13 +303,6 @@ occurs between prepare and commit.
 
 ### 3.3 `write-safety-contract.test.ts` — completion union + fenced, evidence-qualified recovery (HOSTS ref write-safety's guard)
 
-<!-- roadmap: p1-kernel -->
-
-<!-- roadmap-status: p1-kernel -->
-- [x] `write-safety-contract` is active and now also carries the retired `dry-run-composition-submit-free`'s invariant, asserted as DURABLE ABSENCE over a real database rather than as a missing call in a composition (D188)
-- [x] `control-command-single-path` proves the dispatcher is exhaustive across family AND action; `command-result-exhaustive` (D253) adds the refusal-arm half
-> 2026-08-20 | docs-cohesion ref guards-and-tests | verified against `guard-inventory.json` and §11's Phase 1f boundary; left: nothing in this doc's scope
-<!-- /roadmap-status -->
 
 **Thesis:** every `effect:"commit"` contract has write safety; no escape hatch. Every completion
 arm—receipt/save/upload—has a nontrivial `proofSchema`, normal-output extractor, recovery-probe
@@ -343,7 +335,6 @@ outcome but asserts zero write-ledger outboxes, so observation cannot masquerade
 
 ### 3.4 `no-positional-identity.test.ts` — items/checkpoints keyed by stable id, never index
 
-<!-- roadmap: p1-authority -->
 
 **Thesis (the docs-1/2 invariant): identity is a stable key, never an array position.** A row keyed
 by index silently binds the wrong person when the list reorders — the class of the real wrong-person
@@ -384,13 +375,6 @@ table has no stale rows to find. The first entry is what makes that arm necessar
 
 ### 3.6 `commit-routes-through-mutation` (D22 — closes the fence-bypass overclaim) (RETIRED by D188)
 
-<!-- roadmap: p2-proof -->
-
-<!-- roadmap-status: p2-proof -->
-- [x] the controlled-commit proof is RECORDED, not re-runnable — `reference/write-safety.md` §Phase-2 controlled-commit as-built is the citation, and re-running it would be a second real HR write (§10.1)
-- [x] `commit-routes-through-mutation` RETIRED by D188 → `task-driver-boundary`, which refuses a `commit` outside a capability-validating store driver against a violating fixture, over a WeakSet-unforgeable capability (D127)
-> 2026-08-20 | docs-cohesion ref guards-and-tests | verified against the inventory's retired set and `src/base/mutation-capability.ts`; each workflow still owes its own controlled-commit proof at its migration
-<!-- /roadmap-status -->
 
 **RETIRED 2026-08-09 (D188), replaced by `task-driver-boundary`.** That guard already refuses a
 `commit` implementation outside a capability-validating store driver, **against a violating
@@ -413,12 +397,6 @@ clicks additionally require the one fenced choke point. Together they make ref w
 
 ### 3.7 `artifact-effect-boundary.test.ts` — downloads are immutable; mutable files are projections
 
-<!-- roadmap: p2-2h -->
-
-<!-- roadmap-status: p2-2h -->
-- [x] `artifact-effect-boundary` is active: the path-free content-addressed ref, the temp→fsync→atomic-rename sequence, crash-boundary recovery, byte-identical idempotency, and an AST canary against direct mutable filesystem access from a task impl
-> 2026-08-20 | docs-cohesion ref guards-and-tests | verified against the inventory; the download-bearing workflows that will exercise it are `order-2`
-<!-- /roadmap-status -->
 
 - [x] the guard the download workflows land on already exists — `artifact-effect-boundary` (§3.7), so a browser download is structurally immutable before the first of them is written
 - [ ] the T1 pair for each of `crm-doc-download` / `sharepoint-download` / `old-kronos-reports` (§10.11)
@@ -435,8 +413,6 @@ read while still permitting replay-safe browser downloads.
 
 ### 3.8 Strict schemas + semantic driver/UI registry
 
-<!-- roadmap: p1-base -->
-<!-- roadmap: p1-authority -->
 
 - **`strict-boundary-schemas.test.ts`.** Enumerate every external/durable boundary export (workflow
   input/result, task input/output, run envelope, checkpoint, command, event/note, SSE wire,
@@ -445,7 +421,16 @@ read while still permitting replay-safe browser downloads.
   unions are exhaustive; unknown keys fail. AST guards reject exported persistence/wire interfaces
   with no schema, decision-bearing `Record<string,unknown|JsonValue>`, `any`, unchecked `as`, and
   catch/default parsing at these seams. Runtime corruption fixtures exercise JSONL, SQLite, HTTP,
-  SSE, and config reads.
+  SSE, and config reads. D355/D356's exact operation-display authoring/compiler symbols and
+  validated snapshot-identity argument are in-process APIs; their symbol-level classification
+  permits no additional export or unsafe source construct in either module.
+- **`workflow-operation-display-boundary.test.ts`.** D355/D356 declarations retain a browser-safe
+  runtime import closure with no Node builtin, browser runtime, or store/driver implementation.
+  Only compiler-produced complete displays freeze into recursively strict JSON snapshots. The
+  real reader refuses unknown nested fields, executable values, missing complete structure,
+  mismatched envelope identity and altered content digests. Import-closure and durable-boundary
+  negative controls accompany the valid compiler-produced round-trip; legacy capability remains
+  the explicit active result for definitions without complete declarations.
 - **`canonical-input-snapshot.test.ts`.** Ingress input applies defaults/coercions/transforms once;
   the stored canonical value round-trips through the descriptor's validation-only `canonicalInput`
   schema on every DB/resume read. A deliberately non-idempotent transform proves resume does not
@@ -453,9 +438,10 @@ read while still permitting replay-safe browser downloads.
 - **`semantic-ui-registry.test.ts`.** Every driver action/observation/page-state dependency resolves
   to one same-system canonical registry id. IDs are unique; search terms never create identity;
   `supersedes` references resolve without cycles. Entries have owner/intent/state/selector-strategy/
-  verification metadata and scenario refs. Generated `UI-CATALOG.md` must match the registry.
-  Removed ids require an explicit `supersedes` migration that updates all dependents—never a second
-  name for the same element.
+  verification metadata and scenario refs. Removed ids require an explicit `supersedes` migration
+  that updates all dependents—never a second name for the same element. The generated UI catalog
+  and its byte-freshness check were retired by operator amendment on 2026-10-01; semantic registry
+  and verification proofs remain.
 - **`task-driver-boundary.test.ts`.** Task/workflow modules cannot import Playwright types, driver
   internals, selector registry implementation, or call `locator/newPage/evaluate` directly. Public
   driver signatures reject selector strings, Page, Locator, and untyped maps; they expose domain
@@ -463,7 +449,6 @@ read while still permitting replay-safe browser downloads.
 
 ### 3.9 Subject binding, control commands, and delegation
 
-<!-- roadmap: p1-kernel -->
 
 - [x] `delegation-manifest` is active and carries the retired `delegate-to-usage` / `delegate-to-all-impl-callers` invariants (§2.1): stable edge/item ids, concrete schemas, explicit cardinality/join/failure/cancel/retry policies, an atomic immutable manifest
 - [ ] the T1 pair for the delegating workflow, whose structural scenario must walk the fan-out at each declared cardinality (§10.11 step 2)
@@ -519,14 +504,6 @@ new readers, any other audit method, or any write outside the kernel fails the g
 
 ### 3.10 Trust surfaces: storage recovery, scenarios, evidence, and notifications
 
-<!-- roadmap: p2-2j -->
-<!-- roadmap: p2-2g -->
-
-<!-- roadmap-status: p2-2g -->
-- [x] the trust-surface guards are active: `migration-history-immutability`, `storage-recovery`, `scenario-coverage`, `evidence-receipt`, `notification-durability`, `knowledge-fix-integrity`, `workflow-editor-compile-integrity`
-- [x] D185's corpus-layout audit closes the direction the registered-set audits were blind to — a file of neither kind, an unregistered claim, a manifest row nothing executes (§3.10 as-built)
-> 2026-08-20 | docs-cohesion ref guards-and-tests | verified against `guard-inventory.json` and `src/domain/workflow/scenario-execution.ts`; §10.9 extends the same audit across the per-workflow folders
-<!-- /roadmap-status -->
 
 - **`migration-history-immutability.test.ts`.** Every released authority migration is pinned by a
   literal SHA-256 over its version and length-framed ordered statement bytes. The pinned version
@@ -653,27 +630,6 @@ new readers, any other audit method, or any write outside the kernel fails the g
 
 ### 3.11 Old-capability closure and advisory AI
 
-<!-- roadmap: p2-2i -->
-<!-- roadmap: cross-cutting -->
-<!-- roadmap: def-sanity-check -->
-
-<!-- roadmap-status: p2-2i -->
-- [x] `ai-advisory-no-authority` is active; D294 retires `capture-durability-and-scope`; `redaction-surface-scan` (D183) is the one sweep over every egress class (§3.15)
-- [x] `preflight-coverage` is active in 3.1.11.1: the manifest executor injects registry-derived faults through production detectors; `runtime-dependency-coverage` continues to hold declaration closure.
-> 2026-09-19 | 3.1.11.1 | executed fault coverage supplements the existing declaration and dashboard checks.
-<!-- /roadmap-status -->
-
-<!-- roadmap-status: cross-cutting -->
-- [x] `legacy-capability-disposition` audits the inventory five ways and derives the completed set by INVOKING the real `phase` command, so closing a tail arms the next sweep (§3.11 as-built, D184)
-- [ ] 50 entries remain genuinely `open`, each now owned by `workflow-admission-backlog` with the reason in the entry; `cutoverRequiresZeroOpen` is what they gate
-> 2026-08-20 | docs-cohesion ref guards-and-tests | verified against §3.11's as-built record; the entry-by-entry state lives in `config/legacy-capabilities.json`, not here
-<!-- /roadmap-status -->
-
-<!-- roadmap-status: def-sanity-check -->
-- [x] the advisory guard exists — `ai-advisory-no-authority` proves an advisory module cannot reach command, gate resolution, workflow state, UI-registry writes, subject matching, completion confidence or a mutation capability
-- [ ] D192's re-disposition of `legacy-tool-ops-sanity-check-record` is still open in the capability inventory (§3.11 as-built)
-> 2026-08-20 | docs-cohesion ref guards-and-tests | verified against the inventory; the panel itself is a deferral, not a guard gap
-<!-- /roadmap-status -->
 
 - **`legacy-capability-disposition.test.ts`.** Ref workflow-model §1.6.3's strict non-workflow inventory covers every old
   workflow directory, `services/*` module, route file/endpoint family, top-level dashboard component
@@ -707,7 +663,7 @@ new readers, any other audit method, or any write outside the kernel fails the g
   system acceptance, which remains with 3.1.19.
 - **`provider-capability-boundary.test.ts`.** Every service task with remote I/O declares a D63
   capability and receives only its narrowed injected client. Direct provider SDK/raw network imports
-  are allowed only in registered `infra/providers/**` adapters. Every capability has timeout/abort,
+  are allowed only in registered `src/backend/processing/providers/**` adapters. Every capability has timeout/abort,
   concurrency/rate admission, config/secret preflight, redaction, evidence, and unavailable/invalid
   scenarios; every adapter has a consuming contract. Scheduler fixtures prove an exhausted provider
   cannot bypass its provider budget or occupy a worker indefinitely.
@@ -839,7 +795,7 @@ marker advanced.
 directions plus two extras, and the checked-in empty set is correct against the as-built — but its
 "a store now implements this, delete the entry" arm had **no fixture**, so it was enforced only by
 the empty set happening to be right. An empty allowlist cannot prove an arm; it now has one.
-`provider-capability-boundary`'s exact `src/infra/providers` file list is airtight in the
+`provider-capability-boundary`'s exact `src/backend/processing/providers` file list is airtight in the
 tree→guard direction, but two defects sat on the other side: `ADMISSION_MODULE_IMPORTERS` listed
 the admission module as its own importer (unreachable — the arm resolves *imports*), and the D68
 declared provider inventory had drifted from the built adapter tree with nothing watching (groq,
@@ -850,7 +806,6 @@ reviewed declared-without-adapter reason.
 
 ### 3.12 D71 executable contract/type-budget suite
 
-<!-- roadmap: p1-authority -->
 
 The Phase-0 disposable spike is converted—not copied blindly—into committed tests against the real
 Phase-1 exports:
@@ -901,21 +856,6 @@ open rather than quietly dropped.
 
 ### 3.13 Round-8 guards (2026-07-26) — the decisions that need mechanical teeth
 
-<!-- roadmap: p1-spine -->
-<!-- roadmap: dash-defaults -->
-
-<!-- roadmap-status: p1-spine -->
-- [x] the four round-8 guards landed: `one-projection-counts` (D81), `identity-gate-before-commit` (D77), `archive-invariants` (D80), and the isolation pair `operational-isolation` + `test-runtime-root-isolation`
-- [x] `runtime-isolation`'s cross-tree half is RETIRED by D93 and `legacy-change-accounting` by D150 — both with successors named in the inventory, never a silent shrink
-> 2026-08-20 | docs-cohesion ref guards-and-tests | verified against the inventory's retired set; the D94 accounting narrative moved to `history/superseded/2026-08-20-guards-and-tests-legacy-change-accounting.md`
-<!-- /roadmap-status -->
-
-<!-- roadmap-status: dash-defaults -->
-- [x] `one-projection-counts` holds D81: no count reachable from a surface path originates outside the single run/queue projection payload
-- [x] `wire-connectivity` audits FOUR joints, not three — section arms, command keys, routes ↔ client, and the wire MIRRORS of durable vocabularies (`guard-inventory.json` corrected 2026-08-20)
-- [ ] T2 dashboard feature scenarios per feature, and the `scenario-dashboard` project that collects them (§10.9, §10.12) — spec only
-> 2026-08-20 | docs-cohesion ref guards-and-tests | the guard side is verified against `wire-connectivity.test.ts`; the test file's own header comment still says "Three joints" and is reported for the code unit
-<!-- /roadmap-status -->
 
 Four ratified decisions are worthless as prose. Each gets a guard, and each guard is listed in the
 §5.1 registered set.
@@ -1001,7 +941,7 @@ Four ratified decisions are worthless as prose. Each gets a guard, and each guar
   stronger than a diff against legacy's copy. `legacy-selector-port-provenance` is untouched: it
   reads a FIXED commit's blobs. `config/legacy-change-accounting.json` stays in the tree as a frozen
   historical record and is never extended. What the guard enforced while it existed is preserved at
-  `docs/rebuild/history/superseded/2026-08-20-guards-and-tests-legacy-change-accounting.md`.
+  `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/history/superseded/2026-08-20-guards-and-tests-legacy-change-accounting.md`.
 
 **Two live-compatibility guard families remain rejected (D88).** Continuous real-tracker replay
 and a runtime legacy wire-schema adapter would legitimize the forbidden live lift/proxy. If an
@@ -1012,15 +952,6 @@ explicit replacement in the guard inventory, not a silent shrink.
 
 ### 3.14 Testing standard (D85) — what replaces the e2e ritual
 
-<!-- roadmap: p2-2j -->
-
-<!-- roadmap-status: p2-2j -->
-- [x] D190 closed the safety-critical floor (70.08 % → 99.43 % on `run-queue-projection.ts`) and D191 made `test:coverage` the per-commit gate
-- [x] `redaction-surface-scan` (D183) and the D188 inventory re-disposition landed — six placeholder `planned` guards became four retirements with successors and two kept with real triggers
-- [ ] D91's BRANCH half is UNMET and its Phase-2-exit trigger has passed: `coverage.thresholds` configures lines/statements/functions only, so branches are report-only at a measured 76.39 % global (§3.14 as-built, §10.10)
-- [x] D85's parts 2 and 3 landed later under R10's names: `config/test-subjects.json`, insert-only `dry_run_scenario_results`, and `cli dry-run-scenario <workflow> --subject <label>` (§10.5–§10.6)
-> 2026-08-25 | test-tiers | the first finalization case exercised the unavailable-subject path: durable `blocked`/`not-started`, no run or trace id, and no browser runtime composed; the honest live green waits for the 2026-08-28 canary
-<!-- /roadmap-status -->
 
 The operator asked for a better standard than the `custom-hr-e2e-test` skill ritual. The ratified
 answer has four parts, and they are *kernel behavior*, not a skill:
@@ -1078,7 +1009,6 @@ lesson).
 
 #### D190 — the safety-critical coverage floor as-built (2j, 2026-08-09)
 
-<!-- roadmap: p2-2j -->
 
 **The floor above was RED and had been red for a whole tail.** `npm run test:coverage` failed the
 `src/**/*projection*.ts` safety-critical threshold from D180 (2i-G) until this decision closed it:
@@ -1138,22 +1068,24 @@ slipped in behind a coverage fix.
 
 #### Phase 3.2 onward — focused tasks, full phase-exit gates (2026-09-19)
 
-The operator-approved [task/cadence amendment](../../roadmap/roadmap.md#tangible-tasks-and-phase-exit-gates)
+The operator-approved task/cadence amendment (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/roadmap/roadmap.md`)
 overrides D191's default per-candidate and prerequisite/group full-gate cadence for Phase 3.2
 and later delivery phases. It applies equally to sequential tasks, prerequisites, parallel workers
 and intermediate integration. Phase 3.1 and earlier admitted assignments keep their own schedules.
 
 | Stage | Required verification |
 | --- | --- |
-| Task/subtask implementation and integration | Add or update meaningful regression coverage. Run `npm run test -- <exact affected test paths>`, scoped lint with zero warnings, and the type/static/generated checks affected by the change. Bind actual paths and commands in the brief. Repair failures now; do not defer a red focused check. No whole test/architecture suite, full coverage or broad parity run per task/group. |
-| Phase exit | Run `npm run typecheck`, `npm run lint`, then `npm run test:coverage`; coverage includes unit, architecture and scenario projects, so do not append duplicate whole-suite runs. Also run every applicable phase-wide parity, generated-freshness, build, performance, recovery and live acceptance gate. Fix failures, rerun invalidated focused checks and re-establish the full exit gates on the corrected combined tree before phase completion. |
+| Task/subtask implementation and integration | Add or update meaningful regression coverage. Run `npm run test -- <exact affected test paths>`, scoped lint with zero warnings, and the type/static/generated checks affected by the change. Bind actual paths and commands in the brief. Repair failures now; do not defer a red focused check. No whole test/architecture suite or full coverage per task/group. |
+| Phase exit | Run `npm run typecheck`, `npm run lint`, then `npm run test:coverage`; coverage includes the registered unit, integration and architecture projects, so do not append duplicate whole-suite runs. Also run every applicable phase-wide generated-freshness, build, performance, recovery and live acceptance gate. Scenario and visual-test requirements are operator-led, not implied by this cadence. Fix failures, rerun invalidated focused checks and re-establish the full exit gates on the corrected combined tree before phase completion. |
 | Documentation/evidence only | Use the existing documentation-only and unchanged-input rules below; a recording-only commit is not another full test cycle. |
 
 A phase here is an executable delivery part: 3.2, 3.3, 3.5, each admitted 4.x, 5A/5B and each
 scheduled 6A–6F part. Optional 3.4 binds a selected feature batch and one end-of-batch full gate;
 unselected features are never release prerequisites. A later batch gets its own exit evidence.
 The owning plan names the final gate outcome and carries an explicit list of deferred broad checks.
-Focused PASS is task evidence, not proof that those deferred checks passed.
+Focused PASS is task evidence, not proof that those deferred checks passed. The 2026-10-02
+operator amendment separately retires the scenario and parity suites; this is not a change to the
+coverage floors or to retained semantic guards.
 
 Independent reviews remain as required by the owning phase. Phase 3.2's final audit/freeze remains
 read-only: a defect returns to bounded remediation and restarts the audit. Phase 3.3 may not repair
@@ -1169,13 +1101,6 @@ For Phase 3.2 onward, the [2026-09-19 phase-exit cadence](#phase-exit-gates-from
 
 For remaining Phase 3.1 work, the [2026-09-13 exception](#phase-3-1-focused-finalization) below takes precedence: focused tasks/prerequisites and group integration, full gates and repairs only at 3.1.19, no independent review.
 
-<!-- roadmap: phase-3 -->
-
-<!-- roadmap-status: phase-3 -->
-- [x] the default implementation gate is `typecheck && lint && test:coverage` (D191; documentation-only and parallel-worker exceptions below) — a strict superset of the old `test` + `test:architecture` pair, measured faster (28.2 s vs ≈39 s)
-- [ ] the gate gains nothing new from R10: T1 structural and T2 are inside `test:coverage`, and every dry-run tier is deliberately outside it (§10.9)
-> 2026-08-20 | docs-cohesion ref guards-and-tests | verified against `package.json` and `CLAUDE.md`'s After-changes section
-<!-- /roadmap-status -->
 
 **Historical adoption record (2026-08-12).** The operator adopted the D190 recommendation as written:
 the per-commit gate family is `npm run typecheck && npm run lint && npm run test:coverage`,
@@ -1198,6 +1123,12 @@ and `test:architecture`, adds coverage floors, and runs without the legacy check
 all-project targeted convenience and `test:architecture` is the guard-only targeted convenience;
 neither is an additional per-commit obligation. The 2026-08-12 timings above remain the historical
 evidence that adopted D191, not a claim about today's topology or runtime.
+
+**2026-09-30 Phase-1 tier amendment.** The current gate collects four disjoint projects: `unit`,
+`integration`, `architecture`, and `scenario`. A suite that exercises real storage, a process,
+socket, browser or composed workflow moves intact to integration; `test:unit` selects only
+deterministic units. The earlier three-project statement records the 2026-09-02 adoption state.
+This changes neither retained test membership nor D91's coverage floors.
 
 **2026-09-05 test-run reliability amendment (operator-approved maintenance).** The npm gate
 names, test membership, four-worker ceiling, timeouts, suite-size assertion and coverage floors stay
@@ -1227,7 +1158,7 @@ checks and zero counted pixel-difference allowance are unchanged. Child progress
 remain visible. This bounds silent hangs; sustained output from a stuck child is not proof of
 progress and is not detected by this inactivity bound.
 
-Regression evidence lives in `tests/unit/scripts/test-runner.test.ts` and the existing parity JSON
+Regression evidence lives in `tests/integration/scripts/test-runner.test.ts` and the existing parity JSON
 and gate-manifest suites: real child success/failure, silent stall, worker/parent SIGKILL, live-group
 preservation, safe reclamation, path/ownership refusal and actual failing Vitest CLI execution.
 
@@ -1263,7 +1194,7 @@ isolation, deadlines and every required acceptance proof.
 
 **2026-09-09 parallel-finalizer amendment (operator-approved).** For Phase 3.2 onward, use the newer [phase-exit cadence](#phase-exit-gates-from-3-2); intermediate finalizers run focused checks. Phase 3 parallel groups and
 future parallel implementation plans use prerequisite → independent workers → finalizer, as owned
-by [roadmap D344](../../roadmap/roadmap.md#parallel-finalizer-cadence). This explicitly replaces
+by roadmap D344 (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/roadmap/roadmap.md`). This explicitly replaces
 per-worker full-suite gates for those groups, including candidate commits and review corrections.
 Other standalone implementation and prerequisite candidates retain the default D191 gates; existing
 in-flight assignments outside Phase 3 retain their recorded cadence unless explicitly revised.
@@ -1301,8 +1232,8 @@ These are focused development releases; full repository acceptance remains open.
 recovery/live acceptance proofs, including every frozen A01–A42 and D01–D05 outcome. It repairs
 gate-found defects in the same session across the consumed required Phase 3.1 paths, adds regression
 proof and verifies the final corrected tree; it no longer hands ordinary repairs back to earlier
-tasks. The [phase execution table](../plans/phase-3/3.1-finish-the-dashboard/README.md#execution-cadence--operator-amendment-2026-09-13)
-and [3.1.19 plan](../plans/phase-3/3.1-finish-the-dashboard/task-19-final-acceptance-and-close-phase-3-1.md)
+tasks. The phase execution table (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-3/3.1-finish-the-dashboard/README.md`)
+and 3.1.19 plan (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-3/3.1-finish-the-dashboard/task-19-final-acceptance-and-close-phase-3-1.md`)
 own exact intake, repair scope and proof scheduling. Product scope and contract decisions remain
 bounded by the approved frozen outcomes.
 
@@ -1317,10 +1248,10 @@ Reuse valid unchanged evidence and rerun invalidated checks under D191; recordin
 do not duplicate full runs. A failed check remains a failure. Preserve assertions, membership,
 coverage floors, timeouts, isolation, the four-worker ceiling and coverage without compiler/linter
 contention. Integration, live-write and cutover permissions do not expand. Governance:
-[2026-09-13 final-gates correction](../../roadmap/roadmap.md#phase-31-full-gates-and-repairs-at-final-acceptance-operator-amendment-2026-09-13).
+2026-09-13 final-gates correction (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/roadmap/roadmap.md`).
 
 **2026-09-09 scoped combined-database exception (operator-approved).** Only newly planned
-Phase 2.6 database-modernization assignments in the [combined workflow](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md)
+Phase 2.6 database-modernization assignments in the combined workflow (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md`)
 use focused tests, lint and affected generation/freshness checks for iteration and committed
 development releases. Record actual commands, exits, tested SHA/tree and proof rows; these releases
 may unlock their explicit dependents before independent review. They are not accepted master
@@ -1347,13 +1278,13 @@ independent review belong to 2.6.9, with required reruns after repairs. Handover
 and reuses unchanged final evidence. Other phases and existing in-flight assignments are unchanged.
 
 **2026-09-09 L integration exception.** The operator approved 2.6.7
-[L01–L06](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/prerequisites.md#approved-l-execution-brief--2026-09-09): focused tests, lint and affected freshness, then local master
+L01–L06 (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/prerequisites.md`): focused tests, lint and affected freshness, then local master
 merge and owned cleanup by the L supervisor. Repeat invalidated integration checks; full gates
 and complete independent review remain 2.6.9. This supersedes final-only master timing for L.
 
 **2026-09-09 C integration exception.** The operator explicitly approved 2.6.5 C local master
 integration and owned cleanup after the focused checks in its
-[approved C01–C05 brief](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/run-completion.md#approved-execution-brief--2026-09-09).
+approved C01–C05 brief (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/run-completion.md`).
 This overrides the earlier no-master-integration-until-final-PASS rule for C only. Run meaningful
 focused unit/architecture checks, lint, affected freshness and filtered Storage Doctor verification;
 repeat invalidated checks after integration changes and verify unchanged inputs before reuse.
@@ -1362,7 +1293,7 @@ review remain in 2.6.9. C completion is a merged development release, not final 
 No live application, push or automatic successor is authorized. Other assignments retain their rules.
 
 **2026-09-09 F integration exception.** The operator approved 2.6.6 F local master merge and
-owned cleanup after its [F01–F07 focused proof](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/foundation.md#approved-execution-brief--2026-09-09).
+owned cleanup after its F01–F07 focused proof (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/foundation.md`).
 This overrides generic no-master/retention timing for F only. Run its explicit focused unit and
 architecture selectors, lint, affected freshness and filtered existing UI proof; prove real baseline
 transactions/recovery and four-domain independence before release. Integration repairs require
@@ -1374,7 +1305,7 @@ automatic successor, push or waiver of a failing focused check is authorized.
 
 **2026-09-09 D integration exception.** The operator approved 2.6.6.2 D local master merge and
 owned cleanup after the focused gates in its
-[D01–D05 brief](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/diagnostics.md#approved-execution-brief--2026-09-09).
+D01–D05 brief (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/diagnostics.md`).
 Run the assigned unit/architecture selectors, lint, affected freshness and dedicated desktop proof;
 recheck invalidated integration inputs before release. This overrides generic no-peer-merge and
 retained-branch timing for D only. Full typecheck, coverage, whole architecture/parity, broad
@@ -1383,7 +1314,7 @@ may build its required candidate bundle. Preserve every product proof, assertion
 and timeout; scoped PASS is not phase acceptance and a failing focused check cannot be deferred.
 
 **2026-09-09 P integration exception.** The operator approved 2.6.6.1 P local master merge
-and owned cleanup after the [P01–P06 focused proof](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/provider-usage.md#approved-execution-brief--2026-09-09),
+and owned cleanup after the P01–P06 focused proof (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/provider-usage.md`),
 including mixed generic/legacy reservation integrity and historical valid/corrupt controls. This
 supersedes generic no-master/retained-candidate timing for P only. Run assigned/affected focused
 units/guards, lint and freshness; rerun invalidated integration checks or verify exact input reuse.
@@ -1391,7 +1322,7 @@ Full typecheck/coverage, broad architecture/parity/build/performance and complet
 remain 2.6.9. No proof, floor, failure semantics or sibling ownership is waived.
 
 **2026-09-09 G integration exception.** The operator approved 2.6.6.3 G
-[G01–G06](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/artifacts.md#approved-execution-brief--2026-09-09).
+G01–G06 (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/artifacts.md`).
 After repaired F, one supervisor runs the assigned focused tests, lint and affected freshness,
 merges locally into master and cleans up only G’s owned checkout/ref. This overrides generic
 retained-candidate/no-master timing for G; rerun invalidated checks after integration changes and
@@ -1400,7 +1331,7 @@ performance, combined archive/recovery proof and complete independent review rem
 G completion is a scoped development release only; no push, live application or sibling launch.
 
 **2026-09-09 S integration exception.** The operator approved 2.6.6.4 S
-[S01–S06](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/decisions.md#approved-s-execution-brief--2026-09-09).
+S01–S06 (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/decisions.md`).
 After complete repaired F, run the assigned focused units/guards, lint, affected freshness and
 isolated/filtered desktop proof; merge locally and remove only S's owned checkout/ref. This
 supersedes S's generic no-master/retained-candidate timing. Rerun invalidated integration checks
@@ -1410,7 +1341,7 @@ remain 2.6.9. No failing assertion, floor, safety boundary or sibling ownership 
 completion means a merged scoped development release, not full phase acceptance.
 
 **2026-09-09 A integration and proof-allocation exception.** The operator approved 2.6.7.1 A
-[A01–A06](../plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/decisions.md#approved-a-execution-brief--2026-09-09),
+A01–A06 (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/decisions.md`),
 including three bounded existing-test updates. Run its exact focused unit/architecture selectors,
 lint and affected freshness; merge locally after focused PASS and verify owned cleanup. Recheck
 invalidated integration inputs or prove exact input reuse. A proves generic display data and parser
@@ -1422,7 +1353,6 @@ waived; no failing focused check is deferred. No push, live application or succe
 
 ### 3.15 `redaction-surface-scan.test.ts` — the redaction surface scan (D183, 2j)
 
-<!-- roadmap: p2-2j -->
 
 Ref clock-config-secrets §6 already says redaction is schema-owned and that "tests seed canary passwords, cookies,
 storage state, SSNs, DOBs, and private keys and scan every produced note/failure/screenshot
@@ -1532,7 +1462,6 @@ in both directions, the surfaces those guards each see one at a time.
 
 ## 4. `descriptor-coverage.test.ts` — the ONE rebuild guard replacing parity-list design
 
-<!-- roadmap: p1-authority -->
 
 Owned by **ref workflow-model §1.4**; this doc owns the **crosswalk** (which legacy invariants it replaces in
 the rebuild repo, while the legacy repo's own guard files remain through initial cutover) and the
@@ -1577,25 +1506,25 @@ exceptions. The explicit projection matrix above and source-surface inventory ar
 
 ## 5. The guard-of-guards manifest — accidental shrink protection, not an undeletable law
 
-<!-- roadmap: p1-base -->
 
 Rot vector: a guard file is deleted, renamed, or dropped from the `test:architecture` glob, and
 nobody notices the umbrella shrank. Extends the existing `gate-coverage` meta-guard.
 
 `docs/rebuild/guard-inventory.json` is the reviewed design inventory (owner, invariant, replacement
 required on removal); under D93 it travels with the plan docs into the rebuild repo, where
-`tests/unit/architecture/guard-manifest.test.ts` loads it rather than defining a second inline name
+`tests/architecture/guard-manifest.test.ts` loads it rather than defining a second inline name
 set. The test asserts:
-1. every inventory name maps to a real file recursively under `tests/unit/architecture/`;
+1. every inventory name maps to a real file recursively under `tests/architecture/`;
 2. every recursively discovered `*.test.ts` file is in the inventory (no unregistered guard — forces a
    conscious add, and forces this doc's inventory to stay honest);
-3. the named `unit`, `architecture`, and `scenario` Vitest projects form one exhaustive,
+3. the named `unit`, `integration`, `architecture`, and `scenario` Vitest projects form one exhaustive,
    non-overlapping collection of every offline authored `*.test.ts`/`*.test.tsx` file; the future
    live-dependent combined tier stays uncollected until it has its own runner; architecture includes
-   the complete recursive guard directory exactly, `unit` excludes it exactly, the architecture
+   the complete recursive guard directory exactly, `unit` and `integration` use disjoint roots, the architecture
    project excludes nothing, and `test:architecture` selects only that project while forcing empty
    collection to fail; an
-   independently collected unit test exercises that refusal so
+   independently collected integration process test exercises that refusal, while pure unit
+   policy tests reject empty, duplicate and orphaned injected listings, so
    the architecture lane cannot be its sole witness (a rename or nested guard cannot orphan or
    double-run it);
 4. every active rebuild-`src/` scan resolves at least one file; a family is activated in the same
@@ -1659,13 +1588,12 @@ makes no stronger mechanical claim.
 
 ### 5.1 The full registered set — where every doc's guards converge
 
-<!-- roadmap: p1-base -->
 
 The inventory is the one machine-readable place the umbrella is enumerated. Each doc owns its
 guards' contracts; the manifest owns that they exist and stay wired. **This list is the as-built set
-at HEAD, read from `docs/rebuild/guard-inventory.json` — 81 entries: 70 `active`, 9 `retired`, 2
+at HEAD, read from `docs/rebuild/guard-inventory.json` — 97 entries: 85 `active`, 11 `retired`, 1
 `planned`** — not an aspiration. `guard-manifest.test.ts` compares the active `file` list against a
-recursive walk of `tests/unit/architecture/` with `deepEqual`, which is bidirectional by
+recursive walk of `tests/architecture/` with `deepEqual`, which is bidirectional by
 construction and has one consequence worth stating outright: **a retired or planned guard's
 `.test.ts` file must not exist on disk**, or the walk finds a file the inventory does not claim.
 
@@ -1676,7 +1604,7 @@ the real tree and against its own violating fixture.
 **Active, by owning contract:**
 
 - **Meta — the guard-of-guards and the gates (this doc, §5):** `guard-manifest`, `gate-coverage`,
-  `parity-reference-authority` (item 9), `roadmap-doc-binding` (D263 — the plan ↔ docs binding),
+  `parity-reference-authority` (item 9),
   `config-snapshot-generations` (item 10), `migration-history-immutability`,
   `operational-isolation`, `test-runtime-root-isolation`, `test-target-registry`.
 - **Descriptor and contract SSOT (ref workflow-model §1.4, ref task-contract):** `descriptor-coverage`,
@@ -1895,8 +1823,10 @@ arm. *Red-capable oracle, two halves.* Compile-time: the `env` parameter is FIRS
 `resolveConfig` (`src/domain/config/resolve.ts:415`) and `resolveConfigWithProvenance` (`:419`), so
 removing it is red at every one of the nine composition call sites — no silent widening is possible.
 Runtime: P4 resolves with a hostile `process.env` populated for every retired key and asserts
-byte-identical output and no `"env"` value anywhere; P3 asserts `CONFIG_ENV_BINDINGS` (`resolve.ts:241`)
-is empty and `runtime-environment.ts`'s `config` channel has zero members. Note for 1.6: `resolveConfig`
+byte-identical output and no `"env"` value anywhere. P3 directly asserts zero forbidden active exact
+environment channels and explicit refusal for every migrated key; restored-channel and removed-refusal
+negative controls exercise the runtime audit. Config modules are scanned for direct, aliased and
+computed environment access. No config binding schema/type or empty registry remains. Note for 1.6: `resolveConfig`
 has zero `src/` callers today but THIRTEEN files import it (ten under `tests/unit/**`, two under `tests/parity/helpers/**`, and `scripts/live-browser-login-smoke.ts:57`, inside the `typecheck` program — corrected 2026-09-04 by R04 from "five test files"), so its deletion is a test AND scripts edit too —
 §D331.11 P39's "changed deliberately in the same commit" rule covers exactly this.
 
@@ -2001,15 +1931,16 @@ read (§D332.9 rule 4) — the deletion and its proof are one commit, or the ada
 
 ## 6. TDD topology for the rebuild repo — four tiers, each an owned home
 
-<!-- roadmap: phase-1 -->
-
-<!-- roadmap-status: phase-1 -->
-- [x] the four-tier write order is as-built and unchanged: pure-logic unit → contract/type → architecture ratchets → the scenario tiers (§6)
-- [x] tier 4's name is corrected — there is no stub lane to pair with the live one (§7), so the tier is §10's scenario tiers
-> 2026-08-20 | docs-cohesion ref guards-and-tests | verified against `tests/scenario/helpers/pure-walk.ts` and the absence of any stub wiring in `src/`
-<!-- /roadmap-status -->
 
 "Same quality umbrella, made concrete." A new task or workflow is built **test-first** against these:
+
+The current local execution layout distinguishes deterministic units from integration proofs.
+`tests/unit/` may read a tracked fixture or wire a DOM component with injected ports. A test that
+actually opens SQLite (including `:memory:`), a server socket, a child process, a browser, or a
+composed workflow belongs under `tests/integration/`; a mixed suite moves intact until its owner
+extracts pure cases. Structural repository guards live under `tests/architecture/`. Scenario and
+browser parity sources retain their separate owners. The four write-order tiers below describe
+how new task evidence accumulates; they do not make a real database test a unit.
 
 1. **Pure-logic unit** — `task.impl.run({ input, ctx: fakeCtx })`. Ref task-contract §7B makes every task run a
   plain-object call; the `fakeCtx` contract uses the matching effect-specific ctx with a fake typed
@@ -2057,7 +1988,7 @@ tree on 2026-08-20: zero occurrences of `maybeWrapE2EStub`, `StepDataFn` or `stu
 and although `defineTaskContract` requires an `example` and parses it through its own `output` schema
 at seal time (`src/domain/contracts/base.ts:474`), **no runtime module reads `.example`** to stand in
 for a task's output. The migration plan is preserved at
-`docs/rebuild/history/superseded/2026-08-20-guards-and-tests-stub-lane.md`.
+`994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/history/superseded/2026-08-20-guards-and-tests-stub-lane.md`.
 
 **What took its place is stronger, and it is why the absence is not a gap.** A stub lane exists to
 run a graph without touching a real system. This tree does that two ways instead, both against the
@@ -2111,17 +2042,11 @@ the parity corpus (§10.1).
 
 ## 9. Worked example — adding one new submit-bearing workflow
 
-<!-- roadmap: migrations -->
 
 - [x] the worked example is as-built for the guard half — every RED it names is a guard that exists at HEAD
 - [x] steps 6–7 have their first concrete implementation: the `separations-kuali-finalization` pair, typed subject registry, durable result table and production CLI runner; its first green live canary remains date-blocked until 2026-08-28
 > 2026-08-25 | test-tiers | blocked execution persisted the no-browser result; the migration node's PROOF stays open because blocked is evidence that the test did not run, not a green result
 
-<!-- roadmap-status: migrations -->
-- [x] the per-workflow guard loop is unchanged and every guard it fires is active
-- [x] the per-workflow TEST loop (§10.11's seven steps) has its first T1 pair and the shared registry/result/CLI machinery; later migrations repeat it per workflow
-> 2026-08-25 | test-tiers | first blocked authority result proves the unavailable-subject branch; left for this first pair: the date-gated live green and migration-record line
-<!-- /roadmap-status -->
 
 Scenario: a new `badge-reissue` workflow that fills and submits a UCPath form. Red→green, and what
 must be registered:
@@ -2177,7 +2102,13 @@ Net: the safety suite plus descriptor projection coverage replace synchronized h
 guards—one contract change, and the compiler plus ratchets force the rest.
 
 
-## 10. The test family, and the split by what a test needs (R10)
+## 10. Historical R10 test family and retired scenario/parity tiers
+
+The specification below records the former R10 scenario/parity test tiers and their dated
+implementation. The operator retired both suites on 2026-10-02. Keep this material for provenance,
+but do not use its paths, counts, commands or checklists as current test requirements. Current test
+roots and active guard status live in the [codebase map](codebase-structure.md), the retirement
+amendment above and the guard inventory.
 
 
 - [x] DOCS the spec — §10 rewritten as-built with the tiers, layout, naming, run policy, subject registry, durable result and the two checklists (this commit)
@@ -2185,16 +2116,17 @@ guards—one contract change, and the compiler plus ratchets force the rest.
 - [x] BE T2 dashboard / non-run scenarios per feature, seeded from `tests/unit/dashboard` (§10.12) — the first feature is `separations` at `tests/scenario/dashboard/separations/` (2026-08-27); the corpus audit learned the tier as its THIRD kind (`DASHBOARD_SCENARIO_FILE_PATTERN`), which carries the integration walk's obligations because it walks no graph
 - [ ] BE T3 dashboard conditions attachable to a dry-run scenario — the first: separations §9.22 as a file (§10.7)
 - [x] BE the subject registry (`config/test-subjects.json`, values via `src/domain/secrets.ts`) + the insert-only `dry_run_scenario_results` row + `cli dry-run-scenario` (§10.5, §10.6)
-- [ ] PROOF T4 the agent-operated parallel e2e runner + the first journey, recorded — needs `{#parallel-runs}` and `{#duo-lease}` first (§10.8)
+- [ ] PROOF T4 operator dashboard parallel verification + the first journey, recorded — needs `{#parallel-runs}` and `{#duo-lease}` first (§10.8)
 - [ ] BE coverage floor 80/80/80 global, with D91's 50 % global branch gate adopted alongside it (§10.10)
 - [x] BE the FIRST T1 pair in the tree — `tests/scenario/workflows/separations-kuali-finalization/{structural.scenario.test.ts, dry-run.scenario.ts}`, seeded from the valid proof contracts/helpers of the dismantled annotation workflow (D266; ref workflow-model §1.2.2)
 > 2026-08-20 | docs-cohesion ref guards-and-tests | the spec is written against the code (`vitest.config.ts`, `src/core/run-executor.ts`, `src/core/write-sequencer.ts`, `tests/scenario/**`, `tests/parity/**`, `docs/rebuild/migrations/separations.md` §9.22); left: the four code units 5.2b–5.2d. Two as-built findings recorded rather than assumed: `TransactionDryRunPreviewSchema`'s `mismatch` subject arm is unreachable, and a real subject's EID is hardcoded across seven tracked files
 > 2026-08-25 | test-tiers | registry, authority row and CLI runner built; the finalization canary now records `blocked`/`not-started` before browser composition because its honest subject is unavailable until 2026-08-28. The T1 PROOF remains open until that manifest records `met`
 > 2026-09-02 | test-suite-rationalization R5a | the T1a structural half is complete for all seven registered workflows: each owns exactly one `workflows/<workflow-id>/structural.scenario.test.ts`, the architecture lane refuses split/flat ownership, and all structural person/document identities are synthetic. The overall T1 item remains open: only `separations` and `separations-kuali-finalization` have T1b manifests, and their sole retained canary is honestly `gone`/blocked rather than `met`.
 
-This section is normative and it is the one an agent writing tests reads first. **R10's rule:
-`tests/` is organized by what a test NEEDS in order to run**, because that is the only split that
-answers the question every change actually asks — *which suites must I re-run?* A split by subject
+This was the normative R10 test policy; the operator retired its scenario and parity tiers on
+2026-10-02. The remaining specification is retained as decision history, not current instructions.
+**R10's former rule was: `tests/` is organized by what a test NEEDS in order to run**, because that
+was the split intended to answer the question every change asked — *which suites must I re-run?* A split by subject
 (“the separations tests”) cannot answer it; a split by mechanism (“unit vs integration”) cannot
 either. A split by need can: a test that needs nothing but the tree runs on every commit, and a test
 that must RUN a workflow needs a browser, a real system and a real subject, so it runs when somebody
@@ -2202,27 +2134,30 @@ asks for it and its result is recorded.
 
 ### 10.1 The test family, as built
 
-Ten members. Folder, runner, when it runs, what it may touch, what it proves. R7 refreshed the
-family-wide census and taxonomy on 2026-09-02.
+Eleven members. Folder, runner, when it runs, what it may touch, what it proves. R7's
+2026-09-02 census labels below are historical; the current four-project collection and tier
+boundary are in §10.9 and §6.
 
 | family | folder | runner | when | may touch | proves |
 |---|---|---|---|---|---|
-| **unit** | `tests/unit/**` (306 files / 111,789 lines, architecture excluded) | vitest project `unit` | every commit | pure functions, fake ctx, temp dirs, its own SQLite files under a temp root — **never** a real runtime root (`test-runtime-root-isolation`) | one module's decision logic, against its own schemas |
-| **architecture guards** | `tests/unit/architecture/**` (70 files / 27,587 lines) | vitest project `architecture`; `npm run test:architecture` selects that project by name | every commit | this repository as DATA — source text, ASTs, registries, `package.json`, and TypeScript configs; authenticated frozen provenance may describe legacy facts, but no finished gate reads the legacy checkout | that a rule holds everywhere, and — through `guard-manifest` — that each of the nine arms still fires against a violating fixture |
+| **unit** | `tests/unit/**` | vitest project `unit`; `npm run test:unit` selects only this project | focused Phase-1 iteration and the full gate at phase exit | pure functions, fake ctx, fixture reads and injected-port DOM wiring; no exercised database, process, socket, browser or composed workflow | one module's deterministic decision logic, against its own schemas |
+| **integration** | `tests/integration/**` | vitest project `integration`; `npm run test:integration` selects only this project | explicit later execution and the applicable full gate at phase exit | isolated real storage, processes, sockets and composed workflows; **never** a real runtime root (`test-runtime-root-isolation`) | actual adapter and composition behavior that a pure unit cannot establish |
+| **architecture guards** | `tests/architecture/**` | vitest project `architecture`; `npm run test:architecture` selects that project by name | focused affected checks and the full gate at phase exit | this repository as DATA — source text, ASTs, registries, `package.json`, and TypeScript configs; authenticated frozen provenance may describe legacy facts, but no finished gate reads the legacy checkout | that a rule holds everywhere, and — through `guard-manifest` — that each registered arm still fires against a violating fixture |
 | **fixture scenarios** | `tests/scenario/*.scenario.test.ts` (6 capability files) + `tests/scenario/workflows/<workflow-id>/structural.scenario.test.ts` (7 T1a files) + `tests/scenario/dashboard/**` (3 T2 files) | vitest project `scenario` | every commit | `walkDescriptor` over a real descriptor with caller-supplied node outputs; fake stores or one isolated authority database; no browser | that one declared graph or dashboard command/projection path binds, refuses and terminates as authored, and that graph coverage points claimed are the ones walked |
 | **integration walks** | `tests/scenario/*.walk.test.ts` (1) | vitest project `scenario` | every commit | ONE real authority database and the production read models | the JOINS only composition can falsify; it claims no coverage point and carries no manifest row (D185) |
-| **dashboard unit tests** | `tests/unit/dashboard/**` (102 files) | vitest project `unit` | every commit | extracted `*-model.ts` decisions plus wiring-level `jsdom` tests that opt in per file; anything visual stays in parity | that a surface's pure half computes what it claims and its wiring dispatches/focuses as contracted |
+| **dashboard unit tests** | `tests/unit/dashboard/**` | vitest project `unit` | focused affected checks and the full gate at phase exit | extracted `*-model.ts` decisions plus wiring-level `jsdom` tests with injected ports; anything visual stays in parity | that a surface's pure half computes what it claims and its wiring dispatches/focuses as contracted |
 | **parity** | `tests/parity/**` — 17 specs, **281 cases**, **222 reference triples** (`.png` + `.a11y.yml` + `.meta.json`) | `npm run test:parity` (Playwright, outside Vitest and coverage) | on a dashboard change, and before a slice closes | the built bundle over ephemeral fixture and seeded BFFs; never ports 3938/5174 | that the rendered pixel/a11y/browser contract has not moved; every stored reference half is asserted, `maxDiffPixels: 0`, and dual-adapter structure proves fixture relevance |
 | **performance budgets** | `tests/perf/dashboard-benchmark.ts` | `npm run perf:dashboard` plus unit negative controls | before a slice closes and after a measured dashboard data-path change | one deterministic seeded authority database under a temp root; no production ports or runtime root | exact non-duration bounds on day-wire SQL, patch reparses, log scope, archive freeze and member-preview delta; elapsed timings remain observational because host contention is not a stable correctness oracle |
-| **the recovery drill** | inside `storage-recovery.test.ts` | vitest project `unit` | every commit | temporary SQLite databases and the official `node:sqlite` online-backup API | that a corrupted authority database restores from the newest verified backup, rebuilds projections ONLY, and that D181's stopped-system proof is derivable from real runtime-lock files |
+| **the recovery drill** | `tests/integration/storage-restore-drill.test.ts` and related recovery suites | vitest project `integration` | explicit later execution and the applicable full gate at phase exit | temporary SQLite databases and the official `node:sqlite` online-backup API | that a corrupted authority database restores from the newest verified backup, rebuilds projections ONLY, and that D181's stopped-system proof is derivable from real runtime-lock files |
 | **the controlled-commit proof** | `docs/rebuild/reference/write-safety.md` §Phase-2 controlled-commit as-built | **recorded, never re-run** | once, 2026-08-04 | a real Kuali document | that the write kernel fences, commits, verifies by reload read-back and refuses a replay in 2 ms. A recorded proof is evidence; re-running it would be a second real HR write, so it is cited, not executed. Each workflow still owes its own §3.2 controlled-commit proof at its migration. |
 | **live selector re-verification** | no folder — a pre-authorized act at each migration | `playwright-cli`, by the agent | at every workflow's migration | real pages, read-only (`snapshot`) | that a ported selector still resolves. D150 retired the cross-repo accounting in favour of exactly this, because a selector checked against the live system beats one diffed against legacy's copy of it. |
 
 ### 10.2 The split: no-dry-run tests and dry-run tests
 
-**A no-dry-run test needs nothing but this tree.** Unit, architecture guards, structural fixture
-scenarios, dashboard feature scenarios, parity. They are deterministic, they touch no external
-system, and they are cheap enough that the only sane policy is to run them.
+**A no-dry-run test needs nothing but this tree.** Unit, integration, architecture guards,
+structural fixture scenarios, dashboard feature scenarios and parity do not touch external HR
+systems. Integration proofs may still create isolated databases, sockets or child processes and
+need the applicable gate's resource budget.
 
 **When they run:**
 
@@ -2252,7 +2187,7 @@ week is still citable this week.
 | **T1** | per workflow: ONE structural scenario + ONE dry-run scenario | the second half only | `test:coverage` / `cli dry-run-scenario` |
 | **T2** | per dashboard feature: a feature scenario over the real projection, plus its parity references | no | `test:coverage` / `test:parity` |
 | **T3** | a dashboard CONDITION attached to a dry-run scenario — drive the real ceremony while the run is parked, assert the timeline while it is running, read the receipt after it settles | yes | `test:combined` |
-| **T4** | the agent-operated end-to-end tier: MANY dry-run scenarios in parallel | yes | `test:e2e` |
+| **T4** | operator dashboard end-to-end verification: MANY dry-run scenarios in parallel | yes | `test:e2e` |
 
 **The seed for the first pair (D266, 2026-08-21).** `kuali-timekeeper-annotation` — Phase 2's
 one-node proving workflow — is dismantled by the operator's ruling that it *is* this framework's
@@ -2434,7 +2369,13 @@ answer from the same shared input under test. Preserve synthetic-subject ranges,
 clocks, dataset shapes/counts, case membership, isolation, timeouts and coverage floors.
 
 **Files and privacy.** Offline imports must succeed without private configuration, credentials,
-provider access, database startup or browsers. Tracked safe file paths resolve relative to their
+provider access, database startup or browsers. Exact credential factory capabilities may be imported
+by the recorded admission helpers only with deferred function-body references and deferred producer
+functions. The preflight corpus may reference Chromium only to install launch-refusal spies inside
+its explicit executor. Eager call/new/alias/namespace/unlisted-symbol/IIFE/callback controls enforce
+this boundary. Executable synthetic process fixtures live in `tests/process-fixtures`; their exact
+child-entrypoint consumers are recorded and module imports into that tier are forbidden. Tracked safe
+file paths resolve relative to their
 config and stay inside the checkout. Private paths resolve only when explicitly requested and never
 fall back to another worktree. Include a minimal synthetic PDF and a consumer proving actual readable
 bytes; no tracked real HR documents or fabricated private corpus. Missing/invalid selected files,
@@ -2463,7 +2404,7 @@ run through the repository runner (`npm test -- <files>`), none needs a private 
 | P5 `test-data-local` binding (name + opaque `sourceId`, never a value) through start, receipts, redaction, resume/rerun/archive | `tests/unit/dry-run-scenario-composition.test.ts` (binding captured at `runtime.start`), `tests/unit/source-bound-repeat.test.ts`, `tests/unit/rerun-protected-identity.test.ts`, `tests/unit/archive-protected-identity.test.ts`, `tests/unit/run-record-service/service.test.ts`, `tests/unit/write-sequencer.test.ts`, `tests/unit/run-executor.test.ts` |
 | P6 destination missing/equal/conflict/invalid, source change under lock, failure after staging before source retirement, lock held, retry idempotence | `tests/unit/config/credential-test-data-migration.test.ts` |
 | P7 synthetic v1 history and upgrade binding replayed under the frozen legacy schema (`LEGACY_PROTECTED_SETTINGS_SCHEMA_HASH` pinned), operational entries preserved, retired command/write/value identities fenced, ordinary reader refuses v1 until migrated; pre-D341 durable command/audit rows stay readable through `commands-history` | `tests/unit/config/credential-test-data-migration.test.ts`, `tests/unit/config/credential-store.test.ts`, `tests/unit/protected-settings-history.test.ts`, `tests/unit/storage-upgrade-d331.test.ts` |
-| P8 fixture accounting: no cross-tier import of `tests/unit/{fixtures,helpers}`, cross-tier imports of `tests/unit/architecture/helpers/` limited to the three recorded `descriptor-fixtures` importers, shared fixtures pure at import, tracked shared inputs, ignored private file and staging pattern, README ownership map | `tests/unit/architecture/test-data-ownership.test.ts` (guard `test-data-ownership`), `tests/fixtures/README.md` |
+| P8 fixture accounting: cross-tier imports of unit-only fixtures/helpers are refused except exact parity compatibility exports; three unchanged scenario/shared callers use the pinned descriptor-fixture export; three named shared resource harnesses remain explicit. Shared data fixtures stay pure, tracked inputs and ignored private files are checked, and the README maps owners. | `tests/architecture/test-data-ownership.test.ts` (guard `test-data-ownership`), `tests/fixtures/README.md` |
 | P9 actual reset-root preflight, reviewed private conversion, readback, value-safe credential comparison, doctor | recorded below after integration; not inferred from P6/P7 |
 
 Defects the proofs found and fixed in the candidate: the credential store's pre-rename live check
@@ -2743,10 +2684,9 @@ authority or wire fact that independently supports it. §9.22's own table — `|
 Paired authority / wire fact | Verdict |` — is the assertion shape; the file is that table made
 executable.
 
-### 10.8 T4 — the agent-operated parallel end-to-end tier
+### 10.8 T4 — operator dashboard concurrency verification
 
-**T4 is MANY dry-run scenarios running at once, operated by an agent, and it is the only tier that
-tests the platform rather than a workflow.** Its subject is concurrency: N runs across DIFFERENT
+**T4 is MANY dry-run scenarios running at once through the operator dashboard.** Its subject is concurrency: N runs across DIFFERENT
 workflows, and — the harder half — **two runs of the SAME workflow at once**.
 
 **It needs two things this tree does not have yet, and it may not be scheduled before them.**
@@ -2773,23 +2713,16 @@ subject label is distinct where the workflow's fence is subject-keyed, because t
 on one permanent key is a *deliberate* test that belongs in a manifest case with its expected
 refusal, not an accident of scheduling.
 
-**How an agent operates it** — the topology is `/custom-e2e-verify`'s, specialized here rather than
-restated:
+**The operator drives verification through the dashboard.**
 
-- **one driver, many read-only verifiers.** Exactly one agent owns the browser and the dashboard.
-  Verifier agents read artifacts and read-only endpoints — spans, the authority database, the
-  `dry_run_scenario_results` rows, the run-detail wire — and never touch the app. The driver finishes
-  driving, waits, then triages. A single end-of-run auditor does the cross-cutting reconciliation,
-  because splitting cross-cutting checks across agents lets an inconsistency fall between them.
 - **double-entry ground truth.** Every UI assertion is paired with an independent source. The
   dashboard is itself under test, so a green screen proves nothing alone.
 - **a workaround is a finding.** The driver acts only as an operator could. The moment it reaches
   for something no button offers, that is the defect — file it, take the minimum manual step, and
   stamp the affected assertion conditional. "It worked after I poked it" is the bug, not the
   all-clear.
-- **an append-only issue ledger.** One JSONL object per line, never edited by an agent that did not
-  write it: `id`, `kind` (`finding` · `corroboration` · `pass`), `foundBy`, `area`, a `dedupKey`
-  naming the SYMPTOM and never the cause, `severity`, `title`, at least one evidence path, `status`.
+- **an append-only issue ledger.** Record attributable findings, corroboration, passes and evidence
+  paths without overwriting another contributor's entries.
 - **red→green promotion.** A confirmed finding is promoted to a deterministic regression test in the
   LOWEST layer that can hold it — a unit test if a unit test can, a structural scenario if it must, a
   manifest case only if nothing cheaper reaches it. An unpinned fix will be rediscovered by the next
@@ -2801,9 +2734,10 @@ restated:
 
 ```
 tests/
-  unit/                                     unchanged — one module's decision logic, fake ctx, no browser
-    architecture/                           unchanged — the 65 guards + helpers/ + fixtures/
-    dashboard/                              unchanged — the surfaces' extracted *-model.ts halves
+  unit/                                     deterministic policy and component wiring with injected ports
+    dashboard/                              the surfaces' extracted *-model.ts halves
+  integration/                              real storage, process, socket or composed workflow proofs
+  architecture/                             recursive structural guards, helpers and violation fixtures
   scenario/
     helpers/                                pure-walk, coverage-claims, the fake stores
     workflows/<workflow-id>/
@@ -2827,23 +2761,26 @@ a manifest that vitest picked up would start a browser inside the per-commit gat
 them by GLOB rather than by discipline. `*.walk.test.ts` keeps D185's meaning exactly: a walk claims
 no coverage point and the manifest's `file` regex refuses a walk path outright.
 
-**Vitest projects.** Three, as built. `vitest.config.ts` makes every authored Vitest file belong to
+**Vitest projects.** Four. `vitest.config.ts` makes every authored offline Vitest file belong to
 exactly one named project; `guard-manifest` enumerates the real corpus and rejects both orphaned and
 multiply collected files. A future dry-run-dependent `combined` tier stays uncollected until it has
 an executor and a deliberate script.
 
 | project | include | in `test:coverage` |
 |---|---|---|
-| `unit` | `tests/unit/**/*.test.ts`, **excluding** `tests/unit/architecture/**` | yes |
-| `architecture` | `tests/unit/architecture/**/*.test.ts` | yes |
+| `unit` | `tests/unit/**/*.test.ts` | yes |
+| `integration` | `tests/integration/**/*.test.ts` | yes |
+| `architecture` | `tests/architecture/**/*.test.ts` | yes |
 | `scenario` | `tests/scenario/**/*.test.ts`, excluding future live-dependent `tests/scenario/combined/**` | yes |
 
 **jsdom, per file (D277, 2026-08-27).** `jsdom` is a devDependency and is never a project default: a test that needs a real DOM to pin wiring — what a press dispatches, where focus returns — declares `@vitest-environment jsdom` at the top of its own file inside `unit`. The environment is opted into by the file, so a pure `*-model.ts` test never pays for a DOM, and a DOM test can never be mistaken for a visual claim — visual claims belong to `tests/parity/**`.
 
-The `unit` exclusion is the point of the architecture split: guard files execute once inside
-`test:coverage`. `test:architecture` is `tsx scripts/test-runner.ts run --project architecture --passWithNoTests=false`, and `guard-manifest`
-binds its script, complete recursive include, empty exclude, unit exclusion, and non-empty
-collection together.
+The distinct roots keep guards out of `test:unit` and execute them once inside `test:coverage`.
+`test:unit` and `test:integration` lock selection to their named projects and accept only positional
+file filters; project/config overrides are refused. `test:architecture` selects only its named
+project with non-empty collection. `guard-manifest` checks all four project includes, empty
+excludes where applicable, unique ownership and non-empty collection; injected-listing policy
+tests prove duplicate, orphan and empty refusals.
 
 `tests/e2e/**` is outside the vitest projects entirely, like `tests/parity/**`, and both are excluded
 from coverage instrumentation.
@@ -2853,12 +2790,14 @@ and D190's lesson is that a lane nobody chains is a lane that cannot fail.
 
 | script | runs | trigger |
 |---|---|---|
-| `npm run typecheck && npm run lint && npm run test:coverage` | unit + architecture + T1 structural + T2 + the walks, with the floors | default implementation candidates and finalizer completion; focused parallel-worker and documentation-only exceptions in §3.14 D191 |
+| `npm run test:unit` | deterministic unit project only | focused local backend iterations in the supporting Phase 1–5 initiative |
+| `npm run test:integration` | preserved integration project only | explicit later operator-reviewed integration execution |
+| `npm run typecheck && npm run lint && npm run test:coverage` | unit + integration + architecture + T1 structural + T2 + the walks, with the floors | default implementation candidates and finalizer completion; focused parallel-worker and documentation-only exceptions in §3.14 D191 |
 | `npm run test:parity` | 281 browser cases, including 222 reference triples and the dual-adapter comparison | every dashboard change; before a slice closes |
 | `npm run perf:dashboard` | reproducible structural counters plus observational timings | after a measured dashboard data-path change; before a slice closes |
 | `npm run cli -- dry-run-scenario <workflow> --subject <label>` | ONE T1b manifest against the real systems | at a workflow's migration; whenever its graph or its transaction node changes; to refresh a stale recorded result |
 | `npm run test:combined` | T3, against a live dry run | when a dashboard surface a workflow depends on changes, and at that workflow's migration |
-| `npm run test:e2e` | T4, agent-operated | deliberately, after `{#parallel-runs}` and `{#duo-lease}` land; before cutover |
+| `npm run test:e2e` | T4, operator dashboard verification | deliberately, after `{#parallel-runs}` and `{#duo-lease}` land; before cutover |
 
 **The `scenario-coverage` audit is kept exactly as built and extended across the new folders.**
 Every scenario declares the coverage points it walked — an `it` title whose head (before `" — "`)
@@ -2881,6 +2820,13 @@ Targeted local iteration is allowed, while supervisor integration and merge requ
 type/lint/coverage family. The affected-suite ≤30 s, full-coverage ≤90 s, and parity ≤75 s targets
 are measured objectives, never permission to delete unique protection, weaken isolation/parallelism,
 raise an allowance, lower a floor, or add an exclusion.
+
+Runner scratch lives under the owned `/tmp/hrt-<uid>/run-*` directory: successful runs remove
+their scratch, failed runs retain `failure.txt` and the tail, and `test:reap` checks ownership
+before explicit reclamation. `coverage/`, `test-results/`, and `tests/parity/.output/` are ignored
+generated output; reviewed parity references and reproducible fixtures stay tracked. Accepted
+task evidence belongs under the external rebuild-evidence root. `test-artifact-ownership` checks
+the current Git paths/ignore policy, with injected negative controls in the unit policy test.
 
 One configured streaming `verbose` reporter owns Vitest output: project, file, suite, and the full
 behavior/refusal title remain visible as work completes. Scripts do not layer a second reporter.
@@ -3026,7 +2972,6 @@ now.
 
 ### Phase 1b as-built guard delta (2026-07-31)
 
-<!-- roadmap: p1-base -->
 
 The rebuild guard lane is no longer a pre-tree promise. The reviewed manifest discovers every
 architecture test recursively and runs active whole-`src` arms over real source; typecheck, ESLint,
@@ -3046,7 +2991,6 @@ their future contracts are not reported as implemented by 1b.
 
 ### Phase 1c Stage A as-built guard delta (2026-07-31)
 
-<!-- roadmap: p1-authority -->
 
 The existing `strict-boundary-schemas.test.ts` catalog now registers every Stage-A durable/wire
 schema and exercises every command, proof, probe, settlement, intent/attempt, notification,
@@ -3066,7 +3010,6 @@ injection, and projector tests remain later Phase-1c/1f work; Stage A does not m
 
 ### Phase 1c Stage B as-built guard delta (2026-07-31)
 
-<!-- roadmap: p1-authority -->
 
 Stage B extends the existing `strict-boundary-schemas.test.ts` catalog with the adapter options,
 metadata/inspection, immutable-insert disposition, and strict SQLite storage-record shells. It also
@@ -3089,7 +3032,6 @@ HTTP/UI, and live lanes.
 
 ### Phase 1c Stage C as-built guard delta (2026-08-01)
 
-<!-- roadmap: p1-authority -->
 
 Stage C activates the existing `storage-recovery` inventory arm and gives it a non-empty focused
 architecture suite over real temporary SQLite databases and the official native online-backup API.
@@ -3115,7 +3057,6 @@ Stage-D or later work, so Phase 1c is still incomplete.
 
 ### Phase 1c Stage D as-built guard delta (2026-08-01)
 
-<!-- roadmap: p1-authority -->
 
 Stage D activates exactly three previously planned inventory entries in the same commit as their
 implementations and focused suites:
@@ -3145,7 +3086,11 @@ exit remains the live Person Lookup spine proof.
 
 ### Phase 1d guard-activation boundary (ratified 2026-08-01)
 
-<!-- roadmap: p1-authority -->
+**Current amendment — 2026-10-01.** The UI catalog feature, generated-artifact freshness check,
+and catalog-only test cases are retired. Semantic UI registries, selector evidence, verification,
+provenance and write-safety assertions remain. The dated Phase 1d inventory below preserves its
+original paths and gate evidence; current homes are in [codebase structure](codebase-structure.md).
+
 
 Phase 1d activates only guards whose real seam exists: port provenance, semantic UI registry and
 safe catalog freshness, task/driver boundary, effect-contract/example/error/freshness/provenance/
@@ -3247,7 +3192,7 @@ root, temp→fsync→atomic-rename durability sequence, crash-boundary recovery,
 idempotency; its AST canary rejects direct mutable filesystem access from task/workflow
 implementations.
 `provider-capability-boundary` confines raw network/provider modules and adapter implementations to
-`infra/providers`, pins exact capability client narrowing, and has a direct-network/forged-adapter
+`src/backend/processing/providers`, pins exact capability client narrowing, and has a direct-network/forged-adapter
 canary. The recursive strict-boundary catalog now includes session, retry, artifact, provider, and
 artifact-root schemas. These active guards cover only the real 1d interfaces/declarations,
 artifact writer, and provider deterministic fakes: 1f admission/budget/worker/session-runtime
@@ -3257,7 +3202,6 @@ guards and 2h production provider-pool/consumer guards remain planned.
 
 ### Phase 1f guard-activation boundary (ratified 2026-08-02)
 
-<!-- roadmap: p1-kernel -->
 
 Phase 1f must activate guards against the real executor/command/session/provider targets in the
 same commits as those targets. The acceptance set is non-vacuous and fail-both-ways:
@@ -3289,7 +3233,7 @@ same commits as those targets. The acceptance set is non-vacuous and fail-both-w
   no sleeping worker. Production pool/consumer coverage remains 2h.
 
 The activated D112 guard walks every `src/**` import and each task's transitive local import graph:
-raw network/vendor modules and adapter implementations remain under `infra/providers/**`; task and
+raw network/vendor modules and adapter implementations remain under `src/backend/processing/providers/**`; task and
 store graphs cannot reach those adapters; only `core/provider-admission.ts` constructs the admitted
 client or consumes the adapter interface. It audits the closed capability/config mapping in both
 directions, pins one deterministic harness surface, proves denial/timeout/abort never fall through

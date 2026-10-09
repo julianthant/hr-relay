@@ -1,0 +1,92 @@
+# workflow-mocks-input-person-lookup-dark-1280--graphite-warm--1280x720
+# adapter: fixture
+# fixture: workflow-mocks.spec.ts:all workflow previews, Run and Rerun @ dark-1280
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- region "Notifications"
+- dialog "Start a run":
+  - banner:
+    - heading "Start a run" [level=2]
+    - paragraph: Person Lookup · Workflow preview
+    - button "Close"
+  - complementary:
+    - group:
+      - searchbox "Filter workflows"
+    - navigation "Workflow":
+      - heading "Search" [level=3]
+      - list:
+        - listitem:
+          - button "Person Lookup"
+        - listitem:
+          - button "I-9 Lookup" [disabled]: I-9 Lookup Parent only
+      - heading "Separations" [level=3]
+      - list:
+        - listitem:
+          - button "Separations"
+        - listitem:
+          - button "I-9 Check"
+      - heading "Onboarding" [level=3]
+      - list:
+        - listitem:
+          - button "Onboarding"
+        - listitem:
+          - button "Oath Signature"
+        - listitem:
+          - button "Oath Upload"
+        - listitem:
+          - button "Emergency Contact"
+      - heading "Work Study" [level=3]
+      - list:
+        - listitem:
+          - button "Work-Study"
+      - heading "Payroll" [level=3]
+      - list:
+        - listitem:
+          - button "Kronos Pay Rule"
+      - heading "Utils" [level=3]
+      - list:
+        - listitem:
+          - button "OCR"
+        - listitem:
+          - button "CRM Doc Download"
+        - listitem:
+          - button "SharePoint Download" [disabled]: SharePoint Download Parent only
+      - heading "OnBase" [level=3]
+      - list:
+        - listitem:
+          - button "OnBase"
+      - heading "Timekeeping" [level=3]
+      - list:
+        - listitem:
+          - button "Old Kronos Reports"
+  - list "Run configuration path":
+    - listitem:
+      - button "1 Input": Input
+    - listitem:
+      - button "2 Options" [disabled]: Options
+    - listitem:
+      - button "3 Confirm" [disabled]: Confirm
+  - heading "Run input" [level=3]
+  - paragraph: Each entry starts one run.
+  - region "Input":
+    - group "Lookup mode":
+      - text: Lookup mode
+      - radio "Search" [checked]
+      - text: Search
+      - radio "Match"
+      - text: Match
+    - checkbox "CRM check" [checked]
+    - text: CRM check Employee IDs or names
+    - textbox "Employee IDs or names":
+      - /placeholder: 10000001; Lee, Jordan
+      - text: "10000001"
+    - paragraph: Separate people with a semicolon or a new line.
+    - list "Parsed inputs":
+      - listitem: 1 10000001
+  - contentinfo:
+    - text: 1 runPerson Lookup
+    - button "Cancel"
+    - button "Continue"

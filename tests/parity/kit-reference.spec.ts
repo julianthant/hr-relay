@@ -62,7 +62,7 @@ test("ds-kit specimen page", async ({ page }) => {
     if (message.type() === "error") errors.push(message.text());
   });
 
-  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto(`${server.baseUrl.replace(/\/$/u, "")}${KIT_ENTRY}`, { waitUntil: "domcontentloaded" });
 
   /*
@@ -96,7 +96,7 @@ test("ds-kit specimen page", async ({ page }) => {
     REFERENCES,
     {
       stateId: "ds-kit",
-      viewport: "1440x900",
+      viewport: "1280x720",
       theme: KIT_THEME.name,
       // The page serves no fact and calls no endpoint, so there is no adapter
       // behind it. `none` states that rather than borrowing a credible name.
@@ -117,17 +117,13 @@ test("ds-kit Cancelling state is distinct and nonterminal", {
 }, async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto(`${server.baseUrl}${KIT_ENTRY}?status=cancelling`, { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "Run statuses", exact: true })).toBeVisible();
   await expect(page.getByText("Cancelling", { exact: true }).first()).toBeVisible();
   await expect(page.getByRole("heading", { name: "Foundations", level: 2 })).toBeVisible();
   expect(errors).toEqual([]);
-  await captureParityPair(page, REFERENCES, {
-    stateId: "ds-kit-cancelling", viewport: "1440x900", theme: KIT_THEME.name,
-    adapter: "none", fixtureId: "ds-kit-cancelling", descriptorHash: FIXTURE_DESCRIPTOR_HASH,
-    appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: "default",
-  }, { fullPage: true });
+
   const tree = await page.locator("body").ariaSnapshot();
   expect(tree).toContain("Cancelling");
   expect(tree).toContain("Cancellation requested. The worker has not settled the run yet.");

@@ -30,16 +30,16 @@
 import {
   IdentityGateDetailWireSchema,
   type IdentityGateDetailWire,
-} from "../../../src/domain/dashboard/run-detail.js";
-import { deriveSchemaHash } from "../../../src/domain/schema-bound-value.js";
-import { IdentityApprovalResultSchema } from "../../../src/domain/separations/identity-approval.js";
+} from "../../../src/models/dashboard/run-detail.js";
+import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
+import { IdentityApprovalResultSchema } from "../../../src/rules/separations/identity-approval.js";
 import {
   buildIdentityEvidencePacket,
   deriveIdentityEvidenceDigest,
-} from "../../../src/domain/separations/identity-evidence.js";
-import type { IdentityEvidencePacket } from "../../../src/domain/separations/identity-evidence.js";
-import { noSeparationWritePlan } from "../../../src/domain/separations/write-plan.js";
-import { deriveJobRowFromCells } from "../../../src/stores/ucpath/driver/person-org-operation.js";
+} from "../../../src/rules/separations/identity-evidence.js";
+import type { IdentityEvidencePacket } from "../../../src/rules/separations/identity-evidence.js";
+import { noSeparationWritePlan } from "../../../src/rules/separations/write-plan.js";
+import { deriveJobRowFromCells } from "../../../src/backend/systems/ucpath/driver/person-org-operation.js";
 
 /** The EID resolved by name and then read back from UCPath. */
 export const FIXTURE_GATE_CHECKED_EID = "10688204";

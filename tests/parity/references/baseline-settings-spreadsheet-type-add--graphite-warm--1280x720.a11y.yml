@@ -1,0 +1,29 @@
+# baseline-settings-spreadsheet-type-add--graphite-warm--1280x720
+# adapter: fixture-bff
+# fixture: current-mounted-settings
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- region "Notifications"
+- dialog "Add spreadsheet type":
+  - banner:
+    - heading "Add spreadsheet type" [level=2]
+    - paragraph: Create a reusable set of named columns.
+    - button "Close"
+  - text: Type name
+  - textbox "Type name":
+    - /placeholder: For example, Employee directory
+  - heading "Fields" [level=3]
+  - button "Add field"
+  - combobox "Dashboard field 1": Legal name
+  - button "Remove field 1"
+  - combobox "Dashboard field 2": Employee ID
+  - button "Remove field 2"
+  - combobox "Dashboard field 3": Email
+  - button "Remove field 3"
+  - paragraph: All mapped fields can be searched. Reference data and updated copies are available automatically.
+  - contentinfo:
+    - button "Cancel"
+    - button "Add type"

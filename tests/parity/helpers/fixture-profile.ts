@@ -1,8 +1,8 @@
-import type { CommandResult } from "../../../src/domain/commands.js";
-import type { FrontendBootstrapWire } from "../../../src/domain/dashboard/bootstrap.js";
-import type { DashboardDayWire } from "../../../src/domain/dashboard/projection.js";
-import type { SavedArchiveReportWire, SavedRuntimeVersionIndexWire } from "../../../src/domain/dashboard/archive.js";
-import type { StartPlanWire as StartPlanResponse } from "../../../src/domain/dashboard/start-plan.js";
+import type { CommandResult } from "../../../src/rules/commands/commands.js";
+import type { FrontendBootstrapWire } from "../../../src/models/dashboard/bootstrap.js";
+import type { DashboardDayWire } from "../../../src/models/dashboard/projection.js";
+import type { SavedArchiveReportWire, SavedRuntimeVersionIndexWire } from "../../../src/models/dashboard/archive.js";
+import type { StartPlanWire as StartPlanResponse } from "../../../src/models/dashboard/start-plan.js";
 import { FIXTURE_BOOTSTRAP } from "./fixture-bootstrap.js";
 import { FIXTURE_DESCRIPTOR_HASH } from "./fixture-identity.js";
 import { FIXTURE_DAY_WIRE } from "./fixture-queue.js";
@@ -32,6 +32,7 @@ export const DEFAULT_DASHBOARD_PROFILE: FixtureDashboardProfile = Object.freeze(
 
 export type FixtureBffOptions = Readonly<{
     profile?: FixtureDashboardProfile;
+    preflightScenario?: "ready" | "warning";
     dayWire?: DashboardDayWire;
     archiveScenario?: "evidence";
     archiveComparison?: Readonly<{ reports: readonly SavedArchiveReportWire[]; versions: SavedRuntimeVersionIndexWire }>;

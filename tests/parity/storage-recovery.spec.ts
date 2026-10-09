@@ -6,13 +6,15 @@ import { gotoAppState } from "./helpers/app-driver.js";
 import { dismissWorkflowWindow, failOnPageErrors } from "./helpers/reference-harness.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { ensureParityBundle } from "./helpers/bundle.js";
-import { StorageDoctorWireSchema } from "../../src/domain/dashboard/storage.js";
+import { StorageDoctorWireSchema } from "../../src/models/dashboard/storage.js";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
+
 for (const theme of PARITY_THEMES) for (const viewport of [{width: 1024, height: 720}, {width: 1440, height: 900}]) {
   const a11yName = `recovered-${theme.name}-${String(viewport.width)}x${String(viewport.height)}.a11y.yml`;
-  test(`real storage recovery @ ${theme.name} @ ${String(viewport.width)}x${String(viewport.height)}`, {annotation: [{type: "required-a11y-evidence", description: a11yName}]}, async ({page}) => {
+
+test(`real storage recovery @ ${theme.name} @ ${String(viewport.width)}x${String(viewport.height)}`, {annotation: [{type: "required-a11y-evidence", description: a11yName}]}, async ({page}) => {
     ensureParityBundle();
     const target = await storageRecoveryTarget();
     const errors = failOnPageErrors(page);
@@ -24,19 +26,19 @@ for (const theme of PARITY_THEMES) for (const viewport of [{width: 1024, height:
       await dismissWorkflowWindow(page);
       await assertThemeApplied(page, theme);
       const response = page.waitForResponse(response => response.url().endsWith("/api/v1/storage/doctor"));
-      const doctor = page.getByRole("button", {name: "Run the read-only storage doctor"});
+      const doctor = page.locator(".settings-heading-actions button");
+      await expect(doctor).toBeEnabled();
       await doctor.focus(); await doctor.press("Enter");
       const wire = StorageDoctorWireSchema.parse(await (await response).json());
       expect(wire.authority.state).toBe("healthy");
       expect(wire.recovery.state).toBe("interrupted");
       expect(wire.protectedSettings.state).toBe("available");
       expect(wire.restoreCandidates.some(row => row.state === "verified-compatible" && row.selection === "lifecycle-pair" && row.restoreEligibility.state === "eligible")).toBe(true);
-      const interruption = page.locator(".storage-check-row").filter({hasText: "Interrupted operation"});
+      const interruption = page.locator(".diagnostic-check-entry").filter({hasText: "Recovery"});
       await expect(interruption).toContainText("Interrupted");
-      const ucpathPassword = page.locator(".storage-check-row").filter({hasText: "UCPath password"});
+      const ucpathPassword = page.locator(".diagnostic-check-entry").filter({hasText: "UCPath password"});
       await expect(ucpathPassword).toContainText("Present");
       await expect(page.getByRole("button", {name: "Storage recovery instructions"})).toHaveCount(0);
-      await test.info().attach("interrupted-checks.png", {body: await page.screenshot(), contentType: "image/png"});
       await test.info().attach("interrupted-doctor.json", {body: JSON.stringify(wire, null, 2), contentType: "application/json"});
       expect(errors).toEqual([]);
       await page.goto(`${target.baseUrl}/storage-proof-paused.html`);
@@ -51,9 +53,10 @@ for (const theme of PARITY_THEMES) for (const viewport of [{width: 1024, height:
       expect(after.recovery.state).toBe("clear");
       expect(after.authority.state).toBe("healthy");
       expect(after.protectedSettings).toEqual(wire.protectedSettings);
-      await expect(page.getByText("No interruption markers", {exact: true})).toBeVisible();
+      await expect(interruption).toContainText("No unfinished storage operations.");
+      await expect(interruption.getByRole("button", {name: "Diagnostic details", exact: true})).toHaveCount(0);
       await expect(interruption).toContainText("Clear");
-      await page.getByRole("region", {name: "Independent credentials"}).scrollIntoViewIfNeeded();
+      await page.getByRole("group", {name: "Connections"}).scrollIntoViewIfNeeded();
       await expect(ucpathPassword).toContainText("Present");
       await page.setViewportSize({width: 1100, height: 760});
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -63,7 +66,6 @@ for (const theme of PARITY_THEMES) for (const viewport of [{width: 1024, height:
       expect(body).not.toContain("SYNTHETIC_STORAGE_PROOF_NEVER_REAL");
       test.info().annotations.push({type: `a11y-attachment-sha256:${a11yName}`, description: createHash("sha256").update(body).digest("hex")});
       await test.info().attach(a11yName, {body, contentType: "text/yaml"});
-      await test.info().attach("recovered.png", {body: await page.screenshot(), contentType: "image/png"});
       await test.info().attach("real-route-proof.json", {body: JSON.stringify({provenance: target.provenance(), before: wire,
         restored: JSON.parse(restored.output) as unknown, after, requests: target.requests}, null, 2), contentType: "application/json"});
     } finally { await target.dispose(); }
@@ -82,12 +84,12 @@ test("real doctor serves corrupt authority and invalid recovery evidence togethe
     await gotoAppState(page, target.baseUrl, {day: FIXTURE_DAY, settings: "storage"});
     await dismissWorkflowWindow(page);
     const response = page.waitForResponse(response => response.url().endsWith("/api/v1/storage/doctor"));
-    await page.getByRole("button", {name: "Run the read-only storage doctor"}).click();
+    await page.locator(".settings-heading-actions button").click();
     const wire = StorageDoctorWireSchema.parse(await (await response).json());
     expect(wire.authority.state).toBe("degraded"); expect(wire.recovery.state).toBe("unavailable");
     expect(wire.counts.state).toBe("unavailable");
-    await expect(page.locator(".storage-check-row").filter({hasText: "Interrupted operation"})).toContainText("Unavailable");
-    await expect(page.locator(".storage-check-row").filter({hasText: "Pending commands"})).toContainText("Unavailable");
+    await expect(page.locator(".diagnostic-check-entry").filter({hasText: "Recovery"})).toContainText("Unavailable");
+    await expect(page.locator(".diagnostic-check-entry").filter({hasText: "Pending actions"})).toContainText("Unavailable");
     await expect(page.getByText("Data store unavailable", {exact: true})).toBeVisible();
     expect(readFileSync(authorityPath)).not.toEqual(original);
     expect(readFileSync(authorityPath, "utf8")).toBe("synthetic corrupt authority");

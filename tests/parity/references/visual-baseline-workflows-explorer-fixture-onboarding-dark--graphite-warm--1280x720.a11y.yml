@@ -1,0 +1,163 @@
+# visual-baseline-workflows-explorer-fixture-onboarding-dark--graphite-warm--1280x720
+# adapter: fixture
+# fixture: visual-baseline-workflows.spec.ts:mounted Logs and all Explorer workflows @ dark
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#dashboard-settings-content"
+- main:
+  - region "Settings":
+    - navigation "Settings sections":
+      - heading "Settings" [level=2]
+      - button "Back to dashboard"
+      - group:
+        - searchbox "Search settings"
+      - text: Personal
+      - link "General":
+        - /url: "?settings=general"
+      - link "Credentials":
+        - /url: "?settings=credentials"
+      - text: Advanced
+      - link "Performance":
+        - /url: "?settings=performance"
+      - link "Paths":
+        - /url: "?settings=paths"
+      - link "Routes":
+        - /url: "?settings=routes"
+      - text: Data
+      - link "Spreadsheets":
+        - /url: "?settings=spreadsheets"
+      - link "Explorer":
+        - /url: "?settings=explorer"
+      - link "Analytics":
+        - /url: "?settings=activity"
+      - text: Status
+      - link "Storage checks":
+        - /url: "?settings=storage"
+      - link "Preflight":
+        - /url: "?settings=preflight"
+      - text: Help
+      - link "Keyboard":
+        - /url: "?settings=keyboard"
+    - region "Workflow explorer preview":
+      - heading "Explorer" [level=1]
+      - paragraph: Browse workflows, their steps and field sources. Fictional preview data.
+      - combobox "Explorer workflow": Onboarding
+      - list "Workflow steps":
+        - listitem:
+          - heading "Open browser sessions" [level=2]
+          - text: CRM UCPath I-9
+        - listitem:
+          - heading "Choose the hire type" [level=2]
+          - text: You Hire type
+          - combobox "Hire type preview": New hire
+        - listitem:
+          - heading "Read the CRM onboarding record" [level=2]
+          - text: CRM
+          - group:
+            - strong: UCPath Entry Sheet
+            - text: Read only Email Supplied hire email Legal name CRM record Date of birth · identity data Protected CRM fields Address · city · state · postal code CRM record Phone CRM record Wage CRM appointment Effective date CRM appointment Position number · appointment CRM appointment Expected job end date CRM value, when supplied
+          - text: Confirm the supplied email identifies this CRM record
+        - listitem:
+          - heading "Download attached iDocs" [level=2]
+          - text: CRM Attachments
+          - combobox "Attachments preview": Documents attached
+          - text: Open the record’s attached documents Download the iDocs packet into the local hire folder Read back the downloaded files
+        - listitem:
+          - heading "Search for the person" [level=2]
+          - text: UCPath
+          - group:
+            - strong: Search / Match
+            - text: Fill form
+            - button "Show source for Legal name": Legal name CRM record
+            - button "Show source for Date of birth · identity data": Date of birth · identity data Protected CRM fields
+          - text: Click Search
+          - group:
+            - strong: Matching people
+            - text: Read only Employee IDs · names Observed search results
+        - listitem:
+          - heading "Resolve the hire identity" [level=2]
+          - text: You Person search result
+          - combobox "Person search result preview": No person found
+          - text: No existing person found. Continue with the new hire. Hire rehearsal
+          - combobox "Hire rehearsal preview": Illustrate filing
+        - listitem:
+          - heading "Resolve the I-9 profile" [level=2]
+          - text: I-9 I-9 profile
+          - combobox "I-9 profile preview": Create a profile
+          - text: Search the portal for the hire’s existing profile
+          - group:
+            - strong: I-9 profile
+            - text: Fill form
+            - button "Show source for Legal name": Legal name CRM record
+            - button "Show source for Email": Email CRM record
+          - text: Create the I-9 profile Read the profile ID back from the portal
+        - listitem:
+          - heading "Stage the Smart HR hire" [level=2]
+          - text: UCPath
+          - group:
+            - strong: Smart HR · Template
+            - text: Fill form
+            - button "Show source for Template": Template UC_FULL_HIRE
+            - button "Show source for Effective date": Effective date CRM appointment
+          - text: Click Create Transaction
+          - group:
+            - strong: Smart HR · Transaction details
+            - text: Continue
+            - button "Show source for Action reason": Action reason Hire - No Prior UC Affiliation
+          - text: Click Continue
+          - group:
+            - strong: Smart HR · Personal Data
+            - text: Fill form
+            - button "Show source for Legal name": Legal name CRM record
+            - button "Show source for Date of birth · identity data": Date of birth · identity data Protected CRM fields
+            - button "Show source for Address · phone · email": Address · phone · email CRM record
+            - button "Show source for I-9 profile ID": I-9 profile ID Verified portal profile
+          - group:
+            - strong: Smart HR · Job Data
+            - text: Fill form
+            - button "Show source for Position number · appointment": Position number · appointment CRM appointment
+            - button "Show source for Compensation rate": Compensation rate CRM wage
+            - button "Show source for Expected job end date": Expected job end date CRM value or configured fiscal-year rule
+          - text: Visit Earns Dist and the remaining required tabs
+        - listitem:
+          - heading "Verify the staged hire" [level=2]
+          - text: UCPath Read back the person, effective date, position and compensation Verify all required tabs and that Save and Submit is enabled
+        - listitem:
+          - heading "File the hire" [level=2]
+          - text: UCPath Click Save and Submit Read the transaction number from the confirmation
+        - listitem:
+          - heading "Verify the hire receipt" [level=2]
+          - text: UCPath
+          - group:
+            - strong: Hire confirmation
+            - text: Read only Transaction number Confirmation page Employee ID · name Post-submit person readback Effective date · job row Post-submit employment readback
+          - text: Match the receipt to the CRM hire and employment details
+      - paragraph: New-hire receipt readback illustrated
+- region "Session Panel":
+  - group "Session actions":
+    - button "Sessions"
+    - text: 2 running 1 starting 1 idle
+    - button "Add workers"
+    - button "Settings" [pressed]
+- region "Notifications"
+- listbox:
+  - group:
+    - option "Person Lookup"
+    - option "I-9 Lookup"
+    - option "Separations"
+    - option "I-9 Check"
+    - option "Onboarding" [selected]
+    - option "Oath Signature"
+    - option "Oath Upload"
+    - option "Emergency Contact"
+    - option "Work-Study"
+    - option "Kronos Pay Rule"
+    - option "OCR"
+    - option "CRM Doc Download"
+    - option "SharePoint Download"
+    - option "OnBase"
+    - option "Old Kronos Reports"

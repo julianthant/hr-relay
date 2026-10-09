@@ -1,7 +1,7 @@
-import { ArchiveGroupQuerySchema } from "../../../src/domain/archive/report.js";
+import { ArchiveGroupQuerySchema } from "../../../src/models/archive/report.js";
 import { matchesArchiveComparisonQuery } from "./fixture-archive-query.js";
 import { Hono } from "hono";
-import { SavedArchiveQuerySchema, ArchivedCaptureResourceWireSchema, SavedArchiveGroupsWireSchema, SavedRuntimeVersionIndexWireSchema, SavedArchiveIndexWireSchema } from "../../../src/domain/dashboard/archive.js";
+import { SavedArchiveQuerySchema, ArchivedCaptureResourceWireSchema, SavedArchiveGroupsWireSchema, SavedRuntimeVersionIndexWireSchema, SavedArchiveIndexWireSchema } from "../../../src/models/dashboard/archive.js";
 import {
 archiveEvidenceResponseBody,
 FIXTURE_ARCHIVE_EVIDENCE_BYTES,
