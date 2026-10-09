@@ -617,13 +617,13 @@ describe("D171 enqueue-intake-manifest — the fan-out", () => {
     assert.equal(manifest.totals.valid, 2);
     assert.deepEqual(manifest.exclusions.map((entry) => entry.sourceRow), [3]);
     assert.equal(manifest.corrections.length, 1);
-    // The ORIGINAL is read back from the file and redacted by the canonical
-    // field's own declared transform — never carried on the session.
-    assert.equal(manifest.corrections[0].original.state, "transformed");
+    // D361 retains the complete classified original value read from the file;
+    // the session does not carry it.
+    assert.equal(manifest.corrections[0].original.state, "allowed");
     assert.equal(
-      manifest.corrections[0].original.state === "transformed" ? manifest.corrections[0].original.value : "",
-      "4567",
-      "the eid's declared last4 transform, over the file's own cell",
+      manifest.corrections[0].original.state === "allowed" ? manifest.corrections[0].original.value : "",
+      "10-4567",
+      "the complete classified original value from the file's own cell",
     );
   });
 

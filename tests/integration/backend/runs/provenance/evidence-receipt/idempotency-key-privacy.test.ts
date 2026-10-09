@@ -134,13 +134,13 @@ describe("idempotency-key privacy across operator projections", () => {
       dashboard,
     });
     assert.equal(projectedBytes.includes(rawKey), false);
-    assert.equal(projectedBytes.includes(KUALI_EID), false);
+    assert.equal(projectedBytes.includes(KUALI_EID), true);
     assert.ok(projectedBytes.includes(digest.slice(0, 12)));
     assert.equal(parked.idempotencyKey, rawKey, "authority retains the byte-exact natural key");
     assert.equal(parked.message, unsafeMessage, "historical authority evidence remains immutable");
   });
 
-  it("withholds a seeded legacy receipt from run detail and Explain", () => {
+  it("serves a seeded legacy receipt locally without rewriting its retained payload", () => {
     const world = makeWorld();
     worlds.push(world);
     const queued = queuedEventOf(world, {
@@ -203,8 +203,8 @@ describe("idempotency-key privacy across operator projections", () => {
     });
 
     const projected = JSON.stringify({ runDetail, explain, text: renderExplainRun(explain) });
-    assert.equal(projected.includes(raw), false);
-    assert.match(projected, /composition 2.*withheld/u);
+    assert.equal(projected.includes(raw), true);
+    assert.ok(projected.includes(JSON.stringify(legacy)));
     assert.equal(JSON.stringify(legacy).includes(raw), true, "authority evidence remains unchanged");
   });
 });

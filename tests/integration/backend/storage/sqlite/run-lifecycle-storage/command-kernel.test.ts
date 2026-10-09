@@ -87,7 +87,7 @@ import {
 import { QUEUED_RUN, RUN_ID, sequentialIdFactory } from "../../../../../support/fixtures/phase1f-run-fixtures.js";
 import {
   appliedRunIds,
-  seedSyntheticRuntimeConfig,
+  seedInitialSettingsRuntimeConfig,
   singleAppliedRunId,
 } from "../../../../../support/fixtures/operator-command-fixtures.js";
 import { fixtureDescriptor } from "../../../../../support/fixtures/descriptor-fixtures.js";
@@ -347,7 +347,7 @@ function createHarness(
     clock,
   );
   openDatabases.push(database);
-  seedSyntheticRuntimeConfig(database);
+  seedInitialSettingsRuntimeConfig(database, clock);
   if (wrap !== undefined) {
     const transaction = database.withAuthorityTransaction.bind(database);
     database.withAuthorityTransaction = (work) => transaction((repositories) => work(wrap(repositories)));
@@ -476,7 +476,7 @@ function createPlan(harness: Harness, descriptor: AnyWorkflowDescriptor, eids: r
       dryRun: false,
       priority: "bulk",
       shape: "single",
-      configFingerprint: HASH_B,
+      configFingerprint: harness.database.authority.runtimeConfig.get()!.configFingerprint,
       configSnapshotId: UUID_4,
       plannedBy: "local-operator",
     },
@@ -1358,7 +1358,7 @@ describe("D113 gate resolution", () => {
         dryRun: false,
         priority: "bulk",
         shape: "single",
-        configFingerprint: HASH_B,
+        configFingerprint: harness.database.authority.runtimeConfig.get()!.configFingerprint,
         configSnapshotId: UUID_4,
         plannedBy: "local-operator",
       },
@@ -1496,7 +1496,7 @@ describe("D113 gate resolution", () => {
         dryRun: false,
         priority: "bulk",
         shape: "single",
-        configFingerprint: HASH_B,
+        configFingerprint: harness.database.authority.runtimeConfig.get()!.configFingerprint,
         configSnapshotId: UUID_4,
         plannedBy: "local-operator",
       },
@@ -1580,7 +1580,7 @@ describe("D113 gate resolution", () => {
         dryRun: false,
         priority: "bulk",
         shape: "single",
-        configFingerprint: HASH_B,
+        configFingerprint: harness.database.authority.runtimeConfig.get()!.configFingerprint,
         configSnapshotId: UUID_4,
         plannedBy: "local-operator",
       },

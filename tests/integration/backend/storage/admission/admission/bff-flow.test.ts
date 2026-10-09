@@ -9,7 +9,7 @@ import { createRunLogStreamStore } from "../../../../../../src/backend/logs/run-
 import { RunLogsStreamHub } from "../../../../../../src/backend/transports/http/subscriptions/run-logs-stream.js";
 import { CommandResultSchema } from "../../../../../../src/rules/commands/commands.js";
 import { singleAppliedRunId } from "../../../../../support/fixtures/operator-command-fixtures.js";
-import { seedSyntheticRuntimeConfig } from "../../../../../support/fixtures/operator-command-fixtures.js";
+import { seedInitialSettingsRuntimeConfig } from "../../../../../support/fixtures/operator-command-fixtures.js";
 import { runQueuedSpanEvent } from "../../../../../../src/backend/runs/commands/run-queued-span.js";
 import { composeActivity } from "../../../../../../src/backend/app/composition/dashboard/activity.js";
 import { ActorIdSchema as PublicationActorIdSchema } from "../../../../../../src/rules/identity/ids.js";
@@ -85,7 +85,7 @@ import { createDashboardStreamHub, type DashboardStreamHub } from "../../../../.
 import { fixtureDescriptor } from "../../../../../support/fixtures/descriptor-fixtures.js";
 import { ACTIVITY_PERSON_PSEUDONYM_KEY_HEX, activityPersonPseudonymResultRecord, CURRENT_SEPARATIONS_RESULT, seedSeparationsRunAuthority, TERMINAL_SEPARATIONS_RUN } from "../../../../../support/fixtures/integration/activity-person-pseudonym-fixtures.js";
 import { ARCHIVED_RUN } from "../../../../../support/fixtures/archive-fixtures.js";
-import { HASH_B, UUID_4 } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
+import { UUID_4 } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
 import { RUN_ID, sequentialIdFactory } from "../../../../../support/fixtures/phase1f-run-fixtures.js";
 import { personLookupQueuedRun } from "../../../../../support/helpers/phase1f-executor-harness.js";
 import { AT, DAY, traceOf, uuidOf } from "../../../../../support/helpers/backend/dashboard-harness.js";
@@ -96,6 +96,8 @@ import { explorerQueryDeps } from "../../../../../support/fixtures/explorer-seam
 import { archiveQueryDeps, archiveSnapshots } from "../../../../../support/fixtures/archive-seams.js";
 import { createTransactionHistory } from "../../../../../../src/backend/storage/sqlite/transaction-history.js";
 import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../../../../support/fixtures/dashboard-stream-seams.js";
+
+const HASH_B = resolveConfigWithProvenance(initialSettingsFileRecord().settings, hostConfigFacts({}), manualClock(AT)).fingerprint;
 
 interface Harness {
   readonly app: ReturnType<typeof createDashboardApp>;
@@ -219,7 +221,7 @@ function harness(options: {
     { path: join(stateRoot, "state.db"), busyTimeoutMs: 1000, migrationOwner: "bff-flow-test" },
     clock,
   );
-  seedSyntheticRuntimeConfig(database);
+  seedInitialSettingsRuntimeConfig(database, clock);
   assert.equal("projections" in database, false, "the retired projection repositories have no database capability");
   const artifacts = createContentAddressedArtifactWriter({
     admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ".tracker/artifacts")),

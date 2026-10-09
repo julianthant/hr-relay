@@ -1,3 +1,8 @@
+import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../../../../../src/workflow-kit/validation/build-manifest.js";
+import { deriveStableUuid } from "../../../../../../src/rules/identity/identifiers.js";
+import { checkpointLookupKey } from "../../../../../../src/models/workflow/checkpoint.js";
+import { timelineCheckpointReference } from "../../../../../../src/models/events/timeline.js";
+import { RunRecordSchema } from "../../../../../../src/models/run/record.js";
 import { ProtectedStoreRecordSchema } from "../../../../../../src/models/config/protected-settings.js";
 import { canonicalJsonStringify } from "../../../../../../src/rules/validation/canonical-json.js";
 import { FingerprintSchema } from "../../../../../../src/rules/identity/ids.js";
@@ -45,7 +50,6 @@ import { HASH_A, NOW, UUID_4 } from "../../../../../support/fixtures/phase1c-con
 import { sequentialIdFactory } from "../../../../../support/fixtures/phase1f-run-fixtures.js";
 import {
   makeWorld,
-  queuedEventOf,
   runRecordOf,
   uuidOf,
   type DashboardWorld,
@@ -431,9 +435,28 @@ function packetWithPlan(): IdentityEvidencePacket {
 }
 
 function seedGate(world: DashboardWorld, packet: IdentityEvidencePacket): void {
-  queuedEventOf(world, { seed: 1, version: 4, lifecycle: PARKED_GATE_LIFECYCLE });
-  const seeded = runRecordOf({ seed: 1 });
-  world.authority.putCheckpoint(RunCheckpointRecordSchema.parse({
+  const seeded = RunRecordSchema.parse({ ...runRecordOf({ seed: 1, workflow: separationsDescriptor.id }),
+    envelope: { ...runRecordOf({ seed: 1 }).envelope, workflow: separationsDescriptor.id,
+      descriptorVersion: separationsDescriptor.version, contractFingerprint: separationsDescriptor.contractFingerprint } });
+  world.database.authority.runs.enqueue(seeded);
+  const claimed = world.database.authority.runs.claimNext({ workflow: separationsDescriptor.id,
+    workerId: "identity-fixture-worker", now: GATE_NOW });
+  assert.equal(claimed.state, "claimed");
+  if (claimed.state !== "claimed") throw new Error("identity fixture claim refused");
+  let current = claimed.run;
+  for (const lifecycle of [
+    { state: "validating", workerId: "identity-fixture-worker", claimedAt: GATE_NOW, heartbeatAt: GATE_NOW },
+    { state: "running", workerId: "identity-fixture-worker", claimedAt: GATE_NOW, heartbeatAt: GATE_NOW },
+    PARKED_GATE_LIFECYCLE,
+  ]) {
+    const result = world.database.authority.runs.transition({ runId: RUN_ID, expectedVersion: current.version,
+      claim: { workerId: "identity-fixture-worker", claimGeneration: 1 }, lifecycle, now: GATE_NOW });
+    assert.equal(result.state, "applied");
+    if (result.state !== "applied") throw new Error("identity fixture transition refused");
+    current = result.run;
+  }
+  world.authority.put(current);
+  const checkpoint = RunCheckpointRecordSchema.parse({
     // The harness's own run identity: the identity-gate section is GENERIC — it
     // locates the packet through the descriptor's `dependsOn` and hard-codes no
     // node name — so what this suite substitutes is the real `separations` gate
@@ -451,12 +474,21 @@ function seedGate(world: DashboardWorld, packet: IdentityEvidencePacket): void {
         evidenceDigest: deriveIdentityEvidenceDigest(packet),
       }),
     },
-    descriptorVersion: 1,
-    contractFingerprint: "a".repeat(64),
-    implFingerprint: "a".repeat(64),
+    descriptorVersion: separationsDescriptor.version,
+    contractFingerprint: separationsDescriptor.contractFingerprint,
+    implFingerprint: resolveTaskImplFingerprint(BUILD_MANIFEST, SeparationsMatchIdentity.id),
     provenance: [],
     writtenAt: GATE_NOW,
-  }));
+  });
+  world.database.authority.runCheckpoints.insert(checkpoint);
+  world.authority.putCheckpoint(checkpoint);
+  const event = world.database.authority.timelineEvents.get(deriveStableUuid("timeline-checkpoint-recorded",
+    checkpointLookupKey(checkpoint.workflowId, checkpoint.itemId, checkpoint.nodeId,
+      checkpoint.attempt, checkpoint.claimGeneration)));
+  assert.ok(event);
+  assert.equal(event.payload.kind, "checkpoint-recorded");
+  if (event.payload.kind !== "checkpoint-recorded") throw new Error("identity fixture checkpoint event absent");
+  assert.deepEqual(event.payload.checkpoint, timelineCheckpointReference(checkpoint));
 }
 
 describe("separations — the identity-gate wire", () => {
@@ -470,6 +502,8 @@ describe("separations — the identity-gate wire", () => {
       stateRoot: world.stateRoot,
       projection: world.projection,
       authority: world.authority,
+      canonical: { reader: world.runReader, database: world.database,
+        descriptors: { resolve: () => separationsDescriptor } },
       descriptors: { resolve: () => ({ details: [], gateNodes: gateNodeViews() as never }) },
     };
     const response = buildRunSection(deps, RUN_ID, "identity-gate");

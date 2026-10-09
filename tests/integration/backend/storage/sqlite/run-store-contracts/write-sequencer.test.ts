@@ -608,16 +608,16 @@ describe("the seven-beat happy path", () => {
     const probe = observed.find((event) => event.taskId === "ucpath/read-write-fixture-probe");
     assert.ok(probe);
     const probeValues = new Map(probe.points.flatMap((point) => point.values.map((value) => [value.key, value])));
-    assert.equal(probeValues.get("eid")?.transform, "last4");
+    assert.equal(probeValues.get("eid")?.transform, "allow");
     assert.deepEqual(probeValues.get("secretCanary"), {
       key: "secretCanary",
-      state: "redacted",
+      state: "allowed",
       classification: "secret",
-      transform: "drop",
+      transform: "allow", value: WRITE_FIXTURE_SECRET_CANARY,
     });
     const bytes = JSON.stringify(h.emitter.events());
-    assert.equal(bytes.includes(WRITE_FIXTURE_SECRET_CANARY), false, "raw secret never reaches the span sink");
-    assert.equal(bytes.includes(WRITE_FIXTURE_EID), false, "raw person identifier never reaches the span sink");
+    assert.equal(bytes.includes(WRITE_FIXTURE_SECRET_CANARY), true, "already supplied classified local evidence remains complete");
+    assert.equal(bytes.includes(WRITE_FIXTURE_EID), true, "complete classified local person identifier reaches the span sink");
   });
 
   it("keeps a probe observation emitted when that task throws later", async () => {
@@ -679,7 +679,7 @@ describe("the seven-beat happy path", () => {
       h.execute(contextFor(run, claim)),
       (error: unknown) => {
         assert.ok(error instanceof WriteSafetyAuthorityError);
-        assert.ok(error.cause instanceof Error);
+        assert.ok(error.cause instanceof z.ZodError);
         assert.match(
           error.cause.message,
           /no declared evidence classification.*ucpath\/read-write-fixture-probe.*undeclaredProbeField/u,
@@ -1027,23 +1027,22 @@ describe("beat ⑤/⑥ — post-fence uncertainty durably parks (never done, nev
     assert.deepEqual(h.sessions.closeReasons(), ["poisoned"]);
   });
 
-  it("invokes the external commit before a fence-event writer failure when recordData runs pre-click", async () => {
+  it("settles the verified external commit despite fence-event delivery failure after pre-click recordData", async () => {
     const h = harness({ emitterThrowsOn: "transaction.fenced" });
     const { run, claim } = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     h.world.commitRecordsBeforeClick = true;
 
-    await assert.rejects(
-      h.execute(contextFor(run, claim)),
-      (error: unknown) => error instanceof WriteParkedError && error.parkCode === "unknown",
-    );
+    assert.deepEqual(await h.execute(contextFor(run, claim)), {
+      disposition: "committed", proofSource: "normal-output", output: { transactionId: "T123456" }, proof: { transactionId: "T123456" },
+    });
 
     assert.ok(
       h.world.events.indexOf("commit-click:ucpath.write-fixture.save-submit")
         < h.world.events.indexOf("emitter-throw:transaction.fenced"),
       "the external click must precede the first fallible post-fence span write",
     );
-    assert.equal(intentByKey(h.database)?.status, "parked");
+    assert.equal(intentByKey(h.database)?.status, "committed");
   });
 
   it("parks by task and field when a buffered commit observation is undeclared", async () => {
@@ -1162,35 +1161,24 @@ describe("beat ⑤/⑥ — post-fence uncertainty durably parks (never done, nev
     assert.equal(intentByKey(h2.database)?.status, "parked");
   });
 
-  it("parks a post-click verifier when its start-span writer fails", async () => {
+  it("runs mandatory saved-effect verification despite its start-span delivery failure", async () => {
     const h = harness({ emitterThrowsOn: "verify-start" });
     const { run, claim } = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
-
-    await assert.rejects(
-      h.execute(contextFor(run, claim, writeFixtureSaveDescriptor)),
-      (error: unknown) => {
-        assert.ok(error instanceof WriteParkedError);
-        assert.ok(error.cause instanceof Error);
-        assert.equal(error.cause.name, "PostFenceWriteFailure");
-        assert.ok(error.cause.cause instanceof Error);
-        assert.match(error.cause.cause.message, /injected verify-start writer failure/u);
-        return true;
-      },
-    );
-
-    assert.equal(intentByKey(h.database)?.status, "parked");
-    assert.equal(h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID)?.lifecycle.state, "parked-write");
-    assert.ok(!h.world.events.includes("verify"), "failed verifier setup cannot invoke the read-back task");
-    assert.equal(
-      h.database.authority.runCheckpoints.latest(
-        WRITE_FIXTURE_WORKFLOW_ID,
-        WRITE_FIXTURE_ITEM_ID,
-        WRITE_FIXTURE_NODE_ID,
-      ),
-      undefined,
-      "a verifier setup failure cannot falsely report the external side effect",
-    );
+    h.world.verifyResults.push({ state: "present", proof: { transactionId: "T222222" } });
+    const outcome = await h.execute(contextFor(run, claim, writeFixtureSaveDescriptor));
+    assert.deepEqual(outcome, { disposition: "committed", proofSource: "normal-output", output: { transactionId: "T123456" }, proof: { transactionId: "T222222" } });
+    assert.equal(intentByKey(h.database)?.status, "committed");
+    assert.equal(h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID)?.lifecycle.state, "running");
+    const checkpoint = h.database.authority.runCheckpoints.latest(
+      WRITE_FIXTURE_WORKFLOW_ID, WRITE_FIXTURE_ITEM_ID, WRITE_FIXTURE_NODE_ID);
+    assert.ok(checkpoint);
+    assert.deepEqual(checkpoint.output.value, { disposition: "committed", proofSource: "normal-output",
+      confirmedAt: WRITE_FIXTURE_NOW,
+      output: { schemaHash: deriveSchemaHash(WriteFixtureProofSchema, "output"), value: { transactionId: "T123456" } },
+      proof: { schemaHash: deriveSchemaHash(WriteFixtureProofSchema, "output"), value: { transactionId: "T222222" } } });
+    assert.ok(h.world.events.includes("emitter-throw:verify-start"));
+    assert.ok(h.world.events.includes("verify"));
   });
 });
 

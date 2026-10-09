@@ -100,7 +100,7 @@ describe("task, store, session, provider, and artifact seams", () => {
     const bytes = new TextEncoder().encode("hard crash before publication");
     const sha256 = createHash("sha256").update(bytes).digest("hex");
     const writerModuleUrl = new URL(
-      "../../../../../../../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.ts",
+      "../../../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.ts",
       import.meta.url,
     ).href;
     const admissionModuleUrl = new URL("../../../../../../src/backend/storage/admission/admission.ts", import.meta.url).href;

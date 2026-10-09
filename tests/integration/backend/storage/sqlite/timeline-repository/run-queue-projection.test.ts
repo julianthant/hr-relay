@@ -282,8 +282,8 @@ describe("THE run/queue projection (D81)", () => {
     assert.deepEqual(actionKeys(2), ["cancel", "rename"], "the running row");
     // D308's 🗑 is last, so the footer's most destructive control is furthest
     // from the click an operator makes by reflex.
-    assert.deepEqual(actionKeys(3), ["rerun", "archive", "rename", "delete"], "the done row");
-    assert.deepEqual(actionKeys(4), ["rerun", "archive", "rename", "delete"], "the failed row");
+    assert.deepEqual(actionKeys(3), ["rerun", "rename", "delete"], "the done row");
+    assert.deepEqual(actionKeys(4), ["rerun", "rename", "delete"], "the failed row");
     assert.deepEqual(actionKeys(9), ["cancel", "rename"], "the awaiting-approval row");
     // A settled delegated member carries no re-run: the kernel refuses generic
     // retry for a child ("child retries route through their delegation edge

@@ -158,14 +158,14 @@ it.each(["mapping", "correction", "exclusion"])("%s decisions invalidate the rev
   const refused = await h.post(h.request(reviewed, "enqueue-intake-manifest", { dryRun: false, reviewBinding: original.reviewBinding }));
   assert.equal(refused.status, 422); noEffects(h, reviewed); assert.equal((await enqueue(h, reviewed)).state, "enqueued");
 });
-it("source-backed rejection evidence applies the EID transform while operator samples remain visible", async () => {
+it("source-backed rejection evidence retains the complete local value and visible operator samples", async () => {
   const h = harness(); const sentinel = "synthetic-private-6543";
   let wire = (await h.upload(INTAKE_CSV.replace("10-4567", sentinel))).session;
   assert.ok((await readArtifactBytes(() => h.artifacts.open(wire.artifact))).includes(Buffer.from(sentinel)));
   assert.ok(wire.columns[0].samples.includes(sentinel));
   for (const [target, column] of [["emplId", 0], ["effectiveDate", 1]] as const) wire = await send(h, wire, "confirm-intake-mapping", { targetFieldId: target, sourceColumnId: wire.columns[column].sourceColumnId, headerFingerprint: wire.headerFingerprint });
   wire = await send(h, wire, "validate-intake"); assert.equal(wire.validation.state, "validated");
-  assert.ok(JSON.stringify(wire.validation).includes("6543")); assert.ok(!JSON.stringify(wire.validation).includes(sentinel));
+  assert.ok(JSON.stringify(wire.validation).includes("6543")); assert.ok(JSON.stringify(wire.validation).includes(sentinel));
   const excluded = await send(h, wire, "exclude-intake-row", { sourceRow: 2, reason: "Synthetic invalid EID" });
   const terminal = await enqueue(h, await send(h, excluded, "validate-intake"));
   assert.ok(!JSON.stringify(terminal.manifest).includes(sentinel));

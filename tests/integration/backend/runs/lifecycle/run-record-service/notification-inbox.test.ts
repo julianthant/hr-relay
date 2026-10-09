@@ -180,7 +180,10 @@ describe("notification lifecycle arms", () => {
     assert.equal(row?.status, "read");
     assert.deepEqual(row?.snooze, { state: "snoozed", until: "2026-07-31T18:01:00.000Z" });
 
-    assert.throws(() => kernel.execute(command("notification-snooze", 2, { payload: { until: NOW } })));
+    const before = database.getMeta().authorityGeneration;
+    const retired = kernel.execute(command("notification-snooze", 2, { payload: { until: NOW } }));
+    assert.equal(retired.state, "rejected");
+    assert.equal(database.getMeta().authorityGeneration, before);
     assert.equal(kernel.execute(command("notification-unsnooze", 2)).state, "applied");
     assert.deepEqual(database.authority.notifications.get(UUID_7)?.snooze, { state: "not-snoozed" });
   });
@@ -220,6 +223,7 @@ describe("notificationWireOf", () => {
       actorId: ACTOR,
       severity: "error",
       title: "Notification history is incomplete",
+      sourceEvent: { state: "unavailable" },
       state: "pinned",
       occurredAt: NOW,
     });
