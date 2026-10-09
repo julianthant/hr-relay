@@ -20,7 +20,7 @@ export function notificationDisplayContext(record: NotificationRecord, deps: {
     latestCheckpoint: (workflowId, item, nodeId) => deps.checkpoints.listByAttempt(workflowId, item, nodeId, current.run.envelope.attempt)
       .filter(row => row.attempt === current.run.envelope.attempt && row.runId === current.run.envelope.runId
         && row.contractFingerprint === current.run.envelope.contractFingerprint
-        && (row.claimGeneration ?? 0) <= current.run.claimGeneration)
+        && (row.claimGeneration === undefined || row.claimGeneration <= current.run.claimGeneration))
       .at(-1),
   } satisfies SubjectCheckpointSource);
   return subject === undefined ? { state: "workflow-only", workflow: descriptor.label } : { state: "available", workflow: descriptor.label, subject };
