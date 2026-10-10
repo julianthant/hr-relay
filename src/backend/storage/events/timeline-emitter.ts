@@ -34,7 +34,8 @@ export function createTimelineEmitter(deps: Readonly<{
       const scope = "runId" in event ? { kind: "run" as const, runId: event.runId } : { kind: "worker" as const, workerId: event.workerId };
       const result = deps.repository.append({
         schemaVersion: 1,
-        eventId: singleton ? deriveStableUuid("timeline-span-singleton", canonicalJsonStringify({ scope, attempt: "attempt" in event ? event.attempt : null, spanPath: event.spanPath, type: event.t })) : (deps.uuid ?? randomUUID)(),
+        eventId: singleton ? deriveStableUuid("timeline-span-singleton", canonicalJsonStringify({ scope, attempt: "attempt" in event ? event.attempt : null, spanPath: event.spanPath, type: event.t,
+          ...(event.t === "run.queued" ? {} : { pid: event.pid }) })) : (deps.uuid ?? randomUUID)(),
         workflow: event.workflow,
         scope,
         occurredAt: event.ts,

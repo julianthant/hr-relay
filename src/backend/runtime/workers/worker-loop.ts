@@ -209,8 +209,9 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
     ? undefined
     : FingerprintSchema.parse(deps.configFingerprint);
   const { emitter, clock } = deps;
+  const streamId = deps.ids.uuid();
   const confirmedActionPublisher = createConfirmedActionPublisher({
-    workerId, streamId: deps.ids.uuid(), clock, capacity: 256,
+    workerId, streamId, clock, capacity: 256,
     append: deps.confirmedActionAppend,
     onHealth: health => {
       if (health.state !== "healthy") deps.log.warn("confirmed action publication unhealthy", {
@@ -218,7 +219,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
       });
     },
   });
-  const workerPath = workerSpanPath(workflowId, workerId);
+  const workerPath = `${workerSpanPath(workflowId, workerId)}#${streamId}`;
   const instant = (): string => clock.now().toISOString();
   const emit = (event: Readonly<Record<string, unknown>>): void => {
     emitter.emit(ExecutorSpanEventSchema.parse({ ts: instant(), workflow: workflowId, ...event }));
