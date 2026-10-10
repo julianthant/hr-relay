@@ -9,6 +9,7 @@ import {
   type TimelineStepWire,
 } from "../../../models/dashboard/run-detail.js";
 import type { RunRecord } from "../../../models/run/record.js";
+import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
 import type { RunFoldRecord } from "../projections/run-queue-projection.js";
 import { resolveSubjectTitle } from "../projections/run-subject-title.js";
 import { deterministicUuid, nodeIdOfTaskSpanPath } from "../lifecycle/support.js";
@@ -285,7 +286,7 @@ export function buildRunDetail(
       workflowId: authority.envelope.workflow,
       ...(row === undefined ? {} : { actorId: row.queued.actorId }),
 
-      title: authority.displayName
+      title: (retainedRunProtectedBindings(authority).length > 0 ? undefined : authority.displayName)
         ?? resolveSubjectTitle(
           descriptorView?.subjectProjection,
           { workflowId: authority.envelope.workflow, itemId: authority.envelope.itemId },
