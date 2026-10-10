@@ -114,6 +114,13 @@ export function createDiagnosticCaptureService(
     // Keep the capture's original classified values with its provenance.
     const redaction = assertDiagnosticExportSafe(redactDiagnosticFields(request.fields));
 
+    let bundleBytes = 0;
+    for (const source of request.attachments) {
+      assertAttachmentShape(source);
+      if (source.bytes.byteLength > (source.kind === "screenshot" ? 10 : 1) * 1024 * 1024) throw new Error("diagnostic-attachment-size-exceeded");
+      bundleBytes += source.bytes.byteLength;
+    }
+    if (bundleBytes > 50 * 1024 * 1024) throw new Error("diagnostic-bundle-size-exceeded");
     const attachments: z.infer<typeof DiagnosticAttachmentSchema>[] = [];
     for (const source of request.attachments) {
       assertAttachmentShape(source);

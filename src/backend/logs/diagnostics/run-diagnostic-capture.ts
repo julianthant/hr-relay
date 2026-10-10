@@ -125,8 +125,9 @@ export function createRunBrowserScreenshotCapture(input: Readonly<{
         fields: [
           { key: "browserSystem", classification: "safe-diagnostic", transform: "allow", value: context.system },
           { key: "leaseOutcome", classification: "safe-diagnostic", transform: "allow", value: context.leaseOutcome },
+          ...(context.screenshot.state === "unavailable" ? [{ key: "captureUnavailable", classification: "safe-diagnostic", transform: "allow", value: context.screenshot.reason }] : []),
         ],
-        attachments: [{
+        attachments: context.screenshot.state === "unavailable" ? [...(context.screenshot.diagnosticAttachments ?? [])] : [...(context.screenshot.diagnosticAttachments ?? []), {
           kind: "screenshot",
           mediaType: "image/png",
           sensitivity: "restricted",

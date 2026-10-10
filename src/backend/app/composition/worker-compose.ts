@@ -1,3 +1,6 @@
+import { sanitizeDebugText } from "../../logs/debug-events.js";
+import { readFileSync as readBuildFile } from "node:fs";
+import { appendEmergencyFault, withEmergencyTimelineWriter, importEmergencyFaults } from "../../logs/emergency-faults.js";
 import { admitDirectWorker, admitSupervisedWorker } from "../../storage/sqlite/worker-slots.js";
 import { z } from "zod";
 import { WorkerPoolMemberSchema } from "../../../models/run/worker-slot.js";
@@ -7,7 +10,7 @@ import type { RuntimePreflightRunnerFactory } from "../preflight/runtime-runners
 import { claimWithPreflight } from "../preflight/worker-admission.js";
 import { createWorkerBrowserControl } from "../../runtime/workers/worker-browser-control.js";
 import { selectRunRuntime } from "../../runs/settings/run-settings.js";
-import { createRunResourcesFactory } from "./worker/run-resources.js";
+import { createRunResourcesFactory, type BrowserProfileAuthority } from "./worker/run-resources.js";
 import { bindFailureCapture } from "../../runs/lifecycle/failure-resolution.js";
 import { createCredentialStore } from "../../storage/configuration/credential-store.js";
 import { requireRuntimeAdmission, type RuntimeAdmission } from "../../storage/admission/admission.js";
@@ -42,13 +45,13 @@ import { createDiagnosticCaptureService } from "../../logs/diagnostics/diagnosti
 import { createRunBrowserScreenshotCapture, createRunDiagnosticCapture } from "../../logs/diagnostics/run-diagnostic-capture.js";
 import { withCurrentSettings, createCredentialSecretSource, readSettings, requireCurrentSettings } from "../../runtime/settings/settings-runtime.js";
 import { createTimelineEmitter } from "../../storage/events/timeline-emitter.js";
-import { createNoteJsonlWriter } from "../../storage/events/note-jsonl-writer.js";
-import { pruneEventStreams } from "../../storage/events/jsonl-streams.js";
+import { createDebugEventWriter } from "../../logs/debug-events.js";
+import { createNoteTimelineWriter } from "../../storage/events/note-timeline-writer.js";
 
 
 import { createTimeoutDeadlineScheduler } from "../../runtime/scheduling/timeout-deadline-scheduler.js";
 import { AuthorityDatabase } from "../../storage/sqlite/index.js";
-import { bindWorkerProcessAdmission, type ProcessIdentityObserver, type RuntimeProcessLockHandle } from "../../storage/sqlite/runtime-process-locks.js";
+import { assertWorkerProcessCustody, bindWorkerProcessAdmission, type ProcessIdentityObserver, type RuntimeProcessLockHandle } from "../../storage/sqlite/runtime-process-locks.js";
 import { taskStoreRegistry } from "../registries/task-registry.js";
 
 // Cadences are composition choices; the contracts constrain renewal and recovery ordering, not numeric defaults.
@@ -62,7 +65,9 @@ export { createTimeoutDeadlineScheduler };
 export function lineTaskLogger(write: (line: string) => void, clock: Clock): TaskLogger {
   const emit = (level: "debug" | "info" | "warn") =>
     (message: string, fields?: Readonly<Record<string, string | number | boolean>>): void => {
-      write(JSON.stringify({ ts: clock.now().toISOString(), level, message, ...fields }));
+      const safeFields = Object.fromEntries(Object.entries(fields ?? {}).filter(([key]) => !/password|token|cookie|authorization|privatekey|challenge|signature/iu.test(key))
+        .map(([key, value]) => [key, typeof value === "string" ? sanitizeDebugText(value) : value]));
+      write(JSON.stringify({ ts: clock.now().toISOString(), level, message: sanitizeDebugText(message), ...safeFields }));
     };
   return Object.freeze({ debug: emit("debug"), info: emit("info"), warn: emit("warn") });
 }
@@ -163,6 +168,7 @@ export interface WorkerComposeInput {
   /** Test-only observation/crash hooks for the settings exclusion boundary. */
   /** Test seam over the concrete Playwright factory; production omits it. */
   readonly sessionFactory?: WorkerBrowserSessionFactory;
+  readonly createSessionFactory?: (profiles: BrowserProfileAuthority) => WorkerBrowserSessionFactory;
   /** Registered non-operator gate sources; production workflows without a provider fail at the gate. */
   readonly gateSourcePorts?: readonly GateSourcePort[];
   // Tests may inject the ceremony factory without configuring live credential identity.
@@ -355,8 +361,13 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     hooks: { observeProcessIdentity: input.processIdentityObserver },
     open: () => {
       admission.assertAuthorityDatabase(authorityPath);
-      return (input.openDatabase ?? ((options, openClock) => AuthorityDatabase.open(admission, options, openClock)))(
+      try {
+        return (input.openDatabase ?? ((options, openClock) => AuthorityDatabase.open(admission, options, openClock)))(
         { path: authorityPath, busyTimeoutMs: 5000, migrationOwner: "rebuild-worker" }, clock);
+      } catch (error) {
+        appendEmergencyFault({ stateRoot, build: z.object({ version: z.string() }).parse(JSON.parse(readBuildFile(join(repoRoot, "package.json"), "utf8"))).version, code: "DATABASE_WRITER_UNAVAILABLE", error: error instanceof Error ? error : new Error("Database writer unavailable"), now: clock.now() });
+        throw error;
+      }
     },
     close: input.closeDatabase ?? (value => value.close()),
     admit: (database, acquisitionId) => database.withAuthorityTransaction(repositories => {
@@ -376,7 +387,10 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   const cleanupErrors: unknown[] = [];
   let runtimeReport: WorkerLoopReport | undefined;
 
-  const taskNotes = createNoteJsonlWriter({ stateRoot, clock });
+  importEmergencyFaults(stateRoot, database.authority.timelineEvents);
+  const loggingRepository = withEmergencyTimelineWriter(database.authority.timelineEvents, { stateRoot, clock, build: z.object({ version: z.string() }).parse(JSON.parse(readBuildFile(join(repoRoot, "package.json"), "utf8"))).version });
+  const debugEvents = createDebugEventWriter({ repository: loggingRepository, clock, build: z.object({ version: z.string() }).parse(JSON.parse(readBuildFile(join(repoRoot, "package.json"), "utf8"))).version });
+  const taskNotes = createNoteTimelineWriter({ repository: loggingRepository, clock });
   const protectedAuthority = createCredentialStore({ admission, stateRoot });
   const protectedSecrets = createCredentialSecretSource(protectedAuthority);
   const runRecordService = new RunRecordService({ database, clock, ids,
@@ -396,8 +410,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     ...(input.preflightRunnerFactory === undefined ? {} : { runnerFactory: input.preflightRunnerFactory }) });
   let resolved: ReturnType<typeof resolveConfigWithProvenance>;
   try {
-    pruneEventStreams({ stateRoot, clock, streams: ["notes"] });
-    const persistedSettings = database.withAuthorityTransaction((repositories) =>
+      const persistedSettings = database.withAuthorityTransaction((repositories) =>
       readSettings(repositories));
     resolved = resolveConfigWithProvenance(persistedSettings.settings, hostFacts, clock,
       { stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot });
@@ -445,7 +458,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   }
 
   const scheduler = createTimeoutDeadlineScheduler(clock);
-  const emitter = createTimelineEmitter({ repository: database.authority.timelineEvents, clock });
+  const emitter = createTimelineEmitter({ repository: loggingRepository, clock });
 
   const artifacts = createContentAddressedArtifactWriter({
     admission,
@@ -462,7 +475,16 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   const browserScreenshotCapture = createRunBrowserScreenshotCapture({ service: diagnosticService });
 
   const resources = createRunResourcesFactory({processLockRoot:join(repoRoot,input.isolation.processLockRoot),preflight:runtimePreflight,authority:database.authority,artifacts,clock,ids,isolation:input.isolation,protectedSecrets,scheduler,environment:env,
+    onDebug: (category, debugWorkerId, event) => {
+      debugEvents.emit({ category, ...event }, { kind: "worker", workerId: debugWorkerId });
+    },
+    assertProfileOwner: requestedWorkerId => {
+      if (requestedWorkerId !== workerId) throw new Error("browser-profile-worker-owner-mismatch");
+      assertWorkerProcessCustody({ processLockRoot, acquisitionId: z.uuid().parse(processLock.acquisitionId),
+        pid: input.processId ?? process.pid, workerId, authorityPath }, { observeProcessIdentity: input.processIdentityObserver });
+    },
     ...(input.sessionFactory === undefined ? {} : {sessionFactory:input.sessionFactory}),
+    ...(input.createSessionFactory === undefined ? {} : {createSessionFactory:input.createSessionFactory}),
     ...(input.duoCeremony === undefined ? {} : {duoCeremony:input.duoCeremony})});
   const baselineResources = resources.baseline(resolved.config);
 

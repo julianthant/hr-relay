@@ -13,6 +13,26 @@ if (container === null) {
 
 const client = createDashboardClient({ baseUrl: window.location.origin });
 
+const clientId = crypto.randomUUID();
+const report = (error: unknown) => {
+  const failure = error instanceof Error ? error : new Error("Dashboard rejected a non-Error value");
+  void client.reportError({ reportId: crypto.randomUUID(), clientId, release: "dashboard",
+    route: window.location.pathname, surface: "app", code: "DASHBOARD_UNHANDLED_ERROR",
+    message: failure.message, ...(failure.stack === undefined ? {} : { stack: failure.stack }) })
+    .catch(() => { console.error("Dashboard error report was not recorded"); });
+};
+const onError = (event: ErrorEvent) => report(event.error ?? new Error(event.message));
+const onRejection = (event: PromiseRejectionEvent) => report(event.reason);
+window.addEventListener("error", onError);
+window.addEventListener("unhandledrejection", onRejection);
+const disposeErrorReports = () => {
+  window.removeEventListener("error", onError);
+  window.removeEventListener("unhandledrejection", onRejection);
+};
+window.addEventListener("pagehide", disposeErrorReports, { once: true });
+const hot = (import.meta as ImportMeta & { hot?: { dispose(callback: () => void): void } }).hot;
+hot?.dispose(disposeErrorReports);
+
 createRoot(container).render(
   <StrictMode>
     <DashboardClientProvider client={client}>

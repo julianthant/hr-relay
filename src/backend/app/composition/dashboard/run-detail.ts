@@ -19,6 +19,7 @@ export function createOperatorRunDetail(input: Pick<RunDetailQueryDeps, "stateRo
     ...(canonical === undefined ? {} : { canonical }),
     ...(runReader === undefined ? {} : { runReader }),
     ...(runReader === undefined ? {} : { itemAttemptHistory: createItemAttemptHistoryQuery({ database, reader: runReader }) }),
+    timeline: database.authority.timelineEvents,
     stateRoot,
     projection,
     authority: {

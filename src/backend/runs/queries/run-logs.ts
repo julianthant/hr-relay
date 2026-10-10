@@ -1,10 +1,6 @@
+import { readTimelineRecords, timelineNoteLocation } from "../../storage/events/timeline-reader.js";
 import { RedactedFieldSchema } from "../../../rules/redaction/redaction.js";
 import { z } from "zod";
-import {
-  runNotePartitionScope as sharedNotePartitionScope,
-  runRecordNoteScopeInstants,
-  type RunNoteScopeInstant,
-} from "../../../models/run/note-scope.js";
 import {
   LogPageCursorSchema,
   ObservedLogRowWireSchema,
@@ -18,11 +14,7 @@ import {
 } from "../../../models/dashboard/operation-structure.js";
 import type { RunRecord } from "../../../models/run/record.js";
 import { requireWorkflowOperationDisplaySnapshot } from "../../../models/workflow/operation-display-snapshot.js";
-import {
-  readScopedEventStreamLines,
-  type EventStreamLine,
-  type EventStreamScope,
-} from "../../storage/events/jsonl-streams.js";
+import type { TimelineLine } from "../../storage/events/timeline-reader.js";
 import {
   NoteWireSchema as NoteAtRestSchema,
   projectNoteForOperator,
@@ -51,29 +43,12 @@ type RunAtRestNote = Readonly<{
 type RunLogProducer = Readonly<{ nodeId: string; step: string; taskId: string; system?: string }>;
 
 export type RunLogScanEntry =
-  | Readonly<{ kind: "note"; line: EventStreamLine; note: RunAtRestNote }>
-  | Readonly<{ kind: "observed"; line: EventStreamLine; event: Extract<SpanEventWire, { t: "data.observed" }>; producer: RunLogProducer }>
-  | Readonly<{ kind: "transaction-fenced"; line: EventStreamLine; event: Extract<SpanEventWire, { t: "transaction.fenced" }>; producer: RunLogProducer }>;
+  | Readonly<{ kind: "note"; line: TimelineLine; note: RunAtRestNote }>
+  | Readonly<{ kind: "observed"; line: TimelineLine; event: Extract<SpanEventWire, { t: "data.observed" }>; producer: RunLogProducer }>
+  | Readonly<{ kind: "transaction-fenced"; line: TimelineLine; event: Extract<SpanEventWire, { t: "transaction.fenced" }>; producer: RunLogProducer }>;
 
 /** @deprecated Kept for callers of the combined notes + fence snapshot cache. */
 export type RunNoteScanEntry = RunLogScanEntry;
-
-// Read only workflow/date partitions that belong to this run; unrelated notes are outside its corpus.
-export function runNotePartitionScope(
-  runId: string,
-  row: RunFoldRecord | undefined,
-  authority: RunRecord,
-): EventStreamScope {
-  const instants: RunNoteScopeInstant[] = [
-    ...runRecordNoteScopeInstants(authority),
-    ...(row === undefined ? [] : [
-      { label: "run.queued span", at: row.queued.ts },
-      { label: "fold lastEventAt", at: row.lastEventAt },
-    ]),
-  ];
-  if (row?.ended !== undefined) instants.push({ label: "fold endedAt", at: row.ended.endedAt });
-  return sharedNotePartitionScope({ runId, workflow: authority.envelope.workflow, instants });
-}
 
 // Page a run against one immutable combined-log snapshot so advancing cursors cannot mix reads.
 interface RunLogSnapshot {
@@ -128,7 +103,7 @@ function logSnapshotsFor(deps: RunDetailQueryDeps, provided?: RunNoteScanCache):
 }
 
 
-function parseNoteLine(line: EventStreamLine): z.infer<typeof NoteAtRestSchema> {
+function parseNoteLine(line: TimelineLine): z.infer<typeof NoteAtRestSchema> {
   try {
     return NoteAtRestSchema.parse(JSON.parse(line.text));
   } catch (cause) {
@@ -143,7 +118,7 @@ function parseNoteLine(line: EventStreamLine): z.infer<typeof NoteAtRestSchema> 
 
 function assertScopedSpanWorkflow(
   event: Extract<SpanEventWire, { runId: string }>,
-  line: EventStreamLine,
+  line: TimelineLine,
 ): void {
   if (event.workflow !== line.file.workflow) {
     throw new Error(
@@ -156,7 +131,7 @@ function assertScopedSpanWorkflow(
 function assertRunLogIdentity(
   source: "note" | "span",
   identity: Readonly<{ runId: string; workflow: string; traceId: string; attempt: number }>,
-  line: EventStreamLine,
+  line: TimelineLine,
   runId: string,
   _row: RunFoldRecord | undefined,
   authority: RunRecord,
@@ -190,7 +165,7 @@ function assertRunLogIdentity(
 function producerOf(
   descriptor: RunDetailDescriptorView | undefined,
   event: Extract<SpanEventWire, { t: "data.observed" | "transaction.fenced" }>,
-  line: EventStreamLine,
+  line: TimelineLine,
 ): RunLogProducer {
   if (descriptor === undefined) {
     throw new Error(
@@ -231,7 +206,9 @@ function logLinesForRun(
   const scan = (): readonly RunLogScanEntry[] => {
     const matches: RunLogScanEntry[] = [];
 
-    for (const line of readScopedEventStreamLines(deps.stateRoot, "notes", runNotePartitionScope(runId, row, authority))) {
+    for (const record of readTimelineRecords(deps.timeline, 0, runId).records) {
+      if (record.payload.kind !== "note") continue;
+      const line = timelineNoteLocation(record);
       const note = parseNoteLine(line);
       if (note.workflow !== line.file.workflow) {
         throw new Error(

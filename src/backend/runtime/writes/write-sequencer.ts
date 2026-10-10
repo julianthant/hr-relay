@@ -1,3 +1,4 @@
+import { sanitizeDebugText } from "../../logs/debug-events.js";
 import { reconstructConfirmedOperation } from "../../../models/events/confirmed-operation.js";
 import { retainedRunProtectedBindings, hasProtectedTransactionInput } from "../../../models/write-safety/protected-input.js";
 import { valueFreeProtectedData } from "../../../models/write-safety/protected-input.js";
@@ -1046,7 +1047,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
   }
 
   function failureMessage(error: unknown): string {
-    return error instanceof Error || error instanceof z.ZodError ? error.message : "non-Error thrown";
+    return error instanceof Error || error instanceof z.ZodError ? sanitizeDebugText(error.message) : "non-Error thrown";
   }
 
   function containsSchemaFailure(error: unknown): boolean {

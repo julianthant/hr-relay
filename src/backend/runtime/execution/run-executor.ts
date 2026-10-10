@@ -26,7 +26,7 @@ import type { Clock } from "../../../rules/time/clock.js";
 import type { AnyReadTaskContract } from "../../../models/task/task-contract.js";
 import type { GateResultRecord } from "../../../models/workflow/gates.js";
 import type { IdFactory } from "../../../rules/identity/identifiers.js";
-import type { NoteJsonlWriter } from "../../storage/events/note-jsonl-writer.js";
+import type { NoteTimelineWriter } from "../../storage/events/note-timeline-writer.js";
 import type { ConfirmedActionPublisher } from "../../logs/confirmed-action-publisher.js";
 import { createConfirmedInvocation } from "../../logs/confirmed-invocation.js";
 import { publishConfirmedSubmit } from "../../logs/confirmed-submit.js";
@@ -197,7 +197,7 @@ export interface RunExecutorDependencies {
   readonly taskDeadlineMs: number;
   readonly log: TaskLogger;
   /** Optional production sink for task messages and browser actions. */
-  readonly taskNotes?: Pick<NoteJsonlWriter, "emitRunLog" | "emitRunAction">;
+  readonly taskNotes?: Pick<NoteTimelineWriter, "emitRunLog" | "emitRunAction">;
   readonly confirmedActionPublisher?: ConfirmedActionPublisher;
   readonly writeSequencer?: WriteSequencer;
   readonly childRuns?: ChildRunExecutor;

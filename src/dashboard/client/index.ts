@@ -1,3 +1,4 @@
+import { DashboardErrorReportSchema, type DashboardErrorReport } from "../../models/events/debug-report.js";
 import { invalidatePreflightReadiness } from "./queries/preflight-state.js";
 /** The ONE typed dashboard client (ref frontend-backend-integration §0.2/§2) */
 import { createDashboardCommands, type DashboardCommands } from "./commands.js";
@@ -23,6 +24,7 @@ export type {
 } from "../../models/dashboard/search.js";
 
 export interface DashboardClient extends DashboardQueries, DashboardCommands {
+  reportError(report: DashboardErrorReport): Promise<void>;
   subscribeDay(
     input: Omit<DashboardDaySubscriptionDeps, "transport">,
   ): DashboardDaySubscription;
@@ -36,6 +38,9 @@ export function createDashboardClient(input: Readonly<{
   const queries = createDashboardQueries(transport);
   const commands = createDashboardCommands(transport);
   const client: DashboardClient = Object.freeze({
+    async reportError(report: DashboardErrorReport) {
+      await transport.requestJson("/api/v1/debug/errors", { method: "POST", body: JSON.stringify(DashboardErrorReportSchema.parse(report)) });
+    },
     ...queries,
     ...commands,
     async applySettings(request: unknown) {

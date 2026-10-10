@@ -2453,6 +2453,7 @@ export function executeSettingsCommand(
   input: unknown,
 ): CommandResult {
   const request = CommandRequestSchema.parse(input);
+  if (Buffer.byteLength(JSON.stringify(request)) > 256 * 1024) throw new Error("command-envelope-size-exceeded");
   if (request.family !== "settings") throw new Error("settings command required");
   const executor = dependencies.settings;
   if (executor === undefined) throw new Error("settings executor unavailable");
@@ -2615,6 +2616,7 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
   return Object.freeze({
     execute(input: unknown, parentCommandId?: string): CommandResult {
       const request = CommandRequestSchema.parse(input);
+  if (Buffer.byteLength(JSON.stringify(request)) > 256 * 1024) throw new Error("command-envelope-size-exceeded");
       if (request.family === "failure-resolution" && (dependencies.failureResolution?.capability ?? failureResolutionCapability)().state === "unavailable") {
         return {state:"rejected",commandId:request.commandId,code:"capability-unavailable",message:"Failure resolution is not available in this build."};
       }
@@ -2622,6 +2624,7 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
     },
     async executeWorkerPool(input: unknown): Promise<CommandResult> {
       const request = CommandRequestSchema.parse(input);
+  if (Buffer.byteLength(JSON.stringify(request)) > 256 * 1024) throw new Error("command-envelope-size-exceeded");
       if (request.family !== "worker-browser") {
         throw new Error(
           `executeWorkerPool settles only worker-browser commands; received ${request.family}/${request.type}`,

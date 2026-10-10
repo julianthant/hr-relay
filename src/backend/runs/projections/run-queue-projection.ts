@@ -51,7 +51,7 @@ import type { WorkerPoolRecord } from "../../../models/run/worker-pool.js";
 import { queueRowActions } from "./queue-row-actions.js";
 import { resolveSubjectTitle } from "./run-subject-title.js";
 import { workerCardOf, type WorkerBrowserFold } from "./worker-cards.js";
-import type { EventStreamLine } from "../../storage/events/jsonl-streams.js";
+import type { TimelineLine } from "../../storage/events/timeline-reader.js";
 import type { TimelineRepository } from "../../../models/events/timeline.js";
 import { readTimelineRecords, timelineSpanLocation } from "../../storage/events/timeline-reader.js";
 import { browserSessionOfSpanPath, nodeIdOfTaskSpanPath } from "../lifecycle/support.js";
@@ -177,7 +177,7 @@ export interface RunQueueProjectionHealth {
 export type ProjectedRunLogEvent = Extract<SpanEventWire, { t: "data.observed" | "transaction.fenced" }>;
 
 export interface ProjectedRunLogEntry {
-  readonly line: EventStreamLine;
+  readonly line: TimelineLine;
   readonly event: ProjectedRunLogEvent;
   /** Append-fold revision within this projection generation. */
   readonly revision: number;
@@ -434,7 +434,7 @@ export class RunQueueProjection {
   }
 
 
-  #recordRunLog(event: SpanEventWire, line: EventStreamLine): void {
+  #recordRunLog(event: SpanEventWire, line: TimelineLine): void {
     if (event.t !== "data.observed" && event.t !== "transaction.fenced") return;
     const entries = this.#runLogs.get(event.runId) ?? [];
     if (!this.#runLogs.has(event.runId)) this.#runLogs.set(event.runId, entries);

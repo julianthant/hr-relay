@@ -1,4 +1,6 @@
+import { deriveStableUuid } from "../../../rules/identity/identifiers.js";
 
+import { sanitizeDebugText } from "../../logs/debug-events.js";
 import { z } from "zod";
 import type { Clock } from "../../../rules/time/clock.js";
 import { localDatePart } from "../../../rules/time/clock.js";
@@ -9,7 +11,8 @@ import { DeclaredActionOccurrenceSchema } from "../../../rules/workflow/task-pro
 import { assertNoteWithinRunScope } from "../../../models/run/note-scope.js";
 import type { RunRecord } from "../../../models/run/record.js";
 import { TaskRunNoteKindSchema, taskRunNoteMessage, type TaskRunNoteKind } from "../../../models/run/task-note.js";
-import { appendEventStreamLine } from "./jsonl-streams.js";
+import { randomUUID } from "node:crypto";
+import type { TimelineRepository } from "../../../models/events/timeline.js";
 import { CURRENT_DIAGNOSTIC_SAFETY_VERSION } from "../../../models/trust/failure.js";
 import type { TaskLogger } from "../../../workflow-kit/task.js";
 import { ConfirmedActionEventSchema, type ConfirmedActionEvent } from "../../../models/events/confirmed-action.js";
@@ -112,14 +115,14 @@ export const NoteIngressSchema = z.strictObject({
 });
 export type NoteIngress = z.input<typeof NoteIngressSchema>;
 
-export interface NoteJsonlWriterDeps {
-  readonly stateRoot: string;
+export interface NoteTimelineWriterDeps {
+  readonly repository: Pick<TimelineRepository, "append">;
   readonly clock: Clock;
   readonly pid?: number;
-  readonly appendLine?: (workflow: string, date: string, line: string) => void;
+
 }
 
-export interface NoteJsonlWriter {
+export interface NoteTimelineWriter {
   emitNote(input: unknown): NoteWire;
   emitConfirmedAction(input: ConfirmedActionEvent, authority: RunRecord): NoteWire;
   emitRunLog(input: Readonly<{
@@ -141,7 +144,7 @@ export interface NoteJsonlWriter {
   }>, authority: RunRecord): NoteWire;
 }
 
-export function createNoteJsonlWriter(deps: NoteJsonlWriterDeps): NoteJsonlWriter {
+export function createNoteTimelineWriter(deps: NoteTimelineWriterDeps): NoteTimelineWriter {
   const pid = z.number().int().positive().parse(deps.pid ?? process.pid);
   const write = (input: unknown, authority?: RunRecord, occurredAt?: string, action?: BrowserAction,
     taskFields?: Parameters<TaskLogger["info"]>[1], confirmedAction?: ConfirmedActionEvent): NoteWire => {
@@ -164,11 +167,13 @@ export function createNoteJsonlWriter(deps: NoteJsonlWriterDeps): NoteJsonlWrite
     for (const candidate of ingress.fields ?? []) {
       const field = ClassifiedDiagnosticValueSchema.safeParse(candidate);
       if (!field.success) { invalidFieldCount += 1; continue; }
+      if (field.data.classification === "secret" || field.data.classification === "credential-file" || /password|token|cookie|authorization|privatekey|challenge|signature/iu.test(field.data.key)) { invalidFieldCount++; continue; }
       fields.push({ key: field.data.key, kind: "text",
-        value: typeof field.data.value === "string" ? field.data.value : JSON.stringify(field.data.value) });
+        value: sanitizeDebugText(typeof field.data.value === "string" ? field.data.value : JSON.stringify(field.data.value)) });
     }
     for (const [key, value] of Object.entries(taskFields ?? {})) {
-      fields.push({ key, kind: "text", value: String(value) });
+      if (/password|token|cookie|authorization|privatekey|challenge|signature/iu.test(key)) { invalidFieldCount++; continue; }
+      fields.push({ key, kind: "text", value: sanitizeDebugText(String(value)) });
     }
     if (invalidFieldCount > 0) {
       fields.push({ key: "invalidFields", kind: "count", value: invalidFieldCount });
@@ -180,22 +185,23 @@ export function createNoteJsonlWriter(deps: NoteJsonlWriterDeps): NoteJsonlWrite
       workflow: ingress.workflow,
       pid,
       level: ingress.level,
-      message: ingress.message,
+      message: sanitizeDebugText(ingress.message),
       ...(confirmedAction === undefined ? {} : { confirmedAction }),
       ...(action === undefined ? {} : { action: { kind: action.kind, targetId: action.targetId,
         ...(action.value === undefined ? {} : { value: action.value }),
         ...(action.operation === undefined ? {} : { operation: action.operation }) } }),
       ...(fields.length === 0 ? {} : { fields }),
     });
-    const line = JSON.stringify(note);
-    if (confirmedAction !== undefined && Buffer.byteLength(line, "utf8") > 256 * 1024 - 1) {
-      throw new Error("confirmed-action-note-line-exceeds-tail-bound");
+    if (Buffer.byteLength(JSON.stringify(note), "utf8") > 256 * 1024) {
+      throw new Error("timeline-note-size-exceeded");
     }
-    (deps.appendLine ?? ((workflow, date, durableLine) => appendEventStreamLine(deps.stateRoot, "notes", workflow, date, durableLine)))(
-      note.workflow, localDatePart(at), line);
+    deps.repository.append({ schemaVersion: 1, eventId: confirmedAction === undefined ? randomUUID() : deriveStableUuid("browser-action", confirmedAction.eventId), workflow: note.workflow,
+      scope: "runId" in note ? { kind: "run", runId: note.runId } : { kind: "worker", workerId: note.workerId },
+      occurredAt: note.ts, recordedAt: confirmedAction?.recordedAt ?? at.toISOString(), retentionDate: localDatePart(confirmedAction === undefined ? at : new Date(confirmedAction.recordedAt)),
+      payload: { kind: "note", note }, source: { kind: "native" } });
     return note;
   };
-  const emitRunNote: NoteJsonlWriter["emitRunNote"] = (input, authority) => {
+  const emitRunNote: NoteTimelineWriter["emitRunNote"] = (input, authority) => {
     const ingress = z.strictObject({
       workflow: z.string().min(1),
       address: RunNoteAddressSchema,
@@ -208,13 +214,13 @@ export function createNoteJsonlWriter(deps: NoteJsonlWriterDeps): NoteJsonlWrite
       message: taskRunNoteMessage(ingress.kind),
     }, authority);
   };
-  const emitRunLog: NoteJsonlWriter["emitRunLog"] = (input, authority) => write({
+  const emitRunLog: NoteTimelineWriter["emitRunLog"] = (input, authority) => write({
     workflow: input.workflow,
     address: input.address,
     level: input.level,
     message: input.message,
   }, authority, undefined, undefined, input.fields);
-  const emitRunAction: NoteJsonlWriter["emitRunAction"] = (input, authority) => {
+  const emitRunAction: NoteTimelineWriter["emitRunAction"] = (input, authority) => {
     const action = z.strictObject({
       kind: z.enum(["opened", "clicked", "typed", "selected", "checked", "set", "cleared", "pressed", "read", "computed", "verified", "branched", "joined", "gated", "delegated", "session"]),
       targetId: z.string().regex(/^[a-z][a-z0-9._/-]{2,119}$/iu),
@@ -239,7 +245,7 @@ export function createNoteJsonlWriter(deps: NoteJsonlWriterDeps): NoteJsonlWrite
       message: browserActionMessage(durableAction),
     }, authority, action.at, durableAction);
   };
-  const emitConfirmedAction: NoteJsonlWriter["emitConfirmedAction"] = (input, authority) => {
+  const emitConfirmedAction: NoteTimelineWriter["emitConfirmedAction"] = (input, authority) => {
     const confirmedAction = safeConfirmedAction(input, authority);
     return write({
       workflow: authority.envelope.workflow,

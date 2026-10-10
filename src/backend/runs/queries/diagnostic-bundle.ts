@@ -179,6 +179,7 @@ export async function readDiagnosticBundle(
     normalizeCorruption(bundleId, "the durable authority record could not be read", error);
   }
   if (stored === undefined) throw new TargetNotFoundError(`diagnostic bundle ${bundleId} does not exist`);
+  if (stored.availability?.state === "purged") throw new SectionUnavailableError(`Diagnostic capture bytes were purged by retention at ${stored.availability.at}.`);
   let bundle: DiagnosticBundle;
   try {
     bundle = DiagnosticBundleSchema.parse(stored);

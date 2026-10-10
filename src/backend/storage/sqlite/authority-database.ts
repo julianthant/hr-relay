@@ -1,3 +1,4 @@
+import { DiagnosticAttachmentSchema } from "../../../models/trust/diagnostic.js";
 import { authenticateAuditedParkedWriteResolution, authenticateParkedWriteResolution } from "../../../rules/write-safety/parked-resolution.js";
 import { prepareNativeRunDeletion, executeNativeRunDeletion, containsDeletionArtifactReference } from "./native-run-deletion.js";
 import { inspectArtifactDeletionFile, removeArtifactDeletionFile } from "../artifacts/content-addressed-artifact-writer.js";
@@ -20,10 +21,7 @@ import { createWorkerControlRepository, validateWorkerControls, type WorkerContr
 import { WorkerControlBasisSchema } from "../../../models/run/worker.js";
 import { createNotificationMetadataRepositories, validateNotificationMetadata } from "./notification-publications.js";
 import { createExplorerOverrideRepository, validateExplorerOverrides } from "./explorer-overrides.js";
-import { readEventStreamSlice, scopedEventStreamFiles } from "../events/jsonl-streams.js";
 import { DeclaredActionIdentitySchema } from "../../../rules/workflow/task-provenance.js";
-import { runNotePartitionScope, runRecordNoteScopeInstants } from "../../../models/run/note-scope.js";
-import { NoteWireSchema } from "../../../models/events/types.js";
 import { deriveCanonicalPerson } from "../../../rules/runs/summary-derivation.js";
 import { requireRuntimeAdmission, type RuntimeAdmission } from "../admission/admission.js";
 import type { VerifiedRelocationActivationIntent } from "../admission/installation.js";
@@ -32,12 +30,7 @@ import { createGeneratedArtifactRepository } from "./generated-artifacts.js";
 import { createFailureResolutionRepository } from "./failure-resolution.js";
 import { createSettingsActivationRepositories } from "./settings-activation.js";
 import { createImportedArtifactRepositories } from "./imported-artifacts.js";
-import { ImportedArtifactSchema } from "../../../models/intake/imported-artifact.js";
-import { GeneratedArtifactSchema } from "../../../models/artifacts/generated-artifact.js";
 import { ArtifactRefSchema, type ArtifactRef } from "../../../models/artifacts/artifacts.js";
-import { ExtractPdfPagesOutputSchema } from "../../../models/processing/extraction/extract-pdf-pages.js";
-import { OperatorXlsxExportEvidenceSchema } from "../../../models/dashboard/xlsx-export.js";
-import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { AppSettingsSchema } from "../../../models/config/app-settings.js";
 import { initialSettingsFileRecord } from "../../../models/config/settings.js";
 import { completionFromAuthorization } from "../../../models/run/completion.js";
@@ -882,7 +875,7 @@ function timelineEvidenceRepositories(database: DatabaseSync) {
 }
 
 function assertTimelineOwner(database: DatabaseSync, record: TimelineAppend, appending = false): void {
-    if (record.scope.kind === "worker") return;
+    if (record.scope.kind !== "run") return;
     const run = readTimelineRun(database, record.scope.runId);
     if (run === undefined) throw new Error("timeline-event-owner-missing");
     if (run.envelope.workflow !== record.workflow) throw new Error("timeline-event-owner-mismatch");
@@ -900,12 +893,19 @@ function assertTimelineOwner(database: DatabaseSync, record: TimelineAppend, app
       const reference = record.payload.checkpoint;
       const checkpoint = timelineEvidenceRepositories(database).runCheckpoints.get(reference.workflowId, reference.itemId,
         reference.nodeId, reference.attempt, reference.claimGeneration);
-      if ((appending ? record.payload.attempt !== run.envelope.attempt : record.payload.attempt > run.envelope.attempt)
+      if ((record.payload.kind === "checkpoint-recorded" && record.eventId !== deriveStableUuid("timeline-checkpoint-recorded", checkpointLookupKey(reference.workflowId, reference.itemId, reference.nodeId, reference.attempt, reference.claimGeneration)))
+        || (appending ? record.payload.attempt !== run.envelope.attempt : record.payload.attempt > run.envelope.attempt)
         || (appending && record.payload.kind === "checkpoint-replayed" && Number(record.payload.claimGeneration) !== Number(run.claimGeneration))
         || reference.itemId !== run.envelope.itemId
         || checkpoint === undefined
         || canonicalJsonStringify(timelineCheckpointReference(checkpoint)) !== canonicalJsonStringify(reference)) {
         throw new Error("timeline-checkpoint-reference-mismatch");
+      }
+    }
+    if (record.payload.kind === "note") {
+      const note = record.payload.note;
+      if (!("runId" in note) || note.traceId !== run.envelope.traceId || note.attempt > run.envelope.attempt) {
+        throw new Error("timeline-note-owner-mismatch");
       }
     }
     if (record.payload.kind === "span") {
@@ -1663,39 +1663,76 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  readManagedArtifactReferences(): readonly ArtifactRef[] {
+  readManagedArtifactReferences(candidate?: ArtifactRef): readonly ArtifactRef[] {
     this.#assertOpen();
-    const pdfPagesHash = deriveSchemaHash(ExtractPdfPagesOutputSchema, "output");
     return this.#withReadSnapshot(() => {
-      const references: ArtifactRef[] = [];
-      const rows = (table: "generated_artifacts" | "imported_artifacts" | "operator_xlsx_exports" | "run_checkpoints") =>
-        this.#database.prepare(`SELECT payload_json FROM ${table} ORDER BY id`).all()
-          .map((raw) => AuthorityRecordFingerprintRowSchema.pick({ payload_json: true }).parse(raw).payload_json);
-      for (const json of rows("generated_artifacts")) {
-        const record = GeneratedArtifactSchema.parse(JSON.parse(json));
-        for (const version of record.versions) if (version.state === "verified") references.push(version.artifact);
-        if (record.prepared !== null) references.push(record.prepared.artifact);
-      }
-      for (const json of rows("imported_artifacts")) {
-        const record = ImportedArtifactSchema.parse(JSON.parse(json));
-        if (record.preparationJson !== null) {
-          references.push(IntakeSessionSchema.parse(JSON.parse(record.preparationJson)).artifact);
+      const references = new Map<string, ArtifactRef>();
+      const visit = (value: unknown): void => {
+        if (value === null || typeof value !== "object") return;
+        if (candidate !== undefined && containsDeletionArtifactReference(value, candidate)) references.set(candidate.sha256, candidate);
+        const full = ArtifactRefSchema.safeParse(value);
+        if (full.success) references.set(full.data.sha256, full.data);
+        if (Array.isArray(value)) { for (const member of value) visit(member); return; }
+        const object = value as Record<string, unknown>;
+        if (typeof object.preparationJson === "string") visit(JSON.parse(object.preparationJson));
+        const attachment = DiagnosticAttachmentSchema.safeParse(value);
+        if (attachment.success) {
+          const row = attachment.data;
+          const ref = ArtifactRefSchema.parse({ id: row.artifactId, sha256: row.digest, bytes: row.byteLength, mediaType: row.mediaType });
+          references.set(ref.sha256, ref);
+        }
+        for (const member of Object.values(object)) visit(member);
+      };
+      for (const table of AUTHORITY_TABLE_REGISTRY.map(entry => entry.name)) {
+        const columns = this.#database.prepare(`PRAGMA table_info(${table})`).all()
+          .map(raw => z.object({ name: z.string() }).parse(raw).name)
+          .filter(name => name.endsWith("_json"));
+        if (columns.length === 0) continue;
+        const retained = table === "diagnostic_snapshots" ? " WHERE json_extract(payload_json,'$.availability.state') IS NOT 'purged'"
+          : table === "diagnostic_files" ? " WHERE snapshot_id IN (SELECT id FROM diagnostic_snapshots WHERE json_extract(payload_json,'$.availability.state') IS NOT 'purged')" : "";
+        for (const raw of this.#database.prepare(`SELECT ${columns.join(",")} FROM ${table}${retained}`).all()) {
+          for (const value of Object.values(raw)) {
+            if (typeof value === "string") visit(JSON.parse(value));
+          }
         }
       }
-      if (inspectionTableNames(this.#database).includes("operator_xlsx_exports")) {
-        for (const json of rows("operator_xlsx_exports")) {
-          references.push(OperatorXlsxExportEvidenceSchema.parse(JSON.parse(json)).artifact);
-        }
-      }
-      for (const json of rows("run_checkpoints")) {
-        const record = RunCheckpointRecordSchema.parse(JSON.parse(json));
-        if (record.output.schemaHash === pdfPagesHash) {
-          const pages = ExtractPdfPagesOutputSchema.parse(record.output.value);
-          for (const page of pages.pages) references.push(page.image);
-        }
-      }
-      return Object.freeze(references.map((reference) => Object.freeze(ArtifactRefSchema.parse(reference))));
+      return Object.freeze([...references.values()].map(reference => Object.freeze(reference)));
     });
+  }
+
+  sweepOrdinaryDiagnostics(now: string): Readonly<{ purged: readonly string[]; retainedBytes: number }> {
+    const instant = IsoInstantSchema.parse(now);
+    const due = this.#database.prepare("SELECT * FROM diagnostic_snapshots WHERE retention_kind='ordinary' AND purge_after<=? ORDER BY purge_after,id").all(instant);
+    const purged: string[] = [];
+    let retainedBytes = 0;
+    for (const raw of due) {
+      const bundle = this.#parseNativeRow("diagnostic_snapshots", raw, DiagnosticBundleSchema);
+      const run = this.authority.runs.get(bundle.runId);
+      if (run === undefined) throw new Error("diagnostic-retention-run-missing");
+      // Active executions and external-write recovery cannot lose evidence.
+      if (run.lifecycle.state !== "terminal" || this.authority.writeIntents.listByRun(bundle.runId).some(intent => intent.status !== "committed")) continue;
+      this.#authorityWrite("diagnostic_snapshots", () => {
+        const current = this.#readRecord("diagnostic_snapshots", bundle.bundleId, DiagnosticBundleSchema);
+        if (current === undefined || current.retention.kind !== "ordinary") throw new Error("diagnostic-retention-owner-changed");
+        if (current.availability !== undefined) return { result: undefined, changes: 0 };
+        const record = DiagnosticBundleSchema.parse({ ...current, availability: { state: "purged", at: instant, reason: "retention" } });
+        const result = this.#database.prepare("UPDATE diagnostic_snapshots SET payload_json=? WHERE id=?").run(canonicalJsonStringify(record), bundle.bundleId);
+        return { result: undefined, changes: sqliteChanges(result.changes) };
+      });
+      for (const attachment of bundle.attachments) {
+        const ref = ArtifactRefSchema.parse({ id: attachment.artifactId, sha256: attachment.digest, bytes: attachment.byteLength, mediaType: attachment.mediaType });
+        this.#authorityWrite("diagnostic_snapshots", () => {
+          const references = this.readManagedArtifactReferences(ref);
+          if (references.some(reference => reference.id === ref.id || reference.sha256 === ref.sha256)) { retainedBytes += ref.bytes; return { result: undefined, changes: 0 }; }
+          // An explicit unavailable association survives failed or interrupted byte removal.
+          try { removeArtifactDeletionFile(this.#admission, inspectArtifactDeletionFile(this.#admission, ref)); }
+          catch (error) { if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error; }
+          return { result: undefined, changes: 0 };
+        });
+      }
+      purged.push(bundle.bundleId);
+    }
+    return Object.freeze({ purged: Object.freeze(purged), retainedBytes });
   }
 
   classifyRelocationActivation(intent: VerifiedRelocationActivationIntent, verifiedStageBackupPath = intent.stageAuthority.backupPath): "prestate" | "committed" {
@@ -2800,27 +2837,22 @@ export class AuthorityDatabase implements Disposable {
       requireOperationSourceDeclaration(definition, identity);
       if (run.envelope.parent === undefined ? identity.childInvocation !== undefined : identity.childInvocation?.parentRunId !== run.envelope.parent.runId || identity.childInvocation.edgeId !== run.envelope.parent.edgeId) throw new Error("diagnostic-operation-child-identity-mismatch");
       const expected = canonicalJsonStringify(identity);
-      const files = scopedEventStreamFiles(this.#admission.stateRoot, "notes", runNotePartitionScope({ runId: identity.runId, workflow: run.envelope.workflow, instants: runRecordNoteScopeInstants(run) }));
-      let slices = 0;
-      for (const file of files) {
-        let position = { bytesConsumed: 0, linesConsumed: 0 };
-        for (;;) {
-          if (++slices > 128) throw new Error("diagnostic-operation-note-scan-bound-exceeded");
-          const slice = readEventStreamSlice(file, position);
-          for (const line of slice.lines) {
-            const note = NoteWireSchema.parse(JSON.parse(line.text));
-            const occurrence = note.action?.operation;
-            if (occurrence === undefined) continue;
-            const { value: _value, ...retained } = occurrence;
-            if (canonicalJsonStringify(retained) !== expected) continue;
-            if (!("runId" in note) || note.runId !== identity.runId || note.workflow !== run.envelope.workflow || note.attempt !== identity.attempt || note.traceId !== run.envelope.traceId) throw new Error("diagnostic-operation-note-owner-mismatch");
-            return;
-          }
-          const next = slice.cursors.get(file.path);
-          if (next === undefined) throw new Error("diagnostic-operation-note-cursor-missing");
-          if (next.bytesConsumed === position.bytesConsumed) break;
-          position = next;
+      let cursor = 0;
+      for (;;) {
+        const rows = this.#database.prepare("SELECT * FROM timeline_events WHERE run_id=? AND cursor>? ORDER BY cursor LIMIT 500").all(identity.runId, cursor);
+        for (const raw of rows) {
+          const record = timelineEventFromRow(raw);
+          cursor = record.cursor;
+          if (record.payload.kind !== "note") continue;
+          const note = record.payload.note;
+          const occurrence = note.action?.operation;
+          if (occurrence === undefined) continue;
+          const { value: _value, ...retained } = occurrence;
+          if (canonicalJsonStringify(retained) !== expected) continue;
+          if (!("runId" in note) || note.runId !== identity.runId || note.workflow !== run.envelope.workflow || note.attempt !== identity.attempt || note.traceId !== run.envelope.traceId) throw new Error("diagnostic-operation-note-owner-mismatch");
+          return;
         }
+        if (rows.length < 500) break;
       }
       throw new Error("diagnostic-operation-exact-occurrence-not-retained");
     };
@@ -2837,6 +2869,14 @@ export class AuthorityDatabase implements Disposable {
               throw new Error(`diagnostic bundle ${record.bundleId} already exists with different content`);
             }
             return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
+          }
+          if (record.attachments.reduce((total, attachment) => total + attachment.byteLength, 0) > 50 * 1024 * 1024) throw new Error("diagnostic-bundle-size-exceeded");
+          if (record.retention.kind === "ordinary") {
+            const row = this.#database.prepare(`SELECT COALESCE(SUM(bytes),0) AS bytes FROM (
+              SELECT f.digest, MAX(json_extract(f.payload_json,'$.attachment.byteLength')) AS bytes
+              FROM diagnostic_files f JOIN diagnostic_snapshots s ON s.id=f.snapshot_id
+              WHERE s.retention_kind='ordinary' AND json_extract(s.payload_json,'$.availability.state') IS NOT 'purged' GROUP BY f.digest)`).get() as { bytes: number };
+            if (row.bytes + record.attachments.reduce((total, attachment) => total + attachment.byteLength, 0) > 1024 * 1024 * 1024) throw new Error("diagnostic-ordinary-cap-exceeded");
           }
           const result = this.#database.prepare(`
             INSERT INTO diagnostic_snapshots

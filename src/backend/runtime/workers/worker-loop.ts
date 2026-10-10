@@ -30,7 +30,7 @@ import type {
 import type { ContentAddressedArtifactWriter } from "../../../workflow-kit/artifacts.js";
 import type { RunDiagnosticCapture } from "../../../workflow-kit/diagnostics.js";
 import type { RunBrowserScreenshotCapture } from "../../../workflow-kit/diagnostics.js";
-import type { NoteJsonlWriter } from "../../storage/events/note-jsonl-writer.js";
+import type { NoteTimelineWriter } from "../../storage/events/note-timeline-writer.js";
 import { createConfirmedActionPublisher } from "../../logs/confirmed-action-publisher.js";
 import type { ConfirmedActionEvent } from "../../../models/events/confirmed-action.js";
 import type { GateSourceRuntime } from "../gates/gate-source-runtime.js";
@@ -103,7 +103,7 @@ export interface WorkerLoopDependencies {
   readonly idleRepollMs: number;
   readonly log: TaskLogger;
   /** Run messages and browser actions; transaction callbacks stay outside this sink. */
-  readonly taskNotes?: Pick<NoteJsonlWriter, "emitRunLog" | "emitRunAction">;
+  readonly taskNotes?: Pick<NoteTimelineWriter, "emitRunLog" | "emitRunAction">;
   // Worker-local publication handoff; persistent transport is supplied separately.
   readonly confirmedActionAppend?: (event: ConfirmedActionEvent) => void;
   /** Stop claiming and shut the worker down; the active run finishes first. */

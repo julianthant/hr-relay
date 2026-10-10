@@ -1,5 +1,8 @@
+import { appendEmergencyFault, withEmergencyTimelineWriter, importEmergencyFaults } from "../../../logs/emergency-faults.js";
 import { assertWorkerProcessStopped } from "../../../storage/sqlite/runtime-process-locks.js";
-import { WorkerRetirementProofSchema } from "../../../../models/run/worker-slot.js";
+import { WorkerRetirementProofSchema, workerPoolMember } from "../../../../models/run/worker-slot.js";
+import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
+import { deleteOwnedBrowserProfile, workerProfileDirectory } from "../../../runtime/browser/browser-session-factory.js";
 import type { DashboardBuildCommand } from "./build-identity.js";
 import { createPreflightReportService } from "../../../runtime/preflight/report-service.js";
 import { composeRuntimePreflight, type RuntimePreflight } from "../../preflight/runtime-admission.js";
@@ -60,11 +63,10 @@ import { createPreflightAuthority } from "../../../../models/preflight/preflight
 import { BackupServiceStateWireSchema, type BackupServiceStateWire } from "../../../../models/dashboard/storage.js";
 import { AuthorityDatabase, AuthorityHealthPreflightRunner, summarizeBackupHealth } from "../../../storage/sqlite/index.js";
 import { acquireRuntimeProcessLock } from "../../../storage/sqlite/runtime-process-locks.js";
-import { pruneEventStreams } from "../../../storage/events/jsonl-streams.js";
 import { createTransactionHistory } from "../../../storage/sqlite/transaction-history.js";
 import { requireRuntimeAdmission, type RuntimeAdmission } from "../../../storage/admission/admission.js";
 import { createTimelineEmitter } from "../../../storage/events/timeline-emitter.js";
-import { createNoteJsonlWriter, type NoteJsonlWriter } from "../../../storage/events/note-jsonl-writer.js";
+import { createNoteTimelineWriter, type NoteTimelineWriter } from "../../../storage/events/note-timeline-writer.js";
 import { createRunLogStreamStore } from "../../../logs/run-log-stream.js";
 import { RunLogsStreamHub } from "../../../transports/http/subscriptions/run-logs-stream.js";
 import { createContentAddressedArtifactWriter } from "../../../storage/artifacts/content-addressed-artifact-writer.js";
@@ -86,7 +88,7 @@ import { createDashboardPreflightRunners } from "../../preflight/dashboard-runne
 
 export interface DashboardRuntime {
   readonly port: number;
-  readonly noteWriter: NoteJsonlWriter;
+  readonly noteWriter: NoteTimelineWriter;
   readonly notificationStatus: ReturnType<typeof createTrustNotifications>["observer"]["status"];
   stop(): Promise<void>;
 }
@@ -159,6 +161,7 @@ export function productionWorkerLaunch(repoRoot: string, environment?: NodeJS.Pr
 const WORKER_BIRTH_TIMEOUT_MS = 60_000;
 
 export interface WorkerProcessControlInput {
+  readonly profileRoot: string;
   readonly processLockRoot: string;
   readonly database: AuthorityDatabase;
   readonly clock: Clock;
@@ -267,9 +270,18 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
       return input.database.withAuthorityTransaction(repositories => {
         const slot = repositories.workerSlots.get(member.workerId);
         const lease = repositories.workerLeases.get(member.workerId);
+        const pending = repositories.workerControls.pending(`worker-pool:${member.workflowId}`);
+        const reservation = pending.find(control => control.request.type === "plan-worker-count" && control.phase.state === "executing"
+          && control.roster?.excess.some(original => canonicalJsonStringify(original) === canonicalJsonStringify(slot)));
         if (slot === undefined || slot.retiredAt !== null || slot.membershipRevision !== member.membershipRevision
+          || canonicalJsonStringify(workerPoolMember(slot)) !== canonicalJsonStringify(member) || reservation === undefined || pending.length !== 1
           || lease !== undefined && isLiveWorker(lease)
           || repositories.workerControls.browsers(member.workerId).some(browser => browser.health !== "closed")) throw new WorkerControlRefusal("worker-retirement-closure-not-proved");
+        const profileDirectory = join(input.profileRoot, `w${String(slot.ordinal)}`);
+        for (const browser of repositories.workerControls.browsers(member.workerId)) {
+          if (browser.profileDirectory !== workerProfileDirectory({ profileRoot: input.profileRoot, slotOrdinal: slot.ordinal, system: browser.system })) throw new WorkerControlRefusal("worker-retirement-profile-identity-mismatch");
+        }
+        deleteOwnedBrowserProfile(input.profileRoot, profileDirectory);
         return WorkerRetirementProofSchema.parse({ workerId: member.workerId, membershipRevision: member.membershipRevision,
           checkedAt: input.clock.now().toISOString(), processStopped: true, browsersClosed: true, exclusive: true });
       });
@@ -403,16 +415,21 @@ async function composeDashboardRuntimeStartup(
     }
     processLock.release();
   });
-  const database = AuthorityDatabase.open(
-    admission,
-    { path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "rebuild-dashboard" },
-    clock,
-  );
+  const database = (() => {
+    try { return AuthorityDatabase.open(admission,
+      { path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "rebuild-dashboard" }, clock); }
+    catch (error) {
+      appendEmergencyFault({ stateRoot, build: appVersion, code: "DATABASE_ADMISSION_FAILED", error: error instanceof Error ? error : new Error("Database admission failed"), now: clock.now() });
+      throw error;
+    }
+  })();
   databaseClosed = false;
   startupCleanups.push(() => {
     database.close();
     databaseClosed = true;
   });
+  importEmergencyFaults(stateRoot, database.authority.timelineEvents);
+  database.sweepOrdinaryDiagnostics(clock.now().toISOString());
   const bootConfig = (() => {
     const persistedSettings = database.withAuthorityTransaction((repositories) => readBootSettings(repositories));
     return Object.freeze({
@@ -476,7 +493,8 @@ async function composeDashboardRuntimeStartup(
     );
   };
 
-  const spanWriter = createTimelineEmitter({ repository: database.authority.timelineEvents, clock });
+  const loggingRepository = withEmergencyTimelineWriter(database.authority.timelineEvents, { stateRoot, clock, build: appVersion });
+  const spanWriter = createTimelineEmitter({ repository: loggingRepository, clock });
   const descriptors = {
     resolve: (workflowId: string) => SERVER_REGISTRY[workflowId]?.descriptor,
   };
@@ -540,11 +558,10 @@ async function composeDashboardRuntimeStartup(
   let ownsWorker: (lease: import("../../../../models/run/worker.js").WorkerLeaseRecord) => boolean = () => false;
   const projection = createOperatorProjection({ ownsWorker: lease => ownsWorker(lease), stateRoot, clock, appVersion, descriptorSetHash: setHash, ledger, database, descriptors, reader: servedReader });
 
-  const noteWriter = createNoteJsonlWriter({ stateRoot, clock });
+  const noteWriter = createNoteTimelineWriter({ repository: loggingRepository, clock });
 
   // Ordinary timeline and notes retain their 30-day append-day window.
   // Confirmed operation events remain until explicit owner deletion.
-  pruneEventStreams({ stateRoot, clock, streams: ["notes"] });
   database.authority.timelineEvents.pruneBefore(localDatePart(new Date(
     clock.nowMs() - EVENT_STREAM_RETENTION_DAYS * 24 * 60 * 60 * 1000,
   )));
@@ -555,7 +572,7 @@ async function composeDashboardRuntimeStartup(
   if (initialHealth.state === "degraded") {
     throw new Error(`dashboard refused to start over a degraded projection: ${initialHealth.lastError ?? "unknown"}`);
   }
-  const runLogsHub = new RunLogsStreamHub({ projection, store: createRunLogStreamStore(stateRoot),
+  const runLogsHub = new RunLogsStreamHub({ projection, store: createRunLogStreamStore(database.authority.timelineEvents),
     readRun: runId => {
       const existence = lifecycle.read(runId);
       return existence.state === "present" ? { disposition: existence.disposition, run: existence.run } : undefined;
@@ -595,6 +612,7 @@ async function composeDashboardRuntimeStartup(
     }));
   };
   const workerControl = composeWorkerProcessControl({
+    profileRoot: resolved.config.paths.browserProfileRoot,
     processLockRoot: join(repoRoot, input.isolation.processLockRoot),
     database,
     clock,

@@ -21,7 +21,7 @@ import { requireCanonicalRun } from "./run-read.js";
 
 export { availableSections } from "./run-trust.js";
 export { buildRunSection, readRunSection } from "./run-sections.js";
-export { createRunNoteScanCache, runNotePartitionScope } from "./run-logs.js";
+export { createRunNoteScanCache } from "./run-logs.js";
 export type { RunLogScanEntry, RunNoteScanEntry, RunNoteScanCache } from "./run-logs.js";
 export type {
   RunDetailTrustDeps,

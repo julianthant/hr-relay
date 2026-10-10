@@ -7,14 +7,14 @@ import {
   type OperationSourceResponse,
 } from "../../../models/dashboard/operation-structure.js";
 import { NoteWireSchema } from "../../../models/events/types.js";
-import { readEventStreamSlice, scopedEventStreamFiles } from "../../storage/events/jsonl-streams.js";
+import { timelineNoteLocation } from "../../storage/events/timeline-reader.js";
 import { RunResultRecordSchema, terminalEvidenceResult } from "../../../models/run/result.js";
 import type { RunRecord } from "../../../models/run/record.js";
-import { operationStructureForRun, runNotePartitionScope, type RunLogScanEntry } from "./run-logs.js";
+import { operationStructureForRun, type RunLogScanEntry } from "./run-logs.js";
 import type { RunDetailQueryDeps } from "./run-detail-types.js";
 
 
-type HeldCursor = Readonly<{ ownerRunId: string; identity: string; date: string; bytesConsumed: number; linesConsumed: number }>;
+type HeldCursor = Readonly<{ ownerRunId: string; identity: string; after: number; through: number }>;
 const cursorCaches = new WeakMap<RunDetailQueryDeps, Map<string, HeldCursor>>();
 function cursorCache(deps: RunDetailQueryDeps): Map<string, HeldCursor> {
   const existing = cursorCaches.get(deps);
@@ -44,7 +44,7 @@ function resolveOperationSourceInSnapshot(
   if (request.cursor !== undefined && (cursor === undefined || cursor.ownerRunId !== ownerRunId || cursor.identity !== identityKey)) {
     throw new Error("operation-source-cursor-unavailable-or-identity-mismatch");
   }
-  const continuation = (position: Readonly<{ date: string; bytesConsumed: number; linesConsumed: number }>): OperationSourceResponse => {
+  const continuation = (position: Readonly<{ after: number; through: number }>): OperationSourceResponse => {
     const token = sha256Hex(randomUUID());
     cache.set(token, { ...position, ownerRunId, identity: identityKey });
     if (cache.size > 128) cache.delete(cache.keys().next().value!);
@@ -97,17 +97,16 @@ function resolveOperationSourceInSnapshot(
   else return OperationSourceResponseSchema.parse({ state: "unavailable", reason: "exact-occurrence-not-retained" });
   if (target.envelope.parent !== undefined && (request.identity.childInvocation?.parentRunId !== target.envelope.parent.runId
     || request.identity.childInvocation.edgeId !== target.envelope.parent.edgeId)) throw new Error("operation-source-child-identity-mismatch");
-  const files = scopedEventStreamFiles(deps.stateRoot, "notes", runNotePartitionScope(target.envelope.runId, undefined, target));
-  const index = cursor === undefined ? 0 : files.findIndex((file) => file.date === cursor.date);
-  if (index < 0) throw new Error("operation-source-cursor-partition-unavailable");
-  const file = files[index];
-  if (file === undefined) return OperationSourceResponseSchema.parse({ state: "unavailable", reason: "exact-occurrence-not-retained" });
-  const slice = readEventStreamSlice(file, cursor ?? { bytesConsumed: 0, linesConsumed: 0 });
-  for (const line of slice.lines) {
+  const through = cursor?.through ?? deps.timeline.highWaterMark();
+  if (through > deps.timeline.highWaterMark()) throw new Error("operation-source-cursor-unavailable");
+  const records = deps.timeline.page({ runId: target.envelope.runId, after: cursor?.after ?? 0, through, limit: 200 });
+  for (const record of records) {
+    if (record.payload.kind !== "note") continue;
+    const line = timelineNoteLocation(record);
     signal?.throwIfAborted();
     let note;
     try { note = NoteWireSchema.parse(JSON.parse(line.text)); }
-    catch (cause) { throw new Error(`operation-source-corrupt-note:${file.date}:${line.lineNumber}`, { cause }); }
+    catch (cause) { throw new Error(`operation-source-corrupt-note:${record.eventId}`, { cause }); }
     const occurrence = note.action?.operation;
     if (occurrence === undefined) continue;
     const { value: _value, ...identity } = occurrence;
@@ -117,9 +116,8 @@ function resolveOperationSourceInSnapshot(
     const entry: RunLogScanEntry = { kind: "note", line, note: { ...note, runId: note.runId } };
     return OperationSourceResponseSchema.parse({ state: "found", structure: operationStructureForRun(target, target.envelope.runId, [entry]) });
   }
-  const nextPosition = slice.cursors.get(file.path)!;
-  if (slice.lines.length > 0) return continuation({ date: file.date, ...nextPosition });
-  const next = files[index + 1];
-  return next === undefined ? OperationSourceResponseSchema.parse({ state: "unavailable", reason: "exact-occurrence-not-retained" })
-    : continuation({ date: next.date, bytesConsumed: 0, linesConsumed: 0 });
+  const last = records.at(-1);
+  return last === undefined || records.length < 200
+    ? OperationSourceResponseSchema.parse({ state: "unavailable", reason: "exact-occurrence-not-retained" })
+    : continuation({ after: last.cursor, through });
 }

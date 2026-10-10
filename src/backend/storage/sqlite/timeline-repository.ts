@@ -14,7 +14,7 @@ interface TimelineRepositoryPorts {
 }
 
 const RowSchema = z.strictObject({
-  cursor: z.number().int().positive(), id: z.string(), workflow: z.string(),
+  cursor: z.number().int().positive(), id: z.string(), workflow: z.string().nullable(),
   run_id: z.string().nullable(), worker_id: z.string().nullable(), retention_date: z.string(),
   retention_class: z.enum(["ordinary", "confirmed-operation", "protected"]), payload_json: z.string(),
   kind: z.string(), occurred_at: z.string(), recorded_at: z.string(), operation_id: z.string().nullable(),
@@ -50,7 +50,7 @@ export function timelineEventFromRow(raw: unknown): TimelineEventRecord {
   const parsedRecord = TimelineEventRecordSchema.safeParse(value);
   if (!parsedRecord.success) throw invalidTimelineRecord(value);
   const record = parsedRecord.data;
-  if (row.cursor !== record.cursor || row.id !== record.eventId || row.workflow !== record.workflow
+  if (row.cursor !== record.cursor || row.id !== record.eventId || row.workflow !== (record.workflow ?? null)
     || row.run_id !== (record.scope.kind === "run" ? record.scope.runId : null)
     || row.worker_id !== (record.scope.kind === "worker" ? record.scope.workerId : null)
     || row.retention_date !== record.retentionDate || row.recorded_at !== record.recordedAt || row.occurred_at !== record.occurredAt
@@ -68,6 +68,10 @@ export function timelineEventFromRow(raw: unknown): TimelineEventRecord {
 
 function timelineRetentionClass(record: z.infer<typeof TimelineAppendSchema>) {
   if (record.payload.kind === "operation-confirmed") return "confirmed-operation";
+  if (record.payload.kind === "debug" && record.payload.event.pinned) return "protected";
+  if (record.payload.kind === "span" && record.payload.event.t === "span.ended" && ["failed", "interrupted"].includes(record.payload.event.outcome)) return "protected";
+  if (record.payload.kind === "checkpoint-recorded" || record.payload.kind === "checkpoint-replayed"
+    || (record.payload.kind === "note" && record.payload.note.confirmedAction?.kind === "fact")) return "protected";
   return "ordinary";
 }
 
@@ -85,6 +89,7 @@ export function createTimelineRepository(ports: TimelineRepositoryPorts): Timeli
       if (!parsed.success) throw new Error("timeline-event-invalid");
       const record = parsed.data;
       const content = canonicalJsonStringify(record);
+      if (Buffer.byteLength(content, "utf8") > 256 * 1024) throw new Error("timeline-event-size-exceeded");
       return ports.mutate<ReturnType<TimelineRepository["append"]>>(() => {
         const existing = get(record.eventId);
         if (existing !== undefined) {
@@ -93,6 +98,10 @@ export function createTimelineRepository(ports: TimelineRepositoryPorts): Timeli
           return { result: { state: "existing" as const, record: existing }, changes: 0 };
         }
         ports.assertOwner(record, true);
+        if (timelineRetentionClass(record) === "ordinary") {
+          const row = database.prepare("SELECT COALESCE(SUM(length(CAST(payload_json AS BLOB))),0) AS bytes FROM timeline_events WHERE retention_class = 'ordinary'").get() as { bytes: number };
+          if (row.bytes + Buffer.byteLength(canonicalJsonStringify({ ...record, cursor: Number((database.prepare("SELECT COALESCE((SELECT seq FROM sqlite_sequence WHERE name='timeline_events'),0) + 1 AS cursor").get() as { cursor: number }).cursor) }), "utf8") > 250 * 1024 * 1024) throw new Error("timeline-ordinary-cap-exceeded");
+        }
         // SQLite assigns both the cursor and its authenticated JSON mirror from
         // its AUTOINCREMENT sequence under the same owning write transaction.
         const raw = database.prepare(`
@@ -100,7 +109,7 @@ export function createTimelineRepository(ports: TimelineRepositoryPorts): Timeli
             retention_class,operation_id,operation_generation,confirmed_at,system,payload_json)
           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,json_set(?,'$.cursor',
             COALESCE((SELECT seq FROM sqlite_sequence WHERE name='timeline_events'),0)+1)) RETURNING *
-        `).get(record.eventId,record.workflow,
+        `).get(record.eventId,record.workflow ?? null,
           record.scope.kind === "run" ? record.scope.runId : null,record.scope.kind === "worker" ? record.scope.workerId : null,
           record.payload.kind === "span" ? record.payload.event.t : record.payload.kind,record.occurredAt,record.recordedAt,record.retentionDate,
           timelineRetentionClass(record),record.payload.kind === "operation-confirmed" ? record.payload.facts.writeIntentId : null,
@@ -132,13 +141,19 @@ export function createTimelineRepository(ports: TimelineRepositoryPorts): Timeli
       const cutoff = z.iso.date().parse(retentionDate);
       return ports.mutate(() => {
         const result = database.prepare(
-          `DELETE FROM timeline_events WHERE retention_class = 'ordinary' AND retention_date < ?
+          `DELETE FROM timeline_events WHERE retention_class = 'ordinary'
+            AND retention_date < CASE WHEN json_extract(payload_json,'$.payload.event.category')='sse'
+              AND json_extract(payload_json,'$.payload.event.phase')='settled' THEN date(?,'+23 days') ELSE ? END
+            AND NOT EXISTS (SELECT 1 FROM runs r WHERE r.id=timeline_events.run_id AND r.state<>'terminal')
+            AND NOT (kind='span.started' AND NOT EXISTS (SELECT 1 FROM timeline_events ended WHERE ended.kind='span.ended'
+              AND ended.run_id IS timeline_events.run_id AND ended.worker_id IS timeline_events.worker_id
+              AND json_extract(ended.payload_json,'$.payload.event.spanPath')=json_extract(timeline_events.payload_json,'$.payload.event.spanPath')))
             AND NOT EXISTS (SELECT 1 FROM run_search AS search_row JOIN runs AS run_owner ON run_owner.id=search_row.run_id,
               json_each(search_row.actor_source_json) actor_source
               WHERE search_row.run_id=timeline_events.run_id
                 AND json_extract(actor_source.value,'$.kind')='queued'
                 AND json_extract(actor_source.value,'$.event.eventId')=timeline_events.id)`,
-        ).run(cutoff);
+        ).run(cutoff, cutoff);
         const changes = z.number().int().nonnegative().parse(Number(result.changes));
         return { result: changes, changes };
       });

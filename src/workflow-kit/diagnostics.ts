@@ -1,4 +1,5 @@
 // Capture redacts; terminal persistence prevents dangling diagnostic bundle IDs.
+import type { BrowserScreenshotEvidence } from "./session.js";
 import type { DiagnosticBundle } from "../models/trust/diagnostic.js";
 import type { FailureRecord } from "../models/trust/failure.js";
 
@@ -21,6 +22,6 @@ export interface RunBrowserScreenshotCapture {
     configFingerprint: string;
     system: string;
     leaseOutcome: "succeeded" | "failed";
-    screenshot: Readonly<{ bytes: Uint8Array; width: number; height: number }>;
+    screenshot: BrowserScreenshotEvidence;
   }>): Promise<void>;
 }

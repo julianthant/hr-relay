@@ -5,7 +5,7 @@ import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js
 import { FingerprintSchema, IsoInstantSchema, ItemIdSchema, NodeIdSchema, PositiveIntSchema, RunIdSchema,
   WorkerIdSchema, WorkflowIdSchema, WriteAttemptIdSchema, FailureIdSchema, CommandIdSchema, ActorIdSchema } from "../../rules/identity/ids.js";
 import { LedgerEntryPayloadSchema } from "../../rules/runs/ledger.js";
-import { SpanEventWireSchema } from "./types.js";
+import { NoteWireSchema, SpanEventWireSchema } from "./types.js";
 
 /** A reference preserves the original observation; replay never rewrites its clock. */
 export const TimelineCheckpointReferenceSchema = z.strictObject({
@@ -24,6 +24,28 @@ export const TimelineCheckpointReferenceSchema = z.strictObject({
 const { proof: _proof, ...historicalLedgerFields } = LedgerEntryPayloadSchema.shape;
 const ConfirmedOperationFactsSchema = z.strictObject(historicalLedgerFields);
 
+export const DebugEventSchema = z.strictObject({
+  category: z.enum(["session", "duo", "worker", "http", "sse", "client", "boot"]),
+  phase: z.enum(["started", "settled", "failed", "reset", "acquired", "renewed", "released", "expired"]),
+  correlationId: z.string().min(1).max(128),
+  code: z.string().max(128).optional(),
+  message: z.string().max(65536).optional(),
+  stack: z.string().max(65536).optional(),
+  method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]).optional(),
+  route: z.string().max(512).optional(),
+  status: z.number().int().min(100).max(599).optional(),
+  durationMs: z.number().nonnegative().optional(),
+  cursor: z.string().max(256).optional(),
+  pending: z.number().int().nonnegative().optional(),
+  omitted: z.number().int().nonnegative().optional(),
+  release: z.string().min(1).max(128).optional(),
+  surface: z.string().min(1).max(128).optional(),
+  build: z.string().min(1).max(128),
+  pid: PositiveIntSchema,
+  pinned: z.boolean().default(false),
+});
+export type DebugEvent = z.infer<typeof DebugEventSchema>;
+
 export const TimelinePayloadSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("failure-resolution"), runId: RunIdSchema, workflow: WorkflowIdSchema,
@@ -31,7 +53,9 @@ export const TimelinePayloadSchema = z.discriminatedUnion("kind", [
     action: z.enum(["resolve", "reopen"]), annotationVersion: PositiveIntSchema.min(2),
     at: IsoInstantSchema,
   }),
+  z.strictObject({ kind: z.literal("debug"), event: DebugEventSchema }),
   z.strictObject({ kind: z.literal("span"), event: SpanEventWireSchema }),
+  z.strictObject({ kind: z.literal("note"), note: NoteWireSchema }),
   z.strictObject({
     kind: z.enum(["checkpoint-replayed", "checkpoint-recorded"]),
     runId: RunIdSchema,
@@ -54,10 +78,12 @@ export const TimelinePayloadSchema = z.discriminatedUnion("kind", [
 export const TimelineAppendSchema = z.strictObject({
   schemaVersion: z.literal(1),
   eventId: z.uuid(),
-  workflow: WorkflowIdSchema,
+  workflow: WorkflowIdSchema.optional(),
   scope: z.discriminatedUnion("kind", [
     z.strictObject({ kind: z.literal("run"), runId: RunIdSchema }),
     z.strictObject({ kind: z.literal("worker"), workerId: WorkerIdSchema }),
+    z.strictObject({ kind: z.literal("transport"), connectionId: z.string().min(1).max(128) }),
+    z.strictObject({ kind: z.literal("client"), clientId: z.string().min(1).max(128) }),
   ]),
   occurredAt: IsoInstantSchema,
   recordedAt: IsoInstantSchema,
@@ -67,10 +93,11 @@ export const TimelineAppendSchema = z.strictObject({
   source: z.strictObject({ kind: z.literal("native") }),
 }).superRefine((record, context) => {
   const payload = record.payload;
-  const runId = payload.kind === "span"
+  if (payload.kind === "debug") return;
+  const runId = payload.kind === "note" ? ("runId" in payload.note ? payload.note.runId : undefined) : payload.kind === "span"
     ? ("runId" in payload.event ? payload.event.runId : undefined)
     : payload.kind === "operation-confirmed" ? payload.facts.runId : payload.runId;
-  const workflow = payload.kind === "span" ? payload.event.workflow
+  const workflow = payload.kind === "note" ? payload.note.workflow : payload.kind === "span" ? payload.event.workflow
     : payload.kind === "operation-confirmed" ? payload.facts.workflowId : payload.workflow;
   if (record.workflow !== workflow
     || (runId === undefined ? record.scope.kind !== "worker"
@@ -80,6 +107,10 @@ export const TimelineAppendSchema = z.strictObject({
   if (payload.kind === "failure-resolution" && (record.occurredAt !== payload.at
     || record.recordedAt !== payload.at || record.source.kind !== "native")) {
     context.addIssue({ code: "custom", message: "failure resolution must bind its command time and native source" });
+  }
+  if (payload.kind === "note" && (record.occurredAt !== payload.note.ts
+    || (record.scope.kind === "worker" && (!("workerId" in payload.note) || record.scope.workerId !== payload.note.workerId)))) {
+    context.addIssue({ code: "custom", message: "timeline note identity mismatch" });
   }
   if (payload.kind === "span") {
     if (record.occurredAt !== payload.event.ts || (record.scope.kind === "worker"
