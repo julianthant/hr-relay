@@ -7,7 +7,6 @@ import { z } from "zod";
 import { JsonValueSchema, canonicalJsonStringify } from "../validation/canonical-json.js";
 import { SettingsPatchSchema } from "../../models/config/settings.js";
 import { MarkedProtectedSettingsPatchSchema, ProtectedSettingsPatchSchema, ProtectedSettingsReadbackSchema, markProtectedSettingsPatch } from "../../models/config/protected-settings.js";
-import { LegacyProtectedSettingsReadbackSchema } from "../../models/config/protected-settings-legacy.js";
 import { deepFreeze } from "../validation/immutability.js";
 import { ActorIdSchema, BrowserSessionIdSchema, CommandAuditIdSchema, CommandIdSchema, DependencyIdSchema, FingerprintSchema, GateIdSchema, IntakeSessionIdSchema, IntakeManifestIdSchema, IntakeTargetFieldIdSchema, IsoInstantSchema, LOCAL_OPERATOR_ACTOR_ID, NotificationIdSchema, NonNegativeIntSchema, PositiveIntSchema, RunIdSchema, RunSessionIdSchema, SourceColumnIdSchema, SourceSurfaceIdSchema, StartPlanIdSchema, WorkerIdSchema, WorkflowIdSchema, WriteIntentIdSchema, WriteAttemptIdSchema } from "../identity/ids.js";
 import { SchemaBoundCanonicalValueSchema } from "../../models/validation/schema-bound-value.js";
@@ -416,8 +415,7 @@ const CommandLandingResultSchema = z.strictObject({
   settingsRevision: PositiveIntSchema.optional(),
   settingsFingerprint: FingerprintSchema.optional(),
   revision: PositiveIntSchema.optional(),
-// Preserve distinct five-name current and seven-name historical readbacks; never reinterpret their family.
-  entries: z.union([ProtectedSettingsReadbackSchema.shape.entries, LegacyProtectedSettingsReadbackSchema.shape.entries]).optional(),
+  entries: ProtectedSettingsReadbackSchema.shape.entries.optional(),
 }).superRefine((result, context) => {
   const settingsTargets = result.affectedTargets.filter((target) => target.family === "settings");
   const protectedTargets = result.affectedTargets.filter((target) => target.family === "protected-settings");

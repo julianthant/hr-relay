@@ -579,7 +579,7 @@ own value schemas). Reader: `src/control/test-data.ts` for the tracked file and
 `src/infra/config/test-data-local.ts` for the private file (0600, no symlink, ≤64,000 bytes, unique
 keys, errors name keys only), capture-once `TestDataInputSource` with an opaque `sourceId` carried
 by the `test-data-local` protected-input binding. Retired names: `RETIRED_TEST_TARGET_PROTECTED_NAMES`
-in `src/domain/config/protected-settings-legacy.ts` (the frozen seven-name family and its pinned
+in the removed old-format protected-settings schema (the frozen seven-name family and its pinned
 schema hash, used only by migration and D331 historical readers) and
 `RETIRED_TEST_TARGET_ENVIRONMENT_KEYS` in the catalog, refused by name before any value is decoded.
 Credential document schemaVersion 2 (`src/infra/config/credential-store.ts`): the live five-name
