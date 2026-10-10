@@ -109,8 +109,7 @@ describe("workflow definition compiler", () => {
   it("memoizes one compiled workflow per definition AND build manifest; a second manifest refuses instead of returning the first compile", () => {
     const compiled = compileWorkflow(personLookupWorkflow);
     expect(compileWorkflow(personLookupWorkflow, { manifest: BUILD_MANIFEST })).toBe(compiled);
-    // A structurally equal manifest is a DIFFERENT manifest: the fingerprint
-    // baked into the memoized descriptor was resolved against the first one.
+    // A structurally equal replacement manifest is a different identity from the memoized definition manifest.
     expect(() => compileWorkflow(personLookupWorkflow, { manifest: { ...BUILD_MANIFEST } })).toThrow(
       /workflow person-lookup was already compiled under a different build manifest; one definition compiles under exactly one manifest/u,
     );
@@ -242,7 +241,7 @@ describe("workflow definition compiler", () => {
   });
 });
 
-describe("workflow definition entry algebra (D315)", () => {
+describe("workflow definition entry algebra", () => {
   it("compiles every explicit entry kind into its existing node kind with the author's exact policies", () => {
     const compiled = compileFixtureWorkflow(everyEntryKindWorkflow);
     expect(workflowEntryKinds(everyEntryKindWorkflow).toSorted())

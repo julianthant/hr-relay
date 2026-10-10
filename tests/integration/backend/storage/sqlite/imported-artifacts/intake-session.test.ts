@@ -1,12 +1,6 @@
 import { insertImportedArtifact } from "../../../../../../src/backend/storage/sqlite/imported-artifacts.js";
 import { importedArtifact } from "../../../../../../src/models/intake/imported-artifact.js";
-/**
- * 2i-E1: the durable intake session — created in `mapping` by the upload
- * route, mutated under a version CAS, and findable by its source bytes so a
- * re-upload joins its open session instead of silently forking a second one.
- * The searchable `state` column must move WITH the record: a column that
- * lagged its own JSON would make "open session for this file" a lie.
- */
+
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -419,7 +413,7 @@ describe("intake session repository", () => {
     db.authority.intakeSessions.update(settled);
     assert.deepEqual(db.authority.intakeSessions.get(UUID_7), settled);
 
-    // The same version again: its predecessor no longer exists — a raced write.
+
     assert.throws(() => db.authority.intakeSessions.update(settled), /raced past its expected predecessor/u);
 
     // Discarding removes it from the active-by-source view THROUGH the column,

@@ -1,59 +1,4 @@
-/**
- * Declared evidence classification — ref clock-config-secrets §6's "redaction is schema-owned"
- * applied to ref operator-trust §2.3's receipt facts (D140).
- *
- * A receipt is the surface an operator uses to finish a double-check WITHOUT
- * opening the source system, so it carries real values. Which values, and in
- * what form, is a DECLARATION here — never a guess made from a field's name at
- * projection time. Two rules follow from the charter:
- *
- * 1. **A leaf with no declared classification is a loud failure, not a silent
- *    drop.** `redactDiagnosticFields` drops an unclassified *diagnostic* field
- *    with a warning because that channel accepts free-form payloads. A receipt
- *    is different: its leaves come from schemas this repository owns, so an
- *    unclassified leaf is a missing declaration in THIS file — a code gap the
- *    author closes, exactly like `config/pending-impl-bindings.json`. Dropping
- *    it would make a receipt look complete while hiding what the run actually
- *    read or wrote.
- * 2. **The transform is the one the classification allows, and no wider.**
- *    `redactDiagnosticFields` owns the whole transform implementation; this
- *    module only chooses (classification, transform) per leaf and widens the
- *    produced field's `key` from the leaf name to its full dotted path. There
- *    is deliberately no second redaction implementation to drift.
- *
- * ## The leaf rule is the one the provenance collector already uses
- *
- * `src/backend/runs/task-provenance.ts` defines an output leaf as: an ARRAY is a leaf,
- * an empty object is a leaf, a populated object recurses, and everything else
- * is a leaf. This module uses exactly that rule so a receipt fact and the
- * `FactProvenance` row that dates it share one path vocabulary. Inventing a
- * second, finer rule here (`results[3].emplId`) would produce facts that no
- * stored provenance row could ever date, and the receipt would have to guess
- * the observation instant — which is the failure mode this whole program
- * exists to prevent.
- *
- * ## Why business values are `safe-diagnostic` and person identifiers are not
- *
- * Ref clock-config-secrets's closed enum has no "operator-visible HR value" arm, so the mapping
- * is stated rather than assumed. A UCPath employee status, a CRM process
- * stage, a Kuali document number, an onboarding date, a page-state id, a proof
- * source: these describe the TRANSACTION, not the person, and the operator
- * already sees them on the queue row and the context rail. They are
- * `safe-diagnostic`.
- *
- * A person's EID or name is a `direct-identifier`, whose widest permitted
- * transform is `last4`. That is deliberately NOT weaker than it looks: the
- * receipt never asks the operator to eyeball two names and decide whether they
- * agree. It carries the SERVER's verdict on the identity obligation with the
- * digest that proves the comparison, which is a stronger double-check than
- * printing the identifier twice would be. `timekeeperName` is classified
- * `direct-identifier` here because `src/domain/secrets.ts` already classifies
- * the `TIMEKEEPER_NAME` environment value that way, and one field cannot carry
- * two classifications. A LIST of people (`results`, `selection.candidateEids`)
- * is `sensitive-hr`/`count`: "one candidate matched" is the fact that decides
- * whether the search was unambiguous, and it is answerable without naming
- * anybody who was not selected.
- */
+/** Declared evidence classification: redaction is schema-owned, and a receipt's facts are classified where they are declared rather than at the UI. */
 import { z } from "zod";
 import { JsonValueSchema } from "../../rules/validation/canonical-json.js";
 import { GateIdSchema, TaskIdSchema, WorkflowIdSchema } from "../../rules/identity/ids.js";
@@ -71,24 +16,13 @@ export const EvidenceValueScopeSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("workflow-input"), workflowId: WorkflowIdSchema }),
   z.strictObject({ kind: z.literal("workflow-result"), workflowId: WorkflowIdSchema }),
   z.strictObject({ kind: z.literal("task-output"), taskId: TaskIdSchema }),
-  /**
-   * A gate's stored result payload (D204). It is scoped by `(workflow, gate)`
-   * and NOT by a task id, because a gate owns no contract: its result schema is
-   * declared on the gate node itself, so two workflows can name a gate the same
-   * thing and mean different payloads.
-   */
+    /* A gate's stored result payload, scoped by `(workflow, gate)` and NOT by a task id, because a gate owns no contract: its result schema is declared on the gate node itself. */
   z.strictObject({
     kind: z.literal("gate-result"),
     workflowId: WorkflowIdSchema,
     gateId: GateIdSchema,
   }),
-  /**
-   * A commit contract's completion proof (Track F, ledger 2 D16–D22). It is
-   * scoped by the COMMIT task id, not by the verify task that may have read
-   * it: the proof schema is the commit contract's own declaration, the same
-   * value whichever of `proofFromOutput` / `proofFromPresentProbe` produced
-   * it, and the receipt's action entry carries it beside the write it proves.
-   */
+    /* A commit contract's completion proof, scoped by the COMMIT task id, not by the verify task that may have read it: the proof schema is the commit contract's own declaration. */
   z.strictObject({ kind: z.literal("write-proof"), taskId: TaskIdSchema }),
 ]);
 export type EvidenceValueScope = z.infer<typeof EvidenceValueScopeSchema>;
@@ -105,10 +39,7 @@ export const EvidenceFieldClassificationSchema = z.strictObject({
   classification: DataClassificationSchema,
   transform: EvidenceTransformSchema,
 }).superRefine((entry, context) => {
-  // The pairing is refused HERE, at declaration time — not only when a value
-  // is eventually pushed through the transform. A `secret`/`allow` line in the
-  // table below would otherwise sit in the tree looking reviewed until the
-  // first run that happened to carry that field.
+  // Reject invalid sensitivity/transform pairings at declaration, before any run.
   if (!evidenceTransformAllowed(entry.classification, entry.transform)) {
     context.addIssue({
       code: "custom",
@@ -210,16 +141,7 @@ const ACTIVE_EMPLOYMENT = taskOutput("workflow:separations/match-active-employme
 const SEPARATION_DATES = taskOutput("workflow:separations/read-separation-dates");
 const TERMINATION_RECEIPT = taskOutput("workflow:separations/verify-termination-receipt");
 
-/**
- * The twelve values one Kuali finalization save writes, relative to a prefix.
- *
- * They appear four times over — the prepare's `previousFields` and
- * `stagedFields`, the commit's claimed `savedState.fields`, and the terminal
- * result's proof — and declaring them from one list is what keeps those copies
- * from drifting apart. Only the timekeeper is a PERSON; the rest describe WHAT
- * is being recorded, which is chunk 4's rule for `initiatorComments` applied to
- * the same kind of field.
- */
+/** The twelve values one finalization save writes, relative to a prefix, declared once in one place so the prepare, the proof and the verifier agree. */
 function finalizationFieldLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
   const at = (path: string): string => `${prefix}.${path}`;
   return [
@@ -280,34 +202,14 @@ function filingPresenceLeaves(scope: EvidenceValueScope, prefix = ""): unknown[]
   ];
 }
 
-/**
- * Every leaf of the Kuali separation-document read, relative to a prefix.
- *
- * The read is a WIDE fixed schema whose fields carry `present`/`absent` arms,
- * so each field contributes up to four paths (`state`, `value`, `raw`,
- * `reason`) and the arm a run takes decides which ones exist. Declaring them
- * from one list is what keeps the task output and the terminal result — which
- * carries the identical shape under `document.` — from drifting apart: an
- * undeclared leaf fails loud at receipt time, and two hand-written copies of a
- * 60-path table would drift on the first field anybody added.
- */
+/** Every leaf of the Kuali separation-document read, relative to a prefix; the read is a WIDE fixed schema whose fields carry `present`/`absent` arms. */
 function separationDocumentLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
   const at = (path: string): string => (prefix.length === 0 ? path : `${prefix}.${path}`);
   const arms = (path: string, extra: readonly string[]): string[] =>
     ["state", "reason", ...extra].map((leaf) => at(`${path}.${leaf}`));
   const text = (path: string): string[] => arms(path, ["value"]);
   const date = (path: string): string[] => arms(path, ["value", "raw"]);
-  /**
-   * A person field's ARM DISCRIMINATOR is not the person.
-   *
-   * The live proof run on document 4502 (2026-08-12) is why this is split
-   * rather than declared wholesale: classifying `employee.name.state` as a
-   * `direct-identifier` put its value through `last4`, so a receipt that should
-   * read `present` read **`sent`** — and `employee.name.reason` read `alue`.
-   * That is not redaction, it is a receipt telling the operator something
-   * false. Only the `value` leaf carries the identifier; `state` and `reason`
-   * describe the READ, and the read is a transaction fact.
-   */
+    /* A person field's ARM DISCRIMINATOR is not the person; the discriminator only says which arm the row took. */
   const personText = (path: string): { open: string[]; identifying: string[] } => ({
     open: [at(`${path}.state`), at(`${path}.reason`)],
     identifying: [at(`${path}.value`)],
@@ -324,9 +226,7 @@ function separationDocumentLeaves(scope: EvidenceValueScope, prefix: string): un
     ...person(scope, ...employeeName.identifying, ...employeeEid.identifying,
       ...timekeeperName.identifying),
     ...open(scope, ...employeeName.open, ...employeeEid.open, ...timekeeperName.open),
-    // Everything else about the appointment describes the TRANSACTION: a title
-    // code, a division, a work location, a department. The operator already
-    // sees these on the queue row.
+    // Job codes, divisions, locations and departments describe the transaction, not the person.
     ...open(scope,
       ...text("employee.employeeType"), ...text("employee.studentTitleCode"),
       ...text("employee.division"), ...text("employee.location"),
@@ -347,15 +247,7 @@ function separationDocumentLeaves(scope: EvidenceValueScope, prefix: string): un
   ];
 }
 
-/**
- * The job-summary CLASSIFICATION fold's leaves, relative to a prefix.
- *
- * `rows` is an array and therefore one leaf, and it is `sensitive-hr`/`count`
- * rather than open: the classified rows restate a person's whole employment
- * history with department and title per row, and "how many rows" is the fact a
- * receipt owes. `unreadableCells` is likewise one array leaf — it names CELLS,
- * not people, but it is only meaningful beside the rows it describes.
- */
+/** The job-summary CLASSIFICATION fold's leaves, relative to a prefix; `rows` is an array and therefore one leaf. */
 function jobClassificationLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
   const at = (path: string): string => (prefix.length === 0 ? path : `${prefix}.${path}`);
   return [
@@ -365,29 +257,8 @@ function jobClassificationLeaves(scope: EvidenceValueScope, prefix: string): unk
   ];
 }
 
-/**
- * The identity decision packet's leaves.
- *
- * Names and EIDs are the person; the tiers, the shape, the disposition and the
- * comparison table describe the DECISION. `comparisons` is an array leaf whose
- * members restate the two names verbatim, so it is `sensitive-hr` with a count —
- * a receipt says "four fields were compared, two disagreed" through the counts
- * around it rather than reprinting both people's names.
- */
-/**
- * The gate packet's WRITE PLAN block — both arms, because which one a run takes
- * is decided by the descriptor and a receipt may not depend on that choice to be
- * classifiable (the same rule the gate's own two arms follow).
- *
- * Nothing in it is a person. A template, a reason code, an empl record, a
- * department option, a payroll title, a date and a comment text all describe the
- * TRANSACTION being filed — which is chunk 4's call for `initiatorComments` and
- * chunk 5's for the ten finalization fields, applied to the block that shows an
- * operator what those two writes are about to consume. The one name in it, the
- * timekeeper, is a `direct-identifier` here for the reason the module header
- * gives: `src/domain/secrets.ts` already classifies `TIMEKEEPER_NAME` that way,
- * and one field cannot carry two classifications.
- */
+/** The identity decision packet's leaves; names and EIDs are the person, and the tiers, the shape and the disposition describe the DECISION. */
+/** The gate packet's WRITE PLAN block — both arms, because which one a run takes is decided by the descriptor and a receipt may not depend on that choice to be classifiable. */
 function writePlanLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
   const at = (path: string): string => `${prefix}.${path}`;
   return [
@@ -411,12 +282,7 @@ function writePlanLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
   ];
 }
 
-/**
- * The reconciled dates, relative to a prefix. Dates, flags and pay-code names
- * describe the TRANSACTION being filed; the comment texts are what will be
- * typed into UCPath and Kuali, which is the same call chunk 4 makes for
- * `initiatorComments`.
- */
+/** The reconciled dates, relative to a prefix; dates, flags and pay-code names describe the TRANSACTION being filed, and the comment texts are what will be typed into UCPath and Kuali. */
 function reconciledDateLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
   const at = (path: string): string => (prefix.length === 0 ? path : `${prefix}.${path}`);
   return open(scope,
@@ -465,10 +331,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...person(PERSON_LOOKUP_INPUT, "name", "emplId"),
   ...open(PERSON_LOOKUP_INPUT, "keepNonHdh", "includeCrmDates"),
 
-  /* ucpath/search-person-org — every arm of the selection union, not only the
-     one the contract example happens to show. `selection.selected` is declared
-     twice over: as a leaf (the `null` of the ambiguous/not-found arms) and as
-     the object whose fields the resolved arm carries. */
+      /* `selection.selected` is declared twice: as the `null` of the ambiguous arm and as the object the resolved arm carries. */
   ...population(SEARCH, "results", "selection.candidateEids"),
   ...person(SEARCH, "selection.selected.emplId", "selection.selected.name", "selection.searchName"),
   ...open(SEARCH, "selection.status", "selection.selected", "selection.selected.department",
@@ -496,22 +359,16 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
     "crmDates.dates.completedOn.reason"),
   ...person(PERSON_LOOKUP_RESULT, "crmDates.dates.emplId"),
 
-  /* separations-kronos-timecard ingress. The window bounds are dates ABOUT the
-     read, not about the person, so they are open; the EID and the expected
-     name are the person. */
+        /* These describe the READ, not about the person, so they are open. */
   ...person(KRONOS_TIMECARD_INPUT, "emplId", "expectedName"),
   ...open(KRONOS_TIMECARD_INPUT, "rangeStart", "rangeEnd", "searchTimeoutMs"),
 
-  /* new-kronos/search-employee. `candidates` is a LIST OF PEOPLE — "twelve rows
-     matched" is the fact that decides whether the search was unambiguous, and
-     it is answerable without naming anyone who was not selected. */
+        /* Whether the search was matched decides whether it was unambiguous, and it is answerable without naming anyone who was not selected. */
   ...person(KRONOS_SEARCH, "query", "matched.displayName", "matched.employeeId"),
   ...population(KRONOS_SEARCH, "candidates"),
   ...open(KRONOS_SEARCH, "totalCount", "selectedCount", "panelContext"),
 
-  /* new-kronos/read-separation-timecard. Every date, count and label describes
-     the TRANSACTION; only the two identities and the displayed name are the
-     person. `payCodeDays` and the date arrays are arrays, hence single leaves. */
+        /* The rest describes the TRANSACTION; the date arrays are arrays, hence single leaves. */
   ...person(KRONOS_TIMECARD, "subject.expectedEid", "subject.observedEmployeeId",
     "subject.observedDisplayName"),
   ...open(KRONOS_TIMECARD, "subject.observationId", "subject.matches",
@@ -537,11 +394,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
      DOCUMENT, not a person, so both are open. */
   ...open(KUALI_READ_INPUT, "actionId", "documentNumber"),
 
-  /* kuali/search-separation-action — D261's Action-List resolve. Every leaf
-     describes the ADDRESS of a document, never a person: a document number, a
-     workflow-step id, the link it was read from, and how many links carried it.
-     Nothing here is about the employee, which is exactly why the resolve can
-     run before the identity gate has anything to show. */
+        /* This describes the ADDRESS of a document, never a person: a document number, a workflow-step id, the link it was read from, and how many links carried it. */
   ...open(KUALI_ACTION_SEARCH, "pageStateId", "documentNumber", "actionId", "actionHref",
     "matchedLinkCount", "observedAt"),
 
@@ -559,19 +412,12 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...open(KUALI_READ_RESULT, "termination.terminationType", "termination.classification",
     "termination.template", "termination.reasonCode", "termination.observedOptionCount"),
 
-  /* separations-identity-check ingress (chunk 3). The document's name and both
-     EIDs are the PERSON; the document number, the source fork and the absent
-     arm's own reason describe the READ. D197's rule applies verbatim: an arm
-     DISCRIMINATOR is not the person, so `documentEid.state`/`.reason` are open
-     and only `documentEid.value` is an identifier. */
+        /* EIDs are the PERSON; the document number, the source fork and the absent arm's own reason describe the READ, and an arm DISCRIMINATOR is not the person. */
   ...person(IDENTITY_CHECK_INPUT, "employeeName", "emplId", "documentEid.value"),
   ...open(IDENTITY_CHECK_INPUT, "documentNumber", "emplIdSource", "documentEid.state",
     "documentEid.reason"),
 
-  /* ucpath/read-job-summary — D194's whole-grid read. `jobRows` is an ARRAY and
-     therefore one leaf; it carries a person's whole employment history, so it is
-     `sensitive-hr` with a count rather than a redacted dump. Everything else on
-     the read describes the PAGE VISIT. */
+        /* The employment history is therefore one leaf, carried as a count with a sensitivity class rather than a redacted dump. */
   ...person(JOB_SUMMARY, "emplId", "displayedName"),
   ...population(JOB_SUMMARY, "jobRows"),
   ...open(JOB_SUMMARY, "pageStateId", "rowCount", "observedAt",
@@ -582,23 +428,12 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...identityPacketLeaves(MATCH_IDENTITY, "packet"),
   ...open(MATCH_IDENTITY, "evidenceDigest"),
 
-  /* workflow:separations/verify-identity-approval — the run's whole product,
-     carried forward past the gate so the terminal result has no pre-gate
-     ancestry (ref write-safety §14.6 #2). */
+        /* These are carried forward past the gate so the terminal result has no pre-gate ancestry. */
   ...open(VERIFY_IDENTITY_APPROVAL, "documentNumber"),
   ...approvedSubjectLeaves(VERIFY_IDENTITY_APPROVAL, "approved"),
   ...jobClassificationLeaves(VERIFY_IDENTITY_APPROVAL, "jobs"),
 
-  /* separations-identity-check / identity-approval — the name-only gate's stored
-     operator decision (D204). Both arms of `IdentityApprovalResultSchema` are
-     declared, because which arm a run took is decided at the gate and a receipt
-     may not depend on that choice to be classifiable.
-
-     `eid` is the approved person and takes `last4` like every other identifier
-     here. Everything else describes the DECISION — which arm, where the EID was
-     chosen from, the digest of the exact packet the approver was looking at, and
-     the operator's own rejection reason — and a receipt whose whole job is to
-     show the human in the loop cannot redact the human's reasoning out of it. */
+        /* The operator decision; both arms are declared, because which arm a run took is decided at the gate and a receipt may not depend on that choice. */
   ...person(IDENTITY_APPROVAL_GATE, "eid"),
   ...open(IDENTITY_APPROVAL_GATE, "decision", "chosenFrom", "evidenceDigest", "reason"),
 
@@ -607,26 +442,18 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...approvedSubjectLeaves(IDENTITY_CHECK_RESULT, "approved"),
   ...jobClassificationLeaves(IDENTITY_CHECK_RESULT, "jobs"),
 
-  /* separations-ucpath-termination ingress (chunk 4). The identity half repeats
-     chunk 3's split verbatim — an arm DISCRIMINATOR is not the person — and the
-     termination half is all transaction facts: the dates, the empl record and
-     the comment text describe WHAT is being filed, not WHO. */
+        /* An arm DISCRIMINATOR is not the person, and the termination half is all transaction facts: the dates, the empl record and the comment text describe WHAT is being filed. */
   ...person(UCPATH_TERMINATION_INPUT, "employeeName", "emplId", "documentEid.value"),
   ...open(UCPATH_TERMINATION_INPUT, "documentNumber", "emplIdSource", "documentEid.state",
     "documentEid.reason", "terminationType.state", "terminationType.value",
     "terminationType.reason", "observedTerminationTypeOptions", "emplRecord",
     "effectiveDate", "lastDateWorked", "initiatorComments"),
 
-  /* The conditional name-only gate again, on this workflow's own scope. Its redaction is
-     scoped by `(workflow, gate)` (D204), so chunk 3's declaration does not
-     cover chunk 4's gate even though the payload schema is identical — which is
-     the point: a second workflow must state its own answer. */
+        /* Scoped by `(workflow, gate)`, so one workflow's declaration does not cover another's gate even with an identical payload schema: a second workflow must state its own answer. */
   ...person(UCPATH_TERMINATION_GATE, "eid"),
   ...open(UCPATH_TERMINATION_GATE, "decision", "chosenFrom", "evidenceDigest", "reason"),
 
-  /* ucpath/stage-termination — the staged wizard. `observedName` is UCPath's own
-     answer to the typed EID and is therefore the PERSON; the reason-option list
-     is a control capture (§3.2) and is one leaf. */
+        /* The answer to the typed EID is therefore the PERSON; the reason-option list is a control capture and one leaf. */
   ...person(UCPATH_STAGE_TERMINATION, "emplId", "observedName"),
   ...population(UCPATH_STAGE_TERMINATION, "observedReasonOptions"),
   ...open(UCPATH_STAGE_TERMINATION, "stagedPageState", "observedEmplRecord", "template",
@@ -674,11 +501,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...sweepProofLeaves(UCPATH_TERMINATION_RESULT, "pendingSweep.proof"),
   ...terminationProofLeaves(UCPATH_TERMINATION_RESULT, "termination.proof"),
 
-  /* separations-kuali-finalization ingress (chunk 5). The identity half repeats
-     chunk 3's split verbatim; the timekeeper is a person like every other name.
-     The dept id and the department description are UNIT facts, not person facts,
-     and the two comment fields describe what is being recorded — the same call
-     chunk 4 makes for `initiatorComments`. */
+        /* The same split applies: the timekeeper is a person like every other name, and the dept id and description are UNIT facts, not person facts. */
   ...person(KUALI_FINALIZATION_INPUT, "employeeName", "emplId", "documentEid.value",
     "timekeeperName"),
   ...open(KUALI_FINALIZATION_INPUT, "actionId", "documentNumber", "emplIdSource",
@@ -689,13 +512,11 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
     "transactionApprovalStatus",
     "timekeeperComments", "observedExistingComments"),
 
-  /* The conditional name-only gate on this workflow's own scope (D204). */
+    /* The conditional name-only gate on this workflow's own scope. */
   ...person(KUALI_FINALIZATION_GATE, "eid"),
   ...open(KUALI_FINALIZATION_GATE, "decision", "chosenFrom", "evidenceDigest", "reason"),
 
-  /* workflow:separations/match-department-option — S55's upstream fold. Both
-     spellings of the department are carried because the operator compares them;
-     nothing here is a person. */
+        /* Both spellings of the department are carried because the operator compares them; nothing here is a person. */
   ...open(DEPARTMENT_OPTION, "option", "departmentCode", "optionDescription", "ucpathDepartment",
     "observedOptionCount"),
 
@@ -721,36 +542,26 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...approvedSubjectLeaves(KUALI_FINALIZATION_RESULT, "approved"),
   ...savedFinalizationLeaves(KUALI_FINALIZATION_RESULT, "finalization.proof"),
 
-  /* separations ingress (chunk 6, the composition). One typed document number,
-     one action id, the timekeeper who files it, the search bound, and the
-     operator's explicit re-read — a document and a decision, not a person,
-     except the timekeeper's own name. */
+        /* This names one action id, the timekeeper who files it, the search bound, and how the document was reached — the READ, never the person. */
   ...person(SEPARATIONS_INPUT, "timekeeperName"),
   ...open(SEPARATIONS_INPUT, "documentNumber", "searchTimeoutMs",
     "reRead.ordinal", "reRead.reason"),
 
-  /* The conditional name-only gate on the composition's own scope (D204) — and
-     here it dominates three real writes across two systems. */
+    /* The conditional name-only gate on the composition's own scope — and here it
+     dominates three real writes across two systems. */
   ...person(SEPARATIONS_GATE, "eid"),
   ...open(SEPARATIONS_GATE, "decision", "chosenFrom", "evidenceDigest", "reason"),
 
-  /* workflow:separations/read-separation-plan — the document's own facts,
-     validated. The employee name is the PERSON; the dates, the window and the
-     as-of day describe the read. */
+    /* Employee names identify people; dates and windows describe the read. */
   ...person(SEPARATION_PLAN, "employeeName"),
   ...open(SEPARATION_PLAN, "documentNumber", "kualiLastDayWorked", "kualiSeparationDate",
     "asOfDate", "timecardWindow.start", "timecardWindow.end"),
 
-  /* workflow:separations/match-separation-subject — S18/S19's fork. The EID and
-     the searched name are the person; WHERE the EID came from and how many
-     candidates the search resolved describe the decision, and ref write-safety §14.4
-     calls the count decisive. */
+    /* EIDs and searched names identify people; source and candidate count describe the decision. */
   ...person(SEPARATION_SUBJECT, "emplId", "searchedName"),
   ...open(SEPARATION_SUBJECT, "emplIdSource", "candidateCount"),
 
-  /* workflow:separations/match-active-employment — one employment row. Nothing
-     here is a person: an empl record, an HR status, a business unit, a title
-     and a department describe the APPOINTMENT being ended. */
+    /* Employment records and job fields describe the appointment, not the person. */
   ...open(ACTIVE_EMPLOYMENT, "rowIndex", "emplRecord", "hrStatus", "businessUnit",
     "deptId.state", "deptId.value", "deptId.reason",
     "department.state", "department.value", "department.reason",
@@ -760,7 +571,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   /* workflow:separations/read-separation-dates — the write's payload. */
   ...reconciledDateLeaves(SEPARATION_DATES, ""),
 
-  /* workflow:separations/verify-termination-receipt — D130's pair, checked. */
+    /* workflow:separations/verify-termination-receipt — the receipt pair, checked. */
   ...terminationReceiptLeaves(TERMINATION_RECEIPT, ""),
 
   /* separations terminal result — the whole composition's product. */
@@ -771,52 +582,20 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
     "dates.separationDate", "dates.terminationEffectiveDate",
     "dates.lastDayWorkedChanged", "dates.separationDateChanged",
     "pendingSweep.disposition", "finalization.disposition",
-    // D307 — the omitted arm of a write step: a closed state and the step key.
+      // The omitted arm of a write step: a closed state and the step key.
     "pendingSweep.state", "pendingSweep.step", "finalization.state", "finalization.step"),
   ...approvedSubjectLeaves(SEPARATIONS_RESULT, "approved"),
   ...sweepProofLeaves(SEPARATIONS_RESULT, "pendingSweep.proof"),
   ...terminationReceiptLeaves(SEPARATIONS_RESULT, "termination"),
   ...savedFinalizationLeaves(SEPARATIONS_RESULT, "finalization.proof"),
 
-  /*
-   * Completion proofs, per commit contract (Track F, ledger 2 D16–D22).
-   *
-   * The receipt's action entry carries the completion proof's leaves beside
-   * the write it proves, and each leaf goes through THIS table — the same
-   * shapes already declared where the proof rides a task output or a terminal
-   * result, restated on the `write-proof` scope so the action entry cannot
-   * borrow a table that was declared for a different surface. The shape
-   * helpers are shared, which is what keeps the copies from drifting.
-   */
+    /* Completion proofs, per commit contract, on the same `write-proof` scope the
+     task-output and terminal-result tables already use; the shape helpers are shared. */
   ...terminationProofLeaves(writeProof("ucpath/create-termination"), ""),
   ...sweepProofLeaves(writeProof("ucpath/delete-pending-terminations"), ""),
   ...savedFinalizationLeaves(writeProof("kuali/save-separation-finalization"), ""),
 
-  /*
-   * The executor's own fixture contracts (D270).
-   *
-   * These six paths are NOT in `AdmittedExtractionSchema`, which is what
-   * `ocr/extract-form-page` really outputs. They are the test-local shapes the
-   * executor's fixture contracts borrow that id with — and they borrow it for a
-   * structural reason rather than convenience: `interpret` resolves every task
-   * node's impl fingerprint through `resolveTaskImplFingerprint`, which fails
-   * loud on an id the generated build manifest does not carry, so a fixture
-   * that composes a real run MUST name a manifest-known task.
-   *
-   * They are DECLARED rather than exempted. D270 emits every recorded point on
-   * the span redacted by declaration and refuses an undeclared leaf by name; a
-   * fixture bypass would mean that refusal is never exercised by a composed
-   * run, and the executor's fixtures are the only composed runs the unit lane
-   * has. `subject` and `eid` are person identifiers and carry the same
-   * `last4` the rest of this table gives one, so a fixture cannot be the
-   * surface that proves a raw identifier reaches a stream.
-   *
-   * `ocr/extract-form-page`'s own output leaves are deliberately still absent:
-   * the task is wired into no descriptor, so no run can reach it, and its
-   * recordData names two fields (`pageFingerprint`, `hasRecord`) that the
-   * contract's output does not carry — declaring a shape nobody has validated
-   * would be a guess. `reference/operator-trust.md` §2.3.2 owns the list.
-   */
+    /* The executor's own fixture contracts: test-local shapes that must name a manifest-known task, DECLARED rather than exempted, so the undeclared-leaf refusal stays exercised by a composed run. */
   ...person(OCR_FORM_PAGE, "subject", "eid"),
   ...open(OCR_FORM_PAGE, "disposition", "providerState", "artifactSha", "artifactBytes"),
 
@@ -870,17 +649,7 @@ export const EvidenceLeafSchema = z.strictObject({
 });
 export type EvidenceLeaf = z.infer<typeof EvidenceLeafSchema>;
 
-/**
- * Every leaf of a JSON value, by the provenance collector's rule: an array is
- * a leaf, an empty object is a leaf, a populated object recurses.
- *
- * Keys are visited in SORTED order, which is what makes a receipt a pure
- * function of authority rather than of how a value happened to be built. A
- * stored record round-trips through `canonicalJsonStringify` (sorted keys)
- * while an in-memory value keeps its authored key order; walking insertion
- * order would emit the same facts in two different orders — and therefore two
- * byte-different receipts — for one run.
- */
+/** Arrays and empty objects are leaves; sorted paths keep equivalent JSON receipts byte-stable. */
 export function evidenceLeaves(value: unknown, prefix = ""): readonly EvidenceLeaf[] {
   if (Array.isArray(value) || value === null || typeof value !== "object") {
     return [leafOf(prefix, value)];
@@ -920,12 +689,7 @@ export function classifyEvidenceLeaf(
   return entry;
 }
 
-/**
- * Redact one leaf through the ONE shared transform implementation. The produced
- * field's `key` is widened from the leaf name to its full path, which
- * `RedactedFieldSchema` accepts and `ClassifiedDiagnosticValueSchema` does not
- * — the classified INPUT is per-field, the redacted OUTPUT names where it sat.
- */
+/** Classified inputs use leaf names; redacted outputs use full paths. */
 export function redactEvidenceLeaf(
   scope: EvidenceValueScope,
   leaf: EvidenceLeaf,

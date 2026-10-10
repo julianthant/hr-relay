@@ -1,15 +1,4 @@
-/**
- * D273 item 2 — the run-detail timeline's ported folds.
- *
- * Operator context is `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/decisions/dashboard.md` §D273,
- * answered A on 2026-08-26; the audited rows are ledger 2 (`docs/plans/
- * 2026-08-21-03a-fidelity-2-run-detail.md`) B44, B57, B60 and B61.
- *
- * Each decision lives in a pure exported fold rather than inside the component
- * because this tree renders no React in the unit lane, so anything left in JSX
- * is pinned only by a screenshot — and a screenshot cannot tell "0s working"
- * apart from "nothing was measured".
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { GateDecisionWireSchema } from "../../../../../src/models/dashboard/run-detail.js";
@@ -46,7 +35,7 @@ const RESOLVED_GATE = GateDecisionWireSchema.parse({
   revision: 4,
 });
 
-describe("B44 — the untimed segment dims only where a measurement is missing", () => {
+describe("the untimed segment dims only where a measurement is missing", () => {
   it("dims a segment that ran and recorded no duration", () => {
     for (const state of ["active", "done", "failed", "cancelled"] as const) {
       assert.equal(timelineSegmentUnmeasured(state, undefined), true, state);
@@ -61,9 +50,7 @@ describe("B44 — the untimed segment dims only where a measurement is missing",
   });
 
   it("does not dim a state that already says why it has no duration", () => {
-    // `pending` never ran, `skipped` was never started, and `replayed` emitted
-    // no span of its own (D259) — each carries its own shape and word, and a
-    // second cue for one fact is what this arm exists to refuse.
+
     assert.equal(timelineSegmentUnmeasured("pending", undefined), false);
     assert.equal(timelineSegmentUnmeasured("skipped", undefined), false);
     assert.equal(timelineSegmentUnmeasured("replayed", undefined), false);
@@ -71,7 +58,7 @@ describe("B44 — the untimed segment dims only where a measurement is missing",
   });
 });
 
-describe("B57 — an open gate that no segment carries still gets a segment", () => {
+describe("an open gate that no segment carries still gets a segment", () => {
   it("reports the orphan when no segment records the wait", () => {
     assert.equal(timelineHasOrphanGate(["done", "done", "pending"], OPEN_GATE), true);
   });
@@ -86,13 +73,12 @@ describe("B57 — an open gate that no segment carries still gets a segment", ()
   });
 
   it("reports the orphan for a gated run with no segments at all", () => {
-    // The degenerate case is the one the demo's rule was written for: with
-    // nothing to hang the wait on, an unrendered segment loses it entirely.
+
     assert.equal(timelineHasOrphanGate([], OPEN_GATE), true);
   });
 });
 
-describe("B60/B61 — the axis names the working half and the waiting half", () => {
+describe("the axis names the working half and the waiting half", () => {
   it("sums the measured durations rather than spanning first to last", () => {
     const totals = timelineAxisTotals([4, 6, undefined, 2], NO_GATE, NOW);
     assert.equal(totals.workingSec, 12);

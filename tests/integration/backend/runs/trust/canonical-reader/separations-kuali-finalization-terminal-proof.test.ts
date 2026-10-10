@@ -1,16 +1,6 @@
 import { createTrustRunReader } from "../../../../../../src/backend/runs/trust/canonical-reader.js";
 import { testRunLifecycle } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
-/**
- * D144's current end-to-end proof.
- *
- * The retired `kuali-timekeeper-annotation` workflow first proved that a
- * transaction checkpoint can be terminal evidence. This file keeps that
- * invariant on the production successor: the registered separations Kuali
- * finalization descriptor, its real task stores, the real interpreter, write
- * sequencer, authority terminalization, and receipt derivation. Only the
- * browser systems, clock, ids, scheduler, and span sink are deterministic
- * process edges.
- */
+
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { workflowTerminalResultExecution } from "../../../../../../src/workflow-kit/workflow.js";
@@ -166,16 +156,7 @@ function insertReplayCheckpoint(
   }
 }
 
-/**
- * Start at the first pre-gate fold with the three upstream reads authenticated
- * as replay checkpoints. The standalone chunk harness receives the department
- * facts through canonical input from the composed separations workflow; its
- * root `department-option` fold therefore has no in-graph source from which an
- * executor could derive provenance. That separate composition issue must not
- * be "fixed" by this D144 proof. None of these rows is terminal evidence: the
- * real executor still executes comparison, parks and re-checks the approval,
- * dispatches the real transaction, reads beat ⑦'s row, and terminalizes.
- */
+
 function enqueueFromComparison(
   value: FinalizationHarness,
   suppliedEid = false,
@@ -434,7 +415,7 @@ describe("supplied-EID executor authority", () => {
   });
 });
 
-describe("D144 — current Kuali finalization transaction is terminal evidence", () => {
+describe("current Kuali finalization transaction is terminal evidence", () => {
   it("settles through the real executor and derives a verified receipt from the stored read-back", async () => {
     const value = harness();
     const claimed = await parkApproveAndReclaim(value);

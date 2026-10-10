@@ -1,20 +1,9 @@
-/**
- * The archive route's index sentinel: `?archive=` with no run id is the ledger
- * itself, and any other value is the archived run it names.
- *
- * It sits in a plain module rather than in `archive.tsx` because a module that
- * exports a component may export nothing else if React Fast Refresh is to
- * treat it as a refresh boundary — one non-component export makes every edit
- * to the archive surface invalidate upward into `dashboard-app.tsx` and remount
- * the app instead of hot-swapping the component.
- */
+/** The archive route's index sentinel: `?archive=` with no run id is the ledger
+ * itself, and any other value is the archived run it names. */
 export const ARCHIVE_INDEX = "";
 
-/**
- * The two real Archive views. This belongs beside the archive route sentinel
- * because the dashboard route owns which view is visible; keeping it local to
- * the component would leave another surface unable to name a destination.
- */
+/** The two real Archive views. This belongs beside the archive route
+ * sentinel because the dashboard route owns which view is visible */
 export type ArchiveView = "runs" | "versions";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -38,30 +27,18 @@ import { fmtClock, plural, shortHash } from "../shared/status/format.js";
 import { testInstanceSystems } from "../shared/status/test-instance-hazard.js";
 import { PROPOSED_STATUS, dsStatusOf, type QueueStatus } from "../shared/status/status-model.js";
 
-/* ── the windowed table (D274 item 1) ────────────────────────────────────── */
+/** ── the windowed table ────────────────────────────────────────────────────── */
 
-/**
- * A sweep, as one section of the archive table: the applied bump and the runs
- * this query left inside it. `sweep` is `undefined` when the index carries no
- * record for the entries' `applicationId` — the one case where the archive
- * loses the reason it exists, and it is NAMED rather than degraded to an id.
- */
+/** A sweep, as one section of the archive table: the applied bump and the runs
+ * this query left inside it. `sweep` is `undefined` when the index carries no */
 export interface ArchiveSection {
   readonly sweep: ArchiveSweepWire | undefined;
   readonly applicationId: string;
   readonly entries: readonly ArchiveEntryWire[];
 }
 
-/**
- * THE FLAT LIST A WINDOW WALKS — section headers and run rows in ONE sequence
- * (D274 item 1, ported from legacy hr-automation@1bffbd65,
- * `demo-archive-wire.ts` `flattenArchiveTable`).
- *
- * A header is an item exactly as a run is, so the window can hold either and
- * the two cannot get out of step. A COLLAPSED section contributes its header
- * and nothing else, which is what makes collapsing cheap at any size: the rows
- * are never built.
- */
+/** THE FLAT LIST A WINDOW WALKS — section headers and run rows in ONE sequence
+ * (ported from legacy hr-automation@1bffbd65 */
 export type ArchiveTableItem =
   | { readonly kind: "section"; readonly section: ArchiveSection; readonly collapsed: boolean }
   | { readonly kind: "run"; readonly entry: ArchiveEntryWire };
@@ -80,19 +57,12 @@ export function flattenArchiveTable(
   return items;
 }
 
-/**
- * The two row heights the window's arithmetic is built on. They are not
- * estimates: the run row IS `--ds-h-row` and the sweep head IS
- * `--ds-h-archive-sweep`, both set on the element, and
- * `archive-window.test.ts` reads `ds/tokens.css` and asserts the two pairs
- * agree. A restated constant that nothing pins is how a spacer comes to be a
- * few pixels short of the rows it stands in for, and a table that drifts under
- * the scrollbar is worse than a table that is merely slow.
- */
+/** The two row heights the window's arithmetic is built on. They are not estimates:
+ * the run row IS `--ds-h-row` and the sweep head IS */
 export const ARCHIVE_ROW_PX = 32;
 export const ARCHIVE_SECTION_PX = 52;
 
-/** The demo's own window margin: twelve items above and below (D274 item 1). */
+/** The window margin: twelve items above and below. */
 export const ARCHIVE_OVERSCAN = 12;
 
 export function archiveItemHeightPx(item: ArchiveTableItem): number {
@@ -108,10 +78,7 @@ export interface ArchiveViewport {
   readonly height: number;
 }
 
-/**
- * The half-open item range to render, and the two spacer heights that stand in
- * for everything outside it.
- */
+/** The half-open item range to render */
 export interface ArchiveTableWindow {
   readonly firstIndex: number;
   /** exclusive */
@@ -121,19 +88,8 @@ export interface ArchiveTableWindow {
   readonly totalPx: number;
 }
 
-/**
- * Which items a viewport can see, with the space above and below them.
- *
- * An UNMEASURED viewport renders every item. That is the honest arm: before
- * the container has a height, "nothing is visible" and "we have not looked
- * yet" are different facts, and rendering the whole list is correct-but-slow
- * where rendering none would be simply wrong.
- *
- * A negative `scrollTop` is clamped rather than refused, because elastic
- * overscroll reports one in Safari and WebKit and the visible top of the
- * content genuinely is 0 there. A NON-FINITE measurement is refused: that is
- * not a scroll position, and windowing from it would silently blank the table.
- */
+/** Which items a viewport can see, with the space above and below them.
+ * An UNMEASURED viewport renders every item. That is the honest arm */
 export function windowArchiveTable(
   items: readonly ArchiveTableItem[],
   viewport: ArchiveViewport | undefined,
@@ -173,15 +129,7 @@ export function windowArchiveTable(
   };
 }
 
-/**
- * The scroll container's own measurement, as a ref to attach and the viewport
- * it reports. Scroll and resize are the only two things that move the window,
- * and both are read off the element rather than computed from React state.
- *
- * The effect throws when the ref never attached: it runs after mount, so a
- * null element there is a wiring defect, and silently declining to window
- * would leave the 800-row case looking exactly like the windowed one.
- */
+/** Measure the actual scroll container; a missing mounted ref must not silently disable windowing. */
 export function useArchiveViewport(): readonly [RefObject<HTMLDivElement | null>, ArchiveViewport | undefined] {
   const ref = useRef<HTMLDivElement | null>(null);
   const [viewport, setViewport] = useState<ArchiveViewport | undefined>(undefined);
@@ -214,11 +162,7 @@ export function useArchiveViewport(): readonly [RefObject<HTMLDivElement | null>
   return [ref, viewport] as const;
 }
 
-/**
- * Whether this archived run touched a TEST instance of any system. The fact is
- * the frozen row's own `resolvedInstances`, copied onto the index entry when
- * the archive projects — never inferred from a workflow id or a title.
- */
+/** Test-instance history comes from frozen resolved instances, never workflow IDs or titles. */
 export function archivedRunTouchedTest(entry: ArchiveEntryWire): boolean {
   return testInstanceSystems(entry.resolvedInstances).length > 0;
 }
@@ -237,24 +181,8 @@ export function archiveWarningChip(warnings: ArchiveEntryWire["warnings"]): Arch
   }
 }
 
-/**
- * The detail header's two row-owned identity facts.
- *
- * `displayName` has the wire contract's one verified fallback: the composed
- * row title. `subtitle` has no substitute; its absent arm remains absent so the
- * component can append archive provenance without fabricating descriptive
- * copy the start plan never supplied.
- */
-/**
- * D307 — the one note an archived step that did NOT run is allowed to say
- * about itself, in the run-detail wire's own closed vocabulary.
- *
- * `operator-asserted` and `step-omitted` are the two halves of one omitted
- * step and they are completely different facts: the first node's output was
- * rebuilt from what the operator typed and DROVE the run, the second never
- * existed at all. A frozen page that drew both as a grey "skipped" segment
- * would hide which of the two happened here.
- */
+/** Only displayName falls back to the row title; absent subtitles remain absent. */
+/** Distinguish operator-asserted outputs from omitted nodes; only asserted facts drove the run. */
 export const ARCHIVED_NOT_RUN_NOTE: Record<
   Extract<ArchivedRunDetailWire["detail"]["timeline"]["events"][number]["notRun"], { state: "present" }>["reason"],
   string
@@ -265,20 +193,7 @@ export const ARCHIVED_NOT_RUN_NOTE: Record<
   "step-omitted": "did not run — its step was omitted at start",
 };
 
-/**
- * ONE skipped step's note, across BOTH arms of the frozen wire's `notRun`.
- *
- * The `absent` arm is not an empty arm: it carries the server's own SENTENCE
- * saying why no reason is held ("its span recorded no reason"), and a frozen
- * page that drew the present arm and dropped the absent one told the operator
- * nothing at all about a step that did not run — the same blank a step that
- * ran leaves, which is the one reading that is false. The served reason is
- * drawn verbatim rather than prefixed: it is already a whole sentence about
- * this step, and `log-panel.tsx` reaches the same place through its own
- * "no reason was recorded".
- *
- * A step that RAN has no note at all, which is what the `undefined` arm is.
- */
+/** Preserve the served reason when skipped evidence is absent; blank would imply the step ran. */
 export function archivedNotRunNote(
   event: ArchivedRunDetailWire["detail"]["timeline"]["events"][number],
 ): string | undefined {
@@ -288,11 +203,7 @@ export function archivedNotRunNote(
     : event.notRun.reason;
 }
 
-/**
- * D307 — the archived run's omitted steps, as one line. Keys only: the facts
- * the operator typed for those steps are the run's own input and were never
- * served to this page.
- */
+/** Show omission keys only; this page never received the operator’s asserted input facts. */
 export function archivedOmittedStepsNote(steps: readonly string[] | undefined): string | undefined {
   if (steps === undefined || steps.length === 0) return undefined;
   return `Omitted at start: ${steps.join(", ")}. Nothing read those steps; their nodes were asserted from typed facts or did not run.`;
@@ -320,23 +231,14 @@ export function archivePriorityTone(
   }
 }
 
-/**
- * A queue status is never printed as its transport spelling. The archive's
- * native select has no status hue, icon or warning-count chip, so its options
- * use the DS's unambiguous name rather than the deliberately shortened word a
- * status pill draws.
- */
+/** Native status options need unambiguous names because their hue and warning chips are absent. */
 export function archiveStatusLabel(status: QueueStatus): string {
   return PROPOSED_STATUS[dsStatusOf(status)].accessibleLabel;
 }
 
 type VersionBumpBlocker = WorkflowVersionStateWire["blockers"][number];
 
-/**
- * Authority run states folded into the same visual vocabulary as every other
- * status on the dashboard. `terminal` is rejected by the blocker schema; if a
- * caller bypasses that boundary, rendering it as a blocker would be a lie.
- */
+/** Terminal runs cannot be blockers; refuse callers bypassing that boundary. */
 export function blockerStatusOf(state: VersionBumpBlocker["runState"]): DsStatus {
   switch (state) {
     case "queued": return "queued";
@@ -350,27 +252,13 @@ export function blockerStatusOf(state: VersionBumpBlocker["runState"]): DsStatus
   }
 }
 
-/**
- * The kind vocabulary already authored into every generation-2 change record.
- * Copied from the incumbent surface's two-arm presentation at
- * legacy hr-automation@1bffbd658db34ce84a08e69484db3a40b3658d6e,
- * `demo-archive-wire.ts`, narrowed to the current contract's broader MINOR
- * meaning (behaviour inside an unchanged shape).
- */
+
 export const BUMP_KIND_LABEL = {
   major: "Major — the run's shape changed",
   minor: "Minor — behaviour inside the same shape",
 } as const satisfies Record<VersionBumpChangeRecord["kind"], string>;
 
-/**
- * What each kind DOES, under the current contract (D274 item 2).
- *
- * The demo's minor arm reads "presentation only"; this tree's `minor` is the
- * broader "behaviour inside an unchanged shape", and that wording is prior
- * authority (`VersionBumpChangeRecordSchema.kind`) rather than drift. What
- * ports verbatim is the CONSEQUENCE, which is the half an operator is choosing
- * between: a major archives and can be blocked, a minor does neither.
- */
+/** Describe consequences: major bumps archive and can block; minor bumps do neither. */
 export const BUMP_KIND_NOTE = {
   major:
     "Steps added, removed or renamed, or the data contract moved. A run started under the old descriptor cannot be "
@@ -381,22 +269,7 @@ export const BUMP_KIND_NOTE = {
     + "still renders — so there is nothing a run could be doing that would block this.",
 } as const satisfies Record<VersionBumpChangeRecord["kind"], string>;
 
-/**
- * WHAT A BUMP OF THIS KIND WOULD DO with the facts the index serves.
- *
- * This is the surface's half of `resolveBumpEffect` (`archive-service.ts`,
- * D274): the assessment answers a factual question — which prior-version runs
- * are terminal, and which are not — and the KIND decides what the bump does
- * about them. `versionState` is kind-AGNOSTIC, so the same numbers reach both
- * arms and only their meaning changes.
- *
- * The minor arm is the one that must not lie. A minor plan carries no
- * candidates and no blockers BY DEFINITION — the schema refuses one that does
- * — so drawing an empty candidate list beside an empty blocker list would read
- * as "we looked and found none", which is a claim about this scope rather than
- * about minor bumps. The numbers are therefore carried under names that say
- * what they are: what a MAJOR bump would face, stated as an aside.
- */
+/** Minor bumps have no candidates by rule; contextual major totals must not imply an empty search. */
 export type BumpKindEffect =
   | {
     readonly kind: "major";
@@ -427,12 +300,7 @@ export function resolveBumpKindEffect(
   }
 }
 
-/**
- * The resolution column's head, PARAMETERISED by kind (ledger 3 VB22). Under a
- * major bump these runs are the thing to act on; under a minor one the same
- * rows are context, and a head reading "What has to happen" over runs that
- * block nothing would be an instruction nobody owes.
- */
+/** Minor-bump context is not a required resolution; headings must reflect the selected kind. */
 export function bumpResolutionColumnHead(kind: VersionBumpChangeRecord["kind"] | undefined): string {
   // A generation-1 plan recorded no kind at all, so neither head is true of it:
   // the demand is stated without claiming which bump is making it.
@@ -443,12 +311,7 @@ export function bumpResolutionColumnHead(kind: VersionBumpChangeRecord["kind"] |
   }
 }
 
-/**
- * What resolving one blocking run takes. Derived from `runState` because that
- * is the only fact the wire carries — `WorkflowVersionStateWire.blockers[]`
- * serves no `requiredResolution`, so this is the surface reading a served
- * enum, never a sentence it pretends the server sent.
- */
+/** Derive blocker guidance from served runState; do not pretend the server supplied a resolution sentence. */
 export function blockerResolution(state: VersionBumpBlocker["runState"]): string {
   switch (state) {
     case "parked-write":
@@ -498,10 +361,7 @@ export type ArchiveSweepVersionRange =
   | { readonly state: "present"; readonly text: string }
   | { readonly state: "absent"; readonly target: string; readonly reason: string };
 
-/**
- * A sweep that archived rows names their frozen source versions. An empty
- * source list is the real "archived nothing" state and remains a reason arm.
- */
+/** An empty frozen source list means nothing was archived, not missing version evidence. */
 export function archiveSweepVersionRange(sweep: ArchiveSweepWire): ArchiveSweepVersionRange {
   if (sweep.fromVersions.length === 0) {
     return {
@@ -516,12 +376,7 @@ export function archiveSweepVersionRange(sweep: ArchiveSweepWire): ArchiveSweepV
   };
 }
 
-/**
- * The bump's SCOPE, in the operator's words. The demo keys three arms off its
- * own `BumpScope`; this tree's `VersionScope` has two, and a single-workflow
- * bump is the one-element case of the first rather than a third kind — so the
- * split is made where the fact is, on the length.
- */
+/** Single-workflow scope is one member of the workflow set, not another scope kind. */
 export function bumpScopeLabel(scope: VersionScope): Readonly<{ label: string; note: string }> {
   switch (scope.kind) {
     case "application":
@@ -544,42 +399,14 @@ export function bumpScopeLabel(scope: VersionScope): Readonly<{ label: string; n
   }
 }
 
-/* ── the sweep's NAME, and the frozen codes it joins against (AR80/AR82) ─── */
+/* ── the sweep's NAME, and the frozen codes it joins against ───────────────── */
 
-/**
- * The identity a frozen short code belongs to.
- *
- * A code is a fact about a workflow AT a descriptor version (D242) and never
- * about the workflow forever, so the join key is the PAIR. That is what keeps
- * a workflow renamed between two bumps printing each sweep's own code rather
- * than today's — the one case the frozen field exists for.
- */
+/** Frozen short codes belong to workflow/version pairs, never permanently to a workflow. */
 export function archiveIdentityKey(workflowId: string, descriptorVersion: number): string {
   return `${workflowId}@${String(descriptorVersion)}`;
 }
 
-/**
- * `workflowId@version → that identity's short code` (AR80).
- *
- * `ArchiveSweepWire.appliedIdentities` carries workflow IDs and no code, so
- * the sweep head printed `separations-kuali-read v3` where the demo prints
- * `sk v3`. The codes ARE in the index and this is a join, not a rename and
- * not a new wire field — but they come from TWO places, and which one answers
- * an identity is not a preference:
- *
- * - `versionState` carries the registry's code beside the version it is the
- *   code OF, so it answers the identity a sweep moved runs ONTO (the one
- *   `appliedIdentities` names).
- * - every archived run froze its own code beside the version it RAN (D242), so
- *   the entries answer identities the registry no longer holds — a retired
- *   descriptor, or a code that has changed since.
- *
- * Both are exact `(workflowId, descriptorVersion)` matches; neither is a code
- * carried across a version it was not true at, which is the silently-wrong
- * derivation `ArchivedWorkflowCodeWireSchema`'s own docstring refuses. Where
- * both answer, the FROZEN code wins: the archive's copy is the authority for
- * what a run was planned under.
- */
+/** Join exact workflow/version pairs; frozen archive codes override matching current-registry codes. */
 export function archiveWorkflowCodes(
   index: Readonly<{
     entries: readonly ArchiveEntryWire[];
@@ -604,32 +431,19 @@ export function archiveWorkflowCodes(
 export interface ArchiveSweepName {
   /** the cell's own text — short codes where a run froze one */
   readonly text: string;
-  /** the hover: the bump's SCOPE, then the unabbreviated identities (AR82) */
+  /** the hover: the bump's SCOPE, then the unabbreviated identities */
   readonly title: string;
 }
 
-/**
- * The unabbreviated identities a sweep's short codes stand in for — the same
- * fact `archiveSweepName`'s `title` carries and `archiveSweepFacts` restates,
- * because a fact reachable only through `title` is a fact reachable by
- * pointer and by nobody else (`src/dashboard/CLAUDE.md`, three times).
- */
+/** The unabbreviated identities a sweep's short codes stand in for — the same
+ * fact `archiveSweepName`'s `title` carries and `archiveSweepFacts` restates */
 function archiveSweepFullIdentities(sweep: ArchiveSweepWire): string {
   return sweep.appliedIdentities
     .map((identity) => `${identity.workflowId} v${String(identity.descriptorVersion)}`)
     .join(", ");
 }
 
-/**
- * The sweep's NAME, as the demo's `ec v3.1 → v4.0` reads.
- *
- * Two rules. An identity with no frozen code degrades to its workflow ID —
- * the degradation `ArchivedWorkflowCodeWireSchema` already rules, because a
- * workflow ID is a real name the operator can act on while a code has no such
- * fallback. And the `title` is a DIFFERENT fact from the cell (AR82): a
- * tooltip repeating its own cell text is a no-op, so the hover carries the
- * scope sentence and the ids the codes stand in for.
- */
+/** Missing frozen codes use workflow identity; disclosure retains the full scope and identities. */
 export function archiveSweepName(
   sweep: ArchiveSweepWire,
   codes: ReadonlyMap<string, string>,
@@ -647,22 +461,7 @@ export function archiveSweepName(
   };
 }
 
-/**
- * The sweep ⓘ's meta line (AR84/AR93).
- *
- * The sweep's id leads it. The trace column prints `shortHash(applicationId)`
- * because a uuid does not fit 148px, and until this fold the whole id was
- * recoverable from that cell's `title` and from nowhere else — a fact
- * reachable by pointer and by nobody else is a fact the product does not have
- * (`src/dashboard/CLAUDE.md`, three times). It is a fold rather than JSX
- * because the popover body only exists once the popover is open, so nothing
- * rendered could pin it.
- *
- * The unabbreviated identities join the same list for the same reason (AR82,
- * unit F10d): the sweep head prints only the short codes, and the popover was
- * the row's own route to their full form — carrying that only on the head's
- * `title` would leave it reachable by pointer and by nobody else.
- */
+/** Expose full sweep IDs and workflow identities in keyboard-accessible disclosure, not hover alone. */
 export function archiveSweepFacts(sweep: ArchiveSweepWire): string[] {
   const range = archiveSweepVersionRange(sweep);
   return [
@@ -677,20 +476,7 @@ export function archiveSweepFacts(sweep: ArchiveSweepWire): string[] {
   ];
 }
 
-/**
- * The authored change record, or the reason it is not one yet.
- *
- * The demo's primary button is NEVER disabled, and its argument is the right
- * one: an empty record is a real refusal (`change-record-incomplete`), and a
- * greyed-out control hides the rule this flow exists to enforce. So the button
- * stays pressable and this fold answers the press.
- *
- * What it must not do is pretend the answer came from the server. The schema
- * that refuses an empty `what` is the SAME schema on both sides of the wire,
- * so this refusal is composed here and says so — it names the missing fields,
- * which a round trip could not do better, and it carries the code a bug report
- * would quote.
- */
+/** Keep validation pressable and name missing fields using the shared schema’s refusal. */
 export type BumpRecordDraft = Readonly<{ kind: VersionBumpChangeRecord["kind"]; what: string; why: string; commit: string }>;
 
 export type BumpRecordComposition =
@@ -729,31 +515,14 @@ export function composeBumpChangeRecord(draft: BumpRecordDraft): BumpRecordCompo
   };
 }
 
-/* ── the capture viewer — what it WAS, without a byte (D274 item 10) ─────── */
+/* ── the capture viewer — the frozen record, without a byte ────────────────── */
 
-/**
- * A viewer row: one thing the frozen tile knows, or the reason it knows none.
- * An absence keeps its own reason rather than printing a dash, because "the
- * bundle's origin named no step" and "this capture has no step" are different
- * facts and only one of them is about the capture.
- */
+/** Preserve absence reasons; an unknown origin is not the same as a capture lacking a step. */
 export type ArchivedCaptureFact =
   | { readonly state: "present"; readonly label: string; readonly value: string }
   | { readonly state: "absent"; readonly label: string; readonly reason: string };
 
-/**
- * WHAT IT WAS — every fact the archived tile holds, in reading order.
- *
- * This byte-independent formatter reads only the frozen record (D179: evidence
- * is POINTERS). It describes kind, media type, size, digest, sensitivity, when,
- * why, pixel size, step, system and DECLARED retention. The viewer's separate
- * exact-resource read may display retained image bytes; it never replaces
- * these frozen facts.
- *
- * Retention is a declaration, never an observation. The record cannot say
- * whether the bytes are still on disk, so this never prints "purged"; it
- * prints what the bundle was declared to be kept for.
- */
+/** Retention is declared, not observed; frozen capture facts cannot prove bytes were purged. */
 export function archivedCaptureFacts(tile: ArchivedCaptureTile): readonly ArchivedCaptureFact[] {
   const kilobytes = Math.max(1, Math.round(tile.byteLength / 1024));
   return [
@@ -787,22 +556,7 @@ export function archivedCaptureFacts(tile: ArchivedCaptureTile): readonly Archiv
   ];
 }
 
-/**
- * A capture tile's lead BADGE (AR184).
- *
- * It carried `tile.kind` in a tone keyed off `tile.origin`, so a routine
- * `screenshot` taken at a step's ordinary failure wore danger red while an
- * operator-requested one wore neutral — the badge's colour and its word came
- * from two different facts, and the reader had no way to tell which one the
- * red was about. The word is the ORIGIN now, which is the fact the colour was
- * always trying to say; `kind` is a physical property of the artifact and
- * lives with the others on the meta line.
- *
- * The map is TOTAL over `ArchivedCaptureTile["origin"]` and the test asserts
- * both directions, so a sixth origin is a typecheck failure and never a silent
- * default. Only the two that say something went wrong ABOUT THE SUBJECT take
- * danger: a wrong person is the worst thing this system can record.
- */
+/** Badge tone and text describe origin; subject-identity failures alone earn danger. */
 export const ARCHIVED_CAPTURE_ORIGIN_TONE = {
   "failure": "danger",
   "subject-mismatch": "danger",
@@ -843,11 +597,7 @@ function archivedCaptureDownloadPath(request: ArchivedCaptureResourceRequest): s
   return `/artifacts/v1/archive/${encodeURIComponent(request.runId)}/${encodeURIComponent(request.artifactId)}`;
 }
 
-/**
- * Owns a dialog's exact `(archived run, frozen artifact)` resource request.
- * Closing or walking to another capture invalidates the old result, so a
- * previous successful read cannot make a different tile look available.
- */
+/** Invalidate capture reads on close or resource change; prior success cannot authorize another tile. */
 export function useArchivedCaptureResource(
   runId: string,
   tile: ArchivedCaptureTile | undefined,
@@ -943,11 +693,7 @@ export function useArchivedCaptureImage() {
   return { state, bindImage, failImage, decodeImage };
 }
 
-/**
- * The archived facts that change a relaunch's risk. The command always creates
- * an interactive REAL run and resolves instances afresh; these sentences are
- * therefore derived from the frozen row, never assumed from its workflow.
- */
+/** Relaunch creates a real interactive run with fresh instances; frozen hazards inform its confirmation. */
 export function archivedRelaunchCautions(
   row: Pick<ArchivedRunDetailWire["row"], "dryRun" | "resolvedInstances">,
 ): readonly string[] {
@@ -978,29 +724,7 @@ export function archivedRelaunchHeadline(detail: ArchivedRunDetailWire): string 
   }
 }
 
-/**
- * D308's confirm copy for the Archive's delete door.
- *
- * The relaunch beside it is additive — it enqueues a run and leaves the record
- * exactly as it ended — so its dialog can spend its whole body on what the
- * fresh run WOULD do. This one removes authority, and the three sentences
- * below are the three facts an operator cannot recover after pressing it:
- *
- *  1. WHAT leaves. Not "the archived record": the retained `tasks` row and
- *     every row it owns go with it, and the write ledger is one of them.
- *  2. WHAT that costs. The write ledger carries the permanent idempotency keys
- *     that stop the same live write from being submitted twice; deleting the
- *     run releases them. The sentence is conditional because the archive holds
- *     rehearsals too, and it names the WORKFLOW so the operator reads it as
- *     "UCPath" rather than as a database noun.
- *  3. That there is no undo. The tombstone records that a run was deleted; it
- *     does not hold what was deleted.
- *
- * It is model-authored rather than served: the archived detail wire carries no
- * confirm (the relaunch's does not either), and inventing a server-authored
- * confirm for one control would put this surface's two destructive-copy
- * authors in two different places.
- */
+/** Deletion removes authority and releases write keys; tombstones preserve no undoable content. */
 export interface ArchivedDeleteConfirm {
   readonly title: string;
   readonly description: string;

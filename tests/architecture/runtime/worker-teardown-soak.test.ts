@@ -1,28 +1,5 @@
 import { testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
-/**
- * D182 — ref execution-and-sessions §7.1 rows C5–C8: the TEARDOWN and SOAK half of the 2j
- * concurrency matrix.
- *
- * Ref execution-and-sessions §7's first mechanical-guard row asks for "a worker-soak test [that]
- * asserts max active claims per worker is exactly 1". Until D182 that row named
- * a test that did not exist. What exists here is the whole shape it implies:
- * a bounded, deterministic drain by several real `runWorkerLoop` instances over
- * ONE authority database, followed by a whole-database invariant sweep — a soak
- * that only counted outcomes would pass over a corrupted claim index.
- *
- * The teardown arms are the other half, and they are about the moment a worker
- * dies with work in its hands. Three facts have to survive it: a browser
- * session is only closed when closure was OBSERVED (so `closeAll` waits behind
- * an in-flight callback and a SECOND concurrent `closeAll` is a caller bug, not
- * a second attempt); an uncertain close leaves the resource POISONED and
- * refused rather than silently dropped; and a run whose worker vanished mid-
- * flight is never permanently orphaned — it stays under its now-stale claim
- * until ref execution-and-sessions §3's recovery sweep requeues it for the next worker.
- *
- * The sweep is the only release path on purpose. A loop that "cleaned up" its
- * own claim on the way out would be guessing whether the browser it just lost
- * had already submitted something.
- */
+
 import { fixtureDuoCeremonyGates } from "../../support/helpers/duo-ceremony-fixtures.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
@@ -164,9 +141,9 @@ function workerHarness(
   };
 }
 
-/* ── C5: a worker that dies mid-run strands nothing ──────────────────────── */
 
-describe("D182 C5 — graceful teardown with a run in flight", () => {
+
+describe("graceful teardown with a run in flight", () => {
   it("abandons rather than terminalizing, and the claim sweep — not the loop — releases the row", async () => {
     const authority = sharedAuthority();
     const { database, clock } = authority;
@@ -198,13 +175,10 @@ describe("D182 C5 — graceful teardown with a run in flight", () => {
     assert.equal(report.stopped, "stop-signal");
     assert.deepEqual(report.outcomes.map(({ state }) => state), ["abandoned"]);
 
-    // Closure was OBSERVED for the interrupted lease, and it is recorded as
-    // poisoned — not as a clean worker-stop, which would claim a neutral page.
+
     assert.deepEqual(sessions.closeReasons(), ["poisoned"]);
 
-    // The row is deliberately still owned by the dead worker. Terminalizing it
-    // here would be the loop deciding, with no browser left, that nothing
-    // happened; requeueing it here would race the D118 write-intent check.
+    // Keep the dead worker claim until recovery decides the uncertain write outcome.
     const stranded = database.authority.runs.get(runId);
     assert.ok(stranded !== undefined);
     assert.ok(ACTIVE_STATES.has(stranded.lifecycle.state), `expected an active row, got ${stranded.lifecycle.state}`);
@@ -231,7 +205,7 @@ describe("D182 C5 — graceful teardown with a run in flight", () => {
   });
 });
 
-/* ── C6/C7: the session manager's own teardown ───────────────────────────── */
+
 
 const TEARDOWN_WORKER = WorkerIdSchema.parse("teardown-fixture-worker");
 const TEARDOWN_WORKFLOW = WorkflowIdSchema.parse("person-lookup");
@@ -296,12 +270,12 @@ function teardownManager(factory: TeardownFactory): WorkerSessionManager {
     acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
     duoCeremony: fixtureDuoCeremonyGates(clock),
   });
-  // Stand-in for the worker loop's per-run D116 bind.
+
   sessions.bindRunConfigFingerprint(TEARDOWN_FINGERPRINT);
   return sessions;
 }
 
-describe("D182 C6 — worker-stop waits behind in-flight callbacks", () => {
+describe("worker-stop waits behind in-flight callbacks", () => {
   it("closes nothing under an active lease, refuses a second concurrent closeAll, then completes", async () => {
     const factory = teardownFactory();
     const sessions = teardownManager(factory);
@@ -326,7 +300,7 @@ describe("D182 C6 — worker-stop waits behind in-flight callbacks", () => {
     const closing = sessions.closeAll("worker-stop");
     await Promise.resolve();
     await Promise.resolve();
-    // crm was free and closed immediately; ucpath is held behind its callback.
+
     assert.ok(!factory.closes().includes("ucpath"), "worker-stop closed a session that was still in use");
 
     // A second concurrent teardown is a CALLER bug, not a retry: two closers
@@ -349,14 +323,12 @@ describe("D182 C6 — worker-stop waits behind in-flight callbacks", () => {
   });
 });
 
-describe("D182 C7 — poison-close paths survive teardown", () => {
+describe("poison-close paths survive teardown", () => {
   it("names the task failure AND the failed close, retains the resource, and aggregates every system at stop", async () => {
     const factory = teardownFactory(["ucpath", "crm"]);
     const sessions = teardownManager(factory);
 
-    // A task failure whose poison-close ALSO fails: neither error may be lost,
-    // because "the task blew up" and "we cannot prove the browser is gone" are
-    // different problems and only one of them blocks reuse.
+    // Preserve task and close errors separately; an unproven close blocks session reuse.
     await assert.rejects(
       sessions.withDriver(UCPATH_REUSE, "prod", NEVER_ABORTS, () =>
         Promise.reject(new Error("injected task failure"))),
@@ -399,9 +371,9 @@ describe("D182 C7 — poison-close paths survive teardown", () => {
   });
 });
 
-/* ── C8: the bounded soak ────────────────────────────────────────────────── */
 
-describe("D182 C8 — a bounded multi-worker soak over one authority database", () => {
+
+describe("bounded multi-worker soak over one authority database", () => {
   it(`drains ${String(SOAK_RUNS)} runs across ${String(SOAK_WORKERS)} workers and leaves authority provably intact`, async () => {
     const authority = sharedAuthority();
     const { database } = authority;
@@ -455,9 +427,7 @@ describe("D182 C8 — a bounded multi-worker soak over one authority database", 
       assert.equal(record.envelope.attempt, 1, `${runIdOf(record)} was requeued`);
     }
 
-    // The whole-database sweep: ~30 named SQL invariants plus quick_check and
-    // the foreign-key scan. This is the assertion counting outcomes cannot make
-    // — a soak that corrupted the claim index would still count 30 `done`s.
+
     const inspection = AuthorityDatabase.inspectExistingReadOnly(authority.path);
     assert.equal(inspection.invariants.state, "valid");
     assert.deepEqual(inspection.invariants.violations, []);

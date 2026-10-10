@@ -1,4 +1,4 @@
-/** The persistent feed accepts only settlements the D253 fold classified as refusals. */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { commandResultFeedEntry, toastAppliedCommandResult } from "../../../../../src/dashboard/surfaces/shared/actions/actions-model.js";
@@ -19,7 +19,7 @@ const context = {
   actorId: "local-operator",
 } as const;
 
-describe("command result feed settlement (D253)", () => {
+describe("command result feed settlement", () => {
   it("refuses to create persistent failure context for an applied command", () => {
     const settlement = settleCommandResult(CommandResultSchema.parse({
       state: "applied",
@@ -50,23 +50,9 @@ describe("command result feed settlement (D253)", () => {
   });
 });
 
-/**
- * The two folds answer the SAME question and must disagree about what a
- * non-matching arm means, which is why both are pinned side by side.
- * `commandResultFeedEntry` returns `undefined` for an applied command because
- * "nothing to file" is a real outcome the caller checks. The toast has no such
- * arm: a success toast composed for a refusal would let "nothing was recorded"
- * look exactly like "it worked", so it throws instead of returning quietly.
- */
-describe("the applied-command toast (D253)", () => {
-  /*
-    A RECORDER PER TEST, not one shared by the block. A `toasted` array declared
-    beside the `it`s carries whatever the previous test emitted, so the refusal
-    case could only ever ask whether the count had GROWN — and `length === 1`
-    is satisfied both by "it stayed silent" and by "it emitted a success toast
-    and the earlier test's entry vanished". The one claim that matters there is
-    that NOTHING was emitted, and only a fresh recorder can state it.
-  */
+
+describe("the applied-command toast", () => {
+  // Create a recorder per test so an applied toast cannot leak into a later refusal case.
   const recorder = (): {
     toasted: { title: string; description: string }[];
     toast: (input: { tone: "success"; title: string; description: string }) => string;

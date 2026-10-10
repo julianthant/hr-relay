@@ -1,18 +1,4 @@
-/**
- * D205 — the virtualized timecard grid is read to its END, or refused.
- *
- * The fake below is the defect, modelled: a ui-grid pair where the PINNED
- * viewport does not scroll and the BODY viewport does, and where the rendered
- * row set is a WINDOW recomputed from the body's scroll position. Chunk 1's
- * attempt 14 read 8 of 35 in-window days against exactly that shape and
- * reported a whole read, because it drove the pinned viewport and stopped when
- * `scrollTop` refused to advance — a true statement about the wrong widget.
- *
- * Every case here asserts the ANSWER (which days were gathered, or which
- * refusal names the shortfall), never the number of scroll steps: the point of
- * the fix is that the loop stops on the coverage invariant rather than on any
- * property of the scrollbar.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import {
@@ -32,7 +18,7 @@ import {
 const ROW_HEIGHT = 30;
 const VIEWPORT_ROWS = 14;
 
-/** Attempt 14's real window: 07/06/2026 – 08/09/2026, 35 days. */
+
 const RANGE = Object.freeze({
   start: new Date(2026, 6, 6),
   end: new Date(2026, 7, 9),
@@ -55,18 +41,11 @@ interface FakeGridOptions {
   readonly rows: readonly RawTimecardGridRow[];
   /** When true the body viewport ignores writes, as a wedged grid would. */
   readonly frozen?: boolean;
-  /**
-   * The rows the grid is STILL painting from the period it is leaving, and how
-   * many harvests it keeps painting them for. That is the live shape of
-   * `sp-064821-1fd7`: the period label switches first, the body catches up.
-   */
+
   readonly stale?: Readonly<{ rows: readonly RawTimecardGridRow[]; harvests: number }>;
 }
 
-/**
- * A virtualized grid whose rendered window is a pure function of its scroll
- * position, plus the counters a test needs to see what the loop actually did.
- */
+
 function fakeGrid(options: FakeGridOptions) {
   const canvas = options.rows.length * ROW_HEIGHT;
   const client = VIEWPORT_ROWS * ROW_HEIGHT;
@@ -120,12 +99,7 @@ describe("new-kronos virtualized grid read", () => {
     assert.ok(read.scrollSteps < MAX_GRID_SCROLL_STEPS, "the read consumed its whole step budget");
   });
 
-  /**
-   * The regression itself. A single DOM read — which is what a grid that never
-   * scrolls degenerates to — sees the opening window and nothing else. It must
-   * REFUSE, naming what it saw against what was asked, and never return the
-   * eight in-window days it happens to hold.
-   */
+
   it("refuses a grid that will not scroll, naming days seen against days expected", async () => {
     const grid = fakeGrid({ rows: WINDOW_ROWS, frozen: true });
     await assert.rejects(
@@ -156,13 +130,7 @@ describe("new-kronos virtualized grid read", () => {
     assert.equal(timecardRangeCoverage(read.rows, narrow).complete, true);
   });
 
-  /**
-   * The live defect run `sp-064821-1fd7` (2026-08-14) found: the period label
-   * had already switched to the applied window while the body was still
-   * painting the CURRENT pay period, so the opening harvest carried August rows
-   * into a February–April read. A stale row cannot be scrolled away, so nothing
-   * may be accumulated until the body proves it is on the applied window.
-   */
+
   it("waits for the BODY to repaint onto the applied window before keeping a single row", async () => {
     const grid = fakeGrid({
       rows: WINDOW_ROWS,
@@ -171,7 +139,7 @@ describe("new-kronos virtualized grid read", () => {
     const read = await readVirtualizedGrid(grid.port, RANGE);
     assert.equal(timecardRangeCoverage(read.rows, RANGE).complete, true);
     assert.equal(coveredDays(read.rows), 35);
-    // Nothing from the period it was leaving survived into the answer.
+
     assert.equal(read.rows.some((row) => row.month === 1), false, "a January row was kept");
   });
 
@@ -191,11 +159,7 @@ describe("new-kronos virtualized grid read", () => {
     );
   });
 
-  /**
-   * A grid that changes period MID-read is the same fact arriving later, and it
-   * refuses about the period rather than about the scroll — a row from another
-   * window can never be scrolled away.
-   */
+
   it("refuses a grid that changes period mid-read", async () => {
     const rows = [...WINDOW_ROWS];
     let harvests = 0;
@@ -221,12 +185,7 @@ describe("new-kronos virtualized grid read", () => {
     );
   });
 
-  /**
-   * The loop and the fold must refuse the SAME reads. They share
-   * `timecardRangeCoverage` for exactly this reason: a loop that believed it
-   * had finished a read the fold then rejected is how the live attempt spent a
-   * whole browser session to produce a refusal that named no scroll state.
-   */
+
   it("agrees with the fold's own coverage refusal", async () => {
     const grid = fakeGrid({ rows: WINDOW_ROWS });
     const read = await readVirtualizedGrid(grid.port, RANGE);

@@ -1,11 +1,4 @@
-/**
- * Retained D222 compatibility helper; D322 retired its production caller.
- * Production health observations live in app/composition/dashboard/notification-health.ts
- * and require actual failure evidence plus durable episode identities. Missing
- * or stale unrequested backups are not production notification sources.
- * This helper retries failed calls but cannot identify a new durable episode;
- * the inbox treats a repeated event as the same source.
- */
+// Compatibility-only backup notifier; production observations come from dashboard composition.
 import { z } from "zod";
 import { FingerprintSchema, type Fingerprint } from "../../../rules/identity/ids.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
@@ -14,13 +7,7 @@ import type { NotificationInbox, NotificationPublishReport } from "./inbox.js";
 export const BackupHealthStateSchema = z.enum(["current", "stale", "missing"]);
 export type BackupHealthState = z.infer<typeof BackupHealthStateSchema>;
 
-/**
- * The dedupe/link identity of one backup-health reading. Derived from the
- * closed state alone — deliberately not from a manifest name or an instant —
- * so every `stale` episode folds into the ONE row that already said it
- * (count/lastSeenAt advance, D134) instead of minting a new inbox item per
- * episode.
- */
+
 export function backupHealthDiagnosticFingerprint(input: unknown): Fingerprint {
   const state = BackupHealthStateSchema.exclude(["current"]).parse(input);
   return FingerprintSchema.parse(sha256Hex(`hrauto:storage-health:backup:v1\0${state}`));

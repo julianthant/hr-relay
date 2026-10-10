@@ -14,10 +14,8 @@ export function useTakeoverCloseFocus(takeover: ReturnType<typeof activeTakeover
   const previousTakeover = useRef(takeover);
   const pendingTakeoverCloseFocusId = useRef<DashboardTakeoverCloseFocusTargetId | undefined>(undefined);
 
-  /* Intake replaces the toolbar that opened it, so its door
-     exists only AFTER the close route commits. Keep its stable id across that
-     unmount/remount boundary, then restore focus (or the main-region fallback)
-     once React has mounted the queue again. */
+  /** Intake replaces the toolbar that opened it, so its
+ * door exists only AFTER the close route commits. */
   useEffect(() => {
     const targetId = pendingTakeoverCloseFocusId.current;
     const returnedToQueue = previousTakeover.current !== "none" && takeover === "none";

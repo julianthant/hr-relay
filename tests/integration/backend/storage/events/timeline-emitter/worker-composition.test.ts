@@ -15,17 +15,7 @@ import { RuntimeConfigClaimTokenSchema } from "../../../../../../src/models/conf
 import { RunRecordService } from "../../../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { testRunService, testWorkerPorts } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
 import { hostConfigFacts } from "../../../../../../src/models/config/host-display.js";
-/**
- * The Phase-1f worker composition (`src/backend/app/composition/worker-compose.ts`) and the
- * command kernel's worker-browser arms as the DASHBOARD process composes them.
- *
- * Everything real is real: a temp-file `AuthorityDatabase` under the isolation
- * state root, the registered person-lookup descriptor and task stores, the
- * worker lease protocol, the JSONL span writer, and the whole worker loop.
- * Only the process edges are fakes — the browser session factory, the clock,
- * ids, and the stop signal — so a pass here pins production wiring rather than
- * a parallel reimplementation.
- */
+
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -965,9 +955,7 @@ describe("composed worker runtime", () => {
     seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
     const workerId = phase1WorkerId(WorkflowIdSchema.parse(WORKFLOW_ID));
     const seed = reopen(stateRoot, clock);
-    // A worker that was SIGKILLed leaves a live `idle` lease behind whose
-    // heartbeat then ages out. Only a RUNNING worker sweeps, so without a
-    // reclaim-before-acquire pass no worker could ever start again.
+
     assert.equal(seed.authority.workerLeases.start({
       workerId, workflow: WORKFLOW_ID, browserSystems: ["crm", "ucpath"], processId: 999,
       requestedBy: "local-operator", now: NOW,
@@ -991,16 +979,7 @@ describe("composed worker runtime", () => {
     assert.ok(lines.some((line) => line.includes("stale worker lease reclaimed before start")));
   });
 
-  /**
-   * D200. A worker whose loop throws settles its LEASE (`crashed`) on the way
-   * out and leaves its claimed run row exactly where it was. The next process
-   * therefore wins the lease and then finds `claimNext` refusing —
-   * `worker … already holds active run …` — because the row it left behind is
-   * still owned by this worker id. The maintenance boot sweep cannot help: the
-   * row's heartbeat is seconds old, far inside the 60s staleness gate. Before
-   * this, the only ways out were starting a DIFFERENT workflow's worker or
-   * cancelling the run.
-   */
+
   it("sweeps its own orphaned claim at startup and then claims it, same workflow", async () => {
     const { repoRoot, stateRoot } = repoRootWithState();
     const clock = manualClock(new Date(NOW));
@@ -1029,13 +1008,7 @@ describe("composed worker runtime", () => {
     assert.equal(run.envelope.attempt, 1, "recovery preserves the immutable item attempt");
   });
 
-  /**
-   * D200 reuses the D118 sweeper rather than forking it, so the startup pass
-   * inherits the gate: a run whose logical item holds an unfinished
-   * `attempting` write intent PARKS and is never requeued. A startup path that
-   * reimplemented "release my own rows" would have handed a possibly-landed
-   * real HR write straight back to the executor.
-   */
+
   for (const recovery of ["startup", "global"] as const) it(`${recovery} recovery publishes cancellation once without claiming or opening browsers`, async () => {
     const { repoRoot, stateRoot } = repoRootWithState();
     const clock = manualClock(new Date(NOW));
@@ -1105,7 +1078,7 @@ describe("composed worker runtime", () => {
     const report = await composeWorkerRuntime(composeInput({
       repoRoot, clock, sessions: happySessionHarness(), lines, poolIndex: POOL_INDEX_1,
     }));
-    // Nothing was claimable, so the drain reports idle with no outcomes at all.
+
     assert.deepEqual(report.outcomes, []);
     assert.equal(report.stopped, "idle");
     assert.ok(
@@ -1147,8 +1120,7 @@ describe("composed worker runtime", () => {
 
     assert.equal(report.stopped, "stop-signal");
     assert.deepEqual(report.outcomes.map(({ state }) => state), ["abandoned"]);
-    // The interrupted lease was poison-closed, and the worker-stop sweep found
-    // nothing left to close — an uncertain lease is never silently reused.
+
     assert.deepEqual(sessions.closeReasons(), ["poisoned"]);
 
     const database = reopen(stateRoot, clock);
@@ -1171,9 +1143,7 @@ describe("composed worker runtime", () => {
           const resource = await sessions.factory.open(input);
           return {
             ...resource,
-            // A hung/unprovable teardown: the factory contract says an
-            // unproven close THROWS, and the manager's poison rule keeps the
-            // resource registered rather than believing cleanup succeeded.
+            // An unproven close retains the registered resource and reports uncertainty.
             close: () => Promise.reject(new Error(
               `${resource.system} context did not close within its bounded deadline`,
             )),
@@ -1224,7 +1194,7 @@ describe("composed worker runtime", () => {
   });
 });
 
-describe("D331 settings apply during a production worker claim", () => {
+describe("settings apply during a production worker claim", () => {
   it.each(["protected", "ordinary"] as const)("%s apply preserves the active run and permits the next retained run", async (kind) => {
     const { repoRoot, stateRoot } = repoRootWithState();
     const clock = manualClock(new Date(NOW));
@@ -1343,14 +1313,7 @@ describe("worker composition helpers", () => {
 
 /* ── the kernel's SYNCHRONOUS Phase-1 worker-browser arms ────────────────── */
 
-/**
- * The dashboard composition adopted the async pool seam as of W3 (see
- * `tests/unit/server/worker-pool-composition.test.ts` for the composed
- * truth). The synchronous Phase-1 seam remains the kernel's contract for a
- * composition WITHOUT a process supervisor, and this refusing supervisor pins
- * its fail-loud shape: a spawn effect nobody can perform refuses by name and
- * unwinds the whole command.
- */
+
 function refusingWorkerSupervisor(): WorkerProcessSupervisor {
   return Object.freeze({
     spawnWorker: (input: Readonly<{ workflowId: string; workerId: string }>): never => {
@@ -1421,8 +1384,7 @@ describe("dashboard-composed worker-browser command arms", () => {
     const harness = kernelHarness();
     const workerId = phase1WorkerId(WorkflowIdSchema.parse(WORKFLOW_ID));
 
-    // D269: the pool version is the CAS basis — 0 for a workflow nobody has
-    // planned; the applied plan creates the row at version 1.
+
     const planned = harness.kernel.execute({
       ...envelope(),
       type: "plan-worker-count",
@@ -1471,8 +1433,7 @@ describe("dashboard-composed worker-browser command arms", () => {
       /exactly one worker per workflow/,
     );
     assert.equal(harness.database.authority.commands.get(commandId), undefined);
-    // D269: the runtime's refusal unwinds the pool write with the command —
-    // no declaration of 3 workers survives a count the runtime refused.
+
     assert.equal(harness.database.authority.workerPools.get(WORKFLOW_ID), undefined);
   });
 

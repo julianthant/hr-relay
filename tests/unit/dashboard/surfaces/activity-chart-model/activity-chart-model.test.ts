@@ -32,9 +32,7 @@ describe("Activity volume chart model", () => {
     assert.equal(volume.granularity, "daily");
     assert.equal(volume.buckets.length, 31);
 
-    // DsBodyScope caps the body at 828px: at the 1024px canvas the chart spans
-    // that body; at 1440px it occupies the right third. The measured plot
-    // widths exclude the y-axis rail and card insets.
+
     const at1024 = createActivityVolumeChartModel(volume, 776);
     const at1440 = createActivityVolumeChartModel(volume, 220);
     assert.equal(at1024.state, "complete");

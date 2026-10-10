@@ -246,7 +246,7 @@ function applyTransfer(deps: ArchiveCommandDependencies, request: Apply) {
 
 export function runArchiveCommand(request: Request, deps: ArchiveCommandDependencies, executeAtomic: () => CommandResult) {
   try {
-    // Even retired or absent targets must not bypass global command identity.
+
     const journaled = deps.authority.withAuthorityTransaction(repos => {
       repos.commands.assertIdentity(request); return repos.commands.get(request.commandId) !== undefined;
     });
@@ -281,8 +281,7 @@ export function runArchiveCommand(request: Request, deps: ArchiveCommandDependen
       } else {
         const receipt = deps.authority.withAuthorityTransaction(repos => repos.deletedRuns.get(request.target.archivedRunId));
         if (receipt?.commandId === lifecycleCommandId("operator-delete-archive", request.commandId)) {
-          // The exact journal replay supplies every tree receipt and resumes
-          // archive/file settlement without fabricating a removed report digest.
+
           const outcome = storage.deleteArchive({ commandId: receipt.commandId, runId: receipt.runId, operatorRequest: request });
           if (outcome.state !== "applied-already") throw new Error("archive-delete-replay-incomplete");
         }

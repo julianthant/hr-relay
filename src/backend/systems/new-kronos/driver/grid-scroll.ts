@@ -1,40 +1,4 @@
-/**
- * The virtualized timecard grid's scroll-to-end read (D205).
- *
- * ## Why this is its own module with a port
- *
- * Chunk 1's live proof failed nine distinct ways; the ninth — durable failure
- * fingerprint `53336e1c`, seen 6x — was this loop, and it is the only one no
- * fixture could reach, because the loop lived inside a `page.evaluate` closure
- * that needed a real WFD grid to run at all. Attempt 14 read **8 of 35 in-window
- * days** (14 distinct days once the pay-period overhang is counted) over a
- * five-week window, reported a successful read, and left the fold to refuse it.
- *
- * So the ALGORITHM is separated from the browser. Everything page-shaped —
- * which viewport to drive, how a row is parsed out of the DOM — stays in the
- * interpreter behind `VirtualizedGridPort`; what is here is the part that was
- * wrong, and a fake virtualized grid can now exercise it exactly.
- *
- * ## The termination condition is the ANSWER, not the scrollbar
- *
- * The previous loop stopped when `scrollTop` refused to advance. That is a
- * statement about a widget, and it was a TRUE statement — the grid genuinely
- * would not scroll, because the position was being written to ui-grid's PINNED
- * viewport, which is synced from the body container and drives no
- * virtualization. A true statement about the wrong thing reported a whole read.
- *
- * WFD renders one row per calendar day, so a complete read holds every day the
- * applied window demands. That invariant — `timecardRangeCoverage`, the same
- * one `assertTimecardCoversRange` refuses on — is the loop's stopping rule, and
- * the loop REFUSES when it cannot reach it. Position and "did the row set grow"
- * survive only as stall detectors, so a grid that will not move gives up in
- * bounded time instead of scrolling forever.
- *
- * There is deliberately no "return what we got" arm. A missing day reads as a
- * day with no punch, which regresses a real termination's last day worked to a
- * plausible, wrong date — the exact silent-wrong-value failure this program
- * exists to prevent.
- */
+// Grid virtualization hides most rows; scroll the body and prove full day coverage before returning a timecard.
 import {
   describeTimecardCoverage,
   timecardRangeCoverage,
@@ -75,30 +39,14 @@ export interface VirtualizedGridRead {
   readonly scrollSteps: number;
 }
 
-/**
- * None of these bounds is a guess about how far the grid goes — the coverage
- * invariant decides that. They exist so a grid that will not advance refuses in
- * bounded time.
- *
- * 200 steps at 0.6 of a viewport covers a window far wider than the ~3 months a
- * separations range can legitimately be; reaching the cap is a refusal, never a
- * result. The 0.6 overlap is deliberate: a step of a full viewport can skip a
- * band of rows when ui-grid's render window lags the scroll by a frame.
- */
+
 export const MAX_GRID_SCROLL_STEPS = 200;
 export const GRID_SCROLL_FRACTION = 0.6;
 /** 20 polls of the caller's interval — 4s at 200ms — for ONE virtualized repaint. */
 export const GRID_REPAINT_POLLS = 20;
 /** Consecutive steps that add no new row before the read is declared stuck. */
 export const GRID_SCROLL_STALL_LIMIT = 3;
-/**
- * Polls of the caller's interval for the BODY to repaint onto a newly applied
- * window — 50 at 200ms, 10s.
- *
- * It is deliberately longer than one virtualized repaint: applying a range
- * makes WFD re-fetch the period, and the period LABEL switches first. Live run
- * `sp-064821-1fd7` (2026-08-14) proved the label alone is not the grid.
- */
+// Wait for the grid body to repaint; applied range text alone does not prove the rendered row window.
 export const GRID_APPLIED_WINDOW_POLLS = 50;
 
 /** The rendered window's identity, for "has it repainted yet". */
@@ -114,18 +62,7 @@ export async function readVirtualizedGrid(
   let harvest = await port.harvest();
   let geometry: GridScrollGeometry = harvest;
 
-  /*
-   * Nothing is accumulated until the body PROVES it is painting the window
-   * that was applied.
-   *
-   * The applied-range check upstream reads the period LABEL, and on live run
-   * `sp-064821-1fd7` (2026-08-14) the label switched to 02/28/2026 - 04/30/2026
-   * while the grid was still rendering the CURRENT pay period — so the first
-   * harvest carried August rows, they went into `seen` permanently, and the
-   * coverage computation then died inside a date formatter. A stale row can
-   * never be scrolled away, so the only place to catch it is before the first
-   * one is kept.
-   */
+  // Accumulate only rows from the proved applied window; unchanged range text does not prove body repaint.
   for (let attempt = 0; attempt < GRID_APPLIED_WINDOW_POLLS; attempt++) {
     if (harvest.rows.length > 0 && timecardRangeCoverage(harvest.rows, applied).outside.length === 0) break;
     if (attempt === GRID_APPLIED_WINDOW_POLLS - 1) {
@@ -155,9 +92,7 @@ export async function readVirtualizedGrid(
     }
     coverage = timecardRangeCoverage([...seen.values()], applied);
     if (coverage.complete) break;
-    // A row from another period cannot be scrolled away, so continuing would
-    // only spend the whole step budget before refusing with a message about
-    // the scroll instead of about the period.
+    // A row outside the applied period is a range failure; scrolling cannot repair it.
     if (coverage.outside.length > 0) {
       throw port.refuse(
         `the timecard grid rendered ${coverage.outside.join(", ")} while showing the applied window — `
@@ -178,9 +113,7 @@ export async function readVirtualizedGrid(
     geometry = await port.scrollTo(target);
     scrollSteps++;
 
-    // Wait for the virtualized grid to REPAINT. The condition is the set of
-    // rendered DAYS changing — not a fixed delay, and not the first row's text,
-    // which repeats whenever a window is revisited.
+
     const anchor = renderedDays(harvest.rows);
     for (let attempt = 0; attempt < GRID_REPAINT_POLLS; attempt++) {
       harvest = await port.harvest();

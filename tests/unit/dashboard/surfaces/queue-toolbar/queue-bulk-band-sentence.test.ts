@@ -1,22 +1,4 @@
-/**
- * THE SELECTION BAND'S REFUSAL SENTENCE, rendered rather than described.
- *
- * When a selection yields no bulk plan the band must say why, and it has two
- * genuinely different things to say. Every selected row has LEFT THE DAY — the
- * honest sentence is that there is nothing here to act on, because claiming the
- * rows "serve neither verb" would be a statement about an `actions[]` this
- * screen never received. Or SOME rows are still here and none of them serves
- * Cancel — and then the count in the sentence must be the rows still
- * present, `selectedCount - unavailable.length`, not the raw selection.
- *
- * That subtraction is the whole point (unit F2's lesson: a count and its
- * explanation must be derived from the same input), and both the branch and the
- * arithmetic were untested — the band could have printed the raw
- * `selectedCount`, or the wrong singular, with the suite green.
- *
- * The band is JSX inside a `.tsx`, so it is pinned by rendering the real
- * component to static markup, not by re-deriving the sentence here.
- */
+
 import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -54,9 +36,7 @@ function bandText(input: {
     onSelectRun: noop,
   }));
   return markup
-    // Tags become whitespace so two adjacent text nodes cannot be read as one
-    // word, then every run of whitespace collapses to a single space — which
-    // is how the sentence reads on screen and how it is asserted below.
+    // Replace tags with whitespace before collapsing text so adjacent nodes cannot merge words.
     .replace(/<[^>]*>/gu, " ")
     .replace(/&#x27;/gu, "'")
     .replace(/&quot;/gu, "\"")
@@ -139,20 +119,7 @@ describe("the selection band's refusal, when a selection yields no bulk plan", (
   });
 });
 
-/**
- * THE OTHER TWO WAYS THIS BAND'S SENTENCES WERE SHORT OF THE TRUTH (unit F2d).
- *
- * One was a TENSE: the outcome band read `… rows are no longer on this day …
- * when this batch was sent`, a present-tense claim pinned to a past instant, so
- * the sentence disagreed with itself about which moment it described. The rows
- * it names are named for exactly one reason — they were already gone when the
- * batch went — and the copy now says so once, in one tense.
- *
- * The other was CLIPPING: the refusal sentence sat in a `truncate` span. A row
- * has the ⓘ popover as its route to a clipped value; a toolbar has none, so a
- * refusal that ran past the band's width was a reason with no route to it on
- * ANY pointer. It wraps now, and the band's `min-h` is what lets it.
- */
+
 function outcomeBandText(unavailable: readonly string[]): string {
   const markup = renderToStaticMarkup(createElement(QueueToolbar, {
     sort: "attention",

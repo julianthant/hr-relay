@@ -1,20 +1,6 @@
 import { RunRecordService } from "../../../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { testRunLifecycle } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
-/**
- * Ref data-intake-and-edit-data §6 (D166): the Edit Data core, in three layers.
- *
- * 1. The APPLIER is pure: patches resolve by path, the WHOLE post-patch
- *    output re-parses through the producing schema, changed leaves become
- *    operator provenance superseding the recorded fact, and untouched leaves
- *    stay byte-identical — `originalObservedAt` is NEVER refreshed.
- * 2. The KERNEL save is a CAS against the resume fence: a moved version, a
- *    claimed run, an undeclared field, and a schema-breaking value each
- *    reject loudly — the resume wins, and nothing durable moves on a reject.
- * 3. The EXECUTOR consumes accepted patches at replay: the corrected
- *    checkpoint lands at the resuming attempt with operator provenance, a
- *    patch naming a non-replayed node refuses at validation, and a patch
- *    that cannot re-parse refuses too.
- */
+
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -323,7 +309,7 @@ function queuedRunFor(descriptor: AnyWorkflowDescriptor, runId?: string, attempt
   };
 }
 
-describe("D334 retires checkpoint saves", () => {
+describe("checkpoint saves are unavailable", () => {
   it.each([
     { version: 1, patch: PATCH },
     { version: 2, patch: PATCH },
@@ -400,8 +386,7 @@ describe("executor consume — injected corrections at replay", () => {
     const corrected = await executeClaimedRun(harness.deps, { ...second, signal: SIGNAL });
     assert.equal(corrected.state, "done");
 
-    // D214 — the corrected row is keyed by the EXECUTION that minted it: the
-    // claim run 2 actually holds, read off the run row rather than assumed.
+
     const row = database.authority.runCheckpoints.get(
       String(descriptor.id),
       QUEUED_RUN.envelope.itemId,
@@ -421,7 +406,7 @@ describe("executor consume — injected corrections at replay", () => {
     const descriptor = editDescriptor();
     const harness = executorHarness(descriptor);
     const { database } = harness.authority;
-    // No prior checkpoint exists, so "extract" will execute, not replay.
+
     database.authority.runs.enqueue(queuedRunFor(descriptor, undefined, 1, [PATCH]));
     const claimed = claim(database, descriptor);
 

@@ -1,20 +1,5 @@
 import { createTrustRunReader } from "../../../../../../src/backend/runs/trust/canonical-reader.js";
-/**
- * D199 — a settled run's receipt is bound to the semantic surfaces its
- * derivation consumes, not to the descriptor's whole source closure.
- *
- * The defect this pins was found in production, not in a fixture: chunk 2's
- * five live-proof `separations-kuali-read` receipts (traces `sd-140241-ca44`,
- * `sd-140505-28ff`, `sd-140917-2b9e`, `sd-140921-3385`, `sd-140921-c0af`) were
- * stranded when a raw-control-byte fix moved `contractFingerprint` without
- * changing one thing the derivation reads. `explain run` answered
- * `evidence receipt … already exists with different content` for all five.
- *
- * Both outcomes that live database now produces are proved here in fixture
- * form: a closure that moved with every consumed surface intact re-derives
- * byte-identically, and a genuinely moved declaration refuses while NAMING
- * what moved.
- */
+
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -40,16 +25,12 @@ import { separationsKualiFinalizationDescriptor } from "../../../../../support/h
 import { kualiReceiptEvidence, seedPersonLookupExitRun } from "../../../../../support/fixtures/receipt-run-fixtures.js";
 import { personLookupDescriptor } from "../../../../../support/helpers/registered-workflows.js";
 
-/**
- * A closure hash this build does not have. It stands for "the tree moved after
- * this run settled" — which is the ONLY thing that changed for chunk 2's
- * receipts.
- */
+
 const MOVED_CLOSURE = "9".repeat(64);
 
 const descriptor = separationsKualiFinalizationDescriptor;
 
-/** The fixture run, retaining a closure this build no longer carries. */
+
 function runUnderMovedClosure(patch: Readonly<{
   envelope?: Record<string, unknown>;
   inputParsed?: Record<string, unknown>;
@@ -180,11 +161,7 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-/**
- * A real authority database holding the live person-lookup exit run, served
- * through a store whose `getRun` reports the closure the run retained. That is
- * the production shape: the durable row is fixed forever and the BUILD moved.
- */
+
 function seededStore(): Readonly<{ store: EvidenceReceiptStore; runId: string }> {
   const root = mkdtempSync(join(tmpdir(), "hrauto-receipt-binding-"));
   roots.push(root);
@@ -242,9 +219,7 @@ describe("receipt derivation binding — the stored receipt survives a moved clo
     const { store, runId } = seededStore();
     const derived = ensureRunEvidenceReceipt(store, personLookupDescriptor, runId).receipt;
 
-    // The D197 shape: a leaf declared `safe-diagnostic`/`allow` when the
-    // receipt was written is declared a `direct-identifier` today. The stored
-    // row holds the OLD verdict; this build produces the new one.
+    // Probe moved classifications against the original stored declaration, not a recomputed receipt.
     const priorDeclaration = storedVariant(derived, (draft) => {
       const observations = draft.observations as Record<string, unknown>[];
       const index = observations.findIndex((row) => {
@@ -334,9 +309,7 @@ describe("receipt derivation binding — the stored receipt survives a moved clo
   });
 
   it("refuses a stored receipt bound to the BUILD's closure instead of the run's", () => {
-    // The pre-D199 derivation stamped `descriptor.contractFingerprint`, so a
-    // row written that way claims the run executed under whatever tree happened
-    // to be checked out. Reading it back must refuse, not quietly agree.
+
     const { store, runId } = seededStore();
     const derived = ensureRunEvidenceReceipt(store, personLookupDescriptor, runId).receipt;
     const preFix = storedVariant(derived, (draft) => {

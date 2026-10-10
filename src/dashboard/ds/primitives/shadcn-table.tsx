@@ -1,7 +1,5 @@
-/** Adapted from shadcn/ui Table (MIT):
- * https://github.com/shadcn-ui/ui/blob/main/apps/v4/registry/bases/radix/ui/table.tsx
- * The outer scroll container is omitted so windowed dashboard tables keep their owner.
- */
+/** Adapted from shadcn/ui Table (MIT)
+ * https://github.com/shadcn-ui/ui/blob/main/apps/v4/registry/bases/radix/ui/table.tsx */
 import type { ComponentProps } from "react";
 import { cn } from "../../lib/utils.js";
 

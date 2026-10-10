@@ -270,7 +270,7 @@ function backupManifestPath(fixture: HistoricalFixture, backupFileName: string):
   );
 }
 
-describe("D336 stopped-upgrade admission matrix", () => {
+describe("stopped-upgrade admission matrix", () => {
   it("refuses schema-valid journal column corruption during read-only preflight without creating runtime admission", async () => {
     const f = historicalFixture(46);
     const raw = strictDatabase(f.path);

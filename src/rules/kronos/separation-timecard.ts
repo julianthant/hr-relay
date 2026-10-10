@@ -1,58 +1,9 @@
-/**
- * The separation timecard — pure, browser-safe folds over a New Kronos (UKG /
- * WFD) timecard grid that has already been read off the page.
- *
- * PORTED (copy with provenance, D93 cross-repo rules) from the legacy repo:
- *   commit 1bffbd658db34ce84a08e69484db3a40b3658d6e
- *   path   src/systems/new-kronos/navigate.ts
- *          (`resolveSeparationTimecardDates` :817-834, the `page.evaluate`
- *           grid parse inside `getSeparationTimecardData` :852-894)
- *
- * Nothing here touches a browser: the driver hands over RAW rows exactly as the
- * grid rendered them, and every derivation happens here so the Dec→Jan year
- * matrix, the multi-row-per-day carry-forward, and the sick/holiday rules are
- * unit-testable without a page. Year resolution itself is NOT re-implemented —
- * it is `formatTimecardDate` from `../timecard-period.js` (S41), which refuses
- * to stamp a guessed year.
- *
- * Four corrections to the legacy rules, each removing a silent-wrong-value path
- * rather than reshaping the fold. All four were established by the live
- * read-only map on 2026-08-12 (EID 10776990, window 06/01/2026–08/12/2026):
- *
- * 1. **The grid is VIRTUALIZED, so a single DOM read is not the timecard.**
- *    A 73-day window renders only 51 date rows at `scrollTop: 0` (06/01 … 07/20)
- *    — legacy reads once, so any punch after the rendered window is invisible
- *    and the LAST PUNCH silently regresses to an earlier date. The driver now
- *    scrolls and accumulates, and {@link assertTimecardCoversRange} refuses a
- *    read whose day set does not cover the applied window exactly once.
- * 2. **Columns bind BY HEADER NAME, never by index.** Legacy hardcodes
- *    `[1]=In [2]=Out [4]=Pay code`; a column inserted upstream would silently
- *    re-point "Pay code" at "Transfer". {@link resolveTimecardColumns} maps the
- *    live header row and fails loud naming the missing header.
- * 3. **A pay code that classifies as neither sick nor holiday is REPORTED, not
- *    dropped.** The live window carried `Juneteenth Observed` and
- *    `Independence Day Observed` beside `Holiday - Hourly`; only the last
- *    matches legacy's `/holiday/i`. Silently discarding the other two would
- *    hide a day that may belong in the separation date, so they surface as
- *    {@link SeparationTimecardFold.unclassifiedPayCodes} for the operator.
- * 4. **"No punches" and "no rows at all" stay different values.** S34/S38: a
- *    timecard that opened and is genuinely empty is a real outcome; a grid that
- *    produced no rows at all is a failed read. The fold never collapses them.
- */
+/** The separation timecard — pure, browser-safe folds over a New Kronos (UKG / WFD) timecard grid that has already been read off the page. */
 import { formatTimecardDate, resolveTimecardDate } from "../time/timecard-period.js";
 import type { TimecardDateRange } from "../time/timecard-period.js";
 import { z } from "zod";
 
-/**
- * One rendered grid row, exactly as the page carried it. `month`/`day` come
- * from the pinned date column and are carried forward across the extra rows a
- * single calendar day can own (live 2026-08-12: 6/19 owns both
- * `Holiday - Hourly 4.00` and `Juneteenth Observed 0.00`).
- *
- * Every cell is the raw trimmed string. Nothing is parsed at the boundary —
- * D194's "raw cell values beside derived ones" is what lets a later migration
- * answer a question this one never asked.
- */
+/** One rendered grid row, exactly as the page carried it; every cell is the raw trimmed string, and nothing is parsed at the boundary. */
 export const TimecardGridRowSchema = z.strictObject({
   month: z.number().int().min(1).max(12),
   day: z.number().int().min(1).max(31),
@@ -88,11 +39,7 @@ export const TimecardPayCodeDaySchema = z.strictObject({
 export type TimecardPayCodeDay = z.infer<typeof TimecardPayCodeDaySchema>;
 
 export const SeparationTimecardFoldSchema = z.strictObject({
-  /**
-   * Latest day carrying an In/Out punch, or `null` when the window genuinely
-   * has none. `null` here is S38's REAL outcome — a card that opened and holds
-   * no punches — and is only ever produced from a grid that yielded rows.
-   */
+    /* Latest day carrying an In/Out punch, or `null` when the window genuinely has none — a card that opened and holds no punches, only ever produced from a grid that yielded rows. */
   lastPunchDate: TimecardDateSchema.nullable(),
   /** Every day carrying an In/Out punch, chronological, de-duplicated. */
   punchDates: z.array(TimecardDateSchema),
@@ -100,23 +47,14 @@ export const SeparationTimecardFoldSchema = z.strictObject({
   sickDates: z.array(TimecardDateSchema),
   /** Days whose pay code matches `/holiday/i`, chronological, de-duplicated. */
   holidayDates: z.array(TimecardDateSchema),
-  /** Every pay-code row in the window, verbatim — the D194 full surface. */
+  /** Every pay-code row in the window, verbatim — the full surface. */
   payCodeDays: z.array(TimecardPayCodeDaySchema),
-  /**
-   * Pay codes present in the window that matched neither rule. Reported rather
-   * than dropped: on 2026-08-12 the live window carried two of them, and a
-   * holiday the classifier does not know about would move a separation date.
-   */
+    /* Pay codes present in the window that matched neither rule, reported rather than dropped, because a holiday the classifier does not know about would move a separation date. */
   unclassifiedPayCodes: z.array(z.string().min(1)),
 });
 export type SeparationTimecardFold = z.infer<typeof SeparationTimecardFoldSchema>;
 
-/**
- * The column set the fold needs, resolved from the grid's own header row.
- *
- * Live header row 2026-08-12 (`.ui-grid-header-cell`, data viewport):
- * `Schedule · In · Out · Transfer · Pay code · Amount · Shift · Daily · Period · Absence`.
- */
+/** The column set the fold needs, resolved from the grid's own header row rather than from fixed indices. */
 export const TimecardDataColumnSchema = z.enum([
   "Schedule",
   "In",
@@ -139,14 +77,7 @@ function normalizeHeader(raw: string): string {
   return raw.replace(/\s+\d+$/u, "").replace(/\s+/gu, " ").trim().toLowerCase();
 }
 
-/**
- * Map every required data column to its live index, or throw naming the exact
- * headers that are missing and the whole header row that was observed.
- *
- * This replaces legacy's fixed `[1]=In [2]=Out [4]=Pay code` indices. A column
- * inserted by a WFD release would silently re-point "Pay code" at "Transfer"
- * under the old rule; here it is a loud refusal before anything is derived.
- */
+/** Map every required data column to its live index, or throw naming the exact headers that are missing and the whole header row that was observed. */
 export function resolveTimecardColumns(
   headers: readonly string[],
 ): Readonly<Record<TimecardDataColumn, number>> {
@@ -170,9 +101,7 @@ export function resolveTimecardColumns(
       + ` — observed headers ${JSON.stringify(headers)}`,
     );
   }
-  // Written out key by key so the record is complete BY CONSTRUCTION — no cast,
-  // and a column added to the schema is a compile error here rather than a
-  // silently absent index at runtime.
+  // Explicit keys make a new schema column a compile-time omission.
   const at = (column: TimecardDataColumn): number => {
     const index = resolved.get(column);
     if (index === undefined) throw new Error(`[new-kronos] timecard column ${column} was not resolved`);
@@ -215,9 +144,7 @@ export function enumerateRangeDays(range: TimecardDateRange): readonly string[] 
   if (startOfDay(cursor) > end) {
     throw new Error(`[new-kronos] inverted timecard range ${describeDay(range.start)} - ${describeDay(range.end)}`);
   }
-  // A separations window is at most ~3 months (legacy computeKronosDateRange:
-  // min−1 month … max+1 month); 400 days bounds any legitimate one and stops a
-  // corrupted range from spinning.
+  // Bound expanded windows to prevent corrupt ranges from spinning.
   for (let guard = 0; guard <= 400; guard++) {
     days.push(describeDay(cursor));
     if (startOfDay(cursor) >= end) return days;
@@ -228,13 +155,7 @@ export function enumerateRangeDays(range: TimecardDateRange): readonly string[] 
   );
 }
 
-/**
- * NOT exported: this is the in-process result of a computation, never a
- * durable, wire, or config boundary, and `strict-boundary-schemas` is right to
- * demand a schema for anything a `src/domain` module exports as a shape. The
- * two functions below carry it by inference to their callers, which is all
- * either of them needs.
- */
+/** NOT exported: this is the in-process result of a computation, never a durable, wire, or config boundary. */
 interface TimecardRangeCoverage {
   /** Every day the applied window demands, `MM/DD/YYYY`. */
   readonly expected: readonly string[];
@@ -242,32 +163,17 @@ interface TimecardRangeCoverage {
   readonly observed: ReadonlySet<string>;
   /** The expected days no row carries — empty exactly when the read is whole. */
   readonly missing: readonly string[];
-  /**
-   * Rows the grid rendered that belong to NO year inside the widened window —
-   * `M/D` pairs as the grid spelled them. A grid still painting a different pay
-   * period produces these, and they are reported rather than thrown so the
-   * refusal can name every one of them (live run `sp-064821-1fd7`, 2026-08-14).
-   */
+    /* Rows the grid rendered that belong to NO year inside the widened window — `M/D` pairs as the grid spelled them, reported rather than thrown so the refusal can name every one of them. */
   readonly outside: readonly string[];
   readonly complete: boolean;
 }
 
-/**
- * How much of the applied window a set of rows actually covers.
- *
- * This is the ONE coverage computation. The driver's scroll loop uses it as its
- * termination condition (D205) and `assertTimecardCoversRange` uses it as its
- * refusal — a second implementation would let the loop believe it had finished
- * a read the fold then rejected, which is the shape of the failure that kept
- * chunk 1's live proof open.
- */
+/** How much of the applied window a set of rows actually covers — the ONE coverage computation, so the scroll loop and the refusal cannot disagree. */
 export function timecardRangeCoverage(
   rows: readonly Readonly<{ month: number; day: number }>[],
   range: TimecardDateRange,
 ): TimecardRangeCoverage {
-  // Resolve against the WIDENED window: the grid legitimately renders
-  // period-aligned days outside the requested one, and a coverage check must
-  // not refuse them any more than the fold does.
+  // Coverage accepts period-aligned days beyond the requested window.
   const resolution = periodAlignedResolutionRange(range);
   const observed = new Set<string>();
   const outside: string[] = [];
@@ -283,9 +189,7 @@ export function timecardRangeCoverage(
     observed,
     missing: Object.freeze(missing),
     outside: Object.freeze([...new Set(outside)]),
-    // A window is covered when every day it demands is present AND nothing the
-    // grid rendered belongs to a different one. Scrolling can fix the first and
-    // can never fix the second, which is why they are separate refusals.
+    // Missing days may need scrolling; out-of-window days prove a different applied window.
     complete: missing.length === 0 && outside.length === 0,
   });
 }
@@ -301,14 +205,7 @@ export function describeTimecardCoverage(
     + (coverage.missing.length > 8 ? ` and ${String(coverage.missing.length - 8)} more` : "");
 }
 
-/**
- * Refuse a grid read that does not cover the applied window.
- *
- * This is the guard the virtualized grid demands: WFD renders one row per
- * calendar day, so a complete read holds EVERY day in the applied range. A
- * short read is a truncated scroll, never "those days have nothing on them" —
- * and the difference decides a real termination's last-day-worked.
- */
+/** Refuse a grid read that does not cover the applied window: a complete read holds EVERY day, and a short read is a truncated scroll, never "those days have nothing on them". */
 export function assertTimecardCoversRange(
   rows: readonly TimecardGridRow[],
   range: TimecardDateRange,
@@ -334,26 +231,9 @@ export function assertTimecardCoversRange(
   );
 }
 
-/**
- * A Kronos pay period is at most a month, so a grid whose range bounds fall
- * mid-period renders up to a month of extra days on each side.
- */
+/** A Kronos pay period is at most a month, so a grid whose range bounds fall mid-period renders up to a month of extra days on each side. */
 const PERIOD_ALIGNMENT_SLACK_DAYS = 31;
-/**
- * Widen the applied window by one pay period on each side, so a period-aligned
- * neighbouring day still resolves to exactly ONE candidate year.
- *
- * WFD renders whole pay periods: a window ending 08/12 inside the 08/02-08/15
- * period still paints rows through 08/15. Those rows are not corruption and
- * they are not in scope — but resolving them against the applied window alone
- * makes `formatTimecardDate` refuse, which is what failed the last live attempt.
- * Widening keeps S41's no-guessing rule intact (the widened span stays far
- * under a year, so the candidate year is still unique) while letting the fold
- * DISCARD what falls outside the window instead of dying on it.
- *
- * A window so wide that widening it could make a month/day ambiguous is refused
- * rather than silently narrowed.
- */
+/** Widen the applied window by one pay period on each side, so a period-aligned neighbouring day still resolves to exactly ONE candidate year and the fold never guesses. */
 export function periodAlignedResolutionRange(range: TimecardDateRange): TimecardDateRange {
   const widened = {
     start: new Date(
@@ -384,7 +264,7 @@ export function rowHasPunch(row: TimecardGridRow): boolean {
 const SICK_PAY_CODE = /sick/iu;
 const HOLIDAY_PAY_CODE = /holiday/iu;
 
-/** How one pay-code cell classifies. Ported verbatim from legacy's two regexes. */
+
 export function classifyPayCode(payCode: string): "sick" | "holiday" | "unclassified" {
   if (SICK_PAY_CODE.test(payCode)) return "sick";
   if (HOLIDAY_PAY_CODE.test(payCode)) return "holiday";
@@ -399,13 +279,7 @@ function chronological(dates: Iterable<string>): string[] {
   });
 }
 
-/**
- * Fold accumulated grid rows into the separation-relevant dates.
- *
- * `range` is the window the timecard view is PROVED to be showing (the applied
- * range read back off the period label), and every yearless `M/D` resolves
- * against it through `formatTimecardDate` — never against "now" (S41).
- */
+/** Fold accumulated grid rows into the separation-relevant dates; every yearless `M/D` resolves against the window the view is PROVED to be showing, never against "now". */
 export function foldSeparationTimecard(
   rows: readonly TimecardGridRow[],
   range: TimecardDateRange,
@@ -420,12 +294,7 @@ export function foldSeparationTimecard(
   const payCodeDays: TimecardPayCodeDay[] = [];
   const unclassified: string[] = [];
   for (const row of rows) {
-    // Resolve the year against the WIDENED window (see
-    // `periodAlignedResolutionRange`), then drop anything outside the window
-    // the run actually asked for. Resolving against the applied window alone
-    // made a legitimately rendered neighbouring day a refusal — live run
-    // `sk-131627-4ca5` (2026-08-12) read a grid for 06/07–08/12 that carried a
-    // row for 8/13, because WFD renders whole PAY PERIODS.
+    // Resolve years against the period-aligned window, then filter to the requested days.
     const date = formatTimecardDate(row.month, row.day, resolution);
     const at = startOfDay(parseTimecardDate(date, "resolved grid date"));
     if (at < insideStart || at > insideEnd) continue;
@@ -449,17 +318,7 @@ export function foldSeparationTimecard(
   });
 }
 
-/**
- * Parse the period label WFD renders after a range is applied — e.g.
- * `"6/01/2026 - 8/12/2026"` — into a real range.
- *
- * This is what turns S40 from "the label changed" into "the label says exactly
- * the window I asked for". WFD pads the two halves inconsistently (live
- * 2026-08-12: `6/01/2026` beside `08/12/2026`), so the parse is
- * padding-tolerant and the COMPARISON is on calendar days, never on strings.
- * A label that is not a range at all (`"Current Pay Period"`) returns `null` —
- * a caller must treat that as "the range did not apply", never as a match.
- */
+/** Parse the period label WFD renders after a range is applied into a real range; the parse is padding-tolerant and the COMPARISON is on calendar days, never on strings. */
 export function parseAppliedRangeLabel(label: string): TimecardDateRange | null {
   const match = /^\s*(\d{1,2})\/(\d{1,2})\/(\d{4})\s*[-–]\s*(\d{1,2})\/(\d{1,2})\/(\d{4})\s*$/u.exec(label);
   if (match === null) return null;

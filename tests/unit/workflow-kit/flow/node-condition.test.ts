@@ -1,12 +1,4 @@
-/**
- * A task node's declared `when` (D228).
- *
- * The point of the declaration is that ONE value is both the rule the executor
- * applies and the sentence the explorer prints, so these cases pin the two
- * halves against each other and pin every way a condition can fail to resolve
- * — because "the field is missing" and "the condition is false" are different
- * facts, and a node that silently stops running is the failure this replaces.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { z } from "zod";
@@ -149,7 +141,7 @@ describe("a declared node condition", () => {
   });
 });
 
-/* ── the factory refuses a condition that names nothing (D228) ───────────── */
+
 
 describe("defineWorkflowDescriptor over a declared condition", () => {
   const Input = z.strictObject({

@@ -1,22 +1,5 @@
 import { ProtectedInputBindingsSchema } from "../../write-safety/protected-input.js";
-/**
- * `workflow:separations/match-identity` — the identity authority packet, built
- * as a real node.
- *
- * It is a task and not a `derive` for the same reason `match-termination-type`
- * is: a fold that can REFUSE needs somewhere to put the refusal, and a task has
- * a durable `FailureRecord.code` while a `derive` has only a thrown string. The
- * refusals here are narrow on purpose — the packet's whole job is to carry
- * ambiguity to a human rather than resolve it — so the only thing this task
- * refuses is a comparison it cannot honestly BUILD.
- *
- * The output carries the packet AND its digest. Deriving the digest inside the
- * node (rather than at the gate, or on the wire) is what makes it a stored fact
- * every later reader agrees on: the wire serves it, the operator approves
- * against it, and `verify-identity-approval` re-derives it from the same stored
- * packet. On the name-resolved arm it is the gate decision packet; on a
- * supplied-EID arm it is the machine-verification input.
- */
+/** The identity authority packet, built as a real node so a fold that can REFUSE has a durable code, and carrying the packet AND its digest so every later reader agrees on it. */
 import { z } from "zod";
 import { EidSchema, FingerprintSchema, taskId } from "../../../rules/identity/ids.js";
 import {
@@ -47,18 +30,14 @@ export const SeparationsMatchIdentity = defineTaskContract({
     documentName: z.string().min(1),
     /** The document's own EID field — present with a value, or absent with a reason. */
     documentEid: KualiEidFieldSchema,
-    /** The EID this run checked, and where it came from (S18/S19's fork). */
+    /** Retain the checked EID and its source. */
     emplId: EidSchema,
     emplIdSource: IdentityEidSourceSchema,
     /** The whole job-summary read, projected downstream and never re-scraped. */
     jobSummary: UcpathJobSummarySchema,
     /** What a UCPath search on the DOCUMENT'S NAME resolved — run every time. */
     nameSelection: UcpathPersonSelectionSchema,
-    /**
-     * What the writes will consume, or a STATED reason this graph composes none.
-     * Required rather than optional: an omitted block is one a composition can
-     * forget to fill while every gate still renders (`write-plan.ts`).
-     */
+      /* What the writes will consume, or a STATED reason this graph composes none; required rather than optional, so a composition cannot forget to fill it. */
     plan: SeparationWritePlanSchema,
   }),
   output: MatchIdentityOutputSchema,

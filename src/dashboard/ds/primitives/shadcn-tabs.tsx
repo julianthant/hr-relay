@@ -1,7 +1,5 @@
-/** Adapted from shadcn/ui Tabs (MIT):
- * https://github.com/shadcn-ui/ui/blob/main/apps/v4/registry/bases/radix/ui/tabs.tsx
- * Dashboard wrappers supply the visual classes while Radix owns tab behavior.
- */
+/** Adapted from shadcn/ui Tabs (MIT)
+ * https://github.com/shadcn-ui/ui/blob/main/apps/v4/registry/bases/radix/ui/tabs.tsx */
 import * as TabsPrimitive from "@radix-ui/react-tabs";
 import type { ComponentProps } from "react";
 import { cn } from "../../lib/utils.js";

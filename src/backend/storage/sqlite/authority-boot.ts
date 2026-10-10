@@ -10,16 +10,7 @@ import {
   type StorageHealthCause,
 } from "./recovery-contracts.js";
 
-/**
- * A cause `summary` is a ONE-LINE human sentence — it is printed inside the
- * doctor's report, the Settings surface, and a notification title. The
- * failures that produce it are frequently zod errors whose `message` is a
- * pretty-printed multi-line JSON array, and pasting that into a line-oriented
- * report buried the very sentence the operator needed (observed in the 2j
- * drill: `authority: DEGRADED —` followed by twenty lines of issue objects).
- * Collapsing runs of whitespace keeps every word — nothing is truncated or
- * dropped — while making the line a line.
- */
+
 function oneLine(message: string): string {
   return message.replace(/\s+/gu, " ").trim();
 }

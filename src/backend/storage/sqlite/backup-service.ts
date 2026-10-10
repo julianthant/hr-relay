@@ -90,14 +90,7 @@ function inspectBackupCopy(
   return inspection;
 }
 
-/**
- * A read-only SQLite connection to a WAL-mode copy creates `-shm` (and `-wal`)
- * companions and cannot delete them when it closes. Nothing else ever opens a
- * backup copy, so after each inspection those companions are removed; an EMPTY
- * WAL is the only admissible state — bytes in it would mean the copy is not
- * self-contained, which is a refusal, not a cleanup. A v3 backup set contains
- * only the database and manifest. Strict historical v1/v2 sets remain readable.
- */
+// Read-only WAL connections can create SQLite companions and cannot remove them on close.
 function removeReadOnlyInspectionCompanions(backupPath: string): void {
   const walPath = `${backupPath}-wal`;
   if (existsSync(walPath)) {
@@ -164,7 +157,7 @@ function readHistoricalCommandAudit(database: DatabaseSync, commandId: string) {
   const row = rows[0];
   return row === undefined
     ? undefined
-    // D341: a pre-D341 protected audit names retired entries in its marked request and readback.
+    // Replay protected command audits through their frozen seven-name request and readback schema.
     : z.union([CommandAuditRecordSchema, HistoricalProtectedSettingsAuditSchema]).parse(JSON.parse(row.record_json));
 }
 
@@ -261,7 +254,7 @@ function authenticateHistoricalProtectedPresence(
   );
   const audit = readHistoricalCommandAudit(database, current.commandId);
   const target = { family: "protected-settings" as const, revision: presence.revision };
-  // D341: a pre-D341 command's readback was recorded over the seven-name family; compare in that family.
+  // Compare converted command readback in the schema family it authenticated.
   const historical = command !== undefined && HistoricalProtectedSettingsCommandSchema.safeParse(command).success;
   const readbackNames: readonly string[] = historical ? LegacyProtectedSettingsNameSchema.options : ProtectedSettingsNameSchema.options;
   const entries = Object.fromEntries(readbackNames.map((name) => {

@@ -1,9 +1,4 @@
-/**
- * The BFF's static byte path (ref frontend-backend-integration §6.9): the decision table is
- * pinned without a socket, then a real temp bundle proves the physical half —
- * symlink escape, content types, cache headers, SPA fallback, API precedence,
- * HEAD, and the fail-loud refusal to open a bundle with no index.html.
- */
+
 import assert from "node:assert/strict";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -195,10 +190,7 @@ describe("static bundle over a real temp bundle", () => {
   it("refuses traversal and a symlink that leaves the bundle, and follows one that stays inside", async () => {
     const { dist } = scaffold();
     const app = await appOver(await openStaticBundle(dist, REPO_ROOT));
-    // The WHATWG URL layer (in Node's Request and in every browser) resolves a
-    // literal `/../` before any handler sees it, so that form can only ever
-    // name a bundle-relative path — here a missing one. The ENCODED forms are
-    // what reach the handler intact, and those it must refuse itself.
+    // WHATWG URL parsing resolves literal parent segments before the handler sees the request.
     for (const normalizedUpstream of ["/../package.json", "/%2e%2e/package.json", "/%2E%2E/package.json"]) {
       const response = await app.request(`http://127.0.0.1:3938${normalizedUpstream}`);
       assert.equal(response.status, 404, normalizedUpstream);

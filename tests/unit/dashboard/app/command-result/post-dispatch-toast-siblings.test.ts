@@ -39,7 +39,7 @@ function stopWorkerRejectionArm(): string {
 }
 
 describe("dispatchBulk's rejection arm (the selection band's bulk post)", () => {
-  it("no longer claims Nothing was recorded from a post-dispatch throw", () => {
+  it("preserves uncertainty from a post-dispatch throw", () => {
     const arm = bulkDispatchRejectionArm();
     assert.doesNotMatch(
       arm,
@@ -53,7 +53,7 @@ describe("dispatchBulk's rejection arm (the selection band's bulk post)", () => 
     );
   });
 
-  it("— driven, the honest fold titles it Result unknown, never Nothing was recorded", () => {
+  it("post-dispatch throw is Result unknown", () => {
     const recorded: { tone: string; title: string; description: string }[] = [];
     const toast = (input: { tone: string; title: string; description: string }): string => {
       recorded.push(input);

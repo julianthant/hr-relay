@@ -1,20 +1,4 @@
-/**
- * Graph-level scenario coverage (doc 01 §1c · 1d · 1e's item 1e: "every branch/gate/delegation/
- * control path has an executable scenario"; ref operator-trust §3.2's minimum coverage).
- *
- * Task-level coverage is already the contract's job — `defineTaskContract`
- * requires `scenarios` at every tier above a pure workflow mini-store read. What
- * that cannot see is the GRAPH: a branch arm nobody exercises, a gate nobody
- * resolves, a delegation whose declared failure policy never fires. Those paths
- * exist only in the descriptor, so their coverage is derived from the node tuple
- * here and checked in both directions:
- *
- * - every derived coverage point is claimed by at least one registered scenario, and
- * - every scenario claim resolves to a real coverage point.
- *
- * The second direction matters as much as the first: a scenario that claims a
- * renamed branch arm would otherwise keep a deleted path looking covered.
- */
+/** Graph-level coverage of descriptor-only paths (unexercised branch, unresolved gate, unfired policy), checked both directions so a stale scenario claim cannot keep a deleted path covered. */
 import { z } from "zod";
 import { NodeIdSchema, ScenarioIdSchema } from "../../rules/identity/ids.js";
 import type { NodeId } from "../../rules/identity/ids.js";
@@ -37,13 +21,7 @@ export const GraphCoveragePointSchema = z.strictObject({
 export type CoveragePointKind = z.infer<typeof CoveragePointKindSchema>;
 export type GraphCoveragePoint = z.infer<typeof GraphCoveragePointSchema>;
 
-/**
- * Derive every graph path that needs its own scenario.
- *
- * A `many`-cardinality delegation contributes zero/one/many fan-out sizes
- * because those are genuinely different code paths (ref operator-trust §3.2), not three
- * spellings of one.
- */
+/** Derive every graph path that needs its own scenario. A `many` delegation contributes zero/one/many fan-out sizes because those are genuinely different code paths, not spellings. */
 export function deriveGraphCoveragePoints(
   nodes: readonly RuntimeFlowNode[],
 ): readonly GraphCoveragePoint[] {
@@ -110,10 +88,7 @@ export const ScenarioCoverageClaimSchema = z.strictObject({
 });
 export type ScenarioCoverageClaim = z.infer<typeof ScenarioCoverageClaimSchema>;
 
-/**
- * Audit both directions. Returns human-readable violations; an empty array means
- * the graph's paths and the corpus agree exactly.
- */
+/** Audit both directions; returns human-readable violations (empty = graph paths and corpus agree). */
 export function auditGraphScenarioCoverage(
   points: readonly GraphCoveragePoint[],
   claims: readonly ScenarioCoverageClaim[],

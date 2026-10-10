@@ -23,13 +23,7 @@ export const ArtifactOutboxStorageRecordSchema = z.strictObject({
   projectedAt: IsoInstantSchema.optional(),
 });
 
-/**
- * Ref data-intake-and-edit-data §4.1's sink head: the last content hash this projector recorded for
- * a sink's workbook. One row per sink, updated with `generation + 1` under a
- * CAS — the same one-row-updated discipline notifications follow (v10's
- * lesson). A workbook whose bytes do not hash to `contentSha256` was changed
- * by someone else, and the projector parks rather than overwriting them.
- */
+/** Update sink heads under CAS; changed workbook bytes park the projector. */
 export const ArtifactSinkHeadRecordSchema = z.strictObject({
   sinkId: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
   contentSha256: FingerprintSchema,
@@ -51,7 +45,6 @@ export const ArtifactSinkHeadRecordRequestSchema = z.strictObject({
   lastOutboxId: OutboxIdSchema,
   projectedAt: IsoInstantSchema,
 });
-
 
 export const GeneratedArtifactVersionSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("verified"), artifact: ArtifactRefSchema }),

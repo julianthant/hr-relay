@@ -1,25 +1,4 @@
-/**
- * The start-plan wire (ref frontend-backend-integration §3.4): ONE owner for what the
- * browser sends to `POST /api/v1/start-plans`, what the server admits, and
- * what it answers. Before 2026-09-03 the client and the server each declared
- * their own copy — the client's with generic strings and `unknown[]`
- * submissions, "mirroring" a server shape it could drift from silently.
- *
- * Three schemas, one shape:
- *
- * - `StartPlanRequestSchema` — what a browser AUTHORS. Every leaf the operator
- *   chose is explicit; there are no defaults here, because a default in the
- *   client would let a surface omit a choice the server then fills in as if
- *   the operator had made it.
- * - `StartPlanIngressSchema` — what the server ADMITS: the same leaves, with
- *   the server-owned defaults for historical/programmatic callers. Defaults
- *   live only at this ingress boundary.
- * - `StartPlanWireSchema` — the answer. It never echoes `rawInput` or D307
- *   omission FACTS back (a step form can hold an employee id or a date about
- *   a real person); only the omitted step KEYS ride the wire.
- *
- * Browser-bundle-safe on purpose: zod and src/domain/** only.
- */
+/** The start-plan wire: ONE owner for what the browser sends, what the server admits and what it answers — three schemas, one shape, browser-bundle-safe on purpose. */
 import { RerunSourceSchema, PublicRerunPlanSchema } from "../run/rerun.js";
 import { StartSupersedeTargetsSchema } from "../run/start-supersede.js";
 import { z } from "zod";
@@ -48,14 +27,7 @@ const SHARED_REQUEST_LEAVES = {
   priority: RunPrioritySchema.optional(),
   requestedInstance: InstanceSelectionSchema.optional(),
   selectedStepKeys: z.array(z.string().min(1)).min(1).optional(),
-  /**
-   * D307 — typed facts for each omitted step. The schema proves the SHAPE; the
-   * descriptor's own forms and cascade prove the content, in
-   * `resolveStartStepOmissions`, before a plan row exists. A request carrying
-   * omissions without an explicit `selectedStepKeys` is refused there: which
-   * steps run is the operator's statement, and facts without it would be
-   * omissions for steps nobody said were omitted.
-   */
+    /* Typed facts for each omitted step; a request carrying omissions without an explicit `selectedStepKeys` is refused, because which steps run is the operator's statement. */
   stepOmissions: StepOmissionsSchema.optional(),
 } as const;
 
@@ -87,7 +59,7 @@ export const StartPlanWireSchema = z.strictObject({
   dryRun: z.boolean(),
   browserMode: BrowserPresentationModeSchema.optional(),
   captureBrowserScreenshots: z.boolean().optional(),
-  /** D307 — the omitted step KEYS, in timeline order, and never the facts. */
+  /** The omitted step KEYS, in timeline order, and never the facts. */
   omittedSteps: z.array(TimelineCategoryKeySchema).min(1).optional(),
   priority: RunPrioritySchema,
   plannedBy: ActorIdSchema,

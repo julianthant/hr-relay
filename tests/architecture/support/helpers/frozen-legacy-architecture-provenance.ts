@@ -2,13 +2,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import rawProvenance from "../../../../docs/rebuild/migrations/legacy/ports/legacy-architecture-provenance.json" with { type: "json" };
 
-/**
- * These facts intentionally live outside the mutable JSON payload. A payload
- * that carries both an inventory and its digest is self-authenticating: an
- * edit can replace both values. This anchor binds every legacy source revision,
- * generated-snapshot identity, frozen source-blob provenance, redaction policy,
- * and the complete sanitized payload to this guard's code.
- */
+// Keep provenance anchors outside mutable payloads; replacing a payload and its own digest must not authenticate it.
 const FROZEN_PROVENANCE_ANCHORS = {
   schemaVersion: 2,
   payloadContentAddress: "sha256:99bf648dd1691edd132ec8e0d3105e7b8b3d71f4d1c847d0a57676104a5017d0",
@@ -136,11 +130,7 @@ const FrozenFilesSchema = z.array(FrozenFileSchema).min(1).superRefine((files, c
   }
 });
 
-/**
- * Unlike a Git blob, a path inventory is a generated snapshot: it represents
- * the output of the named legacy collection command, not an object reachable
- * from the legacy commit. Its SHA-256 authenticates the exact UTF-8 bytes.
- */
+// Generated path snapshots authenticate command output, not Git blobs reachable from the source revision.
 const FrozenPathSnapshotSchema = z.strictObject({
   name: z.string().regex(/^[a-z0-9-]+$/u, "frozen path snapshot name must be kebab-case"),
   sourceCommand: z.string().min(1),
@@ -351,7 +341,7 @@ function assertFrozenFileContentAddress(file: FrozenLegacyFile): void {
   }
 }
 
-/** Authenticate and parse a generated legacy path snapshot before exposing it. */
+
 export function frozenLegacyPaths(snapshot: FrozenPathSnapshot): readonly string[] {
   const actual = pathSnapshotSha256(snapshot.text);
   if (actual !== snapshot.contentAddress) {
@@ -432,10 +422,7 @@ export function frozenLegacyScripts(
   return z.object({ scripts: z.record(z.string(), z.string()) }).passthrough().parse(parsed).scripts;
 }
 
-/**
- * The legacy checkout is a porting input, never a finished-gate dependency.
- * A missing source is a corrupt committed snapshot, not permission to skip it.
- */
+// Validate committed source snapshots without requiring a production checkout.
 export function frozenLegacyFile(files: readonly FrozenLegacyFile[], path: string): FrozenLegacyFile {
   const matches = files.filter((file) => file.path === path);
   if (matches.length !== 1) {

@@ -5,11 +5,7 @@ import {
   DashboardLaunchNonceSchema,
 } from "../../../models/dashboard/dashboard-frontend-owner.js";
 
-/**
- * Each identity endpoint carries its own ceiling: a nonce and a dev index are tiny, while Vite's
- * own client bundle is legitimately large (204,724 bytes on Vite 8.2.2, verified 2026-08-31), so a
- * single flat cap either refuses the real dev server or lets a hostile one stream unbounded bytes.
- */
+
 const VITE_PROBE_OWNER_MAX_RESPONSE_BYTES = 1024;
 const VITE_PROBE_INDEX_MAX_RESPONSE_BYTES = 64 * 1024;
 const VITE_PROBE_CLIENT_MAX_RESPONSE_BYTES = 1024 * 1024;

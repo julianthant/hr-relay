@@ -35,7 +35,7 @@ type UpgradeRecord = z.infer<typeof AuthorityUpgradeRecordSchema>;
 type ConversionInput = Readonly<{ stateRoot: string; timelineSourceDirectory?: string;
   hooks?: Readonly<{ beforeCommit?(): void; afterCommit?(): void; archiveStep?(step: "captured" | "verified" | "cleaned" | "published" | "retired"): void }>;
 }>;
-/** Version refusal precedes historical grammar admission and every mutation. */
+// Check schema version before admitting its retained grammar or performing a mutation.
 export function inspectRecoveryFloor(admission:RuntimeAdmission,path: string): void {
   withAuthorityDatabaseReadOnly(admission,path, database => { requireSupportedRecoverySchema(VersionSchema.parse(database.prepare("PRAGMA user_version").get()).user_version); });
 }
@@ -67,9 +67,7 @@ function appendUpgrade(database: DatabaseSync, input: unknown): void {
     .run(record.recordKey, record.upgradeId, record.phase, canonicalJsonStringify(record), record.recordedAt);
 }
 
-/** A disposable in-memory replay proves the entire post-conversion invariant set
- * before the stopped command creates a lock, directory, credential or SQLite write.
- * Source schema is already authenticated against immutable released DDL. */
+// Prove all post-conversion invariants in disposable memory before creating stopped-state artifacts.
 function cloneAuthorityReadOnly(admission:RuntimeAdmission,path: string | undefined): DatabaseSync {
   const copy = new DatabaseSync(":memory:");
   if (path === undefined) return copy;
@@ -151,7 +149,7 @@ export function convertStoppedDatabase(args: Readonly<{
             imported: 0, excludedDeleted: 0 };
         }
           if (from < 49) {
-            // Finish historical transaction presentation while its sources still exist.
+
             freezeConvertedArchiveTransactions(database, now);
             const archive = args.verifyOnly === true ? ArchiveDatabase.preflightCopy(args.runtimeAdmission,join(input.stateRoot, "archive.sqlite")) : undefined;
             const converted = withStoppedArchiveConversion(args.runtimeAdmission,database, path, clock, archive, authority => {

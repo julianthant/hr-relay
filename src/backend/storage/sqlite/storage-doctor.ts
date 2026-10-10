@@ -185,9 +185,7 @@ function withStateRootWorkingDirectory<T>(
 }
 
 function spanFileLabel(fileName: string): string {
-  // A schema-shaped filename can still contain person/secret data. Its digest
-  // identifies the offending local file without publishing any supplied text.
-  // Four-character groups cannot accidentally form an eight-digit person ID.
+  // A schema-shaped filename can contain private data; report its digest instead.
   return `sha256:${createHash("sha256").update(fileName).digest("hex").replace(/(.{4})(?=.)/gu, "$1-")}`;
 }
 
@@ -622,12 +620,7 @@ function scanSpanAuthorityRoots(corpusIdentity: DirectoryIdentity): readonly Spa
   return Object.freeze(roots.map(immutableSpanRoot));
 }
 
-/**
- * Node exposes neither `openat` nor descriptor-based `readdir`. A synchronous
- * cwd critical section is the POSIX equivalent: every relative lookup starts
- * from the kernel-held current directory, no callback can interleave before
- * the original cwd is restored, and explicit re-entry refuses.
- */
+// Node lacks openat and descriptor readdir; synchronous cwd reads bind children to the held directory.
 let spanWorkingDirectoryTraversalActive = false;
 
 type SpanAuthorityCorpus = Readonly<
@@ -891,8 +884,7 @@ function reconcileSpanAuthority(
   const archived = resolutions.flatMap((resolution) => resolution.state === "archived"
     ? [{ runId: resolution.runId, archivedAt: resolution.archivedAt }]
     : []);
-  // D308: a root whose run carries a tombstone is ACCOUNTED. It is listed
-  // beside the archived roots and is never a problem arm.
+
   const deleted = resolutions.flatMap((resolution) => resolution.state === "deleted"
     ? [{
       runId: resolution.runId,
@@ -1015,18 +1007,7 @@ export function summarizeSpanAuthorityReconciliation(input: unknown): SpanAuthor
   });
 }
 
-/**
- * The CHEAP backup indicator the bootstrap summary serves (ref dashboard-surfaces §2.5's
- * "expose age/health in Settings", 2i-D): newest parseable manifest, judged
- * by its source-location identity, created-at age and the live authority generation gap. This
- * deliberately does NOT re-hash backup bytes — every manifest was
- * byte-verified against the backup COPY when it was written
- * (`AuthorityBackupService`), so the summary trusts write-time verification
- * and the full `doctorAuthorityStorage` re-verifies bytes on demand for
- * restore decisions. A manifest that no longer parses is treated as absent
- * here — "missing" is the fail-safe reading for a summary whose enum has no
- * invalid arm — and the doctor names the corruption precisely.
- */
+
 export function summarizeBackupHealth(
   input: unknown,
   liveAuthorityGeneration: number | undefined,
@@ -1052,9 +1033,7 @@ export function summarizeBackupHealth(
       createdAtMs = Date.parse(manifest.createdAt);
       authorityGeneration = manifest.authorityGeneration;
     } catch {
-      // Unparseable is a REAL state the doctor reports as `invalid` with the
-      // error named; the summary's closed enum has no such arm, so the file
-      // simply does not count as a usable backup here.
+      // Unparseable manifests are invalid in the doctor; the summary reports their closed-enum uncertainty.
       continue;
     }
     // Ties on created-at break by generation: two backups in one clock tick
@@ -1091,11 +1070,7 @@ function backupInvalidCause(_error: unknown) {
   });
 }
 
-/**
- * D282's read-only cross-check. Only exact identities from the one authority
- * path and the one span root participate; malformed evidence stops absence
- * classification instead of being skipped around as though it were empty.
- */
+
 
 async function inspectCandidates(
   admission: RuntimeAdmission,

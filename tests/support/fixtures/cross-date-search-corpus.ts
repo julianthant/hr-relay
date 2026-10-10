@@ -1,8 +1,4 @@
-/**
- * Sanitized 2026-08-28 read-only measurement that bounded DCR3's search
- * vocabulary. It intentionally carries counts and closed values only: no run,
- * trace, item, title, or person identity from the live corpus is fixture data.
- */
+
 export const SANITIZED_CROSS_DATE_SEARCH_CORPUS = Object.freeze({
   authority: Object.freeze({
     runs: 7,

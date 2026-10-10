@@ -11,7 +11,7 @@ import { canonicalJsonStringify } from "../../../../../../src/rules/validation/c
 import { CommandRequestSchema, SettingsCommandRequestSchema } from "../../../../../../src/rules/commands/commands.js";
 import { HistoricalProtectedSettingsCommandSchema, deriveJournaledSettingsCommandFingerprint, journaledSettingsCommand } from "../../../../../../src/rules/commands/commands-history.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../../../src/models/config/settings.js";
-// D341: D331 sources belong to the LEGACY protected family; the fixture writes what the pinned reader accepts.
+
 import { LEGACY_PROTECTED_SETTINGS_SCHEMA_HASH, RETIRED_TEST_TARGET_PROTECTED_NAMES, legacyMarkProtectedSettingsPatch, legacyProtectedSettingsReadback } from "../../../../../../src/models/config/protected-settings-legacy.js";
 import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../../../../../src/backend/storage/sqlite/migrations.js";
 import { backupStoppedAuthority, upgradeStorage } from "../../../../../support/helpers/synthetic-storage-admission.js";
@@ -29,8 +29,7 @@ function fixture(target: Target, committed: boolean, protectedEntries: Record<st
   const envelope = { commandId: randomUUID(), requestedAt: now, requestedBy: "local-operator", source: "settings-surface", family: "settings", target: { expectedRevision: 1 } };
   const patch = { "concurrency.defaultWorkers": { set: 3 } };
   const request = target === "ordinary" ? SettingsCommandRequestSchema.parse({ ...envelope, type: "apply-settings", payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } })
-    // D341: a pre-D341 journal wrote the protected command in its marked seven-name form, so the
-    // journaled command and the D331 file agree on every name, retired ones included.
+
     : HistoricalProtectedSettingsCommandSchema.parse({ ...envelope, type: "apply-protected-settings", payload: { protectedSchemaHash: LEGACY_PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(),
       entries: legacyMarkProtectedSettingsPatch(protectedEntries) } });
   const commandFingerprint = deriveJournaledSettingsCommandFingerprint(request);
@@ -38,7 +37,7 @@ function fixture(target: Target, committed: boolean, protectedEntries: Record<st
     ? createSettingsFileAuthority({ path: ordinaryPath, validateCandidate: () => {} }).apply({ commandId: request.commandId, commandFingerprint, expectedRevision: 1, ...request.payload })
     : createProtectedSettingsFileAuthority({ path: ordinaryPath, assertWriteIdAvailable: () => {} }).apply({ commandId: request.commandId, commandFingerprint, expectedRevision: 1, ...request.payload, entries: protectedEntries, updatedAt: now });
   assert.equal(publication.state, "applied");
-  if (publication.state !== "applied") throw new Error("D331 fixture failed");
+  if (publication.state !== "applied") throw new Error("Historical settings fixture failed");
   const prepared = readFileSync(join(directory, "prepare.json"));
   const record = publication.record;
   publication.commit();
@@ -67,12 +66,12 @@ function fixture(target: Target, committed: boolean, protectedEntries: Record<st
     input: { stateRoot: root, processLockRoot: join(root, "locks"), environmentFile: join(root, ".env"), plan: false } };
 }
 
-describe("D341 retired test-target entries in D331 sources", () => {
+describe("test-target entries in protected-settings sources", () => {
   it.each([...RETIRED_TEST_TARGET_PROTECTED_NAMES])("refuses the expired source containing %s before any value is read, changing nothing", async (name) => {
     const value = name === "personLookupCanaryEid" ? "10000001" : "4000001";
     const f = fixture("protected", true, { ucpathPassword: { set: "synthetic-d331-private-value" }, [name]: { set: value } });
     const before = f.snapshot(); const databaseBytes = readFileSync(f.path);
-    // The journaled row really is a pre-D341 row: only the frozen historical arm reads it.
+
     const db = new DatabaseSync(f.path, { readOnly: true });
     try {
       const row = z.object({ record_json: z.string() }).parse(db.prepare("SELECT record_json FROM commands").get());
@@ -90,13 +89,13 @@ describe("D341 retired test-target entries in D331 sources", () => {
         return true;
       });
     }
-    assert.deepEqual(f.snapshot(), before, "D331 bytes untouched");
+    assert.deepEqual(f.snapshot(), before, "Historical settings bytes untouched");
     assert.deepEqual(readFileSync(f.path), databaseBytes, "database untouched");
     assert.equal(readdirSync(f.root).includes("credentials"), false, "no credential store was created");
   });
 });
 
-describe("D331 interrupted sources through stopped upgrade", () => {
+describe("interrupted sources through stopped upgrade", () => {
   for (const target of ["ordinary", "protected"] as const) {
     it.each([false, true])(`${target}: preserves expired prior/committed bytes (committed=%s)`, async (committed) => {
       const f = fixture(target, committed); const before = f.snapshot();

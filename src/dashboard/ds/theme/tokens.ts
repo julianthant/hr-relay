@@ -1,26 +1,12 @@
-/**
- * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
- * src/dashboard/components/dev/rebuild-demo/ds/tokens.ts
- */
+/** Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc
+ * src/dashboard/components/dev/rebuild-demo/ds/tokens.ts */
 import "./tokens.css";
 
-/**
- * The token layer's TypeScript face.
- *
- * `tokens.css` owns the values; this file owns the *names builders type*. Every
- * constant here is a literal Tailwind class string (so Tailwind's scanner sees
- * it) that reads a `--ds-*` custom property. Nothing in the demo should write a
- * raw size, color, radius, shadow or duration — it should reference one of
- * these, or better, use a primitive from `demo-ui.tsx` that already does.
- *
- * Import path for builders: `import { dsText, dsSurface, … } from "./tokens.js"`
- * (or just use the primitives — they are the real API).
- */
+/** The token layer's TypeScript face. `tokens.css` owns the values;
+ * this file owns the *names builders type*. Every */
 
-/* -------------------------------------------------------------------------
- * TYPE — the seven-step scale. `ds-text-*` are real CSS classes (see
- * tokens.css) so a stray `text-[11.5px]` cannot silently win over them.
- * ---------------------------------------------------------------------- */
+/** TYPE — the seven-step scale. `ds-text-*` are real CSS classes (see
+ * tokens.css) so a stray `text-[11.5px]` cannot silently win over them. */
 export const dsText = {
   /** 10px — count badges, kbd, tile captions */
   micro: "ds-text-micro",
@@ -40,32 +26,21 @@ export const dsText = {
   pageTitle: "ds-text-page-title",
   /** 10px uppercase 600 — group headers, column heads. Never for sentences. */
   caps: "ds-text-caps",
-  /** tabular monospace — every number that can change while you look at it */
+  /** tabular monospace */
   nums: "ds-nums",
-  /**
-   * Collapse the line box to the em. Compose AFTER a size class on a
-   * single-line label beside an icon / taller control — see tokens.css.
-   * Tailwind `leading-none` cannot do this; `ds-text-*` are unlayered and win.
-   */
+  /** Collapse the line box to the em. Compose AFTER a size class on a
+ * single-line label beside an icon / taller control — see tokens.css. */
   flush: "ds-leading-flush",
 } as const;
 
-/* -------------------------------------------------------------------------
- * COLOR
- * ---------------------------------------------------------------------- */
+/** COLOR */
 export const dsSurface = {
   page: "bg-[var(--ds-surface-page)]",
   /** content-body canvas; apply to the full main area around the 828px body scope */
   bodyPage: "bg-[var(--ds-body-surface-page)]",
   /** the default plane: panels, cards, bars */
   card: "bg-[var(--ds-surface-1)]",
-  /**
-   * THE RECESSED PLANE — "this sits back from the card". Wells, chips, footers,
-   * table headers. (This was `inset`, pointing at the raw `--ds-surface-2`; it
-   * had no importers and its value pre-dated the recess token, so it was a dead
-   * alias to a stale answer. Renamed and repointed rather than deleted, because
-   * the *concept* is the one every band on a card needs.)
-   */
+  /** THE RECESSED PLANE — "this sits back from the card". Wells, chips, footers, table headers. */
   recess: "bg-[var(--ds-recess-bg)]",
   /** hover / pressed / selected fill */
   raised: "bg-[var(--ds-surface-3)]",
@@ -74,24 +49,8 @@ export const dsSurface = {
   selected: "bg-[var(--ds-surface-selected)]",
 } as const;
 
-/**
- * THE ONE TRUNCATION VOCABULARY.
- *
- * A single-line token — a chip, a badge, a pill, a status — has to answer two
- * questions, and answering only one of them is the defect: `whitespace-nowrap`
- * alone overflows its border, `overflow-hidden` alone cuts with no signal that
- * anything was cut, and `truncate` on a flex child with no `min-w-0` never
- * shrinks in the first place (a flex item's default `min-width: auto` refuses
- * to go below its content).
- *
- * So the pair is named once and spread everywhere:
- *
- *   `dsClip.token` on the SHELL  — one line, cut inside its own border
- *   `dsClip.text`  on the CHILD  — allowed to shrink, then ellipsised
- *
- * The full value is never lost: `text-overflow` clips the PAINT, not the DOM,
- * so the accessible name stays whole and a `title` covers the sighted read.
- */
+/** THE ONE TRUNCATION VOCABULARY.
+ * A single-line token — a chip, a badge, a pill, a status — has to answer two */
 export const dsClip = {
   /** the shell of a single-line token */
   token: "max-w-full overflow-hidden whitespace-nowrap",
@@ -116,9 +75,7 @@ export const dsBorder = {
   loud: "border-[color:var(--ds-border-loud)]",
 } as const;
 
-/* -------------------------------------------------------------------------
- * SHAPE + DEPTH
- * ---------------------------------------------------------------------- */
+/** SHAPE + DEPTH */
 export const dsRadius = {
   xs: "rounded-[var(--ds-radius-xs)]",
   sm: "rounded-[var(--ds-radius-sm)]",
@@ -138,25 +95,13 @@ export const dsElev = {
   high: "ds-elev-3",
 } as const;
 
-/* -------------------------------------------------------------------------
- * FOCUS + MOTION
- * ---------------------------------------------------------------------- */
+/** FOCUS + MOTION */
 /** Every interactive element gets this. There is no opt-out. */
 export const dsFocus = "outline-none ds-focus";
 export const dsFocusWithin = "ds-focus-within";
 
-/**
- * THE MOTION LANGUAGE — five classes, and every moving thing in the product
- * uses one of them. There is no sixth, and no surface invents its own timing.
- *
- * All five are TRANSITIONS, never key-frames, which is what makes the language
- * interruptible: a transition re-targets from wherever it currently is the
- * moment its end value changes, so grabbing something mid-flight answers at
- * once instead of finishing the move it was making.
- *
- * `enter` and `exit` are the house pair and they are deliberately ASYMMETRIC
- * (150ms / 90ms): arriving has to be read, leaving only has to be acknowledged.
- */
+/** THE MOTION LANGUAGE — five classes, and every moving thing in the product
+ * uses one of them. There is no sixth, and no surface invents its own timing. */
 export const dsMotion = {
   /** colour / fill / edge, in place — hover tints, a status settling. 140ms */
   base: "ds-motion",
@@ -170,10 +115,8 @@ export const dsMotion = {
   move: "ds-motion-move",
 } as const;
 
-/**
- * The one travel distance language. Motion here NAMES A DIRECTION; it is never
- * a journey. Use these as translate values, never a hand-picked px.
- */
+/** The one travel distance language. Motion here NAMES A DIRECTION; it is never
+ * a journey. Use these as translate values, never a hand-picked px. */
 export const dsTravel = {
   /** 4px — a popover leaving its trigger */
   sm: "var(--ds-travel-sm)",
@@ -181,7 +124,7 @@ export const dsTravel = {
   md: "var(--ds-travel-md)",
 } as const;
 
-/* Named stacking roles; values and focus behavior live in tokens.css. */
+/** Named stacking roles; values and focus behavior live in tokens.css. */
 export const dsLayer = {
   /** sticky table headers, panel toolbars, the row action bar */
   sticky: "z-10",
@@ -198,9 +141,7 @@ export const dsLayer = {
   toastCard: "ds-layer-toast-card",
 } as const;
 
-/* -------------------------------------------------------------------------
- * DENSITY — heights and gaps builders reach for by name.
- * ---------------------------------------------------------------------- */
+/** DENSITY — heights and gaps builders reach for by name. */
 export const dsSize = {
   hXs: "h-[var(--ds-h-xs)]",
   hSm: "h-[var(--ds-h-sm)]",
@@ -242,19 +183,8 @@ export const dsPad = {
   roomy: "p-[var(--ds-space-loose)]",
 } as const;
 
-/**
- * The one icon size language. Icons never scale independently of the text
- * they sit beside — 12px icon with meta text, 14px with UI text.
- *
- * Alignment beside a label:
- *   - Same flex/grid row with `items-center` → size class only; the row centers.
- *   - Leading column beside a single-line title row → add `self-center` (never
- *     `mt-px`; that parks a smaller glyph above the title's midpoint).
- *   - Beside multi-line copy under `items-start` → `mt-px` is the first-line
- *     optical nudge, and only then.
- *   - Single-line label next to a taller control (ⓘ, chip) → compose
- *     `dsText.flush` so the flex mid is the glyph mid, not a padded line box.
- */
+/** The one icon size language. Icons never scale independently of the text
+ * they sit beside — 12px icon with meta text, 14px with UI text. */
 export const dsIcon = {
   /** 12px — beside micro/meta text */
   sm: "size-3",

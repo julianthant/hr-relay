@@ -1,23 +1,4 @@
-/**
- * The workflow-run BATCH (historical API name: session) — a dashboard-started group of N runs (ref execution-and-sessions
- * §11, D269).
- *
- * It is not a browser session (§1), not a worker and not a workflow: it is what
- * an operator starts when they dispatch a batch — ten I-9 members, a
- * separations list — and it is the unit the dashboard reports progress
- * against. The identity is DURABLE and immutable: it has an id, a workflow, who
- * started it, the instant, and its origin. What it deliberately does NOT have
- * is a member list. Membership is DERIVED from authority — every run row a
- * fan-out enqueues carries this id in `RunRecord.sessionId` — so the group
- * survives a restart without any process remembering it, and a session can
- * never claim a member the run table does not show (§11.1, §11.3).
- *
- * One session per fan-out, N ≥ 1. There is no threshold: a single typed
- * subject is a group of one, and choosing a minimum would put a judgment call
- * where a rule belongs. A RETRY mints no session of its own — it is the same
- * item's next attempt (D221) and inherits the retried run's session, so the
- * group the operator started keeps reporting the item it contains.
- */
+/** The workflow-run BATCH (historical API name: session) — a dashboard-started group of N runs whose membership is derived from authority, never stored. */
 import { z } from "zod";
 import {
   ActorIdSchema,
@@ -29,10 +10,7 @@ import {
   WorkflowIdSchema,
 } from "../../rules/identity/ids.js";
 
-/**
- * Where the group came from. Every arm names the durable record that minted
- * the fan-out and carries the actor the command recorded.
- */
+/** Where the group came from; every arm names the durable record that minted the fan-out. */
 export const RunSessionOriginSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("start-plan"), startPlanId: StartPlanIdSchema, actorId: ActorIdSchema }),
   z.strictObject({ kind: z.literal("intake-manifest"), intakeManifestId: IntakeManifestIdSchema, actorId: ActorIdSchema }),

@@ -20,16 +20,8 @@ export interface CapabilitySpec {
 }
 
 
-/**
- * The SERVED vocabulary, in the order the page reads it: what starts it, what
- * it will and will not write, then what it touches and who has to be there.
- *
- * Six, not the demo's sixteen. D274 item 4's rule for exactly this case is to
- * build the vocabulary the product actually serves and NAME the absence rather
- * than mint a column with nothing behind it — a matrix that claims a capability
- * no descriptor declares is wrong silently, which is the worst way to be wrong
- * on a page whose whole job is to say what is true.
- */
+/** The SERVED vocabulary, in the order the page reads it: what starts it, what
+ * it will and will not write, then what it touches and who has to be there. */
 export const CAPABILITY_SPECS: readonly CapabilitySpec[] = Object.freeze([
   {
     key: "typed-start",
@@ -64,13 +56,7 @@ export const CAPABILITY_SPECS: readonly CapabilitySpec[] = Object.freeze([
 ]);
 
 
-/**
- * ONE cell. Three shapes, told apart by SHAPE and by WORD, never by colour:
- * available carries the thing itself, `not-applicable` carries the decision, and
- * `not-built` carries the gap with its named offender. Collapsing the last two
- * into one grey dash is how "we chose not to" and "we have not got to it" become
- * indistinguishable, and an operator plans differently depending on which it is.
- */
+/** ONE cell. */
 export type CapabilityCell =
   | { readonly state: "available"; readonly detail: string }
   | { readonly state: "not-applicable"; readonly reason: string }
@@ -79,7 +65,7 @@ export type CapabilityCell =
 
 export interface CapabilityRow {
   readonly workflowId: string;
-  /** the bootstrap's label, or the id itself when this document does not list it */
+  /** the bootstrap's label */
   readonly label: string;
   readonly labelServed: boolean;
   readonly cells: Readonly<Record<CapabilityKey, CapabilityCell>>;
@@ -99,11 +85,7 @@ function dryRunCell(row: WorkflowCapabilityRowWire): CapabilityCell {
 }
 
 
-/**
- * The one fact that is NOT a yes/no, so it also gets its own table: a workflow
- * can honour a rehearsal, have nothing to rehearse, or write and refuse one —
- * and the third is the answer worth reading before a real HR transaction.
- */
+/** Distinguish preview support, no transactions and preview refusal before offering a real write. */
 export function dryRunPostureSentence(row: WorkflowCapabilityRowWire): string {
   if (row.dryRun.state === "supported") {
     return `Stops after the prepare of ${String(row.dryRun.stopsAt)} — nothing is committed.`;
@@ -127,15 +109,7 @@ function editDataCell(row: WorkflowCapabilityRowWire): CapabilityCell {
 }
 
 
-/**
- * The served rows, joined to the bootstrap's labels.
- *
- * The label is the BOOTSTRAP's — the capability wire deliberately carries none,
- * so one page cannot hold two names for one workflow. A row this document does
- * not list falls back to the workflow's own id, which is its identity and not an
- * invented name, and says so through `labelServed` rather than reading as a
- * badly-cased label.
- */
+/** Use bootstrap labels; missing labels retain real workflow IDs and disclose their absent provenance. */
 export function capabilityMatrix(
   rows: readonly WorkflowCapabilityRowWire[],
   labels: ReadonlyMap<string, string>,

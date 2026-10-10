@@ -194,7 +194,7 @@ export const AuthorityBackupManifestV3Schema = AuthorityBackupManifestBaseSchema
   manifestVersion: z.literal(3),
 }).superRefine(requireObservedBackupIdentity);
 
-/** Strict historical v1/v2 readers plus the DB-only v3 writer/read shape. */
+// Frozen v1/v2 backup readers remain distinct from the database-only v3 shape.
 export const AuthorityBackupManifestSchema = z.discriminatedUnion("manifestVersion", [
   AuthorityBackupManifestV1Schema,
   AuthorityBackupManifestV2Schema,
@@ -270,12 +270,7 @@ export const SpanAuthorityRunRootSchema = z.strictObject({
   }
 });
 
-/**
- * The D308 tombstone facts a span root resolves to when its run was deleted.
- * Span files are never rewritten (D301), so the root outlives the run; the
- * tombstone is what makes that root ACCOUNTED instead of missing authority.
- * Identity facts only — no person values ever entered this tuple.
- */
+
 export const DeletedSpanAuthoritySchema = z.strictObject({
   runId: RunIdSchema,
   workflow: WorkflowIdSchema,

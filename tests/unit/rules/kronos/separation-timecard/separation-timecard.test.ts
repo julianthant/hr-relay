@@ -50,7 +50,7 @@ const JUNE_WINDOW: TimecardDateRange = {
 };
 
 describe("separation timecard column binding", () => {
-  // Live header row, 2026-08-12: WFD appends a sort-order suffix to each header.
+  // WFD appends sort-order suffixes to header labels.
   const LIVE_HEADERS = [
     "Schedule 1", "In 1", "Out 1", "Transfer 1", "Pay code 1",
     "Amount 1", "Shift 1", "Daily 1", "Period 1", "Absence 1",
@@ -85,8 +85,7 @@ describe("separation timecard coverage guard", () => {
   });
 
   it("refuses a truncated virtualized read rather than deriving from it", () => {
-    // The exact live shape: a long window renders only its first rows until the
-    // grid is scrolled. Legacy reads once and would derive from this.
+
     const truncated = coveringRows(JUNE_WINDOW).slice(0, 20);
     assert.throws(
       () => { assertTimecardCoversRange(truncated, JUNE_WINDOW); },
@@ -94,13 +93,7 @@ describe("separation timecard coverage guard", () => {
     );
   });
 
-  /**
-   * Live run `sp-064821-1fd7` (2026-08-14). A row from a period the grid was
-   * still painting used to die inside `formatTimecardDate` as an unhandled
-   * error naming one date; it is a describable anomaly about the WINDOW, and it
-   * refuses as one — naming every offending row, and never as "the scroll was
-   * short", which no amount of scrolling could fix.
-   */
+
   it("refuses rows that belong to a DIFFERENT period, separately from a short scroll", () => {
     const inWindow = coveringRows(JUNE_WINDOW);
     const foreign = [...inWindow, { ...inWindow[0], month: 12, day: 2 }];
@@ -138,8 +131,7 @@ describe("separation timecard fold", () => {
   });
 
   it("classifies sick and holiday and REPORTS every pay code it cannot classify", () => {
-    // The exact live 2026-08-12 window for EID 10776990: one Holiday - Hourly
-    // row and two "* Observed" rows the legacy /holiday/i rule silently drops.
+
     const fold = foldSeparationTimecard(coveringRows(JUNE_WINDOW, [
       row(6, 19, { payCode: "Holiday - Hourly", amount: "4.00" }),
       row(6, 19, { payCode: "Juneteenth Observed", amount: "0.00" }),
@@ -155,7 +147,7 @@ describe("separation timecard fold", () => {
     ]);
   });
 
-  it("resolves a yearless grid date against the APPLIED window, not against now (S41)", () => {
+  it("resolves a yearless grid date against the APPLIED window, not against now", () => {
     const decemberWindow: TimecardDateRange = { start: new Date(2025, 11, 1), end: new Date(2026, 0, 15) };
     const fold = foldSeparationTimecard(coveringRows(decemberWindow, [
       row(12, 30, { punchIn: "9:00 AM", punchOut: "5:00 PM" }),
@@ -180,10 +172,7 @@ describe("separation timecard fold", () => {
 });
 
 describe("period-aligned grid rows", () => {
-  // WFD renders whole PAY PERIODS, so a window ending mid-period still paints
-  // rows past its end. Live run `sk-131627-4ca5` (2026-08-12) read a grid for
-  // 06/07-08/12 carrying a row for 8/13 and refused; the rows are legitimate
-  // and simply out of scope.
+  // WFD paints whole pay periods; ignore rows outside the requested window.
   const AUGUST_WINDOW: TimecardDateRange = { start: new Date(2026, 6, 15), end: new Date(2026, 7, 12) };
 
   it("keeps a neighbouring rendered day out of the fold instead of refusing it", () => {

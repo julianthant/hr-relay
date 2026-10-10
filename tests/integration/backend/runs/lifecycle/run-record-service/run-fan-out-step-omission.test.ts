@@ -1,13 +1,7 @@
 import { RunRecordService } from "../../../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { sequentialIdFactory } from "../../../../../support/fixtures/phase1f-run-fixtures.js";
 import { seedSyntheticRuntimeConfig } from "../../../../../support/fixtures/operator-command-fixtures.js";
-/**
- * D307 — `fanOutQueuedRuns` (src/backend/runs/lifecycle/run-fan-out.ts) is the ONE place N
- * queued runs are inserted; every start/retry/relaunch door funnels through
- * it. Its `FanOutEnvelope.stepOmissions` must ride onto every fanned-out run's
- * envelope byte for byte, the same way `captureBrowserScreenshots` already
- * does.
- */
+
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -78,7 +72,7 @@ function baseEnvelope(sessionId: string, stepOmissions?: StepOmissions) {
   };
 }
 
-describe("fanOutQueuedRuns (D307)", () => {
+describe("fanOutQueuedRuns", () => {
   it("carries stepOmissions onto every fanned-out run's envelope byte for byte", () => {
     const database = openDatabase();
     const stepOmissions = [{ step: "kronos-timecard", facts: { lastDayWorked: "06/18/2026", separationDate: "06/19/2026" } }];

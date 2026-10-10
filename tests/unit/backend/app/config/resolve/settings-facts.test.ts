@@ -1,15 +1,5 @@
 import { hostConfigFacts } from "../../../../../../src/models/config/host-display.js";
-/**
- * D274 item 6 (ledger 3 SE40–SE42) — the retained Settings facts wire
- * states runtime facts this process already holds.
- *
- * The claim under test is not "the projection compiles". It is the one SE42's
- * banner makes to the operator — *read from the descriptors, not from a list
- * somebody kept up to date* — plus its host half: a production host is a host
- * a run would navigate to. So the pins here are LITERAL expectations against the
- * real registry and the real config chain, never a re-derivation of the
- * production expression (which would pass no matter what either side said).
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { z } from "zod";
@@ -37,12 +27,7 @@ function facts(settings: unknown = {}) {
   });
 }
 
-/**
- * A graph whose transaction declares NO preview arm — the one dry-run arm no
- * registered workflow produces today, and therefore the one arm that would
- * otherwise be unreachable in this suite. A cell shape nothing can render is
- * indistinguishable from a cell shape that is broken.
- */
+
 const UnsupportedInput = z.strictObject({ eid: z.literal("10873698") });
 const UNSUPPORTED_DESCRIPTOR = defineWorkflowDescriptor({
   id: "unpreviewable-fixture",
@@ -92,7 +77,7 @@ const UNSUPPORTED_DESCRIPTOR = defineWorkflowDescriptor({
     }),
 });
 
-describe("settings facts — system hosts (SE40)", () => {
+describe("settings facts — system hosts", () => {
   it("lists every browser system exactly once, in the config's own order", () => {
     assert.deepEqual(
       facts().systemHosts.map(({ system }) => system),
@@ -142,7 +127,7 @@ describe("settings facts — system hosts (SE40)", () => {
   });
 });
 
-describe("settings facts — workflow capabilities (SE41)", () => {
+describe("settings facts — workflow capabilities", () => {
   it("carries one row per registered workflow, and no label (the bootstrap owns that)", () => {
     const rows = facts().workflowCapabilities;
     assert.deepEqual(
@@ -156,8 +141,7 @@ describe("settings facts — workflow capabilities (SE41)", () => {
     const postures = new Map(
       facts().workflowCapabilities.map(({ workflowId, dryRun }) => [String(workflowId), dryRun]),
     );
-    // A read-only graph has no transaction node, so a "dry run" of it is
-    // byte-for-byte an ordinary run — a refusal, never a trivial yes (D209).
+
     assert.deepEqual(postures.get("person-lookup"), {
       state: "unsupported",
       reason: "no-transaction-node",
@@ -196,14 +180,7 @@ describe("settings facts — workflow capabilities (SE41)", () => {
     assert.equal(declared?.reviewPanel, true);
   });
 
-  /**
-   * Unit F11b finding 3: `reviewPanel` read `descriptor.capabilities?.review
-   * === true` and the suite only ever checked the `true` arm (the fixture
-   * above, and no registered workflow declares `review: true` today) — so a
-   * hard-coded `reviewPanel: true` in `buildSettingsFacts` would have survived
-   * the whole suite. `person-lookup` is a REAL registered descriptor that
-   * declares `capabilities: { review: false }`, which this pins by name.
-   */
+
   it("reports reviewPanel false for a real registered workflow that declares no Review panel", () => {
     const rows = new Map(
       facts().workflowCapabilities.map(({ workflowId, reviewPanel }) => [String(workflowId), reviewPanel]),
@@ -217,9 +194,7 @@ describe("settings facts — workflow capabilities (SE41)", () => {
     );
     assert.deepEqual(gates.get("separations"), ["identity-approval"]);
     assert.deepEqual(gates.get("person-lookup"), []);
-    // The fixture's only gate is `resolvedBy: "external"` — another system's
-    // clock, not operator work, so it is absent rather than listed as something
-    // to go and press.
+
     const [external] = buildSettingsFacts({
       config: resolveConfigWithProvenance({}, hostConfigFacts({}), CLOCK).config,
       descriptors: [UNSUPPORTED_DESCRIPTOR],
@@ -227,17 +202,7 @@ describe("settings facts — workflow capabilities (SE41)", () => {
     assert.deepEqual(external?.operatorGates, []);
   });
 
-  /**
-   * Unit F11b finding 4: sorted by alphabet, never by declaration order.
-   * `person-lookup` declares its UCPath step (`searching`) BEFORE its CRM step
-   * (`cross-verify`), so its raw contract order is `["ucpath", "crm"]` — this
-   * pin genuinely mutation-kills on the sort in `defineWorkflowDescriptor`
-   * (`src/workflow-kit/workflow.ts`'s `systems` derivation), which is the ONE place
-   * the guarantee can live: `workflowProjections(descriptor).systems` is
-   * already fully sorted by the time `buildSettingsFacts` reads it, so a
-   * second `.sort()` there (queries/settings.ts:93, removed) could never be
-   * proven to matter by any legitimately built descriptor.
-   */
+
   it("lists the browser systems the graph drives, sorted", () => {
     const systems = new Map(
       facts().workflowCapabilities.map(({ workflowId, browserSystems }) => [String(workflowId), browserSystems]),

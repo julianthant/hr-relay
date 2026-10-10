@@ -1,7 +1,5 @@
-/**
- * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
- * src/dashboard/components/dev/rebuild-demo/ds/primitives-form.tsx
- */
+/** Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc
+ * src/dashboard/components/dev/rebuild-demo/ds/primitives-form.tsx */
 import { Input as HeroInput, Radio as HeroRadio, RadioGroup as HeroRadioGroup, SearchField as HeroSearchField, Switch as HeroSwitch, TextArea as HeroTextArea } from "@heroui/react";
 import {
   Children,
@@ -28,14 +26,8 @@ import { Button, IconButton } from "./primitives-core.js";
 import { Tooltip, TooltipProvider } from "./primitives-overlay.js";
 import { dsBorder, dsFocus, dsFocusWithin, dsIcon, dsMotion, dsRadius, dsText } from "../theme/tokens.js";
 
-/**
- * Form primitives.
- *
- * This product types EIDs, names and dates that become real HR transactions,
- * so the field contract is strict: every control has a visible label, an
- * optional description, and an error that is ANNOUNCED, not just coloured.
- * `Field` wires the ids — never hand-roll `aria-describedby`.
- */
+/** Form primitives.
+ * This product types EIDs, names and dates that become real HR transactions */
 
 interface FieldContextValue {
   inputId: string;
@@ -65,15 +57,8 @@ export function useFieldControl(): {
   };
 }
 
-/**
- * ```tsx
- * <Field label="Employee ID" description="9 digits, no dashes" error={err}>
- *   <Input placeholder="100844120" />
- * </Field>
- * ```
- * Renders label → control → description/error. The error REPLACES the
- * description so the operator never has to choose which line to believe.
- */
+/** <Field label="Employee ID" description="9 digits, no dashes" error={err}>
+ * <Input placeholder="100844120" /> */
 export function Field({
   label,
   description,
@@ -394,10 +379,7 @@ export const Select = forwardRef<HTMLButtonElement,
   </BaseSelect>;
 });
 
-/**
- * Checkbox (Radix). Supports the indeterminate state a "select all" header
- * needs — pass `checked="indeterminate"`.
- */
+
 export function Checkbox({
   label,
   description,
@@ -405,11 +387,7 @@ export function Checkbox({
   ...props
 }: CheckboxPrimitive.CheckboxProps & { label: ReactNode; description?: ReactNode }) {
   const id = useId();
-  // Radix renders a `<button role="checkbox">` whose only child is an `aria-hidden`
-  // indicator, and HTML-AAM computes a button's name from its SUBTREE — a `<label for>`
-  // names an `<input>` and names this NOTHING. So the label span is the name, by id, and
-  // it is the ONE expression: no surface re-states it as `aria-label` (ref lessons
-  // 2026-08-26). The description is deliberately outside it — a name, not a paragraph.
+  // Name Radix’s checkbox button with the visible label; label-for does not name its subtree.
   const labelId = `${id}-label`;
   return (
     <div data-disabled={props.disabled || undefined} className={cn("ds-checkbox-row flex items-start gap-[var(--ds-space-base)]", className)}>
@@ -510,10 +488,7 @@ export function RadioGroup<T extends string>({
   );
 }
 
-/**
- * A binary setting that applies IMMEDIATELY. If the change needs a Save, use a
- * Checkbox instead — a switch that does nothing until you press Save is a lie.
- */
+/** Switches apply immediately; changes requiring Save use checkboxes. */
 export function Switch({
   name,
   checked,
@@ -580,36 +555,9 @@ export const SearchInput = forwardRef<
   );
 });
 
-/* =========================================================================
- * ValueField / LockedValue — a recorded value the operator may or may not correct
- * ====================================================================== */
 
-/**
- * A value the run OBSERVED, drawn so the operator can see it is correctable.
- *
- * WHY THIS EXISTS AS A PRIMITIVE (2026-07-27). Two surfaces independently grew
- * the same defect and the operator hit it twice: the Data ledger's read values
- * and the Review tab's extracted OCR fields were both real `<input>`s at rest,
- * both styled `border-transparent` on no background, and both therefore looked
- * exactly like the static text around them. Each only became visibly a field
- * once it had already been edited — or once the pointer happened to cross it —
- * which is backwards: hover is not an affordance, because a control you can
- * only discover by sweeping the pointer over the page is a control that does
- * not exist for anyone who did not sweep. Two surfaces had the need, a third
- * will, so the treatment lives here and not in either consumer.
- *
- * What it says, at rest and without interaction: a control-border outline (held
- * to 3:1 — a control's outline is what identifies it as a control), an inset
- * surface, and a pencil. Dirty is a fill and a border, never a text colour:
- * amber text on an amber fill is the one place this system routinely loses
- * contrast, and the amber shell already says it. Every consumer pairs the fill
- * with a WORD as well, because colour is never the only encoding.
- *
- * Label it one of two ways and never both: pass `id` and render your own
- * `<label htmlFor>` where the label is visible (an `aria-label` would silently
- * override that visible text), or pass `ariaLabel` where there is no label
- * element to pair with.
- */
+
+/** Editable values need a visible affordance before hover; label once and pair dirty color with words. */
 export function ValueField({
   id,
   ariaLabel,
@@ -630,21 +578,7 @@ export function ValueField({
   title?: string;
   className?: string;
 }) {
-  /**
-   * CLICKING A RECORDED VALUE SELECTS IT.
-   *
-   * This field is not a blank form input — it already holds something the run
-   * OBSERVED, and the operator opens it to CORRECT that value, not to append to
-   * it. Dropping the caret at the end turned `6 (8 pages)` into
-   * `6 (8 pages)7 (8 pages)` on the first keystroke, which is a wrong value
-   * typed with no wrong keystroke.
-   *
-   * `onFocus` selects; the `onMouseUp` guard is what makes it survive a mouse
-   * click, because the browser collapses the selection to the click point on
-   * release. The guard is armed only on a click that FOCUSES the field, so an
-   * operator who comes back to drag-select part of an already-focused value
-   * still can — replace-on-entry, refine afterwards.
-   */
+  /** Select recorded values on entry; preserve later drag selection for partial corrections. */
   const selectOnRelease = useRef(false);
   return (
     <span className={cn("relative flex min-w-0 items-center", className)}>
@@ -664,9 +598,7 @@ export function ValueField({
           e.preventDefault();
         }}
         className={cn(
-          // The right padding is the pencil's 12px plus its 4px offset plus 4px of
-          // air, composed from tokens rather than guessed — at `loose` the value
-          // ran straight into the glyph on a narrow column.
+          // Reserve pencil space so narrow value columns cannot overlap the edit affordance.
           "ds-value-field-input w-full min-w-0 border pl-[var(--ds-space-snug)] pr-[calc(var(--ds-space-loose)+var(--ds-space-tight))]",
           "h-[var(--ds-h-sm)] rounded-[var(--ds-radius-md)]",
           dsText.body,
@@ -682,9 +614,7 @@ export function ValueField({
               ),
         )}
       />
-      {/* Inside the field, not beside it — a value column is the one thing on
-          these surfaces that cannot spare width, and the pencil is what says
-          "this box takes typing" before anything is typed. */}
+      {/* Place the edit cue inside the value field; dense columns cannot spare another track. */}
       <Pencil
         aria-hidden
         className={cn(dsIcon.sm, "pointer-events-none absolute right-[var(--ds-space-tight)] text-[color:var(--ds-fg-muted)]")}
@@ -693,18 +623,7 @@ export function ValueField({
   );
 }
 
-/**
- * A recorded value the operator may NOT correct — `ValueField`'s counterpart.
- *
- * The pair only works because the two are told apart by SHAPE: an editable
- * value is a box, a locked value is flat text with a lock and no box at all.
- * Making everything look like a field to be consistent would erase exactly the
- * distinction that matters here — "you may change this" against "you may not"
- * is load-bearing on a surface that files real HR transactions.
- *
- * `reason` is not optional in spirit. A greyed value with no explanation is how
- * an operator learns to distrust a screen; every consumer says why.
- */
+/** Locked values must look distinct from editable fields and explain why correction is refused. */
 export function LockedValue({
   value,
   reason,
@@ -720,9 +639,7 @@ export function LockedValue({
   return (
     <span title={reason} className={cn("flex min-w-0 items-start gap-[var(--ds-space-tight)]", className)}>
       <Lock aria-hidden className={cn(dsIcon.sm, "mt-[var(--ds-space-hair)] shrink-0 text-[color:var(--ds-fg-muted)]")} />
-      {/* It WRAPS rather than truncating: half a date is a guess, and a value
-          is the one thing on these rows that cannot be recovered from
-          anywhere else on the surface. */}
+      {/* Wrap recorded values; truncation would hide facts with no recovery route. */}
       <span
         className={cn(
           dsText.body,
@@ -737,35 +654,9 @@ export function LockedValue({
   );
 }
 
-/* =========================================================================
- * Dropzone — bytes enter the system here
- * ====================================================================== */
 
-/**
- * The one place an operator hands this system a FILE (ref data-intake-and-edit-data §2.2 step 1).
- *
- * It is a `<label>` wrapping a real `<input type="file">`, not a div with a
- * click handler. That is what makes the keyboard, the screen reader and the
- * touch device all reach it for free, and it is why the drop target and the
- * browse control are the same control rather than two affordances that can
- * disagree about what was accepted.
- *
- * Three deliberate refusals:
- *
- *  - **It states what it takes** — the extensions and the size cap, from the
- *    server's own constants — because a dropzone that only says "no" after the
- *    upload has taught the operator nothing.
- *  - **It never filters silently.** `accept` is a HINT to the file picker; a
- *    dragged file that does not match still arrives, and this hands it over
- *    unchanged so the SERVER refuses it by name. Quietly ignoring a dropped
- *    file is indistinguishable from a broken page.
- *  - **`busy` disables it and says so.** An upload in flight with a live drop
- *    target is how the same file gets sent twice.
- *
- * Drag state is tracked with a counter, not a boolean: `dragleave` fires when
- * the pointer crosses into a CHILD element, so a boolean flickers the whole
- * time the file is over the zone.
- */
+
+/** Pass dropped files unchanged for named server refusal; disable duplicates and count nested drag events. */
 export function Dropzone({
   label,
   accept,

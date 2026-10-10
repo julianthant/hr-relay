@@ -30,14 +30,7 @@ import type { FactProvenance } from "../../../models/workflow/checkpoint.js";
 
 type ParsedDataPoint = z.output<typeof DataPointSchema>;
 
-/**
- * ONE `ctx.recordData` call's worth of observation (D270).
- *
- * A batch is one observation of the page, so the collector reads the clock ONCE
- * per call and stamps every point in it with that instant: `recordedAt` is
- * therefore a fact the whole batch shares, which is what lets the emitted event
- * carry a single honest `observedAt` instead of a derived one.
- */
+// One recorded batch shares one clock reading so all its points describe the same observation.
 export type RecordedDataBatch = Readonly<{
   readonly recordedAt: string;
   readonly points: readonly RecordedDataPoint[];
@@ -54,17 +47,7 @@ export type TaskProvenanceCollectorInput = Readonly<{
   readonly upstreamEvidence: z.input<typeof TaskUpstreamCheckpointEvidenceSchema>;
   readonly clock: Clock;
   readonly canonicalInput?: JsonValue;
-  /**
-   * Where a recorded batch goes AT RECORD TIME (D270). Required, with no no-op
-   * default, for the same reason the executor's `SpanEmitter` has none: a
-   * collector that could run with a silently absent sink would leave the
-   * observations a task made before it threw unreconstructable, and nothing
-   * would fail.
-   *
-   * The sink is called INSIDE `recordData`, so a throw from it — the intended
-   * answer to an undeclared leaf — surfaces at the recording task, naming the
-   * field, instead of at a finalization the failing task may never reach.
-   */
+
   readonly onRecord: (batch: RecordedDataBatch) => void;
 }>;
 
@@ -261,14 +244,7 @@ export function createTaskProvenanceCollector(input: TaskProvenanceCollectorInpu
     ...childFacts,
     ...evidence.checkpoints.flatMap((checkpoint) =>
       validateCheckpointFacts(execution.workflowId, checkpoint)),
-    /*
-     * A gate contributes exactly ONE fact and no output leaves: what a gate
-     * dates is the DECISION, at the instant authority recorded it, attributed
-     * `operator` — the arm `FactProvenance` already carries. It cannot make a
-     * derived output look fresher than its live inputs, because the derived
-     * leaf takes the OLDEST original observation and an approval is always at
-     * least as new as the evidence it was granted on.
-     */
+
     ...evidence.gateResults.map((gate) => FactProvenanceSchema.parse({
       path: "gateResult",
       source: "source" in gate ? "live" : "operator",

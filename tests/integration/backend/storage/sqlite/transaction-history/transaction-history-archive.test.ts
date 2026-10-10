@@ -146,8 +146,7 @@ it("bounds cold range/run evidence reads before decoding unrelated live and arch
       }
     }
     w.reopen();
-    // Observe returned raw evidence rows, not SQLite's internal page/row visits. Startup
-    // admission remains separate; the cold query has no previously opened archive reader.
+    // Count returned raw evidence rows; keep startup admission outside the cold-query measurement.
     const observed:{sql:string;rows:number}[]=[];
     // eslint-disable-next-line @typescript-eslint/unbound-method -- call restores the database receiver.
     const original=DatabaseSync.prototype.prepare;

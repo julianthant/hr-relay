@@ -1,30 +1,4 @@
-/**
- * The real `WorkerBrowserSessionFactory` (ref execution-and-sessions §§1,4 · ref clock-config-secrets §4).
- *
- * One worker browser session = one persistent Chromium context, one page, one
- * system, one resolved instance, one config fingerprint. The factory owns
- * exactly four things and nothing else:
- *
- * 1. **Launch.** Playwright's FULL bundled Chromium (`channel: "chromium"`) in
- *    a persistent context, with the Duo Autopilot MV3 extension loaded so the
- *    Duo WebAuthn ceremony clears in-page. Both are hard requirements, not
- *    preferences: Chrome stable disabled `--load-extension`, the lightweight
- *    headless shell cannot run extensions at all, and an extension needs a
- *    persistent context (`duo-autopilot/README.md`).
- * 2. **Isolation.** The profile lives under the rebuild's own absolute
- *    `paths.browserProfileRoot` (default: the isolation contract's root) and
- *    the isolation contract's `browserSessionNamespace`, namespaced per
- *    `(worker, system, instance, configFingerprint)` — never a literal path,
- *    never a cwd-relative one, never a directory the legacy runtime could also
- *    open.
- * 3. **Authentication.** It hands the store's login recipe a live page plus
- *    credentials resolved through `domain/secrets.ts`, the single credential
- *    reader. The factory itself never reads the environment.
- * 4. **Provable teardown.** `close()` returns a proof only after observing
- *    every page closed AND the context's own close event, within a bounded
- *    deadline. Anything else THROWS, and the session manager then retains the
- *    resource as poisoned rather than believing an unproven cleanup.
- */
+
 import { mkdirSync, rmSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { chromium } from "playwright";
@@ -63,11 +37,7 @@ import type { SystemLoginContext } from "../../systems/browser-shared/login-cont
 import { BROWSER_SYSTEM_BINDINGS } from "./system-bindings.js";
 import type { BrowserSystemBinding, BrowserSystemBindings } from "./system-bindings.js";
 
-/**
- * Structurally identical to the kernel's `MonotonicDeadlineScheduler`. It is
- * re-declared here rather than imported because `core` sits ABOVE `infra` in
- * the layer matrix; composition passes the one real scheduler to both.
- */
+// Keep the acquisition scheduler structural so both ports use the same timer without a module cycle.
 export interface BrowserDeadlineScheduler {
   schedule(deadlineMonotonicMs: number, onDeadline: () => void): { cancel: () => void };
 }
@@ -93,18 +63,9 @@ export interface BrowserSessionFactoryOptions {
   readonly newSessionId: () => string;
   readonly bindings?: BrowserSystemBindings;
   readonly launcher?: PersistentContextLauncher;
-  /**
-   * A diagnostic sink for the marker that PROVED a session — what the login or
-   * the neutral reset actually observed, never a value. Operator surfaces and
-   * the live smoke read it; production composition may omit it. It carries no
-   * data the runtime branches on, so an absent observer changes nothing.
-   */
+  // Session proof diagnostics name the observed marker, never its sensitive value.
   readonly onAuthenticationEvidence?: (evidence: AuthenticatedApplicationEvidence) => void;
-  /**
-   * Main-frame navigations, in order. Also purely diagnostic: it is how a live
-   * smoke can SHOW that a login really traversed `a5.ucsd.edu` and Duo instead
-   * of asking the reader to infer it from elapsed time.
-   */
+
   readonly onNavigation?: (url: string) => void;
 }
 
@@ -132,27 +93,7 @@ const DEFAULT_LAUNCHER: PersistentContextLauncher = {
   },
 };
 
-/**
- * The on-disk profile for one worker browser session.
- *
- * Every segment below the root is derived from the runtime-isolation contract
- * and the session identity — there is no profile-root literal here, and the
- * `browserSessionNamespace` segment is what keeps a rebuild profile from ever
- * being the legacy one even if both roots were ever pointed at the same
- * directory. The config fingerprint is part of the path because D116 forbids
- * reusing a context authenticated or configured under another run snapshot;
- * sharing one profile directory across fingerprints would reintroduce exactly
- * that through disk state.
- *
- * `profileRoot` is an explicit ABSOLUTE base (`config.paths.browserProfileRoot`,
- * whose default is the isolation contract's root resolved once in
- * `domain/config/schema.ts`). It is a parameter rather than a re-resolution of
- * the isolation literal for two reasons: `resolve(".auth")` is
- * cwd-dependent, so a worker started elsewhere would silently open a different
- * profile home; and a caller that must NOT touch the operator's real profile
- * root — every unit test — has to be able to say so, rather than being forced
- * through the real credential directory. A relative root is refused loudly.
- */
+
 export function workerProfileDirectory(input: Readonly<{
   profileRoot: string;
   isolation: RuntimeIsolation;
@@ -186,11 +127,7 @@ function browserModeFor(
   return BrowserPresentationModeSchema.parse(requested === undefined ? configured : requested);
 }
 
-/**
- * Proves the Duo Autopilot prerequisites BEFORE a browser exists, so a missing
- * extension or credential is a legible refusal rather than a login that hangs
- * on an unanswerable prompt.
- */
+
 export function assertDuoAutopilotReady(config: Config): void {
   if (!config.features.duoWebAuthn) return;
   const manifest = join(config.paths.duoExtensionDir, "manifest.json");
@@ -350,15 +287,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     }
   }
 
-  /**
-   * D267 §10.5 — the fresh-profile-once recovery's one filesystem act. The
-   * SAME path is removed and recreated (§1's path is a pure function of the
-   * session identity; a disambiguating segment would leak a directory per
-   * refusal and make the path stop describing the identity). The caller has
-   * already PROVEN the context closed — a directory a context may still hold
-   * cannot be touched — and this refuses any path outside the rebuild's own
-   * profile namespace rather than deleting what it was handed.
-   */
+
   async discardProfile(input: Readonly<{
     workerId: WorkerId;
     system: BrowserSystemId;
@@ -390,19 +319,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     this.#options.onAuthenticationEvidence?.(evidence);
   };
 
-  /**
-   * ref execution-and-sessions §4: a clean release returns to the system's verified neutral state
-   * before reuse. Re-navigating to the entry route and re-running the system's
-   * FULL authentication proof is what makes "reusable" an observation instead
-   * of an assumption — a session that silently dropped to SSO fails here, and
-   * the manager poison-closes it.
-   *
-   * Until 2026-08-03 this checked a URL predicate alone, so PeopleSoft's signon
-   * page (same host, same route shape, titled "Oracle PeopleSoft Sign-in")
-   * passed as the authenticated application and left a "reusable" session that
-   * would have scraped a sign-in page as HR data. It now runs exactly what the
-   * login recipe must pass — there is ONE definition of authenticated, not two.
-   */
+  // Neutral reset must pass the same authenticated-application proof as login.
   async #resetToNeutralState(
     binding: BrowserSystemBinding,
     page: Page,
@@ -427,11 +344,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     );
   }
 
-  /**
-   * Bounded, PROVEN teardown. Playwright resolves `close()` without telling you
-   * what actually closed, so this observes the context's own close event and
-   * every page's `isClosed()`. An unproven or timed-out close throws.
-   */
+  // Playwright close resolution alone is not teardown proof; verify context and process termination.
   async #closeWithProof(
     context: BrowserContext,
     lifecycle: ContextLifecycle,
@@ -492,14 +405,7 @@ function observeContextLifecycle(context: BrowserContext): ContextLifecycle {
   return { closed: () => closed };
 }
 
-/**
- * The UCSD SSO credential pair. Every UCSD system in scope authenticates
- * against the same realm (legacy
- * hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc
- * `src/infra/auth/login.ts` records this for CRM, OnBase, Kuali, Kronos and
- * ServiceNow), so one registered secret pair serves them all. Missing values
- * throw `SecretMissingError` naming the KEY, never a value.
- */
+// UCSD systems share an SSO realm and credential pair, but hold distinct application sessions.
 function readSsoCredentials(source: ProtectedSecretSource): SsoCredentials {
   return {
     userId: requireSecret("ucpathUserId", source),

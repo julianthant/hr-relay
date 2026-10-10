@@ -1,20 +1,5 @@
 import type { ProtectedInputBinding } from "../models/write-safety/protected-input.js";
-/**
- * The ONE workflow builder API (ref workflow-model §3; absorbs ref task-contract §5).
- *
- * The builder accumulates two exact generics as nodes are added:
- *
- * - `S` — a `Record<nodeId, NodeEntry>` map carrying each node's concrete
- *   output type, whether that output is conditional, and which task contracts
- *   the node owns. Every graph kind contributes an entry, not just tasks.
- * - `Nodes` — the exact node tuple, in declaration order.
- *
- * `bind`/`when`/`choose`/`derive` receive `Pick<S, D[number]>`, so reading an
- * output the node did not declare in `dependsOn` fails `tsc`. No `Append*` or
- * `*BuilderResult` transform may collapse to `any`, `unknown`, `RuntimeFlowNode`,
- * or a broad `Record<string, JsonValue>`; `tests/types/flow-graph.typecheck.ts`
- * pins that with negative controls at node 20+.
- */
+/** The ONE workflow builder API (ref workflow-model §3): it accumulates `S` (per-node output/conditional/contracts) and `Nodes`, so reading an undeclared output fails `tsc`. */
 import { z } from "zod";
 import type {
   AnyCommitTaskContract,
@@ -48,21 +33,7 @@ import type {
 
 /* ── the accumulator ─────────────────────────────────────────────────────── */
 
-/**
- * One typed output entry per graph node. `contracts` is `[]` for
- * branch/parallel/child/gate, `[C]` for a task, and `[P, C]` for a transaction,
- * so `.decorate` can only name a contract the node actually owns.
- *
- * `Out` is deliberately unconstrained. Ref workflow-model §3 originally wrote
- * `Out extends JsonValue` to keep Page/Date/class instances out of checkpoints,
- * but inside a generic method `z.output<C["output"]>` is still `unknown`, so the
- * constraint rejects every well-formed node before its contract resolves. The
- * canonical-JSON guarantee is enforced where it is actually checkable — every
- * task contract's `output` is a `CanonicalJsonSchema` audited recursively by
- * `assertContractBoundarySchema` — and every other node output is built by the
- * kernel from those outputs plus branded ids. `JsonValue` remains the runtime
- * view (`RuntimeScope`).
- */
+/** One typed output entry per graph node: `contracts` is `[]`/`[C]`/`[P,C]` by kind, so `decorate` names only an owned contract; `Out` is unconstrained because canonical-JSON is enforced at the contract boundary. */
 export interface NodeEntry<
   Out,
   Cond extends boolean,
@@ -115,7 +86,7 @@ export interface StepOpts<
   readonly label?: string;
   readonly dependsOn: D;
   readonly bind: (scope: ScopeFor<InputSchema, S, D>) => z.input<C["input"]>;
-  /** D228 — a DECLARED condition; the closure form is gone on purpose. */
+  /** A DECLARED node condition (schema form), never a closure. */
   readonly when?: NodeConditionSpec;
   /** REQUIRED — no default (ref workflow-model §5.3). */
   readonly replay: "checkpoint" | "always-rerun";
@@ -139,13 +110,7 @@ export interface TransactionOpts<
   readonly retryBeforeFence?: RetryPolicy;
 }
 
-/**
- * A branch case names the nodes that arm RUNS, which are declared after the
- * branch — so the targets cannot be constrained to `keyof S`, whose keys are by
- * definition the nodes already accumulated. Forward references are checked at
- * `build()` instead: every target must be a declared node, and it must sit
- * downstream of its controller.
- */
+// Forward targets are checked at build; push cannot see undeclared nodes.
 export type BranchCases = Readonly<Record<string, readonly string[]>>;
 export interface BranchOpts<
   InputSchema extends z.ZodType,
@@ -441,11 +406,6 @@ export interface FlowBuilder<
   ): BuiltFlow<InputSchema, ResultSchema, Nodes, S, D>;
 }
 
-/**
- * What `build()` returns: the exact node tuple plus the accumulated `S`/`D`
- * generics the descriptor factory needs. The full `WorkflowDescriptor` (ref workflow-model
- * §1.1) wraps this with the doc-03-owned presentation/enqueue/action fields.
- */
 export interface BuiltFlow<
   InputSchema extends z.ZodType,
   ResultSchema extends z.ZodType,
@@ -506,12 +466,7 @@ function assertDeclaredDependencies(state: MutableFlowState, id: NodeId, depends
   }
 }
 
-/**
- * Branch cases and parallel branches name the nodes their path RUNS, so every
- * target must be declared and must sit downstream of its controller. Only
- * `build()` can check this: at push time the targets do not exist yet, and a
- * case pointing backwards would make the graph cyclic.
- */
+// Require downstream targets to prevent graph cycles.
 function assertControlFlowTargets(nodes: readonly GraphNodeBase[]): void {
   const position = new Map(nodes.map((node, index) => [String(node.id), index]));
   const assertDownstream = (owner: string, index: number, target: string): void => {
@@ -543,11 +498,6 @@ function assertControlFlowTargets(nodes: readonly GraphNodeBase[]): void {
   }
 }
 
-/**
- * Builder implementation. Every method mutates one shared state object and
- * returns a re-typed view of the same builder — the accumulation that matters
- * is in the type parameters, and a fluent chain has exactly one owner.
- */
 function makeBuilder(state: MutableFlowState): unknown {
   const push = (node: GraphNodeBase): void => {
     assertUniqueNodeId(state, node.id);

@@ -51,7 +51,7 @@ function audit(extraSource?: string): readonly string[] {
       // The canonical service owns its repository mutations, but its exported port/sweep helpers do not.
       if (file === "src/backend/runs/lifecycle/run-record-service.ts" && ts.isClassDeclaration(node)
         && node.name?.text === "RunRecordService") return;
-      // Task 4 retains the two negative-resolution paths; positive recovery/present remain scanned.
+
       if (file === "src/backend/runtime/writes/write-recovery.ts"
         && ((ts.isMethodDeclaration(node) && node.name.getText() === "resolveAbsent")
           || (ts.isIfStatement(node) && node.expression.getText() === 'evaluation.state === "safe-to-retry"'))) return;

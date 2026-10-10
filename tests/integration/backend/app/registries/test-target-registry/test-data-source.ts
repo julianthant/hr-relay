@@ -12,10 +12,7 @@ export function testDataValueId(index: number): string {
   return `00000000-0000-4000-8000-${String(index + 10).padStart(12, "0")}`;
 }
 
-/**
- * Synthetic opaque input source. Values are test-only and never cross a production
- * wire; the helper parses through the real local schema so invalid synthetic values fail loudly.
- */
+
 export function testDataInputSource(
   values: Partial<Record<TestDataInputName, unknown>> = {},
 ): TestDataInputSource {

@@ -1,19 +1,5 @@
 import { testRunLifecycle } from "../../support/fixtures/run-lifecycle-fixtures.js";
-/**
- * Ref guards-and-tests §3.9 — subject binding before the fence (ref write-safety beat ③, ref execution-and-sessions §6.1).
- *
- * Statically: every transaction node pairs prepare/commit contracts with
- * compatible subject declarations in ONE system, and a commit's person or
- * artifact proof is observed after prepare and before the fence. Behaviorally,
- * over the REAL sequencer: prepare-end < fresh subject observation <
- * fence-commit < mutation-call on the same lease/run/attempt; a mismatch,
- * unknown, or missing observation produces zero fence and zero click with a
- * poisoned page; two EIDs alternating through one pooled worker page each bind
- * their own digest; and every minted mutation capability is bound to the exact
- * fenced `WriteBindingProof` digest. A commit with `subject.kind:"none"` needs
- * a reviewed allowlisted reason — free text and unregistered ids are refused
- * at the contract factory, fail-both-ways.
- */
+
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -127,9 +113,7 @@ describe("static subject declarations", () => {
       id: taskId("ucpath/submit-unscoped-free-text"),
       subject: { kind: "none" as const, reason: "someone said it was fine" },
     }), /reviewed UnscopedCommitReasonId/);
-    // An unregistered reason id is not review either. The literal union
-    // blocks this at compile time, so the runtime arm is driven through the
-    // untyped definition schema the factory parses first.
+
     const unregistered: unknown = {
       ...base,
       id: taskId("ucpath/submit-unscoped-unregistered"),
@@ -159,11 +143,7 @@ interface OrderingHarness {
   readonly clock: ReturnType<typeof manualClock>;
   readonly sessions: ReturnType<typeof writeFixtureSessions>;
   readonly sequencer: ReturnType<typeof createWriteSequencer>;
-  /**
-   * Execute under the worker loop's exact D116 discipline: bind the context
-   * run's immutable `configFingerprint` through the production
-   * `withBoundRunConfigFingerprint`, execute, release.
-   */
+
   readonly execute: (context: WriteSequencerContext) => Promise<unknown>;
   readonly dispose: () => void;
 }

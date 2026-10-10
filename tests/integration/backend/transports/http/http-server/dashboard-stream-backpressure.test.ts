@@ -1,11 +1,4 @@
-/**
- * The hub's pending bound must hold END TO END (ref frontend-backend-integration §3.5): through
- * the Web Stream bridge and through the real Node adapter to a client that
- * stopped reading. Before 2026-09-02 the route pushed every envelope into the
- * stream controller the moment the hub published it, so the bound guarded
- * only the window before subscription and a slow browser grew an unbounded
- * buffer the hub could not see.
- */
+
 import assert from "node:assert/strict";
 import { request, type IncomingMessage } from "node:http";
 import { Hono } from "hono";
@@ -81,9 +74,7 @@ describe("dashboard stream backpressure (bridge + Node adapter)", () => {
     }
     assert.deepEqual(parseSse(text).map(({ type }) => type), ["hello", "snapshot", "health"]);
 
-    // Nobody reads. The bridge may hold at most one pulled chunk (its own
-    // highWaterMark) plus one outstanding pull; everything else waits in the
-    // hub, whose bound collapses it into one reset.
+    // The bridge holds its pulled chunk and outstanding pull; the bounded hub owns all remaining work.
     for (let step = 0; step < 10 * MAX_PENDING; step += 1) taskEventsOf(w, 1, `node-${String(step)}`);
     await new Promise<void>((resolve) => setImmediate(resolve));
     assert.equal(connection.pending, 1, "the bridge holds at most its own highWaterMark; the hub holds exactly the one reset");
@@ -128,9 +119,7 @@ describe("dashboard stream backpressure (bridge + Node adapter)", () => {
         headers: { "content-type": "text/event-stream", "cache-control": "no-cache" },
       });
     });
-    // The adapter reports a client that vanished mid-transfer to its local
-    // observer and refuses to close silently without one — this test's ending
-    // IS that disconnect, so the observer is part of the proof.
+
     const transferErrors: Error[] = [];
     const server = await startDashboardHttpServer({ app, port: 0, onTransferError: (error) => transferErrors.push(error) });
     servers.add(server);
@@ -144,13 +133,7 @@ describe("dashboard stream backpressure (bridge + Node adapter)", () => {
     const connection = await captured.promise;
     response.pause();
 
-    // Publish until the socket stops draining — the kernel and Node absorb a
-    // bounded number of bytes first — then well past the bound. Bounded loudly:
-    // if the socket never fills, the test says so rather than passing vacuously.
-    // A publish can land before the bridge's pull() microtask asks for it, so
-    // "pending > 0" right after a publish proves nothing. Yield a macrotask
-    // after EVERY publish: only a socket that has genuinely stopped draining
-    // leaves an envelope pending across that yield.
+
     const yieldMacrotask = (): Promise<void> => new Promise<void>((resolve) => setImmediate(resolve));
     let published = 0;
     let stalled = false;

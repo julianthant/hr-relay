@@ -23,13 +23,7 @@ export const ContactFieldsInputSchema = z.strictObject({
   country: z.string().min(1).optional(),
 });
 
-/**
- * `RedactedValueSchema` narrowed to what a contact field can produce: every
- * contact value is a STRING, so the allowed/transformed arms carry string
- * (or count) values — the open `JsonValue` arm would put a decision-bearing
- * record inside a contract boundary. The TRANSFORMS still come from the one
- * `redactValue` implementation; only the boundary narrows.
- */
+/** `RedactedValueSchema` narrowed to what a contact field can produce: every contact value is a STRING, so the open `JsonValue` arm cannot put a decision-bearing record inside a contract boundary. */
 export const RedactedContactValueSchema = z.discriminatedUnion("state", [
   z.strictObject({
     state: z.literal("redacted"),
@@ -99,12 +93,7 @@ export const NormalizeContactInputSchema = z.strictObject({
   readAt: IsoInstantSchema,
 });
 
-/**
- * Ref data-intake-and-edit-data §4.2 sketches the id as `normalization/normalize-contact`, but
- * "normalize" is not a legal read verb (ref task-contract's grammar) — the same defect
- * D149 fixed for `extraction/parse-csv`. The task READS a contact and
- * returns advice, so the id says that.
- */
+/** The task READS a contact and returns advice, so the id says that rather than naming an illegal read verb. */
 export const NormalizeContact = defineTaskContract({
   id: taskId("normalization/read-contact-advice"),
   title: "Normalizing contact",

@@ -8,36 +8,11 @@ import {
 import { ucpathDriver } from "../driver-declaration.js";
 import { firstDisagreeingName, ucpathTerminationVerdict } from "../termination-verdict.js";
 
-/**
- * Beat ⑤ — the click that files a real termination, and the second external
- * write in this tree.
- *
- * `ctx.mutation` exists on a commit context and nowhere else, and the driver
- * refuses a capability the fenced write sequencer did not mint, so this cannot
- * click outside an open fence even if it were mis-authored.
- *
- * ## Why it reads afterwards, and what that read is worth
- *
- * The submit renders no receipt: UCPath puts the `T…` on a different page
- * entirely. A commit that returned only "I clicked" could not distinguish
- * **S51** (submit timed out, no banner, no confirmation — outcome unknown) from
- * a landed transaction, so it re-reads the SS Smart HR surface for its own
- * receipt PAIR. That read is a CLAIM; beat ⑥'s independent verifier is what may
- * settle the run `done`.
- *
- * If the read cannot produce a `present` pair, this THROWS rather than
- * returning a shrug — post-fence uncertainty is exactly what the kernel's park
- * path is for (**S51/S52**), and legacy's own best line ("PeopleSoft's outcome
- * is unknown, refusing to report success") is this behaviour.
- */
+
 export const createTerminationTask = defineTask(ucpathDriver, UcpathCreateTermination, {
   sessions: [{ system: "ucpath", access: "transaction", session: "reuse-worker" }],
   async run({ input, ctx }) {
-    // S47/S50. The refusal arrives as a typed THROW rather than a
-    // `performed: false` proof, because `UiActionProofSchema.performed` is
-    // `z.literal(true)` — a proof is always a proof, so the old
-    // `!action.performed` branch could never be taken and `submit-refused` had
-    // no producer at all.
+    // A refused submit throws; performed is literal true, so a false proof cannot represent refusal.
     const action = await ctx.driver
       .commit(UCPATH_SMART_HR_SAVE_AND_SUBMIT_BUTTON, ctx.mutation)
       .catch((error: unknown) => {

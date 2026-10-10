@@ -1,10 +1,5 @@
 import { testRunLifecycle, testRunService } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
-/**
- * Generic node dispatch for the control kinds person-lookup does not use:
- * branch selection and exclusion, gate park/resume over the stored gate
- * result, the parallel arms, and the child-run/write-sequencer seams' loud
- * capability-unavailable refusals — over REAL factory-built descriptors.
- */
+
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
@@ -564,17 +559,7 @@ describe("registered source gate settlement", () => {
 });
 
 describe("branch + gate dispatch", () => {
-  /**
-   * Ref write-safety §14 / separations §4d: **no run mode can disable a gate.**
-   *
-   * `dryRun` is the only run-level mode this envelope carries, and it is the one
-   * an operator would most plausibly expect to "just preview". It does not touch
-   * the gate arm at all — the executor's `dryRun` reaches exactly one place, the
-   * write sequencer — so a dry run parks identically. Legacy's whole D7 defect
-   * was a MODE deriving its way into skipping the identity check; the property
-   * that makes that unreachable here is that the gate arm reads nothing off the
-   * envelope, and this is the executable statement of it.
-   */
+
   it("parks at the gate under dryRun exactly as it does under a real run", async () => {
     const harness = controlHarness(gateBranchDescriptor);
     const { database } = harness.authority;

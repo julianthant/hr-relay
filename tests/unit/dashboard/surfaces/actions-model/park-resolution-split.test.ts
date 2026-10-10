@@ -1,33 +1,10 @@
-/**
- * One `banner` placement, TWO renderers — and no descriptor may reach both
- * (R8 finding 1).
- *
- * The two write resolutions ride the same placement as every other decision
- * pill, so before this split they were being drawn as bare `intentPill`s and
- * the server's `detail` sentence — the thing that separates "record it as
- * present" from "record it as absent", each of which settles a real HR write —
- * was dropped on the floor. `ParkResolutions` draws them as the demo's tinted
- * cards; `BannerActions` draws the rest.
- *
- * The property that matters is a PARTITION, not two independent filters: every
- * banner descriptor lands in exactly one of the two lists. A descriptor drawn
- * twice would offer the operator the same irreversible answer in two shapes,
- * and one drawn in neither would be a served exit with no control.
- *
- * These are pure functions over PARSED descriptors, so the fixture cannot drift
- * from what the server may serve.
- */
+
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import { ActionDescriptorWireSchema } from "../../../../../src/models/dashboard/actions.js";
 import { bannerPills, parkResolutions } from "../../../../../src/dashboard/surfaces/shared/actions/actions-model.js";
 
-/**
- * A parked run's banner as the `parked-write` section projects it: the two
- * resolutions, a non-park command that shares the placement, and a navigation
- * descriptor — plus one park resolution placed somewhere ELSE, which must not
- * be picked up by a `banner` reader at all.
- */
+
 const ACTIONS = z.array(ActionDescriptorWireSchema).parse([
   {
     key: "resolve-write-present",
@@ -104,9 +81,7 @@ describe("the banner's park-resolution split", () => {
   });
 
   it("reads the PLACEMENT, not just the command — a park verb elsewhere is not a banner resolution", () => {
-    // The `menu` copy of `resolve-write-absent` is a real descriptor the row
-    // context menu may draw; a `banner` reader that matched on the command
-    // alone would pull it into the resolution cards.
+
     expect(parkResolutions(ACTIONS).map((a) => a.key)).not.toContain("resolve-write-absent-menu");
   });
 

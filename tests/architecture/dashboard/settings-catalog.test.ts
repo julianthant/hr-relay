@@ -56,16 +56,7 @@ function productionDeclarations(): ReadonlyMap<string, readonly string[]> {
   return new Map([...modulesByDeclaration].map(([name, modules]) => [name, [...modules].sort()]));
 }
 
-/**
- * D331 `consumers` means readers that establish or directly read a settings
- * SOURCE. A module that receives an already-resolved Config is downstream of
- * that boundary and is deliberately not a second settings-source reader.
- *
- * Each rule is anchored to a production declaration discovered by scanning
- * every git-visible TS source. Keys come from the production schemas and
- * registries, or from the catalog's closed source-class metadata where the
- * accessor operates on a whole document. There is no parallel key→module list.
- */
+
 function readerRules(rows: readonly ReaderCatalogRow[]): readonly ReaderRule[] {
   const secretFileConfigPaths = new Set<string>(SECRET_FILE_SPECS.map(({ configPath }) => configPath));
   const ordinaryComposition = rows.filter((row) =>
@@ -80,8 +71,7 @@ function readerRules(rows: readonly ReaderCatalogRow[]): readonly ReaderRule[] {
     (row.sourceClass === "ordinary-settings" && row.defaultKind !== "runtime-path")
     || (row.sourceClass === "runtime-isolation" && row.defaultKind === "contract")
   ).map(({ key }) => key);
-  // D341 moved the next-start canaries out of the catalog entirely; the
-  // protected runtime reader owns the whole next-use presence/readback surface.
+
   const protectedReadback = rows.filter((row) =>
     row.sourceClass === "protected-store"
   ).map(({ key }) => key);
@@ -164,8 +154,8 @@ function assertRecursivelyFrozen(value: unknown): void {
   for (const key of Reflect.ownKeys(value)) assertRecursivelyFrozen(Reflect.get(value, key));
 }
 
-describe("D331 settings catalog", () => {
-  it("P1 covers every schema leaf and every secret family in both directions", () => {
+describe("settings catalog", () => {
+  it("covers every schema leaf and every secret family in both directions", () => {
     const leaves = schemaLeaves(z.toJSONSchema(ConfigSchema));
     assert.deepEqual(coverageViolations(leaves), []);
     assert.deepEqual(coverageViolations([...leaves, "uncatalogued.setting"]), ["uncatalogued.setting"]);
@@ -179,7 +169,7 @@ describe("D331 settings catalog", () => {
       .map((row) => row.key).sort(), Object.keys(ProtectedValueSchemas).sort());
   });
 
-  it("P5/P8 generates exactly ordinary document members with no protected leaf", () => {
+  it("generates exactly ordinary document members with no protected leaf", () => {
     const ordinary = schemaLeaves(z.toJSONSchema(SettingsOverrideSchema)).filter((leaf) => !leaf.includes(".test."));
     const expected = schemaLeaves(z.toJSONSchema(ConfigSchema)).filter((leaf) =>
       SETTINGS_CATALOG.some((row) => row.sourceClass === "ordinary-settings"
@@ -192,7 +182,7 @@ describe("D331 settings catalog", () => {
     assert.equal(SettingsOverrideSchema.safeParse({ urls: { kuali: { test: { entry: "https://example.invalid" } } } }).success, true);
     assert.throws(() => ordinarySettingsObject("actor", z.strictObject({ id: z.string() })), /actor.label is missing/u);
   });
-  it("P1 pins the 65-row closed registry and refuses a missing or duplicated row", () => {
+  it("pins the 65-row closed registry and refuses a missing or duplicated row", () => {
     assert.equal(SETTINGS_CATALOG.length, 65);
     assert.deepEqual(Object.fromEntries([
       "ordinary-settings", "protected-store", "derived-host", "runtime-isolation",
@@ -209,7 +199,7 @@ describe("D331 settings catalog", () => {
     assertRecursivelyFrozen(SETTINGS_CATALOG);
   });
 
-  it("P2 refuses every protected, provider and observed value in the ordinary document", () => {
+  it("refuses every protected, provider and observed value in the ordinary document", () => {
     const protectedRows = SETTINGS_CATALOG.filter((row) => row.sourceClass === "protected-store");
     assert.equal(protectedRows.length, 5);
     for (const row of SETTINGS_CATALOG.filter((row) => row.sensitivity !== "ordinary")) {
@@ -224,7 +214,7 @@ describe("D331 settings catalog", () => {
       && row.sourceClass === "runtime-isolation").map((row) => row.key), ["duoWebauthnCredential"]);
   });
 
-  it("P2 matches the production settings-source reader inventory in both directions", () => {
+  it("matches the production settings-source reader inventory in both directions", () => {
     const readers = deriveSettingsReaderInventory(SETTINGS_CATALOG);
     assert.deepEqual(readerInventoryViolations(SETTINGS_CATALOG, readers), []);
 
@@ -236,7 +226,7 @@ describe("D331 settings catalog", () => {
     ]);
   });
 
-  it("P33 assigns protected credentials next-use; D341 retired the next-start canary rows and their env keys", () => {
+  it("assigns protected credentials next-use and refuses canary environment keys", () => {
     for (const name of ["ucpathUserId", "ucpathPassword", "timekeeperName", "sharepointOnboardingRosterUrl", "activityPersonPseudonym"]) {
       assert.equal(settingsCatalogRow(name).restartScope, "next-use", name);
     }

@@ -103,13 +103,7 @@ function receiptAbsenceReason(authority: RunRecord, trust?: RunDetailTrustDeps):
   return "run was interrupted; ref write-safety recovery will requeue or settle it before a receipt can name a verdict";
 }
 
-/**
- * Project the durable `FailureRecord` onto the strict wire. The projection is
- * a whitelist BY CONSTRUCTION — every field is named here — so a field added
- * to the durable record later reaches no surface until someone decides how it
- * is classified. `sameFingerprintSeen` counts occurrences of the failure
- * CLASS, which is ref operator-trust §2.1's "same failure seen before" link.
- */
+
 function failureDetailWire(
   runId: string,
   failure: FailureRecord,
@@ -150,7 +144,7 @@ function failureDetailWire(
     diagnosticBundle: diagnosticBundleId === undefined
       ? {
         state: "absent",
-        reason: "no diagnostic bundle was captured; automatic capture is a separate 2g slice",
+        reason: "no diagnostic bundle was captured",
       }
       : { state: "present", bundleId: diagnosticBundleId },
     occurredAt: projected.occurredAt,

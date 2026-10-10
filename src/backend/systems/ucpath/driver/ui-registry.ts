@@ -100,35 +100,14 @@ const NAME_DISPLAY_PORT_KEY = "personOrgSummary.personNameValue()";
 const ASSIGNMENTS_GRID_PORT_KEY = "personOrgSummary.body()";
 const RETURN_PORT_KEY = "personOrgSummary.returnToSearchButton()";
 
-/**
- * The SS Smart HR receipt surface (ref write-safety §13 OQ2). Its own evidence pair and
- * its own `verifiedAt` — the person-org family was verified 2026-08-02 and
- * must not inherit this probe's date, nor this family that one's.
- */
+
 const SS_SMART_HR_FIXTURE_EVIDENCE = "docs/rebuild/evidence/selectors/ucpath/ss-smart-hr.fixture.json";
 const SS_SMART_HR_LIVE_EVIDENCE = "docs/rebuild/evidence/selectors/ucpath/ss-smart-hr.live.json";
 const RECEIPT_SCENARIO = "ui/ucpath-ss-smart-hr-transaction-receipt";
 const RECEIPT_PORT_KEY = "ssSmartHRTransactions.transactionResultRow()";
 const APPROVAL_STATUS_PORT_KEY = "ssSmartHRTransactions.approvalStatusSelect()";
 
-/**
- * The Smart HR TERMINATION family (separations chunk 4, D206) — its own
- * evidence pair and its own `verifiedAt`, because the person-org family was
- * verified 2026-08-02 and the receipt family 2026-08-04, and a family must not
- * inherit another's date.
- *
- * Every count below was observed on **2026-08-14** against production, walking
- * a real `UC_VOL_TERM` wizard to Page C for an ACTIVE employee and then
- * abandoning it by navigation. Nothing was submitted.
- *
- * Two controls are deliberately NOT published. `smartHR.errorBanner()` matched
- * **zero** nodes on a clean Page B and Page C, and the manifest's contract is
- * exactly-one — an element nobody can prove resolves is not evidence. And
- * `smartHR.confirmationOkButton()` only exists AFTER `Save and Submit` is
- * clicked, which this program has not done and will not do outside §4f2's
- * operator-named canary. Both stay driver-internal until they can be observed
- * honestly.
- */
+
 const SMART_HR_FIXTURE_EVIDENCE = "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.fixture.json";
 const SMART_HR_LIVE_EVIDENCE = "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.live.json";
 const WIZARD_SCENARIO = "ui/ucpath-smart-hr-termination-wizard";
@@ -145,7 +124,7 @@ const OVERRIDE_LDW_PORT_KEY = "termination.overrideLastDateWorkedCheckbox()";
 const LAST_DATE_WORKED_PORT_KEY = "termination.lastDateWorkedInput()";
 const INITIATOR_COMMENTS_PORT_KEY = "comments.commentsTextarea()";
 const TRANSACTION_COMMENTS_PORT_KEY = "comments.initiatorCommentsTextarea()";
-/** ONE legacy key, TWO live elements — see the contextual binding below. */
+// One source key binds two distinct controls; retain contextual binding.
 const SS_EMPLID_PORT_KEY = "ssSmartHRTransactions.emplIdInput()";
 const SS_SEARCH_BUTTON_PORT_KEY = "ssSmartHRTransactions.searchButton()";
 
@@ -156,24 +135,13 @@ const LegacySelectorProvenanceSchema = z.strictObject({
   key: z.string().regex(/^[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*\(\)$/),
   sourceLine: z.number().int().positive(),
   blob: GitBlobSchema,
-  /**
-   * When the rebuild does NOT copy the legacy recipe verbatim, the reason is
-   * recorded here and reviewed — the same rule Kuali's registry carries. A
-   * silent narrowing would be indistinguishable from a transcription error.
-   */
+
   narrowedFromLegacy: z.string().min(1).optional(),
 });
 const UiPortContextSchema = z.enum([
   "search-results-view-toggle",
   "employment-instances-view-toggle",
-  /**
-   * `ssSmartHRTransactions.emplIdInput()` names TWO different live controls.
-   * Legacy fills the Smart HR wizard's Page-B Empl ID with the SS Smart HR
-   * SEARCH form's key (`legacy:src/workflows/separations/steps/ucpath-transaction.ts:126`),
-   * and live they are `#HR_TBH_WRK_EMPLID_PROMPT2` and `#UC_SS_TBH_DVW_EMPLID`
-   * respectively. The port row binds both by context rather than picking one
-   * and calling the other a fallback.
-   */
+  // The shared Empl ID source key binds Page B and the SS Smart HR search; scope each control separately.
   "smart-hr-wizard-details",
   "ss-smart-hr-search",
 ]);
@@ -344,7 +312,7 @@ function selectorProvenance(key: string, sourceLine: number, narrowedFromLegacy?
   };
 }
 
-/** The SS Smart HR receipt family's own verification stamp (2026-08-04). */
+
 function receiptVerification(legacyKey: string) {
   return {
     verifiedAt: DateOnlySchema.parse("2026-08-04"),
@@ -355,7 +323,7 @@ function receiptVerification(legacyKey: string) {
   };
 }
 
-/** The Smart HR termination family's own verification stamp (2026-08-14). */
+
 function terminationVerification(scenario: string, legacyKey: string) {
   return {
     verifiedAt: DateOnlySchema.parse("2026-08-14"),
@@ -450,16 +418,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       sensitivity: "hr",
       valueType: "none",
       scope: "page",
-      // Legacy's exact accessible-name recipe (legacy 793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
-      // src/systems/ucpath/selectors.ts:684) matches ZERO live: the step is a
-      // `div[role=link]` whose label span ("Step Label") is visually suppressed
-      // but still part of the computed name, so the page renders it as
-      // "Step LabelPerson Organizational Summary". The structural anchor below
-      // is PeopleSoft's own nav-collection attribute carrying the exact label.
-      // verified 2026-08-04Z (2026-08-03 local) — matched exactly one element
-      // live, and drove a real EID 10873698 read to its detail page. A miss
-      // stays a loud `waitFor` failure; there is no second candidate to fall
-      // back to.
+      // The hidden "Step Label" span is part of the accessible name, so match by structure.
       locator: { kind: "css", selector: "[role=\"link\"][steplabel=\"Person Organizational Summary\"]" },
       requiredStates: [],
       verification: verification(SEARCH_SCENARIO, NAVIGATION_PORT_KEY),
@@ -477,8 +436,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       sensitivity: "hr",
       valueType: "eid",
       scope: "content-frame",
-      // Legacy's exact accessible-name recipe now matches zero because PeopleSoft appends
-      // "begins with". The exact stable id below matched once live on 2026-08-02.
+      // PeopleSoft appends begins with to the accessible name; bind the stable field ID.
       locator: { kind: "css", selector: "#UC_ORG_SUM_VW_EMPLID" },
       requiredStates: [UCPATH_PERSON_ORG_SEARCH_READY],
       verification: verification(SEARCH_SCENARIO, INPUT_PORT_KEY),
@@ -513,7 +471,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       sensitivity: "hr",
       valueType: "text",
       scope: "content-frame",
-      // The legacy exact "Name" accessible name also matches zero in the current render.
+      // The Name field accessible name includes its search operator; bind its stable structure.
       locator: { kind: "css", selector: "#UC_ORG_SUM_VW_NAME_DISPLAY" },
       requiredStates: [UCPATH_PERSON_ORG_SEARCH_READY],
       verification: verification(SEARCH_SCENARIO, GIVEN_NAME_PORT_KEY),
@@ -541,16 +499,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       id: UCPATH_PERSON_ORG_NO_RESULTS_STATUS,
       system: "ucpath",
       screen: UCPATH_PERSON_ORG_SEARCH_SCREEN,
-      /**
-       * D213 — this is PeopleSoft's search-CRITERIA banner. It renders on every
-       * result LIST page, stating the count and the criteria: live
-       * `No matching values were found`, and live
-       * `4 results   -   Last Name "Ezeunala"   Name "Chim…"` above a populated
-       * grid. Only the first text means nobody matched, and the element id keeps
-       * its shipped `no-results-status` name (durable catalogs and selector
-       * provenance bind it) while the label stops claiming a fact the live page
-       * disproves. `classifyPersonOrgSearchOutcome` owns the reading.
-       */
+      // PeopleSoft's criteria banner describes the search, not a resolved person.
       label: "Person Org search criteria banner",
       searchTerms: ["ucpath person org search criteria result count banner"],
       role: "status",
@@ -651,8 +600,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       sensitivity: "hr",
       valueType: "text",
       scope: "content-frame",
-      // The unverified body scan is intentionally not ported. Current live detail pages expose
-      // the name at this exact, fixture-pinned primary id.
+
       locator: { kind: "css", selector: "#PERSON_NAME_NAME" },
       requiredStates: [UCPATH_PERSON_ORG_DETAIL_READY],
       verification: verification(DISPLAY_SCENARIO, NAME_DISPLAY_PORT_KEY),
@@ -670,8 +618,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       sensitivity: "hr",
       valueType: "rows",
       scope: "content-frame",
-      // Legacy scanned every table under body(); the rebuild narrows that proven operation to
-      // the exact live assignment-grid id so extraction failure cannot look like an empty result.
+      // Scope assignments to the exact grid; a body-wide scan could turn extraction loss into an empty answer.
       locator: { kind: "css", selector: "table[id^=\"tdgbrPER_ASGN_EMP_VW$\"]" },
       requiredStates: [UCPATH_PERSON_ORG_DETAIL_READY],
       verification: verification(DISPLAY_SCENARIO, ASSIGNMENTS_GRID_PORT_KEY),
@@ -726,22 +673,9 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       effect: "observe",
       sensitivity: "restricted",
       valueType: "text",
-      // `scope: "page"`, NOT `"content-frame"`. Reached by its keyed deep link
-      // the SS Smart HR component renders with NO iframe at all — live
-      // 2026-08-04 the page carried zero `<iframe>` elements and no
-      // `#main_target_win0`. Legacy routes every UCPath read through
-      // `getContentFrame(page)`, which on this route resolves to nothing.
+      // SS Smart HR renders top-level without a content iframe.
       scope: "page",
-      // PeopleSoft's own `RECORD_FIELD` id. There is NO role+name anchor to
-      // use: the value renders as a bare `<span>` with no programmatic
-      // relationship to its "Transaction ID" label, so the accessibility tree
-      // exposes two adjacent unnamed generics. Verified live 2026-08-04
-      // against three transactions spanning three templates and three
-      // approval statuses (T002125030 HIR/Approved, T002204014 REH/Denied,
-      // T002204964 XFR/Pending): `querySelectorAll` matched EXACTLY ONE node
-      // each time. The only other `T…`-bearing leaf on the page is the
-      // approval-strip `<td>` ("Transaction: T…, ID: …, Effdt: …, Unit: …"),
-      // which is why legacy's body-text scrape is unsafe here.
+      // The receipt is a bare span without a role/name anchor; use its record-field ID.
       locator: { kind: "css", selector: "#UC_SS_TRANSACT_UC_TRANSACT_ID" },
       requiredStates: [UCPATH_SS_SMART_HR_TRANSACTION_READY],
       verification: receiptVerification(RECEIPT_PORT_KEY),
@@ -768,9 +702,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       sensitivity: "restricted",
       valueType: "text",
       scope: "page",
-      // Same shape and the same live proof as the receipt field: exactly one
-      // node on each of the three probed transactions, rendering "Approved",
-      // "Denied", and "Pending" respectively.
+
       locator: { kind: "css", selector: "#UC_SS_TRANSACT_APPR_STATUS" },
       requiredStates: [UCPATH_SS_SMART_HR_TRANSACTION_READY],
       verification: receiptVerification(APPROVAL_STATUS_PORT_KEY),
@@ -795,9 +727,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       sensitivity: "restricted",
       valueType: "text",
       scope: "page",
-      // Live 2026-08-14: exactly one node. Legacy's accessible-name recipe runs
-      // inside `getContentFrame`, and this wizard renders ZERO iframes, so the
-      // frame funnel resolves to nothing — the stable id is the port.
+
       locator: { kind: "css", selector: "#HR_TBH_WRK_TBH_TMPL_ID" },
       requiredStates: [UCPATH_SMART_HR_SETUP_READY],
       verification: terminationVerification(WIZARD_SCENARIO, TEMPLATE_PORT_KEY),
@@ -821,7 +751,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       sensitivity: "restricted",
       valueType: "text",
       scope: "page",
-      // Live 2026-08-14: exactly one node, MM/DD/YYYY.
+
       locator: { kind: "css", selector: "#UC_HR_TBH_WRK_TRANSACTION_DATE" },
       requiredStates: [UCPATH_SMART_HR_SETUP_READY],
       verification: terminationVerification(WIZARD_SCENARIO, TRANSACTION_DATE_PORT_KEY),
@@ -846,9 +776,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       sensitivity: "restricted",
       valueType: "none",
       scope: "page",
-      // `effect: "navigate"` and NOT a commit: the 2026-08-13/14 live checks
-      // proved Create Transaction persists nothing — the Transactions in
-      // Progress grid is unchanged afterwards and Transaction ID reads "NEW".
+      // Create Transaction opens an unsaved wizard; it creates no durable transaction.
       locator: { kind: "css", selector: "#HR_TBH_WRK_TBH_ADD" },
       requiredStates: [UCPATH_SMART_HR_SETUP_READY],
       verification: terminationVerification(WIZARD_SCENARIO, CREATE_TRANSACTION_PORT_KEY),
@@ -870,10 +798,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       sensitivity: "restricted",
       valueType: "none",
       scope: "page",
-      // The pending sweep's ONE external write. `input#HR_TBH_WRK_DELETE_BTN`
-      // is a stable id legacy has no key for — legacy clicks it by accessible
-      // name — and it was live-verified 2026-08-14 as exactly one node on the
-      // same page that carries the template form.
+
       locator: { kind: "css", selector: "#HR_TBH_WRK_DELETE_BTN" },
       requiredStates: [UCPATH_SMART_HR_SETUP_READY],
       verification: terminationVerification(SWEEP_SCENARIO, DELETE_SELECTED_PORT_KEY),
@@ -896,9 +821,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       sensitivity: "restricted",
       valueType: "eid",
       scope: "page",
-      // Blur triggers UCPath's own lookup: 813 ms live for an ACTIVE employee.
-      // An EID with no terminable employment record resolves NOTHING — see the
-      // details-ready state and separations.md §9.8.
+      // Blurring Empl ID triggers UCPath lookup; no terminable job renders no resolved-person anchor.
       locator: { kind: "css", selector: "#HR_TBH_WRK_EMPLID_PROMPT2" },
       requiredStates: [UCPATH_SMART_HR_DETAILS_READY],
       verification: terminationVerification(WIZARD_SCENARIO, SS_EMPLID_PORT_KEY),
@@ -923,10 +846,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       sensitivity: "restricted",
       valueType: "text",
       scope: "page",
-      // A <select> whose options are `value=CODE, text=LABEL` (live: 18 for
-      // UC_VOL_TERM, 26 for UC_INVOL_TERM, both captured whole in §9.8). The
-      // driver resolves a reason by value OR label and refuses unless exactly
-      // one matches.
+      // Dropdown values are reason codes and option text is the label; verify both before staging.
       locator: { kind: "css", selector: "#HR_TBH_WRK_ACTION_REASON" },
       requiredStates: [UCPATH_SMART_HR_DETAILS_READY],
       verification: terminationVerification(WIZARD_SCENARIO, REASON_CODE_PORT_KEY),
@@ -971,11 +891,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       sensitivity: "restricted",
       valueType: "text",
       scope: "page",
-      // `input[type=checkbox]` is LOAD-BEARING, ported verbatim from legacy's
-      // 2026-07-28 finding: the editable form renders a hidden `$chk$`
-      // companion sharing the prefix, so a bare `id^=` matched 2 nodes and
-      // every read threw a strict-mode violation. Live 2026-08-14: exactly one,
-      // id `HR_TBH_SCR_WRK_TBH_CHK2$3`, and UCPath renders it ALREADY CHECKED.
+      // The editable form includes a hidden input with the same ID; constrain the override to a checkbox.
       locator: {
         kind: "css",
         selector: "input[type=\"checkbox\"][id^=\"HR_TBH_SCR_WRK_TBH_CHK2$\"]",
@@ -996,11 +912,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       sensitivity: "restricted",
       valueType: "text",
       scope: "page",
-      // Deliberately input-specific so a read-only or reused transaction fails
-      // closed instead of masquerading as an editable form (legacy's rule,
-      // ported). Live 2026-08-14: exactly one, `HR_TBH_SCR_WRK_TBH_DATE$3`,
-      // PRE-FILLED by UCPath with (transaction date − 1 day) — a default, not
-      // the operator's answer, which is why prepare writes it and reads it back.
+      // Require the editable input so a read-only transaction cannot masquerade as a staging page.
       locator: { kind: "css", selector: "input[id^=\"HR_TBH_SCR_WRK_TBH_DATE$\"]" },
       requiredStates: [UCPATH_SMART_HR_INFORMATION_READY],
       verification: terminationVerification(WIZARD_SCENARIO, LAST_DATE_WORKED_PORT_KEY),
@@ -1064,10 +976,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       sensitivity: "restricted",
       valueType: "none",
       scope: "page",
-      // THE control that files a real termination. Verified live only by
-      // RESOLUTION — exactly one node on a fully staged Page C — and never
-      // clicked: the controlled real commit waits on §4f2's operator-named
-      // canary. Legacy's `.first()` is dropped: the live page has exactly one.
+
       locator: { kind: "css", selector: "#HR_TBH_WRK_TBH_SAVE" },
       requiredStates: [UCPATH_SMART_HR_INFORMATION_READY],
       verification: terminationVerification(WIZARD_SCENARIO, SAVE_SUBMIT_PORT_KEY),
@@ -1091,10 +1000,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       sensitivity: "restricted",
       valueType: "eid",
       scope: "page",
-      // The 2026-08-04 live probe already recorded WHY legacy's recipe fails
-      // here (PeopleSoft folds the operator dropdown into the accessible name,
-      // so it reads "Empl ID begins with"); that probe listed this key as a
-      // rejected candidate with no home. It now has one.
+      // PeopleSoft folds the search operator into the Empl ID accessible name; use its stable structural ID.
       locator: { kind: "css", selector: "#UC_SS_TBH_DVW_EMPLID" },
       requiredStates: [UCPATH_SS_SMART_HR_SEARCH_READY],
       verification: terminationVerification(SS_SEARCH_SCENARIO, SS_EMPLID_PORT_KEY),
@@ -1187,20 +1093,12 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       label: "SS Smart HR transaction detail ready",
       searchTerms: ["ucpath ss smart hr transaction detail ready state"],
       sensitivity: "restricted",
-      // BOTH fields are required evidence, and that is the whole point of this
-      // state. An unknown transaction id does not error on this route — UCPath
-      // silently renders the ordinary Find-an-Existing-Value search form with
-      // no message, no marker, and a URL identical to the one that worked
-      // (live 2026-08-04, `T009999999`). "The page loaded" is therefore not
-      // evidence of anything; the receipt field's presence is. Requiring the
-      // status field alongside it also makes it impossible to reach a receipt
-      // read without the outcome that qualifies it.
+      // Unknown transaction IDs render the ordinary search page; require number and status detail anchors.
       evidence: [
         { kind: "visible", element: UCPATH_SS_SMART_HR_RECEIPT_DISPLAY },
         { kind: "visible", element: UCPATH_SS_SMART_HR_APPROVAL_STATUS_DISPLAY },
       ],
-      // Live 2026-08-04: a cold keyed deep link rendered the detail in ~2s.
-      // 30s is the same budget every other UCPath state carries.
+
       timeoutMs: 30_000,
       verification: receiptVerification(RECEIPT_PORT_KEY),
     },
@@ -1238,13 +1136,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       verification: terminationVerification(WIZARD_SCENARIO, SAVE_SUBMIT_PORT_KEY),
     },
     {
-      /**
-       * The page the ref write-safety beat-⑤ fence binds to. Its evidence is the Last
-       * Date Worked INPUT rather than the Save button, because the input only
-       * renders on an editable transaction — a read-only or already-submitted
-       * one shows the span instead — so this state cannot be satisfied by a
-       * page that merely looks like the wizard.
-       */
+      // Fence against the Last Date Worked input; it exists only on the editable staged transaction.
       id: UCPATH_SMART_HR_TERMINATION_STAGED,
       system: "ucpath",
       screen: UCPATH_SMART_HR_INFORMATION_SCREEN,
@@ -1301,9 +1193,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
       sensitivity: "restricted",
       valueType: "text",
       read: { kind: "element-text", element: UCPATH_SS_SMART_HR_RECEIPT_DISPLAY, valueType: "text" },
-      // `completion` and nothing else. This is NOT a subject observation: the
-      // detail page carries the person only inside the approval strip's
-      // free text, so binding a subject from here would be a parse, not a read.
+      // Approval-strip text is not subject proof; this observation reports completion only.
       authoritativeFor: ["completion"],
       verification: receiptVerification(RECEIPT_PORT_KEY),
     },
@@ -1320,9 +1210,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
         element: UCPATH_SS_SMART_HR_APPROVAL_STATUS_DISPLAY,
         valueType: "text",
       },
-      // The second half of the receipt pair. A `T…` exists for Denied, Error,
-      // and Pushed Back transactions exactly as it does for Approved ones, so
-      // the number alone can never carry the completion claim.
+      // Denied and pushed-back transactions also have T IDs; verify status alongside the number.
       authoritativeFor: ["completion"],
       verification: receiptVerification(APPROVAL_STATUS_PORT_KEY),
     },

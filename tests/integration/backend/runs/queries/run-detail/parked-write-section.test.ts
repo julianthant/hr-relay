@@ -1,20 +1,4 @@
-/**
- * The parked-write run-detail section (ref write-safety §4.1, ref frontend-backend-integration §3.3/§8.5).
- *
- * A `parked-write` run is the one lifecycle the kernel refuses generic retry
- * for BY NAME, so until this section existed the operator's only rendering of
- * it was a generic `blocked` row with two implemented, tested and unreachable
- * resolutions behind it. Everything asserted here is a durable fact re-read
- * from write-safety authority at request time.
- *
- * The kernel's own refusals — stale run version, stale intent generation, a
- * non-parked run — are pinned by `parked-write-round-trip.test.ts` against a
- * real `AuthorityDatabase`; this suite pins the half that had no coverage at
- * all: that the section is served exactly when the run is parked, that its
- * served descriptors carry a target the command schema accepts unchanged, and
- * that every way authority can disagree with itself here FAILS LOUD rather
- * than rendering an empty panel over a real HR write.
- */
+
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { CommandRequestSchema } from "../../../../../../src/rules/commands/commands.js";
@@ -108,12 +92,7 @@ const PARKED_LIFECYCLE = {
   message: PARK_MESSAGE,
 } as const;
 
-/**
- * D245's descriptor view: what the composition root derives from a workflow's
- * transaction nodes. `resolve: () => undefined` is the default here on purpose
- * — the section must render, and the confirmed-ABSENT arm must stay reachable,
- * for a run whose workflow this build no longer registers.
- */
+
 function depsOf(w: DashboardWorld, writeContracts?: RunDetailWriteContractView[]): RunDetailQueryDeps {
   return { runReader: w.runReader,
     stateRoot: w.stateRoot,
@@ -217,9 +196,7 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
     seed(w);
     const serialized = JSON.stringify(parkedSection(w));
 
-    // The permanent write key embeds the person's EID; only its digest may be
-    // served. Even a legacy authority message that retained the key is replaced
-    // by a typed, digest-bound projection at this boundary.
+    // Serve only a permanent-key digest; the natural key contains person identity.
     assert.ok(!serialized.includes(IDEMPOTENCY_KEY));
     assert.ok(!serialized.includes("10001573"));
     // The bounded display suffix is the ONLY person-derived text, and the
@@ -228,13 +205,7 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
     assert.ok(!serialized.includes("ucpathPassword"));
   });
 
-  /**
-   * D245 — the record this closes: `resolve-write-present` was refused by every
-   * surface because the wire served neither the proof's schema hash nor its
-   * shape. Every arm here answers with a REASON rather than an empty form; a
-   * fabricated hash to make a button clickable is the constant this program
-   * exists to refuse.
-   */
+
   describe("the served proof contract", () => {
     it("serves the composition root's derived hash and field list verbatim", () => {
       const w = world();
@@ -244,9 +215,7 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
       if (contract.state !== "served") throw new Error("unreachable");
       assert.equal(contract.commitTaskId, "ucpath/terminate-person");
       assert.equal(contract.completionKind, "save-verify");
-      // The EXACT value `resolvePresent` compares `proof.schemaHash` against —
-      // re-derived nowhere, so the surface cannot echo back a schema this build
-      // does not have.
+
       assert.equal(contract.schemaHash, "c".repeat(64));
       assert.deepEqual(contract.fields.map((field) => field.path), ["kind", "transactionId"]);
     });
@@ -259,8 +228,7 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
       if (contract.state !== "unavailable") throw new Error("unreachable");
       assert.match(contract.reason, /person-lookup/);
       assert.match(contract.reason, /no registered descriptor/);
-      // The ABSENT arm is untouched: a build that cannot describe the proof can
-      // still record what the operator saw was NOT there.
+
       assert.ok(parkedSection(w).actions.some((action) =>
         action.kind === "command" && action.command === "resolve-write-absent"));
     });
@@ -320,9 +288,7 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
     assert.ok(action !== undefined && action.kind === "command");
     if (action.kind !== "command" || action.writeTarget === undefined) throw new Error("unreachable");
 
-    // The route parses exactly this schema before the kernel sees anything, so
-    // a descriptor that cannot round-trip through it describes a control that
-    // could never be sent.
+
     const command = CommandRequestSchema.parse({
       commandId: uuidOf(31),
       requestedAt: NOW,
@@ -398,14 +364,7 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
     assert.throws(() => parkedSection(w), /but that intent belongs to run/);
   });
 
-  /**
-   * The parity corpus's adapter #1 AUTHORS this section — it holds no authority
-   * rows to derive one from — so its two resolution descriptors are a COPY of
-   * the ones this query builds. A copy nobody compares is a reference that
-   * documents last month's copy, so this compares them: everything but the
-   * identities the two adapters legitimately differ on (the intent id, the run
-   * id, the run version, and the ids interpolated into the confirm body).
-   */
+
   it("pins the parity fixture's safe message and resolution descriptors to this query", () => {
     const w = world();
     seed(w);
@@ -415,9 +374,7 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
       JSON.parse(
         JSON.stringify(payload.actions)
           .replaceAll(payload.writeIntentId, "<intent>")
-          // The version each adapter's own run row is at; the SHAPE is what is
-          // being compared, and a fixture pinned to `4` would be pinned to this
-          // suite's seed rather than to the server's copy.
+          // Compare adapter shapes at their own row versions; pinning one version would confuse fixtures with schema.
           .replaceAll(/"expectedVersion":\d+/gu, '"expectedVersion":0'),
       ) as unknown;
 
@@ -438,9 +395,7 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
     seed(w);
     assert.equal(parkedSection(w).generation, 1);
 
-    // The same query, the same projection row, a moved authority row: the
-    // section must report the CHANGE, because a resolution built from a cached
-    // generation would settle a write nobody is looking at.
+
     w.authority.putWriteIntent(parkedIntentOf({ generation: 2 }));
     assert.throws(() => parkedSection(w), /is at generation 2/);
 

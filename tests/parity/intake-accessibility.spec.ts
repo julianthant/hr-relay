@@ -1,11 +1,7 @@
 
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { createHash } from "node:crypto";
-/**
- * Intake's rejection editors are interaction states, not parity references.
- * Prove their focus and target contracts through the built bundle without
- * writing into the final single re-freeze's reference corpus.
- */
+
 import { expect,test,type Locator,type Page } from "@playwright/test";
 import { gotoAppState } from "./helpers/app-driver.js";
 import { PARITY_DIST_DIR,ensureParityBundle } from "./helpers/bundle.js";
@@ -67,9 +63,7 @@ test("Fix and Exclude mount one labelled editor and focus its named input", {
   await expect(reason).toHaveAttribute("autocomplete", "off");
 
 
-  // Fix's onClick must close a still-open Exclude editor on the same row
-  // (intake.tsx:869's `setExclusion(null)`) — otherwise both editors could
-  // render for one row at once.
+
   await page.getByRole("button", { name: "Fix cell" }).first().click();
   await expect(exclusion).toHaveCount(0);
   await expect(correction).toBeVisible();
@@ -82,14 +76,7 @@ test("Fix and Exclude mount one labelled editor and focus its named input", {
 test("Exclude remounts its editor and refocuses Reason when the operator switches rows", async ({ page }) => {
   await openReview(page, VIEWPORTS[0]);
 
-  // Fixture note: exactly one rejected row here is Fix-eligible
-  // (cell-coercion/field-schema), so the correction editor's own remount
-  // (intake.tsx:899's `key`) cannot be exercised by a direct switch between
-  // two open correction editors — there is nowhere to switch TO. The
-  // exclusion editor (intake.tsx:939) offers two rows (both
-  // duplicate-identity) that switch directly, non-null to non-null, which is
-  // exactly the case a missing `key` fails to remount: React would reuse the
-  // same input DOM node across rows and `autoFocus` would not refire.
+  // The fixture has one Fix-eligible row; its editor remount cannot switch between eligible rows.
   const table = page.getByRole("table", { name: "Rejected rows" });
   const rowFor = (sourceRow: number): Locator =>
     table.getByRole("row").filter({ has: page.getByText(String(sourceRow), { exact: true }) });
@@ -166,11 +153,7 @@ for (const viewport of VIEWPORTS) {
       expect(proof.overlaps).toBe(0);
     }
 
-    // Assert the NAME before reaching through the locator. A checkbox with no
-    // accessible name is precisely the defect this spec exists to catch, and
-    // `locator.evaluate` on a locator that never matches can only ever report
-    // the test timeout — which says nothing about what is wrong. `toHaveCount`
-    // fails at the expect deadline, naming the missing name.
+    // Assert the accessible name before reaching into the locator; an unnamed checkbox must fail here.
     const review = page.getByRole("checkbox", { name: /^I have read all \d+ rejected rows$/u });
     await expect(
       review,
@@ -196,9 +179,7 @@ for (const viewport of VIEWPORTS) {
     expect(labelProof.width).toBeGreaterThanOrEqual(44);
     expect(labelProof.ownsCorner).toBe(true);
 
-    // Geometry alone is not a hit target. The enlarged label is only worth
-    // anything if pressing its FAR CORNER — the part that is target and
-    // nothing else — actually acknowledges the rejections.
+    // Click the label corner to prove the enlarged geometry is a real hit target.
     await expect(review).toHaveAttribute("aria-checked", "false");
     await page.mouse.click(labelProof.cornerX, labelProof.cornerY);
     await expect(review).toHaveAttribute("aria-checked", "true");

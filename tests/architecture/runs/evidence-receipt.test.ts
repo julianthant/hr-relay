@@ -1,24 +1,4 @@
-/**
- * `evidence-receipt` — ref guards-and-tests §3.10's guard, activated with the D82 receipt
- * builder (D140/D141).
- *
- * Its spec has two halves and both are executed here:
- *
- * 1. **Strictness.** Every terminal run produces a STRICT receipt carrying the
- *    input/config/graph fingerprints, node outcomes, provenance,
- *    proof/failure refs, exclusions, and an explicit confidence. `done`
- *    requires all mandatory evidence and no unresolved write/subject/storage
- *    condition — proven by violating fixtures, not only by a happy path.
- * 2. **Classified values.** Current receipts retain complete supplied values
- *    and their original declared classifications. Undeclared leaves and malformed
- *    declarations refuse; values not supplied by evidence are never invented.
- *
- * The classification-coverage arm is what keeps half 2 honest as the program
- * grows: it walks EVERY registered descriptor's canonical-input samples and
- * every used contract's sealed `example`, and requires a declared
- * classification for every leaf. A new contract lands unclassified and this
- * guard goes red before any receipt could quietly drop its fields.
- */
+
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -93,11 +73,7 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-/**
- * The read-only exit run. It is the receipt that exercises the REUSE lane: a
- * commit contract declares no freshness budget, so a write-only graph
- * truthfully carries no reuse row and cannot stand in for this.
- */
+
 function personLookupReceipt() {
   const root = mkdtempSync(join(tmpdir(), "hrauto-receipt-guard-"));
   roots.push(root);
@@ -141,10 +117,7 @@ describe("evidence receipt — strictness", () => {
 
   it("carries the graph, config, and input fingerprints a run is bound to", () => {
     const receipt = kualiReceipt();
-    // D199: the closure the RUN executed under, read from its own envelope. It
-    // equals the current build's here only because the fixture run was planned
-    // under this build — a receipt that takes `descriptor.contractFingerprint`
-    // instead strands every settled run on the next unrelated edit.
+
     assert.equal(
       receipt.descriptorFingerprint,
       RunRecordSchema.parse(kualiReceiptEvidence().run).envelope.contractFingerprint,
@@ -268,16 +241,7 @@ describe("evidence receipt — strictness", () => {
     assert.equal(JSON.stringify(kualiReceipt()), JSON.stringify(kualiReceipt()));
   });
 
-  /**
-   * D204 — ref write-safety §14.6 risk 6, closed on the evidence side.
-   *
-   * A gate has no checkpoint and never will, so a receipt derived from
-   * checkpoints alone listed the ALWAYS-GATE node `unknown` and dropped the one
-   * fact the whole gate exists to record: which human decided, and when. The
-   * approver is authority's own column on the `gate_results` row — never a
-   * value the resolving payload claimed — so the assertions below read it off
-   * the stored row, not out of the result value.
-   */
+
   it("carries a resolved gate's decision, approver and instant instead of `unknown`", () => {
     const evidence = identityGateReceiptEvidence();
     const receipt = buildRunEvidenceReceipt({
@@ -356,25 +320,7 @@ describe("evidence receipt — strictness", () => {
     }), /no declared arm matches it|refusing to describe a human decision/);
   });
 
-  /**
-   * D204's OTHER refusal, which had no negative control at all.
-   *
-   * The unlisted-ARM arm above is pinned; the undeclared `(workflow, gate)` PAIR
-   * was not, and it is the one that guards the whole table's reason for
-   * existing. `gateDecisionFor` is the only route from a stored row to a
-   * `DecisionEvidence.outcome` — the positive test below walks every registered
-   * gate node through it — so if this refusal ever softened into a default, a
-   * gate somebody forgot to declare would land on an operator-facing receipt as
-   * whatever the default said a human decided.
-   *
-   * It cannot be reached through `buildRunEvidenceReceipt` against a registered
-   * descriptor, and that is the point rather than a gap: every registered gate
-   * node IS declared (the positive test proves it in one direction and the
-   * orphan test in the other), and `evidence-graph` refuses a row whose node
-   * left the graph before any declaration is looked up. The undeclared pair is
-   * reachable by asking directly — which is exactly what a NEW gate node's first
-   * derivation does.
-   */
+
   it("refuses an undeclared (workflow, gate) pair by name, with no default arm", () => {
     const declaredWorkflow = String(separationsIdentityCheckDescriptor.id);
 
@@ -387,9 +333,7 @@ describe("evidence receipt — strictness", () => {
         const message = error instanceof Error ? error.message : String(error);
         assert.match(message, /no declared gate decision for /u, message);
         assert.match(message, /second-approval/u, message);
-        // The refusal names where to fix it. A declaration is a reviewed entry,
-        // so an error that only said "unknown gate" would send the next author
-        // looking for a bug instead of writing one.
+
         assert.match(message, /src\/domain\/trust\/gate-decisions\.ts/u, message);
         return true;
       },
@@ -411,13 +355,7 @@ describe("evidence receipt — strictness", () => {
     );
   });
 
-  /**
-   * D199. The purity above is worth nothing if it only holds within one commit:
-   * a receipt is read months later, and the descriptor's ~31-file closure moves
-   * constantly. `receipt-derivation-binding.test.ts` owns the full check table;
-   * this arm keeps the guard from silently re-pinning the old, closure-bound
-   * behaviour.
-   */
+
   it("survives a moved contract closure, and refuses a moved semantic surface", () => {
     const evidence = kualiReceiptEvidence();
     const run = RunRecordSchema.parse(evidence.run);
@@ -557,11 +495,7 @@ describe("evidence receipt — declared classification coverage", () => {
     }
   });
 
-  /**
-   * D204. A gate that reaches the graph without a declaration would derive a
-   * receipt that says `unknown` about a decision authority holds in full —
-   * which is the exact defect this decision closed, re-introduced by omission.
-   */
+
   it("declares a decision and a classification for every registered gate node", () => {
     let gateNodes = 0;
     for (const descriptor of RECEIPT_DESCRIPTORS) {
@@ -597,22 +531,7 @@ describe("evidence receipt — declared classification coverage", () => {
       );
     }
     const workflowIds = new Set(RECEIPT_DESCRIPTORS.map(({ id }) => String(id)));
-    /*
-     * A task-output scope is an orphan when it names a task this RUNTIME cannot
-     * execute — which is the build manifest's task set, not the narrower set
-     * today's descriptors happen to compose.
-     *
-     * D184's rule (a declaration nobody can produce is one nobody can act on)
-     * is what this guards, and D270 is what widened it: the observed-log
-     * emission redacts by declaration for EVERY task the executor runs, and the
-     * executor runs whatever a composed descriptor names — including the
-     * executor's own fixture descriptors. The ordinary executor fixture borrows
-     * a manifest-known id because it resolves the production fingerprint; the
-     * transaction fixture injects a fixed fingerprint and exports the exact ids
-     * of its sealed task contracts. A registered task that no descriptor
-     * composes YET is exactly the case the narrower rule refused and the wider
-     * one still catches when the task is deleted.
-     */
+
     const descriptorTaskIds = new Set(RECEIPT_DESCRIPTORS.flatMap((descriptor) =>
       workflowProjections(descriptor).contracts.map((contract) => String(contract.id))));
     const taskIds = new Set([
@@ -620,12 +539,7 @@ describe("evidence receipt — declared classification coverage", () => {
       ...BUILD_MANIFEST.tasks.map(({ id }) => String(id)),
       ...WRITE_FIXTURE_TASK_IDS.map(String),
     ]);
-    /*
-     * A write-proof scope is an orphan unless its task is a COMMIT contract —
-     * the completion proof is the commit contract's own declaration, so a
-     * write-proof declaration for a read task is a table row no derivation
-     * can ever reach (ledger 2 D16–D22).
-     */
+
     const commitTaskIds = new Set([
       ...RECEIPT_DESCRIPTORS.flatMap((descriptor) =>
         descriptor.nodes.flatMap((node) =>

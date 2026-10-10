@@ -11,16 +11,10 @@ import { httpError, schemaError } from "../errors.js";
 
 export interface SettingsQueries {
 
-  /**
-   * D274 item 6 — Settings' System hosts + Workflow capabilities, read-only.
-   *
-   * There is deliberately no mutating counterpart on this interface, for the
-   * same reason `workflowExplorer` has none: the settings WRITE family is
-   * deferred (doc 04), so the surface cannot offer what the wire will not take.
-   */
+  /** Settings' System hosts + Workflow capabilities, read-only. */
   settingsFacts(): Promise<SettingsFactsWire>;
 
-  /** DCC3: the closed server-owned editable leaves with current revision and provenance. */
+  /** The closed server-owned editable leaves with current revision and provenance. */
   editableSettings(): Promise<EditableSettingsWire>;
   storageRelocationPlans(): Promise<StorageRelocationPlanView>;
   pickSettingsPath(request: NativePathPickerRequest): Promise<NativePathPickerResponse>;

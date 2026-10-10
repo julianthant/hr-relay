@@ -1,7 +1,5 @@
-/**
- * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
- * src/dashboard/components/dev/rebuild-demo/ds/primitives-status.tsx
- */
+/** Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc
+ * src/dashboard/components/dev/rebuild-demo/ds/primitives-status.tsx */
 import type { ComponentType, SVGProps } from "react";
 import {
   Ban,
@@ -20,29 +18,8 @@ import { dsClip, dsIcon, dsRadius, dsText } from "../theme/tokens.js";
 import { DISPLAY_STATUS_LABELS } from "../../../models/dashboard/status-vocabulary.js";
 import type { displayStatusOf } from "../../../models/dashboard/status-vocabulary.js";
 
-/**
- * The shared queue status vocabulary.
- *
- * These values are shared across the product: the queue, the rail
- * badges, the status bar, the notifications inbox, the archive and every
- * receipt all speak this vocabulary. Getting them distinguishable *at a glance
- * in a list of eighty rows* is the single highest-leverage visual decision in
- * the rebuild, so each status is separated on FOUR independent channels:
- *
- *   1. HUE          — amber / red / violet / blue / slate / green / neutral
- *   2. EMPHASIS     — solid · dashed · tinted · outline · ghost
- *   3. ICON         — a distinct silhouette per status
- *   4. TEXT         — the label itself, always present, never abbreviated
- *
- * Two statuses share the SOLID fill shape — `waiting` and `failed` stay the
- * loudest (amber / red). `verifiedDone` uses the same solid pill shape in
- * green with the word only (no icon, no age), so Done reads finished without
- * looking like a demand. Most rows in a healthy day are done; the quieter hue
- * is what lets them recede beside Waiting on you.
- *
- * Colour never carries meaning alone — an operator with a red/green deficiency
- * still reads emphasis tier, icon shape and the label.
- */
+/** The shared queue status vocabulary.
+ * These values are shared across the product: the queue, the rail */
 
 export type DsStatus = ReturnType<typeof displayStatusOf>;
 
@@ -50,23 +27,10 @@ export type DsStatus = ReturnType<typeof displayStatusOf>;
 export type DsStatusTier = "solid" | "dashed" | "tinted" | "outline" | "ghost";
 
 export interface DsStatusSpec {
-  /** The operator-facing name. Never abbreviate it, never translate it. */
+  /** The operator-facing name. */
   label: string;
-  /**
-   * The ACCESSIBLE name, when the visible word alone does not separate this
-   * status from a sibling (D22, amended 2026-08-04).
-   *
-   * `verifiedDone` and `doneWarnings` deliberately share the visible word
-   * `Done` — sighted operators separate them on hue plus the `△ n` warning
-   * count beside the pill, which is the design the operator ratified. A screen
-   * reader gets neither channel, so the two would otherwise compute the SAME
-   * accessible name (`Done — 2` twice in the filter bar) and the operator could
-   * not tell which filter is which. This field is the non-visual channel: it
-   * NEVER changes what is drawn, only what is announced.
-   *
-   * Omit it when the visible label is already unambiguous — `dsStatusAccessibleName`
-   * falls back to `label` for the other six statuses.
-   */
+  /** The ACCESSIBLE name, when the visible word alone does not separate this
+ * status from a sibling. */
   accessibleLabel?: string;
   tier: DsStatusTier;
   icon: ComponentType<SVGProps<SVGSVGElement>>;
@@ -76,40 +40,19 @@ export interface DsStatusSpec {
   text: string;
   /** the icon's color inside the chip */
   iconTone: string;
-  /**
-   * The icon's color when it stands ALONE on a panel surface with no chip
-   * behind it (a row's leading glyph, a menu item, a legend).
-   *
-   * It cannot simply be `iconTone`: the two solid statuses paint dark ink on a
-   * bright fill, and that ink is invisible on the near-black page. For the six
-   * non-solid statuses the two are the same value.
-   */
+  /** The icon's color when it stands ALONE on a panel surface with no chip
+ * behind it (a row's leading glyph, a menu item, a legend). */
   soloTone: string;
   /** the standalone dot/marker fill (loud tiers) */
   dot: string;
-  /** the standalone dot/marker outline (quiet tiers) — a literal class, never
-      derived from `dot` at runtime: Tailwind only sees classes it can read in
-      the source text. */
+  /** the standalone dot/marker outline (quiet tiers) — a literal class, never derived from `dot` at runtime */
   dotBorder: string;
   /** extra text treatment that is not colour (e.g. strikethrough) */
   labelDecoration?: string;
   /** the icon spins — `running` only */
   spin?: boolean;
-  /**
-   * This status's PILL carries no icon — `verifiedDone` only.
-   *
-   * The word `Done` in the success green is the whole chip: it is the
-   * commonest state in a healthy day, so every pixel it spends is spent on
-   * most of the queue. It is not colour-only encoding — the word survives, and
-   * it is the only status whose label is that word — and the status's
-   * GUARANTEE is untouched: `Done` is still reachable only by reading the
-   * write back out of the system, and the receipt still carries the read-back
-   * checks that earned it. Only the label got shorter.
-   *
-   * The row's LEADING glyph (`StatusIcon`) is a different channel on a
-   * different surface and keeps its check — the row grid has a column for it,
-   * and an empty column is not a saving.
-   */
+  /** This status's PILL carries no icon — `verifiedDone` only.
+ * The word `Done` in the success green is the whole chip */
   pillHideIcon?: boolean;
   /** what this status means for the operator; used as the chip's tooltip */
   meaning: string;
@@ -117,9 +60,7 @@ export interface DsStatusSpec {
 
 export const DS_STATUS: Record<DsStatus, DsStatusSpec> = {
   waiting: {
-    // Was "Waiting on you · age" in solid amber. Operator: drop the timer,
-    // and every waiting tag becomes the blue `Review` pill (same info solid
-    // as the old outcome CTA) — the word names the work, not the wait.
+    // The blue `Review` pill — the word names the work, not the wait.
     label: DISPLAY_STATUS_LABELS.waiting,
     tier: "solid",
     icon: UserRoundSearch,
@@ -161,13 +102,8 @@ export const DS_STATUS: Record<DsStatus, DsStatusSpec> = {
       "A write may or may not have landed. Never auto-retried — you resolve present or absent.",
   },
   doneWarnings: {
-    // Word is just `Done` — same length as verified Done. The long
-    // "with warnings" qualifier shoved the title off the header beside the
-    // triangle count chip that already names the warning (operator: keep
-    // Done + △ n, drop "with warnings"). Amber tint + that chip distinguish
-    // it from the green solid Done; the CircleAlert stays for filters/solo.
-    // The qualifier survives on the ACCESSIBLE name only — a screen reader
-    // reads neither the tint nor the count chip.
+        // Word is just `Done` — same length as verified Done. Amber tint + the △ count
+    // chip distinguish it from the green solid Done; the CircleAlert stays for filters/solo.
     label: DISPLAY_STATUS_LABELS.doneWarnings,
     accessibleLabel: "Done with warnings",
     tier: "tinted",
@@ -223,8 +159,8 @@ export const DS_STATUS: Record<DsStatus, DsStatusSpec> = {
     meaning: "Accepted, nothing has run. Can be bumped or cancelled.",
   },
   cancelled: {
-    // Operator: same solid pill shape as Done, gray, no strikethrough.
-    // Neither amber nor red — a deliberate stop is not a warning and not a failure.
+        // Same solid pill shape as Done, gray, no strikethrough: neither amber nor red —
+    // a deliberate stop is not a warning and not a failure.
     label: DISPLAY_STATUS_LABELS.cancelled,
     tier: "solid",
     icon: Ban,
@@ -238,13 +174,8 @@ export const DS_STATUS: Record<DsStatus, DsStatusSpec> = {
     meaning: "You stopped it. Not an alert — a deliberate act.",
   },
   verifiedDone: {
-    // `Verified done` → `Done`. Both terminal dones now share the short word;
-    // green solid vs amber tint (+ △ count chip when warnings exist) is the
-    // distinction — not a longer label that crowds the title.
-    //
-    // SOLID green fill, same shape as Waiting on you — just the word, no icon
-    // and no age. A bare green `Done` next to a shield glyph was the prior
-    // look; the operator asked for the Waiting-on-you pill, in green (2026-07-29).
+        // `Verified done` → `Done`. Both terminal dones share the short word; green solid
+    // vs amber tint (+ △ count chip when warnings exist) is the distinction.
     label: DISPLAY_STATUS_LABELS.verifiedDone,
     tier: "solid",
     icon: CheckCircle2,
@@ -260,7 +191,7 @@ export const DS_STATUS: Record<DsStatus, DsStatusSpec> = {
   },
 };
 
-/** Reading order for pickers, legends and status bars: loudest first. */
+/** Reading order for pickers, legends and status bars */
 export const DS_STATUS_ORDER: DsStatus[] = [
   "waiting",
   "failed",
@@ -276,25 +207,14 @@ export const DS_STATUS_ORDER: DsStatus[] = [
 /** The two statuses that own the operator's attention. */
 export const DS_ATTENTION_STATUSES: DsStatus[] = ["waiting", "failed"];
 
-/**
- * A status plus its age. "Waiting on you" is a state; "Waiting on you · 10m"
- * is a priority — that is the difference between a queue you scan and a queue
- * you triage. Always pass `age` when you have it.
- */
+/** A status plus its age. "Waiting on you" is a state; "Waiting on you · 10m"
+ * is a priority — that is the difference between a queue you scan and a queue */
 export function dsStatusText(status: DsStatus, age?: string): string {
   const base = DS_STATUS[status].label;
   return age ? `${base} · ${age}` : base;
 }
 
-/**
- * The status as a SCREEN READER must hear it — never as a surface draws it.
- *
- * Use this for every `aria-label` that names a status, and `dsStatusText` for
- * every visible word. They differ for exactly one status today
- * (`doneWarnings` → `Done with warnings`), and that difference is the whole
- * point: the visible pair `Done` / `Done` is separated by hue and by the `△ n`
- * count chip, and neither of those reaches assistive technology.
- */
+/** Speak warning completion explicitly; hue and count chips do not supply an accessible status name. */
 export function dsStatusAccessibleName(status: DsStatus, age?: string): string {
   const spec = DS_STATUS[status];
   const base = spec.accessibleLabel ?? spec.label;
@@ -308,15 +228,7 @@ const PILL_SIZE: Record<DsStatusPillSize, string> = {
   md: "h-[var(--ds-h-sm)] px-[var(--ds-space-base)] gap-[var(--ds-space-snug)]",
 };
 
-/**
- * The status chip. This is the ONLY way a status may be rendered — do not
- * hand-roll a coloured span, and do not swap the icon or the label.
- *
- * ```tsx
- * <StatusPill status="waiting" age="12m" />
- * <StatusPill status="verifiedDone" size="sm" />
- * ```
- */
+
 export function StatusPill({
   status,
   age,
@@ -330,16 +242,9 @@ export function StatusPill({
   /** how long it has been in this state — "12m", "2h". Show it when known. */
   age?: string;
   size?: DsStatusPillSize;
-  /**
-   * Drop the icon in extremely tight cells, or where the row already leads with
-   * this exact glyph. The label always stays, so the status is still named.
-   */
+  /** The status label remains even when its repeated icon is omitted. */
   hideIcon?: boolean;
-  /**
-   * Override the word only for a state that is NOT one of the eight — a
-   * rejected record ("Rejected") never became work and has no status of its
-   * own. Never use this to abbreviate or rename a real status.
-   */
+  /** Override labels only for non-status records; never rename real status vocabulary. */
   label?: string;
   className?: string;
   /** Queue rows use the operator-approved compact attention treatments. */
@@ -360,10 +265,7 @@ export function StatusPill({
     <ShadcnBadge
       title={spec.meaning}
       className={cn(
-        // `dsClip.token` gives the pill a ceiling of its parent's width. Without
-        // it the label's `truncate` was decorative: a flex child defaults to
-        // `min-width: auto` and refuses to shrink, so the pill simply overflowed
-        // whatever it sat in rather than cutting.
+        // Allow pills to shrink within parent width so truncation happens inside their border.
         "inline-flex w-fit shrink-0 items-center border",
         dsClip.token,
         dsRadius.sm,
@@ -389,10 +291,7 @@ export function StatusPill({
       <span className={cn(dsClip.text, label === undefined && spec.labelDecoration)}>
         {label ?? spec.label}
       </span>
-      {/* The AGE never gives — except on Done, Review, and Write parked,
-          which never carry one. Operator: timer not needed on Write parked;
-          click the row to resolve. Gate age still lives on the detail panel's
-          outcome bar where triage across two open gates needs it. */}
+      {/* Gate age belongs where triage needs it; settled and parked pills carry no timer. */}
       {age &&
         status !== "verifiedDone" &&
         status !== "doneWarnings" &&
@@ -406,12 +305,7 @@ export function StatusPill({
   );
 }
 
-/**
- * The leading marker for a dense row where a full pill would not fit. Three
- * shapes, tier-derived: a filled DISC for the loud statuses, a RING for active
- * ones, a HOLLOW dot for finished ones. Always paired with the status label
- * somewhere in the row, or with an accessible name here.
- */
+/** Wordless status markers need an accompanying label or accessible name. */
 export function StatusDot({
   status,
   className,
@@ -429,9 +323,7 @@ export function StatusDot({
   return (
     <span
       role="img"
-      // The NAME is the accessible one — a dot draws no word at all, so a
-      // screen reader has nothing but this. The tooltip stays the visible
-      // vocabulary the rest of the surface speaks.
+      // A wordless dot uses the full accessible status; its tooltip keeps visible vocabulary.
       aria-label={dsStatusAccessibleName(status)}
       title={spec.label}
       className={cn("inline-block shrink-0 rounded-full", shape, className)}
@@ -439,12 +331,7 @@ export function StatusDot({
   );
 }
 
-/**
- * The status icon on its own — a row's leading glyph, a menu item, a legend.
- * It uses `soloTone`, not `iconTone`: there is no chip behind it, so the two
- * solid statuses must paint their hue rather than the dark ink they use ON that
- * chip (which would be invisible against the page).
- */
+/** Standalone icons use visible status hues; chip ink assumes a colored background. */
 export function StatusIcon({
   status,
   className,

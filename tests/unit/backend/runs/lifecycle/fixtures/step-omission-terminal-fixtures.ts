@@ -1,16 +1,4 @@
-/**
- * D307 — a minimal three-node descriptor for testing `resolveTerminalDependencies`
- * and the evidence receipt's not-run/step-omitted arm WITHOUT driving the
- * executor: `buildRunResult` and `buildRunEvidenceReceipt` only need the
- * descriptor's factory-authenticated shape, never a running task.
- *
- * `read` belongs to the omittable "reading" step (an honest producer
- * rebuilds it from one typed fact); `fold` belongs to the plain "folding"
- * step and is never producible by any omission; `skip` belongs to the
- * omittable "skipping" step, which declares NO producer for it — a
- * genuinely `omittable` (never `assertable`) terminal dependency, so its
- * only legal not-run arm is `step-omitted`.
- */
+
 import { z } from "zod";
 import { flow } from "../../../../../../src/workflow-kit/flow.js";
 import { defineWorkflowDescriptor } from "../../../../../../src/workflow-kit/workflow.js";

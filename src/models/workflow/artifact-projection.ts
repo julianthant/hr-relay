@@ -1,20 +1,4 @@
-/**
- * Ref data-intake-and-edit-data §4.1 / ref dashboard-surfaces §2.1 (D45): deriving the stable-keyed artifact rows a
- * producing node's checkpoint commits atomically with.
- *
- * Pure and browser-safe: the derivation is a function of the descriptor's
- * `DurableArtifactProjectionSpec`s and the node's exact output value, so the
- * executor (fresh execution) and a resumed replay derive THE SAME stable key
- * from the same checkpoint — which is what makes a duplicate outbox row a
- * verified no-op instead of a second workbook append.
- *
- * The stable key is deliberately NON-POSITIONAL: it folds the projection id
- * with the declared key-field VALUES (subject identity plus document/roster
- * version — whatever the spec named), never a row index or a write ordinal.
- * A record missing one of its declared key values is unprojectable and
- * throws by name — a keyless row upserted anywhere would be exactly the
- * silent duplicate this design exists to prevent.
- */
+/** Deriving the stable-keyed artifact rows a producing node's checkpoint commits atomically with; pure and browser-safe, a function of the declared specs and the node's exact output. */
 import { z } from "zod";
 import { canonicalJsonStringify, JsonValueSchema, type JsonObject, type JsonValue } from "../../rules/validation/canonical-json.js";
 import { ContractFieldPathSchema } from "../task/task-contract.js";
@@ -25,12 +9,7 @@ import {
   DurableArtifactProjectionSpecRuntimeSchema,
 } from "./presentation.js";
 
-/**
- * One declared key value. An ORDERED LIST of pairs, never an open
- * string-keyed map: the keys are the spec's own declared field paths, and an
- * open record at this boundary would accept a key the spec never heard of —
- * the same reasoning `IntakeValidationInput.constants` records.
- */
+/** One declared key value: an ORDERED LIST of pairs, never an open string-keyed map, because the keys are the spec's own declared field paths. */
 export const ArtifactProjectionKeyValueSchema = z.strictObject({
   field: ContractFieldPathSchema,
   value: JsonValueSchema,
@@ -61,11 +40,7 @@ function valueAtFieldPath(value: JsonValue, fieldPath: string): JsonValue | unde
   return current;
 }
 
-/**
- * Derive every projection row the given node owes. Specs whose source names a
- * different node are skipped; a spec that matches but cannot resolve its
- * field or any key value throws with the projection id and path by name.
- */
+/** Derive every projection row the given node owes; a spec that matches but cannot resolve its field or any key value throws with the projection id and path by name. */
 export function deriveArtifactProjectionRows(input: Readonly<{
   specs: readonly unknown[];
   nodeId: string;

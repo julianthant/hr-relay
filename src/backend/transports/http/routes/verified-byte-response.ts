@@ -26,7 +26,7 @@ function successHeaders(input: VerifiedByteResponseInput): Headers {
   return headers;
 }
 
-/** D291: one lease owner for GET/HEAD/verified-Range while route authority remains outside. */
+
 export async function verifiedByteResponse(input: VerifiedByteResponseInput): Promise<Response> {
   if (input.range !== undefined) {
     await input.lease.dispose();

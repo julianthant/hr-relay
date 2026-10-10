@@ -1,23 +1,5 @@
 import { hostConfigFacts } from "../../../../../../src/models/config/host-display.js";
-/**
- * The UCPath and CRM login recipes (ref execution-and-sessions §4).
- *
- * These flows drive REAL HR systems, so every arm here is about the same
- * question: can this code ever report "authenticated" without having observed
- * it? On 2026-08-03 the answer was yes — twice — so the arms below are written
- * against the two shapes that produced it:
- *
- *   - the PUBLIC UCPath portal, which sits inside the host substring the legacy
- *     landing predicate matched; and
- *   - PeopleSoft's signon page, which renders at the SAME route shape as the
- *     application it guards.
- *
- * Neither is distinguishable by URL, so the proof is content-level: a session
- * cookie the server only issues after a completed sign-in, plus the absence of
- * every sign-in form. The wrapper (`defineVerifiedLoginRecipe`) runs it on
- * EVERY return path, so the early "already authenticated" branch is pinned here
- * exactly as hard as the full login.
- */
+
 import { fixtureDuoCeremonyGate } from "../../../../../support/helpers/duo-ceremony-fixtures.js";
 import type { BrowserSystemId } from "../../../../../../src/rules/identity/ids.js";
 import assert from "node:assert/strict";
@@ -56,12 +38,12 @@ const UCPATH_PORTAL = CONFIG.urls.ucpath.prod.login;
 /** The page that produced the false pass: public, unauthenticated, same host. */
 const UCPATH_PUBLIC_PORTAL = "https://ucpath.universityofcalifornia.edu/";
 const SSO = "https://a5.ucsd.edu/idp/profile/SAML2/Redirect/SSO";
-/** The Duo Universal Prompt, as the live wedge observed it (§9.21, 2026-08-19). */
+
 const DUO_PROMPT = "https://api-ce13a1a7.duosecurity.com/prompt/DA6QL3UFNF54WTIT1EQC";
 const DISCOVERY = "https://ucpath.universityofcalifornia.edu/ucpathdiscovery/disco?entity=ucsd";
 const CRM_APP = "https://act-crm.my.site.com/hr/ONB_SearchOnboardings";
 const CRM_ENTRY = CONFIG.urls.crm.prod.entry;
-/** Live-verified 2026-08-03 TritON login-type option values. */
+// TritON option values are the verified login-type values.
 const AD_TYPE = "_eventId_authn/PasswordAD";
 const BUSINESS_TYPE = "_eventId_authn/PasswordRACF";
 
@@ -73,10 +55,7 @@ const PS_TOKEN: FakeCookie = {
 };
 const SID: FakeCookie = { name: "sid", domain: "act-crm.my.site.com", value: "opaque" };
 
-/**
- * The page state of an authenticated app: no sign-in form of any kind, and no
- * campus-discovery link (discovery is detected by that link, not by a path).
- */
+
 const NO_SIGN_IN_FORMS = {
   "campus-link": { count: 0 },
   "sso-submit": { count: 0 },
@@ -106,8 +85,7 @@ function contextFor(
       signal,
       credentials: CREDENTIALS,
       recordEvidence: (evidence) => recorded.push(evidence),
-      // D267: a REAL gate over a throwaway authority database — the only way a
-      // recipe test can hold a token the SSO helpers accept.
+
       duoCeremony: fixtureDuoCeremonyGate(system),
     },
   };
@@ -127,7 +105,7 @@ describe("ucpath landing verification", () => {
       true,
     );
     for (const rejected of [
-      // THE regression: the public portal is inside the legacy host substring.
+
       UCPATH_PUBLIC_PORTAL,
       "https://ucpath.universityofcalifornia.edu/dashboard",
       DISCOVERY,
@@ -198,8 +176,7 @@ describe("authenticated-application proof", () => {
   });
 
   it("refuses the PeopleSoft signon page, which shares the application's URL shape", async () => {
-    // Exactly the 2026-08-03 page: right host, right route, titled
-    // "Oracle PeopleSoft Sign-in", no session, signon form rendered.
+
     const { context } = contextFor({
       url: UCPATH_ENTRY,
       elements: { ...NO_SIGN_IN_FORMS, "peoplesoft-signon": { count: 1 } },
@@ -296,9 +273,7 @@ describe("ucpath login recipe", () => {
   });
 
   it("REGRESSION: the public portal never short-circuits the login", async () => {
-    // The exact false pass. `goto` lands on the public portal, which the legacy
-    // predicate accepted; the recipe must keep going into the SSO chain, and —
-    // with no SSO form scripted — fail loud rather than report success.
+
     const { context, harness } = contextFor({
       url: "about:blank",
       navigation: { [UCPATH_PORTAL]: UCPATH_PUBLIC_PORTAL },
@@ -307,8 +282,7 @@ describe("ucpath login recipe", () => {
         "campus-link": { count: 0 },
         "sso-submit": { count: 0 },
       },
-      // A cookie jar that would satisfy the positive fact if the URL were an
-      // application route: the refusal has to come from the URL, not luck.
+
       cookies: [PS_TOKEN],
     });
     await assert.rejects(ucpathLoginRecipe(context), (error: unknown) => {
@@ -370,8 +344,7 @@ describe("ucpath login recipe", () => {
     assert.equal(harness.url(), UCPATH_APP);
   });
 
-  // Live 2026-09-07: the post-SSO BuildPage redirect interrupts our entry goto,
-  // then UCPath itself reaches the requested HR Tasks route. No login is retried.
+  // UCPath BuildPage redirects can interrupt goto before the requested application route settles.
   const buildPage = new URL(
     "/psp/ucphrprd/EMPLOYEE/HRMS/s/WEBLIB_IS_PB.ISCRIPT1.FieldFormula.IScript_BuildPage",
     UCPATH_ENTRY,
@@ -464,8 +437,7 @@ describe("ucpath login recipe", () => {
   });
 
   it("fails loud, naming the stale chain, when the username field matches nothing", async () => {
-    // The 2026-08-03 CRM failure mode, pinned for every UCSD system: a
-    // relabelled TritON field must never be filled "somewhere else" or skipped.
+
     const { context, harness } = contextFor({
       url: "about:blank",
       elements: {
@@ -508,12 +480,7 @@ describe("ucpath login recipe", () => {
   });
 
   it("refuses the moment Duo renders its terminal refusal, without waiting out the landing", async () => {
-    // D243 / §9.21. The live wedge does NOT time out on the Duo host — Duo
-    // ANSWERS, about a second after the assertion, with "Your login request
-    // using your security key was canceled or timed out", and then sits there.
-    // `NEVER_SETTLES` is that shape: the landing wait can only ever learn "not
-    // yet", so a recipe that watches only the URL is structurally unable to
-    // finish, and 48 s later the acquisition bound blames Duo hand-approval.
+
     const { context } = contextFor({
       url: "about:blank",
       elements: {
@@ -538,11 +505,7 @@ describe("ucpath login recipe", () => {
   });
 
   it("still reports a plain Duo stall as a stall — the refusal probe is not a catch-all", async () => {
-    // The negative control. Two different failures share the Duo host, and the
-    // fix must not collapse them: a prompt that is merely slow (or genuinely
-    // waiting on a hand approval) is the one case where
-    // `timeouts.duoApprovalSeconds` IS the leaf to move, and saying "signCount"
-    // there would be the same mis-attribution pointed the other way.
+
     const { context } = contextFor({
       url: "about:blank",
       elements: {
@@ -667,9 +630,7 @@ describe("crm login recipe", () => {
   });
 
   it("refuses to submit credentials when the realm did not actually switch", async () => {
-    // The live 2026-08-03 failure: TritON defaults to Business Systems, the
-    // credentials go to the wrong realm, and Shibboleth answers "the username
-    // you entered cannot be identified" — a whole Duo window later.
+
     const { context, harness } = crmContextFor({
       url: "about:blank",
       navigation: { [CRM_ENTRY]: SSO },
@@ -748,16 +709,7 @@ describe("crm login recipe", () => {
   });
 });
 
-/**
- * Kuali Build is CLIENT-RENDERED, and the first live Kuali session (2026-08-04)
- * proved that matters: `waitForAuthenticatedLanding` resolves on the URL, and
- * the space serves a body with ZERO `[role]` nodes at `domcontentloaded`,
- * painting its menubar ~1s later. A verifier that COUNTS the chrome once at
- * that instant reports "no Kuali Build application chrome" for a session that
- * is in fact authenticated — and the flow then hunts for an SSO form that will
- * never render. These arms pin the wait, and pin that the wait is not a
- * fallback: chrome that never renders still refuses.
- */
+// Kuali renders controls after the authenticated URL; wait for the control before reading it.
 describe("kuali landing verification — a client-rendered positive fact", () => {
   const KUALI_APP = CONFIG.urls.kuali.prod.entry;
 

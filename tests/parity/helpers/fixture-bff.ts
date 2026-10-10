@@ -230,9 +230,7 @@ export async function startFixtureServer(
     preflightScenario?: FixtureBffOptions["preflightScenario"];
   }>,
 ): Promise<FixtureServer> {
-  // Ref frontend-backend-integration §7: a served bundle must provably be a build of the working tree.
-  // Asserted BEFORE a port is bound, so a stale `dist/dashboard` can never be
-  // reached over HTTP — and never leaks a listening socket on refusal.
+
   assertServedBundle(input.distDir, input.bundle);
   const profile = input.profile ?? DEFAULT_DASHBOARD_PROFILE;
   const dayWire = input.dayWire ?? (input.runCaptureScenario === "evidence" ? FIXTURE_RUN_CAPTURE_DAY : profile.day);
@@ -254,10 +252,7 @@ export async function startFixtureServer(
         serveSse(res, openStreams, profile, dayWire);
         return;
       }
-      // Byte lookups never fall back to static success. Keep Archive's exact
-      // route independent; generic UUID descendants and extensionless invalid
-      // lookups reach the app's 404. Named static files (archive-help.html,
-      // archive-notes/readme.json) remain outside this generic identity lane.
+
       const archiveCapture = /^\/artifacts\/v1\/archive\/[^/]+\/(?:files\/)?[^/]+$/u.test(url.pathname);
       const genericCapture = /^\/artifacts\/v1\/(?!archive(?:\/|$))[^/.]+(?:\/[^/.]+)*$/u.test(url.pathname)
         || /^\/artifacts\/v1\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:[/.]|$)/iu.test(url.pathname);

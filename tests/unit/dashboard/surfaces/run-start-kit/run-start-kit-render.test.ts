@@ -1,23 +1,4 @@
-/**
- * THE RUN MODAL'S DRAWN FACTS — D272 items 8 and 9, rendered rather than described.
- *
- * Five of ledger 1's region-C rows (`docs/plans/2026-08-21-03a-fidelity-1-shell-queue-start.md`)
- * are claims about what reaches the SCREEN, and every one of them was true in
- * the source and false in the 1440x900 parity reference:
- *
- *   C48 / C81 — a locked value's reason survived only as a `title` tooltip,
- *               which is unreachable by touch and by keyboard;
- *   C57       — the plan drew a three-column table where the demo draws a card
- *               per proposed row;
- *   C61       — `expiresAt` printed as a raw ISO instant in operator-facing text;
- *   C69       — the conflict banner named a state with no exit;
- *   C72       — every result arm said "Dismiss", including the settled one.
- *
- * The pieces are JSX inside a `.tsx`, so they are pinned by rendering the real
- * components to static markup. The tooltip cases strip every `title=` attribute
- * FIRST — that is the whole assertion: the reason has to be there when the
- * tooltip is not.
- */
+
 import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -86,7 +67,7 @@ const PLAN: StartPlanResponse = StartPlanResponseSchema.parse({
   refused: [],
 });
 
-describe("a locked value states its reason ON SCREEN (C48 / C81, D272 item 9)", () => {
+describe("a locked value states its reason on screen", () => {
   it("prints the reason as page text, not only as a tooltip", () => {
     const markup = renderToStaticMarkup(
       createElement(LockedFact, {
@@ -95,9 +76,7 @@ describe("a locked value states its reason ON SCREEN (C48 / C81, D272 item 9)", 
         reason: ENQUEUE_POLICY_REASON,
       }),
     );
-    // The negative control is the strip: before this port the ONLY occurrence
-    // of the reason in this markup was inside `title=`, and this case fails the
-    // moment the `<p>` goes back to being a tooltip.
+
     assert.ok(
       textOf(withoutTooltips(markup)).includes(ENQUEUE_POLICY_REASON),
       "the reason is reachable only by hovering",
@@ -106,10 +85,7 @@ describe("a locked value states its reason ON SCREEN (C48 / C81, D272 item 9)", 
   });
 
   it("states the reason ONCE — the `<p>` replaced the tooltip, it did not join it", () => {
-    // Unit F5b finding 4. `title` is not a second rendering of the same fact:
-    // it joins the accessible description, so a screen reader that has just
-    // read the `<p>` reads the identical sentence again from the tooltip. The
-    // mutation is putting `reason={reason}` back on `LockedValue`.
+
     const markup = renderToStaticMarkup(
       createElement(LockedFact, {
         label: "Active-run policy",
@@ -128,9 +104,7 @@ describe("a locked value states its reason ON SCREEN (C48 / C81, D272 item 9)", 
   });
 
   it("is the SAME component behind the sub-selection, so the two cannot drift", () => {
-    // Two near-identical renderings are two things that happen to agree today
-    // (`src/dashboard/CLAUDE.md`, 2026-08-26). C48 and C81 were exactly that
-    // pair, and only one of them was ever going to be re-read.
+
     const markup = renderToStaticMarkup(
       createElement(StartChoiceControl, {
         constant: { field: "keepNonHdh", value: { kind: "boolean", value: true } },
@@ -144,7 +118,7 @@ describe("a locked value states its reason ON SCREEN (C48 / C81, D272 item 9)", 
   });
 });
 
-describe("the plan is a card per proposed row (C57, D272 item 8)", () => {
+describe("the plan draws one card per proposed row", () => {
   it("draws no table, and names every served identity on the card", () => {
     const markup = renderToStaticMarkup(
       createElement(PlanPreview, { plan: PLAN }),
@@ -157,9 +131,7 @@ describe("the plan is a card per proposed row (C57, D272 item 8)", () => {
   });
 
   it("invents none of the demo's unserved plan-row anatomy", () => {
-    // `StartPlanResponse.planned[]` carries no role, panel, containment,
-    // born-as status or note — ledger 1's first region-C `builds:` line. An
-    // absence is drawn as an absence, never as a plausible constant.
+
     const text = textOf(
       renderToStaticMarkup(createElement(PlanPreview, { plan: PLAN })),
     );
@@ -169,15 +141,7 @@ describe("the plan is a card per proposed row (C57, D272 item 8)", () => {
   });
 
   it("puts the untruncatable identities on the provenance line, not in a clipped chip", () => {
-    // Unit F5b finding 5, and it is `Chip`'s OWN rule: a chip is a single-line
-    // token that cuts inside its border and recovers the cut on `title` — "if
-    // a fact cannot survive truncation it is not a chip: put it on the row's
-    // `MetaLine`, where it can wrap." Half of `eid:E1234567` is a different
-    // subject, and a `title` is reachable by mouse and by nobody else, which
-    // is exactly the defect C48/C81 fixed one component up.
-    //
-    // Both assertions are red against the chips this replaced: `Chip` emits
-    // `title="eid:E1234567"` and carries `dsClip.token`'s `whitespace-nowrap`.
+
     const markup = renderToStaticMarkup(createElement(PlanPreview, { plan: PLAN }));
     for (const identity of ["eid:E1234567"]) {
       assert.ok(textOf(markup).includes(identity), `the card drops the served ${identity}`);
@@ -194,7 +158,7 @@ describe("the plan is a card per proposed row (C57, D272 item 8)", () => {
     assert.equal(textOf(markup).includes("trace"), false, "a proposal has no lifecycle trace");
   });
 
-  it("prints the plan's expiry as a clock reading, never a raw ISO instant (C61)", () => {
+  it("prints the plan's expiry as a clock reading, never a raw ISO instant", () => {
     const text = textOf(
       renderToStaticMarkup(createElement(PlanPreview, { plan: PLAN })),
     );
@@ -203,7 +167,7 @@ describe("the plan is a card per proposed row (C57, D272 item 8)", () => {
   });
 });
 
-describe("the result banner's own words (C69 / C72, D272 items 8 and 9)", () => {
+describe("result banner uses its own words", () => {
   const applied: CommandResult = CommandResultSchema.parse({
     state: "applied",
     commandId: "3a000000-0000-4000-8000-000000000001",
@@ -247,9 +211,7 @@ describe("the result banner's own words (C69 / C72, D272 items 8 and 9)", () => 
   });
 
   it("gives the conflict arm the one exit it has", () => {
-    // D253 refuses a re-send of the same envelope identically, so the plan
-    // token in this form is spent for good: without this control the banner
-    // names a state the operator cannot leave.
+
     const text = textOf(renderToStaticMarkup(
       createElement(EnqueueResultBanner, { result: conflict, onReload: noop, onDismiss: noop }),
     ));

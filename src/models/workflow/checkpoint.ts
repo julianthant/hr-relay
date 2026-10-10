@@ -1,24 +1,5 @@
 import { DeclaredActionIdentitySchema } from "./operation-action-identity.js";
-/**
- * The checkpoint record, its loader, and the freshness walk (ref workflow-model §5.5–§5.7).
- *
- * Three rules from the charter shape everything here.
- *
- * 1. **The loader returns a discriminated union, never a defaultable shape.**
- *    `{ found: true, … } | { found: false, reason }` makes `?? {}` unspellable:
- *    the engine must branch, so "no checkpoint" can never be mistaken for "an
- *    empty checkpoint".
- * 2. **Semantics can drift while a schema stays equal.** A changed
- *    selection/bind is a different fact even when the output schema is
- *    byte-identical, so descriptor version and contract/impl fingerprints are
- *    mandatory and a mismatch REFUSES resume unless a checked-in, version-to
- *    version migration transforms the payload.
- * 3. **A stale read must never ride into a live write (D8).** The freshness
- *    walk asks whether a replayed fact can reach a transaction commit scheduled
- *    in THIS run, conservatively unioning every reachable branch, and refuses
- *    loudly with the checkpoint, its age, its limit, the consuming commit node,
- *    and the path between them.
- */
+/** The checkpoint record, its loader, and the freshness walk: a union loader with no defaultable shape, mandatory fingerprints, and a walk that keeps a stale read out of a live write. */
 import { z } from "zod";
 import { JsonValueSchema } from "../../rules/validation/canonical-json.js";
 import { ContractFieldPathSchema } from "../task/task-contract.js";
@@ -38,11 +19,7 @@ import type { RuntimeFlowNode } from "./graph.js";
 
 /* ── the durable record ──────────────────────────────────────────────────── */
 
-/**
- * Field-level fact provenance. `observedAt` is when THIS value was established;
- * `originalObservedAt` is the oldest contributing live capture, so a pure
- * transform can never refresh its inputs by re-deriving them.
- */
+/** Field-level fact provenance: `originalObservedAt` is the oldest contributing live capture, so a pure transform cannot refresh its inputs. */
 export const FactProvenanceSchema = z.strictObject({
   path: ContractFieldPathSchema,
   source: z.enum(["live", "derived", "operator"]),
@@ -54,36 +31,13 @@ export const FactProvenanceSchema = z.strictObject({
 });
 export type FactProvenance = z.infer<typeof FactProvenanceSchema>;
 
-/**
- * One row of `run_checkpoints`. The logical item is `(workflowId, itemId)` —
- * retries share it, rerun-with-new-input gets a fresh one — and `runId` records
- * which attempt wrote the row, for audit only.
- */
+/** One row of `run_checkpoints`; the logical item is `(workflowId, itemId)` and `runId` records which attempt wrote it, for audit only. */
 export const RunCheckpointRecordSchema = z.strictObject({
   workflowId: WorkflowIdSchema,
   itemId: ItemIdSchema,
   nodeId: NodeIdSchema,
   attempt: PositiveIntSchema,
-  /**
-   * D214 — WHICH EXECUTION of `(item, node, attempt)` produced this row.
-   *
-   * A run attempt is not one execution of its graph: a gate park and its resume
-   * are two, inside one attempt, and an `always-rerun` node re-executes across
-   * that boundary by design (§5.3). Without this component the second execution
-   * writes a genuinely different observation under the first execution's key,
-   * and the immutable insert refuses it — so a graph could not pass its own gate.
-   * The run's `claimGeneration` is the fact that already distinguishes them: it
-   * advances by exactly one on every claim and never resets, a resume IS a fresh
-   * claim (§4), and within one claim the interpreter visits each node once.
-   *
-   * **Optional because it is read forward, never back-filled (D133's rule).**
-   * Rows written before D214 carry none, and under the key those rows were
-   * written under at most ONE row per `(item, node, attempt)` could exist — so
-   * an absent value is reported as absent rather than fabricated as `1`, and
-   * `checkpointLookupKey` omits the component entirely, leaving every stored
-   * pre-D214 `record_key` byte-identical and still resolvable. Every writer from
-   * D214 forward must supply it; the repository refuses an insert that does not.
-   */
+    // Absent generations preserve historical keys; current writers must supply the execution’s claim generation.
   claimGeneration: PositiveIntSchema.optional(),
   runId: RunIdSchema,
   /** The schema-parsed node output, bound to the hash of the schema that parsed it. */
@@ -94,13 +48,7 @@ export const RunCheckpointRecordSchema = z.strictObject({
   provenance: z.array(FactProvenanceSchema),
   writtenAt: IsoInstantSchema,
   operationSources: z.array(z.strictObject({ path: ContractFieldPathSchema, identity: DeclaredActionIdentitySchema })).optional(),
-  /**
-   * D307 — present iff this row is an OPERATOR ASSERTION, not an observation:
-   * the node never ran; its step was omitted at start and the step's producer
-   * rebuilt the output from typed facts. Every provenance entry is
-   * `operator`-sourced at `assertedAt`. Replay admits such a row only under
-   * the same assertion; a run that executes the node ignores it.
-   */
+    // Operator assertions replay only under the same omission; they never substitute for live observations.
   assertion: z.strictObject({
     step: z.string().min(1),
     assertedAt: IsoInstantSchema,
@@ -141,10 +89,7 @@ export const CheckpointMissReasonSchema = z.enum([
 ]);
 export type CheckpointMissReason = z.infer<typeof CheckpointMissReasonSchema>;
 
-/**
- * The loader's result. Deliberately NOT a schema: `output` is the exact parsed
- * type of the producing contract, which no static schema can describe.
- */
+/** The loader's result, deliberately not a schema: `output` is the producing contract's own parsed type. */
 export type CheckpointLoad<Output> =
   | Readonly<{
     found: true;
@@ -159,11 +104,7 @@ export type CheckpointLoad<Output> =
 
 /* ── checkpoint migrations ───────────────────────────────────────────────── */
 
-/**
- * A checked-in, version-to-version transform. Nothing else may make an
- * incompatible checkpoint replayable — "the schema still parses" is exactly the
- * evidence §5.7 rejects.
- */
+/** A checked-in, version-to-version transform; nothing else may make an incompatible checkpoint replayable. */
 export interface CheckpointMigration {
   readonly workflowId: string;
   readonly nodeId: string;
@@ -206,12 +147,7 @@ function findMigration(
     && migration.to.contractFingerprint === expectation.contractFingerprint);
 }
 
-/**
- * Decide whether a stored checkpoint may be replayed.
- *
- * `stored` is `undefined` when no row exists — the ordinary "start here" case,
- * reported as a miss rather than as an error.
- */
+/** Decide whether a stored checkpoint may be replayed; `stored` is `undefined` when no row exists. */
 export function loadCheckpoint<OutputSchema extends z.ZodType>(
   stored: RunCheckpointRecord | undefined,
   expectation: CheckpointExpectation,
@@ -287,16 +223,9 @@ export function loadCheckpoint<OutputSchema extends z.ZodType>(
   };
 }
 
-/* ── the freshness walk (D8) ─────────────────────────────────────────────── */
+/* ── the freshness walk ────────────────────────────────────────────── */
 
-/**
- * One operator correction to a replayed upstream checkpoint (ref workflow-model §5.6 #3).
- *
- * `value` is deliberately raw JSON: the patch is not authority until the WHOLE
- * post-patch output re-parses through the producing contract's output schema,
- * and a shape that looked schema-bound before that parse would be claiming a
- * validation that has not happened. The applier lives with the executor.
- */
+/** One operator correction to a replayed upstream checkpoint; `value` is raw JSON until the whole post-patch output re-parses. */
 export const CheckpointPatchSchema = z.strictObject({
   nodeId: NodeIdSchema,
   fieldPath: ContractFieldPathSchema,
@@ -306,11 +235,7 @@ export const CheckpointPatchSchema = z.strictObject({
 });
 export type CheckpointPatch = z.infer<typeof CheckpointPatchSchema>;
 
-/**
- * A single-resume, field-scoped operator confirmation. It rides the
- * RunEnvelope, is never persisted onto the item, and only reaches a field the
- * contract marked `override: "audited"`.
- */
+/** A single-resume, field-scoped operator confirmation that only reaches a field marked `override: "audited"`. */
 export const FreshnessOverrideSchema = z.strictObject({
   nodeId: NodeIdSchema,
   fieldPaths: z.array(ContractFieldPathSchema).min(1),
@@ -342,16 +267,7 @@ function forwardEdges(nodes: readonly RuntimeFlowNode[]): ReadonlyMap<string, re
   return edges;
 }
 
-/**
- * Every commit node reachable from `from`, with the path taken. Reachability is
- * over the STATIC graph — no proxy execution, no data-dependent narrowing —
- * because a walk that under-approximates is exactly how a stale fact reaches a
- * live write.
- *
- * Exported for D252: the Data rail states the same "this value feeds these
- * writes" fact the freshness audit decides on, and a second walk beside this
- * one could disagree with the rule the executor actually applies.
- */
+/** Every commit node reachable from `from`, with the path taken, over the STATIC graph so a walk cannot under-approximate. */
 export function reachableCommits(
   nodes: readonly RuntimeFlowNode[],
   from: NodeId,
@@ -387,15 +303,7 @@ function overrideAllowed(policy: FreshnessPolicy, path: string): boolean {
   return (rule?.override ?? policy.defaultOverride) === "audited";
 }
 
-/**
- * The bound ONE field is recorded under — `byField` beats the default, and an
- * unstated override policy is `forbidden`, which is the fail-closed reading
- * `overrideAllowed` already applies (only the literal `audited` opens it).
- *
- * Exported for D252 so the Data rail prints the bound this module ENFORCES.
- * A surface that re-read `byField` itself would be a second copy of the
- * precedence rule, and the two could disagree about which value bites.
- */
+/** The bound ONE field is recorded under — `byField` beats the default, and an unstated override policy is `forbidden`. */
 export function resolveFreshnessBound(
   policy: FreshnessPolicy,
   path: string,
@@ -431,11 +339,7 @@ function formatAge(ms: number): string {
   return `${String(Math.floor(totalMinutes / 60))}h${String(totalMinutes % 60).padStart(2, "0")}m`;
 }
 
-/**
- * Returns one message per refused replay, in ref workflow-model §5.5's shape. Empty means
- * every replayed fact is either fresh enough or provably cannot reach a commit
- * scheduled in this run.
- */
+/** One message per refused replay; empty means every replayed fact is either fresh enough or cannot reach a scheduled commit. */
 export function auditCheckpointFreshness(input: FreshnessWalkInput): readonly string[] {
   const scheduled = new Set(input.scheduled.map(String));
   const violations: string[] = [];
@@ -486,11 +390,7 @@ export function assertCheckpointFreshness(input: FreshnessWalkInput): void {
 
 /* ── canonical-input snapshot migrations (ref workflow-model §2) ─────────────────────── */
 
-/**
- * A changed canonical schema requires an explicit snapshot migration or a loud
- * refusal — never a re-run of ingress parsing, which would let a redeployed
- * default rewrite an in-flight run's input.
- */
+/** A changed canonical schema requires an explicit snapshot migration or a loud refusal, never a re-run of ingress parsing. */
 export interface CanonicalInputSnapshotMigration {
   readonly workflowId: string;
   readonly from: string;
@@ -514,12 +414,7 @@ export function defineCanonicalInputSnapshotMigration(
   return sealed;
 }
 
-/**
- * Bring a stored snapshot to the current canonical schema, or refuse.
- *
- * The caller re-parses the result through the descriptor's canonical schema;
- * this function only decides whether a transform is authorized.
- */
+/** Bring a stored snapshot to the current canonical schema, or refuse; the caller re-parses the result. */
 export function migrateCanonicalInputSnapshot(
   stored: Readonly<{ schemaHash: string; value: unknown }>,
   currentSchemaHash: string,
@@ -558,17 +453,7 @@ export function migrateCanonicalInputSnapshot(
   );
 }
 
-/**
- * The durable key of a checkpoint row — the logical item plus node plus attempt
- * plus, from D214, the claim generation that executed it. The separator is NUL
- * because it cannot appear in any component, so two different tuples can never
- * collide into one key.
- *
- * An ABSENT `claimGeneration` appends nothing, which is what keeps every stored
- * pre-D214 row's key byte-identical and still resolvable (D133 read-forward). It
- * is not a default: a caller holding the generation must pass it, and a caller
- * without one is naming a row written before the component existed.
- */
+/** The durable key of a checkpoint row; the separator is NUL so two different tuples can never collide, and an absent claim generation appends nothing. */
 export function checkpointLookupKey(
   workflowId: string,
   itemId: string,

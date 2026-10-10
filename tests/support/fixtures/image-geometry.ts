@@ -1,10 +1,4 @@
-/**
- * Minimal format facts for retained diagnostic-image fixtures.
- *
- * This is test-only verification of the bytes a fixture server publishes. It
- * deliberately derives dimensions from the image itself instead of copying
- * them from display metadata.
- */
+
 export interface ImageGeometry {
   readonly width: number;
   readonly height: number;

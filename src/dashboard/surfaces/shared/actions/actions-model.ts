@@ -1,12 +1,4 @@
-/**
- * The action vocabulary's pure half — the pill shell and the placement folds.
- *
- * It lives beside `actions.tsx` rather than inside it because a module that
- * exports a component may export nothing else if React Fast Refresh is to treat
- * it as a refresh boundary: one non-component export makes every edit to the
- * surface invalidate upward into `dashboard-app.tsx` and remount the app
- * instead of hot-swapping the component.
- */
+/** The action vocabulary's pure half — the pill shell and the placement folds. */
 import { cn } from "../../../lib/utils.js";
 import type { CommandSettlement } from "../../../app/commands/command-result.js";
 import {
@@ -16,13 +8,8 @@ import {
 } from "../../../../models/dashboard/actions.js";
 import { dsFocus, dsMotion, dsRadius, dsText } from "../../../ds/ui.js";
 
-/**
- * The wire's seven intents, as colour only. These are NOT `Button` variants:
- * a descriptor's intent is chosen by the server for a command, and mapping four
- * of them onto Button would either invent four chromatic variants or flatten
- * them all to "secondary". So the tone stays a map and the SHELL is shared —
- * which is the part that was actually broken.
- */
+/** The wire's seven intents, as colour only. These are NOT `Button` variants
+ * a descriptor's intent is chosen by the server for a command, and mapping four */
 const INTENT_PILL: Record<ActionIntent, string> = {
   primary: "border-transparent bg-[var(--ds-accent)] font-semibold text-[color:var(--ds-accent-fg)] hover:bg-[var(--ds-accent-hover)]",
   neutral: cn(
@@ -44,24 +31,16 @@ const INTENT_PILL: Record<ActionIntent, string> = {
   ),
 };
 
-/**
- * ONE shell for every intent pill. The banner and the inline outcome button
- * were two different heights, paddings and font sizes for the same control,
- * which is why the same command looked like two commands depending on where you
- * met it. `sm` is the inline slot beside a subline; `md` is the banner.
- */
+/** ONE shell for every intent pill: the banner and the inline outcome button
+ * share one height, padding and font size */
 export const intentPill = (intent: ActionIntent, size: "sm" | "md"): string =>
   cn(
     "inline-flex shrink-0 cursor-pointer items-center justify-center whitespace-nowrap border",
     size === "sm"
       ? "h-[var(--ds-h-xs)] gap-[var(--ds-space-tight)] px-[var(--ds-space-base)]"
       : "h-[var(--ds-h-sm)] gap-[var(--ds-space-snug)] px-[var(--ds-space-cozy)]",
-    // The INLINE pill drops its outline: it sits on a card among chips that are
-    // now a fill and no line, and an extra edge there made `Open failure` the
-    // heaviest thing on a row whose loudest fact should be its status. The
-    // BANNER pill keeps its outline — it sits on a band of its own hue, where
-    // a fill alone does not separate it. Weight, focus ring and press dip are
-    // what say "command"; the border was not carrying that.
+    // The INLINE pill drops its outline: it sits among chips that are a fill and no line.
+    // fill and no line, and an extra edge would outweigh the row's own status.
     size === "sm" && "border-transparent",
     dsRadius.md,
     size === "sm" ? dsText.meta : dsText.body,
@@ -71,17 +50,8 @@ export const intentPill = (intent: ActionIntent, size: "sm" | "md"): string =>
     INTENT_PILL[intent],
   );
 
-/**
- * Ported verbatim from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
- * `DemoActions.tsx:193-201`.
- *
- * The two write resolutions ride the `banner` placement like every other
- * decision pill, and they must NOT be drawn as one. They are the two exits from
- * `Write parked` — each is the operator reporting what they SAW in a system of
- * record — so they get the tinted cards below, with the server's `detail`
- * sentence, and the banner row never draws them. One placement, two renderers,
- * split by the command the server named.
- */
+/** Ported verbatim from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc
+ * `DemoActions.tsx:193-201`. */
 const PARK_COMMANDS: ReadonlySet<string> = new Set(["resolve-write-present", "resolve-write-absent"]);
 
 function isParkCommand(action: ActionDescriptorWire): boolean {
@@ -100,9 +70,8 @@ export function outcomeAction(actions: readonly ActionDescriptorWire[]): ActionD
   return actionsAt(actions, "outcome")[0];
 }
 
-/** A client-side receipt that a command was refused. The command result owns
- * the verdict and server sentence; the surface supplies only the context it
- * already showed when the operator pressed the control. */
+/** A client-side receipt that a command was refused. The
+ * command result owns the verdict and server sentence */
 export interface CommandResultFeedEntry {
   readonly id: string;
   readonly targetRunId: string;
@@ -120,7 +89,7 @@ export function commandResultFeedEntry(input: {
   readonly targetRunId: string;
   readonly expectedVersion: number;
   /** The result's own durable identity. A replay deliberately replaces the
-   * same feed card rather than looking like a second refusal. */
+ * same feed card rather than looking like a second refusal. */
   readonly commandId: string;
   readonly subject: string;
   readonly workflowLabel: string;
@@ -142,26 +111,7 @@ export function commandResultFeedEntry(input: {
   };
 }
 
-/**
- * The applied half of D253's fold. It receives the SETTLEMENT, never a raw
- * command result, so a future refusal arm cannot fall through into an
- * affirmative toast.
- *
- * It lives here rather than in `actions.tsx` because a `.tsx` under `surfaces/`
- * exports components only (`dashboard-refresh-boundary`, ref
- * frontend-backend-integration §8.14): one exported helper makes the module
- * refuse a Fast Refresh update and the invalidation climbs to
- * `dashboard-app.tsx`, remounting the app on every save.
- *
- * A non-applied settlement THROWS rather than returning quietly. Its one caller
- * reports refusals and returns before reaching this, so the other arm is
- * unreachable by construction — and a fold that silently does nothing when the
- * command was in fact refused is how "nothing was recorded" comes to look
- * exactly like "it worked", which is the one outcome this program may never
- * blur. Its sibling `commandResultFeedEntry` returns `undefined` for the
- * opposite arm on purpose: absence there means "nothing to file", which the
- * caller checks.
- */
+/** The applied half of the settlement fold. */
 export function toastAppliedCommandResult(
   toast: (input: { tone: "success"; title: string; description: string }) => string,
   input: {

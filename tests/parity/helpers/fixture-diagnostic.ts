@@ -18,10 +18,7 @@ const FIXTURE_DIAGNOSTIC_REDACTION = {
 } as const;
 
 
-/**
- * A reviewed, synthetic fixture dashboard image makes the gallery's thumbnail
- * and lightbox visual states observable without importing a production capture.
- */
+
 export const FIXTURE_DIAGNOSTIC_SCREENSHOT_BYTES = syntheticDashboardPngBytes();
 
 const FIXTURE_DIAGNOSTIC_SCREENSHOT_DIGEST = createHash("sha256")
@@ -62,7 +59,7 @@ const FIXTURE_DIAGNOSTIC_IDENTITY = {
 } as const;
 
 
-/** E29's deterministic durable D137 row. The manifest route serves this canonical value exactly. */
+
 export const FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST: DiagnosticBundle = DiagnosticBundleSchema.parse({
   bundleId: uuidOf(904),
   runId: FIXTURE_DIAGNOSTIC_IDENTITY.runId,
@@ -77,7 +74,7 @@ export const FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST: DiagnosticBundle = DiagnosticBu
 });
 
 
-/** E29's strict browser projection of the durable row. */
+
 export const FIXTURE_DIAGNOSTIC_BUNDLE: DiagnosticBundleWire = DiagnosticBundleWireSchema.parse({
   bundleId: FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST.bundleId,
   capturedAt: FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST.createdAt,

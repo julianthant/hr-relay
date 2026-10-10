@@ -1,8 +1,4 @@
-/**
- * Cross-date run search: the strict browser/server contract over durable run
- * authority. Search never receives row titles, person identifiers, or
- * artifact content; its closed scopes are identifiers and workflow identity.
- */
+/** Cross-date run search: the strict browser/server contract over durable run authority; search never receives row titles, person identifiers, or artifact content. */
 import { z } from "zod";
 import {
   IsoInstantSchema,
@@ -19,7 +15,7 @@ export const HistoricalCrossDateSearchScopeSchema = z.enum(["all", "run", "trace
 export const HISTORICAL_CROSS_DATE_SEARCH_PAGE_LIMIT = 50;
 export const HISTORICAL_CROSS_DATE_SEARCH_QUERY_LIMIT = 160;
 
-/** D283: the exact facet vocabulary measured in the current separations run corpus. */
+/** The exact facet vocabulary measured in the current separations run corpus. */
 export const HistoricalCrossDateSearchWorkflowFacetSchema = z.literal("separations");
 export const HistoricalCrossDateSearchStateFacetSchema = z.enum(["done", "failed", "parked-gate"]);
 export const HistoricalCrossDateSearchShapeFacetSchema = z.literal("single");
@@ -49,11 +45,7 @@ export const HistoricalCrossDateSearchQuerySchema = z.strictObject({
 export type HistoricalCrossDateSearchQuery = z.infer<typeof HistoricalCrossDateSearchQuerySchema>;
 export type HistoricalCrossDateSearchQueryInput = z.input<typeof HistoricalCrossDateSearchQuerySchema>;
 
-/**
- * The current bounded corpus is a shared search contract, not a dashboard
- * branch. Browser surfaces consume this exact authority-shaped default without
- * carrying a registered workflow identity of their own.
- */
+/** The current bounded corpus is a shared search contract, not a dashboard branch. */
 export function historicalCorpusSearchQuery(query: string): HistoricalCrossDateSearchQueryInput {
   return {
     q: query.trim(),

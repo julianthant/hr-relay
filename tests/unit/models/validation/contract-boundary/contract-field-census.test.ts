@@ -1,12 +1,4 @@
-/**
- * The contract field census (D227) — `contractSchemaLeaves`.
- *
- * The explorer's node panel renders one row per FIELD, and every row is derived
- * from the contract's own zod shape rather than from an authored list. These
- * cases pin the three rules that decision rests on: an array is one leaf, a
- * union contributes the union of its arms with a weakened presence, and an
- * unrecognised zod tag throws instead of collapsing a subtree into one row.
- */
+
 import { describe, it } from "vitest";
 import assert from "node:assert/strict";
 import { z } from "zod";
@@ -71,10 +63,7 @@ describe("contractSchemaLeaves", () => {
   });
 
   it("drops the bare `null` row of a field that is an OBJECT in another arm", () => {
-    // `selected: null` in two arms and a candidate object in the third is
-    // exactly `ucpath/search-person-org`'s shape. Listing `selected` beside
-    // `selected.emplId` would count a container as a field, and the children's
-    // `sometimes` already carries "this may hold no record".
+
     const schema = z.discriminatedUnion("status", [
       z.strictObject({
         status: z.literal("resolved"),
@@ -93,10 +82,7 @@ describe("contractSchemaLeaves", () => {
   });
 
   it("refuses an unrecognised zod tag rather than reporting a subtree as one field", () => {
-    // A `Map` is a container this walker does NOT understand as a field list,
-    // and the boundary audit already refuses it in a contract. The census
-    // refuses it a second time on its own terms: silently emitting one row for
-    // it would under-report fields while looking complete.
+
     assert.doesNotThrow(() => contractSchemaLeaves(z.strictObject({ seen: z.map(z.string(), z.string()) })));
     assert.throws(
       () => contractSchemaLeaves(z.strictObject({ when: z.promise(z.string()) })),

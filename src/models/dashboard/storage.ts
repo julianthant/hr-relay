@@ -1,16 +1,5 @@
 import { ProtectedSettingsPresenceEntriesSchema } from "../config/protected-settings.js";
-/**
- * The storage doctor wire (ref dashboard-surfaces §2.5, 2i-D): the read-only recovery report
- * the Settings surface and `cli storage doctor` both render.
- *
- * This is a browser-safe PROJECTION of `src/backend/storage/sqlite/recovery-contracts.ts`
- * — the infra schemas pin literals (application id, current schema version)
- * and closed cause vocabularies that belong to the storage layer; the wire
- * carries the same facts as plain strings/numbers so the dashboard bundle
- * never reaches into `src/infra`. The server builds this ONLY from a parsed
- * infra report, so a value here is never weaker than its source — just
- * unpinned from constants the client has no business embedding.
- */
+/** The storage doctor wire: a browser-safe projection of the recovery report, built only from a parsed infra report so a value here is never weaker than its source. */
 import { z } from "zod";
 import { CommandIdSchema, IsoInstantSchema, RunIdSchema, TraceIdSchema, WorkflowIdSchema } from "../../rules/identity/ids.js";
 
@@ -95,11 +84,7 @@ export const StoragePendingCountsWireSchema = z.strictObject({
   artifactOutbox: NonNegativeIntSchema,
 });
 
-/**
- * What the live BACKUP SERVICE last did — a fact the on-disk doctor cannot
- * see (a failed run leaves no manifest behind), so it rides the wire beside
- * the report instead of being inferred from backup age alone.
- */
+/** What the live BACKUP SERVICE last did: a fact the on-disk doctor cannot see (a failed run leaves no manifest), so it rides the wire rather than being inferred from backup age. */
 export const BackupServiceStateWireSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("never-run"), reason: z.string().min(1) }),
   z.strictObject({
@@ -114,11 +99,7 @@ export const BackupServiceStateWireSchema = z.discriminatedUnion("state", [
   }),
 ]);
 
-/**
- * D308: a span root whose run was deleted. Span files are never rewritten
- * (D301), so the root survives its run and the tombstone is what accounts for
- * it. Closed identity facts only — never a person value.
- */
+/** A span root whose run was deleted: span files are never rewritten, so the root survives its run and the tombstone is what accounts for it. */
 const DeletedSpanAuthorityWireSchema = z.strictObject({
   runId: RunIdSchema,
   workflow: WorkflowIdSchema,

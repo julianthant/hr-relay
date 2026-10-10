@@ -1,32 +1,4 @@
-/**
- * Step omission (D307) — the operator omits a timeline step at start and types
- * the facts the rest of the run would have read from it.
- *
- * Three closed things live here, and nothing that executes:
- *
- * 1. The **form** a step folder declares: a closed field vocabulary the Steps
- *    screen can draw and one strict facts schema derived from it, so the wire,
- *    the plan and the run envelope all parse the SAME object.
- * 2. The **envelope entry** — `{ step, facts }` — that rides the run like
- *    `dryRun` does (never the canonical input: an omission changes which
- *    nodes execute, not what the item is).
- * 3. The **plan** — given a graph's nodes and its timeline, which nodes are
- *    `asserted` (a task the step's producers rebuild from the typed facts),
- *    which are `omitted` (a transaction in an omitted step, or a task the step
- *    cannot honestly rebuild), and which executing node would read an omitted
- *    one and therefore refuses BY NAME before anything starts.
- *
- * Whole-step omission means the WHOLE step (D313): no entry of an omitted
- * step executes — not its reads, not its transactions, and not a gate that
- * happens to sit inside it. A mandatory check therefore lives OUTSIDE the
- * step it verifies, as its own selected entry; the compiler refuses a
- * definition in which an entry outside an omittable step reads a member the
- * omission does not rebuild, and this planner refuses the same shape per run
- * (`dependency-omitted`). Transactions in an omitted step never run and mint
- * no envelope: the write sequencer's row is the only thing that may say a
- * write happened (D144), so a typed transaction number is a typed FACT a fold
- * consumes, not a substitute outcome. Only TASK nodes are ever rebuilt.
- */
+/** Step omission: the operator omits a timeline step at start and types the facts the rest of the run would have read from it — three closed things, and nothing that executes. */
 import { z } from "zod";
 import type { JsonObject, JsonValue } from "../../rules/validation/canonical-json.js";
 import { JsonValueSchema } from "../../rules/validation/canonical-json.js";
@@ -99,13 +71,7 @@ export interface StepOmissionProduceContext {
   readonly assertedAt: IsoInstant;
 }
 
-/**
- * A step folder's declaration. `produces` is keyed by the TASK node ids the
- * step can honestly rebuild; every other node of the step is `omitted` when
- * the step is. A producer returns a COMPLETE output the executor parses with
- * the node's own contract output schema — never a partial object, never a
- * placeholder for a page fact nobody observed.
- */
+/** A step folder's declaration; a producer returns a COMPLETE output the executor parses with the node's own contract output schema — never a partial object or a placeholder. */
 export interface StepOmissionDeclaration {
   readonly form: StepOmissionForm;
   readonly produces: Readonly<Record<string, (context: StepOmissionProduceContext) => unknown>>;
@@ -140,11 +106,7 @@ export type StepOmissions = z.infer<typeof StepOmissionsSchema>;
 
 export const StepOmissionNotRunReasonSchema = z.enum(["operator-asserted", "step-omitted"]);
 
-/**
- * The arm a workflow RESULT carries where an omitted write step's proof would
- * be: no disposition is invented, the step is named. Owned here so a descriptor
- * and any authority that mirrors its result schema parse the same bytes.
- */
+/** The arm a workflow RESULT carries where an omitted write step's proof would be: no disposition is invented, the step is named. */
 export const OmittedStepResultArmSchema = z.strictObject({
   state: z.literal("omitted"),
   step: TimelineCategoryKeySchema,
@@ -172,10 +134,7 @@ export interface StepOmissionPlan {
   readonly refusals: readonly StepOmissionRefusal[];
 }
 
-/**
- * Classify every node for one run's omissions. Pure and total: a refusal is a
- * value, and a plan with refusals must not start.
- */
+/** Classify every node for one run's omissions; pure and total, and a plan with refusals must not start. */
 export function planStepOmissions(graph: StepOmissionGraphView, requested: readonly StepOmissionEntry[]): StepOmissionPlan {
   const asserted = new Map<string, { step: string; facts: JsonObject; produce: (context: StepOmissionProduceContext) => unknown }>();
   const omitted = new Map<string, string>();
@@ -208,10 +167,7 @@ export function planStepOmissions(graph: StepOmissionGraphView, requested: reado
     for (const { id } of category.nodes) {
       const node = nodeById.get(id);
       if (node === undefined) throw new Error(`timeline step "${entry.step}" names node "${id}", which the graph does not declare`);
-      // D313 — a gate inside an omitted step is omitted with the step: it runs
-      // nothing and records no decision. A downstream node that needs that
-      // decision refuses below by name, exactly as it would for any other
-      // unread member.
+            // Omitted gates record no decision; dependent selected nodes must refuse.
       const produce = node.kind === "task" ? spec.produces[id] : undefined;
       if (produce === undefined) omitted.set(id, entry.step);
       else asserted.set(id, { step: entry.step, facts: JsonFactsSchema.parse(facts.data), produce });
@@ -233,7 +189,7 @@ export function planStepOmissions(graph: StepOmissionGraphView, requested: reado
       const blockedBy = omitted.get(dependency);
       if (blockedBy === undefined) continue;
       const ownStep = stepByNode.get(node.id);
-      if (ownStep === undefined) throw new Error(`node "${node.id}" is on no timeline step; a declared timeline is exhaustive (D225)`);
+      if (ownStep === undefined) throw new Error(`node "${node.id}" is on no timeline step; a declared timeline is exhaustive`);
       refusals.push({
         code: "dependency-omitted", step: ownStep,
         message: `node "${node.id}" (step "${ownStep}") reads "${dependency}", which omitting step "${blockedBy}" leaves unread; `
@@ -249,19 +205,7 @@ export type StepOmissionCascadeRow =
   | Readonly<{ state: "omittable"; forces: readonly string[] }>
   | Readonly<{ state: "blocked"; by: string; forces: readonly string[] }>;
 
-/**
- * One schema-valid value per field kind — the SHAPE of a step's facts without
- * claiming anything about a real run. `stepOmissionCascade` plans with these to
- * answer "could this step be omitted at all", and the D307 architecture guard
- * imports the same function so its sweep drives `planStepOmissions` with
- * EXACTLY the cascade's own values rather than a hand-copied second generator
- * that could drift out of agreement with this one.
- *
- * These values are never an operator's facts and never reach a run: the planner
- * re-parses whatever the envelope actually carries through
- * `stepOmissionFactsSchema`, so a placeholder can only ever answer a
- * hypothetical question this module asks itself.
- */
+/** Schema-valid probe facts establish shape only; cascade and guard share the same values. */
 export function stepOmissionPlaceholderFacts(form: StepOmissionForm): JsonObject {
   const placeholder = (field: StepOmissionField): JsonValue => {
     switch (field.kind) {
@@ -279,12 +223,7 @@ export function stepOmissionPlaceholderFacts(form: StepOmissionForm): JsonObject
   ));
 }
 
-/**
- * The Steps screen's cascade: for each omittable step, the OTHER steps that
- * would have to be omitted with it — computed to a fixpoint over the same rule
- * the planner enforces, so the screen locks exactly what the plan would refuse.
- * A forced step that declares no omission blocks the whole choice.
- */
+/** The Steps screen's cascade: the OTHER steps that would have to be omitted with each one, computed to a fixpoint over the same rule the planner enforces. */
 export function stepOmissionCascade(graph: StepOmissionGraphView): ReadonlyMap<string, StepOmissionCascadeRow> {
   const result = new Map<string, StepOmissionCascadeRow>();
   const specByStep = new Map(graph.stepOmissions.map((spec) => [spec.step, spec]));
@@ -299,9 +238,7 @@ export function stepOmissionCascade(graph: StepOmissionGraphView): ReadonlyMap<s
       }));
       const other = plan.refusals.find((refusal) => refusal.code !== "dependency-omitted");
       if (other !== undefined) throw new Error(`cascade for step "${spec.step}" hit ${other.code}: ${other.message}`);
-      // A refusal inside a step already in the omitted set cannot be cured by
-      // omitting more: a gate of that step reads a node the omission leaves
-      // unread. The choice is blocked by that very step.
+      // Further omissions cannot repair an unread dependency inside an already-omitted step.
       const selfBlocked = plan.refusals.find((refusal) => omittedSteps.has(refusal.step));
       if (selfBlocked !== undefined) { blockedBy = selfBlocked.step; break; }
       const forced = plan.refusals.map((refusal) => refusal.step);

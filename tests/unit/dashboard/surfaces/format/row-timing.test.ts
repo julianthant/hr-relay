@@ -1,22 +1,13 @@
-/**
- * The queue row's ONE time fact (D124, ref dashboard-surfaces §"as-built presentation
- * deltas"), extracted from `queue.tsx` so it is measured logic rather than
- * presentation.
- *
- * The defect this pins: the row computed `now − startedAt` for every status
- * except `queued`, so the Phase-1 live exit run — ~14.5 minutes of execution,
- * settled hours earlier — displayed **2h 47m** and kept growing. A finished
- * run must show what it TOOK.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { isTerminalQueueStatus } from "../../../../../src/models/dashboard/projection.js";
 import { runTiming } from "../../../../../src/dashboard/surfaces/shared/status/format.js";
 
 const STARTED = "2026-08-04T07:06:26.828Z";
-/** The live exit run's real terminal instant: 14m 33s after it was enqueued. */
+
 const ENDED = "2026-08-04T07:20:59.888Z";
-/** The browser clock at the moment the defect was observed — 2h47m later. */
+
 const MUCH_LATER = "2026-08-04T09:53:00.000Z";
 
 const terminalRow = {
@@ -25,7 +16,7 @@ const terminalRow = {
   endedAt: { state: "present", value: ENDED },
 } as const;
 
-describe("queue row timing (D124)", () => {
+describe("queue row timing", () => {
   it("shows a settled run's DURATION, not the time since it started", () => {
     const timing = runTiming(terminalRow, MUCH_LATER, isTerminalQueueStatus);
     assert.deepEqual(timing, { text: "14m 33s" });

@@ -1,34 +1,4 @@
-/**
- * `defineIntakeProjection` — ref data-intake-and-edit-data §1's load-bearing invariant, enforced.
- *
- * A spreadsheet-capable workflow declares which of its input fields an operator
- * may bind a column to, and each declaration names the canonical field the
- * mapper coerces through. The factory then proves the thing the whole intake
- * pipeline rests on: **the schema at that target path IS the canonical field's
- * schema object**, not a parallel regex that agrees today.
- *
- * Why identity rather than equivalence: two structurally identical schemas can
- * drift apart in one commit, and the drift is invisible — the mapper keeps
- * coercing to the canonical shape while the workflow validates against the copy.
- * Ref data-intake-and-edit-data §7 vector #6 names this exactly ("an intake projection re-declares a
- * regex looser than its canonical field"), and the legacy tree already shipped
- * it: `work-study` and `separations` validate EIDs with `/^\d{5,}$/` while the
- * canonical identifier is `/^10\d{6}$/`.
- *
- * ## What the projection does NOT claim
- *
- * A coerced cell is valid for its TARGET FIELD by construction. It is not
- * thereby valid for the whole input: cross-field refinements, discriminants and
- * required non-intake fields can still reject the assembled row. Ref data-intake-and-edit-data §1 says
- * so in as many words, and §5's pipeline parses every assembled row through the
- * full workflow schema for exactly that reason.
- *
- * ## Two targets may share one canonical concept (D66)
- *
- * `employeeName` and `contactName` are both `fullName`. The projection keys on
- * the TARGET id and records the canonical id beside it, so a mapping binds them
- * independently and neither can overwrite the other.
- */
+/** `defineIntakeProjection` — the schema at a target path IS the canonical field's schema object, proved by identity rather than by equivalence. */
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import {
@@ -59,12 +29,7 @@ export interface IntakeProjection {
   /** The workflow input schema every assembled row is finally parsed through. */
   readonly inputSchema: z.ZodType;
   readonly targets: readonly IntakeTarget[];
-  /**
-   * D66's `intakeProjectionFingerprint`: the exact target-field set AND their
-   * schemas. A saved mapping built against a looser `eid` must not silently
-   * reuse once the schema tightens, so the fold includes each target's schema
-   * hash, not only its name.
-   */
+    /* The exact target-field set AND their schemas, so a saved mapping built against a looser `eid` must not silently reuse once the schema tightens. */
   readonly fingerprint: Fingerprint;
   readonly target: (id: IntakeTargetFieldId) => IntakeTarget | undefined;
 }
@@ -75,14 +40,7 @@ export function isFactoryDefinedIntakeProjection(candidate: IntakeProjection): b
   return FACTORY_DEFINED_PROJECTIONS.has(candidate);
 }
 
-/**
- * Why a target path could not be resolved, in the input schema's own terms.
- *
- * The union arm is worth its own sentence (D172): "the two arms spell the same
- * constraint twice" is a fixable authoring mistake with a one-line fix (share
- * the schema object), and a generic "not a strict object" would send the author
- * looking for a structural problem that is not there.
- */
+/** Why a target path could not be resolved, in the input schema's own terms, so an authoring mistake reads as one and a structural problem is not invented. */
 function intakeTargetPathRefusal(targetFieldId: IntakeTargetFieldId, failure: SchemaPathFailure): string {
   if (failure.kind === "no-such-field") {
     return `intake projection target ${targetFieldId} names no field in the input schema `

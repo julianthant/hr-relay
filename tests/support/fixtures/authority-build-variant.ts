@@ -1,10 +1,6 @@
 import { vi } from "vitest";
 
-/**
- * D332 M9/M21 test-only build substitutions. No source file is rewritten and
- * no production gate is replaced. Reset the module graph on both sides so
- * the substituted build constants cannot escape the awaited callback.
- */
+// Reset module graphs around test-only substitutions; do not rewrite sources or replace production gates.
 export async function withAuthorityBuildVariant(
   variant: "current-29" | "ddl-derived-layouts",
   run: () => Promise<void>,
@@ -19,8 +15,7 @@ export async function withAuthorityBuildVariant(
       // supported version becomes 29; #admitExistingSchema remains real.
       return { ...actual, CURRENT_AUTHORITY_SCHEMA_VERSION: 29 };
     }
-    // Deliberately restore the unsafe derivation from today's DDL. The
-    // positive admission oracle must reject this build for every old layout.
+
     const all = Object.keys(actual.SQLITE_TABLE_DDL).sort();
     const retired = new Set(["capture_sessions", "capture_photo_order", "capture_finalization_outboxes"]);
     const afterRetirement = all.filter((name) => !retired.has(name));

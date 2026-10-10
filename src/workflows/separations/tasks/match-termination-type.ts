@@ -8,17 +8,7 @@ import {
   resolveTerminationType,
 } from "../../../rules/separations/termination-type.js";
 
-/**
- * §4a's refusal, executed. Nothing here decides anything — the map does — and
- * that is deliberate: this file's whole job is to turn the pure resolution into
- * a run outcome with the right durable code.
- *
- * The ORDER matters. The option-list drift check runs BEFORE the lookup,
- * because a control that has been republished makes every answer from the map
- * suspect, including the ones that still happen to match. A run that resolved
- * `Retirement` correctly off a control that has grown three new options has not
- * proved anything about the other two.
- */
+/** §4a's refusal, executed: nothing decides here, the map does; ORDER matters — the option-list drift check runs before the lookup, because a republished control makes every match suspect. */
 export const matchTerminationTypeTask = defineTask(SeparationsMatchTerminationType, {
   sessions: [],
   async run({ input, ctx }) {

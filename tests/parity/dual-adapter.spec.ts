@@ -1,19 +1,4 @@
-/**
- * Ref frontend-backend-integration §7.2 — the same production components, two data sources, one result.
- *
- * Adapter #1 is the deterministic fixture corpus; adapter #2 is the real
- * projection over real HTTP and SSE, seeded through real transitions. If the
- * components agree on both, then what the reference set photographs is the
- * COMPONENTS' behavior and not the fixtures' shape — which is the only reason a
- * fixture-built reference is worth storing at all.
- *
- * The comparison is the accessibility tree, not pixels: the two adapters mint
- * different run ids, titles and instants, so identical pixels are impossible
- * and would be the wrong thing to demand. What must match is the SEMANTIC
- * skeleton — which roles, in which order, at which nesting — because that is
- * what encodes "the queue rendered a group row with a member well" rather than
- * "the queue rendered these particular words".
- */
+
 import { expect,test } from "@playwright/test";
 import { DashboardDayWireSchema } from "../../src/models/dashboard/projection.js";
 import { RunDetailSectionResponseSchema } from "../../src/models/dashboard/run-detail.js";
@@ -46,11 +31,7 @@ test.afterAll(async () => {
   await seeded.close();
 });
 
-/**
- * Reduces an aria snapshot to its structural skeleton: role and depth, with
- * every literal string dropped. Two adapters serving different runs of the same
- * SHAPE must produce the same skeleton.
- */
+
 function skeleton(tree: string): string[] {
   return tree
     .split("\n")
@@ -74,13 +55,7 @@ const ROLE_PAIRS: readonly { id: string; fixtureRun?: string; seededRun?: string
   { id: "running-run", fixtureRun: FIXTURE_IDS.runningRun, seededRun: "runningRun" },
   { id: "done-run", fixtureRun: FIXTURE_IDS.doneRun, seededRun: "doneRun" },
   { id: "group-run", fixtureRun: FIXTURE_IDS.groupOf3, seededRun: "groupRun" },
-  /*
-    W2. The pair that matters most for this slice: the fixture adapter AUTHORS
-    the parked-write section while the seeded one DERIVES it from a real fenced
-    and parked `run_operations` row, and the surface must take the same branch
-    over both. A control the two adapters disagree about is a control one of
-    them is inventing.
-  */
+
   { id: "parked-write-run", fixtureRun: FIXTURE_IDS.parkedRun, seededRun: "parkedRun" },
 ];
 
@@ -94,7 +69,7 @@ for (const pair of ROLE_PAIRS) {
       const gate = RunDetailSectionResponseSchema.parse(await response.json());
       if (gate.section !== "identity-gate") throw new Error("The seeded generic gate served a different section");
       expect(gate.payload.state).toBe("missing");
-      // Compare the same missing-packet capability. Rich R1 ceremonies have their own gate parity lane.
+      // Compare the same missing-packet capability; rich ceremonies have their own gate parity lane.
       await page.route(`${fixture.baseUrl}/api/v1/runs/${pair.fixtureRun}/identity-gate`, route => route.fulfill({ json: gate }));
     }
 
@@ -115,11 +90,7 @@ for (const pair of ROLE_PAIRS) {
       fixtureBase = groupFixture.baseUrl;
     }
 
-    // The tab is PINNED. Left to their defaults the two adapters can legitimately
-    // open different tabs — a done run opens on Receipt, but the seeded backend
-    // advertises no receipt section for its done run, so it opens on Logs. That
-    // is a difference in what the two backends serve, not in how the components
-    // behave, and comparing it would be comparing two different screens.
+    // Pin the tab; adapters may legitimately choose different defaults from their available sections.
     await gotoAppState(page, fixtureBase, {
       day: FIXTURE_DAY,
       ...(pair.fixtureRun === undefined ? {} : { run: pair.fixtureRun, section: "logs", ...(pair.id === "group-run" ? { logPreview: "selected" as const } : {}) }),
@@ -170,13 +141,7 @@ for (const pair of ROLE_PAIRS) {
   });
 }
 
-/**
- * The a11y contract that must hold on BOTH adapters regardless of data: one
- * h1, a named queue, and no control without an accessible name. This is the
- * part of §7.1's "a11y snapshot" that is an assertion rather than a stored
- * artifact — a reference set can only prove the tree did not CHANGE, not that
- * it was correct in the first place.
- */
+
 for (const adapter of ["fixture", "seeded"] as const) {
   test(`${adapter} adapter satisfies the standing a11y contract`, async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });

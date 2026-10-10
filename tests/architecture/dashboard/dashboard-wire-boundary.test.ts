@@ -1,95 +1,4 @@
-/**
- * Ref frontend-backend-integration §8.2/§8.3 — the two frontend boundary guards that land with the 1i
- * dashboard surfaces.
- *
- * (2) No duplicate wire types: dashboard code renders schema-inferred types.
- *     A handwritten structural mirror of a `*Wire` contract (an `interface
- *     FooWire { … }` or `type FooWire = { … }` declared under src/dashboard)
- *     is exactly the drift D93 warns about — the mirror keeps compiling after
- *     the schema moves. Aliases of schema-inferred types (`type FooWire =
- *     z.infer<…>`) remain legal.
- *
- * (3) No workflow switches: production dashboard code may not branch on a
- *     concrete workflow id. The registered ids come from the ONE composition
- *     root's bundle-safe view; any string literal equal to a registered id
- *     under src/dashboard (client, surfaces, app, ds) fails. Workflow identity
- *     reaches surfaces only as data (bootstrap projections and descriptor
- *     objects), never as a literal a branch can hang off.
- *
- * (13) Browser-bundle purity: no module the dashboard entry can VALUE-reach may
- *     statically import a Node built-in. `src/dashboard` imports shared domain
- *     contracts, so a `node:*` import several modules deep — one that typechecks,
- *     lints, and unit-tests perfectly on the server — silently becomes browser
- *     code. This is not a theoretical boundary: `src/models/config/schema.ts`
- *     carried `import { join, resolve } from "node:path"` for its filesystem
- *     path DEFAULTS, and `src/rules/commands/commands.ts` imports its settings-override
- *     contract, so the dashboard bundle reached it. Vite's dev server replaces
- *     an externalized built-in with a proxy that THROWS on the first property
- *     read, so the named-import binding alone killed the whole app at module
- *     evaluation — a blank page, before a single component rendered. Making the
- *     defaults lazy was not enough and never could be: the import itself has to
- *     be gone. The production build is even more dangerous, because it only
- *     WARNS and ships a bundle that fails later, if at all.
- *
- *     The fix direction this guard enforces is structural, not cosmetic: a
- *     browser-reachable module keeps the pure contract, and anything that needs
- *     a filesystem, a process, or a working directory moves to a server-only
- *     module the browser never reaches (here, `src/backend/app/config/runtime-paths.ts`).
- *     Aliasing, polyfilling, or stubbing `node:path` in the browser would be
- *     strictly worse — a stubbed `resolve()` invents a plausible-but-wrong
- *     absolute path, which is exactly the silent-wrong-value failure this
- *     program forbids.
- *
- *     2i-F generalised this arm from `index.html` to EVERY `*.html` entry under
- *     src/dashboard. A hardcoded entry filename leaves a later shipped page
- *     unguarded.
- *
- * (15) The registry stays OUT of the bundle (D264, amending D251): no *.html
- *     entry's closure may reach `src/workflows/**` or `src/control/**`.
- *
- *     D251 let the Run Modal read `summary`, `enqueue` and `surfaces.inputRun`
- *     off the bundle-safe `WORKFLOW_DESCRIPTORS` tuple, because those three are
- *     plain data and serving a fact the bundle already carries would give one
- *     surface two sources for one value. The two-sources argument was right;
- *     the price was never measured. A descriptor's plain data does not travel
- *     alone — the tuple pulls every registered workflow's whole graph, its node
- *     specs, its task contracts and the `src/base/**` builders that mint them,
- *     so the browser downloaded the composition root to render three fields.
- *     D264 serves the three (`WorkflowStartWireSchema`) and this arm holds the
- *     tuple out; measured at the change, the operator bundle fell from
- *     1,114,214 bytes to 753,197.
- *
- *     It is a CLOSURE arm rather than a lint on import lines for the same
- *     reason as (13) and (14): the dangerous version is transitive, and one
- *     shared helper re-exporting a descriptor would put the whole tuple back
- *     with nothing in the diff that reads like a registry import.
- *     `src/domain/**` and `src/base/**` stay reachable on purpose — a
- *     descriptor's CONTRACTS are what keep the daemon and the dashboard one
- *     product, and it is the composed tuple, not the contracts, that may not
- *     ship.
- *
- * (16) Specimen-bundle scope (D274 item 3, ledger 3 UK146–UK157): the `kit.html`
- *     entry's import closure may not reach `src/dashboard/surfaces/**`,
- *     `src/dashboard/client/**`, `src/dashboard/state/**`, `src/dashboard/app/**`
- *     or another dashboard surface subtree.
- *
- *     The design-system specimen page's whole claim is that what it renders is
- *     the SYSTEM — `ds/**` drawn against nothing but synthetic literals — so a
- *     builder can trust that a primitive which looks right there looks right
- *     anywhere. The moment it reaches a surface or the client, that stops being
- *     true in the most misleading possible direction: the page would be
- *     demonstrating one surface's composition of a primitive while presenting
- *     it as the primitive's own behaviour, and a served fact would be arriving
- *     on a page whose entire premise is that it serves none.
- *
- *     A closure arm rather than a lint on its import lines, for the same reason
- *     as (13) and (14): the version that actually happens is transitive — one
- *     convenience helper lifted out of a surface, re-exported from somewhere
- *     shared, and the diff shows an innocent import of a formatter.
- *     `src/domain/**` stays reachable: `ds/primitives-status.tsx` reads the
- *     status vocabulary from a pure domain contract, and that shared contract
- *     is exactly what makes the specimen a specimen of the real system.
- */
+
 import { describe, expect, it } from "vitest";
 import ts from "typescript";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -234,12 +143,7 @@ function isNodeBuiltin(specifier: string): boolean {
   return specifier.startsWith("node:") || NODE_BUILTINS.has(specifier);
 }
 
-/**
- * The module specifiers that survive into the emitted bundle: `import type …`
- * and a clause whose every named binding is `type`-marked are erased, and so is
- * `export type …`. Everything else — including bare side-effect imports and
- * dynamic `import()` — ships.
- */
+// Type-only imports and exports disappear from the browser bundle.
 function bundledSpecifiers(file: string, source: ts.SourceFile): readonly string[] {
   const specifiers: string[] = [];
   visit(source, (node) => {
@@ -270,11 +174,7 @@ function bundledSpecifiers(file: string, source: ts.SourceFile): readonly string
     .filter((specifier) => specifier !== file);
 }
 
-/**
- * Resolves a project-internal specifier to a source file, or `undefined` when it
- * is not one (`react`, `zod`, `./index.css`). `verbatimModuleSyntax` means every
- * relative specifier carries a `.js` extension that maps back to `.ts`/`.tsx`.
- */
+// verbatimModuleSyntax uses .js specifiers for .ts and .tsx sources.
 function resolveSourceFile(fromFile: string, specifier: string): string | undefined {
   const base = specifier.startsWith(".")
     ? resolve(fromFile, "..", specifier)
@@ -315,16 +215,7 @@ function nodeBuiltinReach(entry: string): readonly string[] {
   return violations.sort();
 }
 
-/**
- * EVERY entry the bundler uses, read from the HTML rather than assumed.
- *
- * A hardcoded filename is exactly the wrong shape for this guard: a second
- * entry would escape the Node-built-in check silently, which is the failure
- * mode D120 exists to prevent — the breach it caught was six modules deep in a
- * shared domain contract, so a NEW entry importing the same contracts is the
- * most likely place for the next one. `walkFiles` is TS-only, so the HTML files
- * are enumerated directly.
- */
+
 function dashboardHtmlFiles(): readonly string[] {
   const files = readdirSync(DASHBOARD_ROOT, { withFileTypes: true })
     .filter((entry) => entry.isFile() && entry.name.endsWith(".html"))
@@ -406,27 +297,14 @@ describe("dashboard wire boundary (ref frontend-backend-integration §8)", () =>
 
   it("reaches no Node built-in from ANY dashboard bundle entry", () => {
     const entries = dashboardEntries();
-    // Every shipped entry is covered, not merely the main dashboard: the whole
-    // point of walking the HTML is that the entry set is read rather than
-    // assumed, and an entry the walker never visits is an unguarded bundle.
+
     expect(dashboardHtmlFiles()).toContain("index.html");
     expect(dashboardHtmlFiles()).toContain("kit.html");
     expect(entries.length).toBeGreaterThanOrEqual(2);
     // The `@` alias the walker rewrites must be the one the bundler resolves.
     const viteConfig = readFileSync(join(REPO_ROOT, "vite.dashboard.config.ts"), "utf8");
     expect(viteConfig).toContain('"@": resolve(import.meta.dirname, "src/dashboard")');
-    // Every entry the walker guards must also be an entry the bundler BUILDS.
-    // An HTML page that only ever renders on the dev server is a page ref frontend-backend-integration §7's
-    // parity lane — which serves `dist/dashboard` as static files — can never
-    // photograph, and nothing else in this tree would have said so.
-    //
-    // A bare substring check on the whole file (`toContain('"src/dashboard/kit.html"')`)
-    // is satisfied by a COMMENT that merely mentions the path — it never has to
-    // find the actual rollup `input` entry, so deleting the real entry while
-    // leaving a stray reference to its path anywhere in the file (a docstring,
-    // a stale note) would stay green. The pattern below anchors on the
-    // `<key>: resolve(import.meta.dirname, "src/dashboard/<file>")` shape the
-    // config actually uses, so it bites on both failure modes.
+    // Match the Rollup input declaration; a path mentioned only in a comment is not a built entry.
     for (const file of dashboardHtmlFiles()) {
       const key = file.replace(/\.html$/, "");
       const escapedFile = file.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -438,9 +316,7 @@ describe("dashboard wire boundary (ref frontend-backend-integration §8)", () =>
     for (const entry of entries) {
       expect(nodeBuiltinReach(entry), entry).toEqual([]);
     }
-    // The rule only means something because the walker catches a real breach:
-    // the config RESOLVER is server-only and imports node:crypto, and the
-    // server-only path defaults it pulls in import node:path.
+
     const breach = nodeBuiltinReach("src/backend/app/config/resolve.ts");
     expect(breach.some((violation) => violation.includes('"node:crypto"'))).toBe(true);
     expect(breach.some((violation) =>
@@ -463,15 +339,7 @@ describe("dashboard wire boundary (ref frontend-backend-integration §8)", () =>
     expect(closure).not.toContain("src/models/runtime/runtime-dependencies.ts");
   });
 
-  /**
-   * (16) The specimen page's SCOPE, as a fact about its import closure.
-   *
-   * `kit.html` renders the design system and only the design system. Its
-   * closure is `kit/**` + `ds/**` + `lib/**` + the pure domain contract the
-   * status vocabulary lives in; anything else on the page would be a surface's
-   * composition of a primitive masquerading as the primitive, or a served fact
-   * on a page whose premise is that it serves none.
-   */
+
   it("reaches no operator surface, client, state or app module from the specimen entry", () => {
     const forbidden = [
       "src/dashboard/surfaces/",
@@ -490,15 +358,7 @@ describe("dashboard wire boundary (ref frontend-backend-integration §8)", () =>
       .sort();
     expect(violations, "the specimen bundle may not reach an operator module").toEqual([]);
 
-    // The rule only means something because the walker can SEE such a reach:
-    // the operator entry legitimately reaches every forbidden root. `app/` cannot
-    // be proven the same way as the other three roots: the entry file itself,
-    // `src/dashboard/app/main.tsx`, already lives under `src/dashboard/app/`,
-    // so a bare `startsWith("src/dashboard/app/")` would pass even if
-    // `bundleClosure` resolved zero imports — it is checking the entry against
-    // itself, not against a real reach. The control asserts a NON-ENTRY file
-    // under `app/` instead, so it can actually fail if the walker stops
-    // resolving imports.
+    // Require a non-entry app module; matching the entry itself would pass with a broken closure walker.
     const operator = bundleClosure("src/dashboard/app/main.tsx");
     for (const root of forbidden) {
       if (root === "src/dashboard/app/") {
@@ -510,9 +370,7 @@ describe("dashboard wire boundary (ref frontend-backend-integration §8)", () =>
   });
 
   it("reaches no workflow registry from any dashboard entry", () => {
-    // `src/workflows/**` is the descriptor tuple and every descriptor it names;
-    // `src/control/**` is the composition root the tuple is the browser's view
-    // of. Either one inside a bundle closure is the same defect.
+
     const forbidden = ["src/workflows/", "src/backend/app/registries/workflow-registry.ts"];
     const violations: string[] = [];
     for (const entry of dashboardEntries()) {
@@ -524,9 +382,7 @@ describe("dashboard wire boundary (ref frontend-backend-integration §8)", () =>
     }
     expect(violations.sort(), "no dashboard bundle may carry the workflow registry").toEqual([]);
 
-    // Non-vacuous: the walker really does resolve INTO `src/workflows/**` when
-    // something imports it, so the empty result above is a fact about the
-    // dashboard's closure and not about a walker that resolves nothing.
+
     const registry = bundleClosure("src/workflows/descriptor-registry.ts");
     expect([...registry].filter((file) => file.startsWith("src/workflows/")).length)
       .toBeGreaterThan(1);

@@ -3,18 +3,7 @@ import { KualiSearchSeparationAction } from "../../../../models/systems/kuali/se
 import { classifyKualiActionResolution } from "../../../../models/ui/kuali-action-list.js";
 import { kualiDriver } from "../driver-declaration.js";
 
-/**
- * D261's head node: the run names a DOCUMENT and this task discovers its
- * ACTION, so a human never has to paste a 24-hex workflow-step id.
- *
- * The split is D201's: the driver states what the Action List showed and
- * classifies nothing, and `classifyKualiActionResolution` — a pure, unit-tested
- * fold — decides what it means. Every negative is a NAMED durable failure code,
- * because each of them means something different to whoever reads the run:
- * "nobody is holding an action on this document" is an operator fact, "two
- * actions for one number" is a Kuali state somebody must look at, and "the link
- * carries no address" is a page this repository no longer understands.
- */
+
 export const searchSeparationActionTask = defineTask(kualiDriver, KualiSearchSeparationAction, {
   sessions: [{ system: "kuali", access: "read", session: "reuse-worker" }],
   async run({ input, ctx }) {

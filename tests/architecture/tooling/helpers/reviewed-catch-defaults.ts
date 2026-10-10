@@ -8,7 +8,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/storage-doctor.ts",
-    "sha256": "50fe30ff5cfe9d0e4e08fa17556780b834c089927b7f67337a011ddfb4b77064",
+    "sha256": "7fbeea1ad3ab57480f0e4aa01e4d186458782d6b60e748fb1f6f1572088b1334",
     "reason": "ENOENT alone denotes no backup directory; failed inspection sets an explicit invalid health flag."
   },
   {
@@ -18,7 +18,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/app/composition/dashboard/notification-health.ts",
-    "sha256": "0c607f7146d081cb7e713bc7358ab8fe06b42a00ea153229a9444db8dd5fb340",
+    "sha256": "56ee76a497e98b2ea1c369b50d1ce84b70c6b33fd260315a775a9dab420996f0",
     "reason": "Failure booleans trigger explicit failed health notifications; they never claim a healthy read."
   },
   {
@@ -73,7 +73,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/runtime/workers/worker-supervisor.ts",
-    "sha256": "9de7e351cbd83a7bf780acb7560bd14e2bc4cc85c928294139f71e9ed84fa4c2",
+    "sha256": "00de5cc194b2352f2a0ad268d068fa1c2e5ea62fc298ba0ab6c358ec2fb524d1",
     "reason": "The rejection observer does not replace the original drain promise; shutdown races that promise and throws aggregate failure."
   },
   {

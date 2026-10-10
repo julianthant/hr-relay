@@ -1,21 +1,4 @@
-/**
- * The Duo ceremony lease — one ceremony at a time per CREDENTIAL
- * (ref execution-and-sessions §10, D267).
- *
- * Duo's WebAuthn signature counter is per credential and lives on Duo's side;
- * Duo Autopilot's copy is per browser PROFILE, and §1 partitions profiles per
- * worker. Two ceremonies for one credential inside the same second present the
- * same floored counter, and Duo reads a counter that does not ADVANCE as a
- * cloned key — which BURNS the profile. This record is the durable authority
- * row that serializes the ceremonies. It is keyed on the credential's IDENTITY
- * (a digest resolved through `domain/secrets.ts`), never on a worker, a system,
- * or a profile — and never on the secret itself.
- *
- * One row per credential. `generation` advances on every acquisition, so a
- * holder can learn it was superseded (its release is REPORTED, never written
- * over the successor) and a waiter that takes over an expired lease does so at
- * a generation the old holder's token does not carry.
- */
+/** The Duo ceremony lease — one ceremony at a time per CREDENTIAL, keyed on the credential's IDENTITY and never on a worker, a system, a profile, or the secret itself. */
 import { z } from "zod";
 import {
   BrowserSystemIdSchema,

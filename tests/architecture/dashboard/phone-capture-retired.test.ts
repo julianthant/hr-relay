@@ -1,11 +1,4 @@
-/**
- * D294 — mobile document capture is retired.
- *
- * This guard is deliberately narrower than a search for “capture”: diagnostic
- * bundle screenshots, run-detail captures, and Archive resources remain
- * supported evidence surfaces. It rejects only the retired phone product's
- * page, routes, commands, configuration, session authority, and repositories.
- */
+
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -39,7 +32,7 @@ const RETIRED_TOKENS: readonly Readonly<{ readonly description: string; readonly
   { description: "phone capture configuration", pattern: /\bcapture(?:Ingress|Public|Ttl|Token|Session)/u },
 ];
 
-/** Config files may spell the retired surface as an environment key. */
+
 const RETIRED_CONFIG_TOKENS: readonly Readonly<{ readonly description: string; readonly pattern: RegExp }>[] = [
   ...RETIRED_TOKENS,
   { description: "phone capture configuration", pattern: /\bCAPTURE_(?:PHONE|TOKEN|INTAKE)_[A-Z0-9_]*\b/u },
@@ -82,7 +75,7 @@ function writeFixture(root: string, path: string, content: string): void {
   writeFileSync(file, content);
 }
 
-describe("D294 phone capture retirement", () => {
+describe("phone capture retirement", () => {
   it("keeps mobile document capture absent while diagnostic and Archive captures remain", () => {
     assert.deepEqual(phoneCaptureRetirementViolations(REPO_ROOT), []);
     assert.ok(existsSync(join(REPO_ROOT, "src/backend/runs/queries/archive.ts")));

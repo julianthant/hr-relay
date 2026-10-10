@@ -5,36 +5,7 @@ import ts from "typescript";
 import { describe, it } from "vitest";
 import { gitVisibleFiles, REPO_ROOT } from "../support/helpers/guard-files.js";
 
-/**
- * The test suite may never create or destroy a REAL runtime root.
- *
- * This guard exists because the browser-session-factory suite once cleaned up
- * after itself with `rmSync(rebuildRuntimeIsolation.browserProfileRoot, {
- * recursive: true, force: true })`. That value is the repo-relative literal
- * `.auth-rebuild`, so every `npm run test` recursively deleted the operator's
- * real browser-profile root — including `.auth-rebuild/duo-webauthn.json`, the
- * Duo WebAuthn credential whose fresh enrollment is the one ceremony Duo
- * Autopilot explicitly cannot perform unattended. The same run also CREATED
- * directories there, because `factory.open()` really does `mkdirSync` its
- * profile directory. A green test suite that quietly destroys a credential is
- * the loudest possible version of the fail-loud rule being inverted: the damage
- * is silent and the gate stays green.
- *
- * The structural fix is that `paths.browserProfileRoot` is an absolute,
- * redirectable config leaf (its default is the isolation contract's root,
- * resolved once). This guard is the ratchet on top of it, in two arms:
- *
- * 1. No test file may pass a real-root-derived path — the isolation binding's
- *    root properties, or a `.auth*` / `.tracker*` literal — into a
- *    filesystem-mutating call, directly or through a local binding.
- * 2. A test that constructs the real session factory must bind its own profile
- *    root, and that binding must not be a real root. Without this, a test could
- *    reach the real credential home without ever naming it, simply by handing
- *    the factory a default config.
- *
- * Production code is deliberately NOT scanned: writing to the real runtime
- * roots is exactly what the runtime is for.
- */
+
 
 /** Isolation-contract properties whose values are real, operator-owned roots. */
 const ISOLATION_ROOT_PROPERTIES = new Set([
@@ -76,11 +47,7 @@ const TWO_PATH_MUTATORS = new Set([
 /** Calls that root a relative segment somewhere else entirely. */
 const PATH_JOINERS = new Set(["join", "resolve", "resolvePath", "relative", "normalize"]);
 
-/**
- * The mutator's name, but ONLY for the `node:fs` module surface: a bare
- * imported binding, or a member of an fs namespace import. `writer.open(ref)`
- * on a domain object is not a filesystem write.
- */
+// Resolve mutators only from node:fs bindings; another object method named open is not a filesystem write.
 function fsMutatorName(expression: ts.Expression): string | undefined {
   if (ts.isIdentifier(expression)) {
     return FS_MUTATORS.has(expression.text) ? expression.text : undefined;
@@ -105,17 +72,7 @@ function isIsolationRootAccess(node: ts.Node): boolean {
     && /isolation/i.test(node.expression.getText());
 }
 
-/**
- * Does this expression DENOTE a path rooted at a real runtime-isolation root?
- *
- * Deliberately positional rather than a bag-of-mentions scan: only the FIRST
- * argument of a path joiner roots the result, so `join(temporaryWorkspace,
- * ".tracker-rebuild/artifacts")` is a fixture beneath a temp dir, while
- * `join(isolation.browserProfileRoot, worker)` is the operator's real profile
- * home. A mention anywhere else — a digest built from a writer that happened to
- * be configured with a relative artifact root, say — is not a path at all, and
- * treating it as one would make the guard cry wolf until someone deleted it.
- */
+// Only the first join argument establishes a path root; mentioning an isolated root later is insufficient.
 function isRealRootPath(node: ts.Node, tainted: ReadonlySet<string>): boolean {
   if (ts.isParenthesizedExpression(node) || ts.isAsExpression(node) || ts.isAwaitExpression(node)
     || ts.isNonNullExpression(node) || ts.isSatisfiesExpression(node)) {
@@ -143,10 +100,7 @@ function isRealRootPath(node: ts.Node, tainted: ReadonlySet<string>): boolean {
   return ts.isStringLiteralLike(node) && REAL_ROOT_LITERAL.test(node.text);
 }
 
-/**
- * Names bound to a real root, to a fixpoint, so one indirection cannot launder
- * the value (`const root = isolation.stateRoot; rmSync(root)`).
- */
+// Resolve root aliases to a fixpoint so indirection cannot hide filesystem mutation.
 function taintedBindings(source: ts.SourceFile): ReadonlySet<string> {
   const tainted = new Set<string>();
   const declarations: ts.VariableDeclaration[] = [];

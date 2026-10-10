@@ -7,15 +7,7 @@ import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { RETIRED_EDIT_CHECKPOINT_COMMAND } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
 import { RunRecordService, lifecycleCommandId } from "../../../../../../src/backend/runs/lifecycle/run-record-service.js";
-/**
- * D113 command-kernel semantics (ref dashboard-surfaces §Phase-1f authority, §2.4).
- *
- * The suite drives the REAL authority database through the kernel: the D109
- * consume step commits plan consumption, active-run policy, run creation, and
- * the command journal/audit in one transaction; a crash or refusal anywhere
- * rolls back everything; replays are byte-exact; and every deferred arm is a
- * pure typed rejection that provably changes no authority row.
- */
+
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -609,7 +601,7 @@ describe("settings activation and target fences", () => {
   });
 });
 
-describe("D113 start arm — atomic D109 plan consumption", () => {
+describe("start arm consumes plans atomically", () => {
   it("requires renewed review for a start plan made before settings activation", () => {
     const harness = createHarness();
     const plan = createPlan(harness, rejectActiveDescriptor, ["10800000"]);
@@ -658,7 +650,7 @@ describe("D113 start arm — atomic D109 plan consumption", () => {
     assert.equal(audit.versionChanges[0].after, plan.version + 1);
   });
 
-  it("D269: the fan-out is ONE durable session, written before its first member, and membership is the run rows", () => {
+  it("the fan-out is ONE durable session, written before its first member, and membership is the run rows", () => {
     const harness = createHarness();
     const plan = createPlan(harness, rejectActiveDescriptor, ["10800000", "10800001"]);
     const result = harness.kernel.execute(startCommand(plan));
@@ -709,7 +701,7 @@ describe("D113 start arm — atomic D109 plan consumption", () => {
     assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
     assert.equal(harness.database.getMeta().authorityGeneration, generationBefore);
 
-    // The same commandId may retry after the crash — nothing was burned.
+
     const retried = harness.kernel.execute(command);
     assert.equal(retried.state, "applied");
   });
@@ -807,11 +799,9 @@ describe("D113 start arm — atomic D109 plan consumption", () => {
       assert.equal(result.code, "policy-refused");
       assert.match(result.message, /already has an active run/);
     }
-    // D269: the session row minted for this fan-out went with it — it lives
-    // inside the same transaction as its members.
+
     assert.equal(harness.database.authority.runSessions.listByWorkflow(plan.workflowId).length, 0);
-    // The FIRST planned run was enqueued before the second refused — all of it
-    // must have rolled back with the consumption.
+
     assert.deepEqual(
       harness.database.authority.runs.listByWorkflow(plan.workflowId).map((run) => run.envelope.runId),
       [UUID_7],
@@ -857,7 +847,7 @@ describe("D113 start arm — atomic D109 plan consumption", () => {
   });
 });
 
-describe("D113 command idempotency", () => {
+describe("command idempotency", () => {
   it("journals Explorer apply with actor/source audit and executes one write across byte-exact replay", () => {
     const harness = createHarness();
     const command = {
@@ -986,7 +976,7 @@ describe("D113 command idempotency", () => {
   });
 });
 
-describe("D113 run arms", () => {
+describe("run arms", () => {
   function startOne(harness: Harness, descriptor: AnyWorkflowDescriptor, eid: string): string {
     const plan = createPlan(harness, descriptor, [eid]);
     const result = harness.kernel.execute(startCommand(plan));
@@ -1016,11 +1006,11 @@ describe("D113 run arms", () => {
     const retried = harness.database.authority.runs.get(newTarget.runId);
     assert.ok(retried !== undefined);
     assert.equal(retried.envelope.retryOf, runId);
-    // D221 — a retry is the ITEM's next attempt, never a second attempt 1.
+
     assert.equal(retried.envelope.attempt, 2);
     assert.equal(retried.lifecycle.state, "queued");
     assert.deepEqual(retried.input, harness.database.authority.runs.get(runId)?.input);
-    // D269 — a retry INHERITS the retried run's session; it mints none.
+
     assert.ok(run.sessionId !== undefined);
     assert.equal(retried.sessionId, run.sessionId);
     assert.deepEqual(
@@ -1152,13 +1142,7 @@ describe("D113 run arms", () => {
     assert.equal(harness.database.authority.runs.get(orphanId)?.lifecycle.state, "queued");
   });
 
-  /*
-   * D233's rule applied to bump. This case used to pass `999` to every call
-   * with the comment "bump is NOT a CAS arm" — which was true of the code and
-   * is the hole itself: `executeBump` re-read the run and handed its own
-   * `current.version` to the store, a compare-and-swap that cannot fail. Every
-   * run verb now CASes the CALLER's value, with no exceptions.
-   */
+
   it("bump elevates a queued run to interactive at the live version, and refuses a stale one", () => {
     const harness = createHarness();
     const runId = startOne(harness, rejectActiveDescriptor, "10800000");
@@ -1204,20 +1188,12 @@ describe("D113 run arms", () => {
     assert.equal(renamed.state, "applied");
     const run = harness.database.authority.runs.get(runId);
     assert.equal(run?.displayName, "Kernel case");
-    // The whole claim of "presentation-only": the run is exactly where it was
-    // — same state, same claim, same everything else.
+
     assert.equal(run?.lifecycle.state, "queued");
   });
 
-  /*
-   * D233. This case previously asserted the OPPOSITE — it passed version `999`
-   * and pinned `applied`, under the heading "never CAS-reject". The premise was
-   * that presentation changes no outcome, so a stale one is harmless. Rename is
-   * the counterexample: a name is a value the operator authored, and applying
-   * yesterday's name over today's silently discards an edit and answers
-   * "Recorded." D234 retired the two verbs that made the premise look true.
-   */
-  it("refuses a stale rename with the live version (D233)", () => {
+
+  it("refuses a stale rename with the live version", () => {
     const harness = createHarness();
     const runId = startOne(harness, rejectActiveDescriptor, "10800001");
     const live = harness.database.authority.runs.get(runId)?.version ?? 0;
@@ -1235,14 +1211,14 @@ describe("D113 run arms", () => {
       assert.match(result.message, new RegExp(`not ${String(stale)}`));
     }
 
-    // Nothing was written.
+
     const run = harness.database.authority.runs.get(runId);
     assert.equal(run?.version, live);
     assert.equal(run?.displayName, undefined);
   });
 });
 
-describe("D113 write resolution", () => {
+describe("write resolution", () => {
   function parkOnWrite(harness: Harness): { runId: string; version: number } {
     assert.equal(harness.database.authority.runs.enqueue(QUEUED_RUN).state, "inserted");
     const claimed = harness.database.authority.runs.claimNext({ workflow: "person-lookup", workerId: "worker-1", now: NOW });
@@ -1329,7 +1305,7 @@ describe("D113 write resolution", () => {
   });
 });
 
-describe("D113 gate resolution", () => {
+describe("gate resolution", () => {
   function stageIdentityGateRun(
     harness: Harness,
     source: "name-resolved" | "document-eid" = "name-resolved",
@@ -1765,7 +1741,7 @@ describe("D113 gate resolution", () => {
   });
 });
 
-describe("D113 worker-browser arms", () => {
+describe("worker-browser arms", () => {
   const WORKER_START = {
     workerId: "worker-1",
     workflow: "kernel-reject",
@@ -1821,8 +1797,7 @@ describe("D113 worker-browser arms", () => {
 
   it("delegates plan/spawn/refresh/reopen to the typed runtime seam after authority validation", () => {
     const harness = createHarness();
-    // D269: a workflow nobody has planned is at pool version 0 — the first
-    // plan cites it and creates the row at version 1.
+
     const planned = harness.kernel.execute(workerCommand(
       "plan-worker-count",
       { workflowId: "kernel-reject", expectedVersion: 0 },
@@ -1875,7 +1850,7 @@ describe("D113 worker-browser arms", () => {
     ]);
   });
 
-  it("D269: plan/spawn CAS against the durable POOL version and refuse a stale one by name, before the runtime seam", () => {
+  it("plan/spawn CAS against the durable POOL version and refuse a stale one by name, before the runtime seam", () => {
     const harness = createHarness();
     // No row yet: the basis is 0, and citing 1 is told so — with the current version.
     const unplanned = harness.kernel.execute(workerCommand(
@@ -1931,7 +1906,7 @@ describe("D113 worker-browser arms", () => {
   });
 });
 
-describe("D113 deferred arms", () => {
+describe("deferred arms", () => {
   const deferredKeys = new Set(
     Object.entries(
       PHASE1_DEFERRED_COMMAND_ARMS as Readonly<Record<string, readonly string[]>>,
@@ -1939,7 +1914,7 @@ describe("D113 deferred arms", () => {
       actions.map((action) => `${family}/${action}`)),
   );
 
-  it("partitions every D95 family/action exactly once between active and deferred", () => {
+  it("partitions every family/action exactly once between active and deferred", () => {
     const partitioned = new Map<string, number>();
     for (const partition of [PHASE1_ACTIVE_COMMAND_ARMS, PHASE1_DEFERRED_COMMAND_ARMS]) {
       for (const [family, actions] of Object.entries(partition)) {
@@ -2413,15 +2388,8 @@ describe("apply-protected-settings authority", () => {
   });
 });
 
-/*
- * D308 — delete means delete.
- *
- * The operator ruled (2026-09-01) that a terminal run, on the queue or in the
- * Archive, leaves authority with every row it owns. These tests pin the two
- * doors, their refusals, the tombstone the cascade leaves behind, and the tree
- * rule: leaves first, nothing non-terminal.
- */
-describe("D308 delete — a terminal run leaves authority behind one tombstone", () => {
+
+describe("delete — a terminal run leaves authority behind one tombstone", () => {
   function startOne(harness: Harness, descriptor: AnyWorkflowDescriptor, eid: string): string {
     const plan = createPlan(harness, descriptor, [eid]);
     const result = harness.kernel.execute(startCommand(plan));

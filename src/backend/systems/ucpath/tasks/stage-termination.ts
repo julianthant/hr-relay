@@ -4,29 +4,11 @@ import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.j
 import { UcpathEmplIdNotRecognizedError } from "../../../../models/ui/ucpath-smart-hr-termination.js";
 import { ucpathDriver } from "../driver-declaration.js";
 
-/**
- * Beat ②. It stages ALL THREE wizard pages and saves nothing.
- *
- * That is not a shortcut: the 2026-08-13 live check proved the Smart HR wizard
- * leaves **zero durable footprint** before an explicit Save — the *Transactions
- * in Progress* grid was byte-identical after every stage and `Transaction ID`
- * read the literal `"NEW"` throughout. So closing the page here leaves UCPath
- * untouched, which is what makes `dryRun:"stop-after-prepare"` a genuine
- * no-effect preview of a real termination.
- *
- * The name check here is defence in depth, not the subject binding: the kernel
- * re-observes the subject itself at beat ③ on this exact page, and that is the
- * observation the fence is bound to. This one exists so a wrong person fails
- * before the kernel ever reaches the fence path.
- */
+// Staging all wizard pages creates no durable footprint before an explicit Save.
 export const stageTerminationTask = defineTask(ucpathDriver, UcpathStageTermination, {
   sessions: [{ system: "ucpath", access: "transaction", session: "reuse-worker" }],
   async run({ input, ctx }) {
-    // **S48.** UCPath refusing the typed Empl ID has no staging value to return
-    // — no subject, no employment record, no page — so the driver throws, and
-    // the TYPE is what lets this become the contract's own `emplid-not-recognized`
-    // rather than an untyped failure indistinguishable from a page crash. Any
-    // other error re-throws untouched.
+
     const staging = await ctx.driver.stageTermination(input).catch((error: unknown) => {
       if (!(error instanceof UcpathEmplIdNotRecognizedError)) throw error;
       return ctx.fail("emplid-not-recognized", error.message, {
@@ -51,8 +33,7 @@ export const stageTerminationTask = defineTask(ucpathDriver, UcpathStageTerminat
       );
     }
     if (staging.lastDateWorked !== input.lastDateWorked) {
-      // S49, and it is the model the rest of this family follows: legacy already
-      // treats an unverifiable Last Date Worked as FATAL before any submit.
+
       return ctx.fail(
         "last-date-worked-not-verified",
         `UCPath read back Last Date Worked ${staging.lastDateWorked}, not the ${input.lastDateWorked} `

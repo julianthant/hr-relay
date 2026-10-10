@@ -5,14 +5,7 @@ import { IntakeParseSchema } from "../../../src/models/intake/parse.js";
 import { deriveIntakeEnqueuePlan } from "../../../src/models/intake/enqueue.js";
 import { intakeReviewBinding, resolveIntakeComparison } from "../../../src/models/intake/review.js";
 import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
-/**
- * The kernel's D170 intake seams, for a kernel under test that issues no
- * intake command.
- *
- * Both fail loud rather than answering with a plausible empty parse or an
- * empty target set: a suite that accidentally reaches an intake arm must see
- * the reason, not a session mapped against nothing.
- */
+
 import type { IntakeParser } from "../../../src/workflow-kit/intake-parser.js";
 import type {
   IntakeProjectionResolver,
@@ -21,14 +14,7 @@ import type {
 import { CommandRequestSchema } from "../../../src/rules/commands/commands.js";
 import type { IntakeService } from "../../../src/backend/runs/commands/intake-service.js";
 
-/**
- * The D171 config identity for a kernel that enqueues no intake manifest.
- *
- * It names a snapshot no database holds, so an intake fan-out reached by
- * accident throws by name instead of stamping runs with a config identity
- * nobody can read back. Every other arm copies its config identity from the
- * start plan or the run it retries, so none of them can reach this.
- */
+
 export const UNSTORED_CONFIG_IDENTITY: RunConfigIdentity = Object.freeze({
   configFingerprint: "e".repeat(64),
   configSnapshotId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
@@ -47,11 +33,7 @@ export const NO_INTAKE_PROJECTIONS: IntakeProjectionResolver = Object.freeze({
   resolve: () => undefined,
 });
 
-/**
- * A BFF harness that serves no intake surface. `prepare` runs on EVERY command
- * post, so it stays a no-op for every other family and refuses only when an
- * intake command it could not have prepared actually arrives.
- */
+
 export const UNWIRED_INTAKE_SERVICE: IntakeService = Object.freeze({
   upload: (): never => {
     throw new Error("this dashboard wires no intake service");

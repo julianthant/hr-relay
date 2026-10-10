@@ -1,19 +1,5 @@
 import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
-/**
- * The separations chunk-5 Kuali finalization harness.
- *
- * Same shape and same claim as the chunk-4 one it is modelled on: nothing here
- * is synthetic except the process edges. The four contracts, the `kuali` store,
- * the driver semantics, the descriptor and its ONE transaction node are the
- * REGISTERED production ones; only the browser (a deterministic Kuali document),
- * the clock, the id source, the timer and the span sink are fakes. That is what
- * lets a scenario say "zero rows in `run_operations`" about the real authority
- * database rather than about a mock.
- *
- * The identity below is synthetic on purpose. The finalization surface was
- * live-verified READ-ONLY on 2026-08-12 and nothing has ever been written to it
- * by this repository; no real EID, action id or document number belongs here.
- */
+
 import { fixtureDuoCeremonyGates } from "./duo-ceremony-fixtures.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -113,10 +99,7 @@ export const FINALIZATION_VARIABLES: KualiFinalizationVariables = Object.freeze(
     payrollTitleCode: "004921",
     payrollTitle: "STDT 2",
     timekeeperName: "Deterministic Timekeeper",
-    // §4e's 2026-08-14 amendment. `terminationEffectiveDate` is
-    // `separationDate + 1` by the reconciliation's own rule, and the last day
-    // worked sits a day earlier — the MOVED case, so a fixture that dropped one
-    // of the two would be visible.
+    // Finalization effective date is separation date plus one day; last day worked is one day earlier.
     lastDayWorked: "06/09/2026",
     separationDate: "06/10/2026",
     terminationEffectiveDate: "06/11/2026",
@@ -375,9 +358,9 @@ export function finalizationHarness(
     displayedEidAfterStage?: string;
     /** Controls the page silently drops — the `fillWithVerify` refusal. */
     stagingDrops?: readonly KualiFinalizationFieldName[];
-    /** The Save click succeeds and Kuali keeps the old values — S59 / D128. */
+
     commitDoesNotPersist?: boolean;
-    /** What the live `Department*` control offers — S55's driver-side half. */
+    /** Values offered by the live Department control. */
     departmentOptions?: readonly string[];
   }> = {},
 ): FinalizationHarness {
@@ -610,10 +593,7 @@ export function finalizationPreviewDependencies(
   ];
 }
 
-/**
- * The durable-absence assertion the dry-run and wrong-subject proofs turn on:
- * NOTHING about this transaction exists in the authority database.
- */
+
 export function finalizationDurableFootprint(
   harness: FinalizationHarness,
 ): Readonly<{

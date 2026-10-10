@@ -1,21 +1,4 @@
-/**
- * The BFF's static byte path for the built dashboard (ref frontend-backend-integration §6.9,
- * D189 amended by D294): in `built-bundle` mode the operator's own machine serves
- * `dist/dashboard` from the same loopback process that serves the API, replacing
- * the Vite dev server that sat beside it. "Production" here is LOCAL (D193);
- * nothing about this path is hosting.
- *
- * Ported with provenance from the parity lane's `serveStatic`
- * (tests/parity/helpers/fixture-bff.ts, 2026-09-03) and hardened: the fixture
- * refused only lexical escape from the dist directory; this handler also
- * refuses malformed encoding, forbidden characters, dot segments, symlinks
- * that leave the bundle, non-regular files and unlisted extensions, and it
- * never answers `application/octet-stream` for a byte it cannot name.
- *
- * Decision first, I/O second: `decideStaticBundlePath` is a pure function over
- * the request path so the whole refusal table is pinned without a socket, and
- * the handler does exactly what the decision says.
- */
+
 import { open, realpath, stat } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
 import type { MiddlewareHandler } from "hono";
@@ -60,12 +43,7 @@ function reserved(path: string): boolean {
   return RESERVED_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
 }
 
-/**
- * A filesystem failure while serving the bundle. The message is fixed and the
- * original error rides on `cause`: `failureStatus` puts an error's message on
- * the wire as `INTERNAL_FAILURE`, and a raw fs message carries the absolute
- * bundle path plus the requested name.
- */
+// Keep filesystem paths on the cause; the fixed message can safely cross the wire.
 export class StaticBundleReadError extends Error {
   constructor(stage: "resolve" | "inspect" | "read", cause: unknown) {
     super(`the static bundle could not ${stage} the requested file`, { cause });
@@ -80,13 +58,7 @@ export type StaticBundleDecision =
   | Readonly<{ kind: "file"; relativeSegments: readonly string[]; contentType: string; cacheControl: string }>
   | Readonly<{ kind: "spa-fallback" }>;
 
-/**
- * The lexical half of the decision: what this path MEANS before any filesystem
- * read. `pass-through` hands the request to the app's own routes and 404
- * (API, events, other methods); `spa-fallback` serves `index.html` for a
- * route the browser app owns; `file` names the bundle-relative segments to
- * open, which the handler then proves stay inside the bundle physically too.
- */
+
 export function decideStaticBundlePath(input: Readonly<{ method: string; rawPath: string }>): StaticBundleDecision {
   const method = input.method.toUpperCase();
   if (method !== "GET" && method !== "HEAD") return { kind: "pass-through" };
@@ -132,10 +104,7 @@ function insideBundle(distRoot: string, candidate: string): boolean {
   return candidate === distRoot || candidate.startsWith(distRoot + sep);
 }
 
-/**
- * Validate `dist/dashboard` BEFORE anything listens: a dashboard that would
- * answer 404 for its own app must never look started (fail loud, D189).
- */
+
 export async function openStaticBundle(distDir: string, repoRoot: string, buildScript?: DashboardBuildCommand): Promise<StaticBundle> {
   let distRoot: string;
   try {
@@ -145,9 +114,7 @@ export async function openStaticBundle(distDir: string, repoRoot: string, buildS
     throw new Error(`the built dashboard at ${distDir} could not be resolved`, { cause: error });
   }
   const bundle: StaticBundle = Object.freeze({ distRoot });
-  // The same physical proof the handler applies to every request: `index.html`
-  // must be a regular file that stays inside the bundle after symlinks resolve,
-  // or the dashboard would print "listening" and then refuse its own app.
+  // Validate realpath containment and regular-file shape before reporting that the dashboard listens.
   const index = await locate(bundle, ["index.html"]);
   if (index.kind === "not-found") throw new Error(`the built dashboard at ${distRoot} has no index.html; run \`npm run web:build\` first`);
   if (index.kind === "outside-bundle") throw new Error(`the built dashboard's index.html at ${distRoot} resolves outside the bundle`);
@@ -218,12 +185,7 @@ async function readAll(path: string): Promise<Uint8Array<ArrayBuffer>> {
   }
 }
 
-/**
- * The handler, registered LAST in the app so every API/events/artifact route
- * wins by registration order; `pass-through`, `not-found` and a missing file
- * all fall to the app's own JSON 404. Refusals are typed wire errors with a
- * fixed message: the offending path is never echoed.
- */
+// Register static serving last so API, event and artifact routes retain precedence.
 export function staticBundleHandler(bundle: StaticBundle): MiddlewareHandler {
   return async (context, next) => {
     const decision = decideStaticBundlePath({ method: context.req.method, rawPath: context.req.path });

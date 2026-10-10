@@ -24,9 +24,7 @@ function isNetworkOwner(path: string): boolean {
   // The local Vite probe checks the dashboard's owned development server; it
   // is a host resource, not a provider adapter.
   if (path === "src/backend/app/host/local-vite-probe.ts") return true;
-  // Ref frontend-backend-integration §2: `src/dashboard/client/**` is the ONE fetch/EventSource owner —
-  // the same single-owner principle this guard enforces for providers, applied
-  // to the frontend transport. No other dashboard module may touch fetch.
+
   if (path.startsWith("src/dashboard/client/")) return true;
   // Ref frontend-backend-integration §0: the in-process BFF binds loopback node:http; exactly one host
   // module owns that listener.
@@ -41,14 +39,7 @@ function isProviderConsumer(path: string): boolean {
     || path.startsWith("src/workflows/");
 }
 
-/**
- * D162 (ref data-intake-and-edit-data §4.11): the admission kernel's ONE production consumer is the
- * run executor — it mints admitted clients per task invocation — and the
- * worker composition root supplies the kernel's ingredients. These allowlists
- * are the deliberate relaxation of the "consumers remain absent until Phase
- * 2h" arms; everything else (stores, workflows, services, dashboard) still
- * may not import the admission module, call the mint, or type a client.
- */
+
 const PROVIDER_CLIENT_TYPE_OWNERS: ReadonlySet<string> = new Set([
   "src/workflow-kit/providers.ts",
   "src/backend/runs/start/provider-admission.ts",
@@ -58,11 +49,7 @@ const ADMITTED_CLIENT_MINT_CALLERS: ReadonlySet<string> = new Set([
   "src/backend/runs/start/provider-admission.ts",
   "src/backend/runtime/execution/run-executor.ts",
 ]);
-// D184: the admission module itself was listed here and could never suppress
-// an issue — `resolveLocal` resolves an IMPORT, and no module imports itself —
-// so it was an allowlist entry that looked like a relaxation and was not one.
-// An allowlist that carries dead names cannot be read as the reviewed set of
-// exceptions, which is the only thing an allowlist is for.
+
 const ADMISSION_MODULE_IMPORTERS: ReadonlySet<string> = new Set([
   "src/backend/runtime/execution/run-executor.ts",
   "src/backend/app/composition/worker-compose.ts",
@@ -109,11 +96,11 @@ export function auditProviderCapabilityBoundary(root: string): readonly string[]
       }
       if (ts.isTypeReferenceNode(node) && node.typeName.getText(source) === "ProviderClient"
         && !PROVIDER_CLIENT_TYPE_OWNERS.has(path)) {
-        issues.push(`${path}: only the admission kernel and the run executor's D162 wiring type ProviderClient`);
+        issues.push(`${path}: only the admission kernel and the run executor wiring type ProviderClient`);
       }
       if (ts.isCallExpression(node) && node.expression.getText(source) === "createAdmittedProviderClient"
         && !ADMITTED_CLIENT_MINT_CALLERS.has(path)) {
-        issues.push(`${path}: admitted provider clients are minted only by the kernel and the run executor (D162)`);
+        issues.push(`${path}: admitted provider clients are minted only by the kernel and the run executor`);
       }
       ts.forEachChild(node, visit);
     }
@@ -133,7 +120,7 @@ export function auditProviderCapabilityBoundary(root: string): readonly string[]
     for (const specifier of specifiers) {
       if (resolveLocal(path, specifier) === "src/backend/runs/start/provider-admission.ts"
         && !ADMISSION_MODULE_IMPORTERS.has(path)) {
-        issues.push(`${path}: admission client imports are confined to the run executor and the worker composition root (D162)`);
+        issues.push(`${path}: admission client imports are confined to the run executor and the worker composition root`);
       }
     }
   }
@@ -194,7 +181,7 @@ describe("provider capability boundary", () => {
     );
   });
 
-  it("keeps every allowlisted name and every declared provider resolvable (D184)", () => {
+  it("keeps every allowlisted name and every declared provider resolvable", () => {
     // An allowlist entry that names nothing is indistinguishable from a
     // relaxation nobody reviewed, so every name resolves or the guard fails.
     const visible = new Set(
@@ -210,11 +197,7 @@ describe("provider capability boundary", () => {
       }
     }
 
-    // The D68 runtime-dependency inventory declares which PROVIDERS serve
-    // which capability — endpoints, secret families, model env names. It is
-    // not the same question as "does an adapter module exist", and the two
-    // drifted apart silently: four declared providers have no adapter at all.
-    // Reconciling them both ways makes adding a fifth a deliberate act.
+
     const BUILT_PROVIDER_ADAPTERS: Readonly<Record<string, readonly string[]>> = {
       census: ["src/backend/processing/providers/geocode-adapters.ts"],
       nominatim: ["src/backend/processing/providers/geocode-adapters.ts"],
@@ -277,7 +260,7 @@ describe("provider capability boundary", () => {
       writeFileSync(adapterPath, 'export const adapter = { capability: "ocr.extract" };\n');
       const issues = auditProviderCapabilityBoundary(root).join("\n");
       assert.match(issues, /task import graph reaches processing provider adapter/);
-      assert.match(issues, /only the admission kernel and the run executor's D162 wiring type ProviderClient/);
+      assert.match(issues, /only the admission kernel and the run executor wiring type ProviderClient/);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

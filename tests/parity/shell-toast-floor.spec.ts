@@ -1,15 +1,4 @@
-/**
- * DCF2 A169 — the toast stack must physically clear the fixed Session Panel.
- *
- * A source assertion can prove the variable's spelling and provider order, but
- * only a rendered page can prove inheritance reaches the provider fragment and
- * turns that variable into a real floor. The fixture's ordinary `Run next`
- * command produces the notification through the production client path; this
- * test then measures its viewport and the always-mounted Session Panel at the
- * standard dashboard width and the wide shell view. It creates no screenshot
- * or reference: the requirement is a geometric safety invariant, not a new
- * visual state.
- */
+
 import { expect,test } from "@playwright/test";
 import { gotoAppState } from "./helpers/app-driver.js";
 import { PARITY_DIST_DIR,ensureParityBundle } from "./helpers/bundle.js";
@@ -98,9 +87,7 @@ for (const viewport of VIEWPORTS) {
     const geometry = await measureToastFloor(page);
     const evidence = formatGeometry(geometry);
 
-    // The Session Panel is bottom chrome, not scrolling content. Its bottom
-    // must therefore coincide with the viewport before its height can explain
-    // the toast's floor.
+
     expect(Math.abs(geometry.sessionBottom - geometry.viewportHeight), evidence).toBeLessThanOrEqual(1);
     // This is the operator-visible assertion: no painted toast pixel occupies
     // the Session Panel, and the shell's loose gutter leaves a real separation.

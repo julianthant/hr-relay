@@ -3,11 +3,7 @@ import { ActorIdSchema, ConfigSnapshotIdSchema, FingerprintSchema, IsoInstantSch
 import { ConfigLeafPathSchema } from "./provenance.js";
 import { StoredConfigSchema, configSnapshotAbsentLeaves } from "./snapshot-generations.js";
 
-/**
- * The durable snapshot as it is READ. `config` is exactly the stored bytes —
- * see `./snapshot-generations.ts` for why an older row is read forward instead
- * of rewritten, and for what "older" is allowed to mean.
- */
+/** The durable snapshot as it is READ; `config` is exactly the stored bytes, read forward and never rewritten. */
 export const ConfigSnapshotRecordSchema = z.strictObject({
   configSnapshotId: ConfigSnapshotIdSchema,
   revision: PositiveIntSchema,
@@ -19,12 +15,7 @@ export const ConfigSnapshotRecordSchema = z.strictObject({
   provenance: z.record(ConfigLeafPathSchema, z.enum(["env", "settings", "default"])),
 });
 
-/**
- * The same record as it is WRITTEN. Reading an older generation forward is a
- * concession to history; MINTING one is a bug, so a new snapshot must carry
- * every leaf of the current generation. Without this arm the read tolerance
- * would quietly become a licence to persist a hole.
- */
+/** The same record as it is WRITTEN: a new snapshot must carry every leaf of the current generation. */
 export const ConfigSnapshotWriteSchema = ConfigSnapshotRecordSchema.superRefine((record, context) => {
   for (const [system, endpoints] of Object.entries(record.config.urls)) {
     if (Object.hasOwn(endpoints, "test")) {

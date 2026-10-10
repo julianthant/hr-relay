@@ -1,21 +1,4 @@
-/**
- * D268 — the queue row and the run-detail panel are the SAME derivation.
- *
- * Ref dashboard-surfaces §2.3 has always said there is one projection. There
- * were two derivations on top of it: the projector's `#status` read the span
- * fold's `ended` and `claimedBy` beside the authority lifecycle, and the
- * run-detail query's private `statusOf` had neither arm and inlined its own
- * copy of the outcome map. One level down, `TASK_OUTCOME_PIPELINE` mapped
- * `cancelled|discarded|superseded` to `blocked` while `TASK_OUTCOME_STEP`
- * mapped them to `cancelled`.
- *
- * Every case below asserts the two surfaces AGAINST EACH OTHER rather than
- * against a literal, because the defect was never "the panel says the wrong
- * word" — it was "the panel says a different word from the row it opened
- * from", which only a comparison can catch. The literal is asserted too, once
- * per case, so a future change that made both wrong in the same way would
- * still fail.
- */
+
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import type { SpanOutcomeWire } from "../../../../../../src/models/events/types.js";
@@ -72,7 +55,7 @@ function statusPair(w: DashboardWorld, seed: number): { row: string; panel: stri
   return { row: surface?.status ?? "<no row>", panel: detailOf(w, seed).header.status };
 }
 
-describe("D330 — authority-only run status", () => {
+describe("authority-only run status", () => {
   it("run-status-fold-contributes-no-lifecycle-arm", () => {
     const cases = [
       { state: "claimed" as const, fold: "done" as const, expected: "running" },
@@ -104,9 +87,7 @@ describe("D330 — authority-only run status", () => {
   });
 
   it("lets AUTHORITY outrank the fold when the two disagree", () => {
-    // Precedence, asserted where it bites: a terminal lifecycle is written
-    // inside the transaction that settles the run, so a stream that says
-    // otherwise loses. Both surfaces lose the same way.
+
     const w = world();
     queuedEventOf(w, { seed: 6 });
     runEndedEventOf(w, 6, "done");
@@ -127,15 +108,7 @@ describe("D330 — authority-only run status", () => {
   });
 
   it("is literally the one exported function — no second copy to drift", () => {
-    // This pins the OLD divergence, not a structural guarantee: nothing here
-    // stops a future edit from re-inlining a second `statusOf`/`taskStateOf`
-    // copy that happens to answer the same words on every case above — no
-    // architecture guard refuses a second derivation (that is a possible
-    // future guard, not one this suite claims). What this case actually
-    // checks is behavioral: both surfaces answer through `deriveRunStatus`
-    // itself, on the exact inputs (a folded `ended`, a folded `claimedBy`,
-    // the unified outcome vocabulary) that the missing arms used to get
-    // wrong.
+
     const w = world();
     queuedEventOf(w, { seed: 7 });
     runEndedEventOf(w, 7, "superseded");
@@ -153,14 +126,7 @@ describe("D330 — authority-only run status", () => {
 
 /* ── the task vocabulary ─────────────────────────────────────────────────── */
 
-/**
- * Every word a folded task span can carry, and the ONE state each becomes.
- *
- * The four that used to diverge are the four that matter: `cancelled`,
- * `discarded` and `superseded` read `blocked` on the chip and `cancelled` on
- * the step, and only `interrupted` — the outcome that genuinely names no act —
- * belongs in `blocked`.
- */
+
 const VOCABULARY: readonly (readonly [SpanOutcomeWire, string])[] = [
   ["done", "done"],
   ["failed", "failed"],
@@ -171,7 +137,7 @@ const VOCABULARY: readonly (readonly [SpanOutcomeWire, string])[] = [
   ["interrupted", "blocked"],
 ];
 
-describe("D268 — one task-outcome vocabulary", () => {
+describe("one task-outcome vocabulary", () => {
   for (const [outcome, expected] of VOCABULARY) {
     it(`reads a ${outcome} span as ${expected} on the pipeline chip AND the timeline step`, () => {
       const w = world();
@@ -203,7 +169,7 @@ describe("D268 — one task-outcome vocabulary", () => {
     assert.equal(taskStateOf(undefined), "active");
   });
 
-  it("keeps `skipped` its own arm — a branch nobody took is not an act somebody performed (D123)", () => {
+  it("keeps `skipped` its own arm — a branch nobody took is not an act somebody performed", () => {
     assert.notEqual(taskStateOf("skipped"), taskStateOf("cancelled"));
     assert.equal(taskStateOf("skipped"), "skipped");
   });

@@ -24,7 +24,7 @@ function mutator(declaration: ts.Declaration | undefined): boolean {
     || owner(declaration, "ArchivedRunRepository") && name === "insert"
     || owner(declaration, "DiagnosticBundleRepository") && name === "purge";
 }
-// T/P7 permits only this one-time section enrichment inside the stopped converter.
+
 const ARCHIVE_SECTION_SQL = "UPDATE archived_runs SET transactions_json=?, transactions_digest=? WHERE record_key=? AND transactions_json IS NULL";
 const COMPLETION_SQL = "UPDATE workflow_runs SET record_json = ? WHERE record_key = ?";
 function allowedCompletionSql(relative: string, node: ts.Node): boolean {
@@ -52,9 +52,7 @@ function collectAudit(): readonly string[] {
   host.readFile = (file) => extras.has(file) ? extras.get(file) : original(file);
   const files = [...roots.map((file) => resolve(REPO_ROOT, file)), ...extras.keys()];
   const program = ts.createProgram(files, options, host); const checker = program.getTypeChecker();
-  // Resolving every call also infers its arguments. Only calls whose callable
-  // declarations can own a lifecycle mutation need that overload resolution.
-  // Keep the final resolved declaration check so a safe overload stays safe.
+  // Only lifecycle mutators need overload resolution; resolving every call also infers unrelated arguments.
   const possibleMutators = new WeakMap<ts.Type, boolean>();
   function mayCallMutator(expression: ts.Expression): boolean {
     const type = checker.getApparentType(checker.getNonNullableType(checker.getTypeAtLocation(expression)));

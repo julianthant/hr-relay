@@ -1,10 +1,5 @@
 import { hostConfigFacts } from "../../../../../../src/models/config/host-display.js";
-/**
- * D324: the `display` default is the host's primary display, published once per
- * process tree and read back as the resolver's DEFAULT layer — beneath a
- * Settings override, reported as `default`, inherited by child processes, and
- * never re-probed once a parent published it.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { manualClock } from "../../../../../../src/rules/time/clock.js";
@@ -24,7 +19,7 @@ const CLOCK = manualClock(new Date("2026-09-03T18:00:00.000Z"));
 const DETECTED: HostPrimaryDisplayObservation = { state: "detected", screenWidth: 1512, screenHeight: 982, source: "system_profiler" };
 const NONE: HostPrimaryDisplayObservation = { state: "unavailable", reason: "no-display" };
 
-describe("host display default (D324)", () => {
+describe("host display default", () => {
   it("resolves the published host display as the `display` DEFAULT, beneath a Settings override", () => {
     const env = { [HOST_PRIMARY_DISPLAY_ENV]: "1512x982" };
     const detected = resolveConfigWithProvenance({}, hostConfigFacts(env), CLOCK);

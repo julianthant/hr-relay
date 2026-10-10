@@ -1,14 +1,4 @@
-/**
- * Delegation manifests (ref workflow-model §3.2, D102).
- *
- * The failure this guards against is the one that loses work silently: a
- * fan-out whose input list changed between enqueue and replay, so the replay
- * attaches new children beside orphaned ones and double-processes the overlap.
- * The manifest is the authority — replay re-plans and must land on its exact
- * fingerprint — and the policy vocabulary is ONE vocabulary end to end, so no
- * lossy translation at the enqueue boundary can drop a policy the operator
- * selected.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { DESCRIPTORS } from "../../../src/backend/app/registries/workflow-registry.js";
@@ -56,7 +46,7 @@ describe("delegation manifest", () => {
       const ids = edges.map(({ id }) => id);
       assert.equal(new Set(ids).size, ids.length, `${String(descriptor.id)} repeats a delegation edge id`);
       for (const edge of edges) {
-        // D102: builder, manifest, dependency row, and UI read the same shape.
+
         assert.deepEqual(DelegationPolicySchema.parse(edge.policy), edge.policy, edge.id);
         assert.equal(edge.await === "none", edge.join === "none", `${edge.id} join must follow await`);
       }

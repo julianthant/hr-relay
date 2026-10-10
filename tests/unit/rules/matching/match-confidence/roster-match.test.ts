@@ -1,16 +1,4 @@
-/**
- * Ref data-intake-and-edit-data §4's matching stack, pinned in three layers:
- *
- * 1. The VERBATIM ports carry legacy's live-verified numbers — the five-tier
- *    name scorer and the confidence→tier bucketing. These cases mirror the
- *    legacy suites (`match.test.ts`, `match-confidence.test.ts`) so a drift
- *    from the ported behaviour fails by name.
- * 2. The order-insensitive same/similar/different classifier, including the
- *    real Jaden/Jayden spelling-drift case legacy fixed live.
- * 3. The REDESIGNED composition (`matchRosterSubjects`) — every verdict arm,
- *    because this half does NOT inherit legacy's pedigree and must stand on
- *    its own pins until the roster migration re-verifies it on real rosters.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import {

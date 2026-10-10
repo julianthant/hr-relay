@@ -128,13 +128,7 @@ describe("dry-run scenario manifest boundary", () => {
     );
   });
 
-  /**
-   * A gate row used to carry `leaf` — the resolver leaf the approval came from.
-   * Nothing ever compared it: `evaluateDryRunScenarioEvidence` projects a gate
-   * row down to `{gate, decision, resolvedBy}` before the comparison, so the
-   * field read as an assertion and asserted nothing. An expectation no evaluator
-   * checks must not be declarable, or the next manifest author writes one.
-   */
+
   it("refuses a gate expectation field no evaluator compares", () => {
     assert.throws(() => parseDryRunScenarioManifest({
       ...GATED_MANIFEST,
@@ -429,7 +423,7 @@ describe("dry-run scenario evidence assertions", () => {
     assert.deepEqual(outcomes.filter((row) => row.verdict === "failed").map((row) => row.assertionId), ["write-safety-deltas"]);
   });
 
-  it("refuses an evaluation whose declared arm disagrees with the case shape; the manifest arm, not the case, selects the assertion set (D318)", () => {
+  it("refuses an evaluation whose declared arm disagrees with the case shape; the manifest arm, not the case, selects the assertion set", () => {
     assert.ok(scenarioCase && "preview" in scenarioCase, "the fixture case is a preview-arm case");
     assert.throws(
       () => evaluateDryRunScenarioEvidence("live-read", scenarioCase, before, READY_EVIDENCE),

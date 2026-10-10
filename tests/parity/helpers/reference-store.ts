@@ -1,21 +1,4 @@
-/**
- * Ref frontend-backend-integration §7.1 — the stored a11y snapshot is an EXPECTATION, not a log.
- *
- * "A screenshot without the matching a11y snapshot is incomplete." The lane
- * used to honour half of that: the `.png` went through Playwright's baseline
- * comparison, while the `.a11y.yml` and `.meta.json` beside it were rewritten
- * unconditionally on every run. An accessibility-only regression therefore
- * rewrote its own expectation and the lane stayed green — 56 references
- * rewritten, zero screenshots changed, all tests passing. A check that cannot
- * fail is worse than no check, because it reads as coverage.
- *
- * So references are COMPARED here, byte for byte, and a mismatch fails with a
- * diff naming the reference, its viewport, theme, fixture id and variant.
- * Refreshing them is a deliberate act: `npm run test:parity:update`, which sets
- * PARITY_UPDATE=1 — the same switch the config hands to Playwright's own
- * `updateSnapshots`, so the pixel and the semantic halves of a pair can never
- * be refreshed independently.
- */
+
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -48,13 +31,7 @@ export function captureName(input: Readonly<{
   return `${input.stateId}--${input.theme}--${input.viewport}${variant}`;
 }
 
-/**
- * Update mode, read from ONE place.
- *
- * An unrecognised value throws rather than being read as "off": a typo'd
- * `PARITY_UPDATE=yes` that silently asserted instead of refreshing would send
- * an operator chasing a diff they had already decided to accept.
- */
+
 export function parityUpdateRequested(env: NodeJS.ProcessEnv = process.env): boolean {
   const raw = env.PARITY_UPDATE;
   if (raw === undefined || raw.trim() === "" || raw === "0") return false;
@@ -119,10 +96,7 @@ export interface ReferenceComparison {
   readonly actual: string;
 }
 
-/**
- * Asserts one stored reference file against freshly captured content, or —
- * only under an explicit update request — rewrites it.
- */
+
 export function assertOrUpdateReferenceFile(
   input: ReferenceComparison & { readonly update: boolean },
 ): void {
@@ -159,10 +133,7 @@ export function assertOrUpdateReferenceFile(
   );
 }
 
-/**
- * The whole semantic half of a capture pair: the a11y tree and the provenance
- * record, both asserted (or both refreshed) together.
- */
+
 export function assertOrUpdateParityReference(input: Readonly<{
   referencesDir: string;
   tree: string;

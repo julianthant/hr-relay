@@ -7,10 +7,8 @@ import { DashboardClientError, httpError, schemaError } from "../errors.js";
 import type { DashboardTransport } from "../transport.js";
 
 
-/**
- * The start plan's request and response are owned by `domain/dashboard/start-plan.ts`
- * and imported here; `StartPlanResponse` is the surfaces' name for the wire.
- */
+/** The start plan's request and response are owned by `domain/dashboard/start-plan.ts`
+ * and imported here; `StartPlanResponse` is the surfaces' name for the wire. */
 export type StartPlanResponse = StartPlanWire;
 
 

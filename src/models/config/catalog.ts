@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { deepFreeze } from "../../rules/validation/immutability.js";
 
-/** D331.9's closed enumeration. Route sets and capability budgets each occupy one row. */
+/** The closed settings enumeration; route sets and capability budgets each occupy one row. */
 const CATALOG_ROWS = [
   {"key": "actor.id", "schema": "LocalOperatorActorSchema.id", "defaultKind": "contract", "editability": "deployment", "sensitivity": "ordinary", "restartScope": "process", "sourceClass": "runtime-isolation", "consumers": [{"module": "src/backend/app/config/resolve.ts", "purpose": "leaf composition"}, {"module": "src/backend/runtime/settings/settings-runtime.ts", "purpose": "readback"}], "currentSource": [{"kind": "code", "name": "code"}], "targetSource": {"kind": "code", "name": "code"}},
   {"key": "actor.label", "schema": "LocalOperatorActorSchema.label", "defaultKind": "contract", "editability": "operator", "sensitivity": "ordinary", "restartScope": "generation", "sourceClass": "ordinary-settings", "consumers": [{"module": "src/backend/app/config/resolve.ts", "purpose": "leaf composition"}, {"module": "src/backend/runtime/settings/settings-runtime.ts", "purpose": "readback"}], "currentSource": [{"kind": "document", "name": "settings.json"}], "targetSource": {"kind": "document", "name": "settings.json"}},
@@ -122,11 +122,7 @@ export const SettingsCatalogSchema = z.array(SettingsCatalogRowSchema).length(65
 });
 
 export const SETTINGS_CATALOG = deepFreeze(SettingsCatalogSchema.parse(CATALOG_ROWS));
-/**
- * D341: the two test-target canary environment names. Their catalog rows were
- * retired with the canaries, so the refusal is pinned here by name instead of
- * derived from a row: dropping the row must never re-admit the name.
- */
+/** The two retired test-target canary environment names; their catalog rows are gone, so the refusal is pinned here by name. */
 export const RETIRED_TEST_TARGET_ENVIRONMENT_KEYS = deepFreeze([
   "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER",
   "HRAUTO_TEST_SUBJECT_PERSON_LOOKUP_CANARY_EID",
@@ -151,11 +147,7 @@ type Relative<Prefix extends string, Path extends string> = Prefix extends ""
   ? Path : Path extends `${Prefix}.${infer Rest}` ? Rest : never;
 type OrdinaryMember<Prefix extends string> = Head<Relative<Prefix, OrdinaryKey>>;
 
-/**
- * Select schema members from the catalog, retaining the template's inferred types.
- * The custom boundary checks generated schema references, never operator data.
- * Missing schema references refuse here; no catalog row can silently disappear.
- */
+/** Missing generated schema references fail before any catalog field can disappear. */
 export function ordinarySettingsObject<Prefix extends string, Shape extends z.ZodRawShape>(
   prefix: Prefix,
   schema: z.ZodObject<Shape>,

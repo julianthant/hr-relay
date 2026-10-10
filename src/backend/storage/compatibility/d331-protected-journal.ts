@@ -1,5 +1,4 @@
-// Frozen D331 contract from e314fb0d; permanent strict v1/v2 historical-backup reader.
-// D341: pinned to the LEGACY protected-settings family; the live family never reads D331 bytes.
+
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import {
   LegacyProtectedSettingsNameSchema as ProtectedSettingsNameSchema,
@@ -16,7 +15,7 @@ import {
 } from "../../../rules/commands/commands-history.js";
 import type { ProtectedSettingsCurrentRecord } from "../../../models/config/authority.js";
 
-/** D341: pre-D341 rows name retired entries, so both readers admit the frozen historical arm. */
+// Frozen test-target rows remain readable under the seven-name protected schema.
 export type JournaledProtectedCommand = CommandRequest | HistoricalProtectedSettingsCommand;
 export type JournaledProtectedAudit = CommandAuditRecord | HistoricalProtectedSettingsAudit;
 export interface LegacyProtectedJournal {

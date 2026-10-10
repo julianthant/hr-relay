@@ -265,9 +265,9 @@ describe("Queue consumes the served day boundary", () => {
       // Canonical order: interactive before bulk
       assert.deepEqual(prioritySorted.map((s) => s.runId), [interactiveId, bulkId]);
 
-      // Presentation sort (oldest first): bulk was enqueued earlier, so oldest first puts bulkId first
+
       assert.deepEqual(sortQueueBand(prioritySorted, "oldest", now).map((s) => s.runId), [bulkId, interactiveId]);
-      // Presentation sort (newest first): interactive was enqueued later
+
       assert.deepEqual(sortQueueBand(prioritySorted, "newest", now).map((s) => s.runId), [interactiveId, bulkId]);
     } finally {
       f.dispose();

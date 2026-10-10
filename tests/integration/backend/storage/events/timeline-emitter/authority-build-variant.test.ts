@@ -7,7 +7,7 @@ import { it } from "vitest";
 import { withAuthorityBuildVariant } from "../../../../../support/fixtures/authority-build-variant.js";
 import { SQLITE_MIGRATIONS, AUTHORITY_APPLICATION_ID, databaseStateTable } from "../../../../../../src/backend/storage/sqlite/migrations.js";
 
-it.each([27, 28, 29] as const)("M21 negative control: live-DDL-derived lists reject the admitted v%s fixture", async version => {
+it.each([27, 28, 29] as const)("negative control: live-DDL-derived lists reject the admitted v%s fixture", async version => {
   const root = mkdtempSync(join(tmpdir(), "m21-build-variant-"));
   const path = join(root, `m21-derived-v${String(version)}.sqlite`);
   const now = "2026-07-31T17:00:00.000Z";
@@ -35,7 +35,7 @@ it.each([27, 28, 29] as const)("M21 negative control: live-DDL-derived lists rej
       const { manualClock: variantClock } = await import("../../../../../../src/rules/time/clock.js");
       assert.throws(() => brokenBuild.open(variantAdmission.syntheticFixture(path, "authority"), {
         path, busyTimeoutMs: 250, migrationOwner: "m21-negative-control", openMode: "storage-upgrade-preflight-read-only-no-migrate",
-      }, variantClock(new Date(now))), new RegExp(`D290 divergent post-v18 migration suffix: DCC1 v${String(version)}`, "u"));
+      }, variantClock(new Date(now))), new RegExp(`divergent post-v18 migration suffix: DCC1 v${String(version)}`, "u"));
     });
     assert.deepEqual(readFileSync(path), before);
   } finally { rmSync(root, { recursive: true, force: true }); }

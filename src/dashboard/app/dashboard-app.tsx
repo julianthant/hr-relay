@@ -130,7 +130,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition 
   const setOpenWells = useCallback((next: ReadonlySet<string>) => setRoute(current => ({ ...current, view: { ...current.view, queueOpen: [...next] } })), [setRoute]);
   const tab = SHELL_PANEL_TABS.find(candidate => candidate === route.section);
   const setTab = useCallback((next: PanelTab | undefined) => setRoute({ ...route, section: next }), [route, setRoute]);
-  /** the toolbar's ordering control and its select mode — client UI state, D18 */
+  /** the toolbar's ordering control and its select mode — client UI state */
   const sort = route.view?.queueSort ?? "attention";
   const setSort = useCallback((next: QueueSortKey) => setRoute(current => ({ ...current, view: { ...current.view, queueSort: next } })), [setRoute]);
   const [selectMode, setSelectMode] = useState(false);
@@ -138,26 +138,8 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition 
 
   const boot = bootstrap.state === "loaded" ? bootstrap.value : undefined;
 
-  // Radix tooltips need their provider ABOVE every surface that draws one, and
-  // the panel draws several. Mounting it here rather than per-surface is also
-  // what gives the whole app one shared open/close delay instead of each
-  // tooltip negotiating its own.
-  //
-  // THE THEME ROOT IS THE OUTERMOST NODE, ABOVE BOTH PROVIDERS (D272 item 2,
-  // ledger rows A168/A169/A170). That is load-bearing rather than tidy:
-  // `ToastProvider` renders its viewport as a FRAGMENT sibling of its children,
-  // so while the providers sat outside this element the viewport was not a
-  // descendant of it and inherited none of its custom properties.
-  // `--ds-toast-inset-bottom` therefore resolved to nothing, the viewport took
-  // its own `var(--ds-space-loose)` fallback, and every toast in the product
-  // sat on top of the Session bar — visible the moment the page was booted, and
-  // invisible to typecheck. The variable and the nesting are ONE fix; either
-  // alone changes nothing.
-  //
-  // The floor clears the app's OWN chrome and nothing else. The viewport is
-  // `fixed` at the bottom of the WINDOW and this shell is the only thing that
-  // knows what it has parked down there: the Session bar. One term, app-level,
-  // the same on every view.
+  // Radix tooltips need their provider ABOVE every surface that draws one.
+  // the theme root sits OUTSIDE both providers so the toast viewport inherits its tokens.
   return (
     <div
       data-app-root=""
@@ -200,11 +182,8 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition 
 }
 
 
-/**
- * Boot is the one place a hard failure has nowhere else to go: without the boot
- * document there is no vocabulary to render a dashboard with, so it says so in
- * the server's own words rather than showing an empty shell.
- */
+/** Boot is the one place a hard failure has nowhere else to go: without the boot
+ * document the shell has no vocabulary to render. */
 function BootGate({ bootstrap }: { bootstrap: ReturnType<typeof useBootstrap> }) {
   if (bootstrap.state === "failed") {
     return (
@@ -249,12 +228,8 @@ interface LoadedAppProps {
   openWells: ReadonlySet<string>;
   onWells: (next: ReadonlySet<string>) => void;
   tab: PanelTab | undefined;
-  /**
-   * The operator's EXPLICIT tab choice. `undefined` clears the override and
-   * hands the panel back to the run's own default — which is what the history
-   * restores when a place was recorded before any tab was pressed, and what a
-   * forced section the run cannot offer must never become.
-   */
+  /** The operator's EXPLICIT tab choice. `undefined` clears the override and
+ * hands the panel back to the run's own default — which is what the history */
   onTab: (tab: PanelTab | undefined) => void;
   sort: QueueSortKey;
   onSort: (sort: QueueSortKey) => void;
@@ -287,14 +262,8 @@ function LoadedApp({
   bulkIds,
   onBulkIds,
 }: LoadedAppProps) {
-  /**
-   * THE clock (D256). The server's instant is the authority; the browser
-   * contributes only the monotonic time since that instant arrived, and every
-   * live elapsed on the screen — the queue row's timer, the gate-age pill, the
-   * session footer, the worker cards, the notification ages — is computed
-   * against this ONE value. Before it, `boot.serverClock.now` was frozen at
-   * page load and a parked run read `0s` for over two minutes.
-   */
+  /** THE clock. The server's instant is the authority; the browser contributes
+ * only the monotonic time since that instant arrived, and every live elapsed */
   const nowIso = useServedNow(boot.serverClock.now);
   const servedNowRef = useRef(nowIso);
   servedNowRef.current = nowIso;
@@ -347,22 +316,11 @@ function LoadedApp({
     else { setRoute(current => ({ ...current, view: { ...current.view, launchServed: activeWorkflowId, launchWorkflow: undefined, launchSource: undefined, launchStage: "Input", launchCustomize: false } })); servedOpenStart(); }
   }, [railPreview, servedOpenStart, openMockLaunch, activeWorkflowId, setRoute]);
   const openRerun = launch.openRerun;
-  /**
-   * The command waiting on the operator's confirmation. A descriptor that
-   * carries a server-authored `confirm` block goes here first; everything else
-   * is posted straight away (the demo's own split, `RebuildDemo.tsx:226-252` —
-   * D16 keeps group cancel out of this flow BY CONSTRUCTION, because its
-   * descriptor carries no `confirm`).
-   */
+
   const [pendingCommand, setPendingCommand] = useState<PendingCommand | null>(null);
-  /** the run whose name is being edited (D233); `null` while the dialog is shut */
+  /** the run whose name is being edited; `null` while the dialog is shut */
   const [pendingRename, setPendingRename] = useState<PendingRename | null>(null);
-  /**
-   * D235's two pieces of bulk state. The batch waiting on the warn-first
-   * confirm, and the LAST batch's whole answer — which stays on screen until it
-   * is dismissed, because a partial result that auto-dismisses is a partial
-   * result nobody read.
-   */
+  /** Keep partial batch results until dismissed so every outcome can be read. */
 type UncertainCommandEntry = CommandRecoveryEntry & (
   | {
       readonly kind: "single";
@@ -408,13 +366,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
     [previewQueue.rows, activeWorkflowId],
   );
 
-  /**
-   * The route back to a run's parent (R3 finding 6), resolved over the WHOLE
-   * day's surfaces rather than the panel's scoped list — a parent that
-   * delegated across workflows is the interesting case, and it is exactly the
-   * one a scoped lookup would miss. A parent the day does not hold answers
-   * `undefined` and the chip is not drawn; nothing here invents a label.
-   */
+  /** Resolve parents across the whole day; delegation can cross workflow scopes. */
   const parentOf = useCallback(
     (parentRunId: string) => {
       const parent = dayWire?.queueSurfaces.find((surface) => String(surface.runId) === parentRunId);
@@ -430,13 +382,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
     [dayWire, workflowLabelOf],
   );
 
-  /**
-   * The active filter in the operator's own words, for the queue's empty state
-   * (R3 findings 2/3). It used to hand the panel `String(filter)`, which
-   * printed the raw wire enum (`awaiting-approval`); the word is the status
-   * pill's own label, so the empty state and the pill the operator clicked
-   * cannot disagree.
-   */
+  /** Use the status vocabulary for filter text so labels and empty states agree. */
   const queueFilterScope = useMemo((): QueueFilterScope | undefined => {
     if (filter.length === 0 || filter.includes("all")) return undefined;
     if (filter.length === 1 && filter[0] === "needsYou") return { kind: "needsYou" };
@@ -450,15 +396,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
     [startWorkflows, activeWorkflowId],
   );
 
-  /**
-   * ONE object per CHANGE, not one per render (D4).
-   *
-   * `QueuePanel` is `memo`'d, so a freshly built `state` object would defeat
-   * the wrapper on its own — it is the single prop most likely to do so,
-   * because it is the only composed one. `nowIso` is in the dependency list
-   * and ticks once a second (D256), which is the floor the panel redraws at by
-   * design; everything else here moves only when the operator moves it.
-   */
+  /** Stable composed props preserve memoization between clock ticks. */
   const viewState = useMemo(
     (): QueueViewState => ({
       ...(route.run === undefined ? {} : { selectedRunId: route.run }),
@@ -489,27 +427,9 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
     [route, setRoute, day, leaveSettings],
   );
 
-  /**
-   * THE ONE PLACE A SERVED CONTROL BECOMES A COMMAND (R8 finding 4, R5 finding
-   * 8). Every surface hands back the descriptor and its target; nothing below
-   * this line knows what a command envelope is.
-   *
-   * `composeCommandRequest` may REFUSE, and a refusal is reported rather than
-   * swallowed: a control that looks pressed and posts nothing is the silent
-   * failure this program forbids. The refusal toast is `danger`, which in this
-   * product means it never auto-dismisses — "nothing was recorded" may not time
-   * out (the same rule `park-resolve.tsx` follows).
-   */
+  /** Report composer refusals persistently; a pressed control must never fail silently. */
   const dispatchCommand = useCallback(
-    /**
-     * `answers` carries the values only a HUMAN can author, collected by
-     * whichever dialog owns that question. There is exactly one today
-     * (`renameAnswer`), and it is a parameter rather than another piece of
-     * component state for the reason the identity ceremony taught: a value the
-     * composer must not invent should travel WITH the call that needs it, so
-     * "the dialog did not answer" and "the state had not updated yet" can
-     * never look the same.
-     */
+    /** Pass human answers with dispatch; component-state timing must not substitute for missing answers. */
     (action: CommandAction, target: ActionTarget, answers: {
       recovery?: UncertainCommandEntry;
       renameAnswer?: string;
@@ -555,29 +475,13 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
       }
 
       inFlightCommands.current.add(inFlightKey);
-      /*
-        `.then(onFulfilled).catch(onRejected)` — NOT `.then(onFulfilled, onRejected)`, and the
-        difference is the whole point of the two fail-loud guards inside this settlement handler.
-        A two-arm `.then` installs its rejection handler on the ORIGINAL promise, so a throw
-        raised by the fulfilment arm has nowhere to land: `toastAppliedCommandResult`'s refusal to
-        compose a success receipt for a refused settlement, and the missing-feed-entry throw below
-        it, would both become floating unhandled rejections — no toast, no feed row, nothing on
-        screen at all. A guard whose only effect is a message in a console the operator never opens
-        is exactly the silence it was written to prevent. Chained, the SAME danger toast that
-        reports a transport failure reports the guard, verbatim.
-      */
+      /* Chain catch after fulfillment so settlement-guard throws reach the same visible failure path. */
       client.executeCommand(requestToExecute).then(
         (result) => {
           inFlightCommands.current.delete(inFlightKey);
           uncertainCommands.current.delete(inFlightKey);
           setRecoveryEntries([...uncertainCommands.current.values()]);
-          // `conflict` and `rejected` are VALUES, not exceptions (ref frontend-backend-integration §3.4),
-          // and WHETHER one of them landed is decided ONCE, by the fold (D253,
-          // Track D row D3) — this callback reads the verdict rather than
-          // re-taking the union apart. The description is still the server's
-          // own sentence verbatim: it is the only party that knows which
-          // version is live now, and neither refusal changes what this toast
-          // says about the command it answers.
+          // Render the fold’s verdict and served refusal verbatim; do not reinterpret settlement.
           const settlement = settleCommandResult(result);
           const surface = dayWire?.queueSurfaces.find((row) => String(row.runId) === targetToSettle.runId);
           if (settlement.kind === "refused") {
@@ -644,27 +548,14 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
           target: targetToSettle,
         });
         setRecoveryEntries([...uncertainCommands.current.values()]);
-        // NOT "Nothing was recorded": the envelope is already on the wire by
-        // the time anything can land here, so whether the kernel wrote the row
-        // is a fact this tab does not hold (`commandFailureToast`).
+        // Dispatch may already have committed; client failure cannot prove nothing was recorded.
         toast(commandFailureToast({ stage: "after-dispatch", caught }));
       });
     },
     [boot.actor.id, client, toast, dayWire, workflowLabelOf, activeWorkflowId, nowIso, setRoute, onBulkIds],
   );
 
-  /**
-   * D235 — THE ONE PLACE A BULK PLAN BECOMES A POST, and the mirror of
-   * `dispatchCommand` one level up: `composeBulkRunCommand` may REFUSE (an
-   * empty eligible set is the honest one), and a refusal is reported rather
-   * than swallowed.
-   *
-   * What it does NOT do is collapse the answer. `conflict` and `refused` are
-   * per-run values here exactly as they are per-command above, and every one of
-   * them goes into the band — the toast says only that the batch has answered,
-   * because a toast cannot carry a vector and ref dashboard-surfaces §2.4 forbids reducing one
-   * to a word.
-   */
+  /** Preserve every per-run outcome; a toast cannot replace the batch vector. */
   const dispatchBulk = useCallback(
     (plan: BulkVerbPlan, retained?: { commandId?: string; requestedAt?: string; recovery?: UncertainCommandEntry }): void => {
       const inFlightKey = `bulk:${plan.verb}`;
@@ -712,9 +603,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
             return;
           }
           const applied = response.results.filter((entry) => entry.outcome === "applied").length;
-          // The toast POINTS AT the band; it never states the outcome, because
-          // "3 of 4 applied" read alone is the summary this surface exists to
-          // refuse. The band below it holds every run's own answer.
+          // Point to the outcome band; never replace per-run results with a summary toast.
           toast({
             tone: applied === response.results.length && applied === response.requestedCount ? "success" : "danger",
             title: `${planToExecute.label} — ${String(response.results.length)} of ${String(response.requestedCount)} answered`,
@@ -739,14 +628,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
     [boot.actor.id, client, nowIso, toast],
   );
 
-  /**
-   * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
-   * `RebuildDemo.tsx:226-252` (`runAction`).
-   *
-   * Note what is NOT here: no status check, no per-button special case. The
-   * DESCRIPTOR decides — navigation moves the view, a command with
-   * server-authored confirm copy asks first, everything else posts.
-   */
+
   const runAction = useCallback(
     (action: ActionDescriptorWire, target: ActionTarget, source: "queue" | "run-detail" = "queue"): void => {
       if (action.kind === "navigation") {
@@ -758,20 +640,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
         else if (action.navigate.runId !== undefined) selectRun(action.navigate.runId);
         return;
       }
-      /*
-        RENAME ASKS FOR A VALUE (D233), so it is intercepted before the confirm
-        branch rather than after it — the demo's own shape
-        (`RebuildDemo.tsx:240`). A confirm dialog re-states a decision already
-        made; this one COLLECTS the decision, and the two are not
-        interchangeable. `composeCommandRequest` refuses a rename with no name,
-        so a descriptor that somehow reached the generic path below cannot post
-        an empty one.
-
-        A run the day's projection no longer holds cannot be renamed HERE: the
-        dialog states the run's identity and its elapsed from that row, and
-        inventing a subject line for a run this build cannot see is the
-        substitution the confirm path already refuses one line down.
-      */
+      /* Rename collects a value before confirmation and requires the projected run’s identity. */
       if (action.command === "rename") {
         const surface = dayWire?.queueSurfaces.find((row) => String(row.runId) === target.runId);
         if (surface === undefined) {
@@ -813,9 +682,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
           commandId,
           requestedAt,
           triggerElement,
-          // The row's own name and identity, so the operator is shown the thing
-          // the blast radius lands ON. A run the day's projection does not hold
-          // states that rather than inventing a title for it.
+          // Use the served row identity; missing rows must not receive invented titles.
           subject: surface?.title ?? `run ${target.runId}`,
           traceId: surface?.traceId ?? target.runId,
           workflowLabel: workflowLabelOf(String(surface?.workflowId ?? activeWorkflowId)),
@@ -834,23 +701,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
     [runAction],
   );
 
-  /**
-   * THE KEYBOARD, BOUND (R2 D13/D14, R3 finding 8, R5 finding 7, R8 finding 7).
-   *
-   * The traversal list is `visibleRunIds` — the queue's OWN drawn order, whose
-   * doc comment has named this consumer since it was written and had none — and
-   * the attention list is the NEEDS YOU band's own rows through the same
-   * `bandOf`. Both are computed from the same `surfaces`/`sort` the panel below
-   * renders, so a keyboard walk and a scroll cannot disagree.
-   */
-  /**
-   * THE QUEUE'S HANDLERS, as ONE object that outlives a render (D4).
-   *
-   * This used to be an inline `handlers={{…}}` literal with five closures in
-   * it, so `QueuePanel`'s `memo` would have compared unequal on every render
-   * for a prop whose CONTENTS had not moved. The bodies are unchanged; only
-   * where they are built has.
-   */
+  /** Keyboard traversal must follow the same drawn order and attention bands. */
+  /** Keep handler identity stable so unchanged callbacks do not defeat queue memoization. */
   const setBatchGrouping = useCallback(async (batch: QueueBatch, groupInQueue: boolean): Promise<void> => {
     const request = WorkflowBatchCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: nowIso,
       requestedBy: boot.actor.id, source: "dashboard", family: "workflow-batch", type: "set-batch-grouping",
@@ -898,12 +750,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
       onSelect: selectRun,
       onExitSelection: exitQueueSelection,
       onPreviewAction: runPreviewAction,
-      /*
-        LIVE. `actionsOf` at the call site reads the row's own served
-        `actions[]`, so every control the server describes routes through
-        `runAction` → `composeCommandRequest` → the one command client. A row
-        served an empty list still draws nothing, with no branch here.
-      */
+
       onAction: runQueueAction,
       onToggleWell: (runId) => {
         const next = new Set(openWells);
@@ -917,24 +764,13 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
         else next.add(runId);
         onBulkIds(next);
       },
-      /*
-        A parent can belong to ANOTHER workflow, so the jump moves the panel and
-        then selects — selecting alone would open a run the queue beside it is
-        scoped away from.
-      */
+      /* Cross-workflow parent jumps switch scope before selecting the run. */
       onOpenParent: (runId) => {
         const parent = dayWire?.queueSurfaces.find((s) => String(s.runId) === runId);
         if (parent !== undefined) setActiveWorkflowId(String(parent.workflowId));
         selectRun(runId);
       },
-      /*
-        THE FORWARD ROUTE (D231). Same two moves as the parent jump — switch the
-        panel, then select — but it never searches the day payload: the served
-        link carries its own `workflowId`, which is the whole reason the wire
-        serves the link rather than a bare id. A child that ran on another day is
-        exactly the case a lookup would fail silently on, and it is the case the
-        chip exists for.
-      */
+      /* Use the served child route; current-day lookup cannot find cross-day delegation. */
       onOpenLinked: (link) => {
         setActiveWorkflowId(String(link.workflowId));
         selectRun(String(link.runId));
@@ -967,17 +803,12 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
     onTab,
   });
 
-  // The boot document composes this array from zod parts so it infers as
-  // `unknown[]`; re-parsing is the check bootstrap's
-  // own refinement makes, not a cast past one. It is done ONCE per boot
-  // document here rather than once per render of the app.
+  // Parse owner-composed bootstrap projections once; unknown arrays are not permission to cast.
   const settingsSections = useMemo(
     () => SettingsSectionPrimitiveSchema.array().parse(boot.settingsSections),
     [boot.settingsSections],
   );
-  // Settings → Workflow capabilities joins its served rows to THESE labels: the
-  // capability wire carries none on purpose, so one page cannot hold two names
-  // for one workflow (D274 item 6).
+  // Join capability rows to bootstrap labels; one workflow must have one name.
   const workflowLabels = useMemo(
     () => new Map(workflowCatalog.map((workflow) => [workflow.id, workflow.label])),
     [workflowCatalog],
@@ -993,13 +824,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
     leaveSettings(() => setRoute(routeWithoutTakeovers(route)));
   }, [route, setRoute, leaveSettings]);
 
-  /**
-   * Settings is a PLACE now (D272 item 1), so its two doors — the gear and the
-   * storage band's `Storage checks` — both push a history entry and the
-   * browser's own Back returns the operator to the view they left. The empty
-   * value is the page's first section; every other takeover key clears for the
-   * same reason each Settings destination clears them.
-   */
+  /** Settings navigation creates history so Back returns to the previous view. */
   const [sessionsOpen, setSessionsOpen] = useViewState("sessions", false);
   const openSettings = useCallback((): void => {
     setRoute({
@@ -1121,11 +946,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
   if (destinationError) return <EmptyState title="Destination unavailable" description={destinationError} action={<Button onClick={() => setRoute({ start: false })}>Open dashboard</Button>} />;
 
   return (
-    // NOT the theme root any more (D272 item 2): the app root moved above both
-    // providers so the toast viewport inherits its custom properties, and this
-    // fills it. `min-w-0` + `overflow-hidden` live up there with the root
-    // classes the demo has (`min-h-0` was this tree's own addition and is what
-    // a flex CHILD needs, which is exactly what this element now is).
+    // Keep the theme above providers so portalled toast surfaces inherit its tokens.
     <PreflightActionsProvider actions={{ actorId: boot.actor.id, descriptorFingerprint: boot.descriptorHash,
       showSettings: section => leaveSettings(() => setRoute({ ...routeWithoutTakeovers(route), settings: section ?? "" })),
       showSessions: () => setSessionsOpen(true),
@@ -1147,38 +968,12 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
 
       <main
         id={DASHBOARD_MAIN_REGION_ID}
-        // Only ever a programmatic focus TARGET (settings-model's
-        // `settingsCloseFocusTargetId` fallback) — never in the Tab order,
-        // which is what -1 (rather than 0) means here.
+        // This is a programmatic focus target, never a keyboard tab stop.
         tabIndex={-1}
         className="flex min-h-0 min-w-0 flex-1 flex-col"
       >
-        {/*
-          A DASHBOARD THAT CANNOT WORK SAYS SO ON EVERY VIEW.
-
-          Mounted here — above the complete sidebar/content row, inside the
-          full-width `main` — rather than inside Settings, because Settings is
-          the page that EXPLAINS the state and an operator filing transactions
-          is not in it. Every takeover below (intake, archive, explorer,
-          catalog, activity) replaces the queue and inherits this band
-          unchanged.
-
-          D222: only the unreachable AUTHORITY earns this band — a stale or
-          missing backup is a `storage` notification in the bell (ref dashboard-surfaces
-          §2.6) plus the gear's attention dot, because it does not stop the
-          work. It renders nothing at all otherwise, which is why it costs
-          the shell no fixed height: an empty band held open for a state
-          that is almost never true is the decoration this product spends
-          its density on avoiding.
-        */}
-        {/*
-          D281 item 7 RULES the full match: x=0, border-bottom only, no
-          radius, above the switch on the queue and every takeover. That is
-          the demo's exact site geometry (`hr-automation@1ec1d870`,
-          `RebuildDemo.tsx:654` and `DemoSettings.tsx:1204-1237`). D276 item
-          4 still protects every other `Banner`: the storage hazard selects
-          the explicit `band` arm instead of changing the default card.
-        */}
+        {/* Show unreachable authority on every view; backup warnings do not stop work. */}
+        {}
         <StorageBanner
           storage={boot.storage}
           onOpenSettings={openSettings}
@@ -1189,34 +984,14 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
 
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
 
-          {/*
-            The intake workspace REPLACES the queue for as long as it is open.
-            It is not a dialog: the session is durable, mapping and reviewing
-            take minutes, and the operator must be able to leave and come back
-            to `?intake=<id>`. Hiding the queue is the honest statement that
-            they are in a different task — a half-visible queue behind a
-            takeover is the modal it deliberately is not.
-          */}
+          {/* Intake is a durable workspace; leaving it must not discard mapping progress. */}
           <DashboardTakeovers takeover={takeover} route={route} setRoute={setRoute} boot={boot}
             workflowCatalog={workflowCatalog} settingsSections={settingsSections} workflowLabels={workflowLabels} activeWorkflowId={activeWorkflowId}
             workflowLabelOf={workflowLabelOf} supportsDryRun={startWorkflow?.inputRun.state === "present" && startWorkflow.inputRun.surface.supportsDryRun === true}
             closeTakeoverTo={closeTakeoverTo}
             onSettingsExitGuardChange={onSettingsExitGuardChange} onSettingsSaved={notice => toast({ tone: "success", ...notice })} onSettingsSaveProblem={toast} theme={theme} onToggleTheme={onToggleTheme}>
           <>
-          {/*
-            ONE COMPOSED ACTION BAR (ref dashboard-surfaces §Shell, D18). It was two bands: a
-            row of unrelated ghost buttons crammed right, above a bare status
-            strip that hung off no inset at all — so the pills started 8px from
-            the window edge while every other band in the shell started at
-            `--ds-shell-inset`. The three groups are the demo's: where you are +
-            what you start · what you are looking at · how you are looking at it.
-
-            D224: it is an ISLAND, and the shell owns its outside edge — the
-            same `mx`/`mt` inset the panel region below applies with its own
-            `p-[var(--ds-shell-inset)]`, so the gap above the panels equals the
-            gap between them and the toolbar reads as one more card in a shell
-            made of cards. The card treatment itself lives in the component.
-          */}
+          {}
           <CommandRecovery
             entries={recoveryEntries}
             pendingKey={pendingRecovery}
@@ -1338,22 +1113,14 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
             setRoute(routeForStartedRun(routeRef.current));
           });
         }}
-        /* D296 — the modal's spreadsheet method hands off to the intake
-           workspace. It carries the workflow the PICKER selected, and the
-           panel follows it: `IntakeWorkspace` reads `activeWorkflowId` for the
-           projection it maps against, so opening the takeover without moving
-           the panel would map the file onto whatever workflow the operator
-           happened to be standing in. */
+        /* Follow the picker’s workflow into intake; panel scope must not choose the mapping target. */
         onOpenIntake={(intakeWorkflowId, intakeSessionId) => {
           setActiveWorkflowId(intakeWorkflowId);
           setRoute({ ...route, intake: intakeSessionId });
         }}
       />
 
-      {/* Destructive commands ask first — with the SERVER's own description of
-          the blast radius (`DemoActions.tsx:430-447`). Group cancel is
-          deliberately not in this flow: D16 keeps it out BY CONSTRUCTION, since
-          its descriptor carries no `confirm` block to route on. */}
+      {/* Destructive commands use their served blast-radius confirmation before dispatch. */}
       <ConfirmCommandDialog
         pending={pendingCommand}
         onCancel={() => setPendingCommand(null)}
@@ -1367,11 +1134,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
         }}
       />
 
-      {/* Rename asks for a VALUE, then goes through the SAME command service as
-          every other verb — CAS-bound to the row version its descriptor was
-          projected at, so a name typed against yesterday's row is refused by
-          the kernel with the server's own sentence rather than silently
-          overwriting today's (D233). */}
+      {/* Rename uses the projected row version; stale drafts must not overwrite newer names. */}
       <RenameRunDialog
         pending={pendingRename}
         onCancel={() => setPendingRename(null)}
@@ -1386,11 +1149,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
         }}
       />
 
-      {/* A BATCH WARNS FIRST (D235). The single-row confirm routes on a
-          server-authored `confirm` block; a batch has no such block to route on
-          — its blast radius is a fact about the SELECTION — so every bulk press
-          asks, without exception, and the sentence names the count and states
-          that each row is its own CAS-bound transition. */}
+      {/* Every bulk press confirms the selection and each row’s independent version-bound transition. */}
       <ConfirmBulkCommandDialog
         pending={pendingBulk}
         onCancel={() => setPendingBulk(null)}

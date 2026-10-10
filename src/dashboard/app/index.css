@@ -1,19 +1,5 @@
 /* Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
-   src/dashboard/index.css — the subset the ported ds layer resolves against:
-   Tailwind v4 entry, the `dark` variant, the app-level semantic token pair
-   (`:root` light / `.dark`), the `@theme inline` utility mapping, and the base
-   layer (border/outline defaults, body colours, themed native scrollbars).
-
-   Dropped from the legacy file, verified unreferenced by `src/dashboard/ds/**`:
-   xyflow imports and its overrides, `--chart-*`, `--sidebar-*`, the
-   retired `--log-*` categorical accents, `@layer components` app rules
-   (search-results panel, `.form-input`). HeroUI calendar styling now uses
-   the dashboard tokens in `ds/tokens.css`.
-
-   The `--ds-*` layer itself lives in `ds/tokens.css`, loaded by
-   `ds/tokens.ts` / `ds/ui.tsx` exactly as the legacy demo loads it; its theme
-   blocks re-scope these semantic tokens under `data-demo-theme`, and its
-   `:root` fallback aliases the values below. */
+   src/dashboard/index.css — the subset the ported ds layer resolves against: */
 /* Match the native macOS UI with San Francisco; use the platform UI font elsewhere. */
 @import "@fontsource/ibm-plex-mono/400.css";
 @import "@fontsource/ibm-plex-mono/500.css";
@@ -43,7 +29,7 @@
   --accent-foreground: hsl(21.3158 55.0725% 27.0588%);
   --destructive: hsl(0 68.3761% 45.8824%);
   --destructive-foreground: hsl(0 0% 100%);
-  /* Semantic state tokens (audit 2026-06-04) — light. danger == --destructive. */
+  /* Semantic state tokens — light. danger == --destructive. */
   --info: hsl(211 80% 43%);
   --info-foreground: hsl(0 0% 100%);
   --success: hsl(142 60% 33%);
@@ -76,9 +62,8 @@
 }
 
 .dark {
-  /* Neutral near-black retheme (2026-06-04). Unified onto the --capture-*
-     "Editorial Calm" ladder: hue 240, ~4% sat, near-black surfaces, near-
-     white neutral primary, muted-but-legible status hues. */
+  /* Near-black neutral ladder: hue 240, low saturation, near-black surfaces,
+     near-white neutral primary, muted-but-legible status hues. */
   --background: hsl(240 4% 4%);
   --foreground: hsl(240 5% 96%);
   --card: hsl(240 4% 7%);
@@ -124,8 +109,7 @@
   --shadow-2xl: 0 1px 4px 0px hsl(0 100.0000% 0.1961% / 1.00);
 }
 
-/* Original dashboard @theme inline block (chart/sidebar/log entries dropped
-   with their tokens). */
+/* The dashboard's own `@theme inline` block. */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -181,7 +165,7 @@
   }
 
   /* Themed native scrollbars — the consistency net for scroll regions on
-     native overflow. Token-driven. */
+     native overflow. */
   * {
     scrollbar-width: thin;
     scrollbar-color: var(--border) transparent;

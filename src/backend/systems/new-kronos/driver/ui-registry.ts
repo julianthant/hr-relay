@@ -1,46 +1,4 @@
-/**
- * The New Kronos semantic UI registry — the closed set of screens, elements,
- * page states and observations the New Kronos driver may resolve.
- *
- * Sixteen elements across two screens, and not one more: this registry serves
- * the separations timecard READ, and an element nobody uses is an element
- * nobody verifies. Nothing here can click anything that mutates UKG — there is
- * no `external-commit` element in this store at all, which is the structural
- * half of "chunk 1 is read-only".
- *
- * Every element is a legacy PORT with exact provenance (legacy commit, path,
- * key, source line, blob) plus its own live read-only re-verification on
- * **2026-08-12** (D150: a selector checked against the live system beats one
- * diffed against legacy's copy of it). Four ports narrow deliberately, and each
- * narrowing is a safety fix rather than transcription:
- *
- *  - `timecard.payPeriodTriggerButton()` is a NAME-REGEX plus `.first()` in
- *    legacy. Live it matches **two** nodes — the icon-only trigger AND
- *    `#_timeFrame`, which is itself a button — so `.first()` was masking a real
- *    ambiguity. The port anchors on `button.select-timeframe-button`, counted
- *    live at exactly one.
- *  - `goToMenu.goToButtonOnPage()` chains `#goToDropdownButton` `.or()` a
- *    `.quick-find-content`-scoped name match. Live, `#goToDropdownButton`
- *    resolves to exactly one node in whichever context hosts the panel; the
- *    `.or()` arm exists only to survive a miss, and a miss here must be loud.
- *    `goToMenu.goToButtonInFrame()` is the SAME control in the other context,
- *    so it binds to the same canonical id rather than minting a second one.
- *  - `goToMenu.timecardItem()` is a four-deep `.or()` across
- *    frame/page × option/menuitem. Live, the menu renders `role=option` inside
- *    the panel's own context only, and the exact-name match counts one.
- *  - `search.firstResultSlat()` / `search.resultEmployeeId()` collapse into one
- *    element: the live slat carries `aria-label="Name <name> ID <eid>"`, so the
- *    row IS the identity. `search.resultEmployeeId()`'s `getByText(eid)` is not
- *    ported at all — a bare EID text match can hit the search box's own echo.
- *
- * NOT published as elements, on purpose: the timecard GRID and the timecard's
- * employee-name combobox. Legacy reaches the grid through `page.evaluate` with
- * no selector key at all, and the name combobox has no legacy key; both are
- * driver-internal and documented in the store's CLAUDE.md and the migration
- * doc's mapping appendix. Publishing a registry element with no ported row
- * would be a fabricated provenance, which the `semantic-ui-registry` guard
- * exists to prevent.
- */
+
 import { z } from "zod";
 import { deepFreeze } from "../../../../rules/validation/immutability.js";
 import {
@@ -111,21 +69,10 @@ const LegacySelectorProvenanceSchema = z.strictObject({
   narrowedFromLegacy: z.string().min(1).optional(),
 });
 
-/**
- * WFD renders its search panel either inside `iframe[name^="portal-frame-"]` or
- * top-level, depending on how the page was reached — both were observed live on
- * 2026-08-12 minutes apart. `search-panel` means "resolve in whichever context
- * currently hosts the panel"; `page` means top-level only. The context is part
- * of the RECIPE because it is part of the identity: the same accessible name in
- * the wrong context is a different control.
- */
+// WFD search can render top-level or in its portal iframe depending on navigation.
 export const NewKronosLocatorContextSchema = z.enum(["search-panel", "page"]);
 
-/**
- * Four recipe kinds, all anchored on something structural. There is no
- * substring match, no `.or()` chain, and no `.first()` on an ambiguous set:
- * every recipe below was counted live and resolves to exactly one node.
- */
+
 export const NewKronosLocatorRecipeSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("role-exact-name"),
@@ -248,7 +195,7 @@ const NewKronosUiEvidenceBindingInputSchema = z.strictObject({
   portBindings: z.array(NewKronosUiRegistryPortBindingSchema),
 });
 
-/** The WFD application host and the timecard route, both live-verified 2026-08-12. */
+
 export const NEW_KRONOS_APP_HOST = "ucsd-sso.prd.mykronos.com";
 export const NEW_KRONOS_TIMECARD_ROUTE = "/timekeeping#/timecard";
 /** The iframe whose name suffix is session-scoped; only the PREFIX is stable. */
@@ -565,9 +512,7 @@ export const NEW_KRONOS_UI_REGISTRY = deepFreeze(NewKronosUiRegistrySchema.parse
       searchTerms: ["new kronos employee search results ready state"],
       sensitivity: "hr",
       evidence: [{ kind: "element", element: NEW_KRONOS_SEARCH_RESULT_SLAT }],
-      // The genuine no-results sentinel surfaced in 548ms live; 15s is a
-      // generous bound on a slow grid, and elapsing it is `no-signal`, which
-      // is its own outcome and never "not found" (S35).
+
       timeoutMs: 15_000,
       verification: verification(SEARCH_SCENARIO, "search.firstResultSlat()"),
     },
@@ -717,9 +662,7 @@ export function auditNewKronosUiRegistry(
       if (stateDefinition === undefined) issues.push(`${element.id} references unknown state ${state}`);
       else if (stateDefinition.screen !== element.screen) issues.push(`${element.id} required state crosses screens`);
     }
-    // Chunk 1 is structurally read-only: this store has no way to mutate UKG,
-    // and a future write slice must add the element deliberately, not inherit
-    // the capability from a registry that already allowed it.
+
     if (element.effect === "external-commit") {
       issues.push(`${element.id} may not claim the external-commit effect in a read-only store`);
     }

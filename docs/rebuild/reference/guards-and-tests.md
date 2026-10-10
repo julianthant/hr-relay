@@ -1680,7 +1680,7 @@ through `src/server/storage/upgrade.ts`. A2/A3 retain their existing assignments
 
 #### Phase 2.6.9 retirement proof amendment — 2026-09-10
 
-The operator-approved [D332.9 separation](dashboard-surfaces.md#phase-269-recovery-separation--2026-09-10)
+The operator-approved D332.9 separation
 retains supported stopped database conversion/historical archive recovery while deleting the four
 expired settings adapters and their import behavior. Before deletion, execute and preserve the
 fresh/v29 migration and migrated-copy recovery proof. At deletion, activate

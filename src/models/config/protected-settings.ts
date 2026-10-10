@@ -3,11 +3,7 @@ import { CommandIdSchema, FingerprintSchema, IsoInstantSchema, PositiveIntSchema
 import { deepFreeze } from "../../rules/validation/immutability.js";
 import { deriveSchemaHash } from "../validation/schema-bound-value.js";
 
-/**
- * D331: these schemas are shared by the writer and the accessor. No coercion or trimming.
- * D341: test-target inputs (the former canary entries) are NOT protected Settings; they live in
- * ignored `config/test-data.local.json`. Their frozen pre-D341 shape is `protected-settings-legacy.ts`.
- */
+/** These schemas are shared by the writer and the accessor, with no coercion or trimming; test-target inputs are not protected Settings. */
 export const ProtectedValueSchemas = Object.freeze({
   ucpathUserId: z.string().min(1).max(256),
   ucpathPassword: z.string().min(1).max(4096),
@@ -57,11 +53,7 @@ function markedOperation() {
   ]).optional();
 }
 
-/**
- * The journal-safe form of a protected patch. The operation shape remains
- * authenticated, while no submitted value or value-derived surrogate crosses
- * this boundary.
- */
+/** The journal-safe form of a protected patch: the operation shape stays authenticated, and no submitted value or value-derived surrogate crosses. */
 export const MarkedProtectedSettingsPatchSchema = z.strictObject({
   ucpathUserId: markedOperation(),
   ucpathPassword: markedOperation(),

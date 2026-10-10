@@ -1,4 +1,4 @@
-/** Historical presentation remains schema-bound; archive reads now consume frozen rows. */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { ArchivedTransactionsSchema } from "../../../../../src/models/archive/model.js";
@@ -26,13 +26,7 @@ function at(system: string, date: string, sequence: number): LedgerLinePointer {
   return LedgerLinePointerSchema.parse({ system, date, sequence });
 }
 
-/**
- * The base facts, `as const` so the closed-enum leaves (`completionKind`,
- * `proofSource`, `instance`, the two absent arms) keep their literal types
- * through the spread. Without it every one of them widens to `string` and the
- * fixture stops satisfying `LedgerEntryFacts` — a fixture that cannot be
- * passed to the function it exercises.
- */
+
 const ENTRY_PAYLOAD_BASE = {
   workflowId: "separations-kuali-finalization",
   itemId: UUID_4,
@@ -72,10 +66,7 @@ describe("frozen archive transaction presentation", () => {
     assert.equal(line.confirmedAt, "2026-08-04T17:00:16.000Z");
   });
   it("serves Action and Confirmation as reasoned absences for a proof no contract declares", () => {
-    // Not an oversight: a ledger entry declares neither leaf, and its `proof`
-    // is schema-bound to whichever commit contract wrote it, so reading a
-    // field NAME out of it is the guess D204 bans on an HR record. This
-    // fixture's proof is bound to a hash nothing declares.
+
     const resolved = resolveLedgerLine(
       at("kuali", "2026-08-04", 0),
       entryPayload(),
@@ -87,15 +78,10 @@ describe("frozen archive transaction presentation", () => {
     assert.match(resolved.action.state === "absent" ? resolved.action.reason : "", /no commit contract declares/);
   });
 
-  /* ── the declared readings (D223's `LEDGER_PRESENTATION_DECLARATIONS`) ─── */
+
 
   it("declares exactly separations' three commit contracts, keyed by PROOF SCHEMA", () => {
-    /*
-     * The key matters and `(system, completionKind)` could not have worked:
-     * two of the three are `save-verify` writes on `ucpath`, so one key would
-     * have named two contracts. `proof.schemaHash` is the contract's own
-     * identity and it is already on every line.
-     */
+
     assert.deepEqual(
       LEDGER_PRESENTATION_DECLARATIONS.map(({ taskId }) => taskId),
       [
@@ -136,11 +122,7 @@ describe("frozen archive transaction presentation", () => {
   });
 
   it("says a UCPath grid delete HAS no confirmation, which is not the same as undeclared", () => {
-    /*
-     * The load-bearing difference. "Nothing declares this" means nobody looked;
-     * this reason means somebody did and found the external system issues no
-     * receipt. An operator reading a blank cell must be able to tell them apart.
-     */
+
     const resolved = resolveLedgerLine(at("ucpath", "2026-08-04", 0), entryPayload({
       system: "ucpath",
       idempotencyKey: SWEEP_KEY,
@@ -169,9 +151,7 @@ describe("frozen archive transaction presentation", () => {
   });
 
   it("REFUSES a line whose proof names a declared schema and does not satisfy it", () => {
-    // The hash says which contract wrote the line; the contract's own schema
-    // refuses the value. Reading the leaves anyway would present a value
-    // nothing validated, on a record about a real person's employment.
+
     const resolved = resolveLedgerLine(at("kuali", "2026-08-04", 0), entryPayload({
       proof: {
         schemaHash: deriveSchemaHash(KualiSaveSeparationFinalization.writeSafety.completion.proofSchema, "output"),

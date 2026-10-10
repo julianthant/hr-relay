@@ -1,14 +1,4 @@
-/**
- * Ref write-safety §6's ordered, actor-attributed ledger projection — the durable half.
- *
- * Beat ⑦ writes an UNSEQUENCED `ledger-entry` outbox row inside the atomic
- * write-commit transaction. Exactly one projector then holds a lease on the
- * entry's `(system, date)` partition, assigns the next `seq`, appends one
- * canonical line to `<stateRoot>/ledger/<system>-<date>.jsonl`, fsyncs, and
- * marks the outbox projected. Those three facts are separately durable on
- * purpose: a crash between any two of them must be repairable from what is
- * already stored, never from a guess.
- */
+/** Separate durable sequence, append and outbox marks permit crash repair between stages. */
 import { z } from "zod";
 import { canonicalJsonStringify } from "../validation/canonical-json.js";
 import {
@@ -38,12 +28,7 @@ const LedgerLeaseSchema = z.discriminatedUnion("state", [
   }),
 ]);
 
-/**
- * One row per `(system, date)`. `nextSeq` is the ONLY sequence authority: it is
- * advanced inside the same authority transaction that writes the assignment
- * row, so two projectors racing the same partition cannot mint one `seq` twice
- * even if the lease were somehow held twice.
- */
+/** One row per `(system, date)`; `nextSeq` is the ONLY sequence authority, advanced inside the same transaction that writes the assignment row. */
 export const LedgerPartitionRecordSchema = z.strictObject({
   system: BrowserSystemIdSchema,
   date: DateOnlySchema,
@@ -60,13 +45,7 @@ const LedgerProjectionLifecycleSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("appended"), appendedAt: IsoInstantSchema }),
 ]);
 
-/**
- * One row per projected `outboxId` — the projector's idempotency key. The row
- * is written BEFORE the file append, so a crash in the append window leaves an
- * `assigned` row whose exact line text is still reconstructible from the outbox
- * payload plus this `seq`; recovery re-derives it and compares `lineDigest`
- * rather than inventing a replacement.
- */
+/** One row per projected `outboxId` — the projector's idempotency key, written BEFORE the file append so a crash still leaves the line text reconstructible. */
 export const LedgerProjectionRecordSchema = z.strictObject({
   outboxId: OutboxIdSchema,
   system: BrowserSystemIdSchema,
@@ -78,12 +57,7 @@ export const LedgerProjectionRecordSchema = z.strictObject({
   assignedAt: IsoInstantSchema,
 });
 
-/**
- * Every way the on-disk partition can disagree with authority. Each one STOPS
- * projection for that partition: ref write-safety §6 forbids rewriting or skipping past a
- * ledger inconsistency, because the ledger is the record of what was really
- * filed against a live HR system.
- */
+/** Every way the on-disk partition can disagree with authority; each one STOPS projection for that partition. */
 export const LedgerDegradedReasonSchema = z.enum([
   "duplicate-sequence",
   "duplicate-outbox",
@@ -139,13 +113,7 @@ export function ledgerPartitionRecordKey(system: string, date: string): string {
   return `${key.system}:${key.date}`;
 }
 
-/**
- * The partition a committed entry belongs to, derived from the entry's OWN
- * `confirmedAt` rather than from wall-clock time at projection: a restart hours
- * or days later must reconcile into the same file. UTC, not local, so the
- * partition of a stored entry never depends on the machine's time zone (the
- * same reason D112 fixes provider budget windows to UTC).
- */
+/** The partition a committed entry belongs to, derived from the entry's OWN `confirmedAt` in UTC, so a later restart reconciles into the same file. */
 export function ledgerPartitionOfInstant(confirmedAt: string): string {
   const instant = IsoInstantSchema.parse(confirmedAt);
   const parsed = new Date(Date.parse(instant));

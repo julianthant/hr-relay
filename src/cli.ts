@@ -26,13 +26,8 @@ import { composeStorageCommand } from "./backend/app/composition/storage-compose
 import { composeWorkerRuntime } from "./backend/app/composition/worker-compose.js";
 import type { RuntimeAdmission } from "./backend/storage/admission/admission.js";
 
-/**
- * Compose and start one admitted CLI invocation. Secure bootstrap is the sole
- * caller, and it AWAITS this promise: for `dashboard` the promise is the
- * runtime's whole lifetime (it settles only after the composed runtime stopped),
- * so a shutdown failure reaches the entrypoint instead of vanishing.
- */
-/** The checkout that owns THIS cli module; never the caller's CWD (D341). */
+/** Compose and start one admitted CLI invocation; secure bootstrap awaits it, so a shutdown failure reaches the entrypoint. */
+/** The checkout that owns this cli module, never the caller's CWD. */
 const REPOSITORY_ROOT = fileURLToPath(new URL("..", import.meta.url));
 
 export async function runCli(admission: RuntimeAdmission): Promise<void> {
@@ -52,7 +47,7 @@ export async function runCli(admission: RuntimeAdmission): Promise<void> {
     admission,
     isolation: runtimeIsolation,
     args,
-    // The loader reports absent T1b manifests before runtime execution.
+    // The loader reports absent manifests before runtime execution.
     loadManifest: loadDryRunScenarioManifest,
     createRuntime: createProductionDryRunScenarioRuntime,
     repoRoot: REPOSITORY_ROOT,

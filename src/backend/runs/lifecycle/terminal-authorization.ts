@@ -1,16 +1,4 @@
-/**
- * The ONE assembly point for `TerminalAuthorizationRecord` (refs dashboard-surfaces/operator-trust,
- * D110/D114).
- *
- * The interpreter never hand-builds this row inline: the record preserves the
- * exact pre-terminal CAS (`expectedVersion`) and the held claim so a later
- * replay cannot substitute a stale or unrelated authorization, and both
- * invariants are only checkable against the CURRENT run record at the moment
- * of authorization. This factory takes that current record, refuses to
- * authorize anything a worker does not actually own, and binds the exact
- * consequence identity (the failure, or the result) that the
- * atomic terminal composites will re-validate.
- */
+// Terminal authorization retains the exact pre-terminal CAS and claim separately from settled facts.
 import { z } from "zod";
 import { IsoInstantSchema } from "../../../rules/identity/ids.js";
 import { runClaim, RunRecordSchema } from "../../../models/run/record.js";

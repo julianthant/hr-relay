@@ -1,55 +1,4 @@
-/**
- * The REAL Smart HR termination operations — the production half of chunk 4.
- *
- * ## Where the anchors come from — registry FIRST, and a declared exception
- *
- * Every anchor a registry element covers is resolved through the registry
- * (`resolveUcpathElement`), so it carries a legacy port-map row and dual
- * evidence. The rest are declared ONCE in `DRIVER_ANCHOR` below, each with the
- * reason it cannot be a registry element — because `ElementDefinitionSchema`
- * REQUIRES `provenance: LegacySelectorProvenanceSchema`, and legacy has no key
- * for these controls at all. Publishing a registry row for one of them would be
- * a fabricated provenance, which is exactly what the `semantic-ui-registry`
- * guard exists to prevent (the same rule `new-kronos` applied to its grid, and
- * the reason `#PERSON_NAME_NAME_DISPLAY` is driver-internal).
- *
- * This module previously CLAIMED every anchor was registry-pinned while binding
- * eight of them inline; the claim is now the table, so it can be read and
- * checked. The `inline-selectors` ratchet does not reach a store's `driver`
- * directory — see its scope note in `tests/unit/architecture/helpers/ratchet-arms.ts` and
- * ref guards-and-tests §3 for why widening it would fire on the registry interpreters
- * themselves.
- *
- * ## The one deliberate asymmetry: the grid is read for IDS ONLY
- *
- * When SS Smart HR renders a results grid, `scanTerminationTransactions` takes
- * it for exactly one thing — one `T…` transaction id from each row — and then
- * reads every other fact off each transaction's DETAIL page, which carries a
- * stable id per field. When one result auto-drills instead, the receipt control
- * supplies that one id before the same keyed detail reread.
- *
- * That is D205's lesson applied before it could bite. The results grid renders
- * seven unlabelled columns whose header row this repository could not read
- * live, so binding `action`/`status`/`name` by cell POSITION would be a
- * hardcoded offset wearing a different hat — internally consistent and
- * externally wrong the first time PeopleSoft reorders a column. A `T…` id is
- * unambiguous by shape and needs no column at all; everything else is read from
- * `#UC_SS_TRANSACT_*` / `#UC_SS_TBH_VW_*`, each live-verified at exactly one
- * node (2026-08-14).
- *
- * ## Refusals are `unreadable`, never an empty list
- *
- * The scan returns `{state:"unreadable", reason}` rather than throwing or
- * returning `[]` when it cannot establish what the page holds. That is what
- * makes the probe's `unknown` arm reachable, and `unknown` parks — dangerous
- * patterns D5/D6, which are how legacy turns "the search timed out" into "this
- * person has no termination" and files a duplicate.
- *
- * The empty case is only ever reported after PeopleSoft's own no-results marker
- * is observed. If neither rows nor that marker appear within the bound the
- * answer is `unreadable`, so a wrong guess about the marker's exact wording can
- * only ever over-refuse — it can never manufacture a false absence.
- */
+
 import type { Locator, Page } from "playwright";
 import { recordBrowserAction } from "../../browser-shared/action-notes.js";
 import type { Clock } from "../../../../rules/time/clock.js";
@@ -109,81 +58,29 @@ import {
 } from "./registry-locators.js";
 import { ucpathPendingSweepVerdict } from "../termination-verdict.js";
 
-/**
- * The anchors this driver binds DIRECTLY, and the reason each one is not a
- * registry element.
- *
- * Every entry here is a control **legacy has no selector key for**, so the
- * registry — whose `ElementDefinitionSchema` requires a ported legacy
- * provenance — cannot hold it without inventing one. The alternative to this
- * table is not a registry row; it is a bare string at the call site, which is
- * what this module used to have while its header claimed otherwise.
- *
- * The one exception with a legacy key is `errorBanner`, whose port-map row is
- * still `candidate`: its recipe is ported verbatim WITH provenance below, but it
- * cannot be published as a registry element because the manifest's contract is
- * exactly-one-visible and this region matched **zero** nodes on a clean Page B
- * and Page C (live 2026-08-14). An element nobody can prove resolves is not
- * evidence, so it stays here, where its absence is a legal reading.
- */
+// Driver-internal controls without source selector keys cannot become provenance-backed registry elements.
 const DRIVER_ANCHOR = Object.freeze({
-  /**
-   * Page B's rendering of who UCPath resolved the typed Empl ID to — the
-   * beat-③ subject anchor and the S48 signal, both being the same check.
-   * `UCPATH_SMART_HR_DISPLAYED_PERSON_NAME` documents why it is driver-internal:
-   * `PERSON_NAME_NAME_DISPLAY` appears only in legacy's Person Profile and
-   * PayPath groups, never in the termination flow it never reads a name in.
-   */
+
   wizardPersonName: "#PERSON_NAME_NAME_DISPLAY",
-  /** Page B's Empl Record display. No legacy key; live 2026-08-14. */
+
   wizardEmplRecord: "#HR_TBH_WRK_EMPL_RCD_CHAR",
-  /**
-   * Page B's JOB effective date, which UCPath DERIVES from the Page-A
-   * transaction date and renders `disabled` (`PSEDITBOX_DISABLED`). No legacy
-   * key; it is read and checked rather than filled — see the call site.
-   */
+  // PeopleSoft derives the disabled job effective date from the transaction date; never fill it.
   wizardJobEffectiveDate: "#HR_TBH_WRK_JOB_EFFDT",
-  /**
-   * Page C's Transaction ID display, which reads the literal `"NEW"` until a
-   * save. PeopleSoft renders the SAME record-field id here as on the SS Smart
-   * HR transaction DETAIL page, but that is a different screen with a different
-   * page state, so binding `UCPATH_SS_SMART_HR_RECEIPT_DISPLAY` here would make
-   * a registry element claim a screen this page is not.
-   */
+  // The staged transaction ID is NEW until Save; the same field changes from input to span on detail.
   wizardTransactionIdDisplay: "#UC_SS_TRANSACT_UC_TRANSACT_ID",
-  /**
-   * The SS Smart HR search filter's OPERATOR dropdown (`2` = `=`). Legacy's
-   * `ssSmartHRTransactions.emplIdInput()` binds the VALUE field beside it and
-   * has no key for the operator at all — legacy never sets it, which is why its
-   * search runs on PeopleSoft's `begins with` default.
-   */
+  // Set the SS Smart HR search operator to exact equality before reading its EID filter.
   searchEmplIdOperator: '[id="UC_SS_TBH_DVW_EMPLID$op"]',
-  /**
-   * PeopleSoft's standard search-criteria banner. The SS Smart HR list showed
-   * it with a positive count in both read-only probes on 2026-08-28; the
-   * diagnostic classifies its text and never returns the text itself.
-   */
+  // The criteria banner carries result count; diagnostic summaries must not return its private text.
   searchCriteriaBanner: "#PTS_CRITTEXT_DISP",
   /** PeopleSoft's standard result-row id prefix. A WAIT target, never a read. */
   searchResultRow: 'tr[id^="trPTS_CFG_CL_STD_RSL"]',
-  /** Transaction detail: start date. No legacy key (legacy reads neither). */
+
   detailStartDate: '[id="UC_SS_TBH_VW_START_DT$0"]',
-  /** Transaction detail: action code. No legacy key. */
+
   detailAction: '[id="UC_SS_TBH_VW_ACTION$0"]',
-  /**
-   * Transaction detail: the subject's name. No legacy key — legacy scrapes this
-   * page for a number and a status and never reads who it belongs to, which is
-   * the absence `UCPATH_SS_SMART_HR_DISPLAYED_NAME` records.
-   */
+  // Read the displayed subject directly; receipt number and status alone do not prove the person.
   detailName: '[id="NAME$0"]',
-  /**
-   * PeopleSoft's error region, ported VERBATIM from legacy
-   * `793abe1f8265f3213ffe8a80d6cfd9860a32a1dc`
-   * `src/systems/ucpath/selectors.ts:135` (`smartHR.errorBanner()`), with the
-   * frame scope dropped because every page in this family renders zero iframes.
-   * Live 2026-08-14: `.PSERROR` is PRESENT and EMPTY on a clean page, so the
-   * observation below requires non-empty TEXT — presence alone is not a signal.
-   */
+  // PeopleSoft error regions include aria-live, errorMsg and alert; Smart HR scopes them to the top-level page.
   errorBanner: ".PSERROR, #ALERTMSG, .ps_alert-error",
 });
 
@@ -191,16 +88,14 @@ const HRMS = "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOY
 const WIZARD_URL = `${HRMS}/c/ADMINISTER_WORKFORCE_(GBL).HR_TBH_JOB.GBL`;
 const SEARCH_URL = `${HRMS}/c/UC_EXTENSIONS.UC_SS_TBH.GBL`;
 
-/** `= ` on the SS Smart HR Empl ID filter — live option list, 2026-08-14. */
+
 const EQUALS_OPERATOR = "2";
 /** PeopleSoft's standard empty-result sentence; see the module note. */
 const NO_RESULTS_TEXT = "no matching values were found";
 const NO_RESULTS_MARKER = new RegExp(NO_RESULTS_TEXT, "iu");
 const TRANSACTION_ID = /^T\d{6,}$/u;
 const SCAN_BOUND_MS = 45_000;
-// The diagnostic callback performs only synchronous DOM reads. One second is
-// the smallest practical allowance for scheduling it on an already-loaded,
-// potentially distressed PeopleSoft page without extending the scan forever.
+// Bound synchronous diagnostic DOM reads to avoid extending a distressed-page scan indefinitely.
 const SETTLEMENT_DIAGNOSTIC_BOUND_MS = 1_000;
 const STEP_BOUND_MS = 60_000;
 
@@ -350,15 +245,7 @@ function detailUrl(transactionId: string): string {
   return `${SEARCH_URL}?Action=U&UC_TRANSACT_ID=${transactionId}`;
 }
 
-/**
- * Read one control's displayed value.
- *
- * PeopleSoft renders the same fact as an `<input>` on an editable page and a
- * `<span>` on a read-only one, so the read BRANCHES on what the node is rather
- * than trying `inputValue()` and catching. A catch here would make "this
- * element is a span" indistinguishable from "the read failed", which is the
- * exact substitution the fail-loud rule forbids.
- */
+// PeopleSoft renders editable values as inputs and read-only values as spans with the same record-field ID.
 async function textOf(locator: Locator): Promise<string> {
   const isFormControl = await locator.evaluate(
     (node) => node instanceof HTMLInputElement
@@ -369,16 +256,7 @@ async function textOf(locator: Locator): Promise<string> {
   return value.trim();
 }
 
-/**
- * Exactly one distinct `T…` from every rendered result row.
- *
- * Reading each whole row rather than a column index is deliberate: the id's
- * SHAPE identifies it, so no column binding is needed and a reordered grid
- * cannot silently shift the read. Whole-PAGE text is forbidden here: an
- * unrelated T id elsewhere in the PeopleSoft shell could mask a row whose own
- * identity is missing. Every row must contribute exactly one id, and no two
- * rows may contribute the same one.
- */
+// Read each entire result row because PeopleSoft can change column order.
 async function scanTransactionIds(
   resultRows: Locator,
   expectedRowCount: number,
@@ -432,9 +310,7 @@ async function readTransactionDetail(
   await receipt.waitFor({ state: "visible", timeout: SCAN_BOUND_MS });
   const displayedId = await textOf(receipt);
   if (displayedId !== transactionId) {
-    // Ref write-safety §13 OQ2's dangerous case: an unknown id silently re-renders the
-    // ordinary search form with no marker of any kind, so the id must be proved
-    // rather than assumed from the URL.
+    // An unknown transaction ID silently renders the search form; require both detail markers.
     throw new Error(
       `UCPath rendered transaction ${JSON.stringify(displayedId)} for a request for `
       + `${JSON.stringify(transactionId)}; refusing to read one transaction as another`,
@@ -448,12 +324,7 @@ async function readTransactionDetail(
   ]);
   return {
     transactionId,
-    // The EID is supplied by the CALLER's own filter rather than scraped: this
-    // page is reached from an `Empl ID = <eid>` search, so the filter is the
-    // stronger fact, and the identity check that matters is the displayed NAME
-    // — which the probe compares against the approved subject. Reading an EID
-    // cell here and falling back when it is missing would be a second, quieter
-    // source of truth for the same fact.
+    // The search filter echoes the supplied EID; use the displayed name for subject proof.
     emplId,
     action,
     approvalStatus: UcpathApprovalStatusSchema.parse(approvalStatus),
@@ -528,11 +399,7 @@ export async function scanTerminationTransactionsOnPage(
       if (!(error instanceof Error && error.name === "TimeoutError")) {
         throw error;
       }
-      // Only the visible-signal wait reaching its actual Playwright timeout
-      // authorizes this diagnostic. A page/context failure re-throws above so
-      // the outer boundary preserves that failure as unreadable/not-attempted.
-      // The timeout becomes `unreadable`; returning an empty read here would be
-      // D5 exactly — a search that did not answer reported as a factual negative.
+      // Only an actual visible-signal timeout permits the diagnostic; page/context failures retain their unreadable outcome.
       const settlementError = new Error(
         "the SS Smart HR search rendered neither a result row, an auto-drilled transaction detail, "
         + `nor PeopleSoft's no-results marker within ${String(SCAN_BOUND_MS)}ms`,
@@ -634,16 +501,7 @@ export async function scanTerminationTransactionsOnPage(
   }
 }
 
-/**
- * Resolve one authored reason against the control's OWN options, by option
- * VALUE or option LABEL, requiring exactly one match.
- *
- * Both forms are live-verified to name the same option (`NSE` /
- * `Never Started Employment`), and the map holds fifteen labels plus one value
- * because that is how each was captured. This is a lookup that must resolve
- * uniquely — never a fuzzy tier: zero or many matches refuse with the whole
- * observed list.
- */
+
 function resolveReasonOption(
   options: readonly { readonly value: string; readonly label: string }[],
   reasonCode: string,
@@ -696,15 +554,7 @@ export async function stageTerminationOnPage(
   try {
     await nameDisplay.waitFor({ state: "visible", timeout: STEP_BOUND_MS });
   } catch (error) {
-    // S48, and BOTH of its live causes: an Empl ID UCPath has never seen, and
-    // one it knows but has no terminable employment record for (live 2026-08-14
-    // on an already-Inactive employee, which answers "Invalid value -- press
-    // the prompt button"). The name never renders in either case, and the
-    // absence of the name IS the signal — the error banner is empty.
-    //
-    // The TYPE is what makes the contract's `emplid-not-recognized` reachable:
-    // a bare `Error` here is indistinguishable from a page crash, so the task
-    // could only report it as an untyped failure.
+
     throw new UcpathEmplIdNotRecognizedError({
       emplId: input.emplId,
       detail: `the name anchor rendered no visible node within ${String(STEP_BOUND_MS)}ms`,
@@ -713,12 +563,7 @@ export async function stageTerminationOnPage(
   }
   const observedName = (await nameDisplay.innerText()).trim();
   const observedEmplRecord = await textOf(page.locator(DRIVER_ANCHOR.wizardEmplRecord));
-  // The JOB effective date is DISPLAY-ONLY on Page B: UCPath derives it from
-  // the transaction date entered on Page A and renders it `disabled`
-  // (live 2026-08-14 — filling it times out against `PSEDITBOX_DISABLED`). So
-  // it is READ and CHECKED, which is strictly stronger than writing it: it
-  // proves UCPath derived the very date this run asked for, and half the
-  // permanent key is therefore verified rather than asserted.
+  // The job effective date is disabled and derived by UCPath; inspect it without filling.
   const jobEffectiveDate = page.locator(DRIVER_ANCHOR.wizardJobEffectiveDate);
   const observedEffectiveDate = await textOf(jobEffectiveDate);
   if (observedEffectiveDate !== input.effectiveDate) {
@@ -739,10 +584,7 @@ export async function stageTerminationOnPage(
   await waitForUcpathState(page, UCPATH_SMART_HR_INFORMATION_READY);
 
   const override = resolveUcpathElement(page, UCPATH_SMART_HR_OVERRIDE_LDW_CHECKBOX);
-  // Live 2026-08-14: UCPath renders this template with the override ALREADY
-  // checked and the date pre-filled to (transaction date − 1 day). That is a
-  // default, not the operator's answer, so the value is written and read back
-  // either way — but the box is only clicked when it is genuinely unchecked.
+  // UCPath can pre-check the override and prefill transaction date minus one day; verify before changing either.
   if (!await override.isChecked()) {
     await override.check();
     recordBrowserAction("checked", UCPATH_SMART_HR_OVERRIDE_LDW_CHECKBOX);
@@ -783,44 +625,9 @@ export async function stageTerminationOnPage(
   });
 }
 
-/**
- * Read the *Transactions in Progress* grid rows for one person, join each
- * eligible row to a stable SS Smart HR transaction id, and tick exactly that
- * complete set.
- *
- * The grid's columns are `Select · Transaction Type · Effective Date · Name ·
- * Person ID · Action · Country` (live 2026-08-14) and it has NO transaction id
- * column. Live read-only mapping on 2026-09-02 proved the stable id on the SS
- * Smart HR detail page and all six named grid fields; a complete unique join
- * bridges the two surfaces. Checkbox/row suffixes remain positional DOM
- * indices and are never treated as identity.
- */
-/**
- * The name the *Transactions in Progress* grid shows for one person.
- *
- * The bind is RELATIVE to a value this read already knows exactly — the cell
- * whose text IS the Empl ID — and takes that cell's immediate predecessor,
- * which is the `Name` column in the live column order
- * (`Select · Transaction Type · Effective Date · Name · Person ID · Action ·
- * Country`, observed 2026-08-14). That is an anchored relative bind rather than
- * a fixed offset: it moves with the grid instead of assuming a column count,
- * and it refuses loudly when the anchor cell is absent.
- */
-/**
- * The name the STAGED wizard page renders for the person being terminated.
- *
- * Beat ③ observes the page prepare LEFT BEHIND, and that is Page C — where
- * `#PERSON_NAME_NAME_DISPLAY` does not exist. The first live dry run refused
- * exactly there (zero fence, zero click), which is the check working: the
- * declaration named an anchor the staged page cannot render.
- *
- * Page C's identity block has no ids at all, but it IS labelled: the row reads
- * `Template: · UC_INVOL_TERM · Name: · Dreitho Cramia`, with the `Name:` label
- * and the value each appearing exactly once (live 2026-08-14). So the bind is
- * anchored on the LABEL and takes the next non-empty cell — the same shape this
- * tree already prefers over a positional offset, and it refuses loudly when the
- * label is absent or ambiguous rather than reading a neighbouring cell.
- */
+
+
+// The staged subject belongs to Page C; Page-B anchors cannot prove the page held at the fence.
 export async function readStagedWizardSubjectOnPage(page: Page): Promise<string> {
   const name = await page.evaluate(() => {
     const cells = [...document.querySelectorAll("td")];
@@ -850,6 +657,7 @@ export async function readStagedWizardSubjectOnPage(page: Page): Promise<string>
   return name.name;
 }
 
+// Bind the name within the verified EID row; column-count drift must not rebind the person.
 export async function readInProgressSubjectOnPage(page: Page, emplId: Eid): Promise<string> {
   const names: string[] = [];
   for (const row of await page.locator('tr[id^="trHR_TBH_EULST_VW$0_row"]').all()) {
@@ -889,13 +697,7 @@ export type PendingSweepGridJoin = Readonly<{
   selected: UcpathInProgressRow;
 }>;
 
-/**
- * Join stable SS Smart HR transaction ids to the separate Transactions in
- * Progress grid. The latter exposes no T id, so the only safe bridge is a
- * complete unique join over the facts both surfaces carry. Action wording is
- * compared by the shared termination classification because the detail page
- * renders `TER` while this grid renders `Terminatn`.
- */
+// The in-progress grid has no T ID; join by a unique verified identity tuple, never DOM position.
 export function joinPendingSweepGridRows(
   input: UcpathPendingSweepTarget,
   candidates: readonly PendingSweepGridFacts[],
@@ -944,9 +746,7 @@ export async function stagePendingTerminationSweepOnPage(
   input: UcpathPendingSweepTarget,
   observedAt: string,
 ): Promise<UcpathPendingSweepStaging> {
-  // Re-read the stable-id source immediately before staging. The sequencer's
-  // probe and this read are deliberately separate: a row arriving, moving or
-  // changing between them must stop before any checkbox, fence or click.
+
   const current = await scanTerminationTransactionsOnPage(
     page,
     { emplId: input.emplId },
@@ -1013,9 +813,7 @@ export async function stagePendingTerminationSweepOnPage(
       throw new Error("a uniquely joined Transactions in Progress checkbox did not remain selected; refusing before the fence");
     }
   }
-  // The OBSERVED name, read off the grid — never the expected one echoed back.
-  // Prepare only runs when the probe answered `absent`, i.e. when rows exist,
-  // so a grid with no name for this person is a contradiction and refuses.
+
   const observedName = await readInProgressSubjectOnPage(page, input.emplId);
   return UcpathPendingSweepStagingSchema.parse({
     stagedPageState: UCPATH_SMART_HR_TERMINATION_STAGED,
@@ -1026,34 +824,10 @@ export async function stagePendingTerminationSweepOnPage(
   });
 }
 
-/**
- * Watch for UCPath REFUSING the click, and never for it accepting one.
- *
- * D128's lesson, applied before it could bite a second time: a positive save
- * signal is worth nothing, so this deliberately has no success detector. The
- * only thing it can conclude is `refused`, and it concludes that only from a
- * POSITIVE observation — an error region carrying non-empty text. `.PSERROR` is
- * present and EMPTY on a clean page (live 2026-08-14), so presence alone would
- * report every successful submit as a refusal.
- *
- * The bound is a bound on OBSERVING, not a proof: PeopleSoft's save is a full
- * postback, so a banner that has not rendered yet must not read as "no banner"
- * forever. Under-detecting is the only failure mode this direction has, and it
- * costs nothing — an unobserved refusal leaves `performed: true`, which the
- * commit contract already labels a CLAIM that beat ⑥'s independent read-back is
- * what settles. Over-detecting is impossible: nothing here invents a banner.
- *
- * A NON-timeout error re-throws. "The page went away" and "the page rendered no
- * error" are two different facts and this must never collapse them.
- */
+// Watch for explicit refusal; an absent refusal is not proof that the write landed.
 const COMMIT_REFUSAL_OBSERVE_MS = 10_000;
 
-/**
- * What the driver SAW, which is not the same question as whether the write
- * landed. `refused` is a POSITIVE observation; `no-refusal-rendered` is
- * deliberately not a success signal and nothing promotes it. It is local to
- * this module on purpose — it crosses no boundary, so it is not a schema.
- */
+
 type CommitRefusalObservation =
   | Readonly<{ state: "refused"; message: string }>
   | Readonly<{ state: "no-refusal-rendered" }>;
@@ -1070,9 +844,7 @@ async function observeCommitRefusal(page: Page): Promise<CommitRefusalObservatio
   }
   const message = (await banner.innerText()).trim();
   if (message.length === 0) {
-    // The filter matched non-whitespace and the read came back empty, so the
-    // region changed under the read. That is not "no refusal" — it is a page
-    // this driver could not observe, and post-fence it must park.
+
     throw new Error(
       "UCPath rendered a non-empty error region after the commit click and then emptied it before "
       + "it could be read; the submit's outcome is unobserved",
@@ -1095,10 +867,7 @@ export async function commitOnPage(
   await locator.waitFor({ state: "visible", timeout: STEP_BOUND_MS });
   await locator.click();
   recordBrowserAction("clicked", id);
-  // The click is not the answer. Returning a proof unconditionally made both
-  // commit contracts' refusal codes unreachable on a real page: a refusal
-  // UCPath rendered in full was reported as a performed commit and left for the
-  // verifier to discover as an absence.
+
   const refusal = await observeCommitRefusal(page);
   if (refusal.state === "refused") {
     throw new UcpathCommitRefusedError({ elementId: id, refusal: refusal.message });

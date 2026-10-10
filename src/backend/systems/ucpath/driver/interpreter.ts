@@ -66,14 +66,7 @@ export const ucpathPersonOrgOperations: UcpathPersonOrgOperations = Object.freez
   readJobSummary: readJobSummaryOnPage,
 });
 
-/**
- * The store's ONE driver, joining both screen families (D197 rule 1, D206).
- *
- * The name is kept for its callers; what it returns is the whole
- * `UcpathStoreDriver`, because `defineTask(ucpathDriver, …)` binds a single
- * invariant declaration and a second one is what `task-driver-boundary`
- * refuses.
- */
+
 export function createUcpathPersonOrgDriver(
   page: Page,
   clock: Clock = systemClock,
@@ -90,17 +83,12 @@ export function createUcpathPersonOrgDriver(
       return smartHr.stageTermination(page, input, nowIso(clock));
     },
     async stagePendingTerminationSweep(input) {
-      // The sweep's beat-③ subject lives on the page this call stages, and the
-      // kernel reads it afterwards through `read()` with no arguments — so the
-      // EID it must be read beside is retained here. The driver instance is
-      // bound to one page and one run, which is what makes that honest.
+
       sweepSubjectEmplId = input.emplId;
       return smartHr.stagePendingTerminationSweep(page, input, nowIso(clock));
     },
     async commit(id, capability) {
-      // Defence in depth, and deliberately not delegated: the token is checked
-      // HERE as well as inside the operation, so an operations seam swapped for
-      // a test double still cannot click without a sequencer-minted capability.
+
       assertMintedMutationCapability(capability);
       return smartHr.commit(page, id, capability);
     },
@@ -134,10 +122,8 @@ export function createUcpathPersonOrgDriver(
       return UiActionProofSchema.parse({ elementId: id, effect: "prepare", performed: true });
     },
     async read(id) {
-      // The two Smart HR observations are read straight off their live anchors
-      // rather than through the registry: neither is a PUBLISHED element,
-      // because legacy has no selector key for either and a registry row with
-      // no ported provenance is a fabricated one (D196's rule, D206 §4).
+
+      // Direct Smart HR anchors have no proven registry selector provenance.
       if (id === UCPATH_SMART_HR_IN_PROGRESS_NAME) {
         if (sweepSubjectEmplId === undefined) {
           throw new Error(
@@ -147,10 +133,7 @@ export function createUcpathPersonOrgDriver(
         }
         return readInProgressSubjectOnPage(page, sweepSubjectEmplId);
       }
-      // Beat ③ observes the page PREPARE LEFT BEHIND, which for the wizard is
-      // Page C — so this reads Page C's label-anchored identity block, not
-      // Page B's `#PERSON_NAME_NAME_DISPLAY`. Naming the Page-B anchor here is
-      // what the first live dry run refused on.
+
       if (id === UCPATH_SMART_HR_DISPLAYED_PERSON_NAME) {
         return readStagedWizardSubjectOnPage(page);
       }

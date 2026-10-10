@@ -1,39 +1,4 @@
-/**
- * **S18/S19's fork, decided** — which EID this separation is about, and where
- * that EID came from.
- *
- * Chunk 3 is told both facts and refuses a run whose `emplIdSource` disagrees
- * with the document. It says so in as many words: *"Legacy's fallback — a blank
- * or short Kuali EID delegating to person-lookup — is a resolution step over the
- * Kuali document read, which is chunk 2's output and the composition's job."*
- * This is that job.
- *
- * ## It is a fold, not a delegation
- *
- * §5 item 10's recorded answer is **no delegation**: candidates are resolved
- * inline and handed to the identity packet. So the resolution is one pure decision over two
- * facts the graph already holds — the document's own EID field, and the UCPath
- * search on the document's name, which chunk 3 runs UNCONDITIONALLY for exactly
- * this reason.
- *
- * ## The fork is visible, never quiet
- *
- * When the document names the EID, the run is checking a person the department
- * wrote down. When it does not, the run is checking a person a NAME SEARCH
- * picked — and `deriveApprovalShape` turns `emplIdSource: "name-resolved"` into
- * a `type-the-eid` gate, the strictest control there is. An EID the document did
- * supply proceeds only after UCPath's actual read-back agrees; an EID learned
- * from the name search can never qualify itself for that machine path.
- *
- * ## What it refuses
- *
- * A blank EID whose name search resolved nobody, or resolved several people, is
- * not a subject this run may pick. Legacy delegates to person-lookup and then
- * proceeds on whatever comes back; here the run stops and names the candidates.
- * A short or malformed EID never reaches this fold at all — chunk 2's read
- * returns its own `unreadable-eid` state for that, which is a different problem
- * with a different fix.
- */
+/** Retain the chosen EID's source, including the document/name-search fork. */
 import { z } from "zod";
 import { EidSchema } from "../identity/ids.js";
 import { directIdentifierDisplay } from "../redaction/redaction.js";
@@ -55,11 +20,7 @@ export const SeparationSubjectSchema = z.strictObject({
   emplIdSource: IdentityEidSourceSchema,
   /** The name the UCPath search ran on — the document's, verbatim. */
   searchedName: z.string().min(1),
-  /**
-   * How many people that search resolved. Ref write-safety §14.4 calls "whether more than
-   * one candidate matched" *decisive for `T002173685`*, so it is a stored fact
-   * rather than something the packet re-counts.
-   */
+    /* How many people that search resolved: whether more than one candidate matched is decisive, so it is a stored fact rather than something the packet re-counts. */
   candidateCount: z.number().int().nonnegative(),
 });
 export type SeparationSubject = z.infer<typeof SeparationSubjectSchema>;

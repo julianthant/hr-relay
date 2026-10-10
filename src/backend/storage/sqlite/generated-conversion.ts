@@ -1,5 +1,5 @@
 import { sha256Hex } from "../../../rules/validation/sha256.js";
-/** Stopped, backup-bound import of the old generated-file authorities. */
+
 import { createHash } from "node:crypto";
 import { closeSync, constants, existsSync, fsyncSync, fstatSync, linkSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -96,7 +96,7 @@ export function readGeneratedSources(database:DatabaseSync,stateRoot:string,back
   directory(dirname(path));const file=validateFile(JSON.parse(fileBytes(path).toString("utf8")));
   if(canonicalJsonStringify(file.ref)!==canonicalJsonStringify(evidence.artifact))throw new Error("generated-export-reference-conflict");
   const previous=files.get(file.ref.sha256);if(previous!==undefined&&canonicalJsonStringify(previous.ref)!==canonicalJsonStringify(file.ref)) {
-   // A pre-existing byte-store identity wins over a newly assigned sink identity.
+
    for(const sink of sinks)if(sink.artifact.sha256===file.ref.sha256)sink.artifact=file.ref;
   }
   files.set(file.ref.sha256,file);
@@ -131,7 +131,7 @@ export function convertGeneratedArtifacts(database:DatabaseSync,manifest:Generat
   if(head===null&&owned.some(r=>r.state==="projected"))throw new Error("generated-completed-updates-missing-head");
   const artifact=manifest?.sinks.find(s=>s.sinkId===sinkId)?.artifact;
   const versions=artifact===undefined?[]:[{state:"verified" as const,artifact}];
-  // Historical generations whose bytes were not retained remain explicit gaps.
+  // Missing retained generation bytes remain explicit gaps.
 
   insertGeneratedArtifact(database,GeneratedArtifactSchema.parse({format:1,fileId:`sink:${sinkId}`,sinkId,exportId:null,exportRequest:null,registration:null,exportEvidenceJson:null,exportEvidenceFingerprint:null,mediaType:OPERATOR_XLSX_MEDIA_TYPE,
    state:owned.some(r=>r.state==="pending")?"pending":"ready",historyCoverage:head!==null&&head.generation>1?"historical-gaps":"complete",version:1,head,updates:owned.map((record,index)=>({sequence:index+1,record})),versions,prepared:null,createdAt:owned[0]?.createdAt}));

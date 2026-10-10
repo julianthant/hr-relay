@@ -1,4 +1,4 @@
-/** Track F A46: pinned safety records live outside every ordinary inbox filter. */
+/** Pinned safety records remain outside ordinary inbox filters. */
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { NotificationWireSchema } from "../../../../../src/models/dashboard/projection.js";

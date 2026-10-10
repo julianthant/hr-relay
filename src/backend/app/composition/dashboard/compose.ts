@@ -30,36 +30,7 @@ export { readGateParks } from "./notifications.js";
 import { createCredentialStore } from "../../../storage/configuration/credential-store.js";
 import { ActorIdSchema } from "../../../../rules/identity/ids.js";
 import { hostConfigFacts } from "../../../../models/config/host-display.js";
-/**
- * The 1g-spine dashboard composition value: open authority, wire the span
- * writers into THE run/queue projection, stand up the command kernel behind
- * the one command route, and serve the Hono BFF on the config-resolved
- * isolation port.
- *
- * This app-owned composition imports the workflow registry and assembles
- * lower-level services. `startRebuildRuntime` receives it as the injected
- * `dashboard` seam.
- *
- * Wired as of the 1f production composition:
- * - the write-resolution executor is `createWriteResolutionExecutor` over the
- *   SAME `AuthorityDatabase` instance the kernel's transactions run on (its
- *   documented requirement — the resolution executes INSIDE the kernel's
- *   authority transaction and `commitWriteAttempt` nests on that connection).
- *
- * Wired as of W3 (ref execution-and-sessions §11, D271): the REAL worker
- * process supervisor. The dashboard launches browser-worker OS processes as
- * exact argv children of the worker CLI, proves each birth against the durable
- * worker lease, and settles every worker-pool command through the kernel's
- * async pool seam (`executeWorkerPool`) — no acknowledgement before process
- * evidence, and the graceful-stop channel writes the durable lease directive
- * at the command's own `now`.
- *
- * Deliberately typed-but-unwired in this process (fails loud by name):
- * - `refresh-browser` / `reopen-browser`: a worker-owned browser session lives
- *   in the CHILD process and this supervisor has no cross-process channel into
- *   it yet; acknowledging an effect that did not happen is exactly what the
- *   supervisor refuses to do.
- */
+
 import { spawn as spawnChildProcess } from "node:child_process";
 import { closeSync, constants, existsSync, fchmodSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -132,35 +103,18 @@ export interface DashboardComposeInput {
   readonly ids?: IdFactory;
   /** Where package.json and the state root resolve from. */
   readonly repoRoot?: string;
-  /**
-   * Who serves the frontend bytes (ref frontend-backend-integration §6.9). `vite-dev` — the
-   * default and the development path — leaves that to the Vite dev server on the
-   * isolated frontend port; `built-bundle` serves `<repoRoot>/dist/dashboard` from
-   * this process and refuses to start without a built `index.html`.
-   */
+  // `vite-dev` delegates frontend bytes to Vite; `built-bundle` serves the validated local bundle.
   readonly frontend?: DashboardFrontendMode;
   readonly frontendBuildScript?: DashboardBuildCommand;
   readonly startPlanTtlMs?: number;
-  /**
-   * Test-only ingress bind override: `0` asks the OS for an ephemeral port,
-   * so a composition test never contends with — or silently passes vacuous
-   * because of — a concurrently running dashboard on the machine-wide
-   * isolation port. Typed as the literal 0 on purpose: "ephemeral" is the
-   * only override; a different fixed port can never enter through this seam.
-   * Production omits it and binds the isolation port.
-   */
+  // Port 0 requests an ephemeral test port.
   readonly backendPortOverride?: 0;
   readonly preflightRunnerFactory?: RuntimePreflightRunnerFactory;
   /** Test-only replacement for injecting an HTTP bind failure after startup admission. */
   readonly httpServerStarter?: typeof startDashboardHttpServer;
   /** Test-only preflight probe override; production always checks the isolated frontend port. */
   readonly frontendPortOverride?: 0;
-  /**
-   * The worker process edges (W3). Production composes the real
-   * `child_process` spawner, the node+tsx CLI launch spec, the real timer
-   * scheduler and a structured stderr fault sink; a test injects fakes HERE so
-   * it exercises the same composition value production runs.
-   */
+
   readonly workerProcess?: Readonly<{
     spawn?: WorkerProcessSpawner;
     launch?: WorkerCliLaunchSpec;
@@ -174,21 +128,10 @@ export interface DashboardComposeInput {
 const PackageVersionSchema = z.strictObject({ version: z.string().min(1) }).loose();
 
 
-/**
- * D218: maximum polling delay for committed timeline events from other processes.
- * Commands also tick this durable cursor before their follow-up reads.
- */
+
 const TIMELINE_POLL_MS = 250;
 
-/**
- * D262: how often the needs-you watch re-derives the parked-at-gate set from
- * authority. Its own timer rather than the span tail's, because a notification
- * cadence is not the projection's to decide, and its own interval rather than
- * the 15-minute backup cadence, because a run waiting on a person should not
- * wait a quarter of an hour to say so. The read is an index scan
- * (`tasks_heartbeat_idx` leads on `state`) over a set that is almost always
- * empty.
- */
+// Notification polling has its own cadence; leases can change without spans.
 export const GATE_PARK_WATCH_MS = 5_000;
 
 export function descriptorSetHash(fingerprints: readonly string[]): Fingerprint {
@@ -197,23 +140,10 @@ export function descriptorSetHash(fingerprints: readonly string[]): Fingerprint 
   );
 }
 
-/**
- * Birth-proof polling for a spawned worker child: the CLI cold start (tsx,
- * the workflow registry import closure, the authority open and lease write)
- * is seconds; a child that has not proved its lease inside the bound is
- * killed and the spawn command rejects loudly rather than waiting forever.
- */
+// Allow the CLI cold start to publish its lease before declaring a failed birth.
 const WORKER_BIRTH_POLL_MS = 250;
 
-/**
- * The worker CLI exactly as `npm run cli -- worker …` runs it, as an argv
- * array: this node binary, tsx's loader, the secure environment bootstrap,
- * and its `cli` arm. The bootstrap is the CLI's SOLE production invoker —
- * `src/cli.ts` only exports `runCli` and running the module directly is
- * inert by design (2026-08-28) — so a launch that names `src/cli.ts` as the
- * entry spawns a child that exits 0 before ever writing a lease, which the
- * birth proof reports as "exited with code 0 before proving its lease birth".
- */
+// Launch through the secure environment bootstrap, never a parallel CLI path.
 export function productionWorkerLaunch(repoRoot: string, environment?: NodeJS.ProcessEnv): Readonly<{
   command: string;
   environment: NodeJS.ProcessEnv;
@@ -240,23 +170,7 @@ export interface WorkerProcessControlInput {
   readonly preflight?: RuntimePreflight;
 }
 
-/**
- * W3 (ref execution-and-sessions §11, D271): the dashboard's REAL worker
- * process control, one composition value shared by production and the
- * composition tests so a test can never prove a wiring the product does not
- * have. It binds the D271 supervisor's three authority edges to the ONE
- * `AuthorityDatabase` this process serves from:
- *
- * - the lease probe reads the LIVE worker lease (birth is proved against the
- *   child's own durable lease write — §11.3's only coordination channel);
- * - the graceful-stop channel writes the durable `stop` directive at EXACTLY
- *   the kernel command's `now` (`directive.requestedAt`), in its own authority
- *   transaction, and resolves with that durable instant — closing the W1/W2
- *   gap where a channel stamping its own clock would always postdate the
- *   kernel's observed-stage bound;
- * - the kernel adoption wraps the supervisor in the awaitable pool executor,
- *   so no worker-pool command is acknowledged before process evidence.
- */
+
 export function composeWorkerProcessControl(input: WorkerProcessControlInput): Readonly<{
   supervisor: DashboardWorkerProcessSupervisor;
   workerRuntime: WorkerPoolRuntimeAdoption;
@@ -356,15 +270,7 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
   });
 }
 
-/**
- * The production process boundary: `node:child_process.spawn` over the exact
- * argv array — never a shell, never a PATH lookup (the supervisor refuses a
- * non-absolute command). `stdio: "inherit"` keeps the worker's structured
- * stdout/stderr lines visible in the dashboard's terminal instead of
- * swallowing them; durable evidence still flows through spans, notes and
- * authority. The closed environment carries only process mechanics and host display.
- * Each child admits its own provider .env and opens its own protected authority.
- */
+// Spawn absolute argv without a shell; inherited stderr keeps bootstrap failures visible.
 function realWorkerProcessSpawner(): WorkerProcessSpawner {
   return (request) => {
     const child = spawnChildProcess(request.command, [...request.args], {
@@ -452,16 +358,13 @@ async function composeDashboardRuntimeStartup(
   const appVersion = PackageVersionSchema.parse(
     JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")),
   ).version;
-  // Before any authority, lock or socket: a `built-bundle` dashboard with no
-  // bundle must never look started (D189).
-  // The composition boundary owns the one default: an absent mode IS the
-  // development path, declared at the schema rather than as a literal fallback.
+  // Validate the production bundle before opening authority, locks or sockets.
   const frontend = DashboardFrontendModeSchema.default("vite-dev").parse(input.frontend);
   const staticBundle = frontend === "built-bundle"
     ? await openStaticBundle(join(repoRoot, "dist", "dashboard"), repoRoot, input.frontendBuildScript)
     : undefined;
 
-  // D324: the production environment carries the host's primary display as the `display` default.
+
   const env = input.env ?? hostAwareResolutionEnvironment(probePrimaryDisplay);
   assertNoMigratedEnvironmentKeys(env);
   const hostFacts = hostConfigFacts(env);
@@ -476,13 +379,7 @@ async function composeDashboardRuntimeStartup(
   }
   mkdirSync(stateRoot, { recursive: true });
   ensureOwnerOnlyDirectory(artifactRoot, "dashboard artifact root");
-  /**
-   * D181: this process takes the `server` role lock BEFORE it opens the
-   * authority database. Two dashboards over one authority store is the
-   * collision `config/runtime-isolation.json` has named since D88 and nothing
-   * enforced; it is also the fact `cli storage restore` needs, because a
-   * stopped-system proof is composed from these two lock files.
-   */
+  // Take the server role lock before opening authority; it fences competing dashboard handles.
   const processLock = acquireRuntimeProcessLock(
     { processLockRoot: join(repoRoot, input.isolation.processLockRoot), name: "server", pid: process.pid },
     clock,
@@ -541,35 +438,19 @@ async function composeDashboardRuntimeStartup(
     });
   });
 
-  /**
-   * D322 (ref dashboard-surfaces §2.5): this process runs NO backup cadence. A verified
-   * authority backup is written only when the operator asks for one
-   * (`npm run cli -- storage backup`), so the backup directory holds requested
-   * generations only and the doctor wire's `service` arm is the fixed
-   * never-run reading that names the command. 2i-D's start/interval/drain
-   * triggers and the D222 stale/missing storage alert are retired with it.
-   */
+
   const backupDirectory = join(stateRoot, "backups", "authority");
   const backupServiceState: BackupServiceStateWire = BackupServiceStateWireSchema.parse({
     state: "never-run",
     reason: "backups are written only on operator command (npm run cli -- storage backup)",
   });
-  /**
-   * The ONE cheap backup reading (ref dashboard-surfaces §2.5) for the bootstrap summary:
-   * `current` when the newest verified manifest captured the live authority
-   * generation, `stale` once the authority moved past it, `missing` when none
-   * exists. D322 sets no age bound — a backup is exactly as old as the
-   * operator's last command.
-   */
+
   const readBackupSummary = (): "current" | "stale" | "missing" => {
     let liveGeneration: { state: "known"; value: number } | { state: "unavailable" };
     try {
       liveGeneration = { state: "known", value: database.getMeta().authorityGeneration };
     } catch {
-      // A DISTINGUISHABLE unknown, not a default: authority unavailability is
-      // already the summary's own `authority` arm, and the backup indicator
-      // then judges by manifest presence alone — the degraded contract
-      // `summarizeBackupHealth` documents.
+      // Unavailable authority is distinct from an absent backup; judge the latter by manifest presence.
       liveGeneration = { state: "unavailable" };
     }
     return summarizeBackupHealth(
@@ -634,13 +515,7 @@ async function composeDashboardRuntimeStartup(
     scheduler: createTimeoutDeadlineScheduler(clock),
   });
 
-  /**
-   * ONE read-through over the append-only write ledger, shared by the two
-   * surfaces that read it: the archive resolves an archived run's pointers
-   * (D179) and the Activity report folds the range's entries (D236). A second
-   * instance would be a second parse discipline over the record of what was
-   * filed into a real HR system.
-   */
+
   const ledger = createTransactionHistory(database.authority);
 
   const activity = composeActivity({ database, clock, descriptors, ledger, timeZone });
@@ -673,28 +548,17 @@ async function composeDashboardRuntimeStartup(
   if (runLogsHub.stats().degraded) throw new Error("dashboard refused to start over unreadable confirmed log history");
   startupCleanups.push(() => runLogsHub.close());
 
-  /**
-   * Read the shared SQLite cursor so every producer process reaches the BFF.
-   * Only notifications are process-local; missed notifications cannot lose history.
-   */
+  // Read the shared SQLite cursor; process-local notifications cannot guarantee event delivery.
   const timelineTimer = setInterval(() => {
     projection.ingestFromTimeline();
     runLogsHub.poll();
-    // The Session Panel's cards and pool declarations are authority
-    // (D248/D269); a lease moves without a span at birth, on the ticker's
-    // `starting` → `idle`, on an operator directive, and on a crash/expiry
-    // settled elsewhere, and a pool row moves on `plan-worker-count`.
+    // Lease transitions need authority polling because they need not emit spans.
     projection.reconcileWorkerAuthority();
   }, TIMELINE_POLL_MS);
   timelineTimer.unref();
   startupCleanups.push(() => clearInterval(timelineTimer));
 
-  /**
-   * W3: the REAL worker process control. Faults observed outside a command
-   * (an escalation signal that could not be delivered, a process error after
-   * birth, still-live children at close) reach the structured failure path as
-   * one JSON line each — never console, never dropped.
-   */
+
   const supervisorFaultSink = input.workerProcess?.faultSink ?? ((line: string): void => {
     process.stderr.write(`${line}\n`);
   });
@@ -742,9 +606,7 @@ async function composeDashboardRuntimeStartup(
     authority: database,
     ids,
   });
-  // Ref data-intake-and-edit-data §2.2 (D170): the upload route publishes source files through the
-  // one content-addressed writer, and the parser re-derives rows and columns
-  // from those immutable bytes for every intake read.
+
   const artifacts = createContentAddressedArtifactWriter({
     admission,
   });
@@ -756,11 +618,7 @@ async function composeDashboardRuntimeStartup(
     resolve: (workflowId: string) => INTAKE_PROJECTIONS[workflowId],
   };
 
-  /**
-   * Hoisted above the kernel because D179's archive freezes the SAME payloads
-   * these deps render: the snapshot source and the route are one read model,
-   * not two.
-   */
+  // Archive capture and live routes share the same payload derivation.
   const trustReads = createTrustReadDependencies({ database, artifactReader, reader: lifecycle });
   const runDetailDeps = createOperatorRunDetail({ stateRoot, projection, database, runReader: lifecycle, canonical: { reader: lifecycle, database, descriptors: { resolve: (workflowId) => DESCRIPTORS.find((entry) => entry.id === workflowId) ?? historicalStepProofDescriptorOf(workflowId) } }, trust: trustReads.trust, captures: trustReads.captures });
 
@@ -778,17 +636,14 @@ async function composeDashboardRuntimeStartup(
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
     clock,
     ids,
-    // D179: the build every run this kernel enqueues is stamped with, and the
-    // build an application-scope version bump is checked against.
+
     appVersion,
     descriptors,
     writeResolution,
     workerRuntime: workerControl.workerRuntime,
     intakeParser,
     intakeProjections,
-    // D171: the identity an intake fan-out stamps its runs with — the SAME
-    // resolved config and stored snapshot the start planner uses, so a run born
-    // from a spreadsheet and one born from the run surface are comparable.
+
     configIdentity: { configFingerprint: resolved.fingerprint, configSnapshotId },
     settings: settingsBoundary.executor,
     storageRelocationPlans,
@@ -828,10 +683,7 @@ async function composeDashboardRuntimeStartup(
   const { hub } = shell;
   startupCleanups.push(() => hub.close());
 
-  // The artifact writer and verified reader start initializing their roots at
-  // construction. Serve nothing until both exist: awaited here, a failure is a
-  // legible boot refusal with cleanup; un-awaited, a workspace removed under a
-  // fast shutdown becomes an unhandled rejection after stop() has returned.
+  // Await artifact-root initialization before serving; initialization failure refuses boot.
   try {
     await Promise.all([artifacts.ready, artifactReader.ready]);
   } catch (error: unknown) {
@@ -914,9 +766,7 @@ async function composeDashboardRuntimeStartup(
       } catch (error: unknown) {
         failures.push(error);
       }
-      // Ingress and active transfers are drained before D271 stop directives
-      // are written. The supervisor controls only children it spawned and
-      // resolves only after each OS exit event has been observed.
+
       try {
         await workerControl.supervisor.drainOwnedChildren({
           requestedAt: IsoInstantSchema.parse(clock.now().toISOString()),
@@ -939,8 +789,7 @@ async function composeDashboardRuntimeStartup(
       } catch (error: unknown) {
         failures.push(error);
       }
-      // D322: no graceful-drain backup — an authority backup is written only on
-      // operator command (`cli storage backup`), never as a side effect of stop().
+
       let databaseClosed = false;
       try {
         database.close();
@@ -948,9 +797,7 @@ async function composeDashboardRuntimeStartup(
       } catch (error: unknown) {
         failures.push(error);
       }
-      // Released only after the handle is closed: the lock's whole meaning is
-      // "nothing holds this database open", so releasing it first would let a
-      // restore start against a still-open file.
+      // Release the process lock only after the database closes, so restore cannot race an open handle.
       if (databaseClosed) {
         try {
           processLock.release();
@@ -958,9 +805,7 @@ async function composeDashboardRuntimeStartup(
           failures.push(error);
         }
       }
-      // The CLI shutdown signal handlers still own the process until stop()
-      // settles. Release installation admission here, after the database and
-      // process lock, so a repeated signal cannot interrupt its mutex cleanup.
+      // Release admission after database and lock cleanup while signal handlers still own shutdown.
       try {
         admission.release();
       } catch (error: unknown) {

@@ -1,18 +1,4 @@
-/**
- * Track D **D5** — the four bounded read scans (ref frontend-backend-integration §7.4; the
- * 2026-08-20 architecture audit's P2, P3 and P4).
- *
- * Each case pins a BOUND, not a duration: a millisecond number is a property of
- * the machine that took it, and §7.4's own baseline says as much. What these
- * assert is the thing a later reader can check without owning the laptop —
- * how many authority statements one row costs, and which partitions on disk a
- * reader is allowed to open.
- *
- * The output half is pinned too. Every bound below was landed as a
- * behaviour-preserving change, so each case states the SERVED value beside the
- * count: a preview that named the wrong three members, or a logs page that lost
- * a line, would be a cheaper read of the wrong thing.
- */
+
 import assert from "node:assert/strict";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -78,12 +64,7 @@ function terminalDone(w: DashboardWorld, seed: number, over: Record<string, unkn
   }));
 }
 
-/**
- * Counts the authority reads ONE call makes, through the same object the
- * projection holds — the fake's methods are replaced for the duration of the
- * call and restored after, so nothing leaks into the next case. A counter that
- * wrapped a copy would count nothing and report a bound that cannot fail.
- */
+
 function countAuthorityReads<Result>(
   w: DashboardWorld,
   work: () => Result,
@@ -131,9 +112,9 @@ function countAuthorityReads<Result>(
   }
 }
 
-/* ── P2 · the member preview ─────────────────────────────────────────────── */
 
-describe("D5 · the member preview slices before it joins (audit P2)", () => {
+
+describe("member preview slices before joining", () => {
   /** A group of `members` members, each titled so the preview can be read. */
   function groupOf(w: DashboardWorld, members: number): void {
     queuedEventOf(w, { seed: 1, shape: "operation", title: "Termination batch" });
@@ -162,9 +143,7 @@ describe("D5 · the member preview slices before it joins (audit P2)", () => {
     const w = world();
     groupOf(w, 8);
     const counted = countAuthorityReads(w, () => w.projection.queueSurface(uuidOf(1)));
-    // Canonical admission and one membership snapshot replace per-member run
-    // joins. Only the group's own title and the three named members read a
-    // checkpoint; a preview must not enumerate all runs once per member.
+
     assert.equal(counted.latestCheckpoint, 4);
     assert.equal(counted.getRun, 0);
     assert.equal(counted.canonicalRead, 1);
@@ -207,9 +186,9 @@ describe("D5 · the member preview slices before it joins (audit P2)", () => {
   });
 });
 
-/* ── P4 · one receipt read per row ───────────────────────────────────────── */
 
-describe("D5 · a row reads its evidence receipt once (audit P4)", () => {
+
+describe("a row reads its evidence receipt once", () => {
   it("reads the receipt exactly once for a terminal row", () => {
     const w = world();
     terminalDone(w, 1);
@@ -274,9 +253,7 @@ describe("D5 · a row reads its evidence receipt once (audit P4)", () => {
 
   it("reuses each terminal row's safe receipt projection for the Activity completion split", () => {
     const w = world();
-    // Keep every terminal arm in this one regression: composition 3 is admitted
-    // to operator surfaces, while a receipt whose composition is absent is a
-    // valid pre-composition-3 authority row whose free text must be withheld.
+
     terminalDone(w, 1);
     terminalDone(w, 2);
     terminalDone(w, 3);
@@ -326,9 +303,9 @@ describe("D5 · a row reads its evidence receipt once (audit P4)", () => {
   });
 });
 
-/* ── P3 · the notes reader, scoped to its run's own partitions ───────────── */
 
-describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
+
+describe("a logs GET opens only its run partitions", () => {
   const DAY_MS = 24 * 60 * 60 * 1000;
 
   function depsOf(w: DashboardWorld): RunDetailQueryDeps {
@@ -384,7 +361,7 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
     assert.equal(section.payload.notes.length, 2);
   });
 
-  it("REFUSES an unparsable line inside the scope, naming the file and line it could not read (D218)", () => {
+  it("REFUSES an unparsable line inside the scope, naming the file and line it could not read", () => {
     const w = world();
     terminalDone(w, 1);
     emitNotes(w, 1, 2);
@@ -415,11 +392,7 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
 
   it("scopes to the run's own window, with a day of margin ABOVE it and none below", () => {
     const w = world();
-    // Enqueued at the harness's own clock, so the window below is the run's own
-    // day and the day after it. (Left to the shared fixture instant, authority's
-    // `updatedAt` is older than the span stream's clock and the lower end moves
-    // back to cover BOTH — the union of a run's instants, which is the honest
-    // answer and never a narrower one.)
+
     terminalDone(w, 1, { enqueuedAt: instantOffsetOf(0) });
     const row = w.projection.runFold(uuidOf(1));
     const authority = w.authority.getRun(uuidOf(1));
@@ -465,9 +438,7 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
   it("REFUSES a note filed two days after the run's terminal instant, naming the run, its day and the bounds", () => {
     const w = world();
     terminalDone(w, 1, { enqueuedAt: instantOffsetOf(0) });
-    // The drop class this contract exists for: the writer partitions at its own
-    // `clock.now()`, the reader opens the run's own window, and nothing else
-    // binds the two. A refusal at the append is the only place it can be seen.
+
     assert.throws(
       () => assertNoteWithinRunScope(authorityOf(w), {
         runId: uuidOf(1),
@@ -502,9 +473,7 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
     const row = w.projection.runFold(uuidOf(1));
     assert.ok(row !== undefined);
     const authority = authorityOf(w);
-    // The containment that makes the producer's assertion sufficient: the
-    // reader's instants are the producer's PLUS the fold's, so its min can only
-    // be smaller and its max only larger.
+
     const producer = sharedNotePartitionScope({
       runId: uuidOf(1),
       workflow: authority.envelope.workflow,
@@ -538,7 +507,7 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
     assert.deepEqual(section.payload.notes, []);
   });
 
-  /* ── L3 · the combined span + note log ───────────────────────────────── */
+
 
   function observedDepsOf(
     w: DashboardWorld,
@@ -1023,9 +992,9 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
   });
 });
 
-/* ── P3 · the archive freeze scans once ──────────────────────────────────── */
 
-describe("D5 · the version-bump freeze scans a run's notes once (audit P3)", () => {
+
+describe("version-bump freeze scans a run notes stream once", () => {
   function depsOf(w: DashboardWorld): RunDetailQueryDeps {
     return { runReader: w.runReader,
       stateRoot: w.stateRoot,
@@ -1035,11 +1004,7 @@ describe("D5 · the version-bump freeze scans a run's notes once (audit P3)", ()
     };
   }
 
-  /**
-   * The seam `freezeLogs` hands to `buildRunSection` — pinned here rather than
-   * through the archive, because the archive creates its cache internally and
-   * this is the object whose contract is "one scan per freeze".
-   */
+
   it("scans once across a whole page walk, and every page is the same list", () => {
     const w = world();
     terminalDone(w, 1);
@@ -1108,8 +1073,7 @@ describe("D5 · the version-bump freeze scans a run's notes once (audit P3)", ()
     const first = buildRunSection(depsOf(w), uuidOf(1), "logs");
     assert.equal(first.section, "logs");
     assert.deepEqual(first.payload.notes.map((note) => note.message), ["note 0"]);
-    // No continuation cursor was handed in, so this is a fresh snapshot and a
-    // line appended between the two calls must be visible.
+
     emit("note 1");
     const second = buildRunSection(depsOf(w), uuidOf(1), "logs");
     assert.equal(second.section, "logs");

@@ -2350,7 +2350,7 @@ reported twice. The demo's third segment (`1 file`) stays absent for the reason 
 
 **Approved operator behavior amendment — 2026-09-14 (3.1.9.5; implementation pending).**
 The complete task brief (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-3/3.1-finish-the-dashboard/task-9-5-finish-notifications-and-delivery-behavior.md`)
-and [dashboard-surfaces §2.6 amendment](dashboard-surfaces.md#notifications-publication-amendment-2026-09-14)
+and dashboard-surfaces §2.6 amendment
 ratify the current behavior where the historical sections below differ. Eight existing event kinds
 are in scope; the broader policy examples below do not create new trigger arms in this task.
 
@@ -2379,7 +2379,7 @@ read/snooze changes and owner handover do not replay historical toasts. Inbox-on
 notify the desktop. Permission denial, unsupported API and synchronous/asynchronous delivery failure
 stay explicit without changing the durable row; API submission is not proof of human visibility.
 Applicable storage thresholds and D322's narrow actual-failed/corrupt-backup exception are owned by
-[dashboard-surfaces](dashboard-surfaces.md#backup-notification-amendment-2026-09-14); no automatic or
+dashboard-surfaces; no automatic or
 missing/stale-backup alerting and no retired outbox are restored.
 
 At discovery base `9f9dfe3566084e165bd508ae8b66dc3ebe325010`, only gate and server-proven backfill
@@ -2407,7 +2407,7 @@ only actions currently authorized by the server projection. Reading/snoozing aff
 notification, never the underlying run or failure.
 
 That list is the POLICY. §6.3 records the older discovery-base producer coverage; the later W2/W2a
-implementation and feedback status is owned by [dashboard-surfaces D366](dashboard-surfaces.md#w2a-feedback-policy-2026-10-03).
+implementation and feedback status is owned by dashboard-surfaces D366.
 
 ### 6.1 The fold is an UPDATE, and that is not a weakened ledger (D134)
 
@@ -2809,7 +2809,7 @@ Failure follow-up is a separately versioned resolution annotation on the same `r
 with status, admitted actor/time and optional short note. Original failure bytes/fingerprint and
 all receipt derivation bindings remain unchanged. Resolution records an operator assertion that the
 problem was addressed; it does not prove a fix, change the failed outcome or resolve uncertain
-external writes. [Dashboard surfaces](dashboard-surfaces.md#failure-resolution) owns explicit actions
+external writes. Dashboard surfaces owns explicit actions
 and live/archived presentation. This amendment is approved design, not implementation or permission
 to apply a database upgrade. The parallel execution binding (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-2/2.6-revalidate-tails-against-canonical-authorities/database-modernization/README.md`) assigns shared diagnostic
 storage/retirement to prerequisite B and operator resolution to an independent peer after B.
@@ -2827,7 +2827,7 @@ This is an approved future contract, not implementation evidence.
 
 ## Activity search and export privacy — 2026-09-21
 
-The operator approved the [3.1.12 search/export amendment](frontend-backend-integration.md#activity-search-and-export-amendment--2026-09-21).
+The operator approved the 3.1.12 search/export amendment.
 Search subjects come only from approved displayed metadata; raw inputs, arbitrary checkpoint/capture
 contents and private counting identities are excluded. Recorded actors, versions, typed failure codes
 and evidence availability retain explicit historical unavailability. Search/export coverage must not

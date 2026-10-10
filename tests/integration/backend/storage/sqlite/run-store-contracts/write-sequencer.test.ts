@@ -4,11 +4,7 @@ import { personLookupDescriptor, separationsDescriptor } from "../../../../../su
 import { RunClaimTokenSchema } from "../../../../../../src/backend/storage/sqlite/run-store-contracts.js";
 import { lifecycleCommandId } from "../../../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { testRunLifecycle, testRunService } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
-/**
- * Ref write-safety §3 beats ①–⑦ over the REAL authority database, worker session
- * manager, and a sealed synthetic transaction corpus — only the process edges
- * (browser driver, clock, ids, timers, span sink) are recording fakes.
- */
+
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -160,11 +156,7 @@ interface Harness {
   readonly emitter: ReturnType<typeof recordingEmitter>;
   readonly ids: ReturnType<typeof sequentialIdFactory>;
   readonly sequencer: ProductionWriteSequencer;
-  /**
-   * Execute under the worker loop's exact D116 discipline: bind the context
-   * run's immutable `configFingerprint` through the production API, execute,
-   * release — the same `withBoundRunConfigFingerprint` the loop itself uses.
-   */
+  // Bind the immutable run fingerprint as the worker loop does before entering the sequencer.
   readonly execute: (context: WriteSequencerContext) => Promise<unknown>;
   readonly executeDryRun: (context: WriteSequencerContext) => Promise<TransactionDryRunPreview>;
 }
@@ -476,7 +468,7 @@ function parkLegacyAttemptingIntent(database: AuthorityDatabase, message: string
 }
 
 describe("the seven-beat happy path", () => {
-  it("M18 registered transaction policies probe an unseen key before any commit; person-lookup has no transaction node", async () => {
+  it("registered transaction policies probe an unseen key before any commit; person-lookup has no transaction node", async () => {
     assert.equal(descriptorRuntimeNodes(personLookupDescriptor).filter((node) => node.kind === "transaction").length, 0);
     const registered = descriptorRuntimeNodes(separationsDescriptor).filter((node) => node.kind === "transaction");
     assert.equal(registered.length, 3);
@@ -809,7 +801,7 @@ function deriveProofSchemaHash(): string {
   return deriveSchemaHash(WriteFixtureProofSchema, "output");
 }
 
-describe("beat ① — durable same-key dedupe (D18)", () => {
+describe("beat ① — durable same-key dedupe", () => {
   it("refuses loudly while another run is mid-submit, before any probe or browser", async () => {
     const h = harness();
     const { run, claim } = claimRunning(h.database, h.clock);
@@ -1361,7 +1353,7 @@ describe("dry-run — structurally zero intent, zero fence, zero commit", () => 
   it("executeDryRun probes, stages, observes the subject, and creates nothing durable", async () => {
     const h = harness();
     const { run, claim } = claimRunning(h.database, h.clock, writeFixtureQueuedRun({ dryRun: true }));
-    // D215 — the real path's first act is beat ①'s probe, so the preview's is too.
+
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     const preview = await h.executeDryRun(contextFor(run, claim, writeFixtureDescriptor, true));
     assert.equal(preview.kind, "transaction-dry-run-preview");
@@ -1446,20 +1438,18 @@ describe("dry-run — structurally zero intent, zero fence, zero commit", () => 
   });
 });
 
-describe("D116 — a driver lease without the claimed run's bound fingerprint refuses", () => {
+describe("a driver lease without the claimed run's bound fingerprint refuses", () => {
   it("refuses the probe lease loudly: no browser, no fence, no click, nothing settled", async () => {
     const h = harness();
     const { run, claim } = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
-    // Deliberately bypass the worker loop's binding window: the raw sequencer
-    // call has no bound run config fingerprint, and the session manager's own
-    // check — not a test fake — must refuse the very first lease.
+    // Call outside the binding window to probe the real session-manager refusal.
     await assert.rejects(
       h.sequencer.executeTransaction(contextFor(run, claim)),
       (error: unknown) => {
         assert.ok(error instanceof WriteSafetyAuthorityError);
         assert.ok(error.cause instanceof Error);
-        assert.match(error.cause.message, /driver lease requires the claimed run's bound config fingerprint \(D116\); none is bound/);
+        assert.match(error.cause.message, /driver lease requires the claimed run's bound config fingerprint; none is bound/);
         return true;
       },
     );
@@ -1477,7 +1467,7 @@ describe("D116 — a driver lease without the claimed run's bound fingerprint re
       (error: unknown) => {
         assert.ok(error instanceof WriteSafetyAuthorityError);
         assert.ok(error.cause instanceof Error);
-        assert.match(error.cause.message, /driver lease requires the claimed run's bound config fingerprint \(D116\); none is bound/);
+        assert.match(error.cause.message, /driver lease requires the claimed run's bound config fingerprint; none is bound/);
         return true;
       },
     );

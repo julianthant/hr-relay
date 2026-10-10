@@ -10,11 +10,7 @@ const servers = registerReferenceServers(["server","storageServer"]);
 
 
 
-/**
- * D281 item 7: the storage hazard is its own degraded-fixture family. The
- * ordinary corpus stays healthy; these references prove the same app-wide site
- * on the queue and above a takeover without degrading an operator runtime.
- */
+
 async function assertStorageBandGeometry(
   page: import("@playwright/test").Page,
   viewportWidth: number,

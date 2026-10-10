@@ -1,14 +1,5 @@
 import { testRunLifecycle } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
-/**
- * D314 — Restart from start reruns every read and computation.
- *
- * The same logical item runs three times through the REAL interpreter over
- * one REAL authority database: attempt 1 completes, attempt 2 (Resume from
- * checkpoints) replays the UCPath search from its checkpoint, and attempt 3
- * (Restart from start, `recovery: "restart-from-start"`) executes the search
- * again — a fresh UCPath session, a fresh checkpoint under attempt 3 — while
- * the always-rerun node executes on every attempt exactly as before.
- */
+
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { executeClaimedRun, type RunExecutorDependencies } from "../../../../../../src/backend/runtime/execution/run-executor.js";
@@ -93,7 +84,7 @@ async function runAttempt(
   return { state: `searches=${String(counting.searches())} ucpath=${String(counting.sessions.opens("ucpath"))}`, runId: claimed.run.envelope.runId };
 }
 
-describe("run executor recovery choices (D314)", () => {
+describe("run executor recovery choices", () => {
   it("resume replays the read checkpoint; restart executes the read again as the same item's next attempt", async () => {
     const authority = openAuthorityHarness();
     disposers.push(authority.dispose);
@@ -125,8 +116,7 @@ describe("run executor recovery choices (D314)", () => {
     envelope.recovery = "restart-from-start";
     const third = await runAttempt(authority, restart);
     assert.equal(third.state, "searches=1 ucpath=1");
-    // Restart executed every read and computation again under attempt 3, and
-    // the prior attempts' checkpoints are untouched: D301 never rewrites history.
+
     assert.deepEqual(attemptsOf("searching"), [1, 3]);
     assert.deepEqual(attemptsOf("cross-verify"), [1, 3]);
     assert.deepEqual(attemptsOf("active-status"), [1, 2, 3]);

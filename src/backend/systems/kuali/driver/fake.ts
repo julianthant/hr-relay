@@ -1,24 +1,4 @@
-/**
- * The deterministic Kuali document driver.
- *
- * It models exactly the page behaviours the separation read and finalization
- * transaction proof depend on,
- * and nothing else:
- *
- *  1. the document displays a subject EID (which the caller may set to a
- *     DIFFERENT person, to drive the wrong-subject arm, or make unreadable, to
- *     drive the unknown-subject arm);
- *  2. finalization staging reads back AND reaches Kuali's document model, or throws;
- *  3. `commit` refuses a capability the write sequencer did not mint, refuses a
- *     Save with nothing staged, records the click, and can be made to click a
- *     Save whose mutation does not persist the staged finalization;
- *  4. finalization read-back reflects the persisted value ONLY — it is not affected by
- *     staging, so "staged but never saved" reads `absent` exactly as the live
- *     page would.
- *
- * Every call is appended to `events`, which is what the dry-run proof asserts
- * against: a preview may prepare and read but never `commit`.
- */
+
 import type { Clock } from "../../../../rules/time/clock.js";
 import { EidSchema, IsoInstantSchema } from "../../../../rules/identity/ids.js";
 import type { ElementId, ObservationId } from "../../../../rules/identity/ids.js";
@@ -81,22 +61,14 @@ import type {
 } from "../../../../models/ui/kuali-separation-finalization.js";
 import { KUALI_TERMINATION_TYPE_OPTIONS } from "../../../../rules/separations/termination-type.js";
 
-/**
- * A document nobody has finalized: every finalization control blank, the
- * department on Kuali's sentinel, no Final Pay radio selected. This is live doc
- * 4502's shape (2026-08-12), and it is the COMMON starting state.
- */
+
 export const KUALI_FAKE_UNFINALIZED_FIELDS: KualiObservedFinalizationFields = Object.freeze({
   department: "- - -",
   payrollTitleCode: "",
   payrollTitle: "",
   requestAcknowledged: false,
   timekeeperName: "",
-  // A real unfinalized document normally CARRIES these two — they are required
-  // fields the requester fills — but a fake that started them populated would
-  // make "the write-back landed" and "nobody touched it" the same observation
-  // for every scenario that does not set them deliberately. Blank is the
-  // starting state that can only be reached by the write.
+  // Start fake write-back fields blank so an untouched document cannot look like a successful save.
   lastDayWorked: "",
   separationDate: "",
   terminationEffectiveDate: "",
@@ -106,13 +78,7 @@ export const KUALI_FAKE_UNFINALIZED_FIELDS: KualiObservedFinalizationFields = Ob
   timekeeperComments: "",
 });
 
-/**
- * The option lists the live 2026-08-12 form rendered, so a fixture that does
- * not care about a dropdown still produces a document that looks like the real
- * one. `KUALI_TERMINATION_TYPE_OPTIONS` is deliberately the SAME constant the
- * map is built from — a fake with its own copy would pass an option-list drift
- * check that the live page would fail.
- */
+
 const KUALI_FAKE_DIVISION_OPTIONS: readonly string[] = Object.freeze([
   "- - -",
   "Building and Custodial Services",
@@ -159,12 +125,7 @@ const KUALI_FAKE_FINAL_PAY_OPTIONS: readonly string[] = Object.freeze([
   "Other",
 ]);
 
-/**
- * The real RRSS space id (legacy `src/config.ts:131`), repeated here rather
- * than imported: `driver/fake.ts` models the PAGE, and importing the registry's
- * constant would make a fixture's href agree with the registry by construction
- * instead of by observation.
- */
+// Keep the fixture space literal independent of the registry so href comparisons are not tautological.
 const KUALI_FAKE_SPACE_ID = "5e47518b90adda9474c14adb";
 
 export interface KualiFakeWorld {
@@ -176,35 +137,15 @@ export interface KualiFakeWorld {
   displayedEid: string;
   /** When set, the EID field returns this raw string instead of a readable EID. */
   unreadableEid?: string;
-  /**
-   * The Kuali Build space whose Action List this fake models. It defaults to the
-   * real RRSS space so the href shape a fixture writes is the shape the live
-   * page carries.
-   */
+
   actionListSpace?: string;
-  /**
-   * What the Action List renders for a document number, when the fixture wants
-   * something other than the ordinary row.
-   *
-   * Unset means the ordinary LIVE rendering, which is TWO links at this
-   * document's own action (Kuali publishes the number in both `Document #` and
-   * `Document Title`, measured 2026-08-20). A fixture sets this to drive the
-   * refusal arms: an empty array is "not in the Action List", two different
-   * hrefs is the ambiguity, and a `null` href is the unlinked cell.
-   */
+  // An ordinary Action List row has two links to one action; distinct action IDs remain ambiguous.
   actionListLinks?: Readonly<Record<string, readonly KualiActionListLink[]>>;
   /** Every bare-number link the filtered list renders. Defaults to the matched ones. */
   actionListListedNumbers?: readonly string[];
   /** When set, reading the Action List throws (a dead page / a lost session). */
   actionListThrows?: Error;
-  /**
-   * What the EID field displays AFTER staging completes.
-   *
-   * This is the ref write-safety §2.1 case the beat-③ binding proof exists for: the probe
-   * and the prepare both saw the right person, then the pooled page moved to a
-   * DIFFERENT one before the fence. Set it to another EID to drive the
-   * wrong-subject arm, or to an unreadable string to drive the unknown arm.
-   */
+
   displayedEidAfterStage?: string;
   /** When set, the Save click throws AFTER the fence: the landing state is unknown. */
   commitThrows?: Error;
@@ -214,49 +155,24 @@ export interface KualiFakeWorld {
   readBackThrows?: Error;
   /** The exact capability the last commit received. */
   lastCapability?: unknown;
-  /**
-   * The separation form this document carries, as `readSeparationDocument`
-   * would read it off the page. Unset means the fake is a write-only fixture
-   * and the read refuses loudly rather than inventing a form.
-   */
+
   separationForm?: KualiFakeSeparationForm;
 
   /* ── The finalization write (chunk 5) ────────────────────────────────── */
 
-  /**
-   * The PERSISTED finalization field set. Staging does not change it; only a
-   * commit does — so "staged but never saved" reads exactly as the live page
-   * would. Unset means an unfinalized document (`KUALI_FAKE_UNFINALIZED_FIELDS`).
-   */
+
   persistedFinalization?: KualiObservedFinalizationFields;
   /** What the `Department*` control offers. Set it to drive **S55**. */
   finalizationDepartmentOptions?: readonly string[];
-  /**
-   * Controls the page silently refuses to take, by field name — the
-   * `fillWithVerify` failure Kuali is known for. Drives `stage-not-persisted`.
-   */
+  // Model controls that silently drop staged input so readback failure remains observable.
   finalizationStagingDrops?: readonly KualiFinalizationFieldName[];
-  /**
-   * When set, the document model never takes a staged finalization value, so
-   * the model-commit barrier times out and throws BEFORE any fence exists.
-   */
+
   finalizationModelNeverCommits?: boolean;
-  /**
-   * When set, the Save click SUCCEEDS but Kuali keeps the old finalization —
-   * **S59** / D128, the UI-silent failure only a reload read-back can see.
-   */
+  // Model a successful Save click with unchanged persisted values; only reload can prove landing.
   commitFinalizationDoesNotPersist?: boolean;
 }
 
-/**
- * The RAW page values a separation document shows — strings exactly as the
- * controls hold them, NOT the parsed output.
- *
- * The fake models the page, not the schema: a fixture sets `lastDayWorked` to
- * `"31/06/2026"` or `eid` to `"pending"` and the SAME parsing/refusal path the
- * live driver runs decides what that means. A fake that accepted pre-parsed
- * values could never exercise `unparseable-date` at all.
- */
+
 export interface KualiFakeSeparationForm {
   /** `Form - <name> - Kuali`'s middle segment. Set it to drive S2. */
   formType: string;
@@ -630,11 +546,7 @@ export function createDeterministicKualiDriver(
     }
   }
 
-  /**
-   * The Action-List resolve. It states what the list showed and classifies
-   * nothing — exactly like the live driver, so the pure fold under test is the
-   * production one.
-   */
+
   async function readActionListForDocument(input: Readonly<{
     documentNumber: string;
   }>): Promise<KualiActionListObservation> {

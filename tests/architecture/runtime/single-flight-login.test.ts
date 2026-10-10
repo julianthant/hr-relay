@@ -1,15 +1,4 @@
-/**
- * Ref execution-and-sessions §4: login is bounded and single-flight within one worker/system
- * session creation — there is no cross-worker login promise, no shared
- * context, and no second code path that authenticates a session.
- *
- * - STRUCTURAL: `store.session.login(` is invoked only inside
- *   `src/backend/runtime/workers/worker-sessions.ts` (the manager's `#openAndLogin`), so no task,
- *   workflow, or service can authenticate around the ownership model.
- * - BEHAVIORAL: two concurrent driver leases for one system on one worker
- *   produce exactly ONE session open and ONE login — the second lease reuses
- *   the healthy authenticated session after the first releases cleanly.
- */
+
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";

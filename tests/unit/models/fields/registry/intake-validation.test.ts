@@ -1,10 +1,4 @@
-/**
- * Ref data-intake-and-edit-data §5 — mapped dataset → N inputs, with a pre-run rejection review.
- *
- * This walks §8's worked example (42 rows, 2 bad EIDs, corrected in the grid)
- * and then attacks the invariants that make a partial intake impossible to
- * mistake for a complete one.
- */
+
 import assert from "node:assert/strict";
 import { z } from "zod";
 import { describe, it } from "vitest";

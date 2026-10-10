@@ -1,7 +1,4 @@
-/**
- * Checked-by-you is triage context, not a durable member outcome. It must stay
- * immutable per update and a fresh dashboard load must begin empty.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { FIXTURE_DAY_WIRE } from "../../../../parity/helpers/fixture-day.js";
@@ -15,7 +12,7 @@ const members = FIXTURE_DAY_WIRE.queueSurfaces.filter(
   (surface): surface is MemberSurfaceWire => surface.surfaceKind === "member",
 );
 
-describe("checked by you — local triage only (ledger 1 B57/B80)", () => {
+describe("checked by you — local triage only", () => {
   it("toggles an immutable local set and counts only members in the displayed group", () => {
     const first = String(members[0]?.runId);
     const foreign = "1a000000-0000-4000-8000-000000000099";

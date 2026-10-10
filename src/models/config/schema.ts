@@ -23,13 +23,7 @@ export const CrmRoutesSchema = z.strictObject({
 });
 export const OnBaseRoutesSchema = z.strictObject({ entry: UrlSchema });
 export const UcpathRoutesSchema = z.strictObject({
-  /**
-   * The UCPath SSO entry portal ("Log in to UCPath" → campus discovery →
-   * Shibboleth). Deep PeopleSoft routes are NOT reachable unauthenticated, so
-   * login starts here. Ported from legacy
-   * hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc
-   * src/infra/auth/login.ts (ucpathNavigateAndFill).
-   */
+    /* The UCPath SSO entry portal: deep PeopleSoft routes are not reachable unauthenticated, so login starts here. */
   login: UrlSchema,
   smartHr: UrlSchema,
   jobSummary: UrlSchema,
@@ -83,7 +77,6 @@ export const ProviderBudgetSchema = z.strictObject({
   costLimitUsdMicros: z.number().int().nonnegative(),
 });
 
-
 export const ProviderBudgetConfigSchema = z.strictObject({
   geocodeCensus: ProviderBudgetSchema,
   geocodeNominatim: ProviderBudgetSchema,
@@ -97,20 +90,7 @@ export const PROVIDER_CAPABILITY_CONFIG_KEYS = deepFreeze({
   "geocode.nominatim": "geocodeNominatim",
 } as const satisfies Record<Exclude<ProviderCapabilityId, "ocr.extract">, keyof z.output<typeof ProviderBudgetConfigSchema>>);
 
-/**
- * The absolute filesystem locations the runtime reads and writes (ref clock-config-secrets §4).
- *
- * PURE CONTRACT, NO DEFAULT — deliberately. This module also carries the
- * settings-override contract that `src/domain/commands.ts`, and through it the
- * dashboard bundle, depends on, so it is imported into the BROWSER. A path
- * default can only be produced by resolving a repo-relative literal against a
- * working directory, which is `node:path` work; a browser has no working
- * directory to resolve against and no business inventing one. So the defaults
- * live in the server-only `./runtime-paths.ts`, which `./resolve.ts` — the one
- * `settings > default` resolver — supplies at parse time. A caller
- * that hands `ConfigSchema` no `paths` gets a loud zod error naming the missing
- * leaf, never a fabricated path.
- */
+/** The absolute filesystem locations the runtime reads and writes — pure contract with no default, because a browser has no working directory to resolve against. */
 export const ConfigPathsSchema = z.strictObject({
   reportsDir: AbsolutePathSchema,
   downloadsDir: AbsolutePathSchema,
@@ -125,7 +105,7 @@ export const ConfigPathsSchema = z.strictObject({
   duoExtensionDir: AbsolutePathSchema,
 });
 
-/** D324: the headless fallback viewport — a host that reports a primary display never sees it. */
+/** The headless fallback viewport; a host that reports a primary display never sees it. */
 export const DEFAULT_DISPLAY = Object.freeze({ screenWidth: 2560, screenHeight: 1440 });
 
 export const ConfigSchema = z.strictObject({
@@ -169,39 +149,9 @@ export const ConfigSchema = z.strictObject({
     longNavigationMs: z.number().int().positive(),
     ukgNavigationMs: z.number().int().positive(),
     taskMs: z.number().int().positive(),
-    /**
-     * D125 — the bound on ACQUIRING a usable driver for one system: launching
-     * or attaching the browser context, plus that system's login recipe. It is
-     * deliberately distinct from, and much shorter than, `taskMs`.
-     *
-     * Why it exists: `taskMs` bounds a whole task once a driver is in hand, so
-     * it has to be generous (the UCPath person-org read is ~22s of real work,
-     * a Kuali fill→save→reload→verify cycle is 8–10s). A login recipe is a
-     * CHAIN of individually-bounded steps — each `navigationMs`, plus the Duo
-     * window — and nothing bounded the chain, so a dead CRM session on the
-     * live exit run burned 262.9s inside `withDriver` before anything noticed.
-     * Acquisition is not the slow part of a healthy run: authentication is
-     * live-verified at ~17s (UCPath) and ~12s (CRM) with Duo Autopilot
-     * clearing the ceremony hands-off (charter §9), so 60s is >3x the measured
-     * worst case and cannot fail a legitimately slow READ — reads happen after
-     * acquisition, under `taskMs`.
-     *
-     * A deployment that reverts to a HANDS-ON Duo approval must raise this
-     * above `duoApprovalSeconds`, because the inner Duo wait would otherwise
-     * outlive its own envelope. The refusal names both leaves so an operator
-     * who hits it knows exactly which one to move.
-     */
+      /* The bound on ACQUIRING a usable driver for one system — launching or attaching the browser context plus that system's login recipe — deliberately distinct from `taskMs`. */
     sessionAcquireMs: z.number().int().positive(),
-    /**
-     * D267 (ref execution-and-sessions §10.3): the Duo ceremony lease's TTL is
-     * `sessionAcquireMs` PLUS this grace. A TTL equal to the envelope would let
-     * a waiter take the lease at the instant the holder is running its proven
-     * cleanup; the grace covers that cleanup (`browser.closeProofMs`, 15 000 ms,
-     * plus margin). A waiter's budget is its remaining envelope MINUS this
-     * grace, so the lease refuses by name before the envelope fires. It is a
-     * post-baseline leaf: generation 3 in `snapshot-generations.ts`, so a
-     * stored `settings_snapshots` row without it still parses (D133).
-     */
+      /* The Duo ceremony lease's TTL is `sessionAcquireMs` PLUS this grace, so a waiter cannot take the lease while the holder runs its proven cleanup. */
     duoCeremonyLeaseGraceMs: z.number().int().positive(),
     transactionMs: z.number().int().positive(),
     duoApprovalSeconds: z.number().int().positive(),
@@ -223,8 +173,8 @@ export const ConfigSchema = z.strictObject({
   // and `./resolve.ts` supplies them. See `ConfigPathsSchema`.
   paths: ConfigPathsSchema,
   annualDates: z.record(FiscalYearKeySchema, AnnualDateEntrySchema).default({}),
-  // The CONTRACT default, used only for a host with no display to report; the
-  // runtime default is the host's primary display (D324, `./host-display.ts`).
+  // The CONTRACT default, used only for a host with no display to report; the runtime default
+  // is the host's primary display.
   display: z.strictObject({ screenWidth: z.number().int().positive(), screenHeight: z.number().int().positive() })
     .default(DEFAULT_DISPLAY),
   performance: z.strictObject({
@@ -257,12 +207,7 @@ export const ConfigSchema = z.strictObject({
     maxAutoRefresh: z.number().int().nonnegative(),
     maxReopen: z.number().int().nonnegative(),
   }).default({ monitorTickMs: 30_000, maxAutoRefresh: 10, maxReopen: 3 }),
-  /**
-   * Worker browser-session launch policy. `headless` is the runtime default
-   * because Duo Autopilot answers the MFA ceremony in-page (no OS dialog);
-   * `closeProofMs` bounds the teardown that must PROVE page/context closure —
-   * an unprovable close poisons the resource rather than being assumed clean.
-   */
+    /* Worker browser-session launch policy; `closeProofMs` bounds the teardown that must PROVE page and context closure. */
   browser: z.strictObject({
     headless: z.boolean(),
     closeProofMs: z.number().int().positive(),
@@ -275,12 +220,7 @@ export const ConfigSchema = z.strictObject({
   providers: ProviderBudgetConfigSchema,
 });
 
-/**
- * Takes only the `providers` group, not the whole `Config`: a DURABLE snapshot
- * read forward (`./snapshot-generations.ts`) is legitimately narrower than
- * today's `Config`, and a budget lookup has no business demanding leaves the
- * captured run never carried.
- */
+/** Takes only the `providers` group, because a durable snapshot read forward is legitimately narrower than today's `Config`. */
 export function providerBudget(
   config: { readonly providers: z.output<typeof ProviderBudgetConfigSchema> },
   capability: Exclude<ProviderCapabilityId, "ocr.extract">,
@@ -293,7 +233,7 @@ function partialEndpoints<Shape extends z.ZodRawShape>(routes: z.ZodObject<Shape
   return z.strictObject({ prod: routes.optional(), test: routes.partial().optional() });
 }
 
-/** D331: the catalog selects the ordinary members; templates supply their existing value schemas. */
+/** The catalog selects the ordinary members; templates supply their existing value schemas. */
 export const SettingsOverrideSchema = ordinarySettingsObject("", z.strictObject({
   actor: ordinarySettingsObject("actor", ConfigSchema.shape.actor.unwrap()).partial().optional(),
   urls: ordinarySettingsObject("urls", z.strictObject({

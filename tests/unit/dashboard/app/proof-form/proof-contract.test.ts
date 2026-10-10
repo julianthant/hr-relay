@@ -1,22 +1,4 @@
-/**
- * D245 — the parked-write section's PROOF CONTRACT, end to end without React.
- *
- * The record this closes: `resolve-write-present` was refused by every surface
- * in the build because the wire served neither the proof's schema hash nor its
- * shape, so no client could compose the `SchemaBoundCanonicalValue` the kernel
- * demands — and the refusal copy pointed at a CLI path that does not exist.
- *
- * The load-bearing case here is the ROUND TRIP over every registered commit
- * contract: take the contract's own example output, derive the proof the kernel
- * would have taken from it, spell every leaf back as the strings an operator
- * would type, compose them through the same pure function the dialog uses, and
- * require the result to (a) equal the proof byte for byte and (b) parse through
- * the contract's real `completion.proofSchema`. A form that cannot do that is a
- * form that composes something the kernel rejects, which is the defect this
- * work exists to remove — and asserting it per REGISTERED CONTRACT rather than
- * per named schema is what stops a fifth commit contract from silently landing
- * with an undescribable proof and a disabled button.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { z } from "zod";
@@ -32,11 +14,7 @@ interface RegisteredCommit {
   readonly proof: unknown;
 }
 
-/**
- * Every transaction node in the tree, with the proof the kernel itself would
- * have derived from the contract's declared example output. `proofFromOutput`
- * is the contract's own function — nothing here authors a proof.
- */
+
 function registeredCommits(): readonly RegisteredCommit[] {
   return DESCRIPTORS.flatMap((descriptor) =>
     descriptorRuntimeNodes(descriptor).flatMap((node) => {
@@ -59,7 +37,7 @@ function registeredCommits(): readonly RegisteredCommit[] {
 
 /** What an operator would type into each box to transcribe this exact proof. */
 
-describe("the served proof contract (ref write-safety §4.1, D245)", () => {
+describe("the served proof contract", () => {
   it("covers every registered commit contract — there is at least one", () => {
     assert.ok(registeredCommits().length > 0, "the tree registers no transaction node at all");
   });
@@ -118,11 +96,7 @@ describe("shapes the proof describer refuses by name", () => {
     });
   }
 
-  /**
-   * A `.refine()` cannot cross a wire, and refusing the whole contract over one
-   * would strand the arm — so the leaf is described and FLAGGED. Kuali's
-   * finalization carries two of them, which is why this arm has a producer.
-   */
+  // Refinements cannot cross the wire; describe and flag the leaf instead of stranding proof resolution.
   it("describes a refined leaf and flags that the server checks more", () => {
     const shape = describeProofShape(z.strictObject({
       a: z.string().min(1).max(10).refine((value) => value === value.trim(), "no padding"),
@@ -157,10 +131,3 @@ describe("shapes the proof describer refuses by name", () => {
     assert.deepEqual(status.options, ["Approved", "Denied"]);
   });
 });
-
-/**
- * The label is an ACCESSIBLE NAME and the hint is the sentence beside the box,
- * so both are pinned here rather than only in the parity corpus — this tree
- * renders no React in the unit lane, which is exactly why `terminalOutcomeText`
- * became an exported pure function too (D187's lesson from the other side).
- */

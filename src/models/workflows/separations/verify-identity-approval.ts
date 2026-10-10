@@ -1,18 +1,4 @@
-/**
- * `workflow:separations/verify-identity-approval` — the node that converts the
- * comparison packet into explicit identity authority.
- *
- * For a supplied EID, it re-derives the packet digest and accepts only the EID
- * UCPath actually read back; this yields machine-verification authority and no
- * gate result. For a name-resolved EID, the command kernel first proves that a
- * gate result parses through the descriptor's exact schema and stores it under
- * the run's identity. This node then proves the decision describes THIS packet,
- * the approved EID was shown, and `chosenFrom` is true.
- *
- * Every refusal is fail-closed by construction: there is no arm that downgrades
- * a failed check into a warning, and no arm that proceeds on the run's own
- * checked EID when the approval names a different one.
- */
+/** The node that converts the comparison packet into explicit identity authority, fail-closed by construction: no arm downgrades a failed check into a warning. */
 import { z } from "zod";
 import { taskId } from "../../../rules/identity/ids.js";
 import {
@@ -25,16 +11,7 @@ import { JobSummaryClassificationSchema } from "../../../rules/separations/job-s
 import { FingerprintSchema } from "../../../rules/identity/ids.js";
 import { defineTaskContract } from "../../task/task-contract.js";
 
-/**
- * The run's PRODUCT, and it is deliberately the whole thing rather than just the
- * subject or lets a name-resolved identity self-qualify.
- *
- * `identity-gate-before-separation-commit` requires the terminal result to be
- * graph-reachable only through this authority task. It caught a real defect in
- * the earlier gate-only design: a terminal result read the document number and
- * employment picture directly from the comparison node. Carrying them through
- * this task makes both authority arms dominate the run's product.
- */
+  /* The run's PRODUCT, deliberately the whole thing rather than just the subject: the terminal result must be graph-reachable only through this authority task. */
 export const VerifyIdentityApprovalOutputSchema = z.strictObject({
   documentNumber: z.string().min(1),
   approved: ResolvedIdentitySubjectSchema,

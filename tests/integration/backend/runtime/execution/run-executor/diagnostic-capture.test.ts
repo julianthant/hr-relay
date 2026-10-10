@@ -1,11 +1,7 @@
 import { testRunService } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
 import { z } from "zod";
 import { testRunLifecycle } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
-/**
- * Ref operator-trust §2.2, executed: the closed trigger set, retained values at capture, the
- * two-phase failure↔bundle binding over the real interpreter and authority, and
- * the retention/pin sweep.
- */
+
 import assert from "node:assert/strict";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

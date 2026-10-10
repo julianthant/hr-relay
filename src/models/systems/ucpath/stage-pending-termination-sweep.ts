@@ -1,22 +1,4 @@
-/**
- * `ucpath/stage-pending-termination-sweep` — the PREPARE arm of the sweep.
- *
- * It ticks the Select checkbox on every in-progress `Terminat*` row this person
- * has in the *Transactions in Progress* grid, reads back which rows it ticked,
- * and stops. No Delete is clicked: ticking a checkbox is page state and nothing
- * more, which is what puts the whole selection on the reversible side of the
- * fence.
- *
- * Two things it refuses rather than resolves:
- *
- *  - **A settled row is never selected.** Only `Pending` and `Pushed Back` are
- *    in progress; `Approved`, `Denied`, `Error` and `Manually Processed` are
- *    settled, and deleting a settled row would destroy the record of something
- *    that already happened.
- *  - **A row whose displayed name is not this person's** fails the subject
- *    binding. The sweep is a DELETE keyed only by a person, so reading the
- *    wrong person's grid is the one mistake with no downstream control at all.
- */
+/** Stage and read back selections only; refuse settled or wrong-person rows. */
 import { z } from "zod";
 import { EidSchema, ObservationIdSchema, taskId } from "../../../rules/identity/ids.js";
 import {

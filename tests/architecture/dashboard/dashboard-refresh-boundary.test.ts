@@ -1,28 +1,4 @@
-/**
- * Ref frontend-backend-integration §8.14 — React Fast Refresh boundary purity for the dashboard's surfaces.
- *
- * `@vitejs/plugin-react` accepts a module as a Fast Refresh boundary only when
- * EVERY export is a likely component (an uppercase-named function, or a
- * `memo`/`forwardRef`/`lazy` wrapper) or is reference-equal across the module's
- * re-evaluation (`validateRefreshBoundaryAndEnqueueUpdate` in its refresh
- * runtime). A helper, a hook, or an object/array constant exported beside a
- * component is a NEW reference every save, so the module is refused as a
- * boundary and the invalidation climbs to the nearest importer that qualifies
- * — for every surface, that is `dashboard-app.tsx`, and the whole app remounts
- * and loses its state on each edit.
- *
- * The rule this guard holds: a surface module (`src/dashboard/surfaces/*.tsx`,
- * `src/dashboard/app/*.tsx`) exports components only. Its hooks, folds,
- * vocabularies and object constants live in a sibling `<surface>-model.ts`
- * (types are erased and stay legal anywhere). `src/dashboard/ds/**` is
- * deliberately OUT of scope: `ui.tsx` is the design system's one barrel and
- * mixes primitives with token exports by design; an edit there remounting the
- * app is the accepted cost of one import for the whole system.
- *
- * Both arms run against checked-in fixtures — one that violates in each way the
- * rule can be broken, one that is clean — so a walker that resolved nothing
- * could not pass.
- */
+// Fast Refresh rejects mixed component/value exports and remounts the importing app.
 import { describe, expect, it } from "vitest";
 import ts from "typescript";
 import { readFileSync } from "node:fs";

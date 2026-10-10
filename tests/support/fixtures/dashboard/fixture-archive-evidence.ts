@@ -1,12 +1,4 @@
-/**
- * Exact bytes for DCA4's archive-evidence fixture.
- *
- * This is intentionally separate from `fixture-archive.ts`: the broad Archive
- * corpus keeps its archived record, while this one proof owns the only capture
- * it downloads. Its metadata is parsed from the exact bytes it serves, so a
- * successful browser image can never be a first-entry substitute from another
- * fixture map.
- */
+
 import { createHash } from "node:crypto";
 import { deflateSync } from "node:zlib";
 import {
@@ -108,9 +100,7 @@ export const FIXTURE_ARCHIVE_EVIDENCE_CAPTURE = ArchivedCaptureTileSchema.parse(
   retention: { kind: "ordinary", purgeAfter: "2026-09-02T09:11:00.000Z" },
 });
 
-// Start from a declared DURABLE fixture (including its immutable input), never
-// reconstruct authority from an ArchivedRunDetailWire. Only this scenario gets
-// a new capture and a freshly sealed canonical record; the broad corpus is intact.
+
 const { contentDigest: _seedDigest, ...SEED_CONTENT } = ARCHIVED_RUN_WITH_SECTIONS;
 if (SEED_CONTENT.sections === undefined) throw new Error("the archive-evidence durable seed has no frozen sections");
 const CONTENT = ArchivedRunContentSchema.parse({

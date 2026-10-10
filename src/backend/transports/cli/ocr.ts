@@ -1,26 +1,4 @@
-/**
- * The `ocr` command — the transport that makes routes 2 and 3 usable (D151).
- *
- * The gate in `src/domain/ocr/extraction.ts` is what guarantees every producer
- * yields the same record. This is how a producer that is NOT the automated
- * provider pipeline reaches it:
- *
- *   cli ocr forms                     which forms exist
- *   cli ocr instruction <formType>    the exact brief every route gets
- *   cli ocr admit <submission.json>   run the gate; print record or problems
- *
- * An AI the operator runs in their own terminal reads `instruction`, writes the
- * JSON it describes, and hands it to `admit`. So does the operator. So, later,
- * does the provider adapter — through the same gate, with the same brief.
- *
- * **This command adds no rule of its own.** It reads a file, calls
- * `admitOcrExtraction`, and prints what came back. Every check lives in the
- * gate, so a producer cannot get a different answer by choosing a different
- * transport — which is the whole point of there being one gate.
- *
- * `admit` exits non-zero on refusal, so a terminal agent's own tooling can tell
- * the difference without parsing prose.
- */
+
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { admitOcrExtraction } from "../../../models/ocr/extraction.js";
@@ -128,8 +106,7 @@ export function composeOcrCommand(input: OcrComposeInput): OcrCommandOutcome {
         lines.push(`    DUPLICATE ${subject.displayName} — pages `
           + subject.pages.map((page) => String(page.sourcePage)).join(", "));
       } else if (subject.completeness === "incomplete") {
-        // D157: flagged, never blocked. The person IS in the stack; a page of
-        // theirs is not, and the operator is told which one to go find.
+
         lines.push(`    INCOMPLETE ${subject.displayName} — has `
           + subject.pages.map((page) => `${page.pageKind} page ${String(page.sourcePage)}`).join(", ")
           + `; missing ${subject.missingKinds.join(", ")}`);
@@ -155,9 +132,7 @@ export function composeOcrCommand(input: OcrComposeInput): OcrCommandOutcome {
     try {
       parsed = JSON.parse(read(absolute));
     } catch (error) {
-      // A file that is not JSON is a producer error worth naming precisely; it
-      // must not reach the gate as `undefined` and be reported as a schema
-      // problem the producer cannot act on.
+
       throw new Error(
         `${absolute} is not readable JSON: ${error instanceof Error ? error.message : String(error)}`,
         { cause: error },

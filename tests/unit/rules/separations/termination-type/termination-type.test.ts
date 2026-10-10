@@ -1,10 +1,4 @@
-/**
- * §4a's map: exact matching, no default arm, and an exhaustive capture.
- *
- * The interesting cases here are not the ones that resolve — they are the ones
- * legacy resolves WRONG, kept as executable counterexamples so the fuzzy tier
- * cannot quietly come back.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import {
@@ -15,7 +9,7 @@ import {
 } from "../../../../../src/rules/separations/termination-type.js";
 
 describe("separations termination-type map (§4a)", () => {
-  it("is exhaustive over the live 2026-08-12 capture, in both directions", () => {
+  it("is exhaustive over the captured termination-type options in both directions", () => {
     assert.deepEqual(auditTerminationTypeMapCoverage(), []);
     // 16 real options plus Kuali's `- - -` sentinel, identical on documents
     // 4510, 4502 and 4495 — three documents at two different workflow steps.
@@ -52,11 +46,7 @@ describe("separations termination-type map (§4a)", () => {
   });
 
   it("`Never Started Employment` files INVOL_TERM / NSE — not legacy's voluntary default", () => {
-    // Operator-approved 2026-08-13 on chunk 4's live capture of the real
-    // `UC_INVOL_TERM` Action Reason control, which serves `NSE` = "Never Started
-    // Employment" (`separations.md` §9.7). Legacy files this same involuntary
-    // template with the VOLUNTARY default `Resign - No Reason Given`, which is
-    // the misfiling this entry corrects rather than reproduces.
+
     const resolution = resolveTerminationType("Never Started Employment");
     assert.equal(resolution.state, "resolved");
     if (resolution.state !== "resolved") return;
@@ -67,11 +57,7 @@ describe("separations termination-type map (§4a)", () => {
   });
 
   it("`unmapped-termination-type` is a DATA state of the table, not a dead arm", () => {
-    // As of 2026-08-13 no captured option carries it: `NSE` closed the only one.
-    // The arm survives because it is what an option the operator has not yet
-    // supplied a code for resolves to — §4a's accepted operational cost — and
-    // it is selected by the map ENTRY, so making it live again is one table row
-    // rather than a code change.
+
     const unmapped = KUALI_TERMINATION_TYPE_OPTIONS.filter((option) => {
       const resolution = resolveTerminationType(option);
       return resolution.state === "refused" && resolution.code === "unmapped-termination-type";
@@ -86,10 +72,8 @@ describe("separations termination-type map (§4a)", () => {
     assert.equal(resolution.code, "blank-termination-type");
   });
 
-  it("does NOT substring-match in either direction — legacy's `Other` → `Accepted Another Job` bug", () => {
-    // "accepted an**other** job" contains "other", which is how legacy's
-    // bidirectional fuzzy tier files a resignation-for-another-job reason on a
-    // type it has never seen.
+  it("does not substring-match Other and Accepted Another Job", () => {
+
     for (const probe of ["Other", "other", "Job", "Resign", "Attend", "Retire"]) {
       const resolution = resolveTerminationType(probe);
       assert.equal(resolution.state, "refused", `${probe} matched something`);
@@ -106,9 +90,7 @@ describe("separations termination-type map (§4a)", () => {
   });
 
   it("`Death` is not an option on this form at all", () => {
-    // §4a's worked example — `Death` filed as a voluntary `Resign - No Reason
-    // Given` — cannot arise from this control. The hazard was real in shape and
-    // absent in fact, and the map refuses the value anyway.
+
     assert.ok(!KUALI_TERMINATION_TYPE_OPTIONS.includes("Death"));
     assert.equal(resolveTerminationType("Death").state, "refused");
   });

@@ -1,19 +1,5 @@
-/**
- * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
- * src/dashboard/components/dev/rebuild-demo/ds/primitives-layout.tsx
- *
- * TWO EXCEPTIONS port from the later legacy commit `1ec1d870`. `TakeoverFrame`
- * has no counterpart in that file. It is the single shared takeover root D275
- * item 2 asks for, and its geometry is ported from the demo's own takeover
- * CONTAINERS at that commit —
- * `src/dashboard/components/dev/rebuild-demo/RebuildDemo.tsx:656-678` (the
- * `shellView` switch) and `.../DemoSettings.tsx:1071-1075` (Settings' own root,
- * the one that lays its children out in a row). Its own JSDoc carries both
- * pointers. `Banner`'s `band` shape ports the storage band's border-bottom-only,
- * radius-free shell from `.../DemoSettings.tsx:1204-1237`; D281 item 7 confines
- * that shape to the app-wide storage hazard while the default card stays the
- * original primitive everywhere else.
- */
+/** Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc
+ * src/dashboard/components/dev/rebuild-demo/ds/primitives-layout.tsx */
 import { Alert as HeroAlert, Card as HeroCard, EmptyState as HeroEmptyState, Surface as HeroSurface } from "@heroui/react";
 import {
   forwardRef,
@@ -232,18 +218,8 @@ export function ResultRow({
   );
 }
 
-/**
- * Containers, structure and navigation.
- *
- * The layout rule of this product: DEPTH COMES FROM SURFACE + HAIRLINE, not
- * from shadow. A Panel sits on the page; a Card sits in a Panel; a well sits
- * in a Card. Anything with a shadow is FLOATING (menu, dialog, drawer, toast)
- * — if it is not floating and it has a shadow, that is a bug.
- */
 
-/* =========================================================================
- * Panel — the primary region container (queue, log, settings, inbox…)
- * ====================================================================== */
+/** Panel — the primary region container (queue, log, settings, inbox…) */
 
 type PanelHeadingLevel = 1 | 2 | 3 | 4 | 5 | 6;
 
@@ -276,12 +252,6 @@ export function Panel({
   );
 }
 
-/**
- * A panel's header. `title` is the only required part; `meta` is the quiet
- * right-hand slot for counts and timestamps, `actions` for controls. Product
- * panels declare `headingLevel` so their label is exposed as a real heading;
- * unlevelled titles remain available for design-system specimens.
- */
 export function PanelHeader({
   title,
   headingLevel,
@@ -378,9 +348,7 @@ export function PanelFooter({ className, children }: { className?: string; child
       className={cn(
         "flex shrink-0 items-center gap-[var(--ds-space-base)] border-t px-[var(--ds-space-cozy)] py-[var(--ds-space-base)]",
         // The recessed plane, the same solid band the queue row's own footer
-        // draws. It was `surface-2` + a full-strength border — a second answer
-        // to "this sits back from the panel" living in a primitive, which is
-        // the worst place for one to live: every consumer inherits it.
+        // draws, read off the shared tokens rather than re-answered here.
         "border-[color:var(--ds-border-subtle)] bg-[var(--ds-recess-bg)]",
         className,
       )}
@@ -390,9 +358,7 @@ export function PanelFooter({ className, children }: { className?: string; child
   );
 }
 
-/* =========================================================================
- * Card — a single object inside a Panel (a run, a session, a receipt)
- * ====================================================================== */
+/** Card — a single object inside a Panel (a run, a session, a receipt) */
 
 export function Card({
   interactive,
@@ -438,21 +404,6 @@ export function CardHeader({ className, children }: { className?: string; childr
   );
 }
 
-/**
- * A card's content.
- *
- * `grow` is what makes a card in a GRID behave. Sibling cards in a grid row all
- * stretch to the tallest one, but a body that does not claim the slack leaves
- * it below itself — so the card's border sits at the row's height while its
- * content stops wherever it happened to end, and `CardFooter` / `CardBase`
- * cannot pin to the bottom because there is nothing pushing them there.
- *
- * It sets `flex-grow`, never `flex-1`: the body absorbs the extra space without
- * having its basis reset, so nothing inside is squeezed to make it fit.
- *
- * Pass it whenever the card is one of several in a row. It costs nothing on a
- * card that stands alone.
- */
 export function CardBody({
   grow,
   className,
@@ -470,78 +421,14 @@ export function CardBody({
   );
 }
 
-/**
- * The card's BASE — whatever must sit on the bottom edge of the row rather than
- * at the end of this card's own content.
- *
- * The defect it exists to kill: a card is a flex column that stretches to its
- * grid row's height, its trailing element is separated by a fixed `mt-*`, and
- * so a card whose description wraps to two lines pushes its button a line lower
- * than the sibling beside it. Every such card was fixing it locally, or not at
- * all — `DemoShell`'s Session Cards got it right inline and nothing else could
- * reuse that.
- *
- * ```tsx
- * <Card>
- *   <CardBody grow className="flex flex-col gap-[var(--ds-space-snug)]">
- *     <p>…description of any length…</p>
- *     <CardBase><Button>See this candidate</Button></CardBase>
- *   </CardBody>
- * </Card>
- * ```
- *
- * **It must sit inside a flex column** (a `CardBody`/card that is
- * `flex flex-col`) — `mt-auto` is a flexbox mechanism and does nothing in a
- * block container. The slack lands ABOVE it, and is left empty on purpose: a
- * card with less to say genuinely has less to say, and padding it out dresses
- * it up as fuller than it is.
- */
 export function CardBase({ className, children }: { className?: string; children: ReactNode }) {
   return <div className={cn("mt-auto flex min-w-0 flex-col", className)}>{children}</div>;
 }
 
-/* =========================================================================
- * CompareGrid / CompareCard — cards that are read ACROSS, not down
- * ====================================================================== */
+/** CompareGrid / CompareCard — cards that are read ACROSS, not down */
 
-/**
- * A row of cards the operator compares STRAIGHT ACROSS, sharing one set of row
- * tracks so the nth line of every card sits on the nth baseline.
- *
- * WHY `CardBase` IS NOT ENOUGH, and this is the distinction worth keeping.
- * `CardBase` pins the BOTTOM edge: a card with more to say is taller inside and
- * its trailing control still lands level with its neighbour's. That is right
- * for a grid of cards each describing its own thing. It is NOT enough for cards
- * that are two readings of the SAME thing — two identity candidates, say —
- * because there the operator reads horizontally: name against name, EID against
- * EID, reason against reason. Pin only the bottom and the left card's two-line
- * reason pushes its name, its EID and its reason all one line up from the right
- * card's, so nothing lines up except the button.
- *
- * The mechanism is `grid-template-rows: subgrid`. The PARENT owns the tracks;
- * each card spans `rows` of them and adopts them, so a track is as tall as the
- * tallest cell in it ACROSS every card in the band. A card with nothing to put
- * in a track leaves it empty — which is the point: the empty cell holds the
- * space its neighbour needs, so the rows after it stay level.
- *
- * ```tsx
- * <CompareGrid rows={5} min="16rem">
- *   {people.map((p) => (
- *     <CompareCard key={p.id} rows={5}>
- *       …exactly five children, one per track, in the same order every time…
- *     </CompareCard>
- *   ))}
- * </CompareGrid>
- * ```
- *
- * **N is not two.** The columns are `auto-fit` over a minimum, so three
- * candidates wrap into a second BAND and that band gets its own five tracks —
- * which is correct, because you compare across a row, not down a page.
- *
- * **Every card must render the same number of children in the same order**, one
- * per track; use an empty `<span />` for a fact this card does not have. That
- * is the contract subgrid alignment rests on.
- */
+/** A row of cards the operator compares STRAIGHT ACROSS, sharing one set of row
+ * tracks so the nth line of every card sits on the nth baseline. */
 export function CompareGrid({
   rows,
   min = "15rem",
@@ -590,9 +477,7 @@ export function CompareCard({
         "border-[color:var(--ds-border)] bg-[var(--ds-surface-1)]",
         className,
       )}
-      // `subgrid` on the ROW axis only — the card keeps its own single column.
-      // Every card carries identical padding, so the inset each one takes out of
-      // its first and last track is identical and the alignment survives it.
+      // Equal padding preserves alignment across shared row tracks.
       style={{ gridRow: `span ${rows}`, gridTemplateRows: "subgrid" }}
     >
       {children}
@@ -621,9 +506,7 @@ export function SectionLabel({ className, children }: { className?: string; chil
   );
 }
 
-/* =========================================================================
- * Banner / Callout
- * ====================================================================== */
+
 
 const BANNER_TONE = {
   info: {
@@ -656,12 +539,7 @@ const BANNER_TONE = {
 export type DsBannerTone = keyof typeof BANNER_TONE;
 export type DsBannerShape = "card" | "band";
 
-/**
- * An in-page message attached to a surface (not a toast — this one stays).
- * `danger` announces as an alert; the rest as status. Keep the title to one
- * line and put the recovery action in `action` — a message with no next step
- * is a message the operator cannot act on.
- */
+/** Persistent surface messages announce severity and provide a recovery action. */
 export function Banner({
   tone = "info",
   shape = "card",
@@ -706,21 +584,8 @@ export function Banner({
   );
 }
 
-/* =========================================================================
- * PageHeader — the bar at the top of a full-page takeover
- * ====================================================================== */
 
-/**
- * The header a full-page view wears when it replaces the dashboard: a way back,
- * what you are looking at, and its actions.
- *
- * The three takeovers (Archive, Explorer, Activity report) each hand-rolled
- * this, and drifted — two put the back button before the title and one after,
- * the icons were `size-4` in two places and `dsIcon.lg` in the third, and only
- * two of the three marked themselves read-only. Leaving the dashboard should
- * look the same every time you do it. Its inset card frame matches the
- * dashboard queue toolbar.
- */
+
 export function PageHeader({
   title,
   icon,
@@ -758,73 +623,9 @@ export function PageHeader({
   );
 }
 
-/* =========================================================================
- * TakeoverFrame — the root a full-page takeover wears
- * ====================================================================== */
 
-/**
- * The ONE container every window-replacing surface mounts in (D275 item 2).
- *
- * A takeover REPLACES the window under the top bar, so it is full-bleed: x=0,
- * the viewport's whole width, no card frame, no radius and no gutter. That is
- * the demo's own container, copied:
- * // ported from legacy 1ec1d870 src/dashboard/components/dev/rebuild-demo/RebuildDemo.tsx:656-678
- * // ported from legacy 1ec1d870 src/dashboard/components/dev/rebuild-demo/DemoSettings.tsx:1071-1075
- * where `DemoSettingsPage`, `DemoArchivePage`, `DemoExplorerPage` and
- * `DemoActivityReportPage` each root in a bare `flex min-h-0 flex-1` div under
- * the bar. Settings alone lays its children out in a ROW (the 220px nav beside
- * the section), which is the only reason `direction` exists.
- *
- * The four surfaces each hand-rolled `Panel` + `useDsEnterTransition` + the two
- * `data-[demo-enter=from]:` classes, which is how the card frame got there in
- * the first place: `Panel` is the REGION container (border + radius +
- * `--ds-surface-1`), and a region inside a page is not the page. Taking the
- * frame away one surface at a time would have left four copies of the arrival
- * behind to drift; this owns BOTH, so the geometry and the motion contract are
- * one decision made once. D275 item 2 is exactly that — keep the shared
- * takeover wrapper as an accessibility/motion convention: every takeover
- * arrives the same way, from the same edge, over the same distance, and
- * `ds-motion-enter` + `--ds-travel-*` honour reduced motion with no branch here.
- *
- * `label` is required and lands on a `section`, so each takeover stays a named
- * landmark rather than an anonymous full-window div.
- *
- * ENTERING one MOVES FOCUS INTO IT, which is the other half of a pair
- * `dashboard-app.tsx` already held one end of. The Radix `Dialog` these pages
- * replaced took focus on open and gave it back on close for free; D272 item 1 /
- * D274 item 5 took the dialog away, the close arm was re-implemented by hand
- * (unit F4b finding 1) and the OPEN arm was not. Without it the operator opens
- * a page that replaces the window while their focus stays on a door that is no
- * longer on screen, and the next Tab walks the top bar instead of the page they
- * just asked for — a keyboard operator never reaches the takeover's own
- * controls without re-Tabbing the whole shell.
- *
- * It focuses ITSELF (`tabIndex={-1}`), not a control inside it, and that is the
- * choice D275 item 2 forces. The Activity report deliberately has NO `Back to
- * the dashboard` button (the demo's own rule, ported), so an `initialFocus` ref
- * the surfaces point at their Back button could never be the convention — three
- * takeovers would have one and the fourth would silently have nothing, which is
- * exactly the four-copies-drift this component exists to end. Focusing the
- * frame is uniform, and it is also the better announcement: the `section`
- * carries `label` as its accessible name, so a screen reader says the page the
- * operator just opened rather than one button on it. From here the first Tab
- * reaches whatever that takeover's first control happens to be.
- *
- * `outline-none` IS REQUIRED, and the parity lane is what proved it. The first
- * cut of this reasoned that nothing could paint: the frame carries no `dsFocus`
- * class, the product's ring is opt-in `.ds-focus:focus-visible` (`tokens.css`),
- * and the base layer's `* { outline-color }` sets a colour with no width or
- * style. All true, and all beside the point — the ring that appeared is
- * Chromium's own UA `:focus-visible { outline: auto }`, wearing that `*` rule's
- * colour. A programmatic focus with no preceding pointer interaction matches
- * `:focus-visible`, so opening any takeover drew a 2px ring around the ENTIRE
- * page. 38 references moved on it (2548px each, the frame's own perimeter).
- * Suppressing it is correct rather than a cover-up: `tabIndex={-1}` means the
- * operator can never keyboard-navigate TO this element, so a focus indicator on
- * it points at nothing they can act on, and what carries the arrival for a
- * screen reader is the region's accessible NAME, not an outline. With it, the
- * takeover corpus is byte-identical across this change.
- */
+
+/** Focus the named frame uniformly; non-tab targets need no UA ring, and CSS handles reduced motion. */
 export function TakeoverFrame({
   label,
   direction = "column",
@@ -845,18 +646,11 @@ export function TakeoverFrame({
   const frame = useRef<HTMLElement>(null);
   useEffect(() => {
     const node = frame.current;
-    // React sets a ref before it runs the effects of the commit that mounted
-    // it, so this is the type's null and never a state — there is no takeover
-    // whose frame is missing at this point.
+    // Refs attach before mount effects; null here is a type guard, not an absent takeover state.
     if (node === null) return;
-    // A descendant that took focus in the SAME commit keeps it. Child effects
-    // run before the parent's, so a control the surface deliberately focused
-    // on arrival is already `document.activeElement` here, and stealing it
-    // back would silently undo that surface's own decision.
+    // Preserve descendant focus established in the same commit; parent effects must not steal it.
     if (node.contains(document.activeElement)) return;
-    // `preventScroll` because the frame is mid-transition: `ds-motion-enter` is
-    // still moving it from `-var(--ds-travel-sm)`, and scrolling an element the
-    // browser reads at a transformed position jogs the whole shell.
+    // Prevent focus from scrolling the shell during the enter transform.
     node.focus({ preventScroll: true });
   }, []);
   return (
@@ -866,26 +660,7 @@ export function TakeoverFrame({
       {...enter}
       aria-label={label}
       className={cn(
-        // `flex min-h-0 flex-1` IS the demo root, byte for byte. `overflow-hidden`
-        // is the one addition, and it is a NET, not a mechanism.
-        // verified 2026-08-27: the root must clip because it is the last box
-        // between a takeover's content and the sessions bar. Measured live at
-        // 1440x900 on all four takeovers, with an over-wide (3000px) and an
-        // over-tall (2000px) child forced in: the frame's own box is IDENTICAL
-        // with and without it (x=0 y=44 w=1440 h=819), the page never scrolls in
-        // either axis either way (the shell root, `flex h-screen min-w-0
-        // flex-col overflow-hidden`, already owns the viewport clip), and the
-        // ONLY difference is whether an overflowing child PAINTS across the
-        // frame's bottom edge at y=863 — where the sessions bar is. The demo's
-        // root can go without because each of its pages gives its own regions an
-        // `overflow-y-auto`; so does every surface here, which is exactly why
-        // this is a net and why keeping it costs no pixel.
-        // `min-w-0` was dropped: the frame is a COLUMN-flex item under `main`,
-        // so `min-width: auto` is never the constraint being fought, and all
-        // three configurations measured identically.
-        // `outline-none`: see the JSDoc — it suppresses Chromium's UA focus ring
-        // on a target the operator can never tab to. Not a `dsFocus` opt-out;
-        // this element was never opted in.
+        // Clip overflow at the frame boundary; suppress UA outlines only on this non-tab focus target.
         "flex min-h-0 flex-1 overflow-hidden outline-none",
         direction === "row" ? "flex-row" : "flex-col",
         animateFrame && "data-[demo-enter=from]:translate-y-[calc(-1*var(--ds-travel-sm))] data-[demo-enter=from]:opacity-0 ds-motion-enter",
@@ -897,23 +672,9 @@ export function TakeoverFrame({
   );
 }
 
-/* =========================================================================
- * MetaLine — the provenance line
- * ====================================================================== */
 
-/**
- * "Where this came from", in one line: ids, codes, clocks, actors, hashes.
- *
- * Every surface in this product ends up printing one — `code X · query "Y" · no
- * corpus was scanned`, `receipt R · generated 2:20 PM · attempt 2`, `header row
- * 4 · fingerprint 503172dd`. They were hand-rolled seven different ways, four of
- * them reaching for a raw `font-mono` (which drops the tabular figures that stop
- * a clock from jittering) instead of `dsText.nums`. One component, one treatment.
- *
- * Segments are joined with the product's ` · ` separator so no call site has to
- * remember it, and `undefined`/`null`/`false` segments drop out — a conditional
- * fact never leaves a dangling dot behind.
- */
+
+/** Drop absent metadata segments without leaving dangling separators. */
 export function MetaLine({
   items,
   tone = "muted",
@@ -945,28 +706,9 @@ export function MetaLine({
   );
 }
 
-/* =========================================================================
- * ChipRow — a wrapping row of facts that ends on ONE edge
- * ====================================================================== */
 
-/**
- * A row of chips that WRAPS without going ragged.
- *
- * `flex-wrap` on a set of chips of unequal width leaves each line ending
- * wherever its last chip happened to stop, and the commonest result is one
- * orphan on line two: `wage $18.50/hr` `effective 07/01` `dept 000482` above a
- * lone `txn TXN-0891245`. Four facts then read as three-plus-one instead of as
- * one block of four.
- *
- * A GRID track fixes it at the root: every chip occupies one cell of the same
- * width, so every line ends on the same edge and the wrap is a second row of a
- * table rather than an overflow. `auto-fit` means the track count is whatever
- * the container can hold, so the same row is two columns in a 400px queue and
- * four in a full-width panel with no breakpoint anywhere.
- *
- * Use it for a set of PEER facts. A row that mixes a chip with a sentence or a
- * button is not this — it is a flex row, and the chip is one item in it.
- */
+
+/** Shared grid tracks keep peer facts aligned across wrapping rows. */
 export function ChipRow({
   children,
   /** the widest a single cell may be — defaults to `--ds-w-chip-cell` */
@@ -987,31 +729,9 @@ export function ChipRow({
   );
 }
 
-/* =========================================================================
- * Refusal — the server said no
- * ====================================================================== */
 
-/**
- * A REFUSAL, which is not the same thing as a failure.
- *
- * A failure is the product breaking; a refusal is the product declining, on
- * purpose, with a rule behind it — a stale contract, an unresolved parked write,
- * a fence that has not cleared. This surface exists in seven places (enqueue
- * rejected, an intake block, a park-resolve fence miss, a search lookup that
- * could not run, a setting the environment owns, a bump that would bury a live
- * run, a notification backfill gap) and was drawn seven different ways.
- *
- * Two things it always does, because they are the whole point:
- *
- *  - **It carries the CODE**, in the standard `MetaLine` position. A refusal the
- *    operator cannot quote is a refusal they cannot get help with.
- *  - **It says what was NOT done.** Pass `outcome` — "nothing was recorded",
- *    "nothing is enqueued". `role="alert"` comes from `Banner`'s danger tone.
- *
- * `ShieldAlert` is deliberately not `TriangleAlert`: the triangle means
- * something broke, the shield means something was refused. Two different
- * questions, two different icons.
- */
+
+/** Refusals retain their code and unchanged outcome; distinguish declined work from product failures. */
 export function Refusal({
   title,
   code,
@@ -1048,16 +768,9 @@ export function Refusal({
   );
 }
 
-/* =========================================================================
- * BulletList
- * ====================================================================== */
 
-/**
- * A short list of facts. Five surfaces were rendering these as a column of
- * `<p>· {item}</p>` — a literal middle-dot character, which a screen reader
- * reads aloud and which gives the reader no list semantics at all. Same look,
- * real `<ul>`, the marker drawn rather than spoken.
- */
+
+/** Use real list semantics; literal text bullets would be spoken as content. */
 export function BulletList({
   items,
   tone = "secondary",
@@ -1091,14 +804,9 @@ export function BulletList({
   );
 }
 
-/* =========================================================================
- * EmptyState
- * ====================================================================== */
 
-/**
- * Empty is a STATE, not a blank. Say what would be here, why it is not, and
- * what to do — in that order. No illustrations, no jokes.
- */
+
+/** Empty states explain what is missing, why, and the available next action. */
 export function EmptyState({
   icon,
   title,
@@ -1131,25 +839,9 @@ export function EmptyState({
   );
 }
 
-/* =========================================================================
- * Tabs — roving tabindex, arrow keys, Home/End, correct ARIA wiring
- * ====================================================================== */
 
-/**
- * ```tsx
- * <Tabs value={tab} onValueChange={setTab}>
- *   <TabList label="Run detail">
- *     <Tab value="log">Log</Tab>
- *     <Tab value="data" count={12}>Data</Tab>
- *   </TabList>
- *   <TabPanel value="log">…</TabPanel>
- * </Tabs>
- * ```
- * Arrow keys move between tabs, Home/End jump to the ends, and only the
- * active tab is in the tab order — the WAI-ARIA "manual activation" pattern
- * with automatic selection on arrow, which is what a keyboard-first operator
- * expects.
- */
+
+/** Keep tab navigation and selection aligned with the rendered tab’s accessible state. */
 export function Tabs({
   value,
   onValueChange,
@@ -1266,20 +958,9 @@ export function TabPanel({
   );
 }
 
-/* =========================================================================
- * Well — an inset region inside a Card (raw output, a preview, a diff)
- * ====================================================================== */
 
-/**
- * An inset region inside a Card. It reads the one recessed plane
- * (`--ds-recess-*`), the same fill a row footer and a chip read — a fill and
- * no line, so a card holding a well, a footer and four chips is a set of tones
- * rather than four nested boxes.
- *
- * A well that SCROLLS is the one consumer allowed to draw the edge, by setting
- * `--ds-recess-border` on itself: there the border is not decoration, it is
- * what tells the eye the content is cut rather than finished.
- */
+
+/** Only scrolling wells draw a boundary; it signals clipped content rather than decoration. */
 export function Well({ className, children }: { className?: string; children: ReactNode }) {
   return (
     <HeroSurface variant="transparent"
@@ -1296,41 +977,13 @@ export function Well({ className, children }: { className?: string; children: Re
   );
 }
 
-/* =========================================================================
- * ARRIVING — the enter transition for surfaces Radix does not own
- * ====================================================================== */
 
-/**
- * Spread onto an element that has just MOUNTED to make it arrive rather than
- * appear. Returns `data-demo-enter="from"` for the first committed frame and
- * `"to"` from the next, so the element's own `data-[demo-enter=from]:` classes
- * describe where it comes from and the transition carries it in.
- *
- * WHY A HOOK AND NOT A KEY-FRAME. A key-frame restarts from zero when it is
- * interrupted; a transition re-targets from wherever it currently is. Every
- * moving thing in this product is a transition for that reason (see the
- * `dsMotion` note), and a mount is the one case a transition cannot express on
- * its own — there is no previous value to move away from. This manufactures
- * one, and everything after the first frame behaves like every other
- * transition in the system, including being interruptible.
- *
- * Reduced motion needs NO branch here: the `from` state is written in
- * `--ds-travel-*` and the clock in `--ds-dur-enter`, and the media query at the
- * foot of `tokens.css` zeroes both — so the element simply is where it belongs
- * on the first frame.
- *
- * Radix surfaces (Dialog, Drawer, Popover, ContextMenu) do NOT use this: they
- * publish `data-state="open|closed"` themselves, which is the same mechanism
- * with an exit the platform can hold the unmount open for.
- */
+
+/** Mount transitions remain interruptible; CSS tokens handle reduced motion. */
 export function useDsEnterTransition(): { "data-demo-enter": "from" | "to" } {
   const [entered, setEntered] = useState(false);
   useEffect(() => {
-    // TWO frames. One `requestAnimationFrame` can be dispatched in the same
-    // frame the element first paints in, and a property that changes inside
-    // its own first paint has no previous value to transition from — the
-    // element lands with no motion at all. The second frame guarantees the
-    // `from` styles were committed and can be moved away from.
+    // Two frames commit the initial styles before starting the transition.
     let inner = 0;
     const outer = requestAnimationFrame(() => {
       inner = requestAnimationFrame(() => setEntered(true));
@@ -1343,13 +996,7 @@ export function useDsEnterTransition(): { "data-demo-enter": "from" | "to" } {
   return { "data-demo-enter": entered ? "to" : "from" };
 }
 
-/**
- * A floating surface: menus and popovers built outside the Dialog primitive.
- *
- * It forwards its ref and spreads the rest of its props so a positioning
- * primitive (Radix `Popover.Content`, a menu, an anchored panel) can adopt it
- * with `asChild` instead of re-drawing the same four tokens locally.
- */
+/** Forward refs and props so positioning primitives can adopt the shared floating surface. */
 export const FloatingSurface = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
   function FloatingSurface({ className, children, ...rest }, ref) {
     return (

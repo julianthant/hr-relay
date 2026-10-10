@@ -17,21 +17,7 @@ import { FIXTURE_NOW } from "./fixture-identity.js";
 
 /* ── settings facts ──────────────────────────────────────────────────────── */
 
-/**
- * `GET /api/v1/settings/facts` — BUILT by the production fold, never authored.
- *
- * `buildSettingsFacts` is the server's own projection of the resolved config
- * and the descriptor tuple (D274 item 6). Hand-writing a host list or a
- * capability row here would photograph the fixture's opinion of those
- * derivations instead of the derivations — the same reason `fixture-gate.ts`
- * builds its packet rather than spelling one.
- *
- * The inputs are the DEFAULTS and the day corpus's one descriptor: an empty
- * env and empty settings resolve to `ConfigSchema`'s shipped hosts for the
- * compatibility facts wire, and the capability row joins the single
- * `workflows[]` entry the bootstrap above serves. `manualClock` pins the
- * resolution instant so nothing here can be dated by the wall clock.
- */
+
 export const FIXTURE_SETTINGS_FACTS: SettingsFactsWire = buildSettingsFacts({
   config: resolveConfigWithProvenance({}, hostConfigFacts({}), manualClock(new Date(FIXTURE_NOW))).config,
   descriptors: [personLookupDescriptor],

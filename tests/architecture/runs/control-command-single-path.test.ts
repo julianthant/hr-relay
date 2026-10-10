@@ -1,32 +1,7 @@
 import { seedSyntheticRuntimeConfig, singleAppliedRunId } from "../../support/fixtures/operator-command-fixtures.js";
 import { RunRecordService } from "../../../src/backend/runs/lifecycle/run-record-service.js";
 import { createRuntimeVersionChanges } from "../../../src/backend/runs/archive/archive-runtime-version-changes.js";
-/**
- * `control-command-single-path` — ref guards-and-tests §3.9, activated by D113.
- *
- * Control surfaces mutate authority only through ref dashboard-surfaces's D67/D95 command
- * protocol, and there is exactly ONE code path that executes it. Three halves
- * make that mechanical in Phase 1f:
- *
- * 1. **One dispatcher, statically.** The command journal, the command audit,
- *    and start-plan consumption are mutable from exactly two modules: the
- *    kernel that executes commands and the infra database that stores them.
- *    Settings boot may read one exact command/audit pair to authenticate its
- *    persisted file generation; it cannot insert or consume authority. A
- *    route, projector, or recovery mutator would be a second handler — the
- *    exact drift D113 forbids.
- * 2. **Exhaustive across family AND action, behaviorally.** Every D95
- *    family/action fixture dispatches to a TYPED `CommandResult`. Phase-1f
- *    active arms execute (their authority validation runs before any process
- *    seam), and every later arm returns `rejected:capability-unavailable`
- *    with zero authority-generation advance and no journal row. An
- *    unhandled/throwing "not implemented" arm fails this sweep.
- * 3. **The protocol's sharp edges.** CAS rejects only the real race families;
- *    hide is a reversible presentation tombstone, never a delete; typed gate
- *    results parse the descriptor's exact schema before anything is stored;
- *    notification stays read/unread/snooze; and an injected active-run lookup
- *    error enqueues zero runs.
- */
+
 import assert from "node:assert/strict";
 import { PositiveIntSchema } from "../../../src/rules/identity/ids.js";
 import { SETTINGS_SCHEMA_HASH } from "../../../src/models/config/settings.js";
@@ -109,7 +84,7 @@ function withoutReadOnlyHistoryFacade(content: string): string {
   if (compact(index) !== 'constbyCommand=newMap<string,(typeofaudits)[number]>();'
     || compact(fold) !== 'for(constauditofaudits){if(byCommand.has(audit.request.commandId))refuse("duplicaterelocationcommandaudit");byCommand.set(audit.request.commandId,audit);}'
     || compact(result) !== 'return{commands:{listStorageRelocationCommands:()=>commands},commandAudits:{findByCommand:(commandId)=>byCommand.get(commandId)},};') return content;
-  // Only this SELECT-derived facade's property is removed; all other accesses remain in the scan.
+
   const offset = content.indexOf("commandAudits", result.getStart(source));
   return content.slice(0, offset) + content.slice(offset + "commandAudits".length);
 }
@@ -173,28 +148,25 @@ const EXPECTED_ACTIVE = {
   ],
   run: [
     "retry",
-    // D314: Restart from start — the second ordinary recovery choice.
+
     "restart",
     "cancel", "bump", "rename", "archive",
-    // D308: delete means delete — the terminal queue run's own door.
+
     "delete",
     "resolve-write-present", "resolve-write-absent",
-    // D166: the Edit-Data save activated with its CAS-against-resume-fence arm.
+
   ],
   gate: ["resolve-gate"],
-  // 2i-B: the inbox lifecycle activated over D134/D138's durable rows.
+
   notification: ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze"],
-  // D170: the five non-enqueue intake arms activated over the durable session.
-  // D171 activated the sixth — the manifest mint plus the run fan-out — so the
-  // intake family is now wholly active.
+
   intake: [
     "inspect-intake", "confirm-intake-mapping", "correct-intake-row",
     "exclude-intake-row", "validate-intake", "enqueue-intake-manifest",
   ],
   settings: ["apply-settings", "apply-protected-settings"],
   "storage-relocation": ["plan-storage-relocation", "cancel-storage-relocation"],
-  // D179 (2i-G): the D80 archive model activated — plan, apply, relaunch.
-  // D308: the Archive's delete door.
+
   "version-archive": ["plan-version-bump", "apply-version-bump", "plan-runtime-version", "apply-runtime-version", "delete-archived-run"],
   explorer: ["apply-explorer-edit"],
 } as const;
@@ -432,7 +404,7 @@ describe("control-command-single-path", () => {
     assert.deepEqual(versionless, []);
   });
 
-  it("dispatches every D95 family/action to a typed result — active arms execute, later arms are capability-unavailable with zero side effects", () => {
+  it("dispatches every command family/action: active arms execute and unavailable arms have zero effects", () => {
     const harness = createHarness();
     const seen: string[] = [];
     for (const fixture of CURRENT_COMMAND_FIXTURES) {
@@ -465,25 +437,7 @@ describe("control-command-single-path", () => {
     assert.deepEqual([...new Set(seen)].sort(), [...registry, "version-archive/relaunch-archived-run"].sort(), "the fixture corpus must cover every active and historical family/action");
   });
 
-  /*
-   * D233 INVERTED THIS CASE. It used to read *"cancel conflicts on drift,
-   * rename/hide do not"* and asserted `applied` for a rename and a hide sent at
-   * version 999 — the CAS hole, pinned as a feature under the heading "scopes
-   * CAS to the real race families".
-   *
-   * There is no such scoping. Presentation is exempt from a STATE precondition
-   * (a name is legal on a run in any lifecycle) and that is a different
-   * exemption from being exempt from the version check: a rename carries a
-   * value the operator authored, so a stale one silently discards somebody's
-   * edit and reports "Recorded." Every run verb now CASes the caller's value,
-   * which is the rule with no exceptions a reviewer can actually check.
-   *
-   * The verbs the case walks moved twice since. D234 retired `hide`/`unhide`,
-   * and `bump` — the one arm D233's own record left open, because it CASed its
-   * OWN re-read rather than the caller's — joined the rule here on D233's
-   * reasoning, which is why the case now walks the whole live run vocabulary
-   * instead of a sample of it.
-   */
+
   it("CASes every run verb against the caller's version — presentation included", () => {
     const harness = createHarness();
     assert.equal(harness.database.authority.runs.enqueue(QUEUED_RUN).state, "inserted");
@@ -508,7 +462,7 @@ describe("control-command-single-path", () => {
       ...base, commandId: nextCommandId(), type: "bump",
       target: { runId: UUID_2, expectedVersion: 999 },
     });
-    assert.equal(staleBump.state, "conflict", "bump CASes the caller's value too (D233's rule)");
+    assert.equal(staleBump.state, "conflict", "bump CASes the caller's value");
     assert.equal(
       harness.database.authority.runs.get(UUID_2)?.envelope.priority,
       QUEUED_RUN.envelope.priority,

@@ -1,31 +1,4 @@
-/**
- * `workflow:separations/match-termination-type` — §4a's refusal, as a real
- * node.
- *
- * The mapping is pure (`src/domain/separations/termination-type.ts`); this
- * contract is what makes an unmapped type a **run outcome** instead of a
- * thrown derivation. That distinction is the whole reason it is a task and not
- * a fold inside the descriptor's `derive`: a `derive` produces a terminal
- * result and has nowhere to put "this run refuses, and here is the closed code
- * and the verbatim value" — but a task does, and its `FailureRecord.code` is
- * the durable fact an operator queries on.
- *
- * It is the `separations` pure workflow mini-store's first task
- * (`separations.md` §2.5): sessionless, artifact-free, provider-free, a fold
- * over a prior node's output. The shape is `person-lookup`'s
- * `read-active-status`.
- *
- * ## Two inputs, and the second one is not decoration
- *
- * The task takes the verbatim type AND the complete option list the run
- * actually observed. The option list is checked against the captured one FIRST,
- * so §4a's accepted operational cost ("if Kuali adds or renames an option, runs
- * on that option fail until the map is extended") fires on the FIRST run that
- * stands in front of a changed control — not on the first run that happens to
- * select the new option. Without it, an added option is invisible until
- * somebody uses it, which is exactly the shape of failure §4a exists to
- * prevent.
- */
+/** Compare the complete observed options so a changed control refuses immediately. */
 import { z } from "zod";
 import { taskId } from "../../../rules/identity/ids.js";
 import {
@@ -67,11 +40,7 @@ export const SeparationsMatchTerminationType = defineTaskContract({
     kind: "none",
     reason: "a pure fold over the separation document this run already read",
   },
-  /**
-   * A pure transform can never be fresher than its inputs, so it carries no
-   * freshness budget of its own; ref workflow-model §5.5 ages the Kuali checkpoint that
-   * feeds it. `Infinity` is written explicitly for that reason.
-   */
+    /* A pure transform can never be fresher than its inputs, so it carries no freshness budget of its own. */
   freshness: { defaultMaxAgeMs: Number.POSITIVE_INFINITY, defaultOverride: "forbidden" },
   provenance: { default: "derived" },
   scenarios: [

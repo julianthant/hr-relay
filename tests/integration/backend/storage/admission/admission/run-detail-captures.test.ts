@@ -8,8 +8,7 @@ import { createReceiptService } from "../../../../../../src/backend/runs/trust/r
 import { buildTrustSection } from "../../../../../../src/backend/runs/queries/run-trust.js";
 import { readDiagnosticBundleAttachment, prepareLiveDiagnosticArtifactLease } from "../../../../../../src/backend/runs/queries/diagnostic-bundle.js";
 import { sqliteRunReader } from "../../../../../support/helpers/canonical-run-reader.js";
-/** DCA3 cases retained by intent from 7a85bbd596f00ba4052ce1dddd13cd40c8a897ac;
- * D292 uses real SQLite bundle/index authority and the public live queries. */
+
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
@@ -159,7 +158,7 @@ function recordFailure(database: AuthorityDatabase): void {
   });
 }
 
-describe("DCA3/D292 run capture authority", () => {
+describe("run capture authority", () => {
   it("requires a live membership for generic bytes while preserving shared artifacts across archive and deletion", async () => {
     const h = harness();
     const queued = h.database.authority.runs.get(uuidOf(1)); assert.ok(queued);

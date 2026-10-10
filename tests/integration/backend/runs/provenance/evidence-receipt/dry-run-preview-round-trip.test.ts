@@ -1,23 +1,6 @@
 import { deriveRunResultDigest } from "../../../../../../src/models/run/result.js";
 import { testRunLifecycle, testWorkerPorts } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
-/**
- * D210 — a previewed run through the REAL pipeline, end to end, with nothing
- * faked but the browser, clock, ids, timers, and span sink:
- *
- *   start plan accepts a dry-run start (D209, graph-derived)
- *   → the run is enqueued with `envelope.dryRun`
- *   → worker loop → interpreter → the sequencer's REAL `executeDryRun`
- *   → an honest `transaction.previewed` span
- *   → the run ENDS AT THE NODE with a terminal record that is a PREVIEW,
- *     bound to the preview schema hash and not the workflow's declared result
- *   → the evidence receipt derives, and says `unknown` / `none` where it must.
- *
- * The zero-write claims here are asserted against the authority DATABASE — no
- * `run_operations` row for the permanent key, no `run_checkpoints` row for the
- * transaction node, no `run_terminal_outbox` beyond the one the settlement
- * itself writes — because "nothing was committed" is a statement about durable
- * rows, and a function that returned proves nothing.
- */
+
 import { fixtureDuoCeremonyGates } from "../../../../../support/helpers/duo-ceremony-fixtures.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -105,9 +88,7 @@ function harness(): Harness {
   const run = async (options: Readonly<{ dryRun?: boolean; probe?: unknown }> = {}): Promise<void> => {
     const dryRun = options.dryRun ?? true;
     assert.equal(database.authority.runs.enqueue(writeFixtureQueuedRun({ dryRun })).state, "inserted");
-    // D215 — a preview runs beat ①'s probe exactly as the real run does, so both
-    // paths need one queued. `probe` on the queue lets a case decide what the
-    // probe answers; the default is the ordinary absent read.
+
     world.probeResults.push(options.probe ?? absentProbeEvidence(WRITE_FIXTURE_NOW));
     await runWorkerLoop({
       ...testWorkerPorts(database, clock),
@@ -155,7 +136,7 @@ function terminalRun(database: AuthorityDatabase) {
   return record;
 }
 
-describe("D210 — a dry run previews its transaction node and ends there", () => {
+describe("a dry run previews its transaction node and ends there", () => {
   it("settles a previewed run with a preview record and NOTHING durable from the write half", async () => {
     const h = harness();
     await h.run();
@@ -164,12 +145,7 @@ describe("D210 — a dry run previews its transaction node and ends there", () =
     assert.equal(record.lifecycle.state, "terminal");
     assert.equal(record.lifecycle.state === "terminal" ? record.lifecycle.outcome : "", "done");
 
-    /*
-     * The terminal record is a PREVIEW, and it says so in the one place a
-     * consumer can check without trusting a field: the schema hash the bytes
-     * are bound to. A reader demanding the workflow's declared result sees a
-     * hash that is not the one it expects.
-     */
+    // The preview schema hash distinguishes rehearsal evidence from real terminal output.
     const result = h.database.authority.runResults.get(WRITE_FIXTURE_RUN_ID);
     assert.ok(result, "a settled run holds its terminal record");
     assert.equal(result.resultSchemaHash, PREVIEW_RESULT_SCHEMA_HASH);
@@ -215,20 +191,13 @@ describe("D210 — a dry run previews its transaction node and ends there", () =
       false,
       "zero commit clicks",
     );
-    /*
-     * D215 — this line used to assert the opposite, and asserting the opposite
-     * was the defect: beat ①'s probe is the real path's FIRST act and can settle
-     * the node before anything is staged, so a preview that skipped it rehearsed
-     * a path the real run never takes. The probe is read-only, and the durable
-     * assertions above are what prove the preview still wrote nothing.
-     */
+
     assert.deepEqual(
       h.world.events.slice(0, 2),
       ["probe", "prepare"],
       "the preview probes first, then stages — the real path's order",
     );
-    // The staged page WAS reached and the subject WAS observed — this is a real
-    // preview, not an early exit.
+
     assert.ok(h.world.events.includes("prepare"), h.world.events.join(","));
     assert.ok(
       h.world.events.some((event) => event.startsWith("subject-read:")),
@@ -257,12 +226,7 @@ describe("D210 — a dry run previews its transaction node and ends there", () =
     assert.equal(runEnded[0].outcome, "done");
   });
 
-  /**
-   * The receipt arm runs on the REAL `separations-kuali-finalization` workflow and
-   * the REAL sequencer, because a receipt is only meaningful over a workflow
-   * whose evidence classifications actually exist — the fixture graph declares
-   * none, and adding them would put test data in a production declaration.
-   */
+
   it("derives a receipt that says unknown and none, and never verified-done", async () => {
     const k = finalizationHarness();
     kualiOpen.push(k);
@@ -296,9 +260,7 @@ describe("D210 — a dry run previews its transaction node and ends there", () =
       checkpoints: [],
     });
 
-    // D187: the terminal-result obligation has no record to verify, so it is
-    // `unknown` — the honest verdict, and the one that makes `verified-done`
-    // structurally unreachable.
+
     const terminalCheck = receipt.verification
       .find(({ obligation }) => obligation === "completion.terminal-result");
     assert.ok(terminalCheck);
@@ -309,8 +271,7 @@ describe("D210 — a dry run previews its transaction node and ends there", () =
     assert.ok(warning, "a preview is a load-bearing uncertainty, not a footnote");
     assert.equal(warning.loadBearing, true);
     assert.match(warning.summary, /No external write was attempted/);
-    // The `would-prepare` half of D215's branch: this preview reached a staged
-    // page and read a subject, and the warning says which.
+
     assert.match(warning.summary, /staged its page and observed subject match/);
 
     assert.equal(receipt.result, "partial");
@@ -320,18 +281,7 @@ describe("D210 — a dry run previews its transaction node and ends there", () =
     assert.ok(receipt.input.length > 0);
   });
 
-  /**
-   * The OTHER receipt arm, and the reason it needed its own case: D215's
-   * `DRY_RUN_PREVIEW` summary BRANCHES on the preview outcome, and until this
-   * test only the `would-prepare` branch was ever executed. An
-   * `already-present` preview staged no page and read no subject, so quoting a
-   * subject verdict would be quoting a fact nobody observed — the warning must
-   * say what the preview actually reached, which is its probe.
-   *
-   * Everything else about the receipt is identical to the arm above, and that
-   * is the claim being pinned: the operator-facing verdict of a preview does
-   * not improve because the probe settled it early.
-   */
+
   it("derives an already-present preview's receipt, naming the probe rather than a subject", async () => {
     // A document whose persisted finalization ALREADY equals all twelve values
     // this run would write is exactly the `already-present` subject.
@@ -391,26 +341,14 @@ describe("D210 — a dry run previews its transaction node and ends there", () =
     assert.equal(receipt.confidence, "unknown");
     assert.deepEqual(receipt.output, [], "a preview produced no workflow output");
 
-    // And the durable half, because a receipt is a projection and this program
-    // asserts absence against the database: an already-present PREVIEW records
-    // neither the observed-present intent nor the settlement checkpoint a real
-    // already-present run would.
+
     const footprint = finalizationDurableFootprint(k);
     assert.equal(footprint.intent, undefined);
     assert.equal(footprint.checkpoint, undefined);
     assert.deepEqual(footprint.outboxes, []);
   });
 
-  /**
-   * D215 — the OTHER subject shape, and the reason the fix exists. The ordinary
-   * separations subject has nothing pending, so beat ①'s probe settles the node
-   * before any page is staged; the old preview evaluated `prepare` regardless and
-   * reported a refusal the real run would never produce. A rehearsal that fails
-   * where the performance succeeds is a false rehearsal.
-   *
-   * The honest preview is an OUTCOME, not a refusal: the run still ends `done` at
-   * the node with a preview record, and it still writes nothing.
-   */
+
   it("previews an already-present subject as an OUTCOME, staging nothing and writing nothing", async () => {
     const h = harness();
     await h.run({ probe: { state: "present", proof: { transactionId: "T900001" } } });
@@ -425,9 +363,7 @@ describe("D210 — a dry run previews its transaction node and ends there", () =
     assert.deepEqual(preview.preview.outcome, { state: "already-present", proofSource: "live-probe" });
     assert.equal(preview.externalCommit, "none");
 
-    // Nothing was staged, and — the load-bearing half — nothing became durable.
-    // A REAL already-present settlement writes a checkpoint and an
-    // observed-present intent; a preview of one writes neither.
+
     assert.deepEqual(h.world.events, ["probe"], "the probe settled it; no page was ever staged");
     assert.equal(
       h.database.authority.writeIntents.findByPermanentKey("ucpath", WRITE_FIXTURE_KEY),
@@ -453,12 +389,7 @@ describe("D210 — a dry run previews its transaction node and ends there", () =
     );
   });
 
-  /**
-   * D215's fail-loud half. The real path refuses to fence on an indeterminate
-   * probe, so the preview refuses too: a rehearsal that answered where the real
-   * run stops is the same defect from the other side, and staging a page the
-   * real run would never have staged is exactly what this arm is fixing.
-   */
+
   it("refuses the preview when the probe cannot answer, rather than staging anyway", async () => {
     const h = harness();
     await h.run({
@@ -482,11 +413,7 @@ describe("D210 — a dry run previews its transaction node and ends there", () =
     );
   });
 
-  /**
-   * The §9.9 D-guard, kept: the arm that fences and clicks must never accept a
-   * dry run. It is the one refusal that stands between a preview request and a
-   * real HR write, and the preview arm landing does not retire it.
-   */
+
   it("keeps executeTransaction refusing a dry run, with zero durable footprint", async () => {
     const k = finalizationHarness();
     kualiOpen.push(k);
@@ -534,9 +461,7 @@ describe("D210 — a dry run previews its transaction node and ends there", () =
     assert.ok(result);
     assert.notEqual(result.resultSchemaHash, PREVIEW_RESULT_SCHEMA_HASH);
 
-    // And the factory refuses to mint a preview record for that run's envelope,
-    // even handed a structurally valid preview: `envelope.dryRun` is the one
-    // durable record of what was asked for, and it says no.
+
     assert.throws(
       () => buildRunPreviewResult(
         writeFixtureDescriptor,

@@ -1,21 +1,4 @@
-/**
- * D253 — `settleCommandResult`, the one fold every command-issuing surface
- * reads a result through.
- *
- * Every arm of `CommandResultSchema` is pinned, and each result is parsed
- * THROUGH the schema first: a fold tested against hand-built objects is a fold
- * tested against a shape the wire may not produce.
- *
- * Track D row D3 widened the refused arms with the server's OWN facts —
- * `message` verbatim, plus `code` or `currentVersion` — so that a surface which
- * draws a refusal in its own components (a `Refusal` with a code chip, a
- * `Banner` with a version meta line) can stop taking the union apart to get
- * them back. Two of those facts are load-bearing and get their own cases:
- * `message` must be the wire's sentence UNCOMPOSED (seven surfaces print it and
- * the parity corpus photographs one of them), and every `code` the kernel can
- * send must survive the fold, because a code that silently vanished is a bug
- * report nobody can file.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { CommandRejectionCodeSchema, CommandResultSchema } from "../../../../../src/rules/commands/commands.js";
@@ -35,7 +18,7 @@ const conflictOf = (currentVersion: number, message = CONFLICT_MESSAGE) =>
 const rejectedOf = (code: string, message = REJECTED_MESSAGE) =>
   settle({ state: "rejected", commandId: COMMAND_ID, code, message });
 
-describe("settleCommandResult (D253)", () => {
+describe("settleCommandResult", () => {
   it("settles both landing arms as applied, and says which was a replay", () => {
     const targets = [{ family: "run", runId: RUN_ID }];
     assert.deepEqual(
@@ -68,9 +51,7 @@ describe("settleCommandResult (D253)", () => {
   });
 
   it("keeps a conflict's `message` UNCOMPOSED — it is the wire's sentence, not the fold's", () => {
-    // Seven surfaces print this string where they used to print `result.message`,
-    // and the parity corpus photographs one of them. Composing into it here
-    // would move a reference nobody re-froze.
+    // Keep the visible refusal string exact; it is part of the frozen accessibility corpus.
     const settlement = conflictOf(2);
     if (settlement.kind !== "refused" || settlement.reason !== "conflict") {
       assert.fail("a conflict must settle as a conflict refusal");
@@ -87,17 +68,14 @@ describe("settleCommandResult (D253)", () => {
       kind: "refused",
       reason: "rejected",
       problem: REJECTED_MESSAGE,
-      // Nothing is added to a sentence that already names what was refused and
-      // why, so the one-slot text and the verbatim text are the same string.
+
       message: REJECTED_MESSAGE,
       code: "invalid-state",
     });
   });
 
   it("carries EVERY rejection code the kernel can send, verbatim", () => {
-    // A code the fold dropped is a refusal an operator cannot quote. Driving
-    // the enum itself means a code added to the kernel is covered here the day
-    // it lands, rather than the day somebody remembers this file.
+
     for (const code of CommandRejectionCodeSchema.options) {
       const settlement = rejectedOf(code);
       assert.equal(
@@ -119,9 +97,7 @@ describe("settleCommandResult (D253)", () => {
   });
 
   it("answers `refused` for BOTH refusal arms and `applied` for neither", () => {
-    // The whole point of the fold in one assertion: the verdict is a function
-    // of the arm, and a surface reading `kind` cannot let one refusal fall
-    // through to the path the other one blocks.
+
     assert.deepEqual(
       [
         settle({ state: "applied", commandId: COMMAND_ID, affectedTargets: [{ family: "run", runId: RUN_ID }] }).kind,
@@ -138,21 +114,7 @@ describe("settleCommandResult (D253)", () => {
   });
 });
 
-/**
- * THE TWO STAGES A COMMAND CAN DIE AT, and why they may not share a title.
- *
- * `Nothing was recorded` is a claim about the server. The client may make it
- * before the envelope leaves (nothing was composed, so nothing was sent) and
- * when the server itself answered with a refusal. It may NOT make it from a
- * `.catch`: by then the POST is on the wire, the fetch can fail after the
- * kernel wrote the row, and the guards in the fulfilment arm throw only after a
- * result came back. An operator told "nothing was recorded" re-issues a command
- * that may already have landed — the duplicate HR transaction the whole
- * fail-loud rule exists to prevent.
- *
- * Both arms are pinned because the defect was that they were IDENTICAL, and the
- * cheapest way to reintroduce it is to copy one title onto the other.
- */
+// Before dispatch the client can prove nothing was sent; after dispatch it must preserve uncertainty.
 describe("commandFailureToast — where the command died decides what may be claimed", () => {
   it("says nothing was SENT before dispatch, carrying the client's own reason verbatim", () => {
     const toast = commandFailureToast({ stage: "before-dispatch", reason: "a rename needs a name." });

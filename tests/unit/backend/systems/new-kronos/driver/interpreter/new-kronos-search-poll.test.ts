@@ -1,46 +1,4 @@
-/**
- * §9.28 review fixes — the INTERPRETER half of the render-complete read.
- *
- * `new-kronos-search-render.test.ts` pins the pure verdict
- * (`judgeSearchRender` / `slatRenderComplete` / `parseSlatIdentity`). Nothing
- * pinned the poll that CONSUMES it, and the poll carries four decisions the
- * verdict cannot express:
- *
- *  - a `hydrating` render resets the sentinel streak and keeps polling inside
- *    the caller's own bound;
- *  - the bound elapsing with incomplete rows on screen is a BY-NAME refusal,
- *    never `no-signal` — the search answered;
- *  - rows that disappear again leave nothing hydrating, so the bound elapsing
- *    there IS `no-signal`;
- *  - and the poll reads TWO roots, only one of which may exist.
- *
- * The last one is the review finding this file was opened for. Measured against
- * Playwright 1.61.1 (this repo's pinned version, `about:blank` with one
- * top-level `[role='menuitemradio']` and NO iframe):
- *
- *   frame count()       => 0
- *   frame evaluateAll() => THREW: locator.evaluateAll: Failed to find frame for
- *                          selector "iframe[name^=\"portal-frame-\"] >>
- *                          internal:control=enter-frame >> [role='menuitemradio']"
- *
- * `Locator.count()` answers 0 for a missing frame; `evaluateAll` resolves the
- * frame chain in the main world and THROWS. The `roots` list always tries the
- * `portal-frame-` locator first, and the store's own live map records a real
- * state with no named frames at all — the panel renders TOP-LEVEL after a
- * timecard navigation, i.e. the second `searchEmployee` of any session. So the
- * moment the poll's read became an `evaluateAll`, that state stopped falling
- * through to the `page` root and started aborting on a raw Playwright error
- * before the sentinel logic was ever consulted.
- *
- * Pinned RED before the fix: case (d) below failed with
- * `Failed to find frame for selector …` instead of resolving the top-level row.
- *
- * The fake page is deliberately thin but not a lie: `evaluateAll` runs the
- * driver's REAL callback over element stubs, so the aria/text/card mapping in
- * `readSlatFacts` is exercised rather than assumed, and the stub refuses an
- * unexpected card selector by name instead of quietly reading `cardRendered:
- * false`.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import type { Locator, Page } from "playwright";
@@ -59,7 +17,7 @@ const FRAME_NOT_FOUND = `Failed to find frame for selector "iframe[name^=\\"port
 
 /** One rendered row as the DOM holds it, before `readSlatFacts` interprets it. */
 interface FakeSlat {
-  /** `null` reproduces live 2026-08-27: the row-level aria-label is toggle-gated and absent. */
+
   readonly ariaLabel: string | null;
   readonly text: string;
   /** Whether the `krn-slats-tabular-data` card has been transcluded (stage 3). */
@@ -114,16 +72,7 @@ interface FakePage {
   readonly polls: () => number;
 }
 
-/**
- * A scripted stand-in for the Employee Search page.
- *
- * The clock advances ONE poll's worth every time the search loop touches the
- * FRAME root's slat locator — that access is the loop's first act on every
- * iteration, under both the pre-fix shape (`evaluateAll` straight away) and the
- * post-fix one (`count()` first), and consecutive frame-slat accesses within
- * one iteration coalesce. Nothing else moves the clock, so `exactlyOne` and the
- * context probe resolve at `waitedMs: 0` and only the search bound is spent.
- */
+
 function fakeSearchPage(script: FakeSearchScript, clock: ReturnType<typeof manualClock>): FakePage {
   let pollIndex = -1;
   let frameSlatCounted = false;
@@ -132,13 +81,7 @@ function fakeSearchPage(script: FakeSearchScript, clock: ReturnType<typeof manua
     pollIndex += 1;
     clock.advanceMonotonic(script.advanceMsPerPoll);
   };
-  /**
-   * The search loop's first act on every iteration is a read of the FRAME
-   * root's slat locator — a `count()` after the fix, a bare `evaluateAll()`
-   * before it. Advancing on the `count()`, and on an `evaluateAll()` that no
-   * `count()` preceded, makes one advance per iteration under BOTH shapes, so
-   * the same script drives the RED run and the GREEN one.
-   */
+  // Advance the clock on each frame-root slat read, matching the loop polling boundary.
   const frameSlatCount = (): void => { beginPoll(); frameSlatCounted = true; };
   const frameSlatEvaluate = (): void => {
     if (!frameSlatCounted) beginPoll();
@@ -251,9 +194,7 @@ function driverFor(script: FakeSearchScript): {
 
 describe("the Employee Search poll — the interpreter half of the render-complete read (§9.28)", () => {
   it("(d) reads the TOP-LEVEL rows when the portal frame is absent, instead of dying on evaluateAll", async () => {
-    // The live state the store's map records: after a timecard navigation the panel renders
-    // top-level with NO named frames on the page. RED before the fix — the first poll tried
-    // `evaluateAll` on the missing frame and threw `Failed to find frame for selector …`.
+
     const { search, polls } = driverFor({
       portalFrame: false,
       panelRoot: "top",
@@ -318,8 +259,7 @@ describe("the Employee Search poll — the interpreter half of the render-comple
       (error: unknown) => {
         assert.ok(error instanceof Error);
         assert.equal(error.name, "NewKronosDriverError");
-        // The count of rows, the count that never completed, the card selector, and the
-        // last-observed labels — everything the operator needs to see it was mid-render.
+
         assert.match(error.message, /rendered 2 result row\(s\) but 1 of them never completed/u);
         assert.match(error.message, /krn-slats-tabular-data/u);
         assert.match(error.message, /last observed \[""\]/u);

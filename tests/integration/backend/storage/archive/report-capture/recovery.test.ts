@@ -40,8 +40,7 @@ it.each([false, true])("transfers a frozen terminal parent/child tree; dependenc
     assert.deepEqual(transferArchiveReport(storage, reports[1], snapshots[1].run.version), reports[1]);
     assert.equal(f.db.authority.runs.get(childId), undefined);
     assert.equal(f.db.authority.deletedRuns.get(childId), undefined);
-    // Both reports were already verified. The shared cleanup must preserve the
-    // frozen parent's evidence rather than require a divergent recapture.
+
 
     assert.deepEqual(transferArchiveReport(storage, reports[0], snapshots[0].run.version), reports[0]);
     assert.equal(f.db.authority.runs.get(parentId), undefined);

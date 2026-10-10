@@ -121,12 +121,7 @@ export class RecoveryStopProofStore {
     return this.#consumeIssuedProof(proof);
   }
 
-  /**
-   * Consume the exact persisted proof after comparing a fresh live observation
-   * under restore admission. `recordedAt` is deliberately excluded from the
-   * live comparison: it says when the second observation happened, while the
-   * proof fingerprint remains bound to the exact issued snapshot on disk.
-   */
+  // Restore consumes an exact persisted proof after a fresh observation under stopped admission.
   consumeAgainstLiveSnapshot(
     input: unknown,
     liveInput: unknown,

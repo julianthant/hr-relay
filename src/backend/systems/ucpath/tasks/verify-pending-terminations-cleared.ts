@@ -4,13 +4,7 @@ import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.j
 import { ucpathDriver } from "../driver-declaration.js";
 import { firstDisagreeingName, ucpathPendingSweepVerdict } from "../termination-verdict.js";
 
-/**
- * The sweep's beat-⑥ read-back: the grid, read again after the Delete, shows no
- * in-progress termination rows for this person.
- *
- * Anything else parks. "We could not check whether the rows are gone" and "the
- * rows are gone" are the two answers a delete verifier must never merge.
- */
+
 export const verifyPendingTerminationsClearedTask = defineTask(
   ucpathDriver,
   UcpathVerifyPendingTerminationsCleared,

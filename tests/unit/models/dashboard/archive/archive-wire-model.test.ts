@@ -1,18 +1,4 @@
-/**
- * D274's minor/major bump refinement, on the WIRE schemas (unit F9c).
- *
- * `VersionBumpPlanSchema` and `VersionBumpApplicationSchema` (ref
- * `src/models/archive/model.ts`) refuse a minor bump that lists an archive
- * candidate, a blocker, or an archived run — D274's rule that a minor bump
- * archives nothing and cannot be blocked. F10 found that the WIRE schemas
- * this module serves to the browser (`VersionBumpPlanWireSchema`, and the
- * sweep — the wire's shape for an applied bump) carried no matching
- * refinement, so the same contradiction the durable record refuses to store
- * was representable on the wire. This file pins both directions: the
- * violating payload is refused, and every legitimate shape (major with
- * candidates/blockers, minor with none, a generation-1 sweep with no change
- * record at all) still parses.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { ArchiveSweepWireSchema, SavedArchiveReportWireSchema, VersionBumpPlanWireSchema } from "../../../../../src/models/dashboard/archive.js";
@@ -88,7 +74,7 @@ const BASE_SWEEP = {
   fromVersions: [] as number[],
 } as const;
 
-describe("D274 mirrored onto the wire (unit F9c, found by F10)", () => {
+describe("minor and major bump semantics on wire schemas", () => {
   it("refuses a minor plan that lists an archive candidate", () => {
     const result = VersionBumpPlanWireSchema.safeParse({
       ...BASE_PLAN,

@@ -9,13 +9,10 @@ import { InvalidNativePickerHintError } from "../native-path-picker.js";
 import { wireError } from "./failure-status.js";
 
 export function registerSettingsRoutes(app: DashboardApp, deps: SettingsRouteDeps): void {
-  /**
-   * GET-only compatibility facts and Workflow capabilities. The System hosts
-   * Settings page is retired; this wire remains read-only for existing consumers.
-   */
+  // Compatibility facts and workflow capabilities are read-only.
   app.get("/api/v1/settings/facts", (c) => c.json(buildSettingsFacts(deps.settings)));
 
-  // DCC3: values, provenance and editability are server-owned; this route has no mutation arm.
+  // values, provenance and editability are server-owned; this route has no mutation arm.
   app.get("/api/v1/settings/editable", (c) => c.json(buildSettingsEditor(deps.settingsEditor)));
 
   app.get("/api/v1/settings/storage-relocation", (c) => {

@@ -4,14 +4,7 @@ import { ErrorCodeSchema } from "../../rules/identity/ids.js";
 
 export const DashboardWireVersionSchema = z.literal(1);
 export const AppVersionSchema = z.string().regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/).brand<"AppVersion">();
-/**
- * The app build a RUN carries (D179), read forward. Charter §25 stamps the app
- * version on every run at enqueue because it is the other half of the archive
- * key; runs enqueued before that stamp existed carry none, and the surface says
- * so with its reason rather than borrowing the build it is being served by.
- * Serving the CURRENT build here is what made the run-identity "stale app"
- * comparison structurally unable to fire.
- */
+/** The app build a RUN carries, read forward: runs enqueued before the stamp existed carry none, and the surface says so with its reason. */
 export const RunAppVersionSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("present"), value: AppVersionSchema }),
   z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),

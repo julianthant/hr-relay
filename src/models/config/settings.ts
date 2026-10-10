@@ -161,10 +161,7 @@ export function derivePersistedSettingsFingerprint(settings: unknown): string {
   ));
 }
 
-/**
- * The one durable `config/settings.json` envelope. Revision and both identities
- * live beside the sparse overrides so a restart cannot invent any of them.
- */
+/** The one durable `config/settings.json` envelope: revision and both identities live beside the sparse overrides, so a restart cannot invent any of them. */
 export const SettingsFileRecordSchema = z.strictObject({
   revision: PositiveIntSchema,
   settingsSchemaHash: FingerprintSchema,
@@ -243,7 +240,7 @@ export const SettingsApplyInputSchema = z.strictObject({
   patch: SettingsPatchSchema,
 });
 
-/** D331.5's complete caller-actionable settings refusal vocabulary. */
+/** The complete caller-actionable settings refusal vocabulary. */
 export const SettingsApplyRejectionCodeSchema = z.enum([
   "schema-mismatch",
   "patch-fingerprint-mismatch",

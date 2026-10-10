@@ -32,16 +32,11 @@ const BASE_COMMAND = {
 
 const RUN_TARGET = { runId: UUID_2, expectedVersion: 1 };
 const INTAKE_TARGET = { intakeSessionId: UUID_3, expectedVersion: 1 };
-/** Derived, never hand-written — `sourceColumnId("Employee ID#", 1)` (D170). */
+
 const SOURCE_COLUMN_ID = sourceColumnId("Employee ID#", 1);
 const WORKER_TARGET = { workerId: "worker-1", expectedVersion: 1 };
 
-/**
- * Charter §25's change record, as every bump fixture spells it. `commit` takes
- * its ABSENT arm on purpose: the union's two halves both have to be exercised
- * somewhere, and an absent commit with a reason is the arm a bump nobody
- * tagged actually takes.
- */
+
 export const VERSION_BUMP_CHANGE_RECORD = {
   kind: "minor",
   what: "onboarding read step now binds the empl record",

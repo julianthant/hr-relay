@@ -4,14 +4,7 @@ import { createTimelineRepository } from "../../../../../../src/backend/storage/
 import { createTimelineEmitter } from "../../../../../../src/backend/storage/events/timeline-emitter.js";
 import { IsoInstantSchema } from "../../../../../../src/rules/identity/ids.js";
 import { RunSessionRecordSchema } from "../../../../../../src/models/run/session.js";
-/**
- * THE run/queue projection (ref dashboard-surfaces §2.2-2.3, D81 §10.1): the emit → JSONL →
- * fold → DashboardDayWire round-trip over a seeded world with
- * delegated, gated, failed, and terminal rows; count equality by
- * construction; runs_view persistence; apply-failure degradation with the
- * guarded rebuild-from-native-jsonl recovery; and loud refusal while
- * degraded.
- */
+
 import { ContextDataSectionSchema, ObservedLogRowWireSchema } from "../../../../../../src/models/dashboard/run-detail.js";
 import assert from "node:assert/strict";
 import { appendFileSync, mkdirSync } from "node:fs";
@@ -169,7 +162,7 @@ function seedWorld(w: DashboardWorld): void {
   });
 }
 
-describe("THE run/queue projection (D81)", () => {
+describe("THE run/queue projection", () => {
   it("shows the six declared Separations steps in the queue pipeline", () => {
     const w = world({ descriptors: { resolve: () => separationsDescriptor } });
     queuedEventOf(w, { seed: 1, workflow: "separations", lifecycle: { state: "running", ...CLAIM }, claimGeneration: 1, version: 2 });
@@ -209,11 +202,9 @@ describe("THE run/queue projection (D81)", () => {
     const day = w.projection.buildDashboardDayWire(DAY);
     DashboardDayWireSchema.parse(day);
 
-    // D234: EVERY run is rendered — there are runs and archived runs, and no
-    // third class. Members 7/8 ride flat for layout but are contained in the
-    // operation's rollup, not in any count.
+
     const runIds: readonly string[] = day.queueSurfaces.map(({ runId }) => runId);
-    assert.equal(runIds.includes(uuidOf(5)), true, "run 5 used to be seeded hidden; D234 retired hiding");
+    assert.equal(runIds.includes(uuidOf(5)), true, "run 5 remains visible with every current run");
     assert.equal(runIds.includes(uuidOf(7)), true);
     assert.equal(day.queueSurfaces.length, 9);
 
@@ -246,31 +237,17 @@ describe("THE run/queue projection (D81)", () => {
     const failed = day.queueSurfaces.find(({ runId }) => runId === uuidOf(4));
     assert.equal(failed?.availableSections.includes("failure"), true);
     assert.equal(day.descriptorHash, DESCRIPTOR_SET_HASH);
-    // D179: the row carries the build the RUN was enqueued under. The harness
-    // seeds runs with no stamp (they predate D179 exactly as the two real runs
-    // in authority do), so every row reports the absence with its reason
-    // rather than borrowing the build serving the page.
+
     assert.equal(
       day.queueSurfaces.every(({ appVersion }) => appVersion.state === "absent"),
       true,
     );
 
-    /*
-     * Ref frontend-backend-integration §8.5 — this world registers NO descriptor (the same reason its
-     * pipeline shows only observed nodes), so no row may draw a control: the
-     * `WorkflowActionPolicy` is the workflow's own statement of what it offers,
-     * and a build that cannot read it must not guess a default set onto a run
-     * it cannot describe. The populated case is the next test.
-     */
+
     assert.equal(day.queueSurfaces.every(({ actions }) => actions.length === 0), true);
   });
 
-  /**
-   * The row's controls, joined from the run's OWN descriptor (ref frontend-backend-integration §8.5).
-   * `queue-row-actions.test.ts` owns the per-status table; what this projection
-   * owes is the join — the right policy, the right lifecycle facts, and the
-   * row's own revision as every descriptor's CAS target.
-   */
+
   it("serves each row the controls its descriptor enables, bound to that row's revision", () => {
     const w = world({ descriptors: { resolve: () => personLookupDescriptor } });
     seedWorld(w);
@@ -280,31 +257,11 @@ describe("THE run/queue projection (D81)", () => {
       (day.queueSurfaces.find(({ runId }) => runId === uuidOf(seed))?.actions ?? []).map(({ key }) => key);
     assert.deepEqual(actionKeys(1), ["bump", "cancel", "rename"], "the queued row");
     assert.deepEqual(actionKeys(2), ["cancel", "rename"], "the running row");
-    // D308's 🗑 is last, so the footer's most destructive control is furthest
-    // from the click an operator makes by reflex.
+
     assert.deepEqual(actionKeys(3), ["rerun", "rename", "delete"], "the done row");
     assert.deepEqual(actionKeys(4), ["rerun", "rename", "delete"], "the failed row");
     assert.deepEqual(actionKeys(9), ["cancel", "rename"], "the awaiting-approval row");
-    // A settled delegated member carries no re-run: the kernel refuses generic
-    // retry for a child ("child retries route through their delegation edge
-    // policy"), so a `↺` there would be a button that always refuses. The check
-    // reads AUTHORITY's `envelope.parent`, which is the same fact the kernel
-    // decides on — member 8 is the seeded member whose durable record carries it.
-    //
-    // It carries no RENAME either, and that half is a row-shape decision rather
-    // than a kernel one (D233): `displayName` replaces the title on the row it
-    // rides, so naming a member would put free text where the group's list
-    // prints the person that item is about. This row is the projector's own
-    // proof of it — `isMember` is read from the same `operation-member` shape
-    // the surface kind comes from.
-    // A settled member is the one row this projection serves NO control for at
-    // all — and that is the honest answer, not a gap: every verb it could draw
-    // is one the kernel or the row shape refuses. D308's `delete` did NOT
-    // change that. It is the verb most tempting to put here (the member is
-    // terminal, and 🗑 is exactly what D234 took away), but `executeDelete`
-    // refuses any run whose `envelope.parent` is set — "delete the group" —
-    // because the kernel takes the tree leaves-first from its anchor. Row 6,
-    // the operation, is where that door is.
+
     assert.deepEqual(actionKeys(8), []);
     // The operation's cancel is the TREE cancel, keyed so the footer titles it
     // with its blast radius.
@@ -329,14 +286,10 @@ describe("THE run/queue projection (D81)", () => {
   });
 
   it("projects a worker card from its authority lease, with the sessions its spans hold open", () => {
-    // D248: the lease is the card. The spans supply what the lease cannot —
-    // the browser sessions this worker is holding, and the trace id that joins
-    // it to a queue row.
+
     const w = world();
     w.authority.putWorkerLease(workerLeaseOf({
-      // The dashboard's current person-lookup descriptor declares CRM +
-      // UCPath. This launch-time lease deliberately differs so a BFF restart
-      // cannot silently rewrite what the already-running worker loaded.
+      // Keep launch-time lease requirements different from the current registry to detect accidental rewriting.
       browserSystems: ["kuali"],
       lifecycle: {
         state: "busy",
@@ -368,7 +321,7 @@ describe("THE run/queue projection (D81)", () => {
     assert.equal(card.startedAt, instantOffsetOf(0));
     assert.equal(card.endedAt, undefined);
     // The CAS basis a `stop-worker` cites is the lease's version, never the
-    // span counter beside it (R7-4).
+    // span counter beside it.
     assert.equal(card.leaseVersion, 7);
     assert.notEqual(Number(card.leaseVersion), Number(card.revision));
     assert.deepEqual(card.browsers, [
@@ -443,9 +396,7 @@ describe("THE run/queue projection (D81)", () => {
     assert.equal(stopped.state, "stopped");
     assert.equal(stopped.stopReason, "operator");
     assert.equal(stopped.endedAt, instantOffsetOf(0, 60_000));
-    // A worker that was ASKED to stop and one whose process died are two
-    // different mornings — and neither still holds a browser, whatever the
-    // absence of a close event says.
+
     assert.equal(failed.state, "failed");
     assert.equal(failed.stopReason, "crashed");
     assert.deepEqual(stopped.browsers, []);
@@ -453,11 +404,7 @@ describe("THE run/queue projection (D81)", () => {
   });
 
   it("keeps a re-run node's chip on the CURRENT run attempt when the span path repeats", () => {
-    // A node re-run under a LATER run attempt emits the identical
-    // `<trace>/<node>#<taskAttempt>` path (the suffix is the task attempt, not
-    // the run attempt). Folding on the path alone let attempt 2's start
-    // collide with attempt 1's entry, so a terminal run rendered its last step
-    // as `active` forever. Observed live on the Phase-1 exit run.
+
     const w = world();
     queuedEventOf(w, { seed: 1 });
     claimEventOf(w, 1);
@@ -480,10 +427,7 @@ describe("THE run/queue projection (D81)", () => {
     const step = row.pipeline.find((entry) => entry.id === "cross-verify");
     assert.equal(step?.state, "done");
 
-    // Both folded spans are real history and both must render. The timeline id
-    // seeded on the span path ALONE collapsed them to one uuid, so the strict
-    // wire schema refused the whole detail ("timeline note ids must be unique")
-    // and the Log Panel could not open. Observed live on the Phase-1 exit run.
+
     const detail = buildRunDetail({ runReader: w.runReader, stateRoot: w.stateRoot, projection: w.projection, authority: w.authority, descriptors: { resolve: () => undefined } }, uuidOf(1));
     const crossVerify = detail.timeline.events.filter((event) => event.label === "cross-verify");
     assert.equal(crossVerify.length, 2);
@@ -492,10 +436,7 @@ describe("THE run/queue projection (D81)", () => {
   });
 
   it("stays live over observed-data and transaction-fence beats and rebuilds identically", () => {
-    // The observed-log arm is IGNORED BY NAME, not folded into a span it is
-    // not. What must be true either way is that a stream carrying it cannot
-    // degrade the projection: a degraded ingest schedules the guarded rebuild,
-    // and the rebuild would then refuse the same line by name (D218).
+
     const w = world();
     queuedEventOf(w, { seed: 1 });
     claimEventOf(w, 1);
@@ -599,10 +540,7 @@ describe("THE run/queue projection (D81)", () => {
     assert.equal(w.projection.health().state, "degraded");
     assert.match(w.projection.health().lastError ?? "", /no run\.queued span/);
     assert.throws(() => w.projection.buildDashboardDayWire(DAY), /degraded and refuses to serve counts/);
-    // `buildActivityReportWire` shares the same degraded-health guard as
-    // `buildDashboardDayWire` and must re-kind to the SAME typed refusal
-    // (ProjectionDegradedError, not a plain Error) so /api/v1/reports/activity
-    // and .csv answer PROJECTION_DEGRADED/retryable:true instead of a bare 500.
+
     assert.throws(
       () => w.projection.buildActivityReportWire(DAY, DAY),
       /degraded and refuses to serve activity aggregates/,
@@ -630,7 +568,7 @@ describe("THE run/queue projection (D81)", () => {
     assert.match(w.projection.health().lastError ?? "", /timeline rebuild failed/);
   });
 
-  /* ── the D218 cross-process SQLite cursor feed ──────────────────────────────────── */
+
 
   /** A raw stream line as ANOTHER process would append it — no writer, no apply. */
   function rawQueuedLineOf(w: DashboardWorld, seed: number, workflow: string): string {
@@ -652,12 +590,8 @@ describe("THE run/queue projection (D81)", () => {
     });
   }
 
-  it("folds another SQLite connection's task spans — the run enqueued after boot gets its timeline (D218)", () => {
-    // The daily-use defect this pins: the BFF enqueues a run (its own line,
-    // folded), the worker — a separate OS process — executes it, and the only
-    // place the worker's spans exist is the shared stream file. Before the
-    // tail, `row.taskSpans` stayed [] and the run detail served an empty
-    // timeline for every run enqueued after the dashboard booted.
+  it("folds another SQLite connection's task spans — the run enqueued after boot gets its timeline", () => {
+
     const w = world();
     queuedEventOf(w, { seed: 1 });
     claimEventOf(w, 1);
@@ -779,14 +713,8 @@ describe("THE run/queue projection (D81)", () => {
   });
 });
 
-/**
- * The two presentation defects the Phase-1 live exit run
- * (`4ebf7275-0158-49af-a78f-1f37948efb27`, trace `pl-000619-4ebf`) exposed,
- * pinned in the run's exact shape: `searching → cross-verify → active-status`
- * done, then `crm-dates` skipped by its own `when`, and a terminal run whose
- * execution took minutes rather than the hours a live clock kept counting.
- */
-describe("lease-only transitions reach the Session Panel without a span (D248 freshness)", () => {
+
+describe("lease-only transitions reach the Session Panel without a span", () => {
   const workerId = "person-lookup-worker-1";
   const startedAt = instantOffsetOf(0);
   const workerPath = "worker/person-lookup/person-lookup-worker-1";
@@ -873,11 +801,11 @@ describe("lease-only transitions reach the Session Panel without a span (D248 fr
     }));
     w.projection.reconcileWorkerAuthority();
     assert.equal(snapshots(w), 2);
-    // D248: a settled lease is a card only while the spans still name its worker.
+
     assert.equal(w.projection.buildDashboardDayWire(DAY).workerCards.length, 0);
   });
 
-  it("publishes a pool declaration the operator planned, which no span carries (D269)", () => {
+  it("publishes a pool declaration the operator planned, which no span carries", () => {
     const w = world();
     const plannedAt = instantOffsetOf(0, 2_000);
     w.authority.putWorkerPool({
@@ -905,7 +833,7 @@ describe("lease-only transitions reach the Session Panel without a span (D248 fr
   });
 });
 
-describe("the live exit-run presentation shapes (D123/D124)", () => {
+describe("settled run presentation retains skip reasons and measured timing", () => {
   /** Exactly the exit run's node walk, at one run attempt. */
   function seedExitRunShape(w: DashboardWorld): void {
     queuedEventOf(w, { seed: 1 });
@@ -950,8 +878,7 @@ describe("the live exit-run presentation shapes (D123/D124)", () => {
     const w = world();
     queuedEventOf(w, { seed: 1 });
     claimEventOf(w, 1);
-    // A pre-D123 span, or any emitter that recorded no reason: absence must
-    // stay absence rather than borrowing the only reason we happen to know.
+    // A missing skip reason remains absent; do not infer a familiar reason.
     taskEventsOf(w, 1, "crm-dates", "skipped");
 
     const detail = buildRunDetail(
@@ -1002,19 +929,9 @@ describe("the live exit-run presentation shapes (D123/D124)", () => {
   });
 });
 
-/**
- * The fold arms a run only reaches when something actually MOVES — a recovery
- * requeue, an operator resolving a gate, a restart closing a span it never
- * opened, a worker shutting down, a hide that emits no span at all — plus the
- * two identity refusals that keep the fold from folding two histories into one
- * row. Every one of these is a real transition the kernel already performs;
- * none of them had a projection arm pinned before D190.
- */
+
 describe("the fold arms a moving run reaches (ref dashboard-surfaces §2.2)", () => {
-  /**
-   * A worker card is its LEASE (D248); the spans are what it is holding. Both
-   * are seeded here so these arms exercise the join rather than one half.
-   */
+
   function seedWorkerSpans(w: DashboardWorld, workerId = "person-lookup-worker-1"): void {
     w.authority.putWorkerLease(workerLeaseOf({ workerId }));
     w.writer.emit({
@@ -1058,9 +975,7 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces §2.2)", ()
     assert.equal(fold?.requeues, 1);
     assert.equal(fold?.claimedBy, undefined);
 
-    // The run leaves this worker's hands. The PHASE beside it is the lease's
-    // and does not move here — the worker reports that itself, on its own
-    // heartbeat (D248).
+
     const card = w.projection.buildDashboardDayWire(DAY).workerCards[0];
     assert.equal(card.state, "idle");
     assert.deepEqual(card.currentRun, { state: "absent", reason: "no claimed run" });
@@ -1130,10 +1045,7 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces §2.2)", ()
     assert.equal(idle.state, "idle");
     assert.deepEqual(idle.currentRun, { state: "absent", reason: "no claimed run" });
 
-    // The worker's own span ending does NOT settle the card: a span is an
-    // observation and the lease is the record. The card turns `stopped` when
-    // authority says the lease did (D248) — which is also what carries the
-    // reason and the instant.
+    // Only durable lease settlement closes a worker card; ending a span is an observation.
     w.writer.emit({
       t: "span.ended", kind: "worker", ts: w.clock.now().toISOString(), workflow: "person-lookup",
       workerId: "person-lookup-worker-1", spanPath: "worker/person-lookup/person-lookup-worker-1",
@@ -1159,10 +1071,7 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces §2.2)", ()
 
   it("orders worker cards by id and draws only the workers AUTHORITY names", () => {
     const w = world();
-    // Deliberately out of order. Worker 3 holds a live lease and has opened no
-    // browser at all — a real card, with an empty tile grid. Worker 4 is the
-    // other direction: spans in the stream, no lease in authority, so it is
-    // NOT a card, because authority is what says a worker exists (D248).
+
     seedWorkerSpans(w, "person-lookup-worker-2");
     seedWorkerSpans(w, "person-lookup-worker-1");
     w.authority.putWorkerLease(workerLeaseOf({ workerId: "person-lookup-worker-3" }));
@@ -1216,11 +1125,7 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces §2.2)", ()
     taskEventsOf(w, 1, "searching");
     const before = w.changes.length;
 
-    // Archiving emits NO span, so the refresh trigger re-reads the same
-    // authority join every other path uses. It is count-bearing: the row leaves
-    // the payload, and a patch could only describe a row that is no longer
-    // there. Since D234 it is the ONLY way a run leaves the payload — the
-    // hidden-run arm this case used to walk beside it is retired.
+
     w.authority.put(runRecordOf({ seed: 1, lifecycle: { state: "terminal", outcome: "done", endedAt: instantOffsetOf(0) } }));
     w.authority.archived.add(uuidOf(1));
     w.projection.refreshRun(uuidOf(1));
@@ -1259,9 +1164,7 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces §2.2)", ()
       { day: dayOffsetOf(0), count: 2 },
       { day: dayOffsetOf(1), count: 1 },
     ]);
-    // Each workflow carries its OWN status dimension, off the same fold
-    // (R2 D5-D12): the Workflow Panel's `active | all` column and the
-    // workflow-scoped Status Bar both read these entries.
+
     assert.deepEqual(day.workflowCounts, [
       { workflowId: "person-lookup", count: 1, statusCounts: [{ status: "queued", count: 1 }] },
       { workflowId: "separations-kuali-finalization", count: 1, statusCounts: [{ status: "queued", count: 1 }] },
@@ -1273,14 +1176,8 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces §2.2)", ()
   });
 });
 
-/**
- * The four row facts that had a consumer and no producer (ref dashboard-surfaces §1.2, §9
- * D12/D13/D22/D126). Each one is a field the queue component already drew the
- * moment it arrived, so what these arms pin is where the value comes FROM —
- * and, for three of them, which absences the row must state instead of
- * inventing a value.
- */
-describe("the queue row's served facts (D12/D13/D22/D126)", () => {
+
+describe("the queue row's served facts", () => {
   /** A terminal-failed run whose failure record authority holds. */
   function seedFailed(w: DashboardWorld, seed = 4): void {
     queuedEventOf(w, { seed });
@@ -1308,7 +1205,7 @@ describe("the queue row's served facts (D12/D13/D22/D126)", () => {
     return surface;
   }
 
-  it("D13: a failed row carries its terminal failure summary VERBATIM", () => {
+  it("a failed row carries its terminal failure summary VERBATIM", () => {
     const w = world();
     seedFailed(w);
     const failure = failureRecordOf({ seed: 4, code: "CRM_UNAVAILABLE" });
@@ -1317,7 +1214,7 @@ describe("the queue row's served facts (D12/D13/D22/D126)", () => {
     assert.deepEqual(rowOf(w, 4).liveMessage, { state: "present", value: failure.summary });
   });
 
-  it("D13: a failure record authority does not hold is NAMED, never replaced by a guess", () => {
+  it("a failure record authority does not hold is NAMED, never replaced by a guess", () => {
     const w = world();
     // The failure id rides the lifecycle; nothing puts the record.
     seedFailed(w);
@@ -1346,7 +1243,7 @@ describe("the queue row's served facts (D12/D13/D22/D126)", () => {
     );
   });
 
-  it("D6: `dryRun` comes off the run envelope and is served on every row", () => {
+  it("`dryRun` comes off the run envelope and is served on every row", () => {
     const w = world();
     queuedEventOf(w, { seed: 1, dryRun: true });
     queuedEventOf(w, { seed: 2 });
@@ -1354,7 +1251,7 @@ describe("the queue row's served facts (D12/D13/D22/D126)", () => {
     assert.equal(rowOf(w, 2).dryRun, false);
   });
 
-  it("D12: only an awaiting row dates its gate, and the instant is the GATE's own", () => {
+  it("only an awaiting row dates its gate, and the instant is the GATE's own", () => {
     const w = world();
     seedWorld(w);
     const record = w.authority.getRun(uuidOf(9));
@@ -1371,7 +1268,7 @@ describe("the queue row's served facts (D12/D13/D22/D126)", () => {
     }
   });
 
-  it("D12: a parked-gate run whose gate span is missing falls back to authority's park instant", () => {
+  it("a parked-gate run whose gate span is missing falls back to authority's park instant", () => {
     const w = world();
     queuedEventOf(w, { seed: 1 });
     w.authority.put(runRecordOf({
@@ -1395,7 +1292,7 @@ describe("the queue row's served facts (D12/D13/D22/D126)", () => {
     }).success, false);
   });
 
-  it("D22/D126: the △ chip's count is the receipt's real warning set, titled by the first", () => {
+  it("the △ chip's count is the receipt's real warning set, titled by the first", () => {
     const w = world();
     seedWorld(w);
     w.authority.receipts.set(uuidOf(3), receiptWithWarningsOf({
@@ -1425,7 +1322,7 @@ describe("the queue row's served facts (D12/D13/D22/D126)", () => {
     assert.equal(w.authority.receipts.get(uuidOf(3)), legacy);
   });
 
-  it("D22/D126: three distinct absences, and never a fabricated zero", () => {
+  it("three distinct absences, and never a fabricated zero", () => {
     const w = world();
     seedWorld(w);
     // in flight — nothing has settled
@@ -1449,15 +1346,8 @@ describe("the queue row's served facts (D12/D13/D22/D126)", () => {
   });
 });
 
-/**
- * The six §1.2/§9 row facts this slice added a PRODUCER for.
- *
- * Every case asserts the absent arm beside the present one, because for five of
- * the six the absence is the state a real day is usually in — and an absence
- * that reads as a zero, an empty band or a plausible number is exactly the
- * substitution this projection must not make.
- */
-describe("the queue row's ordinal, class, links and outcome (D230, D7)", () => {
+
+describe("the queue row's ordinal, class, links and outcome", () => {
   const ORDINAL_CLAIM = {
     workerId: "person-lookup-worker-1",
     claimedAt: "2026-08-03T17:00:05.000Z",
@@ -1487,11 +1377,11 @@ describe("the queue row's ordinal, class, links and outcome (D230, D7)", () => {
     // the projection never computes one from the row's position in this array.
     assert.deepEqual(rows[1].runNumber, {
       state: "absent",
-      reason: "enqueued before runs carried a workflow ordinal (D230)",
+      reason: "workflow ordinal was not recorded at enqueue",
     });
   });
 
-  it("D269: serves the run's session off its own row, and names the absence of one", () => {
+  it("serves the run's session off its own row, and names the absence of one", () => {
     const w = world();
     w.authority.batches.set(uuidOf(70), RunSessionRecordSchema.parse({ sessionId: uuidOf(70), workflow: "person-lookup", origin: { kind: "start-plan", startPlanId: uuidOf(71), actorId: "local-operator" }, startedAt: instantOffsetOf(0), createdAt: instantOffsetOf(0), groupInQueue: true, version: 1 }));
     queuedEventOf(w, { seed: 1, sessionId: uuidOf(70) });
@@ -1504,7 +1394,7 @@ describe("the queue row's ordinal, class, links and outcome (D230, D7)", () => {
     assert.deepEqual(rows[1].session, { state: "present", sessionId: uuidOf(70), presentation: { groupInQueue: true, version: 1, startedAt: instantOffsetOf(0) } });
     assert.deepEqual(rows[2].session, {
       state: "absent",
-      reason: "this run predates D269 session grouping, or retries a run that does",
+      reason: "no session grouping was recorded for this run or its retry source",
     });
   });
 
@@ -1526,7 +1416,7 @@ describe("the queue row's ordinal, class, links and outcome (D230, D7)", () => {
     w.projection.reconcileWorkerAuthority();
     assert.equal(w.changes.filter((change) => change.kind === "snapshot").length, before + 1);
   });
-  it("D269: serves the worker POOL block from authority — one entry per planned workflow, absent means version 0", () => {
+  it("serves the worker POOL block from authority — one entry per planned workflow, absent means version 0", () => {
     const w = world();
     assert.deepEqual(w.projection.buildDashboardDayWire(DAY).workerPools, []);
     w.authority.putWorkerPool({
@@ -1551,18 +1441,14 @@ describe("the queue row's ordinal, class, links and outcome (D230, D7)", () => {
     const w = world();
     queuedEventOf(w, { seed: 1, priority: "bulk" });
     assert.equal(w.projection.buildDashboardDayWire(DAY).queueSurfaces[0].priority, "bulk");
-    // The bump's durable effect is an envelope rewrite with no span of its own,
-    // so a row that read the frozen `run.queued` copy would keep saying `bulk`
-    // after the claim order had already changed.
+
     w.authority.put(runRecordOf({ seed: 1, priority: "interactive", version: 2 }));
     w.projection.refreshRun(uuidOf(1));
     assert.equal(w.projection.buildDashboardDayWire(DAY).queueSurfaces[0].priority, "interactive");
   });
 
   it("classifies containment from shape and lineage, and chips only the linked children", () => {
-    // The registry resolves this workflow, so the chip's label is the
-    // descriptor's own — the workflow id is the fallback a build that cannot
-    // read the declaration falls back to, and it is asserted below.
+
     const w = world({ descriptors: { resolve: () => personLookupDescriptor } });
     queuedEventOf(w, { seed: 1, shape: "operation" });
     queuedEventOf(w, { seed: 2, shape: "operation-member", parentSeed: 1, title: "Ada Lovelace" });
@@ -1621,7 +1507,7 @@ describe("the queue row's ordinal, class, links and outcome (D230, D7)", () => {
     const w = world();
     // 1 — in flight: no terminal result exists to have facts about.
     queuedEventOf(w, { seed: 1 });
-    // 2 — terminal, no receipt derived. D141 forbids deriving one here.
+
     terminalDone(w, 2);
     // 3 — a derived receipt that recorded no output at all.
     terminalDone(w, 3);
@@ -1685,8 +1571,7 @@ describe("the queue row's ordinal, class, links and outcome (D230, D7)", () => {
       traceId: traceOf(1),
       attempt: 1,
     } as const;
-    // Two executions of ONE node — the gate-resume shape D214 named. The chip
-    // reports time spent on the step, which is both intervals, not the last.
+
     const first = `${traceOf(1)}/searching#1`;
     const second = `${traceOf(1)}/searching#2`;
     w.writer.emit({ ...base, spanPath: first, t: "span.started", kind: "task", ts: instantOffsetOf(0, 1_000), parentSpanPath: traceOf(1), name: "searching" });
@@ -1705,23 +1590,11 @@ describe("the queue row's ordinal, class, links and outcome (D230, D7)", () => {
     assert.equal(searching.executions, 2);
     assert.equal(crossVerify.durationSec, undefined);
     assert.equal(crossVerify.executions, undefined);
-    // Every step this build could observe is measured or explicitly not; a
-    // world with no registered descriptor shows exactly the observed nodes, so
-    // there is no `pending` step here to check — that arm rides the descriptor
-    // branch, which the count/pipeline cases above already walk.
+
     assert.deepEqual(pipeline.map((step) => step.id).sort(), ["cross-verify", "searching"]);
   });
 
-  /**
-   * D255 — the same node executed twice at ONE span path. The executor cannot
-   * produce this since D214 (`taskSpanPath` carries the claim generation), and
-   * the JSONL writer's own identity guard refuses a re-open in-process, which
-   * is why this case is written straight to the stream the way a second OS
-   * process would. What it pins is the FOLD's rule, not a producer's: a close
-   * binds to a still-OPEN entry, so each execution keeps its own interval. The
-   * first-match rule this replaces reported one 11 s span (start of execution
-   * one to end of execution two, the idle gap included) and dropped the other.
-   */
+
   it("binds a close to the LAST OPEN entry at its identity — two executions at one span path stay two facts", () => {
     const w = world();
     queuedEventOf(w, { seed: 1 });

@@ -14,17 +14,7 @@ import { sha256Hex } from "../../rules/validation/sha256.js";
 import { ObligationIdSchema } from "./evidence-obligations.js";
 import { DryRunSubjectLabelSchema } from "./dry-run-scenario-result.js";
 
-/**
- * What a manifest case's subject IS, across every workflow that has a T1b pair.
- *
- * The vocabulary is one closed list rather than one per workflow because a
- * manifest is parsed here, where no workflow is known. Which HALF a given
- * manifest may use is pinned one layer up, exactly: the test-target registry
- * types `kind` per workflow arm and refuses a manifest case whose kind
- * disagrees with its registered label, so `separations` cannot claim
- * `no-active-job` and `separations-kuali-finalization` cannot claim
- * `full-chain-dry-run`.
- */
+/** What a manifest case's subject IS, across every workflow that has a dry-run pair; the vocabulary is one closed list because the runner, the corpus and the evaluator must agree. */
 export const DryRunSubjectKindSchema = z.enum([
   // `separations-kuali-finalization` — the scenario matrix's arms.
   "ordinary",
@@ -39,7 +29,7 @@ export const DryRunSubjectKindSchema = z.enum([
   "future-dated",
   "controlled-commit-candidate",
   "pending-termination",
-  // `person-lookup` — D318's transaction-free `live-read` arm: one search by EID.
+    // `person-lookup` — the transaction-free `live-read` arm: one search by EID.
   "search-by-eid",
 ]);
 
@@ -63,12 +53,7 @@ export const DryRunCheckpointExpectationSchema = z.strictObject({
   keyedBy: z.array(CheckpointKeyPartSchema).min(1),
 });
 
-/**
- * Exactly the three facts `evaluateDryRunScenarioEvidence` compares. A fourth
- * (the resolver leaf) used to sit here and was never read — an expectation the
- * evaluator projects away is a claim nobody checks, so the boundary refuses it
- * rather than letting a manifest author believe it is asserted.
- */
+/** Exactly the three facts the evaluator compares; the boundary refuses an extra one, because a claim nobody checks is worse than a claim that fails. */
 export const DryRunGateExpectationSchema = z.strictObject({
   gate: NodeIdSchema,
   decision: slugSchema("dry-run gate decision must be kebab-case"),
@@ -81,18 +66,14 @@ const ReceiptVerificationExpectationSchema = z.array(z.strictObject({
   mandatory: z.boolean(),
 })).min(1);
 
-/** A rehearsal derives `partial` / `unknown`, never `verified` (D237/D238). */
+/** A rehearsal derives `partial` / `unknown`, never `verified`. */
 export const DryRunReceiptExpectationSchema = z.strictObject({
   result: z.enum(["partial", "done-with-warnings", "failed", "cancelled"]),
   confidence: z.enum(["partial", "unknown"]),
   verification: ReceiptVerificationExpectationSchema,
 });
 
-/**
- * D318 — a transaction-free live read previews no write, so its receipt may
- * truthfully reach `verified-done` / `verified` when its task evidence supports
- * that verdict. It is not forced to the preview arm's `partial|unknown`.
- */
+/** A transaction-free live read previews no write, so its receipt may truthfully reach `verified-done` / `verified` when its task evidence supports that verdict. */
 export const LiveReadReceiptExpectationSchema = z.strictObject({
   result: z.enum(["verified-done", "done-with-warnings", "partial", "failed", "cancelled"]),
   confidence: z.enum(["verified", "partial", "unknown"]),
@@ -140,11 +121,7 @@ const CaseIdentityFields = {
   nodesExcluded: z.array(NodeIdSchema),
   checkpoints: z.array(DryRunCheckpointExpectationSchema),
   gateResults: z.array(DryRunGateExpectationSchema),
-  /**
-   * D85 part 4 — the positive no-write proof, as an exact zero delta over the
-   * three write-authority tables. Both arms carry it: a preview mints no
-   * intent, and a live read has no transaction to mint one.
-   */
+    /* The positive no-write proof, as an exact zero delta over the three write-authority tables; both arms carry it, because a preview mints no intent and a live read has none to mint. */
   durableDeltas: z.strictObject({
     writeIntents: z.literal(0),
     writeAttempts: z.literal(0),
@@ -160,12 +137,7 @@ export const DryRunScenarioCaseSchema = z.strictObject({
   preview: DryRunPreviewExpectationSchema,
 });
 
-/**
- * D318 — the transaction-free arm's terminal: the ORDINARY workflow result,
- * bound to the descriptor's own declared result schema, or a node-bound
- * failure. There is no preview terminal, no `stoppedAtNodeId`, no staged page
- * and no `transaction.previewed` span because there is no transaction.
- */
+/** The transaction-free arm's terminal: the ORDINARY workflow result, bound to the descriptor's own declared result schema, or a node-bound failure. */
 export const LiveReadTerminalExpectationSchema = z.discriminatedUnion("lifecycle", [
   z.strictObject({
     lifecycle: z.literal("done"),
@@ -210,12 +182,7 @@ const ManifestIdentityFields = {
   recordedBy: z.string().min(1),
 } as const;
 
-/**
- * D318 — a T1b declaration chooses exactly ONE arm from the compiled graph:
- * `dry-run-preview` when the graph has a transaction node, `live-read` when
- * it has none. The runner refuses either mismatch before a browser or effect;
- * a no-op transaction added only to enter the preview arm is forbidden.
- */
+/** A dry-run declaration chooses exactly ONE arm from the compiled graph: `dry-run-preview` when the graph has a transaction node, `live-read` when it has none. */
 export const DryRunPreviewManifestSchema = z.strictObject({
   ...ManifestIdentityFields,
   arm: z.literal("dry-run-preview"),

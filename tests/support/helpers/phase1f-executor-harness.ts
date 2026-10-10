@@ -2,16 +2,7 @@ import { createTimelineEmitter } from "../../../src/backend/storage/events/timel
 import { readTimelineRecords } from "../../../src/backend/storage/events/timeline-reader.js";
 import { ExecutorSpanEventSchema } from "../../../src/backend/logs/span-emitter.js";
 import type { ProtectedInputBinding } from "../../../src/models/write-safety/protected-input.js";
-/**
- * Shared Phase-1f interpreter harness: a real temp-file AuthorityDatabase, a
- * deterministic browser-session factory that serves the checked-in fake
- * drivers, a recording span emitter/logger, and a manual monotonic scheduler.
- *
- * Everything here drives the REAL landed pieces — descriptor, stores, claim
- * store, session manager — with only the process edges (browser, clock, ids,
- * timers, span sink) replaced by recording fakes, so a test that passes here
- * pins production composition, not a parallel reimplementation.
- */
+
 import { fixtureDuoCeremonyGates } from "./duo-ceremony-fixtures.js";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -62,11 +53,7 @@ export const EXECUTOR_NOW = "2026-08-03T09:00:00.000Z";
 export interface AuthorityHarness {
   readonly database: AuthorityDatabase;
   readonly clock: TestClock;
-  /**
-   * The on-disk authority file. D182's soak re-reads it through
-   * `AuthorityDatabase.inspectExistingReadOnly` — the whole-database invariant
-   * sweep is a read-only path that needs the PATH, not the open handle.
-   */
+
   readonly path: string;
   readonly stateRoot: string;
   readonly dispose: () => void;
@@ -100,7 +87,7 @@ export function personLookupQueuedRun(options: Readonly<{
   includeCrmDates?: boolean;
   startAt?: string;
   dryRun?: boolean;
-  /** D221 — the ITEM's attempt. A second run of one item takes the next one. */
+
   attempt?: number;
 }> = {}): Record<string, unknown> {
   const parsedValue = {
@@ -185,12 +172,7 @@ export interface ScheduledEntry {
   readonly cancelled: () => boolean;
 }
 
-/**
- * Deterministic `MonotonicDeadlineScheduler`. Entries whose delay from the
- * current monotonic clock is at or below `autoFireAtOrBelowMs` fire on a
- * microtask (retry backoffs in tests); everything else waits for an explicit
- * `fire`. The default (0) never auto-fires anything.
- */
+
 export class ManualScheduler implements MonotonicDeadlineScheduler {
   readonly #clock: TestClock;
   readonly #autoFireAtOrBelowMs: number;
@@ -250,11 +232,7 @@ export interface SessionFactoryHarness {
   readonly trace: () => readonly SessionFactoryTraceEntry[];
 }
 
-/**
- * Serves one driver instance per system per open. `drivers` maps a system to a
- * factory so a test can serve a failing driver on the first open and a healthy
- * one on the second (poison-close → fresh session).
- */
+
 export function sessionFactoryHarness(
   drivers: Readonly<Record<string, (openIndex: number) => BrowserDriver>>,
 ): SessionFactoryHarness {
@@ -343,7 +321,7 @@ export function happySessionHarness(): SessionFactoryHarness {
   });
 }
 
-/** The production default for `timeouts.sessionAcquireMs` (D125). */
+
 export const FIXTURE_SESSION_ACQUIRE_MS = 60_000;
 
 export function sessionManagerFor(
@@ -363,9 +341,7 @@ export function sessionManagerFor(
     duoCeremony: fixtureDuoCeremonyGates(clock),
     ...(onEvent === undefined ? {} : { onEvent }),
   });
-  // D116: production binds the claimed run's fingerprint in the worker loop;
-  // this harness stands in for that loop, so it binds the fixture envelope's
-  // exact fingerprint (`QUEUED_RUN.envelope.configFingerprint`).
+
   manager.bindRunConfigFingerprint(FingerprintSchema.parse(QUEUED_RUN.envelope.configFingerprint));
   return manager;
 }

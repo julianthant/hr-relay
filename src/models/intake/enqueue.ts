@@ -1,29 +1,4 @@
-/**
- * Session → manifest → readiness, as one pure derivation (ref data-intake-and-edit-data §5, D171).
- *
- * The enqueue arm is the irreversible half of intake: it turns an operator's
- * mapping into N real HR runs. Everything it decides with is therefore derived
- * HERE, from the durable session's retained decisions plus the layout
- * re-derived from the immutable artifact — not assembled inline where a caller
- * could pass a value that agrees with nothing.
- *
- * Three properties are the reason this is one function rather than three:
- *
- * 1. **Readiness is judged on the manifest that would be written.** Ref data-intake-and-edit-data §5's
- *    `enqueueReadiness` reads a manifest's own dispositions, so building the
- *    manifest and gating on it cannot disagree — there is no second count of
- *    "how many rows are still rejected".
- * 2. **The validation pass runs against the RETAINED `readAt`.** A two-digit
- *    year resolves against the instant the operator validated with, so the
- *    manifest enqueue writes is the plan they reviewed, not a plan the clock
- *    quietly moved between review and Run.
- * 3. **A correction's `original` is read from the source, never carried.** The
- *    manifest records what the file said BEFORE the operator fixed it, redacted
- *    through the canonical field's own declared classification/transform. The
- *    session retains only the corrected value, so the original is looked up in
- *    the bound column of the re-derived row — and a correction whose field is
- *    not bound throws rather than recording a redaction of nothing.
- */
+/** Judge readiness on the proposed manifest using retained readAt and source-original corrections. */
 import type { z } from "zod";
 import type { JsonValue } from "../../rules/validation/canonical-json.js";
 import { CANONICAL_FIELDS } from "../fields/registry.js";
@@ -74,20 +49,12 @@ export interface IntakeEnqueuePlanInput {
   readonly manifestId: string;
   readonly createdAt: string;
   readonly workflowContractFingerprint: string;
-  /** The schema every `parsedInput` must be re-read with (D62/D110). */
+    /** The schema every `parsedInput` must be re-read with. */
   readonly canonicalInputSchemaHash: string;
   readonly deriveItemId: (parsedInput: JsonValue) => ItemId;
 }
 
-/**
- * The redacted source value a correction replaced.
- *
- * Every failure here is a throw, not a rejection: each one means the session
- * and the layout it was built against have become mutually inconsistent, which
- * no command sequence can produce — a layout move discards corrections, and a
- * correction requires a bound column. Recording a plausible blank instead would
- * put a lie in an immutable manifest.
- */
+/** The redacted source value a correction replaced; every failure here is a throw, because the session and the layout it was built against have become mutually inconsistent. */
 function originalCell(
   input: IntakeEnqueuePlanInput,
   correction: z.infer<typeof IntakeRowCorrectionSchema>,
@@ -184,14 +151,7 @@ export function deriveIntakeEnqueuePlan(input: IntakeEnqueuePlanInput): IntakeEn
   return Object.freeze({ manifest, readiness: enqueueReadiness(manifest) });
 }
 
-/**
- * What the CURRENT session presents to `rerunDiff` (ref data-intake-and-edit-data §7 vector #11).
- *
- * The source digest is not a parameter: a prior manifest is FOUND by these
- * exact bytes, so that axis is equal by construction and the four remaining
- * ones are the whole question — has the mapping, the projection, the workflow
- * contract or the canonical-input schema moved since this file last ran.
- */
+/** What the CURRENT session presents to `rerunDiff`; the source digest is not a parameter, so a prior manifest is found by these exact bytes and the four remaining axes are the whole question. */
 export function currentRerunState(input: Readonly<{
   session: Readonly<{
     workflow: string;

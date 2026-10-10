@@ -61,16 +61,7 @@ const RedactedAllowedArm = z.strictObject({
   ...RawValueField,
 });
 
-/**
- * A redacted value with no key of its own — the form a durable record uses
- * when the surrounding row already names what the value is (ref data-intake-and-edit-data §5's
- * `RowReject.raw` names its source column and target field).
- *
- * It shares `RedactedFieldSchema`'s exact arms and `redactValue`'s exact
- * transform implementation on purpose: a second redaction path is a second
- * thing to drift, and a reject row that leaked a value the receipt would have
- * dropped is the same defect from a different surface.
- */
+/** A redacted value with no key of its own, sharing `RedactedFieldSchema`'s exact arms and `redactValue`'s exact transform: a second redaction path is a second thing to drift. */
 export const RedactedValueSchema = z.discriminatedUnion("transform", [
   RedactedDropArm,
   RedactedDigestArm,
@@ -127,20 +118,7 @@ export function redactedEvidenceId(namespace: string, parts: readonly string[]):
   ].join("-");
 }
 
-/**
- * The last path segment, over BOTH separators, with trailing separators
- * dropped — `node:path`'s `basename` in a form the dashboard bundle can
- * reach.
- *
- * This module is value-reachable from the browser entry (ref operator-trust §2.3's
- * receipt rides the run-detail wire), and Vite replaces an externalized
- * built-in with a proxy that throws on the first property read, so the
- * `node:path` import alone would kill the app at module evaluation. Splitting
- * on `\` as well as `/` is deliberately WIDER than POSIX `basename`: a
- * classified `credential-file` value may be a Windows path, and leaking a
- * whole directory tree because the platform separator differed is the exact
- * failure this transform exists to prevent.
- */
+/** The last path segment over BOTH separators, in a form the dashboard bundle can reach; splitting on the Windows separator as well is deliberately wider than POSIX `basename`. */
 function pathBasename(value: string): string {
   const trimmed = value.replace(/[\\/]+$/, "");
   const cut = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
@@ -158,14 +136,7 @@ function count(value: z.infer<typeof JsonValueSchema>): number {
   return 1;
 }
 
-/**
- * Apply one declared (classification, transform) pair to one value.
- *
- * The pair is REFUSED here as well as at declaration time: a caller that
- * assembled it dynamically would otherwise be able to widen a classification's
- * permitted transform by passing the wider one, and this function is the last
- * place before the value becomes durable.
- */
+/** Apply one declared (classification, transform) pair to one value; the pair is REFUSED here as well as at declaration time, because this is the last place before the value becomes durable. */
 export function redactValue(
   classification: z.infer<typeof DataClassificationSchema>,
   transform: z.infer<typeof EvidenceTransformSchema>,

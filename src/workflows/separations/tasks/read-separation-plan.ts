@@ -5,11 +5,7 @@ import {
 } from "../../../models/workflows/separations/read-separation-plan.js";
 import { planSeparation } from "../../../rules/separations/separation-dates.js";
 
-/**
- * The document's own facts, validated, executed. Nothing here decides anything
- * — the fold does — and every refusal reaches its own durable code, which is
- * what an operator queries on months later.
- */
+/** The document's own facts, validated, executed. Nothing decides here — the fold does; every refusal reaches its own durable code the operator can query. */
 export const readSeparationPlanTask = defineTask(SeparationsReadSeparationPlan, {
   sessions: [],
   async run({ input, ctx }) {

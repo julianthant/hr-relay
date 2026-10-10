@@ -1,39 +1,4 @@
-/**
- * SETTINGS AS A PLACE, and the two shell strings D272 item 4 corrected.
- *
- * D272 item 1 / D274 item 5 turned Settings from a `Dialog` into a routed
- * full-page takeover. Three claims are worth pinning, and none of them can fail
- * by accident:
- *
- *  - the route SURVIVES the query string in both directions, including the
- *    empty value that means "the page's first section" — a key that parsed but
- *    did not serialise would make the browser's Back button return to a URL the
- *    app cannot re-open;
- *  - `settings` OUTRANKS every other takeover key, because the storage band's
- *    door is mounted above the takeover switch and would otherwise change the
- *    URL without changing the screen;
- *  - a `?settings=` value this build has no section for resolves to `unknown`
- *    rather than to the first entry. That is the fail-loud half: a silent
- *    fallback here shows the operator Storage under a link that says something
- *    else, and nothing on the page would say so.
- *
- * The two copy fixes are pinned at their two levels. `fmtAppVersion` is a pure
- * fold, so it is called directly — including the throw, which is the arm a
- * "helpful" `?? appVersion` would delete. The worker sentence is JSX across
- * three text nodes with no fold to test, so the real `SessionPanel` is rendered
- * to static markup at a count of ONE — the exact count the old `plural` got
- * wrong and the only one that can tell the two spellings apart.
- *
- * Unit F4b closes four review findings on this same takeover. Findings 1 and 2
- * are DOM/History behavior this project's unit lane cannot exercise directly —
- * there is no jsdom project here (only `tests/unit/**\/*.test.ts` runs under
- * plain Node), so each is pinned at the pure fold `dashboard-app.tsx` calls
- * rather than at the DOM effect itself: `settingsCloseFocusTargetId` (which id
- * to focus) and `routeAdvancesHistory` (whether a route change pushes).
- * Findings 3 and 4 (the curly quotes, the nav's real `<a href>`) ARE reachable
- * through `renderToStaticMarkup`, the same technique the session-bar block
- * below already uses, so those two are pinned against the real `SettingsPage`.
- */
+
 import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -76,7 +41,7 @@ const HEALTHY_STORAGE = StorageHealthSummaryWireSchema.parse({
 });
 const STATIC_SETTINGS_CLIENT = {} as DashboardClient;
 
-describe("the settings route (D272 item 1)", () => {
+describe("the settings route", () => {
   it("carries an EMPTY value, because that is the page's first section", () => {
     const route = parseRoute("?settings=");
     assert.equal(route.settings, "");
@@ -100,9 +65,7 @@ describe("the settings route (D272 item 1)", () => {
   });
 
   it("OUTRANKS every other takeover key", () => {
-    // The storage band's `Storage checks` is mounted above the takeover switch,
-    // so it is pressed from inside whatever is already open. If any key below
-    // won, that door would move the URL and leave the screen where it was.
+
     const layered: AppRouteState = {
       start: false,
       settings: "",
@@ -119,7 +82,7 @@ describe("the settings route (D272 item 1)", () => {
   });
 });
 
-describe("the settings page's nav (D274 item 5)", () => {
+describe("the settings page's nav", () => {
   it("puts every served section under Status and always offers the Help keyboard entry", () => {
     const groups = buildSettingsNav([STORAGE]);
     assert.deepEqual(groups.map((group) => group.heading), ["Personal", "Advanced", "Data", "Status", "Help"]);
@@ -130,8 +93,7 @@ describe("the settings page's nav (D274 item 5)", () => {
       groups.find(group => group.id === "help")?.entries.map((entry) => entry.id),
       [SETTINGS_KEYBOARD_SECTION_ID],
     );
-    // The keyboard legend is not a SERVED section: it is a fact about THIS bundle's bindings.
-    // The UI catalog entry is retired (2026-10-06 developer-controls retirement).
+
     assert.deepEqual(groups.find(group => group.id === "help")?.entries.map((entry) => entry.source), ["client"]);
   });
 
@@ -147,7 +109,7 @@ describe("the settings page's nav (D274 item 5)", () => {
   });
 });
 
-describe("which section a link opens (D274 item 5)", () => {
+describe("which section a link opens", () => {
   const groups = buildSettingsNav([STORAGE]);
 
   it("opens the first entry on the empty value", () => {
@@ -165,9 +127,7 @@ describe("which section a link opens (D274 item 5)", () => {
   it("REFUSES to fall back to the first entry for a section it does not have", () => {
     const resolved = resolveSettingsSection(groups, "budgets");
     assert.equal(resolved.state, "unknown");
-    // The requested name survives, because the page says it back. Resolving to
-    // `storage` here would show the operator a page their link did not ask for
-    // with nothing on screen admitting the substitution.
+
     assert.equal(resolved.state === "unknown" ? resolved.requested : undefined, "budgets");
   });
 
@@ -182,10 +142,7 @@ describe("focus on close (unit F4b finding 1)", () => {
   });
 
   it("falls back to the main region the takeover was covering, when the gear is gone", () => {
-    // The gear is part of the persistent TopBar and is mounted for as long as
-    // Settings is, so this arm is defensive — but it is the one Radix's own
-    // Dialog would have refused to leave unhandled, and it is the ONLY arm a
-    // regression that deletes the fallback branch entirely would still pass.
+
     assert.equal(settingsCloseFocusTargetId(false), DASHBOARD_MAIN_REGION_ID);
   });
 
@@ -206,10 +163,7 @@ describe("history push on re-press (unit F4b finding 2)", () => {
   };
 
   it("does NOT advance history when the next route serialises to the current search", () => {
-    // Re-pressing the gear while `?settings=` is already showing — the exact
-    // case that used to push a second, identical entry and leave the
-    // browser's first Back press landing right back where the operator
-    // already was.
+
     assert.equal(routeAdvancesHistory(base, routeToSearch(base)), false);
   });
 
@@ -229,10 +183,7 @@ describe("the settings nav renders real navigation, not buttons (unit F4b findin
     children: createElement(SettingsPage, { onClose: () => undefined,
       storage: HEALTHY_STORAGE,
       sections: [STORAGE],
-    // Opened on Keyboard rather than Storage, so this render never reaches
-    // `StorageSection` — which calls `useDashboardClient()` and throws loud
-    // without a provider above it. The nav below still lists BOTH entries
-    // regardless of which one is open.
+
     section: SETTINGS_KEYBOARD_SECTION_ID,
     actorId: "local-operator",
     descriptorFingerprint: "a".repeat(64),
@@ -308,7 +259,7 @@ describe("curly quotes around a section name (unit F4b finding 3)", () => {
   });
 });
 
-describe("the app version tag (D272 item 4, ledger row A126)", () => {
+describe("app version tag", () => {
   it("prints the two components the tooltip beside it explains", () => {
     assert.equal(fmtAppVersion("0.1.0"), "0.1");
     assert.equal(appVersionTag("0.1.0"), "app 0.1");
@@ -325,5 +276,3 @@ describe("the app version tag (D272 item 4, ledger row A126)", () => {
     }
   });
 });
-
-/** One `failed` card — the only state that lights the attention chip (D248). */

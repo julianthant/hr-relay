@@ -1,14 +1,4 @@
-/**
- * Evaluate a T1b declaration WITHOUT importing it (ref guards-and-tests §10.4/§10.9).
- *
- * A vitest-collected file may not import a `dry-run.scenario.ts` manifest —
- * every workflow's structural scenario proves nothing does, in both static and
- * dynamic form — so a test that needs the exact checked-in declaration
- * transpiles it and runs it in an isolated `node:vm` context whose only
- * reachable module is the real manifest parser. Reading the file as text and
- * re-deriving its object literal would re-implement zod; running it is what
- * proves the checked-in declaration parses.
- */
+
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import vm from "node:vm";

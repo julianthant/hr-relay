@@ -1,8 +1,4 @@
-/**
- * The ONE terminal-authorization factory (refs dashboard-surfaces/operator-trust): it authorizes only what
- * the claim-holding worker actually owns, binds the exact consequence identity,
- * and preserves the pre-terminal CAS for byte-exact replay.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import {

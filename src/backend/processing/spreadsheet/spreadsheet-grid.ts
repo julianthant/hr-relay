@@ -1,18 +1,4 @@
-/**
- * The one "artifact bytes → canonical string grid" edge, shared by the
- * extraction and roster stores.
- *
- * Lifted verbatim from `extract-spreadsheet.ts` (2h-C): the roster matcher
- * needs the SAME parse — same parsers, same cell canonicalization, same
- * xlsx-vs-csv sniffing — and duplicating the date-cell rule would eventually
- * fork it. The parser choices and their reasons stay documented at the
- * original site (`src/backend/processing/extraction/tasks/extract-spreadsheet.ts`).
- *
- * Refusals come back as DATA (`state: "refused"` with the exact message the
- * extraction task always produced), because each caller owns its contract's
- * error-code vocabulary: extraction maps them onto `unreadable-file`/
- * `unknown-sheet`/`empty-sheet`, roster maps them onto `roster-unreadable`.
- */
+
 import { Buffer } from "node:buffer";
 import { parse as parseCsvSync } from "csv-parse/sync";
 import readXlsxFile from "read-excel-file/node";
@@ -24,14 +10,7 @@ const XLSX_MEDIA_TYPES = new Set([
   "application/vnd.ms-excel",
 ]);
 
-/**
- * One typed cell → its canonical text.
- *
- * A `Date` is emitted as ISO calendar text in UTC. `read-excel-file` builds a
- * date cell at UTC midnight, so taking the UTC components is reading back what
- * it wrote; using local components would shift the day west of Greenwich and
- * silently move an effective date by one.
- */
+// Spreadsheet dates are UTC midnight; local getters could shift the calendar day.
 function cellText(value: unknown): string {
   if (value === null || value === undefined) return "";
   if (value instanceof Date) {
@@ -42,10 +21,7 @@ function cellText(value: unknown): string {
   if (typeof value === "number") return Number.isFinite(value) ? String(value) : "";
   if (typeof value === "boolean") return value ? "true" : "false";
   if (typeof value === "string") return value;
-  // Both parsers' documented cell domains are exhausted above
-  // (string | number | boolean | Date | null). Anything else means a parser
-  // changed under us, and `String(value)` would put "[object Object]" into a
-  // cell an operator could then bind a column to.
+  // Unexpected parser cell types refuse; string coercion would hide a changed parser contract.
   throw new Error(`spreadsheet cell has an unexpected ${typeof value} value the parser did not document`);
 }
 
@@ -70,11 +46,7 @@ export type SpreadsheetGridResult =
   | Readonly<{ state: "parsed"; sheets: readonly string[]; sheet: string; grid: readonly (readonly string[])[] }>
   | Readonly<{ state: "refused"; code: "unreadable-file" | "unknown-sheet" | "empty-sheet"; message: string }>;
 
-/**
- * Parse spreadsheet bytes to the canonical string grid. `artifactId` and
- * `mediaType` come from the content-addressed ref; the zip magic overrides a
- * lying media type exactly as before.
- */
+
 export async function parseSpreadsheetGrid(input: Readonly<{
   bytes: Buffer;
   artifactId: string;
@@ -122,9 +94,7 @@ export async function parseSpreadsheetGrid(input: Readonly<{
       return { state: "refused", code: "unknown-sheet", message: `a CSV has one sheet, named ${CSV_SHEET_NAME}` };
     }
     sheet = CSV_SHEET_NAME;
-    // `relax_column_count` stays OFF: a row whose field count disagrees with
-    // its neighbours is a real defect, and padding it would invent blank
-    // cells that the mapping grid would then bind columns to.
+    // Strict column counts preserve the difference between missing cells and blank cells.
     const parsed: unknown = parseCsvSync(bytes, {
       bom: true,
       relax_quotes: false,

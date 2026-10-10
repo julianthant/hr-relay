@@ -1,11 +1,5 @@
 import { RuntimeAdmission } from "../../../../../../src/backend/storage/admission/admission.js";
-/**
- * D291 request-lifetime ownership at the real node:http -> Hono adapter.
- *
- * These tests deliberately cross a loopback socket. They do not call app.request
- * or mock the adapter, because disconnect, backpressure, and server shutdown are
- * the public boundaries that own Response-body cancellation.
- */
+
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { request, type IncomingMessage } from "node:http";

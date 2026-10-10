@@ -5,34 +5,7 @@ import { isFreshOccurrenceProof } from "../gates/repeat-proof.js";
 import { readRunCheckpoint } from "../checkpoints/run-checkpoint-reader.js";
 import { decideDurableIntent } from "../policies/durable-intent.js";
 import { runMandatorySavedVerification, completeProtectedWrite } from "./mandatory-saved-verification.js";
-/**
- * The Phase-1f fenced write sequencer — ref write-safety §3's seven-beat kernel write
- * sequence (D111), the D117 transaction-node semantics of ref workflow-model §3.1, and the
- * inline half of D118 recovery.
- *
- * One `executeTransaction` call owns the whole spine for one transaction node:
- *
- *   ① resolve + probe   — durable permanent-key lookup first, then the
- *                         policy-controlled live probe on a separate read lease
- *   ② prepare           — the exclusive transaction lease; prepare output is
- *                         preview data only and never feeds the commit input
- *   ③ binding proof     — kernel-owned fresh subject observation on the exact
- *                         staged page; no task callback can skip it
- *   ④ fence             — probe→fence budget + CAS of the permanent key to
- *                         `attempting`, durable BEFORE any click
- *   ⑤ external commit   — the commit impl runs with the unforgeable
- *                         `MutationCapability` this module alone can mint
- *   ⑥ capture / verify  — every completion arm parses through its proofSchema
- *   ⑦ atomic commit     — `executeSequencedWriteCommit`: the Phase-1c four-row
- *                         primitive, the `TransactionOutcome` checkpoint, and
- *                         the run transition in ONE outer authority transaction
- *
- * Fail-closed exits: an indeterminate pre-fence state refuses loudly (no fence,
- * no click); an indeterminate post-fence state durably parks the intent and the
- * run (`parked-write`) and raises `WriteParkedError`. Dry-run is a structurally
- * separate arm (`executeDryRun`) that stages and observes but can create no
- * intent, fence, or commit.
- */
+
 import { z } from "zod";
 import { TaskError } from "../../../workflow-kit/errors.js";
 import type { AnyTask, BrowserDriver, TaskLogger, ConfirmedTaskActions } from "../../../workflow-kit/task.js";
@@ -124,23 +97,12 @@ import type { WriteSequencer, WriteSequencerContext } from "../execution/run-exe
 
 /* ── the mutation capability — this module is the SOLE minting point ──────── */
 
-/**
- * The WeakSet-backed registry moved to `src/base/mutation-capability.ts` in Phase 2, so
- * a `stores/**` driver can run the beat-⑤ verification before its click without
- * a layer inversion. THIS module remains the only permitted caller of
- * `mintMutationCapability`; `subject-before-fence` fails if any other module
- * names it. The verifier keeps its sequencer-scoped name here because that is
- * the import site every caller and test already knows.
- */
+
 export { assertMintedMutationCapability as assertSequencerMintedMutationCapability };
 
 /* ── typed failure surfaces ──────────────────────────────────────────────── */
 
-// `WriteParkedError` moved to `run-executor.ts` with the `WriteSequencer` seam
-// it belongs to: the sequencer raises it AFTER durably parking intent + run,
-// and the interpreter's typed `parked-write` outcome arm consumes it. The
-// re-export below keeps this module the natural import site for sequencer
-// callers and tests.
+
 export { WriteParkedError };
 
 function authorityExceptionDetail(error: unknown): string {
@@ -244,19 +206,7 @@ export interface WriteSequencerAuthority {
   commitWriteAttempt(input: unknown, checkpoint: unknown): AtomicWriteCommitReport;
 }
 
-/**
- * The session surface the sequencer needs; `WorkerSessionManager` satisfies it.
- *
- * D116 (ref clock-config-secrets §4): every `withDriver` lease requires the claimed run's
- * immutable `configFingerprint` to ALREADY be bound on this host — the host
- * refuses loudly otherwise. The sequencer itself never binds or releases:
- * `executeTransaction`/`executeDryRun` run inside the interpreter for a
- * claimed run, under the worker loop's `withBoundRunConfigFingerprint` window,
- * so this host must be the SAME `WorkerSessionManager` that loop binds.
- * Probe leases taken OUTSIDE a claimed run's worker-loop context (ref write-safety §4
- * recovery) bind the target run's retained fingerprint themselves — see
- * `createWriteRecoveryService`.
- */
+// Use the same session manager bound by the worker loop; recovery binds retained config separately.
 export interface TransactionSessionHost {
   withDriver<Result>(
     need: SessionNeed,
@@ -296,11 +246,7 @@ export interface WriteSequencerDependencies {
   /** The acting operator identity from the config domain (ref clock-config-secrets); never fabricated. */
   readonly operator: unknown;
   readonly log: TaskLogger;
-  /**
-   * Task-impl fingerprint resolution for the transaction checkpoint. Defaults
-   * to the checked-in build manifest; tests inject a fixed resolver for
-   * synthetic contracts the manifest cannot know.
-   */
+
   readonly resolveImplFingerprint?: (taskId: TaskId) => Fingerprint;
   readonly hooks?: WriteSequencerHooks;
 }
@@ -311,12 +257,7 @@ export interface ProductionWriteSequencer extends WriteSequencer {
 
 /* ── dry-run preview (ref workflow-model §3.1: prepare + observe, zero intent/fence) ─── */
 
-/**
- * The schema itself lives in `src/rules/write-safety/write-safety-primitives.ts` (D210):
- * the descriptor factory hashes it when a previewed run is terminalized, and a
- * descriptor closure may not reach `write-safety.ts`'s `node:crypto`. This
- * module stays its address for every existing caller.
- */
+
 import {
   DryRunProbeObservationSchema,
   TransactionDryRunPreviewSchema,
@@ -359,12 +300,7 @@ function readInputPath(value: unknown, path: string, owner: string): string {
   return z.string().min(1).parse(current);
 }
 
-/**
- * Normalization per ref task-contract's match vocabulary. `eid` strips whitespace and
- * requires digits; `name` lowercases and collapses whitespace. The combined
- * `eid-and-name` match has no contract yet and refuses rather than guessing a
- * combined-value format.
- */
+// Normalize EID and name only by their declared match rules; combined eid-and-name has no supported contract.
 function normalizeSubjectIdentifier(
   identity: "eid" | "name" | "eid-and-name",
   raw: string,
@@ -397,10 +333,7 @@ function displaySuffixOf(normalized: string): string {
   return raw.length >= 2 ? raw : `${raw}**`.slice(0, 2);
 }
 
-/**
- * Race an operation against an abort signal so a non-cooperative implementation
- * cannot occupy the worker; the settled loser is observed, never unhandled.
- */
+
 async function raceAbortable<Result>(
   operation: Promise<Result>,
   signal: AbortSignal,
@@ -565,12 +498,7 @@ export interface ProbeReadDeps extends BoundedTaskDeps {
 /** The runtime probe verdict — the exact output of `probeVerdictSchema(proofSchema)`. */
 export type RuntimeProbeVerdict = z.output<ReturnType<typeof probeVerdictSchema>>;
 
-/**
- * The ref write-safety idempotency probe read (beat ① and §4 recovery): resolved from the
- * commit contract, run on its OWN read lease, and parsed through the exact
- * `ProbeVerdict(proofSchema)` — a probe that cannot state
- * present/absent/ambiguous/unknown has no fail-closed reading.
- */
+
 export async function executeIdempotencyProbe(
   deps: ProbeReadDeps,
   input: Readonly<{
@@ -628,7 +556,7 @@ export async function executeIdempotencyProbe(
   }
 }
 
-/* ── the beat-⑦ outer bundle executor (ref dashboard-surfaces Phase-1f; D111) ────────────── */
+
 
 export type SequencedRunTransition =
   | Readonly<{ kind: "advance-running"; claim: RunClaimToken; claimedAt: string;
@@ -640,13 +568,7 @@ export interface SequencedWriteCommitResult {
   readonly run: RunRecord;
 }
 
-/**
- * ONE outer authority transaction: revalidate the current run against the
- * bundle, run the narrow Phase-1c four-row primitive as an inner savepoint,
- * persist the schema-valid `TransactionOutcome` checkpoint, and transition the
- * run. It commits once or not at all; a failure after any step leaves the
- * intent `attempting` with no checkpoint, outbox, or run advance.
- */
+// Bundle settlement commits the intent, checkpoint, outboxes and run transition atomically or leaves all unsettled.
 export function executeSequencedWriteCommit(
   authority: WriteSequencerAuthority,
   input: unknown,
@@ -765,12 +687,7 @@ export interface CommittedSettlementInput extends CommitSettlementIdentity {
   readonly ids: IdFactory;
 }
 
-/**
- * Build the complete, mutually-bound beat-⑦ bundle for a committed settlement:
- * the durable `TransactionOutcome`, the ledger and same-trace terminal-span
- * outboxes, and the transaction checkpoint. Every cross-binding is validated by
- * `SequencedWriteCommitInputSchema` before any storage runs.
- */
+
 export function buildCommittedSettlement(input: CommittedSettlementInput): {
   readonly commit: unknown;
   readonly checkpoint: RunCheckpointRecord;
@@ -872,8 +789,7 @@ function buildTransactionCheckpoint(
     itemId: envelope.itemId,
     nodeId: identity.nodeId,
     attempt: envelope.attempt,
-    // D214 — the execution that settled this write. A committed run holds a
-    // claim by construction, so the generation is the row's own fact.
+
     claimGeneration: identity.run.claimGeneration,
     runId: envelope.runId,
     output: {
@@ -1283,7 +1199,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     };
   }
 
-  /** Reuse a durable committed / observed-present permanent row (D18). */
+
   function reuseDurableIntent(
     context: WriteSequencerContext,
     commitContract: AnyCommitTaskContract,
@@ -1317,15 +1233,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     });
   }
 
-  /**
-   * D314 — bind a replayed transaction checkpoint to the permanent key the
-   * FRESH facts derive. The checkpoint carries the settlement's proof; the
-   * durable intent found by the fresh key carries the proof of the write those
-   * facts address. Equal bytes prove the replay is that write. Anything else —
-   * no intent under the fresh key, an unfinished or parked intent, or a
-   * different proof — is a fresh-fact mismatch and refuses by node name and
-   * key digest reference, never by value.
-   */
+  // Fresh facts must address the exact settled permanent intent and proof before checkpoint replay can reuse a write.
   function assertReplayMatchesFreshFacts(
     context: WriteSequencerContext,
     commitContract: AnyCommitTaskContract,
@@ -1344,7 +1252,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       throw new Error(
         `transaction node "${context.node.id}" holds a completed settlement, but the fresh facts derive ${reference}, `
         + "which names no permanent write intent; refusing to relabel a completed external write as the consequence "
-        + "of new facts (D314)",
+        + "of new facts",
       );
     }
     const durableProof = durable.status === "committed"
@@ -1356,14 +1264,14 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       throw new Error(
         `transaction node "${context.node.id}" holds a completed settlement, but the fresh facts derive ${reference}, `
         + `whose permanent intent ${durable.writeIntentId} is ${durable.status}; an unfinished write follows the `
-        + "recovery-probe path under its own run and is never reused as this node's settlement (D314)",
+        + "recovery-probe path under its own run and is never reused as this node's settlement",
       );
     }
     if (canonicalJsonStringify(durableProof) !== canonicalJsonStringify(outcome.proof)) {
       throw new Error(
         `transaction node "${context.node.id}" holds a completed settlement whose proof is not the proof of the `
         + `write the fresh facts address (${reference}); refusing to relabel a completed external write as the `
-        + "consequence of new facts (D314)",
+        + "consequence of new facts",
       );
     }
   }
@@ -1608,7 +1516,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     }
   }
 
-  /** Inline recovery for THIS run's own attempting intent (ref write-safety §4, D118). */
+
   async function recoverOwnAttemptingIntent(
     context: WriteSequencerContext,
     commitContract: AnyCommitTaskContract,
@@ -1708,9 +1616,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         proof: settlement.outcome.proof.value,
       };
     }
-    // Absent, ambiguous, or unknown: the full D64/D69 stabilization machine is
-    // the standalone recovery service's; inline recovery conservatively parks —
-    // a park can only delay a retry, never authorize one.
+    // Inline recovery parks uncertain absence; only the standalone stabilized recovery may authorize retry.
     const parkCode: WriteIntentParkCode = verdict.state === "ambiguous" ? "ambiguous" : "unknown";
     const failure = new PostFenceWriteFailure({
       writeIntentId: intent.writeIntentId,
@@ -1758,11 +1664,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     return current.version;
   }
 
-  /**
-   * A contract may supersede an earlier permanent-key shape without gaining
-   * authority to reinterpret its immutable intents. Any old row is therefore
-   * a stop, before a probe, browser lease, fence, or click.
-   */
+  // Earlier permanent-key material cannot reinterpret immutable intents; refuse before probing or browser effects.
   function refuseRetiredPermanentKeys(
     commitContract: AnyCommitTaskContract,
     commitInput: unknown,
@@ -1806,21 +1708,11 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         "capability-unavailable",
         `transaction node "${node.id}" was asked for a dry run, and this is the arm that FENCES AND `
         + "CLICKS; the sequencer never substitutes a real write for a preview. The interpreter's "
-        + "preview arm calls executeDryRun (zero intent, zero fence, zero commit) — D210. Reaching "
+        + "preview arm calls executeDryRun (zero intent, zero fence, zero commit). Reaching "
         + "here with dryRun means a caller routed a preview into the commit path.",
       );
     }
-    // The run's OWN immutable envelope, not the caller's claim about it.
-    // `context.dryRun` above is what the caller passed; the interpreter derives
-    // it from this same field, so in production the two always agree. They are
-    // still checked separately on purpose: a caller that passes `dryRun:false`
-    // for a run the operator enqueued as a dry run would otherwise reach the
-    // fence and click a REAL external write, and this is the one path in the
-    // program where "the caller said so" is not good enough. Found 2026-08-04,
-    // when a Phase-2 live lane claimed a leftover dry-run row and the kernel
-    // had nothing of its own to refuse with. This subsumes the older
-    // `node.dryRun === "unsupported"` arm: no node policy makes a real write
-    // legal on a dry-run envelope.
+    // Check the durable dry-run envelope independently of caller context before any fence or click.
     if (envelope.dryRun) {
       throw new TaskError(commitContract.id, "capability-unavailable",
         `run ${envelope.runId} was enqueued as a dry run; transaction node "${node.id}" refuses to fence or `
@@ -1864,18 +1756,10 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       }
     }
 
-    /* step 0 — this node's settled outcome replays byte-exact, never re-clicks */
+
     const storedCheckpoint = readRunCheckpoint(deps.authority.authority, envelope, String(node.id));
     if (storedCheckpoint !== undefined && (sourceBound === undefined || storedCheckpoint.runId === envelope.runId)) {
-      /*
-       * D314 — a replayed settlement must still be THE write the fresh facts
-       * address. A Restart-from-start attempt (and any resume whose
-       * always-rerun ancestors moved) re-derives the commit input; if its
-       * permanent key no longer names a committed / observed-present intent
-       * whose proof is byte-exactly the proof this checkpoint carries, the run
-       * refuses by name rather than relabelling an old write as the
-       * consequence of new facts. Nothing is fenced or clicked on this path.
-       */
+
       assertReplayMatchesFreshFacts(context, commitContract, storedCheckpoint, system, key, keyDigest);
       return replayCheckpoint(context, commitContract, storedCheckpoint);
     }
@@ -2081,11 +1965,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
             + "probe-to-fence budget; the staged page is discarded and nothing was clicked",
           );
         }
-        // Open and fully validate the display beat BEFORE the authority fence.
-        // The fence and commit-task span/data writes are flushed only AFTER the
-        // task callback settles. `recordData` still validates and stamps each
-        // call synchronously, but its fallible sink cannot occupy the durable
-        // fence→external-click critical window.
+        // Buffer fallible span and data sinks until the commit callback settles; none may interrupt fence-to-click.
         emitTaskSpan(context, "commit", "span.started");
         const fencedAt = instant();
         const deferredFenceEvent = ExecutorSpanEventSchema.parse({
@@ -2164,10 +2044,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           throw preserveTaskFailure(context, "commit", error);
         }
         if (fencedRecord.status !== "attempting") {
-          // PermanentWriteResolutionSchema makes this unreachable for a real
-          // authority repository. Keep the runtime check outside the pre-fence
-          // catch so even a corrupt test double cannot run an emitter after it
-          // claims to have won a fence.
+          // Keep corrupt fence-result checks outside the pre-fence catch; no emitter may run after a claimed fence.
           throw new PostFenceWriteFailure({
             writeIntentId: fencedRecord.writeIntentId,
             generation: fencedRecord.generation,
@@ -2210,11 +2087,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           const { raw } = await commitInvocation.bounded;
           commitSettlement = { state: "done", raw };
         } catch (boundedFailure) {
-          // A deadline requests cancellation but cannot prove that an external
-          // callback obeyed it. Keep the fenced intent and transaction lease
-          // owned until the callback itself settles. If it never does, this
-          // process never emits, parks, or closes; crash recovery owns the
-          // durable `attempting` intent instead of racing detached I/O.
+          // Cancellation cannot prove a fenced callback stopped; retain intent and lease until it settles or crash recovery takes custody.
           const operationSettlement = await commitInvocation.settlement;
           const failure = operationSettlement.state === "rejected"
             && operationSettlement.error !== boundedFailure
@@ -2229,10 +2102,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
 
         let emissionFailure: Readonly<{ error: unknown }> | undefined;
         try {
-          // This is the first fallible emit after the authority fence, and the
-          // commit callback has already settled. A task may legally record a
-          // staged/page fact before it calls its driver: buffering keeps that
-          // record-time callback from stranding a fenced-but-unclicked write.
+          // Flush fallible observations only after commit callback settlement so recording cannot strand a fenced-but-unclicked write.
           for (const entry of bufferedCommitLogs) deps.log[entry.level](entry.message, entry.fields);
           deps.emitter.emit(deferredFenceEvent);
           for (const batch of bufferedCommitObservations) {
@@ -2404,27 +2274,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     });
   }
 
-  /**
-   * D215 — the preview runs beat ① FIRST, because the real path does.
-   *
-   * `executeDryRun` used to evaluate `prepare` with no probe, so it rehearsed a
-   * path the real run would never take: separations' `clear-pending` sweep
-   * refused in prepare for the ordinary subject — one with no pending
-   * transaction — while the real run's probe settles that subject
-   * `already-present` before a page is ever staged. Chunk 6b hit it on the FIRST
-   * real subject; a rehearsal that fails where the performance succeeds is a
-   * false rehearsal.
-   *
-   * Everything here is read-only by construction: the durable lookup is a SELECT,
-   * the probe is the same read-lease probe the real path runs, and the
-   * `already-present` arm REPORTS the settlement the real path would reach
-   * without calling `settleAlreadyPresent` — no checkpoint, no observed-present
-   * intent row, no run transition. Every arm the real path refuses on
-   * (`attempting`, `parked`, ambiguous, unknown, foreign absent evidence, and a
-   * present read over a settled-absent durable row) refuses here too, with the
-   * same reason: a preview that answered where the real run stops is the same
-   * defect from the other side.
-   */
+  // Preview runs the same initial probe and refusals as real execution, without storing settlement or advancing the run.
   async function executeDryRun(context: WriteSequencerContext): Promise<TransactionDryRunPreview> {
     const node = context.node;
     const commitContract = node.commit.uses;
@@ -2477,7 +2327,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           `preview of "${node.id}" found ${idempotencyKeyDigestReference(keyDigest, hasProtectedTransactionInput(context.run))} mid-submit under run `
           + `${durable.runId} attempt `
           + `${String(durable.runAttempt)}; a preview may not run recovery, and reporting a settlement `
-          + "it did not observe would be the fabrication D144 refuses",
+          + "it did not observe would fabricate a settlement",
         );
       }
       if (durable.status === "parked") {

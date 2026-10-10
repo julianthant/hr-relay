@@ -1,37 +1,5 @@
-/**
- * `separations-kronos-timecard` — chunk 1 of the separations migration
- * (`docs/migrations/separations.md` §3): the New Kronos passage, provable
- * ALONE, read-only, and composed later from the same tasks rather than from
- * this descriptor.
- *
- * It is a proving harness with a real job: it brings the `new-kronos` store
- * into existence (driver, login recipe, UI registry, tasks) and it is what
- * gives that store a live dry-run proof before any write chunk depends on it.
- * §3's honest note applies — the full `separations` graph will reuse these
- * TASKS directly, and this descriptor stays as the piece that made them
- * provable.
- *
- * ## What §4b binds here
- *
- * The operator's answer is HARD-FAIL, always: an unreachable Kronos, a failed
- * search, a timecard that will not open, a wrong-subject timecard, an
- * unreadable card — every one of them terminalizes `failed`. There is no park
- * arm and no proceed-on-the-Kuali-date arm in this graph, and there is
- * deliberately no `when` on either node: **no run mode changes the graph at
- * all.** The distinctions §4b insists on surviving live in the task contracts'
- * error codes, which are what a failed run durably records.
- *
- * ## Why two nodes and not five
- *
- * D194 / ref task-contract §2.8: a read task's identity is a PAGE VISIT. The search
- * results panel and the timecard are two page visits; Go To, the subject proof,
- * the range apply and the grid read are all one visit to the timecard and
- * cannot be re-entered independently. §2.4's five-task sketch predates the
- * extraction-width rule ratified later in the same document.
- *
- * This module is bundle-safe: it value-imports only zod, `src/domain/**`, and
- * the audited `src/base` builders.
- */
+// Read-only harness proves the login recipe; compositions reuse its tasks.
+// Each node is a page visit; failures never park.
 import { z } from "zod";
 import { defineWorkflow } from "../../../../workflow-kit/workflow-definition.js";
 import { requireFact } from "../../../../workflow-kit/workflow.js";
@@ -54,18 +22,10 @@ import { defineCanonicalInput } from "../../../../models/workflow/canonical-inpu
 import { defineWorkflowRole } from "../../../../workflow-kit/validation/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../models/workflow/presentation.js";
 import { timecardNode, KRONOS_TIMECARD_STEP } from "../../workflow.js";
-/**
- * The employee's name as the run expects it — the SAME canonical schema object
- * a spreadsheet column binds through (D172), not a structurally identical copy.
- */
+/** The employee's name as the run expects it — the SAME canonical schema object a spreadsheet column binds through, not a structurally identical copy. */
 const EmployeeNameSchema = CANONICAL_FIELDS.fullName.schema;
 
-/**
- * How long a search may go without answering EITHER WAY. Defaulted at 15s: the
- * genuine no-results sentinel surfaced in 548ms live on 2026-08-12, so this is
- * not a "give the grid a chance" allowance — it is the line past which silence
- * becomes its own reported failure instead of a fabricated negative (S35).
- */
+/** Search timeout: a search that answers neither way by this budget reports silence as its own failure, never a no-results negative. */
 const SEARCH_TIMEOUT_DEFAULT_MS = 15_000;
 
 /** The ingress schema — the ONE place defaults are applied (ref workflow-model §2). */
@@ -117,16 +77,10 @@ export const SeparationsKronosTimecardResultSchema = z.strictObject({
     observedEmployeeId: z.string().min(1),
     expectedName: z.string().min(1),
     observedDisplayName: z.string().min(1),
-    /**
-     * The same classifier ref write-safety §14's identity gate uses. It is REPORTED, not
-     * enforced: the wrong-PERSON control is the EID subject binding, which has
-     * already failed the run by the time this result exists. UKG and Kuali
-     * render names differently, so failing on a name difference here would
-     * refuse correct runs while adding nothing the EID proof does not give.
-     */
+    // EID binds identity; system-specific name differences are reported, never refused.
     nameSimilarity: NameSimilarityTierSchema,
   }),
-  /** The window the grid was PROVED to be showing when it was read (S40). */
+  // The window the grid was proved to be showing when it was read.
   window: z.strictObject({
     requestedStart: TimecardDateSchema,
     requestedEnd: TimecardDateSchema,
@@ -137,34 +91,26 @@ export const SeparationsKronosTimecardResultSchema = z.strictObject({
   }),
   /** What the card carried, raw. */
   timecard: z.strictObject({
-    /** `null` is S38's REAL outcome — a card that opened and holds no punches. */
+    // `null` is the real outcome: a card that opened and holds no punches.
     lastPunchDate: TimecardDateSchema.nullable(),
     punchDates: z.array(TimecardDateSchema),
     sickDates: z.array(TimecardDateSchema),
     holidayDates: z.array(TimecardDateSchema),
     payCodeDays:
       ReadSeparationTimecardOutputSchema.shape.grid.shape.payCodeDays,
-    /**
-     * Pay codes the ported `/sick/i` and `/holiday/i` rules do not classify.
-     * Surfaced so an unrecognised holiday cannot silently drop out of a date
-     * the composition will later file a termination on.
-     */
+      // Surface unclassified pay codes so unknown leave cannot silently change filing dates.
     unclassifiedPayCodes: z.array(z.string().min(1)),
   }),
-  /**
-   * The timecard-local derivation, and ONLY that. Reconciliation against the
-   * Kuali-carried dates (LDW override, separation date, effective date + 1) is
-   * separations' own pure mini-store and lands with the composition chunk —
-   * this chunk must not grow a second home for it.
-   */
+  /** The timecard-local derivation, and ONLY that; reconciliation against the Kuali-carried dates
+   *  is the composition's own fold — this chunk must not grow a second home for it. */
   derived: z.strictObject({
     /** Legacy's Last Day Worked candidate: the last physical punch. */
     lastPunchDate: TimecardDateSchema.nullable(),
-    /** The later of the last sick day and the last holiday day, if any (S39). */
+    // The later of the last sick day and the last holiday day, if any.
     latestLeaveDate: TimecardDateSchema.nullable(),
     /** `max(lastPunch, latestLeave)`; `null` only when the card is empty. */
     separationDateCandidate: TimecardDateSchema.nullable(),
-    /** Distinguishes "read a card with no punches" from every failure (S34/S38). */
+    // Distinguishes a card read with no punches from every failure.
     hasPunches: z.boolean(),
   }),
   /** The candidate list the search page rendered, kept as run evidence. */
@@ -201,25 +147,10 @@ export const separationsKronosTimecardWorkflow = defineWorkflow({
   surface: { shape: "single" },
   enqueue: "reject-active",
   actions: STANDARD_WORKFLOW_ACTIONS,
-  /**
-   * No `inputRun` surface, deliberately. The paste-a-line parser splits ONE
-   * token per item, and this workflow's input is four correlated values
-   * (EID, expected name, and both window bounds) — a parser that emitted only
-   * the EID would have to invent the window, which is the substitution this
-   * program bans. Runs are started through the generic start-plan / command
-   * path with structured input; nothing about that needs a surface here, and
-   * the queue and run-detail wires already render this workflow off the
-   * registry.
-   */
+  /** No `inputRun` surface, deliberately: the input is four correlated values (EID, name, both window
+   *  bounds) a parser would have to invent the rest of — runs start through the generic start-plan/command path. */
   surfaces: {},
-  /**
-   * No `capabilities` block at all — no Review panel and no Edit Data fields.
-   * The timecard is ground truth for a real termination's dates; an operator
-   * correcting a punch date here would be substituting exactly the value the
-   * run exists to establish, which is §4b's whole posture ("no path through
-   * this workflow files a termination on a date nobody read"). A later chunk
-   * declares its own.
-   */
+  // Edit Data must not substitute the punch evidence this read establishes.
   verdicts: [
     { key: "no-punches", label: "No punches", tone: "warning", tag: true },
     {
@@ -249,14 +180,7 @@ export const separationsKronosTimecardWorkflow = defineWorkflow({
       display: "text",
     },
   ],
-  /**
-   * Ref dashboard-surfaces §1.2: `EID 10620118` becomes the person, off the TIMECARD's own
-   * header — the page whose displayed subject is this workflow's S37
-   * wrong-person control — and never off the search panel's `matched` row. The
-   * results panel renders a candidate LIST, and its own contract says so: a
-   * title taken from there would name whoever the search offered rather than
-   * whoever the run went on to read.
-   */
+  // The timecard's own header names the person, never the search candidate list.
   subjectProjection: {
     nodeId: "timecard",
     fieldPath: "subject.observedDisplayName",
@@ -269,7 +193,7 @@ export const separationsKronosTimecardWorkflow = defineWorkflow({
     title: (input) => `EID ${input.emplId}`,
     subtitle: (input) => `${input.rangeStart} – ${input.rangeEnd}`,
   },
-  /** D229 — the descriptor's own words about each node, projected by the explorer. */
+  /** The descriptor's own words about each node, projected by the explorer. */
   nodePurposes: [
     {
       nodeId: "search",
@@ -294,32 +218,13 @@ export const separationsKronosTimecardWorkflow = defineWorkflow({
     "separations-kronos-timecard/wrong-employee-timecard",
   ],
   input: SeparationsKronosTimecardInput,
-  // A proving harness for one step of `separations`, never a peer workflow (D219) —
-  // the step it proves is the folder it lives in, read from that folder's own
-  // declaration rather than re-typed here (D265 §1.2.2 rule 3).
   role: defineWorkflowRole({
     kind: "chunk-harness",
     of: "separations",
     step: KRONOS_TIMECARD_STEP.key,
   }),
   steps: ({ task, result }) => {
-    /**
-     * `always-rerun`, and this is the load-bearing choice in the graph.
-     *
-     * The search's OUTPUT is durable, but its POINT is a side effect that is
-     * not: it leaves the employee selected in the WFD search panel, which is
-     * the only thing that enables Go To. Replaying the checkpoint restores the
-     * output into a FRESH browser that has never opened the panel, so the
-     * timecard node then refuses — observed live on run `sk-124132-9beb`
-     * (2026-08-12), which replayed the previous attempt's search checkpoint and
-     * failed at Go To with an empty panel.
-     *
-     * The general rule this settles: **a node whose real product is BROWSER
-     * state may not be `replay: "checkpoint"`.** Ref workflow-model §5.3 replay restores
-     * values, never page state, so a downstream task whose precondition is a
-     * live page must be preceded by a node that actually runs. The search is a
-     * ~2s read; re-running it is strictly cheaper than the failure mode.
-     */
+    /** `always-rerun`: replaying a checkpoint restores values but cannot restore the WFD panel selection the timecard visit needs, so `replay:"checkpoint"` is unsafe here. */
     const search = task(
       {
         id: "search",
@@ -333,17 +238,9 @@ export const separationsKronosTimecardWorkflow = defineWorkflow({
         searchTimeoutMs: input.searchTimeoutMs,
       }),
     );
-    // The composition's `timecard` identity (`../workflow.ts`), wired from this
-    // harness's `search` node and its ingress window. `search` itself stays a
-    // harness-authored entry: its id and label ("search" / "Employee Search")
-    // are not the composition's `timecard-search`, and a node's id is its identity.
+    // This harness search has its own identity; reuse only the composition timecard entry.
     const timecard = task(timecardNode, [search], ({ input, outputs }) => {
-      // The EID comes from the RUN INPUT, not from the row text: the search
-      // task already refused unless `matched.employeeId` equalled it, so
-      // re-deriving it from the page would add a parse without adding a proof.
-      // Reading the fact here is what makes the dependency load-bearing rather
-      // than decorative — a search that produced no match never reaches this
-      // node at all.
+      // Search already proved the input EID; require its match before reading the timecard.
       requireFact(outputs.search.matched, "search", "matched");
       return {
         emplId: input.emplId,

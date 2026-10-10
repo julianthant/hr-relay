@@ -43,7 +43,7 @@ export function createNotificationHealthObserver(input: { database: AuthorityDat
     const growing = samples.length === 3 && samples.every(sample => sample.bytes >= 256 * 1024 * 1024)
       && samples.every((sample, index) => index === 0 || sample.bytes > samples[index - 1].bytes && Date.parse(sample.at) - Date.parse(samples[index - 1].at) >= 60_000);
     for (const concern of StorageHealthConcernSchema.options) {
-      if (concern === "outbox-stalled") continue; // D322: no applicable authority exists.
+      if (concern === "outbox-stalled") continue;
       const previous = database.authority.notificationHealth.get(concern);
       const active = concern === "disk-space" ? reading.freeBytes < 1024 ** 3 : concern === "wal-growth" ? growing : concern === "integrity-check" ? reading.integrityFailed : concern === "backup" ? reading.backupFailed : reading.leaseExpired;
       const occurrence = (previous?.occurrence ?? 0) + (active && previous?.active !== true ? 1 : 0);

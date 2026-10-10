@@ -15,13 +15,7 @@ export interface WalkFilesOptions {
   readonly missing?: "error" | "planned-empty";
 }
 
-/**
- * Deterministic recursive file walk shared by architecture guards.
- *
- * Missing roots fail by default. The only permitted soft-missing mode is the
- * explicitly named pre-activation state used while `src` does not yet
- * exist; callers must still prove non-vacuity once that root is activated.
- */
+// Missing roots fail; only explicitly pre-activation roots may be absent.
 export function walkFiles(
   root: string,
   options: WalkFilesOptions = {},
@@ -50,13 +44,7 @@ export function repoRelative(path: string): string {
   return relative(REPO_ROOT, path).replaceAll("\\", "/");
 }
 
-/**
- * Repository-visible files: tracked files plus non-ignored untracked files.
- *
- * Architecture inventories use this instead of the raw filesystem so ignored
- * OS artifacts and empty local scratch directories cannot make a clean
- * worktree behave differently from an isolated Git worktree.
- */
+// Inventory repository-visible files so ignored OS artifacts and scratch directories cannot change membership.
 export function gitVisibleFiles(paths: readonly string[]): string[] {
   if (paths.length === 0) return [];
   return execFileSync(

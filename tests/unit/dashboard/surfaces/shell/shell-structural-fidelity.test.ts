@@ -11,9 +11,9 @@ function sourceSlice(source: string, start: string, end: string, label: string):
   return source.slice(from, to);
 }
 
-describe("DCF2 shell and queue structural fidelity", () => {
+describe("shell and queue structural fidelity", () => {
 
-  it("A168/A169 — places the floor-bearing root outside both providers", () => {
+  it("places the floor-bearing root outside both providers", () => {
     const rootStart = APP.indexOf("<div\n      data-app-root=\"\"");
     const tooltipStart = APP.indexOf("<TooltipProvider delayDuration={200}>", rootStart);
     const toastStart = APP.indexOf("<ToastProvider>", tooltipStart);
@@ -36,7 +36,7 @@ describe("DCF2 shell and queue structural fidelity", () => {
     );
   });
 
-  it("A170 / D340 — retains the desktop canvas floor and internal viewport clip", () => {
+  it("retains the desktop canvas floor and internal viewport clip", () => {
     const root = sourceSlice(APP, "<div\n      data-app-root=\"\"", ">\n    <TooltipProvider", "the app root opening tag");
     for (const token of ["h-screen", "min-h-[var(--ds-h-desktop-min)]", "min-w-[var(--ds-w-desktop-min)]", "overflow-hidden"]) {
       assert.ok(root.includes(token), `the desktop canvas must retain ${token}`);

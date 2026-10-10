@@ -1,42 +1,4 @@
-/**
- * OCR extraction admission — ONE gate, whoever did the reading.
- *
- * An extraction can be produced three ways, and the operator must be able to
- * use any of them interchangeably:
- *
- *   1. a provider model reached through the admitted client (ref task-contract §3.4);
- *   2. an agent the operator runs in their own terminal;
- *   3. the operator, reading the page themselves.
- *
- * `admitOcrExtraction` is the only way any of them becomes a record. The source
- * is recorded as PROVENANCE and never as permission: there is deliberately no
- * branch in this function on who produced the value, so a route cannot acquire
- * a weaker rule by being more convenient. Two extractions of the same page that
- * agree on the facts produce byte-identical accepted records whatever their
- * source — the guard proves exactly that.
- *
- * ## "Nobody skips anything" is the completeness rule
- *
- * Every path the form declares must appear, and each answer is either a value
- * or a TYPED absence (`not-on-form`, `blank`, `illegible`). A result missing a
- * path is refused; so is one carrying a path the form does not declare. There
- * is no `.optional()` anywhere in the answer shape, because an optional field
- * is precisely a field a producer can skip in silence.
- *
- * The three absences are not interchangeable and the distinction is the whole
- * point. `not-on-form` says the page has no such box. `blank` says the box is
- * there and empty — a fact about the employee. `illegible` says the box has
- * something in it that could not be read — a fact about the SCAN, and the only
- * one that a human re-read can fix. Legacy collapsed all three into `null` and
- * reconstructed the difference afterwards by diffing snapshots.
- *
- * ## Values are validated by the canonical schema, not by the producer
- *
- * A field bound to a canonical id runs the SAME `coerce` + `schema` an intake
- * column runs. So a model that returns `10-4567` for an EID is refused here for
- * the same reason and with the same message a spreadsheet cell would be — the
- * producer's confidence in its own output buys it nothing.
- */
+/** OCR extraction admission — ONE gate, whoever did the reading, so an operator can trust any of the three producing routes. */
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import {
@@ -58,15 +20,7 @@ import {
   type OcrFieldSpec,
 } from "./form-registry.js";
 
-/**
- * Who read the page. Provenance, never permission.
- *
- * `local-agent` names the tool by id and records the exact invocation the
- * operator ran, so a result can be reproduced or attributed later. `operator`
- * is a person attesting to what they read — the strongest provenance and the
- * least scalable, which is why it is a peer of the others rather than a
- * fallback that engages when the others fail.
- */
+/** Who read the page: provenance, never permission; the producer id and exact invocation are recorded. */
 export const ExtractionSourceSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("provider"),
@@ -119,22 +73,9 @@ export const SubmittedExtractionSchema = z.strictObject({
   sourceSha256: FingerprintSchema,
   /** 1-based page of the source document these records came from. */
   sourcePage: z.number().int().positive(),
-  /**
-   * What the page turned out to BE, decided before any field was read. A
-   * scanned stack is mixed, so this is not a formality: a page that is not the
-   * expected form carries NO records, and that is a correct outcome rather than
-   * a failed one.
-   */
+    /* What the page turned out to BE, decided before any field was read; a scanned stack is mixed, so a page that is not the expected form carries NO records, and that is a correct outcome. */
   pageKind: OcrPageKindSchema,
-  /**
-   * The one person on this page, or `null` when the page is not this form.
-   *
-   * Every form the operator actually scans is one person per page — the
-   * multi-row sign-in sheet legacy supported is used by no workflow. A page is
-   * therefore this form or it is not, and an array would be generality with no
-   * user. An I-9 subject DOES span two pages, but that is a grouping problem
-   * above this gate rather than several records inside one page.
-   */
+    /* The one person on this page, or `null` when the page is not this form; every form the operator actually scans is one person per page. */
   record: SubmittedRecordSchema.nullable(),
 });
 export type SubmittedExtraction = z.infer<typeof SubmittedExtractionSchema>;
@@ -168,11 +109,7 @@ export type AdmittedAnswer = z.infer<typeof AdmittedAnswerSchema>;
 export const AdmittedRecordSchema = z.strictObject({
   /** Sorted by path, so two agreeing readings are byte-identical. */
   answers: z.array(AdmittedAnswerSchema).min(1),
-  /**
-   * Paths a human must resolve before this record may be used: a MANDATORY
-   * field that came back absent or unreadable. Empty means ready for review,
-   * not "approved" — ref operator-trust's gate still applies.
-   */
+    /* Paths a human must resolve before this record may be used; empty means ready for review, not "approved" — the gate still applies. */
   blockingPaths: z.array(OcrFieldPathSchema),
   /** Digest of the admitted answers, for cross-producer comparison. */
   answersFingerprint: FingerprintSchema,
@@ -192,9 +129,7 @@ export const AdmittedExtractionSchema = z.strictObject({
   pageFingerprint: FingerprintSchema,
 }).superRefine((extraction, context) => {
   const issue = (message: string): void => { context.addIssue({ code: "custom", message }); };
-  // Data-bearing is a property of the FORM's declared page kinds, not of
-  // `pageKind === formType`: the I-9's two sections both carry records while
-  // neither kind spells "i9".
+  // Data pages follow declared page kinds, not equality with the form ID.
   const dataBearing = ocrForm(extraction.formType).pageKinds.includes(extraction.pageKind);
   if (dataBearing && extraction.record === null) {
     issue(`a page classified as ${extraction.pageKind} must carry its record`);
@@ -205,10 +140,7 @@ export const AdmittedExtractionSchema = z.strictObject({
 });
 export type AdmittedExtraction = z.infer<typeof AdmittedExtractionSchema>;
 
-/**
- * The gate's verdict. Schema-derived because it is served: the correction list
- * is what a producer — model, agent or person — reads to fix its submission.
- */
+/** The gate's verdict, schema-derived because it is served: the correction list is what a producer reads to fix its submission. */
 export const OcrAdmissionSchema = z.discriminatedUnion("admitted", [
   z.strictObject({ admitted: z.literal(true), extraction: AdmittedExtractionSchema }),
   z.strictObject({ admitted: z.literal(false), problems: z.array(z.string().min(1)).min(1) }),
@@ -241,13 +173,7 @@ function admitValue(spec: OcrFieldSpec, raw: string, location: CellLocation):
   }
 }
 
-/**
- * The single admission gate. Refuses rather than repairing.
- *
- * It returns EVERY problem rather than the first, because a producer — human or
- * model — should get one complete correction list, not one round trip per
- * mistake.
- */
+/** The single admission gate: refuses rather than repairing, and returns EVERY problem rather than the first, because a producer reads all of them. */
 export function admitOcrExtraction(candidate: unknown): OcrAdmission {
   const parsed = SubmittedExtractionSchema.safeParse(candidate);
   if (!parsed.success) {
@@ -261,11 +187,7 @@ export function admitOcrExtraction(candidate: unknown): OcrAdmission {
   const form = ocrForm(submission.formType);
   const problems: string[] = [];
 
-  // A page that is not a data page of this form carries no record, and that is
-  // a correct outcome: a scanned stack is loose paper, and demanding oath
-  // answers from an emergency-contact page would force a producer to invent
-  // them. Data-bearing means one of the FORM's declared page kinds — the I-9's
-  // two sections both qualify.
+  // Non-data pages carry no record; demanding another form's fields would invent observations.
   if (!form.pageKinds.includes(submission.pageKind)) {
     if (submission.record !== null) {
       problems.push(
@@ -295,10 +217,7 @@ export function admitOcrExtraction(candidate: unknown): OcrAdmission {
   for (const path of submitted) {
     if (!declared.has(path)) problems.push(`${path} is not a field of the ${submission.formType} form`);
   }
-  // A sectioned form's field exists on SOME of its pages. On a page whose kind
-  // does not carry the box, the only truthful answer is `not-on-form`: a value
-  // "read" from a box the page does not have is a value from nowhere, and
-  // `blank`/`illegible` both claim the box exists.
+  // Off-kind fields are not-on-form; blank and illegible both claim the box exists.
   for (const [path, spec] of declared) {
     if (fieldOnPageKind(spec, submission.pageKind)) continue;
     const answer = submission.record.answers[path];
@@ -336,10 +255,7 @@ function admitRecord(
   const blockingPaths: string[] = [];
   for (const spec of fields) {
     const answer = record.answers[spec.path];
-    // A mandatory field blocks only on pages that CARRY it: an I-9 Section 2's
-    // `not-on-form` date of birth is the correct answer, not a gap a human must
-    // resolve. Off-kind fields reach here as `not-on-form` only — the gate has
-    // already refused anything else.
+    // Mandatory fields block only on page kinds that carry them.
     const onThisKind = fieldOnPageKind(spec, submission.pageKind);
     if (answer.state === "absent") {
       answers.push(AdmittedAnswerSchema.parse({ state: "absent", path: spec.path, reason: answer.reason }));
@@ -348,9 +264,7 @@ function admitRecord(
     }
     const admitted = admitValue(spec, answer.raw, { ...location, header: spec.path });
     if (!admitted.ok) {
-      // NOT a rejection of the whole record: an unreadable value is a real
-      // outcome a human resolves. It is kept with its raw text so the reviewer
-      // sees what the producer actually saw.
+      // Preserve unreadable values and raw text for human resolution.
       answers.push(AdmittedAnswerSchema.parse({
         state: "unreadable",
         path: spec.path,
@@ -401,15 +315,7 @@ function buildAdmitted(
   });
 }
 
-/**
- * A digest of WHAT WAS READ, excluding who read it and when.
- *
- * Two producers that agree on the page produce the same fingerprint, which is
- * what makes "the same result no matter who does it" checkable rather than
- * asserted — and what a later cross-check between routes compares. Confidence
- * is excluded on purpose: it is the producer's opinion of itself, not a fact
- * about the page, and including it would make agreement impossible to detect.
- */
+/** A digest of WHAT WAS READ, excluding who read it and when, so two producers that agree on the page produce the same fingerprint. */
 export function answersFingerprint(answers: readonly AdmittedAnswer[]): Fingerprint {
   const facts = answers
     .toSorted((left, right) => left.path.localeCompare(right.path))

@@ -1,27 +1,5 @@
-/**
- * The Census and Nominatim `geocode.*` adapters — transport plus provenance
- * only: every rule about WHAT a
- * geocoded answer may change lives above, in the normalization task and the
- * domain street guard.
- *
- * Ported knowledge (D93, `legacy:src/services/address/{census,nominatim}.ts`
- * at `0034671d`):
- * - Census builds the street NAME from `preDirection`/`streetName`/
- *   `suffixType` — never `fromAddress`/`toAddress`, which are TIGER block
- *   RANGES, not addresses (the 2026-07-13 corruption vector);
- * - Census answers `/geocoder/locations/address` when street + one locality
- *   fact are present, else `/onelineaddress`;
- * - Nominatim requires the identifying User-Agent per its usage policy, and
- *   passes `countrycodes` only when a 2-letter hint exists;
- * - confidence rules are the ported domain functions, not re-derived here.
- *
- * NOT ported: legacy's 1.1s Nominatim sleep — the admission kernel's own
- * `geocodeNominatim` budget (`requestsPerMinute: 1`) is the durable, honest
- * form of the same policy, and a second in-adapter throttle would be a
- * second scheduler. A 429 maps to retryable `rate-exhausted` with the
- * kernel's fixed-window `retryAt`; other HTTP failures are `unavailable`
- * reasons, and a non-JSON body reports its SHAPE, never an excerpt.
- */
+// Census fromAddress/toAddress are block ranges, never street names.
+// Nominatim throttling belongs to the admission budget; a second throttle adds another scheduler.
 import { z } from "zod";
 import type { ProviderAdapter, ProviderCallOptions } from "../../../workflow-kit/providers.js";
 import type { Clock } from "../../../rules/time/clock.js";

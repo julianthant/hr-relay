@@ -1,12 +1,5 @@
-/**
- * Closed presentation labels for the closed `BrowserSystemId` enum.
- *
- * An explicit map rather than the demo's bare `toUpperCase()`, which would
- * render `NEW-KRONOS` for a system whose operator name is two words. It lives
- * beside `system-chip.tsx` rather than inside it because a module that exports
- * a component may export nothing else if React Fast Refresh is to treat it as a
- * refresh boundary.
- */
+/** Closed presentation labels for the closed `BrowserSystemId` enum.
+ * An explicit map rather than the demo's bare `toUpperCase`, which would */
 import type { z } from "zod";
 import type { BrowserSystemIdSchema } from "../../../../rules/identity/ids.js";
 

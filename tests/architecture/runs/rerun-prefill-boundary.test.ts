@@ -3,8 +3,7 @@ import { absentProbeEvidence, WRITE_FIXTURE_EID } from "../../support/fixtures/w
 import { buildRerunPlan } from "../../../src/backend/runs/start/rerun.js";
 import { RerunSourceSchema } from "../../../src/models/run/rerun.js";
 import { FingerprintSchema } from "../../../src/rules/identity/ids.js";
-/** D334 retains descriptor field-shape controls and replaces the save boundary
- * with exact source/version/provenance validation for new operator assertions. */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { z } from "zod";
@@ -128,7 +127,7 @@ describe("edit data field policy", () => {
   });
 });
 
-describe("Rerun source and provenance boundary (D334)", () => {
+describe("Rerun source and provenance boundary", () => {
   it("checks source revision, descriptor closure, node and field provenance before storing a plan", async () => {
     const h = sourceBoundHarness();
     try {

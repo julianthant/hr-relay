@@ -1,12 +1,5 @@
 /** Frozen v1/v2 contracts: historical evidence and requests retain their original meaning. */
-/**
- * DCR5 operator XLSX export: a strict, redacted selection document.
- *
- * The current search arm contains only the D283 separations corpus already
- * admitted by `HistoricalCrossDateSearchResultSchema`. Full run, trace and retry ids are
- * required to prove the authority selection, but the workbook composer omits
- * them; its durable run number is the only row label that leaves in the file.
- */
+/** Operator XLSX export: a strict, redacted selection document; the workbook composer omits full ids, and the durable run number is the only row label that leaves. */
 import { z } from "zod";
 import { ArtifactRefSchema } from "../artifacts/artifacts.js";
 import {

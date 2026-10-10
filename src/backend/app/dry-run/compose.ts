@@ -1,13 +1,4 @@
-/**
- * CLI composition for one T1b dry-run case. Manifest loading and the ready
- * runtime are injected at the outer composition root: this server module never
- * imports `tests/**`, while the blocked path opens only v16 authority and the
- * checked-in target registry — no worker or browser service is constructed.
- *
- * D341: the subject's private input comes from ignored
- * `config/test-data.local.json`, captured once per start; protected Settings
- * (the credential store) are no longer opened here at all.
- */
+
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { RuntimeIsolation } from "../../../models/config/define-runtime-isolation.js";
@@ -40,14 +31,7 @@ import {
 import { AuthorityDatabase } from "../../storage/sqlite/index.js";
 import { requireRuntimeAdmission, type RuntimeAdmission } from "../../storage/admission/admission.js";
 
-/**
- * One workflow, one resolver. The runner itself is workflow-generic — it reads
- * the descriptor and its dry-run support out of the registry — but turning a
- * LABEL into that workflow's canonical input is per-workflow work, because the
- * ingress shapes differ. A workflow with a registry arm and no resolver is a
- * half-wired seam, so it fails loud by name here rather than resolving to
- * something plausible.
- */
+
 export function resolveDryRunScenarioTarget(
   registry: TestTargetRegistry,
   manifest: DryRunScenarioManifest,
@@ -94,7 +78,7 @@ export async function composeDryRunScenarioCommand(
   const args = parseDryRunScenarioArguments(input.args);
   const repoRoot = input.repoRoot;
   const admission = requireRuntimeAdmission(input.admission);
-  // D324: the production environment carries the host's primary display as the `display` default.
+
   const env = input.env ?? hostAwareResolutionEnvironment(probePrimaryDisplay);
   assertNoMigratedEnvironmentKeys(env);
   const clock = input.clock ?? systemClock;

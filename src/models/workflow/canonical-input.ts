@@ -1,57 +1,16 @@
-/**
- * The canonical-input snapshot contract (ref workflow-model §2, D62).
- *
- * A workflow's raw submission is stored immutable for audit, then validated
- * ONCE by `descriptor.input` — defaults and transforms applied. The resulting
- * `z.output` value is the run's canonical input snapshot.
- *
- * Those stored bytes are **not trusted**. Every authority read re-parses them
- * through a SEPARATE strict `canonicalInput` schema that validates the already
- * transformed shape *without* re-applying ingress coercion. That is the whole
- * point: if resume re-ran `descriptor.input`, a deploy that changed a default
- * would silently rewrite an in-flight run's input.
- *
- * So a canonical-input schema must be **transform-free**: no `.default()`,
- * `.catch()`, `.transform()`, `.preprocess()`, `.pipe()`, or `z.coerce.*`
- * anywhere in its graph. `src/domain/validation/canonical-input-schema.ts` proves that
- * mechanically; this module proves the round-trip
- * `input → canonicalInput → identical value` at descriptor construction, so a
- * canonical schema that drifts from its ingress schema fails loud at build
- * rather than at the first resume.
- */
+/** The canonical-input snapshot contract: a raw submission is stored immutable for audit, then validated ONCE with defaults and transforms applied. */
 import type { z } from "zod";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { auditContractBoundarySchema } from "../validation/contract-boundary.js";
 import { auditCanonicalInputSchema } from "../validation/canonical-input-schema.js";
 
-/**
- * A validation-only view of `z.output<InputSchema>`.
- *
- * Only the OUTPUT is pinned. A branded field makes zod's declared input type the
- * unbranded primitive, so requiring `ZodType<Out, Out>` would reject every
- * schema carrying an `Eid`. What keeps input and output structurally identical
- * is the transform-free audit, not the type parameter — and
- * `assertAuditedCanonicalInput` proves at runtime that the audit actually ran,
- * the same way `assertFactorySealedTaskContract` does for contracts.
- */
+// Pin output types; branded schemas accept unbranded ingress values.
 export type CanonicalInputSchema<InputSchema extends z.ZodType> = z.ZodType<z.output<InputSchema>>;
 
-/**
- * The parsed round-trip samples, retained per audited schema. Descriptor
- * construction reuses them to prove identity, presentation, and subject
- * resolution against real inputs instead of re-declaring a second sample set
- * that could drift from this one.
- */
+// Reuse audited samples so descriptor validation cannot drift.
 const AUDITED_CANONICAL_INPUTS = new WeakMap<object, readonly unknown[]>();
 
-/**
- * Bind a workflow's ingress schema to its canonical-input validator.
- *
- * `samples` are raw submissions covering every arm of the ingress schema — each
- * one is parsed through `input`, re-parsed through `canonical`, and required to
- * come back canonically identical. Without samples the round-trip claim would be
- * unproven, so at least one is mandatory.
- */
+/** Bind a workflow's ingress schema to its canonical-input validator; every sample must come back canonically identical, or the round-trip claim would be unprovable. */
 export function defineCanonicalInput<InputSchema extends z.ZodType>(
   input: InputSchema,
   canonical: CanonicalInputSchema<InputSchema>,
@@ -102,11 +61,7 @@ export function canonicalInputSamples(schema: object): readonly unknown[] {
   return samples;
 }
 
-/**
- * Re-validate a stored canonical snapshot on every authority read. Fails loud —
- * a snapshot that no longer parses is corrupted authority, never something to
- * repair by re-running ingress.
- */
+// Invalid stored snapshots are corrupted authority; never rerun ingress to repair them.
 export function parseCanonicalInputSnapshot<InputSchema extends z.ZodType>(
   canonical: CanonicalInputSchema<InputSchema>,
   stored: unknown,

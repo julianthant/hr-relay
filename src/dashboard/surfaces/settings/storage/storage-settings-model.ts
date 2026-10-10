@@ -13,10 +13,8 @@ type DegradedSpanAuthority = Extract<StorageDoctorWire["spanAuthority"], { state
 export type SpanAuthorityProblem = DegradedSpanAuthority["problems"][number];
 
 
-/**
- * The strict degraded union's operator facts. The discriminant is rendered
- * separately, so this fold carries only that arm's safe identifying detail.
- */
+/** The strict degraded union's operator facts. The discriminant is rendered
+ * separately, so this fold carries only that arm's safe identifying detail. */
 export function spanAuthorityProblemDetail(problem: SpanAuthorityProblem): string {
   switch (problem.state) {
     case "missing":

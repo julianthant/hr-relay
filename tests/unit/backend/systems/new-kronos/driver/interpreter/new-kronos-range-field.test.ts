@@ -1,29 +1,4 @@
-/**
- * u29 — `setRangeField` drives WFD's never-empty masked date input with real
- * keystrokes and accepts it only when the FINAL read-back is the requested
- * calendar day. Select-all is a gesture, not proof: the widget may keep a
- * whole-value selection or only its current segment, and the live mask advances
- * valid digits in the fresh-range state either way (§9.30).
- *
- * A stale mid-year caret is the refusal case: if select-all silently fails,
- * requested `6/1/2026` can become `11/20/2626`. The final refusal must name
- * both the prior and observed values so the masked overtype diagnoses itself.
- *
- * The fake below drives the WHOLE `readSeparationTimecard` visit (the only
- * public method that reaches `setRangeField`), because the driver reaches the
- * range fields through one continuous page visit: search -> Go To -> Timecard
- * -> subject proof -> period trigger -> Select range -> the three
- * `setRangeField` calls (start, end, start re-proof). Every step ahead of the
- * range fields is scripted to succeed deterministically and immediately (one
- * poll, no hydrating stages) — none of that machinery is what this unit is
- * about. The step AFTER the three range-field calls — the Apply button — is
- * deliberately stubbed to throw a named TEST BOUNDARY marker instead of
- * simulating the applied-range poll and the virtualized grid read: reaching
- * that marker is itself the proof that all three `setRangeField` calls
- * completed, which is what this seam is responsible for. A stub that is asked
- * for anything this script did not anticipate throws by name too — it never
- * returns a default.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import type { Locator, Page } from "playwright";
@@ -40,13 +15,7 @@ const APPLY_BOUNDARY_MARKER =
 /** One `Name <name> ID <eid>` row, already fully rendered — search rendering fidelity is not this seam's concern. */
 const COMPLETE_SLAT_TEXT = `\n  Name  ${DISPLAY_NAME}\n  ID  ${EMPLOYEE_ID}\n`;
 
-/**
- * A scripted stand-in for one never-empty range-date `<input>`. The happy arm
- * models the live month segment (`0..2`) surviving select-all while WFD's mask
- * advances typed month/day/year parts. The failure arm models an observed
- * mid-year segment surviving select-all and corrupting only that segment before
- * the public visit's final read-back refuses it.
- */
+
 class FakeField {
   value: string;
   readonly selectAllSilentlyFails: boolean;
@@ -71,11 +40,7 @@ class FakeField {
     this.selectAllSilentlyFails = selectAllSilentlyFails;
   }
 
-  /**
-   * Bound once the driver's clock exists. `inputValue()` advances past the
-   * settle bound so a wrong final value refuses immediately in test time. A
-   * matching value is accepted by `pollUntil` before elapsed time is consulted.
-   */
+  // Advance test time past the settle bound so wrong readback refuses without wall-clock delay.
   bindClock(clock: ReturnType<typeof manualClock>): void {
     this.clock = clock;
   }
@@ -126,8 +91,7 @@ class FakeField {
       if (firstTypedDigit === undefined) {
         throw new Error("fake range field: the silently-failed select-all case requires a typed digit");
       }
-      // The live mid-year caret replaced only the second year digit; the rest
-      // of the masked keystrokes were ignored, yielding 11/20/2626.
+
       this.value = `${this.value.slice(0, this.selectionStart)}${firstTypedDigit}${this.value.slice(this.selectionEnd)}`;
     } else {
       throw new Error(

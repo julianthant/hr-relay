@@ -1,15 +1,5 @@
 import { hostConfigFacts } from "../../../../../../src/models/config/host-display.js";
-/**
- * The real worker browser-session factory (ref execution-and-sessions §4 · ref clock-config-secrets §4).
- *
- * The Playwright launch itself is the ONE injected seam; everything the factory
- * decides — profile isolation, Duo prerequisites, authentication dispatch,
- * reset verification, and provable teardown — runs for real here, against the
- * real config resolver and the real `WorkerSessionManager`.
- *
- * A live login is NOT exercised here (that is the live smoke's job); what IS
- * exercised is every arm that must fail loud before or around one.
- */
+
 import { fixtureDuoCeremonyGate, fixtureDuoCeremonyGates } from "../../../../../support/helpers/duo-ceremony-fixtures.js";
 import assert from "node:assert/strict";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -91,11 +81,7 @@ function fakePage(options: Readonly<{ url?: string; refuseClose?: boolean }> = {
   return page;
 }
 
-/**
- * The neutral reset now runs the system's FULL authentication proof, so the
- * binding fake is a recording verifier rather than a URL predicate: what this
- * suite pins is that the reset ASKS, and refuses when the answer is no.
- */
+
 function verifierFor(options: Readonly<{ authenticated?: boolean; reason?: string }> = {}) {
   const seen: string[] = [];
   return {
@@ -184,18 +170,7 @@ function recordingBindings(options: Readonly<{
   };
 }
 
-/**
- * Every filesystem effect this suite can produce is confined to one throwaway
- * temp root.
- *
- * `factory.open()` really does `mkdirSync` its profile directory, and the Duo
- * prerequisites are really read off disk, so a suite that ran against the
- * default config would create — and any cleanup it then wrote would DELETE —
- * the operator's real `.auth/` (named `.auth-rebuild/` before D216), including the Duo WebAuthn credential
- * whose re-enrollment is the one ceremony Duo Autopilot cannot do unattended.
- * The profile root is therefore bound to this temp root, exactly as an operator
- * could bind it through a settings override; the real root is never named.
- */
+// Confine every browser-factory filesystem effect to the test root.
 function withTempRuntime(body: (input: Readonly<{ config: Config; root: string }>) => void | Promise<void>): Promise<void> {
   const root = mkdtempSync(join(tmpdir(), "hrauto-browser-factory-"));
   const extensionDir = join(root, "duo-autopilot");
@@ -253,9 +228,7 @@ const OPEN_INPUT = {
 
 describe("worker browser session factory", () => {
   it("derives every profile segment from the isolation contract and an absolute root", () => {
-    // The production derivation is proven as a STRING: the default profile
-    // root is the isolation contract's root, resolved once and absolutely, and
-    // the credential home sits inside it. Nothing here reads or writes it.
+    // Assert production path derivation as a string; never create or remove a real runtime profile root.
     const production = resolveConfigWithProvenance({}, hostConfigFacts({}), CLOCK).config.paths;
     assert.equal(production.browserProfileRoot, resolvePath(rebuildRuntimeIsolation.browserProfileRoot));
     assert.equal(production.duoCredential, join(production.browserProfileRoot, "duo-webauthn.json"));
@@ -278,12 +251,10 @@ describe("worker browser session factory", () => {
         `ucpath-prod-${FINGERPRINT.slice(0, 12)}-headless`,
       ),
     );
-    // The legacy runtime's profile root and session namespace must be
-    // unreachable from this derivation, whatever the identity.
+
     assert.doesNotMatch(directory, /\.auth\/|hrauto-legacy/u);
 
-    // A cwd-relative root is what made a worker's profile home depend on where
-    // it was started; it is refused, never silently resolved.
+
     assert.throws(
       () => workerProfileDirectory({
         profileRoot: rebuildRuntimeIsolation.browserProfileRoot,

@@ -1,10 +1,7 @@
 import { ContractFieldPathSchema } from "../task/task-contract.js";
 import { DeclaredActionIdentitySchema, OperationInputLineageSchema } from "../workflow/operation-action-identity.js";
 import { valueFreeProtectedData } from "../write-safety/protected-input.js";
-/**
- * Durable terminal workflow results and the exact checkpoint identities from
- * which they were derived (ref workflow-model §5.7, D114).
- */
+/** Durable terminal workflow results and the exact checkpoint identities they were derived from. */
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import {
@@ -27,14 +24,9 @@ import { TransactionDryRunPreviewSchema } from "../../rules/write-safety/write-s
 export const TerminalNotRunReasonSchema = z.enum([
   "condition-false",
   "branch-not-selected",
-  /**
-   * D307 — ONE vocabulary across result, span and timeline (D123). A task an
-   * omitted step's producer rebuilt is `operator-asserted` on its span; in the
-   * terminal record that node arrives as the `asserted` arm, never as not-run,
-   * so the sealed factory refuses this reason there by name.
-   */
+    /* ONE vocabulary across result, span and timeline: an omitted step's producer-rebuilt node is `operator-asserted` on its span and the `asserted` arm in the terminal record. */
   "operator-asserted",
-  /** D307 — a transaction, or a task no producer rebuilds, in a step the operator omitted. */
+    /** A transaction, or a task no producer rebuilds, in a step the operator omitted. */
   "step-omitted",
 ]);
 
@@ -45,12 +37,7 @@ export const ResolvedTerminalDependencySchema = z.strictObject({
     workflowId: WorkflowIdSchema,
     itemId: ItemIdSchema,
     attempt: PositiveIntSchema,
-    /**
-     * D214 — WHICH execution of that attempt this evidence cites. Optional for
-     * the same read-forward reason the checkpoint row's own field is (D133): a
-     * result stored before D214 names a row that carries no generation, and its
-     * lookup key omits the component exactly as the stored row's key does.
-     */
+      /* Which execution of that attempt this evidence cites; optional for the same read-forward reason the checkpoint row's own field is. */
     claimGeneration: PositiveIntSchema.optional(),
     runId: RunIdSchema,
   }),
@@ -69,12 +56,7 @@ export const NotRunTerminalDependencySchema = z.strictObject({
   reason: TerminalNotRunReasonSchema,
 });
 
-/**
- * D307 — a node the operator asserted at start instead of running. The record
- * binds the schema the producer's output was parsed with and the digest of
- * that output, so a later reader can prove the terminal derive consumed
- * exactly the asserted value — and never mistakes it for an observed one.
- */
+/** A node the operator asserted at start instead of running, bound to the schema and digest of the asserted output. */
 export const AssertedTerminalDependencySchema = z.strictObject({
   state: z.literal("asserted"),
   nodeId: NodeIdSchema,
@@ -135,23 +117,7 @@ export const TerminalDependencyEvidenceSchema = z.discriminatedUnion("state", [
   }),
 ]);
 
-/**
- * D210 — the terminal record of a PREVIEWED run.
- *
- * A dry run stops at its first transaction node, so the workflow's declared
- * result was never derived and there is nothing to fold: a preview has no
- * `disposition` and no commit output. Fabricating a `TransactionOutcome` to make
- * `build()` fold would be the banned plausible-wrong value, so a previewed run
- * settles with THIS shape instead, and `RunResultRecord.resultSchemaHash` names
- * it — the only hash that truthfully describes the bytes stored (D144's rule).
- * A consumer that demands the descriptor's declared result therefore sees a hash
- * that is not the one it expects and refuses, rather than reading a preview as a
- * completed workflow.
- *
- * `externalCommit: "none"` is a structural restatement, not a claim to be
- * trusted: a dry run mints no write intent, no fence, and never invokes a commit
- * implementation, and the scenarios assert that on rows.
- */
+/** The terminal record of a PREVIEWED run: it stops at its first transaction node, so no declared result was derived and none is fabricated. */
 export const RunDryRunPreviewResultSchema = z.strictObject({
   kind: z.literal("dry-run-preview"),
   /** The transaction node the run stopped at — its first (ref task-contract §10.1). */

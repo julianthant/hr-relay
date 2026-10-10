@@ -34,11 +34,8 @@ export interface NotificationInboxView {
 }
 
 
-/**
- * The pinned safety lane is partitioned before ordinary filtering. No filter
- * branch receives it, so adding a chip cannot accidentally make the gap
- * disappear. It still contributes to the bell and filter counts.
- */
+/** The pinned safety lane is partitioned before ordinary filtering. No filter
+ * branch receives it, so adding a chip cannot accidentally make the gap */
 export function notificationInboxView(
   notifications: readonly NotificationRowWire[],
   filter: NotificationFilterKey,

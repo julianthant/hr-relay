@@ -106,7 +106,7 @@ const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
 const bootStores: AuthorityBootStore[] = [];
 const CLOCK = manualClock(new Date(NOW));
-// SHA-256 of person-lookup-2026-07-31.jsonl, grouped to avoid accidental person-ID text.
+// Group the fixture digest to avoid person-id-shaped substrings.
 const SPAN_FILE_DIAGNOSTIC_ID = "sha256:d952-65f7-a4dc-6b9f-3c14-fa5f-dd3f-1ef1-a83a-743e-a3d5-902b-cc27-8e60-e0ec-47e7";
 const PASSIVE_DEADLINE_SCHEDULER: MonotonicDeadlineScheduler = Object.freeze({
   schedule: () => Object.freeze({ cancel: () => undefined }),
@@ -665,9 +665,7 @@ describe("verified native online backups", () => {
     );
     legacy.close();
 
-    // Production open no longer crosses the v30 floor. Preserve this backup
-    // regression over the immutable SQL bytes; Task 6 owns their stopped-system
-    // execution through `storage upgrade`.
+
     const migrationHarness = new DatabaseSync(authorityPath);
     migrationHarness.exec("BEGIN EXCLUSIVE");
     try {
@@ -899,7 +897,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     assert.deepEqual(snapshot.resolutions.map(({ state }) => state), ["live", "live"]);
   });
 
-  it("resolves a span root whose run carries a D308 tombstone as deleted", () => {
+  it("resolves a span root whose run carries a tombstone as deleted", () => {
     const root = testRoot();
     const authorityPath = join(root, "state.db");
     const database = openDatabase(authorityPath);
@@ -1032,8 +1030,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     const authorityPath = join(root, "state.db");
     const database = openDatabase(authorityPath);
     const baseline = AuthorityDatabase.inspectExistingReadOnly(authorityPath);
-    // Captured before the prototype probe and invoked below with its original
-    // DatabaseSync receiver; binding here would bind the wrong connection.
+    // Capture the unbound method before the probe; invoke it with its actual database receiver.
     // eslint-disable-next-line @typescript-eslint/unbound-method
     const nativePrepare = DatabaseSync.prototype.prepare;
     let injected = false;
@@ -3664,10 +3661,7 @@ describe("offline exact-backup restore", () => {
     const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as Record<string, unknown> & { backupFileName: string };
     const backupPath = join(directory, manifest.backupFileName);
     const corruptBackup = new DatabaseSync(backupPath);
-    // Columns the v4 triggers demand are all present and plausible; only the
-    // record JSON is not a run. Corruption that satisfies the column contract
-    // is exactly what record-schema validation exists to catch — a shape check
-    // at the column level would wave this row through.
+
     corruptBackup.prepare(`
       INSERT INTO workflow_runs (
         record_key, workflow, item_id, state, priority, attempt,
@@ -3745,7 +3739,7 @@ describe("authority.health preflight and static recovery boundary", () => {
 
     rmSync(directory, { recursive: true });
     const withoutBackup = await executePreflightRunner(runner, new AbortController().signal, CLOCK, PASSIVE_DEADLINE_SCHEDULER);
-    // D322: a missing backup is the operator's choice, reported but never gating.
+
     assert.equal(withoutBackup.state, "healthy");
     assert.match(withoutBackup.summary, /backup missing/);
   });

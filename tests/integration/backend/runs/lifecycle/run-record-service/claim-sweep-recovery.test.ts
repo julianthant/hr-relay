@@ -1,11 +1,6 @@
 import { testRunService, testRunLifecycle } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
 import { sweepWorkerClaims } from "../../../../../../src/backend/runs/lifecycle/run-record-service.js";
-/**
- * D118 (ref execution-and-sessions §3): an expired claim is not ordinary requeue authority. An
- * unfinished `attempting` write intent on the run's logical item routes the
- * sweep to a typed recovery-required outcome — parked loudly, never silently
- * requeued — and only intent-free rows take the ordinary recovery requeue.
- */
+
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -106,7 +101,7 @@ function claimAndRun(database: AuthorityDatabase, target: "claimed" | "running")
   assert.equal(running.state, "applied");
 }
 
-describe("expired-claim sweep write-intent gate (D118)", () => {
+describe("expired-claim sweep write-intent gate", () => {
   it("parks a running run with an attempting intent as parked-write instead of requeueing", () => {
     const database = openDatabase();
     claimAndRun(database, "running");
@@ -133,7 +128,7 @@ describe("expired-claim sweep write-intent gate (D118)", () => {
       assert.equal(run.lifecycle.code, "unknown");
       assert.equal(run.lifecycle.writeIntentId, PERSON_LOOKUP_ATTEMPTING_INTENT.writeIntentId);
     }
-    // The attempt was NOT bumped and the row is NOT claimable.
+
     assert.equal(run.envelope.attempt, 1);
     const reclaim = database.authority.runs.claimNext({
       workflow: WORKFLOW_ID,
@@ -198,7 +193,7 @@ describe("expired-claim sweep write-intent gate (D118)", () => {
     assert.equal(reclaim.state, "claimed");
   });
 
-  /* ── D200: the same sweeper, scoped to one worker id ───────────────────── */
+
 
   /** A second queued run on its own logical item, for a sibling worker. */
   const SIBLING_RUN = {
@@ -222,12 +217,7 @@ describe("expired-claim sweep write-intent gate (D118)", () => {
     });
     assert.equal(sibling.state, "claimed");
 
-    /*
-     * A restarted worker sweeps its OWN id with `staleBefore: now` — every row
-     * still under an id whose lease it just won is orphaned regardless of the
-     * heartbeat. Widening `staleBefore` globally instead would have swept
-     * worker-2's live claim, which is why the scope is the worker id.
-     */
+    // Startup sweep scopes staleBefore to the reclaimed worker so live peers remain untouched.
     const swept = sweepWorkerClaims(database, testRunLifecycle(database, manualClock(new Date(MUCH_LATER))), {
       workerId: WORKER_ID,
       now: NOW,
@@ -248,8 +238,7 @@ describe("expired-claim sweep write-intent gate (D118)", () => {
       attempt: PERSON_LOOKUP_WRITE_ATTEMPT,
     });
 
-    // The D118 gate is the sweeper's, so scoping to a worker id cannot bypass
-    // it: this is the SAME code path, pointed at one owner.
+
     const swept = sweepWorkerClaims(database, testRunLifecycle(database, manualClock(new Date(MUCH_LATER))), {
       workerId: WORKER_ID,
       now: NOW,
@@ -284,9 +273,7 @@ describe("expired-claim sweep write-intent gate (D118)", () => {
     });
     assert.equal(swept.length, 1);
     assert.equal(swept[0]?.state, "recovery-required");
-    // Still owned: a claimed row has no legal parked-write edge, so the worker
-    // id stays wedged until a ref write-safety §4.1 resolution settles the intent. The
-    // composition reports THAT rather than letting the first poll throw.
+
     assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "claimed");
     assert.equal(database.authority.runs.listByWorker(WORKER_ID).length, 1);
   });

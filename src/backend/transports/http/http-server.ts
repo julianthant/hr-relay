@@ -1,13 +1,4 @@
-/**
- * The in-process HTTP host for the Hono BFF. Node's own `http` server feeds
- * `app.fetch` — no adapter dependency — and the response body (including the
- * SSE stream) is piped chunk-by-chunk so an EventSource sees envelopes as
- * they are enqueued.
- *
- * Loopback only (ref clock-config-secrets): the listener binds 127.0.0.1 and refuses any other
- * hostname — a "temporary" LAN bind would turn a local operator tool into an
- * unaudited remote-control surface.
- */
+
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { Readable } from "node:stream";
 import { z } from "zod";
@@ -15,12 +6,7 @@ import type { DashboardApp } from "./routes/api.js";
 
 export interface DashboardHttpServerDeps {
   readonly app: DashboardApp;
-  /**
-   * The config-resolved isolation port — never a literal at a call site.
-   * 0 delegates to the OS (an ephemeral port), for a composition that must
-   * not claim the machine-wide isolation port — a test composing the real
-   * runtime; the returned `port` is always the port actually bound.
-   */
+
   readonly port: number;
   readonly hostname?: string;
   /** Structured local observation for transfer/cleanup failures after no wire error remains possible. */

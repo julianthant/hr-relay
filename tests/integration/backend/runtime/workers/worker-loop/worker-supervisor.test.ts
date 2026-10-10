@@ -1,13 +1,4 @@
-/**
- * The dashboard-owned child-process worker supervisor (ref execution-and-sessions
- * §11, D271): spawns the EXACT worker CLI, proves child birth against the
- * durable worker lease (authority is the only coordination channel — §11.3),
- * records exit/crash/stop-escalation evidence as it occurs, never restarts a
- * crashed child, and never adopts a process it did not spawn.
- *
- * Every process edge is a recording fake at the system boundary: the spawner,
- * the lease probe, the graceful-stop channel, the clock and the scheduler.
- */
+
 import assert from "node:assert/strict";
 import { describe, expect, it } from "vitest";
 import { manualClock } from "../../../../../../src/rules/time/clock.js";
@@ -112,10 +103,7 @@ interface Harness {
   ) => Promise<WorkerDurableStopReceipt> | WorkerDurableStopReceipt;
 }
 
-/**
- * The directive write's lease versions a well-behaved channel reports: the
- * fake authority's lease is born at version 1, so the stop write is 1 → 2.
- */
+
 const DIRECTIVE_WRITE_VERSIONS = Object.freeze({ before: 1, after: 2 });
 
 function stopReceipt(requestedAt: string): WorkerDurableStopReceipt {
@@ -295,8 +283,7 @@ describe("spawn-worker", () => {
     await expectation;
 
     expect(harness.children[0]?.signalsSent).toEqual(["SIGKILL"]);
-    // The exit evidence is supervisor-SYNTHESIZED (there is no OS exit event
-    // for a child whose abort SIGKILL was delivered) and says so.
+
     expect(harness.supervisor.memberEvidence(target)).toEqual({
       state: "exited",
       pid: harness.children[0]?.pid,
@@ -373,9 +360,7 @@ describe("spawn-worker", () => {
     await expect(harness.supervisor.execute(planRequest(1, [target], [])))
       .rejects.toThrow(/plan-worker-count refused: .*spawn-abort SIGKILL was not delivered/);
     expect(harness.gracefulRequests).toHaveLength(0);
-    // The child stays visible to close()'s caller as still possibly live.
-    // The REAL exit, when it lands, resolves the uncertainty with OS evidence
-    // and frees the slot.
+
     child.emitExit(null, "SIGKILL");
     expect(harness.supervisor.memberEvidence(target)).toMatchObject({
       state: "exited",
@@ -420,9 +405,7 @@ describe("spawn-worker", () => {
     const poll = harness.scheduler.pending()[0];
     if (poll === undefined) throw new Error("expected a scheduled birth poll");
     poll.fire();
-    // Asserted BEFORE awaiting the rejection: a swallowed birth-probe catch
-    // would leave the spawn pending forever, so awaiting first would turn
-    // that mutation into a 30s test timeout instead of a real diff here.
+    // Assert refusal before awaiting rejection so a swallowed catch fails promptly instead of hanging.
     expect(harness.children[0]?.signalsSent).toEqual(["SIGKILL"]);
     expect(harness.scheduler.pending()).toHaveLength(0);
     await expectation;
@@ -486,8 +469,7 @@ describe("spawn-worker", () => {
     const harness = openHarness();
     const target = member(1);
     const pending = harness.supervisor.execute({ command: "spawn-worker", member: target });
-    // The lease was published synchronously at spawn, so birth already
-    // resolved — but the exit lands before the acknowledgement continuation.
+
     harness.children[0]?.emitExit(1, null);
 
     await expect(pending).rejects.toThrow(/exited .*after proving its lease birth/);
@@ -514,7 +496,7 @@ describe("spawn-worker", () => {
   });
 });
 
-/* ── crash evidence and the no-restart rule (D271) ───────────────────────── */
+
 
 describe("a crashed child", () => {
   async function crashedHarness(): Promise<{ harness: Harness; target: WorkerPoolMember }> {
@@ -564,7 +546,7 @@ describe("a crashed child", () => {
   });
 });
 
-/* ── bounded stop escalation (D271: graceful → SIGTERM → SIGKILL) ────────── */
+
 
 function stopPolicy(): WorkerStopEscalationPolicy {
   return WorkerStopEscalationPolicySchema.parse([
@@ -636,7 +618,7 @@ describe("stop-worker", () => {
     harness.clock.advanceWall(WORKER_GRACEFUL_STOP_TIMEOUT_MS);
     const sigterm = harness.scheduler.pending()[0];
     if (sigterm === undefined) throw new Error("expected the armed SIGTERM deadline");
-    // D271: the SIGTERM deadline is EXACTLY the graceful bound past the stop.
+
     expect(sigterm.deadlineMonotonicMs).toBe(stoppedAtMonotonic + 120_000);
     sigterm.fire();
     expect(child.signalsSent).toEqual(["SIGTERM"]);
@@ -645,7 +627,7 @@ describe("stop-worker", () => {
     harness.clock.advanceWall(WORKER_SIGTERM_TIMEOUT_MS);
     const sigkill = harness.scheduler.pending()[0];
     if (sigkill === undefined) throw new Error("expected the armed SIGKILL deadline");
-    // D271: the SIGKILL deadline is EXACTLY the SIGTERM bound past the SIGTERM send.
+
     expect(sigkill.deadlineMonotonicMs).toBe(stoppedAtMonotonic + 120_000 + 30_000);
     sigkill.fire();
     expect(child.signalsSent).toEqual(["SIGTERM", "SIGKILL"]);
@@ -689,11 +671,7 @@ describe("stop-worker", () => {
   });
 
   it("refuses a durable requestedAt that is not the command's now, and blocks the member until exit", async () => {
-    // The W1/W2 seam pin: the kernel bounds observed stages by the command's
-    // `now`, so a channel that lands the directive at any OTHER instant would
-    // record a stage the kernel must reject. The supervisor refuses it by name
-    // and blocks the member — the directive DID land, so nothing may attest or
-    // re-stop over it until the child's real exit is observed.
+    // Stop-stage instants are bounded by the command instant, not an effect-time clock read.
     const { harness, target } = await runningHarness();
     const durableAt = new Date(Date.parse(NOW) + 1234).toISOString();
     harness.nextGracefulStop = (): WorkerDurableStopReceipt => stopReceipt(durableAt);
@@ -783,9 +761,7 @@ describe("stop-worker", () => {
     await expect(harness.supervisor.execute({ command: "pause-worker", member: target }))
       .rejects.toThrow(/pause-worker refused: .*durable stop directive is UNCERTAIN/);
 
-    // The child's REAL exit resolves the uncertainty. "stopped" is claimed
-    // only for an observed stop escalation, and this supervisor never
-    // observed one — the exit is OS-reported crash evidence.
+
     harness.children[0]?.emitExit(0, null);
     harness.leases.delete(target.workerId);
     expect(harness.supervisor.memberEvidence(target)).toEqual({
@@ -804,10 +780,7 @@ describe("stop-worker", () => {
     const { harness, target } = await runningHarness();
     const child = harness.children[0];
     if (child === undefined) throw new Error("expected a spawned child");
-    // The channel's throw happens AFTER the child's real exit already landed
-    // (and transitioned the record to "exited" with OS evidence): the
-    // stop-uncertain assignment must be conditional on the record still being
-    // "running" at that point, or it would clobber real exit evidence.
+
     harness.nextGracefulStop = (): WorkerDurableStopReceipt => {
       child.emitExit(0, null);
       throw new Error("directive store unavailable after exit");
@@ -943,7 +916,7 @@ describe("pause-worker / resume-worker", () => {
   });
 });
 
-/* ── plan-worker-count reconciliation (W1 exact-excess-coverage contract) ── */
+
 
 function planRequest(
   desired: number,
@@ -1084,9 +1057,7 @@ describe("plan-worker-count", () => {
     const pendingSpawn = harness.supervisor.execute({ command: "spawn-worker", member: member(3) });
     const settled = expect(pendingSpawn).rejects.toThrow(/exited/);
 
-    // The excess roster stops member(2) BEFORE reaching the unprovable
-    // member(3): without the pre-scan, member(2)'s durable stop would be
-    // requested and then abandoned unacknowledged by the refusal.
+
     await expect(harness.supervisor.execute(planRequest(1, [member(1)], [member(2), member(3)])))
       .rejects.toThrow(/has not proved its lease birth/);
 
@@ -1113,9 +1084,7 @@ describe("plan-worker-count", () => {
     await expectation;
     expect(harness.supervisor.memberEvidence(target)).toMatchObject({ state: "kill-undelivered" });
 
-    // Without the whole-roster pre-scan, member(2)'s durable graceful stop
-    // would be requested (it is processed first) before the refusal on
-    // member(3) is ever reached.
+
     await expect(harness.supervisor.execute(planRequest(1, [member(1)], [member(2), target])))
       .rejects.toThrow(/may still be alive/);
 
@@ -1145,7 +1114,7 @@ describe("plan-worker-count", () => {
   });
 });
 
-/* ── the W1 contract round-trip: this supervisor's acks survive the pool executor's validators ── */
+
 
 describe("through createWorkerPoolRuntimeExecutor", () => {
   function workerBrowserCommand(request: Readonly<Record<string, unknown>>) {
@@ -1161,7 +1130,7 @@ describe("through createWorkerPoolRuntimeExecutor", () => {
     return parsed;
   }
 
-  it("spawn, stop and reconciling plan acknowledgements all pass W1 validation end to end", async () => {
+  it("spawn, stop and reconciling plan acknowledgements pass pool validation end to end", async () => {
     const harness = openHarness();
     const executor = createWorkerPoolRuntimeExecutor(harness.supervisor);
 
@@ -1184,8 +1153,7 @@ describe("through createWorkerPoolRuntimeExecutor", () => {
       now: NOW,
     })).resolves.toEqual({ state: "accepted", directiveLeaseVersions: DIRECTIVE_WRITE_VERSIONS });
 
-    // The scale-down plan: member 1 stays, member 2's stop is attested
-    // reconciling, member 3 is honestly unmet — all under W1's validators.
+
     await expect(executor.planPoolWorkerCount({
       command: workerBrowserCommand({
         type: "plan-worker-count",
@@ -1197,7 +1165,7 @@ describe("through createWorkerPoolRuntimeExecutor", () => {
   });
 });
 
-/* ── close(): the W3 teardown seam ───────────────────────────────────────── */
+
 
 describe("drainOwnedChildren", () => {
   it("requests the durable graceful stop and resolves only after the owned child's real exit", async () => {
@@ -1222,7 +1190,7 @@ describe("drainOwnedChildren", () => {
     });
   });
 
-  it("keeps D271 escalation active until a real exit follows SIGKILL", async () => {
+  it("keeps escalation active until a real exit follows SIGKILL", async () => {
     const { harness, target } = await runningHarness();
     let drained = false;
     const pending = harness.supervisor.drainOwnedChildren(stopDirective(NOW)).then(() => { drained = true; });
@@ -1316,9 +1284,7 @@ describe("close", () => {
       stopInFlight: true,
     }]);
 
-    // The durable directive lands AFTER teardown: no fresh SIGTERM/SIGKILL
-    // timers may be armed, the landed-directive fact goes to the fault sink,
-    // and the stage itself is still recorded as evidence.
+
     if (land === undefined) throw new Error("expected the durable stop request to be in flight");
     land(stopReceipt(NOW));
     await settled;

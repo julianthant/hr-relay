@@ -3,23 +3,7 @@ import { sqliteRunReader } from "../../../../../support/helpers/canonical-run-re
 import { runQueuedSpanEvent } from "../../../../../../src/backend/runs/commands/run-queued-span.js";
 import { ActorIdSchema as PublicationActorIdSchema } from "../../../../../../src/rules/identity/ids.js";
 import { RunRecordService } from "../../../../../../src/backend/runs/lifecycle/run-record-service.js";
-/**
- * D170 — the intake upload route, the parser seam, and the session wire, over
- * the REAL content-addressed artifact writer, the REAL shared grid edge and
- * the REAL authority database.
- *
- * The four properties this suite exists for:
- *
- * 1. **The route creates the session** — bytes in, a durable `mapping` row and
- *    a wire out, with discovery already run over the real file.
- * 2. **A re-upload of the same digest JOINS its open session** rather than
- *    forking a second one that would enqueue the same rows twice.
- * 3. **Suggestions are hints.** The wire proposes `Employee ID#` → `emplId`
- *    and still serves an EMPTY `bindings` array; only a command mints one.
- * 4. **The parse is re-derived, never stored** — the wire's validation
- *    dispositions come back from the retained `readAt`, and the session row
- *    holds no rows or columns at all.
- */
+
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -160,8 +144,7 @@ function surface(): Surface {
     intakeProjections: projections,
   });
 
-  // The real span writer and the real queue projection, so an enqueued row is
-  // proved to reach the surface an operator actually reads (D171).
+
   const stateRoot = join(root, ".tracker");
   const projection = createRunQueueProjection({
     timeline: database.authority.timelineEvents,
@@ -191,7 +174,7 @@ function surface(): Surface {
     repository: database.authority.timelineEvents,
     clock,
     pid: 4242,
-    // D218: no in-process hook — the command service ticks the SQLite cursor feed.
+
   });
   const commands = createDashboardCommandService({ kernel, projection });
 
@@ -234,7 +217,7 @@ async function uploadRoster(intake: IntakeService) {
   return outcome;
 }
 
-describe("D170 intake upload route", () => {
+describe("intake upload route", () => {
   it("creates a mapping session with discovery already run over the real file", async () => {
     const { intake, database } = surface();
     const created = await uploadRoster(intake);
@@ -335,7 +318,7 @@ describe("D170 intake upload route", () => {
   });
 });
 
-describe("D170 intake session wire", () => {
+describe("intake session wire", () => {
   it("serves the re-derived validation dispositions against the retained readAt", async () => {
     const { intake, send } = surface();
     const created = await uploadRoster(intake);
@@ -419,7 +402,7 @@ describe("D170 intake session wire", () => {
   });
 });
 
-describe("D171 rerun diff — these exact bytes have run before", () => {
+describe("rerun diff recognizes these exact previously submitted bytes", () => {
   /** Map, validate and enqueue the roster; returns the enqueued session id. */
   async function runTheRoster(
     harness: Surface,

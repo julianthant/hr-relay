@@ -1,26 +1,4 @@
-/**
- * The intake session wire (ref data-intake-and-edit-data §2.2, D170) — what the upload route returns
- * and what `GET /api/v1/intake/:sessionId` serves.
- *
- * It is the durable session JOINED with the re-derived parse view and the
- * suggestion hints, because a mapping grid cannot be drawn from either half
- * alone. Three properties are load-bearing:
- *
- * 1. **`expectedVersion` is the CAS token** every intake command target
- *    carries, served in its own right so a surface never has to invent one.
- * 2. **Suggestions are HINTS** (ref data-intake-and-edit-data §2.5). They ride beside `bindings` and
- *    are never folded into it: only `confirmBinding`, reached from an operator
- *    action, mints a binding, and the wire preserves that separation so a
- *    client cannot accidentally render a proposal as a decision.
- * 3. **Rows are not served.** Ref data-intake-and-edit-data §2.2 step 1 is explicit — sample values
- *    per column, never the whole file. A rejection carries its own redacted
- *    raw value, which is the one place a cell reaches the client verbatim.
- *
- * `validation` mirrors the session's own arm and ADDS the re-derived
- * dispositions: `validateIntakeRows` is a pure function of the retained inputs
- * plus the retained `readAt`, so serving them costs nothing durable and cannot
- * disagree with what the operator validated.
- */
+/** The intake session wire — the durable session joined with the re-derived parse view and suggestion hints, with `expectedVersion` served as the CAS token and rows never served. */
 import { z } from "zod";
 import { ArtifactRefSchema } from "../artifacts/artifacts.js";
 import {
@@ -64,19 +42,7 @@ export const IntakeValidationWireSchema = z.discriminatedUnion("state", [
 ]);
 export type IntakeValidationWire = z.infer<typeof IntakeValidationWireSchema>;
 
-/**
- * "This exact file has run before" — ref data-intake-and-edit-data §7 vector #11, served (D171).
- *
- * A rerun references an immutable manifest and an immutable artifact, so the
- * operator must SEE what moved before enqueueing the same bytes a second time.
- * The prior manifest is found by the session's own source digest, so the
- * `source-artifact` axis is equal by construction and `diff` reports only the
- * mapping, projection, contract and canonical-schema axes.
- *
- * It is present on an ENQUEUED session too, where it names that session's own
- * manifest and reads `same-plan` — which is exactly the manifest view the run
- * surface links to.
- */
+/** "This exact file has run before": the prior manifest is found by the session's own source digest, so the `source-artifact` axis is equal by construction and `diff` reports only the other axes. */
 export const IntakeRerunWireSchema = z.strictObject({
   intakeManifestId: IntakeManifestIdSchema,
   createdAt: IsoInstantSchema,
@@ -85,13 +51,7 @@ export const IntakeRerunWireSchema = z.strictObject({
 });
 export type IntakeRerunWire = z.infer<typeof IntakeRerunWireSchema>;
 
-/**
- * The immutable terminal manifest an operator may inspect. This is never a
- * preflight prediction: before enqueue only the separately served reservation
- * exists, so the surface cannot claim a manifest has already been written.
- * Its field schemas and row refinements are owned beside the durable manifest,
- * so this reviewed projection cannot drift into a second totals contract.
- */
+/** The immutable terminal manifest an operator may inspect; before enqueue only the reservation exists, so the surface cannot claim a manifest has been written. */
 export const IntakeManifestWireSchema = IntakeManifestTerminalProjectionSchema;
 export type IntakeManifestWire = z.infer<typeof IntakeManifestWireSchema>;
 
@@ -100,7 +60,7 @@ export const IntakeSessionWireSchema = z.strictObject({
   intakeSessionId: IntakeSessionIdSchema,
   workflow: WorkflowIdSchema,
   artifact: ArtifactRefSchema,
-  /** The name the file was uploaded under; absent on a pre-D171 session. */
+    /** The name the file was uploaded under; absent on a session predating the leaf. */
   sourceName: z.string().min(1).optional(),
   state: IntakeSessionStateSchema,
   /** The CAS token every intake command target carries. */

@@ -1,20 +1,6 @@
 import { protectedInputBindings, valueFreeProtectedData, valueFreeProtectedInput, type ProtectedInputBinding } from "../write-safety/protected-input.js";
 import { StartSupersedeTargetsSchema } from "./start-supersede.js";
-/**
- * The start plan — what a `start-run` command consumes (ref frontend-backend-integration §5.1).
- *
- * Planning and starting are two steps on purpose. The plan is where input is
- * parsed, instances are resolved, identity and enqueue policy are evaluated,
- * and refusals are named; the command that follows carries only the plan id and
- * the fingerprints it was bound to. So the operator confirms exactly what they
- * were shown, and a descriptor, config, or input that changed between the two
- * makes the command fail rather than start a different run than the one on
- * screen.
- *
- * Refusals ride the plan as data. A submission that cannot start is not dropped
- * and not turned into a run that fails later — it is a named `refused` entry the
- * surface renders beside the ones that will go.
- */
+/** The start plan — what a `start-run` command consumes: planning and starting are two steps, and refusals ride the plan as data. */
 import { RerunPlanSchema, type RerunPlan } from "./rerun.js";
 import { createHash } from "node:crypto";
 import { z } from "zod";
@@ -53,10 +39,7 @@ export const PlannedRunSchema = z.strictObject({
   /** The exact title/subtitle the confirmation surface showed. */
   title: z.string().min(1),
   subtitle: z.string().min(1).optional(),
-  /**
-   * The exact strict-JSON ingress the operator submitted, before defaults or
-   * transforms. It is retained beside — never replaced with — canonical input.
-   */
+    /* The exact strict-JSON ingress the operator submitted, before defaults or transforms, retained beside — never replaced with — canonical input. */
   rawInput: JsonValueSchema,
   /** Parsed through the workflow's canonical-input schema, bound to its hash. */
   input: SchemaBoundCanonicalValueSchema,
@@ -98,7 +81,7 @@ export const StartPlanRecordSchema = z.strictObject({
   browserMode: BrowserPresentationModeSchema.optional(),
   /** Optional only so plans written before browser screenshots remain readable. */
   captureBrowserScreenshots: z.boolean().optional(),
-  /** D307 — omitted steps with their typed facts; copied unchanged onto every run this plan starts. */
+    /** Omitted steps with their typed facts; copied unchanged onto every run this plan starts. */
   stepOmissions: StepOmissionsSchema.optional(),
   rerun: RerunPlanSchema.optional(),
   planned: z.array(PlannedRunSchema),
@@ -174,8 +157,7 @@ export const StartPlanRecordSchema = z.strictObject({
 });
 export type StartPlanRecord = z.infer<typeof StartPlanRecordSchema>;
 
-/** The digest of one schema-validated canonical snapshot, never of raw ingress. */
-/** Private read-forward authentication of pre-D331 immutable input; never a served identity. */
+/** Private read-forward authentication of legacy immutable input; never a served identity. */
 function legacyCanonicalInputDigest(value: unknown): string {
   return createHash("sha256").update("hrauto:start-plan-canonical-input:v1\0")
     .update(canonicalJsonStringify(value)).digest("hex");
@@ -188,11 +170,7 @@ export function deriveCanonicalInputDigest(value: unknown, bindings?: readonly P
     .digest("hex"));
 }
 
-/**
- * The one confirmation token over the ordered accepted submissions. Raw ingress
- * stays part of the identity so a default/transform cannot erase an operator
- * change that happened to produce the same canonical value.
- */
+/** The one confirmation token over the ordered accepted submissions; raw ingress stays part of the identity. */
 export function derivePlannedInputFingerprint(
   planned: readonly PlannedRun[],
   ingressSchemaHash: string,

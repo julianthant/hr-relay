@@ -65,12 +65,7 @@ export interface PreflightRunner {
   run(context: PreflightRunnerContext): Promise<z.input<typeof PreflightObservationSchema>>;
 }
 
-/**
- * Executes one detector under its registered deadline. Timeout requests
- * cancellation but never races the runner promise away: a non-cooperative I/O
- * operation remains process-owned until it actually settles, and its eventual
- * healthy-looking return is still rejected as timed out.
- */
+/** Executes one detector under its registered deadline: a timeout rejects the eventual return rather than racing the runner promise away. */
 export async function executePreflightRunner(
   runner: PreflightRunner,
   signal: AbortSignal,
@@ -263,12 +258,7 @@ interface CreatePreflightAuthorityInput {
   readonly scheduler: PreflightDeadlineScheduler;
 }
 
-/**
- * The one runtime preflight authority. Selection always comes from the strict
- * dependency registry; callers provide detector implementations, never a
- * second check list. A rerun is read-only but still idempotent by command id:
- * exact replay returns the exact prior result, while divergent reuse refuses.
- */
+/** The one runtime preflight authority: selection comes from the strict dependency registry, and a rerun is read-only but idempotent by command id. */
 export function createPreflightAuthority(input: CreatePreflightAuthorityInput): PreflightAuthority {
   assertPreflightSemanticRegistry();
   const configFingerprint = FingerprintSchema.parse(input.configFingerprint);

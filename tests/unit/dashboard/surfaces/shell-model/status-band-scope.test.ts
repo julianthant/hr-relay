@@ -1,18 +1,4 @@
-/**
- * The status band answers ONE question about ONE scope (R4-1/R4-2).
- *
- * The band's pills and its `All` segment used to come from two different served
- * aggregations at two different scopes: the eight pills read the day's
- * `statusCounts` folded across every workflow, while `All` read the day total
- * out of `monthCounts`. The queue underneath renders one workflow, so `Failed 3`
- * could sit above a queue with no failures and the ported title "Every row in
- * this view" was false.
- *
- * These are pure functions over the SERVED arrays — nothing here folds a row,
- * which `shell.tsx:1-17` refuses by name (D81's one count path). The test pins
- * exactly that: the scope selector reads one workflow's entry, and the two
- * composites are closed under addition with the primitives beside them.
- */
+
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import { WorkflowCountWireSchema } from "../../../../../src/models/dashboard/projection.js";
@@ -26,12 +12,7 @@ import {
   workflowStatusCounts,
 } from "../../../../../src/dashboard/surfaces/shell/shell-model.js";
 
-/**
- * Two workflows on one day, with deliberately different shapes — PARSED through
- * the wire schema, so the fixture cannot drift from what the server may serve
- * (the schema also refines that each entry's per-status counts sum to `count`,
- * which is the fact `totalCount` relies on).
- */
+
 const WORKFLOW_COUNTS = z.array(WorkflowCountWireSchema).parse([
   {
     workflowId: "person-lookup",
@@ -62,11 +43,7 @@ describe("workflowStatusCounts — the band's scope selector", () => {
     expect(statusCount(workflowStatusCounts(WORKFLOW_COUNTS, "separations-kuali-read"), "failed")).toBe(3);
   });
 
-  /**
-   * A workflow with no row today has no entry in the served array, and that IS
-   * zero — the projection builds the array by folding the surfaces it serves.
-   * The band must still draw its eight slots rather than vanish.
-   */
+
   it("answers an unserved workflow with an empty array, so every pill reads zero", () => {
     const none = workflowStatusCounts(WORKFLOW_COUNTS, "workflow-with-no-row");
     expect(none).toEqual([]);
@@ -76,7 +53,7 @@ describe("workflowStatusCounts — the band's scope selector", () => {
   });
 });
 
-describe("totalCount — the `All` segment (R4-2)", () => {
+describe("totalCount — the `All` segment", () => {
   it("keeps Cancelling active and selectable, including after its selected bucket empties", () => {
     const counts = z.array(WorkflowCountWireSchema).parse([{
       workflowId: "person-lookup", count: 4,

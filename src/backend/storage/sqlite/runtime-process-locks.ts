@@ -1,42 +1,4 @@
-/**
- * The two runtime process locks ref dashboard-surfaces §2.5's restore interlock needs, and the
- * OBSERVATION that composes them into a `RecoveryRuntimeLockSnapshot` (D181).
- *
- * ## Why this exists
- *
- * `RecoveryStopProofStore` has always required a recorded runtime-lock
- * snapshot before it will issue a stopped-system proof, and nothing in
- * production ever recorded one — so `cli storage restore` could not have
- * worked even once. The missing half was never the proof; it was the fact the
- * proof is about. `config/runtime-isolation.json` has pinned
- * `.tracker/locks` as a distinct resource since D88 and no code wrote
- * there.
- *
- * ## Atomic singleton admission plus one worker record per process start
- *
- * The singleton server claims its root record with an atomic hard link, so two
- * contenders cannot both pass a check-then-replace window. Every worker
- * process appends its own immutable-identity record under `workers/`. The
- * snapshot is COMPOSED into the existing strict `{server, workers}` shape when
- * an operator asks to restore. This admits concurrent workers without a shared
- * read-modify-write and still refuses restore while any recorded worker owner
- * is alive. Old root-level role records remain readable and are never deleted.
- *
- * ## Liveness is observed, never assumed
- *
- * A crashed process leaves a held lock behind. Treating that as "still
- * running" would make restore permanently impossible after any crash — the one
- * moment restore is most needed. So the observation asks the operating system
- * whether the recorded pid still exists (`process.kill(pid, 0)`), and reports
- * `stopped` only for a pid that is genuinely gone. It never rewrites another
- * process's lock file to make a restore possible. New records bind PID to an
- * OS process-start identity, so a recycled PID is not mistaken for its prior
- * owner; legacy PID-only records stay conservative and read forward.
- *
- * `runtimeGeneration` is the sum of the two aggregate generations. The worker
- * generation advances for every durable worker-start record, including a
- * restart, so a stopped proof can never survive a later process start.
- */
+
 import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import {
@@ -67,22 +29,11 @@ import {
 import type { RecoveryRuntimeLockSnapshot } from "./recovery-contracts.js";
 import { RecoveryRuntimeLockSnapshotSchema } from "./recovery-contracts.js";
 
-/**
- * `server` and `workers` are the two roles the D181 restore snapshot composes
- * (`RecoveryRuntimeLockSnapshotSchema.processLocks` is a strict `{server,
- * workers}` object, and `RUNTIME_PROCESS_LOCK_NAMES` below is exactly those
- * two). `live-smoke` is a THIRD role added for review finding 3
- * (`scripts/verify/browser-login.ts`, ref execution-and-sessions §10): it
- * reuses this same acquire/release/liveness-refusal discipline so a smoke
- * cannot open the authority database — and potentially migrate it — while
- * another live smoke holds the role, but it is deliberately NOT added to
- * `RUNTIME_PROCESS_LOCK_NAMES` or the snapshot schema, which stay scoped to
- * the two long-lived server roles the stopped-system proof is about.
- */
+
 export const RuntimeProcessLockNameSchema = z.enum(["server", "workers", "live-smoke"]);
 export type RuntimeProcessLockName = z.infer<typeof RuntimeProcessLockNameSchema>;
 
-/** The two roles the D181 restore snapshot composes, in the order it records them. */
+
 export const RUNTIME_PROCESS_LOCK_NAMES: readonly RuntimeProcessLockName[] = Object.freeze([
   "server",
   "workers",
@@ -221,13 +172,7 @@ export interface RuntimeProcessOrphanInspection {
   readonly staleWorkerRecords: number;
 }
 
-/**
- * Whether the recorded pid still names a live process.
- *
- * `EPERM` means the process exists and belongs to somebody else, which is
- * still ALIVE — reporting it gone would let a restore run under a live
- * runtime. Any other errno is unknown and refuses rather than guessing.
- */
+// EPERM proves that the PID exists even when this process cannot signal it.
 export type PidObservation =
   | Readonly<{ state: "alive" }>
   | Readonly<{ state: "gone" }>;
@@ -256,16 +201,7 @@ export function observePid(pid: number): PidObservation {
   );
 }
 
-/**
- * Observe the OS process birth identity, not only PID occupancy.
- *
- * Linux uses boot-id + `/proc/<pid>/stat` start ticks. macOS reads the kernel
- * process start stamp through `ps` under a fixed C/UTC environment and stores
- * epoch seconds; Windows uses `Get-Process.StartTime` ticks. Unsupported
- * platforms refuse. The Darwin stamp has one-second
- * resolution; that narrow same-second PID-recycle limitation is documented in
- * ref dashboard-surfaces §2.5 rather than hidden behind PID-only liveness.
- */
+// Observe OS birth identity as well as PID occupancy to detect PID reuse.
 export function observeProcessIdentity(pid: number): ProcessIdentityObservation {
   const parsedPid = PositiveIntSchema.parse(pid);
   if (observePid(parsedPid).state === "gone") return { state: "gone" };
@@ -656,12 +592,7 @@ function* iterateWorkerProcessLocks(root: string): Generator<WorkerProcessLockFi
   }
 }
 
-/**
- * The lock file as it stands, or `undefined` when this role has never run
- * under this state root. A file that exists but does not parse is a REFUSAL,
- * never an absence: silently treating it as "never ran" would let a restore
- * proceed past a lock it could not read.
- */
+
 export function readRuntimeProcessLock(
   processLockRoot: string,
   name: RuntimeProcessLockName,
@@ -679,11 +610,7 @@ export function readRuntimeProcessLock(
   }
 }
 
-/**
- * Take this process's runtime record. Singleton roles refuse a live holder;
- * workers append independent records because identity collision belongs to the
- * authority worker lease, not the restore-safety observation layer.
- */
+
 export function acquireRuntimeProcessLock(
   input: unknown,
   clock: Clock = systemClock,
@@ -696,9 +623,7 @@ export function acquireRuntimeProcessLock(
   assertRestoreAdmissionOpen(root, observer);
   hooks.afterInitialAdmissionCheck?.();
   if (options.name === "workers") {
-    // Validate every prior record before writing this process's own. A malformed
-    // predecessor must refuse without stranding a new live-PID record whose
-    // caller never received a release handle.
+
     const legacy = readRuntimeProcessLock(root, "workers");
     const existingRecords = readWorkerProcessLocks(root);
     const acquisitionId = randomUUID();
@@ -811,13 +736,7 @@ export function acquireRuntimeProcessLock(
   }
 }
 
-/**
- * Compose the two role locks into the snapshot `RecoveryStopProofStore`
- * records, observing pid liveness for anything still marked held.
- *
- * A role that has never run reports `stopped` at generation 1 — that is a true
- * statement about a lock nothing has ever taken, not a fabricated release.
- */
+
 export function observeRuntimeLockSnapshot(
   input: unknown,
   clock: Clock = systemClock,

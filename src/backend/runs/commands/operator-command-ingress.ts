@@ -269,9 +269,7 @@ export function createOperatorCommandIngress(input: Readonly<{
     const current = new Promise<void>((resolve) => {
       release = resolve;
     });
-    // Reserve the whole set synchronously, before waiting on older owners.
-    // Overlapping groups therefore wait only on earlier reservations, without
-    // nested-lock cycles, and async singles keep their IDs through journaling.
+    // Reserve the full overlapping set synchronously before awaiting earlier owners to prevent wait cycles.
     for (const key of identities) tails.set(key, current);
     try {
       if (previous.size > 0) await Promise.all(previous);

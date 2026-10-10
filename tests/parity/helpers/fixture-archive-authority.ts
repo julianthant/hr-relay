@@ -1,8 +1,4 @@
-/**
- * Private A15–A18 browser host. Archive query/route, command ingress/service/kernel,
- * lifecycle storage and SQLite are production code. Shell, non-Archive APIs and SSE
- * are explicitly synthetic surroundings.
- */
+
 import { Hono } from "hono";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";

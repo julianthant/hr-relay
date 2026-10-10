@@ -1,8 +1,4 @@
-/**
- * One synthetic person-bearing permanent key crossing every operator boundary.
- * Authority retains the natural key; diagnostics and wires may retain only its
- * digest or a bounded reference derived from that digest.
- */
+
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { buildRunEvidenceReceipt } from "../../../../../../src/backend/runs/provenance/evidence-receipt.js";

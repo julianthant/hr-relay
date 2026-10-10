@@ -1,24 +1,4 @@
-/**
- * The kernel's `intakeParser` seam, composed (D170).
- *
- * The kernel cannot import a spreadsheet parser — that lives in
- * `src/backend/processing/spreadsheet/intake-parser.ts`, below it — and its authority transaction is synchronous,
- * while reading an artifact and parsing a workbook are not. So this module
- * splits the seam in two:
- *
- * - `prepare` is async. It reads the immutable artifact once, parses it
- *   through the ONE shared grid edge, and retains the resulting grid.
- * - `parse` is synchronous and PURE over that retained grid: it ranks header
- *   candidates, settles a header row, detects columns and computes the layout
- *   fingerprint. A key nobody prepared throws by name rather than answering
- *   with an empty parse — a kernel that mapped against a guessed layout would
- *   bind a column that is not there.
- *
- * The retained value is the GRID, never the derived parse, because the
- * derivation is cheap and depends on the header row the operator may still be
- * moving. Two operators are not a case here: the cap exists so a long session
- * of sheet-switching cannot grow without bound, not to make lookups fast.
- */
+// Parse asynchronously before the synchronous authority transaction; the kernel consumes only the prepared result.
 import { z } from "zod";
 import type { ContentAddressedArtifactWriter } from "../../../workflow-kit/artifacts.js";
 import type { IntakeParser } from "../../../workflow-kit/intake-parser.js";
@@ -38,18 +18,10 @@ import {
   type SpreadsheetGridResult,
 } from "./spreadsheet-grid.js";
 
-/**
- * How many real values per column the mapping grid gets to show. Ref data-intake-and-edit-data §2.2
- * asks for "a few"; five is enough for the suggestion scorer's sample
- * agreement to mean something while staying a glance rather than a data dump.
- */
+
 export const COLUMN_SAMPLE_LIMIT = 5;
 
-/**
- * How many `(artifact, sheet)` grids stay retained. An operator maps one file
- * at a time and may switch between its worksheets; eight leaves room for that
- * without letting a long session hold every workbook it ever opened.
- */
+
 export const RETAINED_GRID_LIMIT = 8;
 
 const ALIASES = canonicalAliasIndex(Object.values(CANONICAL_FIELDS));
@@ -154,9 +126,7 @@ export function createIntakeParser(options: Readonly<{
         ...(sheet === undefined ? {} : { sheet }),
       });
       retain(retainedKey, grid);
-      // A caller that asked for "the first worksheet" gets the same bytes back
-      // under the sheet's REAL name too, so the kernel's later read of the
-      // session's concrete selection does not re-open the artifact.
+
       if (grid.state === "parsed") retain(retainKey(artifact.sha256, grid.sheet), grid);
       return deriveIntakeParse(grid, key.headerRowIndex ?? null);
     },

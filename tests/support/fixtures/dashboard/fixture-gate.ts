@@ -1,32 +1,4 @@
-/**
- * THE GATED RUN, for adapter #1 (ref write-safety §14.4/§14.6, D226).
- *
- * The corpus has photographed an open gate since it was written and had never
- * once served the `identity-gate` SECTION behind it — so every `run-open-gate`
- * reference showed a decision card with no way to answer it, and the three
- * ceremonies §14.6 risk 1 exists to enforce were unphotographed on a surface
- * whose whole job is to stop a wrong-person termination. This is that fixture.
- *
- * **The packet is BUILT, never authored.** `buildIdentityEvidencePacket` is the
- * production fold, and `deriveApprovalShape` inside it is the SERVER's own
- * policy — the thing §14.6 makes a server decision precisely so a frontend
- * cannot choose a cheaper control. A hand-written `approvalShape` here would
- * photograph the fixture's opinion of that policy instead of the policy, which
- * is exactly what the reference exists to catch. So the two gated runs differ
- * in their INPUTS and the shape falls out:
- *
- * Both fixtures are the real name-only path, so both use `type-the-eid`. One
- * shows matching names and one shows disconfirming name evidence. A document-
- * supplied EID never creates this section under the current contract.
- *
- * The two `resolve-gate` descriptors are the SERVER's, word for word
- * (`identityGateActions` in `src/backend/runs/queries/run-detail.ts`), for
- * the same reason `FIXTURE_PARKED_WRITE` copies its pair: that function is not
- * exported and takes an authority `RunRecord` this adapter has none of. The
- * copy is PINNED to the server's by
- * `tests/integration/backend/app/registries/step-proof-modules/identity-gate-section.test.ts`, because a copy nobody
- * compares is a reference that documents last month's copy.
- */
+
 import {
   IdentityGateDetailWireSchema,
   type IdentityGateDetailWire,
@@ -83,12 +55,7 @@ function packetOf(input: Readonly<{ documentName: string; observedAt: string }>)
   });
 }
 
-/**
- * The server's own option mapping, copied from `run-detail.ts`: the checked EID
- * is `checked`, the one a name search resolved is `name-search`. A surface may
- * not invent either label — the identity-authority node re-derives where the approved
- * EID came from and refuses a contradiction as `identity-approval-choice-mismatch`.
- */
+
 function optionsOf(packet: IdentityEvidencePacket): unknown[] {
   const nameSearchEid = packet.nameSearch.status === "resolved" ? packet.nameSearch.candidate.eid : undefined;
   return packet.approvableEids.map((eid) => ({

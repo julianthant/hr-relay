@@ -67,8 +67,7 @@ describe("semantic UI registry", () => {
   it("resolves every UCPath semantic dependency without collisions", () => {
     assert.deepEqual(auditUcpathUiRegistry(), []);
     assert.equal(UCPATH_UI_REGISTRY.system, "ucpath");
-    // 14 Person Org (2026-08-02) + 2 SS Smart HR receipt (2026-08-04)
-    // + 14 Smart HR termination (2026-08-14, D206).
+
     assert.equal(UCPATH_UI_REGISTRY.elements.length, 30);
     // 4 + the termination family's three: the wizard, the pending sweep, and
     // the SS Smart HR search filter.

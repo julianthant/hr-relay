@@ -1,21 +1,6 @@
 import ts from "typescript";
 import { testRunLifecycle } from "../../support/fixtures/run-lifecycle-fixtures.js";
-/**
- * Ref execution-and-sessions §5.5: tasks and transactions run under immutable, abortable
- * deadlines — a service or driver call that ignores its abort signal cannot
- * occupy a worker indefinitely.
- *
- * Two halves, both required:
- *
- * 1. STRUCTURAL — the interpreter's dependency surface makes the bound
- *    mandatory: `taskDeadlineMs` has no default, no `??` fallback, and every
- *    task invocation path races `raceAbortable` against the scheduler-armed
- *    deadline controller.
- * 2. BEHAVIORAL — a task that never settles AND ignores its signal is still
- *    bounded: firing the scheduled deadline lands the run terminal `failed`
- *    with a legible deadline failure, and the wedged session is poison-closed
- *    rather than reused.
- */
+
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";

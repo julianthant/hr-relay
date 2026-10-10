@@ -23,9 +23,7 @@ export function generatedUpdateId(checkpoint: RunCheckpointRecord, row: DerivedA
  return deriveStableUuid("hrauto:checkpoint-artifact-update:v1", canonicalJsonStringify({ checkpoint, row }));
 }
 
-/** Call within one authority transaction: checkpoint witnesses and pending rows must share a view.
- * Historical random IDs require a unique source witness; ambiguity never consumes work.
- */
+// Call inside one authority transaction; random artifact IDs require a unique source witness.
 export function pendingGeneratedUpdateIds(repositories: AuthorityRepositories, checkpoint: RunCheckpointRecord, specs: readonly unknown[]): readonly string[] {
  const derive = (record: RunCheckpointRecord) => deriveArtifactProjectionRows({ specs,
   nodeId: record.nodeId, outputValue: record.output.value });
@@ -49,8 +47,7 @@ export function pendingGeneratedUpdateIds(repositories: AuthorityRepositories, c
    return true;
   }
   if (bound.has(update.outboxId) || !target.some(row => matches(update, checkpoint, row))) return false;
-  // New writers mint version-five commitments. An unbound commitment is never
-  // reinterpreted as a historical random ID, even if its row values coincide.
+  // Unbound version-five commitments never become random artifact IDs, even when row values agree.
   if (update.outboxId[14] === "5") throw new Error("generated-artifact-checkpoint-unresolved");
   const witnesses = candidates.filter(candidate => matches(update, candidate.record, candidate.row));
   if (witnesses.length !== 1 || canonicalJsonStringify(witnesses[0]?.record) !== targetIdentity) {

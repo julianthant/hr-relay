@@ -4,16 +4,7 @@ import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.j
 import { ucpathDriver } from "../driver-declaration.js";
 import { firstDisagreeingName, ucpathTerminationVerdict } from "../termination-verdict.js";
 
-/**
- * Beat ①'s live probe (S44): does this person already have a termination
- * effective this date?
- *
- * It runs on its own read lease and re-reads the search page rather than
- * assuming any page state. A row whose displayed name is not this person's is a
- * `subject-mismatch` FAILURE, not an absence — reading the wrong person's
- * transaction list and reporting "not there" is precisely how a duplicate
- * termination gets authorized.
- */
+
 export const matchExistingTerminationTask = defineTask(ucpathDriver, UcpathMatchExistingTermination, {
   sessions: [{ system: "ucpath", access: "read", session: "reuse-worker" }],
   async run({ input, ctx }) {

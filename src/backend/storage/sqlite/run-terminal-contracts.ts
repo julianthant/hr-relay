@@ -1,4 +1,4 @@
-/** Strict inputs and reports for D110/D114's composite terminal mutations. */
+
 import { z } from "zod";
 import { RunRecordSchema } from "../../../models/run/record.js";
 import { RunResultRecordSchema } from "../../../models/run/result.js";
@@ -39,7 +39,7 @@ export const SuccessTerminalizationRequestSchema = z.strictObject({
   }
 });
 
-/** Preserves the complete old request for journal hashing; admitted only for replay. */
+// Keep the exact replay request for journal hashing; it grants no new execution authority.
 export const HistoricalSuccessTerminalizationRequestSchema = z.strictObject({
   result: RunResultRecordSchema,
   authorization: HistoricalSuccessAuthorizationSchema,

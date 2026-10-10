@@ -1,9 +1,4 @@
-/**
- * D341 P6/P7 — converting the pre-D341 credential document (schemaVersion 1,
- * seven names) into the schemaVersion-2 document plus the private test-data
- * file. Every document here is synthetic and built by the same replay rules
- * the frozen legacy reader applies; nothing touches a real `.tracker`.
- */
+
 import assert from "node:assert/strict";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -67,7 +62,7 @@ function legacyRequest(input: { commandId: string; writeId: string; expectedRevi
   });
 }
 
-/** Replays a synthetic history exactly as the frozen legacy reader does. */
+
 function legacyDocument(history: readonly LegacyHistoryEntry[], upgradeBinding?: { upgradeId: string; entries: Record<string, unknown> }) {
   let record: Record<string, unknown> = { schemaVersion: 1, revision: 1, protectedSchemaHash: LEGACY_PROTECTED_SETTINGS_SCHEMA_HASH, entries: {} };
   for (const { request, setValueIds } of history) {
@@ -127,7 +122,7 @@ function noValueLeaks(report: unknown): void {
   }
 }
 
-describe("D341 credential → test-data migration", () => {
+describe("credential → test-data migration", () => {
   it("pins the frozen legacy schema hash and keeps the live hash distinct", () => {
     assert.equal(LEGACY_PROTECTED_SETTINGS_SCHEMA_HASH, "2de4abeb58bd98da2aa2154fa3488e80895b046a406fccdd744924a08ceaf477");
     assert.notEqual(PROTECTED_SETTINGS_SCHEMA_HASH, LEGACY_PROTECTED_SETTINGS_SCHEMA_HASH);
@@ -205,7 +200,7 @@ describe("D341 credential → test-data migration", () => {
     assert.equal(applied.source.revision, 3);
     assert.equal(applied.destination.action, "create");
 
-    // Destination: the two retired entries with their EXACT identities and values, private to the owner.
+
     const local = readTestDataLocalConfig(f.localPath);
     assert.equal(local.state, "valid");
     if (local.state !== "valid") throw new Error("expected the private file");
@@ -234,13 +229,13 @@ describe("D341 credential → test-data migration", () => {
       ] });
     const baselineText = JSON.stringify(baseline.retired) + JSON.stringify(baseline.source);
     for (const value of [SYNTHETIC_DOCUMENT, SYNTHETIC_EID, SYNTHETIC_PASSWORD]) assert.equal(baselineText.includes(value), false, "baseline identities are value-free");
-    // The old fingerprint family is recorded as it was; the new record binds the live hash.
+
     const baselineRecord = baseline.record as { protectedSchemaHash: string; lastApplied: { commandId: string; protectedSchemaHash: string; expectedRevision: number } };
     assert.equal(baselineRecord.protectedSchemaHash, PROTECTED_SETTINGS_SCHEMA_HASH);
     assert.equal(baselineRecord.lastApplied.commandId, MIGRATION_ID);
     assert.equal(baselineRecord.lastApplied.expectedRevision, 2);
 
-    // The ordinary store reads the converted document and owns every retired identity.
+
     const store = f.store();
     const record = store.read();
     assert.equal(record.revision, 3);
@@ -263,7 +258,7 @@ describe("D341 credential → test-data migration", () => {
     assert.equal(reusedWrite.state, "rejected");
     const reusedMigration = f.store().apply(request(MIGRATION_ID, WRITE_NEW));
     assert.equal(reusedMigration.state, "rejected");
-    // A generator that hands back a retired value identity is a collision, never a reuse.
+
     const colliding = createCredentialStore({ stateRoot: f.tracker, ids: { randomUUID: () => VALUE_EID } });
     assert.throws(() => colliding.apply(request(COMMAND_NEW, WRITE_NEW)), /credential value identity generation collided/u);
     assert.equal(f.store().read().revision, 3, "nothing was applied");
@@ -294,7 +289,7 @@ describe("D341 credential → test-data migration", () => {
     }
     assert.equal(f.sourceBytes(), convertedBytes);
     assert.equal(readFileSync(f.localPath, "utf8"), localBytes);
-    // The private file no longer carries one retired entry: refused, and nothing is reconstructed from the source.
+
     writeFileSync(f.localPath, `${JSON.stringify({ schemaVersion: 1, inputs: {
       personLookupCanaryEid: { valueId: VALUE_EID, value: SYNTHETIC_EID, updatedAt: NOW_1 },
     }, files: {} })}\n`, { mode: 0o600 });
@@ -375,7 +370,7 @@ describe("D341 credential → test-data migration", () => {
 
     const local = readTestDataLocalConfig(f.localPath);
     if (local.state !== "valid") throw new Error("expected the private file");
-    // The CURRENT rotated value moves; the superseded one stays retired, never resurrected.
+
     assert.deepEqual(local.config.inputs, { personLookupCanaryEid: { valueId: VALUE_EID_2, value: SYNTHETIC_EID_2, updatedAt: NOW_2 } });
 
     const converted = f.sourceJson();

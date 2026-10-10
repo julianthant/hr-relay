@@ -5,15 +5,7 @@ import { deriveSchemaHash } from "../validation/schema-bound-value.js";
 import { KualiDocumentNumberSchema } from "../ui/kuali-document-identity.js";
 import { PROTECTED_SETTINGS_SET_MARKER } from "./protected-settings.js";
 
-/**
- * D341 — the FROZEN protected-settings schema family that existed while the two
- * test-target canaries (`separationsKualiFinalizationCanaryDocumentNumber`,
- * `personLookupCanaryEid`) were protected Settings entries. Migration-only:
- * the D331 journal reader, the settings-root upgrade reader, and the
- * credential-document migration replay old history against THESE schemas and
- * never against the live family in `protected-settings.ts`. No runtime reader
- * or wire surface may import this module.
- */
+/** The FROZEN protected-settings schema family that carried the two test-target canaries; migration-only, and no runtime reader or wire surface may import it. */
 export const LegacyProtectedValueSchemas = Object.freeze({
   ucpathUserId: z.string().min(1).max(256),
   ucpathPassword: z.string().min(1).max(4096),
@@ -30,7 +22,7 @@ export const LegacyProtectedValueSchemas = Object.freeze({
 export const LegacyProtectedSettingsNameSchema = z.strictObject(LegacyProtectedValueSchemas).keyof();
 export type LegacyProtectedSettingsName = z.infer<typeof LegacyProtectedSettingsNameSchema>;
 
-/** The two names the legacy family carried that the live family retired (D341). */
+/** The two names the legacy family carried that the live family retired. */
 export const RETIRED_TEST_TARGET_PROTECTED_NAMES = deepFreeze([
   "separationsKualiFinalizationCanaryDocumentNumber",
   "personLookupCanaryEid",
@@ -74,12 +66,7 @@ function markedOperation() {
   ]).optional();
 }
 
-/**
- * The journal-safe form every pre-D341 protected command was written in. Durable
- * `commands` / `command_audits` rows and D331 journals carry THIS shape when they
- * name a retired entry; the live `MarkedProtectedSettingsPatchSchema` refuses those
- * rows, so historical readers parse them here (`commands-history.ts`).
- */
+/** The journal-safe form every pre-split protected command was written in; historical readers parse them here, and the live patch refuses them. */
 export const LegacyMarkedProtectedSettingsPatchSchema = z.strictObject({
   ucpathUserId: markedOperation(),
   ucpathPassword: markedOperation(),
@@ -91,7 +78,7 @@ export const LegacyMarkedProtectedSettingsPatchSchema = z.strictObject({
 });
 export type LegacyMarkedProtectedSettingsPatch = z.infer<typeof LegacyMarkedProtectedSettingsPatchSchema>;
 
-/** Test-only replay of the pre-D341 marking step; never emits a value. */
+/** Test-only replay of the legacy marking step; never emits a value. */
 export function legacyMarkProtectedSettingsPatch(input: unknown): LegacyMarkedProtectedSettingsPatch {
   const entries = LegacyProtectedSettingsPatchSchema.parse(input);
   return deepFreeze(LegacyMarkedProtectedSettingsPatchSchema.parse(Object.fromEntries(
@@ -103,15 +90,11 @@ export function legacyMarkProtectedSettingsPatch(input: unknown): LegacyMarkedPr
   )));
 }
 
-/**
- * The exact hash every pre-D341 `protected.json`, D331 journal and credential
- * history entry carries. Pinned as a literal so a drift in the frozen schema
- * above is a load-time defect rather than a silently re-bound history.
- */
+/** The exact hash every legacy `protected.json`, journal and credential history entry carries, pinned so a drift in the frozen schema is a load-time defect. */
 export const LEGACY_PROTECTED_SETTINGS_SCHEMA_HASH = deriveSchemaHash(LegacyProtectedSettingsPatchSchema, "input");
 const PINNED_LEGACY_PROTECTED_SETTINGS_SCHEMA_HASH = "2de4abeb58bd98da2aa2154fa3488e80895b046a406fccdd744924a08ceaf477";
 if (LEGACY_PROTECTED_SETTINGS_SCHEMA_HASH !== PINNED_LEGACY_PROTECTED_SETTINGS_SCHEMA_HASH) {
-  throw new Error("legacy protected-settings schema drifted from its pinned D341 hash");
+  throw new Error("legacy protected-settings schema drifted from its pinned hash");
 }
 
 export const LegacyProtectedSettingsLastAppliedSchema = z.strictObject({
@@ -165,7 +148,7 @@ export const LegacyProtectedSettingsReadbackSchema = z.strictObject({
 });
 export type LegacyProtectedSettingsReadback = z.infer<typeof LegacyProtectedSettingsReadbackSchema>;
 
-/** Value-free presence readback over a legacy record; used by frozen D331 readers only. */
+/** Value-free presence readback over a legacy record; used by the frozen migration readers only. */
 export function legacyProtectedSettingsReadback(input: unknown): LegacyProtectedSettingsReadback {
   const record = LegacyProtectedStoreRecordSchema.parse(input);
   return deepFreeze(LegacyProtectedSettingsReadbackSchema.parse({

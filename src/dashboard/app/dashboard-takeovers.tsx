@@ -55,21 +55,16 @@ export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSection
               onSaveProblem={onSettingsSaveProblem}
             />
           ) : takeover === "intake" && route.intake !== undefined ? (
-            /* UF-FU-1: the surface owns the same full-bleed `TakeoverFrame`
-               as every other window-replacing view. No shell gutter may sit
-               between that frame and this column. */
+             /** The surface owns the same full-bleed `TakeoverFrame` as every other
+ * window-replacing view; no shell gutter may sit between frame and column. */
             <IntakeWorkspace
               workflowLabel={workflowLabelOf(activeWorkflowId)}
               actorId={boot.actor.id}
               supportsDryRun={
                 supportsDryRun
               }
-              /* D298 — always a real id, NARROWED rather than defaulted.
-                 `activeTakeover` selects this arm off `route.intake` itself,
-                 so the redundant check above is the type's proof and not a
-                 fallback: the sentinel that stood for "opened, no session
-                 yet" retired with the upload page, because the Run Modal now
-                 uploads BEFORE it routes here. */
+              /** Always a real id, NARROWED rather than defaulted.
+ * `activeTakeover` selects this arm off `route.intake` itself */
               sessionId={route.intake}
               onClose={() => closeTakeoverTo(
                 RUN_START_DOOR_ID,

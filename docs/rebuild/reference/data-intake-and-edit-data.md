@@ -2178,7 +2178,7 @@ newly committed identity.
 
 The action is always Rerun. The source outcome chooses only the defaults: failed/interrupted runs
 select failed and unfinished steps plus descriptor-required completed steps with a visible explanation,
-under the [approved mandatory-step clarification](dashboard-surfaces.md#rerun-required-step-defaults--2026-09-19);
+under the approved mandatory-step clarification;
 successful runs select all eligible steps, including previously omitted steps. The operator may
 change any eligible optional selection, acknowledge the submitted-transaction warning to
 advance to Values, and change any offered value before the final modal submission. Unselected

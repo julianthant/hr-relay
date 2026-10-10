@@ -1,12 +1,4 @@
-/**
- * The audit behind `intake-canonical-field-registry.test.ts`.
- *
- * It is a pure function over (inventory, registry, file reader) so the guard
- * can run it against DELIBERATELY VIOLATING fixtures as well as the real
- * artifacts. A guard whose only evidence is "it passed on the good input" has
- * not shown it can fail — that is the house style recorded in
- * `helpers/ratchet-arms.ts` and the standing bar for every 2h guard.
- */
+
 import { z } from "zod";
 import { CanonicalFieldIdSchema } from "../../../../src/models/fields/registry.js";
 import type { CanonicalField } from "../../../../src/models/fields/registry.js";
@@ -38,18 +30,11 @@ export interface InventoryAuditInput {
   readonly inventory: CanonicalFieldInventory;
   /** The registry, as data — id → field. */
   readonly fields: ReadonlyMap<string, CanonicalField>;
-  /**
-   * Source text for a `legacy:`/`doc:` ref, or `null` when the ref does not
-   * resolve to a file. Injected so the fixture arms need no filesystem.
-   */
+
   readonly readSource: (ref: string) => string | null;
 }
 
-/**
- * Every violation is a sentence naming the artifact to fix. The audit returns
- * them all rather than throwing on the first, because a partial answer sends
- * the author round the loop once per problem.
- */
+
 export function auditCanonicalFieldInventory(input: InventoryAuditInput): string[] {
   const { inventory, fields, readSource } = input;
   const violations: string[] = [];
@@ -74,9 +59,7 @@ export function auditCanonicalFieldInventory(input: InventoryAuditInput): string
       if (name in source.canonical && name in source.local) {
         violations.push(`${source.ref}: field ${name} has two dispositions`);
       }
-      // Drift detection against the frozen legacy tree: a scanned field that
-      // no longer appears in its source file means the scan is stale, which is
-      // exactly the silent omission ref data-intake-and-edit-data §1 forbids.
+
       if (text !== null && !new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(text)) {
         violations.push(`${source.ref}: scanned field ${name} no longer appears in that file`);
       }
@@ -110,11 +93,7 @@ export function auditCanonicalFieldInventory(input: InventoryAuditInput): string
   return violations;
 }
 
-/**
- * Registry self-consistency, separate from the inventory because it is a
- * different claim: the inventory says the vocabulary is COMPLETE, this says
- * each entry is COHERENT.
- */
+
 export function auditCanonicalFieldRegistry(fields: ReadonlyMap<string, CanonicalField>): string[] {
   const violations: string[] = [];
   const aliasOwners = new Map<string, string>();
@@ -134,9 +113,7 @@ export function auditCanonicalFieldRegistry(fields: ReadonlyMap<string, Canonica
     for (const alias of field.aliases) {
       const normalized = alias.trim().toLowerCase().replace(/\s+/g, " ");
       const owner = aliasOwners.get(normalized);
-      // A header spelling that suggested two different fields would make the
-      // scorer's top hit arbitrary, and an arbitrary suggestion the operator
-      // accepts with one click is ref data-intake-and-edit-data §7 vector #1 wearing a disguise.
+
       if (owner !== undefined && owner !== id) {
         violations.push(`alias "${alias}": claimed by both ${owner} and ${id}`);
       }

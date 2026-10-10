@@ -1,24 +1,4 @@
-/**
- * Ref execution-and-sessions §§1,4: a driver is exclusive task-length access backed by the
- * worker's browser session — it exists ONLY inside the callback lease
- * `WorkerSessionManager.withDriver` hands out, plus the write sequencer's
- * one-way `withTransactionDriver` fence-retained arm. Nothing else in `src/` may
- * acquire a session resource, hold a driver across a lease, or construct a
- * second ownership path around the manager.
- *
- * Enforced structurally over the whole tree:
- *
- * - `withDriver(` is called only by the manager itself, the one graph
- *   interpreter (`src/backend/runtime/execution/run-executor.ts`), and the ref write-safety write sequencer
- *   (`src/backend/runtime/writes/write-sequencer.ts`), whose probe read lease and transaction
- *   lease are exactly the callback leases ref write-safety §3 assigns it;
- * - `withTransactionDriver(` is called only by the write sequencer, which
- *   crosses its retention boundary only after the durable fence;
- * - the browser-session factory's `.open(` — the raw resource mint — is
- *   invoked only inside `src/backend/runtime/workers/worker-sessions.ts`;
- * - `new WorkerSessionManager(` is constructed only by the worker loop, so a
- *   task, store, or workflow cannot mint a private ownership scope.
- */
+
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";

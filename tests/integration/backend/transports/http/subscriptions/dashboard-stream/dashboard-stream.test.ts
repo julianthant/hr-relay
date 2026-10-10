@@ -1,9 +1,4 @@
-/**
- * The resumable subscription hub (ref frontend-backend-integration §3.5) and the 1g exit invariant:
- * a snapshot plus ANY valid patch sequence applied by the ONE client
- * function equals a fresh snapshot. Plus cursor resume, expired-cursor
- * fresh-snapshot, generation reset, and the loudly bounded subscriber queue.
- */
+
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { applyDashboardDayPatch } from "../../../../../../../src/dashboard/client/index.js";
@@ -541,8 +536,7 @@ describe("dashboard stream hub", () => {
     assert.equal(connection.pending, 1);
     const reset = await connection.next();
     assert.equal(reset?.type, "reset-required");
-    // Everything published while the reset was pending is superseded by it;
-    // a resume after the reset is a fresh snapshot from the current cursor.
+
     assert.equal(connection.pending, 0);
     const resumed = await hub.connect({ day: DAY });
     assert.deepEqual(resumed.initial.map(({ type }) => type), ["hello", "snapshot", "health"]);
@@ -611,11 +605,7 @@ describe("dashboard stream hub", () => {
     sameDayB.close();
   });
   it("PREMISE: one projection batch stamps its patch and its snapshot with the same cursor, in that order", async () => {
-    // The client's cursor rule (patches ≤ ignored, snapshots < ignored) rests on
-    // this: a count-neutral member change on a worker the projection knows
-    // yields `patch pc:N` followed by `snapshot pc:N` from ONE #notify batch.
-    // If the projection ever bumped the cursor per change, the client rule
-    // would silently lose its justification — so the server side pins it.
+
     const { w, hub } = harness();
     w.writer.emit({
       t: "span.started",

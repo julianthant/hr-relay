@@ -30,8 +30,7 @@ export function bindArchiveDeleteRequest(record: LifecycleRecord | undefined, re
   const retained = authenticatedArchiveDeleteRequest(record);
   if (retained === undefined) {
     if (record === undefined) return request;
-    // Historical records authenticate only the exact original envelope. Never
-    // derive a browser timestamp from an unauthenticated caller or backfill it.
+    // Replay authenticates the exact stored envelope; never infer or backfill a browser timestamp.
     return record.operation === "delete-archived" && record.acceptedArchiveDeleteRequest === undefined
       && record.requestFingerprint === sha256Hex(`hrauto:run-lifecycle-command:v1\0delete-archived\0${canonicalJsonStringify(request)}`)
       ? request : undefined;

@@ -12,13 +12,7 @@ interface MigrationShape {
   readonly statements: readonly string[];
 }
 
-/**
- * v1-v7 were derived from the known-correct history at 5ec912e; v8 was pinned
- * when its repair shipped, v9 with provider admission, and v10 with the D134
- * 2g trust/ledger foundation. Every newly released migration extends this
- * literal list. A historical hash is never recomputed to bless edited old
- * statements.
- */
+
 const RELEASED_MIGRATION_DIGESTS = Object.freeze([
   { version: 1, sha256: "19df8bb638864aefb5ef95d16d746cb36a4f215601d60873bf4d1b5823ef49d8" },
   { version: 2, sha256: "405f1cde1a83ae0938fa113b827601e89ad840ae17048035fe251a18ae93bcff" },
@@ -67,7 +61,7 @@ const RELEASED_MIGRATION_DIGESTS = Object.freeze([
   { version: 45, sha256: "2fdb9d16bab229dd5f91a69d0c7bc4a98d5fdad772dcc08bc1a3f129a7efb988" },
   { version: 46, sha256: "6d6110548381575a03fe19b5b4a492372691aa45a3bd21f8671cccb94b55eb80" },
   { version: 47, sha256: "6543066f191996475d3fac4d8262a202f496402d73429af13d499a9ba5eac0fa" },
-  // Released L foundation bytes at 42df509; Q proof ownership amended by the operator.
+
   { version: 48, sha256: "c7ec15732fac549fce184f1cd8454203fd332e1f5b2e373d9182fba6060fcbeb" },
   { version: 49, sha256: "58fbd66e5e0cb76e244eb40fd4d7b1fb0aa8b32ef650ab0d6da07ab4d859864b" },
   { version: 50, sha256: "db802e79859911e0a118292baaf58c3ca835767f0f7e9d00e716e197d62da369" },
@@ -145,7 +139,7 @@ describe("immutable SQLite migration history", () => {
         statement.includes("explorer_edit_reviews") || statement.includes("explorer_edit_outbox")
       ))),
       false,
-      "D290 preserves DCC4 history as lineage evidence without activating its dormant schema",
+      "divergent migration history remains lineage evidence without activating its dormant schema",
     );
   });
 

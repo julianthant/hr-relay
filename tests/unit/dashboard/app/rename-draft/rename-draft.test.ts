@@ -1,14 +1,4 @@
-/**
- * The rename dialog's field rule (D233).
- *
- * The load-bearing case is the LAST one. `renameDraftProblem` exists to state a
- * bound where the operator types rather than where the wire refuses, and the
- * only way that stays true is if the two agree — a client rule stricter than
- * `RunDisplayNameSchema` refuses a legitimate name with a sentence no server
- * would ever say, and a looser one lets the operator meet a kernel error
- * instead of a field note. So the sweep asserts the BICONDITIONAL against the
- * durable schema itself, not a copy of its bounds.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { renameAnswer, renameDraftProblem } from "../../../../../src/dashboard/surfaces/run-detail/identity/rename-draft.js";
@@ -20,14 +10,7 @@ describe("the rename draft rule", () => {
     assert.equal(renameAnswer("  Friday exception pack  "), "Friday exception pack");
   });
 
-  /*
-   * Trailing whitespace is the one place this rule is deliberately LOOSER than
-   * the schema: `RunDisplayNameSchema` demands an already-trimmed value, and a
-   * person typing a name lands a trailing space constantly. Refusing that would
-   * be refusing a name they typed correctly, so the draft is trimmed — and the
-   * trim is the ONLY transformation, because normalising anything else would be
-   * this surface rewriting what somebody wrote.
-   */
+  // Drafts admit trailing whitespace; trim only when composing the schema-bound value.
   it("treats surrounding whitespace as typing, not as a refusal", () => {
     assert.equal(renameDraftProblem("  Friday  "), undefined);
     assert.equal(renameAnswer(" \t Friday \n "), "Friday");
@@ -64,12 +47,7 @@ describe("the rename draft rule", () => {
     assert.equal(renameDraftProblem("José"), undefined);
   });
 
-  /**
-   * THE AGREEMENT. Every draft this rule accepts must produce a value the
-   * durable schema parses, and every draft it refuses must be one the schema
-   * would have refused too — otherwise the field is enforcing a bound the
-   * kernel does not hold, or hiding one it does.
-   */
+
   it("agrees with RunDisplayNameSchema in both directions", () => {
     const corpus = [
       "Friday exception pack",

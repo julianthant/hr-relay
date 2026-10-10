@@ -1,50 +1,4 @@
-/**
- * The separation DATE reconciliation — the fold that decides what a real
- * termination is filed on.
- *
- * ## What it computes, and where each rule comes from
- *
- * | Value | Rule | Legacy |
- * |---|---|---|
- * | Last Day Worked | the New Kronos last physical punch, falling back to the Kuali form's LDW when the card carried no punch | `legacy:src/workflows/separations/workflow.ts` @ `1bffbd65…` |
- * | Separation Date | `max(LDW, last sick day, last holiday day)` | `computeSeparationDate`, `legacy:src/workflows/separations/schema.ts:52-81` |
- * | Termination Effective Date | separation date **+ 1 day** | `computeTerminationEffDate`, `:42-48` |
- * | the Kronos window | `[earlier(ldw, sep) − 1 month, later(ldw, sep) + 1 month]` | `computeKronosDateRange`, `:249-266` |
- * | the UCPath comment | `Termination eff <eff>. Last Day Worked <ldw>.[ one leave clause] Kuali form #<doc>.` | `buildTerminationComments`, `:107-142` |
- * | the Kuali audit lines | `Updated <field> from <a> to <b> per Kronos timesheet. -<initials>` | `buildDateChangeComments` / `buildSeparationDateChangeComment`, `:275-298` |
- * | the future refusal | a Kuali LDW or separation date after today is "not yet eligible for separation" (**S7**) | `validateLastDayWorked`, `:342-358` |
- *
- * ## The zero-hour "Observed" holidays do NOT count — and that is a decision
- *
- * `Juneteenth Observed` and `Independence Day Observed` (both amount `0.00`)
- * do not match chunk 1's ported `/holiday/i` classifier, so they never reach
- * `holidayDates` and never move the separation date. The operator ratified that
- * on **2026-08-13** (`docs/migrations/separations.md` §9.1): keep legacy-identical,
- * change no regex, add no zero-amount rule. What this module owes in exchange is
- * VISIBILITY — every unclassified pay code the card carried travels on the
- * reconciliation, so the day the rule declined to count is a fact the operator
- * reads at the gate rather than one nobody can see. Surfaced, never counted,
- * never dropped.
- *
- * ## Two folds, because they fail for different reasons
- *
- * `planSeparation` runs BEFORE the timecard read: it is what the Kronos window
- * is computed from, so it must refuse a blank or future Kuali date before a
- * browser opens. `reconcileSeparationDates` runs AFTER, and its refusals are
- * about the card. Chunk 2's rule ("two nodes because an operator needs to see
- * WHICH failed") applied to the date half.
- *
- * ## "Today" is the document read's own instant, never a clock read
- *
- * S7 compares against today, and legacy reads the machine clock. Here the
- * reference is `document.observedAt` — the instant this run actually looked at
- * the form — projected into **America/Los_Angeles**, which is the calendar every
- * one of these systems renders its dates in. That makes the refusal a pure
- * function of facts the run holds (so a fixture pins it exactly) and makes the
- * sentence it prints true: *as of the moment this run read the document*. A UTC
- * comparison would call 5pm Pacific "tomorrow" and let a genuinely future date
- * through for seven hours a day.
- */
+/** The separation DATE reconciliation — the fold that decides what a real termination is filed on, from the timecard's last punch, the Kuali form's dates, and the leave the card showed. */
 import { z } from "zod";
 import { IsoInstantSchema } from "../identity/ids.js";
 import type { KualiDateField } from "../../models/ui/kuali-separation-document.js";
@@ -62,22 +16,14 @@ export const SEPARATION_PLAN_REFUSAL_CODES = [
   "last-day-worked-absent",
   /** The form's Separation Date is blank. */
   "separation-date-absent",
-  /** S7 — a date after the day this run read the document. */
+  /** A future date is later than the document read's day. */
   "separation-date-in-future",
 ] as const;
 export const SeparationPlanRefusalCodeSchema = z.enum(SEPARATION_PLAN_REFUSAL_CODES);
 export type SeparationPlanRefusalCode = z.infer<typeof SeparationPlanRefusalCodeSchema>;
 
 export const RECONCILED_DATE_REFUSAL_CODES = [
-  /**
-   * The card opened, carried no punch, and the Kuali LDW is what the write
-   * would then be filed on. §4b's hard-fail covers every way the READ can go
-   * wrong; this is the one case where the read SUCCEEDED and still established
-   * no worked day, and it is refused for the same reason: no path through this
-   * workflow files a termination on a date nobody read (S34/S38 stay distinct
-   * values in `timecard.hasPunches`, which is what a future composition selects
-   * on).
-   */
+    /* The read succeeded and still established no worked day, so it is refused for the same reason the failed read is: no path through this workflow files a termination on a date nobody read. */
   "no-punch-in-window",
   /** A leave day the card reported falls outside the window it was read over. */
   "leave-date-outside-window",
@@ -100,7 +46,7 @@ export const SeparationPlanSchema = z.strictObject({
   kualiLastDayWorked: SeparationDateSchema,
   /** The form's own Separation Date, likewise. */
   kualiSeparationDate: SeparationDateSchema,
-  /** The Pacific calendar day the document was read on — S7's reference. */
+  /** Compare against the Pacific calendar day of the document read. */
   asOfDate: SeparationDateSchema,
   timecardWindow: TimecardWindowSchema,
 });
@@ -121,16 +67,7 @@ export const SeparationDateSourceSchema = z.enum(["kronos-timesheet", "operator"
 export type SeparationDateSource = z.infer<typeof SeparationDateSourceSchema>;
 
 export const ReconciledSeparationDatesSchema = z.strictObject({
-  /**
-   * The physical last day worked — what the UCPath override field is filed
-   * with. Before D307 it was ALWAYS the New Kronos last punch and this schema
-   * deliberately carried no `source` beside it (a closed enum with one arm
-   * pretending to be a choice). D307 adds the one other reachable authority —
-   * the operator who omitted the Kronos step and typed the pair — and `source`
-   * below names which one, so the identity packet and its digest bind it.
-   * What the form said still travels as `kualiLastDayWorked`, so the operator
-   * compares the two rather than reading a label about them.
-   */
+    /* The physical last day worked — what the UCPath override field is filed with; `source` names which authority established it, so the identity packet and its digest bind it. */
   lastDayWorked: SeparationDateSchema,
   /** `max(lastDayWorked, last sick, last holiday)`. */
   separationDate: SeparationDateSchema,
@@ -146,27 +83,15 @@ export const ReconciledSeparationDatesSchema = z.strictObject({
   /** The first and last holiday days, or `null` — the comment reports a range. */
   firstHolidayDate: SeparationDateSchema.nullable(),
   latestHolidayDate: SeparationDateSchema.nullable(),
-  /**
-   * Which leave day, if any, is the one that MOVED the separation date past the
-   * last day worked. `null` when leave changed nothing — which is the ordinary
-   * case and is stated rather than inferred from the dates.
-   */
+    /* Which leave day, if any, MOVED the separation date past the last day worked; `null` when leave changed nothing, which is the ordinary case and is stated rather than inferred. */
   separationDeterminingLeave: z.enum(["sick", "holiday"]).nullable(),
-  /**
-   * Pay codes the ported classifier declined to count, verbatim (§9.1's
-   * 2026-08-13 answer). Surfaced so a day the rule did not count is visible at
-   * the gate; nothing here consumes them.
-   */
+    /* Surface uncounted pay codes verbatim for operator review. */
   unclassifiedPayCodes: z.array(z.string().min(1)),
   /** The UCPath transaction's Initiator Comments, composed from the above. */
   terminationComments: z.string().min(1),
-  /**
-   * The Kuali audit lines the reconciliation itself produces — empty when
-   * neither date moved. The finalization's complete comments text is composed
-   * later, because it also carries the transaction number.
-   */
+    /* The audit lines the reconciliation itself produces — empty when neither date moved; the finalization's complete comments text is composed later, because it also carries the transaction number. */
   dateChangeComments: z.string(),
-  /** D307 — which authority established these dates (see `lastDayWorked`). */
+  /** Which authority established these dates (see `lastDayWorked`). */
   source: SeparationDateSourceSchema,
 });
 export type ReconciledSeparationDates = z.infer<typeof ReconciledSeparationDatesSchema>;
@@ -185,15 +110,7 @@ export type ReconciledDatesResolution = z.infer<typeof ReconciledDatesResolution
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/**
- * `MM/DD/YYYY` → UTC epoch milliseconds at midnight, or `null` when the string
- * is not a real calendar day.
- *
- * The round-trip check is the point and it is `parseKualiFormDate`'s, restated
- * for the wider set of producers this module folds together: `new Date(2026, 1, 31)`
- * is a valid `Date` that silently means 3 March, so a form or a grid holding
- * `02/31/2026` would otherwise become a plausible-but-wrong effective date.
- */
+/** Reject calendar rollover instead of normalizing an invalid date. */
 export function parseSeparationDate(value: string): number | null {
   const match = /^(\d{2})\/(\d{2})\/(\d{4})$/u.exec(value);
   if (match === null) return null;
@@ -239,18 +156,7 @@ export function addSeparationDays(value: string, days: number): string {
   return formatSeparationDate(requireEpoch(value, "date") + days * DAY_MS);
 }
 
-/**
- * Shift a date by whole months, clamping the day to the target month's length.
- *
- * Legacy uses `Date.setMonth()`, which OVERFLOWS: `Mar 31 − 1 month` targets
- * `Feb 31` and lands on `Mar 3`, so the window it computes is a few days
- * NARROWER than a month on 29th–31st inputs (`legacy:src/workflows/separations/CLAUDE.md:146`
- * records the quirk and calls it harmless "given the buffer"). Clamping instead
- * lands on `Feb 28`, which is WIDER — and wider is the safe direction for a
- * read window: the timecard read proves the window it applied and the fold
- * takes the LAST punch, so extra days at the start of the range cannot change
- * an answer, while missing days at the end could.
- */
+/** Shift a date by whole months, clamping the day to the target month's length; clamping lands WIDER, and wider is the safe direction for a read window. */
 export function shiftMonths(value: string, months: number): string {
   const at = new Date(requireEpoch(value, "date"));
   const year = at.getUTCFullYear();
@@ -260,13 +166,7 @@ export function shiftMonths(value: string, months: number): string {
   return formatSeparationDate(Date.UTC(year, month, day));
 }
 
-/**
- * The Pacific calendar day an instant falls on, as `MM/DD/YYYY`.
- *
- * `Intl` rather than an offset table: US Pacific observes DST, so a fixed −8
- * would be wrong for eight months of the year, and this comparison decides
- * whether a real separation is refused as "not yet eligible".
- */
+/** The Pacific calendar day an instant falls on, as `MM/DD/YYYY`; `Intl` rather than an offset table, because US Pacific observes DST and this comparison decides a real separation. */
 export function pacificCalendarDay(instant: string): string {
   const at = new Date(IsoInstantSchema.parse(instant));
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -279,14 +179,7 @@ export function pacificCalendarDay(instant: string): string {
   return SeparationDateSchema.parse(`${part("month")}/${part("day")}/${part("year")}`);
 }
 
-/**
- * The New Kronos search window a pair of Kuali dates implies.
- *
- * Ported from `computeKronosDateRange` (`legacy:src/workflows/separations/schema.ts:249-266`
- * @ `1bffbd658db34ce84a08e69484db3a40b3658d6e`), with the month shift clamped
- * rather than overflowing — see `shiftMonths`. The ±1 month buffer is legacy's
- * own measured answer: narrower windows missed timecards.
- */
+/** The New Kronos search window a pair of Kuali dates implies, with the month shift clamped rather than overflowing; the buffer is the measured answer, since narrower windows missed timecards. */
 export function computeTimecardWindow(
   lastDayWorked: string,
   separationDate: string,
@@ -307,14 +200,7 @@ function dateFieldValue(field: KualiDateField): string | null {
   return field.state === "present" ? field.raw : null;
 }
 
-/**
- * Everything the rest of the graph needs from the separation document alone:
- * who it names, the two dates it carries, and the timecard window they imply.
- *
- * It runs before any UCPath or Kronos read, which is deliberate — S7's refusal
- * and a blank payload date both cost nothing here and cost a browser session
- * one node later.
- */
+/** Refuse invalid document facts before paying for external browser reads. */
 export function planSeparation(input: Readonly<{
   documentNumber: string;
   employeeName: { state: "present"; value: string } | { state: "absent"; reason: string };
@@ -383,14 +269,7 @@ export function planSeparation(input: Readonly<{
 
 /* ── The post-timecard fold ───────────────────────────────────────────────── */
 
-/**
- * The separation date, from the last day worked and the leave the card showed.
- *
- * Ported verbatim in behaviour from `computeSeparationDate`
- * (`legacy:src/workflows/separations/schema.ts:52-81` @ `1bffbd65…`): the last
- * day worked SEEDS the maximum, so a stray earlier leave date can never pull
- * the separation date backwards.
- */
+/** The separation date, from the last day worked and the leave the card showed; the last day worked SEEDS the maximum, so a stray earlier leave date can never pull the date backwards. */
 export function computeSeparationDate(
   lastDayWorked: string,
   sickDates: readonly string[],
@@ -403,16 +282,7 @@ export function computeSeparationDate(
   return latest;
 }
 
-/**
- * The UCPath Initiator Comments, and it reports exactly ONE leave clause.
- *
- * Ported from `buildTerminationComments` (`legacy:.../schema.ts:107-142` @
- * `1bffbd65…`). `<ldw>` is the PHYSICAL last day worked, never the separation
- * date: leave pushes out the separation date (and hence the effective date) and
- * never the day somebody last worked. When both sick and holiday exist only the
- * later is reported — it is the leave day that actually set the separation date
- * — and holiday wins only on a strictly later date, sick winning ties.
- */
+/** Report one leave clause: the later date wins; holiday wins only when strictly later. */
 export function buildTerminationComments(input: Readonly<{
   terminationEffectiveDate: string;
   lastDayWorked: string;
@@ -437,10 +307,7 @@ export function buildTerminationComments(input: Readonly<{
     + `Kuali form #${input.documentNumber}.`;
 }
 
-/**
- * `"Synthetic Operator"` → `"SO"`. Ported from `getInitials`
- * (`legacy:.../schema.ts:227-232` @ `1bffbd65…`).
- */
+/** `"Synthetic Operator"` → `"SO"`: initials of the two words, dropped from the display fold. */
 export function separationInitials(fullName: string): string {
   const initials = fullName
     .split(/\s+/u)
@@ -453,21 +320,12 @@ export function separationInitials(fullName: string): string {
   return initials;
 }
 
-/** Non-empty parts, trimmed, newline-joined. Ported from `joinComments`. */
+/** Non-empty parts, trimmed, newline-joined. */
 export function joinSeparationComments(...parts: readonly string[]): string {
   return parts.map((part) => part.trim()).filter((part) => part.length > 0).join("\n");
 }
 
-/**
- * The Kuali Timekeeper/Approver audit lines the date reconciliation produces.
- *
- * Ported from `buildDateChangeComments` + `buildSeparationDateChangeComment`
- * (`legacy:.../schema.ts:275-298` @ `1bffbd65…`), including the wording — those
- * exact sentences are what appear on three real Kuali documents (4445, 4461,
- * 4471), which is how the S36 defect was found in the first place. A line is
- * emitted only for a date that actually moved; the empty string is the ordinary
- * case.
- */
+/** The audit lines the date reconciliation produces, including the exact wording those sentences carry on real Kuali documents; a line is emitted only for a date that actually moved. */
 
 const DATE_SOURCE_WORDING: Readonly<Record<SeparationDateSource, string>> = {
   "kronos-timesheet": "per Kronos timesheet",
@@ -496,17 +354,7 @@ export function buildDateChangeComments(input: Readonly<{
   );
 }
 
-/**
- * D307 — the reconciled dates when the operator OMITTED the Kronos timecard
- * step and typed the last day worked and separation date instead.
- *
- * Nothing here is read from a card, so nothing here pretends to have been:
- * every leave field is `null`, the pay-code list is empty, the termination
- * comment names no leave, and the date-change comment cites operator entry
- * rather than a timesheet. The one derived value — the effective date — keeps
- * the same rule the Kronos path applies (separation date + 1), so a typed pair
- * cannot file a termination effective on a day the operator did not intend.
- */
+/** Typed replacements have no observed leave facts or pay codes. */
 export function assertSeparationDates(input: Readonly<{
   plan: SeparationPlan;
   timekeeperName: string;
@@ -521,9 +369,7 @@ export function assertSeparationDates(input: Readonly<{
       + "a separation cannot take effect before the last day worked",
     );
   }
-  // The same bound the Kuali read applies (`separation-date-in-future`): a
-  // typed date after the plan's as-of day would file a termination for someone
-  // still on pay status.
+  // Dates after the plan's as-of day cannot authorize termination.
   if (isLaterSeparationDate(separationDate, input.plan.asOfDate)) {
     throw new Error(
       `asserted separation date ${separationDate} is after ${input.plan.asOfDate}, the day this run planned the separation; `
@@ -565,25 +411,7 @@ export function assertSeparationDates(input: Readonly<{
   });
 }
 
-/**
- * The COMPLETE Kuali Timekeeper/Approver comments text the finalization stages.
- *
- * Three parts, newline-joined in this order: whatever the control already held
- * (legacy prepends the existing value so nothing a human wrote is clobbered —
- * `fillTimekeeperComments`), the date-change audit lines, and one line naming
- * the transaction this run filed.
- *
- * **That last line is an addition, and it is argued rather than inherited.**
- * Legacy leaves the control untouched when no date moved, but §4e makes the
- * comments one of the ten fields ONE save writes and
- * `KualiFinalizationCommentsSchema` requires a non-empty value — so a run that
- * changed no date still has to say something, and the honest thing to say is
- * what it filed. The sentence is modelled on legacy's own duplicate-termination
- * note (`buildDuplicateTerminationComment`, `:314-324`), which is the one place
- * legacy writes an audit line about a transaction rather than about a change.
- * §9.12 records the live consequence of the alternative: a document finalized
- * with an EMPTY comment can never be probed `present`.
- */
+/** Preserve existing comments, then append date-change audit and this transaction number. */
 export function buildFinalizationComments(input: Readonly<{
   existingComments: string;
   dateChangeComments: string;
@@ -600,27 +428,16 @@ export function buildFinalizationComments(input: Readonly<{
   );
 }
 
-/**
- * Fold the timecard onto the plan: the reconciled dates, the effective date,
- * and the two comment texts derived from them.
- *
- * `lastPunchDate === null` REFUSES. §4b hard-fails every way the read can go
- * wrong; this is the one arm where the read succeeded and still established no
- * worked day, and filing the Kuali-carried LDW there is exactly the fallback the
- * operator's answer removed ("no path through this workflow files a termination
- * on a date nobody read"). The distinction survives in the timecard output
- * itself — `hasPunches` separates "card opened, no punches" (S38) from every
- * failure — which is what a future §3.1 recomposition would select on.
- */
+/** No physical punch refuses; never substitute the Kuali date. */
 export function reconcileSeparationDates(input: Readonly<{
   plan: SeparationPlan;
   timekeeperName: string;
-  /** The card's last physical punch, or `null` when it carried none (S38). */
+  /** Null means the card had no physical punch. */
   lastPunchDate: string | null;
   sickDates: readonly string[];
   holidayDates: readonly string[];
   unclassifiedPayCodes: readonly string[];
-  /** The window the grid was PROVED to be showing when it was read (S40). */
+  /** Retain the window the grid was proved to display. */
   observedWindow: TimecardWindow;
 }>): ReconciledDatesResolution {
   if (input.lastPunchDate === null) {
@@ -674,11 +491,7 @@ export function reconcileSeparationDates(input: Readonly<{
     source: "kronos-timesheet",
   });
 
-  /**
-   * Which leave day moved the separation date, using legacy's own tie rule:
-   * holiday wins only on a strictly later date, sick wins ties
-   * (`legacy:.../schema.ts:128-139` @ `1bffbd65…`).
-   */
+    /* Which leave day moved the separation date, using the tie rule: holiday wins only on a strictly later date, sick wins ties. */
   const separationDeterminingLeave = separationDate === lastDayWorked
     ? null
     : latestSickDate !== null && separationDate === latestSickDate

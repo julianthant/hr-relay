@@ -6,21 +6,7 @@ import {
 import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.js";
 import { newKronosDriver } from "../driver-declaration.js";
 
-/**
- * Ported semantic operation: legacy 1bffbd65,
- * `src/systems/new-kronos/navigate.ts` (`searchEmployee` :214-286,
- * `waitForEmployeeSearchOutcome` :142-178, `selectEmployeeResult` :323-386).
- *
- * The three negative outcomes are three DISTINCT structured failures, each
- * naming what was expected against what was observed. `separations.md` §4b
- * makes all three fail the run; keeping them distinct is what lets a future
- * composition be selected on the difference (and is why legacy's single
- * `found:false` is the pattern this replaces).
- *
- * `retry` is deliberately absent. A search that answered `no-results` answered
- * correctly, and a `no-signal` re-run would burn the same silent window again;
- * a transient browser/session fault is the kernel's own retry surface.
- */
+
 export const searchEmployeeTask = defineTask(newKronosDriver, NewKronosSearchEmployee, {
   sessions: [{ system: "new-kronos", access: "read", session: "reuse-worker" }],
   async run({ input, ctx }) {

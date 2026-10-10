@@ -1,9 +1,4 @@
-/**
- * Immutable journal readers. Frozen arms from aaffe367084c95e06606a3b42cb058b541acd1a8
- * src/domain/commands.ts: ordinary nested patches and the retired edit-checkpoint door, plus
- * the pre-D341 marked protected-settings command (seven-name family, legacy schema hash).
- * These schemas never admit a new command. Historical journal readability is permanent.
- */
+/** Immutable journal readers for the frozen command grammar; these schemas never admit a new command, and historical journal readability is permanent. */
 import { z } from "zod";
 import { CommandAuditRecordSchema, CommandEnvelopeSchema, CommandResultSchema, markSettingsCommand } from "./commands.js";
 import { LEGACY_PROTECTED_SETTINGS_SCHEMA_HASH, LegacyMarkedProtectedSettingsPatchSchema } from "../../models/config/protected-settings-legacy.js";
@@ -35,7 +30,7 @@ const PreFloorEditCheckpointCommandSchema = CommandEnvelopeSchema.extend({
 export const PreFloorCommandSchema = z.union([PreFloorSettingsCommandSchema, PreFloorEditCheckpointCommandSchema]);
 export const PreFloorCommandAuditSchema = CommandAuditRecordSchema.extend({ request: PreFloorCommandSchema });
 
-/** The pre-W2 Snooze envelope is retained only for immutable journal and audit reads. */
+/** Snooze envelopes remain readable only in immutable journals and audits. */
 export const HistoricalNotificationSnoozeCommandSchema = CommandEnvelopeSchema.extend({
   family: z.literal("notification"), type: z.literal("notification-snooze"),
   target: z.strictObject({ notificationId: NotificationIdSchema, actorId: ActorIdSchema, expectedVersion: PositiveIntSchema }),
@@ -44,14 +39,7 @@ export const HistoricalNotificationSnoozeCommandSchema = CommandEnvelopeSchema.e
 export const HistoricalNotificationSnoozeAuditSchema = CommandAuditRecordSchema.extend({ request: HistoricalNotificationSnoozeCommandSchema });
 export type HistoricalNotificationSnoozeCommand = z.infer<typeof HistoricalNotificationSnoozeCommandSchema>;
 
-/**
- * D341: the marked protected-settings command as every pre-D341 journal wrote it. The schema
- * hash is pinned to the frozen legacy family, so a live command can never parse here, and the
- * retired canary names are admitted only in their value-free marked form. Historical readers
- * (D331 journal authentication, settings history, backup authentication) union this arm with
- * the live grammar; the D341 refusal by name then happens AFTER the row is read, never as an
- * opaque parse failure.
- */
+/** The marked protected-settings command as every pre-split journal wrote it; the schema hash is pinned to the frozen legacy family, so a live command can never parse here. */
 export const HistoricalProtectedSettingsCommandSchema = CommandEnvelopeSchema.extend({
   family: z.literal("settings"), type: z.literal("apply-protected-settings"),
   target: z.strictObject({ expectedRevision: PositiveIntSchema }),

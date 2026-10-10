@@ -6,16 +6,12 @@ import { FingerprintSchema, IsoInstantSchema, SourceSurfaceIdSchema } from "../.
 
 type Apply = Extract<CommandRequest, { type: "apply-version-bump" }>;
 
-/** The immutable proposal ID binds the public review without hashing private source values.
- * Membership changes create a replacement proposal; private source checks remain in the kernel.
- */
+// Proposal IDs bind public review; membership changes require a new proposal without hashing private values.
 export function publicVersionReviewFingerprint(row: Pick<VersionChange, "changeId">): string {
   return sha256Hex(canonicalJsonStringify(["archive-version-review:v1", row.changeId]));
 }
 
-/** Reconstruct only an envelope authenticated by the existing durable claim.
- * Missing identity or unrepresented optional fields cannot be inferred.
- */
+// Reconstruct only the authenticated envelope; absent identity and optional fields cannot be inferred.
 export function authenticatedVersionApplyRequest(row: VersionChange) {
   const application = row.application;
   if (application === undefined) return undefined;
@@ -28,9 +24,7 @@ export function authenticatedVersionApplyRequest(row: VersionChange) {
   return undefined;
 }
 
-/** Translate the served binding before the kernel sees or journals the command.
- * Stored proposals, private fingerprints and previously accepted envelopes are unchanged.
- */
+// Translate the served binding before journaling; accepted envelopes remain immutable.
 export function bindVersionApplyRequest(row: VersionChange, request: Apply): Apply | undefined {
   if (request.target.versionPlanId !== row.changeId || request.payload.planFingerprint !== publicVersionReviewFingerprint(row)) return undefined;
   const bound = { ...request, payload: { planFingerprint: FingerprintSchema.parse(row.reviewFingerprint) } };

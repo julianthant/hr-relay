@@ -1,25 +1,5 @@
 import { dashboardRouteSource } from "../dashboard/helpers/dashboard-route-source.js";
-/**
- * `workflow-editor-compile-integrity` — Phase A projection + Phase B safe edits.
- *
- * Ref guards-and-tests §3.10 writes this guard's invariant in two halves; D283 activated the
- * strict safe subset of the second without activating new-workflow authoring:
- *
- *   1. **Phase A (ref operator-trust §5.2, live now).** "Phase-2 read-only explorer
- *      projections round-trip from the real descriptor/contract/UI registries."
- *      Every arm below enforces exactly that, plus D79a's standing "no
- *      DSL/codegen artifact exists" and Phase A's read-only boundary.
- *   2. **Phase B safe subset (ref operator-trust §5.3/§5.4, D283).** Strict drafts,
- *      stale-base refusal, command-only apply, exact override replacement and
- *      code-change briefs are enforced. Timeline/notification categories with
- *      no complete owner are named unavailable; §5.5 authoring remains deferred.
- *
- * The load-bearing arm is the first: the explorer's whole claim is "this is the
- * as-built graph", and a projection that could quietly become a hand-maintained
- * copy would make that claim unfalsifiable. So the round-trip is asserted over
- * the REAL registry — not a fixture — in both directions, and the static arms
- * that keep it derivable each run against a violating fixture.
- */
+
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import assert from "node:assert/strict";
@@ -256,7 +236,7 @@ export function mutationAffordanceViolations(source: string): string[] {
   return violations;
 }
 
-/** The D283 exception is one complete Explorer apply envelope, not a generic command escape hatch. */
+
 export function explorerSafeCommandViolations(source: string): string[] {
   const violations: string[] = [];
   const calls = [...source.matchAll(/\bclient\.executeCommand\(\s*([A-Za-z_$][\w$]*)\s*\)/gu)];
@@ -281,11 +261,7 @@ export function explorerSafeCommandViolations(source: string): string[] {
   return violations;
 }
 
-/**
- * Explorer may use only these typed client doors: review, its D283 command, and
- * exact projection readback. Adding another DashboardClient method is a new
- * dashboard authority and must first be explicitly reviewed here.
- */
+
 const EXPLORER_SAFE_EDIT_CLIENT_METHODS = [
   "validateExplorerEdit",
   "executeCommand",
@@ -327,9 +303,9 @@ describe("the explorer surface keeps Phase A reads separate from the Phase B saf
 
 });
 
-/* ── 4. D79a: no DSL / codegen authoring artifact exists ─────────────────── */
 
-describe("no DSL or generated-descriptor authoring artifact exists (D79a)", () => {
+
+describe("no DSL or generated-descriptor authoring artifact exists", () => {
   it("carries no generated descriptor anywhere in the tree", () => {
     const generated = walkFiles(join(REPO_ROOT, "src"), { extensions: [".ts", ".tsx"] })
       .map(repoRelative)
@@ -341,18 +317,14 @@ describe("no DSL or generated-descriptor authoring artifact exists (D79a)", () =
     const tracked = new Set(gitVisibleFiles(["src/workflows"]));
     for (const module of WORKFLOW_MODULES) {
       const id = String(module.descriptor.id);
-      // D265 §1.2.2: a workflow's path is derived from its ROLE — a harness
-      // lives inside the step it proves — through the same helper
-      // `descriptor-coverage` reads, so the two guards hold one rule.
+
       const workflowPath = workflowSourcePath(id, module.role);
       assert.ok(tracked.has(workflowPath), `${id} has no source-authored workflow definition at ${workflowPath}`);
     }
   });
 
   it("ships no workflow-design runtime authority", () => {
-    // Ref operator-trust §5.6: generated `config/workflow-design/*.md` files are not runtime
-    // authority. The descriptor is. A directory appearing here would be a second
-    // authority for what a workflow IS.
+
     assert.deepEqual(gitVisibleFiles(["config/workflow-design"]), []);
   });
 });

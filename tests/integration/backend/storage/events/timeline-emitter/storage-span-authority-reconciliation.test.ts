@@ -381,7 +381,7 @@ describe("storage doctor span/authority reconciliation", () => {
     assert.ok(report.problems.every((problem) => problem.state === "malformed-authority"));
   });
 
-  /** D308 removes owned current timeline rows behind the durable tombstone. */
+
   function deleteRun(run: RunRecord, commandId = UUID_7) {
     return (database: AuthorityDatabase) => {
       const terminal = database.authority.runs.transition({

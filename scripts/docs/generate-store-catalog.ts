@@ -1,15 +1,4 @@
-/**
- * Generates ref stores §2 — the discoverable task-store catalog (D312; doc 03.2 Task 2).
- *
- * An author about to write a task must be able to find an existing one by system, capability,
- * effect, inputs and outputs BEFORE creating a second implementation of the same page visit. That
- * index is derived from `taskStoreRegistry`, never hand-maintained: hand-maintained rows go stale
- * silently, and a stale reuse index is exactly what mints a duplicate task.
- *
- * Shapes are read through zod's public surface (`.shape`, union `.def.options`, literal
- * `.def.values`). A shape this renderer cannot read is a FAILURE, not a `?` cell — printing a
- * question mark would quietly downgrade the catalog into prose again.
- */
+/** Derived from `taskStoreRegistry` so reuse data cannot go stale; an unreadable shape fails instead of rendering a placeholder. */
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { readPendingImplBindings } from "../../src/backend/app/registries/workflow-registry.js";
@@ -117,10 +106,6 @@ function shapeFailure(taskId: string, role: string, schema: unknown): Error {
   );
 }
 
-/**
- * The discriminant of a union: the explicit `discriminatedUnion` key when there is one, otherwise
- * the single key every arm carries as a distinct one-value literal. Undefined means "plain union".
- */
 function unionDiscriminant(options: readonly unknown[], keysPerArm: readonly (readonly string[])[]): string | undefined {
   const firstArm = keysPerArm[0];
   if (firstArm === undefined) return undefined;
@@ -232,10 +217,7 @@ const TABLE_HEADER = [
   "|---|---|---|---|---|---|---|---|---|---|",
 ];
 
-/**
- * The full generated §2 body: one `###` block per registered store in `TASK_STORES` order, then the
- * D107 pending-contract block. Pure — identical inputs render identical bytes, no clock, no paths.
- */
+/** Pure: identical registry input renders identical bytes, with no clock and no paths. */
 export function renderStoreCatalogSection(
   registry: StoreCatalogRegistry,
   pendingBindings: StoreCatalogPendingBindings,

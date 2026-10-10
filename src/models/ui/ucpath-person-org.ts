@@ -74,24 +74,11 @@ export type UcpathPersonOrgDriver = SystemDriver<
   UcpathPersonOrgFields,
   UcpathPersonOrgObservations
 > & Readonly<{
-  /**
-   * The semantic Person Org operation used by the task store. Its implementation owns every
-   * navigation, result-grid, drill-in, and selection detail; tasks never receive a Page or a
-   * selector recipe (ref task-contract §3 and ref workflow-model §3.1).
-   */
+    /* The semantic Person Org operation used by the task store; its implementation owns every navigation, result-grid, drill-in and selection detail. */
   searchPersonOrg(
     input: z.output<typeof SearchPersonOrgInputSchema>,
   ): Promise<SearchPersonOrgOutput>;
-  /**
-   * D194's rich read of the SAME page family: the detail page's whole
-   * *Employment Instances* grid for a person the run already names.
-   *
-   * It is a second semantic operation rather than a widened `searchPersonOrg`
-   * because the two answer different questions — "which human is this?" versus
-   * "what jobs does this human have?" — and because `searchPersonOrg`'s output
-   * schema is bound into shipped run records, checkpoints and receipts
-   * (D110/D114/D82). Widening it would move a hash existing rows carry.
-   */
+    /* Keep the rich read separate to preserve the shipped operation hash. */
   readJobSummary(input: Readonly<{ emplId: Eid }>): Promise<UcpathJobSummaryRead>;
 }>;
 

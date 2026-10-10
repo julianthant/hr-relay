@@ -1,29 +1,4 @@
-/**
- * `ocr/extract-form-page` — route 1 of D151, the provider pipeline.
- *
- * It is a peer of the CLI, not a privileged path. The task builds the SAME
- * generated instruction the operator and a terminal agent receive, sends it to
- * the admitted provider client, and runs the answer through the SAME
- * `admitOcrExtraction` gate. Its output type is therefore the ordinary
- * `AdmittedExtraction` — there is no "provider result" shape, because a second
- * shape is how two routes start meaning different things.
- *
- * ## Why the output can carry `unreadable` answers and still be a success
- *
- * A page the model could not fully read is a real, expected outcome — that is
- * what `blockingPaths` is for, and a human resolves it downstream. What is NOT
- * a success is a model that answered a different set of fields than the form
- * declares: that fails admission and becomes a task error, because it means the
- * pipeline and the operator would be looking at different forms.
- *
- * ## Freshness
- *
- * The input is a content-addressed page artifact, so re-reading the same bytes
- * with the same instruction is as deterministic as the model is. `maxAgeMs` is
- * finite rather than infinite for exactly that caveat: a model version can
- * change underneath a replayed extraction in a way a spreadsheet parse cannot,
- * so a stale read feeding a write must be re-taken (D8).
- */
+/** `ocr/extract-form-page`: a peer of the CLI that builds the same generated instruction and runs the answer through the same admission gate, so there is no second "provider result" shape. */
 import { z } from "zod";
 import { ArtifactRefSchema } from "../../artifacts/artifacts.js";
 import { AdmittedExtractionSchema } from "../../ocr/extraction.js";

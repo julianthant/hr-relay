@@ -1,6 +1,6 @@
 import { requireTrustRun } from "../trust/run-reader.js";
 import type { RunRecordService } from "../lifecycle/run-record-service.js";
-/** D137 diagnostic-bundle readback: exact id, verified authority row, verified artifacts. */
+
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import {
   DiagnosticBundleWireSchema,
@@ -271,13 +271,7 @@ export async function readDiagnosticBundle(
   }
 }
 
-/**
- * Materializes one attachment only after the requested bundle has passed its
- * complete durable-row, exact-index and whole-artifact verification. The
- * second verification protects the interval between that bundle read and the
- * byte response: an artifact cannot change under a gallery thumbnail and then
- * become a plausible image merely because it used to be valid.
- */
+// Verify attachment membership and bytes again across the interval before preparing the response.
 export async function readDiagnosticBundleAttachment(
   deps: DiagnosticBundleQueryDeps,
   bundleIdInput: unknown,

@@ -1,23 +1,4 @@
-/**
- * The Duo Autopilot signature counter (D243).
- *
- * This rule lives in the vendored extension, which every browser session is a
- * hard dependency on (`assertDuoAutopilotReady` refuses to launch without it),
- * and it is the whole of the "browser-profile wedge" recorded as an operational
- * finding in separations §9.17 item 5 and §9.20 item 6 and root-caused in §9.21.
- *
- * A WebAuthn server rejects an assertion whose counter does not ADVANCE past
- * what it has already observed, and Duo answers a rejection with a terminal
- * screen that never clears. Duo's counter is per CREDENTIAL; the extension's
- * copy is per BROWSER PROFILE; this runtime runs one profile per
- * `(worker, system, instance, config fingerprint)`. So the counter is a shared
- * resource written by writers that cannot see each other, and the only rule
- * that survives that is one every writer can compute identically from a source
- * they share. Wall-clock seconds is such a source; `stored + 1` is not.
- *
- * The cross-profile case below is the regression: it FAILS under `stored + 1`
- * and it is the exact production shape, not a corner.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { nextSignCount } from "../../../../duo-autopilot/src/sign-count.js";
@@ -39,9 +20,7 @@ describe("duo autopilot sign counter", () => {
   });
 
   it("never lowers a stored counter that is already ahead of the clock", () => {
-    // A counter is a claim about what a server has already seen. A clock that
-    // moved backwards (NTP correction, a suspended laptop) must never be able
-    // to re-present a value Duo has observed — that is the cloned-key signal.
+    // A backward wall clock must not repeat a counter already presented to the server.
     assert.equal(nextSignCount(DUO_OBSERVED + 5_000, DUO_OBSERVED), DUO_OBSERVED + 5_001);
   });
 
@@ -63,12 +42,7 @@ describe("duo autopilot sign counter", () => {
   });
 
   it("keeps two profiles sharing one credential monotonic against one server", () => {
-    // THE regression. One credential, one Duo, two profiles that never see each
-    // other's storage — a cold profile created later, and a warm one that was
-    // cold-stamped earlier and keeps being used. Under `stored + 1` the warm
-    // profile is permanently behind by however much wall clock elapsed between
-    // the two cold stamps, and every one of its logins is refused; the only
-    // operator exit was deleting the profile directory (§9.17, §9.20).
+
     let duoObserved = 0;
     const refused: string[] = [];
     const profiles = {

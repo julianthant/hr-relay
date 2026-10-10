@@ -3,22 +3,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { SQLITE_MIGRATIONS } from "../../../src/backend/storage/sqlite/migrations.js";
 import { activeKnowledgeView, projectKnowledgePages } from "../../../src/models/trust/knowledge-projection.js";
-/**
- * Guard: `knowledge-fix-integrity` (ref guards-and-tests §3.10; ref operator-trust §4 + §9).
- *
- * Live guidance authority retired by F (2.6.6). These historical schema-41 controls remain.
- * Knowledge records carry status/scope/evidence/validity and supersession refs;
- * no two ACTIVE records may claim the same scoped rule without an explicit
- * conflict link. Fix records link failure, changed contracts/UI ids, scenarios,
- * verification, and commit — a verified one requires a commit plus non-empty
- * evidence, and a draft stays out of active guidance. A raw chronological
- * lesson append is not accepted as active architecture authority: `triageLesson`
- * has no arm that returns a record at all.
- *
- * The generated `KNOWLEDGE.md` projection is checked here too, because ref operator-trust §9
- * makes "generated active knowledge contains no superseded/retired/unverified
- * records" a guard obligation and the file is the thing an AI tool reads.
- */
+
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -45,11 +30,7 @@ afterEach(() => {
   for (const dispose of disposers.splice(0)) dispose();
 });
 
-/**
- * An explicit `undefined` override REMOVES the key. A strict optional field
- * that is present-but-undefined is not the same record as one that omits it,
- * and only the omission is what these arms mean to build.
- */
+// An explicit undefined override removes the key.
 function withoutUndefined(record: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(record).filter(([, value]) => value !== undefined));
 }
@@ -89,7 +70,7 @@ function fix(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   });
 }
 
-/** Frozen schema-41 adapter exercises historical semantics after live retirement. */
+
 function serviceFor() {
   const history = new DatabaseSync(":memory:");
   for (const migration of SQLITE_MIGRATIONS.filter(m=>m.version<=41)) for(const statement of migration.statements)history.exec(statement);
@@ -119,7 +100,7 @@ function serviceFor() {
   return {service,database:{authority:{knowledgeRecords:{get:(id:string)=>knowledgeRows().find(row=>row.id===id)}}}};
 }
 
-describe("F retired guidance authority",()=>{
+describe("guidance authority refuses unsupported states",()=>{
  it("has neither live tables nor repository doors",()=>{
   const root=mkdtempSync(join(tmpdir(),"foundation-retired-guidance-"));
   const database=AuthorityDatabase.open({path:join(root,"state.db"),busyTimeoutMs:250,migrationOwner:"retirement-proof"},manualClock(new Date(NOW)));
@@ -290,8 +271,7 @@ describe("knowledge-fix-integrity: raw lessons are migration input, never author
     assert.deepEqual(result.pages.map(({ path }) => path), ["knowledge/ucpath/KNOWLEDGE.md"]);
 
     const markdown = readFileSync(join(root, "knowledge/ucpath/KNOWLEDGE.md"), "utf8");
-    // The superseded predecessor appears ONLY as the successor's `Supersedes`
-    // provenance line, never as a record of its own.
+
     assert.ok(markdown.includes(`**Record:** \`${UUID_2}\``));
     assert.ok(!markdown.includes(`**Record:** \`${UUID_1}\``), "a superseded record may not reach the active guide");
     assert.equal(markdown.split("\n").filter((line) => line.startsWith("### ")).length, 1);

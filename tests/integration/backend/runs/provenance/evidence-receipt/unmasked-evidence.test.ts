@@ -18,7 +18,7 @@ import { kualiReceiptEvidence } from "../../../../../support/fixtures/receipt-ru
 import { separationsKualiFinalizationDescriptor } from "../../../../../support/helpers/registered-workflows.js";
 import { DataClassificationSchema, redactDiagnosticFields, retainLocalEvidenceValue, RedactedValueSchema } from "../../../../../../src/rules/redaction/redaction.js";
 
-describe("D361 complete classified evidence", () => {
+describe("complete classified evidence", () => {
   it.each(DataClassificationSchema.options)("retains the supplied %s value without a presentation transform", classification => {
     const value = { text: "synthetic-complete-value", nested: ["synthetic-identifier", 17] };
     const requested = classification === "safe-diagnostic" ? "count" : "drop";
@@ -55,7 +55,7 @@ function derive(composition: 1 | 2 | 3 | 4 | 5) {
   }, composition);
 }
 
-describe("D361 receipt composition", () => {
+describe("receipt composition", () => {
   it.each([1, 2, 3, 4] as const)("preserves exact composition %i bytes frozen from the pre-amendment source", composition => {
     assert.equal(sha256Hex(canonicalJsonStringify(derive(composition))), historicalDigests[composition - 1]);
   });
@@ -88,7 +88,7 @@ describe("D361 receipt composition", () => {
   });
 });
 
-describe("D361 durable receipt boundaries", () => {
+describe("durable receipt boundaries", () => {
   it("reopens complete composition-5 bytes from isolated SQLite and projects those exact facts", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-unmasked-receipt-"));
     const options = { path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "unmasked-receipt-test" };
@@ -131,7 +131,7 @@ describe("D361 durable receipt boundaries", () => {
   });
 });
 
-describe("D361 supplied failure diagnostics", () => {
+describe("supplied failure diagnostics", () => {
   it("retains complete supplied failure summary only in new composition 5", () => {
     const evidence = kualiReceiptEvidence();
     const done = RunRecordSchema.parse(evidence.run);

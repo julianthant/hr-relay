@@ -1,36 +1,4 @@
-/**
- * `new-kronos/read-separation-timecard` — ONE visit to the WFD Timecard page
- * (D194 / ref task-contract §2.8).
- *
- * Go To, the subject proof, the custom-range apply and the grid read are all
- * ONE page visit: none of them can be re-entered without redoing the whole
- * navigation, and a separate "set the range" task would hand the next task a
- * page it cannot prove it is still standing on. `separations.md` §2.4's
- * five-task sketch (`open-timecard` · `verify-timecard-subject` ·
- * `set-timecard-range` · `read-separation-timecard`) predates the
- * extraction-width rule ratified later in the same document; this is that rule
- * applied.
- *
- * The output is the page's full useful surface, and three parts of it are
- * first-class rather than assumed:
- *
- *  - **the subject the page itself displays** (`subject`) — S37's wrong-person
- *    control is an OUTPUT, not an internal check, so a run's evidence carries
- *    the EID and the name the timecard showed;
- *  - **whether the requested window actually applied** (`range`) — S40, proved
- *    by parsing WFD's own period label back into calendar days, not by noticing
- *    the label changed;
- *  - **the raw pay-code rows beside the derived dates** (`grid.payCodeDays`,
- *    `grid.unclassifiedPayCodes`) — the live window carried
- *    `Juneteenth Observed` and `Independence Day Observed`, neither of which
- *    legacy's `/holiday/i` rule classifies. Dropping them would hide a day that
- *    may belong in a separation date.
- *
- * `grid.lastPunchDate: null` is the S38 ABSENT ARM: a timecard that opened and
- * genuinely holds no punches is a REAL outcome of a correct read. It is
- * reachable only through a grid whose day set covers the whole applied window —
- * a truncated read of WFD's virtualized grid refuses instead (`timecard-unreadable`).
- */
+/** ONE visit to the WFD Timecard page: Go To, subject proof, range apply and grid read, with the page-displayed subject and whether the requested window actually applied as first-class outputs. */
 import { z } from "zod";
 import { EidSchema, ObservationIdSchema, taskId } from "../../../rules/identity/ids.js";
 import { TimecardDateSchema, TimecardPayCodeDaySchema } from "../../../rules/kronos/separation-timecard.js";
@@ -69,7 +37,7 @@ export const ReadSeparationTimecardOutputSchema = z.strictObject({
     /** Calendar days the read covered — equal to the applied window by construction. */
     daysCovered: z.number().int().positive(),
     populatedRows: z.number().int().nonnegative(),
-    /** S38's absent arm: a real, correct read of a card with no punches. */
+    /** Absent means a correct read with no punches. */
     lastPunchDate: TimecardDateSchema.nullable(),
     punchDates: z.array(TimecardDateSchema),
     sickDates: z.array(TimecardDateSchema),
@@ -98,13 +66,7 @@ export const NewKronosReadSeparationTimecard = defineTaskContract({
     "timecard-range-not-applied",
     "timecard-unreadable",
   ],
-  /**
-   * The wrong-person control (S37, and the `T002173685` class of incident doc
-   * ref write-safety §14 exists for). `.emp-nav-id` is the timecard's OWN identity header;
-   * page-wide text is forbidden because the searched EID lingers in the search
-   * chrome, which is exactly how legacy read one person's punches onto
-   * another's separation.
-   */
+    /* The wrong-person control: `.emp-nav-id` is the timecard's OWN identity header, and page-wide text is forbidden because the searched EID lingers in the search chrome. */
   subject: {
     kind: "person",
     expected: { fromInput: ContractFieldPathSchema.parse("emplId"), identity: "eid" },

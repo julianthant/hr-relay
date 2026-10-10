@@ -5,17 +5,14 @@ ArrowRight
 import { dsIcon,IconButton } from "../../ds/ui.js";
 
 
-/* ── history ─────────────────────────────────────────────────────────────── */
+/** ── history ─────────────────────────────────────────────────────────────── */
 
-/**
- * The two history controls, as the Top Bar sees them. The shell owns the
- * history value itself; this is only what the pair of buttons needs to render
- * and to call.
- */
+/** The two history controls, as the Top Bar sees them. The shell owns the
+ * history value itself; this is only what the pair of buttons needs to render */
 export interface NavControls {
   canBack: boolean;
   canForward: boolean;
-  /** the place each direction lands on, named — undefined when there is none */
+  /** the place each direction lands on, named */
   backTo?: string;
   forwardTo?: string;
   onBack: () => void;
@@ -23,14 +20,8 @@ export interface NavControls {
 }
 
 
-/**
- * BACK AND FORWARD, and they sit in the Top Bar rather than on the queue.
- *
- * A disabled direction stays in place rather than disappearing: a pair that
- * collapses to one button at the start of a session moves every control to its
- * right by 28px the first time you navigate, which is a layout that shifts
- * under the pointer.
- */
+/** BACK AND FORWARD, and they sit in the Top Bar rather than on the queue.
+ * A disabled direction stays in place rather than disappearing */
 export function NavHistoryControls({ nav }: { nav: NavControls }) {
   return (
     <span className="flex shrink-0 items-center gap-[var(--ds-space-hair)]">

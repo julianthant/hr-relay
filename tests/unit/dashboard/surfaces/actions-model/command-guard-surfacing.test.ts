@@ -1,18 +1,4 @@
-/**
- * A FAIL-LOUD GUARD THAT NOBODY CATCHES IS SILENCE WITH EXTRA STEPS.
- *
- * `dispatchCommand` in `app/dashboard-app.tsx` carries two throws inside the
- * arm that runs when the BFF answers: `toastAppliedCommandResult` refuses to
- * compose a success receipt for a refused settlement, and the refused branch
- * refuses to continue when the feed fold produced no entry. Both exist so that
- * "nothing was recorded" can never look like "it worked" (D253).
- *
- * They were installed on a promise chain of the form `.then(onFulfilled,
- * onRejected)`, and that form registers `onRejected` on the ORIGINAL promise —
- * so it can never see a throw raised by `onFulfilled`. The guard fired into a
- * floating unhandled rejection: no toast, no feed row, an operator staring at a
- * screen that reported nothing at all. This file pins both halves of the fix.
- */
+
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "vitest";
@@ -24,11 +10,7 @@ const COMMAND_ID = "1a000000-0000-4000-8000-000000000001";
 
 const DASHBOARD_APP = new URL("../../../../../src/dashboard/app/dashboard-app.tsx", import.meta.url);
 
-/**
- * The call site itself, sliced out by its two fixed landmarks: the one
- * `executeCommand` post `dispatchCommand` makes, and the dependency array that
- * closes the `useCallback` holding it.
- */
+
 function dispatchCommandChain(): string {
   const source = readFileSync(DASHBOARD_APP, "utf8");
   const opens = source.indexOf("client.executeCommand(requestToExecute)");
@@ -79,12 +61,7 @@ interface Toasted {
   readonly description: string;
 }
 
-/**
- * The production arms, verbatim in behaviour: the fulfilment arm settles a
- * REFUSED result through the real D253 fold and hands it to the real applied
- * toast (which is exactly how the guard fires), and the rejection arm is the
- * danger toast `dashboard-app.tsx` composes from a caught value.
- */
+
 function makeArms(recorded: Toasted[]): {
   onFulfilled: () => void;
   onRejected: (caught: unknown) => void;
@@ -118,9 +95,7 @@ describe("the two promise shapes, driven with the real guard and the real handle
   it("the two-arm `.then(a, b)` this replaced loses the guard entirely", async () => {
     const recorded: Toasted[] = [];
     const arms = makeArms(recorded);
-    // The `.catch` here is the very handler production was missing; it is
-    // attached ONLY so the guard's throw does not take the test process down
-    // as an unhandled rejection. The claim is what `recorded` holds.
+
     await Promise.resolve()
       .then(arms.onFulfilled, arms.onRejected)
       .catch(() => undefined);

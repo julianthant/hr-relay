@@ -39,7 +39,7 @@ function fromRow(input: unknown): ExplorerWorkflowOverride {
   return deepFreeze(record);
 }
 
-/** Historical evidence proves its own envelope, never today's descriptor. */
+// Retained evidence proves its stored envelope, not the current descriptor.
 export function assertExplorerOverrideEvidence(database: DatabaseSync, override: ExplorerWorkflowOverride): void {
   const row = database.prepare("SELECT record_json FROM commands WHERE record_key=?").get(override.appliedCommandId);
   const audits = database.prepare("SELECT record_json FROM command_audits WHERE command_id=?").all(override.appliedCommandId);

@@ -120,7 +120,7 @@ function temporaryRoot(): string {
   return mkdtempSync(join(tmpdir(), "hrauto-dashboard-presentation-"));
 }
 
-describe("dashboard presentation freeze (brief 0b)", () => {
+describe("dashboard presentation freeze", () => {
   it("pins every current presentation component, stylesheet, and design-token file", () => {
     assert.equal(new Set(frozenPresentationFiles).size, frozenPresentationFiles.length);
     assert.equal(frozenPresentationFiles.length, 109);

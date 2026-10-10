@@ -1,13 +1,5 @@
 import { testRunLifecycle } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
-/**
- * D315 — a parallel entry's leaves checkpoint independently, so a failed leaf
- * retries on the item's next attempt while its successful sibling replays.
- *
- * The proof runs a definition-compiled descriptor through the REAL interpreter
- * over a REAL authority database: attempt 1 fails at the CRM leaf after the
- * UCPath leaf checkpointed; attempt 2 (D221 — the item's next attempt) opens
- * no UCPath session and re-executes exactly the failed leaf.
- */
+
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { executeClaimedRun, type RunExecutorDependencies } from "../../../../../../src/backend/runtime/execution/run-executor.js";
@@ -75,7 +67,7 @@ function depsFor(
   };
 }
 
-describe("parallel leaves retry independently (D315)", () => {
+describe("parallel leaves retry independently", () => {
   it("replays the successful leaf's checkpoint and re-executes only the failed leaf on the next attempt", async () => {
     const authority = openAuthorityHarness();
     disposers.push(authority.dispose);

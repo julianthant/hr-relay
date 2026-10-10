@@ -1,22 +1,4 @@
-/**
- * The `RunEnvelope` — kernel-owned state that rides BESIDE the workflow-constant
- * input (ref workflow-model §2).
- *
- * Three rules make this shape what it is.
- *
- * 1. **`dryRun` lives here and nowhere else (D6).** A workflow schema that could
- *    declare it could also disagree with the executor about whether a run may
- *    commit, so the flag is envelope state and no `TaskCtx` exposes it. The
- *    executor compiles a commit-free graph rather than checking a boolean at the
- *    fence.
- * 2. **Requested is not resolved.** `requestedInstance` is what the surface
- *    asked for; `resolvedInstance` is what enqueue decided. Both are recorded so
- *    a resolver that quietly ignored the request is a parse failure here rather
- *    than a surprise against a production host.
- * 3. **Resume affordances are attempt-scoped.** A freshness override authorizes
- *    exactly one attempt (ref workflow-model §5.5) and an override naming a different
- *    attempt is a bug, not a silently-ignored no-op — so it is rejected.
- */
+/** The `RunEnvelope` — kernel-owned state beside the workflow-constant input: `dryRun` lives here, requested is not resolved, and resume affordances are attempt-scoped. */
 import { SourceBoundRunSchema } from "./rerun.js";
 import { z } from "zod";
 import {
@@ -54,24 +36,11 @@ export type RunPriority = z.infer<typeof RunPrioritySchema>;
 export const BrowserPresentationModeSchema = z.enum(["headless", "headed"]);
 export type BrowserPresentationMode = z.infer<typeof BrowserPresentationModeSchema>;
 
-/**
- * A partial map over the closed browser-system set. `partialRecord` keeps the
- * key set closed — an unknown system id fails rather than riding along as an
- * unread extra key.
- */
+/** A partial map over the closed browser-system set, so an unknown system id fails rather than riding along. */
 export const InstanceSelectionSchema = z.partialRecord(BrowserSystemIdSchema, SystemInstanceSchema);
 export type InstanceSelection = z.infer<typeof InstanceSelectionSchema>;
 
-/**
- * D314 — the operator's recovery choice for a NEW attempt of the same logical
- * item. Absent (the ordinary start, and "Resume from checkpoints") replays
- * valid checkpoint ancestors; `restart-from-start` ignores every read/compute
- * checkpoint another run produced so every read and computation executes
- * again. Neither choice lets a completed external write execute twice: a
- * transaction whose permanent intent is already committed or observed-present
- * reuses its durable proof, and the write sequencer refuses by name when the
- * fresh facts no longer match that proof's permanent key.
- */
+/** The operator's recovery choice for a NEW attempt: absent replays valid checkpoint ancestors, `restart-from-start` re-executes every read and computation. */
 export const RunRecoveryModeSchema = z.enum(["restart-from-start"]);
 export type RunRecoveryMode = z.infer<typeof RunRecoveryModeSchema>;
 
@@ -91,12 +60,9 @@ export const RunEnvelopeSchema = z.strictObject({
   traceId: TraceIdSchema,
   descriptorVersion: PositiveIntSchema,
   contractFingerprint: FingerprintSchema,
-  /**
-   * Stamped for Plan 1-era enqueues so a missing complete snapshot cannot be
-   * quietly read as a legacy run.  Absence remains readable for older history.
-   */
+    /* Stamped for older enqueues so a missing complete snapshot cannot be quietly read as a legacy run. */
   operationDisplayCapability: z.enum(["legacy", "complete"]).optional(),
-  /** D356 — present only for a complete display minted with this exact run. */
+    /** Present only for a complete display minted with this exact run. */
   operationDisplaySnapshot: WorkflowOperationDisplaySnapshotSchema.optional(),
   requestedInstance: InstanceSelectionSchema.optional(),
   resolvedInstance: InstanceSelectionSchema,
@@ -105,15 +71,15 @@ export const RunEnvelopeSchema = z.strictObject({
   parent: RunParentSchema.optional(),
   shape: RunShapeSchema,
   priority: RunPrioritySchema,
-  /** D6 — the ONLY home of this flag. */
+    /** The ONLY home of this flag. */
   dryRun: z.boolean(),
   /** Optional only so historical authority rows remain readable. */
   browserMode: BrowserPresentationModeSchema.optional(),
   /** Optional only so historical authority rows remain readable. */
   captureBrowserScreenshots: z.boolean().optional(),
-  /** D307 — the steps this run omits, with the operator's typed facts; absent means every step runs. */
+    /** The steps this run omits, with the operator's typed facts; absent means every step runs. */
   stepOmissions: StepOmissionsSchema.optional(),
-  /** D314 — present only on a Restart-from-start attempt; carried unchanged through a requeue. */
+    /** Present only on a Restart-from-start attempt; carried unchanged through a requeue. */
   recovery: RunRecoveryModeSchema.optional(),
   sourceBound: SourceBoundRunSchema.optional(),
   /** A resumable graph-node id, never an internal transaction arm (ref workflow-model §5.7). */
@@ -121,16 +87,7 @@ export const RunEnvelopeSchema = z.strictObject({
   injected: z.array(CheckpointPatchSchema).min(1).optional(),
   freshnessOverride: z.array(FreshnessOverrideSchema).min(1).optional(),
   retryOf: RunIdSchema.optional(),
-  /**
-   * D221 — the attempt at the ITEM, not at this run.
-   *
-   * `(workflow, itemId)` is the logical item and the checkpoint key is scoped to
-   * it (ref workflow-model §5.7), so every component of that key must be item-scoped too. A
-   * new run for an item — an operator retry, or any fresh enqueue of an item
-   * that has run before — therefore takes the item's NEXT attempt, and a requeue
-   * inside a run advances the same counter. Two runs of one item may never hold
-   * the same attempt; `runs.enqueue` refuses one that would.
-   */
+    /* The attempt at the ITEM, not at this run: every component of the `(workflow, itemId)` checkpoint key is item-scoped, so a new run for an item takes the item's NEXT attempt. */
   attempt: PositiveIntSchema,
   enqueuedAt: IsoInstantSchema,
 }).superRefine((envelope, context) => {
@@ -196,13 +153,7 @@ export const RunEnvelopeSchema = z.strictObject({
     }
   }
   if (envelope.injected !== undefined) {
-    // D166: `injected` no longer requires `startAt`. The original rule
-    // guarded the start-at-N affordance ("without startAt the patched node
-    // would re-run and discard the correction"), but the live Edit-Data save
-    // stores patches on a queued/parked run whose patched nodes REPLAY from
-    // checkpoints — and the executor refuses, loudly, any patch naming a
-    // node it will execute rather than replay. The discard the old rule
-    // feared is now a structural refusal, not a silence.
+        // Patched nodes replay; the executor refuses patches on nodes it will execute.
     const seen = new Set<string>();
     for (const [index, patch] of envelope.injected.entries()) {
       const key = `${patch.nodeId}\u0000${patch.fieldPath}`;
@@ -226,24 +177,7 @@ export const RunEnvelopeSchema = z.strictObject({
 });
 export type RunEnvelope = z.infer<typeof RunEnvelopeSchema>;
 
-/**
- * The envelope for the next attempt, with every single-resume affordance gone.
- *
- * The keys are DELETED, not set to `undefined`: a durable record is canonical
- * JSON, and `{ startAt: undefined }` is neither absent nor a JSON value — it
- * would fail serialization at the storage boundary rather than quietly meaning
- * "no start node". Dropping them is also the contract, not tidiness: a
- * freshness override authorizes exactly one attempt, and injected patches have
- * already been persisted as checkpoints by the executor that applied them.
- *
- * **`nextAttempt` is supplied, never computed as `attempt + 1` (D221).** The
- * attempt counts attempts at the ITEM, not at this run — the checkpoint key is
- * item-scoped and the write sequencer reads `attempt > 1` as "this item has been
- * attempted before" — so the next one is whatever the item has not used yet, and
- * only authority can say what that is. It must strictly advance: an attempt that
- * stood still or went backwards would put this requeue's executions under a key
- * another execution already owns.
- */
+/** The envelope for the next attempt with every single-resume affordance gone, and with `nextAttempt` supplied by authority, never computed. */
 export function nextAttemptEnvelope(envelope: RunEnvelope, nextAttempt: number): RunEnvelope {
   const { startAt, injected, freshnessOverride, ...carried } = envelope;
   void startAt;

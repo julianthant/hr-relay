@@ -153,14 +153,7 @@ async function readRequiredText(locator: Locator, field: string): Promise<string
   return value;
 }
 
-/**
- * Port of the pinned search-grid row semantics from legacy commit
- * 793abe1f8265f3213ffe8a80d6cfd9860a32a1dc:
- * `src/systems/crm/onboarding-records.ts` (blob 71e0195f358f7e27afbb5cb43f8e6e390c8918e8)
- * plus `src/systems/crm/selectors.ts` (blob e63530d375478dd330d07460c740f2027dbd7bdd).
- * The live 2026-08-02 page contains one verified two-cell auxiliary row around the exact five-cell
- * data rows. Any other row shape is an unexpected page state, not an empty-result fallback.
- */
+// CRM search data rows have five cells; the verified two-cell auxiliary row is not data.
 export async function searchCrmOnboardingRows(
   page: Page,
   query: string,
@@ -258,12 +251,7 @@ async function readRecordField(
   return value;
 }
 
-/**
- * Port of legacy CRM field extraction with the only live-proven strategy retained:
- * `record.thLabelFollowingTd()` from `src/systems/crm/selectors.ts` at commit 793abe1f..., blob
- * e63530d375478dd330d07460c740f2027dbd7bdd. The broader legacy fallbacks are intentionally absent;
- * selector loss throws instead of turning an extraction failure into a blank field.
- */
+
 async function openAndReadCrmRecord(
   page: Page,
   row: CrmOnboardingSearchRow,
@@ -347,10 +335,7 @@ function plausibleNameRows(
   }));
 }
 
-/**
- * Shared resolver for both Person Lookup CRM reads. The fuzzy `?q=` search is never identity proof:
- * every plausible record is opened and its displayed UCPath Employee ID must equal the request.
- */
+// CRM search is fuzzy; open every plausible record and prove its displayed EID exactly.
 export async function resolveExactCrmOnboardingRecord(
   page: Page,
   input: Readonly<{ eid: string; name?: string }>,
@@ -565,14 +550,7 @@ async function readOnboardingDates(
   });
 }
 
-/**
- * Actual selector-backed CRM driver. Legacy provenance:
- * - onboarding-records.ts blob 71e0195f358f7e27afbb5cb43f8e6e390c8918e8
- * - crm-search.ts blob 2ef1508b05c77a56ebd0b134e9fbcb6204ca3265
- * - extract.ts blob 46028e7ad1c40adc6d3d367c2fd727bc30a8f872
- * - history.ts blob 20b97bdfe25f01fc2569afdf4e9d2ecb33057ba7
- * at legacy commit 793abe1f8265f3213ffe8a80d6cfd9860a32a1dc.
- */
+
 export function createCrmOnboardingDriver(page: Page): CrmOnboardingDriver {
   return Object.freeze(CrmOnboardingDriverSchema.parse({
     system: "crm",

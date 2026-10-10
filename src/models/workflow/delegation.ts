@@ -1,21 +1,4 @@
-/**
- * Delegation fan-out planning, replay verification, and joining (ref workflow-model §3.2).
- *
- * Three invariants this module exists to hold:
- *
- * 1. **The fan-out is all-or-none.** A plan is computed completely — every child
- *    input bound, parsed, and fingerprinted, every stable id derived — BEFORE
- *    the enqueue transaction writes anything. If any binding fails, none of the
- *    fan-out exists.
- * 2. **Replay uses the manifest, never a re-evaluated list.** Replaying a
- *    `child-run` node re-plans and compares against the stored manifest by exact
- *    fingerprint. A changed list is a loud failure, never silently attached
- *    children.
- * 3. **Identity is stable and declared.** Child item ids come from the node's
- *    `deriveChildItemId`, never an array index or a run id. A duplicate derived
- *    id is a fan-out authoring bug and fails here rather than colliding in the
- *    dependency table.
- */
+/** Delegation fan-out planning, replay verification, and joining; the fan-out is all-or-none — a plan is computed completely before anything is written. */
 import { createHash } from "node:crypto";
 import type { z } from "zod";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
@@ -61,10 +44,7 @@ export interface DelegationFanOutRequest<Target extends AnyWorkflowRef> {
   readonly deriveChildItemId: (input: z.output<Target["input"]>) => ItemId;
 }
 
-/**
- * Plan a fan-out completely, or throw. Nothing here writes; the caller performs
- * the whole enqueue in one transaction using the returned plan.
- */
+/** Plan a fan-out completely, or throw; nothing here writes, and the caller performs the whole enqueue in one transaction. */
 export function planDelegationFanOut<Target extends AnyWorkflowRef>(
   request: DelegationFanOutRequest<Target>,
 ): DelegationPlan<Target> {
@@ -101,9 +81,7 @@ export function planDelegationFanOut<Target extends AnyWorkflowRef>(
     });
   }
 
-  // A zero-child fan-out is a legitimate outcome (an empty upstream list), but
-  // it must stay explicit: the manifest records it and the join sees an empty
-  // array rather than the edge silently disappearing.
+  // Record empty fan-outs explicitly so joins receive an empty array.
   const identity = {
     edgeId: request.edgeId,
     workflowId: request.target.id,
@@ -125,12 +103,7 @@ export function planDelegationFanOut<Target extends AnyWorkflowRef>(
   };
 }
 
-/**
- * Replaying a `child-run` node re-plans and must land on exactly the stored
- * manifest. A drifted plan means the upstream list changed under a run that has
- * already delegated — attaching the new children silently would orphan the old
- * ones and double-process the overlap.
- */
+/** Replaying a `child-run` node re-plans and must land on exactly the stored manifest; attaching new children silently would orphan the old ones. */
 export function assertDelegationReplayMatches<Target extends AnyWorkflowRef>(
   stored: Readonly<{ edgeId: DelegationEdgeId; planFingerprint: Fingerprint }>,
   replanned: DelegationPlan<Target>,
@@ -154,13 +127,7 @@ export type DelegationJoin<Target extends AnyWorkflowRef> =
   | Readonly<{ state: "failed"; reason: string; outcomes: readonly ChildRunOutcome<Target>[] }>
   | Readonly<{ state: "blocked"; reason: string; outcomes: readonly ChildRunOutcome<Target>[] }>;
 
-/**
- * Apply a join and its failure policy to the complete set of child outcomes.
- *
- * The caller must supply one outcome per planned child, in plan order — a
- * partial set is a caller bug, not a join result, because "still running" and
- * "finished" would otherwise be indistinguishable.
- */
+/** Apply a join and its failure policy to the complete set of child outcomes; the caller must supply one outcome per planned child, in plan order. */
 export function joinDelegationOutcomes<Target extends AnyWorkflowRef>(
   plan: DelegationPlan<Target>,
   outcomes: readonly ChildRunOutcome<Target>[],

@@ -1,14 +1,4 @@
-/**
- * 2i-G — the explorer/catalog half of the ONE typed client, the route state
- * that addresses both surfaces, and the two pure functions the surfaces think
- * with (D176/D177).
- *
- * The surfaces themselves are proved by the parity corpus; what is pinned here
- * is the logic a screenshot cannot check: that the graph panel's dry-run
- * posture, boundary and edge conditions are derived from the descriptor rather
- * than assumed, that a search narrows rather than widens, and that three
- * takeover keys on one link resolve to ONE answer.
- */
+
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { createDashboardClient, DashboardClientError } from "../../../../../src/dashboard/client/index.js";

@@ -106,7 +106,7 @@ export function indexArchivedTransactionSnapshot(database: DatabaseSync, snapsho
       }
 }
 
-/** Historical shared proofs remain checked within the selected range, even after their original owner is deleted. */
+// Shared proofs remain checked in-range even when their first owner is deleted.
 export function selectedHistoricalTransactionRows(database: DatabaseSync, input: unknown) {
   const range = TransactionHistorySelectionSchema.parse(input), where: string[] = [], args: string[] = [];
   if (range.from !== "0001-01-01") { where.push("json_extract(record_json,'$.ledgerOutbox.payload.entry.confirmedAt') >= ?"); args.push(new Date(`${range.from}T00:00:00`).toISOString()); }

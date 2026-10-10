@@ -1,13 +1,5 @@
 import { formatCalendarDate } from "../../lib/date-format.js";
-/**
- * The activity report's range vocabulary — the one shape the URL carries.
- *
- * It lives beside `activity.tsx` rather than inside it because a module that
- * exports a component may export nothing else if React Fast Refresh is to treat
- * it as a refresh boundary: one non-component export makes every edit to the
- * surface invalidate upward into `dashboard-app.tsx` and remount the app
- * instead of hot-swapping the component.
- */
+/** The activity report's range vocabulary — the one shape the URL carries. */
 import type {
   ActivityPeopleTotal,
   ActivityReportWire,
@@ -37,11 +29,8 @@ export interface ResolvedActivityWho {
   traceId: string | undefined;
 }
 
-/**
- * Resolve one served Activity sample without fetching or inventing identity.
- * A range routinely names a run outside the one Queue day held by the shell;
- * that run stays identified by its served id.
- */
+/** Resolve one served Activity sample without fetching or inventing identity.
+ * A range routinely names a run outside the one Queue day held by the shell */
 export function resolveActivityWho(
   runId: string,
   rows: readonly QueueRowIdentity[],
@@ -118,10 +107,7 @@ const ACTIVITY_RANGE_REFUSAL = "Choose valid From and To dates, with From no lat
 const ACTIVITY_INCOMPLETE_RANGE_REFUSAL = "Choose both From and To dates before applying. The requested range was not replaced.";
 const MILLISECONDS_PER_CALENDAR_DAY = 86_400_000;
 
-/**
- * An ISO date here is a report-calendar date, not an instant in the browser's zone.
- * All arithmetic uses UTC only as a stable calendar calculator.
- */
+/** Treat report dates as calendar dates; UTC arithmetic avoids browser-zone shifts. */
 export interface ActivityDateRange {
   from: string;
   to: string;
@@ -253,10 +239,7 @@ export function activityPresetOf(range: ActivityDateRange, today: string): Activ
   return "custom";
 }
 
-/**
- * Validate a selected range and return its inclusive count, clipped calendar interval,
- * and pure bucket policy for A2/A3. No report instant or browser timezone is consulted.
- */
+/** Range arithmetic uses calendar bounds, never report instants or browser timezone. */
 export function buildActivityRangeModel(range: ActivityDateRange): ActivityRangeModelResult {
   const from = parseActivityCalendarDate(range.from);
   const to = parseActivityCalendarDate(range.to);
@@ -312,11 +295,7 @@ export function activityPeriodOf(range: { from: string; to: string }, today: str
   return "custom";
 }
 
-/**
- * The span's own label — the demo's `ReportSpan.label`, derived here from the
- * two bounds the wire requires (D180: both bounds are named, never defaulted).
- * A one-day range reads as the day, exactly as the demo's single-day span does.
- */
+
 export function activityRangeLabel(from: string, to: string): string {
   return from === to ? dayLabel(from) : `${dayLabel(from)} – ${dayLabel(to)}`;
 }

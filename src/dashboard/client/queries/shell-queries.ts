@@ -17,7 +17,7 @@ export interface ShellQueries {
 
   bootstrap(): Promise<FrontendBootstrapWire>;
 
-  /** D283: bounded cross-date search over exact durable run authority. */
+  /** Bounded cross-date search over exact durable run authority. */
   searchRuns(query: CrossDateSearchQueryInput, signal?: AbortSignal): Promise<CrossDateSearchPage>;
 }
 

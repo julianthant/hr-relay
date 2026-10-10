@@ -3,12 +3,7 @@ import { lifecycleCommandId } from "../../../../../../src/backend/runs/lifecycle
 import { executeSequencedWriteCommit } from "../../../../../../src/backend/runtime/writes/write-sequencer.js";
 import { PositiveIntSchema } from "../../../../../../src/rules/identity/ids.js";
 import { testRunContinuation } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
-/**
- * Ref write-safety §4 recovery matrix (D118) and the §4.1 typed operator resolutions
- * over the REAL authority database — probe-first routing, D64/D69-qualified
- * negative settlement, present-proof validation before backfill, and every
- * indeterminate arm parking.
- */
+
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -81,7 +76,7 @@ interface Harness {
   readonly manager: WorkerSessionManager;
   readonly ids: ReturnType<typeof sequentialIdFactory>;
   readonly recovery: WriteRecoveryService;
-  /** Every config fingerprint a probe lease actually opened a session under (D116 witness). */
+
   readonly openedFingerprints: () => readonly string[];
 }
 
@@ -99,9 +94,7 @@ function harness(refuseContinuation = false): Harness {
   const world = createWriteFixtureWorld();
   const registry = buildWriteFixtureRegistry(world);
   const inner = writeFixtureSessions(world);
-  // D116 witness: record the exact config fingerprint every session open was
-  // requested under, so a test can pin that recovery leased under the TARGET
-  // run's retained fingerprint and not a recomputed or caller-claimed one.
+  // Record the session-open fingerprint to prove recovery leases the target run snapshot.
   const opened: string[] = [];
   const spied: SessionFactoryHarness = {
     ...inner,
@@ -158,11 +151,7 @@ function ownBindingProof() {
   };
 }
 
-/**
- * A crashed fenced write: enqueue + claim + running, fence the attempting
- * intent for THIS run, then park the run the way the D118 sweep's parked:true
- * arm does. The intent stays `attempting` — recovery's exact precondition.
- */
+
 function parkedAttemptingWrite(h: Harness, taskIdValue = "ucpath/submit-write-fixture"): {
   run: RunRecord;
   writeIntentId: string;
@@ -256,8 +245,7 @@ describe("ref write-safety §4 recovery matrix", () => {
     });
     assert.deepEqual(decision, { state: "backfilled", writeIntentId, generation: 1 });
     assert.deepEqual(h.world.events, ["probe"], "recovery probed first and never prepared or clicked");
-    // D116: the probe lease opened under the TARGET run's retained immutable
-    // config fingerprint — the authority run row's value, nothing recomputed.
+
     assert.deepEqual(
       h.openedFingerprints(),
       [String(parkedRun.envelope.configFingerprint)],
@@ -286,10 +274,7 @@ describe("ref write-safety §4 recovery matrix", () => {
   it("parks a malformed present proof — never done with unvalidated proof", async () => {
     const h = harness();
     const { writeIntentId } = parkedAttemptingWrite(h);
-    // "T1" fails the proof regex: the ProbeVerdict parse refuses it, which
-    // surfaces as a throwing probe — and a throwing probe is `unknown`, never
-    // absent and never done. There is NO path to backfill without a proof that
-    // parsed the exact completion proofSchema.
+    // An invalid proof becomes unknown, never absent; schema refusal must not become negative settlement.
     h.world.probeResults.push({ state: "present", proof: { transactionId: "T1" } });
 
     const decision = await h.recovery.recover({
@@ -455,14 +440,11 @@ describe("ref write-safety §4 recovery matrix", () => {
     assert.deepEqual(h.world.events, [], "no probe ran against a non-attempting intent");
   });
 
-  it("D116: a session host bound to another run refuses loudly — a precondition failure never parks", async () => {
+  it("a session host bound to another run refuses loudly — a precondition failure never parks", async () => {
     const h = harness();
     const { writeIntentId } = parkedAttemptingWrite(h);
     h.world.probeResults.push({ state: "present", proof: { transactionId: "T654321" } });
-    // A foreign claimed-run binding occupies the host (one worker, one active
-    // run). Recovery's own bind must throw OUT of recover() — the D116 refusal
-    // is a precondition failure, never converted into a park that reads as a
-    // probe verdict (ref write-safety §4 fail-loud).
+
     h.manager.bindRunConfigFingerprint(FingerprintSchema.parse("f".repeat(64)));
     try {
       await assert.rejects(
@@ -481,7 +463,7 @@ describe("ref write-safety §4 recovery matrix", () => {
     assert.equal(h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID)?.lifecycle.state, "parked-write");
   });
 
-  it("D136: a worker restarted onto a moved contract closure still recovers the crash it caused", async () => {
+  it("a worker restarted onto a moved contract closure still recovers the crash it caused", async () => {
     const h = harness();
     const { writeIntentId } = parkedAttemptingWrite(h);
     h.world.probeResults.push({ state: "present", proof: { transactionId: "T654321" } });
@@ -493,7 +475,7 @@ describe("ref write-safety §4 recovery matrix", () => {
     assert.equal(intentByKey(h.database)?.status, "committed");
   });
 
-  it("D136: recovery still refuses loudly when the permanent key itself moved", async () => {
+  it("recovery still refuses loudly when the permanent key itself moved", async () => {
     const h = harness();
     const { writeIntentId } = parkedAttemptingWrite(h);
     h.world.probeResults.push({ state: "present", proof: { transactionId: "T654321" } });

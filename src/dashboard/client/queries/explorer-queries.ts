@@ -14,13 +14,11 @@ import type { DashboardTransport } from "../transport.js";
 
 export interface ExplorerQueries {
 
-  /** The graph projection itself remains read-only (D176); DCC5 validates its closed edit subset below. */
+  /** The graph projection itself remains read-only; the closed edit subset is validated below. */
   workflowExplorer(): Promise<WorkflowExplorerWire>;
 
-  /**
-   * DCC5's review door. Validation is a typed answer (including refusal and
-   * conflict), not an exception inferred from an HTTP status.
-   */
+  /** The edit-validation door. Validation is a typed answer (including refusal
+ * and conflict), not an exception inferred from an HTTP status. */
   validateExplorerEdit(input: unknown): Promise<ExplorerEditValidationResult>;
 
 }

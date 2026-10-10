@@ -1,37 +1,4 @@
-/**
- * `ucpath/delete-pending-terminations` — the COMMIT arm of ref write-safety §5's
- * date-agnostic pending sweep, and this tree's third `effect:"commit"`
- * contract.
- *
- * ## Why the sweep is a transaction of its own
- *
- * Legacy's `deletePendingTransaction` deletes every in-progress `Terminat*` row
- * for the EID before it files, and the behavior review's note on **S30/S31** is
- * the whole argument: it is `sound` in intent and *it is the first mutation the
- * run performs*. A delete is an external write. So it gets what every external
- * write in this tree gets — its own fence, its own permanent key, its own probe
- * and its own read-back — instead of hiding inside the termination's prepare,
- * where a crash between the delete and the submit would leave a run that had
- * mutated UCPath while claiming to have staged nothing.
- *
- * It is composed BEFORE the termination, which is also why the two keys are
- * independent: sweeping is not "part of" filing, it is a precondition of it.
- *
- * ## The permanent key is the exact eligible/protected transaction set
- *
- * A person-only key let an earlier empty no-op suppress a later nonempty set,
- * even though those are different deletion authorities. The v2 key binds the
- * EID plus a canonical digest of every stable transaction row and partition.
- * Re-observing the same set reuses the intent without a browser or click;
- * observing a different set derives a distinct key. Immutable v1 person-only
- * intents are detected and refused, never reinterpreted as v2 authority.
- *
- * ## `recoveryAbsence` is `operator-only`, for the same reason as its sibling
- *
- * No propagation window has been measured for a UCPath delete reaching the
- * grid, and a guessed constant on a control that DELETES rows is worse than one
- * on a control that adds them.
- */
+/** Deletion is a separate fenced write with its own key, probe and read-back. */
 import { z } from "zod";
 import { EidSchema, FingerprintSchema, TaskIdSchema, ObservationIdSchema, taskId } from "../../../rules/identity/ids.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
@@ -44,14 +11,7 @@ import type { UcpathPendingSweepSettlementProof } from "../../ui/ucpath-smart-hr
 import type { UcpathPendingTransactionSet } from "../../ui/ucpath-smart-hr-termination.js";
 import { ContractFieldPathSchema, defineTaskContract } from "../../task/task-contract.js";
 
-/**
- * The commit's own output: the post-click scan the commit ran for ITSELF. A
- * claim, like every commit output here; beat ⑥'s independent re-read is what
- * settles it. Its observation leaves say only what was SEEN. D310's v2 proof
- * also retains the independently authorized exact selected/protected T-ID set
- * and its digest; those fields identify the settlement authority and are never
- * presented as values emitted by the post-delete page.
- */
+/** The commit's own output: the post-click scan the commit ran for ITSELF — a claim, with the independently authorized exact selected/protected set and its digest retained. */
 export const UcpathDeletePendingTerminationsOutputSchema = z.strictObject({
   cleared: UcpathPendingSweepSettlementProofSchema,
 });
@@ -75,10 +35,7 @@ export function legacyUcpathPendingSweepIdempotencyKey(
   return ["ucpath:pending-terminations-clear", input.emplId].join("|");
 }
 
-/**
- * Canonical digest of every load-bearing row fact. Observation time is not
- * part of the set identity: observing the same set twice must reuse one key.
- */
+/** Canonical digest of every load-bearing row fact; observation time is not part of the set identity, so observing the same set twice reuses one key. */
 export function ucpathPendingTransactionSetDigest(
   set: UcpathPendingTransactionSet,
 ): string {

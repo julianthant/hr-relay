@@ -1,9 +1,5 @@
-/**
- * The boot document (ref frontend-backend-integration §3.1): one fetch, and the ONLY source of the
- * shell's vocabulary — actor, clock, storage health, workflows, categories,
- * system instances, feature availability. The client derives navigation from
- * this list; there is no parallel workflow registry in the frontend.
- */
+/** The boot document (ref frontend-backend-integration §3.1): one fetch, and the ONLY source of the
+ * shell's vocabulary — actor, clock, storage health, workflows, categories */
 import { useEffect, useState } from "react";
 import type { FrontendBootstrapWire } from "../../models/dashboard/bootstrap.js";
 import { DashboardClientError } from "../client/index.js";

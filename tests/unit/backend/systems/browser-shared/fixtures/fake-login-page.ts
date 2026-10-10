@@ -1,21 +1,4 @@
-/**
- * A scripted stand-in for a Playwright `Page`, just wide enough to drive the
- * store login recipes without a browser.
- *
- * Locators are classified by what the recipe ASKS FOR — the SSO submit control,
- * the username/password fields, the campus-discovery link, the portal log-in
- * control, CRM's login-type picker, the Shibboleth stale-request text, and the
- * two application-side sign-in forms (PeopleSoft's signon, Salesforce
- * Communities' login) — so a test scripts page STATE ("the SSO form never
- * renders") rather than selector strings. If a recipe ever asks for something
- * unclassified, the fake fails loud instead of quietly reporting "not found",
- * which would let a broken recipe look like a legitimately absent element.
- *
- * The fake also serves the browser CONTEXT's cookie store, because that is
- * where the positive half of an authentication proof lives (2026-08-03): a
- * scripted page can look exactly like the authenticated application and still
- * have no session cookie, which is the state a URL check could not see.
- */
+
 import type { Page } from "playwright";
 
 export type FakeElementName =
@@ -31,26 +14,10 @@ export type FakeElementName =
   | "stale-request"
   | "duo-refusal";
 
-/**
- * Page states that are EXCEPTIONAL, so a script that does not mention them does
- * not have them (D243).
- *
- * Every other element defaults to present, which is the right default for a
- * control a recipe expects to find. Duo's terminal refusal is the opposite: it
- * is the screen a login lands on when it has already failed, and defaulting it
- * present would make every unrelated arm in this suite report a Duo refusal —
- * an assertion that passes for the wrong reason is the same defect this fake
- * exists to prevent.
- */
+
 const ABSENT_UNLESS_SCRIPTED: ReadonlySet<FakeElementName> = new Set<FakeElementName>(["duo-refusal"]);
 
-/**
- * A `waitForURL` settlement that NEVER resolves — a real page that simply sits
- * where it is. This is the live shape of the wedge §9.21 reproduced: the URL
- * stays on the Duo prompt for the whole window while the refusal renders beside
- * it, so a test that models the stall as an instant timeout cannot tell a wait
- * that OBSERVES the refusal from one that merely outlives its own bound.
- */
+
 export const NEVER_SETTLES = "fake:never-settles";
 
 export interface FakeElementScript {
@@ -60,21 +27,11 @@ export interface FakeElementScript {
   readonly failWith?: string;
   /** Current value for a `<select>`-style control. */
   readonly value?: string;
-  /**
-   * The value the control reports AFTER a selection. TritON's login-type picker
-   * re-posts the whole form on change, so "did the realm actually switch" is a
-   * second observation, not an assumption.
-   */
+  // TritON reposts the form when realm changes; verify the resulting selection independently.
   readonly valueAfterSelect?: string;
   /** Navigate the page when this element is actioned (click/select). */
   readonly navigatesTo?: string;
-  /**
-   * Model a CLIENT-RENDERED control: `count()` reports 0 until a `waitFor` has
-   * resolved for it, and `count` afterwards. This is the shape Kuali Build
-   * actually has (measured live 2026-08-04: the space paints zero `[role]`
-   * nodes at `domcontentloaded` and its menubar ~1s later), and it is what
-   * distinguishes a probe that WAITS for a fact from one that samples it once.
-   */
+  // Count stays zero until waitFor settles, modeling Kuali client-rendered controls.
   readonly rendersAfterWait?: boolean;
 }
 
@@ -87,11 +44,7 @@ export interface FakeCookie {
 export interface FakePageScript {
   readonly url: string;
   readonly elements?: Partial<Record<FakeElementName, FakeElementScript>>;
-  /**
-   * Per-URL element state, checked before `elements`. This is what makes the
-   * fake model a real page transition — the SSO form is genuinely gone once
-   * the authenticated app renders, so a recipe's landing check is meaningful.
-   */
+
   readonly elementsByUrl?: Readonly<Record<string, Partial<Record<FakeElementName, FakeElementScript>>>>;
   /** Where `goto` lands, keyed by requested URL; defaults to the requested URL. */
   readonly navigation?: Readonly<Record<string, string>>;
@@ -127,10 +80,7 @@ function classify(kind: string, argument: string): FakeElementName | undefined {
   if (kind === "role" && /university of california, san diego/i.test(argument)) return "campus-link";
   if (kind === "role" && /log in to ucpath/i.test(argument)) return "portal-login";
   if (kind === "text" && /stale request/i.test(argument)) return "stale-request";
-  // The recipe asks with a RegExp, so `argument` here is that pattern's SOURCE
-  // (`/login request .*(?:canceled|cancelled) or timed out/i`) rather than a
-  // sentence — the two spellings are alternated inside a group, so the phrase
-  // is not contiguous and only its parts can be matched.
+  // The recipe passes a RegExp; match its source rather than a page sentence.
   if (kind === "text" && /cancell?ed/i.test(argument) && /timed out/i.test(argument)) return "duo-refusal";
   return undefined;
 }

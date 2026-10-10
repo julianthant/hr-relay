@@ -50,7 +50,7 @@ export function insertImportedArtifact(database: DatabaseSync, record: ImportedA
     record.sourceSha256, canonicalJsonStringify(record), record.createdAt);
 }
 
-/** Must be called inside the stopped upgrade transaction, before dropping either historical table. */
+// Call inside stopped upgrade before either source table is dropped.
 export function convertImportedArtifacts(database: DatabaseSync): void {
   const sessions = database.prepare("SELECT record_json FROM intake_sessions ORDER BY record_key").all();
   const manifests = new Map(database.prepare("SELECT record_key,record_json FROM intake_manifests ORDER BY record_key").all()

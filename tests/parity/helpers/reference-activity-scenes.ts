@@ -6,11 +6,7 @@ FIXTURE_ACTIVITY_UNAVAILABLE_RANGE
 import { FIXTURE_DAY } from "./fixture-identity.js";
 import type { ReferenceScene,SceneAnchors } from "./reference-scenes.js";
 export const SCENES: readonly ReferenceScene[] = [
-  /*
-    The Activity report (2i-G, D180) over a fixed range, including the
-    unregistered-workflow row and the unmeasured-duration warning — the two
-    places the report has to be honest rather than tidy.
-  */
+
   {
     id: "activity-report",
     route: { day: FIXTURE_DAY, activity: `${FIXTURE_ACTIVITY_RANGE.from}..${FIXTURE_ACTIVITY_RANGE.to}` },

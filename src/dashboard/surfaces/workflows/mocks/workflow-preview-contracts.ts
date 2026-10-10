@@ -5,9 +5,7 @@ export type PreviewContract = Readonly<{ dir: "read" | "write"; field: string; s
 export type PreviewNode = Readonly<{ id: string; aliases?: readonly string[]; kind: "task" | "branch" | "gate" | "delegation" | "fanout" | "write" | "output"; system?: string; purpose: string; skippedInDryRun: boolean; when?: string; delegatesTo?: PreviewWorkflowId; lane?: string; contract: readonly PreviewContract[] }>;
 export type PreviewGraph = Readonly<{ workflowId: PreviewWorkflowId; label: string; summary: string; dryRunBoundaryNodeId?: string; nodes: readonly PreviewNode[]; edges: readonly Readonly<{ from: string; to: string; condition?: string }>[] }>;
 
-// Presentation contracts copied from legacy:hr-automation@9bb973672666b9267569a22d3fa0af722e4c5e87, src/dashboard/components/dev/rebuild-demo/demo-explorer-wire.ts.
-// Onboarding, Work-Study, SharePoint and Old Kronos details corrected against their workflow/enter modules at that commit.
-// Kernel details and local fictional values are composed separately; this is never runtime authority.
+// Fictional preview contracts are presentation fixtures, never runtime authority.
 export const WORKFLOW_PREVIEW_GRAPHS: readonly PreviewGraph[] = [
   { workflowId: "fixture-onboarding", label: "Onboarding", summary: "Reads the CRM record and stages a new hire or concurrent hire in UCPath. A dry run fills and abandons the I-9 form without Save & Continue, then stages Smart HR without Save and Submit. No I-9 profile or UCPath transaction is created during rehearsal.", dryRunBoundaryNodeId: "I-9 creation",
     nodes: [
