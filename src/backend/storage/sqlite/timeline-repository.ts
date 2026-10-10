@@ -75,6 +75,29 @@ function timelineRetentionClass(record: z.infer<typeof TimelineAppendSchema>) {
   return "ordinary";
 }
 
+function ordinaryTimelineBytes(database: DatabaseSync): number {
+  database.exec(`CREATE TEMP TABLE IF NOT EXISTS timeline_ordinary_bytes(
+    id INTEGER PRIMARY KEY CHECK(id=1), bytes INTEGER NOT NULL, data_version INTEGER NOT NULL);
+    CREATE TEMP TRIGGER IF NOT EXISTS timeline_ordinary_bytes_insert AFTER INSERT ON main.timeline_events
+      WHEN NEW.retention_class='ordinary' BEGIN
+        UPDATE timeline_ordinary_bytes SET bytes=bytes+length(CAST(NEW.payload_json AS BLOB)) WHERE id=1; END;
+    CREATE TEMP TRIGGER IF NOT EXISTS timeline_ordinary_bytes_delete AFTER DELETE ON main.timeline_events
+      WHEN OLD.retention_class='ordinary' BEGIN
+        UPDATE timeline_ordinary_bytes SET bytes=bytes-length(CAST(OLD.payload_json AS BLOB)) WHERE id=1; END;
+    CREATE TEMP TRIGGER IF NOT EXISTS timeline_ordinary_bytes_update AFTER UPDATE ON main.timeline_events BEGIN
+      UPDATE timeline_ordinary_bytes SET bytes=bytes
+        -CASE WHEN OLD.retention_class='ordinary' THEN length(CAST(OLD.payload_json AS BLOB)) ELSE 0 END
+        +CASE WHEN NEW.retention_class='ordinary' THEN length(CAST(NEW.payload_json AS BLOB)) ELSE 0 END WHERE id=1; END;`);
+  const version = z.object({ data_version: z.number().int() }).parse(database.prepare("PRAGMA data_version").get()).data_version;
+  const row = z.object({ bytes: z.number().int(), data_version: z.number().int() }).optional()
+    .parse(database.prepare("SELECT bytes,data_version FROM timeline_ordinary_bytes WHERE id=1").get());
+  if (row !== undefined && row.data_version === version) return z.number().int().nonnegative().parse(row.bytes);
+  const bytes = z.object({ bytes: z.number().int().nonnegative() }).parse(database.prepare(
+    "SELECT COALESCE(SUM(length(CAST(payload_json AS BLOB))),0) AS bytes FROM timeline_events WHERE retention_class = 'ordinary'").get()).bytes;
+  database.prepare("INSERT INTO timeline_ordinary_bytes(id,bytes,data_version) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET bytes=excluded.bytes,data_version=excluded.data_version").run(bytes,version);
+  return bytes;
+}
+
 export function createTimelineRepository(ports: TimelineRepositoryPorts): TimelineRepository {
   const { database } = ports;
   const get = (eventId: string): TimelineEventRecord | undefined => ports.read(() => {
@@ -99,8 +122,8 @@ export function createTimelineRepository(ports: TimelineRepositoryPorts): Timeli
         }
         ports.assertOwner(record, true);
         if (timelineRetentionClass(record) === "ordinary") {
-          const row = database.prepare("SELECT COALESCE(SUM(length(CAST(payload_json AS BLOB))),0) AS bytes FROM timeline_events WHERE retention_class = 'ordinary'").get() as { bytes: number };
-          if (row.bytes + Buffer.byteLength(canonicalJsonStringify({ ...record, cursor: Number((database.prepare("SELECT COALESCE((SELECT seq FROM sqlite_sequence WHERE name='timeline_events'),0) + 1 AS cursor").get() as { cursor: number }).cursor) }), "utf8") > 250 * 1024 * 1024) throw new Error("timeline-ordinary-cap-exceeded");
+          const bytes = ordinaryTimelineBytes(database);
+          if (bytes + Buffer.byteLength(canonicalJsonStringify({ ...record, cursor: Number((database.prepare("SELECT COALESCE((SELECT seq FROM sqlite_sequence WHERE name='timeline_events'),0) + 1 AS cursor").get() as { cursor: number }).cursor) }), "utf8") > 250 * 1024 * 1024) throw new Error("timeline-ordinary-cap-exceeded");
         }
         // SQLite assigns both the cursor and its authenticated JSON mirror from
         // its AUTOINCREMENT sequence under the same owning write transaction.

@@ -1,3 +1,5 @@
+import { CONFIG_SNAPSHOT } from "../support/fixtures/phase1c-contract-fixtures.js";
+import { testWorkerPorts } from "../support/fixtures/run-lifecycle-fixtures.js";
 import { sqliteRunReader } from "../support/helpers/canonical-run-reader.js";
 
 import { mkdtempSync, rmSync } from "node:fs";
@@ -9,7 +11,7 @@ import { ReadActiveStatus } from "../../src/models/workflows/person-lookup/read-
 import { deriveSchemaHash } from "../../src/models/validation/schema-bound-value.js";
 import type { RunRecord } from "../../src/models/run/record.js";
 import { RunCheckpointRecordSchema } from "../../src/models/workflow/checkpoint.js";
-import { createNoteJsonlWriter } from "../../src/backend/storage/events/note-jsonl-writer.js";
+import { createNoteTimelineWriter } from "../../src/backend/storage/events/note-timeline-writer.js";
 import { createTimelineEmitter } from "../../src/backend/storage/events/timeline-emitter.js";
 import { createTransactionHistory } from "../../src/backend/storage/sqlite/transaction-history.js";
 import { AuthorityDatabase } from "../support/helpers/synthetic-storage-admission.js";
@@ -18,12 +20,11 @@ import {
   createRunQueueProjection,
   type RunQueueProjection,
 } from "../../src/backend/runs/projections/run-queue-projection.js";
-import type { ArchiveQueryDeps } from "../../src/backend/runs/queries/archive.js";
-import { createArchiveSnapshotSource } from "../../src/backend/runs/queries/archive-snapshot.js";
 import type { RunDetailQueryDeps } from "../../src/backend/runs/queries/run-detail.js";
 import { createReceiptService } from "../../src/backend/runs/trust/receipt-service.js";
+import { SeparationsCanonicalInput, SeparationsInput } from "../../src/workflows/separations/workflow.js";
 import { PersonLookupCanonicalInput } from "../../src/workflows/person-lookup/workflow.js";
-import { personLookupDescriptor } from "../support/helpers/registered-workflows.js";
+import { separationsDescriptor, personLookupDescriptor } from "../support/helpers/registered-workflows.js";
 
 /* ── the declared shape ──────────────────────────────────────────────────── */
 
@@ -62,10 +63,10 @@ export const PERF_FIXTURE_WORKFLOW = personLookupDescriptor.id;
 /* ── deterministic identities ────────────────────────────────────────────── */
 
 const CONTRACT_FINGERPRINT = personLookupDescriptor.contractFingerprint;
-const CONFIG_FINGERPRINT = "b".repeat(64);
+const CONFIG_FINGERPRINT = CONFIG_SNAPSHOT.fingerprint;
 const INGRESS_SCHEMA_HASH = "a".repeat(64);
 const FAILURE_FINGERPRINT = "c".repeat(64);
-const CONFIG_SNAPSHOT_ID = "44444444-4444-4444-8444-444444444444";
+const CONFIG_SNAPSHOT_ID = CONFIG_SNAPSHOT.configSnapshotId;
 const APP_VERSION = "0.1.0";
 
 /** Namespaced id spaces, so a run id can never collide with an item or outbox id. */
@@ -99,8 +100,6 @@ export interface PerfFixture {
   readonly database: AuthorityDatabase;
   readonly projection: RunQueueProjection;
   readonly runDetail: RunDetailQueryDeps;
-  readonly archive: ArchiveQueryDeps;
-  readonly archiveSnapshots: ReturnType<typeof createArchiveSnapshotSource>;
   /** The identities a measurement addresses, chosen once so every run is comparable. */
   readonly runIds: Readonly<{
     /** A settled `done` run WITH a derived receipt and a note trail — the logs/archive subject. */
@@ -124,6 +123,8 @@ export interface PerfFixture {
 }
 
 interface SeedContext {
+  readonly path: string;
+  readonly workers: Map<string, string>;
   readonly database: AuthorityDatabase;
   readonly clock: TestClock;
   readonly spans: { emit(event: unknown): void };
@@ -134,6 +135,7 @@ interface RunSpec {
   readonly seed: number;
   readonly day: string;
   readonly title: string;
+  readonly separations?: boolean;
   readonly shape?: "single" | "operation" | "operation-member";
   readonly parentSeed?: number;
 }
@@ -145,6 +147,10 @@ function instantOf(day: string, seed: number): Date {
 }
 
 function enqueueRun(context: SeedContext, spec: RunSpec): RunRecord {
+  const descriptor = spec.separations === true ? separationsDescriptor : personLookupDescriptor;
+  const rawInput = spec.separations === true ? { documentNumber: String(4510 + spec.seed), timekeeperName: "Synthetic Timekeeper" } : { emplId: "10873698" };
+  const parsedInput = spec.separations === true ? SeparationsInput.parse(rawInput) : { emplId: "10873698", keepNonHdh: false, includeCrmDates: false };
+  const resolvedInstance = spec.separations === true ? { kuali: "prod", ucpath: "prod", "new-kronos": "prod" } : { ucpath: "prod", crm: "prod" };
   const runId = uuidOf(ID_SPACE.run + spec.seed);
   const traceId = traceOf(spec.seed);
   const shape = spec.shape ?? "single";
@@ -163,12 +169,12 @@ function enqueueRun(context: SeedContext, spec: RunSpec): RunRecord {
   const inserted = context.database.authority.runs.enqueue({
     envelope: {
       runId,
-      workflow: PERF_FIXTURE_WORKFLOW,
+      workflow: descriptor.id,
       itemId: uuidOf(ID_SPACE.item + spec.seed),
       traceId,
-      descriptorVersion: personLookupDescriptor.version,
-      contractFingerprint: CONTRACT_FINGERPRINT,
-      resolvedInstance: { ucpath: "prod", crm: "prod" },
+      descriptorVersion: descriptor.version,
+      contractFingerprint: descriptor.contractFingerprint,
+      resolvedInstance,
       configFingerprint: CONFIG_FINGERPRINT,
       configSnapshotId: CONFIG_SNAPSHOT_ID,
       ...(parent === undefined ? {} : { parent }),
@@ -179,10 +185,11 @@ function enqueueRun(context: SeedContext, spec: RunSpec): RunRecord {
       enqueuedAt: now,
     },
     input: {
-      raw: { emplId: "10873698" },
+      raw: rawInput,
       parsed: {
-        schemaHash: deriveSchemaHash(PersonLookupCanonicalInput, "output"),
-        value: { emplId: "10873698", keepNonHdh: false, includeCrmDates: false },
+        protectedBindings: spec.separations === true ? [{ kind: "protected-store", inputPath: "timekeeperName", name: "timekeeperName", valueId: uuidOf(spec.seed + ID_SPACE.item) }] : [],
+        schemaHash: deriveSchemaHash(spec.separations === true ? SeparationsCanonicalInput : PersonLookupCanonicalInput, "output"),
+        value: parsedInput,
       },
       ingressSchemaHash: INGRESS_SCHEMA_HASH,
     },
@@ -190,7 +197,7 @@ function enqueueRun(context: SeedContext, spec: RunSpec): RunRecord {
     claimGeneration: 0,
 
     appVersion: APP_VERSION,
-    runNumber: context.database.authority.runs.nextWorkflowRunNumber(PERF_FIXTURE_WORKFLOW),
+    runNumber: context.database.authority.runs.nextWorkflowRunNumber(descriptor.id),
     version: 1,
     createdAt: now,
     updatedAt: now,
@@ -200,7 +207,7 @@ function enqueueRun(context: SeedContext, spec: RunSpec): RunRecord {
     t: "run.queued",
     kind: "run",
     ts: now,
-    workflow: PERF_FIXTURE_WORKFLOW,
+    workflow: descriptor.id,
     runId,
     attempt: 1,
     traceId,
@@ -212,9 +219,9 @@ function enqueueRun(context: SeedContext, spec: RunSpec): RunRecord {
     dryRun: false,
     actorId: "local-operator",
     title: spec.title,
-    descriptorVersion: personLookupDescriptor.version,
-    contractFingerprint: CONTRACT_FINGERPRINT,
-    resolvedInstance: { ucpath: "prod", crm: "prod" },
+    descriptorVersion: descriptor.version,
+    contractFingerprint: descriptor.contractFingerprint,
+    resolvedInstance,
     configFingerprint: CONFIG_FINGERPRINT,
     configSnapshotId: CONFIG_SNAPSHOT_ID,
   });
@@ -222,11 +229,19 @@ function enqueueRun(context: SeedContext, spec: RunSpec): RunRecord {
 }
 
 /** Enqueue → claim → validating → running, through production transitions only. */
-function startRunning(context: SeedContext, spec: RunSpec, workerId: string, nodeId: string): RunRecord {
+function startRunning(context: SeedContext, spec: RunSpec, workerLabel: string, nodeId: string): RunRecord {
+  const descriptor = spec.separations === true ? separationsDescriptor : personLookupDescriptor;
+  const ordinals = context.database.authority.workerSlots.list(descriptor.id);
+  const previous = ordinals.find(slot => slot.workerId === context.workers.get(workerLabel) && slot.retiredAt === null);
+  if (previous === undefined) testWorkerPorts(context.database, context.clock, { path: context.path, descriptor, poolIndex: ordinals.length + 1 });
+  const slot = previous ?? context.database.authority.workerSlots.list(descriptor.id).at(-1);
+  if (slot === undefined) throw new Error("perf-worker-slot-missing");
+  const workerId = slot.workerId;
+  context.workers.set(workerLabel, workerId);
   const enqueued = enqueueRun(context, spec);
   const now = enqueued.envelope.enqueuedAt;
   const claimed = context.database.authority.runs.claimNext({
-    workflow: PERF_FIXTURE_WORKFLOW,
+    workflow: descriptor.id,
     workerId,
     now,
   });
@@ -246,7 +261,7 @@ function startRunning(context: SeedContext, spec: RunSpec, workerId: string, nod
   context.spans.emit({
     t: "run.claimed",
     ts: now,
-    workflow: PERF_FIXTURE_WORKFLOW,
+    workflow: descriptor.id,
     runId,
     attempt: 1,
     traceId: claimed.run.envelope.traceId,
@@ -282,7 +297,7 @@ function taskSpan(
   const traceId = run.envelope.traceId;
   const base = {
     ts: run.envelope.enqueuedAt,
-    workflow: PERF_FIXTURE_WORKFLOW,
+    workflow: run.envelope.workflow,
     runId: run.envelope.runId,
     attempt: 1,
     traceId,
@@ -433,6 +448,7 @@ interface SeededRun {
   readonly runId: string;
   readonly day: string;
   readonly traceId: string;
+  readonly workflow: string;
   readonly attempt: number;
 }
 
@@ -447,6 +463,7 @@ function remember(tally: SeedTally, run: RunRecord, day: string): void {
   tally.all.push({
     runId: run.envelope.runId,
     day,
+    workflow: run.envelope.workflow,
     traceId: run.envelope.traceId,
     attempt: run.envelope.attempt,
   });
@@ -489,24 +506,12 @@ function seedClaimedRuns(context: SeedContext, tally: SeedTally): void {
     cancel(context, run);
     remember(tally, run, day);
   }
-  // In-flight rows hold their worker for good, so each gets its own id.
-  for (let index = 0; index < daySingles.running; index += 1) {
-    const seed = SEEDS.running + index;
-    const run = startRunning(
-      context,
-      { seed, day, title: `EID 104${String(40000 + index)}` },
-      `perf-live-worker-${String(index + 1)}`,
-      "searching",
-    );
-    taskSpan(context, run, "searching");
-    remember(tally, run, day);
-  }
   for (let index = 0; index < daySingles.awaitingApproval; index += 1) {
     const seed = SEEDS.awaitingApproval + index;
     const run = startRunning(
       context,
       { seed, day, title: `EID 105${String(50000 + index)}` },
-      `perf-gate-worker-${String(index + 1)}`,
+      TERMINAL_WORKERS[index],
       "cross-verify",
     );
     taskSpan(context, run, "searching", "done");
@@ -546,6 +551,18 @@ function seedClaimedRuns(context: SeedContext, tally: SeedTally): void {
       tally.doneRunIds.push(run.envelope.runId);
       remember(tally, run, neighbouringDay);
     }
+  }
+  // In-flight rows hold their worker for good, so each gets its own id.
+  for (let index = 0; index < daySingles.running; index += 1) {
+    const seed = SEEDS.running + index;
+    const run = startRunning(
+      context,
+      { seed, day, title: `EID 104${String(40000 + index)}`, separations: index >= 3 },
+      index < 3 ? TERMINAL_WORKERS[index] : `perf-separation-worker-${String(index - 2)}`,
+      index < 3 ? "searching" : "kuali-extraction",
+    );
+    taskSpan(context, run, index < 3 ? "searching" : "kuali-extraction");
+    remember(tally, run, day);
   }
 }
 
@@ -602,7 +619,7 @@ function seedNotes(context: SeedContext, tally: SeedTally): number {
     context.clock.setWall(new Date(`${run.day}T09:30:00.000-07:00`));
     for (let index = 0; index < notesPerRun; index += 1) {
       context.notes.emitNote({
-        workflow: PERF_FIXTURE_WORKFLOW,
+        workflow: run.workflow,
         address: {
           runId: run.runId,
           attempt: run.attempt,
@@ -630,8 +647,8 @@ export function seedDashboardPerfFixture(): PerfFixture {
     clock,
   );
   const spans = createTimelineEmitter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
-  const notes = createNoteJsonlWriter({ stateRoot, clock, pid: 4242 });
-  const context: SeedContext = { database, clock, spans, notes };
+  const notes = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
+  const context: SeedContext = { workers: new Map(), path: join(root, "authority.sqlite"), database, clock, spans, notes };
 
   const trust = createReceiptService({ database, runReader: sqliteRunReader(database, clock), descriptors: [personLookupDescriptor] });
 
@@ -655,7 +672,7 @@ export function seedDashboardPerfFixture(): PerfFixture {
 
   const descriptors = {
     resolve: (workflowId: string) =>
-      (workflowId === PERF_FIXTURE_WORKFLOW ? personLookupDescriptor : undefined),
+      ([personLookupDescriptor, separationsDescriptor].find(descriptor => descriptor.id === workflowId)),
   };
   const projection = createRunQueueProjection({
     timeline: database.authority.timelineEvents,
@@ -663,7 +680,7 @@ export function seedDashboardPerfFixture(): PerfFixture {
     stateRoot,
     clock,
     appVersion: APP_VERSION,
-    descriptorSetHash: descriptorSetHash([CONTRACT_FINGERPRINT]),
+    descriptorSetHash: descriptorSetHash([CONTRACT_FINGERPRINT, separationsDescriptor.contractFingerprint]),
     ledger: createTransactionHistory(database.authority),
     authority: {
       listNotifications: (actorId: string) => database.authority.notifications.listByActor(actorId),
@@ -684,7 +701,7 @@ export function seedDashboardPerfFixture(): PerfFixture {
 
   projection.ingestFromTimeline();
 
-  const runDetail: RunDetailQueryDeps = { runReader: sqliteRunReader(database, clock),
+  const runDetail: RunDetailQueryDeps = { timeline: database.authority.timelineEvents, runReader: sqliteRunReader(database, clock),
     stateRoot,
     projection,
     authority: {
@@ -697,22 +714,6 @@ export function seedDashboardPerfFixture(): PerfFixture {
     descriptors,
     trust,
   };
-  const archive: ArchiveQueryDeps = {
-    reader: sqliteRunReader(database, clock),
-    clock,
-    appVersion: APP_VERSION,
-    authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
-    descriptors: {
-      list: () => [{
-        id: personLookupDescriptor.id,
-        label: personLookupDescriptor.label,
-        code: "pl",
-        version: personLookupDescriptor.version,
-        contractFingerprint: CONTRACT_FINGERPRINT,
-      }],
-    },
-    ledger: createTransactionHistory(database.authority),
-  };
 
   return Object.freeze({
     root,
@@ -721,8 +722,6 @@ export function seedDashboardPerfFixture(): PerfFixture {
     database,
     projection,
     runDetail,
-    archive,
-    archiveSnapshots: createArchiveSnapshotSource(runDetail),
     runIds: Object.freeze({
       measuredRun: uuidOf(ID_SPACE.run + SEEDS.done),
       operationRun: uuidOf(ID_SPACE.run + SEEDS.operation),

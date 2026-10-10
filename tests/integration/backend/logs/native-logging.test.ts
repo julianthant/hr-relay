@@ -1,4 +1,5 @@
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { syntheticStateRoot } from "../../../support/helpers/synthetic-storage-admission.js";
@@ -16,11 +17,11 @@ import { createDebugEventWriter } from "../../../../src/backend/logs/debug-event
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 const AT = new Date("2026-10-10T12:00:00.000Z");
-function fixture() {
-  const database = new DatabaseSync(":memory:");
+function fixture(path = ":memory:") {
+  const database = new DatabaseSync(path);
   for (const statement of SQLITE_MIGRATIONS[0].statements) database.exec(statement);
   const repository = createTimelineRepository({ database, read: read => read(), assertOwner: () => {},
-    mutate: work => { database.exec("BEGIN IMMEDIATE"); try { const result = work(); database.exec("COMMIT"); return result.result; } catch (error) { database.exec("ROLLBACK"); throw error; } } });
+    mutate: work => { const nested = database.isTransaction; database.exec(nested ? "SAVEPOINT logging_fixture" : "BEGIN IMMEDIATE"); try { const result = work(); database.exec(nested ? "RELEASE logging_fixture" : "COMMIT"); return result.result; } catch (error) { database.exec(nested ? "ROLLBACK TO logging_fixture; RELEASE logging_fixture" : "ROLLBACK"); throw error; } } });
   return { database, repository };
 }
 describe("native logging authority", () => {
@@ -46,6 +47,47 @@ describe("native logging authority", () => {
       assert.throws(() => repository.append({ ...first, workflow: "person-lookup", scope: { kind: "worker", workerId: "worker-1" }, eventId: crypto.randomUUID(), payload: { kind: "note", note: { workflow: "person-lookup", workerId: "worker-1", spanPath: "worker-1", ts: AT.toISOString(), pid: 1, level: "debug", message: "a".repeat(256 * 1024) } } }), /size-exceeded/u);
       assert.equal(repository.page({}).length, 1);
     } finally { database.close(); }
+  });
+  it("maintains ordinary byte caps through outer rollback, prune and external commits", () => {
+    const root = mkdtempSync(join(tmpdir(), "logging-cap-"));
+    const path = join(root, "state.db");
+    const { database, repository } = fixture(path);
+    const writer = createDebugEventWriter({ repository, clock: manualClock(AT), build: "test" });
+    const actualBytes = () => Number(database.prepare("SELECT COALESCE(SUM(length(CAST(payload_json AS BLOB))),0) AS bytes FROM timeline_events WHERE retention_class='ordinary'").get()?.bytes);
+    const cachedBytes = () => Number(database.prepare("SELECT bytes FROM timeline_ordinary_bytes WHERE id=1").get()?.bytes);
+    try {
+      database.exec("BEGIN IMMEDIATE");
+      writer.emit({ category: "http", phase: "failed", correlationId: "first-initialization-rollback" });
+      database.exec("ROLLBACK");
+      assert.equal(actualBytes(), 0);
+      writer.emit({ category: "http", phase: "failed", correlationId: "initial" });
+      assert.equal(cachedBytes(), actualBytes());
+      const before = actualBytes();
+      database.exec("BEGIN IMMEDIATE");
+      writer.emit({ category: "http", phase: "failed", correlationId: "rolled-back" });
+      assert.ok(cachedBytes() > before);
+      database.exec("ROLLBACK");
+      assert.equal(cachedBytes(), before);
+      assert.equal(repository.pruneBefore("2027-01-01"), 1);
+      assert.equal(cachedBytes(), 0);
+      const peer = new DatabaseSync(path);
+      try {
+        const peerRepository = createTimelineRepository({ database: peer, read: read => read(), assertOwner: () => {}, mutate: work => work().result });
+        createDebugEventWriter({ repository: peerRepository, clock: manualClock(AT), build: "test" }).emit({ category: "http", phase: "failed", correlationId: "external" });
+        writer.emit({ category: "http", phase: "failed", correlationId: "after-external" });
+        assert.equal(cachedBytes(), actualBytes());
+        peer.exec("DELETE FROM timeline_events");
+        writer.emit({ category: "http", phase: "failed", correlationId: "after-external-delete" });
+        assert.equal(cachedBytes(), actualBytes());
+        const trigger = peer.prepare("SELECT sql FROM sqlite_master WHERE name='timeline_events_immutable'").get();
+        assert.equal(typeof trigger?.sql, "string");
+        peer.exec("DROP TRIGGER timeline_events_immutable");
+        peer.prepare("UPDATE timeline_events SET payload_json=payload_json || printf('%*s',?,'')").run(250 * 1024 * 1024);
+        peer.exec(String(trigger?.sql));
+        assert.throws(() => writer.emit({ category: "http", phase: "failed", correlationId: "over-cap" }), /timeline-ordinary-cap-exceeded/u);
+        assert.equal(Number(database.prepare("SELECT count(*) AS n FROM timeline_events").get()?.n), 1);
+      } finally { peer.close(); }
+    } finally { database.close(); rmSync(root, { recursive: true, force: true }); }
   });
   it("pins unresolved recovery and applies seven-day successful SSE retention", () => {
     const { database, repository } = fixture();
