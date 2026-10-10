@@ -1,5 +1,5 @@
 {
   "milestone": "1f",
-  "reason": "Every Phase-1 descriptor contract is bound. This checked-in empty set remains the bidirectional D107 authority: future unbound contracts must add an entry in the same commit, and a newly bound contract must remove its entry.",
+  "reason": "Every registered descriptor contract is bound. An unbound contract requires a pending entry; binding the contract removes its entry.",
   "tasks": []
 }

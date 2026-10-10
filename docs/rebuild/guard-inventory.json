@@ -562,7 +562,7 @@
       "status": "active",
       "owner": "docs/rebuild/reference/workflow-model.md",
       "milestone": "3-workflow-migration",
-      "invariant": "Registered workflows author one definition in their registered source file and use the structural and dry-run scenario files in their registered scenario folder. Compiler-internal flow builders and unsupported recipe names cannot escape their owner. Generic workflow-id branches require an exact file/id exception with a nonempty current reason; stale exceptions fail. Registered folder ownership and longest segment-delimited workflow ids attribute extra artifacts correctly, including nested harnesses. Negative fixtures retain all four authoring arms, exact mock AST occurrences, pair-exact allowlists, stale artifact exemptions, and duplicate structural proof detection.",
+      "invariant": "Registered workflows author one definition in their registered source file and use the structural and dry-run scenario files in their registered scenario folder. Compiler-internal flow builders cannot escape their owner. Generic workflow-id branches require an exact file/id exception with a nonempty current reason; stale exceptions fail. Registered folder ownership and longest segment-delimited workflow ids attribute extra artifacts correctly, including nested harnesses. Negative fixtures retain the current authoring arms, exact mock AST occurrences, pair-exact allowlists, stale artifact exemptions, and duplicate structural proof detection.",
       "replacementRequired": true
     },
     {

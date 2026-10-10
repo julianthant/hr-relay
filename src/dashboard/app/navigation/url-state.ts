@@ -232,7 +232,7 @@ export function shellViewOf(takeover: ActiveTakeover): ShellViewSelection {
     case "explore": return "explorer";
     case "activity": return "activity";
     case "none": return "queue";
-    // The retired Archive route shows only its removal notice; the switcher has no segment for it.
+    // The Archive removal route shows only its removal notice; the switcher has no segment for it.
     case "archive":
     case "settings":
     case "intake": return "none";
