@@ -186,13 +186,14 @@ describe("semantic UI registry architecture", () => {
     const publishedElementIds = buildUiTaskLinks().flatMap((entry) => entry.kind === "element" ? [entry.id] : []);
     const portedElementIds = portMap.entries.flatMap((entry) => {
       if (entry.disposition !== "ported" || entry.semanticKind !== "element") return [];
-      return "canonicalBindings" in entry
+      return entry.canonicalBindings !== undefined
         ? entry.canonicalBindings.map(({ canonicalId }) => canonicalId)
         : [entry.canonicalId];
     });
     assert.deepEqual([...publishedElementIds].sort(), [...portedElementIds].sort());
     for (const entry of portMap.entries) {
       if (entry.disposition !== "ported") continue;
+      assert.ok(entry.evidence !== undefined, "published selector must carry dual evidence");
       UiVerificationEvidenceManifestSchema.parse(readJson(entry.evidence.fixtureEvidenceRef));
       UiVerificationEvidenceManifestSchema.parse(readJson(entry.evidence.liveReadOnlyEvidenceRef));
     }
