@@ -90,9 +90,9 @@ One person builds and maintains this codebase. Keep it organized, clean and easy
 
 - During a task: focused tests for the changed behavior, `npm run lint`, and the affected static and
   generated checks. Update tests when behavior changes, and say when none exist.
-- Before work is proposed for `master`: `npm run typecheck`, `npm run lint`, `npm run test:unit`,
-  `npm run test:integration`, `npm run test:architecture`, `npm run web:build`,
-  `npm run test:parity`, then `npm run test:coverage` alone.
+- Before work is proposed for `master`: `npm run typecheck`, `npm run lint`, `npm run web:build`,
+  `npm run test:parity`, then `npm run test:coverage` alone. Coverage runs the unit, integration and
+  architecture suites, so don't run them separately.
 - A lint failure is a task failure. Keep assertions, test membership, isolation, coverage floors and
   timeouts. Never report an unrun check as passed.
 - Generate derived files at their source. Never hand-edit them.
