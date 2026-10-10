@@ -28,8 +28,13 @@ function activate(database: AuthorityDatabase, record: SettingsFileRecord, clock
   const resolved = resolveConfigWithProvenance(record.settings, hostConfigFacts({}), clock);
   database.withAuthorityTransaction((repositories) => {
     const configSnapshotId = randomUUID();
-    repositories.configSnapshots.insert({ configSnapshotId, revision: 1, fingerprint: resolved.fingerprint,
-      capturedAt: clock.now().toISOString(), capturedBy: "local-operator", config: resolved.config, provenance: resolved.provenance });
+    const snapshot = { configSnapshotId, revision: 1, fingerprint: resolved.fingerprint,
+      capturedAt: clock.now().toISOString(), capturedBy: "local-operator", config: resolved.config, provenance: resolved.provenance };
+    if (repositories.runtimeConfig.get() === undefined) {
+      repositories.runtimeConfig.initialize(snapshot);
+      return;
+    }
+    repositories.configSnapshots.insert(snapshot);
     repositories.runtimeConfig.activate({ settingsRevision: record.revision, settingsFingerprint: record.settingsFingerprint,
       configSnapshotId, configFingerprint: resolved.fingerprint, activatedAt: clock.now().toISOString() });
   });
@@ -78,7 +83,7 @@ describe("SQLite Settings reader snapshot", () => {
       runtimeStoragePair: pair, active: activeSettingsRuntimeIdentity });
     assert.deepEqual(reader.read().runtimeStatus, { state: "current", identity: settingsRuntimeIdentity(f.initial, resolved.fingerprint) });
     assert.equal(readSettings(f.database.authority).revision, f.initial.revision);
-    assert.deepEqual(f.database.withAuthorityTransaction(activeSettingsConfig).paths, { ...prior.paths, ...pair });
+    assert.deepEqual(f.database.withAuthorityTransaction(activeSettingsConfig).paths, { ...prior.paths, ...pair, browserProfileRoot: join(pair.stateRoot, "browsers") });
     assert.notDeepEqual(prior.paths, pair);
   });
   it("builds a current editor with exactly one authoritative read and no file authority", () => {

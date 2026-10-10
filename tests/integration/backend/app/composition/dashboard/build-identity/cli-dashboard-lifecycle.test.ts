@@ -4,13 +4,14 @@ import { type ChildProcessByStdio, spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { request } from "node:http";
 import type { Readable } from "node:stream";
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../../../../../src/backend/app/config/runtime-isolation.js";
 import { writeDashboardBuildIdentity } from "../../../../../../../src/backend/app/composition/dashboard/build-identity.js";
+import { readRuntimeProcessLock } from "../../../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 
 const REPO_ROOT = fileURLToPath(new URL("../../../../../../..", import.meta.url));
 const BOOTSTRAP = join(REPO_ROOT, "scripts", "dev", "secure-env-bootstrap.ts");
@@ -24,22 +25,16 @@ const SHUTDOWN_TIMEOUT_MS = 60_000;
 
 
 
-async function requireIsolatedPortFree(): Promise<void> {
-  const port = rebuildRuntimeIsolation.backendPort;
-  await new Promise<void>((resolve, reject) => {
+async function ownedFixturePort(): Promise<number> {
+  return new Promise<number>((resolve, reject) => {
     const probe = createServer();
-    probe.once("error", (error: NodeJS.ErrnoException) => {
-      reject(new Error(
-        `the rebuild dashboard port ${String(port)} is occupied (${error.code ?? error.message}); `
-        + "stop the running dashboard before this lifecycle smoke can own it",
-      ));
-    });
+    probe.once("error", reject);
     probe.once("listening", () => {
-      probe.close(() => {
-        resolve();
-      });
+      const address = probe.address();
+      assert.ok(address !== null && typeof address !== "string");
+      probe.close(error => error === undefined ? resolve(address.port) : reject(error));
     });
-    probe.listen(port, "127.0.0.1");
+    probe.listen(0, "127.0.0.1");
   });
 }
 
@@ -78,12 +73,20 @@ function requirePrivateEnvironmentFile(root: string): void {
 }
 
 
-function createScratchRepoRoot(): string {
-  const root = mkdtempSync(join(tmpdir(), "hr-dashboard-lifecycle-"));
+function createScratchRepoRoot(backendPort = rebuildRuntimeIsolation.backendPort): string {
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "hr-dashboard-lifecycle-"));
   for (const file of ["package.json", "package-lock.json", "vite.dashboard.config.ts", "tsconfig.json"]) {
     cpSync(join(REPO_ROOT, file), join(root, file));
   }
   cpSync(join(REPO_ROOT, "src"), join(root, "src"), { recursive: true });
+  const isolationPath = join(root, "src", "backend", "app", "config", "runtime-isolation.ts");
+  const isolationSource = readFileSync(isolationPath, "utf8");
+  assert.ok(isolationSource.includes(`backendPort: ${String(rebuildRuntimeIsolation.backendPort)}`));
+  writeFileSync(isolationPath, isolationSource.replace(`backendPort: ${String(rebuildRuntimeIsolation.backendPort)}`, `backendPort: ${String(backendPort)}`));
+  const isolationSchemaPath = join(root, "src", "models", "config", "define-runtime-isolation.ts");
+  const isolationSchemaSource = readFileSync(isolationSchemaPath, "utf8");
+  assert.ok(isolationSchemaSource.includes(`backendPort: z.literal(${String(rebuildRuntimeIsolation.backendPort)})`));
+  writeFileSync(isolationSchemaPath, isolationSchemaSource.replace(`backendPort: z.literal(${String(rebuildRuntimeIsolation.backendPort)})`, `backendPort: z.literal(${String(backendPort)})`));
   mkdirSync(join(root, "config"), { recursive: true });
   cpSync(join(REPO_ROOT, "config", "dashboard-workflow-sources.json"), join(root, "config", "dashboard-workflow-sources.json"));
   const bundleRoot = join(root, "dist", "dashboard");
@@ -182,18 +185,18 @@ function checkoutStateFingerprint(): Readonly<{ authority: string; lock: string 
 }
 
 function readScratchLock(lockPath: string): { name?: unknown; pid?: unknown; releasedAt?: unknown } {
-  const record: unknown = JSON.parse(readFileSync(lockPath, "utf8"));
-  assert.ok(record !== null && typeof record === "object", `${lockPath} must hold one lock record`);
+  const record = readRuntimeProcessLock(dirname(lockPath), "server");
+  assert.ok(record !== undefined, `${lockPath} must hold one server claim`);
   return record;
 }
 
 describe("the `dashboard` CLI command's shutdown lifecycle", () => {
-  it("drains through a second Ctrl+C, exits 0, and releases its process lock", async () => {
-    await requireIsolatedPortFree();
+  it("cancels an active HTTP transfer on Ctrl+C, exits 0, and releases its process lock", async () => {
+    const backendPort = await ownedFixturePort();
 
-    const scratchRoot = createScratchRepoRoot();
+    const scratchRoot = createScratchRepoRoot(backendPort);
     requirePrivateEnvironmentFile(scratchRoot);
-    const lockPath = join(scratchRoot, rebuildRuntimeIsolation.processLockRoot, "server.lock.json");
+    const lockPath = join(scratchRoot, rebuildRuntimeIsolation.processLockRoot, "server-claims");
     const checkoutBefore = checkoutStateFingerprint();
     try {
 
@@ -202,6 +205,7 @@ describe("the `dashboard` CLI command's shutdown lifecycle", () => {
         ["--import", "tsx", join(scratchRoot, "scripts", "dev", "secure-env-bootstrap.ts"), "cli", "dashboard", "--prod"],
         { cwd: scratchRoot, stdio: ["ignore", "pipe", "pipe", "ipc"] },
       ) as DashboardChild;
+      const output = captureOutput(child);
       const readiness = new Promise<unknown>((resolve, reject) => {
         const timer = setTimeout(() => reject(new Error("owned dashboard IPC readiness timed out")), BOOT_TIMEOUT_MS);
         const onMessage = (message: unknown): void => {
@@ -209,7 +213,7 @@ describe("the `dashboard` CLI command's shutdown lifecycle", () => {
         };
         const onExit = (): void => {
           clearTimeout(timer); child.removeListener("message", onMessage);
-          reject(new Error("dashboard exited before IPC readiness"));
+          reject(new Error(`dashboard exited before IPC readiness: ${output()}`));
         };
         child.once("message", onMessage);
         child.once("exit", onExit);
@@ -222,7 +226,7 @@ describe("the `dashboard` CLI command's shutdown lifecycle", () => {
           waitForStdout(child, LISTENING_MARKER, BOOT_TIMEOUT_MS), readiness,
         ]);
         assert.deepEqual(readinessMessage, { type: "hrauto-dashboard-ready" });
-        const staticResponse = await fetch(`http://127.0.0.1:${String(rebuildRuntimeIsolation.backendPort)}/`);
+        const staticResponse = await fetch(`http://127.0.0.1:${String(backendPort)}/`);
         assert.equal(staticResponse.status, 200, "the production child serves the built dashboard bytes");
         assert.match(staticResponse.headers.get("content-type") ?? "", /text\/html/u);
         assert.match(await staticResponse.text(), /<script[^>]+type="module"/u);
@@ -242,7 +246,7 @@ describe("the `dashboard` CLI command's shutdown lifecycle", () => {
 
         const transfer = request({
           hostname: "127.0.0.1",
-          port: rebuildRuntimeIsolation.backendPort,
+          port: backendPort,
           path: "/assets/app.js",
         });
         const activeResponse = await new Promise<import("node:http").IncomingMessage>((resolve, reject) => {
@@ -252,11 +256,9 @@ describe("the `dashboard` CLI command's shutdown lifecycle", () => {
         });
         activeResponse.on("error", () => undefined);
         assert.equal(activeResponse.complete, false, "the large static transfer is active before shutdown starts");
+        activeResponse.pause();
         assert.equal(child.kill("SIGINT"), true, "SIGINT must be delivered to the running dashboard");
-        await waitForIngressToClose(rebuildRuntimeIsolation.backendPort, child, 10_000);
-        assert.equal(child.exitCode, null, "the child remains in ordered drain after ingress closes");
-        assert.equal(readScratchLock(lockPath).releasedAt, null, "the server lock stays held after ingress closes");
-        assert.equal(child.kill("SIGINT"), true, "the second SIGINT must reach the active-transfer drain");
+        await waitForIngressToClose(backendPort, child, 10_000);
         activeResponse.destroy();
         transfer.destroy();
         const exit = await waitForExit(child, SHUTDOWN_TIMEOUT_MS);
@@ -303,7 +305,7 @@ describe("the `dashboard` CLI command's shutdown lifecycle", () => {
     mkdirSync(stateRoot, { recursive: true });
     writeFileSync(join(stateRoot, "retained-evidence"), "evidence");
     rmSync(join(scratchRoot, "dist", "dashboard", "dashboard-build-identity.json"));
-    const lockPath = join(scratchRoot, rebuildRuntimeIsolation.processLockRoot, "server.lock.json");
+    const lockPath = join(scratchRoot, rebuildRuntimeIsolation.processLockRoot, "server-claims");
     try {
       const child = spawn(
         process.execPath,
