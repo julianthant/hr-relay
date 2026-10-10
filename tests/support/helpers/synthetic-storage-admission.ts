@@ -7,7 +7,6 @@ import { backupStoppedAuthority as realBackupStoppedAuthority, upgradeStorage as
 import { doctorAuthorityStorage as realDoctorAuthorityStorage } from "../../../src/backend/storage/sqlite/storage-doctor.js";
 import { composeStorageCommand as realComposeStorageCommand } from "../../../src/backend/app/composition/storage-compose.js";
 import { createCredentialStore as realCreateCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
-import { migrateTestDataFromCredentials as realMigrateTestDataFromCredentials } from "../../../src/backend/storage/configuration/credential-test-data-migration.js";
 import { composeTestDataCommand as realComposeTestDataCommand } from "../../../src/backend/app/test-data/compose.js";
 import { AuthorityBootStore as RealAuthorityBootStore } from "../../../src/backend/storage/sqlite/authority-boot.js";
 import { AuthorityHealthPreflightRunner as RealAuthorityHealthPreflightRunner } from "../../../src/backend/storage/sqlite/authority-health-runner.js";
@@ -21,7 +20,6 @@ export * from "../../../src/backend/storage/sqlite/storage-recovery-status.js";
 export * from "../../../src/backend/storage/maintenance/upgrade.js";
 export * from "../../../src/backend/app/composition/storage-compose.js";
 export * from "../../../src/backend/storage/configuration/credential-store.js";
-export * from "../../../src/backend/storage/configuration/credential-test-data-migration.js";
 export * from "../../../src/backend/app/test-data/compose.js";
 export * from "../../../src/backend/storage/sqlite/authority-boot.js";
 export * from "../../../src/backend/storage/sqlite/authority-health-runner.js";
@@ -109,9 +107,6 @@ export function createCredentialStore(options: Omit<Parameters<typeof realCreate
   return realCreateCredentialStore({ ...options, admission: syntheticStateRoot(options.stateRoot) });
 }
 
-export async function migrateTestDataFromCredentials(input: Omit<Parameters<typeof realMigrateTestDataFromCredentials>[0],"admission">) {
-  return realMigrateTestDataFromCredentials({ ...input, admission: syntheticStateRoot(input.stateRoot) });
-}
 
 export async function composeTestDataCommand(isolation: Parameters<typeof realComposeTestDataCommand>[1],
   args: Parameters<typeof realComposeTestDataCommand>[2], root: Parameters<typeof realComposeTestDataCommand>[3],

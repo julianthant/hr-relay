@@ -1,28 +1,23 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { executeSettingsCommand, executeStorageRelocationCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { createStorageRelocationPlanReader } from "../../../../src/backend/storage/maintenance/storage-relocation-plans.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
-import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import { sealArchiveReport } from "../../../../src/models/archive/report.js";
 import { StorageRelocationCommandRequestSchema, storageRelocationDesiredDigest,
   storageRelocationRequestFingerprint } from "../../../../src/rules/commands/commands.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema } from "../../../../src/models/config/protected-settings.js";
-import { FingerprintSchema, LOCAL_OPERATOR_ACTOR_ID, NonNegativeIntSchema } from "../../../../src/rules/identity/ids.js";
-import { ArchiveDatabase } from "../../../../src/backend/storage/sqlite/archive-database.js";
+import { NonNegativeIntSchema } from "../../../../src/rules/identity/ids.js";
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
-import { createRunSearchIndex } from "../../../../src/backend/storage/sqlite/run-search-index.js";
 import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { acquireExclusiveRuntimeAdmission, acquireInitialRuntimeAdmission, acquireSharedRuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
@@ -34,8 +29,8 @@ export const WAL_NOTIFICATION_TITLE = "Synthetic WAL-backed relocation notice";
 const cleanup: string[] = [];
 export function cleanupFixtureRoots(): void { for (const root of cleanup.splice(0)) rmSync(root, { recursive: true, force: true }); }
 
-export async function installation(version: 55 | 56 = 56) {
-  const root = mkdtempSync(join(tmpdir(), "storage-relocation-offline-"));
+export async function installation() {
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "storage-relocation-offline-"));
   cleanup.push(root);
   const workspace = join(root, "workspace");
   mkdirSync(workspace, { mode: 0o700 });
@@ -47,23 +42,6 @@ export async function installation(version: 55 | 56 = 56) {
       authorityGeneration: AuthorityDatabase.inspectExistingReadOnly(inspection, authorityPath).authorityGeneration,
       databaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(authorityPath) }),
     (_pair, initialization) => {
-      if (version === 55) {
-        const raw = new DatabaseSync(authorityPath);
-        raw.exec("BEGIN EXCLUSIVE");
-        for (const migration of SQLITE_MIGRATIONS.filter(entry => entry.version <= 55)) {
-          for (const statement of migration.statements) raw.exec(statement);
-        }
-        raw.prepare("INSERT INTO database_state(singleton_id,schema_version,authority_generation,updated_at,migration_owner,migration_started_at) VALUES (1,55,0,?,NULL,NULL)")
-          .run(clock.now().toISOString());
-        const baseline = { recordKey: randomUUID(), upgradeId: "fresh", phase: "baseline",
-          fromSchemaVersion: 0, toSchemaVersion: 55, by: LOCAL_OPERATOR_ACTOR_ID, recordedAt: clock.now().toISOString() };
-        raw.prepare("INSERT INTO database_upgrades(record_key,upgrade_id,phase,record_json,created_at) VALUES (?,?,?,?,?)")
-          .run(baseline.recordKey, baseline.upgradeId, baseline.phase, canonicalJsonStringify(baseline), clock.now().toISOString());
-        createRunSearchIndex(raw).initialize(0, clock.now().toISOString());
-        raw.exec(`PRAGMA application_id = ${String(AUTHORITY_APPLICATION_ID)}; PRAGMA user_version = 55; COMMIT`);
-        raw.close();
-        return;
-      }
       AuthorityDatabase.open(initialization, { path: authorityPath, busyTimeoutMs: 250,
         migrationOwner: "offline-relocation-fixture" }, clock).close();
     });
@@ -86,30 +64,13 @@ export async function installation(version: 55 | 56 = 56) {
       patchFingerprint: deriveSettingsPatchFingerprint(patch), patch },
   });
   assert.equal(ordinary.state, "applied", JSON.stringify(ordinary));
-  const archivePath = join(source.stateRoot, "archive.sqlite");
-  const archivedRunId = randomUUID();
-  const archiveFileBytes = Buffer.from("synthetic archived attachment");
-  const archiveFile = { digest: FingerprintSchema.parse(createHash("sha256").update(archiveFileBytes).digest("hex")),
-    byteLength: archiveFileBytes.byteLength, mediaType: "text/plain", name: "synthetic-archive.txt" };
-  const archive = new ArchiveDatabase(admission, archivePath);
-  try {
-    archive.retainFile(archiveFile, archiveFileBytes);
-    const report = sealArchiveReport({ schemaVersion: 1, runId: archivedRunId, transferId: randomUUID(),
-      workflow: "person-lookup", itemId: "synthetic", attempt: 1, runNumber: null,
-      title: "Synthetic archive", descriptorVersion: "1", outcome: "done",
-      completedAt: clock.now().toISOString(), capturedAt: clock.now().toISOString(),
-      sourceDigest: "a".repeat(64), sources: [], sections: [], files: [archiveFile] });
-    archive.capture(report);
-    archive.verify(archivedRunId, report.digest);
-    archive.publish(archivedRunId, report.digest);
-  } finally { archive.close(); }
   mkdirSync(join(source.stateRoot, "verified-byte-scratch"), { mode: 0o700 });
   const artifacts = createContentAddressedArtifactWriter({ admission });
   await artifacts.ready;
   const artifact = await artifacts.put(Buffer.from("synthetic-artifact-bytes"), { mediaType: "application/octet-stream" });
   database.close();
   admission.release();
-  return { root, workspace, source, authorityPath, archivedRunId, archivePath,
+  return { root, workspace, source, authorityPath,
     credentialFile: join(source.stateRoot, "credentials", "protected.json"),
     artifactFile: join(source.artifactRoot, `${artifact.sha256}.artifact`), artifact };
 }
@@ -198,10 +159,10 @@ export function leaveStoppedWal(workspace: string, authorityPath: string): strin
 export function durableSnapshot(authorityPath: string, credentialFile: string, artifactFile: string) {
   const database = new DatabaseSync(authorityPath, { readOnly: true });
   try {
-    const rows = (table: "app_settings" | "settings_snapshots" | "commands" | "command_audits" | "notifications") => database.prepare(
-      `SELECT record_json FROM ${table} ORDER BY rowid`,
-    ).all().map(row => String(row.record_json));
-    return { appSettings: rows("app_settings"), settingsSnapshots: rows("settings_snapshots"),
+    const rows = (table: "settings" | "settings_snapshots" | "commands" | "command_audits" | "notifications") => database.prepare(
+      `SELECT ${table === "commands" ? "request_json AS payload_json" : "payload_json"} FROM ${table} ORDER BY rowid`,
+    ).all().map(row => String(row.payload_json));
+    return { appSettings: rows("settings"), settingsSnapshots: rows("settings_snapshots"),
       commands: rows("commands"), audits: rows("command_audits"),
       notifications: rows("notifications"),
       credentialDigest: createHash("sha256").update(readFileSync(credentialFile)).digest("hex"),

@@ -1,3 +1,4 @@
+import type { BrowserProfileAuthority } from "../../../src/backend/app/composition/worker/run-resources.js";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
 import { healthyRuntimePreflightRunners } from "../fixtures/preflight-seams.js";
 /** Real worker loop and Chromium; every network request is fulfilled with synthetic HTML. */
@@ -10,7 +11,7 @@ import { resolveConfigWithProvenance } from "../../../src/backend/app/config/res
 import { hostConfigFacts } from "../../../src/models/config/host-display.js";
 import { systemClock } from "../../../src/rules/time/clock.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
-import { BrowserProfileAdmissionSchema, PlaywrightWorkerSessionFactory } from "../../../src/backend/runtime/browser/browser-session-factory.js";
+import { PlaywrightWorkerSessionFactory } from "../../../src/backend/runtime/browser/browser-session-factory.js";
 import { composeWorkerRuntime, createTimeoutDeadlineScheduler } from "../../../src/backend/app/composition/worker-compose.js";
 import { resolveSystemEntryUrl } from "../../../src/models/config/instance.js";
 import type { BrowserSystemBinding } from "../../../src/backend/runtime/browser/system-bindings.js";
@@ -58,9 +59,9 @@ const binding = (system: "crm" | "ucpath"): BrowserSystemBinding => ({
       : { authenticated: false, reason: "fixture-neutral-state-missing" };
   },
 });
-const factory = new PlaywrightWorkerSessionFactory({ config, isolation: rebuildRuntimeIsolation, clock: systemClock,
+const createSessionFactory = (profiles: BrowserProfileAuthority) => new PlaywrightWorkerSessionFactory({ config, isolation: rebuildRuntimeIsolation, clock: systemClock,
   scheduler: createTimeoutDeadlineScheduler(systemClock), newSessionId: randomUUID,
-  admitProfile: input => Promise.resolve(BrowserProfileAdmissionSchema.parse({ ...input, profileRevision: 7 })),
+  ...profiles,
   protectedSecrets: protectedSecretSource({ ucpathUserId: "synthetic", ucpathPassword: "synthetic" }),
   bindings: { crm: binding("crm"), ucpath: binding("ucpath") },
   launcher: { launch: async input => {
@@ -75,7 +76,7 @@ const factory = new PlaywrightWorkerSessionFactory({ config, isolation: rebuildR
 const admission = acquireEntrypointAdmission(root, "shared");
 try {
   const report = await composeWorkerRuntime({ admission, preflightRunnerFactory: healthyRuntimePreflightRunners, repoRoot: root, isolation: rebuildRuntimeIsolation, args, env: {},
-    sessionFactory: factory, duoCeremony: fixtureDuoCeremonyGates(systemClock), heartbeatIntervalMs: 100, sweepIntervalMs: 60_000 });
+    createSessionFactory, duoCeremony: fixtureDuoCeremonyGates(systemClock), heartbeatIntervalMs: 100, sweepIntervalMs: 60_000 });
   writeFileSync(join(root,`report-${String(process.pid)}.json`),JSON.stringify(report));
 } finally {
   const results = await Promise.allSettled([...contexts].map(async context => { await context.close(); }));

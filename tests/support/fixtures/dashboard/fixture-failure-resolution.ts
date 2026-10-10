@@ -1,10 +1,7 @@
 /** D-local fixture: unchanged shell corpus; actual HTTP admission, kernel and durable failure reads. */
 import { createServer,request as proxyRequest } from "node:http";
-import { SavedArchiveReportWireSchema } from "../../../../src/models/dashboard/archive.js";
-import { buildTrustSection } from "../../../../src/backend/runs/queries/run-trust.js";
-import { resolutionApp,resolutionCommand,resolutionFixture,resolutionPeer,resolutionReadDeps } from "../../helpers/failure-resolution/fixtures.js";
+import { resolutionApp,resolutionCommand,resolutionFixture,resolutionPeer } from "../../helpers/failure-resolution/fixtures.js";
 import type { ParityBundleProof } from "../../../integration/dashboard/client/fixtures/helpers/bundle.js";
-import { FIXTURE_ARCHIVED_RUN,FIXTURE_SAVED_REPORT } from "./fixture-archive.js";
 import { startFixtureServer } from "../../../integration/dashboard/client/fixtures/helpers/fixture-bff.js";
 import { FIXTURE_IDS } from "./fixture-queue.js";
 
@@ -16,7 +13,6 @@ export async function startFailureResolutionServer(input: { distDir: string; bun
   let reads = 0;
   let paused: Promise<void> | undefined;
   let release: (() => void) | undefined;
-  let archived: unknown;
   const exchanges: { method: string; path: string; status: number }[] = [];
   const server = createServer((req, res) => {
     const path = new URL(req.url ?? "/", "http://localhost").pathname;
@@ -42,9 +38,6 @@ export async function startFailureResolutionServer(input: { distDir: string; bun
       })().catch(error => { res.writeHead(500); res.end(String(error)); });
       return;
     }
-    if (path === `/api/v1/archive/reports/${FIXTURE_ARCHIVED_RUN.runId}` && archived !== undefined) {
-      res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify(archived)); return;
-    }
     const proxy = proxyRequest(`${base.baseUrl}${req.url}`, { method: req.method, headers: req.headers }, upstream => {
       res.writeHead(upstream.statusCode ?? 500, upstream.headers); upstream.pipe(res);
     });
@@ -65,26 +58,6 @@ export async function startFailureResolutionServer(input: { distDir: string; bun
       try { return await peer.send(resolutionCommand({ target: { runId: f.record.runId, failureId: f.record.failureId, expectedVersion: current.resolution.version },
         payload: action === "reopen" ? { action } : { action, ...(note === undefined ? {} : { note }) } })); }
       finally { peer.stop(); }
-    },
-    captureArchive: () => {
-      const section = buildTrustSection(resolutionReadDeps(f), f.record.runId, "failure");
-      if (section.section !== "failure" || section.payload.state !== "available") throw new Error("missing failure capture");
-      const value = section.payload.value;
-      // Presentation-only saved snapshot fixture; archive conversion is L/A/H's proof.
-      if (value.resolution === undefined) throw new Error("missing resolution capture");
-      const resolution = value.resolution.capture.resolution;
-      archived = SavedArchiveReportWireSchema.parse({ ...FIXTURE_SAVED_REPORT, sections: [
-        { kind: "values", title: "Problem follow-up", values: [
-          { label: "Status", value: resolution.status },
-          { label: "Version", value: resolution.version },
-          ...(resolution.status === "resolved" ? [
-            { label: "Resolved by", value: resolution.by },
-            { label: "Resolved at", value: resolution.at },
-            ...(resolution.note === undefined ? [] : [{ label: "Note", value: resolution.note }]),
-          ] : []),
-        ] },
-      ] });
-      return FIXTURE_ARCHIVED_RUN.runId;
     },
     close: async () => {
       release?.(); server.closeAllConnections();

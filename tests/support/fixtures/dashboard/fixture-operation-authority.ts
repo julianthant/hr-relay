@@ -1,8 +1,6 @@
 import { plan1SeparationWorkflow, plan1SeparationStores, fictionalSeparationDrivers } from "../plan1-separation-operation.js";
 import { createReceiptService } from "../../../../src/backend/runs/trust/receipt-service.js";
-import { readScopedEventStreamLines } from "../../../../src/backend/storage/events/jsonl-streams.js";
-import { runNotePartitionScope, runRecordNoteScopeInstants } from "../../../../src/models/run/note-scope.js";
-import { NoteWireSchema } from "../../../../src/models/events/types.js";
+import { readTimelineRecords } from "../../../../src/backend/storage/events/timeline-reader.js";
 import { createDiagnosticCaptureService } from "../../../../src/backend/logs/diagnostics/diagnostic-capture.js";
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { createServerVerifiedArtifactReader } from "../../../../src/backend/storage/artifacts/server-verified-artifact-reader.js";
@@ -17,7 +15,7 @@ import { Hono } from "hono";
 import { composeWorkflowModule } from "../../../../src/workflow-kit/workflow-definition.js";
 import { executeClaimedRun, type RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-executor.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
-import { createNoteJsonlWriter } from "../../../../src/backend/storage/events/note-jsonl-writer.js";
+import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
 import { buildQueuedRun } from "../../../../src/backend/runs/start/enqueue.js";
 import { canonicalJsonStringify, JsonValueSchema } from "../../../../src/rules/validation/canonical-json.js";
@@ -39,7 +37,7 @@ import { FrontendBootstrapWireSchema } from "../../../../src/models/dashboard/bo
 import { DashboardStreamEnvelopeSchema } from "../../../../src/models/dashboard/subscription.js";
 import { CONFIG_SNAPSHOT } from "../phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../phase1f-run-fixtures.js";
-import { testRunLifecycle, testRunService } from "../run-lifecycle-fixtures.js";
+import { testRunLifecycle, testRunService, testWorkerPorts } from "../run-lifecycle-fixtures.js";
 import { openAuthorityHarness, sessionManagerFor, ManualScheduler, recordingLogger, sessionFactoryHarness } from "../../helpers/phase1f-executor-harness.js";
 import { plan1Parent, plan1Workflows, Plan1Input, Plan1CanonicalInput } from "../plan1-operation-workflows.js";
 import { fixtureBuildManifest } from "../workflow-definition-fixtures.js";
@@ -61,18 +59,18 @@ export async function startOperationAuthorityServer(mode: "local" | "browser" | 
   const config = { ...CONFIG_SNAPSHOT.config, actor: { ...CONFIG_SNAPSHOT.config.actor, label: "Fixture operator" } };
   const fingerprint = sha256Hex(canonicalJsonStringify(config));
   const configSnapshotId = "00000000-0000-4000-8000-000000000c01";
-  database.authority.configSnapshots.insert({ ...CONFIG_SNAPSHOT, configSnapshotId, config, fingerprint });
+  database.authority.runtimeConfig.initialize({ ...CONFIG_SNAPSHOT, configSnapshotId, config, fingerprint });
   const sessions = sessionManagerFor(sessionFactoryHarness({ ucpath: () => separation ? separationDrivers.ucpath : native?.driver ?? fictionalFormDriver(), kuali: () => separationDrivers.kuali }), clock);
   const deps: RunExecutorDependencies = { lifecycle: testRunLifecycle(database, clock), descriptor: plan1Parent.descriptor,
     stores, authority: database, sessions, emitter: createTimelineEmitter({ repository: database.authority.timelineEvents, clock }),
     clock, ids: sequentialIdFactory("b"), scheduler: new ManualScheduler(clock), taskDeadlineMs: 60_000,
-    log: recordingLogger().log, taskNotes: createNoteJsonlWriter({ stateRoot, clock, pid: 4242 }) };
+    log: recordingLogger().log, taskNotes: createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 }) };
   let sequence = 0;
   const createRun = (compiled: typeof plan1Parent, value: unknown, parent?: RunParent, itemId?: string) => {
     const number = ++sequence;
     return buildQueuedRun({ descriptor: compiled.descriptor, appVersion: "0.1.0", runId: `00000000-0000-4000-8000-${String(number).padStart(12, "0")}`,
       itemId: itemId ?? `00000000-0000-4000-8001-${String(number).padStart(12, "0")}`, traceId: `fp-170000-${String(number).padStart(4, "0")}`,
-      rawInput: JsonValueSchema.parse(value), canonicalInput: { schemaHash: deriveSchemaHash(Plan1CanonicalInput, "output"), value: Plan1Input.parse(value) }, ingressSchemaHash: deriveSchemaHash(Plan1Input, "input"),
+      rawInput: JsonValueSchema.parse(value), canonicalInput: { schemaHash: deriveSchemaHash(Plan1CanonicalInput, "output"), value: Plan1Input.parse(value), protectedBindings: [] }, ingressSchemaHash: deriveSchemaHash(Plan1Input, "input"),
       configFingerprint: fingerprint, configSnapshotId, resolvedInstance: separation ? { kuali: "prod", ucpath: "prod" } : mode === "browser" ? { ucpath: "prod" } : {}, shape: parent === undefined ? "single" : "operation-member", priority: "bulk", dryRun: true,
       attempt: 1, runNumber: number, now: clock.now().toISOString(), ...(parent === undefined ? {} : { parent }) });
   };
@@ -80,8 +78,11 @@ export async function startOperationAuthorityServer(mode: "local" | "browser" | 
   const execute = async (run: ReturnType<typeof createRun>, compiled: typeof plan1Parent) => {
     database.authority.runs.enqueue(run);
     createTimelineEmitter({ repository: database.authority.timelineEvents, clock }).emit(runQueuedSpanEvent({ run, actorId: LOCAL_OPERATOR_ACTOR_ID, title: compiled.descriptor.label }));
-    const claim = database.authority.runs.claimNext({ workflow: compiled.descriptor.id, workerId: `fixture-worker-${sequence}`, now: clock.now().toISOString() });
-    if (claim.state !== "claimed" || claim.run.envelope.runId !== run.envelope.runId || claim.run.lifecycle.state !== "claimed") throw new Error("operation-fixture-claim-mismatch");
+    const worker = testWorkerPorts(database, clock, { path: harness.path, descriptor: compiled.descriptor, poolIndex: 1 });
+    const slot = database.authority.workerSlots.list(compiled.descriptor.id).find(value => value.retiredAt === null && value.poolIndex === 1);
+    if (slot === undefined) throw new Error("operation-fixture-slot-missing");
+    const claim = worker.claimNext({ commandId: `00000000-0000-4000-8002-${String(sequence).padStart(12, "0")}`, workflow: compiled.descriptor.id, workerId: slot.workerId });
+    if (claim.state !== "applied" || claim.run.envelope.runId !== run.envelope.runId || claim.run.lifecycle.state !== "claimed") throw new Error("operation-fixture-claim-mismatch");
     const outcome = await executeClaimedRun({ ...deps, descriptor: compiled.descriptor, childRuns }, { run: claim.run,
       claim: { workerId: claim.run.lifecycle.workerId, claimGeneration: claim.run.claimGeneration }, signal });
     if (outcome.state === "failed" && mode === "separation-failed" || outcome.state === "parked-gate" && mode === "separation-ambiguous") return undefined;
@@ -109,7 +110,7 @@ export async function startOperationAuthorityServer(mode: "local" | "browser" | 
     if (mode !== "browser") throw new Error("native-capture-requires-browser-fixture");
     const run = database.authority.runs.get(root.envelope.runId);
     if (run === undefined) throw new Error("native-capture-run-missing");
-    const occurrence = readScopedEventStreamLines(stateRoot, "notes", runNotePartitionScope({ runId: run.envelope.runId, workflow: run.envelope.workflow, instants: runRecordNoteScopeInstants(run) })).map((line) => NoteWireSchema.parse(JSON.parse(line.text)).action?.operation).find((operation) => operation?.logicalActionId === "search" && operation.state === "confirmed");
+    const occurrence = readTimelineRecords(database.authority.timelineEvents, 0, run.envelope.runId).records.flatMap(record => record.payload.kind === "note" ? [record.payload.note.action?.operation] : []).find((operation) => operation?.logicalActionId === "search" && operation.state === "confirmed");
     if (occurrence === undefined) throw new Error("native-capture-confirmed-action-not-retained");
     const { value: _value, ...operation } = occurrence;
     const admission = syntheticStateRoot(stateRoot);

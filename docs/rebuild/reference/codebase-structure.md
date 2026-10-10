@@ -103,7 +103,7 @@ tests/
 ├── parity/
 ├── perf/
 ├── support/
-│   ├── fixtures/{dashboard,documents,dry-run,integration,migration,preflight}/
+│   ├── fixtures/{dashboard,documents,dry-run,integration,preflight}/
 │   ├── helpers/{architecture,archive-transfer,backend,dashboard,database-foundation,failure-resolution,integration,storage,trust}/
 │   └── processes/
 ├── types/
@@ -116,7 +116,7 @@ tests/
 Architecture fixtures/helpers are colocated under dashboard, logs, models, runs, runtime, storage,
 support, systems and tooling owners. Unit and integration tests follow the same source-family split
 as production code. Shared fixtures, helpers and child-process entrypoints stay under
-`tests/support/`; Intake integration and parity both use `fixtures/dashboard/fixture-intake-authority.ts`. `scenario/` remains retired. The desktop parity suite remains the screenshot/accessibility
+`tests/support/`; helpers build fresh native authority and expose its actual timeline, claim and profile ports. Archive and old-format conversion fixtures are absent. Intake integration and parity both use `fixtures/dashboard/fixture-intake-authority.ts`. `scenario/` remains retired. The desktop parity suite remains the screenshot/accessibility
 contract; its reference files are not refreshed to make wiring pass. Role-derived path helpers do
 not imply current files or coverage. Exact test move counts and retirement dispositions remain with
 the owning evidence records.

@@ -43,7 +43,7 @@ export function resolutionCommand(overrides: Record<string, unknown> = {}) {
 export function resolutionApp(f: ReturnType<typeof resolutionFixture>) {
   return createDashboardApp({
     requestIdentity: createSoloRequestIdentityCheckpoint({ id: "local-operator", label: "Local operator" }),
-    bootstrap: { clock: f.clock }, commandJournal: f.db.authority.commands,
+    bootstrap: { clock: f.clock, appVersion: "0.1.0" }, commandJournal: f.db.authority.commands,
     protectedCommandAcceptedAt: () => undefined,
     bulkCommandAcceptances: { withTransaction: () => { throw new Error("unrelated bulk route reached"); } },
     intake: UNWIRED_INTAKE_SERVICE,
@@ -55,7 +55,7 @@ export function resolutionApp(f: ReturnType<typeof resolutionFixture>) {
 export function resolutionReadDeps(f: ReturnType<typeof resolutionFixture>) {
   const reader = sqliteRunReader(f.db, f.clock);
   const trust = createReceiptService({ database: f.db, runReader: reader, descriptors: [personLookupDescriptor] });
-  return { runReader: reader, trust } as unknown as RunDetailQueryDeps;
+  return { runReader: reader, trust, timeline: f.db.authority.timelineEvents } as unknown as RunDetailQueryDeps;
 }
 
 import { createDashboardApp, type DashboardAppDeps } from "../../../../src/backend/transports/http/routes/api.js";

@@ -1,3 +1,4 @@
+import { IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
 import { ucpathPendingTransactionSetDigest } from "../../../../src/models/systems/ucpath/delete-pending-terminations.js";
 import { DatabaseSync } from "node:sqlite";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
@@ -65,7 +66,7 @@ export const CURRENT_SEPARATIONS_RESULT = SeparationsResultSchema.parse({
       version: 2,
       selectedTransactionIds: "none",
       protectedTransactionIds: "none",
-      setDigest: ucpathPendingTransactionSetDigest({emplId:COMPOSITION_EID,eligible:[],protected:[]}),
+      setDigest: ucpathPendingTransactionSetDigest({kind:"ucpath-pending-termination-set",emplId:COMPOSITION_EID,eligible:[],protected:[],source:"ss-smart-hr-detail-read",observedAt:IsoInstantSchema.parse(COMPOSITION_NOW)}),
     },
   },
   termination: {

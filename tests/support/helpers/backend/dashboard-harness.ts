@@ -216,7 +216,7 @@ export function makeWorld(input?: Readonly<{
     visiting.delete(runId);
   };
   const timeline: TimelineRepository = Object.freeze({ ...database.authority.timelineEvents,
-    append(input) {
+    append(input: Parameters<TimelineRepository["append"]>[0]) {
       const record = TimelineAppendSchema.parse(input);
       if(record.scope.kind === "run")synchronizeOwner(record.scope.runId);
       return database.authority.timelineEvents.append(record);
