@@ -33,10 +33,10 @@ import-boundary, provenance and write-safety guards remain. Coverage floors are 
 TSX is no longer excluded solely for the retired parity lane; instrumentation does not itself
 execute UI behavior. Exact suite and sole-consumer case scope is recorded in the
 layout-polish amendment (historical source `994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-3/backend-and-unit-tests.md`)
-and [retirement ledger](</Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/backend-layout-polish/implementation/retirement-and-freeze.json>);
+and retirement ledger in task evidence;
 the retained/retired cases for `scenario-coverage` and `test-target-registry` are pinned in their
-[guard receipts](</Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/backend-layout-polish/implementation/scenario-guard-retirement.json>)
-and [test-target receipt](</Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/backend-layout-polish/implementation/test-target-guard-retirement.json>).
+guard receipts in task evidence
+and test-target receipt in task evidence.
 
 Owns gap-audit (`08`) BLOCKER #2: ratchet port map, safety guards, descriptor projection coverage,
 guard inventory, current test-scope policy, and gate cadence.
@@ -2119,7 +2119,7 @@ amendment above and the guard inventory.
 - [ ] PROOF T4 operator dashboard parallel verification + the first journey, recorded — needs `{#parallel-runs}` and `{#duo-lease}` first (§10.8)
 - [ ] BE coverage floor 80/80/80 global, with D91's 50 % global branch gate adopted alongside it (§10.10)
 - [x] BE the FIRST T1 pair in the tree — `tests/scenario/workflows/separations-kuali-finalization/{structural.scenario.test.ts, dry-run.scenario.ts}`, seeded from the valid proof contracts/helpers of the dismantled annotation workflow (D266; ref workflow-model §1.2.2)
-> 2026-08-20 | docs-cohesion ref guards-and-tests | the spec is written against the code (`vitest.config.ts`, `src/core/run-executor.ts`, `src/core/write-sequencer.ts`, `tests/scenario/**`, `tests/parity/**`, `docs/rebuild/migrations/separations.md` §9.22); left: the four code units 5.2b–5.2d. Two as-built findings recorded rather than assumed: `TransactionDryRunPreviewSchema`'s `mismatch` subject arm is unreachable, and a real subject's EID is hardcoded across seven tracked files
+> 2026-08-20 | docs-cohesion ref guards-and-tests | the spec is written against the code (`vitest.config.ts`, `src/core/run-executor.ts`, `src/core/write-sequencer.ts`, `tests/scenario/**`, `tests/parity/**`, the workflow's task evidence §9.22); left: the four code units 5.2b–5.2d. Two as-built findings recorded rather than assumed: `TransactionDryRunPreviewSchema`'s `mismatch` subject arm is unreachable, and a real subject's EID is hardcoded across seven tracked files
 > 2026-08-25 | test-tiers | registry, authority row and CLI runner built; the finalization canary now records `blocked`/`not-started` before browser composition because its honest subject is unavailable until 2026-08-28. The T1 PROOF remains open until that manifest records `met`
 > 2026-09-02 | test-suite-rationalization R5a | the T1a structural half is complete for all seven registered workflows: each owns exactly one `workflows/<workflow-id>/structural.scenario.test.ts`, the architecture lane refuses split/flat ownership, and all structural person/document identities are synthetic. The overall T1 item remains open: only `separations` and `separations-kuali-finalization` have T1b manifests, and their sole retained canary is honestly `gone`/blocked rather than `met`.
 
@@ -2247,7 +2247,7 @@ run is a transaction preview or a transaction-free live read.
 
 #### Transaction-preview arm
 
-**What the manifest declares.** This is `docs/rebuild/migrations/separations.md` §9.22's hand-run
+**What the manifest declares.** This is the workflow's task evidence §9.22's hand-run
 double-entry, as a file — the pass that proved Track C, written down so it can be re-run instead of
 re-typed:
 
@@ -2649,7 +2649,7 @@ not migration inputs or live acceptance evidence; historical documentation remai
   measured wall time, and the instant. It is insert-only for the same reason every other evidence
   table is: a result that can be rewritten is not evidence. The row is what makes a green from last
   week citable this week.
-- **a dated line in the workflow's migration record** (`docs/rebuild/migrations/<workflow>.md`) — one line
+- **a dated line in the workflow's migration record** (the workflow's task evidence) — one line
   per run, naming the date, the subject label, the verdict and the durable row. **This is what the
   tree's `PROOF` tick cites.** A `- [x] PROOF` line on a migration node with no such line behind it
   is an unsupported claim, and the reviewer's question is always the same one: *which recorded run?*
@@ -2924,7 +2924,7 @@ can execute a second time.
    The manifest arm determines transaction preview versus transaction-free read; the command name
    does not authorize `dryRun` on a zero-transaction graph.
    Record the result — the `dry_run_scenario_results` row is automatic; the dated line in
-   `docs/rebuild/migrations/<workflow>.md` is yours to write, and it is what the tree's `PROOF` tick cites.
+   the workflow's task evidence is yours to write, and it is what the tree's `PROOF` tick cites.
 6. **Which T3 pairs it must add.** One per dashboard surface this workflow is the FIRST to exercise
    in a new way: a gate ceremony if it is the first gated workflow of its shape, a parked-write panel
    if it can park, a member/group view if it fans out, an archive/receipt read if its receipt has an

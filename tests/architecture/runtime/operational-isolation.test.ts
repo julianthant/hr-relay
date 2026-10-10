@@ -6,11 +6,6 @@ import { describe, it } from "vitest";
 import isolationJson from "../../../config/runtime-isolation.json" with { type: "json" };
 import { REPO_ROOT } from "../support/helpers/guard-files.js";
 import {
-  FROZEN_LEGACY_ARCHITECTURE_PROVENANCE,
-  frozenLegacyScripts,
-  parseFrozenLegacyArchitectureProvenance,
-} from "../support/helpers/frozen-legacy-architecture-provenance.js";
-import {
   auditOperationalIsolation,
   DISTINCT_RESOURCE_KEYS,
   type OperationalIsolationContract,
@@ -92,45 +87,19 @@ describe("operational isolation", () => {
     assert.deepEqual(Object.keys(isolation.rebuild.commands), ["dashboard", "dashboard:prod", "cli"]);
   });
 
-  it("audits the rebuild checkout against the frozen legacy launch scripts", () => {
+  it("audits the rebuild checkout against the configured isolated launch scripts", () => {
     assert.deepEqual(
       auditOperationalIsolation(
         REPO_ROOT,
         isolation,
         scriptsOf(REPO_ROOT),
-        frozenLegacyScripts(),
+        isolation.legacy.commands,
       ),
       [],
     );
   });
 
-  it("refuses a changed legacy package script when its recorded blob is unchanged", () => {
-    const tampered = structuredClone(FROZEN_LEGACY_ARCHITECTURE_PROVENANCE) as Record<string, unknown>;
-    const operationalIsolation = tampered.operationalIsolation as Record<string, unknown>;
-    const legacyPackage = operationalIsolation.package as Record<string, unknown>;
-    legacyPackage.text = String(legacyPackage.text).replace(
-      '"dashboard": "tsx --env-file=.env src/cli.ts dashboard --capture-ngrok"',
-      '"dashboard": "tampered"',
-    );
-    assert.throws(
-      () => parseFrozenLegacyArchitectureProvenance(tampered),
-      /frozen legacy file content-address mismatch/i,
-    );
-  });
 
-  it("refuses changed frozen capability source-command anchors", () => {
-    for (const snapshotName of ["discoveredPaths", "sourcePaths", "legacyPaths"] as const) {
-      const tampered = structuredClone(FROZEN_LEGACY_ARCHITECTURE_PROVENANCE) as Record<string, unknown>;
-      const capabilities = tampered.capabilities as Record<string, unknown>;
-      const snapshot = capabilities[snapshotName] as Record<string, unknown>;
-      snapshot.sourceCommand = "tampered source command";
-
-      assert.throws(
-        () => parseFrozenLegacyArchitectureProvenance(tampered),
-        new RegExp(`frozen legacy capabilities\\.${snapshotName} snapshot anchor mismatch for sourceCommand`),
-      );
-    }
-  });
 
   it("requires an exported direct-const factory call carrying the exact isolated values", () => {
     withFixture((root) => {

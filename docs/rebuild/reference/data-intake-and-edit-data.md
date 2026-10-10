@@ -145,19 +145,14 @@ may still have non-intake fields such as file refs, selectors, options, and disc
 
 `src/models/fields/registry.ts` holds the closed `CanonicalFieldId` union (47 ids) and
 `src/models/fields/cell-coercion.ts` holds the pure per-cell core. The D58/D68 scan this section
-required is **recorded**, not implied: `src/models/fields/canonical-field-inventory.json` lists every legacy
+required is **recorded**, not implied: the canonical-field porting inventory in task evidence lists every legacy
 workflow input schema, the roster header rules, the OCR form fields and the Edit-Data editable
 fields at legacy commit `4deabc5a`, and gives each scanned field exactly one disposition — a
 canonical id, or workflow-local **with a reason id drawn from a declared, fully-used set**.
 
-`intake-canonical-field-registry.test.ts` checks the coverage in **both directions**, so neither
-artifact can drift alone: a canonical field no scanned source evidences is unevidenced vocabulary,
-and a scanned field with no disposition is exactly the silent omission this section forbids. It also
-re-reads each named legacy file and fails when a scanned field no longer appears there — the frozen
-legacy tree is what makes that a real drift detector. Writing this scan found four fields recorded
-against the wrong file (`parentSubject`/`parentRunId`/`taskGroupId` are spread from
-`legacy:src/domain/delegation-input-fragments.ts`, not declared in the consuming schemas), which is
-the class of error the both-directions check exists to catch.
+`intake-canonical-field-registry.test.ts` checks current registry coherence: alias collisions,
+classification/redaction compatibility, deferred-shape audit notes and definition-factory validation.
+The historical source scan is a porting record in task evidence.
 
 Three rules the as-built adds, each because the alternative hides something:
 
@@ -536,7 +531,7 @@ and a canonical field that is itself a union still matches by identity.
 
 **The projection binds two targets, and only two.** `emplId → eid` and `name → fullName` are the
 whole of what a roster row says about a *person*. `keepNonHdh` and `includeCrmDates` are recorded in
-`src/models/fields/canonical-field-inventory.json` as `execution-option` precisely because they describe the
+the canonical-field porting inventory in task evidence as `execution-option` precisely because they describe the
 RUN, and binding a spreadsheet column to one would let a file decide whether this system reads CRM.
 They keep their schema defaults, so an intake row that omits them is valid.
 

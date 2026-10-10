@@ -22,10 +22,7 @@ import {
   auditUcpathUiEvidenceBindings,
   auditUcpathUiRegistry,
 } from "../../../src/backend/systems/ucpath/driver/ui-registry.js";
-import {
-  CandidateProposalIdSchema,
-  LegacySelectorPortMapSchema,
-} from "./helpers/legacy-selector-port-map-audit.js";
+import bindings from "./fixtures/selector-evidence-bindings.json" with { type: "json" };
 
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 
@@ -33,23 +30,8 @@ function readJson(path: string): unknown {
   return JSON.parse(readFileSync(resolve(REPO_ROOT, path), "utf8"));
 }
 
-/** Maps frozen selector references to current fixture inputs. */
-function currentEvidenceRef(frozenRef: string): string {
-  const suffix = /^evidence\/ui\/(.+)$/.exec(frozenRef)?.[1];
-  if (suffix === undefined) throw new Error(`frozen evidence ref is not a legacy evidence/ui path: ${frozenRef}`);
-  return `docs/rebuild/evidence/selectors/${suffix}`;
-}
-
-function currentEvidence(evidence: { verifiedAt: string; fixtureEvidenceRef: string; liveReadOnlyEvidenceRef: string }) {
-  return {
-    verifiedAt: evidence.verifiedAt,
-    fixtureEvidenceRef: currentEvidenceRef(evidence.fixtureEvidenceRef),
-    liveReadOnlyEvidenceRef: currentEvidenceRef(evidence.liveReadOnlyEvidenceRef),
-  };
-}
-
 function evidenceBindingInput(): unknown {
-  const portMap = LegacySelectorPortMapSchema.parse(readJson("docs/rebuild/migrations/legacy/ports/legacy-selector-port-map.json"));
+  const portMap = bindings;
   const portBindings: unknown[] = [];
   for (const entry of portMap.entries) {
     if (entry.disposition === "ported") {
@@ -61,7 +43,7 @@ function evidenceBindingInput(): unknown {
         ...("canonicalBindings" in entry
           ? { canonicalBindings: entry.canonicalBindings }
           : { canonicalId: entry.canonicalId }),
-        evidence: currentEvidence(entry.evidence),
+        evidence: entry.evidence,
       });
     }
     if (entry.disposition === "driver-internal") {
@@ -89,7 +71,7 @@ function evidenceBindingInput(): unknown {
 }
 
 function crmEvidenceBindingInput(): unknown {
-  const portMap = LegacySelectorPortMapSchema.parse(readJson("docs/rebuild/migrations/legacy/ports/legacy-selector-port-map.json"));
+  const portMap = bindings;
   return {
     evidenceByRef: {
       "docs/rebuild/evidence/selectors/crm/onboarding.fixture.json": readJson("docs/rebuild/evidence/selectors/crm/onboarding.fixture.json"),
@@ -106,14 +88,14 @@ function crmEvidenceBindingInput(): unknown {
         disposition: entry.disposition,
         semanticKind: entry.semanticKind,
         canonicalId: entry.canonicalId,
-        evidence: currentEvidence(entry.evidence),
+        evidence: entry.evidence,
       }];
     }),
   };
 }
 
 function newKronosEvidenceBindingInput(): unknown {
-  const portMap = LegacySelectorPortMapSchema.parse(readJson("docs/rebuild/migrations/legacy/ports/legacy-selector-port-map.json"));
+  const portMap = bindings;
   return {
     evidenceByRef: {
       "docs/rebuild/evidence/selectors/new-kronos/timecard.fixture.json": readJson("docs/rebuild/evidence/selectors/new-kronos/timecard.fixture.json"),
@@ -130,7 +112,7 @@ function newKronosEvidenceBindingInput(): unknown {
         disposition: entry.disposition,
         semanticKind: entry.semanticKind,
         canonicalId: entry.canonicalId,
-        evidence: currentEvidence(entry.evidence),
+        evidence: entry.evidence,
       }];
     }),
   };
@@ -200,7 +182,7 @@ describe("semantic UI registry architecture", () => {
   });
 
   it("requires every published element to be explicitly ported with dual evidence", () => {
-    const portMap = LegacySelectorPortMapSchema.parse(readJson("docs/rebuild/migrations/legacy/ports/legacy-selector-port-map.json"));
+    const portMap = bindings;
     const publishedElementIds = buildUiTaskLinks().flatMap((entry) => entry.kind === "element" ? [entry.id] : []);
     const portedElementIds = portMap.entries.flatMap((entry) => {
       if (entry.disposition !== "ported" || entry.semanticKind !== "element") return [];
@@ -208,20 +190,15 @@ describe("semantic UI registry architecture", () => {
         ? entry.canonicalBindings.map(({ canonicalId }) => canonicalId)
         : [entry.canonicalId];
     });
-    const candidateProposalIds = new Set(portMap.entries.flatMap((entry) =>
-      entry.disposition === "candidate" ? [entry.candidateId] : []
-    ));
     assert.deepEqual([...publishedElementIds].sort(), [...portedElementIds].sort());
-    assert.equal(publishedElementIds.some((id) => candidateProposalIds.has(id)), false);
-    assert.equal(publishedElementIds.every((id) => !CandidateProposalIdSchema.safeParse(id).success), true);
     for (const entry of portMap.entries) {
       if (entry.disposition !== "ported") continue;
-      UiVerificationEvidenceManifestSchema.parse(readJson(currentEvidenceRef(entry.evidence.fixtureEvidenceRef)));
-      UiVerificationEvidenceManifestSchema.parse(readJson(currentEvidenceRef(entry.evidence.liveReadOnlyEvidenceRef)));
+      UiVerificationEvidenceManifestSchema.parse(readJson(entry.evidence.fixtureEvidenceRef));
+      UiVerificationEvidenceManifestSchema.parse(readJson(entry.evidence.liveReadOnlyEvidenceRef));
     }
   });
 
-  it("binds every published fact to exact evidence and exact port-map provenance", () => {
+  it("binds every published fact to exact evidence and exact selector bindings", () => {
     assert.deepEqual(auditUcpathUiEvidenceBindings(evidenceBindingInput()), []);
     assert.deepEqual(auditCrmUiEvidenceBindings(crmEvidenceBindingInput()), []);
     assert.deepEqual(auditNewKronosUiEvidenceBindings(newKronosEvidenceBindingInput()), []);

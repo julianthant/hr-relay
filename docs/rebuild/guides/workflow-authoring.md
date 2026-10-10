@@ -49,7 +49,7 @@ metadata; they are not evidence that tests ran. Everything else a workflow needs
 |---|---|
 | `src/workflows/<id>/workflow.ts`: one operator `defineWorkflow({...})` — identity, presentation, typed input/result, `role`, `scenarios`, ordered `[timeline group, entries[]]` tuples with typed binds, and (only when the workflow opts into D355 complete format) occurrence bindings/outcomes in `operationDisplay`; a chunk harness uses `src/workflows/<composition>/steps/<step>/step.ts` | the `WorkflowDescriptor` (`compileWorkflow(definition).descriptor`), its `flow`, `timeline`, node graph, `contractFingerprint` and D355 execution projection |
 | `definition.scenarios` (declared scenario IDs) | contract validation; it does not imply a current test file, executed proof or available rehearsal manifest |
-| `docs/rebuild/migrations/<id>.md` (the dated record) | `src/workflow-kit/validation/generated-build-manifest.ts` (`npm run build:manifest`) and the `ref stores` §2 task catalog (`npm run stores:catalog`) |
+| the workflow's task evidence (the dated record) | `src/workflow-kit/validation/generated-build-manifest.ts` (`npm run build:manifest`) and the `ref stores` §2 task catalog (`npm run stores:catalog`) |
 | a new reusable **task** (contract + implementation in the owning store) only when §2's table says BUILD | checkpoints, replay, retry, recovery (resume / restart), gate parking, the write sequencer's fences, receipts, semantic logs, screenshots, notifications, Archive — inherited by every compiled workflow with no per-workflow glue |
 
 Normal compiled registration supplies `workflowExplorerDeclaration` and its closed
@@ -104,7 +104,7 @@ A workflow that reuses existing tasks and generic surfaces currently authors:
 | # | Path | What it is |
 |---|---|---|
 | 1 | `src/workflows/<id>/workflow.ts` — for a chunk harness, `src/workflows/<composition-id>/steps/<step-key>/step.ts` (`workflowSourcePath`) | one `defineWorkflow(...)` call (§4) |
-| 2 | `docs/rebuild/migrations/<id>.md` | the dated migration record |
+| 2 | the workflow's task evidence | the dated migration record |
 
 The workflow folder holds the browser-safe `workflow.ts`; it may also contain a workflow-owned
 `task-registry.ts` and `tasks/`, which only the backend loads. A `steps/<step>/` sub-folder exists
@@ -139,7 +139,7 @@ current tree; a missing manifest reports unavailable before execution. Do not re
 until a separate operator-led scenario-design task defines its requirements.
 
 **The two closed lists beside the budget.** A legitimately extra file — for example, a migration-doc
-supplement (`docs/rebuild/migrations/separations-legacy-behavior.md`) — is admitted only through a
+supplement (the workflow's task evidence) — is admitted only through a
 cited `ARTIFACT_EXEMPTIONS` entry in the same guard. A generic
 server/dashboard file that must branch on a workflow id under a ratified decision (today D288's
 person-pseudonym fold and backfill, both `separations`) is admitted only

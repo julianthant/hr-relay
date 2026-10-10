@@ -34,7 +34,7 @@ Task names, effects, and schemas are in the source and the generated store catal
 
 ## Read for the affected seam
 
-- Before finalization changes: `docs/rebuild/migrations/separations.md` §4e/§4g and §9.39; the exact fields
+- Before finalization changes: the workflow's task evidence §4e/§4g and §9.39; the exact fields
   and assertions are in `src/models/ui/kuali-separation-finalization.ts`.
 - Before locator, wire, or timing changes: `driver/interpreter.ts` and `driver/ui-registry.ts`
   carry the implementation, verified encodings, and port provenance; consult the migration's dated

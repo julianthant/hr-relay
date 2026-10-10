@@ -49,39 +49,6 @@
       "replacementRequired": true
     },
     {
-      "name": "legacy-capability-disposition",
-      "file": "tests/architecture/tooling/legacy-capability-disposition.test.ts",
-      "status": "active",
-      "owner": "docs/rebuild/reference/guards-and-tests.md",
-      "invariant": "Every D58 legacy capability surface in exact in-repo frozen provenance is classified exactly once by a recursively strict disposition union that has no proxy arm; status is the disposition's projection in both directions; every native/replaced target and every evidence token resolves to a real repo path, a real package.json script, or a frozen legacy path, and a decided entry must cite rebuild proof rather than only that legacy still exists; and no entry stays open on a milestone at or before the completedThrough the runtime itself reports (D184). Finished gates never require an external checkout. Current target/evidence paths are rebound while all frozen legacy identities and owner milestones remain unchanged. Exactly four dispositions record prior operator retirements: the AI advisory route under Brief R and three selector catalog/search tools under operator-trust\u2019s 2026-10-01 amendment. Deciding evidence: evidence-G-green/repairs-after-final/guards/original-catalog.json and architecture.log.",
-      "replacementRequired": true
-    },
-    {
-      "name": "legacy-change-accounting",
-      "file": "tests/architecture/legacy-change-accounting.test.ts",
-      "status": "retired",
-      "owner": "docs/rebuild/reference/guards-and-tests.md",
-      "invariant": "RETIRED by D150 (operator decision, 2026-08-05): the two repositories no longer touch each other in either direction, so there is nothing for an ongoing change-accounting ledger to reconcile. The guard required legacy's src/tests worktree to be CLEAN and every legacy commit since the Phase-0 baseline to be recorded here, which made an unrelated in-flight edit in the production repo a red gate in the rebuild. WHERE THE INVARIANT WENT: the risk it covered was a ported selector or page-state fact going stale after legacy fixed it. That is now covered by LIVE RE-VERIFICATION at each workflow's migration, which the charter already makes mandatory and pre-authorized, and which is strictly stronger \u2014 a selector checked against the live system beats one diffed against legacy's copy of it. `legacy-selector-port-provenance` still pins all 406 keys to a FIXED legacy commit's blobs, so it is unaffected by legacy moving on. config/legacy-change-accounting.json is kept as the frozen historical record of what was reconciled through the split; nothing reads it.",
-      "replacementRequired": true,
-      "retiredBy": "D150"
-    },
-    {
-      "name": "legacy-selector-port-provenance",
-      "file": "tests/architecture/systems/legacy-selector-port-provenance.test.ts",
-      "status": "active",
-      "owner": "docs/rebuild/reference/guards-and-tests.md",
-      "invariant": "All 406 legacy selector keys are represented exactly once with recipe-free search intent, exact clean-commit source/catalog Git provenance frozen in config/ports/legacy-architecture-provenance.json, and a selector definition at the pinned source line; disjoint candidate:<system>/<proposal> ids remain unclassified and cannot collide with any catalog kind, while ported semantic ids require exact fixture/live evidence bindings. Finished gates never require an external checkout.",
-      "replacementRequired": true
-    },
-    {
-      "name": "legacy-test-disposition",
-      "file": "tests/architecture/tooling/legacy-test-disposition.test.ts",
-      "status": "active",
-      "owner": "docs/rebuild/reference/guards-and-tests.md",
-      "invariant": "Every legacy test directory in the exact baseline/current frozen provenance is classified exactly once and later-retirement candidates carry rebuild evidence; malformed or duplicate frozen facts fail loud. Finished gates never require an external checkout. Owner re-pointed 2026-08-20: the design input this named (history/design-inputs/2026-07-27-testing-system-plan.md) is a historical memo, and D91 folded its coverage/sizing/preservation policy into ref guards-and-tests \u00a73.14, which is where the rule now lives.",
-      "replacementRequired": true
-    },
-    {
       "name": "manual-clock-test-only",
       "file": "tests/architecture/tooling/manual-clock-test-only.test.ts",
       "status": "active",
@@ -126,7 +93,7 @@
       "file": "tests/architecture/runtime/operational-isolation.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/guards-and-tests.md",
-      "invariant": "Both runtimes on this machine bind distinct commands, state/artifact roots, ports, process locks, and browser profiles/sessions; exact legacy launch scripts are frozen with commit/blob provenance rather than read from an external checkout, and the rebuild's isolation values come from one exported direct-const defineRuntimeIsolation call that a composition root invokes at top level through unshadowed named imports.",
+      "invariant": "Both runtimes on this machine bind distinct configured commands, state/artifact roots, ports, process locks, and browser profiles/sessions. Rebuild isolation values come from one exported direct-const defineRuntimeIsolation call invoked at top level through unshadowed named imports. Negative controls reject overlapping roots, ports, and browser sessions and invalid authority wiring.",
       "replacementRequired": true
     },
     {
@@ -138,20 +105,11 @@
       "replacementRequired": true
     },
     {
-      "name": "parity-reference-authority",
-      "file": "tests/architecture/parity-reference-authority.test.ts",
-      "status": "retired",
-      "owner": "docs/rebuild/reference/frontend-backend-integration.md",
-      "invariant": "RETIRED 2026-10-02 with tests/parity and its reference corpus. The former compare/freeze policy and screenshot exclusion are historical; they are not current gates or visual acceptance. Exact retirement scope: /Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/backend-layout-polish/implementation/retirement-and-freeze.json.",
-      "replacementRequired": true,
-      "retiredBy": "D363"
-    },
-    {
       "name": "runtime-dependency-coverage",
       "file": "tests/architecture/tooling/runtime-dependency-coverage.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/guards-and-tests.md",
-      "invariant": "D349 (2026-09-25): the nine browser-system ids remain aligned with frozen legacy provenance, while the current runtime advertises only each system's production capability and endpoint check; retired test capabilities and checks stay absent. Historical test URLs remain readable and inert until a settings write removes them, and no defaults are persisted. Vision-provider inventory, secret families, provider-model environment keys, and all remaining runtime capabilities stay closed against the frozen legacy sources and each other in both directions. The registry self-audit runs in the architecture lane and finished gates never require an external checkout. Deciding evidence: clock-config-secrets \u00a7D349 and runtime-dependency-coverage.test.ts.",
+      "invariant": "The runtime registry is closed against its current declarations. Every browser system has a production capability, endpoint check, and credential family; test-only capabilities and endpoint checks are absent. Every runtime capability has a blocking or optional preflight path, and system/provider capability counts match their current identity registries.",
       "replacementRequired": true
     },
     {
@@ -191,7 +149,7 @@
       "file": "tests/architecture/app/test-target-registry.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/guards-and-tests.md",
-      "invariant": "The active shared test-target registry remains recursively frozen and tied to built workflow identities. Runtime target declarations keep exact purpose, owning workflow/kind, availability, public/private input separation, document-reference identity, and resolver refusal behavior; no Kuali document number or real EID enters public configuration, and resolvers never guess across workflow arms. The five T1b manifest/case consistency checks were retired 2026-10-02 because the scenario suite and manifest loader were removed. Exact case retirement: /Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/backend-layout-polish/implementation/test-target-guard-retirement.json.",
+      "invariant": "The active shared test-target registry remains recursively frozen and tied to built workflow identities. Runtime target declarations keep exact purpose, owning workflow/kind, availability, public/private input separation, document-reference identity, and resolver refusal behavior; no Kuali document number or real EID enters public configuration, and resolvers never guess across workflow arms. The five T1b manifest/case consistency checks were retired 2026-10-02 because the scenario suite and manifest loader were removed. Exact case retirement: task evidence",
       "replacementRequired": true
     },
     {
@@ -201,16 +159,6 @@
       "owner": "docs/rebuild/reference/guards-and-tests.md",
       "invariant": "D341: unit-only fixtures/helpers are imported by tests/unit alone; cross-tier callers use their shared dashboard, architecture, trust or other consumer homes; shared fixtures/helpers have no private-input or runtime effects at import. Exact recorded credential factory symbols remain deferred function-body references to deferred producer functions; preflight chromium references only install launch refusal spies in its executor. Eager call/new/alias/namespace/unlisted-symbol/IIFE/callback negative controls reject capabilities at import. The exact tests/process-fixtures child-entrypoint set has recorded pathname consumers and cannot be module-imported (injected-import control). config/test-data.json, its example and every declared shared file are git-visible inside the repository while config/test-data.local.json is ignored; tests/support/fixtures/README.md names every shared module. Current recorded resource ownership is a closed census of 15 harnesses and 17 deferred named imports, with five child entrypoints and six exact consumers including the parity session helper. Every admitted SQLite constructor is deferred; eager calls and unrecorded sibling imports refuse. Canonical executable child-path bindings, private executable references, and same-tier architecture imports have positive and negative controls. Deciding evidence: evidence-G-green/repairs-after-final/guards/test-data-corrected.log (10/10), test-data-repaired-release.json and scoped lint.",
       "replacementRequired": true
-    },
-    {
-      "name": "ai-advisory-no-authority",
-      "file": "tests/architecture/processing/ai-advisory-no-authority.test.ts",
-      "status": "retired",
-      "retiredBy": "brief-R",
-      "owner": "docs/rebuild/reference/operator-trust.md",
-      "invariant": "D178 (ref operator-trust \u00a74.4): optional AI assistance reads the evidence and never becomes it. ZERO AUTHORITY EDGE \u2014 the advisory closure's VALUE-import graph (domain/trust/advisory, domain/dashboard/advisory, backend/logs/trust/advisory, backend/processing/providers/gemini-advisory, backend/runs/dashboard/queries/advisory) may not reach any authority writer (the backend/storage/sqlite repositories, the command kernel, terminal authorization, the write sequencer/recovery, the receipt writer, run-failure, the diagnostic/knowledge/notification services, the ledger, the command services, either composition root, or control), and no command-family module (domain/commands, backend/runs/command-kernel, backend/runs/dashboard/commands/**) may import an advisory module \u2014 so an advisory value cannot cross into a command payload from either direction. A type-only import of a record SHAPE is deliberately not a path to that record's writer. The ONE permitted durable neighbour is D112 provider admission, at the composition root only. DECLARED REDACTION \u2014 every leaf a maximal FailureRecord presents carries a declaration and every declaration is exercised by it (both directions), no declaration pairs a classification with a transform redaction.ts forbids, only `safe-diagnostic` may leave as a VALUE, and an undeclared leaf refuses BY NAME rather than being dropped. ADVICE SHAPE \u2014 the closed advice schema exposes exactly headline/explanation/checks/confidence and strictly refuses retryability, a remediation kind, a run reference or a command. ROUTE \u2014 the advisory is its own POST /api/v1/runs/:runId/advisory, is never a run-detail section (a section would spend a provider budget on panel open), and no command-service module reaches the advisory query. Every arm runs against a violating fixture as well as the real subject.",
-      "replacementRequired": false,
-      "reason": "Brief R removes the advisory route, model, query and all AI provider adapters. Deciding evidence: evidence-R-removals/resume/executor/removed-tests.json; historical identities parse only and active admission rejects ai.advisory."
     },
     {
       "name": "archive-invariants",
@@ -237,16 +185,6 @@
       "replacementRequired": true
     },
     {
-      "name": "authority-target-no-fallback",
-      "file": "tests/architecture/authority-target-no-fallback.test.ts",
-      "status": "retired",
-      "owner": "docs/rebuild/reference/dashboard-surfaces.md",
-      "invariant": "RETIRED by D188 (2j, 2026-08-09): the invariant is held, and held harder, by `storage-recovery`. WHERE THE INVARIANT WENT: `AuthorityDatabase.open` refuses an existing-but-empty file by name rather than replacing it, `inspectExistingReadOnly` refuses a schema that is not exactly the supported version, and `storage-recovery` executes the whole family \u2014 corrupt, truncated, newer-schema, foreign-key-invalid, invariant-invalid and record-invalid files all open DEGRADED READ-ONLY with a named cause and zero bytes written. D181 added the restore half over a real-shaped copied database. A separate guard could only re-assert what those arms already execute against real SQLite files.",
-      "replacementRequired": true,
-      "retiredBy": "D188",
-      "replacedBy": "storage-recovery"
-    },
-    {
       "name": "bounded-task-deadline",
       "file": "tests/architecture/runtime/bounded-task-deadline.test.ts",
       "status": "active",
@@ -261,34 +199,6 @@
       "owner": "docs/rebuild/reference/workflow-model.md",
       "invariant": "Every registered canonical-input schema is transform-free anywhere in its graph and round-trips its ingress samples; a corrupted snapshot fails loud instead of being re-derived from ingress; and a snapshot only crosses schema hashes through a checked-in, factory-sealed, acyclic migration chain.",
       "replacementRequired": true
-    },
-    {
-      "name": "capture-durability-and-scope",
-      "file": "tests/architecture/capture-durability-and-scope.test.ts",
-      "status": "retired",
-      "owner": "docs/rebuild/reference/data-intake-and-edit-data.md",
-      "invariant": "RETIRED by D294 (2026-08-31): the mobile document-capture product, including its page, ingress routes, command family, session authority and configuration, was removed. Its retirement boundary is now held by `phone-capture-retired`; diagnostic bundle screenshots, run-detail captures and Archive resources remain separately supported evidence surfaces.",
-      "replacementRequired": true,
-      "retiredBy": "D294",
-      "replacedBy": "phone-capture-retired"
-    },
-    {
-      "name": "phone-capture-retired",
-      "file": "tests/architecture/dashboard/phone-capture-retired.test.ts",
-      "status": "active",
-      "owner": "docs/rebuild/reference/data-intake-and-edit-data.md; docs/rebuild/reference/guards-and-tests.md",
-      "invariant": "D294: no retired mobile document-capture page, phone module, /api/v1/capture route, capture command/wire, session repository, or capture configuration may return. The real tree and a violating fixture are checked; diagnostic bundle screenshots, run-detail captures and Archive resource verification remain required evidence surfaces.",
-      "replacementRequired": true
-    },
-    {
-      "name": "commit-routes-through-mutation",
-      "file": "tests/architecture/commit-routes-through-mutation.test.ts",
-      "status": "retired",
-      "owner": "docs/rebuild/reference/write-safety.md",
-      "invariant": "RETIRED by D188 (2j, 2026-08-09): held by `task-driver-boundary`, which refuses a `commit` implementation outside a store driver owner that validates its capability AND refuses premature capability forgery, both against a checked-in violating fixture. WHERE THE INVARIANT WENT: the capability itself became runtime-unforgeable at D127 \u2014 a module-private WeakSet in `src/backend/runtime/writes/write-sequencer.ts` is the sole mint and drivers verify with `assertSequencerMintedMutationCapability` \u2014 so routing is enforced by construction and the guard only has to keep the allowlist honest.",
-      "replacementRequired": true,
-      "retiredBy": "D188",
-      "replacedBy": "task-driver-boundary"
     },
     {
       "name": "control-command-single-path",
@@ -321,26 +231,6 @@
       "owner": "docs/rebuild/reference/execution-and-sessions.md",
       "invariant": "Drivers exist only inside WorkerSessionManager.withDriver's callback lease: withDriver is consumed only by the graph interpreter, the browser-session factory's open() is invoked only inside worker-sessions, and only the worker loop constructs a WorkerSessionManager ownership scope. Only a canonical factory with canonical preflight and scope types may delegate through the closed four-statement method: scope refusal, prepare, assertReady, then one factory.open. Extra, early, forged and shadowed delegation remains forbidden. Evidence: accepted driver-lease.log, six passing cases.",
       "replacementRequired": true
-    },
-    {
-      "name": "dry-run-composition-submit-free",
-      "file": "tests/architecture/dry-run-composition-submit-free.test.ts",
-      "status": "retired",
-      "owner": "docs/rebuild/reference/write-safety.md",
-      "invariant": "RETIRED by D188 (2j, 2026-08-09): held by `write-safety-contract` plus the executable scenario `separations-kuali-finalization/dry-run-preview`, which runs the REAL write sequencer over a REAL authority database and asserts zero write-authority/output deltas \u2014 zero `write_intents`, zero `write_attempts`, and zero `durable_outbox` rows \u2014 rather than inspecting a composition for the absence of a call. Ordinary upstream task `run_checkpoints` still exist in a dry run and are required to reach the preview boundary; they are not write evidence. WHERE THE INVARIANT WENT: `executeDryRun` is a separate arm and `executeTransaction` with `dryRun` refuses loudly, so a submit-free dry run is a property of the kernel's shape, and the scenario is what proves it on rows.",
-      "replacementRequired": true,
-      "retiredBy": "D188",
-      "replacedBy": "write-safety-contract"
-    },
-    {
-      "name": "edit-data-field-policy",
-      "file": "tests/architecture/edit-data-field-policy.test.ts",
-      "status": "retired",
-      "owner": "docs/rebuild/reference/data-intake-and-edit-data.md \u00a76; docs/rebuild/reference/workflow-model.md \u00a75.6",
-      "invariant": "D334 retires in-place checkpoint saves. Descriptor/source/version/provenance checks now protect copied values in a new source-bound start plan; rerun-prefill-boundary carries the surviving negative controls.",
-      "replacementRequired": true,
-      "retiredBy": "D334",
-      "replacedBy": "rerun-prefill-boundary"
     },
     {
       "name": "evidence-receipt",
@@ -383,16 +273,6 @@
       "replacementRequired": true
     },
     {
-      "name": "legacy-preservation",
-      "file": "tests/architecture/legacy-preservation.test.ts",
-      "status": "retired",
-      "retiredBy": "D93",
-      "replacedBy": null,
-      "owner": "docs/rebuild/reference/guards-and-tests.md",
-      "invariant": "D93: the path->whole-file-SHA preservation manifest existed to decide which legacy files the same-tree scan treated strictly. With the scan retired the manifest has no consumer; legacy files are governed by the legacy repo's own gates, and its baseline file set is now read directly from git by legacy-change-accounting.",
-      "replacementRequired": true
-    },
-    {
       "name": "multi-worker-overlap",
       "file": "tests/architecture/runtime/multi-worker-overlap.test.ts",
       "status": "active",
@@ -405,7 +285,7 @@
       "file": "tests/architecture/storage/no-lifecycle-sql-outside-the-adapter.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/guards-and-tests.md; docs/rebuild/reference/dashboard-surfaces.md",
-      "invariant": "D334/D335 lifecycle mutations stay inside the SQLite adapter and run service. Checked-in SQL, aliased mutator and runs_view reader violations prove the boundary; D332/D336 admits only the exact stopped ordinal UPDATE in settings-database-upgrade.ts, whose migration-only import closure is independently guarded. Tombstone rollback/trigger proofs and negative fixtures bind this exception; source-bound plans create fresh service-owned runs. SQL mutation fixtures cover workflow_runs, its historical tasks name, and workflow_workers. The worker-name integration negative control failed before adding the renamed worker table to the SQL matcher. The operation integration retains the complete AST/file scan and final selected-overload resolution, using normalized callable declarations only to skip unrelated call resolution. Negative controls include renamed-property, indexed, overloaded, optional, generic and union aliases, plus an allowed safe selected overload; each test-file execution owns its compiler and type cache. T/P7 admits only the exact guarded transaction-section UPDATE inside freezeConvertedArchiveTransactions in the stopped timeline converter. Full integration coverage exposed this missing exception; controls reject a different owner/function, removal of the NULL guard, and original archive-body mutation. Original archive JSON/digest and immutable-trigger proofs remain required. L combination verification also admits only the exact UPDATE in convertRunCompletions in completion-conversion.ts; the validated stopped conversion remains isolated by authority-upgrade-adapters-isolated. A positive control and wrong-path, wrong-function and changed-SQL negative controls bind this exception. D332.9 / 2.6.9 removes the obsolete stopped ordinal backfill exception with its deleted adapter; authority-upgrade-adapters-retired now guards the supported recovery boundary. All other lifecycle SQL/alias/callable and exact archive/completion conversion controls remain. Production and disjoint exported virtual negative modules use one immutable compiler and completed census per test-file execution. Production filters only the exact virtual module prefix; SQL, aliased mutator and runs_view controls retain the full shared scan and unchanged deadline. Deciding evidence: evidence-G-green/repairs-after-final/guards/architecture.log (all four cases pass); coverage timing remains a separate required check.",
+      "invariant": "D334/D335 lifecycle mutations stay inside the SQLite adapter and run service. Checked-in SQL, aliased mutator and runs_view reader violations prove the boundary; D332/D336 admits only the exact stopped ordinal UPDATE in settings-database-upgrade.ts, whose migration-only import closure is independently guarded. Tombstone rollback/trigger proofs and negative fixtures bind this exception; source-bound plans create fresh service-owned runs. SQL mutation fixtures cover workflow_runs, its historical tasks name, and workflow_workers. The worker-name integration negative control failed before adding the renamed worker table to the SQL matcher. The operation integration retains the complete AST/file scan and final selected-overload resolution, using normalized callable declarations only to skip unrelated call resolution. Negative controls include renamed-property, indexed, overloaded, optional, generic and union aliases, plus an allowed safe selected overload; each test-file execution owns its compiler and type cache. T/P7 admits only the exact guarded transaction-section UPDATE inside freezeConvertedArchiveTransactions in the stopped timeline converter. Full integration coverage exposed this missing exception; controls reject a different owner/function, removal of the NULL guard, and original archive-body mutation. Original archive JSON/digest and immutable-trigger proofs remain required. L combination verification also admits only the exact UPDATE in convertRunCompletions in completion-conversion.ts; the validated stopped conversion remains isolated by authority-upgrade-adapters-isolated. A positive control and wrong-path, wrong-function and changed-SQL negative controls bind this exception. D332.9 / 2.6. All other lifecycle SQL/alias/callable and exact archive/completion conversion controls remain. Production and disjoint exported virtual negative modules use one immutable compiler and completed census per test-file execution. Production filters only the exact virtual module prefix; SQL, aliased mutator and runs_view controls retain the full shared scan and unchanged deadline. Deciding evidence: evidence-G-green/repairs-after-final/guards/architecture.log (all four cases pass); coverage timing remains a separate required check.",
       "replacementRequired": true,
       "activationMilestone": "phase-1.6-task-4"
     },
@@ -464,7 +344,7 @@
       "file": "tests/architecture/app/preflight-coverage.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/operator-trust.md",
-      "invariant": "Executes all declared preflight fault manifests through createRuntimePreflightRunners and the strict report authority, expanding registry dependencies into every secret, endpoint route, and feature-provider alternative. Healthy controls, injected failures, explicit restoration, report digests, terminal/evidence/failure expectations, zero browser/process launches and external fetches, and unchanged authority bytes are checked. Missing/extra/duplicate executions, mismatched evidence, unknown scenarios, and false-healthy detectors fail. Admission effects are covered by the assigned production-consumer tests. Activated by 3.1.11.1; evidence: hr-automation-rebuild-evidence/3.1.11.1-setup-2026-09-19/implementation/g1-architecture-final.log.",
+      "invariant": "Executes all declared preflight fault manifests through createRuntimePreflightRunners and the strict report authority, expanding registry dependencies into every secret, endpoint route, and feature-provider alternative. Healthy controls, injected failures, explicit restoration, report digests, terminal/evidence/failure expectations, zero browser/process launches and external fetches, and unchanged authority bytes are checked. Missing/extra/duplicate executions, mismatched evidence, unknown scenarios, and false-healthy detectors fail. Admission effects are covered by the assigned production-consumer tests. Activated by 3.1.11.1; evidence: task evidence",
       "replacementRequired": true
     },
     {
@@ -476,16 +356,6 @@
       "replacementRequired": true
     },
     {
-      "name": "rebuild-gates",
-      "file": "tests/architecture/rebuild-gates.test.ts",
-      "status": "retired",
-      "retiredBy": "D93",
-      "replacedBy": "gate-coverage",
-      "owner": "docs/rebuild/reference/guards-and-tests.md",
-      "invariant": "D93: the absent-tree / present-but-empty temp_src activation dance retires with temp_src. This repo's roots exist from its first commit; gate-coverage pins the plain script family and guard-manifest still proves every active arm resolves a non-empty file set.",
-      "replacementRequired": true
-    },
-    {
       "name": "recovery-negative-proof-settlement",
       "file": "tests/architecture/runs/recovery-negative-proof-settlement.test.ts",
       "status": "active",
@@ -494,21 +364,11 @@
       "replacementRequired": true
     },
     {
-      "name": "runtime-isolation",
-      "file": "tests/architecture/runtime-isolation.test.ts",
-      "status": "retired",
-      "retiredBy": "D93",
-      "replacedBy": "operational-isolation",
-      "owner": "docs/rebuild/reference/guards-and-tests.md",
-      "invariant": "D93: two repositories share no module graph, so the cross-tree bridge scan proves an impossibility. The configuration half \u2014 distinct commands, state/artifact roots, ports, process locks, and browser profiles on one machine \u2014 survives in operational-isolation.",
-      "replacementRequired": true
-    },
-    {
       "name": "scenario-coverage",
       "file": "tests/architecture/workflow-kit/scenario-coverage.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/workflow-model.md",
-      "invariant": "The retained pure workflow-kit audit derives graph coverage points from the node tuple and keeps synthetic-input checks for stale paths, typo/orphan/unexecuted claims, and malformed synthetic corpus listings. The five scenario-corpus/manifest cases that required tests/scenario/ were retired 2026-10-02; this guard no longer claims current executable scenario-corpus coverage. Retained negative-case map: /Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/backend-layout-polish/implementation/scenario-guard-retirement.json.",
+      "invariant": "The retained pure workflow-kit audit derives graph coverage points from the node tuple and keeps synthetic-input checks for stale paths, typo/orphan/unexecuted claims, and malformed synthetic corpus listings. The five scenario-corpus/manifest cases that required tests/scenario/ were retired 2026-10-02; this guard no longer claims current executable scenario-corpus coverage. Retained negative-case map: task evidence",
       "replacementRequired": true
     },
     {
@@ -516,7 +376,7 @@
       "file": "tests/architecture/systems/semantic-ui-registry.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/operator-trust.md; docs/rebuild/reference/guards-and-tests.md",
-      "invariant": "Every server-private semantic UI definition has a globally unique classified id, collision-free search intent, resolved same-system/same-screen acyclic dependencies, non-vacuous globally unique verification scenarios, exact dual sanitized evidence-to-screen/scenario/date/port-row bindings, and byte-fresh recipe-free generated catalogs; disjoint legacy candidate ids cannot enter any runtime catalog kind. The guarded projection set is DERIVED, never enumerated: it equals the set of stores shipping a `driver/ui-registry.ts` in both directions (no unguarded publisher, no orphan UI-CATALOG.md), so a newly added store's markdown cannot escape freshness enforcement the way `src/stores/kuali/UI-CATALOG.md` did. Every derived projection \u2014 the JSON and each per-system markdown \u2014 carries stale and missing negative controls through an injected reader.",
+      "invariant": "Every server-private semantic UI definition has a globally unique classified id, collision-free search intent, resolved same-system/same-screen acyclic dependencies, non-vacuous globally unique verification scenarios, exact dual sanitized evidence-to-screen/scenario/date/port-row bindings, and byte-fresh recipe-free generated catalogs. The guarded projection set is DERIVED, never enumerated: it equals the set of stores shipping a `driver/ui-registry.ts` in both directions (no unguarded publisher, no orphan UI-CATALOG.md), so a newly added store's markdown cannot escape freshness enforcement the way `src/stores/kuali/UI-CATALOG.md` did. Every derived projection \u2014 the JSON and each per-system markdown \u2014 carries stale and missing negative controls through an injected reader.",
       "replacementRequired": true
     },
     {
@@ -526,16 +386,6 @@
       "owner": "docs/rebuild/reference/execution-and-sessions.md",
       "invariant": "Session login is single-flight within one worker/system session creation (ref execution-and-sessions \u00a74): store.session.login is invoked only inside the worker session manager, and two concurrent leases for one system produce exactly one session open and one authentication.",
       "replacementRequired": true
-    },
-    {
-      "name": "sleep-budget",
-      "file": "tests/architecture/sleep-budget.test.ts",
-      "status": "retired",
-      "owner": "docs/rebuild/reference/execution-and-sessions.md",
-      "invariant": "RETIRED by D188 (2j, 2026-08-09): ref execution-and-sessions \u00a77's row reads \"wait-for-timeout ratchet + span sleep budget\", and both halves are now enforced elsewhere. WHERE THE INVARIANT WENT: the `wait-for-timeout-allowlist` ratchet bans `waitForTimeout` outright, and every wait in the kernel goes through the injected `MonotonicDeadlineScheduler` with `bounded-task-deadline` holding the per-invocation bound \u2014 so there is no authored sleep for a budget to measure. D182's soak runs 3 workers x 30 runs with a manual clock and a manual scheduler and never advances a real timer, which is the same fact executed.",
-      "replacementRequired": true,
-      "retiredBy": "D188",
-      "replacedBy": "bounded-task-deadline"
     },
     {
       "name": "storage-recovery",
@@ -574,7 +424,7 @@
       "file": "tests/architecture/workflow-kit/task-driver-boundary.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/operator-trust.md; docs/rebuild/reference/guards-and-tests.md",
-      "invariant": "AST and transitive import-graph audits confine static/dynamic Playwright access, raw browser types, locator/frame/getBy/newPage/evaluate/$ operations, and private driver/session ownership to the three raw-browser owner families \u2014 per-system driver/session modules, `src/backend/systems/browser-shared/**` adapters, and the `src/backend/runtime/browser/**` worker session factory that owns concrete browser creation; task/workflow code consumes typed semantic ids and proofs and may reach none of these families transitively. MutationCapability may be conjured by `as`/`satisfies` nowhere outside `src/workflow-kit/mutation-capability.ts`, `mintMutationCapability` has exactly one permitted caller (`src/backend/runtime/writes/write-sequencer.ts`), and browser `commit` implementations live only inside a `src/backend/systems/<system>/driver/**` owner that validates its capability before clicking (D122). Semantic classification permits non-callable locator records only when their declaration resolves to RuntimeLocator in src/backend/storage/admission/installation.ts, including imported aliases, admission getters, lease fields and returned context shorthand. A durable archive callback must have the actual contextual and enclosing CommandApplication type from src/backend/runs/commands/command-application.ts and directly call the actual publishManualArchive from src/backend/runs/lifecycle/archive-terminal-runs.ts with no any or browser expressions. TSX parsing retains embedded browser calls; spoofed names, structural locator shapes, unresolved/unknown/any/callable locators, extracted/computed raw methods and unsafe archive closures fail negative controls. Deciding evidence: boundary-guard-closure-boundary-tests.log and boundary-guard-closure-preflight-tests.log under hr-automation-rebuild-evidence/dashboard-launch-2026-09-29/. Attribution binding requires canonical BrowserAction types, canonical factory provenance and a closed attribution-only body. Spoofed types, any, extra effects and invalid return shapes refuse. Evidence: accepted action-binder-status controls, 12 passing cases.",
+      "invariant": "AST and transitive import-graph audits confine static/dynamic Playwright access, raw browser types, locator/frame/getBy/newPage/evaluate/$ operations, and private driver/session ownership to the three raw-browser owner families \u2014 per-system driver/session modules, `src/backend/systems/browser-shared/**` adapters, and the `src/backend/runtime/browser/**` worker session factory that owns concrete browser creation; task/workflow code consumes typed semantic ids and proofs and may reach none of these families transitively. MutationCapability may be conjured by `as`/`satisfies` nowhere outside `src/workflow-kit/mutation-capability.ts`, `mintMutationCapability` has exactly one permitted caller (`src/backend/runtime/writes/write-sequencer.ts`), and browser `commit` implementations live only inside a `src/backend/systems/<system>/driver/**` owner that validates its capability before clicking (D122). Semantic classification permits non-callable locator records only when their declaration resolves to RuntimeLocator in src/backend/storage/admission/installation.ts, including imported aliases, admission getters, lease fields and returned context shorthand. A durable archive callback must have the actual contextual and enclosing CommandApplication type from src/backend/runs/commands/command-application.ts and directly call the actual publishManualArchive from src/backend/runs/lifecycle/archive-terminal-runs.ts with no any or browser expressions. TSX parsing retains embedded browser calls; spoofed names, structural locator shapes, unresolved/unknown/any/callable locators, extracted/computed raw methods and unsafe archive closures fail negative controls. Deciding evidence: boundary-guard-closure-boundary-tests.log and boundary-guard-closure-preflight-tests.log under task evidence Attribution binding requires canonical BrowserAction types, canonical factory provenance and a closed attribution-only body. Spoofed types, any, extra effects and invalid return shapes refuse. Evidence: accepted action-binder-status controls, 12 passing cases.",
       "replacementRequired": true
     },
     {
@@ -622,7 +472,7 @@
       "file": "tests/architecture/dashboard/wire-connectivity.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/frontend-backend-integration.md",
-      "invariant": "Ref frontend-backend-integration \u00a78.8 (\"every advertised section has a query\"), generalised to the whole wire and enforced in BOTH directions against config/pending-wire-bindings.json \u2014 D107's pending-impl-bindings pattern one layer up. FOUR joints: (1) every literal arm of RunDetailSectionResponseSchema, read by walking the zod union at RUNTIME rather than by regex, is either returnable by availableSections \u2014 proven by CALLING it over RunRecordSchema-parsed records covering every RunStateSchema member and every RunOutcomeSchema member, with and without the optional trust seam \u2014 or declared in the manifest; (2) every ActionCommandKeySchema verb is accepted by CommandRequestSchema, every kernel verb is either serveable as an action or named in a closed KERNEL_ONLY_COMMANDS table with the reason it targets something other than a run row, and \u2014 the third direction, added by D234 \u2014 every serveable verb is one some PRODUCER emits, read by CALLING queueRowActions over every QueueStatusSchema member in both member and non-member shapes and by scanning the comment-stripped descriptor literals of src/backend/runs/dashboard/queries/run-detail.ts, so a key the vocabulary names and nothing projects (unhide, for a whole phase) FAILS; (3) every /api or /events path referenced under src/dashboard/client/** and src/dashboard/phone/capture-client.ts resolves to a route app.<method>(\"\u2026\") registers in src/backend/transports/dashboard/routes/api.ts, with interpolations reduced to opaque segments and query/fragment dropped. The reverse arms are what keep the manifest honest (D184/D188): a declared arm that has become reachable, a declared arm the schema no longer carries, a declared route a client now calls, and a declared route nobody serves each FAIL. The lifecycle sweep asserts it covered every RunStateSchema member, so a new state fails here until somebody decides what it serves. Negative controls run through the same entry points: a synthesized orphan arm, a verb the kernel must never accept (force-done), a key named only in a comment (which must not count as projected), the retired unhide and the never-existing force-done both absent from the projected set, an unserved client path, and four route-matcher over-match cases. (4) Every WIRE MIRROR of a durable vocabulary is member-for-member identical to its original, compared through z.toJSONSchema rather than a hand-listed member set \u2014 src/domain/dashboard/run-detail.ts re-declares ref write-safety's parked-write codes and SubjectEvidenceSchema, and src/domain/dashboard/projection.ts re-declares RunPrioritySchema, because those originals reach node:crypto or the checkpoint closure and these modules are in the dashboard bundle's reach (ref frontend-backend-integration \u00a78.13). A mirror is the one joint with no import to keep it honest, so a member added to either side, a regex loosened on one, or a branded id swapped for a bare string has to fail here or nowhere. Batch presentation controls target a batch instead of a run row; workflow-batches parity proves their command envelope. V serves retained digest downloads through an observed native anchor from the real SavedArchiveReport and strict client; missing and foreign native-sink negative controls remain required. Evidence: wire-connectivity.test.ts and helpers/archive-browser-route-references.ts. Task 3.1.12 guard-only amendment preserves runtime behavior while binding the capture fixture to actual day rows and current shell/preflight requests, observing only native retained-attachment downloads, and removing the stale consumed rerun-values declaration. Retained retry/restart and archive command keys remain schema- and kernel-accepted and explicitly unprojected; the exact three-key classification fails if removed or directly projected. Archive has no dashboard action opportunity. Resume 3 deciding evidence: convergence-20261007/evidence-2b-frontend-resume3/production/report.md. All native missing/foreign sink and orphan-route negative controls remain. Deciding evidence: final-guards.json.",
+      "invariant": "Ref frontend-backend-integration \u00a78.8 (\"every advertised section has a query\"), generalised to the whole wire and enforced in BOTH directions against tests/architecture/dashboard/fixtures/pending-wire-bindings.json \u2014 D107's pending-impl-bindings pattern one layer up. FOUR joints: (1) every literal arm of RunDetailSectionResponseSchema, read by walking the zod union at RUNTIME rather than by regex, is either returnable by availableSections \u2014 proven by CALLING it over RunRecordSchema-parsed records covering every RunStateSchema member and every RunOutcomeSchema member, with and without the optional trust seam \u2014 or declared in the manifest; (2) every ActionCommandKeySchema verb is accepted by CommandRequestSchema, every kernel verb is either serveable as an action or named in a closed KERNEL_ONLY_COMMANDS table with the reason it targets something other than a run row, and \u2014 the third direction, added by D234 \u2014 every serveable verb is one some PRODUCER emits, read by CALLING queueRowActions over every QueueStatusSchema member in both member and non-member shapes and by scanning the comment-stripped descriptor literals of src/backend/runs/dashboard/queries/run-detail.ts, so a key the vocabulary names and nothing projects (unhide, for a whole phase) FAILS; (3) every /api or /events path referenced under src/dashboard/client/** and src/dashboard/phone/capture-client.ts resolves to a route app.<method>(\"\u2026\") registers in src/backend/transports/dashboard/routes/api.ts, with interpolations reduced to opaque segments and query/fragment dropped. The reverse arms are what keep the manifest honest (D184/D188): a declared arm that has become reachable, a declared arm the schema no longer carries, a declared route a client now calls, and a declared route nobody serves each FAIL. The lifecycle sweep asserts it covered every RunStateSchema member, so a new state fails here until somebody decides what it serves. Negative controls run through the same entry points: a synthesized orphan arm, a verb the kernel must never accept (force-done), a key named only in a comment (which must not count as projected), the retired unhide and the never-existing force-done both absent from the projected set, an unserved client path, and four route-matcher over-match cases. (4) Every WIRE MIRROR of a durable vocabulary is member-for-member identical to its original, compared through z.toJSONSchema rather than a hand-listed member set \u2014 src/domain/dashboard/run-detail.ts re-declares ref write-safety's parked-write codes and SubjectEvidenceSchema, and src/domain/dashboard/projection.ts re-declares RunPrioritySchema, because those originals reach node:crypto or the checkpoint closure and these modules are in the dashboard bundle's reach (ref frontend-backend-integration \u00a78.13). A mirror is the one joint with no import to keep it honest, so a member added to either side, a regex loosened on one, or a branded id swapped for a bare string has to fail here or nowhere. Batch presentation controls target a batch instead of a run row; workflow-batches parity proves their command envelope. V serves retained digest downloads through an observed native anchor from the real SavedArchiveReport and strict client; missing and foreign native-sink negative controls remain required. Evidence: wire-connectivity.test.ts and helpers/archive-browser-route-references.ts. Task 3.1.12 guard-only amendment preserves runtime behavior while binding the capture fixture to actual day rows and current shell/preflight requests, observing only native retained-attachment downloads, and removing the stale consumed rerun-values declaration. Retained retry/restart and archive command keys remain schema- and kernel-accepted and explicitly unprojected; the exact three-key classification fails if removed or directly projected. Archive has no dashboard action opportunity. Resume 3 deciding evidence: convergence-20261007/evidence-2b-frontend-resume3/production/report.md. All native missing/foreign sink and orphan-route negative controls remain. Deciding evidence: final-guards.json.",
       "replacementRequired": true
     },
     {
@@ -693,7 +543,7 @@
       "name": "dashboard-presentation-inventory",
       "file": "tests/architecture/tooling/dashboard-presentation-inventory.test.ts",
       "status": "active",
-      "owner": "/Users/julianhein/Projects/hr-automation-rebuild-evidence/convergence-20261007/brief-0b-visual-baseline.md",
+      "owner": "task evidence",
       "invariant": "The frozen set is every .tsx under src/dashboard/surfaces/** and src/dashboard/ds/**, all stylesheet files under src/dashboard/**, every supported token source in src/dashboard/ds/theme/** except its runtime theme.ts, and token-named design-token files in the supported source formats. The current exact set is stored in tests/architecture/tooling/fixtures/dashboard-presentation-file-set.json (96 components, 12 stylesheets, and src/dashboard/ds/theme/tokens.ts; 109 files total). Added or removed presentation paths fail with an actionable message requiring operator approval before adding or removing a component and citing the visual-baseline brief; content edits to frozen paths remain legal.",
       "replacementRequired": true
     },
@@ -720,7 +570,7 @@
       "status": "active",
       "owner": "docs/rebuild/reference/workflow-model.md",
       "milestone": "3-workflow-migration",
-      "invariant": "D312/D316/D317 (ref workflow-model \u00a7\u00a71.6, 1.6.1, 2026-09-02): the retired authoring path stays dead and the simplicity budget has no escape hatch. `workflow-layout` owns the FOLDER shape; this guard owns what an author WRITES. All four arms are ONE pure function `auditWorkflowAuthoringBudget(workflows, tree, three closed allowlists)` that never touches the filesystem, and `collectWorkflowAuthoringBudgetTree` feeds it the repository's tree or a fixture's miniature one through the SAME `gitVisibleFilesIn` lister \u2014 a fixture root is `git init`-ed rather than given a second walker, so \"a repository-visible file\" has one definition. (a) RETIRED NAMES: every `.ts`/`.tsx` under `src/`, `tests/` and `scripts/` \u2014 except this guard, whose fixtures must be able to spell the forbidden words, and `tests/architecture/helpers/` \u2014 is refused by file and line for `WorkflowRecipe`, `defineWorkflowRecipe`, `compileWorkflowRecipe`, the `workflow-recipe` specifier/basename and `defineWorkflowStepNodeFactory`, and refused for being named `recipe.ts`. Those are token scans BY DESIGN (none of those names may appear even in prose in a source file); inside the authoring seam ONLY \u2014 `src/base/workflow-definition.ts`, `src/base/workflow.ts`, `src/backend/app/registries/workflow-registry.ts`, `src/workflows/`, `src/domain/workflow/` \u2014 the bare identifier `recipe` is refused from the TypeScript AST, identifiers never comment text, because `separations/kronos-timecard/workflow.ts` legitimately says \"login recipe\" in a comment and `defineVerifiedLoginRecipe` under `src/infra/browser/` is a different seam; both live negatives are asserted present in the scan so the check cannot quietly become a text scan. (b) HAND-AUTHORED PATH BESIDE `workflow.ts`: under `src/workflows/` any call to `defineWorkflowDescriptor`, `flow`, `defineWorkflowStepNodeFactory` or `composeWorkflowModule`, and any import from `src/base/flow.js`, is refused \u2014 the flow builder is compiler-internal since D311 and stores are composed only at the composition root `src/backend/app/registries/workflow-registry.ts`, which is deliberately outside this arm's root \u2014 and every `workflow.ts` under that root holds exactly ONE `defineWorkflow(` call, with `defineWorkflowStep(` and `defineStepEntries(` allowed beside it as D315's step identities. AST, never text, so a comment mentioning `flow(` passes. (c) WORKFLOW-KEYED GENERIC ADAPTER (D316): under `src/dashboard/`, `src/backend/app/`, `src/backend/transports/`, `src/backend/runtime/`, `src/backend/logs/` and `src/services/` (tests excluded) any string literal EQUAL to a registered workflow id is refused, naming its syntactic context \u2014 an equality comparison, a case label, a dispatch-table key, a workflow-keyed call argument \u2014 unless it is one of nine reviewed exact `(file, workflow id)` pairs, each citing the decision the site's own comments name: `src/backend/app/dry-run-scenario/compose.ts` and `src/backend/app/dry-run-scenario/manifests.ts` \u00d7 (`separations`, `separations-kuali-finalization`, `person-lookup`) for D318 / ref guards-and-tests \u00a710.9's one T1b manifest-loader and target-resolver registration surface; `src/backend/app/composition/dashboard/compose.ts` / `separations` for D289's receipt-comparison registry sealed against the current separations descriptor; and `src/backend/runs/dashboard/projectors/run-queue-projection.ts` / `separations` plus `src/backend/runs/activity-person-pseudonym-backfill/service.ts` / `separations` for D288, whose Activity person-pseudonym evidence is current-Separations-only by decision. An entry whose reason cites no decision, and an entry the scan no longer matches, are both refused \u2014 staleness is this arm's negative control, since a scanner that resolved nothing would report every entry stale. (d) FIFTH AUTHORED ARTIFACT (D312 \u00a71.6.1): per registered workflow the authored surface is exactly its `workflowSourcePath` (taken from `src/domain/workflow/source-layout.ts`, the ONE path-from-role derivation \u2014 never rebuilt here by interpolation), at most one structural scenario, at most one `tests/scenario/workflows/<id>/dry-run.scenario.ts` and at most one `docs/rebuild/migrations/<id>.md`. Any other repository-visible file under `src/workflows/`, `tests/scenario/` or `docs/rebuild/migrations/` ATTRIBUTED to a registered workflow is refused by path, naming that workflow's own budget \u2014 an owner that failed to resolve throws rather than printing a plausible `its workflow.ts`. Attribution has TWO rules, because D265 rule 3 puts a harness INSIDE the step it proves and leaves the harness id out of the path entirely: under `src/workflows/` a file belongs to the registered FOLDER it sits in \u2014 `workflowSourceFolder`, from that same one derivation, longest folder prefix wins \u2014 so `src/workflows/separations/steps/identity-check/extra.ts` is `separations-identity-check`'s budget and never the composition's; everywhere else a whole directory segment or the basename stem that equals a registered id, or begins with one followed by `-`, `_` or `.`, attributes to the LONGEST such id, so `tests/scenario/separations-kuali-read.scenario.test.ts` belongs to the harness while `tests/scenario/separations-extra/foo.ts` and `docs/rebuild/migrations/separations_extra.md` stay `separations`'s budget instead of suffixing their way out of the arm. Both rules, and the two `undefined` answers, are asserted directly. One production staleness-checked exemption \u2014 `docs/rebuild/migrations/separations-legacy-behavior.md` as the migration record's own overflow (D312) \u2014 and one closed pre-canonical structural-scenario allowlist for the four chunk harnesses still at `tests/scenario/<id>.scenario.test.ts` (D318 / \u00a710.4); a workflow carrying both a canonical and a pre-canonical structural scenario is refused as two. Twenty-four violating fixtures, each written to a temp root and read back by the same collector: retired-recipe-type-anywhere-in-the-program, retired-node-fragment-factory-in-a-test, retired-workflow-recipe-specifier, a-file-named-recipe-ts, bare-recipe-identifier-inside-the-authoring-seam, flow-builder-imported-and-called-beside-workflow-ts, flow-builder-imported-three-levels-up-from-a-step-folder, descriptor-hand-authored-under-src-workflows, stores-composed-inside-a-workflow-folder, two-defineWorkflow-calls-in-one-workflow-file, generic-server-branch-keyed-by-workflow-id, generic-dashboard-dispatch-table-keyed-by-workflow-id, allowlisted-file-branching-on-a-DIFFERENT-workflow-id, another-file-branching-on-an-allowlisted-workflow-id, stale-D316-allowlist-entry, uncited-D316-allowlist-entry, fifth-authored-artifact-for-a-workflow, fifth-artifact-under-tests-scenario, fifth-artifact-inside-a-harness-folder-belongs-to-the-harness, fifth-artifact-in-a-folder-suffixing-a-registered-id, fifth-artifact-whose-stem-suffixes-a-registered-id-with-an-underscore, two-structural-scenarios-for-one-workflow, stale-artifact-exemption, stale-pre-canonical-structural-scenario. Those two arm-(c) fixtures, plus a passing assertion for the reviewed pair itself, are the pair-EXACTNESS proof: ONE reviewed `(src/backend/app/composition/dashboard/compose.ts, solo)` entry held constant across three trees, which a file-keyed allowlist fails on the first and an id-keyed allowlist on the second. That `(file, workflow id)` key is built by one `pairKey` helper whose separator is written as the `\\u001f` ESCAPE and never as a raw control byte, so the guard's own source stays text to `grep -r` and to a reviewer. Every fixture run first asserts the CLEAN fixture passes \u2014 which also carries the tricky negatives: a comment-only \"login recipe\" inside the seam, an unrelated `defineVerifiedLoginRecipe` outside it, `composeWorkflowModule` at the composition root, a harness scenario whose stem starts with the composition's id, an exempted migration supplement and an exempted T2/T3 dashboard folder \u2014 because a violating fixture proves nothing against an audit that refuses everything. The real tree's source and artifact scans are both asserted non-empty, since a collector that resolved nothing would report every arm green, and arm (b) carries its own repository-level control: the `workflow.ts` files it entered must number at least two and must equal, exactly, the registered workflows' `workflowSourcePath` set. The same 31 approved preview AST sites are admitted without a directory exemption. Extra, served, sibling and same-count repurposed literals refuse; existing authoring arms remain active. Evidence: root-workflow-mock-contexts.log, 30 passing cases.",
+      "invariant": "Registered workflows author one definition in their registered source file and use the structural and dry-run scenario files in their registered scenario folder. Compiler-internal flow builders and unsupported recipe names cannot escape their owner. Generic workflow-id branches require an exact file/id exception with a nonempty current reason; stale exceptions fail. Registered folder ownership and longest segment-delimited workflow ids attribute extra artifacts correctly, including nested harnesses. Negative fixtures retain all four authoring arms, exact mock AST occurrences, pair-exact allowlists, stale artifact exemptions, and duplicate structural proof detection.",
       "replacementRequired": true
     },
     {
@@ -770,23 +620,6 @@
       "status": "active",
       "owner": "docs/rebuild/reference/guards-and-tests.md",
       "invariant": "D336: SQLite v32 owns ordinary settings values and their current revision. The guard rejects retired runtime modules/APIs, settings.json authority paths and the protected singleton; schema/value and injected source violations are deciding evidence. F schema47 consolidates saved/active state into app_settings and retains settings_snapshots; historical v32 assertions remain. Evidence: sqlite-settings-authority and storage-upgrade focused selectors.",
-      "replacementRequired": true
-    },
-    {
-      "name": "authority-upgrade-adapters-isolated",
-      "file": "tests/architecture/authority-upgrade-adapters-isolated.test.ts",
-      "status": "retired",
-      "owner": "docs/rebuild/reference/guards-and-tests.md",
-      "invariant": "RETIRED by approved D332.9 separation in 2.6.9. Four obsolete settings adapters are absent. WHERE THE INVARIANT WENT: authority-upgrade-adapters-retired preserves the stopped supported-converter/CLI boundary and adds module/reference/API absence plus actual legacy-input non-adoption. Original F02 recovery proofs and final supported/refusal mapping are recorded in database-modernization/final-validation.md.",
-      "replacementRequired": true,
-      "retiredBy": "D332"
-    },
-    {
-      "name": "authority-upgrade-adapters-retired",
-      "file": "tests/architecture/storage/authority-upgrade-adapters-retired.test.ts",
-      "status": "active",
-      "owner": "docs/rebuild/reference/guards-and-tests.md",
-      "invariant": "D332.9 / 2.6.9 deletes four obsolete settings adapters, preserving supported stopped database/archive recovery. AST module/reference/API canaries and actual fresh/supported/current legacy-input non-adoption controls detect restoration or relocation. Named below-floor upgrade/offline/historical restore refusal precedes replacement and credentials; successful supported 46\u201349 recovery is the positive control. Deciding evidence: F02 retained original recovery proofs and the final-validation.md assertion map; authority-upgrade-adapters-retired, storage-upgrade family and supported restore drill. Permanent strict historical backup readers and immutable journal/settings schemas remain.",
       "replacementRequired": true
     },
     {

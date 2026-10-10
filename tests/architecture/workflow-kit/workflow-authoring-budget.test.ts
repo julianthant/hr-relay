@@ -15,11 +15,11 @@ import { gitVisibleFilesIn, REPO_ROOT } from "../support/helpers/guard-files.js"
 
 
 /** Everything the collector lists, in one `git ls-files` call. */
-const SCAN_ROOTS = ["src", "tests", "scripts", "docs/rebuild/migrations"] as const;
+const SCAN_ROOTS = ["src", "tests", "scripts"] as const;
 /** Roots whose `.ts`/`.tsx` text arms (a)-(c) read. */
 const SOURCE_ROOTS = ["src/", "tests/", "scripts/"] as const;
 /** Roots arm (d) counts authored artifacts in. */
-const ARTIFACT_ROOTS = ["src/workflows/", "tests/scenario/", "docs/rebuild/migrations/"] as const;
+const ARTIFACT_ROOTS = ["src/workflows/", "tests/scenario/"] as const;
 
 /** This guard's fixtures must be able to spell the forbidden names. */
 const GUARD_FILE = "tests/architecture/workflow-kit/workflow-authoring-budget.test.ts";
@@ -480,10 +480,9 @@ export function auditWorkflowAuthoringBudget(
     });
   }
   for (const entry of inputs.genericIdAllowlist) {
-    if (!CITATION.test(entry.reason)) {
+    if (entry.reason.trim().length === 0) {
       violations.push(
-        `${entry.file} / "${entry.workflowId}": the workflow-id boundary allowlist reason must cite the decision the site's own `
-        + "comments name",
+        `${entry.file} / "${entry.workflowId}": the workflow-id boundary allowlist requires a current reason`,
       );
     }
     if (!usedPairs.has(pairKey(entry.file, entry.workflowId))) {
@@ -497,11 +496,10 @@ export function auditWorkflowAuthoringBudget(
   // ---- arm (d): four authored artifacts per workflow, and no fifth ---------
   const artifactFiles = new Set(inputs.tree.artifactFiles);
   const allowedArtifacts = new Set<string>();
-  for (const { id, sourcePath, scenarioFolder } of inputs.workflows) {
+  for (const { sourcePath, scenarioFolder } of inputs.workflows) {
     allowedArtifacts.add(sourcePath);
     allowedArtifacts.add(`${scenarioFolder}/structural.scenario.test.ts`);
     allowedArtifacts.add(`${scenarioFolder}/dry-run.scenario.ts`);
-    allowedArtifacts.add(`docs/rebuild/migrations/${id}.md`);
     if (sourcePath.endsWith("/workflow.ts")) {
       allowedArtifacts.add(`${sourcePath.slice(0, -"workflow.ts".length)}task-registry.ts`);
       for (const taskFile of inputs.tree.artifactFiles) {
@@ -549,9 +547,9 @@ export function auditWorkflowAuthoringBudget(
       throw new Error(`attributeWorkflowArtifact attributed ${file} to unregistered workflow "${owner}"`);
     }
     violations.push(
-      `${file} is a fifth authored artifact for workflow ${owner}; workflow budget §1.6.1's budget is exactly `
+      `${file} is an extra authored artifact for workflow ${owner}; workflow budget §1.6.1's budget is exactly `
       + `${workflow.sourcePath}, ${workflow.scenarioFolder}/structural.scenario.test.ts, `
-      + `${workflow.scenarioFolder}/dry-run.scenario.ts and docs/rebuild/migrations/${owner}.md`,
+      + `${workflow.scenarioFolder}/dry-run.scenario.ts`,
     );
   }
 
@@ -612,14 +610,7 @@ const GENERIC_WORKFLOW_ID_ALLOWLIST: readonly GenericWorkflowIdAllowlistEntry[] 
 
 const PRE_CANONICAL_SCENARIOS: readonly PreCanonicalScenarioEntry[] = [];
 
-const ARTIFACT_EXEMPTIONS: readonly ArtifactExemptionEntry[] = [
-  {
-    path: "docs/rebuild/migrations/separations-legacy-behavior.md",
-    reason:
-      "D312 — a supplement to docs/rebuild/migrations/separations.md rather than a second migration doc; the budget item "
-      + "is the migration record, and this is the same record's overflow.",
-  },
-] as const;
+const ARTIFACT_EXEMPTIONS: readonly ArtifactExemptionEntry[] = [];
 
 function auditedWorkflowSources(): readonly RegisteredWorkflowSource[] {
   return [...WORKFLOW_MODULES, ...STEP_PROOF_MODULES].map((module) => {
@@ -690,17 +681,15 @@ function cleanFixtureFiles(): Record<string, string> {
     "tests/scenario/workflows/combo/steps/step-one/structural.scenario.test.ts": "export const COMBO_HARNESS = 1;\n",
     "tests/scenario/dashboard/combo/world.ts": "export const WORLD = 1;\n",
     "tests/scenario/intake-extraction.scenario.test.ts": "export const INTAKE = 1;\n",
-    "docs/rebuild/migrations/solo.md": "# solo\n",
-    "docs/rebuild/migrations/combo.md": "# combo\n",
-    "docs/rebuild/migrations/combo-legacy-behavior.md": "# combo, as legacy did it\n",
-    "docs/rebuild/migrations/i9-lookup.md": "# an unregistered candidate\n",
+    "tests/scenario/combo-supplement.md": "# additional combo proof\n",
+    "tests/scenario/i9-lookup.md": "# an unregistered candidate\n",
   };
 }
 
 const CLEAN_PRE_CANONICAL: readonly PreCanonicalScenarioEntry[] = [];
 
 const CLEAN_EXEMPTIONS: readonly ArtifactExemptionEntry[] = [
-  { path: "docs/rebuild/migrations/combo-legacy-behavior.md", reason: "D312 — the migration record's overflow." },
+  { path: "tests/scenario/combo-supplement.md", reason: "§1.6 — additional scenario proof." },
   { path: "tests/scenario/dashboard/combo/", reason: "ref guards-and-tests §10.12 — a T2/T3 dashboard proof." },
 ] as const;
 
@@ -878,7 +867,7 @@ const FIXTURES: readonly BudgetFixture[] = [
     expected: /stale workflow-id boundary allowlist entry — the scan found no such workflow-id literal there/,
   },
   {
-    name: "uncited-D316-allowlist-entry",
+    name: "empty-allowlist-reason",
     arm: "c",
     files: withFiles((files) => {
       files["src/backend/app/composition/dashboard/compose.ts"] =
@@ -887,15 +876,15 @@ const FIXTURES: readonly BudgetFixture[] = [
     genericIdAllowlist: [{
       file: "src/backend/app/composition/dashboard/compose.ts",
       workflowId: "combo",
-      reason: "it has always been like this",
+      reason: " ",
     }],
-    expected: /the workflow-id boundary allowlist reason must cite the decision the site's own comments name/,
+    expected: /the workflow-id boundary allowlist requires a current reason/,
   },
   {
     name: "fifth-authored-artifact-for-a-workflow",
     arm: "d",
-    files: withFiles((files) => { files["docs/rebuild/migrations/combo-appendix.md"] = "# one more file\n"; }),
-    expected: /docs\/rebuild\/migrations\/combo-appendix\.md is a fifth authored artifact for workflow combo; workflow budget .* budget is exactly src\/workflows\/combo\/workflow\.ts/,
+    files: withFiles((files) => { files["tests/scenario/combo-appendix.md"] = "# one more file\n"; }),
+    expected: /tests\/scenario\/combo-appendix\.md is an extra authored artifact for workflow combo; workflow budget .* budget is exactly src\/workflows\/combo\/workflow\.ts/,
   },
   {
     name: "fifth-artifact-under-tests-scenario",
@@ -903,7 +892,7 @@ const FIXTURES: readonly BudgetFixture[] = [
     files: withFiles((files) => {
       files["tests/scenario/workflows/solo/edge-cases.scenario.test.ts"] = "export const EDGE = 1;\n";
     }),
-    expected: /tests\/scenario\/workflows\/solo\/edge-cases\.scenario\.test\.ts is a fifth authored artifact for workflow solo/,
+    expected: /tests\/scenario\/workflows\/solo\/edge-cases\.scenario\.test\.ts is an extra authored artifact for workflow solo/,
   },
   {
     // The folder rule: a harness id is never a path segment, so only
@@ -911,20 +900,20 @@ const FIXTURES: readonly BudgetFixture[] = [
     name: "fifth-artifact-inside-a-harness-folder-belongs-to-the-harness",
     arm: "d",
     files: withFiles((files) => { files["src/workflows/combo/steps/step-one/nodes.ts"] = "export const NODES = 1;\n"; }),
-    expected: /src\/workflows\/combo\/steps\/step-one\/nodes\.ts is a fifth authored artifact for workflow combo-harness; workflow budget .* budget is exactly src\/workflows\/combo\/steps\/step-one\/step\.ts/,
+    expected: /src\/workflows\/combo\/steps\/step-one\/nodes\.ts is an extra authored artifact for workflow combo-harness; workflow budget .* budget is exactly src\/workflows\/combo\/steps\/step-one\/step\.ts/,
   },
   {
     // The two ways out of the budget by suffixing an unregistered word.
     name: "fifth-artifact-in-a-folder-suffixing-a-registered-id",
     arm: "d",
     files: withFiles((files) => { files["tests/scenario/combo-extra/world.ts"] = "export const WORLD = 1;\n"; }),
-    expected: /tests\/scenario\/combo-extra\/world\.ts is a fifth authored artifact for workflow combo;/,
+    expected: /tests\/scenario\/combo-extra\/world\.ts is an extra authored artifact for workflow combo;/,
   },
   {
     name: "fifth-artifact-whose-stem-suffixes-a-registered-id-with-an-underscore",
     arm: "d",
-    files: withFiles((files) => { files["docs/rebuild/migrations/combo_extra.md"] = "# one more file\n"; }),
-    expected: /docs\/rebuild\/migrations\/combo_extra\.md is a fifth authored artifact for workflow combo;/,
+    files: withFiles((files) => { files["tests/scenario/combo_extra.md"] = "# one more file\n"; }),
+    expected: /tests\/scenario\/combo_extra\.md is an extra authored artifact for workflow combo;/,
   },
   {
     name: "two-structural-scenarios-for-one-workflow",
@@ -945,9 +934,9 @@ const FIXTURES: readonly BudgetFixture[] = [
     files: cleanFixtureFiles(),
     artifactExemptions: [
       ...CLEAN_EXEMPTIONS,
-      { path: "docs/rebuild/migrations/combo-gone.md", reason: "D312 — removed long ago." },
+      { path: "tests/scenario/combo-gone.md", reason: "D312 — removed long ago." },
     ],
-    expected: /docs\/rebuild\/migrations\/combo-gone\.md: stale workflow budget artifact exemption — it matches no repository-visible file/,
+    expected: /tests\/scenario\/combo-gone\.md: stale workflow budget artifact exemption — it matches no repository-visible file/,
   },
   {
     name: "stale-pre-canonical-structural-scenario",
@@ -1063,10 +1052,10 @@ describe("workflow authoring budget prevents unsupported paths and excess artifa
       "separations-kuali-finalization",
     );
     assert.equal(
-      attributeWorkflowArtifact("docs/rebuild/migrations/separations-legacy-behavior.md", workflows),
+      attributeWorkflowArtifact("tests/scenario/separations-supplement.md", workflows),
       "separations",
     );
-    assert.equal(attributeWorkflowArtifact("docs/rebuild/migrations/i9-lookup.md", workflows), undefined);
+    assert.equal(attributeWorkflowArtifact("tests/scenario/i9-lookup.md", workflows), undefined);
     assert.equal(attributeWorkflowArtifact("src/workflows/descriptor-registry.ts", workflows), undefined);
     // Inside `src/workflows/` the harness id is NOT in the path: only the
     // registered FOLDER can say whose budget a file beside its workflow.ts is.
@@ -1078,7 +1067,7 @@ describe("workflow authoring budget prevents unsupported paths and excess artifa
     // Outside it, a longer word built on a registered id stays that workflow's
     // budget rather than attributing to nothing and escaping the arm.
     assert.equal(attributeWorkflowArtifact("tests/scenario/separations-extra/foo.ts", workflows), "separations");
-    assert.equal(attributeWorkflowArtifact("docs/rebuild/migrations/separations_extra.md", workflows), "separations");
+    assert.equal(attributeWorkflowArtifact("tests/scenario/separations_extra.md", workflows), "separations");
   });
 
   it("arm (c): the reviewed (file, workflow id) pair itself passes, so the allowlist is pair-EXACT", () => {

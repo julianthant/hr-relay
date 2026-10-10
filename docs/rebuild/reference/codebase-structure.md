@@ -13,7 +13,7 @@ excerpts retain their original revision names.
 | `.agents/`, `.claude/` | Repository-local skills and operating references. |
 | `config/` | Active runtime isolation and shared test-data configuration; the example is tracked and private local input remains ignored. |
 | `dist/` | Generated dashboard build output. |
-| `docs/` | Current entrypoint and reference contracts, workflow migration/provenance records, sanitized selector evidence, authoring guide and reviewed guard inventory. |
+| `docs/` | Current entrypoint and reference contracts, sanitized selector evidence, authoring guide and reviewed guard inventory. |
 | `duo-autopilot/` | Duo Autopilot browser support and operator guide. |
 | `node_modules/` | Local installed dependencies. |
 | `scripts/build/` | Workflow manifest generation and checks. |
@@ -38,7 +38,7 @@ scripts, the roadmap binding guard and its fixtures, and the generated-site inte
 also absent: `tests/architecture/tooling/roadmap-doc-binding.test.ts`,
 `tests/architecture/tooling/fixtures/roadmap-binding/` and
 `tests/unit/tooling/roadmap/roadmap-ui.test.ts`. Task receipts and retained worktree evidence live outside the repository under
-`/Users/julianhein/Projects/hr-automation-rebuild-evidence/`.
+the evidence root named in root `AGENTS.md`.
 
 ## Source tree and ownership
 
@@ -124,12 +124,14 @@ the owning evidence records.
 Selector fixtures and live selector evidence now live under `docs/rebuild/evidence/selectors/`;
 retained UCPath, Kuali, CRM and New Kronos semantic registries name the evidence they use.
 Architecture tests and the UCPath registry unit test consume or assert those paths, so selector
-evidence remains checked in. Legacy migration/provenance inventories now live under
-`docs/rebuild/migrations/legacy/`; architecture and migration tests read those checked-in inputs
-through their updated paths. The frozen legacy change-accounting record has one explicitly
-revision-qualified historical decision citation; its other data remains unchanged. These are checked-in
-verification, configuration and provenance inputs; operator runtime state remains separate. The
-ignored `config/test-data.local.json` remains private local test input.
+evidence remains checked in. Current selector binding inputs live beside their architecture reader in
+`tests/architecture/systems/fixtures/selector-evidence-bindings.json`; pending wire exceptions live in
+`tests/architecture/dashboard/fixtures/pending-wire-bindings.json`. Porting records and frozen source
+inventories are outside the repository in task evidence. Provenance-only architecture guards and
+phone-capture/obsolete-upgrade retirement guards are absent. Current field-registry, runtime-dependency,
+operational-isolation and semantic evidence assertions remain with their existing architecture owners.
+The retained field audit helper is `tests/architecture/models/helpers/canonical-field-registry-audit.ts`.
+The ignored `config/test-data.local.json` remains private local test input.
 
 ## Deferred work and evidence
 
@@ -139,26 +141,3 @@ ordered worker streaming and its read/replay adapters remain Phase 4. The fronte
 step-result presentation and capture association remain Phase 5; the v1 event carries no screenshot
 artifact. There is no `models/logs/` package. A desktop/Electron shell remains future work and has no
 placeholder folder.
-
-The accepted layout-polish candidate freeze hash is `a65ca56206aa238124e379b44f1ecb941fe17660abdffeaa24be2a6a50ab421f`.
-Implementation maps are pinned to entry `7e237bd7c3d0a45952e38c49f6d9be75057d08ef` under
-[`implementation/`](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/backend-layout-polish/implementation/).
-[`source-map.json`](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/backend-layout-polish/implementation/source-map.json)
-records 514 source moves and six retirements (SHA-256
-`202bf3401246368988c7a9ba08c53d546869a89cb040f6750a27c1d887b9ccbe`).
-[`tooling-map.json`](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/backend-layout-polish/implementation/tooling-map.json)
-records 39 moves and seven retirements with pre/post byte proofs. The architecture owner map
-[`architecture-owner-delta.json`](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/backend-layout-polish/implementation/architecture-owner-delta.json)
-organizes 147 architecture files (86 guards, 16 helpers, 45 fixtures) by owner. [`test-map.json`](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/backend-layout-polish/implementation/test-map.json)
-records the test moves. The corrected
-[`test-map-final.json`](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/backend-layout-polish/implementation/test-map-final.json)
-records 619 current test sources, 5,954 literal callbacks (2,292 unit, 2,928 integration, 734
-architecture), and 2,478 expanded unit cases; 5,952 baseline cases are retained or adapted, two are
-new, and 408 are retired, including 49 UI-catalog cases. Its
-[correction receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/backend-layout-polish/implementation/test-map-final-correction-receipt.json)
-records the final ledger corrections. These maps do not claim phase acceptance or visual refreeze;
-the owning plan retains those gates. The Explorer's scenario source links remain unresolved, and
-changes requiring scenario compile evidence are blocked; absent rehearsal manifests report
-unavailable before execution. See the current amendments in
-[operator trust](operator-trust.md#scenario-and-parity-test-retirement-amendment--operator-approved-2026-10-02)
-and [guards and tests](guards-and-tests.md#scenario-and-parity-suite-retirement--2026-10-02).

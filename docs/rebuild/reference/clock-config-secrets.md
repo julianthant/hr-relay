@@ -1398,7 +1398,7 @@ parenthetical pointer too); the ledger row (`994837d1f65abd9b9e2f546b3ca52bff906
    is `blocked` by key; malformed is a defect by key; never a name or EID in the registry). Its
    SOURCE sentence ("in `.env`") is superseded by §D331.6 item 6; its "only test-target secret"
    sentence is read as "the only test-target secret OF SEPARATIONS": the person-lookup
-   `live-read` canary (`personLookupCanaryEid`, `docs/rebuild/migrations/person-lookup.md` §T1b, D318's arm)
+   `live-read` canary (`personLookupCanaryEid`, the workflow's task evidence §T1b, D318's arm)
    is the second member of the class, registered per workflow label exactly as D284/D300 require.
    The D300 ledger row carries the same dated note.
 7. **ref dashboard-surfaces §2.1** — the state-root tree still says `.tracker-rebuild/` (stale since

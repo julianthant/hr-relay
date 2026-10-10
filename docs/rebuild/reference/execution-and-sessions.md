@@ -1053,7 +1053,7 @@ advances across profiles.
 
 **AUTHORITY HALF AS-BUILT (D269, 2026-08-21); POOL-INDEXED IDENTITY AND FE VIEW AS-BUILT
 (P3/P4, 2026-08-25); the dashboard process supervisor AS-BUILT and the parallel PROOF RECORDED
-(W3–W5 + the 2026-08-26 live pass, `docs/rebuild/migrations/separations.md` §9.27).** This section is the
+(W3–W5 + the 2026-08-26 live pass, the workflow's task evidence §9.27).** This section is the
 owning contract for the tree's `{#parallel-runs}` node and the normative text of D269. Points 1, 4,
 5 and 6 carry the built authority, identity and view; the supervisor and its panel controls carry
 points 2 and 8 as built and live-proved.
@@ -1196,7 +1196,7 @@ and shipping it in the other order would make the first parallel cold start the 
 profile.
 
 _Recorded (2026-08-26):_ the §7.1 row is C12 (W5, real child processes over the composed pool
-door); the live half is `docs/rebuild/migrations/separations.md` §9.27 — docs 4502 and 4495 concurrently
+door); the live half is the workflow's task evidence §9.27 — docs 4502 and 4495 concurrently
 `running` for 29.7 s on `separations-worker-1`/`-2` under one D269 session, started, gated,
 approved and stopped entirely through the dashboard, with the §10 lease serializing all eight
 ceremony generations and 0/0/0 write rows. §10 first was the RIGHT order, proved the hard way: the
