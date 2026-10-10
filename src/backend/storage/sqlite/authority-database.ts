@@ -558,11 +558,6 @@ const QuickCheckRowSchema = z.strictObject({ quick_check: z.literal("ok") });
 const AuthorityRecordFingerprintRowSchema = z.strictObject({ id: z.string(), payload_json: z.string() });
 export type RunSearchAuthorityPage = ReturnType<ReturnType<typeof createRunSearchIndex>["search"]>;
 
-function parseJsonRecord<Schema extends z.ZodType>(schema: Schema, text: string): z.output<Schema> {
-  return schema.parse(JSON.parse(text));
-}
-
-
 
 
 function sqliteChanges(value: number | bigint): number {
@@ -1594,8 +1589,8 @@ export class AuthorityDatabase implements Disposable {
         mutate: () => { throw new Error("timeline-doctor-read-only"); }, assertOwner: () => {} });
       timeline = readTimelineRecords(repository);
       if (!includeRecoveryEvidence) return;
-      const attempts = database.prepare("SELECT payload_json FROM write_attempts").all().map((row) =>
-        parseJsonRecord(WriteAttemptRecordSchema, JsonRowSchema.parse(row).payload_json));
+      const attempts = database.prepare("SELECT * FROM write_attempts").all().map((row) =>
+        WriteAttemptRecordSchema.parse(nativeOrdinaryRecordFromRow("write_attempts", row)));
       const attemptsByRun = new Map<string, WriteAttemptRecord[]>();
       for (const attempt of attempts) {
         const owned = attemptsByRun.get(attempt.runId);
@@ -1614,18 +1609,15 @@ export class AuthorityDatabase implements Disposable {
       }
       const fenced = new Set(timeline.records.flatMap((row) => row.payload.kind === "span"
         && row.payload.event.t === "transaction.fenced" ? [row.payload.event.runId] : []));
-      const runs = database.prepare("SELECT id, payload_json FROM runs ORDER BY id").all().map((raw) => {
-        const row = AuthorityRecordFingerprintRowSchema.parse(raw);
-        const run = parseJsonRecord(RunRecordSchema, row.payload_json);
-        if (run.envelope.runId !== row.id) throw new Error("restore-evidence-run-identity-mismatch");
+      const runs = database.prepare("SELECT * FROM runs ORDER BY id").all().map((raw) => {
+        const run = runRecordFromRow(raw);
         const owned = attemptsByRun.get(run.envelope.runId) ?? [];
         return { runId: run.envelope.runId, workflow: run.envelope.workflow, traceId: run.envelope.traceId,
           version: run.version, possibleExternalWrite: owned.length > 0 || fenced.has(run.envelope.runId),
           attemptIds: owned.map((attempt) => attempt.writeAttemptId),
           confirmations: confirmationsByRun.get(run.envelope.runId) ?? [] };
       });
-      const deleted = database.prepare("SELECT payload_json FROM deleted_runs").all().map((row) =>
-        parseJsonRecord(DeletedRunRecordSchema, JsonRowSchema.parse(row).payload_json));
+      const deleted = database.prepare("SELECT * FROM deleted_runs").all().map((row) => deletedRunFromRow(row).receipt);
       recoveryEvidence = { runs, deleted };
     });
     if (timeline === undefined || (includeRecoveryEvidence && recoveryEvidence === undefined)) throw new Error("timeline-read-snapshot-missing");
