@@ -1,9 +1,10 @@
+import { createRunSearchIndex } from "../../../../../../src/backend/storage/sqlite/run-search-index.js";
 import { DatabaseSync } from "node:sqlite";
 import { runRecordColumns } from "../../../../../../src/backend/storage/sqlite/run-record-row.js";
 import { canonicalJsonStringify } from "../../../../../../src/rules/validation/canonical-json.js";
-import { RunResultRecordSchema } from "../../../../../../src/models/run/result.js";
+import { createRunTerminalEvidenceResult, deriveTerminalFailureDigest, RunResultRecordSchema } from "../../../../../../src/models/run/result.js";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AuthorityDatabase } from "../../../../../../src/backend/storage/sqlite/authority-database.js";
@@ -44,7 +45,7 @@ function derive(run = kualiReceiptEvidence().run, result = kualiReceiptEvidence(
 
 describe("durable receipt boundaries", () => {
   it("reopens complete composition-5 bytes from isolated SQLite and projects those exact facts", () => {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-unmasked-receipt-"));
+    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-unmasked-receipt-"));
     const options = { path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "unmasked-receipt-test" };
     const clock = manualClock(new Date("2026-09-29T12:00:00.000Z"));
     let database: AuthorityDatabase | undefined;
@@ -58,13 +59,17 @@ describe("durable receipt boundaries", () => {
       const result = RunResultRecordSchema.parse({ ...RunResultRecordSchema.parse(kualiReceiptEvidence().result),
         configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId, configFingerprint: CONFIG_SNAPSHOT.fingerprint });
       const receipt = derive(run, result);
+      const generation = database.getMeta().authorityGeneration;
       database.close();
       const raw = new DatabaseSync(options.path);
       try {
+        const search = createRunSearchIndex(raw);
+        search.installTracking();
         const row = runRecordColumns(run);
         raw.prepare(`INSERT INTO runs(${Object.keys(row).join(",")}) VALUES(${Object.keys(row).map(()=>"?").join(",")})`).run(...Object.values(row));
         raw.prepare("INSERT INTO run_results(run_id,workflow,attempt,result_digest,payload_json,created_at) VALUES(?,?,?,?,?,?)")
           .run(result.runId,result.workflowId,result.attempt,result.resultDigest,canonicalJsonStringify(result),result.createdAt);
+        search.rebuild({ restart: true, limit: 500 }, generation, run.updatedAt);
       } finally { raw.close(); }
       database = AuthorityDatabase.open(admission, options, clock);
       database.authority.evidenceReceipts.insert(receipt);
@@ -93,12 +98,17 @@ describe("supplied failure diagnostics", () => {
       runId: done.envelope.runId, traceId: done.envelope.traceId, workflowId: done.envelope.workflow,
       summary: "synthetic complete diagnostic for identifier 10800001 and transaction T1234567",
     });
-    const { resultDigest: _resultDigest, ...completion } = done.completion;
+    const { resultDigest: _resultDigest, schemaVersion: _schemaVersion, ...completion } = done.completion;
     const failed = RunRecordSchema.parse({ ...done,
       lifecycle: { ...done.lifecycle, outcome: "failed", failureId: failure.failureId },
-      completion: { ...completion, kind: "failed", failureId: failure.failureId },
+      completion: { schemaVersion: 1, ...completion, kind: "failed", failureId: failure.failureId },
     });
     const input = { descriptor: separationsKualiFinalizationDescriptor, run: failed,
+      result: createRunTerminalEvidenceResult(failed, { kind: "failed-evidence",
+        authorization: { ...completion, kind: "failed", failureId: failure.failureId,
+          runId: failed.envelope.runId, workflowId: failed.envelope.workflow, attempt: failed.envelope.attempt,
+          descriptorVersion: failed.envelope.descriptorVersion, contractFingerprint: failed.envelope.contractFingerprint },
+        failureDigest: deriveTerminalFailureDigest(failure) }),
       checkpoints: evidence.checkpoints, writes: evidence.writes, failure };
     const current = buildRunEvidenceReceipt(input);
     const currentWarning = current.warnings.find(warning => warning.code === failure.code);

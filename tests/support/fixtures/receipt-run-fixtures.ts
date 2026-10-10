@@ -156,6 +156,7 @@ export interface SeededExitRun {
 
 export function seedPersonLookupExitRun(
   database: AuthorityDatabase,
+  options: { readonly dryRun?: boolean } = {},
 ): SeededExitRun {
   const active = database.authority.runtimeConfig.get();
   if (active === undefined) throw new Error("exit fixture requires admitted current settings");
@@ -174,7 +175,7 @@ export function seedPersonLookupExitRun(
       configSnapshotId: active.configSnapshotId,
       shape: "single",
       priority: "interactive",
-      dryRun: false,
+      dryRun: options.dryRun ?? false,
       attempt: 1,
       enqueuedAt: ENQUEUED_AT,
     },

@@ -9,7 +9,6 @@ import { manualClock } from "../../../../../../src/rules/time/clock.js";
 import { WriteIntentRecordSchema, deriveWriteAuthorityReason } from "../../../../../../src/rules/write-safety/write-safety.js";
 import { buildRunEvidenceReceipt } from "../../../../../../src/backend/runs/provenance/evidence-receipt.js";
 import { AuthorityDatabase } from "../../../../../support/helpers/synthetic-storage-admission.js";
-import { protectedInputBindings } from "../../../../../../src/models/write-safety/protected-input.js";
 import { RunCheckpointRecordSchema } from "../../../../../../src/models/workflow/checkpoint.js";
 import { RunRecordSchema, type RunRecord } from "../../../../../../src/models/run/record.js";
 import type { RunEvidenceReceipt } from "../../../../../../src/models/trust/evidence.js";
@@ -50,8 +49,7 @@ function openDatabase(): AuthorityDatabase {
 
 
 function ordinaryRun(value: unknown): RunRecord {
-  const run = RunRecordSchema.parse(value);
-  return { ...run, input: { ...run.input, parsed: { ...run.input.parsed, protectedBindings: [...protectedInputBindings(run.input.parsed.value)] } } };
+  return RunRecordSchema.parse(value);
 }
 
 /* ── receipt-only reading helpers ────────────────────────────────────────── */

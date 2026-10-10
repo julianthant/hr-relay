@@ -6,7 +6,7 @@ const probe = String.raw`
   import assert from 'node:assert/strict';
   import { createHash, randomUUID } from 'node:crypto';
   import { resolutionFixture, resolutionCommand } from './tests/support/helpers/failure-resolution/fixtures.ts';
-  import { createTimelineEmitter } from './src/backend/storage/events/timeline-emitter.ts';
+  import { createDebugEventWriter } from './src/backend/logs/debug-events.ts';
   import { AuthorityDatabase } from './tests/support/helpers/synthetic-storage-admission.ts';
   import { localDatePart } from './src/rules/time/clock.ts';
   const [instant, localDay, cutoff, retained] = process.argv.slice(1);
@@ -20,11 +20,11 @@ const probe = String.raw`
     assert.equal(f.kernel.execute(command).state, 'applied');
     const resolution = f.db.authority.timelineEvents.page({}).find(row => row.payload.kind === 'failure-resolution');
     assert.ok(resolution);
-    const ordinaryId = randomUUID();
-    createTimelineEmitter({ repository: f.db.authority.timelineEvents, clock: f.clock, uuid: () => ordinaryId }).emit({
-      t: 'span.started', kind: 'worker', workflow: 'person-lookup', ts: instant,
-      workerId: 'retention-proof', spanPath: 'worker/retention-proof', name: 'Retention proof',
+    const observation = createDebugEventWriter({ repository: f.db.authority.timelineEvents, clock: f.clock, build: 'retention-test' }).emit({
+      category: 'http', phase: 'settled', correlationId: randomUUID(), code: 'RETENTION_PROOF',
+      pinned: false, method: 'GET', route: '/api/v1/storage/doctor', status: 200,
     });
+    const ordinaryId = observation.record.eventId;
     const ordinary = f.db.authority.timelineEvents.get(ordinaryId);
     assert.ok(ordinary);
     assert.equal(ordinary.retentionDate, localDay, 'ordinary emitter control');
