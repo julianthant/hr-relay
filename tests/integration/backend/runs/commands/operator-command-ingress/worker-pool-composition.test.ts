@@ -1,3 +1,5 @@
+import { bindWorkerProcessAdmission, readRuntimeProcessLock } from "../../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { admitDirectWorker } from "../../../../../../src/backend/storage/sqlite/worker-slots.js";
 import { healthyRuntimePreflightRunners } from "../../../../../support/fixtures/preflight-seams.js";
 import { deriveBulkChildCommandId } from "../../../../../../src/rules/commands/command-groups.js";
 import { createOperatorCommandIngress } from "../../../../../../src/backend/runs/commands/operator-command-ingress.js";
@@ -6,12 +8,11 @@ import { createRunWorkerCapacity, runCapacityCommandId } from "../../../../../..
 import { createStartPlanService } from "../../../../../../src/backend/runs/commands/start-plan-service.js";
 import { StartPlanWireSchema } from "../../../../../../src/models/dashboard/start-plan.js";
 import { seedSyntheticRuntimeConfig } from "../../../../../support/fixtures/operator-command-fixtures.js";
-import { HASH_B, UUID_4 } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
 import { WorkerControlRefusal } from "../../../../../../src/models/run/worker-control.js";
 import { RunRecordService } from "../../../../../../src/backend/runs/lifecycle/run-record-service.js";
 
 import assert from "node:assert/strict";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -24,7 +25,8 @@ import {
   type WorkerPoolRuntimeSeam,
   type WorkerRuntimeContext,
 } from "../../../../../../src/backend/runs/commands/command-kernel.js";
-import { poolWorkerId } from "../../../../../../src/backend/runtime/workers/worker-loop.js";
+import { workerPoolMember, type WorkerPoolMember } from "../../../../../../src/models/run/worker-slot.js";
+import { WorkerIdSchema } from "../../../../../../src/rules/identity/ids.js";
 import { manualClock, type TestClock } from "../../../../../../src/rules/time/clock.js";
 import {
   SETTINGS_SCHEMA_HASH,
@@ -47,10 +49,8 @@ import { ManualScheduler } from "../../../../../support/helpers/phase1f-executor
 import { QUEUED_RUN, RUN_ID, sequentialIdFactory } from "../../../../../support/fixtures/phase1f-run-fixtures.js";
 import {
   NO_INTAKE_PROJECTIONS,
-  UNSTORED_CONFIG_IDENTITY,
   UNWIRED_INTAKE_PARSER,
 } from "../../../../../support/fixtures/intake-kernel-seams.js";
-import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../../../../../support/fixtures/archive-fixtures.js";
 
 function servedControlBasis(database: AuthorityDatabase, workerId: string) {
   const lease = database.authority.workerLeases.get(workerId);
@@ -62,11 +62,11 @@ const NOW = "2026-08-26T09:00:00.000Z";
 const WORKFLOW = WorkflowIdSchema.parse("person-lookup");
 const BROWSER_SYSTEMS = ["crm", "ucpath"] as const;
 const POOL_INDEX_1 = PositiveIntSchema.parse(1);
-const WORKER_1 = poolWorkerId(WORKFLOW, POOL_INDEX_1);
-const MEMBER_1 = { workflowId: WORKFLOW, poolIndex: POOL_INDEX_1, workerId: WORKER_1 } as const;
+const WORKER_1 = WorkerIdSchema.parse("person-lookup-worker-1");
+const MEMBER_1 = { workflowId: WORKFLOW, poolIndex: POOL_INDEX_1, ordinal: POOL_INDEX_1, membershipRevision: PositiveIntSchema.parse(1), workerId: WORKER_1 } as const;
 const POOL_INDEX_2 = PositiveIntSchema.parse(2);
-const WORKER_2 = poolWorkerId(WORKFLOW, POOL_INDEX_2);
-const MEMBER_2 = { workflowId: WORKFLOW, poolIndex: POOL_INDEX_2, workerId: WORKER_2 } as const;
+const WORKER_2 = WorkerIdSchema.parse("person-lookup-worker-2");
+const MEMBER_2 = { workflowId: WORKFLOW, poolIndex: POOL_INDEX_2, ordinal: POOL_INDEX_2, membershipRevision: PositiveIntSchema.parse(1), workerId: WORKER_2 } as const;
 
 const roots: string[] = [];
 const openDatabases: AuthorityDatabase[] = [];
@@ -108,6 +108,7 @@ class FakeWorkerChild implements SpawnedWorkerHandle {
 }
 
 interface ControlHarness {
+  readonly root: string;
   readonly database: AuthorityDatabase;
   readonly clock: TestClock;
   readonly scheduler: ManualScheduler;
@@ -128,13 +129,14 @@ interface ControlHarnessOptions {
 }
 
 function openControlHarness(options?: ControlHarnessOptions): ControlHarness {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-worker-pool-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-worker-pool-"));
   roots.push(root);
   const clock = manualClock(new Date(NOW));
   const database = AuthorityDatabase.open(
     { path: join(root, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
     clock,
   );
+  seedSyntheticRuntimeConfig(database);
   openDatabases.push(database);
   const scheduler = new ManualScheduler(clock, 0);
   const children: FakeWorkerChild[] = [];
@@ -142,6 +144,7 @@ function openControlHarness(options?: ControlHarnessOptions): ControlHarness {
   const faults: Error[] = [];
   let nextPid = 6000;
   const control = composeWorkerProcessControl({
+    profileRoot: join(root, "browsers"), processLockRoot: join(root, "locks"),
     database,
     clock,
     scheduler,
@@ -185,8 +188,7 @@ function openControlHarness(options?: ControlHarnessOptions): ControlHarness {
   const kernel = createCommandKernel({
     lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: () => {} }),
     appVersion: "0.1.0",
-    archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
-    configIdentity: UNSTORED_CONFIG_IDENTITY,
+    configIdentity: (() => { const active = database.authority.runtimeConfig.get(); assert.ok(active); return {configFingerprint: active.configFingerprint, configSnapshotId: active.configSnapshotId}; })(),
     intakeParser: UNWIRED_INTAKE_PARSER,
     intakeProjections: NO_INTAKE_PROJECTIONS,
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(repositories => work({ ...repositories,
@@ -224,7 +226,7 @@ function openControlHarness(options?: ControlHarnessOptions): ControlHarness {
       }),
     },
   });
-  return { database, clock, scheduler, kernel, control, children, spawnRequests, faults, auditFault };
+  return { root, database, clock, scheduler, kernel, control, children, spawnRequests, faults, auditFault };
 }
 
 let commandSequence = 0;
@@ -275,15 +277,30 @@ function fireBirthPoll(harness: ControlHarness): void {
 }
 
 
+async function admitPoolSlot(harness: ControlHarness, poolIndex = 1) {
+  const version = harness.database.authority.workerPools.get(WORKFLOW)?.version ?? 0;
+  const active = harness.database.authority.workerSlots.list(WORKFLOW).filter(slot => slot.retiredAt === null);
+  if (!active.some(slot => slot.poolIndex === poolIndex)) {
+    const planned = await harness.kernel.executeWorkerPool({ ...envelope(harness), type: "plan-worker-count",
+      target: { workflowId: WORKFLOW, expectedVersion: version },
+      payload: { desiredWorkers: Math.max(active.length, poolIndex) } });
+    assert.equal(planned.state, "applied");
+  }
+  const slot = harness.database.authority.workerSlots.list(WORKFLOW).find(slot => slot.poolIndex === poolIndex && slot.retiredAt === null);
+  assert.ok(slot);
+  return workerPoolMember(slot);
+}
+
 async function spawnPoolWorker(
   harness: ControlHarness,
-  member: typeof MEMBER_1 = MEMBER_1,
+  member: WorkerPoolMember = MEMBER_1,
 ): Promise<{ commandId: string; result: unknown }> {
+  member = await admitPoolSlot(harness, member.poolIndex);
   const commandId = nextCommandId();
   const pending = harness.kernel.executeWorkerPool({
     ...envelope(harness, commandId),
     type: "spawn-worker",
-    target: { workflowId: member.workflowId, expectedVersion: 0 },
+    target: { workflowId: member.workflowId, expectedVersion: harness.database.authority.workerPools.get(member.workflowId)?.version },
     payload: { workerId: member.workerId },
   });
   await settleMicrotasks();
@@ -301,12 +318,28 @@ async function spawnPoolWorker(
   return { commandId, result: await pending };
 }
 
+function admitExternalSlot(harness: ControlHarness, poolIndex = 1) {
+  const held = bindWorkerProcessAdmission({ processLockRoot: join(harness.root, "locks"),
+    authorityPath: join(harness.root, "state.db"), pid: process.pid, clock: harness.clock,
+    open: () => harness.database, close: () => {},
+    admit: (database, acquisitionId) => database.withAuthorityTransaction(repositories => admitDirectWorker(repositories,
+      { commandId: nextCommandId(), workflow: WORKFLOW, poolIndex,
+        expectedPoolVersion: repositories.workerPools.get(WORKFLOW)?.version ?? 0,
+        processId: process.pid, processAcquisitionId: acquisitionId, authorityPath: join(harness.root, "state.db"),
+        processLockRoot: join(harness.root, "locks"), now: harness.clock.now().toISOString() }, nextCommandId()).workerId),
+  });
+  cleanups.push(() => held.processLock.release());
+  return held.workerId;
+}
+
 /* ── the composed seam, end to end ───────────────────────────────────────── */
 
 describe("the composed worker process control through the kernel pool door", () => {
   it.each(["all-or-none", "best-effort"] as const)("holds %s bulk child identities until an in-flight worker effect is journaled", async (mode) => {
     const harness = openControlHarness();
-    harness.database.authority.runs.enqueue(QUEUED_RUN);
+    const active = harness.database.authority.runtimeConfig.get(); assert.ok(active);
+    harness.database.authority.runs.enqueue({ ...QUEUED_RUN, envelope: { ...QUEUED_RUN.envelope, configFingerprint: active.configFingerprint, configSnapshotId: active.configSnapshotId } });
+    await admitPoolSlot(harness);
     const bulkCommandId = nextCommandId();
     const commandId = deriveBulkChildCommandId(bulkCommandId, RUN_ID);
     const ingress = createOperatorCommandIngress({
@@ -323,12 +356,13 @@ describe("the composed worker process control through the kernel pool door", () 
     const workerPending = ingress.submit({
       ...envelope(harness, commandId),
       type: "spawn-worker",
-      target: { workflowId: WORKFLOW, expectedVersion: 0 },
+      target: { workflowId: WORKFLOW, expectedVersion: harness.database.authority.workerPools.get(WORKFLOW)?.version },
       payload: { workerId: WORKER_1 },
     }, (request) => harness.kernel.executeWorkerPool(request));
     await settleMicrotasks();
     assert.equal(harness.spawnRequests.length, 1);
-    assert.equal(harness.database.authority.commands.get(commandId), undefined);
+    assert.notEqual(harness.database.authority.commands.get(commandId), undefined);
+    assert.equal(harness.database.authority.commandAudits.findByCommand(commandId), undefined);
 
     let bulkSettled = false;
     let bulkExecutions = 0;
@@ -411,17 +445,20 @@ describe("the composed worker process control through the kernel pool door", () 
       }),
       /dashboard runtime settings are stale; restart activation is required/u,
     );
-    assert.equal(harness.database.authority.workerPools.get(WORKFLOW), undefined);
-    assert.equal(harness.database.authority.commands.get(commandId), undefined);
+    assert.equal(harness.database.authority.workerPools.get(WORKFLOW)?.desiredWorkers, 1);
+    assert.equal(harness.database.authority.workerPools.get(WORKFLOW)?.version, 1);
+    assert.equal(harness.database.authority.commands.get(commandId)?.type, "plan-worker-count");
+    assert.equal(harness.database.authority.commandAudits.findByCommand(commandId), undefined);
   });
 
   it("spawns the exact worker CLI argv and acknowledges only after the durable lease proves birth", async () => {
     const harness = openControlHarness();
+    const member = await admitPoolSlot(harness);
     const commandId = nextCommandId();
     const pending = harness.kernel.executeWorkerPool({
       ...envelope(harness, commandId),
       type: "spawn-worker",
-      target: { workflowId: WORKFLOW, expectedVersion: 0 },
+      target: { workflowId: WORKFLOW, expectedVersion: harness.database.authority.workerPools.get(WORKFLOW)?.version },
       payload: { workerId: WORKER_1 },
     });
     await settleMicrotasks();
@@ -431,8 +468,12 @@ describe("the composed worker process control through the kernel pool door", () 
     assert.deepEqual([...harness.spawnRequests[0]?.args ?? []], [
       "--import", "tsx", "src/cli.ts",
       "worker", "person-lookup", "--pool-index", "1",
+      "--worker-id", member.workerId, "--ordinal", String(member.ordinal),
+      "--membership-revision", String(member.membershipRevision), "--launch-command-id", commandId,
     ]);
-    assert.equal(harness.database.authority.commands.get(commandId), undefined);
+    assert.equal(harness.database.authority.commands.get(commandId)?.type, "spawn-worker");
+    assert.equal(harness.database.authority.workerControls.get(commandId)?.phase.state, "executing");
+    assert.equal(harness.database.authority.commandAudits.findByCommand(commandId), undefined);
 
     // Birth: the child's own durable lease, under the child's real pid.
     const child = harness.children[0];
@@ -455,13 +496,14 @@ describe("the composed worker process control through the kernel pool door", () 
     assert.deepEqual(harness.control.supervisor.memberEvidence(MEMBER_1)?.state, "running");
   });
 
-  it("rejects a spawn whose child never proves birth: SIGKILL, no journal row, no acknowledgement", async () => {
+  it("rejects a spawn whose child never proves birth: SIGKILL, retained admission, no acknowledgement", async () => {
     const harness = openControlHarness();
+    await admitPoolSlot(harness);
     const commandId = nextCommandId();
     const pending = harness.kernel.executeWorkerPool({
       ...envelope(harness, commandId),
       type: "spawn-worker",
-      target: { workflowId: WORKFLOW, expectedVersion: 0 },
+      target: { workflowId: WORKFLOW, expectedVersion: harness.database.authority.workerPools.get(WORKFLOW)?.version },
       payload: { workerId: WORKER_1 },
     });
     await settleMicrotasks();
@@ -470,17 +512,19 @@ describe("the composed worker process control through the kernel pool door", () 
 
     await assert.rejects(() => pending, /proved no lease birth within 10000ms; the unproved child was killed/);
     assert.deepEqual(harness.children[0]?.signalsSent, ["SIGKILL"]);
-    assert.equal(harness.database.authority.commands.get(commandId), undefined);
+    assert.equal(harness.database.authority.commands.get(commandId)?.type, "spawn-worker");
+    assert.equal(harness.database.authority.workerControls.get(commandId)?.phase.state, "uncertain");
     assert.equal(harness.database.authority.commandAudits.findByCommand(commandId), undefined);
   });
 
   it("refuses an externally started worker end-to-end with a retained refusal and no directive", async () => {
     const harness = openControlHarness();
+    assert.equal(admitExternalSlot(harness), WORKER_1);
     // An operator started this worker by hand: the lease is live under a pid
     // this supervisor never spawned.
     assert.equal(harness.database.authority.workerLeases.start({
       workerId: WORKER_1, workflow: WORKFLOW, browserSystems: BROWSER_SYSTEMS,
-      processId: 999, requestedBy: "local-operator", now: NOW,
+      processId: process.pid, requestedBy: "local-operator", now: NOW,
     }).state, "started");
 
     const spawnId = nextCommandId();
@@ -488,7 +532,7 @@ describe("the composed worker process control through the kernel pool door", () 
     const rejected = await harness.kernel.executeWorkerPool({
       ...envelope(harness, spawnId),
       type: "spawn-worker",
-      target: { workflowId: WORKFLOW, expectedVersion: 0 },
+      target: { workflowId: WORKFLOW, expectedVersion: harness.database.authority.workerPools.get(WORKFLOW)?.version },
       payload: { workerId: WORKER_1 },
     });
     assert.equal(rejected.state, "rejected");
@@ -585,18 +629,19 @@ describe("the composed worker process control through the kernel pool door", () 
     await spawnPoolWorker(harness, MEMBER_2);
 
 
+    const beforeVersion = harness.database.authority.workerPools.get(WORKFLOW)?.version; assert.ok(beforeVersion);
     const keepBothId = nextCommandId();
     const keepBoth = harness.kernel.executeWorkerPool({
       ...envelope(harness, keepBothId),
       type: "plan-worker-count",
-      target: { workflowId: WORKFLOW, expectedVersion: 0 },
+      target: { workflowId: WORKFLOW, expectedVersion: beforeVersion },
       payload: { desiredWorkers: 2 },
     });
     const shrinkId = nextCommandId();
     const shrink = harness.kernel.executeWorkerPool({
       ...envelope(harness, shrinkId),
       type: "plan-worker-count",
-      target: { workflowId: WORKFLOW, expectedVersion: 0 },
+      target: { workflowId: WORKFLOW, expectedVersion: beforeVersion },
       payload: { desiredWorkers: 1 },
     });
     const [first, second] = await Promise.allSettled([keepBoth, shrink]);
@@ -610,7 +655,7 @@ describe("the composed worker process control through the kernel pool door", () 
     if (second.status !== "fulfilled") throw new Error("unreachable");
     assert.equal(second.value.state, "conflict");
     if (second.value.state !== "conflict") throw new Error("unreachable");
-    assert.equal(second.value.currentVersion, 1);
+    assert.equal(second.value.currentVersion, beforeVersion + 1);
     assert.equal(harness.database.authority.commands.get(shrinkId), undefined);
 
     // The desired member the loser would have stopped is untouched: run
@@ -618,19 +663,21 @@ describe("the composed worker process control through the kernel pool door", () 
     assert.equal(harness.database.authority.workerLeases.get(WORKER_2)?.control.directive, "run");
     assert.deepEqual(harness.control.supervisor.memberEvidence(MEMBER_2)?.state, "running");
     assert.equal(harness.database.authority.workerPools.get(WORKFLOW)?.desiredWorkers, 2);
-    assert.equal(harness.database.authority.workerPools.get(WORKFLOW)?.version, 1);
+    assert.equal(harness.database.authority.workerPools.get(WORKFLOW)?.version, beforeVersion + 1);
   });
 
   it("maps a phase-C pool CAS loss to a typed conflict naming the already-executed effect", async () => {
+    let effectCalls = 0;
     const harness = openControlHarness({
       interceptPool: (pool, edges) => ({
         ...pool,
         planPoolWorkerCount: async (context) => {
+          effectCalls += 1;
           const acknowledgement = await pool.planPoolWorkerCount(context);
 
           assert.equal(edges.database.authority.workerPools.plan({
             workflow: WORKFLOW,
-            expectedVersion: 0,
+            expectedVersion: 1,
             desiredWorkers: 1,
             requestedBy: "local-operator",
             now: edges.clock.now().toISOString(),
@@ -640,19 +687,23 @@ describe("the composed worker process control through the kernel pool door", () 
       }),
     });
     const commandId = nextCommandId();
-    const result = await harness.kernel.executeWorkerPool({
+    const command = {
       ...envelope(harness, commandId),
       type: "plan-worker-count",
       target: { workflowId: WORKFLOW, expectedVersion: 0 },
       payload: { desiredWorkers: 1 },
-    });
+    };
+    const result = await harness.kernel.executeWorkerPool(command);
     assert.equal(result.state, "conflict");
     if (result.state !== "conflict") throw new Error("unreachable");
-    assert.equal(result.currentVersion, 1);
+    assert.equal(result.currentVersion, 2);
     // The refusal tells the operator the truth: the process effect ran.
     assert.match(result.message, /ALREADY executed/);
-    // A conflict is never journaled or audited.
-    assert.equal(harness.database.authority.commands.get(commandId), undefined);
+    assert.equal(harness.database.authority.workerControls.get(commandId)?.phase.state, "uncertain");
+    assert.equal((await harness.kernel.executeWorkerPool(command)).state, "rejected");
+    assert.equal(effectCalls, 1);
+    // Admission remains; no completion is audited.
+    assert.equal(harness.database.authority.commands.get(commandId)?.type, "plan-worker-count");
     assert.equal(harness.database.authority.commandAudits.findByCommand(commandId), undefined);
   });
 
@@ -661,6 +712,7 @@ describe("the composed worker process control through the kernel pool door", () 
     const commandId = nextCommandId(); const request = { ...envelope(harness, commandId), type: "pause-worker" as const,
       target: { workerId: WORKER_1, expectedVersion: 1, controlBasis: servedControlBasis(harness.database, WORKER_1) } };
     harness.database.withAuthorityTransaction(r => {
+      r.commands.insert(request);
       r.workerLeases.reserveControl(WORKER_1, request.target.controlBasis, commandId, NOW);
       r.workerControls.admit({ commandId, request, scope: "worker-pool:person-lookup", executorId: nextCommandId(), admittedAt: NOW, expiresAt: NOW, basisVersion: 1, phase: { state: "admitted" } });
       if (state === "executing") r.workerControls.transition(commandId, "admitted", { state: "executing", startedAt: NOW });
@@ -688,7 +740,8 @@ describe("the composed worker process control through the kernel pool door", () 
     const retained = harness.database.authority.workerControls.get(commandId);
     assert.equal(retained?.phase.state, "succeeded");
     assert.equal(retained?.auditedAt, undefined);
-    assert.equal(harness.database.authority.commands.get(commandId), undefined);
+    assert.notEqual(harness.database.authority.commands.get(commandId), undefined);
+    assert.equal(harness.database.authority.commandAudits.findByCommand(commandId), undefined);
     const lease = harness.database.authority.workerLeases.get(WORKER_1);
     assert.equal(lease?.control.directive, "stop");
     harness.auditFault.enabled = false;
@@ -707,8 +760,9 @@ describe("the composed worker process control through the kernel pool door", () 
 
   it("does not identify an unjournaled historical stop by matching actor and reason", async () => {
     const harness = openControlHarness();
+    assert.equal(admitExternalSlot(harness), WORKER_1);
     harness.database.authority.workerLeases.start({ workerId: WORKER_1, workflow: WORKFLOW, browserSystems: BROWSER_SYSTEMS,
-      processId: 4242, requestedBy: "local-operator", now: NOW });
+      processId: process.pid, requestedBy: "local-operator", now: NOW });
     harness.database.authority.workerLeases.control({ workerId: WORKER_1, expectedVersion: 1,
       control: { directive: "stop", requestedAt: NOW, requestedBy: "local-operator", reason: "shift over" }, now: NOW });
     const commandId = nextCommandId();
@@ -722,11 +776,12 @@ describe("the composed worker process control through the kernel pool door", () 
 
   it("refuses a new same-identity stop against a dead lease's stale directive: invalid-state, never applied", async () => {
     const harness = openControlHarness();
+    assert.equal(admitExternalSlot(harness), WORKER_1);
     // A COMPLETED stop, all the way through the worker's own death: the lease
     // carries the stop directive that stopped it and the lifecycle is stopped.
     assert.equal(harness.database.authority.workerLeases.start({
       workerId: WORKER_1, workflow: WORKFLOW, browserSystems: BROWSER_SYSTEMS,
-      processId: 4242, requestedBy: "local-operator", now: NOW,
+      processId: process.pid, requestedBy: "local-operator", now: NOW,
     }).state, "started");
     const stoppedNow = harness.clock.now().toISOString();
     assert.equal(harness.database.authority.workerLeases.control({
@@ -773,7 +828,8 @@ describe("the composed worker process control through the kernel pool door", () 
       const result = await harness.kernel.executeWorkerPool({ ...command, ...drift });
       assert.equal(result.state, "rejected");
       if (result.state === "rejected") assert.equal(result.code, "command-divergent");
-      assert.equal(harness.database.authority.commands.get(commandId), undefined);
+      assert.notEqual(harness.database.authority.commands.get(commandId), undefined);
+    assert.equal(harness.database.authority.commandAudits.findByCommand(commandId), undefined);
       assert.deepEqual(harness.database.authority.workerLeases.get(WORKER_1), lease);
     }
     assert.equal((await harness.kernel.executeWorkerPool(command)).state, "applied");
@@ -873,7 +929,7 @@ describe("the composed worker process control through the kernel pool door", () 
     const replayed = await harness.kernel.executeWorkerPool({
       ...envelope(harness, commandId),
       type: "spawn-worker",
-      target: { workflowId: WORKFLOW, expectedVersion: 0 },
+      target: { workflowId: WORKFLOW, expectedVersion: harness.database.authority.workerPools.get(WORKFLOW)?.version },
       payload: { workerId: WORKER_1 },
     });
     assert.equal(replayed.state, "already-applied");
@@ -883,15 +939,15 @@ describe("the composed worker process control through the kernel pool door", () 
 
   it("refuses the synchronous execute path for worker-browser, and other families at the pool door", async () => {
     const harness = openControlHarness();
-    assert.throws(
-      () => harness.kernel.execute({
-        ...envelope(harness),
-        type: "plan-worker-count",
-        target: { workflowId: WORKFLOW, expectedVersion: 0 },
-        payload: { desiredWorkers: 1 },
-      }),
-      /adopted the async worker pool seam; worker-browser commands settle only through executeWorkerPool/,
-    );
+    const result = harness.kernel.execute({
+      ...envelope(harness), type: "plan-worker-count",
+      target: { workflowId: WORKFLOW, expectedVersion: 0 }, payload: { desiredWorkers: 1 },
+    });
+    assert.equal(result.state, "rejected");
+    if (result.state === "rejected") assert.equal(result.code, "capability-unavailable");
+    assert.equal(harness.children.length, 0);
+    assert.equal(harness.database.authority.workerPools.get(WORKFLOW), undefined);
+
     await assert.rejects(
       () => harness.kernel.executeWorkerPool({
         commandId: nextCommandId(),
@@ -909,9 +965,10 @@ describe("the composed worker process control through the kernel pool door", () 
 
 function dashboardLaunch(harness: ControlHarness, eid = "10873698") {
   if (harness.database.authority.runtimeConfig.get() === undefined) seedSyntheticRuntimeConfig(harness.database);
+  const active = harness.database.authority.runtimeConfig.get(); assert.ok(active);
   const planner = createStartPlanService({ authority: harness.database, authorityRead: harness.database,
     descriptors: { resolve: workflowId => DESCRIPTORS.find(descriptor => descriptor.id === workflowId) }, clock: harness.clock,
-    ids: { uuid: nextCommandId }, planTtlMs: 600_000, configFingerprint: HASH_B, configSnapshotId: UUID_4, plannedBy: "local-operator" });
+    ids: { uuid: nextCommandId }, planTtlMs: 600_000, configFingerprint: active.configFingerprint, configSnapshotId: active.configSnapshotId, plannedBy: "local-operator" });
   const plan = planner.plan({ workflowId: WORKFLOW, submissions: [{ emplId: eid }], dryRun: false });
   assert.deepEqual(plan.refused, []);
   assert.equal(plan.planned.length, 1);
@@ -936,9 +993,9 @@ async function proveLaunchBirth(harness: ControlHarness) {
 }
 
 function occupyMember(harness: ControlHarness, index: number, directive: "run" | "pause" | "stop") {
-  const workerId = poolWorkerId(WORKFLOW, PositiveIntSchema.parse(index));
+  const workerId = admitExternalSlot(harness, index);
   harness.database.authority.workerLeases.start({ workerId, workflow: WORKFLOW, browserSystems: BROWSER_SYSTEMS,
-    processId: 8000 + index, requestedBy: "local-operator", now: NOW });
+    processId: process.pid, requestedBy: "local-operator", now: NOW });
   if (directive !== "run") harness.database.authority.workerLeases.control({ workerId, expectedVersion: 1,
     control: { directive, requestedAt: NOW, requestedBy: "local-operator" }, now: NOW });
   return workerId;
@@ -983,15 +1040,16 @@ describe("dashboard launch creates bounded worker capacity", () => {
     const h = openControlHarness(); occupyMember(h, 1, "run"); const { request } = dashboardLaunch(h);
     if (state !== "starting") h.database.authority.workerLeases.reportLifecycle({ workerId: WORKER_1, leaseGeneration: 1,
       lifecycle: { state, startedAt: NOW, heartbeatAt: NOW, ...(state === "busy" ? { runId: RUN_ID } : {}) }, now: NOW });
+    const poolBefore = h.database.authority.workerPools.get(WORKFLOW);
     const before = h.database.authority.workerLeases.get(WORKER_1);
     assert.equal((await launchCommands(h).submit(request)).state, "applied");
     assert.deepEqual(h.database.authority.workerLeases.get(WORKER_1), before);
-    assert.equal(h.database.authority.workerPools.get(WORKFLOW), undefined); assert.equal(h.children.length, 0);
+    assert.deepEqual(h.database.authority.workerPools.get(WORKFLOW), poolBefore); assert.equal(h.children.length, 0);
   });
 
   it.each(["pause", "stop"] as const)("keeps a larger declaration and starts only a missing slot beside a %s-directed member", async directive => {
     const h = openControlHarness(); const { request } = dashboardLaunch(h);
-    h.database.authority.workerPools.plan({ workflow: WORKFLOW, expectedVersion: 0, desiredWorkers: 3, requestedBy: "local-operator", now: NOW });
+    await admitPoolSlot(h, 3);
     occupyMember(h, 1, directive); const before = h.database.authority.workerLeases.get(WORKER_1);
     const pending = launchCommands(h).submit(request); await proveLaunchBirth(h); await pending;
     assert.equal(h.spawnRequests[0]?.member.workerId, WORKER_2);
@@ -1023,9 +1081,10 @@ describe("dashboard launch creates bounded worker capacity", () => {
       control: { directive, requestedAt: NOW, requestedBy: "local-operator" }, now: NOW });
     if (phase === "stopping") h.database.authority.workerLeases.reportLifecycle({ workerId: WORKER_1, leaseGeneration: 1,
       lifecycle: { state: "stopping", startedAt: NOW, heartbeatAt: NOW }, now: NOW });
+    planCalls = 0;
     const before = { lease: h.database.authority.workerLeases.get(WORKER_1), pool: h.database.authority.workerPools.get(WORKFLOW),
       controls: h.database.authority.workerControls.list(), children: h.children.length };
-    await assert.rejects(launchCommands(h).submit(request), /Runs queued .*worker startup unavailable: person-lookup-worker-1 is stopping/);
+    await assert.rejects(launchCommands(h).submit(request), /Runs queued .*worker startup unavailable: the admitted roster contains a pending stop/);
     assert.equal(planCalls, 0);
     assert.equal(h.database.authority.runs.listByWorkflow(WORKFLOW).length, 1);
     assert.deepEqual({ lease: h.database.authority.workerLeases.get(WORKER_1), pool: h.database.authority.workerPools.get(WORKFLOW),
@@ -1034,7 +1093,7 @@ describe("dashboard launch creates bounded worker capacity", () => {
 
   it("reports queued capacity unavailable at cap without resuming paused or stopping members", async () => {
     const h = openControlHarness(); const { request } = dashboardLaunch(h);
-    h.database.authority.workerPools.plan({ workflow: WORKFLOW, expectedVersion: 0, desiredWorkers: 3, requestedBy: "local-operator", now: NOW });
+    await admitPoolSlot(h, 3);
     for (let index = 1; index <= 3; index++) occupyMember(h, index, index === 2 ? "stop" : "pause");
     const before = JSON.stringify(h.database.authority.workerLeases.listLive());
     await assert.rejects(launchCommands(h).submit(request), /Runs queued .*worker startup unavailable: all three/);
@@ -1102,6 +1161,8 @@ describe("dashboard launch creates bounded worker capacity", () => {
     h.database.authority.workerPools.plan({ workflow: WORKFLOW, expectedVersion: 0, desiredWorkers: 1, requestedBy: "local-operator", now: NOW });
     const child = { ...envelope(h, runCapacityCommandId(request.commandId, "spawn-worker", 1)), type: "spawn-worker",
       target: { workflowId: WORKFLOW, expectedVersion: 1 }, payload: { workerId: WORKER_1 } };
+    h.database.authority.commands.insert(child);
+    h.database.authority.workerSlots.allocate({ workflow: WORKFLOW, poolIndex: 1, commandId: child.commandId, now: NOW });
     h.database.authority.workerControls.admit({ commandId: child.commandId, request: child, scope: `worker-pool:${WORKFLOW}`,
       executorId: nextCommandId(), admittedAt: NOW, expiresAt: "2026-08-26T09:03:00.000Z", basisVersion: 1, phase: { state: "admitted" } });
     await assert.rejects(launchCommands(h).submit(request), /Runs queued .*worker-control-admitted/);
@@ -1114,7 +1175,7 @@ describe("dashboard launch creates bounded worker capacity", () => {
 
 describe("dashboard shutdown drains owned workers between ingress and the process lock", () => {
   it.each(["manual-worker", "dashboard-start"] as const)("%s writes a graceful stop, waits for the owned OS exit, then releases the server lock", async mode => {
-    const repoRoot = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-shutdown-")));
+    const repoRoot = realpathSync(mkdtempSync(join(realpathSync(tmpdir()), "hrauto-shutdown-")));
     copyFileSync(join(process.cwd(), "package.json"), join(repoRoot, "package.json"));
     copyFileSync(join(process.cwd(), "package-lock.json"), join(repoRoot, "package-lock.json"));
     cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
@@ -1130,9 +1191,10 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
     const scheduler = new ManualScheduler(clock, 0);
     const children: FakeWorkerChild[] = [];
     const faultLines: string[] = [];
-    const lockFile = join(repoRoot, rebuildRuntimeIsolation.processLockRoot, "server.lock.json");
-    const lockRecord = (): { releasedAt: string | null } =>
-      JSON.parse(readFileSync(lockFile, "utf8")) as { releasedAt: string | null };
+    const lockRecord = () => {
+      const record = readRuntimeProcessLock(join(repoRoot, rebuildRuntimeIsolation.processLockRoot), "server");
+      assert.ok(record); return record;
+    };
     // Port 0 asks the OS for an ephemeral port, isolating this proof from a running dashboard.
     const runtime: DashboardRuntime = await composeDashboardRuntime({ admission, preflightRunnerFactory: healthyRuntimePreflightRunners,
       isolation: rebuildRuntimeIsolation,
@@ -1156,7 +1218,11 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
     });
     const stops: (() => Promise<void>)[] = [() => runtime.stop()];
     cleanups.push(async () => {
-      for (const stop of stops.splice(0)) await stop();
+      for (const stop of stops.splice(0)) {
+        const stopping = stop();
+        for (const child of children) child.emitExit(0, null);
+        await stopping;
+      }
     });
 
     const commandId = nextCommandId();
@@ -1174,8 +1240,15 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
       command = { commandId, requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "run-start",
         family: "start", type: "start-run", target: { workflowId: WORKFLOW, startPlanId: plan.startPlanId, expectedVersion: plan.expectedVersion }, payload: plan.fingerprints };
     } else {
+      const planned = await fetch(`${origin}/api/v1/commands`, { method: "POST",
+        headers: { "content-type": "application/json", origin },
+        body: JSON.stringify({ commandId: nextCommandId(), requestedAt: clock.now().toISOString(),
+          requestedBy: "local-operator", source: "dashboard", family: "worker-browser", type: "plan-worker-count",
+          target: { workflowId: WORKFLOW, expectedVersion: 0 }, payload: { desiredWorkers: 1 } }) });
+      assert.equal(planned.status, 200);
+      assert.equal(((await planned.json()) as { state: string }).state, "applied");
       command = { commandId, requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard",
-        family: "worker-browser", type: "spawn-worker", target: { workflowId: WORKFLOW, expectedVersion: 0 }, payload: { workerId: WORKER_1 } };
+        family: "worker-browser", type: "spawn-worker", target: { workflowId: WORKFLOW, expectedVersion: 1 }, payload: { workerId: WORKER_1 } };
     }
     const posted = fetch(`${origin}/api/v1/commands`, {
       method: "POST", headers: { "content-type": "application/json", origin }, body: JSON.stringify(command),
@@ -1203,13 +1276,19 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
     assert.equal(((await response.json()) as { state: string }).state, "applied");
 
     if (mode === "dashboard-start") {
+      const planned = await fetch(`${origin}/api/v1/commands`, { method: "POST",
+        headers: { "content-type": "application/json", origin },
+        body: JSON.stringify({ commandId: nextCommandId(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator",
+          source: "dashboard", family: "worker-browser", type: "plan-worker-count",
+          target: { workflowId: WORKFLOW, expectedVersion: 1 }, payload: { desiredWorkers: 3 } }) });
+      assert.equal(planned.status, 200);
+      assert.equal(((await planned.json()) as { state: string }).state, "applied");
       const blocked = AdmittedAuthorityDatabase.open(admission,
         { path: join(stateRoot, "state.db"), busyTimeoutMs: 5_000, migrationOwner: "unit-test" }, clock);
       try {
         assert.equal(blocked.authority.commands.get(commandId)?.source, "dashboard");
-        blocked.authority.workerPools.plan({ workflow: WORKFLOW, expectedVersion: 1, desiredWorkers: 3, requestedBy: "local-operator", now: NOW });
         for (let index = 1; index <= 3; index++) {
-          const workerId = poolWorkerId(WORKFLOW, PositiveIntSchema.parse(index));
+          const workerId = WorkerIdSchema.parse(`person-lookup-worker-${String(index)}`);
           if (index > 1) blocked.authority.workerLeases.start({ workerId, workflow: WORKFLOW,
             browserSystems: BROWSER_SYSTEMS, processId: 7001 + index, requestedBy: "local-operator", now: NOW });
           const lease = blocked.authority.workerLeases.get(workerId); assert.ok(lease);
@@ -1239,7 +1318,7 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
 
     // Shutdown: ingress closes and the supervisor durably requests stop. It
     // must remain pending until this owned child reports its real OS exit.
-    assert.equal(existsSync(lockFile), true);
+    assert.ok(lockRecord());
     assert.equal(lockRecord().releasedAt, null);
     stops.splice(0);
     const stopping = runtime.stop();
@@ -1288,9 +1367,11 @@ describe("every control retains a crash after effect admission", () => {
     harness.database.authority.workerLeases.reportLifecycle({ workerId: WORKER_1, leaseGeneration: 1, lifecycle: { state: "idle", startedAt: NOW, heartbeatAt: NOW }, now: NOW });
     const sessionId = nextCommandId();
     harness.database.authority.workerControls.observe({ workerId: WORKER_1, leaseGeneration: 1, sessionId, system: "crm", configFingerprint: "a".repeat(64), browserMode: "headless",
-      acceptDownloads: false, exclusive: false, health: "authenticated", observedAt: NOW });
+      acceptDownloads: false, exclusive: false, health: "authenticated", observedAt: NOW,
+      signInFingerprint: "b".repeat(64), openedAt: NOW, profileRevision: 1 });
+    if (type === "spawn-worker") await admitPoolSlot(harness, 2);
     const command = { ...envelope(harness), type, ...(type === "plan-worker-count" || type === "spawn-worker"
-      ? { target: { workflowId: WORKFLOW, expectedVersion: 0 }, payload: type === "plan-worker-count" ? { desiredWorkers: 2 } : { workerId: WORKER_2 } }
+      ? { target: { workflowId: WORKFLOW, expectedVersion: harness.database.authority.workerPools.get(WORKFLOW)?.version }, payload: type === "plan-worker-count" ? { desiredWorkers: 2 } : { workerId: WORKER_2 } }
       : { target: { workerId: WORKER_1, expectedVersion: 2, controlBasis: servedControlBasis(harness.database, WORKER_1),
         ...(type === "refresh-browser" || type === "reopen-browser" ? { browserSessionId: sessionId } : {}) } }) };
     fault = true;

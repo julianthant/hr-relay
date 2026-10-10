@@ -1958,7 +1958,9 @@ function applyWorkerPoolCommand(
         if (canonicalJsonStringify(current) !== canonicalJsonStringify(original)) throw new Error("worker-roster-reservation-changed");
       }
       const currentPool = repositories.workerPools.get(request.target.workflowId);
-      if (currentPool?.version !== roster.admittedVersion) throw new Error("worker-pool-version-changed-before-settlement");
+      if (currentPool === undefined) throw new Error("worker-pool-missing-before-settlement");
+      if (currentPool.version !== roster.admittedVersion) conflict(request, currentPool.version,
+        "The worker effect ALREADY executed before the pool changed; retain this command identity and do not repeat it");
       for (const slot of roster.excess) {
         const proof = acknowledgement.retirements.find(value => value.workerId === slot.workerId);
         if (proof === undefined || proof.membershipRevision !== slot.membershipRevision
