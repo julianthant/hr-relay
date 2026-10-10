@@ -57,7 +57,7 @@ describe("native authority backup", () => {
     const snapshot = observeRuntimeLockSnapshot({ processLockRoot, sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(f.path) }, f.clock);
     const proofs = new RecoveryStopProofStore({ processLockRoot, maxProofAgeMs: 60_000 }, f.clock); proofs.recordRuntimeState(snapshot);
     const stoppedSystemProof = proofs.issue({ observedBy: LOCAL_OPERATOR_ACTOR_ID, sourceDatabaseIdentity: snapshot.sourceDatabaseIdentity });
-    const restore = new OfflineAuthorityRestoreService(f.admission, { authorityPath: f.path, suspectDirectory: join(f.root, "suspects"),
+    const restore = new OfflineAuthorityRestoreService(f.admission, { authorityPath: f.path, suspectDirectory: join(f.root, "backups", "suspects"),
       busyTimeoutMs: 250, processLockRoot, stoppedProofMaxAgeMs: 60_000 }, async () => undefined, f.clock);
     await expect(restore.restore({ manifestPath, stoppedSystemProof })).resolves.toMatchObject({ state: "restored" });
     const reopened = AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "native-protected-restore" });
@@ -85,12 +85,12 @@ describe("native authority backup", () => {
     const stoppedSystemProof = proofs.issue({ observedBy: LOCAL_OPERATOR_ACTOR_ID, sourceDatabaseIdentity: snapshot.sourceDatabaseIdentity });
     let rebuilds = 0;
     const restore = new OfflineAuthorityRestoreService(f.admission, { authorityPath: f.path,
-      suspectDirectory: join(f.root, "suspects"), busyTimeoutMs: 250, processLockRoot, stoppedProofMaxAgeMs: 60_000 },
+      suspectDirectory: join(f.root, "backups", "suspects"), busyTimeoutMs: 250, processLockRoot, stoppedProofMaxAgeMs: 60_000 },
       async staged => { rebuilds += 1; const stagedAdmission = f.admission.stoppedStagedAuthority(staged);
         try { expect(inspectAuthorityBackupReadOnly(stagedAdmission, staged).tables).toHaveLength(34); } finally { stagedAdmission.release(); } }, f.clock);
     const restored = await restore.restore({ manifestPath, stoppedSystemProof });
     expect(restored.state).toBe("restored"); expect(rebuilds).toBe(1);
-    expect(readFileSync(join(f.root, "suspects", restored.suspectFileName))).toEqual(original);
+    expect(readFileSync(join(f.root, "backups", "suspects", restored.suspectFileName))).toEqual(original);
     const admitted = inspectAuthorityBackupReadOnly(f.admission, f.path);
     expect(admitted.authorityContentFingerprint).toBe(manifest.authorityContentFingerprint);
     expect(admitted.authorityGeneration).toBe(manifest.authorityGeneration);
@@ -100,7 +100,7 @@ describe("native authority backup", () => {
   it.each(["before-swap", "after-swap"] as const)("preserves authenticated suspect evidence and reports the actual authority outcome on %s failure", async phase => {
     const f = fixture(), report = await f.service.request({ trigger: "operator", requiredGeneration: f.database.getMeta().authorityGeneration });
     const manifest = report.manifests[0], manifestPath = join(f.directory, `${manifest.backupFileName}.manifest.json`);
-    f.database.close(); const original = readFileSync(f.path), processLockRoot = join(f.root, "locks"), suspects = join(f.root, "suspects");
+    f.database.close(); const original = readFileSync(f.path), processLockRoot = join(f.root, "locks"), suspects = join(f.root, "backups", "suspects");
     const snapshot = observeRuntimeLockSnapshot({ processLockRoot, sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(f.path) }, f.clock);
     const proofs = new RecoveryStopProofStore({ processLockRoot, maxProofAgeMs: 60_000 }, f.clock); proofs.recordRuntimeState(snapshot);
     const stoppedSystemProof = proofs.issue({ observedBy: LOCAL_OPERATOR_ACTOR_ID, sourceDatabaseIdentity: snapshot.sourceDatabaseIdentity });
@@ -128,11 +128,11 @@ describe("native authority backup", () => {
     f.database.close();
     for(const row of companions)writeFileSync(`${f.path}${row.suffix}`,row.bytes,{mode:0o600});
     const before = companions.map(row => ({...row, inode:statSync(`${f.path}${row.suffix}`).ino}));
-    const original = readFileSync(f.path), processLockRoot = join(f.root,"locks"), journalPath = join(f.workspace,".runtime-control","journal.json");
+    const original = readFileSync(f.path), processLockRoot = join(f.root,"locks"), journalPath = join(f.workspace,".tracker","control","journal.json");
     const snapshot = observeRuntimeLockSnapshot({processLockRoot,sourceDatabaseIdentity:AuthorityDatabase.sourceDatabaseIdentity(f.path)},f.clock);
     const proofs = new RecoveryStopProofStore({processLockRoot,maxProofAgeMs:60_000},f.clock);proofs.recordRuntimeState(snapshot);
     const stoppedSystemProof = proofs.issue({observedBy:LOCAL_OPERATOR_ACTOR_ID,sourceDatabaseIdentity:snapshot.sourceDatabaseIdentity});
-    const restore = new OfflineAuthorityRestoreService(f.admission,{authorityPath:f.path,suspectDirectory:join(f.root,"suspects"),
+    const restore = new OfflineAuthorityRestoreService(f.admission,{authorityPath:f.path,suspectDirectory:join(f.root,"backups","suspects"),
       busyTimeoutMs:250,processLockRoot,stoppedProofMaxAgeMs:60_000},async()=>undefined,f.clock,{
       copyFile:copyFileSync,atomicReplace(){throw new Error("before-authority-replacement");},renamePath(source,destination){
         if(rollbackFault && source.endsWith(".live-companion"))throw new Error("companion-rollback-fault");
@@ -158,7 +158,7 @@ describe("native authority backup", () => {
       const manifest=report.manifests[0],manifestPath=join(f.directory,`${manifest.backupFileName}.manifest.json`);
       const companions=["-wal","-shm"].map(suffix=>({suffix,bytes:readFileSync(`${f.path}${suffix}`)}));f.database.close();
       for(const row of companions)writeFileSync(`${f.path}${row.suffix}`,row.bytes,{mode:0o600});
-      const processLockRoot=join(f.root,"locks"),suspects=join(f.root,"suspects"),journalPath=join(f.workspace,".runtime-control","journal.json");
+      const processLockRoot=join(f.root,"locks"),suspects=join(f.root,"backups","suspects"),journalPath=join(f.workspace,".tracker","control","journal.json");
       const proofs=new RecoveryStopProofStore({processLockRoot,maxProofAgeMs:60_000},f.clock);
       const fresh=()=>{const observed=observeRuntimeLockSnapshot({processLockRoot,sourceDatabaseIdentity:AuthorityDatabase.sourceDatabaseIdentity(f.path)},f.clock);
         proofs.recordRuntimeState(observed);return proofs.issue({observedBy:LOCAL_OPERATOR_ACTOR_ID,sourceDatabaseIdentity:observed.sourceDatabaseIdentity});};
@@ -195,13 +195,13 @@ describe("native authority backup", () => {
     const snapshot = observeRuntimeLockSnapshot({ processLockRoot, sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(f.path) }, f.clock);
     proofs.recordRuntimeState(snapshot);
     const stoppedSystemProof = proofs.issue({ observedBy: LOCAL_OPERATOR_ACTOR_ID, sourceDatabaseIdentity: snapshot.sourceDatabaseIdentity });
-    const service = new OfflineAuthorityRestoreService(f.admission, { authorityPath: f.path, suspectDirectory: join(f.root, "suspects"),
+    const service = new OfflineAuthorityRestoreService(f.admission, { authorityPath: f.path, suspectDirectory: join(f.root, "backups", "suspects"),
       busyTimeoutMs: 250, processLockRoot, stoppedProofMaxAgeMs: 60_000 }, async () => undefined, f.clock,
       { copyFile: copyFileSync, atomicReplace(source, destination) {
         renameSync(source, destination); copyFileSync(destination, source); throw new Error("both-paths-after-replacement");
       } });
     await expect(service.restore({ manifestPath, stoppedSystemProof })).rejects.toMatchObject({ authorityState: "authority-state-uncertain" });
-    const journalPath = join(f.workspace, ".runtime-control", "journal.json"), journalBytes = readFileSync(journalPath);
+    const journalPath = join(f.workspace, ".tracker", "control", "journal.json"), journalBytes = readFileSync(journalPath);
     const journal = JSON.parse(journalBytes.toString()) as { phase: string; restore: { operationId: string; stagedPath: string; suspectPath: string } };
     expect(journal.phase).toBe("restoring"); expect(existsSync(journal.restore.stagedPath)).toBe(true);
     expect(readFileSync(journal.restore.suspectPath)).toEqual(original); expect(readFileSync(manifestPath)).not.toHaveLength(0);
@@ -241,10 +241,10 @@ describe("native authority backup", () => {
     const f = fixture(), report = await f.service.request({ trigger: "operator", requiredGeneration: f.database.getMeta().authorityGeneration });
     expect(report.manifests).toHaveLength(1);
     const manifest = report.manifests[0], manifestPath = join(f.directory, `${manifest.backupFileName}.manifest.json`);
-    const verified = await verifyBackupManifestAtPath(f.admission, manifestPath, f.database.getSourceDatabaseIdentity());
+    const verified = await verifyBackupManifestAtPath(f.admission, manifestPath);
     expect(verified.manifest).toEqual(manifest);
     expect(manifest.verification.authorityGeneration).toBe(f.database.getMeta().authorityGeneration);
-    const copy = f.admission.verifiedReadOnlyCopy(verified.backupPath, manifest.sha256, "authority");
+    const copy = f.admission.verifiedReadOnlyCopy(verified.backupPath, manifest.sha256);
     try { const inspection = inspectAuthorityBackupReadOnly(copy, verified.backupPath);
       expect(inspection.tables).toHaveLength(34); expect(inspection.authorityContentFingerprint).toBe(manifest.authorityContentFingerprint);
       expect(inspection.exactTableRegistry).toBe(true); expect(inspection.invariantViolations).toEqual([]);

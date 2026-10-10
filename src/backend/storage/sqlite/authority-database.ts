@@ -1,3 +1,4 @@
+import { createReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
 import { DiagnosticAttachmentSchema } from "../../../models/trust/diagnostic.js";
 import { authenticateAuditedParkedWriteResolution, authenticateParkedWriteResolution } from "../../../rules/write-safety/parked-resolution.js";
 import { prepareNativeRunDeletion, executeNativeRunDeletion, containsDeletionArtifactReference } from "./native-run-deletion.js";
@@ -1114,11 +1115,16 @@ function removeRelocationCopyInspectionCompanions(path: string): void {
   try { fsyncSync(fd); } finally { closeSync(fd); }
 }
 
+const RelocationSettingsSnapshotRowSchema = AuthorityRecordFingerprintRowSchema.extend({
+  revision: z.number().int().positive(), fingerprint: FingerprintSchema, captured_at: IsoInstantSchema,
+});
+
 function relocationSettingsSnapshots(database: DatabaseSync): readonly string[] {
   return database.prepare("SELECT * FROM settings_snapshots ORDER BY id").all().map((raw) => {
-    const row = AuthorityRecordFingerprintRowSchema.extend({ created_at: z.string() }).parse(raw);
+    const row = RelocationSettingsSnapshotRowSchema.parse(raw);
     const record = ConfigSnapshotRecordSchema.parse(JSON.parse(row.payload_json));
-    if (record.configSnapshotId !== row.id || record.capturedAt !== row.created_at) {
+    if (record.configSnapshotId !== row.id || record.capturedAt !== row.captured_at
+      || record.revision !== row.revision || record.fingerprint !== row.fingerprint) {
       throw new Error("storage-relocation: snapshot row metadata changed");
     }
     return canonicalJsonStringify(row);
@@ -1127,18 +1133,21 @@ function relocationSettingsSnapshots(database: DatabaseSync): readonly string[] 
 
 function relocationAppSettings(database: DatabaseSync) {
   const rows = database.prepare("SELECT * FROM settings ORDER BY id").all()
-    .map((raw) => AuthorityRecordFingerprintRowSchema.extend({ config_snapshot_id: z.string().nullable(),
-      command_id: z.string().nullable(), audit_id: z.string().nullable(), created_at: z.string() }).parse(raw));
+    .map((raw) => AuthorityRecordFingerprintRowSchema.extend({ revision: z.number().int().positive(),
+      snapshot_id: z.string(), command_id: z.string(), audit_id: z.string(), updated_at: z.string() }).parse(raw));
   if (rows.length > 1 || rows.some((row) => row.id !== "current")) {
     throw new Error("storage-relocation: app settings membership changed");
   }
   const row = rows[0];
   if (row === undefined) return null;
   const value = AppSettingsSchema.parse(JSON.parse(row.payload_json));
-  if (row.config_snapshot_id !== (value.active?.configSnapshotId ?? null)
-    || row.command_id !== (value.saved?.commandId ?? null)
-    || row.audit_id !== (value.saved?.auditId ?? null)
-    || row.created_at !== (value.saved?.committedAt ?? value.active?.activatedAt)) {
+  const authenticated = readAppSettings(database);
+  if (canonicalJsonStringify(authenticated) !== canonicalJsonStringify(value)
+    || row.revision !== (value.saved?.revision ?? 1)
+    || row.snapshot_id !== (value.active?.configSnapshotId ?? value.initialization.configSnapshotId)
+    || row.command_id !== (value.saved?.commandId ?? value.initialization.commandId)
+    || row.audit_id !== (value.saved?.auditId ?? value.initialization.auditId)
+    || row.updated_at !== (value.saved?.committedAt ?? value.active?.activatedAt ?? value.initialization.initializedAt)) {
     throw new Error("storage-relocation: app settings row metadata changed");
   }
   return value;
@@ -1229,7 +1238,10 @@ function inspectExistingDatabaseReadOnly(path: string, busyTimeoutMs: number): A
   if (!existsSync(parsedPath) || statSync(parsedPath).size === 0) {
     throw new Error(`authority database ${parsedPath} is missing or empty`);
   }
-  const database = new DatabaseSync(parsedPath, {
+  const snapshotCopy = createReadonlyAuthoritySnapshot(parsedPath);
+  let database: DatabaseSync;
+  try {
+    database = new DatabaseSync(snapshotCopy.path, {
     readOnly: true,
     enableForeignKeyConstraints: true,
     enableDoubleQuotedStringLiterals: false,
@@ -1241,6 +1253,7 @@ function inspectExistingDatabaseReadOnly(path: string, busyTimeoutMs: number): A
     allowUnknownNamedParameters: false,
     defensive: true,
   });
+  } catch (error) { snapshotCopy.dispose(); throw error; }
   let transactionOpen = false;
   try {
     database.exec("PRAGMA foreign_keys = ON");
@@ -1252,8 +1265,13 @@ function inspectExistingDatabaseReadOnly(path: string, busyTimeoutMs: number): A
     transactionOpen = false;
     return inspection;
   } finally {
-    if (transactionOpen) database.exec("ROLLBACK");
-    database.close();
+    try {
+      if (transactionOpen) database.exec("ROLLBACK");
+    } finally {
+      try { database.close(); } finally {
+        try { snapshotCopy.assertUnchanged(); } finally { snapshotCopy.dispose(); }
+      }
+    }
   }
 }
 
@@ -1271,7 +1289,10 @@ function inspectAuthorityReadIdentityReadOnly(
   if (!existsSync(parsedPath) || statSync(parsedPath).size === 0) {
     throw new Error(`authority database ${parsedPath} is missing or empty`);
   }
-  const database = new DatabaseSync(parsedPath, {
+  const snapshotCopy = createReadonlyAuthoritySnapshot(parsedPath);
+  let database: DatabaseSync;
+  try {
+    database = new DatabaseSync(snapshotCopy.path, {
     readOnly: true,
     enableForeignKeyConstraints: true,
     enableDoubleQuotedStringLiterals: false,
@@ -1283,6 +1304,7 @@ function inspectAuthorityReadIdentityReadOnly(
     allowUnknownNamedParameters: false,
     defensive: true,
   });
+  } catch (error) { snapshotCopy.dispose(); throw error; }
   let transactionOpen = false;
   try {
     database.exec("PRAGMA foreign_keys = ON");
@@ -1314,8 +1336,13 @@ function inspectAuthorityReadIdentityReadOnly(
     transactionOpen = false;
     return snapshot;
   } finally {
-    if (transactionOpen) database.exec("ROLLBACK");
-    database.close();
+    try {
+      if (transactionOpen) database.exec("ROLLBACK");
+    } finally {
+      try { database.close(); } finally {
+        try { snapshotCopy.assertUnchanged(); } finally { snapshotCopy.dispose(); }
+      }
+    }
   }
 }
 
@@ -1387,7 +1414,11 @@ function inspectSpanRunAuthorityReadOnly(path: string, rootsInput: readonly Span
   const roots = z.array(SpanAuthorityRunRootSchema).readonly().parse(rootsInput);
   const rootIssues = structuralSpanRootIssues(roots);
   if (!existsSync(path) || statSync(path).size === 0) throw new Error("span-authority-database-missing-or-empty");
-  const database = new DatabaseSync(path,{readOnly:true,enableForeignKeyConstraints:true,allowExtension:false,timeout:busyTimeoutMs});
+  const snapshotCopy = createReadonlyAuthoritySnapshot(path);
+  let database: DatabaseSync;
+  try {
+    database = new DatabaseSync(snapshotCopy.path,{readOnly:true,enableForeignKeyConstraints:true,allowExtension:false,timeout:busyTimeoutMs});
+  } catch (error) { snapshotCopy.dispose(); throw error; }
   let transactionOpen = false;
   try {
     database.exec("PRAGMA query_only=ON"); database.exec("BEGIN"); transactionOpen = true;
@@ -1433,7 +1464,13 @@ function inspectSpanRunAuthorityReadOnly(path: string, rootsInput: readonly Span
       missingSpanRunIds:malformedRecords.length === 0 ? [...runs.keys()].filter(id=>!queuedRunIds.has(RunIdSchema.parse(id))).map(id=>RunIdSchema.parse(id)) : []});
     database.exec("COMMIT");transactionOpen = false;
     return Object.freeze(snapshot);
-  } finally {if (transactionOpen) database.exec("ROLLBACK");database.close();}
+  } finally {
+    try { if (transactionOpen) database.exec("ROLLBACK"); } finally {
+      try { database.close(); } finally {
+        try { snapshotCopy.assertUnchanged(); } finally { snapshotCopy.dispose(); }
+      }
+    }
+  }
 }
 
 export class AuthorityDatabase implements Disposable {
@@ -1786,14 +1823,14 @@ export class AuthorityDatabase implements Disposable {
         const snapshots = relocationSettingsSnapshots(this.#database);
         const priorSnapshots = relocationSettingsSnapshots(baseline);
         const added = snapshots.filter((row) =>
-          AuthorityRecordFingerprintRowSchema.extend({ created_at: z.string() }).parse(JSON.parse(row)).id === intent.snapshot.configSnapshotId);
+          RelocationSettingsSnapshotRowSchema.parse(JSON.parse(row)).id === intent.snapshot.configSnapshotId);
         if (added.length !== 1 || snapshots.length !== priorSnapshots.length + 1
           || canonicalJsonStringify(snapshots.filter((row) => !added.includes(row))) !== canonicalJsonStringify(priorSnapshots)) {
           throw new Error("storage-relocation: activation snapshot history changed");
         }
         const addedRow = added[0];
         if (addedRow === undefined) throw new Error("storage-relocation: activation snapshot missing");
-        const addedRecord = AuthorityRecordFingerprintRowSchema.extend({ created_at: z.string() }).parse(JSON.parse(addedRow));
+        const addedRecord = RelocationSettingsSnapshotRowSchema.parse(JSON.parse(addedRow));
         if (canonicalJsonStringify(ConfigSnapshotRecordSchema.parse(JSON.parse(addedRecord.payload_json)))
           !== canonicalJsonStringify(intent.snapshot)) throw new Error("storage-relocation: activation snapshot differs from intent");
         const app = relocationAppSettings(this.#database);
@@ -3372,8 +3409,8 @@ export class AuthorityDatabase implements Disposable {
               return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
             }
             const result = this.#database.prepare(`
-              INSERT INTO command_audits (id, command_id, payload_json, created_at) VALUES (?, ?, ?, ?)
-            `).run(record.auditId, record.request.commandId, json, record.completedAt);
+              INSERT INTO command_audits (id, command_id, code, payload_json, created_at) VALUES (?, ?, ?, ?, ?)
+            `).run(record.auditId, record.request.commandId, "code" in record.result ? record.result.code : null, json, record.completedAt);
             settleNativeCommand(this.#database, record);
             return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(result.changes) };
           });
@@ -3444,8 +3481,8 @@ export class AuthorityDatabase implements Disposable {
               };
             }
             const result = this.#database.prepare(`
-              INSERT INTO command_audits (id, command_id, payload_json, created_at) VALUES (?, ?, ?, ?)
-            `).run(record.auditId, record.request.commandId, json, record.completedAt);
+              INSERT INTO command_audits (id, command_id, code, payload_json, created_at) VALUES (?, ?, ?, ?, ?)
+            `).run(record.auditId, record.request.commandId, "code" in record.result ? record.result.code : null, json, record.completedAt);
             settleNativeCommand(this.#database, record);
             return {
               result: Object.freeze({ state: "inserted" as const, record }),
