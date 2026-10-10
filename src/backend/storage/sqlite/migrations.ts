@@ -432,6 +432,17 @@ CREATE TRIGGER run_results_owner_delete BEFORE DELETE ON run_results
 WHEN NOT EXISTS(SELECT 1 FROM deleted_runs WHERE run_id=OLD.run_id)
 BEGIN SELECT RAISE(ABORT,'owner-deletion-required'); END;
 
+CREATE TRIGGER dryrun_results_no_replace BEFORE INSERT ON dryrun_results
+WHEN EXISTS(SELECT 1 FROM dryrun_results WHERE id=NEW.id)
+BEGIN SELECT RAISE(ABORT,'retained-identity-conflict'); END;
+
+CREATE TRIGGER dryrun_results_immutable BEFORE UPDATE ON dryrun_results
+BEGIN SELECT RAISE(ABORT,'retained-evidence-immutable'); END;
+
+CREATE TRIGGER dryrun_results_owner_delete BEFORE DELETE ON dryrun_results
+WHEN NOT EXISTS(SELECT 1 FROM deleted_runs WHERE run_id=OLD.run_id)
+BEGIN SELECT RAISE(ABORT,'owner-deletion-required'); END;
+
 CREATE TRIGGER run_receipts_no_replace BEFORE INSERT ON run_receipts
 WHEN EXISTS(SELECT 1 FROM run_receipts WHERE id=NEW.id OR run_id=NEW.run_id)
 BEGIN SELECT RAISE(ABORT,'retained-identity-conflict'); END;
@@ -529,7 +540,130 @@ BEGIN SELECT RAISE(ABORT,'auth-lease-identity-conflict'); END;
 CREATE TRIGGER timeline_events_no_replace BEFORE INSERT ON timeline_events
 WHEN EXISTS(SELECT 1 FROM timeline_events WHERE id=NEW.id OR cursor=NEW.cursor
  OR (NEW.kind='operation-confirmed' AND kind='operation-confirmed' AND operation_id=NEW.operation_id AND operation_generation=NEW.operation_generation))
-BEGIN SELECT RAISE(ABORT,'timeline-identity-conflict'); END;`] },
+BEGIN SELECT RAISE(ABORT,'timeline-identity-conflict'); END;
+
+CREATE TRIGGER command_audits_no_bulk_parent
+        BEFORE INSERT ON command_audits
+        WHEN EXISTS (SELECT 1 FROM commands WHERE id = NEW.command_id AND family = 'bulk-parent')
+        BEGIN SELECT RAISE(ABORT,'command-audits-no-bulk-parent'); END;
+
+CREATE TRIGGER commands_bulk_immutable
+        BEFORE UPDATE ON commands WHEN OLD.family = 'bulk-parent'
+        BEGIN SELECT RAISE(ABORT,'commands-bulk-immutable'); END;
+
+CREATE TRIGGER commands_bulk_retained
+        BEFORE DELETE ON commands WHEN OLD.family = 'bulk-parent'
+        BEGIN SELECT RAISE(ABORT,'commands-bulk-retained'); END;
+
+CREATE TRIGGER commands_parent_immutable
+        BEFORE UPDATE OF parent_id ON commands
+        WHEN NEW.parent_id IS NOT OLD.parent_id
+        BEGIN SELECT RAISE(ABORT,'commands-parent-immutable'); END;
+
+CREATE TRIGGER commands_parent_kind
+        BEFORE INSERT ON commands
+        WHEN NEW.parent_id IS NOT NULL AND
+          (NEW.id = NEW.parent_id OR NEW.family <> 'run' OR
+           NOT EXISTS (SELECT 1 FROM commands WHERE id = NEW.parent_id
+             AND family = 'bulk-parent' AND parent_id IS NULL))
+        BEGIN SELECT RAISE(ABORT,'commands-parent-kind'); END;
+
+CREATE TRIGGER artifacts_extracted_immutable BEFORE UPDATE ON artifacts
+WHEN OLD.kind='extracted'
+BEGIN SELECT RAISE(ABORT,'artifacts-extracted-immutable'); END;
+
+CREATE TRIGGER run_batches_retained
+        BEFORE DELETE ON "run_batches"
+        BEGIN SELECT RAISE(ABORT,'run-batches-retained'); END;
+
+CREATE TRIGGER run_batches_presentation
+        BEFORE UPDATE ON run_batches
+        WHEN NEW.id IS NOT OLD.id OR NEW.workflow IS NOT OLD.workflow
+          OR NEW.started_at IS NOT OLD.started_at OR NEW.created_at IS NOT OLD.created_at
+          OR EXISTS (SELECT fullkey, type, atom FROM json_tree(json_remove(NEW.payload_json, '$.groupInQueue', '$.version')) EXCEPT SELECT fullkey, type, atom FROM json_tree(json_remove(OLD.payload_json, '$.groupInQueue', '$.version')))
+          OR EXISTS (SELECT fullkey, type, atom FROM json_tree(json_remove(OLD.payload_json, '$.groupInQueue', '$.version')) EXCEPT SELECT fullkey, type, atom FROM json_tree(json_remove(NEW.payload_json, '$.groupInQueue', '$.version')))
+          OR NEW.version <> OLD.version + 1
+          OR NEW.version IS NOT json_extract(NEW.payload_json, '$.version')
+          OR NEW.group_in_queue IS NOT json_extract(NEW.payload_json, '$.groupInQueue')
+        BEGIN SELECT RAISE(ABORT,'run-batches-presentation'); END;
+
+CREATE TRIGGER runs_completion_immutable BEFORE UPDATE ON runs
+        WHEN (json_type(OLD.lifecycle_json, '$.completion') IS 'object' AND (
+            json_extract(NEW.lifecycle_json, '$.completion') IS NOT json_extract(OLD.lifecycle_json, '$.completion')
+            OR json_extract(NEW.lifecycle_json, '$.lifecycle') IS NOT json_extract(OLD.lifecycle_json, '$.lifecycle')
+            OR NEW.claim_generation IS NOT OLD.claim_generation))
+          OR (json_type(OLD.lifecycle_json, '$.completion') IS NULL AND json_type(NEW.lifecycle_json, '$.completion') IS 'object' AND (
+            OLD.state NOT IN ('claimed','validating','running')
+            OR json_extract(NEW.lifecycle_json, '$.completion.claim.workerId') IS NOT OLD.owner_worker_id
+            OR json_extract(NEW.lifecycle_json, '$.completion.claim.claimGeneration') IS NOT OLD.claim_generation
+            OR json_extract(NEW.lifecycle_json, '$.completion.expectedVersion') IS NOT OLD.version
+            OR NEW.version IS NOT OLD.version + 1
+            OR json_extract(NEW.lifecycle_json, '$.updatedAt') IS NOT json_extract(NEW.lifecycle_json, '$.completion.authorizedAt')))
+        BEGIN SELECT RAISE(ABORT,'runs-completion-immutable'); END;
+
+CREATE TRIGGER runs_completion_insert BEFORE INSERT ON runs
+        WHEN COALESCE(json_extract(NEW.lifecycle_json, '$.lifecycle.outcome') IN ('done','failed'), 0)
+          IS NOT (json_type(NEW.lifecycle_json, '$.completion') IS 'object')
+          OR (json_type(NEW.lifecycle_json, '$.completion') IS 'object' AND (
+            json_extract(NEW.lifecycle_json, '$.completion.schemaVersion') IS NOT 1
+            OR json_extract(NEW.lifecycle_json, '$.lifecycle.state') IS NOT 'terminal'
+            OR json_extract(NEW.lifecycle_json, '$.completion.kind') IS NOT json_extract(NEW.lifecycle_json, '$.lifecycle.outcome')
+            OR json_extract(NEW.lifecycle_json, '$.completion.authorizedAt') IS NOT json_extract(NEW.lifecycle_json, '$.lifecycle.endedAt')
+            OR json_extract(NEW.lifecycle_json, '$.completion.claim.claimGeneration') IS NOT NEW.claim_generation
+            OR json_type(NEW.lifecycle_json, '$.completion.claim.workerId') IS NOT 'text'
+            OR json_type(NEW.lifecycle_json, '$.completion.expectedVersion') IS NOT 'integer'
+            OR json_extract(NEW.lifecycle_json, '$.completion.expectedVersion') < 1
+            OR NEW.version < json_extract(NEW.lifecycle_json, '$.completion.expectedVersion') + 1
+            OR (json_extract(NEW.lifecycle_json, '$.completion.kind') = 'failed' AND
+              json_extract(NEW.lifecycle_json, '$.completion.failureId') IS NOT json_extract(NEW.lifecycle_json, '$.lifecycle.failureId'))
+            OR (json_extract(NEW.lifecycle_json, '$.completion.kind') = 'done' AND
+              json_type(NEW.lifecycle_json, '$.completion.resultDigest') IS NOT 'text')
+          ))
+        BEGIN SELECT RAISE(ABORT,'runs-completion-insert'); END;
+
+CREATE TRIGGER runs_completion_update BEFORE UPDATE ON runs
+        WHEN COALESCE(json_extract(NEW.lifecycle_json, '$.lifecycle.outcome') IN ('done','failed'), 0)
+          IS NOT (json_type(NEW.lifecycle_json, '$.completion') IS 'object')
+          OR (json_type(NEW.lifecycle_json, '$.completion') IS 'object' AND (
+            json_extract(NEW.lifecycle_json, '$.completion.schemaVersion') IS NOT 1
+            OR json_extract(NEW.lifecycle_json, '$.lifecycle.state') IS NOT 'terminal'
+            OR json_extract(NEW.lifecycle_json, '$.completion.kind') IS NOT json_extract(NEW.lifecycle_json, '$.lifecycle.outcome')
+            OR json_extract(NEW.lifecycle_json, '$.completion.authorizedAt') IS NOT json_extract(NEW.lifecycle_json, '$.lifecycle.endedAt')
+            OR json_extract(NEW.lifecycle_json, '$.completion.claim.claimGeneration') IS NOT NEW.claim_generation
+            OR json_type(NEW.lifecycle_json, '$.completion.claim.workerId') IS NOT 'text'
+            OR json_type(NEW.lifecycle_json, '$.completion.expectedVersion') IS NOT 'integer'
+            OR json_extract(NEW.lifecycle_json, '$.completion.expectedVersion') < 1
+            OR NEW.version < json_extract(NEW.lifecycle_json, '$.completion.expectedVersion') + 1
+            OR (json_extract(NEW.lifecycle_json, '$.completion.kind') = 'failed' AND
+              json_extract(NEW.lifecycle_json, '$.completion.failureId') IS NOT json_extract(NEW.lifecycle_json, '$.lifecycle.failureId'))
+            OR (json_extract(NEW.lifecycle_json, '$.completion.kind') = 'done' AND
+              json_type(NEW.lifecycle_json, '$.completion.resultDigest') IS NOT 'text')
+          ))
+        BEGIN SELECT RAISE(ABORT,'runs-completion-update'); END;
+
+CREATE TRIGGER notifications_identity
+        BEFORE UPDATE ON notifications
+        WHEN NEW.id IS NOT OLD.id
+          OR NEW.actor_id IS NOT OLD.actor_id
+          OR NEW.dedupe_fingerprint IS NOT OLD.dedupe_fingerprint
+          OR NEW.created_at IS NOT OLD.created_at
+        BEGIN
+          SELECT RAISE(ABORT,'notifications-identity');
+        END;
+
+CREATE TRIGGER notifications_monotonic
+        BEFORE UPDATE OF seen_count, version ON notifications
+        WHEN NEW.version <> OLD.version + 1 OR NEW.seen_count < OLD.seen_count
+        BEGIN
+          SELECT RAISE(ABORT,'notifications-monotonic');
+        END;
+
+CREATE TRIGGER run_requests_consume_once
+        BEFORE UPDATE OF consumed_by ON "run_requests"
+        WHEN OLD.consumed_by IS NOT NULL AND NEW.consumed_by IS NOT OLD.consumed_by
+        BEGIN
+          SELECT RAISE(ABORT,'run-requests-consume-once');
+        END;`] },
 ]);
 
 export function auditMigrationTableCoverage(): readonly string[] {
