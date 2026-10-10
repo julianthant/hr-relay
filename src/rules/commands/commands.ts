@@ -1,19 +1,18 @@
+import { WorkerSlotRecordSchema } from "../../models/run/worker-slot.js";
+import { WriteIntentRecordSchema } from "../write-safety/write-safety.js";
 import { WorkerControlBasisSchema } from "../../models/run/worker.js";
 import { FailureResolutionTargetSchema, FailureResolutionActionSchema } from "../../models/trust/failure-resolution.js";
 import { z } from "zod";
 
-import { canonicalJsonStringify } from "../validation/canonical-json.js";
+import { JsonValueSchema, canonicalJsonStringify } from "../validation/canonical-json.js";
 import { SettingsPatchSchema } from "../../models/config/settings.js";
 import { MarkedProtectedSettingsPatchSchema, ProtectedSettingsPatchSchema, ProtectedSettingsReadbackSchema, markProtectedSettingsPatch } from "../../models/config/protected-settings.js";
 import { LegacyProtectedSettingsReadbackSchema } from "../../models/config/protected-settings-legacy.js";
 import { deepFreeze } from "../validation/immutability.js";
-import { ActorIdSchema, BrowserSessionIdSchema, CommandAuditIdSchema, CommandIdSchema, DependencyIdSchema, FingerprintSchema, GateIdSchema, IntakeSessionIdSchema, IntakeManifestIdSchema, IntakeTargetFieldIdSchema, IsoInstantSchema, LOCAL_OPERATOR_ACTOR_ID, NotificationIdSchema, NonNegativeIntSchema, PositiveIntSchema, RunIdSchema, RunSessionIdSchema, SourceColumnIdSchema, SourceSurfaceIdSchema, StartPlanIdSchema, VersionPlanIdSchema, WorkerIdSchema, WorkflowIdSchema, WriteIntentIdSchema } from "../identity/ids.js";
-import { VersionBumpChangeRecordSchema } from "../../models/archive/change-record.js";
-import { RuntimeVersionScopeSchema } from "../../models/archive/runtime-version.js";
+import { ActorIdSchema, BrowserSessionIdSchema, CommandAuditIdSchema, CommandIdSchema, DependencyIdSchema, FingerprintSchema, GateIdSchema, IntakeSessionIdSchema, IntakeManifestIdSchema, IntakeTargetFieldIdSchema, IsoInstantSchema, LOCAL_OPERATOR_ACTOR_ID, NotificationIdSchema, NonNegativeIntSchema, PositiveIntSchema, RunIdSchema, RunSessionIdSchema, SourceColumnIdSchema, SourceSurfaceIdSchema, StartPlanIdSchema, WorkerIdSchema, WorkflowIdSchema, WriteIntentIdSchema, WriteAttemptIdSchema } from "../identity/ids.js";
 import { SchemaBoundCanonicalValueSchema } from "../../models/validation/schema-bound-value.js";
 import { sha256Hex } from "../validation/sha256.js";
 import { ExplorerEditApplyRequestSchema } from "../../models/dashboard/explorer.js";
-import { lifecycleCommandId } from "./lifecycle-command-id.js";
 
 /** A durable command identity cannot be reused by another command or authority. */
 export class CommandIdentityConflictError extends Error {
@@ -31,7 +30,6 @@ export const CommandFamilySchema = z.enum([
   "worker-browser",
   "settings",
   "storage-relocation",
-  "version-archive",
   "run",
   "gate",
   "notification",
@@ -59,18 +57,11 @@ export const CommandActionSchema = z.enum([
   "apply-protected-settings",
   "plan-storage-relocation",
   "cancel-storage-relocation",
-  "plan-version-bump",
-  "apply-version-bump",
-  "plan-runtime-version",
-  "apply-runtime-version",
-  "relaunch-archived-run",
-  "delete-archived-run",
   "retry",
   "restart",
   "cancel",
   "bump",
   "rename",
-  "archive",
   "delete",
   "resolve-write-present",
   "resolve-write-absent",
@@ -169,7 +160,7 @@ export const IntakeCommandRequestSchema = z.discriminatedUnion("type", [
 ]);
 
 export const WorkerBrowserCommandRequestSchema = z.discriminatedUnion("type", [
-  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.literal("plan-worker-count"), target: WorkerPoolVersionTargetSchema, payload: z.strictObject({ desiredWorkers: PositiveIntSchema }) }),
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.literal("plan-worker-count"), target: WorkerPoolVersionTargetSchema, payload: z.strictObject({ desiredWorkers: z.number().int().min(0).max(3) }) }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.literal("spawn-worker"), target: WorkerPoolVersionTargetSchema, payload: z.strictObject({ workerId: WorkerIdSchema }) }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.enum(["stop-worker", "pause-worker", "resume-worker"]), target: WorkerVersionTargetSchema }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.enum(["refresh-browser", "reopen-browser"]), target: z.strictObject({ workerId: WorkerIdSchema, browserSessionId: BrowserSessionIdSchema, expectedVersion: PositiveIntSchema, controlBasis: WorkerControlBasisSchema.optional() }) }),
@@ -315,75 +306,16 @@ export function deriveSettingsCommandFingerprint(command: unknown): string {
   ));
 }
 
-// Share the exact reviewed scope; application bumps affect every workflow.
-export const VersionScopeSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("workflows"), workflowIds: z.array(WorkflowIdSchema).min(1) }),
-  z.strictObject({ kind: z.literal("application"), applicationVersion: SemverSchema }),
-]);
-export type VersionScope = z.infer<typeof VersionScopeSchema>;
-
-export const ArchiveDeleteCommandRequestSchema = z.strictObject({
-  ...CommandEnvelopeFields,
-  family: z.literal("version-archive"),
-  type: z.literal("delete-archived-run"),
-  target: z.strictObject({ archivedRunId: RunIdSchema, archiveFingerprint: FingerprintSchema }),
-});
-
-export const ApplyRuntimeVersionCommandRequestSchema = z.strictObject({
-  ...CommandEnvelopeFields,
-  family: z.literal("version-archive"),
-  type: z.literal("apply-runtime-version"),
-  target: z.strictObject({ changeId: z.string().uuid(), reviewFingerprint: FingerprintSchema }),
-});
-
-export const VersionArchiveCommandRequestSchema = z.discriminatedUnion("type", [
-  z.strictObject({
-    ...CommandEnvelopeFields,
-    family: z.literal("version-archive"),
-    type: z.literal("plan-version-bump"),
-    target: z.strictObject({ scope: VersionScopeSchema }),
-        /* A bump's scope is declared by whoever makes the change AND recorded in that update's change record; `changeRecord` is required here, at the plan. */
-    payload: z.strictObject({
-      targetVersion: SemverSchema,
-      changeFingerprint: FingerprintSchema,
-      changeRecord: VersionBumpChangeRecordSchema,
-    }),
-  }),
-  z.strictObject({
-    ...CommandEnvelopeFields,
-    family: z.literal("version-archive"),
-    type: z.literal("apply-version-bump"),
-    target: z.strictObject({ versionPlanId: VersionPlanIdSchema, expectedVersion: PositiveIntSchema }),
-    payload: z.strictObject({ planFingerprint: FingerprintSchema }),
-  }),
-  z.strictObject({
-    ...CommandEnvelopeFields,
-    family: z.literal("version-archive"),
-    type: z.literal("plan-runtime-version"),
-    target: z.strictObject({ scope: RuntimeVersionScopeSchema }),
-  }),
-  ApplyRuntimeVersionCommandRequestSchema,
-  z.strictObject({
-    ...CommandEnvelopeFields,
-    family: z.literal("version-archive"),
-    type: z.literal("relaunch-archived-run"),
-    target: z.strictObject({ archivedRunId: RunIdSchema, archiveFingerprint: FingerprintSchema }),
-  }),
-  /** Delete means delete: the archived run and every row it owns leave authority. */
-  ArchiveDeleteCommandRequestSchema,
-]);
-
 export const RunCommandRequestSchema = z.discriminatedUnion("type", [
   /** `retry` is Resume from checkpoints and `restart` is Restart from start: both mint the item's next attempt. */
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.enum(["retry", "restart", "cancel", "bump"]), target: RunVersionTargetSchema }),
-  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("archive"), target: RunVersionTargetSchema }),
   /** Delete means delete: a terminal queue run and every row it owns leave authority. */
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("delete"), target: RunVersionTargetSchema }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("rename"), target: RunVersionTargetSchema, payload: z.strictObject({ displayName: RunDisplayNameSchema }) }),
     // Field-level patch model; an entry edits one field, never a whole checkpoint blob.
   // blob payload was a deferred-arm placeholder no producer ever sent.
-  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("resolve-write-present"), target: z.strictObject({ ...RunVersionTargetSchema.shape, writeIntentId: WriteIntentIdSchema, intentGeneration: PositiveIntSchema }), payload: z.strictObject({ occurrenceKeyDigest: FingerprintSchema.optional(), proof: SchemaBoundCanonicalValueSchema, evidenceNote: OperatorReasonSchema }) }),
-  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("resolve-write-absent"), target: z.strictObject({ ...RunVersionTargetSchema.shape, writeIntentId: WriteIntentIdSchema, intentGeneration: PositiveIntSchema }), payload: z.strictObject({ occurrenceKeyDigest: FingerprintSchema.optional(), evidenceNote: OperatorReasonSchema }) }),
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("resolve-write-present"), target: z.strictObject({ ...RunVersionTargetSchema.shape, writeIntentId: WriteIntentIdSchema, intentGeneration: PositiveIntSchema, writeAttemptId: WriteAttemptIdSchema, bindingProofDigest: FingerprintSchema }), payload: z.strictObject({ occurrenceKeyDigest: FingerprintSchema, proof: SchemaBoundCanonicalValueSchema, evidenceNote: OperatorReasonSchema }) }),
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("resolve-write-absent"), target: z.strictObject({ ...RunVersionTargetSchema.shape, writeIntentId: WriteIntentIdSchema, intentGeneration: PositiveIntSchema, writeAttemptId: WriteAttemptIdSchema, bindingProofDigest: FingerprintSchema }), payload: z.strictObject({ occurrenceKeyDigest: FingerprintSchema, evidenceNote: OperatorReasonSchema }) }),
 ]);
 
 export const GateCommandRequestSchema = z.strictObject({
@@ -423,7 +355,6 @@ export const CommandRequestSchema = z.union([
   StorageRelocationCommandRequestSchema,
   ProtectedSettingsCommandRequestSchema,
   MarkedProtectedSettingsCommandRequestSchema,
-  VersionArchiveCommandRequestSchema,
   RunCommandRequestSchema,
   GateCommandRequestSchema,
   NotificationCommandRequestSchema,
@@ -446,7 +377,6 @@ export const CommandTargetReferenceSchema = z.discriminatedUnion("family", [
   z.strictObject({ family: z.literal("settings"), revision: PositiveIntSchema }),
   z.strictObject({ family: z.literal("storage-relocation"), revision: PositiveIntSchema }),
   z.strictObject({ family: z.literal("protected-settings"), revision: PositiveIntSchema }),
-  z.strictObject({ family: z.literal("version-archive"), versionPlanId: VersionPlanIdSchema }),
   z.strictObject({ family: z.literal("run"), runId: RunIdSchema }),
   z.strictObject({ family: z.literal("gate"), runId: RunIdSchema, gateId: GateIdSchema }),
   z.strictObject({ family: z.literal("notification"), notificationId: NotificationIdSchema }),
@@ -567,6 +497,18 @@ export const CommandAuditRecordSchema = z.strictObject({
   /** `before` admits 0 because the first pool plan moves 0 → 1. */
   versionChanges: z.array(z.strictObject({ target: CommandTargetReferenceSchema, before: NonNegativeIntSchema, after: PositiveIntSchema })),
   affectedDependencyIds: z.array(DependencyIdSchema),
+  writeResolution: WriteIntentRecordSchema.optional(),
+}).superRefine((audit, context) => {
+  const request = audit.request;
+  const resolved = request.family === "run" && (request.type === "resolve-write-present" || request.type === "resolve-write-absent") && audit.result.state === "applied";
+  if (!resolved) {
+    if (audit.writeResolution !== undefined) context.addIssue({code:"custom",path:["writeResolution"],message:"resolution acknowledgement requires an applied resolution command"});
+    return;
+  }
+  const intent = audit.writeResolution;
+  if (intent === undefined || (intent.status !== "committed" && intent.status !== "retryable") || intent.resolution === undefined
+    || intent.resolution.commandId !== request.commandId || intent.resolution.auditId !== audit.auditId
+    || intent.resolution.resolvedAt !== audit.completedAt) context.addIssue({code:"custom",path:["writeResolution"],message:"applied resolution requires its complete immutable settlement acknowledgement"});
 });
 
 /** Internal persistence for lifecycle idempotency, deliberately separate from the product command union: it cannot be submitted through the command kernel and carries no run input. */
@@ -576,14 +518,12 @@ export const RunLifecycleCommandOperationSchema = z.enum([
   "transition",
   "renew-claim",
   "worker-transition",
+  "worker-admission",
   "terminalize",
   "requeue",
   "retry",
   "restart",
-  "relaunch",
-  "archive",
   "delete",
-  "delete-archived",
   "purge",
 ]);
 
@@ -608,29 +548,17 @@ export const RunLifecycleCommandRecordSchema = z.strictObject({
   commandId: CommandIdSchema,
   operation: RunLifecycleCommandOperationSchema,
   requestFingerprint: FingerprintSchema,
+  request: JsonValueSchema,
   fence: RunLifecycleCommandFenceSchema,
   recordedAt: IsoInstantSchema,
-  /** Read-forward recovery evidence retained only for an accepted Archive deletion. */
-  acceptedArchiveDeleteRequest: ArchiveDeleteCommandRequestSchema.optional(),
-}).superRefine((record, context) => {
-  const request = record.acceptedArchiveDeleteRequest;
-  if (request === undefined) return;
-  const fingerprint = sha256Hex(
-    `hrauto:run-lifecycle-command:v1\0delete-archived\0${canonicalJsonStringify(request)}`,
-  );
-  if (record.operation !== "delete-archived") {
-    context.addIssue({ code: "custom", path: ["acceptedArchiveDeleteRequest"], message: "archive delete request requires delete-archived operation" });
-  }
-  if (record.commandId !== lifecycleCommandId("operator-delete-archive", request.commandId)) {
-    context.addIssue({ code: "custom", path: ["acceptedArchiveDeleteRequest", "commandId"], message: "archive delete request command identity mismatch" });
-  }
-  if (record.requestFingerprint !== fingerprint) {
-    context.addIssue({ code: "custom", path: ["requestFingerprint"], message: "archive delete request fingerprint mismatch" });
-  }
 });
 
 export const RunLifecycleCommandResultIdentitySchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("run"), runId: RunIdSchema, appliedVersion: PositiveIntSchema }),
+  z.strictObject({ kind: z.literal("worker"), slot: WorkerSlotRecordSchema,
+    beforePoolVersion: NonNegativeIntSchema, afterPoolVersion: PositiveIntSchema }),
+  z.strictObject({ kind: z.literal("run"), runId: RunIdSchema, appliedVersion: PositiveIntSchema,
+    terminal: z.strictObject({ outcome: z.enum(["cancelled", "discarded", "superseded"]), endedAt: IsoInstantSchema }).optional(),
+  }),
   z.strictObject({ kind: z.literal("deletion"), runIds: z.array(RunIdSchema).min(1) }),
   z.strictObject({
     kind: z.literal("purge"),
@@ -781,8 +709,7 @@ const COMMAND_ACTIONS_BY_FAMILY = {
   "worker-browser": ["plan-worker-count", "spawn-worker", "stop-worker", "pause-worker", "resume-worker", "refresh-browser", "reopen-browser"],
   settings: ["apply-settings", "apply-protected-settings"],
   "storage-relocation": ["plan-storage-relocation", "cancel-storage-relocation"],
-  "version-archive": ["plan-version-bump", "apply-version-bump", "plan-runtime-version", "apply-runtime-version", "delete-archived-run"],
-  run: ["retry", "restart", "cancel", "bump", "rename", "archive", "delete", "resolve-write-present", "resolve-write-absent"],
+  run: ["retry", "restart", "cancel", "bump", "rename", "delete", "resolve-write-present", "resolve-write-absent"],
   gate: ["resolve-gate"],
   notification: ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze"],
   explorer: ["apply-explorer-edit"],
@@ -814,8 +741,7 @@ export const COMMAND_FAMILY_REGISTRY = deepFreeze(CommandFamilyRegistrySchema.pa
   { family: "worker-browser", actions: ["plan-worker-count", "spawn-worker", "stop-worker", "pause-worker", "resume-worker", "refresh-browser", "reopen-browser"] },
   { family: "settings", actions: ["apply-settings", "apply-protected-settings"] },
   { family: "storage-relocation", actions: ["plan-storage-relocation", "cancel-storage-relocation"] },
-  { family: "version-archive", actions: ["plan-version-bump", "apply-version-bump", "plan-runtime-version", "apply-runtime-version", "delete-archived-run"] },
-  { family: "run", actions: ["retry", "restart", "cancel", "bump", "rename", "archive", "delete", "resolve-write-present", "resolve-write-absent"] },
+  { family: "run", actions: ["retry", "restart", "cancel", "bump", "rename", "delete", "resolve-write-present", "resolve-write-absent"] },
   { family: "gate", actions: ["resolve-gate"] },
   { family: "notification", actions: ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze"] },
   { family: "explorer", actions: ["apply-explorer-edit"] },

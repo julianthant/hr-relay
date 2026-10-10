@@ -23,7 +23,7 @@ it.each([27, 28, 29] as const)("negative control: live-DDL-derived lists reject 
     const { AuthorityDatabase } = await import("../../../../../../src/backend/storage/sqlite/authority-database.js");
     const { RuntimeAdmission } = await import("../../../../../../src/backend/storage/admission/admission.js");
     const { manualClock } = await import("../../../../../../src/rules/time/clock.js");
-    const admitted = AuthorityDatabase.open(RuntimeAdmission.syntheticFixture(path, "authority"), {
+    const admitted = AuthorityDatabase.open(RuntimeAdmission.syntheticFixture(path), {
       path, busyTimeoutMs: 250, migrationOwner: "m21-negative-control", openMode: "storage-upgrade-preflight-read-only-no-migrate",
     }, manualClock(new Date(now)));
     assert.equal(admitted.getMeta().schemaVersion, version);

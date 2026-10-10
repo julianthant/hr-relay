@@ -254,19 +254,14 @@ export type UcpathTerminationFilingPresenceProof = z.infer<
   typeof UcpathTerminationFilingPresenceProofSchema
 >;
 
-/** Historical scans prove no in-progress rows at observedAt, never which rows were deleted. */
-const UcpathPendingSweepProofFields = {
+/** Settlement records retain the final grid observation and the exact selected set. */
+const UcpathPendingSweepObservationFields = {
   kind: z.literal("ucpath-pending-terminations-clear"),
   emplId: EidSchema,
   scannedRowCount: z.number().int().min(0),
   observedAt: IsoInstantSchema,
   source: z.literal("ss-smart-hr-detail-read"),
 } as const;
-
-export const UcpathPendingSweepProofSchema = z.strictObject(
-  UcpathPendingSweepProofFields,
-);
-export type UcpathPendingSweepProof = z.infer<typeof UcpathPendingSweepProofSchema>;
 
 /** A canonical, recoverable list of stable transaction ids, carried as one comma-separated scalar with `none` as the exact empty-list spelling; the producer preserves the canonical ordering. */
 export const UcpathPendingTransactionIdListSchema = z.string().regex(
@@ -282,9 +277,9 @@ export function ucpathPendingTransactionIdList(
   );
 }
 
-/** The current settlement proof: the historical proof stays exact, and new settlements additionally retain the selected/protected stable ids and the row-fact digest that keyed the write intent. */
+/** Selected and protected stable IDs are bound to the row-fact digest that keyed the intent. */
 export const UcpathPendingSweepSettlementProofSchema = z.strictObject({
-  ...UcpathPendingSweepProofFields,
+  ...UcpathPendingSweepObservationFields,
   version: z.literal(2),
   selectedTransactionIds: UcpathPendingTransactionIdListSchema,
   protectedTransactionIds: UcpathPendingTransactionIdListSchema,
@@ -294,11 +289,6 @@ export type UcpathPendingSweepSettlementProof = z.infer<
   typeof UcpathPendingSweepSettlementProofSchema
 >;
 
-/** Frozen result/archive readers accept both eras; current writes require v2. */
-export const UcpathPendingSweepHistoricalOrCurrentProofSchema = z.union([
-  UcpathPendingSweepSettlementProofSchema,
-  UcpathPendingSweepProofSchema,
-]);
 
 /** What `prepare` proved it staged, page by page. */
 export const UcpathTerminationStagingSchema = z.strictObject({

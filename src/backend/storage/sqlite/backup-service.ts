@@ -15,38 +15,13 @@ import {
 } from "node:fs";
 import { pipeline } from "node:stream/promises";
 import { basename, dirname, join, resolve } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { systemClock } from "../../../rules/time/clock.js";
-import {
-  deriveSettingsCommandFingerprint,
-  CommandAuditRecordSchema,
-  MarkedProtectedSettingsCommandRequestSchema,
-  SettingsCommandRequestSchema,
-} from "../../../rules/commands/commands.js";
-import {
-  deriveJournaledSettingsCommandFingerprint,
-  HistoricalProtectedSettingsAuditSchema,
-  HistoricalProtectedSettingsCommandSchema,
-  journaledSettingsCommand,
-} from "../../../rules/commands/commands-history.js";
-import {
-  ProtectedSettingsNameSchema,
-} from "../../../models/config/protected-settings.js";
-import { LegacyProtectedSettingsNameSchema } from "../../../models/config/protected-settings-legacy.js";
-import {
-  SettingsFileRecordSchema,
-  type SettingsFileRecord,
-} from "../../../models/config/settings.js";
-import { SettingsRootAuthoritySchema } from "../compatibility/d331-settings-root.js";
-import { SettingsCurrentRecordSchema } from "../compatibility/d331-settings-current.js";
-import { ProtectedSettingsCurrentRecordSchema } from "../../../models/config/authority.js";
-import { inspectAuthorityBackupReadOnly } from "../compatibility/backup-inspection.js";
+import { inspectAuthorityBackupReadOnly } from "./backup-inspection.js";
 import { AuthorityDatabase } from "./authority-database.js";
 import { requireRuntimeAdmission, type RuntimeAdmission } from "../admission/admission.js";
-import { isNormalAuthoritySchemaVersion } from "./migrations.js";
 import {
   AuthorityBackupManifestSchema,
   AuthorityBackupManifestV3Schema,
@@ -55,7 +30,6 @@ import {
   type AuthorityBackupManifest,
   type AuthorityBackupManifestV3,
   type AuthorityBackupRunReport,
-  type ProtectedSettingsBackupPresence,
 } from "./recovery-contracts.js";
 
 export const AuthorityBackupServiceOptionsSchema = z.strictObject({
@@ -72,22 +46,7 @@ function inspectBackupCopy(
   backupPath: string,
   expectedSchemaVersion?: number,
 ): ReturnType<typeof inspectAuthorityBackupReadOnly> {
-  const inspection = inspectAuthorityBackupReadOnly(admission,backupPath, expectedSchemaVersion);
-  if (isNormalAuthoritySchemaVersion(inspection.schemaVersion)) {
-    const current = AuthorityDatabase.inspectExistingReadOnly(admission, backupPath);
-    for (const field of [
-      "applicationId",
-      "schemaVersion",
-      "pageCount",
-      "authorityGeneration",
-      "authorityContentFingerprint",
-    ] as const) {
-      if (inspection[field] !== current[field]) {
-        throw new Error(`current backup ${field} disagrees with the compatibility inspection`);
-      }
-    }
-  }
-  return inspection;
+  return inspectAuthorityBackupReadOnly(admission, backupPath, expectedSchemaVersion);
 }
 
 // Read-only WAL connections can create SQLite companions and cannot remove them on close.
@@ -132,196 +91,6 @@ async function sha256File(path: string): Promise<string> {
   return hash.digest("hex");
 }
 
-const JsonRecordRowSchema = z.strictObject({ record_json: z.string() });
-
-function readHistoricalRecord<Schema extends z.ZodType>(
-  database: DatabaseSync,
-  table: "commands" | "settings_current" | "protected_settings_current",
-  recordKey: string,
-  schema: Schema,
-): z.infer<Schema> | undefined {
-  const row = database.prepare(
-    `SELECT record_json FROM ${table} WHERE record_key = ?`,
-  ).get(recordKey);
-  if (row === undefined) return undefined;
-  return schema.parse(JSON.parse(JsonRecordRowSchema.parse(row).record_json));
-}
-
-function readHistoricalCommandAudit(database: DatabaseSync, commandId: string) {
-  const rows = z.array(JsonRecordRowSchema).parse(database.prepare(`
-    SELECT record_json FROM command_audits WHERE command_id = ? ORDER BY record_key
-  `).all(commandId));
-  if (rows.length > 1) {
-    throw new Error(`historical backup has multiple audits for command ${commandId}`);
-  }
-  const row = rows[0];
-  return row === undefined
-    ? undefined
-    // Replay protected command audits through their frozen seven-name request and readback schema.
-    : z.union([CommandAuditRecordSchema, HistoricalProtectedSettingsAuditSchema]).parse(JSON.parse(row.record_json));
-}
-
-function authenticateHistoricalOrdinarySettings(
-  record: SettingsFileRecord,
-  database: DatabaseSync,
-): void {
-  const current = readHistoricalRecord(
-    database,
-    "settings_current",
-    "current",
-    SettingsCurrentRecordSchema,
-  );
-  if (record.revision === 1) {
-    if (current !== undefined) {
-      throw new Error(`authority-uncertain: baseline settings.json is behind canonical revision ${String(current.revision)}`);
-    }
-    return;
-  }
-  const applied = record.lastApplied;
-  if (applied === undefined) {
-    throw new Error(`authority-uncertain: settings.json revision ${String(record.revision)} has no last command`);
-  }
-  const command = readHistoricalRecord(
-    database,
-    "commands",
-    applied.commandId,
-    SettingsCommandRequestSchema,
-  );
-  if (command === undefined) {
-    throw new Error(`authority-unjournaled: settings revision ${String(record.revision)} has no durable command journal for settings.json`);
-  }
-  if (command.family !== "settings" || command.type !== "apply-settings"
-    || deriveSettingsCommandFingerprint(command) !== applied.commandFingerprint
-    || command.target.expectedRevision !== applied.expectedRevision
-    || command.payload.settingsSchemaHash !== applied.settingsSchemaHash
-    || command.payload.patchFingerprint !== applied.patchFingerprint) {
-    throw new Error(`authority-uncertain: settings.json revision ${String(record.revision)} does not match its command identity`);
-  }
-  const audit = readHistoricalCommandAudit(database, applied.commandId);
-  const target = { family: "settings" as const, revision: record.revision };
-  if (audit === undefined
-    || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)
-    || audit.result.state !== "applied"
-    || audit.result.commandId !== applied.commandId
-    || audit.result.restartRequired !== true
-    || audit.result.settingsRevision !== record.revision
-    || audit.result.settingsFingerprint !== record.settingsFingerprint
-    || canonicalJsonStringify(audit.result.affectedTargets) !== canonicalJsonStringify([target])
-    || canonicalJsonStringify(audit.versionChanges) !== canonicalJsonStringify([{
-      target,
-      before: applied.expectedRevision,
-      after: record.revision,
-    }])
-    || audit.affectedDependencyIds.length !== 0
-    || current === undefined
-    || current.revision !== record.revision
-    || current.settingsFingerprint !== record.settingsFingerprint
-    || current.commandId !== applied.commandId
-    || current.commandFingerprint !== applied.commandFingerprint
-    || current.auditId !== audit.auditId
-    || current.committedAt !== audit.completedAt) {
-    throw new Error(`authority-uncertain: settings.json revision ${String(record.revision)} is not its authenticated current journal result`);
-  }
-}
-
-function authenticateHistoricalProtectedPresence(
-  presence: ProtectedSettingsBackupPresence,
-  database: DatabaseSync,
-): void {
-  const current = readHistoricalRecord(
-    database,
-    "protected_settings_current",
-    "current",
-    ProtectedSettingsCurrentRecordSchema,
-  );
-  if (presence.revision === 1) {
-    if (presence.entries.length !== 0 || current !== undefined) {
-      throw new Error("authority-uncertain: baseline protected settings backup does not match copied authority");
-    }
-    return;
-  }
-  const sortedCurrentEntries = current?.entries.toSorted((left, right) => left.name.localeCompare(right.name));
-  if (current === undefined
-    || current.revision !== presence.revision
-    || canonicalJsonStringify(sortedCurrentEntries) !== canonicalJsonStringify(presence.entries)) {
-    throw new Error(`authority-uncertain: protected settings backup revision ${String(presence.revision)} does not match its copied singleton`);
-  }
-  const command = readHistoricalRecord(
-    database,
-    "commands",
-    current.commandId,
-    z.union([MarkedProtectedSettingsCommandRequestSchema, HistoricalProtectedSettingsCommandSchema]),
-  );
-  const audit = readHistoricalCommandAudit(database, current.commandId);
-  const target = { family: "protected-settings" as const, revision: presence.revision };
-  // Compare converted command readback in the schema family it authenticated.
-  const historical = command !== undefined && HistoricalProtectedSettingsCommandSchema.safeParse(command).success;
-  const readbackNames: readonly string[] = historical ? LegacyProtectedSettingsNameSchema.options : ProtectedSettingsNameSchema.options;
-  const entries = Object.fromEntries(readbackNames.map((name) => {
-    const entry = presence.entries.find((candidate) => candidate.name === name);
-    return [name, entry === undefined
-      ? { present: false }
-      : { present: true, valueId: entry.valueId, updatedAt: entry.updatedAt }];
-  }));
-  if (command === undefined
-    || command.family !== "settings"
-    || command.type !== "apply-protected-settings"
-    || command.target.expectedRevision !== presence.revision - 1
-    || deriveJournaledSettingsCommandFingerprint(command) !== current.commandFingerprint
-    || audit === undefined
-    || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(journaledSettingsCommand(command))
-    || audit.result.state !== "applied"
-    || audit.result.commandId !== current.commandId
-    || audit.result.restartRequired !== false
-    || audit.result.revision !== presence.revision
-    || canonicalJsonStringify(audit.result.entries) !== canonicalJsonStringify(entries)
-    || canonicalJsonStringify(audit.result.affectedTargets) !== canonicalJsonStringify([target])
-    || canonicalJsonStringify(audit.versionChanges) !== canonicalJsonStringify([{
-      target,
-      before: presence.revision - 1,
-      after: presence.revision,
-    }])
-    || audit.affectedDependencyIds.length !== 0
-    || current.auditId !== audit.auditId
-    || current.committedAt !== audit.completedAt) {
-    throw new Error(`authority-uncertain: protected settings backup revision ${String(presence.revision)} is not authenticated by its copied journal`);
-  }
-}
-
-function authenticateHistoricalV2Bindings(
-  backupPath: string,
-  ordinary: SettingsFileRecord,
-  protectedSettings: ProtectedSettingsBackupPresence,
-): void {
-  const database = new DatabaseSync(backupPath, {
-    readOnly: true,
-    enableForeignKeyConstraints: true,
-    enableDoubleQuotedStringLiterals: false,
-    allowExtension: false,
-    timeout: 250,
-    readBigInts: false,
-    returnArrays: false,
-    allowBareNamedParameters: false,
-    allowUnknownNamedParameters: false,
-    defensive: true,
-  });
-  try {
-    database.exec("PRAGMA query_only = ON");
-    database.exec("BEGIN");
-    try {
-      authenticateHistoricalOrdinarySettings(ordinary, database);
-      authenticateHistoricalProtectedPresence(protectedSettings, database);
-      database.exec("COMMIT");
-    } catch (error) {
-      database.exec("ROLLBACK");
-      throw error;
-    }
-  } finally {
-    database.close();
-    removeReadOnlyInspectionCompanions(backupPath);
-  }
-}
-
 export async function verifyBackupBytesAtPath(
   pathInput: string,
   manifest: Readonly<{ backupFileName: string; byteSize: number; sha256: string }>,
@@ -357,16 +126,9 @@ export async function verifyBackupManifestAtPath(
     && manifest.sourceDatabaseIdentity !== expectedSourceDatabaseIdentity) {
     throw new Error(`backup manifest ${basename(manifestPath)} belongs to a different authority database`);
   }
-  const identities = manifest.manifestVersion === 2 ? manifest.files : [manifest];
-  for (const identity of identities) {
-    const path = join(dirname(manifestPath), identity.backupFileName);
-    if (basename(path) !== identity.backupFileName || !existsSync(path)) {
-      throw new Error(`backup file ${identity.backupFileName} named by ${basename(manifestPath)} does not exist`);
-    }
-    await verifyBackupBytesAtPath(path, identity, `backup file ${identity.backupFileName}`);
-  }
   const backupPath = join(dirname(manifestPath), manifest.backupFileName);
-  const copyAdmission = admission.verifiedReadOnlyCopy(backupPath, manifest.sha256, "authority");
+  await verifyBackupBytesAtPath(backupPath, manifest);
+  const copyAdmission = admission.verifiedReadOnlyCopy(backupPath, manifest.sha256);
   let inspection: ReturnType<typeof inspectBackupCopy>;
   try { inspection = inspectBackupCopy(copyAdmission, backupPath, manifest.schemaVersion); }
   finally { copyAdmission.release(); }
@@ -375,26 +137,6 @@ export async function verifyBackupManifestAtPath(
     if (inspection[field] !== manifest[field]) {
       throw new Error(`backup file ${manifest.backupFileName} ${field} does not match its manifest`);
     }
-  }
-  if (manifest.manifestVersion === 2) {
-    const ordinary = manifest.files[1];
-    const authority = manifest.files[2];
-    const ordinaryBytes: unknown = JSON.parse(readFileSync(
-      join(dirname(manifestPath), ordinary.backupFileName),
-      "utf8",
-    ));
-    const ordinaryRecord = SettingsFileRecordSchema.parse(ordinaryBytes);
-    const settingsAuthority = SettingsRootAuthoritySchema.parse(JSON.parse(readFileSync(
-      join(dirname(manifestPath), authority.backupFileName),
-      "utf8",
-    )));
-    if (settingsAuthority.settingsSchemaHash !== ordinaryRecord.settingsSchemaHash) {
-      throw new Error("backup authority.json does not bind the ordinary settings schema");
-    }
-    if (settingsAuthority.ordinary !== "initialized" || settingsAuthority.protected !== "initialized") {
-      throw new Error("backup authority.json does not bind initialized settings documents");
-    }
-    authenticateHistoricalV2Bindings(backupPath, ordinaryRecord, manifest.protectedSettings);
   }
   return Object.freeze({ manifestPath, backupPath, manifest });
 }
@@ -485,7 +227,7 @@ export class AuthorityBackupService {
     try {
       await this.#source.onlineBackupTo(temporaryBackupPath);
       this.#admission.assertWritable();
-      const copyAdmission = this.#admission.verifiedReadOnlyCopy(temporaryBackupPath, await sha256File(temporaryBackupPath), "authority");
+      const copyAdmission = this.#admission.verifiedReadOnlyCopy(temporaryBackupPath, await sha256File(temporaryBackupPath));
       let inspection: ReturnType<typeof inspectBackupCopy>;
       try { inspection = inspectBackupCopy(copyAdmission, temporaryBackupPath); }
       finally { copyAdmission.release(); }

@@ -35,7 +35,6 @@ export interface RebuildRuntimeStart {
   /** Explicit seam override for tests; production registers via `registerTestDataComposer`. */
   readonly testData?: TestDataComposer;
 
-  readonly activityPersonPseudonyms?: ActivityPersonPseudonymComposer;
   /** Explicit seam override for tests; production subscribes to the real process signals. */
   readonly signals?: RuntimeShutdownSignals;
   /** Publish readiness only after the dashboard owns shutdown. */
@@ -77,12 +76,6 @@ type TestDataComposer = (
   isolation: RuntimeIsolation,
   args: readonly string[],
 ) => Promise<{ readonly output: string; readonly exitCode: 0 | 1 | 2 }>;
-type ActivityPersonPseudonymComposer = (
-  isolation: RuntimeIsolation,
-  args: readonly string[],
-) => { readonly output: string; readonly exitCode: 0 | 1 | 2 };
-
-
 // Register separately to preserve the operational-isolation audit's exact runtime-start call.
 let registeredDashboardComposer: DashboardComposer | undefined;
 
@@ -145,19 +138,6 @@ export function registerTestDataComposer(composer: TestDataComposer): void {
     throw new Error("a test-data composer is already registered; two compositions cannot own one runtime");
   }
   registeredTestDataComposer = composer;
-}
-
-let registeredActivityPersonPseudonymComposer: ActivityPersonPseudonymComposer | undefined;
-
-export function registerActivityPersonPseudonymComposer(
-  composer: ActivityPersonPseudonymComposer,
-): void {
-  if (registeredActivityPersonPseudonymComposer !== undefined) {
-    throw new Error(
-      "an activity person pseudonym composer is already registered; two compositions cannot own one runtime",
-    );
-  }
-  registeredActivityPersonPseudonymComposer = composer;
 }
 
 // completedThrough names the last completed ordered work item; active names the current admission stage.
@@ -314,9 +294,6 @@ export async function startRebuildRuntime(input: RebuildRuntimeStart): Promise<v
     write(outcome.output);
     if (outcome.exitCode !== 0) process.exitCode = outcome.exitCode;
     return;
-  }
-  if (command === "activity-person-pseudonyms") {
-    throw new Error("activity-person-pseudonyms-retired");
   }
   if (command === "worker") {
     const compose = input.worker ?? registeredWorkerComposer;

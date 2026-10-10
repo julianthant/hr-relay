@@ -186,7 +186,8 @@ export function buildExplainRunView(evidence: ExplainRunEvidence): ExplainRunVie
           + `asserted at ${record.assertion.assertedAt} and observed by nobody`,
       };
     }
-    const replayed = record.runId !== envelope.runId || record.attempt !== envelope.attempt;
+    const replayed = record.runId !== envelope.runId || record.attempt !== envelope.attempt
+      || Number(record.claimGeneration) !== Number(run.claimGeneration);
     return {
       nodeId,
       disposition: replayed ? ("replayed-from-checkpoint" as const) : ("observed-this-attempt" as const),
@@ -293,11 +294,9 @@ export function buildExplainRunView(evidence: ExplainRunEvidence): ExplainRunVie
     receipt: receipt === undefined
       ? {
         state: "absent",
-        reason: receiptProjection?.state === "withheld"
-          ? receiptProjection.reason
-          : lifecycle.state === "terminal"
-            ? "this run is terminal but no receipt could be derived"
-            : "a receipt states a settled verdict and this run has not settled",
+        reason: lifecycle.state === "terminal"
+          ? "this run is terminal but no receipt could be derived"
+          : "a receipt states a settled verdict and this run has not settled",
       }
       : {
         state: "present",

@@ -5,45 +5,6 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import { TimelineAppendSchema, TimelineEventRecordSchema, TimelinePageRequestSchema,
   timelineAppendContent, type TimelineEventRecord, type TimelineRepository } from "../../../models/events/timeline.js";
 
-export const TIMELINE_EVENT_TABLE_DDL = `
-  CREATE TABLE timeline_events (
-    cursor INTEGER PRIMARY KEY AUTOINCREMENT,
-    record_key TEXT NOT NULL UNIQUE,
-    workflow TEXT NOT NULL,
-    run_id TEXT REFERENCES workflow_runs(record_key) ON DELETE RESTRICT,
-    worker_id TEXT,
-    retention_date TEXT NOT NULL,
-    retention_class TEXT NOT NULL CHECK (retention_class IN ('ordinary', 'confirmed-operation')),
-    record_json TEXT NOT NULL CHECK (json_valid(record_json)),
-    created_at TEXT NOT NULL,
-    CHECK ((run_id IS NULL) <> (worker_id IS NULL)),
-    CHECK (cursor IS json_extract(record_json, '$.cursor')),
-    CHECK (record_key IS json_extract(record_json, '$.eventId')),
-    CHECK (workflow IS json_extract(record_json, '$.workflow')),
-    CHECK (run_id IS json_extract(record_json, '$.scope.runId')),
-    CHECK (worker_id IS json_extract(record_json, '$.scope.workerId')),
-    CHECK (retention_date IS json_extract(record_json, '$.retentionDate')),
-    CHECK (created_at IS json_extract(record_json, '$.recordedAt')),
-    CHECK ((retention_class = 'confirmed-operation') = (json_extract(record_json, '$.payload.kind') = 'operation-confirmed'))
-  ) STRICT
-`;
-
-export const TIMELINE_EVENT_INDEX_DDL = [
-  "CREATE INDEX timeline_events_run_cursor_idx ON timeline_events(run_id, cursor)",
-  "CREATE INDEX timeline_events_workflow_cursor_idx ON timeline_events(workflow, cursor)",
-  "CREATE INDEX timeline_events_retention_idx ON timeline_events(retention_class, retention_date)",
-  `CREATE UNIQUE INDEX timeline_events_confirmed_operation_idx ON timeline_events(
-    json_extract(record_json, '$.payload.facts.writeIntentId'),
-    json_extract(record_json, '$.payload.facts.intentGeneration')
-  ) WHERE retention_class = 'confirmed-operation'`,
-  `CREATE TRIGGER timeline_events_never_updated BEFORE UPDATE ON timeline_events
-    BEGIN SELECT RAISE(ABORT, 'timeline event history is immutable'); END`,
-  `CREATE TRIGGER timeline_events_confirmed_retained BEFORE DELETE ON timeline_events
-    WHEN OLD.retention_class = 'confirmed-operation'
-      AND NOT EXISTS (SELECT 1 FROM deleted_runs WHERE record_key = OLD.run_id)
-    BEGIN SELECT RAISE(ABORT, 'confirmed timeline history requires owner deletion'); END`,
-] as const;
-
 interface TimelineRepositoryPorts {
   database: DatabaseSync;
   /** Must use the owning connection's authority transaction and generation accounting. */
@@ -53,9 +14,11 @@ interface TimelineRepositoryPorts {
 }
 
 const RowSchema = z.strictObject({
-  cursor: z.number().int().positive(), record_key: z.string(), workflow: z.string(),
+  cursor: z.number().int().positive(), id: z.string(), workflow: z.string(),
   run_id: z.string().nullable(), worker_id: z.string().nullable(), retention_date: z.string(),
-  retention_class: z.enum(["ordinary", "confirmed-operation"]), record_json: z.string(), created_at: z.string(),
+  retention_class: z.enum(["ordinary", "confirmed-operation", "protected"]), payload_json: z.string(),
+  kind: z.string(), occurred_at: z.string(), recorded_at: z.string(), operation_id: z.string().nullable(),
+  operation_generation: z.number().int().positive().nullable(), confirmed_at: z.string().nullable(), system: z.string().nullable(),
 });
 
 /** Safe diagnostics contain schema-owned field names, never observed keys or values. */
@@ -83,24 +46,35 @@ export function timelineEventFromRow(raw: unknown): TimelineEventRecord {
   if (!parsedRow.success) throw new TimelineRecordError("timeline-record-invalid");
   const row = parsedRow.data;
   let value: unknown;
-  try { value = JSON.parse(row.record_json); } catch { throw new TimelineRecordError("timeline-record-invalid"); }
+  try { value = JSON.parse(row.payload_json); } catch { throw new TimelineRecordError("timeline-record-invalid"); }
   const parsedRecord = TimelineEventRecordSchema.safeParse(value);
   if (!parsedRecord.success) throw invalidTimelineRecord(value);
   const record = parsedRecord.data;
-  if (row.cursor !== record.cursor || row.record_key !== record.eventId || row.workflow !== record.workflow
+  if (row.cursor !== record.cursor || row.id !== record.eventId || row.workflow !== record.workflow
     || row.run_id !== (record.scope.kind === "run" ? record.scope.runId : null)
     || row.worker_id !== (record.scope.kind === "worker" ? record.scope.workerId : null)
-    || row.retention_date !== record.retentionDate || row.created_at !== record.recordedAt
+    || row.retention_date !== record.retentionDate || row.recorded_at !== record.recordedAt || row.occurred_at !== record.occurredAt
+    || row.kind !== (record.payload.kind === "span" ? record.payload.event.t : record.payload.kind)
+    || row.retention_class !== timelineRetentionClass(record)
+    || row.operation_id !== (record.payload.kind === "operation-confirmed" ? record.payload.facts.writeIntentId : null)
+    || row.operation_generation !== (record.payload.kind === "operation-confirmed" ? record.payload.facts.intentGeneration : null)
+    || row.confirmed_at !== (record.payload.kind === "operation-confirmed" ? record.payload.facts.confirmedAt : null)
+    || row.system !== (record.payload.kind === "operation-confirmed" ? record.payload.facts.system : null)
     || (row.retention_class === "confirmed-operation") !== (record.payload.kind === "operation-confirmed")) {
     throw new Error("timeline-event-column-mismatch");
   }
   return record;
 }
 
+function timelineRetentionClass(record: z.infer<typeof TimelineAppendSchema>) {
+  if (record.payload.kind === "operation-confirmed") return "confirmed-operation";
+  return "ordinary";
+}
+
 export function createTimelineRepository(ports: TimelineRepositoryPorts): TimelineRepository {
   const { database } = ports;
   const get = (eventId: string): TimelineEventRecord | undefined => ports.read(() => {
-    const row = database.prepare("SELECT * FROM timeline_events WHERE record_key = ?").get(z.uuid().parse(eventId));
+    const row = database.prepare("SELECT * FROM timeline_events WHERE id = ?").get(z.uuid().parse(eventId));
     return row === undefined ? undefined : timelineEventFromRow(row);
   });
   return Object.freeze({
@@ -122,16 +96,17 @@ export function createTimelineRepository(ports: TimelineRepositoryPorts): Timeli
         // SQLite assigns both the cursor and its authenticated JSON mirror from
         // its AUTOINCREMENT sequence under the same owning write transaction.
         const raw = database.prepare(`
-          INSERT INTO timeline_events(record_key, workflow, run_id, worker_id, retention_date,
-            retention_class, record_json, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, json_set(?, '$.cursor',
-            COALESCE((SELECT seq FROM sqlite_sequence WHERE name = 'timeline_events'), 0) + 1), ?)
-          RETURNING *
-        `).get(record.eventId, record.workflow,
-          record.scope.kind === "run" ? record.scope.runId : null,
-          record.scope.kind === "worker" ? record.scope.workerId : null,
-          record.retentionDate, record.payload.kind === "operation-confirmed" ? "confirmed-operation" : "ordinary",
-          content, record.recordedAt);
+          INSERT INTO timeline_events(id,workflow,run_id,worker_id,kind,occurred_at,recorded_at,retention_date,
+            retention_class,operation_id,operation_generation,confirmed_at,system,payload_json)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,json_set(?,'$.cursor',
+            COALESCE((SELECT seq FROM sqlite_sequence WHERE name='timeline_events'),0)+1)) RETURNING *
+        `).get(record.eventId,record.workflow,
+          record.scope.kind === "run" ? record.scope.runId : null,record.scope.kind === "worker" ? record.scope.workerId : null,
+          record.payload.kind === "span" ? record.payload.event.t : record.payload.kind,record.occurredAt,record.recordedAt,record.retentionDate,
+          timelineRetentionClass(record),record.payload.kind === "operation-confirmed" ? record.payload.facts.writeIntentId : null,
+          record.payload.kind === "operation-confirmed" ? record.payload.facts.intentGeneration : null,
+          record.payload.kind === "operation-confirmed" ? record.payload.facts.confirmedAt : null,
+          record.payload.kind === "operation-confirmed" ? record.payload.facts.system : null,content);
         return { result: { state: "inserted" as const, record: timelineEventFromRow(raw) }, changes: 1 };
       });
     },
@@ -157,7 +132,12 @@ export function createTimelineRepository(ports: TimelineRepositoryPorts): Timeli
       const cutoff = z.iso.date().parse(retentionDate);
       return ports.mutate(() => {
         const result = database.prepare(
-          "DELETE FROM timeline_events WHERE retention_class = 'ordinary' AND retention_date < ?",
+          `DELETE FROM timeline_events WHERE retention_class = 'ordinary' AND retention_date < ?
+            AND NOT EXISTS (SELECT 1 FROM run_search AS search_row JOIN runs AS run_owner ON run_owner.id=search_row.run_id,
+              json_each(search_row.actor_source_json) actor_source
+              WHERE search_row.run_id=timeline_events.run_id
+                AND json_extract(actor_source.value,'$.kind')='queued'
+                AND json_extract(actor_source.value,'$.event.eventId')=timeline_events.id)`,
         ).run(cutoff);
         const changes = z.number().int().nonnegative().parse(Number(result.changes));
         return { result: changes, changes };

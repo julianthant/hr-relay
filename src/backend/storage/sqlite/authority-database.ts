@@ -1,37 +1,35 @@
-import { HistoricalProviderKeysCommandSchema, HistoricalProviderKeysAuditSchema } from "../../../rules/commands/commands-history.js";
+import { authenticateAuditedParkedWriteResolution, authenticateParkedWriteResolution } from "../../../rules/write-safety/parked-resolution.js";
+import { prepareNativeRunDeletion, executeNativeRunDeletion, containsDeletionArtifactReference } from "./native-run-deletion.js";
+import { inspectArtifactDeletionFile, removeArtifactDeletionFile } from "../artifacts/content-addressed-artifact-writer.js";
+import { deletedRunFromRow } from "./deleted-run-row.js";
+import { importedArtifactFromRow } from "./imported-artifacts.js";
+import { generatedArtifactFromRow } from "./generated-artifacts.js";
+import { extractedArtifactFromRow } from "./extracted-artifact-row.js";
+import { workerSlotFromRow } from "./worker-slots.js";
+import { workerControlFromRow, workerBrowserFromRow } from "./worker-control.js";
+import { readAppSettings } from "./settings-storage.js";
+import { isNativeOrdinaryTable, nativeOrdinaryRecordFromRow, type NativeOrdinaryTable } from "./native-record-row.js";
+import { createWorkerSlotRepository } from "./worker-slots.js";
+import { NativeCommandAuditSchema, commandFromRow, insertNativeCommand, settleNativeCommand } from "./command-record-row.js";
+import { runRecordColumns, runRecordFromRow } from "./run-record-row.js";
 import { requireOperationSourceDeclaration } from "../../../models/dashboard/operation-structure.js";
 import { requireWorkflowOperationDisplaySnapshot } from "../../../models/workflow/operation-display-snapshot.js";
-import { selectTransactions, selectStoppedConversionTransactions, selectedHistoricalTransactionRows } from "./transaction-selection.js";
-import { RuntimeVersionAdoptionSchema, readRuntimeVersionAuthority as readStoredRuntimeVersionAuthority, registerRuntimeVersionWorkflows as registerStoredRuntimeVersionWorkflows, claimRuntimeVersionTransition as claimStoredRuntimeVersionTransition, publishRuntimeVersionTransition as publishStoredRuntimeVersionTransition, type RuntimeVersionAuthority } from "./runtime-versions.js";
-import { planRuntimeVersionTransition, RuntimeVersionScopeSchema, type RuntimeVersionState } from "../../../models/archive/runtime-version.js";
-import { reviewRuntimeVersionTransition } from "../../../models/archive/runtime-version-review.js";
-import { RuntimeVersionChangeSchema, type RuntimeVersionChange } from "../../../models/archive/runtime-version-change.js";
-import { createRunSearchIndex } from "./run-search-index.js";
-import { RunSearchPublicationSchema } from "../../../models/dashboard/search-index.js";
+import { selectTransactions } from "./transaction-selection.js";
+import { createRunSearchIndex, runSearchIndexFromRow } from "./run-search-index.js";
 import { createWorkerControlRepository, validateWorkerControls, type WorkerControlRepository } from "./worker-control.js";
 import { WorkerControlBasisSchema } from "../../../models/run/worker.js";
 import { createNotificationMetadataRepositories, validateNotificationMetadata } from "./notification-publications.js";
 import { createExplorerOverrideRepository, validateExplorerOverrides } from "./explorer-overrides.js";
-import { parsePendingCapture } from "../../../models/archive/pending-capture.js";
-import { hasHistoricalArchiveTables, unarchivedRunSql } from "./archive-compatibility.js";
-import { HistoricalVersionChangeSchema, RetainedVersionChangeSchema } from "./storage-records.js";
-import { ArchiveReportSchema, ArchiveQuerySchema, ArchiveGroupQuerySchema, type ArchiveQuery, type ArchiveGroupQuery, type ArchiveReport } from "../../../models/archive/report.js";
-import { readScopedEventStreamLines, readEventStreamSlice, scopedEventStreamFiles } from "../events/jsonl-streams.js";
+import { readEventStreamSlice, scopedEventStreamFiles } from "../events/jsonl-streams.js";
 import { DeclaredActionIdentitySchema } from "../../../rules/workflow/task-provenance.js";
 import { runNotePartitionScope, runRecordNoteScopeInstants } from "../../../models/run/note-scope.js";
 import { NoteWireSchema } from "../../../models/events/types.js";
 import { deriveCanonicalPerson } from "../../../rules/runs/summary-derivation.js";
-import { VersionChangeSchema, archiveVersionChange, versionChangeReview, type VersionChange } from "../../../models/archive/change-record.js";
-import { lifecycleOwnedSourceDigest, lifecycleSourceDigest, LifecycleSourceSnapshotSchema } from "../../../models/archive/lifecycle-source.js";
-import { ArchiveDatabase } from "./archive-database.js";
 import { requireRuntimeAdmission, type RuntimeAdmission } from "../admission/admission.js";
 import type { VerifiedRelocationActivationIntent } from "../admission/installation.js";
-import { ArchiveTransferIdentitySchema, resolveSavedReportOwner, resolveRunEvidenceOwner } from "./run-evidence-ownership.js";
 import { createRunSummaries } from "./run-summaries.js";
-import { SummaryPublicationSchema } from "../../../models/run/summary.js";
 import { createGeneratedArtifactRepository } from "./generated-artifacts.js";
 import { createFailureResolutionRepository } from "./failure-resolution.js";
-import { FailureResolutionSchema } from "../../../models/trust/failure-resolution.js";
 import { createSettingsActivationRepositories } from "./settings-activation.js";
 import { createImportedArtifactRepositories } from "./imported-artifacts.js";
 import { ImportedArtifactSchema } from "../../../models/intake/imported-artifact.js";
@@ -43,34 +41,24 @@ import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.
 import { AppSettingsSchema } from "../../../models/config/app-settings.js";
 import { initialSettingsFileRecord } from "../../../models/config/settings.js";
 import { completionFromAuthorization } from "../../../models/run/completion.js";
-import { HistoricalTerminalOutboxRecordSchema, HistoricalTerminalAuthorizationSchema } from "../../../models/run/completion-history.js";
-import { lifecycleCommandId } from "../../../rules/identity/identifiers.js";
-import { LedgerPartitionRecordSchema, LedgerProjectionRecordSchema } from "../../../rules/runs/ledger-projection.js";
-import { sha256Hex } from "../../../rules/validation/sha256.js";
-import { HistoricalOperationSourceSchema, type HistoricalOperationSource } from "../../../models/events/timeline.js";
-import { ArchivedRunRecordSchema, ArchivedTransactionsSchema, type ArchivedTransactions } from "../../../models/archive/model.js";
 import { createTransactionHistory } from "./transaction-history.js";
 import { deriveBulkChildCommand, deriveBulkChildCommandId } from "../../../rules/commands/command-groups.js";
-import { confirmedOperationTimeline, reconstructConfirmedOperation } from "../../../models/events/confirmed-operation.js";
+import { ConfirmationPublicationSchema, confirmationPublicationFromRow, type ConfirmationPublication, confirmedOperationTimeline, reconstructConfirmedOperation } from "../../../models/events/confirmed-operation.js";
 import { timelineAppendContent, timelineCheckpointReference } from "../../../models/events/timeline.js";
 import { deriveStableUuid } from "../../../rules/identity/identifiers.js";
 import { createTimelineRepository, timelineEventFromRow } from "./timeline-repository.js";
 import { readTimelineRecords } from "../events/timeline-reader.js";
 import type { TimelineRepository, TimelineAppend } from "../../../models/events/timeline.js";
-import { SettingsCurrentRecordSchema as HistoricalSettingsCurrentRecordSchema } from "../compatibility/d331-settings-current.js";
-import { HistoricalNotificationSnoozeAuditSchema, HistoricalNotificationSnoozeCommandSchema, HistoricalProtectedSettingsAuditSchema, HistoricalProtectedSettingsCommandSchema, PreFloorCommandSchema, PreFloorSettingsCommandSchema } from "../../../rules/commands/commands-history.js";
 import { CommandIdentityConflictError } from "../../../rules/commands/commands.js";
 import { createCredentialStore } from "../configuration/credential-store.js";
 import { repeatEvidenceDigest } from "../../../models/run/rerun.js";
-import { archivedRunContentDigest } from "../../../models/archive/model.js";
-import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, statSync, lstatSync, openSync, closeSync, readFileSync, fstatSync, fsyncSync, unlinkSync, constants } from "node:fs";
+import { existsSync, statSync, lstatSync, openSync, closeSync, fsyncSync, unlinkSync, constants } from "node:fs";
 import { dirname, resolve, join } from "node:path";
 import { backup as sqliteBackup, DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { assertWorkflowRunResultAuthorization, descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
-import { AUTHORITY_TABLE_REGISTRY, AuthorityUpgradeRecordSchema, ProtectedSettingsCurrentRecordSchema, AuthorityTableNameSchema, ProjectionTableNameSchema, type AuthorityTableName, type TableName, type RunRecordRefusal } from "../../../models/config/authority.js";
+import { AUTHORITY_TABLE_REGISTRY, AuthorityUpgradeRecordSchema, AuthorityTableNameSchema, ProjectionTableNameSchema, type AuthorityTableName, type TableName, type RunRecordRefusal } from "../../../models/config/authority.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { systemClock, localDatePart } from "../../../rules/time/clock.js";
@@ -80,15 +68,14 @@ import { type ActiveRuntimeConfigRecord, type RuntimeConfigClaimToken } from "..
 import { type SettingsCurrentRecord } from "../../../models/config/settings-current.js";
 import { DelegationManifestSchema, DependencyRecordSchema } from "../../../rules/workflow/dependencies.js";
 import { GateResultRecordSchema } from "../../../models/workflow/gates.js";
-import { ActorIdSchema, ArtifactIdSchema, BrowserSystemIdSchema, CommandIdSchema, DiagnosticBundleIdSchema, FailureFingerprintSchema, FingerprintSchema, IsoInstantSchema, ItemIdSchema, LOCAL_OPERATOR_ACTOR_ID, RunIdSchema, RunSessionIdSchema, TraceIdSchema, WorkerIdSchema, WorkflowIdSchema, WriteIntentIdSchema, type RunId } from "../../../rules/identity/ids.js";
+import { ActorIdSchema, ArtifactIdSchema, BrowserSystemIdSchema, CommandAuditIdSchema, CommandIdSchema, DiagnosticBundleIdSchema, FailureFingerprintSchema, FingerprintSchema, IsoInstantSchema, ItemIdSchema, LOCAL_OPERATOR_ACTOR_ID, RunIdSchema, RunSessionIdSchema, TraceIdSchema, WorkerIdSchema, WorkflowIdSchema, WriteIntentIdSchema } from "../../../rules/identity/ids.js";
 
 
 
 
-import { nextAttemptEnvelope } from "../../../models/run/envelope.js";
 import { RunRecordSchema, runClaim, runTransitionViolation, type RunRecord } from "../../../models/run/record.js";
-import { DeletedRunRecordSchema, RunDeleteInputSchema, type DeletedRunRecord, type DeletedRunTableSchema } from "../../../models/run/deleted-run.js";
-import { RunResultRecordSchema, deriveCheckpointOutputDigest, deriveCheckpointProvenanceDigest, type RunResultRecord } from "../../../models/run/result.js";
+import { DeletedRunRecordSchema, RunDeleteInputSchema, type DeletedRunRecord } from "../../../models/run/deleted-run.js";
+import { RunResultRecordSchema, createRunTerminalEvidenceResult, deriveTerminalFailureDigest, terminalEvidenceResult, deriveCheckpointOutputDigest, deriveCheckpointProvenanceDigest, type RunResultRecord } from "../../../models/run/result.js";
 import { TerminalAuthorizationRecordSchema, type TerminalAuthorizationRecord } from "../../../models/run/terminal-authorization.js";
 import { StartPlanRecordSchema, isStartPlanExpired, type StartPlanRecord } from "../../../models/run/start-plan.js";
 import { IntakePlanManifestSchema } from "../../../models/intake/manifest.js";
@@ -97,31 +84,36 @@ import { AdmittedExtractionSchema } from "../../../models/ocr/extraction.js";
 import { FailureRecordSchema, type FailureRecord } from "../../../models/trust/failure.js";
 import { LIVE_WORKER_STATES, WorkerLeaseRecordSchema, isLiveWorker, type WorkerLeaseRecord } from "../../../models/run/worker.js";
 import { DuoCeremonyLeaseAcquireRequestSchema, DuoCeremonyLeaseRecordSchema, DuoCeremonyLeaseReleaseOutcomeSchema, DuoCeremonyLeaseTakeoverSchema, isDuoCeremonyLeaseLive, type DuoCeremonyLeaseAcquireRequest, type DuoCeremonyLeaseRecord, type DuoCeremonyLeaseReleaseOutcome } from "../../../rules/sessions/duo-ceremony-lease.js";
-import { HistoricalRunSessionRecordSchema, RunSessionRecordSchema, type RunSessionRecord } from "../../../models/run/session.js";
+import { RunSessionRecordSchema, type RunSessionRecord } from "../../../models/run/session.js";
 import { WorkerPoolRecordSchema, workerPoolVersion, type WorkerPoolRecord } from "../../../models/run/worker-pool.js";
 import { isDuoCeremonyLeaseToken, mintDuoCeremonyLeaseToken, retireDuoCeremonyLeaseToken, type DuoCeremonyLeaseToken } from "../../../workflow-kit/duo-ceremony-lease.js";
 import { RunClaimOutcomeSchema, RunClaimRequestSchema, RunClaimSweepOutcomeSchema, RunClaimSweepRequestSchema, RunClaimTokenSchema, RunHeartbeatOutcomeSchema, RunHeartbeatRequestSchema, RunItemQuerySchema, RunPresentationRequestSchema, RunInjectPatchesRequestSchema, RunPriorityBumpRequestSchema, RunRequeueRequestSchema, RunResumeRequestSchema, RunTransitionRequestSchema, RunUpdateOutcomeSchema, StartPlanConsumeOutcomeSchema, StartPlanConsumeRequestSchema, WorkerControlRequestSchema, WorkerLifecycleRequestSchema, WorkerPoolPlanOutcomeSchema, WorkerPoolPlanRequestSchema, WorkerStartOutcomeSchema, WorkerStartRequestSchema, WorkerSweepRequestSchema, WorkerUpdateOutcomeSchema, type RunClaimOutcome, type RunHeartbeatOutcome, type RunUpdateOutcome, type StartPlanConsumeOutcome, type WorkerPoolPlanOutcome, type WorkerStartOutcome, type WorkerUpdateOutcome } from "./run-store-contracts.js";
-import { FailureTerminalizationReportSchema, FailureTerminalizationRequestSchema, SuccessTerminalizationReportSchema, SuccessTerminalizationRequestSchema, SuccessTerminalizationReplayInputSchema, type FailureTerminalizationReport, type FailureTerminalizationStorageStep, type SuccessTerminalizationReport, type SuccessTerminalizationStorageStep } from "./run-terminal-contracts.js";
+import { FailureTerminalizationReportSchema, FailureTerminalizationRequestSchema, SuccessTerminalizationReportSchema, SuccessTerminalizationRequestSchema, type FailureTerminalizationReport, type FailureTerminalizationStorageStep, type SuccessTerminalizationReport, type SuccessTerminalizationStorageStep } from "./run-terminal-contracts.js";
 import { RunCheckpointRecordSchema, checkpointLookupKey, checkpointRecordKey, type RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
-import { AtomicOutboxRecordSchema } from "../../../models/notifications/outbox.js";
 import { NotificationFoldRequestSchema, NotificationRecordOutcomeSchema, NotificationRecordSchema, NotificationStateRequestSchema, requireMutableNotification, type NotificationRecord, type NotificationRecordOutcome } from "../../../models/notifications/notifications.js";
 
 
 import { DiagnosticBundleSchema, type DiagnosticBundle } from "../../../models/trust/diagnostic.js";
 import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../../models/trust/evidence.js";
 import { DryRunScenarioResultSchema, type DryRunScenarioResult } from "../../../models/trust/dry-run-scenario-result.js";
-import { type ActivityPersonPseudonymDomain, type ActivityPersonPseudonymEvidence } from "../../../models/trust/activity-person-pseudonym.js";
-import { type ActivityPersonPseudonymBackfillOutcome } from "../../../models/trust/activity-person-pseudonym-backfill.js";
 import { DryRunWriteSafetyCountsSchema } from "../../../models/trust/dry-run-scenario.js";
 
 
 
 
 import { IdempotencyKeySchema, WriteAttemptRecordSchema, WriteIntentRecordSchema, type WriteAttemptRecord, type WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
-import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, NORMAL_AUTHORITY_SCHEMA_VERSION, isNormalAuthoritySchemaVersion, databaseStateTable, databaseUpgradesTable, DATABASE_TABLE_RENAMES, INTEGRATED_AUTHORITY_TABLES_BY_VERSION, POST_FLOOR_AUTHORITY_TABLES_BY_VERSION, SQLITE_MIGRATIONS, UPGRADE_FLOOR_SCHEMA_VERSION, auditMigrationTableCoverage, requiresStoppedSystemAuthorityUpgrade, tableClassification } from "./migrations.js";
-import { AuthorityCopyInspectionSchema, SpanAuthorityReadSnapshotSchema, SpanAuthorityRunRootSchema, SpanAuthorityRunResolutionSchema, type AuthorityCopyInspection, type SpanAuthorityReadSnapshot, type SpanAuthorityRunRoot, type SpanAuthorityRunResolution } from "./recovery-contracts.js";
-import { ArchivedRunStorageRecordSchema, AUTHORITY_RECORD_SCHEMA_REGISTRY, DiagnosticAttachmentStorageRecordSchema, VersionBumpApplicationStorageRecordSchema, VersionPlanConsumeRequestSchema, VersionPlanStorageRecordSchema, type ArchivedRunStorageRecord, type ArtifactOutboxStorageRecord, type ArtifactSinkHeadRecord, type DiagnosticAttachmentStorageRecord, type VersionBumpApplicationStorageRecord, type VersionPlanConsumeOutcome, type VersionPlanStorageRecord } from "./storage-records.js";
-import { AtomicWriteCommitInputSchema, AtomicWriteCommitReportSchema, PermanentWriteResolutionSchema, WriteFenceInputSchema, WriteIntentParkRequestSchema, WriteIntentReopenRequestSchema, WriteIntentRetrySettlementRequestSchema, WriteRefenceInputSchema, type AtomicWriteCommitReport, type AtomicWriteCommitStorageStep, type PermanentWriteResolution } from "./write-commit-contracts.js";
+import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, isCurrentAuthoritySchemaVersion, SQLITE_MIGRATIONS, auditMigrationTableCoverage, tableClassification } from "./migrations.js";
+import { AuthorityCopyInspectionSchema, SpanAuthorityReadSnapshotSchema, SpanAuthorityRunRootSchema, SpanAuthorityRunResolutionSchema, type AuthorityCopyInspection, type SpanAuthorityReadSnapshot, type SpanAuthorityRunRoot } from "./recovery-contracts.js";
+import { DiagnosticAttachmentStorageRecordSchema, type ArtifactOutboxStorageRecord, type ArtifactSinkHeadRecord, type DiagnosticAttachmentStorageRecord } from "./storage-records.js";
+import { AtomicWriteCommitInputSchema, AtomicWriteCommitReportSchema, PermanentWriteResolutionSchema, WriteFenceInputSchema, WriteIntentParkRequestSchema, WriteIntentRetrySettlementRequestSchema, WriteRefenceInputSchema, ResolvedParkedWriteCommitInputSchema, ResolvedParkedWriteAbsenceInputSchema, type AtomicWriteCommitReport, type AtomicWriteCommitStorageStep, type PermanentWriteResolution } from "./write-commit-contracts.js";
+
+export class AuthoritySchemaVersionError extends Error {
+  readonly code = "authority-schema-mismatch";
+  constructor(readonly schemaVersion: number) {
+    super(`authority schema ${schemaVersion} does not match supported ${CURRENT_AUTHORITY_SCHEMA_VERSION}`);
+    this.name = "AuthoritySchemaVersionError";
+  }
+}
 
 export const AuthorityDatabaseOpenModeSchema = z.enum([
   "read-write",
@@ -145,7 +137,7 @@ export const AuthorityMetaSchema = z.strictObject({
 
 export const AuthoritySchemaInspectionSchema = z.strictObject({
   applicationId: z.literal(AUTHORITY_APPLICATION_ID),
-  schemaVersion: z.union([z.literal(NORMAL_AUTHORITY_SCHEMA_VERSION), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]),
+  schemaVersion: z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION),
   authorityGeneration: z.number().int().nonnegative(),
   pragmas: z.strictObject({
     journalMode: z.literal("wal"),
@@ -184,19 +176,16 @@ type CommandRepository = Readonly<{
   acceptBulk(input: unknown): ImmutableInsertResult<z.infer<typeof BulkRunCommandAcceptanceRecordSchema>>;
   getBulk(commandId: string): z.infer<typeof BulkRunCommandAcceptanceRecordSchema> | undefined;
   parentId(commandId: string): string | null | undefined;
-  get(commandId: string): z.infer<typeof CommandRequestSchema> | z.infer<typeof HistoricalNotificationSnoozeCommandSchema> | undefined;
-  getSettingsHistory(commandId: string): z.infer<typeof CommandRequestSchema> | z.infer<typeof PreFloorSettingsCommandSchema> | z.infer<typeof HistoricalProtectedSettingsCommandSchema> | z.infer<typeof HistoricalProviderKeysCommandSchema> | undefined;
+  get(commandId: string): z.infer<typeof CommandRequestSchema> | undefined;
+  getSettingsHistory(commandId: string): z.infer<typeof CommandRequestSchema> | undefined;
   findProtectedSettingsCommandIdByWriteId(input: unknown): string | undefined;
   listStorageRelocationCommands(): readonly z.infer<typeof StorageRelocationCommandRequestSchema>[];
 }>;
-
-
-const HistoricalSettingsAuditSchema = CommandAuditRecordSchema.extend({ request: PreFloorSettingsCommandSchema });
 type CommandAuditRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<z.infer<typeof CommandAuditRecordSchema>>;
-  get(auditId: string): z.infer<typeof CommandAuditRecordSchema> | z.infer<typeof HistoricalNotificationSnoozeAuditSchema> | undefined;
-  findByCommand(commandId: string): z.infer<typeof CommandAuditRecordSchema> | z.infer<typeof HistoricalNotificationSnoozeAuditSchema> | undefined;
-  findSettingsHistory(commandId: string): z.infer<typeof CommandAuditRecordSchema> | z.infer<typeof HistoricalSettingsAuditSchema> | z.infer<typeof HistoricalProtectedSettingsAuditSchema> | z.infer<typeof HistoricalProviderKeysAuditSchema> | undefined;
+  get(auditId: string): z.infer<typeof CommandAuditRecordSchema> | undefined;
+  findByCommand(commandId: string): z.infer<typeof CommandAuditRecordSchema> | undefined;
+  findSettingsHistory(commandId: string): z.infer<typeof CommandAuditRecordSchema> | undefined;
 }>;
 
 type RunLifecycleJournalRepository = Readonly<{
@@ -212,6 +201,7 @@ type RuntimeConfigRepository = Readonly<{
   hasHistory(): boolean;
   hasAdvancedHistory(): boolean;
   get(): ActiveRuntimeConfigRecord | undefined;
+  initialize(input: unknown): ActiveRuntimeConfigRecord;
   activate(input: unknown): ActiveRuntimeConfigRecord;
   requireActive(input: unknown): RuntimeConfigClaimToken;
   requireSettingsCurrent(): void;
@@ -233,6 +223,8 @@ type DependencyRepository = Readonly<{
 }>;
 
 type WriteIntentRepository = Readonly<{
+  getPublication(id:string): ConfirmationPublication | undefined;
+  authenticatedDeletion(runId:string, publication:ConfirmationPublication): boolean;
   listByBusinessKey(system: unknown, digest: unknown): readonly z.infer<typeof WriteIntentRecordSchema>[];
 
   listAttemptingByItem(input: unknown): readonly z.infer<typeof WriteIntentRecordSchema>[];
@@ -242,10 +234,8 @@ type WriteIntentRepository = Readonly<{
   refenceRetryable(input: unknown): PermanentWriteResolution;
   /** Ref write-safety §4 arm 3: CAS `attempting` → `parked` on intent AND current attempt. */
   parkAttempt(input: unknown): z.infer<typeof WriteIntentRecordSchema>;
-  /** Ref write-safety §4 arm 2 / §4.1.2: CAS `attempting`|`parked` → `retryable` with a typed settlement. */
+  /** Stabilized negative evidence settles only an attempting callback. */
   settleRetryable(input: unknown): z.infer<typeof WriteIntentRecordSchema>;
-  /** Ref write-safety §4.1.1: CAS `parked` → `attempting` so beat ⑦ can accept confirmed-present. */
-  reopenParkedAttempt(input: unknown): z.infer<typeof WriteIntentRecordSchema>;
   get(writeIntentId: string): z.infer<typeof WriteIntentRecordSchema> | undefined;
   findByPermanentKey(system: unknown, idempotencyKey: unknown): z.infer<typeof WriteIntentRecordSchema> | undefined;
   // Intents outlive runs; join exact write authority through its binding proof, never assumed run columns.
@@ -266,22 +256,22 @@ export interface AuthorityTerminalizationHooks {
 export interface AuthorityLifecycleHooks {
   afterClaimSelection?(): void;
   afterRunWrite?(run: RunRecord): void;
+  afterDeletionFileRemoved?(event: Readonly<{ runId: string; digest: string }>): void;
   afterDeleteStep?(event: Readonly<{
     runId: string;
-    step: "tombstone" | "cascade-complete" | "tally-settled";
+    step: "tombstone" | "cascade-complete" | DeletedRunRecord["removed"][number]["table"];
   }>): void;
 }
 
 
 type RunCheckpointRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<RunCheckpointRecord>;
-  // An omitted claim generation names an unwrapped checkpoint row; it never authorizes a new writer.
   get(
     workflowId: string,
     itemId: string,
     nodeId: string,
     attempt: number,
-    claimGeneration?: number,
+    claimGeneration: number,
   ): RunCheckpointRecord | undefined;
   /** The LATEST EXECUTION — highest attempt, then highest claim generation. */
   latest(workflowId: string, itemId: string, nodeId: string): RunCheckpointRecord | undefined;
@@ -308,6 +298,7 @@ type CanonicalRunClaimOutcome = RunClaimOutcome | Readonly<{ state: "refused"; r
 type RunRepository = Readonly<{
   enqueue(input: unknown): ImmutableInsertResult<RunRecord>;
 
+  assertDeletionAllowed(input: unknown): void;
   delete(input: unknown): DeletedRunRecord;
   get(runId: string): RunRecord | undefined;
   /** A bounded, keyset-ordered read over exact non-archived run authority. */
@@ -387,19 +378,6 @@ type DryRunScenarioResultRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<DryRunScenarioResult>;
   get(resultId: string): DryRunScenarioResult | undefined;
   list(): readonly DryRunScenarioResult[];
-}>;
-
-// Pseudonym rotation appends immutable generations rather than rewriting evidence.
-export type ActivityPersonPseudonymRepository = Readonly<{
-  get(runId: string, keyGeneration: string): ActivityPersonPseudonymEvidence | undefined;
-  listByRun(runId: string): readonly ActivityPersonPseudonymEvidence[];
-  listByRuns(runIds: unknown): readonly ActivityPersonPseudonymEvidence[];
-}>;
-
-
-export type ActivityPersonPseudonymBackfillWriteCapability = Readonly<{
-  keyGeneration: ActivityPersonPseudonymEvidence["keyGeneration"];
-  reviewAndInsert(runIds: unknown): readonly ActivityPersonPseudonymBackfillOutcome[];
 }>;
 
 /** insert-only proof binding one selection to exact stored workbook bytes and headers. */
@@ -491,25 +469,6 @@ type IntakeSessionRepository = Readonly<{
 }>;
 
 
-type VersionPlanRepository = Readonly<{
-  insert(input: unknown): ImmutableInsertResult<VersionPlanStorageRecord>;
-  get(versionPlanId: string): VersionPlanStorageRecord | undefined;
-  list(): readonly VersionPlanStorageRecord[];
-  consume(input: unknown): VersionPlanConsumeOutcome;
-}>;
-
-
-type ArchivedRunRepository = Readonly<{
-  transactions(runId: string): ArchivedTransactions;
-  enrichTransactions(input: unknown): ArchivedTransactions;
-  bindingMismatches(input: unknown): readonly string[];
-  insert(input: unknown): ImmutableInsertResult<ArchivedRunStorageRecord>;
-  get(runId: string): ArchivedRunStorageRecord | undefined;
-  isArchived(runId: string): boolean;
-  list(): readonly ArchivedRunStorageRecord[];
-}>;
-
-
 type OcrExtractionRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<z.infer<typeof AdmittedExtractionSchema>>;
   get(sourceSha256: string, sourcePage: number, formType: string):
@@ -543,19 +502,17 @@ export type AuthorityRepositories = Readonly<{
   evidenceReceipts: EvidenceReceiptRepository;
   dryRunScenarioResults: DryRunScenarioResultRepository;
   operatorXlsxExports: OperatorXlsxExportRepository;
-  activityPersonPseudonyms: ActivityPersonPseudonymRepository;
   intakeSessions: IntakeSessionRepository;
   intakeManifests: IntakeManifestRepository;
   ocrExtractions: OcrExtractionRepository;
   confirmedTransactionSources: Parameters<typeof createTransactionHistory>[0]["confirmedTransactionSources"];
-  historicalOperationSources: { list(): readonly HistoricalOperationSource[] };
-  archivedTransactionSources: { list(): readonly z.infer<typeof LifecycleSourceSnapshotSchema>[] };
   failureResolution: ReturnType<typeof createFailureResolutionRepository>;
   startPlans: StartPlanRepository;
   workerLeases: WorkerLeaseRepository;
   workerControls: WorkerControlRepository;
   duoCeremonyLeases: DuoCeremonyLeaseRepository;
   workerPools: WorkerPoolRepository;
+  workerSlots: ReturnType<typeof createWorkerSlotRepository>;
   runSessions: RunSessionRepository;
   deletedRuns: DeletedRunRepository;
   commands: CommandRepository;
@@ -574,12 +531,6 @@ export type AuthorityRepositories = Readonly<{
   configSnapshots: ImmutableRepository<z.infer<typeof ConfigSnapshotRecordSchema>>;
   settingsCurrent: SettingsCurrentRepository;
   runtimeConfig: RuntimeConfigRepository;
-  runtimeVersions: Readonly<{ get(): RuntimeVersionAuthority }>;
-  versionPlans: VersionPlanRepository;
-  versionBumpApplications: ImmutableRepository<VersionBumpApplicationStorageRecord> & Readonly<{
-    list(): readonly VersionBumpApplicationStorageRecord[];
-  }>;
-  archivedRuns: ArchivedRunRepository;
   writeIntents: WriteIntentRepository;
   writeAttempts: ReadRepository<z.infer<typeof WriteAttemptRecordSchema>> & Readonly<{
     listByIntent(writeIntentId: string): readonly z.infer<typeof WriteAttemptRecordSchema>[];
@@ -589,8 +540,8 @@ export type AuthorityRepositories = Readonly<{
   artifactSinkHeads: ArtifactSinkHeadRepository;
 }>;
 
-const JsonRowSchema = z.strictObject({ record_json: z.string() });
-const RecordKeyRowSchema = z.strictObject({ record_key: z.string() });
+const JsonRowSchema = z.strictObject({ payload_json: z.string() });
+const RecordKeyRowSchema = z.strictObject({ id: z.string() });
 const ProtectedSettingsWriteIdLookupSchema = z.strictObject({
   writeId: z.uuid(),
   excludingCommandId: CommandIdSchema,
@@ -603,8 +554,6 @@ const MetaRowSchema = z.strictObject({
   schema_version: z.number().int().positive(),
   authority_generation: z.number().int().nonnegative(),
   updated_at: z.string(),
-  migration_owner: z.string().nullable(),
-  migration_started_at: z.string().nullable(),
 });
 const TableNameRowSchema = z.strictObject({ name: z.string() });
 const CountRowSchema = z.strictObject({ count: z.number().int().nonnegative() });
@@ -613,16 +562,7 @@ const MaxAttemptRowSchema = z.strictObject({ attempt: z.number().int().positive(
 const MaxRunNumberRowSchema = z.strictObject({ run_number: z.number().int().positive().nullable() });
 const PageCountRowSchema = z.strictObject({ page_count: z.number().int().positive() });
 const QuickCheckRowSchema = z.strictObject({ quick_check: z.literal("ok") });
-const AuthorityRecordFingerprintRowSchema = z.strictObject({ record_key: z.string(), record_json: z.string() });
-const AuthorityMetaFingerprintRowSchema = z.strictObject({
-  singleton_id: z.literal(1),
-  schema_version: z.number().int().positive(),
-  authority_generation: z.number().int().nonnegative(),
-  updated_at: z.string(),
-  migration_owner: z.string().nullable(),
-  migration_started_at: z.string().nullable(),
-});
-
+const AuthorityRecordFingerprintRowSchema = z.strictObject({ id: z.string(), payload_json: z.string() });
 export type RunSearchAuthorityPage = ReturnType<ReturnType<typeof createRunSearchIndex>["search"]>;
 
 function parseJsonRecord<Schema extends z.ZodType>(schema: Schema, text: string): z.output<Schema> {
@@ -641,22 +581,9 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function instantEpochMilliseconds(instant: string): number {
-  const epochMilliseconds = Date.parse(instant);
-  if (!Number.isSafeInteger(epochMilliseconds)) {
-    throw new Error(`instant ${instant} cannot be represented as epoch milliseconds`);
-  }
-  return epochMilliseconds;
-}
-
-function canonicalUtcInstant(instant: string): string {
-  return new Date(instantEpochMilliseconds(instant)).toISOString();
-}
-
-
 function readIntPragma(
   database: DatabaseSync,
-  name: "application_id" | "user_version" | "foreign_keys" | "synchronous" | "busy_timeout",
+  name: "application_id" | "user_version" | "foreign_keys" | "synchronous" | "busy_timeout" | "data_version",
 ): number {
   const row = IntPragmaRowSchema.parse(database.prepare(`PRAGMA ${name}`).get());
   const value = row[name === "busy_timeout" ? "timeout" : name];
@@ -681,262 +608,161 @@ function tableNames(database: DatabaseSync): TableName[] {
 }
 
 function readMetaRow(database: DatabaseSync): z.infer<typeof MetaRowSchema> {
-  return MetaRowSchema.parse(database.prepare(`
-    SELECT schema_version, authority_generation, updated_at, migration_owner, migration_started_at
-    FROM ${databaseStateTable(readIntPragma(database, "user_version"))} WHERE singleton_id = 1
-  `).get());
+  return MetaRowSchema.parse(database.prepare("SELECT schema_version,authority_generation,updated_at FROM database_states WHERE id=1").get());
 }
 
 const INVARIANT_QUERIES = Object.freeze([
-  {name:"archive-transfer-columns-match-record",sql:`SELECT count(*) AS count FROM archive_transfers
-    WHERE record_key IS NOT json_extract(record_json,'$.run.envelope.runId') OR workflow IS NOT json_extract(record_json,'$.run.envelope.workflow')
-      OR item_id IS NOT json_extract(record_json,'$.run.envelope.itemId') OR attempt IS NOT json_extract(record_json,'$.run.envelope.attempt')
-      OR run_number IS NOT json_extract(record_json,'$.run.runNumber')`},
-  {name:"summary-columns-match-record",sql:`SELECT count(*) AS count FROM run_summaries WHERE record_key IS NOT json_extract(record_json,'$.runId')
-    OR workflow IS NOT json_extract(record_json,'$.workflow') OR local_day IS NOT json_extract(record_json,'$.localDay')
-    OR state IS NOT json_extract(record_json,'$.lifecycle.state') OR parent_run_id IS NOT json_extract(record_json,'$.parentRunId')`},
-  {name:"version-change-key-match",sql:"SELECT count(*) AS count FROM version_changes WHERE record_key IS NOT json_extract(record_json,'$.changeId')"},
-  {name:"runtime-version-singleton",sql:"SELECT count(*) AS count FROM runtime_versions WHERE record_key IS NOT 'current' OR json_extract(record_json,'$.revision') < 1"},
-  {name:"runtime-version-adoption-key-match",sql:"SELECT count(*) AS count FROM runtime_version_adoptions WHERE record_key IS NOT json_extract(record_json,'$.runId')"},
-  {name:"runtime-version-change-key-match",sql:"SELECT count(*) AS count FROM runtime_version_changes WHERE record_key IS NOT json_extract(record_json,'$.changeId')"},
-  {
+  { name: "run-owner-exclusivity", sql: "SELECT count(*) AS count FROM runs JOIN deleted_runs ON deleted_runs.run_id=runs.id" },
+{
     name: "run-completion-revisions",
-    sql: `SELECT count(*) AS count FROM workflow_runs AS run
-      WHERE json_type(run.record_json, '$.completion') IS 'object'
-        AND run.version - json_extract(run.record_json, '$.completion.expectedVersion') - 1 <> (
-          SELECT count(DISTINCT json_extract(audit.record_json, '$.result.appliedVersion')) FROM command_audits AS audit
-          WHERE json_extract(audit.record_json, '$.kind') = 'run-lifecycle'
-            AND json_extract(audit.record_json, '$.result.kind') = 'run'
-            AND json_extract(audit.record_json, '$.result.runId') = run.record_key
-            AND json_extract(audit.record_json, '$.request.operation') IN ('transition','archive')
-            AND json_extract(audit.record_json, '$.request.fence.kind') = 'version'
-            AND json_extract(audit.record_json, '$.request.fence.expectedVersion') = json_extract(audit.record_json, '$.result.appliedVersion') - 1
-            AND json_extract(audit.record_json, '$.result.appliedVersion') > json_extract(run.record_json, '$.completion.expectedVersion') + 1
-            AND json_extract(audit.record_json, '$.result.appliedVersion') <= run.version)` ,
+    sql: `SELECT count(*) AS count FROM runs AS run
+      WHERE json_type(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.completion') IS 'object'
+        AND run.version - json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.completion.expectedVersion') - 1 <> (
+          SELECT count(DISTINCT json_extract(audit.payload_json, '$.result.appliedVersion')) FROM command_audits AS audit
+          WHERE json_extract(audit.payload_json, '$.kind') = 'run-lifecycle'
+            AND json_extract(audit.payload_json, '$.result.kind') = 'run'
+            AND json_extract(audit.payload_json, '$.result.runId') = run.id
+            AND json_extract(audit.payload_json, '$.request.operation') IN ('transition')
+            AND json_extract(audit.payload_json, '$.request.fence.kind') = 'version'
+            AND json_extract(audit.payload_json, '$.request.fence.expectedVersion') = json_extract(audit.payload_json, '$.result.appliedVersion') - 1
+            AND json_extract(audit.payload_json, '$.result.appliedVersion') > json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.completion.expectedVersion') + 1
+            AND json_extract(audit.payload_json, '$.result.appliedVersion') <= run.version)` ,
   },
-  {
+{
     name: "run-completion-consequences",
-    sql: `SELECT count(*) AS count FROM workflow_runs AS run
-      LEFT JOIN run_results AS result ON result.record_key = run.record_key
-      LEFT JOIN run_failures AS failure ON failure.run_id = run.record_key
-      WHERE COALESCE(json_extract(run.record_json, '$.lifecycle.outcome') IN ('done','failed'), 0)
-        IS NOT (json_type(run.record_json, '$.completion') IS 'object')
-        OR (json_extract(run.record_json, '$.completion.kind') = 'done' AND (
-          result.record_key IS NULL OR failure.record_key IS NOT NULL
-          OR json_extract(run.record_json, '$.completion.resultDigest') IS NOT result.result_digest))
-        OR (json_extract(run.record_json, '$.completion.kind') = 'failed' AND (
-          failure.record_key IS NULL OR result.record_key IS NOT NULL
-          OR json_extract(run.record_json, '$.completion.failureId') IS NOT failure.record_key
-          OR json_extract(run.record_json, '$.lifecycle.errorSummary') IS NOT json_extract(failure.record_json, '$.summary')
-          OR json_extract(run.record_json, '$.lifecycle.diagnosticSafetyVersion') IS NOT json_extract(failure.record_json, '$.diagnosticSafetyVersion')))` ,
+    sql: `SELECT count(*) AS count FROM runs AS run
+      LEFT JOIN run_results AS result ON result.run_id = run.id
+      LEFT JOIN run_failures AS failure ON failure.run_id = run.id
+      WHERE COALESCE(json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.lifecycle.outcome') IN ('done','failed'), 0)
+        IS NOT (json_type(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.completion') IS 'object')
+        OR (json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.completion.kind') = 'done' AND (
+          result.run_id IS NULL OR failure.id IS NOT NULL
+          OR json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.completion.resultDigest') IS NOT result.result_digest))
+        OR (json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.completion.kind') = 'failed' AND (
+          failure.id IS NULL OR result.run_id IS NULL
+          OR json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.completion.failureId') IS NOT failure.id
+          OR json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.lifecycle.errorSummary') IS NOT json_extract(failure.payload_json, '$.summary')
+          OR json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.lifecycle.diagnosticSafetyVersion') IS NOT json_extract(failure.payload_json, '$.diagnosticSafetyVersion')))` ,
   },
-
-  {
-    name: "workflow-batch-columns-match-record",
-    sql: "SELECT count(*) AS count FROM workflow_run_batches WHERE record_key IS NOT json_extract(record_json, '$.sessionId') OR workflow IS NOT json_extract(record_json, '$.workflow') OR started_at IS NOT json_extract(record_json, '$.startedAt') OR created_at IS NOT json_extract(record_json, '$.createdAt') OR group_in_queue IS NOT json_extract(record_json, '$.groupInQueue') OR version IS NOT json_extract(record_json, '$.version')",
+{
+    name: "final-runs-bind-result-owner",
+    sql: `SELECT count(*) AS count FROM runs AS run
+      LEFT JOIN run_results AS result ON result.run_id=run.id
+      WHERE run.state='terminal' AND run.outcome<>'interrupted' AND result.run_id IS NULL`,
   },
-  {
-    name: "app-settings-snapshot-binding",
-    sql: "SELECT count(*) AS count FROM app_settings a LEFT JOIN settings_snapshots s ON s.record_key=a.config_snapshot_id WHERE a.record_key IS NOT 'current' OR a.config_snapshot_id IS NOT json_extract(a.record_json,'$.active.configSnapshotId') OR (a.config_snapshot_id IS NOT NULL AND (s.record_key IS NULL OR json_extract(s.record_json,'$.fingerprint') IS NOT json_extract(a.record_json,'$.active.configFingerprint')))",
-  },
-  {
-    name: "run-columns-match-record",
-    sql: "SELECT count(*) AS count FROM workflow_runs WHERE workflow <> json_extract(record_json, '$.envelope.workflow') OR item_id <> json_extract(record_json, '$.envelope.itemId') OR state <> json_extract(record_json, '$.lifecycle.state') OR priority <> json_extract(record_json, '$.envelope.priority') OR attempt <> json_extract(record_json, '$.envelope.attempt') OR version <> json_extract(record_json, '$.version') OR claim_generation <> json_extract(record_json, '$.claimGeneration') OR run_number IS NOT json_extract(record_json, '$.runNumber') OR session_id IS NOT json_extract(record_json, '$.sessionId')",
-  },
-  {
-    name: "run-claim-owner-matches-record",
-    sql: "SELECT count(*) AS count FROM workflow_runs WHERE state IN ('claimed','validating','running') AND (owner_worker_id <> json_extract(record_json, '$.lifecycle.workerId') OR heartbeat_at <> json_extract(record_json, '$.lifecycle.heartbeatAt'))",
-  },
-  {
-    name: "failure-columns-match-record",
-    sql: "SELECT count(*) AS count FROM run_failures WHERE run_id <> json_extract(record_json, '$.runId')",
-  },
-  {
+{
     name: "failed-runs-bind-failure",
     sql: `
-      SELECT count(*) AS count FROM workflow_runs AS run
-      WHERE json_extract(run.record_json, '$.lifecycle.outcome') = 'failed'
+      SELECT count(*) AS count FROM runs AS run
+      WHERE json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.lifecycle.outcome') = 'failed'
         AND NOT EXISTS (
           SELECT 1 FROM run_failures AS failure
-          WHERE failure.record_key = json_extract(run.record_json, '$.lifecycle.failureId')
-            AND failure.run_id = run.record_key
+          WHERE failure.id = json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.lifecycle.failureId')
+            AND failure.run_id = run.id
         )
     `,
   },
-  {
+{
     name: "failures-bind-failed-run",
     sql: `
       SELECT count(*) AS count FROM run_failures AS failure
-      JOIN workflow_runs AS run ON run.record_key = failure.run_id
-      WHERE json_extract(run.record_json, '$.lifecycle.outcome') IS NOT 'failed'
-        OR json_extract(run.record_json, '$.lifecycle.failureId') IS NOT failure.record_key
+      JOIN runs AS run ON run.id = failure.run_id
+      WHERE json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.lifecycle.outcome') IS NOT 'failed'
+        OR json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.lifecycle.failureId') IS NOT failure.id
     `,
   },
-  {
+{
     name: "failure-identity-matches-run",
     sql: `
       SELECT count(*) AS count FROM run_failures AS failure
-      JOIN workflow_runs AS run ON run.record_key = failure.run_id
-      WHERE json_extract(failure.record_json, '$.workflowId') <> json_extract(run.record_json, '$.envelope.workflow')
-        OR json_extract(failure.record_json, '$.traceId') <> json_extract(run.record_json, '$.envelope.traceId')
-        OR json_extract(failure.record_json, '$.attempt') <> json_extract(run.record_json, '$.envelope.attempt')
+      JOIN runs AS run ON run.id = failure.run_id
+      WHERE json_extract(failure.payload_json, '$.workflowId') <> json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.envelope.workflow')
+        OR json_extract(failure.payload_json, '$.traceId') <> json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.envelope.traceId')
+        OR json_extract(failure.payload_json, '$.attempt') <> json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.envelope.attempt')
     `,
   },
-  {
-    name: "run-result-columns-match-record",
-    sql: "SELECT count(*) AS count FROM run_results WHERE workflow <> json_extract(record_json, '$.workflowId') OR attempt <> json_extract(record_json, '$.attempt') OR result_digest <> json_extract(record_json, '$.resultDigest') OR record_key <> json_extract(record_json, '$.runId')",
-  },
-  {
+{
     name: "run-result-identity-matches-run",
     sql: `
       SELECT count(*) AS count FROM run_results AS result
-      JOIN workflow_runs AS run ON run.record_key = result.record_key
-      WHERE json_extract(result.record_json, '$.workflowId') <> json_extract(run.record_json, '$.envelope.workflow')
-        OR json_extract(result.record_json, '$.attempt') <> json_extract(run.record_json, '$.envelope.attempt')
-        OR json_extract(result.record_json, '$.descriptorVersion') <> json_extract(run.record_json, '$.envelope.descriptorVersion')
-        OR json_extract(result.record_json, '$.contractFingerprint') <> json_extract(run.record_json, '$.envelope.contractFingerprint')
-        OR json_extract(result.record_json, '$.configFingerprint') <> json_extract(run.record_json, '$.envelope.configFingerprint')
-        OR json_extract(result.record_json, '$.configSnapshotId') <> json_extract(run.record_json, '$.envelope.configSnapshotId')
+      JOIN runs AS run ON run.id = result.run_id
+      WHERE json_extract(result.payload_json, '$.workflowId') <> json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.envelope.workflow')
+        OR json_extract(result.payload_json, '$.attempt') <> json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.envelope.attempt')
+        OR json_extract(result.payload_json, '$.descriptorVersion') <> json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.envelope.descriptorVersion')
+        OR json_extract(result.payload_json, '$.contractFingerprint') <> json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.envelope.contractFingerprint')
+        OR json_extract(result.payload_json, '$.configFingerprint') <> json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.envelope.configFingerprint')
+        OR json_extract(result.payload_json, '$.configSnapshotId') <> json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.envelope.configSnapshotId')
     `,
   },
-  {
-    name: "results-bind-done-run",
+{
+    name: "results-bind-terminal-run",
     sql: `
       SELECT count(*) AS count FROM run_results AS result
-      JOIN workflow_runs AS run ON run.record_key = result.record_key
-      WHERE json_extract(run.record_json, '$.lifecycle.outcome') IS NOT 'done'
+      JOIN runs AS run ON run.id = result.run_id
+      WHERE run.state IS NOT 'terminal' OR run.outcome IS 'interrupted'
+        OR (run.outcome = 'done' AND json_extract(result.payload_json,'$.result.value.kind') IN ('failed-evidence','lifecycle-evidence'))
+        OR (run.outcome = 'failed' AND json_extract(result.payload_json,'$.result.value.kind') IS NOT 'failed-evidence')
+        OR (run.outcome IN ('cancelled','discarded','superseded') AND json_extract(result.payload_json,'$.result.value.kind') IS NOT 'lifecycle-evidence')
     `,
   },
-  {
-    name: "duo-ceremony-lease-columns-match-record",
-    sql: "SELECT count(*) AS count FROM worker_auth WHERE record_key <> json_extract(record_json, '$.credentialKey') OR generation <> json_extract(record_json, '$.generation') OR holder_worker_id <> json_extract(record_json, '$.holder.workerId') OR holder_system <> json_extract(record_json, '$.holder.system') OR state <> json_extract(record_json, '$.state') OR expires_at <> json_extract(record_json, '$.expiresAt') OR version <> json_extract(record_json, '$.version')",
-  },
-  {
-    name: "worker-lease-columns-match-record",
-    sql: "SELECT count(*) AS count FROM workflow_workers WHERE worker_id <> record_key OR worker_id <> json_extract(record_json, '$.workerId') OR workflow <> json_extract(record_json, '$.workflow') OR lease_generation <> json_extract(record_json, '$.leaseGeneration') OR state <> json_extract(record_json, '$.lifecycle.state') OR directive <> json_extract(record_json, '$.control.directive') OR version <> json_extract(record_json, '$.version')",
-  },
-  {
+{
     // Check one-active-run ownership before claiming; a second active row is a loop defect.
     name: "worker-owns-at-most-one-active-run",
     sql: `
       SELECT count(*) AS count FROM (
-        SELECT owner_worker_id FROM workflow_runs
+        SELECT owner_worker_id FROM runs
         WHERE state IN ('claimed','validating','running')
         GROUP BY owner_worker_id HAVING count(*) > 1
       )
     `,
   },
-  {
-    name: "commands-family-column-matches-record",
-    sql: `
-      SELECT count(*) AS count FROM commands
-      WHERE family IS NOT CASE
-        WHEN json_extract(record_json, '$.kind') IN ('run-lifecycle', 'bulk-parent') THEN json_extract(record_json, '$.kind')
-        ELSE json_extract(record_json, '$.family')
-      END
-    `,
-  },
-  {
-    name: "command-audit-parent-column-matches-record",
-    sql: "SELECT count(*) AS count FROM command_audits WHERE command_id <> json_extract(record_json, '$.request.commandId')",
-  },
-  {
-    name: "bulk-parent-columns-match-record",
-    sql: "SELECT count(*) AS count FROM commands WHERE family = 'bulk-parent' AND (parent_command_id IS NOT NULL OR record_key IS NOT json_extract(record_json, '$.commandId') OR created_at IS NOT json_extract(record_json, '$.acceptance.request.requestedAt') OR EXISTS (SELECT 1 FROM command_audits WHERE command_id = commands.record_key))",
-  },
-  {
-    name: "dependency-manifest-column-matches-record",
-    sql: "SELECT count(*) AS count FROM delegation_dependencies WHERE manifest_id <> json_extract(record_json, '$.manifestId')",
-  },
-  {
-    name: "write-intent-columns-match-record",
-    sql: "SELECT count(*) AS count FROM run_operations WHERE system <> json_extract(record_json, '$.system') OR idempotency_key <> json_extract(record_json, '$.idempotencyKey') OR idempotency_key_digest <> json_extract(record_json, '$.idempotencyKeyDigest') OR status <> json_extract(record_json, '$.status')",
-  },
-  {
-    name: "write-attempt-columns-match-record",
-    sql: "SELECT count(*) AS count FROM run_operation_attempts WHERE write_intent_id <> json_extract(record_json, '$.writeIntentId') OR generation <> json_extract(record_json, '$.generation')",
-  },
-
-  {
-    name: "failure-resolution-version-matches-record",
-    sql: "SELECT count(*) AS count FROM run_failures WHERE resolution_version IS NOT json_extract(resolution_json, '$.version')",
-  },
-  {
-    name: "failure-fingerprint-column-matches-record",
-    sql: "SELECT count(*) AS count FROM run_failures WHERE fingerprint IS NOT json_extract(record_json, '$.fingerprint')",
-  },
-  {
-    name: "notification-columns-match-record",
-    sql: "SELECT count(*) AS count FROM notifications WHERE record_key IS NOT json_extract(record_json, '$.notificationId') OR actor_id IS NOT json_extract(record_json, '$.actorId') OR dedupe_fingerprint IS NOT json_extract(record_json, '$.dedupeFingerprint') OR status IS NOT json_extract(record_json, '$.status') OR seen_count IS NOT json_extract(record_json, '$.count') OR version IS NOT json_extract(record_json, '$.version')",
-  },
-  {
-    name: "diagnostic-bundle-columns-match-record",
-    sql: "SELECT count(*) AS count FROM diagnostic_snapshots WHERE record_key IS NOT json_extract(record_json, '$.bundleId') OR run_id IS NOT json_extract(record_json, '$.runId') OR origin_kind IS NOT json_extract(record_json, '$.origin.kind') OR failure_id IS NOT json_extract(record_json, '$.origin.failureId') OR content_digest IS NOT json_extract(record_json, '$.contentDigest') OR retention_kind IS NOT json_extract(record_json, '$.retention.kind') OR purge_after IS NOT json_extract(record_json, '$.retention.purgeAfter')",
-  },
-  {
+{
     name: "diagnostic-attachment-binds-its-bundle",
     sql: `
       SELECT count(*) AS count FROM diagnostic_files AS attachment
-      LEFT JOIN diagnostic_snapshots AS bundle ON bundle.record_key = attachment.bundle_id
-      WHERE bundle.record_key IS NULL
-        OR attachment.record_key IS NOT (attachment.bundle_id || ':' || attachment.artifact_id)
-        OR attachment.bundle_id IS NOT json_extract(attachment.record_json, '$.bundleId')
-        OR attachment.artifact_id IS NOT json_extract(attachment.record_json, '$.attachment.artifactId')
-        OR attachment.digest IS NOT json_extract(attachment.record_json, '$.attachment.digest')
+      LEFT JOIN diagnostic_snapshots AS bundle ON bundle.id = attachment.snapshot_id
+      WHERE bundle.id IS NULL
+        OR attachment.id IS NOT (attachment.snapshot_id || ':' || attachment.artifact_id)
+        OR attachment.snapshot_id IS NOT json_extract(attachment.payload_json, '$.bundleId')
+        OR attachment.artifact_id IS NOT json_extract(attachment.payload_json, '$.attachment.artifactId')
+        OR attachment.digest IS NOT json_extract(attachment.payload_json, '$.attachment.digest')
     `,
   },
-  {
+{
     name: "diagnostic-bundle-attachments-are-indexed",
     sql: `
       SELECT count(*) AS count FROM diagnostic_snapshots AS bundle
-      WHERE json_array_length(bundle.record_json, '$.attachments')
-        <> (SELECT count(*) FROM diagnostic_files AS attachment WHERE attachment.bundle_id = bundle.record_key)
+      WHERE json_array_length(bundle.payload_json, '$.attachments')
+        <> (SELECT count(*) FROM diagnostic_files AS attachment WHERE attachment.snapshot_id = bundle.id)
     `,
   },
-  {
-    name: "evidence-receipt-columns-match-record",
-    sql: "SELECT count(*) AS count FROM run_receipts WHERE record_key IS NOT json_extract(record_json, '$.receiptId') OR run_id IS NOT json_extract(record_json, '$.runId') OR workflow IS NOT json_extract(record_json, '$.workflowId') OR attempt IS NOT json_extract(record_json, '$.attempt') OR result IS NOT json_extract(record_json, '$.result') OR confidence IS NOT json_extract(record_json, '$.confidence') OR failure_id IS NOT json_extract(record_json, '$.failure.value')",
-  },
-  {
-    name: "dry-run-scenario-result-columns-match-record",
-    sql: "SELECT count(*) AS count FROM dryrun_results WHERE record_key IS NOT json_extract(record_json, '$.resultId') OR scenario_id IS NOT json_extract(record_json, '$.scenarioId') OR workflow IS NOT json_extract(record_json, '$.workflow') OR subject_label IS NOT json_extract(record_json, '$.subjectLabel') OR manifest_digest IS NOT json_extract(record_json, '$.manifestDigest') OR verdict IS NOT json_extract(record_json, '$.verdict') OR execution_state IS NOT json_extract(record_json, '$.execution.state') OR run_id IS NOT json_extract(record_json, '$.execution.runId') OR trace_id IS NOT json_extract(record_json, '$.execution.traceId') OR wall_time_ms IS NOT json_extract(record_json, '$.wallTimeMs') OR created_at IS NOT json_extract(record_json, '$.recordedAt')",
-  },
-
-  {
+{
     name: "started-dry-run-scenario-result-binds-run",
     sql: `
       SELECT count(*) AS count FROM dryrun_results AS result
-      LEFT JOIN workflow_runs AS run ON run.record_key = result.run_id
+      LEFT JOIN runs AS run ON run.id = result.run_id
       WHERE result.execution_state = 'started' AND (
-        run.record_key IS NULL
+        run.id IS NULL
         OR result.workflow IS NOT run.workflow
-        OR result.trace_id IS NOT json_extract(run.record_json, '$.envelope.traceId')
-        -- D318: a live-read result cites an ordinary run (dryRun 0); a preview
-        -- result, and every pre-D318 row (no arm), cites a dry run (dryRun 1).
-        OR json_extract(run.record_json, '$.envelope.dryRun') IS NOT (
-          CASE WHEN json_extract(result.record_json, '$.execution.arm') = 'live-read' THEN 0 ELSE 1 END
+        OR result.trace_id IS NOT json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.envelope.traceId')
+        OR json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.envelope.dryRun') IS NOT (
+          CASE WHEN json_extract(result.payload_json, '$.execution.arm') = 'live-read' THEN 0 ELSE 1 END
         )
       )
     `,
   },
-
-
-
-
-
-
-  {
+{
     name: "attempting-write-has-current-attempt",
     sql: `
-      SELECT count(*) AS count FROM run_operations AS intent
+      SELECT count(*) AS count FROM write_intents AS intent
       WHERE intent.status = 'attempting' AND NOT EXISTS (
-        SELECT 1 FROM run_operation_attempts AS attempt
-        WHERE attempt.record_key = json_extract(intent.record_json, '$.currentAttemptId')
-          AND attempt.write_intent_id = intent.record_key
-          AND attempt.generation = json_extract(intent.record_json, '$.generation')
+        SELECT 1 FROM write_attempts AS attempt
+        WHERE attempt.id = json_extract(intent.payload_json, '$.currentAttemptId')
+          AND attempt.intent_id = intent.id
+          AND attempt.generation = json_extract(intent.payload_json, '$.generation')
       )
     `,
-  },
+  }
 ] as const);
 
 function invariantViolations(database: DatabaseSync): readonly string[] {
@@ -944,32 +770,18 @@ function invariantViolations(database: DatabaseSync): readonly string[] {
     const { count } = CountRowSchema.parse(database.prepare(sql).get());
     return count === 0 ? [] : [`${name} failed for ${String(count)} row(s)`];
   });
-  return [...violations, ...commandGroupLinkViolations(database), ...archiveTransactionIntegrityViolations(database)];
-}
-
-/** Frozen transaction presentation is authenticated independently of original archive bytes. */
-function archiveTransactionIntegrityViolations(database: DatabaseSync): readonly string[] {
-  if (!hasHistoricalArchiveTables(database)) return [];
-  for (const value of database.prepare("SELECT record_key,record_json,transactions_json,transactions_digest FROM archived_runs").all()) {
-    try {
-      const row = z.strictObject({ record_key: z.string(), record_json: z.string(), transactions_json: z.string(), transactions_digest: z.string() }).parse(value);
-      const archive = ArchivedRunRecordSchema.parse(JSON.parse(row.record_json));
-      const section = ArchivedTransactionsSchema.parse(JSON.parse(row.transactions_json));
-      if (sha256Hex(row.transactions_json) !== row.transactions_digest || section.runId !== row.record_key || section.contentDigest !== archive.contentDigest) return ["archive-transactions-integrity-mismatch"];
-    } catch { return ["archive-transactions-integrity-mismatch"]; }
-  }
-  return [];
+  return [...violations, ...commandGroupLinkViolations(database)];
 }
 
 /** Validate both declared links and missing links from each immutable parent selection. */
 function commandGroupLinkViolations(database: DatabaseSync): readonly string[] {
-  const rowSchema = z.strictObject({ record_key: z.string(), record_json: z.string(), parent_command_id: z.string().nullable() });
-  const rows = database.prepare("SELECT record_key, record_json, parent_command_id FROM commands ORDER BY record_key").all()
+  const rowSchema = z.strictObject({ id: z.string(), request_json: z.string(), parent_id: z.string().nullable() });
+  const rows = database.prepare("SELECT id, request_json, parent_id FROM commands ORDER BY id").all()
     .map((row) => rowSchema.parse(row));
-  const byId = new Map(rows.map((row) => [row.record_key, row]));
+  const byId = new Map(rows.map((row) => [row.id, row]));
   const expected = new Map<string, string>();
   for (const row of rows) {
-    const raw: unknown = JSON.parse(row.record_json);
+    const raw: unknown = JSON.parse(row.request_json);
     if (typeof raw !== "object" || raw === null || !("kind" in raw) || raw.kind !== "bulk-parent") continue;
     const parent = BulkParentCommandRecordSchema.parse(raw);
     for (const target of parent.acceptance.request.targets) {
@@ -977,415 +789,96 @@ function commandGroupLinkViolations(database: DatabaseSync): readonly string[] {
       const saved = byId.get(child.commandId);
       if (saved === undefined) continue;
       if (expected.has(child.commandId) && expected.get(child.commandId) !== parent.commandId) return ["command-group ambiguous child ownership"];
-      if (canonicalJsonStringify(JSON.parse(saved.record_json) as unknown) !== canonicalJsonStringify(child)) return ["command-group child request mismatch"];
+      if (canonicalJsonStringify(JSON.parse(saved.request_json) as unknown) !== canonicalJsonStringify(child)) return ["command-group child request mismatch"];
       expected.set(child.commandId, parent.commandId);
     }
   }
-  return rows.flatMap((row) => row.parent_command_id === (expected.get(row.record_key) ?? null)
+  return rows.flatMap((row) => row.parent_id === (expected.get(row.id) ?? null)
     ? [] : ["command-group child linkage mismatch"]);
 }
 
-const HISTORICAL_COMPLETION_INVARIANT_QUERIES = [
-  {
-    name: "terminal-authorization-columns-match-record",
-    sql: "SELECT count(*) AS count FROM run_terminal_authorizations WHERE record_key IS NOT json_extract(record_json, '$.runId') OR kind IS NOT json_extract(record_json, '$.kind') OR expected_version IS NOT json_extract(record_json, '$.expectedVersion') OR worker_id IS NOT json_extract(record_json, '$.claim.workerId') OR claim_generation IS NOT json_extract(record_json, '$.claim.claimGeneration') OR created_at IS NOT json_extract(record_json, '$.authorizedAt')",
-  },
-  {
-    name: "failed-runs-bind-terminal-authorization",
-    sql: `
-      SELECT count(*) AS count FROM workflow_runs AS run
-      WHERE json_extract(run.record_json, '$.lifecycle.outcome') = 'failed'
-        AND NOT EXISTS (
-          SELECT 1 FROM run_terminal_authorizations AS authorization
-          WHERE authorization.record_key = run.record_key
-            AND authorization.kind = 'failed'
-            AND json_extract(authorization.record_json, '$.failureId')
-              = json_extract(run.record_json, '$.lifecycle.failureId')
-        )
-    `,
-  },
-  {
-    name: "failures-bind-terminal-authorization",
-    sql: `
-      SELECT count(*) AS count FROM run_failures AS failure
-      LEFT JOIN run_terminal_authorizations AS authorization
-        ON authorization.record_key = failure.run_id
-      WHERE authorization.record_key IS NULL
-        OR authorization.kind IS NOT 'failed'
-        OR json_extract(authorization.record_json, '$.failureId') IS NOT failure.record_key
-    `,
-  },
-  {
-    name: "run-terminal-outbox-columns-match-record",
-    sql: "SELECT count(*) AS count FROM run_terminal_outbox WHERE run_id <> json_extract(record_json, '$.payload.runId') OR state <> json_extract(record_json, '$.projection.state')",
-  },
-  {
-    name: "run-terminal-outbox-binds-result",
-    sql: `
-      SELECT count(*) AS count FROM run_terminal_outbox AS outbox
-      LEFT JOIN run_results AS result ON result.record_key = outbox.run_id
-      WHERE result.record_key IS NULL
-        OR json_extract(outbox.record_json, '$.payload.workflowId') IS NOT json_extract(result.record_json, '$.workflowId')
-        OR json_extract(outbox.record_json, '$.payload.attempt') IS NOT json_extract(result.record_json, '$.attempt')
-        OR json_extract(outbox.record_json, '$.payload.resultDigest') IS NOT result.result_digest
-    `,
-  },
-  {
-    name: "done-runs-bind-result-and-outbox",
-    sql: `
-      SELECT count(*) AS count FROM workflow_runs AS run
-      WHERE json_extract(run.record_json, '$.lifecycle.outcome') = 'done'
-        AND NOT EXISTS (
-          SELECT 1 FROM run_results AS result
-          JOIN run_terminal_outbox AS outbox ON outbox.run_id = result.record_key
-          WHERE result.record_key = run.record_key
-            AND json_extract(outbox.record_json, '$.payload.resultDigest') = result.result_digest
-        )
-    `,
-  },
-  {
-    name: "done-runs-bind-terminal-authorization",
-    sql: `
-      SELECT count(*) AS count FROM workflow_runs AS run
-      WHERE json_extract(run.record_json, '$.lifecycle.outcome') = 'done'
-        AND NOT EXISTS (
-          SELECT 1 FROM run_terminal_authorizations AS authorization
-          WHERE authorization.record_key = run.record_key
-            AND authorization.kind = 'done'
-        )
-    `,
-  },
-  {
-    name: "results-bind-terminal-authorization",
-    sql: `
-      SELECT count(*) AS count FROM run_results AS result
-      LEFT JOIN run_terminal_authorizations AS authorization
-        ON authorization.record_key = result.record_key
-      WHERE authorization.record_key IS NULL
-        OR authorization.kind IS NOT 'done'
-        OR json_extract(authorization.record_json, '$.resultDigest') IS NOT result.result_digest
-    `,
-  },
-  {
-    name: "terminal-outbox-binds-terminal-authorization",
-    sql: `
-      SELECT count(*) AS count FROM run_terminal_outbox AS outbox
-      LEFT JOIN run_terminal_authorizations AS authorization
-        ON authorization.record_key = outbox.run_id
-      WHERE authorization.record_key IS NULL
-        OR authorization.kind IS NOT 'done'
-        OR json_extract(authorization.record_json, '$.outboxId') IS NOT outbox.record_key
-    `,
-  },
-  {
-    name: "terminal-authorization-binds-exact-terminal-authority",
-    sql: `
-      SELECT count(*) AS count FROM run_terminal_authorizations AS authorization
-      LEFT JOIN workflow_runs AS run ON run.record_key = authorization.record_key
-      LEFT JOIN run_failures AS failure
-        ON failure.run_id = authorization.record_key
-          AND failure.record_key = json_extract(authorization.record_json, '$.failureId')
-      LEFT JOIN run_results AS result ON result.record_key = authorization.record_key
-      LEFT JOIN run_terminal_outbox AS outbox
-        ON outbox.run_id = authorization.record_key
-          AND outbox.record_key = json_extract(authorization.record_json, '$.outboxId')
-      WHERE run.record_key IS NULL
-        OR authorization.created_at IS NOT json_extract(authorization.record_json, '$.authorizedAt')
-        OR json_extract(authorization.record_json, '$.workflowId')
-          IS NOT json_extract(run.record_json, '$.envelope.workflow')
-        OR json_extract(authorization.record_json, '$.attempt')
-          IS NOT json_extract(run.record_json, '$.envelope.attempt')
-        OR json_extract(authorization.record_json, '$.descriptorVersion')
-          IS NOT json_extract(run.record_json, '$.envelope.descriptorVersion')
-        OR json_extract(authorization.record_json, '$.contractFingerprint')
-          IS NOT json_extract(run.record_json, '$.envelope.contractFingerprint')
-        OR run.version < authorization.expected_version + 1
-        OR run.claim_generation IS NOT authorization.claim_generation
-        OR json_extract(run.record_json, '$.lifecycle.state') IS NOT 'terminal'
-        OR json_extract(run.record_json, '$.lifecycle.endedAt')
-          IS NOT json_extract(authorization.record_json, '$.authorizedAt')
-        OR (run.version = authorization.expected_version + 1 AND json_extract(run.record_json, '$.updatedAt')
-          IS NOT json_extract(authorization.record_json, '$.authorizedAt'))
-        OR (authorization.kind = 'failed' AND (
-          json_extract(run.record_json, '$.lifecycle.outcome') IS NOT 'failed'
-          OR json_extract(run.record_json, '$.lifecycle.failureId')
-            IS NOT json_extract(authorization.record_json, '$.failureId')
-          OR failure.record_key IS NULL
-          OR json_extract(run.record_json, '$.lifecycle.errorSummary')
-            IS NOT json_extract(failure.record_json, '$.summary')
-        ))
-        OR (authorization.kind = 'done' AND (
-          json_extract(run.record_json, '$.lifecycle.outcome') IS NOT 'done'
-          OR result.record_key IS NULL
-          OR json_extract(authorization.record_json, '$.resultDigest') IS NOT result.result_digest
-          OR outbox.record_key IS NULL
-        ))
-    `,
-  },
-] as const;
-
-const RETIRED_HISTORY_INVARIANT_QUERIES = [
-  {
-    name: "activity-person-pseudonym-columns-match-record",
-    sql: "SELECT count(*) AS count FROM activity_person_pseudonyms WHERE record_key IS NOT (run_id || ':' || key_generation) OR run_id IS NOT json_extract(record_json, '$.runId') OR workflow IS NOT json_extract(record_json, '$.workflowId') OR key_generation IS NOT json_extract(record_json, '$.keyGeneration') OR pseudonym IS NOT json_extract(record_json, '$.pseudonym') OR derivation IS NOT json_extract(record_json, '$.derivation')",
-  },
-  {
-    name: "activity-person-pseudonym-generation-columns-match-record",
-    sql: "SELECT count(*) AS count FROM activity_person_pseudonym_generations WHERE record_key IS NOT key_generation OR key_generation IS NOT json_extract(record_json, '$.keyGeneration') OR key_commitment IS NOT json_extract(record_json, '$.keyCommitment') OR derivation IS NOT json_extract(record_json, '$.derivation')",
-  },
-  {
-    name: "activity-person-pseudonym-generation-binds-evidence",
-    sql: "SELECT count(*) AS count FROM activity_person_pseudonyms AS evidence LEFT JOIN activity_person_pseudonym_generations AS generation ON generation.key_generation = evidence.key_generation WHERE generation.key_generation IS NULL",
-  },
-  {
-    name: "activity-person-pseudonym-binds-run",
-    sql: "SELECT count(*) AS count FROM activity_person_pseudonyms AS evidence LEFT JOIN workflow_runs AS run ON run.record_key = evidence.run_id WHERE run.record_key IS NULL OR evidence.workflow IS NOT json_extract(run.record_json, '$.envelope.workflow')",
-  },
-
-  {
-    // Ref write-safety §6: sequences are dense from zero inside a partition, so
-    // `nextSeq` is the count. A gap here means a lost or rewritten entry.
-    name: "ledger-partition-sequence-is-dense",
-    sql: `
-      SELECT count(*) AS count FROM ledger_partitions AS partition
-      WHERE partition.next_seq <> (
-        SELECT count(*) FROM ledger_projections AS projection
-        WHERE projection.partition_key = partition.record_key
-      )
-      OR partition.next_seq <> COALESCE((
-        SELECT max(projection.seq) + 1 FROM ledger_projections AS projection
-        WHERE projection.partition_key = partition.record_key
-      ), 0)
-    `,
-  },
-
-  {
-    name: "durable-outbox-columns-match-record",
-    sql: "SELECT count(*) AS count FROM operation_outbox WHERE write_intent_id <> json_extract(record_json, '$.aggregate.writeIntentId') OR generation <> json_extract(record_json, '$.aggregate.generation') OR kind <> json_extract(record_json, '$.payload.kind')",
-  },
-  {
-    name: "ledger-partition-columns-match-record",
-    sql: "SELECT count(*) AS count FROM ledger_partitions WHERE record_key IS NOT (system || ':' || ledger_date) OR system IS NOT json_extract(record_json, '$.system') OR ledger_date IS NOT json_extract(record_json, '$.date') OR next_seq IS NOT json_extract(record_json, '$.nextSeq') OR lease_holder IS NOT json_extract(record_json, '$.lease.holder') OR lease_expires_at IS NOT json_extract(record_json, '$.lease.expiresAt') OR lease_generation IS NOT json_extract(record_json, '$.leaseGeneration') OR version IS NOT json_extract(record_json, '$.version')",
-  },
-  {
-    name: "ledger-projection-columns-match-record",
-    sql: "SELECT count(*) AS count FROM ledger_projections WHERE record_key IS NOT json_extract(record_json, '$.outboxId') OR partition_key IS NOT (system || ':' || ledger_date) OR system IS NOT json_extract(record_json, '$.system') OR ledger_date IS NOT json_extract(record_json, '$.date') OR seq IS NOT json_extract(record_json, '$.seq') OR state IS NOT json_extract(record_json, '$.lifecycle.state') OR line_digest IS NOT json_extract(record_json, '$.lineDigest') OR assigned_at IS NOT json_extract(record_json, '$.assignedAt') OR appended_at IS NOT json_extract(record_json, '$.lifecycle.appendedAt')",
-  },
-  {
-    name: "ledger-projection-binds-a-ledger-outbox",
-    sql: `
-      SELECT count(*) AS count FROM ledger_projections AS projection
-      LEFT JOIN operation_outbox AS outbox ON outbox.record_key = projection.record_key
-      WHERE outbox.record_key IS NULL OR outbox.kind IS NOT 'ledger-entry'
-    `,
-  },
-  {
-    name: "projected-ledger-outbox-has-an-appended-line",
-    sql: `
-      SELECT count(*) AS count FROM operation_outbox AS outbox
-      LEFT JOIN ledger_projections AS projection ON projection.record_key = outbox.record_key
-      WHERE outbox.kind = 'ledger-entry'
-        AND json_extract(outbox.record_json, '$.projection.state') = 'projected'
-        AND (projection.record_key IS NULL
-          OR projection.state IS NOT 'appended'
-          OR projection.line_digest IS NOT json_extract(outbox.record_json, '$.projection.projectionFingerprint'))
-    `,
-  },
-] as const;
-
-const HISTORICAL_FOUNDATION_QUERIES = [
-  {
-    name: "knowledge-and-fix-columns-match-record",
-    sql: `
-      SELECT (
-        SELECT count(*) FROM knowledge_records
-        WHERE record_key IS NOT json_extract(record_json, '$.id') OR status IS NOT json_extract(record_json, '$.status')
-      ) + (
-        SELECT count(*) FROM fix_records
-        WHERE record_key IS NOT json_extract(record_json, '$.id')
-          OR status IS NOT json_extract(record_json, '$.status')
-          OR failure_fingerprint IS NOT json_extract(record_json, '$.failureFingerprint')
-      ) AS count
-    `,
-  },
-  {
-    name: "operator-xlsx-export-columns-match-record",
-    sql: "SELECT count(*) AS count FROM operator_xlsx_exports WHERE record_key IS NOT json_extract(record_json, '$.exportId') OR selection_kind IS NOT json_extract(record_json, '$.selection.kind') OR artifact_id IS NOT json_extract(record_json, '$.artifact.id') OR digest IS NOT json_extract(record_json, '$.download.sha256') OR byte_length IS NOT json_extract(record_json, '$.download.byteLength') OR media_type IS NOT json_extract(record_json, '$.download.mediaType') OR filename IS NOT json_extract(record_json, '$.download.filename') OR created_at IS NOT json_extract(record_json, '$.createdAt') OR CASE json_extract(record_json, '$.workbookVersion') WHEN 1 THEN requested_by IS NOT NULL OR json_type(record_json, '$.requestedBy') IS NOT NULL WHEN 2 THEN requested_by IS NULL OR requested_by IS NOT json_extract(record_json, '$.requestedBy') ELSE 1 END",
-  },
-  {
-    name: "settings-current-columns-match-record",
-    sql: "SELECT count(*) AS count FROM settings_current WHERE record_key <> 'current' OR revision <> json_extract(record_json, '$.revision') OR settings_fingerprint <> json_extract(record_json, '$.settingsFingerprint') OR command_id <> json_extract(record_json, '$.commandId') OR command_fingerprint <> json_extract(record_json, '$.commandFingerprint') OR audit_id <> json_extract(record_json, '$.auditId') OR created_at <> json_extract(record_json, '$.committedAt')",
-  },
-  {
-    name: "runtime-config-columns-match-record",
-    sql: "SELECT count(*) AS count FROM runtime_config WHERE record_key <> 'active' OR generation <> json_extract(record_json, '$.generation') OR settings_revision <> json_extract(record_json, '$.settingsRevision') OR settings_fingerprint <> json_extract(record_json, '$.settingsFingerprint') OR config_snapshot_id <> json_extract(record_json, '$.configSnapshotId') OR config_fingerprint <> json_extract(record_json, '$.configFingerprint') OR created_at <> json_extract(record_json, '$.activatedAt')",
-  },
-] as const;
-
-const historicalInvariantQueries = new Map<number, readonly { name: string; sql: string }[]>();
-// Replay released backup DDL in memory; never validate it against operator state.
-export function inspectHistoricalAuthorityInvariants(database: DatabaseSync, version: number): void {
-  let queries = historicalInvariantQueries.get(version);
-  if (queries === undefined) {
-    const reference = new DatabaseSync(":memory:");
-    try {
-      for (const migration of SQLITE_MIGRATIONS.filter((entry) => entry.version <= version)) for (const statement of migration.statements) reference.exec(statement);
-      const taskColumns = new Set(reference.prepare(`PRAGMA table_info(${version < 33 ? "tasks" : "workflow_runs"})`).all().map((row) => row.name));
-      queries = [...INVARIANT_QUERIES.filter((entry) => version >= 41 || !entry.name.startsWith("run-completion-")), ...HISTORICAL_FOUNDATION_QUERIES, ...RETIRED_HISTORY_INVARIANT_QUERIES, ...HISTORICAL_COMPLETION_INVARIANT_QUERIES].flatMap((entry) => {
-        let sql: string = version < 33
-          ? entry.sql.replaceAll("workflow_runs", "tasks").replaceAll("workflow_run_batches", "run_sessions")
-          : entry.sql;
-        if (version < 35) {
-          sql = sql.replaceAll("workflow_workers", "leases")
-            .replaceAll("worker_auth", "duo_ceremony_leases")
-            .replaceAll("workflow_run_requests", "start_plans");
-        }
-        if (version < 36) {
-          sql = sql.replaceAll("run_operations", "write_intents")
-            .replaceAll("run_operation_attempts", "write_attempts")
-            .replaceAll("operation_outbox", "durable_outbox");
-        }
-        if (version < 37) {
-          sql = sql.replaceAll("delegation_dependencies", "dependencies").replaceAll("run_delegations", "delegation_manifests");
-          if (entry.name === "bulk-parent-columns-match-record") sql = "SELECT count(*) AS count FROM bulk_command_acceptances WHERE record_key <> json_extract(record_json, '$.bulkCommandId') OR request_fingerprint <> json_extract(record_json, '$.requestFingerprint') OR created_at <> json_extract(record_json, '$.request.requestedAt')";
-        }
-        if (version < 41) sql = sql.replaceAll("run_failures", "failures");
-        if (version < 39) {
-          for (const [old, current] of Object.entries(DATABASE_TABLE_RENAMES)) sql = sql.replaceAll(current, old);
-        }
-        if (entry.name === "run-columns-match-record") {
-          if (!taskColumns.has("run_number")) sql = sql.replace(" OR run_number IS NOT json_extract(record_json, '$.runNumber')", "");
-          if (!taskColumns.has("session_id")) sql = sql.replace(" OR session_id IS NOT json_extract(record_json, '$.sessionId')", "");
-        }
-        let prepared: ReturnType<DatabaseSync["prepare"]> | undefined;
-        try { prepared = reference.prepare(sql); }
-        catch (error) {
-          if (!(error instanceof Error) || !/^no such (?:table|column): /u.test(error.message)) throw error;
-        }
-        return prepared === undefined ? [] : [{ name: entry.name, sql }];
-      });
-      historicalInvariantQueries.set(version, queries);
-    } finally { reference.close(); }
-  }
-  for (const query of queries) {
-    const { count } = CountRowSchema.parse(database.prepare(query.sql).get());
-    if (count !== 0) throw new Error(`authority-invariant-invalid: ${query.name} (${String(count)} rows)`);
-  }
-}
-
-/** Exact retained ownership, including retries whose shared evidence outlives its source run. */
-function runDeletionEvidence(database: DatabaseSync, deleting: RunRecord, archive: () => ArchiveDatabase) {
-  const { runId, workflow, itemId } = deleting.envelope;
-  const eligibleOwner = (ownerId: string): boolean => {
-    const owner = resolveRunEvidenceOwner(database, archive, ownerId);
-    if (owner.workflow !== workflow || owner.itemId !== itemId) throw new Error("run-delete-evidence-owner-mismatch");
-    return owner.state === "deleted" || (ownerId === runId && (owner.state === "live" || owner.state === "archived"));
-  };
-  // Checkpoint and permanent-key reads precede retry materialization; tombstones cannot stand in for their payloads.
-  const retainedPeers = database.prepare(`SELECT record_key, record_json FROM workflow_runs
-    WHERE workflow = ? AND item_id = ? AND record_key <> ?`).all(workflow, itemId, runId);
-  for (const raw of retainedPeers) {
-    const row = AuthorityRecordFingerprintRowSchema.parse(raw);
-    const peer = parseJsonRecord(RunRecordSchema, row.record_json);
-    if (peer.envelope.runId !== row.record_key || peer.envelope.workflow !== workflow || peer.envelope.itemId !== itemId) {
-      throw new Error("run-delete-peer-identity-mismatch");
-    }
-  }
-  const archivedPeers = database.prepare("SELECT record_key FROM archive_transfers WHERE workflow=? AND item_id=? AND record_key <> ? AND record_key NOT IN (SELECT record_key FROM deleted_runs)").all(workflow,itemId,runId);
-  for (const raw of archivedPeers) resolveRunEvidenceOwner(database, archive, z.strictObject({record_key:z.string()}).parse(raw).record_key);
-  const retainedItemPeer = retainedPeers.length > 0 || archivedPeers.length > 0;
-  const referenced = (ownerId: string): boolean => {
-    return retainedItemPeer || database.prepare(`SELECT 1 FROM timeline_events WHERE run_id <> ?
-      AND json_extract(record_json, '$.payload.checkpoint.runId') = ? LIMIT 1`).get(runId, ownerId) !== undefined
-      || database.prepare(`SELECT 1 FROM run_results, json_each(run_results.record_json, '$.dependencies') AS dependency
-        WHERE run_results.record_key <> ? AND json_extract(dependency.value, '$.checkpoint.runId') = ? LIMIT 1`).get(runId, ownerId) !== undefined
-      || database.prepare(`SELECT 1 FROM workflow_runs WHERE record_key <> ?
-        AND json_extract(record_json, '$.envelope.retryOf') = ? LIMIT 1`).get(runId, ownerId) !== undefined;
-  };
-  const checkpointKeys: string[] = [];
-  for (const raw of database.prepare("SELECT record_key, record_json FROM run_checkpoints WHERE (workflow = ? AND item_id = ?) OR run_id = ?").all(workflow, itemId, runId)) {
-    const row = AuthorityRecordFingerprintRowSchema.parse(raw);
-    const checkpoint = parseJsonRecord(RunCheckpointRecordSchema, row.record_json);
-    if (checkpoint.workflowId !== workflow || checkpoint.itemId !== itemId) throw new Error("run-delete-checkpoint-column-mismatch");
-    if (eligibleOwner(checkpoint.runId) && !referenced(checkpoint.runId)) checkpointKeys.push(row.record_key);
-  }
-  const operationIds: string[] = [];
-  for (const raw of database.prepare(`SELECT record_json FROM run_operations
-    WHERE (json_extract(record_json, '$.workflowId') = ? AND json_extract(record_json, '$.itemId') = ?)
-      OR json_extract(record_json, '$.runId') = ?
-      OR record_key IN (SELECT write_intent_id FROM run_operation_attempts WHERE json_extract(record_json, '$.runId') = ?)
-    `).all(workflow, itemId, runId, runId)) {
-    const operation = parseJsonRecord(WriteIntentRecordSchema, JsonRowSchema.parse(raw).record_json);
-    if (operation.workflowId !== workflow || operation.itemId !== itemId) throw new Error("run-delete-operation-column-mismatch");
-    if (operation.status === "observed-present") continue;
-    const owners = new Set([operation.runId]);
-    let currentAttemptFound = false;
-    for (const row of database.prepare("SELECT record_json FROM run_operation_attempts WHERE write_intent_id = ?").all(operation.writeIntentId)) {
-      const attempt = parseJsonRecord(WriteAttemptRecordSchema, JsonRowSchema.parse(row).record_json);
-      if (attempt.writeIntentId !== operation.writeIntentId) throw new Error("run-delete-attempt-column-mismatch");
-      if (attempt.writeAttemptId === operation.currentAttemptId) {
-        if (attempt.runId !== operation.runId || attempt.generation !== operation.generation
-          || attempt.runAttempt !== operation.runAttempt) throw new Error("run-delete-current-attempt-mismatch");
-        currentAttemptFound = true;
-      }
-      owners.add(attempt.runId);
-    }
-    if (!currentAttemptFound) throw new Error("run-delete-current-attempt-missing");
-    // Evaluate every owner even after a retained peer is found: corruption is
-    // never hidden by short-circuiting to a plausible shared group.
-    const ownership = [...owners].map((owner) => ({ eligible: eligibleOwner(owner), referenced: referenced(owner) }));
-    if (ownership.every((owner) => owner.eligible && !owner.referenced)) operationIds.push(operation.writeIntentId);
-  }
-  return { checkpointKeys, operationIds };
-}
-
 function readTimelineRun(database: DatabaseSync, runId: string): RunRecord | undefined {
-  const row = database.prepare("SELECT record_json FROM workflow_runs WHERE record_key = ?").get(runId);
-  return row === undefined ? undefined : parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json);
+  const row = database.prepare("SELECT * FROM runs WHERE id = ?").get(runId);
+  return row === undefined ? undefined : runRecordFromRow(row);
+}
+
+function authenticatedPublicationDeletion(database: DatabaseSync, runId: string, publication: ConfirmationPublication): boolean {
+  const raw = database.prepare("SELECT * FROM deleted_runs WHERE run_id=?").get(runId);
+  if (raw === undefined) return false;
+  const {receipt} = deletedRunFromRow(raw);
+  const facts = publication.ledger;
+  const commandRaw = database.prepare("SELECT * FROM commands WHERE id=?").get(receipt.commandId);
+  const audits = database.prepare("SELECT * FROM command_audits WHERE command_id=?").all(receipt.commandId);
+  if (commandRaw === undefined || audits.length !== 1) throw new Error("confirmed-publication-deletion-command-missing");
+  const command = commandFromRow(commandRaw);
+  const audit = NativeCommandAuditSchema.parse(nativeOrdinaryRecordFromRow("command_audits",audits[0]));
+  if (receipt.runId !== facts.runId || receipt.workflow !== facts.workflowId || receipt.itemId !== facts.itemId
+    || audit.completedAt !== receipt.deletedAt
+    || receipt.traceId !== facts.traceId || receipt.attempt < facts.attempt || receipt.deletedAt < facts.confirmedAt
+    || receipt.removed.find(entry=>entry.table === "runs")?.rows !== 1
+    || !receipt.removed.some(entry=>entry.table === "run_checkpoints" && entry.rows > 0)
+    || !receipt.removed.some(entry=>entry.table === "timeline_events" && entry.rows > 0)
+    || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)
+    || z.object({state:z.literal("succeeded"),outcome_json:z.string()}).parse(commandRaw).outcome_json !== canonicalJsonStringify(audit)
+    || !("kind" in audit) || audit.kind !== "run-lifecycle" || audit.request.operation !== "delete"
+    || audit.result.kind !== "deletion" || !audit.result.runIds.includes(RunIdSchema.parse(runId))) throw new Error("confirmed-publication-deletion-settlement-mismatch");
+  return true;
+}
+
+function readConfirmationPublication(database: DatabaseSync,id:string): ConfirmationPublication | undefined {
+  const row = database.prepare("SELECT * FROM write_intents WHERE id=?").get(id);
+  if (row === undefined) return undefined;
+  const intent = WriteIntentRecordSchema.parse(nativeOrdinaryRecordFromRow("write_intents",row));
+  return confirmationPublicationFromRow(intent,Reflect.get(row,"publication_json"));
+}
+
+function assertConfirmationPublication(database:DatabaseSync,id:string): void {
+  const publication = readConfirmationPublication(database,id);
+  if (publication === undefined) return;
+  const owner = readTimelineRun(database,publication.ledger.runId);
+  const deleted = database.prepare("SELECT 1 FROM deleted_runs WHERE run_id=?").get(publication.ledger.runId) !== undefined;
+  if (owner !== undefined && deleted) throw new Error("confirmed-publication-owner-ambiguous");
+  if (deleted && !authenticatedPublicationDeletion(database,publication.ledger.runId,publication)) throw new Error("confirmed-publication-deletion-unverified");
+  const evidence = timelineEvidenceRepositories(database);
+  reconstructConfirmedOperation(evidence,publication.timeline);
+  const raw = database.prepare("SELECT * FROM timeline_events WHERE id=?").get(publication.timeline.eventId);
+  if (raw === undefined) {
+    if (!authenticatedPublicationDeletion(database,publication.ledger.runId,publication)) throw new Error("confirmed-publication-timeline-missing");
+    if (readTimelineRun(database,publication.ledger.runId) !== undefined) throw new Error("confirmed-publication-deleted-run-still-present");
+  } else {
+    const timeline = timelineEventFromRow(raw);
+    if (timelineAppendContent(timeline) !== canonicalJsonStringify(publication.timeline)) throw new Error("confirmed-publication-timeline-mismatch");
+    assertTimelineOwner(database,timeline);
+  }
 }
 
 function timelineEvidenceRepositories(database: DatabaseSync) {
   return {
-    writeAttempts: { get(id: string) {
-      const row = database.prepare("SELECT record_json FROM run_operation_attempts WHERE record_key = ?").get(id);
-      return row === undefined ? undefined : parseJsonRecord(WriteAttemptRecordSchema, JsonRowSchema.parse(row).record_json);
-    } },
-    runCheckpoints: { get(workflow: string, itemId: string, nodeId: string, attempt: number, claimGeneration?: number) {
-      const key = checkpointLookupKey(workflow, itemId, nodeId, attempt, claimGeneration);
-      const row = database.prepare("SELECT record_json FROM run_checkpoints WHERE record_key = ?").get(key);
-      return row === undefined ? undefined : parseJsonRecord(RunCheckpointRecordSchema, JsonRowSchema.parse(row).record_json);
-    } },
+    writeAttempts: {get(id:string) {
+      const row=database.prepare("SELECT * FROM write_attempts WHERE id=?").get(id);
+      return row === undefined ? undefined : WriteAttemptRecordSchema.parse(nativeOrdinaryRecordFromRow("write_attempts",row));
+    }},
+    writeIntents: {
+      getPublication:(id:string)=>readConfirmationPublication(database,id),
+      authenticatedDeletion:(runId:string,publication:ConfirmationPublication)=>authenticatedPublicationDeletion(database,runId,publication),
+      get(id:string) {
+      const row=database.prepare("SELECT * FROM write_intents WHERE id=?").get(id);
+      return row === undefined ? undefined : WriteIntentRecordSchema.parse(nativeOrdinaryRecordFromRow("write_intents",row));
+    }},
+    commands: {get(id:string) {
+      const row=database.prepare("SELECT * FROM commands WHERE id=?").get(id);
+      return row === undefined ? undefined : commandFromRow(row);
+    }},
+    commandAudits: {get(id:string) {
+      const row=database.prepare("SELECT * FROM command_audits WHERE id=?").get(id);
+      return row === undefined ? undefined : NativeCommandAuditSchema.parse(nativeOrdinaryRecordFromRow("command_audits",row));
+    }},
+    runCheckpoints: {get(workflow:string,itemId:string,nodeId:string,attempt:number,claimGeneration:number) {
+      const key=checkpointLookupKey(workflow,itemId,nodeId,attempt,claimGeneration);
+      const row=database.prepare("SELECT * FROM run_checkpoints WHERE id=?").get(key);
+      return row === undefined ? undefined : RunCheckpointRecordSchema.parse(nativeOrdinaryRecordFromRow("run_checkpoints",row));
+    }},
   };
-}
-
-
-function readHistoricalOperationSource(database: DatabaseSync, json: string): HistoricalOperationSource {
-  const source = parseJsonRecord(HistoricalOperationSourceSchema, json);
-  if (source.ledgerOutbox.payload.kind !== "ledger-entry" || source.spanOutbox.payload.kind !== "write-committed-span") throw new Error("historical-source-kind-mismatch");
-  const ledger = source.ledgerOutbox.payload.entry;
-  const span = source.spanOutbox.payload;
-  const evidence = timelineEvidenceRepositories(database);
-  const eventId = lifecycleCommandId("timeline-operation-confirmed", { writeIntentId: source.operationId, generation: source.generation });
-  const rawEvent = database.prepare("SELECT * FROM timeline_events WHERE record_key = ?").get(eventId);
-  const attempts = database.prepare("SELECT record_json FROM run_operation_attempts WHERE write_intent_id = ? AND generation = ?")
-    .all(source.operationId, source.generation).map((row) => parseJsonRecord(WriteAttemptRecordSchema, JsonRowSchema.parse(row).record_json));
-  const attempt = attempts[0];
-  if (attempts.length !== 1 || attempt === undefined) throw new Error("historical-source-attempt-mismatch");
-  let event;
-  if (rawEvent !== undefined) event = timelineEventFromRow(rawEvent);
-  else {
-    const checkpoints = database.prepare("SELECT record_json FROM run_checkpoints WHERE run_id = ?").all(source.runId)
-      .map((row) => parseJsonRecord(RunCheckpointRecordSchema, JsonRowSchema.parse(row).record_json))
-      .filter((row) => row.workflowId === ledger.workflowId && row.itemId === ledger.itemId && row.attempt === ledger.attempt
-        && row.writtenAt === ledger.confirmedAt && canonicalJsonStringify(row.output.value) === canonicalJsonStringify(span.outcome));
-    const checkpoint = checkpoints[0];
-    if (checkpoints.length !== 1 || checkpoint === undefined) throw new Error("historical-source-checkpoint-mismatch");
-    event = confirmedOperationTimeline({ ledger, span, checkpoint, writeAttemptId: attempt.writeAttemptId, recordedAt: ledger.confirmedAt });
-  }
-  const restored = reconstructConfirmedOperation(evidence, event);
-  if (canonicalJsonStringify(restored.ledger) !== canonicalJsonStringify(ledger)
-    || canonicalJsonStringify(restored.span) !== canonicalJsonStringify(span)) throw new Error("historical-source-settlement-disagreement");
-  return source;
 }
 
 function assertTimelineOwner(database: DatabaseSync, record: TimelineAppend, appending = false): void {
@@ -1426,108 +919,142 @@ function assertTimelineOwner(database: DatabaseSync, record: TimelineAppend, app
   }
 
 
-function validateAuthorityRecordSchemas(database: DatabaseSync, presentTables?: ReadonlySet<string>): number {
+function nativeTableKey(table: AuthorityTableName): string {
+  if (table === "run_results" || table === "deleted_runs" || table === "run_search") return "run_id";
+  if (table === "worker_pools") return "workflow";
+  if (table === "worker_controls") return "command_id";
+  if (table === "auth_leases") return "credential_key";
+  if (table === "timeline_events") return "cursor";
+  return "id";
+}
+
+function authenticateStoredWriteResolution(database: DatabaseSync, input: unknown): void {
+  const intent = WriteIntentRecordSchema.parse(input);
+  if ((intent.status !== "committed" && intent.status !== "retryable") || intent.resolution === undefined) return;
+  const attempt = database.prepare("SELECT * FROM write_attempts WHERE id=?").get(intent.resolution.writeAttemptId);
+  const command = database.prepare("SELECT * FROM commands WHERE id=?").get(intent.resolution.commandId);
+  const audit = database.prepare("SELECT * FROM command_audits WHERE id=?").get(intent.resolution.auditId);
+  if (attempt === undefined || command === undefined || audit === undefined) throw new Error("parked-write-resolution-authority-missing");
+  authenticateParkedWriteResolution(intent,nativeOrdinaryRecordFromRow("write_attempts",attempt),commandFromRow(command),nativeOrdinaryRecordFromRow("command_audits",audit));
+}
+
+function authenticateStoredResolutionAudit(database: DatabaseSync,input:unknown):void {
+  const audit=NativeCommandAuditSchema.parse(input);
+  if (!("writeResolution" in audit) || audit.writeResolution === undefined) return;
+  const intent=audit.writeResolution;
+  if ((intent.status !== "committed" && intent.status !== "retryable") || intent.resolution === undefined) throw new Error("parked-write-resolution-audit-authority-missing");
+  const attempt=database.prepare("SELECT * FROM write_attempts WHERE id=?").get(intent.resolution.writeAttemptId);
+  const command=database.prepare("SELECT * FROM commands WHERE id=?").get(audit.request.commandId);
+  if(attempt === undefined || command === undefined) throw new Error("parked-write-resolution-audit-authority-missing");
+  authenticateAuditedParkedWriteResolution(nativeOrdinaryRecordFromRow("write_attempts",attempt),commandFromRow(command),audit);
+}
+
+function assertTerminalEvidenceOwner(database: DatabaseSync, record: RunResultRecord): void {
+  const evidence = terminalEvidenceResult(record);
+  const rawRun = database.prepare("SELECT * FROM runs WHERE id=?").get(record.runId);
+  if (rawRun === undefined) throw new Error("terminal-evidence-run-missing");
+  const run = runRecordFromRow(rawRun);
+  if (evidence === undefined) {
+    if (run.lifecycle.state !== "terminal" || run.lifecycle.outcome !== "done") throw new Error("terminal-evidence-payload-required");
+    return;
+  }
+  if (evidence.kind === "failed-evidence") {
+    const raw = database.prepare("SELECT * FROM run_failures WHERE id=?").get(evidence.authorization.failureId);
+    const failure = raw === undefined ? undefined : FailureRecordSchema.parse(nativeOrdinaryRecordFromRow("run_failures",raw));
+    if (failure === undefined || failure.runId !== record.runId || failure.workflowId !== record.workflowId
+      || failure.attempt !== record.attempt || failure.traceId !== run.envelope.traceId
+      || deriveTerminalFailureDigest(failure) !== evidence.failureDigest
+      || canonicalJsonStringify(run.completion) !== canonicalJsonStringify(completionFromAuthorization(evidence.authorization))) throw new Error("terminal-failure-result-mismatch");
+  } else {
+    const commandRaw = database.prepare("SELECT * FROM commands WHERE id=?").get(evidence.commandId);
+    const auditRaw = database.prepare("SELECT * FROM command_audits WHERE id=?").get(evidence.auditId);
+    if (commandRaw === undefined || auditRaw === undefined) throw new Error("terminal-evidence-command-audit-missing");
+    const command = RunLifecycleCommandRecordSchema.parse(commandFromRow(commandRaw));
+    const audit = RunLifecycleCommandAuditRecordSchema.parse(nativeOrdinaryRecordFromRow("command_audits",auditRaw));
+    const request = z.record(z.string(),z.unknown()).parse(command.request);
+    const lifecycle = request.lifecycle === undefined ? undefined : z.record(z.string(),z.unknown()).parse(request.lifecycle);
+    const declaredOutcome = command.operation === "transition" ? lifecycle?.outcome : "cancelled";
+    const declaredEndedAt = command.operation === "transition" ? lifecycle?.endedAt : command.operation === "requeue" ? audit.result.kind === "run" ? audit.result.terminal?.endedAt : undefined : request.endedAt;
+    if (request.runId !== record.runId || request.expectedVersion !== evidence.appliedVersion - 1
+      || declaredOutcome !== evidence.outcome || declaredEndedAt !== record.createdAt
+      || audit.result.kind !== "run" || audit.result.terminal?.outcome !== evidence.outcome
+      || audit.result.terminal.endedAt !== record.createdAt
+      || (command.operation === "requeue" && run.cancelRequested !== true)
+      || (command.operation !== "transition" && command.operation !== "terminalize" && command.operation !== "requeue")
+      || audit.result.kind !== "run" || audit.result.runId !== record.runId || audit.result.appliedVersion !== evidence.appliedVersion
+      || command.requestFingerprint !== evidence.requestFingerprint || audit.auditId !== CommandAuditIdSchema.parse(evidence.commandId)
+      || z.object({outcome_json:z.string()}).parse(commandRaw).outcome_json !== canonicalJsonStringify(audit)
+      || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)) throw new Error("terminal-evidence-command-audit-mismatch");
+  }
+  if (canonicalJsonStringify(createRunTerminalEvidenceResult(run,evidence)) !== canonicalJsonStringify(record)) throw new Error("terminal-evidence-result-mismatch");
+}
+
+function validateAuthorityRecordSchemas(database: DatabaseSync): number {
   let validated = 0;
-  for (const [table, schema] of Object.entries({ ...AUTHORITY_RECORD_SCHEMA_REGISTRY,
-    ...(readIntPragma(database, "user_version") < 39 ? {
-      authority_upgrades: AUTHORITY_RECORD_SCHEMA_REGISTRY.database_upgrades,
-      diagnostic_bundles: AUTHORITY_RECORD_SCHEMA_REGISTRY.diagnostic_snapshots,
-      diagnostic_attachments: AUTHORITY_RECORD_SCHEMA_REGISTRY.diagnostic_files,
-      evidence_receipts: AUTHORITY_RECORD_SCHEMA_REGISTRY.run_receipts,
-      config_snapshots: AUTHORITY_RECORD_SCHEMA_REGISTRY.settings_snapshots,
-      dry_run_scenario_results: AUTHORITY_RECORD_SCHEMA_REGISTRY.dryrun_results,
-    } : {}),
-    ...(presentTables?.has("operation_outbox") === true ? { operation_outbox: AtomicOutboxRecordSchema } : {}),
-    ...(presentTables?.has("ledger_partitions") === true ? { ledger_partitions: LedgerPartitionRecordSchema, ledger_projections: LedgerProjectionRecordSchema } : {}),
-    ...(presentTables?.has("leases") === true ? { leases: WorkerLeaseRecordSchema } : {}),
-    ...(presentTables?.has("duo_ceremony_leases") === true ? { duo_ceremony_leases: DuoCeremonyLeaseRecordSchema } : {}),
-    ...(presentTables?.has("start_plans") === true ? { start_plans: StartPlanRecordSchema } : {}),
-    ...(presentTables?.has("write_intents") === true ? { write_intents: WriteIntentRecordSchema, write_attempts: WriteAttemptRecordSchema, durable_outbox: AtomicOutboxRecordSchema } : {}),
-    ...(presentTables?.has("dependencies") === true ? { dependencies: DependencyRecordSchema } : {}),
-    ...(presentTables?.has("delegation_manifests") === true ? { delegation_manifests: DelegationManifestSchema } : {}),
-    ...(presentTables?.has("bulk_command_acceptances") === true ? {
-      bulk_command_acceptances: BulkRunCommandAcceptanceRecordSchema,
-    } : {}),
-    ...(readIntPragma(database, "user_version") < 37 ? { commands: z.union([AuthorityCommandRecordSchema, PreFloorCommandSchema, HistoricalProtectedSettingsCommandSchema, HistoricalProviderKeysCommandSchema]) } : {}),
-    ...(presentTables?.has("tasks") === true ? { tasks: RunRecordSchema } : {}),
-    ...(presentTables?.has("run_sessions") === true ? { run_sessions: HistoricalRunSessionRecordSchema } : {}),
-    ...(presentTables?.has("protected_settings_current") === true
-      ? { settings_current: HistoricalSettingsCurrentRecordSchema, protected_settings_current: ProtectedSettingsCurrentRecordSchema } : {}),
-  })) {
-    if (presentTables !== undefined && !presentTables.has(table)) continue;
-    if (["archived_runs", "version_plans", "version_bump_applications"].includes(table) && !hasHistoricalArchiveTables(database)) continue;
-    const rows = database.prepare(`
-      SELECT record_key, record_json FROM ${table} ORDER BY record_key
-    `).iterate();
-    for (const rawRow of rows) {
-      const row = AuthorityRecordFingerprintRowSchema.parse(rawRow);
+  for (const table of AuthorityTableNameSchema.options) {
+    for (const raw of database.prepare(`SELECT * FROM ${table} ORDER BY ${nativeTableKey(table)}`).iterate()) {
       try {
-        if (table === "timeline_events") {
-          const event = timelineEventFromRow(database.prepare("SELECT * FROM timeline_events WHERE record_key = ?").get(row.record_key));
-          assertTimelineOwner(database, event);
-        } else if (table === "timeline_operation_sources") readHistoricalOperationSource(database, row.record_json);
-        else parseJsonRecord(schema, row.record_json);
-      } catch (error) {
-        throw new Error(
-          `authority table ${table} record ${row.record_key} failed strict record schema validation: ${errorMessage(error)}`,
-          { cause: error },
-        );
-      }
-      validated += 1;
+        if (table === "database_states") {
+          const row = z.strictObject({id:z.literal(1),schema_version:z.literal(1),authority_generation:z.number().int().nonnegative(),updated_at:IsoInstantSchema,
+            search_generation:z.number().int().nonnegative().nullable(),search_state:z.enum(["unbuilt","ready","invalid"])}).parse(raw);
+          if (row.search_state === "ready" && row.search_generation !== row.authority_generation) throw new Error("search-generation-mismatch");
+        } else if (table === "runs") runRecordFromRow(raw);
+        else if (table === "commands") commandFromRow(raw);
+        else if (table === "run_search") {
+          const id = z.object({run_id:z.string()}).parse(raw).run_id;
+          const run = readTimelineRun(database,id);
+          if (run === undefined) throw new Error("run-search-owner-missing");
+          runSearchIndexFromRow(raw,run,z.object({search_state:z.string()}).parse(database.prepare("SELECT search_state FROM database_states WHERE id=1").get()).search_state === "ready");
+        }
+        else if (table === "deleted_runs") deletedRunFromRow(raw);
+        else if (table === "settings") readAppSettings(database);
+        else if (table === "worker_slots") workerSlotFromRow(raw);
+        else if (table === "worker_controls") workerControlFromRow(raw);
+        else if (table === "browser_sessions") workerBrowserFromRow(raw);
+        else if (table === "timeline_events") assertTimelineOwner(database,timelineEventFromRow(raw));
+        else if (table === "artifacts") {
+          const {kind} = z.object({kind:z.enum(["imported","generated","extracted"])}).parse(raw);
+          if (kind === "imported") importedArtifactFromRow(raw);
+          else if (kind === "generated") generatedArtifactFromRow(raw);
+          else extractedArtifactFromRow(raw);
+        } else if (isNativeOrdinaryTable(table)) {
+          const record = nativeOrdinaryRecordFromRow(table,raw);
+          if (table === "run_results") assertTerminalEvidenceOwner(database,RunResultRecordSchema.parse(record));
+          if (table === "write_intents") { authenticateStoredWriteResolution(database,record); assertConfirmationPublication(database,z.object({writeIntentId:z.string()}).parse(record).writeIntentId); }
+          if (table === "command_audits") {
+            const audit = NativeCommandAuditSchema.parse(record);
+            authenticateStoredResolutionAudit(database,audit);
+            const commandRow = database.prepare("SELECT * FROM commands WHERE id=?").get(audit.request.commandId);
+            if (commandRow === undefined || canonicalJsonStringify(commandFromRow(commandRow)) !== canonicalJsonStringify(audit.request)
+              || z.object({outcome_json:z.string()}).parse(commandRow).outcome_json !== canonicalJsonStringify(audit)) throw new Error("command-audit-settlement-mismatch");
+          }
+        } else throw new Error("native row admission is undefined");
+      } catch (error) { throw new Error(`authority table ${table} failed native record validation: ${errorMessage(error)}`,{cause:error}); }
+      validated++;
     }
   }
+  try{readAppSettings(database);}catch(error){throw new Error(`authority table settings failed native record validation: ${errorMessage(error)}`,{cause:error});}
   return validated;
 }
 
 function authorityContentFingerprint(database: DatabaseSync): string {
-  for (const raw of database.prepare("SELECT resolution_json FROM run_failures").all()) {
-    const row = z.strictObject({resolution_json:z.string()}).parse(raw);
-    FailureResolutionSchema.parse(JSON.parse(row.resolution_json));
-  }
   const hash = createHash("sha256");
-  hash.update("[");
-  for (const [tableIndex, name] of AuthorityTableNameSchema.options.filter(name => (hasHistoricalArchiveTables(database) || !["archived_runs", "version_plans", "version_bump_applications"].includes(name))
-    && (name !== "explorer_overrides" || readIntPragma(database, "user_version") >= 51)
-    && (!["notification_publications", "notification_health"].includes(name) || readIntPragma(database, "user_version") >= 52)
-    && (!["worker_controls", "worker_browsers"].includes(name) || readIntPragma(database, "user_version") >= 53)
-    && (!["transaction_selection", "run_search_index", "run_search_grams", "run_search_publication", "run_search_declarations", "run_search_actors"].includes(name) || readIntPragma(database, "user_version") >= 54)
-    && (!["runtime_versions", "runtime_version_adoptions", "runtime_version_changes"].includes(name) || readIntPragma(database, "user_version") >= 55)).entries()) {
-    if (tableIndex > 0) hash.update(",");
-    hash.update(`[${canonicalJsonStringify(name)},`);
-    if (name === "database_state") {
-      const row = AuthorityMetaFingerprintRowSchema.parse(database.prepare(`
-        SELECT singleton_id, schema_version, authority_generation, updated_at,
-               migration_owner, migration_started_at
-        FROM database_state WHERE singleton_id = 1
-      `).get());
-      hash.update(canonicalJsonStringify(row));
-    } else {
-      hash.update("[");
-      let rowIndex = 0;
-      const schema = name === "run_failures" ? AuthorityRecordFingerprintRowSchema.extend({ resolution_json: z.string(), resolution_version: z.number().int().positive() }) : name === "commands" ? AuthorityRecordFingerprintRowSchema.extend({ parent_command_id: z.string().nullable() }) : name === "archived_runs" ? AuthorityRecordFingerprintRowSchema.extend({ transactions_json: z.string().nullable(), transactions_digest: z.string().nullable() }) : AuthorityRecordFingerprintRowSchema;
-      for (const rawRow of database.prepare(`
-        SELECT record_key, record_json${name === "run_failures" ? ", resolution_json, resolution_version" : name === "commands" ? ", parent_command_id" : name === "archived_runs" ? ", transactions_json, transactions_digest" : ""} FROM ${name} ORDER BY record_key
-      `).iterate()) {
-        const row = schema.parse(rawRow);
-        if (rowIndex > 0) hash.update(",");
-        hash.update(canonicalJsonStringify(row));
-        rowIndex += 1;
-      }
-      hash.update("]");
+  for (const table of AuthorityTableNameSchema.options) {
+    hash.update(canonicalJsonStringify(table));
+    for (const row of database.prepare(`SELECT * FROM ${table} ORDER BY ${nativeTableKey(table)}`).iterate()) {
+      hash.update(canonicalJsonStringify(z.record(z.string(),z.union([z.string(),z.number(),z.null()])).parse(row)));
     }
-    hash.update("]");
   }
-  hash.update("]");
   return hash.digest("hex");
 }
 
 function relocationUnchangedAuthorityFingerprint(database: DatabaseSync): string {
-  const excluded = new Set(["database_state", "app_settings", "settings_snapshots", "run_search_publication", "summary_publication"]);
+  const excluded = new Set(["database_states", "settings", "settings_snapshots", "run_search"]);
   const present = new Set(inspectionTableNames(database));
   const hash = createHash("sha256");
   for (const table of AuthorityTableNameSchema.options.filter((name) => present.has(name) && !excluded.has(name))) {
     hash.update(canonicalJsonStringify(table));
-    for (const row of database.prepare(`SELECT * FROM ${table} ORDER BY record_key`).iterate()) {
+    for (const row of database.prepare(`SELECT * FROM ${table} ORDER BY ${nativeTableKey(table)}`).iterate()) {
       hash.update(canonicalJsonStringify(z.record(z.string(), z.unknown()).parse(row)));
     }
   }
@@ -1535,7 +1062,7 @@ function relocationUnchangedAuthorityFingerprint(database: DatabaseSync): string
 }
 
 function relocationChangedAuthorityTables(before: DatabaseSync, after: DatabaseSync): readonly string[] {
-  const excluded = new Set(["database_state", "app_settings", "settings_snapshots", "run_search_publication", "summary_publication"]);
+  const excluded = new Set(["database_states", "settings", "settings_snapshots", "run_search"]);
   const beforeNames = new Set(inspectionTableNames(before));
   const afterNames = new Set(inspectionTableNames(after));
   return AuthorityTableNameSchema.options.filter((table) => !excluded.has(table)).filter((table) => {
@@ -1543,7 +1070,7 @@ function relocationChangedAuthorityTables(before: DatabaseSync, after: DatabaseS
     if (!beforeNames.has(table)) return false;
     const fingerprint = (database: DatabaseSync): string => {
       const hash = createHash("sha256");
-      for (const row of database.prepare(`SELECT * FROM ${table} ORDER BY record_key`).iterate()) {
+      for (const row of database.prepare(`SELECT * FROM ${table} ORDER BY ${nativeTableKey(table)}`).iterate()) {
         hash.update(canonicalJsonStringify(z.record(z.string(), z.unknown()).parse(row)));
       }
       return hash.digest("hex");
@@ -1553,41 +1080,16 @@ function relocationChangedAuthorityTables(before: DatabaseSync, after: DatabaseS
 }
 
 function assertRelocationPublications(before: DatabaseSync, after: DatabaseSync, sourceGeneration: number, activatedAt: string): void {
-  const publicationRow = (database: DatabaseSync, table: "run_search_publication" | "summary_publication") => {
-    const rows = database.prepare(`SELECT * FROM ${table} ORDER BY record_key`).all().map((raw) =>
-      AuthorityRecordFingerprintRowSchema.extend({ created_at: z.string() }).parse(raw));
-    if (rows.length > 1 || rows.some((row) => row.record_key !== "current")) {
-      throw new Error(`storage-relocation: ${table} membership changed`);
-    }
-    return rows[0] ?? null;
-  };
-  const priorSearch = publicationRow(before, "run_search_publication");
-  const currentSearch = publicationRow(after, "run_search_publication");
-  if (priorSearch === null || currentSearch === null) throw new Error("storage-relocation: search publication missing");
-  const search = RunSearchPublicationSchema.parse(JSON.parse(priorSearch.record_json));
-  const expectedSearch = RunSearchPublicationSchema.parse({
-    state: search.state === "published" && search.sourceGeneration === sourceGeneration ? "published" : "invalid",
-    sourceGeneration: sourceGeneration + 1, afterRun: null, rowCount: search.rowCount,
-  });
-  if (canonicalJsonStringify(currentSearch) !== canonicalJsonStringify({ record_key: "current",
-    record_json: canonicalJsonStringify(expectedSearch), created_at: activatedAt })) {
+  const schema = z.strictObject({ id: z.literal(1), schema_version: z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION),
+    authority_generation: z.number().int().nonnegative(), updated_at: z.string(),
+    search_generation: z.number().int().nonnegative().nullable(), search_state: z.enum(["unbuilt", "ready", "invalid"]) });
+  const prior = schema.parse(before.prepare("SELECT * FROM database_states WHERE id=1").get());
+  const current = schema.parse(after.prepare("SELECT * FROM database_states WHERE id=1").get());
+  const ready = prior.search_state === "ready" && prior.search_generation === sourceGeneration;
+  const expected = { ...prior, authority_generation: sourceGeneration + 1, updated_at: activatedAt,
+    search_generation: ready ? sourceGeneration + 1 : null, search_state: ready ? "ready" : "invalid" };
+  if (prior.authority_generation !== sourceGeneration || canonicalJsonStringify(current) !== canonicalJsonStringify(expected)) {
     throw new Error("storage-relocation: search publication differs from activation transaction");
-  }
-  const priorSummary = publicationRow(before, "summary_publication");
-  const currentSummary = publicationRow(after, "summary_publication");
-  if (priorSummary === null) {
-    if (currentSummary !== null) throw new Error("storage-relocation: summary publication appeared during activation");
-    return;
-  }
-  const summary = SummaryPublicationSchema.parse(JSON.parse(priorSummary.record_json));
-  const expectedSummary = summary.state === "published"
-    ? { record_key: "current", record_json: canonicalJsonStringify(SummaryPublicationSchema.parse({
-      state: "published", generation: summary.generation + 1, sourceGeneration: sourceGeneration + 1,
-      rowCount: summary.rowCount,
-    })), created_at: activatedAt }
-    : priorSummary;
-  if (canonicalJsonStringify(currentSummary) !== canonicalJsonStringify(expectedSummary)) {
-    throw new Error("storage-relocation: summary publication differs from activation transaction");
   }
 }
 
@@ -1615,10 +1117,10 @@ function removeRelocationCopyInspectionCompanions(path: string): void {
 }
 
 function relocationSettingsSnapshots(database: DatabaseSync): readonly string[] {
-  return database.prepare("SELECT * FROM settings_snapshots ORDER BY record_key").all().map((raw) => {
+  return database.prepare("SELECT * FROM settings_snapshots ORDER BY id").all().map((raw) => {
     const row = AuthorityRecordFingerprintRowSchema.extend({ created_at: z.string() }).parse(raw);
-    const record = ConfigSnapshotRecordSchema.parse(JSON.parse(row.record_json));
-    if (record.configSnapshotId !== row.record_key || record.capturedAt !== row.created_at) {
+    const record = ConfigSnapshotRecordSchema.parse(JSON.parse(row.payload_json));
+    if (record.configSnapshotId !== row.id || record.capturedAt !== row.created_at) {
       throw new Error("storage-relocation: snapshot row metadata changed");
     }
     return canonicalJsonStringify(row);
@@ -1626,15 +1128,15 @@ function relocationSettingsSnapshots(database: DatabaseSync): readonly string[] 
 }
 
 function relocationAppSettings(database: DatabaseSync) {
-  const rows = database.prepare("SELECT * FROM app_settings ORDER BY record_key").all()
+  const rows = database.prepare("SELECT * FROM settings ORDER BY id").all()
     .map((raw) => AuthorityRecordFingerprintRowSchema.extend({ config_snapshot_id: z.string().nullable(),
       command_id: z.string().nullable(), audit_id: z.string().nullable(), created_at: z.string() }).parse(raw));
-  if (rows.length > 1 || rows.some((row) => row.record_key !== "current")) {
+  if (rows.length > 1 || rows.some((row) => row.id !== "current")) {
     throw new Error("storage-relocation: app settings membership changed");
   }
   const row = rows[0];
   if (row === undefined) return null;
-  const value = AppSettingsSchema.parse(JSON.parse(row.record_json));
+  const value = AppSettingsSchema.parse(JSON.parse(row.payload_json));
   if (row.config_snapshot_id !== (value.active?.configSnapshotId ?? null)
     || row.command_id !== (value.saved?.commandId ?? null)
     || row.audit_id !== (value.saved?.auditId ?? null)
@@ -1647,12 +1149,29 @@ function relocationAppSettings(database: DatabaseSync) {
 function pendingCounts(database: DatabaseSync) {
   const count = (sql: string): number => CountRowSchema.parse(database.prepare(sql).get()).count;
   return {
-    pendingCommands: count("SELECT count(*) AS count FROM commands AS command WHERE command.family <> 'bulk-parent' AND NOT EXISTS (SELECT 1 FROM command_audits AS audit WHERE audit.command_id = command.record_key)"),
-    unresolvedWriteIntents: count("SELECT count(*) AS count FROM run_operations WHERE status NOT IN ('committed', 'observed-present')"),
-    leases: count("SELECT count(*) AS count FROM workflow_workers"),
+    pendingCommands: count("SELECT count(*) AS count FROM commands AS command WHERE command.family <> 'bulk-parent' AND NOT EXISTS (SELECT 1 FROM command_audits AS audit WHERE audit.command_id = command.id)"),
+    unresolvedWriteIntents: count("SELECT count(*) AS count FROM write_intents WHERE status NOT IN ('committed', 'observed-present')"),
+    leases: count("SELECT count(*) AS count FROM worker_leases"),
     providerReservations: 0,
-    artifactOutbox: count("SELECT count(*) AS count FROM generated_artifacts f,json_each(f.record_json,'$.updates') u WHERE json_extract(u.value,'$.record.state')='pending'"),
+    artifactOutbox: count("SELECT count(*) AS count FROM artifacts f,json_each(f.payload_json,'$.updates') u WHERE f.kind='generated' AND json_extract(u.value,'$.record.state')='pending'"),
   };
+}
+
+let expectedNativeSchema: string | undefined;
+function normalizedNativeSchema(database: DatabaseSync): string {
+  const schema = z.strictObject({type:z.string(),name:z.string(),table:z.string(),sql:z.string()});
+  return canonicalJsonStringify(database.prepare("SELECT type,name,tbl_name AS 'table',sql FROM sqlite_schema WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY type,name").all()
+    .map(raw => { const row = schema.parse(raw); return {...row,sql:row.sql.trim().replace(/\s+/gu," ")}; }));
+}
+function assertNativeSchema(database: DatabaseSync): void {
+  if (expectedNativeSchema === undefined) {
+    const expected = new DatabaseSync(":memory:");
+    try {
+      for (const statement of SQLITE_MIGRATIONS[0].statements) expected.exec(statement);
+      expectedNativeSchema = normalizedNativeSchema(expected);
+    } finally { expected.close(); }
+  }
+  if (normalizedNativeSchema(database) !== expectedNativeSchema) throw new Error("authority-native-schema-shape-mismatch");
 }
 
 function inspectOpenDatabase(database: DatabaseSync, requireOperationalPragmas: boolean): AuthorityCopyInspection {
@@ -1661,17 +1180,13 @@ function inspectOpenDatabase(database: DatabaseSync, requireOperationalPragmas: 
     throw new Error(`existing database application_id ${String(applicationId)} is not the HR authority store`);
   }
   const schemaVersion = readIntPragma(database, "user_version");
-  if (schemaVersion > CURRENT_AUTHORITY_SCHEMA_VERSION) {
-    throw new Error(`authority schema ${String(schemaVersion)} is newer than supported ${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`);
-  }
-  if (!isNormalAuthoritySchemaVersion(schemaVersion) && schemaVersion !== 48) {
-    throw new Error(`authority schema ${String(schemaVersion)} does not match supported ${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`);
-  }
+  if (!isCurrentAuthoritySchemaVersion(schemaVersion)) throw new AuthoritySchemaVersionError(schemaVersion);
+  assertNativeSchema(database);
   QuickCheckRowSchema.parse(database.prepare("PRAGMA quick_check(1)").get());
   const foreignKeyFailures = database.prepare("PRAGMA foreign_key_check").all();
   if (foreignKeyFailures.length > 0) throw new Error(`authority database foreign-key validation failed for ${String(foreignKeyFailures.length)} row(s)`);
   const names = inspectionTableNames(database);
-  const expected = schemaVersion === 48 ? POST_FLOOR_AUTHORITY_TABLES_BY_VERSION[48] : AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).sort();
+  const expected = AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).sort();
   if (names.length !== expected.length || expected.some((name, index) => names[index] !== name)) {
     throw new Error(`authority database tables do not match registry: actual=${names.join(",")} expected=${expected.join(",")}`);
   }
@@ -1679,16 +1194,13 @@ function inspectOpenDatabase(database: DatabaseSync, requireOperationalPragmas: 
   if (meta.schema_version !== schemaVersion) {
     throw new Error(`authority schema metadata ${String(meta.schema_version)} disagrees with user_version ${String(schemaVersion)}`);
   }
-  if (meta.migration_owner !== null || meta.migration_started_at !== null) {
-    throw new Error(`authority database is locked by migration owner ${String(meta.migration_owner)}`);
-  }
   validateAuthorityRecordSchemas(database);
-  inspectCapabilityUpgradeHistory(database, schemaVersion);
-  if (schemaVersion >= 51) validateExplorerOverrides(database);
-  if (schemaVersion >= 52) validateNotificationMetadata(database);
-  if (schemaVersion >= 53) validateWorkerControls(database);
+  validateExplorerOverrides(database);
+  validateNotificationMetadata(database);
+  validateWorkerControls(database);
   const violations = invariantViolations(database);
   if (violations.length > 0) throw new Error(`authority database invariant validation failed: ${violations.join("; ")}`);
+  createRunSearchIndex(database).validateCoverage();
   if (readIntPragma(database, "foreign_keys") !== 1) throw new Error("authority database foreign keys are disabled");
   if (requireOperationalPragmas) {
     if (readTextPragma(database, "journal_mode") !== "wal") throw new Error("authority database is not using WAL mode");
@@ -1708,42 +1220,10 @@ function inspectOpenDatabase(database: DatabaseSync, requireOperationalPragmas: 
   });
 }
 
-function inspectCapabilityUpgradeHistory(database: DatabaseSync, schemaVersion: number): void {
-  if (!isNormalAuthoritySchemaVersion(schemaVersion)) return;
-  const rows = database.prepare("SELECT record_json FROM database_upgrades ORDER BY rowid").all()
-    .map((row) => AuthorityUpgradeRecordSchema.parse(JSON.parse(JsonRowSchema.parse(row).record_json)));
-  const capability = rows.filter((row) => "format" in row && row.format === 4);
-  const target56 = rows.filter((row) => row.toSchemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION);
-  if (schemaVersion === NORMAL_AUTHORITY_SCHEMA_VERSION) {
-    if (target56.length > 0) throw new Error("capability-upgrade-record-before-schema");
-    return;
-  }
-  if (target56.length !== 1 || target56[0] !== rows.at(-1) || capability.length > 1) {
-    throw new Error("capability-upgrade-history-missing-or-divergent");
-  }
-  if (capability.length === 1 && capability[0] !== target56[0]) {
-    throw new Error("capability-upgrade-history-missing-or-divergent");
-  }
-  const receipt = capability[0];
-  if (receipt !== undefined) {
-    const prior = rows.at(-2);
-    if (prior?.toSchemaVersion !== NORMAL_AUTHORITY_SCHEMA_VERSION
-      || (prior.phase !== "settled" && prior.phase !== "baseline")
-      || receipt.sourceGeneration >= readMetaRow(database).authority_generation) {
-      throw new Error("capability-upgrade-history-missing-or-divergent");
-    }
-  }
-}
-
 /** Internal stopped-upgrade barrier; never exported through the repository entrypoint. */
 export function inspectNormalAuthority(database: DatabaseSync): AuthorityCopyInspection {
-  if (!isNormalAuthoritySchemaVersion(readIntPragma(database, "user_version"))) throw new Error("normal-authority-schema-mismatch");
+  if (!isCurrentAuthoritySchemaVersion(readIntPragma(database, "user_version"))) throw new Error("normal-authority-schema-mismatch");
   return inspectOpenDatabase(database, false);
-}
-
-export function inspectConvertedAuthority(database: DatabaseSync): void {
-  if (readIntPragma(database,"user_version") !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("converted-authority-schema-mismatch");
-  inspectOpenDatabase(database, false);
 }
 
 function inspectExistingDatabaseReadOnly(path: string, busyTimeoutMs: number): AuthorityCopyInspection {
@@ -1816,13 +1296,13 @@ function inspectAuthorityReadIdentityReadOnly(
       throw new Error(`existing database application_id ${String(applicationId)} is not the HR authority store`);
     }
     const schemaVersion = readIntPragma(database, "user_version");
-    if (!isNormalAuthoritySchemaVersion(schemaVersion) && schemaVersion !== 48) {
+    if (!isCurrentAuthoritySchemaVersion(schemaVersion)) {
       throw new Error(
         `authority schema ${String(schemaVersion)} does not match supported ${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`,
       );
     }
     const names = inspectionTableNames(database);
-    const expected = schemaVersion === 48 ? POST_FLOOR_AUTHORITY_TABLES_BY_VERSION[48] : AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).sort();
+    const expected = AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).sort();
     if (names.length !== expected.length || expected.some((name, index) => names[index] !== name)) {
       throw new Error(`authority database tables do not match registry: actual=${names.join(",")} expected=${expected.join(",")}`);
     }
@@ -1845,7 +1325,7 @@ function mismatchSummary(
   field: string,
   spanValue: unknown,
   authorityValue: unknown,
-  table: "workflow_runs" | "archived_runs",
+  table: "runs" | "deleted_runs",
 ): string | undefined {
   const spanJson = canonicalJsonStringify(spanValue);
   const authorityJson = canonicalJsonStringify(authorityValue);
@@ -1857,190 +1337,22 @@ function mismatchSummary(
 function liveSpanRootMismatches(root: SpanAuthorityRunRoot, run: RunRecord): readonly string[] {
   const envelope = run.envelope;
   return [
-    mismatchSummary("runId", root.runId, envelope.runId, "workflow_runs"),
-    mismatchSummary("workflow", root.workflow, envelope.workflow, "workflow_runs"),
-    mismatchSummary("itemId", root.itemId, envelope.itemId, "workflow_runs"),
-    mismatchSummary("traceId", root.traceId, envelope.traceId, "workflow_runs"),
-    mismatchSummary("finalAttempt", root.finalAttempt, envelope.attempt, "workflow_runs"),
-    mismatchSummary("parentRunId", root.parentRunId ?? null, envelope.parent?.runId ?? null, "workflow_runs"),
-    mismatchSummary("shape", root.shape, envelope.shape, "workflow_runs"),
-    mismatchSummary("priority", root.priority, envelope.priority, "workflow_runs"),
-    mismatchSummary("dryRun", root.dryRun, envelope.dryRun, "workflow_runs"),
-    mismatchSummary("retryOf", root.retryOf ?? null, envelope.retryOf ?? null, "workflow_runs"),
-    mismatchSummary("descriptorVersion", root.descriptorVersion, envelope.descriptorVersion, "workflow_runs"),
-    mismatchSummary("contractFingerprint", root.contractFingerprint, envelope.contractFingerprint, "workflow_runs"),
-    mismatchSummary("resolvedInstance", root.resolvedInstance, envelope.resolvedInstance, "workflow_runs"),
-    mismatchSummary("configFingerprint", root.configFingerprint, envelope.configFingerprint, "workflow_runs"),
-    mismatchSummary("configSnapshotId", root.configSnapshotId, envelope.configSnapshotId, "workflow_runs"),
-    mismatchSummary("queuedAt", root.queuedAt, envelope.enqueuedAt, "workflow_runs"),
-  ].filter((issue): issue is string => issue !== undefined);
-}
-
-function archivedSurfaceKind(root: SpanAuthorityRunRoot): "single" | "preview" | "member" | "operation" {
-  if (root.shape === "operation-member") return "member";
-  return root.shape;
-}
-
-function archivedSpanRootMismatches(
-  root: SpanAuthorityRunRoot,
-  archived: ArchivedRunStorageRecord,
-): readonly string[] {
-  const lineageParent = archived.row.lineage.state === "child"
-    ? archived.row.lineage.parentRunId
-    : null;
-  return [
-    mismatchSummary("runId", root.runId, archived.runId, "archived_runs"),
-    mismatchSummary("workflow", root.workflow, archived.workflowId, "archived_runs"),
-    mismatchSummary("itemId", root.itemId, archived.row.itemId, "archived_runs"),
-    mismatchSummary("traceId", root.traceId, archived.traceId, "archived_runs"),
-    mismatchSummary("finalAttempt", root.finalAttempt, archived.row.attempt, "archived_runs"),
-    mismatchSummary("parentRunId", root.parentRunId ?? null, lineageParent, "archived_runs"),
-    mismatchSummary("shape", archivedSurfaceKind(root), archived.row.surfaceKind, "archived_runs"),
-    mismatchSummary("priority", root.priority, archived.row.priority, "archived_runs"),
-    mismatchSummary("dryRun", root.dryRun, archived.row.dryRun, "archived_runs"),
-    mismatchSummary("descriptorVersion", root.descriptorVersion, archived.row.descriptorVersion, "archived_runs"),
-    mismatchSummary("contractFingerprint", root.contractFingerprint, archived.row.descriptorHash, "archived_runs"),
-    mismatchSummary(
-      "resolvedInstance",
-      Object.entries(root.resolvedInstance).map(([system, instance]) => ({ system, instance })),
-      archived.row.resolvedInstances,
-      "archived_runs",
-    ),
-    mismatchSummary("configFingerprint", root.configFingerprint, archived.row.configFingerprint, "archived_runs"),
-    mismatchSummary("queuedAt", root.queuedAt, archived.row.startedAt, "archived_runs"),
-  ].filter((issue): issue is string => issue !== undefined);
-}
-
-type TerminalRunLifecycle = Extract<RunRecord["lifecycle"], { state: "terminal" }>;
-
-function retainedArchiveMismatchSummary(
-  retainedField: string,
-  retainedValue: unknown,
-  archivedField: string,
-  archivedValue: unknown,
-): string | undefined {
-  const retainedJson = canonicalJsonStringify(retainedValue);
-  const archivedJson = canonicalJsonStringify(archivedValue);
-  return retainedJson === archivedJson
-    ? undefined
-    : `retained workflow_runs ${retainedField} ${retainedJson} does not match archived_runs ${archivedField} ${archivedJson}`;
-}
-
-function archivedFailureIdentityMismatch(
-  field: string,
-  failureValue: unknown,
-  retainedField: string,
-  retainedValue: unknown,
-  archiveField: string,
-  archiveValue: unknown,
-): string | undefined {
-  const failureJson = canonicalJsonStringify(failureValue);
-  const retainedJson = canonicalJsonStringify(retainedValue);
-  const archiveJson = canonicalJsonStringify(archiveValue);
-  return failureJson === retainedJson && failureJson === archiveJson
-    ? undefined
-    : `archived failure.${field} ${failureJson} does not match retained workflow_runs ${retainedField} ${retainedJson} `
-      + `and archive ${archiveField} ${archiveJson}`;
-}
-
-function terminalArchiveStatus(outcome: TerminalRunLifecycle["outcome"]): "done" | "failed" | "cancelled" | "blocked" {
-  switch (outcome) {
-    case "done": return "done";
-    case "failed": return "failed";
-    case "cancelled":
-    case "discarded":
-    case "superseded": return "cancelled";
-    case "interrupted": return "blocked";
-  }
-}
-
-function terminalArchiveDetailOutcome(
-  lifecycle: TerminalRunLifecycle,
-  dryRun: boolean,
-): unknown {
-  if (lifecycle.outcome === "interrupted") {
-    return { state: "absent", reason: "run interrupted; ref write-safety recovery will requeue or settle it" };
-  }
-  const result = lifecycle.outcome === "done"
-    ? dryRun ? "partial" : "verified-done"
-    : lifecycle.outcome === "failed"
-      ? "failed"
-      : "cancelled";
-  return {
-    state: "terminal",
-    result,
-    completedAt: lifecycle.endedAt,
-    ...(lifecycle.outcome === "done" && dryRun ? { rehearsal: true } : {}),
-  };
-}
-
-function archivedTerminalMismatches(
-  run: RunRecord,
-  lifecycle: TerminalRunLifecycle,
-  archived: ArchivedRunStorageRecord,
-): readonly string[] {
-  const expectedStatus = terminalArchiveStatus(lifecycle.outcome);
-  const archivedFailureId = archived.failure.state === "present"
-    ? archived.failure.value.failureId
-    : null;
-  const archivedFailureIdentityMismatches = archived.failure.state === "present"
-    ? [archivedFailureIdentityMismatch(
-      "runId",
-      archived.failure.value.runId,
-      "envelope.runId",
-      run.envelope.runId,
-      "runId",
-      archived.runId,
-    ), archivedFailureIdentityMismatch(
-      "traceId",
-      archived.failure.value.traceId,
-      "envelope.traceId",
-      run.envelope.traceId,
-      "traceId",
-      archived.traceId,
-    ), archivedFailureIdentityMismatch(
-      "attempt",
-      archived.failure.value.attempt,
-      "envelope.attempt",
-      run.envelope.attempt,
-      "row.attempt",
-      archived.row.attempt,
-    ), archivedFailureIdentityMismatch(
-      "workflowId",
-      archived.failure.value.workflowId,
-      "envelope.workflow",
-      run.envelope.workflow,
-      "workflowId",
-      archived.workflowId,
-    )]
-    : [];
-  return [
-    retainedArchiveMismatchSummary("terminal status", expectedStatus, "row.status", archived.row.status),
-    retainedArchiveMismatchSummary(
-      "terminal detail header status",
-      expectedStatus,
-      "detail.header.status",
-      archived.detail.header.status,
-    ),
-    retainedArchiveMismatchSummary(
-      "terminal row endedAt",
-      { state: "present", value: lifecycle.endedAt },
-      "row.endedAt",
-      archived.row.endedAt,
-    ),
-    retainedArchiveMismatchSummary(
-      "terminal detail outcome",
-      terminalArchiveDetailOutcome(lifecycle, run.envelope.dryRun),
-      "detail.outcome",
-      archived.detail.outcome,
-    ),
-    retainedArchiveMismatchSummary(
-      "terminal failureId",
-      lifecycle.failureId ?? null,
-      "failure.failureId",
-      archivedFailureId,
-    ),
-    ...archivedFailureIdentityMismatches,
+    mismatchSummary("runId", root.runId, envelope.runId, "runs"),
+    mismatchSummary("workflow", root.workflow, envelope.workflow, "runs"),
+    mismatchSummary("itemId", root.itemId, envelope.itemId, "runs"),
+    mismatchSummary("traceId", root.traceId, envelope.traceId, "runs"),
+    mismatchSummary("finalAttempt", root.finalAttempt, envelope.attempt, "runs"),
+    mismatchSummary("parentRunId", root.parentRunId ?? null, envelope.parent?.runId ?? null, "runs"),
+    mismatchSummary("shape", root.shape, envelope.shape, "runs"),
+    mismatchSummary("priority", root.priority, envelope.priority, "runs"),
+    mismatchSummary("dryRun", root.dryRun, envelope.dryRun, "runs"),
+    mismatchSummary("retryOf", root.retryOf ?? null, envelope.retryOf ?? null, "runs"),
+    mismatchSummary("descriptorVersion", root.descriptorVersion, envelope.descriptorVersion, "runs"),
+    mismatchSummary("contractFingerprint", root.contractFingerprint, envelope.contractFingerprint, "runs"),
+    mismatchSummary("resolvedInstance", root.resolvedInstance, envelope.resolvedInstance, "runs"),
+    mismatchSummary("configFingerprint", root.configFingerprint, envelope.configFingerprint, "runs"),
+    mismatchSummary("configSnapshotId", root.configSnapshotId, envelope.configSnapshotId, "runs"),
+    mismatchSummary("queuedAt", root.queuedAt, envelope.enqueuedAt, "runs"),
   ].filter((issue): issue is string => issue !== undefined);
 }
 
@@ -2073,301 +1385,57 @@ function structuralSpanRootIssues(roots: readonly SpanAuthorityRunRoot[]): reado
   return issues;
 }
 
-function inspectSpanRunAuthorityReadOnly(
-  path: string,
-  rootsInput: readonly SpanAuthorityRunRoot[],
-  busyTimeoutMs: number,
-  admission: RuntimeAdmission,
-): SpanAuthorityReadSnapshot {
-  const parsedPath = z.string().min(1).parse(path);
+function inspectSpanRunAuthorityReadOnly(path: string, rootsInput: readonly SpanAuthorityRunRoot[], busyTimeoutMs: number): SpanAuthorityReadSnapshot {
   const roots = z.array(SpanAuthorityRunRootSchema).readonly().parse(rootsInput);
   const rootIssues = structuralSpanRootIssues(roots);
-  if (!existsSync(parsedPath) || statSync(parsedPath).size === 0) {
-    throw new Error(`authority database ${parsedPath} is missing or empty`);
-  }
-  const database = new DatabaseSync(parsedPath, {
-    readOnly: true,
-    enableForeignKeyConstraints: true,
-    enableDoubleQuotedStringLiterals: false,
-    allowExtension: false,
-    timeout: z.number().int().positive().parse(busyTimeoutMs),
-    readBigInts: false,
-    returnArrays: false,
-    allowBareNamedParameters: false,
-    allowUnknownNamedParameters: false,
-    defensive: true,
-  });
-  let archive: ArchiveDatabase | undefined;
+  if (!existsSync(path) || statSync(path).size === 0) throw new Error("span-authority-database-missing-or-empty");
+  const database = new DatabaseSync(path,{readOnly:true,enableForeignKeyConstraints:true,allowExtension:false,timeout:busyTimeoutMs});
   let transactionOpen = false;
   try {
-    database.exec("PRAGMA foreign_keys = ON");
-    database.exec("PRAGMA query_only = ON");
-    database.exec("BEGIN");
-    transactionOpen = true;
-    const applicationId = readIntPragma(database, "application_id");
-    if (applicationId !== AUTHORITY_APPLICATION_ID) {
-      throw new Error(`existing database application_id ${String(applicationId)} is not the HR authority store`);
-    }
-    const schemaVersion = readIntPragma(database, "user_version");
-    if (!isNormalAuthoritySchemaVersion(schemaVersion) && schemaVersion !== 48) {
-      throw new Error(
-        `authority schema ${String(schemaVersion)} does not match supported ${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`,
-      );
-    }
-    const names = inspectionTableNames(database);
-    const expected = schemaVersion === 48 ? POST_FLOOR_AUTHORITY_TABLES_BY_VERSION[48] : AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).sort();
-    if (names.length !== expected.length || expected.some((name, index) => names[index] !== name)) {
-      throw new Error(`authority database tables do not match registry: actual=${names.join(",")} expected=${expected.join(",")}`);
-    }
+    database.exec("PRAGMA query_only=ON"); database.exec("BEGIN"); transactionOpen = true;
+    if (readIntPragma(database,"application_id") !== AUTHORITY_APPLICATION_ID) throw new Error("span-authority-application-mismatch");
+    const version = readIntPragma(database,"user_version");
+    if (!isCurrentAuthoritySchemaVersion(version)) throw new AuthoritySchemaVersionError(version);
+    assertNativeSchema(database);
     const meta = readMetaRow(database);
-    const authorityFingerprint = authorityContentFingerprint(database);
-    const liveRunCount = CountRowSchema.parse(database.prepare("SELECT count(*) AS count FROM workflow_runs").get()).count;
-    const transfers=new Map(database.prepare("SELECT record_key,record_json FROM archive_transfers ORDER BY record_key").all().map(raw=>{
-      const row=AuthorityRecordFingerprintRowSchema.parse(raw),identity=ArchiveTransferIdentitySchema.parse(JSON.parse(row.record_json));
-      if(identity.run.envelope.runId!==row.record_key)throw new Error("archive-transfer-identity-mismatch");
-      return [row.record_key,identity] as const;
-    }));
-    if(transfers.size>0)archive=new ArchiveDatabase(admission, join(dirname(parsedPath),"archive.sqlite"),{readOnly:true});
-    for(const runId of transfers.keys())resolveRunEvidenceOwner(database,()=>{if(archive===undefined)throw new Error("archive-authority-missing");return archive;},runId);
-    const archivedRunCount = (hasHistoricalArchiveTables(database) ? CountRowSchema.parse(database.prepare("SELECT count(*) AS count FROM archived_runs").get()).count : 0)+transfers.size;
-    const archivedRunById = hasHistoricalArchiveTables(database) ? database.prepare("SELECT record_json FROM archived_runs WHERE record_key = ?") : { get: (_id: string) => undefined };
-    const taskById = database.prepare("SELECT record_json FROM workflow_runs WHERE record_key = ?");
-    // A deleted run leaves a tombstone and immutable span files; never reinterpret that root as orphan evidence.
-    const deletedRunById = database.prepare("SELECT record_json FROM deleted_runs WHERE record_key = ?");
-    // Reverse reconciliation shares this exact read transaction/fingerprint with
-    // the forward root lookup. Malformed rows never become absence facts.
-    const queuedRunIds = new Set(roots.map(({ runId }) => runId));
-    const missingSpanRunIds: RunId[] = [];
+    if (meta.schema_version !== version) throw new Error("span-authority-schema-metadata-mismatch");
+    const queuedRunIds = new Set(roots.map(root => root.runId));
+    const runs = new Map<string,RunRecord>();
     const malformedRecords: Array<z.input<typeof SpanAuthorityReadSnapshotSchema>["malformedRecords"][number]> = [];
-    for (const [table, source] of [["workflow_runs", "current"], ["archived_runs", "archived"]] as const) {
-      if (table === "archived_runs" && !hasHistoricalArchiveTables(database)) continue;
-      for (const raw of database.prepare(`SELECT record_key, record_json FROM ${table} ORDER BY record_key`).iterate()) {
-        const row = AuthorityRecordFingerprintRowSchema.parse(raw);
-        const parsedKey = RunIdSchema.safeParse(row.record_key);
-        const recordKey = parsedKey.success
-          ? parsedKey.data
-          : `sha256:${createHash("sha256").update(row.record_key).digest("hex")}`;
-        const malformed = (summary: string): void => {
-          malformedRecords.push({ state: "malformed-authority", source, recordKey, summary });
-        };
-        let decoded: unknown;
-        try {
-          decoded = JSON.parse(row.record_json);
-        } catch {
-          malformed(`${table} record is not valid JSON`);
-          continue;
-        }
-        const parsed = table === "workflow_runs"
-          ? RunRecordSchema.safeParse(decoded)
-          : ArchivedRunStorageRecordSchema.safeParse(decoded);
-        if (!parsed.success) {
-          malformed(`${table} record failed its strict authority schema`);
-          continue;
-        }
-        const runId = "envelope" in parsed.data ? parsed.data.envelope.runId : parsed.data.runId;
-        if (runId !== row.record_key) {
-          malformed(`${table} record key does not equal its stored run identity`);
-          continue;
-        }
-        if (table === "workflow_runs" && !queuedRunIds.has(runId) && archivedRunById.get(runId) === undefined) {
-          missingSpanRunIds.push(runId);
-        }
-      }
+    for (const raw of database.prepare("SELECT * FROM runs ORDER BY id").all()) {
+      const key = z.object({id:z.string()}).parse(raw).id;
+      try { runs.set(key,runRecordFromRow(raw)); }
+      catch { malformedRecords.push({state:"malformed-authority",source:"current",recordKey:key,summary:"runs authority failed its strict native row validation"}); }
     }
-    const resolutions = roots.map((root, index): SpanAuthorityRunResolution => {
-      const structuralIssues = rootIssues[index];
-      if (structuralIssues === undefined) throw new Error(`span authority root ${String(index)} lost its structural issue bucket`);
-      if (structuralIssues.length > 0) {
-        return SpanAuthorityRunResolutionSchema.parse({
-          state: "malformed",
-          runId: root.runId,
-          table: "span_stream",
-          summary: structuralIssues.join("; "),
-        });
-      }
-      const archivedRow = archivedRunById.get(root.runId);
-      const taskRow = taskById.get(root.runId);
-      const transfer=transfers.get(root.runId);
-      if(transfer!==undefined) {
-        if(taskRow!==undefined || archivedRow!==undefined || liveSpanRootMismatches(root,transfer.run).length!==0)throw new Error("archive-span-owner-mismatch");
-        const report=archive?.verified(root.runId,transfer.reportDigest);if(report===undefined)throw new Error("archive-report-missing");
-        return SpanAuthorityRunResolutionSchema.parse({state:"archived",runId:root.runId,archivedAt:report.content.capturedAt});
-      }
-      if (archivedRow !== undefined) {
-        if (taskRow === undefined) {
-          return SpanAuthorityRunResolutionSchema.parse({
-            state: "malformed",
-            runId: root.runId,
-            table: "archived_runs",
-            summary: "archived_runs authority is missing its required retained workflow_runs authority",
-          });
-        }
-        let retainedRun: RunRecord;
+    const resolutions = roots.map((root,index) => {
+      const issues = rootIssues[index];
+      if (issues === undefined) throw new Error("span-authority-structural-issues-missing");
+      if (issues.length > 0) return SpanAuthorityRunResolutionSchema.parse({state:"malformed",runId:root.runId,table:"span_stream",summary:issues.join("; ")});
+      const deletedRow = database.prepare("SELECT * FROM deleted_runs WHERE run_id=?").get(root.runId);
+      if (deletedRow !== undefined) {
         try {
-          retainedRun = parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(taskRow).record_json);
-          if (retainedRun.envelope.runId !== root.runId) {
-            throw new Error(`retained task record names run ${retainedRun.envelope.runId}`);
-          }
-        } catch {
-          return SpanAuthorityRunResolutionSchema.parse({
-            state: "malformed",
-            runId: root.runId,
-            table: "workflow_runs",
-            summary: "archived_runs authority has retained workflow_runs authority that failed strict record or identity validation",
-          });
-        }
-        const retainedMismatches = liveSpanRootMismatches(root, retainedRun);
-        if (retainedMismatches.length > 0) {
-          return SpanAuthorityRunResolutionSchema.parse({
-            state: "malformed",
-            runId: root.runId,
-            table: "archived_runs",
-            summary: "archived_runs authority's required retained workflow_runs tuple contradicts the span root: "
-              + retainedMismatches.join("; "),
-          });
-        }
-        if (retainedRun.lifecycle.state !== "terminal") {
-          return SpanAuthorityRunResolutionSchema.parse({
-            state: "malformed",
-            runId: root.runId,
-            table: "archived_runs",
-            summary: "archived_runs authority requires terminal retained workflow_runs authority; retained lifecycle is "
-              + retainedRun.lifecycle.state,
-          });
-        }
-        try {
-          const archived = parseJsonRecord(ArchivedRunStorageRecordSchema, JsonRowSchema.parse(archivedRow).record_json);
-          if (archived.runId !== root.runId) throw new Error(`archived record names run ${archived.runId}`);
-          const mismatches = [
-            ...archivedSpanRootMismatches(root, archived),
-            ...archivedTerminalMismatches(retainedRun, retainedRun.lifecycle, archived),
-          ];
-          if (mismatches.length > 0) {
-            return SpanAuthorityRunResolutionSchema.parse({
-              state: "malformed",
-              runId: root.runId,
-              table: "archived_runs",
-              summary: "retained workflow_runs authority matches the span root but archived_runs authority contradicts it: "
-                + mismatches.join("; "),
-            });
-          }
-          return SpanAuthorityRunResolutionSchema.parse({
-            state: "archived",
-            runId: root.runId,
-            archivedAt: archived.archivedAt,
-          });
-        } catch {
-          return SpanAuthorityRunResolutionSchema.parse({
-            state: "malformed",
-            runId: root.runId,
-            table: "archived_runs",
-            summary: "retained workflow_runs authority is valid but archived_runs authority failed strict record or identity validation",
-          });
-        }
+          const {receipt} = deletedRunFromRow(deletedRow);
+          const mismatches = [mismatchSummary("workflow",root.workflow,receipt.workflow,"deleted_runs"),
+            mismatchSummary("itemId",root.itemId,receipt.itemId,"deleted_runs"),mismatchSummary("traceId",root.traceId,receipt.traceId,"deleted_runs"),
+            mismatchSummary("finalAttempt",root.finalAttempt,receipt.attempt,"deleted_runs")].filter((issue):issue is string=>issue !== undefined);
+          if (runs.has(root.runId) || mismatches.length > 0) throw new Error("deleted-run-span-identity-mismatch");
+          return SpanAuthorityRunResolutionSchema.parse({state:"deleted",runId:receipt.runId,workflow:receipt.workflow,traceId:receipt.traceId,
+            origin:receipt.origin,commandId:receipt.commandId,deletedAt:receipt.deletedAt});
+        } catch { return SpanAuthorityRunResolutionSchema.parse({state:"malformed",runId:root.runId,table:"deleted_runs",summary:"deletion receipt failed native row or span identity validation"}); }
       }
-      if (taskRow === undefined) {
-        const deletedRow = deletedRunById.get(root.runId);
-        if (deletedRow === undefined) {
-          return SpanAuthorityRunResolutionSchema.parse({ state: "missing", runId: root.runId, ...(root.possibleExternalWrite === true ? { possibleExternalWrite: true } : {}) });
-        }
-        let tombstone: DeletedRunRecord;
-        try {
-          tombstone = parseJsonRecord(DeletedRunRecordSchema, JsonRowSchema.parse(deletedRow).record_json);
-          if (tombstone.runId !== root.runId) throw new Error(`tombstone names run ${tombstone.runId}`);
-        } catch {
-          return SpanAuthorityRunResolutionSchema.parse({
-            state: "malformed",
-            runId: root.runId,
-            table: "deleted_runs",
-            summary: "deleted_runs tombstone failed its strict record or identity validation",
-          });
-        }
-        // A tombstone that disagrees with the root it would account for is a
-        // contradiction, never a `deleted` verdict: name the field.
-        const tombstoneMismatches = [
-          tombstone.workflow === root.workflow ? undefined : "workflow",
-          tombstone.traceId === root.traceId ? undefined : "traceId",
-        ].filter((field): field is string => field !== undefined);
-        if (tombstoneMismatches.length > 0) {
-          return SpanAuthorityRunResolutionSchema.parse({
-            state: "malformed",
-            runId: root.runId,
-            table: "deleted_runs",
-            summary: `deleted_runs tombstone contradicts the span root: ${tombstoneMismatches.join(", ")}`,
-          });
-        }
-        return SpanAuthorityRunResolutionSchema.parse({
-          state: "deleted",
-          runId: root.runId,
-          workflow: tombstone.workflow,
-          traceId: tombstone.traceId,
-          origin: tombstone.origin,
-          commandId: tombstone.commandId,
-          deletedAt: tombstone.deletedAt,
-        });
-      }
-      try {
-        const run = parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(taskRow).record_json);
-        if (run.envelope.runId !== root.runId) throw new Error(`task record names run ${run.envelope.runId}`);
-        const mismatches = liveSpanRootMismatches(root, run);
-        if (mismatches.length > 0) {
-          return SpanAuthorityRunResolutionSchema.parse({
-            state: "malformed",
-            runId: root.runId,
-            table: "workflow_runs",
-            summary: mismatches.join("; "),
-          });
-        }
-        return SpanAuthorityRunResolutionSchema.parse({ state: "live", runId: root.runId });
-      } catch {
-        return SpanAuthorityRunResolutionSchema.parse({
-          state: "malformed",
-          runId: root.runId,
-          table: "workflow_runs",
-          summary: "workflow_runs authority failed its strict record or identity validation",
-        });
-      }
+      if (malformedRecords.some(record=>record.recordKey === root.runId)) return SpanAuthorityRunResolutionSchema.parse({state:"malformed",runId:root.runId,table:"runs",summary:"runs authority failed its strict native row validation"});
+      const run = runs.get(root.runId);
+      if (run === undefined) return SpanAuthorityRunResolutionSchema.parse({state:"missing",runId:root.runId});
+      const mismatches = liveSpanRootMismatches(root,run);
+      return SpanAuthorityRunResolutionSchema.parse(mismatches.length === 0 ? {state:"live",runId:root.runId}
+        : {state:"malformed",runId:root.runId,table:"runs",summary:mismatches.join("; ")});
     });
-    const tombstoneOrdinalFindings = database.prepare("SELECT record_key, record_json FROM deleted_runs ORDER BY record_key").all().flatMap((row) => {
-      // A malformed row already has an explicit span-resolution diagnosis.
-      if (resolutions.some((resolution) => resolution.state === "malformed" && resolution.table === "deleted_runs" && resolution.runId === row.record_key)) return [];
-      const record = parseJsonRecord(DeletedRunRecordSchema, AuthorityRecordFingerprintRowSchema.parse(row).record_json);
-      if (record.runId !== row.record_key) throw new Error("deleted_runs tombstone identity mismatch");
-      const missingFields = (["itemId", "attempt", "runNumber"] as const).filter((field) => record[field] === null);
-      return missingFields.length === 0 ? [] : [{ code: "tombstone-ordinal-unknown" as const, runId: record.runId, missingFields }];
-    });
-    const snapshot = SpanAuthorityReadSnapshotSchema.parse({
-      tombstoneOrdinalFindings: tombstoneOrdinalFindings,
-      authorityGeneration: meta.authority_generation,
-      authorityContentFingerprint: authorityFingerprint,
-      liveRunCount,
-      archivedRunCount,
-      missingSpanRunIds: malformedRecords.length === 0 ? missingSpanRunIds : [],
-      malformedRecords,
-      resolutions,
-    });
-    database.exec("COMMIT");
-    transactionOpen = false;
-    return Object.freeze({
-      ...snapshot,
-      resolutions: Object.freeze(snapshot.resolutions),
-      missingSpanRunIds: Object.freeze(snapshot.missingSpanRunIds),
-      malformedRecords: Object.freeze(snapshot.malformedRecords),
-    });
-  } finally {
-    if (transactionOpen) database.exec("ROLLBACK");
-    archive?.close();
-    database.close();
-  }
-}
-
-
-// Private adapter capability: deliberately absent from the public SQLite entrypoint/class.
-let stoppedArchiveConversion: <T>(admission: RuntimeAdmission, database: DatabaseSync, path: string, clock: Clock,
-  archive: ArchiveDatabase | undefined, work: (authority: AuthorityDatabase) => T) => T;
-export function withStoppedArchiveConversion<T>(admission: RuntimeAdmission, database: DatabaseSync, path: string, clock: Clock,
-  archive: ArchiveDatabase | undefined, work: (authority: AuthorityDatabase) => T): T {
-  return stoppedArchiveConversion(admission, database, path, clock, archive, work);
+    const snapshot = SpanAuthorityReadSnapshotSchema.parse({authorityGeneration:meta.authority_generation,authorityContentFingerprint:authorityContentFingerprint(database),
+      liveRunCount:runs.size,archivedRunCount:0,tombstoneOrdinalFindings:[],malformedRecords,resolutions,
+      missingSpanRunIds:malformedRecords.length === 0 ? [...runs.keys()].filter(id=>!queuedRunIds.has(RunIdSchema.parse(id))).map(id=>RunIdSchema.parse(id)) : []});
+    database.exec("COMMIT");transactionOpen = false;
+    return Object.freeze(snapshot);
+  } finally {if (transactionOpen) database.exec("ROLLBACK");database.close();}
 }
 
 export class AuthorityDatabase implements Disposable {
@@ -2378,28 +1446,18 @@ export class AuthorityDatabase implements Disposable {
   #busyTimeoutMs: number;
   #credentialCommandIds: (commandId: string) => boolean;
   #closed = false;
-  #stoppedHistoricalTransactionSelection = false;
+  #validatedExternalDataVersion: number | undefined;
+  #snapshotExternalDataVersion: number | undefined;
   #transactionDepth = 0;
   #savepointSequence = 0;
   #transactionMode: "authority" | "projection" | "read" | undefined;
   #authorityDirty = false;
   #explorerOverridesDirty = false;
-  #archiveSourcesDirty = false;
   #writeCommitHooks: AuthorityWriteCommitHooks | undefined;
   #terminalizationHooks: AuthorityTerminalizationHooks | undefined;
 
   #authorityCommitCallbacks: (() => void)[] = [];
   #lifecycleHooks: AuthorityLifecycleHooks | undefined;
-
-  #archiveDatabase: ArchiveDatabase | undefined;
-  #transactionArchiveDatabase: ArchiveDatabase | undefined;
-  lifecycleArchive(requireExisting = false): ArchiveDatabase {
-    if (this.#archiveDatabase !== undefined) return this.#archiveDatabase;
-    if (this.#path === ":memory:") throw new Error("archive-requires-durable-root");
-    if (requireExisting && !existsSync(join(dirname(this.#path), "archive.sqlite"))) throw new Error("archive-authority-missing");
-    this.#archiveDatabase ??= new ArchiveDatabase(this.#admission, join(dirname(this.#path), "archive.sqlite"));
-    return this.#archiveDatabase;
-  }
 
   readonly authority: AuthorityRepositories;
 
@@ -2410,28 +1468,16 @@ export class AuthorityDatabase implements Disposable {
     writeCommitHooks?: AuthorityWriteCommitHooks,
     terminalizationHooks?: AuthorityTerminalizationHooks,
     lifecycleHooks?: AuthorityLifecycleHooks,
-    conversion?: Readonly<{ database: DatabaseSync; archive?: ArchiveDatabase }>,
   ) {
     const options = AuthorityDatabaseOptionsSchema.parse(input);
     this.#admission = requireRuntimeAdmission(admission);
     this.#admission.assertAuthorityDatabase(options.path);
     const existed = options.path !== ":memory:" && existsSync(options.path);
-    if (conversion === undefined && options.openMode === "read-write" && options.path.endsWith("/state.db") && existsSync(join(dirname(options.path), ".lifecycle-restore.json"))) throw new Error("lifecycle-restore-incomplete");
-    if (conversion === undefined && options.openMode === "read-write" && options.migrationOwner !== "storage-upgrade-audit" && (existsSync(join(dirname(options.path), ".archive-conversion.json")) || existsSync(join(dirname(options.path), ".archive-restore.json")))) throw new Error("archive-conversion-incomplete");
-    if (conversion === undefined && !existed && options.path !== ":memory:" && options.openMode === "read-write") {
-      // A missing database cannot turn retained Explorer evidence into fresh defaults.
-      // Existing/current authority never inspects these obsolete source paths.
-      for (const suffix of ["", ".claim", ".pending", ".claim.pending"]) {
-        if (lstatSync(join(dirname(options.path), `explorer-overrides.json${suffix}`), { throwIfNoEntry: false }) !== undefined) {
-          throw new Error("explorer-override-upgrade-required: restore matching authority or use stopped storage upgrade to inspect retained Explorer evidence");
-        }
-      }
-    }
     const readOnlyNoMigrate = options.openMode !== "read-write";
     if (readOnlyNoMigrate && !existed) {
       throw new Error(`${options.openMode} requires an existing authority database`);
     }
-    if (conversion === undefined && existed && statSync(options.path).size === 0) {
+    if (existed && statSync(options.path).size === 0) {
       throw new Error(`authority database ${options.path} exists but is empty; refusing to replace it`);
     }
     this.#clock = clock;
@@ -2439,25 +1485,7 @@ export class AuthorityDatabase implements Disposable {
     this.#terminalizationHooks = terminalizationHooks;
     this.#lifecycleHooks = lifecycleHooks;
     this.#path = options.path;
-    this.#credentialCommandIds = options.path === ":memory:"
-      ? () => { throw new Error("command identity admission requires a durable authority root"); }
-      : createCredentialStore({ admission, stateRoot: dirname(resolve(options.path)) }).ownsCommandId;
     this.#busyTimeoutMs = options.busyTimeoutMs;
-    if (conversion !== undefined) {
-      if (!conversion.database.isTransaction) throw new Error("archive-conversion-requires-stopped-transaction");
-      this.#database = conversion.database;
-      const userVersion = z.object({ user_version: z.number().int() }).parse(this.#database.prepare("PRAGMA user_version").get()).user_version;
-      this.#stoppedHistoricalTransactionSelection = userVersion < 54;
-      this.#archiveDatabase = conversion.archive;
-      this.#transactionDepth = 1;
-      this.#transactionMode = "authority";
-      createRunSummaries(this.#database).installTracking();
-      if (userVersion >= 54) {
-        createRunSearchIndex(this.#database).installTracking();
-      }
-      this.authority = this.#buildAuthorityRepositories();
-      return;
-    }
     this.#database = new DatabaseSync(options.path, {
       readOnly: readOnlyNoMigrate,
       enableForeignKeyConstraints: true,
@@ -2473,13 +1501,6 @@ export class AuthorityDatabase implements Disposable {
 
     try {
       const existingVersion = existed ? this.#admitExistingSchema() : undefined;
-      if (!readOnlyNoMigrate
-        && existingVersion !== undefined
-        && requiresStoppedSystemAuthorityUpgrade(existingVersion)) {
-        throw new Error(
-          `upgrade-required { schemaVersion: ${String(existingVersion)}, floor: ${String(UPGRADE_FLOOR_SCHEMA_VERSION)} }`,
-        );
-      }
       if (readOnlyNoMigrate) {
         this.#configureReadOnlyConnection();
         this.#validateReadOnlyNoMigrateDatabase(existingVersion);
@@ -2488,13 +1509,17 @@ export class AuthorityDatabase implements Disposable {
         this.#initializeSchema(existingVersion, options.migrationOwner);
         this.#validateDatabase();
       }
+      readAppSettings(this.#database);
+      this.#credentialCommandIds = options.path === ":memory:"
+        ? () => { throw new Error("command identity admission requires a durable authority root"); }
+        : createCredentialStore({ admission, stateRoot: dirname(resolve(options.path)) }).ownsCommandId;
     } catch (error) {
       this.#database.close();
+      if (error instanceof AuthoritySchemaVersionError) throw error;
       throw new Error(`failed to open authority database ${options.path}: ${errorMessage(error)}`, { cause: error });
     }
 
     if (!readOnlyNoMigrate) {
-      createRunSummaries(this.#database).installTracking();
       createRunSearchIndex(this.#database).installTracking();
     }
     this.authority = this.#buildAuthorityRepositories();
@@ -2511,15 +1536,6 @@ export class AuthorityDatabase implements Disposable {
     return new AuthorityDatabase(admission, input, clock, writeCommitHooks, terminalizationHooks, lifecycleHooks);
   }
 
-  static {
-    stoppedArchiveConversion = (admission, database, path, clock, archive, work) => {
-      const authority = new AuthorityDatabase(admission, {path, busyTimeoutMs:5000, migrationOwner:"stopped-archive-conversion"}, clock,
-        undefined, undefined, undefined, {database, archive});
-      try { return work(authority); }
-      finally { authority.#archiveDatabase?.close(); authority.#closed = true; }
-    };
-  }
-
   static sourceDatabaseIdentity(path: string): string {
     return createHash("sha256")
       .update(`${String(AUTHORITY_APPLICATION_ID)}:${resolve(z.string().min(1).parse(path))}`)
@@ -2534,12 +1550,8 @@ export class AuthorityDatabase implements Disposable {
 
   readUpgradePhases() {
     return this.withAuthorityReadSnapshot(() => {
-      if (this.getMeta().schemaVersion < 30) return { state: "absent" as const, reason: "pre-journal-schema" as const };
-      const rows = this.#database.prepare(`SELECT phase, record_json FROM ${databaseUpgradesTable(this.getMeta().schemaVersion)} ORDER BY rowid`).all();
-      const phases = rows.map((raw) => {
-        const row = z.strictObject({ phase: z.string(), record_json: z.string() }).parse(raw);
-        const record = AuthorityUpgradeRecordSchema.parse(JSON.parse(row.record_json));
-        if (record.phase !== row.phase) throw new Error("authority upgrade phase differs from its record");
+      const phases = this.#database.prepare("SELECT * FROM database_upgrades ORDER BY rowid").all().map(raw => {
+        const record = AuthorityUpgradeRecordSchema.parse(nativeOrdinaryRecordFromRow("database_upgrades",raw));
         return { phase: record.phase, fromSchemaVersion: record.fromSchemaVersion,
           toSchemaVersion: record.toSchemaVersion, recordedAt: record.recordedAt };
       });
@@ -2565,7 +1577,7 @@ export class AuthorityDatabase implements Disposable {
     busyTimeoutMs = 250,
   ): SpanAuthorityReadSnapshot {
     requireRuntimeAdmission(admission).assertReadOnlyAuthorityDatabase(path);
-    return inspectSpanRunAuthorityReadOnly(path, roots, busyTimeoutMs, admission);
+    return inspectSpanRunAuthorityReadOnly(path, roots, busyTimeoutMs);
   }
 
   /** Event evidence and its complete authority identity from one read-only snapshot. */
@@ -2582,8 +1594,8 @@ export class AuthorityDatabase implements Disposable {
         mutate: () => { throw new Error("timeline-doctor-read-only"); }, assertOwner: () => {} });
       timeline = readTimelineRecords(repository);
       if (!includeRecoveryEvidence) return;
-      const attempts = database.prepare("SELECT record_json FROM run_operation_attempts").all().map((row) =>
-        parseJsonRecord(WriteAttemptRecordSchema, JsonRowSchema.parse(row).record_json));
+      const attempts = database.prepare("SELECT payload_json FROM write_attempts").all().map((row) =>
+        parseJsonRecord(WriteAttemptRecordSchema, JsonRowSchema.parse(row).payload_json));
       const attemptsByRun = new Map<string, WriteAttemptRecord[]>();
       for (const attempt of attempts) {
         const owned = attemptsByRun.get(attempt.runId);
@@ -2602,18 +1614,18 @@ export class AuthorityDatabase implements Disposable {
       }
       const fenced = new Set(timeline.records.flatMap((row) => row.payload.kind === "span"
         && row.payload.event.t === "transaction.fenced" ? [row.payload.event.runId] : []));
-      const runs = database.prepare("SELECT record_key, record_json FROM workflow_runs ORDER BY record_key").all().map((raw) => {
+      const runs = database.prepare("SELECT id, payload_json FROM runs ORDER BY id").all().map((raw) => {
         const row = AuthorityRecordFingerprintRowSchema.parse(raw);
-        const run = parseJsonRecord(RunRecordSchema, row.record_json);
-        if (run.envelope.runId !== row.record_key) throw new Error("restore-evidence-run-identity-mismatch");
+        const run = parseJsonRecord(RunRecordSchema, row.payload_json);
+        if (run.envelope.runId !== row.id) throw new Error("restore-evidence-run-identity-mismatch");
         const owned = attemptsByRun.get(run.envelope.runId) ?? [];
         return { runId: run.envelope.runId, workflow: run.envelope.workflow, traceId: run.envelope.traceId,
           version: run.version, possibleExternalWrite: owned.length > 0 || fenced.has(run.envelope.runId),
           attemptIds: owned.map((attempt) => attempt.writeAttemptId),
           confirmations: confirmationsByRun.get(run.envelope.runId) ?? [] };
       });
-      const deleted = database.prepare("SELECT record_json FROM deleted_runs").all().map((row) =>
-        parseJsonRecord(DeletedRunRecordSchema, JsonRowSchema.parse(row).record_json));
+      const deleted = database.prepare("SELECT payload_json FROM deleted_runs").all().map((row) =>
+        parseJsonRecord(DeletedRunRecordSchema, JsonRowSchema.parse(row).payload_json));
       recoveryEvidence = { runs, deleted };
     });
     if (timeline === undefined || (includeRecoveryEvidence && recoveryEvidence === undefined)) throw new Error("timeline-read-snapshot-missing");
@@ -2631,10 +1643,6 @@ export class AuthorityDatabase implements Disposable {
   }
 
   close(): void {
-    this.#transactionArchiveDatabase?.close();
-    this.#transactionArchiveDatabase=undefined;
-    this.#archiveDatabase?.close();
-    this.#archiveDatabase = undefined;
     if (this.#closed) return;
     if (this.#transactionDepth !== 0) throw new Error("cannot close authority database during a transaction");
     this.#database.close();
@@ -2661,8 +1669,8 @@ export class AuthorityDatabase implements Disposable {
     return this.#withReadSnapshot(() => {
       const references: ArtifactRef[] = [];
       const rows = (table: "generated_artifacts" | "imported_artifacts" | "operator_xlsx_exports" | "run_checkpoints") =>
-        this.#database.prepare(`SELECT record_json FROM ${table} ORDER BY record_key`).all()
-          .map((raw) => AuthorityRecordFingerprintRowSchema.pick({ record_json: true }).parse(raw).record_json);
+        this.#database.prepare(`SELECT payload_json FROM ${table} ORDER BY id`).all()
+          .map((raw) => AuthorityRecordFingerprintRowSchema.pick({ payload_json: true }).parse(raw).payload_json);
       for (const json of rows("generated_artifacts")) {
         const record = GeneratedArtifactSchema.parse(JSON.parse(json));
         for (const version of record.versions) if (version.state === "verified") references.push(version.artifact);
@@ -2698,7 +1706,7 @@ export class AuthorityDatabase implements Disposable {
       throw new Error("storage-relocation: activation authority path mismatch");
     }
     const copyAdmission = this.#admission.verifiedReadOnlyCopy(verifiedStageBackupPath,
-      intent.stageAuthority.backupSha256, "authority");
+      intent.stageAuthority.backupSha256);
     try {
       copyAdmission.assertReadOnlyAuthorityDatabase(verifiedStageBackupPath);
       assertNoRelocationCopyCompanions(verifiedStageBackupPath);
@@ -2734,7 +1742,7 @@ export class AuthorityDatabase implements Disposable {
         const snapshots = relocationSettingsSnapshots(this.#database);
         const priorSnapshots = relocationSettingsSnapshots(baseline);
         const added = snapshots.filter((row) =>
-          AuthorityRecordFingerprintRowSchema.extend({ created_at: z.string() }).parse(JSON.parse(row)).record_key === intent.snapshot.configSnapshotId);
+          AuthorityRecordFingerprintRowSchema.extend({ created_at: z.string() }).parse(JSON.parse(row)).id === intent.snapshot.configSnapshotId);
         if (added.length !== 1 || snapshots.length !== priorSnapshots.length + 1
           || canonicalJsonStringify(snapshots.filter((row) => !added.includes(row))) !== canonicalJsonStringify(priorSnapshots)) {
           throw new Error("storage-relocation: activation snapshot history changed");
@@ -2742,7 +1750,7 @@ export class AuthorityDatabase implements Disposable {
         const addedRow = added[0];
         if (addedRow === undefined) throw new Error("storage-relocation: activation snapshot missing");
         const addedRecord = AuthorityRecordFingerprintRowSchema.extend({ created_at: z.string() }).parse(JSON.parse(addedRow));
-        if (canonicalJsonStringify(ConfigSnapshotRecordSchema.parse(JSON.parse(addedRecord.record_json)))
+        if (canonicalJsonStringify(ConfigSnapshotRecordSchema.parse(JSON.parse(addedRecord.payload_json)))
           !== canonicalJsonStringify(intent.snapshot)) throw new Error("storage-relocation: activation snapshot differs from intent");
         const app = relocationAppSettings(this.#database);
         const expectedActive = { generation: (intent.priorActive?.generation ?? 0) + 1,
@@ -2753,8 +1761,7 @@ export class AuthorityDatabase implements Disposable {
           || canonicalJsonStringify(app.active) !== canonicalJsonStringify(expectedActive)
           || after.authority_generation !== before.authority_generation + 1
           || after.updated_at !== intent.snapshot.capturedAt
-          || after.migration_owner !== before.migration_owner
-          || after.migration_started_at !== before.migration_started_at) {
+) {
           throw new Error("storage-relocation: activation state differs from intent");
         }
         return "committed";
@@ -2781,724 +1788,42 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  #removeLifecycleSources(run: RunRecord, _now: string, transfer: boolean, evidence: ReturnType<typeof runDeletionEvidence>) {
-    const runId = run.envelope.runId;
-    const removed: { table: z.infer<typeof DeletedRunTableSchema>; rows: number }[] = [];
-    const remove = (table: z.infer<typeof DeletedRunTableSchema>, sql: string, ...params: string[]): void => {
-      const rows = sqliteChanges(this.#database.prepare(sql).run(...params).changes);
-      if (rows > 0) {
-        const prior = removed.find(entry => entry.table === table);
-        if (prior === undefined) removed.push({ table, rows });
-        else prior.rows += rows;
-      }
-    };
-          remove("timeline_events", "DELETE FROM timeline_events WHERE run_id = ?", runId);
-          // Keep an entire operation group while another retained retry owns or
-          // references its evidence. The last owner collects the held group.
-          for (const operationId of (transfer ? [] : evidence.operationIds)) {
-            remove("timeline_operation_sources", "DELETE FROM timeline_operation_sources WHERE json_extract(record_json, '$.operationId') = ?", operationId);
-            remove("run_operation_attempts", "DELETE FROM run_operation_attempts WHERE write_intent_id = ?", operationId);
-            remove("run_operations", "DELETE FROM run_operations WHERE record_key = ?", operationId);
-          }
-          // Evidence and diagnostics.
-          remove("diagnostic_files", `
-            DELETE FROM diagnostic_files WHERE bundle_id IN (
-              SELECT record_key FROM diagnostic_snapshots WHERE run_id = ?
-            )`, runId);
-          remove("diagnostic_snapshots", "DELETE FROM diagnostic_snapshots WHERE run_id = ?", runId);
-          remove("run_receipts", "DELETE FROM run_receipts WHERE run_id = ?", runId);
-          remove("dryrun_results", "DELETE FROM dryrun_results WHERE run_id = ?", runId);
-          remove("run_failures", "DELETE FROM run_failures WHERE run_id = ?", runId);
-          // Terminal authority.
-          remove("run_results", "DELETE FROM run_results WHERE record_key = ?", runId);
-          remove("checkpoint_payloads", "DELETE FROM checkpoint_payloads WHERE json_extract(record_json, '$.runId') = ?", runId);
-          for (const key of (transfer ? [] : evidence.checkpointKeys)) remove("run_checkpoints", "DELETE FROM run_checkpoints WHERE record_key = ?", key);
-          // Inbox items that would otherwise link to a run nobody can open.
-          if (!transfer && this.#readIntPragma("user_version") >= 52) remove("notification_publications", `DELETE FROM notification_publications WHERE notification_id IN (
-            SELECT record_key FROM notifications WHERE EXISTS (
-              SELECT 1 FROM json_each(record_json, '$.links') AS link WHERE json_extract(link.value, '$.runId') = ?))
-            OR json_extract(record_json, '$.event.runId') = ?`, runId, runId);
-          if (!transfer) remove("notifications", `
-            DELETE FROM notifications WHERE EXISTS (
-              SELECT 1 FROM json_each(record_json, '$.links') AS link WHERE json_extract(link.value, '$.runId') = ?
-            )`, runId);
-          // Keep frozen shared edges until their last live endpoint leaves; a child transfer cannot mutate a retained snapshot.
-          remove("delegation_dependencies", `
-            DELETE FROM delegation_dependencies
-            WHERE (json_extract(record_json, '$.parentRunId') = ? OR json_extract(record_json, '$.childRunId') = ?)
-              AND NOT EXISTS (SELECT 1 FROM workflow_runs AS retained
-                WHERE retained.record_key <> ? AND retained.record_key IN (
-                  json_extract(delegation_dependencies.record_json, '$.parentRunId'),
-                  json_extract(delegation_dependencies.record_json, '$.childRunId')))`, runId, runId, runId);
-          remove("run_delegations", "DELETE FROM run_delegations WHERE json_extract(record_json, '$.parentRunId') = ?", runId);
-          if (hasHistoricalArchiveTables(this.#database)) remove("archived_runs", "DELETE FROM archived_runs WHERE record_key = ?", runId);
-
-    remove("workflow_runs", "DELETE FROM workflow_runs WHERE record_key = ?", runId);
-    if (!transfer) remove("archive_transfers", "DELETE FROM archive_transfers WHERE record_key = ?", runId);
-    return removed;
-  }
-
-  /** Indexed membership prefilter; callers still verify matching archive owners. */
-  archivedRunIds(): ReadonlySet<string> {
-    return this.withAuthorityReadSnapshot(() => {
-      const table = hasHistoricalArchiveTables(this.#database) ? "archived_runs" : "archive_transfers";
-      return new Set(this.#database.prepare(`SELECT record_key FROM ${table}`).all()
-        .map(row => z.strictObject({ record_key: RunIdSchema }).parse(row).record_key));
-    });
-  }
-
-  #archivedTransactionSource(runId: string) {
-        const identity = this.#readRecord("archive_transfers",RunIdSchema.parse(runId),ArchiveTransferIdentitySchema);
-        if (identity === undefined) throw new Error("transaction-history-transfer-missing");
-        // Verified custody is sufficient after cleanup, even before publication replay.
-        if (this.#path === ":memory:" && this.#archiveDatabase === undefined) throw new Error("archive-requires-durable-root");
-        const archive = this.#archiveDatabase ?? (this.#transactionArchiveDatabase ??= new ArchiveDatabase(this.#admission, join(dirname(this.#path), "archive.sqlite"), {readOnly:true,validation:"selected"}));
-        const owner=resolveRunEvidenceOwner(this.#database,()=>archive,runId,false);
-        if(owner.state!=="archived")throw new Error("archive-transfer-owner-invalid");
-        const report = archive.verifiedReport(runId, identity.reportDigest);
-        const source = report.content.sources.find(value => value.kind === "authority-snapshot");
-        if (source === undefined) throw new Error("transaction-history-archive-source-missing");
-        const snapshot = LifecycleSourceSnapshotSchema.parse(JSON.parse(source.json));
-        if (lifecycleSourceDigest(snapshot) !== identity.sourceDigest
-          || canonicalJsonStringify(snapshot.run) !== canonicalJsonStringify(identity.run)) {
-          throw new Error("transaction-history-archive-source-mismatch");
-        }
-        return snapshot;
-  }
-
-  listTransferredRuns() {
-    return this.withAuthorityReadSnapshot(() => this.#database.prepare("SELECT record_key FROM archive_transfers WHERE record_key NOT IN (SELECT record_key FROM deleted_runs) ORDER BY created_at,record_key").all()
-      .map(row => {const id=z.object({record_key:z.string()}).parse(row).record_key;const transfer=this.transferredRun(id);if(transfer===undefined)throw new Error("archive-transfer-missing");return transfer.run;}));
-  }
-
-  /** Bounded row materialization for same-item history; archive and tombstone predicates still scan without added indexes. */
   listItemAttemptHistorySources(input: unknown) {
-    const request = z.strictObject({ workflow: WorkflowIdSchema, itemId: ItemIdSchema, sourceLimit: z.number().int().min(1).max(501) }).parse(input);
-    return this.withAuthorityReadSnapshot(() => {
-      const countFor = (table: "workflow_runs" | "archive_transfers" | "deleted_runs") => {
-        const row = z.strictObject({ count: z.number().int().nonnegative() }).parse(this.#database.prepare(
-          `SELECT count(*) AS count FROM ${table} WHERE workflow = ? AND item_id = ?`,
-        ).get(request.workflow, request.itemId));
-        return row.count;
-      };
-      const liveCount = countFor("workflow_runs");
-      const archiveTransferCount = z.strictObject({ count: z.number().int().nonnegative() }).parse(this.#database.prepare(
-        "SELECT count(*) AS count FROM archive_transfers WHERE workflow = ? AND item_id = ? AND record_key NOT IN (SELECT record_key FROM deleted_runs)",
-      ).get(request.workflow, request.itemId)).count;
-      const deletedCount = countFor("deleted_runs");
-      const live = this.#database.prepare(`
-        SELECT record_json FROM workflow_runs WHERE workflow = ? AND item_id = ?
-        ORDER BY attempt, record_key LIMIT ?
-      `).all(request.workflow, request.itemId, request.sourceLimit)
-        .map(row => parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json));
-      const archiveTransferIds = this.#database.prepare(`
-        SELECT record_key FROM archive_transfers WHERE workflow = ? AND item_id = ?
-          AND record_key NOT IN (SELECT record_key FROM deleted_runs)
-        ORDER BY attempt, record_key LIMIT ?
-      `).all(request.workflow, request.itemId, request.sourceLimit)
-        .map(row => RunIdSchema.parse(z.strictObject({ record_key: z.string() }).parse(row).record_key));
-      const deleted = this.#database.prepare(`
-        SELECT record_json FROM deleted_runs WHERE workflow = ? AND item_id = ?
-        ORDER BY attempt, record_key LIMIT ?
-      `).all(request.workflow, request.itemId, request.sourceLimit)
-        .map(row => parseJsonRecord(DeletedRunRecordSchema, JsonRowSchema.parse(row).record_json));
-      return Object.freeze({
-        counts: Object.freeze({ live: liveCount, archiveTransfers: archiveTransferCount, deleted: deletedCount }),
-        live: Object.freeze(live),
-        archiveTransferIds: Object.freeze(archiveTransferIds),
-        deleted: Object.freeze(deleted),
-      });
-    });
-  }
-
-  savedReportOwner(runId: string) {
-    return this.withAuthorityReadSnapshot(() => resolveSavedReportOwner(this.#database, () => this.lifecycleArchive(true), RunIdSchema.parse(runId)));
-  }
-
-  transferredRun(runId: string) {
-    const identity = this.#readRecord("archive_transfers", RunIdSchema.parse(runId), ArchiveTransferIdentitySchema);
-    if (identity === undefined) return undefined;
-    const owner = resolveRunEvidenceOwner(this.#database, () => this.lifecycleArchive(true), runId, false);
-    if (owner.state !== "archived") throw new Error("archive-transfer-owner-invalid");
-    return identity;
-  }
-
-  transferLifecycleSources(input: { runId: string; digest: string; expectedVersion: number }) {
-    return this.#authorityWrite("archive_transfers", () => {
-      const report = this.lifecycleArchive(true).verified(input.runId, input.digest);
-      if(report.content.versionChange!==undefined) {
-        const change=this.readVersionChange(report.content.versionChange.review.changeId);
-        if(change===undefined || !["applying","applied"].includes(change.state)
-          || canonicalJsonStringify(archiveVersionChange(change))!==canonicalJsonStringify(report.content.versionChange)
-          || !change.members.some(member=>member.runId===input.runId && member.sourceDigest===report.content.sourceDigest && member.version===input.expectedVersion))throw new Error("archive-change-membership-mismatch");
-      }
-      const existing = this.transferredRun(input.runId);
-      if (existing !== undefined) {
-        if (existing.reportDigest !== input.digest || existing.run.version !== input.expectedVersion) throw new Error("archive-transfer-replay-conflict");
-        return {result: existing, changes: 0};
-      }
-      const snapshot = this.captureLifecycleSource(input.runId);
-      const run = snapshot.run;
-      if (run.lifecycle.state !== "terminal" || run.version !== input.expectedVersion) throw new Error("archive-transfer-source-fence");
-      if (this.authority.runs.listChildren(input.runId).length !== 0) throw new Error("archive-transfer-children-retained");
-      const source = report.content.sources.find(source => source.kind === "authority-snapshot");
-      if (source === undefined) throw new Error("archive-source-snapshot-missing");
-      const frozen = LifecycleSourceSnapshotSchema.parse(JSON.parse(source.json));
-      if (report.content.sourceDigest !== lifecycleSourceDigest(frozen)
-        || lifecycleOwnedSourceDigest(frozen) !== lifecycleOwnedSourceDigest(snapshot)
-        || report.content.workflow !== run.envelope.workflow || report.content.itemId !== run.envelope.itemId
-        || report.content.attempt !== run.envelope.attempt || report.content.runNumber !== (run.runNumber ?? null)) throw new Error("archive-transfer-source-mismatch");
-      for (const row of snapshot.records.find(group=>group.table === "diagnostic_files")?.rows ?? []) {
-        const {attachment}=DiagnosticAttachmentStorageRecordSchema.parse(JSON.parse(row.json));
-        if(!report.content.files.some(file=>file.digest===attachment.digest && file.byteLength===attachment.byteLength
-          && file.mediaType===attachment.mediaType && file.artifactIds?.includes(attachment.artifactId) === true)) throw new Error("archive-transfer-file-omitted");
-      }
-      runDeletionEvidence(this.#database, run, () => this.lifecycleArchive(true));
-      const identity = ArchiveTransferIdentitySchema.parse({run, transferId: report.content.transferId,
-        reportDigest: report.digest, sourceDigest: report.content.sourceDigest});
-      this.#database.prepare(`INSERT INTO archive_transfers
-        (record_key,workflow,item_id,attempt,run_number,record_json,created_at) VALUES (?,?,?,?,?,?,?)`)
-        .run(input.runId,run.envelope.workflow,run.envelope.itemId,run.envelope.attempt,run.runNumber ?? null,canonicalJsonStringify(identity),this.#now());
-      // Verified durable archive identity authorizes cleanup; transfer creates no tombstone.
-      this.#removeLifecycleSources(run,this.#now(),true,{operationIds:[],checkpointKeys:[]});
-      return {result:identity,changes:1};
-    });
-  }
-
-  publishTransferredReport(runId: string, digest: string) {
-    const identity = this.transferredRun(runId);
-    if (identity === undefined || identity.reportDigest !== digest) throw new Error("archive-transfer-progress-missing");
-    this.lifecycleArchive(true).publish(runId,digest);
-  }
-
-  /** Source custody is rooted beside this authority, never the process cwd. */
-  readLifecycleSourceFile(file: import("../../../models/archive/report.js").ArchiveReport["content"]["files"][number]) {
-    const root = this.#admission.artifactRoot;
-    if (lstatSync(root).isSymbolicLink() || !lstatSync(root).isDirectory()) throw new Error("archive-source-file-root-invalid");
-    if (!/^[a-f0-9]{64}$/u.test(file.digest)) throw new Error("archive-source-file-digest-invalid");
-    const fd = openSync(join(root, `${file.digest}.artifact`), constants.O_RDONLY | constants.O_NOFOLLOW);
-    try {
-      if (!fstatSync(fd).isFile()) throw new Error("archive-source-file-invalid");
-      const stored = z.strictObject({ ref: z.strictObject({ id: z.string().uuid(), sha256: z.string(), bytes: z.number().int().nonnegative(), mediaType: z.string() }), payloadBase64: z.string() }).parse(JSON.parse(readFileSync(fd, "utf8")));
-      const bytes = Buffer.from(stored.payloadBase64, "base64");
-      if (bytes.toString("base64") !== stored.payloadBase64 || createHash("sha256").update(bytes).digest("hex") !== file.digest
-        || stored.ref.sha256 !== file.digest || stored.ref.bytes !== file.byteLength || bytes.length !== file.byteLength
-        || stored.ref.mediaType !== file.mediaType) throw new Error("archive-source-file-integrity-mismatch");
-      return bytes;
-    } finally { closeSync(fd); }
-  }
-
-  recoverManualArchivePublications(): void {
-    if (!existsSync(join(dirname(this.#path), "archive.sqlite"))) return;
-    const reports = this.withAuthorityReadSnapshot(() => {
-      const pending = this.lifecycleArchive(true).pendingManualReports();
-      return pending.filter(report => {
-        if (this.authority.runs.get(report.content.runId) !== undefined) return false;
-        if (this.authority.deletedRuns.get(report.content.runId) !== undefined) return false;
-        const claim = report.content.manualArchive;
-        if (claim === undefined || this.transferredRun(report.content.runId)?.reportDigest !== report.digest) throw new Error("manual-archive-recovery-transfer-missing");
-        const audits = this.#database.prepare("SELECT record_json FROM command_audits WHERE json_extract(record_json,'$.request.type')='archive' AND json_extract(record_json,'$.request.target.runId')=?").all(claim.rootRunId)
-          .map(raw => CommandAuditRecordSchema.parse(JSON.parse(JsonRowSchema.parse(raw).record_json)));
-        const admitted = audits.some(audit => {
-          const request = audit.request;
-          return request.type === "archive" && audit.result.state === "applied"
-            && request.requestedBy === claim.actorId
-            && request.target.expectedVersion === claim.members.find(member => member.runId === claim.rootRunId)?.version
-            && canonicalJsonStringify(audit.result.affectedTargets.filter(target => target.family === "run").map(target => target.runId).sort()) === canonicalJsonStringify(claim.members.map(member => member.runId).sort())
-            && claim.members.every(member => {
-              const transfer = this.transferredRun(member.runId);
-              return transfer !== undefined && transfer.run.version === member.version
-                && this.lifecycleArchive(true).verifiedReport(member.runId, transfer.reportDigest).content.manualArchive?.commandId === claim.commandId;
-            });
-        });
-        if (!admitted) throw new Error("manual-archive-recovery-audit-missing");
-        return true;
-      });
-    });
-    for (const report of reports) this.publishTransferredReport(report.content.runId, report.digest);
-  }
-
-  readManualArchiveReport(runId: string) {
-    if (!existsSync(join(dirname(this.#path), "archive.sqlite"))) return undefined;
-    const report = this.lifecycleArchive(true).read(runId);
-    if (report?.content.manualArchive === undefined) return undefined;
-    return this.readPendingArchiveReport(runId, report.content.transferId)?.report;
-  }
-
-  readPendingArchiveReport(runId:string,transferId:string) {
-    if(this.authority.deletedRuns.get(runId)!==undefined)throw new Error("archive-report-deleted");
-    if (!existsSync(join(dirname(this.#path), "archive.sqlite"))) {
-      if (this.#database.prepare("SELECT record_key FROM archive_transfers LIMIT 1").get() !== undefined) throw new Error("archive-database-missing");
-      return undefined;
-    }
-    const report=this.lifecycleArchive(true).read(runId);
-    if(report===undefined)return undefined;
-    if(report.content.transferId!==transferId)throw new Error("archive-report-replay-conflict");
-    const transferred=this.transferredRun(runId);
-    if(transferred===undefined && this.authority.runs.get(runId)===undefined)throw new Error("archive-source-run-missing");
-    return {report,state:this.lifecycleArchive(true).state(runId)};
-  }
-
-  archiveWorkflows() {
-    this.recoverManualArchivePublications();
+    const request=z.strictObject({workflow:WorkflowIdSchema,itemId:ItemIdSchema,sourceLimit:z.number().int().min(1).max(501)}).parse(input);
     return this.withAuthorityReadSnapshot(()=>{
-      if(!existsSync(join(dirname(this.#path),"archive.sqlite"))){
-        if(this.#database.prepare("SELECT record_key FROM archive_transfers LIMIT 1").get()!==undefined)throw new Error("archive-database-missing");
-        return [];
-      }
-      return this.lifecycleArchive(true).workflows();
+      const countFor=(table:"runs"|"deleted_runs")=>z.strictObject({count:z.number().int().nonnegative()}).parse(
+        this.#database.prepare(`SELECT count(*) AS count FROM ${table} WHERE workflow=? AND item_id=?`).get(request.workflow,request.itemId)).count;
+      const live=this.#database.prepare("SELECT * FROM runs WHERE workflow=? AND item_id=? ORDER BY attempt,id LIMIT ?")
+        .all(request.workflow,request.itemId,request.sourceLimit).map(runRecordFromRow);
+      const deleted=this.#database.prepare("SELECT * FROM deleted_runs WHERE workflow=? AND item_id=? ORDER BY attempt,run_id LIMIT ?")
+        .all(request.workflow,request.itemId,request.sourceLimit).map(row=>deletedRunFromRow(row).receipt);
+      return Object.freeze({counts:Object.freeze({live:countFor("runs"),deleted:countFor("deleted_runs")}),
+        live:Object.freeze(live),deleted:Object.freeze(deleted)});
     });
-  }
-
-  queryArchiveReports(query:ArchiveQuery) {
-    query=ArchiveQuerySchema.parse(query);
-    return this.withAuthorityReadSnapshot(()=>{
-      const path=join(dirname(this.#path),"archive.sqlite");
-      if(!existsSync(path)){if(this.#database.prepare("SELECT record_key FROM archive_transfers LIMIT 1").get()!==undefined)throw new Error("archive-database-missing");return {items:[],next:null};}
-      // A live tombstone can precede archive settlement. Fill the visible page
-      // across those excluded rows, including one lookahead for its cursor.
-      const archive=this.lifecycleArchive(true);
-      const visible: ArchiveReport[]=[];
-      let after=query.after;
-      while(visible.length<=query.limit) {
-        const page=archive.query({...query, ...(after===undefined?{}:{after})});
-        visible.push(...page.items.filter(report=>this.authority.deletedRuns.get(report.content.runId)===undefined));
-        if(page.next===null)break;
-        after=page.next;
-      }
-      const items=visible.slice(0,query.limit);
-      for(const report of items) { const owner=this.savedReportOwner(report.content.runId); if(owner.state!=="archived" || owner.reportDigest!==report.digest)throw new Error("archive-query-owner-mismatch"); }
-      const last=items.at(-1);
-      return {items,next:visible.length>query.limit && last!==undefined ? {completedAt:last.content.completedAt,runId:last.content.runId}:null};
-    });
-  }
-
-  archiveGroups(query:ArchiveGroupQuery) {
-    query=ArchiveGroupQuerySchema.parse(query);
-    return this.withAuthorityReadSnapshot(()=>{
-      const path=join(dirname(this.#path),"archive.sqlite");
-      if(!existsSync(path)){
-        if(this.#database.prepare("SELECT record_key FROM archive_transfers LIMIT 1").get()!==undefined)throw new Error("archive-database-missing");
-        return [];
-      }
-      const deletedRunIds=this.#database.prepare("SELECT record_key FROM deleted_runs WHERE origin='archive'").all()
-        .map(row=>z.strictObject({record_key:RunIdSchema}).parse(row).record_key);
-      return this.lifecycleArchive(true).groups(query,deletedRunIds);
-    });
-  }
-
-  readArchiveDeletion(runIdInput: string) {
-    const runId = RunIdSchema.parse(runIdInput);
-    return this.withAuthorityReadSnapshot(() => {
-      const receipt = this.authority.deletedRuns.get(runId);
-      if (receipt === undefined) return undefined;
-      if (receipt.origin !== "archive") return {
-        receipt,
-        cleanup: { state: "unavailable" as const, reason: "This run was deleted from the live queue; no saved-report cleanup was recorded." },
-        command: { state: "unavailable" as const, reason: "This deletion has no Archive recovery request." },
-      };
-
-      let cleanup: { state: "pending" | "complete"; fileCount: number } | { state: "unavailable"; reason: string };
-      try {
-        const path = join(dirname(this.#path), "archive.sqlite");
-        if (!existsSync(path)) throw new Error("archive-database-missing");
-        const deletion = this.lifecycleArchive(true).deletion(runId);
-        cleanup = deletion === undefined
-          ? { state: "unavailable", reason: "Archive cleanup evidence is missing." }
-          : {
-              state: deletion.state === "deleted" ? "complete" : "pending",
-              fileCount: deletion.files.length,
-            };
-        if (deletion !== undefined
-          && canonicalJsonStringify(deletion.receipt) !== canonicalJsonStringify(receipt)) {
-          cleanup = { state: "unavailable", reason: "Archive cleanup evidence does not match the canonical deletion." };
-        }
-      } catch {
-        cleanup = { state: "unavailable", reason: "Archive cleanup evidence failed integrity verification." };
-      }
-
-      let command: z.infer<typeof AuthorityCommandRecordSchema> | undefined;
-      let lifecycleAudit: z.infer<typeof AuthorityCommandAuditRecordSchema> | undefined;
-      try {
-        command = this.authority.lifecycleJournal.getCommand(receipt.commandId);
-        lifecycleAudit = this.authority.lifecycleJournal.findAuditByCommand(receipt.commandId);
-      } catch {
-        return { receipt, cleanup, command: { state: "unavailable" as const, reason: "Deletion recovery evidence failed integrity verification." } };
-      }
-      if (command === undefined || !("kind" in command) || command.kind !== "run-lifecycle"
-        || command.operation !== "delete-archived" || lifecycleAudit === undefined
-        || !("kind" in lifecycleAudit) || lifecycleAudit.kind !== "run-lifecycle"
-        || canonicalJsonStringify(lifecycleAudit.request) !== canonicalJsonStringify(command)
-        || lifecycleAudit.result.kind !== "deletion" || !lifecycleAudit.result.runIds.includes(runId)) {
-        return { receipt, cleanup, command: { state: "unavailable" as const, reason: "Deletion recovery evidence is missing or does not match the canonical deletion." } };
-      }
-
-      const request = command.acceptedArchiveDeleteRequest;
-      if (request === undefined) {
-        return { receipt, cleanup, command: { state: "unavailable" as const, reason: "This historical deletion has no authenticated browser recovery request." } };
-      }
-      const operatorCommand = this.authority.commands.get(request.commandId);
-      const operatorAudit = this.authority.commandAudits.findByCommand(request.commandId);
-      if (operatorCommand === undefined && operatorAudit === undefined) {
-        return { receipt, cleanup, command: { state: "pending" as const, request } };
-      }
-      if (operatorCommand === undefined || operatorAudit === undefined
-        || canonicalJsonStringify(operatorCommand) !== canonicalJsonStringify(request)
-        || canonicalJsonStringify(operatorAudit.request) !== canonicalJsonStringify(request)
-        || operatorAudit.result.commandId !== request.commandId
-        || (operatorAudit.result.state !== "applied" && operatorAudit.result.state !== "already-applied")
-        || !operatorAudit.result.affectedTargets.some(target => target.family === "run" && target.runId === request.target.archivedRunId)) {
-        return { receipt, cleanup, command: { state: "unavailable" as const, reason: "The final operator command audit does not match the accepted deletion request." } };
-      }
-      return { receipt, cleanup, command: { state: "complete" as const, commandId: request.commandId, completedAt: operatorAudit.completedAt } };
-    });
-  }
-
-  settleArchivedDeletion(runId: string) {
-    // Hold the authority write lock through file inspection and unlinking to fence another claimant.
-    return this.withAuthorityTransaction(() => {
-      const receipt = this.authority.deletedRuns.get(runId);
-      if (receipt === undefined || receipt.origin !== "archive") throw new Error("archive-deletion-receipt-missing");
-      const archive = this.lifecycleArchive(true);
-      const report = archive.read(runId);
-      if (report !== undefined) archive.beginDelete(receipt,report.digest);
-      const pendingDigests = new Set(this.#database.prepare("SELECT record_json FROM version_changes WHERE json_extract(record_json,'$.pendingCaptures') IS NOT NULL").all().flatMap(raw => {
-        const change = VersionChangeSchema.parse(JSON.parse(JsonRowSchema.parse(raw).record_json));
-        return (change.pendingCaptures ?? []).flatMap(capture => ArchiveReportSchema.parse(JSON.parse(capture.reportJson)).content.files.map(file => file.digest));
-      }).concat(this.#database.prepare("SELECT record_json FROM runtime_version_changes WHERE json_extract(record_json,'$.pendingCaptures') IS NOT NULL").all().flatMap(raw => {
-        const change = RuntimeVersionChangeSchema.parse(JSON.parse(JsonRowSchema.parse(raw).record_json));
-        return (change.pendingCaptures ?? []).flatMap(capture => ArchiveReportSchema.parse(JSON.parse(capture.reportJson)).content.files.map(file => file.digest));
-      })));
-      archive.settleDelete(runId, undefined, pendingDigests);
-    });
-  }
-
-  readVersionChange(changeId: string) {
-    const row = this.#readRecord("version_changes", changeId, VersionChangeSchema);
-    if (row !== undefined) for (const capture of row.pendingCaptures ?? []) parsePendingCapture(row, capture);
-    return row;
-  }
-
-  readRuntimeVersionAuthority(): RuntimeVersionAuthority {
-    return this.withAuthorityReadSnapshot(() => readStoredRuntimeVersionAuthority(this.#database));
-  }
-
-  readRuntimeVersionAdoption(runId: string) {
-    return this.withAuthorityReadSnapshot(() => this.#readRecord("runtime_version_adoptions", RunIdSchema.parse(runId), RuntimeVersionAdoptionSchema));
-  }
-
-  readRuntimeVersionChange(changeId: string): RuntimeVersionChange | undefined {
-    return this.withAuthorityReadSnapshot(() => this.#readRecord("runtime_version_changes", changeId, RuntimeVersionChangeSchema));
-  }
-
-  readRuntimeVersionIndex() {
-    return this.withAuthorityReadSnapshot(() => ({
-      authority: readStoredRuntimeVersionAuthority(this.#database),
-      changes: this.#database.prepare("SELECT record_json FROM runtime_version_changes ORDER BY created_at DESC, record_key DESC").all()
-        .map(raw => RuntimeVersionChangeSchema.parse(JSON.parse(JsonRowSchema.parse(raw).record_json))),
-    }));
-  }
-
-  writeRuntimeVersionChange(input: RuntimeVersionChange): RuntimeVersionChange {
-    const change = RuntimeVersionChangeSchema.parse(input);
-    return this.#authorityWrite("runtime_version_changes", () => {
-      const previous = this.#readRecord("runtime_version_changes", change.changeId, RuntimeVersionChangeSchema);
-      if (previous === undefined) {
-        if (change.state !== "planned") throw new Error("runtime-version-review-required");
-        const review = this.reviewRuntimeVersionTransition(change.scope);
-        if (review.revision !== change.authorityRevision
-          || review.review.membershipDigest !== change.membershipDigest
-          || canonicalJsonStringify(review.transition.after) !== canonicalJsonStringify(change.after)) {
-          throw new Error("runtime-version-review-stale");
-        }
-      } else {
-        if (previous.reviewFingerprint !== change.reviewFingerprint
-          || previous.state === "applied"
-          || (previous.state === "planned" && change.state === "planned")
-          || (previous.state === "applying" && change.state === "planned")
-          || previous.completedRunIds.some(id => !change.completedRunIds.includes(id))) {
-          throw new Error("runtime-version-change-conflict");
-        }
-        if (previous.claimedAt !== undefined && previous.claimedAt !== change.claimedAt) {
-          throw new Error("runtime-version-change-conflict");
-        }
-        if (previous.applicationCommandId !== undefined && previous.applicationCommandId !== change.applicationCommandId) {
-          throw new Error("runtime-version-application-command-conflict");
-        }
-        if (previous.applicationRequestFingerprint !== undefined && previous.applicationRequestFingerprint !== change.applicationRequestFingerprint) {
-          throw new Error("runtime-version-application-command-conflict");
-        }
-        for (const capture of previous.pendingCaptures ?? []) {
-          const nextCapture = change.pendingCaptures?.find(row => row.runId === capture.runId);
-          if (nextCapture === undefined && !change.completedRunIds.includes(capture.runId)) {
-            throw new Error("runtime-version-capture-lost");
-          }
-          if (nextCapture !== undefined && nextCapture.reportJson !== capture.reportJson) {
-            throw new Error("runtime-version-capture-conflict");
-          }
-        }
-      }
-      if (change.state === "applying") {
-        const authority = readStoredRuntimeVersionAuthority(this.#database);
-        if (authority.claim?.changeId !== change.changeId) throw new Error("runtime-version-claim-mismatch");
-      }
-      for (const capture of change.pendingCaptures ?? []) {
-        const report = ArchiveReportSchema.parse(JSON.parse(capture.reportJson));
-        const member = change.members.find(row => row.runId === capture.runId);
-        const expected = change.before.workflows.find(row => row.workflowId === member?.workflowId);
-        if (member === undefined || expected === undefined || member.state !== "terminal"
-          || report.content.runId !== capture.runId
-          || report.content.transferId !== deriveStableUuid("archive-transfer", `${change.changeId}:${capture.runId}`)
-          || report.content.runtimeVersion?.state !== member.attribution
-          || canonicalJsonStringify(report.content.runtimeVersion.dashboard) !== canonicalJsonStringify(change.before.dashboard)
-          || canonicalJsonStringify(report.content.runtimeVersion.workflow) !== canonicalJsonStringify(expected.version)) {
-          throw new Error("runtime-version-capture-member-mismatch");
-        }
-        const old = previous?.pendingCaptures?.find(row => row.runId === capture.runId);
-        if (old === undefined) for (const file of report.content.files) this.lifecycleArchive(true).readFile(file);
-      }
-      for (const runId of change.completedRunIds) {
-        const report = this.lifecycleArchive(true).readPublished(runId);
-        const transfer = this.transferredRun(runId);
-        if (report === undefined || transfer === undefined || report.content.runId !== runId
-          || report.content.runtimeVersion === undefined
-          || report.content.transferId !== deriveStableUuid("archive-transfer", `${change.changeId}:${runId}`)
-          || report.digest !== transfer.reportDigest || report.content.sourceDigest !== transfer.sourceDigest) {
-          throw new Error("runtime-version-progress-unverified");
-        }
-      }
-      const result = this.#database.prepare("INSERT INTO runtime_version_changes VALUES (?,?,?) ON CONFLICT(record_key) DO UPDATE SET record_json=excluded.record_json")
-        .run(change.changeId, canonicalJsonStringify(change), change.reviewedAt);
-      return { result: change, changes: sqliteChanges(result.changes) };
-    });
-  }
-
-  reviewRuntimeVersionTransition(scope: z.input<typeof RuntimeVersionScopeSchema>) {
-    return this.withAuthorityReadSnapshot(() => {
-      const authority = readStoredRuntimeVersionAuthority(this.#database);
-      if (authority.claim !== undefined) throw new Error("runtime-version-claim-active");
-      if (this.#database.prepare("SELECT record_key FROM version_changes WHERE json_extract(record_json,'$.state')='applying' LIMIT 1").get() !== undefined) {
-        throw new Error("runtime-version-legacy-change-active");
-      }
-      const transition = planRuntimeVersionTransition(authority.state, scope);
-      const runs = transition.affectedWorkflowIds.flatMap(workflowId => this.authority.runs.listByWorkflow(workflowId));
-      const review = reviewRuntimeVersionTransition({ transition, runs,
-        adoption: runId => this.#readRecord("runtime_version_adoptions", RunIdSchema.parse(runId), RuntimeVersionAdoptionSchema),
-      });
-      return Object.freeze({ revision: authority.revision, transition, review });
-    });
-  }
-
-  registerRuntimeVersionWorkflows(workflowIds: readonly string[]): RuntimeVersionAuthority {
-    return this.#authorityWrite("runtime_versions", () => {
-      const before = readStoredRuntimeVersionAuthority(this.#database);
-      const result = registerStoredRuntimeVersionWorkflows(this.#database, workflowIds, this.#now());
-      return { result, changes: result.revision === before.revision ? 0 : 1 };
-    });
-  }
-
-  claimRuntimeVersionTransition(input: { changeId: string; expectedRevision: number; workflowIds: readonly string[]; after: RuntimeVersionState; expectedMembershipDigest: string }): RuntimeVersionAuthority {
-    return this.#authorityWrite("runtime_versions", () => {
-      const review = this.reviewRuntimeVersionTransition(input.workflowIds.length === this.authority.runtimeVersions.get().state.workflows.length
-        ? { kind: "dashboard" }
-        : { kind: "workflows", workflowIds: [...input.workflowIds] });
-      if (review.revision !== input.expectedRevision || review.review.membershipDigest !== input.expectedMembershipDigest) {
-        throw new Error("runtime-version-review-stale");
-      }
-      if (review.review.blockers.length > 0) throw new Error("runtime-version-active-blockers");
-      return { result: claimStoredRuntimeVersionTransition(this.#database, { ...input, now: this.#now() }), changes: 1 };
-    });
-  }
-
-  publishRuntimeVersionTransition(input: { changeId: string; expectedRevision: number; next: RuntimeVersionState }): RuntimeVersionAuthority {
-    return this.#authorityWrite("runtime_versions", () => ({
-      result: publishStoredRuntimeVersionTransition(this.#database, { ...input, now: this.#now() }), changes: 1,
-    }));
-  }
-
-  writeVersionChange(input: VersionChange) {
-    const change = VersionChangeSchema.parse(input);
-    return this.#authorityWrite("version_changes", () => {
-      const previous = this.readVersionChange(change.changeId);
-      if (previous !== undefined) {
-        if(canonicalJsonStringify(previous)===canonicalJsonStringify(change))return {result:previous,changes:0};
-        if(previous.reviewFingerprint!==change.reviewFingerprint || canonicalJsonStringify(versionChangeReview(previous))!==canonicalJsonStringify(versionChangeReview(change)))throw new Error("version-change-fence-conflict");
-        if(previous.state==="applied"||previous.state==="superseded")throw new Error("version-change-fence-conflict");
-        const valid=previous.state==="planned" ? ["applying","superseded"].includes(change.state) : ["applying","applied"].includes(change.state);
-        if(!valid || previous.completedRunIds.some(id=>!change.completedRunIds.includes(id)))throw new Error("version-change-fence-conflict");
-        if(previous.application!==undefined) {
-          const {completedAt,...application}=change.application??{};void completedAt;
-          if(canonicalJsonStringify(previous.application)!==canonicalJsonStringify(application))throw new Error("version-change-claim-conflict");
-        }
-      } else if(change.state!=="planned")throw new Error("version-change-review-required");
-      if(previous===undefined || (previous.state==="planned"&&change.state==="applying")) {
-        for(const member of change.members) {
-          const snapshot=this.captureLifecycleSource(member.runId);
-          if((change.scope.kind==="workflows" && !change.scope.workflowIds.includes(snapshot.run.envelope.workflow)) || snapshot.run.version!==member.version || lifecycleSourceDigest(snapshot)!==member.sourceDigest)throw new Error("version-change-source-stale");
-        }
-      }
-      for (const capture of change.pendingCaptures ?? []) {
-        const report = parsePendingCapture(change, capture);
-        const old = previous?.pendingCaptures?.find(value => value.runId === capture.runId);
-        if (previous?.state === "applying" && old?.reportJson !== capture.reportJson) throw new Error("version-change-capture-conflict");
-        if (old === undefined) for (const file of report.content.files) this.lifecycleArchive(true).readFile(file);
-      }
-      if (previous?.pendingCaptures !== undefined && change.pendingCaptures === undefined
-        && change.state !== "applied") throw new Error("version-change-capture-conflict");
-      if(change.application!==undefined && previous?.application===undefined) {
-        const application=change.application;
-        const existing=this.#database.prepare("SELECT record_json FROM commands WHERE record_key=?").get(application.commandId);
-        if(existing!==undefined) {
-          const parsed=CommandRequestSchema.safeParse(JSON.parse(JsonRowSchema.parse(existing).record_json));
-          if(!parsed.success || parsed.data.family!=="version-archive"||parsed.data.type!=="apply-version-bump"
-            || parsed.data.target.versionPlanId!==change.changeId || parsed.data.payload.planFingerprint!==change.reviewFingerprint
-            || parsed.data.requestedBy!==application.actorId
-            ||(application.requestFingerprint!==undefined && application.requestFingerprint!==sha256Hex(canonicalJsonStringify(parsed.data))))throw new CommandIdentityConflictError();
-        }
-        if(this.#credentialCommandIds(application.commandId) || this.#database.prepare("SELECT record_key FROM version_changes WHERE json_extract(record_json,'$.application.commandId')=? AND record_key<>? LIMIT 1").get(application.commandId,change.changeId)!==undefined)throw new CommandIdentityConflictError();
-      }
-      if(change.application!==undefined && (change.application.appVersion!==change.observedAppVersion
-        || canonicalJsonStringify(change.application.targets)!==canonicalJsonStringify(change.targets)))throw new Error("version-change-review-required");
-      for(const runId of change.completedRunIds) {
-        const member=change.members.find(candidate=>candidate.runId===runId),transfer=this.transferredRun(runId);
-        const report=this.lifecycleArchive(true).readPublished(runId);
-        if(member===undefined||transfer===undefined||member.sourceDigest!==transfer.sourceDigest||member.version!==transfer.run.version
-          || report===undefined||report.content.versionChange===undefined||canonicalJsonStringify(report.content.versionChange)!==canonicalJsonStringify(archiveVersionChange(change)))throw new Error("version-change-progress-unverified");
-      }
-      this.#database.prepare("INSERT INTO version_changes VALUES (?,?,?) ON CONFLICT(record_key) DO UPDATE SET record_json=excluded.record_json")
-        .run(change.changeId,canonicalJsonStringify(change),this.#now());
-      return {result:change,changes:1};
-    });
-  }
-
-  claimVersionChange(input:{changeId:string;reviewFingerprint:string;application:NonNullable<VersionChange["application"]>;pendingCaptures?:VersionChange["pendingCaptures"]}) {
-    return this.withAuthorityTransaction(()=>{
-      if (readStoredRuntimeVersionAuthority(this.#database).claim !== undefined) throw new Error("runtime-version-claim-active");
-      const row=this.readVersionChange(input.changeId);
-      if(row===undefined||row.reviewFingerprint!==input.reviewFingerprint)throw new Error("version-change-review-required");
-      if(row.state==="superseded")throw new Error("version-change-fence-conflict");
-      if(row.application!==undefined) {
-        const {completedAt,...application}=row.application;void completedAt;
-        if(canonicalJsonStringify(application)!==canonicalJsonStringify(input.application))throw new Error("version-change-claim-conflict");
-        return row;
-      }
-      // Establish archive custody even for a capture with no attachments or published rows.
-      if (row.members.length > 0) this.lifecycleArchive();
-      return this.writeVersionChange({...row,state:"applying",application:input.application,
-        ...(input.pendingCaptures === undefined ? {} : {pendingCaptures:input.pendingCaptures})});
-    });
-  }
-
-  replaceVersionChange(priorId:string,expectedFingerprint:string,replacement:VersionChange) {
-    return this.withAuthorityTransaction(()=>{
-      const prior=this.readVersionChange(priorId);
-      if(prior===undefined||prior.reviewFingerprint!==expectedFingerprint||prior.state!=="planned"
-        || replacement.supersedes!==priorId||replacement.changeId===priorId||replacement.state!=="planned")throw new Error("version-change-replacement-conflict");
-      this.writeVersionChange({...prior,state:"superseded",supersededBy:replacement.changeId});
-      return this.writeVersionChange(replacement);
-    });
-  }
-
-  historicalArchiveSource() {
-    return this.withAuthorityReadSnapshot(()=>{
-      const plans=this.authority.versionPlans.list(),applications=this.authority.versionBumpApplications.list();
-      for(const application of applications)if(!plans.some(plan=>plan.versionPlanId===application.versionPlanId))throw new Error("archive-historical-plan-missing");
-      const archives=this.authority.archivedRuns.list().map(archive=>({archive,source:this.captureLifecycleSource(archive.runId)}));
-      const source={plans,applications,archives};
-      return {source,digest:sha256Hex(canonicalJsonStringify(source))};
-    });
-  }
-
-  historicalVersionChanges() {
-    return this.withAuthorityReadSnapshot(()=>this.#database.prepare("SELECT record_json FROM version_changes ORDER BY record_key").all()
-      .map(row=>RetainedVersionChangeSchema.parse(JSON.parse(JsonRowSchema.parse(row).record_json))));
-  }
-
-  captureLifecycleSource(runIdInput: string) {
-    const runId = RunIdSchema.parse(runIdInput);
-    return this.withAuthorityReadSnapshot(() => {
-      const run = this.authority.runs.get(runId);
-      if (run === undefined) throw new Error("archive-source-run-missing");
-      const records: {table: string; rows: {key:string;json:string}[]}[] = [];
-      const collect = (table: string, sql: string, ...parameters: string[]) => {
-        const rows = this.#database.prepare(sql).all(...parameters).map((raw) => {
-          const row = z.strictObject({record_key:z.string(),record_json:z.string()}).parse(raw);
-          return {key:row.record_key,json:row.record_json};
-        });
-        rows.sort((a,b) => a.key.localeCompare(b.key));
-        records.push({table,rows});
-      };
-      collect("workflow_runs","SELECT record_key,record_json FROM workflow_runs WHERE record_key=?",runId);
-      collect("run_results","SELECT record_key,record_json FROM run_results WHERE record_key=?",runId);
-      collect("run_receipts","SELECT record_key,record_json FROM run_receipts WHERE run_id=?",runId);
-      collect("run_failures","SELECT record_key,json_object('evidence',json(record_json),'resolution',json(resolution_json)) AS record_json FROM run_failures WHERE run_id=?",runId);
-      collect("timeline_events","SELECT record_key,record_json FROM timeline_events WHERE run_id=?",runId);
-      collect("diagnostic_snapshots","SELECT record_key,record_json FROM diagnostic_snapshots WHERE run_id=?",runId);
-      collect("diagnostic_files","SELECT record_key,record_json FROM diagnostic_files WHERE bundle_id IN (SELECT record_key FROM diagnostic_snapshots WHERE run_id=?)",runId);
-      collect("run_checkpoints","SELECT record_key,record_json FROM run_checkpoints WHERE workflow=? AND item_id=?",run.envelope.workflow,run.envelope.itemId);
-      collect("run_operations","SELECT record_key,record_json FROM run_operations WHERE json_extract(record_json,'$.workflowId')=? AND json_extract(record_json,'$.itemId')=?",run.envelope.workflow,run.envelope.itemId);
-      collect("run_operation_attempts","SELECT record_key,record_json FROM run_operation_attempts WHERE write_intent_id IN (SELECT record_key FROM run_operations WHERE json_extract(record_json,'$.workflowId')=? AND json_extract(record_json,'$.itemId')=?)",run.envelope.workflow,run.envelope.itemId);
-      collect("settings_snapshots","SELECT record_key,record_json FROM settings_snapshots WHERE record_key=?",run.envelope.configSnapshotId);
-      if (hasHistoricalArchiveTables(this.#database)) {
-      collect("archived_runs","SELECT record_key,record_json FROM archived_runs WHERE record_key=?",runId);
-      const historical=this.authority.archivedRuns.get(runId);
-      if(historical!==undefined)this.authority.archivedRuns.transactions(runId);
-      collect("version_bump_applications","SELECT record_key,record_json FROM version_bump_applications WHERE record_key IN (SELECT application_id FROM archived_runs WHERE record_key=?)",runId);
-      collect("version_plans","SELECT record_key,record_json FROM version_plans WHERE record_key IN (SELECT version_plan_id FROM version_bump_applications WHERE record_key IN (SELECT application_id FROM archived_runs WHERE record_key=?))",runId);
-      collect("archive_transactions","SELECT record_key,json_object('json',transactions_json,'digest',transactions_digest) AS record_json FROM archived_runs WHERE record_key=?",runId);
-      } else {
-        for (const table of ["archived_runs","version_plans","version_bump_applications","archive_transactions"]) records.push({table,rows:[]});
-      }
-      collect("delegation_dependencies","SELECT record_key,record_json FROM delegation_dependencies WHERE json_extract(record_json,'$.parentRunId')=? OR json_extract(record_json,'$.childRunId')=?",runId,runId);
-      collect("run_delegations","SELECT record_key,record_json FROM run_delegations WHERE json_extract(record_json,'$.parentRunId')=?",runId);
-      collect("dryrun_results","SELECT record_key,record_json FROM dryrun_results WHERE run_id=?",runId);
-      collect("checkpoint_payloads","SELECT record_key,record_json FROM checkpoint_payloads WHERE json_extract(record_json,'$.runId')=?",runId);
-      collect("commands","SELECT record_key,record_json FROM commands WHERE EXISTS (SELECT 1 FROM json_tree(commands.record_json) WHERE key IN ('runId','sourceRunId','archivedRunId') AND value=?)",runId);
-      collect("command_audits","SELECT record_key,record_json FROM command_audits WHERE EXISTS (SELECT 1 FROM json_tree(command_audits.record_json) WHERE key IN ('runId','sourceRunId','archivedRunId') AND value=?)",runId);
-      const notes=readScopedEventStreamLines(dirname(this.#path),"notes",runNotePartitionScope({runId,workflow:run.envelope.workflow,instants:runRecordNoteScopeInstants(run)}));
-      records.push({table:"notes_files",rows:notes.flatMap(line=>{
-        const note=NoteWireSchema.parse(JSON.parse(line.text));
-        if(note.workflow!==line.file.workflow)throw new Error("archive-note-partition-mismatch");
-        if(!("runId" in note) || note.runId!==runId)return [];
-        if(note.workflow!==run.envelope.workflow || note.attempt>run.envelope.attempt)throw new Error("archive-note-owner-mismatch");
-        return [{key:`${line.file.date}:${String(line.lineNumber)}`,json:line.text}];
-      })});
-      return LifecycleSourceSnapshotSchema.parse({run,records});
-    });
-  }
-
-  refreshRunSummaries() {
-    this.#authorityWrite("summary_publication", () => ({
-      result: createRunSummaries(this.#database).refresh(this.getMeta().authorityGeneration + 1, this.#now()), changes: 1,
-    }));
-    return createRunSummaries(this.#database).publication();
   }
 
   summaryWorkflows() {
-    return this.withAuthorityReadSnapshot(()=>createRunSummaries(this.#database).workflows(this.getMeta().authorityGeneration));
+    return this.withAuthorityReadSnapshot(() => { this.#validateExternalQuerySources(); return createRunSummaries(this.#database).workflows(this.getMeta().authorityGeneration) });
   }
 
   queryRunSummaries(query: Parameters<ReturnType<typeof createRunSummaries>["query"]>[1]) {
-    return this.withAuthorityReadSnapshot(() => createRunSummaries(this.#database).query(this.getMeta().authorityGeneration,query));
+    return this.withAuthorityReadSnapshot(() => { this.#validateExternalQuerySources(); return createRunSummaries(this.#database).query(this.getMeta().authorityGeneration,query) });
   }
 
   queryRunCalendar(query: Parameters<ReturnType<typeof createRunSummaries>["calendar"]>[1]) {
-    return this.withAuthorityReadSnapshot(() => createRunSummaries(this.#database).calendar(this.getMeta().authorityGeneration, query));
+    return this.withAuthorityReadSnapshot(() => { this.#validateExternalQuerySources(); return createRunSummaries(this.#database).calendar(this.getMeta().authorityGeneration, query) });
   }
 
   readRunSummaries() {
-    return this.withAuthorityReadSnapshot(() => createRunSummaries(this.#database).read(this.getMeta().authorityGeneration));
+    return this.withAuthorityReadSnapshot(() => { this.#validateExternalQuerySources(); return createRunSummaries(this.#database).read(this.getMeta().authorityGeneration) });
   }
 
   registerRunSearchDeclarations(input: unknown): void {
-    this.#authorityWrite("run_search_declarations", () => ({ result: undefined,
-      changes: createRunSearchIndex(this.#database).register(input, this.#now()) }));
+    this.#withTransaction("projection", () => { createRunSearchIndex(this.#database).register(input, this.#now()); });
   }
 
   rebuildRunSearchIndex(input: unknown) {
-    return this.#authorityWrite("run_search_index", () => ({
-      result: createRunSearchIndex(this.#database).rebuild(input, this.getMeta().authorityGeneration + 1, this.#now()), changes: 1,
-    }));
+    return this.#withTransaction("projection", () => createRunSearchIndex(this.#database).rebuild(input, this.getMeta().authorityGeneration, this.#now()));
   }
 
   withAuthorityTransaction<Result>(work: (repositories: AuthorityRepositories) => Result): Result {
@@ -3509,24 +1834,9 @@ export class AuthorityDatabase implements Disposable {
     if (this.#transactionDepth === 0 || this.#transactionMode !== "authority") {
       throw new Error("command identity admission requires an authority transaction");
     }
-    if (this.getMeta().schemaVersion >= 53) {
+    {
       const control = this.authority.workerControls.get(record.commandId);
       if (control !== undefined && canonicalJsonStringify(control.request) !== canonicalJsonStringify(record)) throw new CommandIdentityConflictError();
-    }
-    const deletion = this.authority.lifecycleJournal.getCommand(lifecycleCommandId("operator-delete-archive", record.commandId));
-    if (deletion !== undefined && (!("kind" in deletion) || deletion.kind !== "run-lifecycle"
-      || deletion.operation !== "delete-archived" || !("family" in record) || record.family !== "version-archive" || record.type !== "delete-archived-run"
-      || deletion.requestFingerprint !== sha256Hex(`hrauto:run-lifecycle-command:v1\0delete-archived\0${canonicalJsonStringify(record)}`)
-      || (deletion.acceptedArchiveDeleteRequest !== undefined
-        && canonicalJsonStringify(deletion.acceptedArchiveDeleteRequest) !== canonicalJsonStringify(record)))) throw new CommandIdentityConflictError();
-    const claims=this.#database.prepare("SELECT record_json FROM version_changes WHERE json_extract(record_json,'$.application.commandId')=?").all(record.commandId);
-    if(claims.length>1)throw new CommandIdentityConflictError();
-    if(claims.length===1) {
-      const change=VersionChangeSchema.parse(JSON.parse(JsonRowSchema.parse(claims[0]).record_json));
-      if(!("family" in record)||record.family!=="version-archive"||record.type!=="apply-version-bump"
-        ||record.target.versionPlanId!==change.changeId||record.payload.planFingerprint!==change.reviewFingerprint
-        ||record.requestedBy!==change.application?.actorId
-        ||(change.application?.requestFingerprint!==undefined && change.application.requestFingerprint!==sha256Hex(canonicalJsonStringify(record))))throw new CommandIdentityConflictError();
     }
     const parent = "kind" in record && record.kind === "bulk-parent";
     if (parentCommandId !== undefined) {
@@ -3539,8 +1849,8 @@ export class AuthorityDatabase implements Disposable {
     const existingParentId = this.authority.commands.parentId(record.commandId);
     if (existingParentId !== undefined && existingParentId !== (parentCommandId ?? null)) throw new CommandIdentityConflictError("command-group different-parent replay");
     // A reserved derived child cannot enter through the standalone door, even before journaling.
-    for (const row of this.#database.prepare("SELECT record_json FROM commands WHERE family = 'bulk-parent'").all()) {
-      const accepted = BulkParentCommandRecordSchema.parse(JSON.parse(JsonRowSchema.parse(row).record_json)).acceptance;
+    for (const row of this.#database.prepare("SELECT request_json AS payload_json FROM commands WHERE family = 'bulk-parent'").all()) {
+      const accepted = BulkParentCommandRecordSchema.parse(JSON.parse(JsonRowSchema.parse(row).payload_json)).acceptance;
       if (accepted.request.targets.some((target) => deriveBulkChildCommandId(accepted.bulkCommandId, target.runId) === record.commandId)
         && parentCommandId !== accepted.bulkCommandId) throw new CommandIdentityConflictError("command-group child identity requires its parent");
     }
@@ -3553,8 +1863,8 @@ export class AuthorityDatabase implements Disposable {
     }
     const protectedCommand = "family" in record && record.family === "settings" && record.type === "apply-protected-settings";
     if (!protectedCommand && this.#credentialCommandIds(record.commandId)) throw new CommandIdentityConflictError();
-    const row = this.#database.prepare("SELECT record_json FROM commands WHERE record_key = ?").get(record.commandId);
-    if (row !== undefined && canonicalJsonStringify(JSON.parse(JsonRowSchema.parse(row).record_json) as unknown) !== canonicalJsonStringify(record)) {
+    const row = this.#database.prepare("SELECT request_json AS payload_json FROM commands WHERE id = ?").get(record.commandId);
+    if (row !== undefined && canonicalJsonStringify(JSON.parse(JsonRowSchema.parse(row).payload_json) as unknown) !== canonicalJsonStringify(record)) {
       if ("family" in record && (record.family === "settings" || record.family === "failure-resolution")) throw new CommandIdentityConflictError();
       throw new Error(`command id ${record.commandId} was reused with different content`);
     }
@@ -3571,14 +1881,10 @@ export class AuthorityDatabase implements Disposable {
   }
 
 
-  createActivityPersonPseudonymBackfillWriteCapability(_pseudonyms: ActivityPersonPseudonymDomain): ActivityPersonPseudonymBackfillWriteCapability {
-    throw new Error("activity-person-pseudonyms-retired");
-  }
-
   canonicalPerson(runId: string) {
     return this.withAuthorityReadSnapshot(() => {
       const run=this.authority.runs.get(runId);
-      if(run===undefined || this.authority.archivedRuns.isArchived(runId)) return {state:"unavailable" as const,reason:"canonical-live-run-unavailable"};
+      if(run===undefined) return {state:"unavailable" as const,reason:"canonical-live-run-unavailable"};
       return deriveCanonicalPerson(run,this.authority.runResults.get(runId) ?? null);
     });
   }
@@ -3587,34 +1893,17 @@ export class AuthorityDatabase implements Disposable {
     return this.#withReadSnapshot(read);
   }
 
-  #retainedTerminalSnapshot(runId: string) {
-    const transfer = this.transferredRun(runId);
-    if (transfer === undefined) return undefined;
-    const report = this.lifecycleArchive(true).verified(runId, transfer.reportDigest);
-    const source = report.content.sources.find(value => value.kind === "authority-snapshot");
-    if (source === undefined) throw new Error("archive-terminal-source-missing");
-    const snapshot = LifecycleSourceSnapshotSchema.parse(JSON.parse(source.json));
-    if (canonicalJsonStringify(snapshot.run) !== canonicalJsonStringify(transfer.run)
-      || snapshot.run.lifecycle.state !== "terminal" || snapshot.run.completion === undefined) {
-      throw new Error("archive-terminal-source-mismatch");
-    }
-    return snapshot;
-  }
-
   terminalizeFailure(descriptor: AnyWorkflowDescriptor, input: unknown): FailureTerminalizationReport {
     const request = FailureTerminalizationRequestSchema.parse(input);
     return this.withAuthorityTransaction(() => {
-      const live = this.#readRunRow(request.failure.runId);
-      const retained = live === undefined ? this.#retainedTerminalSnapshot(request.failure.runId) : undefined;
-      const current = live ?? retained?.run;
+      const current = this.#readRunRow(request.failure.runId);
       if (current === undefined) throw new Error(`run ${request.failure.runId} does not exist`);
       this.#assertTerminalAuthorizationMatchesRun(request.authorization, current);
       const existingAuthorization = this.#completionAuthorization(current);
-      const captured = retained?.records.find(group => group.table === "run_failures")?.rows.find(row => row.key === request.failure.failureId);
-      const existing = retained === undefined ? this.#readRecord("run_failures", request.failure.failureId, FailureRecordSchema)
-        : captured === undefined ? undefined : z.object({ evidence: FailureRecordSchema }).parse(JSON.parse(captured.json)).evidence;
-      if (existingAuthorization !== undefined || existing !== undefined) {
-        if (existingAuthorization === undefined || existing === undefined) {
+      const existing = this.#readRecord("run_failures", request.failure.failureId, FailureRecordSchema);
+      const existingResult = this.#readRecord("run_results", request.failure.runId, RunResultRecordSchema);
+      if (existingAuthorization !== undefined || existing !== undefined || existingResult !== undefined) {
+        if (existingAuthorization === undefined || existing === undefined || existingResult === undefined) {
           throw new Error(`run ${request.failure.runId} has a partial failure terminal settlement`);
         }
         if (canonicalJsonStringify(existingAuthorization)
@@ -3626,6 +1915,11 @@ export class AuthorityDatabase implements Disposable {
         if (canonicalJsonStringify(existing) !== canonicalJsonStringify(request.failure)) {
           throw new Error(`failure ${request.failure.failureId} already exists with different content`);
         }
+        const expectedResult = createRunTerminalEvidenceResult(current, {
+          kind: "failed-evidence", authorization: request.authorization,
+          failureDigest: deriveTerminalFailureDigest(request.failure),
+        });
+        if (canonicalJsonStringify(existingResult) !== canonicalJsonStringify(expectedResult)) throw new Error("terminal-failure-result-mismatch");
         this.#assertTerminalAuthorizationConsequence(existingAuthorization, current);
         if (current.lifecycle.state !== "terminal"
           || current.lifecycle.errorSummary !== request.failure.summary
@@ -3636,6 +1930,7 @@ export class AuthorityDatabase implements Disposable {
           state: "replayed",
           authorization: existingAuthorization,
           failure: existing,
+          result: existingResult,
           run: current,
         });
       }
@@ -3672,34 +1967,56 @@ export class AuthorityDatabase implements Disposable {
       this.#assertTerminalAuthorizationConsequence(request.authorization, terminal);
       this.#insertFailure(request.failure);
       this.#terminalizationHooks?.afterFailureStorageStep?.("failure");
+      const result = createRunTerminalEvidenceResult(terminal, {
+        kind: "failed-evidence", authorization: request.authorization,
+        failureDigest: deriveTerminalFailureDigest(request.failure),
+      });
+      this.#insertRunResult(result);
+      this.#terminalizationHooks?.afterFailureStorageStep?.("result");
       this.#writeRunRow(terminal, "update");
       this.#terminalizationHooks?.afterFailureStorageStep?.("run");
       return FailureTerminalizationReportSchema.parse({
         state: "applied",
         authorization: request.authorization,
         failure: request.failure,
+        result,
         run: terminal,
       });
     });
   }
 
+  settleLifecycleTerminalEvidence(commandId: string): void {
+    this.withAuthorityTransaction((repositories) => {
+      const command = RunLifecycleCommandRecordSchema.parse(repositories.lifecycleJournal.getCommand(commandId));
+      const audit = RunLifecycleCommandAuditRecordSchema.parse(this.#readRecord("command_audits", commandId, RunLifecycleCommandAuditRecordSchema));
+      if (canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command) || audit.result.kind !== "run") throw new Error("terminal-evidence-command-audit-mismatch");
+      const run = this.#readRunRow(audit.result.runId);
+      if (run === undefined) throw new Error("terminal-evidence-run-missing");
+      if (run.lifecycle.state !== "terminal" || run.lifecycle.outcome === "done" || run.lifecycle.outcome === "failed" || run.lifecycle.outcome === "interrupted") return;
+      if (run.version !== audit.result.appliedVersion) throw new Error("terminal-evidence-run-version-mismatch");
+      const request = z.record(z.string(), z.unknown()).parse(command.request);
+      if (request.runId !== run.envelope.runId || (command.operation !== "transition" && command.operation !== "terminalize" && command.operation !== "requeue")) throw new Error("terminal-evidence-command-target-mismatch");
+      const result = createRunTerminalEvidenceResult(run, {
+        kind: "lifecycle-evidence", outcome: run.lifecycle.outcome,
+        commandId: command.commandId, auditId: audit.auditId,
+        requestFingerprint: command.requestFingerprint, appliedVersion: audit.result.appliedVersion,
+      });
+      const existing = this.#readRecord("run_results", result.runId, RunResultRecordSchema);
+      if (existing === undefined) this.#insertRunResult(result);
+      else if (canonicalJsonStringify(existing) !== canonicalJsonStringify(result)) throw new Error("terminal-evidence-result-mismatch");
+      assertTerminalEvidenceOwner(this.#database,result);
+    });
+  }
+
   terminalizeSuccess(input: unknown, factoryAuthorization?: object): SuccessTerminalizationReport {
-    const replayInput = SuccessTerminalizationReplayInputSchema.parse(input);
-    const historical = "outbox" in replayInput ? replayInput : undefined;
-    const { outboxId: _outboxId, ...authorization } = historical === undefined
-      ? { ...replayInput.authorization, outboxId: undefined } : historical.authorization;
-    const request = SuccessTerminalizationRequestSchema.parse({ result: replayInput.result, authorization });
+    const request = SuccessTerminalizationRequestSchema.parse(input);
     return this.withAuthorityTransaction(() => {
-      const live = this.#readRunRow(request.result.runId);
-      const retained = live === undefined ? this.#retainedTerminalSnapshot(request.result.runId) : undefined;
-      const current = live ?? retained?.run;
+      const current = this.#readRunRow(request.result.runId);
       if (current === undefined) throw new Error(`run ${request.result.runId} does not exist`);
       this.#assertResultMatchesRun(request.result, current);
       this.#assertTerminalAuthorizationMatchesRun(request.authorization, current);
       const existingAuthorization = this.#completionAuthorization(current);
-      const captured = retained?.records.find(group => group.table === "run_results")?.rows.find(row => row.key === request.result.runId);
-      const existingResult = retained === undefined ? this.#readRecord("run_results", request.result.runId, RunResultRecordSchema)
-        : captured === undefined ? undefined : RunResultRecordSchema.parse(JSON.parse(captured.json));
+      const existingResult = this.#readRecord("run_results", request.result.runId, RunResultRecordSchema);
       if (existingAuthorization !== undefined || existingResult !== undefined) {
         if (existingAuthorization === undefined || existingResult === undefined) {
           throw new Error(`run ${request.result.runId} has a partial completion/result settlement`);
@@ -3712,19 +2029,6 @@ export class AuthorityDatabase implements Disposable {
         }
         if (canonicalJsonStringify(existingResult) !== canonicalJsonStringify(request.result)) {
           throw new Error(`run result ${request.result.runId} already exists with different content`);
-        }
-        if (historical !== undefined) {
-          const evidence = current.completion?.historical;
-          if (evidence === undefined || evidence.outboxJson === undefined
-            || canonicalJsonStringify(historical.authorization) !== canonicalJsonStringify(HistoricalTerminalAuthorizationSchema.parse(JSON.parse(evidence.authorizationJson)))) {
-            throw new Error("historical terminal replay authorization differs");
-          }
-          const receipt = HistoricalTerminalOutboxRecordSchema.parse(JSON.parse(evidence.outboxJson));
-          if (canonicalJsonStringify(historical.outbox) !== canonicalJsonStringify({ ...receipt, projection: { state: "pending" } })) {
-            throw new Error("historical terminal outbox replay differs");
-          }
-        } else if (current.completion?.historical !== undefined) {
-          throw new Error("historical terminal replay requires its original request identity");
         }
         this.#assertTerminalAuthorizationConsequence(existingAuthorization, current);
         return SuccessTerminalizationReportSchema.parse({
@@ -3740,7 +2044,6 @@ export class AuthorityDatabase implements Disposable {
       if (current.lifecycle.state !== "running") {
         throw new Error(`run ${request.result.runId} is ${current.lifecycle.state}; only running may finish done`);
       }
-      if (historical !== undefined) throw new Error("historical terminal input is replay-only");
       assertWorkflowRunResultAuthorization(factoryAuthorization, request.result, current);
       this.#assertStoredTerminalDependencies(request.result, current);
       this.#assertTerminalClaim(
@@ -3776,6 +2079,53 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
+  resumeRunDeletionFiles(): void {
+    if (this.#transactionDepth !== 0) throw new Error("run-deletion-cleanup-requires-committed-receipt");
+    this.#admission.assertWritable();
+    const pending = this.#database.prepare("SELECT * FROM deleted_runs WHERE cleanup_state='pending' ORDER BY deleted_at,run_id").all()
+      .map(row=>deletedRunFromRow(row).receipt);
+    for (const receipt of pending) this.settleRunDeletionFiles({runId:receipt.runId,commandId:receipt.commandId});
+  }
+
+  settleRunDeletionFiles(input: unknown): "complete" {
+    const request = z.strictObject({runId:RunIdSchema,commandId:CommandIdSchema}).parse(input);
+    if (this.#transactionDepth !== 0) throw new Error("run-deletion-cleanup-requires-committed-receipt");
+    this.#admission.assertWritable();
+    return this.#authorityWrite("deleted_runs",()=>{
+      const raw = this.#database.prepare("SELECT * FROM deleted_runs WHERE run_id=?").get(request.runId);
+      if (raw === undefined) throw new Error("run-deletion-cleanup-receipt-missing");
+      const deletion = deletedRunFromRow(raw);
+      if (deletion.receipt.commandId !== request.commandId) throw new Error("run-deletion-cleanup-command-mismatch");
+      const commandRaw = this.#database.prepare("SELECT * FROM commands WHERE id=?").get(request.commandId);
+      if (commandRaw === undefined) throw new Error("run-deletion-cleanup-command-missing");
+      const command = commandFromRow(commandRaw);
+      const auditRows = this.#database.prepare("SELECT * FROM command_audits WHERE command_id=?").all(request.commandId);
+      if (auditRows.length !== 1) throw new Error("run-deletion-cleanup-audit-missing");
+      const audit = NativeCommandAuditSchema.parse(nativeOrdinaryRecordFromRow("command_audits",auditRows[0]));
+      if (canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)
+        || z.object({state:z.literal("succeeded"),outcome_json:z.string()}).parse(commandRaw).outcome_json !== canonicalJsonStringify(audit)
+        || !("kind" in audit) || audit.kind !== "run-lifecycle" || audit.request.operation !== "delete"
+        || audit.result.kind !== "deletion" || !audit.result.runIds.includes(request.runId)) throw new Error("run-deletion-cleanup-settlement-mismatch");
+      if (deletion.cleanupState === "complete") return {result:"complete" as const,changes:0};
+      validateAuthorityRecordSchemas(this.#database);
+      for (const file of deletion.files.filter(file=>file.disposition === "remove")) {
+        for (const table of AuthorityTableNameSchema.options.filter(table=>table !== "deleted_runs")) {
+          for (const row of this.#database.prepare(`SELECT * FROM ${table}`).iterate()) {
+            for (const [column,value] of Object.entries(row)) {
+              if (column.endsWith("_json") && typeof value === "string"
+                && containsDeletionArtifactReference(JSON.parse(value) as unknown,file.ref)) throw new Error("run-deletion-cleanup-file-still-referenced");
+            }
+          }
+        }
+        removeArtifactDeletionFile(this.#admission,file);
+        this.#lifecycleHooks?.afterDeletionFileRemoved?.({runId:request.runId,digest:file.ref.sha256});
+      }
+      const changed = this.#database.prepare("UPDATE deleted_runs SET cleanup_state='complete' WHERE run_id=? AND cleanup_state='pending'").run(request.runId);
+      if (sqliteChanges(changed.changes) !== 1) throw new Error("run-deletion-cleanup-cas-lost");
+      return {result:"complete" as const,changes:1};
+    });
+  }
+
   commitWriteAttempt(input: unknown, checkpointInput: unknown): AtomicWriteCommitReport {
     const parsed = AtomicWriteCommitInputSchema.parse(input);
     const checkpoint = RunCheckpointRecordSchema.parse(checkpointInput);
@@ -3784,7 +2134,7 @@ export class AuthorityDatabase implements Disposable {
       throw new Error("confirmed-history-checkpoint-outcome-mismatch");
     }
     return this.withAuthorityTransaction(() => {
-      const currentIntent = this.#readRecord("run_operations", parsed.writeIntentId, WriteIntentRecordSchema);
+      const currentIntent = this.#readRecord("write_intents", parsed.writeIntentId, WriteIntentRecordSchema);
       if (currentIntent === undefined) throw new Error(`write intent ${parsed.writeIntentId} does not exist`);
       if (currentIntent.status !== "attempting") {
         throw new Error(`write intent ${parsed.writeIntentId} is ${currentIntent.status}; only attempting may commit`);
@@ -3792,13 +2142,20 @@ export class AuthorityDatabase implements Disposable {
       if (currentIntent.generation !== parsed.generation) {
         throw new Error(`write intent ${parsed.writeIntentId} generation ${String(currentIntent.generation)} does not match commit generation ${String(parsed.generation)}`);
       }
-      const currentAttempt = this.#readRecord("run_operation_attempts", currentIntent.currentAttemptId, WriteAttemptRecordSchema);
+      const currentAttempt = this.#readRecord("write_attempts", currentIntent.currentAttemptId, WriteAttemptRecordSchema);
       if (currentAttempt === undefined) throw new Error(`current write attempt ${currentIntent.currentAttemptId} does not exist`);
       if (currentAttempt.outcome.state !== "attempting") {
         throw new Error(`write attempt ${currentAttempt.writeAttemptId} is ${currentAttempt.outcome.state}; only attempting may commit`);
       }
       WriteFenceInputSchema.parse({ intent: currentIntent, attempt: currentAttempt });
       this.#assertAtomicCommitMatchesIntent(parsed, currentIntent);
+      const run=this.#readRunRow(currentIntent.runId);
+      if(run===undefined || checkpoint.runId!==currentIntent.runId || checkpoint.workflowId!==currentIntent.workflowId
+        || checkpoint.itemId!==currentIntent.itemId || checkpoint.attempt!==currentIntent.runAttempt
+        || run.envelope.workflow!==checkpoint.workflowId || run.envelope.itemId!==checkpoint.itemId
+        || run.envelope.attempt!==checkpoint.attempt || Number(run.claimGeneration)!==Number(checkpoint.claimGeneration)
+        || run.envelope.descriptorVersion!==checkpoint.descriptorVersion || run.envelope.contractFingerprint!==checkpoint.contractFingerprint
+        || run.envelope.traceId!==parsed.transaction.traceId)throw new Error("confirmed-history-checkpoint-owner-mismatch");
 
       const committedIntent = WriteIntentRecordSchema.parse({
         ...currentIntent,
@@ -3818,22 +2175,24 @@ export class AuthorityDatabase implements Disposable {
         recordedAt: parsed.confirmedAt,
       });
 
-      this.#replaceWriteIntent(committedIntent);
+      const history = confirmedOperationTimeline({ ledger: parsed.transaction,
+        span: parsed.committedSpan, checkpoint, writeAttemptId: committedAttempt.writeAttemptId,
+        recordedAt: this.#clock.now().toISOString() });
+      const publication = ConfirmationPublicationSchema.parse({format:1,ledger:parsed.transaction,span:parsed.committedSpan,checkpoint,timeline:history});
+      this.#replaceWriteIntent(committedIntent,publication);
       this.#writeCommitHooks?.afterStorageStep("intent-state");
       this.#replaceWriteAttempt(committedAttempt);
       this.#writeCommitHooks?.afterStorageStep("attempt-state");
       this.authority.runCheckpoints.insert(checkpoint);
       this.#writeCommitHooks?.afterStorageStep("transaction-checkpoint");
-      const history = confirmedOperationTimeline({ ledger: parsed.transaction,
-        span: parsed.committedSpan, checkpoint, writeAttemptId: committedAttempt.writeAttemptId,
-        recordedAt: this.#clock.now().toISOString() });
-      const reconstructed = reconstructConfirmedOperation(this.authority, history);
+      const reconstructed = reconstructConfirmedOperation(timelineEvidenceRepositories(this.#database), history);
       if (canonicalJsonStringify(reconstructed.ledger) !== canonicalJsonStringify(parsed.transaction)
         || canonicalJsonStringify(reconstructed.span) !== canonicalJsonStringify(parsed.committedSpan)) {
         throw new Error("confirmed-history-lossless-reconstruction-failed");
       }
       this.authority.timelineEvents.append(history);
       this.#writeCommitHooks?.afterStorageStep("timeline-event");
+      assertConfirmationPublication(this.#database,history.payload.kind === "operation-confirmed" ? history.payload.facts.writeIntentId : "");
 
       return AtomicWriteCommitReportSchema.parse({
         state: "committed",
@@ -3842,6 +2201,65 @@ export class AuthorityDatabase implements Disposable {
         transaction: parsed.transaction,
         committedSpan: parsed.committedSpan,
       });
+    });
+  }
+
+  commitResolvedParkedWrite(input: unknown): AtomicWriteCommitReport {
+    const request = ResolvedParkedWriteCommitInputSchema.parse(input);
+    const {commit,checkpoint,resolution} = request;
+    return this.withAuthorityTransaction(()=>{
+      const current = this.#requireAttemptBearingWriteIntent(commit.writeIntentId,commit.generation,request.expectedIntentVersion);
+      if (current.status !== "parked") throw new Error("parked-write-resolution-parked-intent-required");
+      const attempt = this.#requireWriteAttempt(current.currentAttemptId);
+      if (attempt.outcome.state !== "parked") throw new Error("parked-write-resolution-original-attempt-required");
+      const run = this.#readRunRow(current.runId);
+      if (run === undefined || run.version !== resolution.expectedRunVersion || run.lifecycle.state !== "parked-write"
+        || run.lifecycle.writeIntentId !== current.writeIntentId || run.lifecycle.intentGeneration !== current.generation) throw new Error("parked-write-resolution-run-cas-mismatch");
+      this.#assertAtomicCommitMatchesIntent(commit,current);
+      if (checkpoint.writtenAt !== commit.confirmedAt || checkpoint.runId !== current.runId
+        || checkpoint.workflowId !== current.workflowId || checkpoint.itemId !== current.itemId
+        || checkpoint.attempt !== current.runAttempt || Number(checkpoint.claimGeneration) !== Number(run.claimGeneration)
+        || canonicalJsonStringify(checkpoint.output.value) !== canonicalJsonStringify(commit.outcome)) throw new Error("parked-write-resolution-checkpoint-mismatch");
+      const {parkedCode:_code,message:_message,authorityReason:_reason,status:_status,...base} = current;
+      const intent = WriteIntentRecordSchema.parse({...base,status:"committed",completionProof:commit.completionProof,
+        confirmedAt:commit.confirmedAt,version:current.version+1,updatedAt:commit.confirmedAt,resolution});
+      authenticateStoredWriteResolution(this.#database,intent);
+      const history = confirmedOperationTimeline({ledger:commit.transaction,span:commit.committedSpan,checkpoint,
+        writeAttemptId:attempt.writeAttemptId,recordedAt:this.#clock.now().toISOString()});
+      const publication = ConfirmationPublicationSchema.parse({format:1,ledger:commit.transaction,span:commit.committedSpan,checkpoint,timeline:history});
+      this.#replaceWriteIntent(intent,publication);
+      this.#writeCommitHooks?.afterStorageStep("intent-state");
+      this.authority.runCheckpoints.insert(checkpoint);
+      this.#writeCommitHooks?.afterStorageStep("transaction-checkpoint");
+      const restored = reconstructConfirmedOperation(timelineEvidenceRepositories(this.#database),history);
+      if (canonicalJsonStringify(restored.ledger) !== canonicalJsonStringify(commit.transaction)
+        || canonicalJsonStringify(restored.span) !== canonicalJsonStringify(commit.committedSpan)) throw new Error("parked-write-resolution-history-mismatch");
+      this.authority.timelineEvents.append(history);
+      this.#writeCommitHooks?.afterStorageStep("timeline-event");
+      assertConfirmationPublication(this.#database,history.payload.kind === "operation-confirmed" ? history.payload.facts.writeIntentId : "");
+      if (canonicalJsonStringify(this.#requireWriteAttempt(attempt.writeAttemptId)) !== canonicalJsonStringify(attempt)) throw new Error("parked-write-resolution-original-attempt-changed");
+      return AtomicWriteCommitReportSchema.parse({state:"committed",intent,attempt,transaction:commit.transaction,committedSpan:commit.committedSpan});
+    });
+  }
+
+  settleResolvedParkedAbsence(input: unknown): WriteIntentRecord {
+    const request = ResolvedParkedWriteAbsenceInputSchema.parse(input);
+    return this.withAuthorityTransaction(()=>{
+      const current = this.#requireAttemptBearingWriteIntent(request.writeIntentId,request.generation,request.expectedIntentVersion);
+      if (current.status !== "parked") throw new Error("parked-write-resolution-parked-intent-required");
+      const attempt = this.#requireWriteAttempt(current.currentAttemptId);
+      const run = this.#readRunRow(current.runId);
+      if (attempt.outcome.state !== "parked" || run === undefined || run.version !== request.resolution.expectedRunVersion
+        || run.lifecycle.state !== "parked-write" || run.lifecycle.writeIntentId !== current.writeIntentId
+        || run.lifecycle.intentGeneration !== current.generation) throw new Error("parked-write-resolution-run-cas-mismatch");
+      const {parkedCode:_code,message:_message,authorityReason:_reason,status:_status,...base} = current;
+      const intent = WriteIntentRecordSchema.parse({...base,status:"retryable",settlement:request.settlement,
+        resolvedAt:request.resolution.resolvedAt,version:current.version+1,updatedAt:request.resolution.resolvedAt,resolution:request.resolution});
+      authenticateStoredWriteResolution(this.#database,intent);
+      this.#replaceWriteIntent(intent);
+      this.#writeCommitHooks?.afterStorageStep("intent-state");
+      if (canonicalJsonStringify(this.#requireWriteAttempt(attempt.writeAttemptId)) !== canonicalJsonStringify(attempt)) throw new Error("parked-write-resolution-original-attempt-changed");
+      return intent;
     });
   }
 
@@ -4003,10 +2421,10 @@ export class AuthorityDatabase implements Disposable {
       if (dependency.state === "asserted") {
 
         const rows = this.#database.prepare(`
-          SELECT record_json FROM run_checkpoints
+          SELECT * FROM run_checkpoints
           WHERE workflow = ? AND item_id = ? AND node_id = ? AND attempt = ? AND run_id = ?
         `).all(result.workflowId, current.envelope.itemId, dependency.nodeId, result.attempt, result.runId);
-        const matching = rows.map((row) => RunCheckpointRecordSchema.parse(JSON.parse(z.strictObject({ record_json: z.string() }).parse(row).record_json)))
+        const matching = rows.map((row) => this.#parseNativeRow("run_checkpoints",row,RunCheckpointRecordSchema))
           .filter((row) => row.assertion?.step === dependency.step
             && row.output.schemaHash === dependency.outputSchemaHash
             && deriveCheckpointOutputDigest(row.output) === dependency.outputDigest);
@@ -4061,7 +2479,7 @@ export class AuthorityDatabase implements Disposable {
 
   #completionAuthorization(run: RunRecord): TerminalAuthorizationRecord | undefined {
     if (run.completion === undefined) return undefined;
-    const { schemaVersion: _version, historical: _history, ...settlement } = run.completion;
+    const { schemaVersion: _version, ...settlement } = run.completion;
     return TerminalAuthorizationRecordSchema.parse({ ...settlement, runId: run.envelope.runId,
       workflowId: run.envelope.workflow, attempt: run.envelope.attempt,
       descriptorVersion: run.envelope.descriptorVersion, contractFingerprint: run.envelope.contractFingerprint });
@@ -4071,9 +2489,9 @@ export class AuthorityDatabase implements Disposable {
     const json = canonicalJsonStringify(record);
     this.#authorityWrite("run_failures", () => {
       const result = this.#database.prepare(`
-        INSERT INTO run_failures (record_key, run_id, fingerprint, record_json, created_at)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(record.failureId, record.runId, record.fingerprint, json, record.occurredAt);
+        INSERT INTO run_failures (id, run_id, fingerprint, code, resolution_json, resolution_version, payload_json, created_at)
+        VALUES (?, ?, ?, ?, '{"status":"unresolved","version":1}', 1, ?, ?)
+      `).run(record.failureId, record.runId, record.fingerprint, record.code, json, record.occurredAt);
       return { result: undefined, changes: sqliteChanges(result.changes) };
     });
   }
@@ -4083,7 +2501,7 @@ export class AuthorityDatabase implements Disposable {
     this.#authorityWrite("run_results", () => {
       const result = this.#database.prepare(`
         INSERT INTO run_results
-          (record_key, workflow, attempt, result_digest, record_json, created_at)
+          (run_id, workflow, attempt, result_digest, payload_json, created_at)
         VALUES (?, ?, ?, ?, ?, ?)
       `).run(
         record.runId, record.workflowId, record.attempt,
@@ -4113,122 +2531,30 @@ export class AuthorityDatabase implements Disposable {
   }
 
   #admitExistingSchema(): number {
-    const applicationId = this.#readIntPragma("application_id");
-    if (applicationId !== AUTHORITY_APPLICATION_ID) {
-      throw new Error(`existing database application_id ${String(applicationId)} is not the HR authority store`);
-    }
-    const userVersion = this.#readIntPragma("user_version");
-    if (userVersion > CURRENT_AUTHORITY_SCHEMA_VERSION) {
-      throw new Error(`authority schema ${String(userVersion)} is newer than supported ${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`);
-    }
-    if (userVersion < 1) throw new Error("existing authority database has no recognized schema version");
-    const meta = this.#readMetaRow();
-    if (meta.schema_version !== userVersion) {
-      throw new Error(`authority schema metadata ${String(meta.schema_version)} disagrees with user_version ${String(userVersion)}`);
-    }
-    if (meta.migration_owner !== null || meta.migration_started_at !== null) {
-      throw new Error(`authority database is locked by migration owner ${String(meta.migration_owner)}`);
-    }
-    if (userVersion > 18 && userVersion < 30) {
-      const existingTables = this.#database.prepare(`
-        SELECT name FROM sqlite_master
-        WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
-        ORDER BY name
-      `).all().map((row) => TableNameRowSchema.parse(row).name);
-      // Admit only the released integrated table lineage; divergent layouts require an explicit conversion decision.
-      const integratedTables = userVersion === 27 || userVersion === 28 || userVersion === 29
-        ? INTEGRATED_AUTHORITY_TABLES_BY_VERSION[userVersion]
-        : undefined;
-      const isExactIntegrated = integratedTables !== undefined
-        && existingTables.length === integratedTables.length
-        && existingTables.every((name, index) => name === integratedTables[index]);
-      if (isExactIntegrated) return userVersion;
-      const rows = this.#database.prepare(`
-        SELECT name FROM sqlite_master
-        WHERE type IN ('table', 'index', 'trigger')
-      `).all();
-      const names = new Set(rows.map((row) => TableNameRowSchema.parse(row).name));
-      const source = names.has("runtime_config")
-        ? "DCC1"
-        : names.has("explorer_edit_reviews")
-          ? "DCC4"
-          : names.has("operator_xlsx_exports")
-            ? "DCR"
-            : "unrecognized";
-      throw new Error(
-        `divergent post-v18 migration suffix: ${source} v${String(userVersion)}; `
-        + "automatic conversion is not authorized",
-      );
-    }
-    return userVersion;
+    if (this.#readIntPragma("application_id") !== AUTHORITY_APPLICATION_ID) throw new Error("authority database is not the HR authority store");
+    const version = this.#readIntPragma("user_version");
+    if (!isCurrentAuthoritySchemaVersion(version)) throw new AuthoritySchemaVersionError(version);
+    if (this.#readMetaRow().schema_version !== version) throw new Error("authority schema metadata disagrees with user_version");
+    return version;
   }
 
-  #initializeSchema(existingVersion: number | undefined, migrationOwner: string): void {
-    if (existingVersion === undefined) {
-      this.#runMigrations(0, migrationOwner);
-      return;
-    }
-    if (!isNormalAuthoritySchemaVersion(existingVersion)) this.#runMigrations(existingVersion, migrationOwner);
+  #initializeSchema(existingVersion: number | undefined, _migrationOwner: string): void {
+    if (existingVersion === undefined) this.#runMigrations();
   }
 
-  #runMigrations(fromVersion: number, migrationOwner: string): void {
-    if (requiresStoppedSystemAuthorityUpgrade(fromVersion)) {
-      throw new Error(
-        `upgrade-required { schemaVersion: ${String(fromVersion)}, floor: ${String(UPGRADE_FLOOR_SCHEMA_VERSION)} }`,
-      );
-    }
+  #runMigrations(): void {
     this.#database.exec("BEGIN EXCLUSIVE");
     try {
-      const migrations = SQLITE_MIGRATIONS.filter(({ version }) => version > fromVersion);
-      for (const migration of migrations) {
-        for (const statement of migration.statements) this.#database.exec(statement);
-        if (fromVersion === 0 && migration.version === CURRENT_AUTHORITY_SCHEMA_VERSION) {
-          const baseline = AuthorityUpgradeRecordSchema.parse({
-            recordKey: randomUUID(),
-            upgradeId: "fresh",
-            phase: "baseline",
-            fromSchemaVersion: 0,
-            toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION,
-            by: LOCAL_OPERATOR_ACTOR_ID,
-            recordedAt: this.#now(),
-          });
-          this.#database.prepare(`
-            INSERT INTO database_upgrades (
-              record_key, upgrade_id, phase, record_json, created_at
-            ) VALUES (?, ?, ?, ?, ?)
-          `).run(
-            baseline.recordKey,
-            baseline.upgradeId,
-            baseline.phase,
-            canonicalJsonStringify(baseline),
-            baseline.recordedAt,
-          );
-        }
-        if (migration.version === 1) {
-          this.#database.prepare(`
-            INSERT INTO authority_meta (
-              singleton_id, schema_version, authority_generation, updated_at,
-              migration_owner, migration_started_at
-            ) VALUES (1, ?, 0, ?, ?, ?)
-          `).run(migration.version, this.#now(), migrationOwner, this.#now());
-        } else {
-          this.#database.prepare(`
-            UPDATE ${databaseStateTable(migration.version)}
-            SET schema_version = ?, migration_owner = ?, migration_started_at = ?, updated_at = ?
-            WHERE singleton_id = 1
-          `).run(migration.version, migrationOwner, this.#now(), this.#now());
-        }
-        this.#database.exec(`PRAGMA user_version = ${String(migration.version)}`);
-      }
+      for (const statement of SQLITE_MIGRATIONS[0].statements) this.#database.exec(statement);
+      const now = this.#now();
+      this.#database.prepare("INSERT INTO database_states(id,schema_version,authority_generation,updated_at,search_generation,search_state) VALUES(1,?,0,?,0,'ready')")
+        .run(CURRENT_AUTHORITY_SCHEMA_VERSION, now);
+      const baseline = AuthorityUpgradeRecordSchema.parse({ recordKey: randomUUID(), upgradeId: "fresh", phase: "baseline",
+        fromSchemaVersion: 0, toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, by: LOCAL_OPERATOR_ACTOR_ID, recordedAt: now });
+      this.#database.prepare("INSERT INTO database_upgrades(id,upgrade_id,phase,backup_digest,payload_json,created_at) VALUES(?,?,?,NULL,?,?)")
+        .run(baseline.recordKey, baseline.upgradeId, baseline.phase, canonicalJsonStringify(baseline), now);
+      this.#database.exec(`PRAGMA user_version = ${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`);
       this.#database.exec(`PRAGMA application_id = ${String(AUTHORITY_APPLICATION_ID)}`);
-      this.#database.prepare(`
-        UPDATE database_state
-        SET migration_owner = NULL, migration_started_at = NULL, updated_at = ?
-        WHERE singleton_id = 1
-      `).run(this.#now());
-      // A fresh authority has an exact empty summary baseline in this same transaction.
-      // Existing missing/stale publications still require explicit recovery.
-      if (fromVersion === 0) createRunSummaries(this.#database).refresh(0, this.#now());
       this.#database.exec("COMMIT");
     } catch (error) {
       this.#database.exec("ROLLBACK");
@@ -4236,49 +2562,9 @@ export class AuthorityDatabase implements Disposable {
     }
   }
 
-  #validateReadOnlyNoMigrateDatabase(schemaVersion: number | undefined): void {
-    if (schemaVersion === undefined) {
-      throw new Error("read-only no-migrate admission requires an existing schema version");
-    }
-    QuickCheckRowSchema.parse(this.#database.prepare("PRAGMA quick_check(1)").get());
-    const foreignKeyFailures = this.#database.prepare("PRAGMA foreign_key_check").all();
-    if (foreignKeyFailures.length > 0) {
-      throw new Error(
-        `authority database foreign-key validation failed for ${String(foreignKeyFailures.length)} row(s)`,
-      );
-    }
-    const names = this.#database.prepare(`
-      SELECT name FROM sqlite_master
-      WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
-      ORDER BY name
-    `).all().map((row) => TableNameRowSchema.parse(row).name);
-    const expected = schemaVersion === 27 || schemaVersion === 28 || schemaVersion === 29
-      ? INTEGRATED_AUTHORITY_TABLES_BY_VERSION[schemaVersion]
-      : isNormalAuthoritySchemaVersion(schemaVersion)
-        ? AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).sort()
-        : POST_FLOOR_AUTHORITY_TABLES_BY_VERSION[schemaVersion];
-    if (expected === undefined) throw new Error(`no released layout for authority schema ${String(schemaVersion)}`);
-    if (names.length !== expected.length || expected.some((name, index) => names[index] !== name)) {
-      throw new Error(
-        `authority database tables do not match admitted v${String(schemaVersion)} registry: `
-        + `actual=${names.join(",")} expected=${expected.join(",")}`,
-      );
-    }
-    validateAuthorityRecordSchemas(this.#database, new Set(names));
-    inspectCapabilityUpgradeHistory(this.#database, schemaVersion);
-    if (schemaVersion >= 52) validateNotificationMetadata(this.#database);
-    if (schemaVersion >= 53) validateWorkerControls(this.#database);
-    if (schemaVersion < NORMAL_AUTHORITY_SCHEMA_VERSION) {
-      inspectHistoricalAuthorityInvariants(this.#database, schemaVersion);
-      return;
-    }
-    const violations = invariantViolations(this.#database);
-    if (violations.length > 0) {
-      throw new Error(`authority database invariant validation failed: ${violations.join("; ")}`);
-    }
-    if (this.#readIntPragma("foreign_keys") !== 1) {
-      throw new Error("authority database foreign keys are disabled");
-    }
+  #validateReadOnlyNoMigrateDatabase(existingVersion: number | undefined): void {
+    if (existingVersion === undefined) throw new Error("read-only admission requires an existing native authority");
+    inspectOpenDatabase(this.#database, false);
   }
 
   #validateDatabase(): void {
@@ -4307,18 +2593,30 @@ export class AuthorityDatabase implements Disposable {
     return this.#clock.now().toISOString();
   }
 
+  #validateExternalQuerySources(mode: "selector" | "mutation" = "selector"): void {
+    const observed = readIntPragma(this.#database, "data_version");
+    if (observed === this.#validatedExternalDataVersion && observed === this.#snapshotExternalDataVersion) return;
+    try {
+      validateAuthorityRecordSchemas(this.#database);
+      const violations = invariantViolations(this.#database);
+      if (violations.length > 0) throw new Error("current composite authority is invalid");
+      createRunSearchIndex(this.#database).validateCoverage();
+    } catch (error) {
+      this.#validatedExternalDataVersion = undefined;
+      if (mode === "mutation") throw error;
+      throw new Error("run-search-index-rebuild-required", { cause: error });
+    }
+    this.#validatedExternalDataVersion = observed === this.#snapshotExternalDataVersion
+      && readIntPragma(this.#database, "data_version") === observed ? observed : undefined;
+  }
+
   #withTransaction<Result>(mode: "authority" | "projection", work: () => Result): Result {
     this.#assertOpen();
     if (this.#transactionDepth > 0) {
-      if (this.#transactionMode === "read") {
-        throw new Error(`${mode} mutation cannot run inside an authority read snapshot`);
-      }
-      if (this.#transactionMode === "projection" && mode === "authority") {
-        throw new Error("authority mutation cannot run inside a projection transaction");
-      }
+      if (this.#transactionMode === "read") throw new Error(`${mode} mutation cannot run inside an authority read snapshot`);
+      if (this.#transactionMode === "projection" && mode === "authority") throw new Error("authority mutation cannot run inside a projection transaction");
       const savepoint = `authority_nested_${String(this.#savepointSequence += 1)}`;
       const dirtyBefore = this.#authorityDirty;
-      const sourcesDirtyBefore = this.#archiveSourcesDirty;
       const explorerDirtyBefore = this.#explorerOverridesDirty;
       const callbacksBefore = this.#authorityCommitCallbacks.length;
       this.#database.exec(`SAVEPOINT ${savepoint}`);
@@ -4331,112 +2629,29 @@ export class AuthorityDatabase implements Disposable {
         this.#database.exec(`ROLLBACK TO SAVEPOINT ${savepoint}`);
         this.#database.exec(`RELEASE SAVEPOINT ${savepoint}`);
         this.#authorityDirty = dirtyBefore;
-        this.#archiveSourcesDirty = sourcesDirtyBefore;
         this.#explorerOverridesDirty = explorerDirtyBefore;
         this.#authorityCommitCallbacks.splice(callbacksBefore);
         throw error;
-      } finally {
-        this.#transactionDepth -= 1;
-      }
+      } finally { this.#transactionDepth -= 1; }
     }
-
+    this.#snapshotExternalDataVersion = readIntPragma(this.#database, "data_version");
     this.#database.exec("BEGIN IMMEDIATE");
     this.#transactionDepth = 1;
     this.#transactionMode = mode;
     this.#authorityDirty = false;
     this.#explorerOverridesDirty = false;
-    this.#archiveSourcesDirty = false;
     let result: Result;
     try {
-      // Older claims have no embedded capture. Fence their owned facts across
-      // this transaction without freezing independent shared accounting.
-      const legacyOwned = new Map<string, string>();
-      for (const raw of this.#database.prepare("SELECT record_json FROM version_changes WHERE json_extract(record_json,'$.state')='applying' AND json_extract(record_json,'$.pendingCaptures') IS NULL").all()) {
-        const change = VersionChangeSchema.parse(JSON.parse(JsonRowSchema.parse(raw).record_json));
-        for (const member of change.members) if (this.authority.runs.get(member.runId) !== undefined) {
-          legacyOwned.set(member.runId, lifecycleOwnedSourceDigest(this.captureLifecycleSource(member.runId)));
-        }
-      }
-      const searchPublication = createRunSearchIndex(this.#database).publication();
+      this.#validateExternalQuerySources("mutation");
+      const search = createRunSearchIndex(this.#database);
+      const priorSearch = search.publication();
       result = work();
       if (this.#authorityDirty) {
-        const update = this.#database.prepare(`
-          UPDATE database_state
-          SET authority_generation = authority_generation + 1, updated_at = ?
-          WHERE singleton_id = 1
-        `).run(this.#now());
-        if (sqliteChanges(update.changes) !== 1) throw new Error("authority generation update did not affect the singleton metadata row");
-      }
-      if (this.#archiveSourcesDirty) {
-        // Fence cleanup-owned records while retained shared authority advances; frozen capture remains its baseline.
-        if (existsSync(join(dirname(this.#path), "archive.sqlite"))) {
-          for (const report of this.lifecycleArchive(true).pendingManualReports()) {
-            const claim = report.content.manualArchive;
-            if (claim === undefined) throw new Error("manual-archive-claim-missing");
-            const live = this.authority.runs.get(report.content.runId);
-            if (live === undefined) {
-              if (this.transferredRun(report.content.runId)?.reportDigest !== report.digest) throw new Error("manual-archive-source-applying");
-              continue;
-            }
-            const source = report.content.sources.find(source => source.kind === "authority-snapshot");
-            if (source === undefined) throw new Error("archive-source-snapshot-missing");
-            const frozen = LifecycleSourceSnapshotSchema.parse(JSON.parse(source.json));
-            if (lifecycleOwnedSourceDigest(this.captureLifecycleSource(report.content.runId)) !== lifecycleOwnedSourceDigest(frozen)
-              || this.authority.runs.listChildren(report.content.runId).some(child => !claim.members.some(member => member.runId === child.envelope.runId))) {
-              throw new Error("manual-archive-source-applying");
-            }
-          }
-        }
-        const applying = this.#database.prepare("SELECT record_json FROM version_changes WHERE json_extract(record_json,'$.state')='applying'").all();
-        for (const raw of applying) {
-          const change = VersionChangeSchema.parse(JSON.parse(JsonRowSchema.parse(raw).record_json));
-          for (const member of change.members) {
-            if (this.authority.runs.get(member.runId) === undefined) {
-              if (this.#readRecord("archive_transfers", member.runId, ArchiveTransferIdentitySchema) === undefined
-                && this.authority.deletedRuns.get(member.runId)?.origin !== "archive") throw new Error("archive-source-applying");
-              continue;
-            }
-            const capture = change.pendingCaptures?.find(value => value.runId === member.runId);
-            const report = capture === undefined
-              ? this.readPendingArchiveReport(member.runId, deriveStableUuid("archive-transfer", `${change.changeId}:${member.runId}`))?.report
-              : ArchiveReportSchema.parse(JSON.parse(capture.reportJson));
-            if (report !== undefined) {
-              const source = report.content.sources.find(value => value.kind === "authority-snapshot");
-              if (source === undefined) throw new Error("archive-source-snapshot-missing");
-              const frozen = LifecycleSourceSnapshotSchema.parse(JSON.parse(source.json));
-              if (lifecycleOwnedSourceDigest(this.captureLifecycleSource(member.runId)) !== lifecycleOwnedSourceDigest(frozen)) throw new Error("archive-source-applying");
-            } else if (legacyOwned.has(member.runId) && lifecycleOwnedSourceDigest(this.captureLifecycleSource(member.runId)) !== legacyOwned.get(member.runId)) {
-              throw new Error("archive-source-applying");
-            }
-          }
-        }
-        const runtimeApplying = this.#database.prepare("SELECT record_json FROM runtime_version_changes WHERE json_extract(record_json,'$.state')='applying'").all();
-        for (const raw of runtimeApplying) {
-          const change = RuntimeVersionChangeSchema.parse(JSON.parse(JsonRowSchema.parse(raw).record_json));
-          for (const member of change.members) {
-            if (this.authority.runs.get(member.runId) === undefined) {
-              if (this.#readRecord("archive_transfers", member.runId, ArchiveTransferIdentitySchema) === undefined) {
-                throw new Error("runtime-version-source-applying");
-              }
-              continue;
-            }
-            const capture = change.pendingCaptures?.find(row => row.runId === member.runId);
-            if (capture === undefined) throw new Error("runtime-version-capture-missing");
-            const report = ArchiveReportSchema.parse(JSON.parse(capture.reportJson));
-            const source = report.content.sources.find(value => value.kind === "authority-snapshot");
-            if (source === undefined) throw new Error("runtime-version-source-snapshot-missing");
-            const frozen = LifecycleSourceSnapshotSchema.parse(JSON.parse(source.json));
-            if (lifecycleOwnedSourceDigest(this.captureLifecycleSource(member.runId)) !== lifecycleOwnedSourceDigest(frozen)) {
-              throw new Error("runtime-version-source-applying");
-            }
-          }
-        }
+        const update = this.#database.prepare("UPDATE database_states SET authority_generation=authority_generation+1,updated_at=?,search_state='invalid',search_generation=NULL WHERE id=1").run(this.#now());
+        if (sqliteChanges(update.changes) !== 1) throw new Error("authority generation singleton is missing");
+        search.publishChanges(this.getMeta().authorityGeneration, this.#now(), priorSearch);
       }
       if (this.#explorerOverridesDirty) validateExplorerOverrides(this.#database);
-      if (this.#authorityDirty) {
-        createRunSummaries(this.#database).publishChanges(this.getMeta().authorityGeneration, this.#now());
-        createRunSearchIndex(this.#database).publishChanges(this.getMeta().authorityGeneration, this.#now(), searchPublication);
-      }
       this.#database.exec("COMMIT");
     } catch (error) {
       this.#database.exec("ROLLBACK");
@@ -4445,12 +2660,12 @@ export class AuthorityDatabase implements Disposable {
     } finally {
       this.#transactionDepth = 0;
       this.#transactionMode = undefined;
+      this.#snapshotExternalDataVersion = undefined;
       this.#authorityDirty = false;
       this.#explorerOverridesDirty = false;
-      this.#archiveSourcesDirty = false;
     }
-    const publications = this.#authorityCommitCallbacks.splice(0);
-    for (const publish of publications) publish();
+    const callbacks = this.#authorityCommitCallbacks.splice(0);
+    for (const callback of callbacks) callback();
     return result;
   }
 
@@ -4458,12 +2673,12 @@ export class AuthorityDatabase implements Disposable {
     this.#assertOpen();
     if (this.#transactionDepth > 0) return read();
 
+    this.#snapshotExternalDataVersion = readIntPragma(this.#database, "data_version");
     this.#database.exec("BEGIN");
     this.#transactionDepth = 1;
     this.#transactionMode = "read";
     this.#authorityDirty = false;
     this.#explorerOverridesDirty = false;
-    this.#archiveSourcesDirty = false;
     try {
       const result = read();
       this.#database.exec("COMMIT");
@@ -4474,59 +2689,65 @@ export class AuthorityDatabase implements Disposable {
     } finally {
       this.#transactionDepth = 0;
       this.#transactionMode = undefined;
+      this.#snapshotExternalDataVersion = undefined;
       this.#authorityDirty = false;
       this.#explorerOverridesDirty = false;
-      this.#archiveSourcesDirty = false;
-    }
+      }
   }
 
   #authorityWrite<Outcome extends Readonly<{ result: unknown; changes: number }>>(
     table: AuthorityTableName,
     operation: () => Outcome,
   ): Outcome["result"] {
-    if (["archived_runs", "version_plans", "version_bump_applications"].includes(table) && !hasHistoricalArchiveTables(this.#database)) throw new Error("historical-archive-writer-retired");
-    if (table === "database_state") throw new Error("database_state is mutated only by the generation and migration protocols");
+    if (table === "database_states") throw new Error("database_states is mutated only by the generation and migration protocols");
     return this.#withTransaction("authority", () => {
       const outcome = operation();
       if (outcome.changes > 0) {
         this.#authorityDirty = true;
         if (table === "explorer_overrides") this.#explorerOverridesDirty = true;
-        // These two lifecycle protocols verify source identity themselves and
-        // do not author new source evidence. Mixed transactions still check.
-        if (table !== "archive_transfers" && table !== "version_changes") this.#archiveSourcesDirty = true;
+
       }
       return outcome.result;
     });
   }
 
   #readRecord<Schema extends z.ZodType>(table: TableName, recordKey: string, schema: Schema): z.output<Schema> | undefined {
-    if (["archived_runs", "version_plans", "version_bump_applications"].includes(table) && !hasHistoricalArchiveTables(this.#database)) {
-      if (table === "archived_runs") return undefined;
-      const historical = this.historicalVersionChanges().filter(row => "schemaVersion" in row && row.schemaVersion === "historical-archive-v1");
-      const source = table === "version_plans" ? historical.find(row => row.plan.versionPlanId === recordKey)?.plan
-        : historical.find(row => row.application?.applicationId === recordKey)?.application;
-      return source == null ? undefined : schema.parse(source);
+    if (table === "commands") {
+      const row = this.#database.prepare("SELECT * FROM commands WHERE id = ?").get(recordKey);
+      return row === undefined ? undefined : schema.parse(commandFromRow(row));
     }
-    const row = this.#database.prepare(`SELECT record_json FROM ${table} WHERE record_key = ?`).get(recordKey);
+    if (table === "runs") {
+      const row = this.#database.prepare("SELECT * FROM runs WHERE id = ?").get(recordKey);
+      return row === undefined ? undefined : schema.parse(runRecordFromRow(row));
+    }
+    const key = table === "run_results" || table === "deleted_runs" ? "run_id"
+      : table === "worker_pools" ? "workflow" : table === "worker_controls" ? "command_id"
+        : table === "auth_leases" ? "credential_key" : "id";
+    const row = this.#database.prepare(`SELECT * FROM ${table} WHERE ${key} = ?`).get(recordKey);
     if (row === undefined) return undefined;
-    return parseJsonRecord(schema, JsonRowSchema.parse(row).record_json);
+    if (table === "deleted_runs") return schema.parse(deletedRunFromRow(row).receipt);
+    if (table === "artifacts") {
+      const kind = z.object({kind:z.enum(["imported","generated","extracted"])}).parse(row).kind;
+      return schema.parse(kind === "imported" ? importedArtifactFromRow(row) : kind === "generated" ? generatedArtifactFromRow(row) : extractedArtifactFromRow(row));
+    }
+    if (isNativeOrdinaryTable(table)) {
+      const record = nativeOrdinaryRecordFromRow(table,row);
+      if (table === "write_intents") { authenticateStoredWriteResolution(this.#database,record); assertConfirmationPublication(this.#database,recordKey); }
+      if (table === "command_audits") authenticateStoredResolutionAudit(this.#database,record);
+      return schema.parse(record);
+    }
+    throw new Error(`native reader is undefined for ${table}`);
   }
 
-  /** New value-free seals cannot authenticate private input; compare the independent retained copy. */
-  #verifyArchivedPrivateInput(record: ArchivedRunStorageRecord): ArchivedRunStorageRecord {
-    const { contentDigest, ...content } = record;
-    const bindings = retainedRunProtectedBindings({ envelope: { workflow: record.workflowId }, input: record.input });
-    if (bindings.length === 0 || archivedRunContentDigest(content) !== contentDigest) return record;
-    const retained = this.#readRunRow(record.runId);
-    if (retained === undefined || retained.envelope.workflow !== record.workflowId
-      || canonicalJsonStringify(retained.input) !== canonicalJsonStringify(record.input)) {
-      throw new Error("archive private input integrity mismatch");
-    }
-    return record;
+  #parseNativeRow<Schema extends z.ZodType>(table: NativeOrdinaryTable,row:unknown,schema:Schema):z.infer<Schema> {
+    const record=nativeOrdinaryRecordFromRow(table,row);
+    if(table === "write_intents") { authenticateStoredWriteResolution(this.#database,record); assertConfirmationPublication(this.#database,z.object({writeIntentId:z.string()}).parse(record).writeIntentId); }
+    if(table === "command_audits")authenticateStoredResolutionAudit(this.#database,record);
+    return schema.parse(record);
   }
 
   #insertSimpleRecord<Schema extends z.ZodType>(
-    table: Exclude<AuthorityTableName, "database_state">,
+    table: Exclude<AuthorityTableName, "database_states">,
     recordKey: string,
     input: unknown,
     schema: Schema,
@@ -4540,28 +2761,34 @@ export class AuthorityDatabase implements Disposable {
         if (canonicalJsonStringify(existing) !== json) throw new Error(`${table} key ${recordKey} already exists with different content`);
         return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
       }
-      const result = this.#database.prepare(`
-        INSERT INTO ${table} (record_key, record_json, created_at) VALUES (?, ?, ?)
-      `).run(recordKey, json, createdAt);
+      let columns: Record<string, string | number | null>;
+      if (table === "settings_snapshots") {
+        const snapshot = ConfigSnapshotRecordSchema.parse(record);
+        columns = { id: recordKey, revision: snapshot.revision, fingerprint: snapshot.fingerprint,
+          payload_json: json, captured_at: snapshot.capturedAt };
+      } else if (table === "run_delegations") {
+        const delegation = DelegationManifestSchema.parse(record);
+        columns = { id: recordKey, parent_run_id: delegation.parentRunId, payload_json: json, created_at: createdAt };
+      } else if (table === "gate_results") {
+        const gate = GateResultRecordSchema.parse(record);
+        columns = { id: recordKey, run_id: gate.runId, node_id: gate.nodeId, gate_id: gate.gateId,
+          payload_json: json, created_at: createdAt };
+      } else throw new Error(`native immutable writer is undefined for ${table}`);
+      const result = this.#database.prepare(`INSERT INTO ${table} (${Object.keys(columns).join(",")})
+        VALUES (${Object.keys(columns).map(() => "?").join(",")})`).run(...Object.values(columns));
       return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(result.changes) };
     });
   }
 
   #listFailures(sql: string, parameter: string): readonly FailureRecord[] {
     const rows = this.#database.prepare(sql).all(parameter);
-    return Object.freeze(rows.map((row) => parseJsonRecord(
-      FailureRecordSchema,
-      JsonRowSchema.parse(row).record_json,
-    )));
+    return Object.freeze(rows.map((row) => this.#parseNativeRow("run_failures",row,FailureRecordSchema)));
   }
 
   #buildDiagnosticBundleRepository(): AuthorityRepositories["diagnosticBundles"] {
     const readAttachments = (sql: string, parameter: string): readonly DiagnosticAttachmentStorageRecord[] => {
       const rows = this.#database.prepare(sql).all(parameter);
-      return Object.freeze(rows.map((row) => parseJsonRecord(
-        DiagnosticAttachmentStorageRecordSchema,
-        JsonRowSchema.parse(row).record_json,
-      )));
+      return Object.freeze(rows.map((row) => this.#parseNativeRow("diagnostic_files",row,DiagnosticAttachmentStorageRecordSchema)));
     };
     const validateOperation = (input: unknown): void => {
       const identity = DeclaredActionIdentitySchema.parse(input);
@@ -4613,7 +2840,7 @@ export class AuthorityDatabase implements Disposable {
           }
           const result = this.#database.prepare(`
             INSERT INTO diagnostic_snapshots
-              (record_key, run_id, origin_kind, failure_id, content_digest, retention_kind, purge_after, record_json, created_at)
+              (id, run_id, origin_kind, failure_id, content_digest, retention_kind, purge_after, payload_json, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).run(
             record.bundleId,
@@ -4635,7 +2862,7 @@ export class AuthorityDatabase implements Disposable {
             });
             const inserted = this.#database.prepare(`
               INSERT INTO diagnostic_files
-                (record_key, bundle_id, artifact_id, kind, digest, sensitivity, record_json, created_at)
+                (id, snapshot_id, artifact_id, kind, digest, sensitivity, payload_json, created_at)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             `).run(
               `${record.bundleId}:${attachment.artifactId}`,
@@ -4655,31 +2882,25 @@ export class AuthorityDatabase implements Disposable {
       get: (bundleId: string) => this.#readRecord("diagnostic_snapshots", bundleId, DiagnosticBundleSchema),
       listByRun: (runId: string) => {
         const rows = this.#database.prepare(`
-          SELECT record_json FROM diagnostic_snapshots WHERE run_id = ? ORDER BY created_at, record_key
+          SELECT * FROM diagnostic_snapshots WHERE run_id = ? ORDER BY created_at, id
         `).all(RunIdSchema.parse(runId));
-        return Object.freeze(rows.map((row) => parseJsonRecord(
-          DiagnosticBundleSchema,
-          JsonRowSchema.parse(row).record_json,
-        )));
+        return Object.freeze(rows.map((row) => this.#parseNativeRow("diagnostic_snapshots",row,DiagnosticBundleSchema)));
       },
       listAttachments: (bundleId: string) => readAttachments(
-        "SELECT record_json FROM diagnostic_files WHERE bundle_id = ? ORDER BY record_key",
+        "SELECT * FROM diagnostic_files WHERE snapshot_id = ? ORDER BY id",
         DiagnosticBundleIdSchema.parse(bundleId),
       ),
       findByArtifact: (artifactId: string) => readAttachments(
-        "SELECT record_json FROM diagnostic_files WHERE artifact_id = ? ORDER BY record_key",
+        "SELECT * FROM diagnostic_files WHERE artifact_id = ? ORDER BY id",
         ArtifactIdSchema.parse(artifactId),
       ),
       listRetentionDue: (now: string) => {
         const rows = this.#database.prepare(`
-          SELECT record_json FROM diagnostic_snapshots
+          SELECT * FROM diagnostic_snapshots
           WHERE retention_kind = 'ordinary' AND purge_after <= ?
-          ORDER BY purge_after, record_key
+          ORDER BY purge_after, id
         `).all(IsoInstantSchema.parse(now));
-        return Object.freeze(rows.map((row) => parseJsonRecord(
-          DiagnosticBundleSchema,
-          JsonRowSchema.parse(row).record_json,
-        )));
+        return Object.freeze(rows.map((row) => this.#parseNativeRow("diagnostic_snapshots",row,DiagnosticBundleSchema)));
       },
       purge: (bundleId: string, now: string) => {
         const key = DiagnosticBundleIdSchema.parse(bundleId);
@@ -4696,10 +2917,10 @@ export class AuthorityDatabase implements Disposable {
             throw new Error(`diagnostic bundle ${key} is retained until ${existing.retention.purgeAfter}; refusing to purge it at ${instant}`);
           }
           const attachments = this.#database.prepare(
-            "DELETE FROM diagnostic_files WHERE bundle_id = ?",
+            "DELETE FROM diagnostic_files WHERE snapshot_id = ?",
           ).run(key);
           const bundle = this.#database.prepare(
-            "DELETE FROM diagnostic_snapshots WHERE record_key = ?",
+            "DELETE FROM diagnostic_snapshots WHERE id = ?",
           ).run(key);
           const removed = sqliteChanges(bundle.changes);
           if (removed !== 1) throw new Error(`diagnostic bundle ${key} purge removed ${String(removed)} rows`);
@@ -4719,18 +2940,18 @@ export class AuthorityDatabase implements Disposable {
       const result = mode === "insert"
         ? this.#database.prepare(`
             INSERT INTO notifications
-              (record_key, actor_id, dedupe_fingerprint, status, seen_count, version, record_json, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+              (id, actor_id, dedupe_fingerprint, status, seen_count, version, run_id, payload_json, publications_json, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?)
           `).run(
             record.notificationId, record.actorId, record.dedupeFingerprint,
-            record.status, record.count, record.version, json, record.createdAt,
+            record.status, record.count, record.version, record.links.find(link => "runId" in link)?.runId ?? null, json, record.createdAt, record.updatedAt,
           )
         : this.#database.prepare(`
             UPDATE notifications
-            SET status = ?, seen_count = ?, version = ?, record_json = ?
-            WHERE record_key = ? AND version = ?
+            SET status = ?, seen_count = ?, version = ?, payload_json = ?, updated_at = ?
+            WHERE id = ? AND version = ?
           `).run(
-            record.status, record.count, record.version, json,
+            record.status, record.count, record.version, json, record.updatedAt,
             record.notificationId, record.version - 1,
           );
       const changes = sqliteChanges(result.changes);
@@ -4738,10 +2959,10 @@ export class AuthorityDatabase implements Disposable {
     };
     const findByDedupe = (actorId: string, dedupeFingerprint: string): NotificationRecord | undefined => {
       const row = this.#database.prepare(`
-        SELECT record_json FROM notifications WHERE actor_id = ? AND dedupe_fingerprint = ?
+        SELECT * FROM notifications WHERE actor_id = ? AND dedupe_fingerprint = ?
       `).get(ActorIdSchema.parse(actorId), FingerprintSchema.parse(dedupeFingerprint));
       if (row === undefined) return undefined;
-      return parseJsonRecord(NotificationRecordSchema, JsonRowSchema.parse(row).record_json);
+      return this.#parseNativeRow("notifications",row,NotificationRecordSchema);
     };
     return Object.freeze({
       create: (input: unknown) => {
@@ -4814,15 +3035,12 @@ export class AuthorityDatabase implements Disposable {
       listByActor: (actorId: string, status?: unknown) => {
         const rows = status === undefined
           ? this.#database.prepare(`
-              SELECT record_json FROM notifications WHERE actor_id = ? ORDER BY created_at, record_key
+              SELECT * FROM notifications WHERE actor_id = ? ORDER BY created_at, id
             `).all(ActorIdSchema.parse(actorId))
           : this.#database.prepare(`
-              SELECT record_json FROM notifications WHERE actor_id = ? AND status = ? ORDER BY created_at, record_key
+              SELECT * FROM notifications WHERE actor_id = ? AND status = ? ORDER BY created_at, id
             `).all(ActorIdSchema.parse(actorId), NotificationRecordSchema.shape.status.parse(status));
-        return Object.freeze(rows.map((row) => parseJsonRecord(
-          NotificationRecordSchema,
-          JsonRowSchema.parse(row).record_json,
-        )));
+        return Object.freeze(rows.map((row) => this.#parseNativeRow("notifications",row,NotificationRecordSchema)));
       },
     });
   }
@@ -4830,11 +3048,11 @@ export class AuthorityDatabase implements Disposable {
 
   #buildAuthorityRepositories(): AuthorityRepositories {
     const settings = createSettingsActivationRepositories({ database: this.#database,
-      mutate: (work) => this.#authorityWrite("app_settings", work),
+      mutate: (work) => this.#authorityWrite("settings", work),
       readRecord: (table,key,schema) => this.#readRecord(table,key,schema) });
-    const generated = createGeneratedArtifactRepository({ database: this.#database, mutate: (work) => this.#authorityWrite("generated_artifacts", work) });
+    const generated = createGeneratedArtifactRepository({ database: this.#database, mutate: (work) => this.#authorityWrite("artifacts", work) });
     const imports = createImportedArtifactRepositories({ database: this.#database,
-      mutate: (work) => this.#authorityWrite("imported_artifacts", work) });
+      mutate: (work) => this.#authorityWrite("artifacts", work) });
     return Object.freeze({
       explorerOverrides: createExplorerOverrideRepository({ database: this.#database, mutate: (work) => {
         if (this.#transactionDepth === 0 || this.#transactionMode !== "authority") throw new Error("explorer-override-command-transaction-required");
@@ -4850,11 +3068,11 @@ export class AuthorityDatabase implements Disposable {
       failures: Object.freeze({
         get: (failureId: string) => this.#readRecord("run_failures", failureId, FailureRecordSchema),
         listByRun: (runId: string) => this.#listFailures(
-          "SELECT record_json FROM run_failures WHERE run_id = ? ORDER BY created_at, record_key",
+          "SELECT * FROM run_failures WHERE run_id = ? ORDER BY created_at, id",
           RunIdSchema.parse(runId),
         ),
         listByFingerprint: (fingerprint: string) => this.#listFailures(
-          "SELECT record_json FROM run_failures WHERE fingerprint = ? ORDER BY created_at, record_key",
+          "SELECT * FROM run_failures WHERE fingerprint = ? ORDER BY created_at, id",
           FailureFingerprintSchema.parse(fingerprint),
         ),
         countByFingerprint: (fingerprint: string) => CountRowSchema.parse(this.#database.prepare(`
@@ -4872,8 +3090,8 @@ export class AuthorityDatabase implements Disposable {
           const record = AdmittedExtractionSchema.parse(input);
           const key = `${record.sourceSha256}#${String(record.sourcePage)}#${record.formType}`;
           const json = canonicalJsonStringify(record);
-          return this.#authorityWrite("extracted_artifacts", () => {
-            const existing = this.#readRecord("extracted_artifacts", key, AdmittedExtractionSchema);
+          return this.#authorityWrite("artifacts", () => {
+            const existing = this.#readRecord("artifacts", key, AdmittedExtractionSchema);
             if (existing !== undefined) {
               if (canonicalJsonStringify(existing) !== json) {
                 throw new Error(
@@ -4884,9 +3102,9 @@ export class AuthorityDatabase implements Disposable {
               return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
             }
             const result = this.#database.prepare(`
-              INSERT INTO extracted_artifacts
-                (record_key, form_type, source_sha256, source_page, page_kind, page_fingerprint, source_kind, record_json, created_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+              INSERT INTO artifacts
+                (id, kind, version, form_type, source_sha256, source_page, page_kind, page_fingerprint, source_kind, payload_json, created_at)
+              VALUES (?, 'extracted', 1, ?, ?, ?, ?, ?, ?, ?, ?)
             `).run(
               key, record.formType, record.sourceSha256, record.sourcePage,
               record.pageKind, record.pageFingerprint, record.source.kind, json, record.readAt,
@@ -4895,11 +3113,11 @@ export class AuthorityDatabase implements Disposable {
           });
         },
         get: (sourceSha256: string, sourcePage: number, formType: string) =>
-          this.#readRecord("extracted_artifacts", `${sourceSha256}#${String(sourcePage)}#${formType}`, AdmittedExtractionSchema),
+          this.#readRecord("artifacts", `${sourceSha256}#${String(sourcePage)}#${formType}`, AdmittedExtractionSchema),
         findByDocument: (sourceSha256: string) => this.#database.prepare(`
-          SELECT record_json FROM extracted_artifacts WHERE source_sha256 = ? ORDER BY source_page
+          SELECT * FROM artifacts WHERE kind='extracted' AND source_sha256 = ? ORDER BY source_page
         `).all(sourceSha256).map((row) =>
-          parseJsonRecord(AdmittedExtractionSchema, JsonRowSchema.parse(row).record_json)),
+          AdmittedExtractionSchema.parse(extractedArtifactFromRow(row))),
       }),
       evidenceReceipts: Object.freeze({
         insert: (input: unknown) => {
@@ -4915,7 +3133,7 @@ export class AuthorityDatabase implements Disposable {
             }
             const result = this.#database.prepare(`
               INSERT INTO run_receipts
-                (record_key, run_id, workflow, attempt, result, confidence, failure_id, record_json, created_at)
+                (id, run_id, workflow, attempt, result, confidence, failure_id, payload_json, created_at)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             `).run(
               record.receiptId, record.runId, record.workflowId, record.attempt,
@@ -4928,15 +3146,15 @@ export class AuthorityDatabase implements Disposable {
         },
         get: (receiptId: string) => this.#readRecord("run_receipts", receiptId, RunEvidenceReceiptSchema),
         listByRun: (runId: string) => this.#database.prepare(`
-          SELECT record_json FROM run_receipts WHERE run_id = ? ORDER BY record_key
+          SELECT * FROM run_receipts WHERE run_id = ? ORDER BY id
         `).all(RunIdSchema.parse(runId)).map((row) =>
-          parseJsonRecord(RunEvidenceReceiptSchema, JsonRowSchema.parse(row).record_json)),
+          this.#parseNativeRow("run_receipts",row,RunEvidenceReceiptSchema)),
         findByRun: (runId: string) => {
           const row = this.#database.prepare(`
-            SELECT record_json FROM run_receipts WHERE run_id = ?
+            SELECT * FROM run_receipts WHERE run_id = ?
           `).get(RunIdSchema.parse(runId));
           if (row === undefined) return undefined;
-          return parseJsonRecord(RunEvidenceReceiptSchema, JsonRowSchema.parse(row).record_json);
+          return this.#parseNativeRow("run_receipts",row,RunEvidenceReceiptSchema);
         },
       }),
       dryRunScenarioResults: Object.freeze({
@@ -4956,7 +3174,7 @@ export class AuthorityDatabase implements Disposable {
               return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
             }
             if (record.execution.state === "started") {
-              const run = this.#readRecord("workflow_runs", record.execution.runId, RunRecordSchema);
+              const run = this.#readRecord("runs", record.execution.runId, RunRecordSchema);
 
               const expectedDryRun = record.execution.arm !== "live-read";
               if (run === undefined
@@ -4970,8 +3188,8 @@ export class AuthorityDatabase implements Disposable {
             }
             const result = this.#database.prepare(`
               INSERT INTO dryrun_results
-                (record_key, scenario_id, workflow, subject_label, manifest_digest, verdict,
-                 execution_state, run_id, trace_id, wall_time_ms, record_json, created_at)
+                (id, scenario_id, workflow, subject_label, manifest_digest, verdict,
+                 execution_state, run_id, trace_id, wall_time_ms, payload_json, created_at)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `).run(
               record.resultId, record.scenarioId, record.workflow, record.subjectLabel,
@@ -4992,42 +3210,34 @@ export class AuthorityDatabase implements Disposable {
           DryRunScenarioResultSchema,
         ),
         list: () => Object.freeze(this.#database.prepare(`
-          SELECT record_json FROM dryrun_results ORDER BY created_at, record_key
+          SELECT * FROM dryrun_results ORDER BY created_at, id
         `).all().map((row) =>
-          parseJsonRecord(DryRunScenarioResultSchema, JsonRowSchema.parse(row).record_json))),
+          this.#parseNativeRow("dryrun_results",row,DryRunScenarioResultSchema))),
       }),
       operatorXlsxExports: generated.exports,
-      activityPersonPseudonyms: Object.freeze({
-        get: (_runId: string, _keyGeneration: string): never => { throw new Error("activity-person-pseudonyms-retired"); },
-        listByRun: (_runId: string): never => { throw new Error("activity-person-pseudonyms-retired"); },
-        listByRuns: (_runIds: unknown): never => { throw new Error("activity-person-pseudonyms-retired"); },
-      }),
       confirmedTransactionSources: { select: input => this.withAuthorityReadSnapshot(() => {
-        const selected = this.#stoppedHistoricalTransactionSelection
-          ? selectStoppedConversionTransactions(this.#database, input) : selectTransactions(this.#database, input);
-        const events = [], archiveIds = new Set<string>();
-        for (const record of selected) {
-          const raw = this.#database.prepare("SELECT * FROM timeline_events WHERE record_key=?").get(record.eventId);
-          if (raw === undefined) archiveIds.add(record.runId);
-          else {
-            const event = timelineEventFromRow(raw);
-            if (event.payload.kind !== "operation-confirmed" || event.payload.facts.runId !== record.runId
-              || event.payload.facts.confirmedAt !== record.confirmedAt || event.payload.facts.system !== record.system) throw new Error("transaction-history-selection-mismatch");
-            events.push(event);
-          }
-        }
-        const archived = [...archiveIds].map(id => this.#archivedTransactionSource(id));
-        const historical = selectedHistoricalTransactionRows(this.#database, input).map(json => readHistoricalOperationSource(this.#database, json));
-        return {events,archived,historical,eventIds:selected.map(record=>record.eventId)};
+        this.#validateExternalQuerySources();
+        const selected = selectTransactions(this.#database,input);
+        const events = selected.map(record => {
+          const raw = this.#database.prepare("SELECT * FROM timeline_events WHERE id=?").get(record.eventId);
+          const publication = readConfirmationPublication(this.#database,record.operationId);
+          if (publication === undefined) throw new Error("transaction-history-publication-missing");
+          if (raw === undefined && (!authenticatedPublicationDeletion(this.#database,record.runId,publication)
+            || readTimelineRun(this.#database,record.runId) !== undefined)) throw new Error("transaction-history-selection-missing");
+          const event = raw === undefined ? publication.timeline : timelineEventFromRow(raw);
+          if (event.payload.kind !== "operation-confirmed" || event.payload.facts.runId !== record.runId
+            || event.payload.facts.confirmedAt !== record.confirmedAt || event.payload.facts.system !== record.system) throw new Error("transaction-history-selection-mismatch");
+          return event;
+        });
+        return { events,eventIds:selected.map(record => record.eventId) };
       }) },
-      archivedTransactionSources: { list: () => this.withAuthorityReadSnapshot(() => this.listTransferredRuns().map(run => this.#archivedTransactionSource(run.envelope.runId))) },
-      historicalOperationSources: { list: () => this.#database.prepare("SELECT record_json FROM timeline_operation_sources ORDER BY record_key").all().map((row) => readHistoricalOperationSource(this.#database, JsonRowSchema.parse(row).record_json)) },
       runResults: Object.freeze({
-        get: (runId: string) => this.#readRecord(
-          "run_results",
-          RunIdSchema.parse(runId),
-          RunResultRecordSchema,
-        ),
+        get: (runId: string) => {
+          const record = this.#readRecord("run_results", RunIdSchema.parse(runId), RunResultRecordSchema);
+          if (record === undefined) return undefined;
+          assertTerminalEvidenceOwner(this.#database,record);
+          return record;
+        },
       }),
       failureResolution: createFailureResolutionRepository({ database: this.#database, mutate: (work) => this.#authorityWrite("run_failures", work) }),
       startPlans: this.#buildStartPlanRepository(),
@@ -5037,6 +3247,7 @@ export class AuthorityDatabase implements Disposable {
       } }),
       duoCeremonyLeases: this.#buildDuoCeremonyLeaseRepository(),
       workerPools: this.#buildWorkerPoolRepository(),
+      workerSlots: createWorkerSlotRepository({ database: this.#database, mutate: work => this.#authorityWrite("worker_slots",work) }),
       runSessions: this.#buildRunSessionRepository(),
       commands: Object.freeze({
         assertIdentity: (input: unknown, parentCommandId?: string) => this.#assertCommandIdentity(AuthorityCommandRecordSchema.parse(input), parentCommandId),
@@ -5045,44 +3256,42 @@ export class AuthorityDatabase implements Disposable {
           const json = canonicalJsonStringify(record);
           return this.#authorityWrite("commands", () => {
             this.#assertCommandIdentity(record, parentCommandId);
-            const existing = this.#readRecord("commands", record.commandId, z.union([CommandRequestSchema, HistoricalNotificationSnoozeCommandSchema]));
+            const existing = this.#readRecord("commands", record.commandId, CommandRequestSchema);
             if (existing !== undefined) {
               if (canonicalJsonStringify(existing) !== json) throw new Error(`command id ${record.commandId} was reused with different content`);
               return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
             }
-            const result = this.#database.prepare(`
-              INSERT INTO commands (record_key, family, record_json, created_at, parent_command_id) VALUES (?, ?, ?, ?, ?)
-            `).run(record.commandId, record.family, json, record.requestedAt, parentCommandId ?? null);
+            const result = { changes: insertNativeCommand(this.#database, record, parentCommandId) };
             return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(result.changes) };
           });
         },
         get: (commandId: string) => {
-          const record = this.#readRecord("commands", commandId, z.union([CommandRequestSchema, HistoricalNotificationSnoozeCommandSchema, BulkParentCommandRecordSchema]));
+          const record = this.#readRecord("commands", commandId, z.union([CommandRequestSchema, BulkParentCommandRecordSchema]));
           if (record !== undefined && "kind" in record) throw new CommandIdentityConflictError();
           return record;
         },
-        getSettingsHistory: (commandId: string) => this.#readRecord("commands", commandId, z.union([CommandRequestSchema, PreFloorSettingsCommandSchema, HistoricalProtectedSettingsCommandSchema, HistoricalProviderKeysCommandSchema])),
+        getSettingsHistory: (commandId: string) => this.#readRecord("commands", commandId, CommandRequestSchema),
         findProtectedSettingsCommandIdByWriteId: (input: unknown) => {
           const { writeId, excludingCommandId } = ProtectedSettingsWriteIdLookupSchema.parse(input);
           const row = this.#database.prepare(`
-            SELECT record_key FROM commands
+            SELECT id FROM commands
             WHERE family = 'settings'
-              AND record_key <> ?
-              AND json_extract(record_json, '$.type') = 'apply-protected-settings'
-              AND json_extract(record_json, '$.payload.writeId') = ?
-            ORDER BY record_key
+              AND id <> ?
+              AND json_extract(request_json, '$.type') = 'apply-protected-settings'
+              AND json_extract(request_json, '$.payload.writeId') = ?
+            ORDER BY id
             LIMIT 1
           `).get(excludingCommandId, writeId);
           return row === undefined
             ? undefined
-            : CommandIdSchema.parse(RecordKeyRowSchema.parse(row).record_key);
+            : CommandIdSchema.parse(RecordKeyRowSchema.parse(row).id);
         },
         listStorageRelocationCommands: () => this.#database.prepare(`
-          SELECT record_json FROM commands WHERE family = 'storage-relocation' ORDER BY rowid
-        `).all().map(row => parseJsonRecord(StorageRelocationCommandRequestSchema, JsonRowSchema.parse(row).record_json)),
+          SELECT * FROM commands WHERE family = 'storage-relocation' ORDER BY rowid
+        `).all().map(row => StorageRelocationCommandRequestSchema.parse(commandFromRow(row))),
         parentId: (commandId: string) => {
-          const row = this.#database.prepare("SELECT parent_command_id FROM commands WHERE record_key = ?").get(commandId);
-          return row === undefined ? undefined : z.strictObject({ parent_command_id: z.string().nullable() }).parse(row).parent_command_id;
+          const row = this.#database.prepare("SELECT parent_id AS parent_id FROM commands WHERE id = ?").get(commandId);
+          return row === undefined ? undefined : z.strictObject({ parent_id: z.string().nullable() }).parse(row).parent_id;
         },
         acceptBulk: (input: unknown) => {
           const acceptance = BulkRunCommandAcceptanceRecordSchema.parse(input);
@@ -5091,17 +3300,16 @@ export class AuthorityDatabase implements Disposable {
             this.#assertCommandIdentity(parent);
             const existing = this.authority.commands.getBulk(parent.commandId);
             if (existing !== undefined) return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
-            const result = this.#database.prepare("INSERT INTO commands(record_key, family, record_json, created_at) VALUES (?, 'bulk-parent', ?, ?)")
-              .run(parent.commandId, canonicalJsonStringify(parent), acceptance.request.requestedAt);
+            const result = { changes: insertNativeCommand(this.#database, parent) };
             return { result: Object.freeze({ state: "inserted" as const, record: acceptance }), changes: sqliteChanges(result.changes) };
           });
         },
         getBulk: (commandId: string) => {
-          const row = this.#database.prepare("SELECT family, record_json FROM commands WHERE record_key = ?").get(commandId);
+          const row = this.#database.prepare("SELECT * FROM commands WHERE id = ?").get(commandId);
           if (row === undefined) return undefined;
-          const stored = z.strictObject({ family: z.string(), record_json: z.string() }).parse(row);
-          if (stored.family !== "bulk-parent") throw new CommandIdentityConflictError();
-          return parseJsonRecord(BulkParentCommandRecordSchema, stored.record_json).acceptance;
+          const stored=commandFromRow(row);
+          if (!("kind" in stored) || stored.kind !== "bulk-parent") throw new CommandIdentityConflictError();
+          return BulkParentCommandRecordSchema.parse(stored).acceptance;
         },
       }),
       commandAudits: Object.freeze({
@@ -5109,34 +3317,35 @@ export class AuthorityDatabase implements Disposable {
           const record = CommandAuditRecordSchema.parse(input);
           const json = canonicalJsonStringify(record);
           return this.#authorityWrite("command_audits", () => {
-            const existing = this.#readRecord("command_audits", record.auditId, z.union([CommandAuditRecordSchema, HistoricalNotificationSnoozeAuditSchema]));
+            const existing = this.#readRecord("command_audits", record.auditId, CommandAuditRecordSchema);
             if (existing !== undefined) {
               if (canonicalJsonStringify(existing) !== json) throw new Error(`command audit ${record.auditId} already exists with different content`);
               return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
             }
             const result = this.#database.prepare(`
-              INSERT INTO command_audits (record_key, command_id, record_json, created_at) VALUES (?, ?, ?, ?)
+              INSERT INTO command_audits (id, command_id, payload_json, created_at) VALUES (?, ?, ?, ?)
             `).run(record.auditId, record.request.commandId, json, record.completedAt);
+            settleNativeCommand(this.#database, record);
             return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(result.changes) };
           });
         },
-        get: (auditId: string) => this.#readRecord("command_audits", auditId, z.union([CommandAuditRecordSchema, HistoricalNotificationSnoozeAuditSchema])),
+        get: (auditId: string) => this.#readRecord("command_audits", auditId, CommandAuditRecordSchema),
         findSettingsHistory: (commandId: string) => {
-          const rows = this.#database.prepare("SELECT record_json FROM command_audits WHERE command_id=? ORDER BY record_key").all(commandId);
+          const rows = this.#database.prepare("SELECT * FROM command_audits WHERE command_id=? ORDER BY id").all(commandId);
           if (rows.length > 1) throw new Error("historical settings command has ambiguous audits");
           const row = rows[0];
-          return row === undefined ? undefined : parseJsonRecord(z.union([CommandAuditRecordSchema, HistoricalSettingsAuditSchema, HistoricalProtectedSettingsAuditSchema, HistoricalProviderKeysAuditSchema]), JsonRowSchema.parse(row).record_json);
+          return row === undefined ? undefined : this.#parseNativeRow("command_audits",row,CommandAuditRecordSchema);
         },
         findByCommand: (commandId: string) => {
           const rows = this.#database.prepare(`
-            SELECT record_json FROM command_audits WHERE command_id = ? ORDER BY record_key
+            SELECT * FROM command_audits WHERE command_id = ? ORDER BY id
           `).all(commandId);
           if (rows.length > 1) {
             throw new Error(`command ${commandId} has ${String(rows.length)} recorded audits; exactly one outcome may exist`);
           }
           const row = rows[0];
           if (row === undefined) return undefined;
-          return parseJsonRecord(z.union([CommandAuditRecordSchema, HistoricalNotificationSnoozeAuditSchema]), JsonRowSchema.parse(row).record_json);
+          return this.#parseNativeRow("command_audits",row,CommandAuditRecordSchema);
         },
       }),
       lifecycleJournal: Object.freeze({
@@ -5155,9 +3364,7 @@ export class AuthorityDatabase implements Disposable {
                 changes: 0,
               };
             }
-            const result = this.#database.prepare(`
-              INSERT INTO commands (record_key, family, record_json, created_at) VALUES (?, ?, ?, ?)
-            `).run(record.commandId, record.kind, json, record.recordedAt);
+            const result = { changes: insertNativeCommand(this.#database, record) };
             return {
               result: Object.freeze({ state: "inserted" as const, record }),
               changes: sqliteChanges(result.changes),
@@ -5188,8 +3395,9 @@ export class AuthorityDatabase implements Disposable {
               };
             }
             const result = this.#database.prepare(`
-              INSERT INTO command_audits (record_key, command_id, record_json, created_at) VALUES (?, ?, ?, ?)
+              INSERT INTO command_audits (id, command_id, payload_json, created_at) VALUES (?, ?, ?, ?)
             `).run(record.auditId, record.request.commandId, json, record.completedAt);
+            settleNativeCommand(this.#database, record);
             return {
               result: Object.freeze({ state: "inserted" as const, record }),
               changes: sqliteChanges(result.changes),
@@ -5198,14 +3406,14 @@ export class AuthorityDatabase implements Disposable {
         },
         findAuditByCommand: (commandId: string) => {
           const rows = this.#database.prepare(`
-            SELECT record_json FROM command_audits WHERE command_id = ? ORDER BY record_key
+            SELECT * FROM command_audits WHERE command_id = ? ORDER BY id
           `).all(commandId);
           if (rows.length > 1) {
             throw new Error(`command ${commandId} has ${String(rows.length)} recorded audits; exactly one outcome may exist`);
           }
           const row = rows[0];
           if (row === undefined) return undefined;
-          return parseJsonRecord(AuthorityCommandAuditRecordSchema, JsonRowSchema.parse(row).record_json);
+          return this.#parseNativeRow("command_audits",row,AuthorityCommandAuditRecordSchema);
         },
       }),
       dependencies: Object.freeze({
@@ -5219,7 +3427,7 @@ export class AuthorityDatabase implements Disposable {
               return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
             }
             const result = this.#database.prepare(`
-              INSERT INTO delegation_dependencies (record_key, manifest_id, record_json, created_at) VALUES (?, ?, ?, ?)
+              INSERT INTO delegation_dependencies (id, delegation_id, payload_json, created_at) VALUES (?, ?, ?, ?)
             `).run(record.dependencyId, record.manifestId, json, record.createdAt);
             return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(result.changes) };
           });
@@ -5227,14 +3435,11 @@ export class AuthorityDatabase implements Disposable {
         get: (dependencyId: string) => this.#readRecord("delegation_dependencies", dependencyId, DependencyRecordSchema),
         listByParentRun: (parentRunId: string) => {
           const rows = this.#database.prepare(`
-            SELECT record_json FROM delegation_dependencies
-            WHERE json_extract(record_json, '$.parentRunId') = ?
-            ORDER BY created_at, record_key
+            SELECT * FROM delegation_dependencies
+            WHERE json_extract(payload_json, '$.parentRunId') = ?
+            ORDER BY created_at, id
           `).all(RunIdSchema.parse(parentRunId));
-          return Object.freeze(rows.map((row) => parseJsonRecord(
-            DependencyRecordSchema,
-            JsonRowSchema.parse(row).record_json,
-          )));
+          return Object.freeze(rows.map((row) => this.#parseNativeRow("delegation_dependencies",row,DependencyRecordSchema)));
         },
       }),
       delegationManifests: Object.freeze({
@@ -5247,33 +3452,22 @@ export class AuthorityDatabase implements Disposable {
       gateResults: Object.freeze({
         insert: (input: unknown) => {
           const record = GateResultRecordSchema.parse(input);
-          return this.#insertSimpleRecord("checkpoint_payloads", `${record.runId}:${record.gateId}`, record, GateResultRecordSchema, record.resolvedAt);
+          return this.#insertSimpleRecord("gate_results", `${record.runId}:${record.gateId}`, record, GateResultRecordSchema, record.resolvedAt);
         },
-        get: (recordKey: string) => this.#readRecord("checkpoint_payloads", recordKey, GateResultRecordSchema),
+        get: (recordKey: string) => this.#readRecord("gate_results", recordKey, GateResultRecordSchema),
         listByRun: (runId: string) => {
           const rows = this.#database.prepare(`
-            SELECT record_json FROM checkpoint_payloads
-            WHERE json_extract(record_json, '$.runId') = ?
-            ORDER BY created_at, record_key
+            SELECT * FROM gate_results
+            WHERE json_extract(payload_json, '$.runId') = ?
+            ORDER BY created_at, id
           `).all(RunIdSchema.parse(runId));
-          return Object.freeze(rows.map((row) => parseJsonRecord(
-            GateResultRecordSchema,
-            JsonRowSchema.parse(row).record_json,
-          )));
+          return Object.freeze(rows.map((row) => this.#parseNativeRow("gate_results",row,GateResultRecordSchema)));
         },
       }),
       runCheckpoints: Object.freeze({
         insert: (input: unknown) => {
           const record = RunCheckpointRecordSchema.parse(input);
-          // Readers admit absent claim generations; every new checkpoint writer must supply one.
           const claimGeneration = record.claimGeneration;
-          if (claimGeneration === undefined) {
-            throw new Error(
-              `run checkpoint ${record.workflowId}/${record.itemId}/${record.nodeId} attempt `
-              + `${String(record.attempt)} names no claim generation; every new checkpoint `
-              + "records WHICH execution of its attempt produced it",
-            );
-          }
           const json = canonicalJsonStringify(record);
           const recordKey = checkpointRecordKey(record);
           return this.#authorityWrite("run_checkpoints", () => {
@@ -5286,11 +3480,11 @@ export class AuthorityDatabase implements Disposable {
             }
             const result = this.#database.prepare(`
               INSERT INTO run_checkpoints
-                (record_key, workflow, item_id, node_id, attempt, claim_generation, run_id, record_json, created_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (id, workflow, item_id, node_id, attempt, claim_generation, run_id, output_digest, payload_json, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `).run(
               recordKey, record.workflowId, record.itemId, record.nodeId,
-              record.attempt, claimGeneration, record.runId, json, record.writtenAt,
+              record.attempt, claimGeneration, record.runId, deriveCheckpointOutputDigest(record.output), json, record.writtenAt,
             );
             const now = this.#clock.now();
             this.authority.timelineEvents.append({ schemaVersion: 1,
@@ -5309,44 +3503,37 @@ export class AuthorityDatabase implements Disposable {
           itemId: string,
           nodeId: string,
           attempt: number,
-          claimGeneration?: number,
+          claimGeneration: number,
         ) => this.#readRecord(
           "run_checkpoints",
           checkpointLookupKey(workflowId, itemId, nodeId, attempt, claimGeneration),
           RunCheckpointRecordSchema,
         ),
-        // SQLite DESC sorts NULL claim generations last; order executions within attempts.
         latest: (workflowId: string, itemId: string, nodeId: string) => {
           const row = this.#database.prepare(`
-            SELECT record_json FROM run_checkpoints
+            SELECT * FROM run_checkpoints
             WHERE workflow = ? AND item_id = ? AND node_id = ?
             ORDER BY attempt DESC, claim_generation DESC LIMIT 1
           `).get(workflowId, itemId, nodeId);
           if (row === undefined) return undefined;
-          return parseJsonRecord(RunCheckpointRecordSchema, JsonRowSchema.parse(row).record_json);
+          return this.#parseNativeRow("run_checkpoints",row,RunCheckpointRecordSchema);
         },
         /** Every execution of `(item, node, attempt)`, in the order they ran. */
         listByAttempt: (workflowId: string, itemId: string, nodeId: string, attempt: number) => {
           const rows = this.#database.prepare(`
-            SELECT record_json FROM run_checkpoints
+            SELECT * FROM run_checkpoints
             WHERE workflow = ? AND item_id = ? AND node_id = ? AND attempt = ?
             ORDER BY claim_generation
           `).all(WorkflowIdSchema.parse(workflowId), ItemIdSchema.parse(itemId), nodeId, attempt);
-          return Object.freeze(rows.map((row) => parseJsonRecord(
-            RunCheckpointRecordSchema,
-            JsonRowSchema.parse(row).record_json,
-          )));
+          return Object.freeze(rows.map((row) => this.#parseNativeRow("run_checkpoints",row,RunCheckpointRecordSchema)));
         },
         listByItem: (workflowId: string, itemId: string) => {
           const rows = this.#database.prepare(`
-            SELECT record_json FROM run_checkpoints
+            SELECT * FROM run_checkpoints
             WHERE workflow = ? AND item_id = ?
             ORDER BY attempt, claim_generation, node_id
           `).all(WorkflowIdSchema.parse(workflowId), ItemIdSchema.parse(itemId));
-          return Object.freeze(rows.map((row) => parseJsonRecord(
-            RunCheckpointRecordSchema,
-            JsonRowSchema.parse(row).record_json,
-          )));
+          return Object.freeze(rows.map((row) => this.#parseNativeRow("run_checkpoints",row,RunCheckpointRecordSchema)));
         },
       }),
       notifications: this.#buildNotificationRepository(),
@@ -5363,196 +3550,26 @@ export class AuthorityDatabase implements Disposable {
       }),
       settingsCurrent: settings.settingsCurrent,
       runtimeConfig: settings.runtimeConfig,
-      runtimeVersions: Object.freeze({ get: () => readStoredRuntimeVersionAuthority(this.#database) }),
-      versionPlans: Object.freeze({
-        insert: (input: unknown) => {
-          const record = VersionPlanStorageRecordSchema.parse(input);
-          return this.#insertSimpleRecord("version_plans", record.versionPlanId, record, VersionPlanStorageRecordSchema, record.createdAt);
-        },
-        get: (versionPlanId: string) => this.#readRecord("version_plans", versionPlanId, VersionPlanStorageRecordSchema),
-        list: () => !hasHistoricalArchiveTables(this.#database) ? this.historicalVersionChanges().filter(row => "schemaVersion" in row && row.schemaVersion === "historical-archive-v1").map(row => HistoricalVersionChangeSchema.parse(row).plan) : Object.freeze(this.#database.prepare(`
-          SELECT record_json FROM version_plans ORDER BY created_at DESC, record_key
-        `).all().map((row) => parseJsonRecord(VersionPlanStorageRecordSchema, JsonRowSchema.parse(row).record_json))),
-
-        consume: (input: unknown) => {
-          const request = VersionPlanConsumeRequestSchema.parse(input);
-          return this.#authorityWrite("version_plans", () => {
-            const current = this.#readRecord("version_plans", request.versionPlanId, VersionPlanStorageRecordSchema);
-            if (current === undefined) {
-              return {
-                result: Object.freeze({ state: "refused" as const, code: "not-found" as const,
-                  message: `version plan ${request.versionPlanId} does not exist` }),
-                changes: 0,
-              };
-            }
-            if (current.state === "applied") {
-              return { result: Object.freeze({ state: "already-consumed" as const, plan: current }), changes: 0 };
-            }
-            if (current.version !== request.expectedVersion) {
-              return {
-                result: Object.freeze({ state: "refused" as const, code: "version-mismatch" as const,
-                  message: `version plan ${request.versionPlanId} is at version ${String(current.version)}, `
-                    + `not the ${String(request.expectedVersion)} this apply expected` }),
-                changes: 0,
-              };
-            }
-            if (current.planFingerprint !== request.planFingerprint) {
-              return {
-                result: Object.freeze({ state: "refused" as const, code: "fingerprint-mismatch" as const,
-                  message: `version plan ${request.versionPlanId} holds fingerprint ${current.planFingerprint.slice(0, 12)}…, `
-                    + `not the ${request.planFingerprint.slice(0, 12)}… this apply reviewed` }),
-                changes: 0,
-              };
-            }
-            const next = VersionPlanStorageRecordSchema.parse({
-              ...current,
-              state: "applied",
-              version: current.version + 1,
-              appliedAt: request.now,
-            });
-            const outcome = this.#database.prepare(`
-              UPDATE version_plans SET record_json = ? WHERE record_key = ?
-            `).run(canonicalJsonStringify(next), request.versionPlanId);
-            return { result: Object.freeze({ state: "consumed" as const, plan: next }), changes: sqliteChanges(outcome.changes) };
-          });
-        },
-      }),
-
-      versionBumpApplications: Object.freeze({
-        insert: (input: unknown) => {
-          const record = VersionBumpApplicationStorageRecordSchema.parse(input);
-          const json = canonicalJsonStringify(record);
-          return this.#authorityWrite("version_bump_applications", () => {
-            const existing = this.#readRecord(
-              "version_bump_applications", record.applicationId, VersionBumpApplicationStorageRecordSchema,
-            );
-            if (existing !== undefined) {
-              if (canonicalJsonStringify(existing) !== json) {
-                throw new Error(`version bump application ${record.applicationId} already exists with different content`);
-              }
-              return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
-            }
-            const outcome = this.#database.prepare(`
-              INSERT INTO version_bump_applications
-                (record_key, version_plan_id, scope_kind, target_version, applied_app_version, archived_count, record_json, created_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            `).run(
-              record.applicationId, record.versionPlanId, record.scope.kind, record.targetVersion,
-              record.appliedAppVersion, record.archivedRunIds.length, json, record.appliedAt,
-            );
-            return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(outcome.changes) };
-          });
-        },
-        get: (applicationId: string) => this.#readRecord(
-          "version_bump_applications", applicationId, VersionBumpApplicationStorageRecordSchema,
-        ),
-        list: () => !hasHistoricalArchiveTables(this.#database) ? this.historicalVersionChanges().flatMap(row => { if (!("schemaVersion" in row) || row.schemaVersion !== "historical-archive-v1") return []; const source = HistoricalVersionChangeSchema.parse(row).application; return source === null ? [] : [source]; }) : Object.freeze(this.#database.prepare(`
-          SELECT record_json FROM version_bump_applications ORDER BY created_at DESC, record_key
-        `).all().map((row) => parseJsonRecord(
-          VersionBumpApplicationStorageRecordSchema, JsonRowSchema.parse(row).record_json,
-        ))),
-      }),
       deletedRuns: Object.freeze({
         get: (runId: string) => this.#readRecord("deleted_runs", RunIdSchema.parse(runId), DeletedRunRecordSchema),
         list: () => {
           const rows = this.#database.prepare(
-            "SELECT record_json FROM deleted_runs ORDER BY deleted_at, record_key",
+            "SELECT * FROM deleted_runs ORDER BY deleted_at, run_id",
           ).all();
-          return Object.freeze(rows.map((row) => parseJsonRecord(DeletedRunRecordSchema, JsonRowSchema.parse(row).record_json)));
+          return Object.freeze(rows.map((row) => deletedRunFromRow(row).receipt));
         },
-      }),
-      archivedRuns: Object.freeze({
-        transactions: (runId: string) => this.#withReadSnapshot(() => {
-          const archive = this.#readRecord("archived_runs", runId, ArchivedRunStorageRecordSchema);
-          if (archive === undefined) throw new Error("archive-transactions-owner-missing");
-          const raw = z.strictObject({ transactions_json: z.string().nullable(), transactions_digest: z.string().nullable() }).parse(
-            this.#database.prepare("SELECT transactions_json,transactions_digest FROM archived_runs WHERE record_key=?").get(runId));
-          if (raw.transactions_json === null || raw.transactions_digest === null) throw new Error("archive-transactions-missing");
-          const section = ArchivedTransactionsSchema.parse(JSON.parse(raw.transactions_json));
-          if (sha256Hex(raw.transactions_json) !== raw.transactions_digest || section.runId !== runId || section.contentDigest !== archive.contentDigest) throw new Error("archive-transactions-integrity-mismatch");
-          return section;
-        }),
-        enrichTransactions: (input: unknown) => this.#authorityWrite("archived_runs", () => {
-          const section = ArchivedTransactionsSchema.parse(input);
-          const archive = this.#readRecord("archived_runs", section.runId, ArchivedRunStorageRecordSchema);
-          if (archive === undefined || archive.contentDigest !== section.contentDigest) throw new Error("archive-transactions-owner-mismatch");
-          const raw = z.object({ transactions_json: z.string().nullable() }).parse(this.#database.prepare("SELECT transactions_json FROM archived_runs WHERE record_key=?").get(section.runId));
-          const json = canonicalJsonStringify(section);
-          if (raw.transactions_json !== null) {
-            const existing = this.authority.archivedRuns.transactions(section.runId);
-            if (canonicalJsonStringify(existing) !== json) throw new Error("archive-transactions-divergent-enrichment");
-            return { result: existing, changes: 0 };
-          }
-          const result = this.#database.prepare("UPDATE archived_runs SET transactions_json=?,transactions_digest=? WHERE record_key=?").run(json, sha256Hex(json), section.runId);
-          return { result: section, changes: sqliteChanges(result.changes) };
-        }),
-        bindingMismatches: (input: unknown) => {
-          const archived = ArchivedRunStorageRecordSchema.parse(input);
-          const run = this.#readRunRow(archived.runId);
-          if (run === undefined) return ["runId has no retained lifecycle row"];
-          if (run.lifecycle.state !== "terminal") return ["retained lifecycle is not terminal"];
-          const identityMatches = archived.traceId === run.envelope.traceId
-            && archived.workflowId === run.envelope.workflow
-            && archived.archivedIdentity.descriptorVersion === run.envelope.descriptorVersion
-            && archived.archivedIdentity.contractFingerprint === run.envelope.contractFingerprint
-            && Number(archived.row.rowRevision) === Number(run.version)
-            && archived.row.attempt === run.envelope.attempt
-            && canonicalJsonStringify(archived.input) === canonicalJsonStringify(run.input);
-          return [
-            ...(identityMatches ? [] : ["archive identity/input/revision differs from the retained run"]),
-            ...archivedTerminalMismatches(run, run.lifecycle, archived),
-          ];
-        },
-        insert: (input: unknown) => {
-          const record = ArchivedRunStorageRecordSchema.parse(input);
-          const json = canonicalJsonStringify(record);
-          return this.#authorityWrite("archived_runs", () => {
-            const existing = this.#readRecord("archived_runs", record.runId, ArchivedRunStorageRecordSchema);
-            if (existing !== undefined) {
-              if (canonicalJsonStringify(existing) !== json) {
-                throw new Error(
-                  `run ${record.runId} is already archived under ${existing.applicationId}; refusing to re-archive it `
-                  + `with different content under ${record.applicationId}`,
-                );
-              }
-              return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
-            }
-            const outcome = this.#database.prepare(`
-              INSERT INTO archived_runs
-                (record_key, application_id, workflow, descriptor_version, contract_fingerprint, app_version, content_digest, record_json, created_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `).run(
-              record.runId, record.applicationId, record.workflowId,
-              record.archivedIdentity.descriptorVersion, record.archivedIdentity.contractFingerprint,
-              record.appVersion.state === "present" ? record.appVersion.value : null,
-              record.contentDigest, json, record.archivedAt,
-            );
-            this.authority.archivedRuns.enrichTransactions(createTransactionHistory(this.authority).capture(record.runId, record.contentDigest, record.archivedAt, record.evidence.ledgerPartitions));
-            return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(outcome.changes) };
-          });
-        },
-        get: (runId: string) => this.#withReadSnapshot(() => {
-          const record = this.#readRecord("archived_runs", runId, ArchivedRunStorageRecordSchema);
-          return record === undefined ? undefined : this.#verifyArchivedPrivateInput(record);
-        }),
-
-        isArchived: (runId: string) => !hasHistoricalArchiveTables(this.#database) ? this.transferredRun(runId) !== undefined : CountRowSchema.parse(this.#database.prepare(`
-          SELECT count(*) AS count FROM archived_runs WHERE record_key = ?
-        `).get(runId)).count > 0,
-        list: () => !hasHistoricalArchiveTables(this.#database) ? [] : this.#withReadSnapshot(() => Object.freeze(this.#database.prepare(`
-          SELECT record_json FROM archived_runs ORDER BY created_at DESC, record_key
-        `).all().map((row) => this.#verifyArchivedPrivateInput(
-          parseJsonRecord(ArchivedRunStorageRecordSchema, JsonRowSchema.parse(row).record_json))))),
       }),
       writeIntents: Object.freeze({
+        getPublication:(id:string)=> { assertConfirmationPublication(this.#database,id); return readConfirmationPublication(this.#database,id); },
+        authenticatedDeletion:(runId:string,publication:ConfirmationPublication)=>authenticatedPublicationDeletion(this.#database,runId,publication),
         listByBusinessKey: (system: unknown, digest: unknown) => {
           const rows = this.#database.prepare(`
-            SELECT record_json FROM run_operations WHERE system = ? AND
-              (json_extract(record_json, '$.idempotencyKeyDigest') = ? OR
-               json_extract(record_json, '$.occurrence.businessKeyDigest') = ?)
-            ORDER BY record_key
+            SELECT * FROM write_intents WHERE system = ? AND
+              (json_extract(payload_json, '$.idempotencyKeyDigest') = ? OR
+               json_extract(payload_json, '$.occurrence.businessKeyDigest') = ?)
+            ORDER BY id
           `).all(BrowserSystemIdSchema.parse(system), FingerprintSchema.parse(digest), FingerprintSchema.parse(digest));
-          return Object.freeze(rows.map((row) => parseJsonRecord(WriteIntentRecordSchema, JsonRowSchema.parse(row).record_json)));
+          return Object.freeze(rows.map((row) => this.#parseNativeRow("write_intents",row,WriteIntentRecordSchema)));
         },
         recordObservedPresent: (input: unknown) => {
           const record = WriteIntentRecordSchema.parse(input);
@@ -5663,8 +3680,8 @@ export class AuthorityDatabase implements Disposable {
           const request = WriteIntentRetrySettlementRequestSchema.parse(input);
           return this.withAuthorityTransaction(() => {
             const current = this.#requireAttemptBearingWriteIntent(request.writeIntentId, request.generation, request.expectedVersion);
-            if (current.status !== "attempting" && current.status !== "parked") {
-              throw new Error(`write intent ${request.writeIntentId} is ${current.status}; only attempting or parked may settle retryable`);
+            if (current.status !== "attempting") {
+              throw new Error(`write intent ${request.writeIntentId} is ${current.status}; only attempting may settle retryable`);
             }
             const { parkedCode: _parkedCode, message: _message, authorityReason: _authorityReason, ...base } = {
               parkedCode: undefined,
@@ -5681,7 +3698,7 @@ export class AuthorityDatabase implements Disposable {
               updatedAt: request.now,
             });
             const currentAttempt = this.#requireWriteAttempt(current.currentAttemptId);
-            if (currentAttempt.outcome.state !== "attempting" && currentAttempt.outcome.state !== "parked") {
+            if (currentAttempt.outcome.state !== "attempting") {
               throw new Error(`write attempt ${currentAttempt.writeAttemptId} is ${currentAttempt.outcome.state}; it cannot settle retryable`);
             }
             const settledAttempt = WriteAttemptRecordSchema.parse({
@@ -5694,35 +3711,7 @@ export class AuthorityDatabase implements Disposable {
             return retryable;
           });
         },
-        reopenParkedAttempt: (input: unknown) => {
-          const request = WriteIntentReopenRequestSchema.parse(input);
-          return this.withAuthorityTransaction(() => {
-            const current = this.#requireAttemptBearingWriteIntent(request.writeIntentId, request.generation, request.expectedVersion);
-            if (current.status !== "parked") {
-              throw new Error(`write intent ${request.writeIntentId} is ${current.status}; only a parked intent may reopen for resolution`);
-            }
-            const { parkedCode: _parkedCode, message: _message, authorityReason: _authorityReason, ...base } = current;
-            const attempting = WriteIntentRecordSchema.parse({
-              ...base,
-              status: "attempting",
-              version: current.version + 1,
-              updatedAt: request.now,
-            });
-            const currentAttempt = this.#requireWriteAttempt(current.currentAttemptId);
-            if (currentAttempt.outcome.state !== "parked") {
-              throw new Error(`write attempt ${currentAttempt.writeAttemptId} is ${currentAttempt.outcome.state}; only a parked attempt may reopen`);
-            }
-            const reopenedAttempt = WriteAttemptRecordSchema.parse({
-              ...currentAttempt,
-              outcome: { state: "attempting" },
-              recordedAt: request.now,
-            });
-            this.#replaceWriteIntent(attempting);
-            this.#replaceWriteAttempt(reopenedAttempt);
-            return attempting;
-          });
-        },
-        get: (writeIntentId: string) => this.#readRecord("run_operations", writeIntentId, WriteIntentRecordSchema),
+        get: (writeIntentId: string) => this.#readRecord("write_intents", writeIntentId, WriteIntentRecordSchema),
         findByPermanentKey: (system: unknown, idempotencyKey: unknown) => this.#findPermanentWriteIntent(
           BrowserSystemIdSchema.parse(system),
           IdempotencyKeySchema.parse(idempotencyKey),
@@ -5730,28 +3719,25 @@ export class AuthorityDatabase implements Disposable {
         listAttemptingByItem: (input: unknown) => {
           const request = z.strictObject({ workflowId: WorkflowIdSchema, itemId: ItemIdSchema }).parse(input);
           const rows = this.#database.prepare(`
-            SELECT record_json FROM run_operations
+            SELECT * FROM write_intents
             WHERE status = 'attempting'
-              AND json_extract(record_json, '$.workflowId') = ?
-              AND json_extract(record_json, '$.itemId') = ?
-            ORDER BY record_key
+              AND json_extract(payload_json, '$.workflowId') = ?
+              AND json_extract(payload_json, '$.itemId') = ?
+            ORDER BY id
           `).all(request.workflowId, request.itemId);
           return Object.freeze(rows.map((row) => {
-            const intent = parseJsonRecord(WriteIntentRecordSchema, JsonRowSchema.parse(row).record_json);
+            const intent = this.#parseNativeRow("write_intents",row,WriteIntentRecordSchema);
             if (intent.status !== "attempting") throw new Error("attempting intent index disagrees with its record");
             return intent;
           }));
         },
         listByRun: (runId: string) => {
           const rows = this.#database.prepare(`
-            SELECT record_json FROM run_operations
-            WHERE json_extract(record_json, '$.runId') = ?
-            ORDER BY created_at, record_key
+            SELECT * FROM write_intents
+            WHERE json_extract(payload_json, '$.runId') = ?
+            ORDER BY created_at, id
           `).all(RunIdSchema.parse(runId));
-          return Object.freeze(rows.map((row) => parseJsonRecord(
-            WriteIntentRecordSchema,
-            JsonRowSchema.parse(row).record_json,
-          )));
+          return Object.freeze(rows.map((row) => this.#parseNativeRow("write_intents",row,WriteIntentRecordSchema)));
         },
         countDryRunEvidenceByRun: (runId: string) => {
           const parsedRunId = RunIdSchema.parse(runId);
@@ -5760,31 +3746,28 @@ export class AuthorityDatabase implements Disposable {
           ).count;
           return DryRunWriteSafetyCountsSchema.parse({
             writeIntents: count(`
-              SELECT count(*) AS count FROM run_operations
-              WHERE json_extract(record_json, '$.runId') = ?
+              SELECT count(*) AS count FROM write_intents
+              WHERE json_extract(payload_json, '$.runId') = ?
             `),
             writeAttempts: count(`
-              SELECT count(*) AS count FROM run_operation_attempts AS attempt
-              JOIN run_operations AS intent ON intent.record_key = attempt.write_intent_id
-              WHERE json_extract(intent.record_json, '$.runId') = ?
+              SELECT count(*) AS count FROM write_attempts AS attempt
+              JOIN write_intents AS intent ON intent.id = attempt.intent_id
+              WHERE json_extract(intent.payload_json, '$.runId') = ?
             `),
             confirmedOperations: count(`
               SELECT count(*) AS count FROM timeline_events
-              WHERE run_id = ? AND json_extract(record_json, '$.payload.kind') = 'operation-confirmed'
+              WHERE run_id = ? AND json_extract(payload_json, '$.payload.kind') = 'operation-confirmed'
             `),
           });
         },
       }),
       writeAttempts: Object.freeze({
-        get: (writeAttemptId: string) => this.#readRecord("run_operation_attempts", writeAttemptId, WriteAttemptRecordSchema),
+        get: (writeAttemptId: string) => this.#readRecord("write_attempts", writeAttemptId, WriteAttemptRecordSchema),
         listByIntent: (writeIntentId: string) => {
           const rows = this.#database.prepare(`
-            SELECT record_json FROM run_operation_attempts WHERE write_intent_id = ? ORDER BY generation
+            SELECT * FROM write_attempts WHERE intent_id = ? ORDER BY generation
           `).all(WriteIntentIdSchema.parse(writeIntentId));
-          return Object.freeze(rows.map((row) => parseJsonRecord(
-            WriteAttemptRecordSchema,
-            JsonRowSchema.parse(row).record_json,
-          )));
+          return Object.freeze(rows.map((row) => this.#parseNativeRow("write_attempts",row,WriteAttemptRecordSchema)));
         },
       }),
 
@@ -5795,19 +3778,18 @@ export class AuthorityDatabase implements Disposable {
   }
 
   #readRunRow(runId: string): RunRecord | undefined {
-    return this.#readRecord("workflow_runs", runId, RunRecordSchema);
+    return this.#readRecord("runs", runId, RunRecordSchema);
   }
 
 
   #nextItemAttempt(workflow: string, itemId: string): number {
     const row = MaxAttemptRowSchema.parse(this.#database.prepare(`
       SELECT max(attempt) AS attempt FROM (
-        SELECT attempt FROM workflow_runs WHERE workflow = ? AND item_id = ?
+        SELECT attempt FROM runs WHERE workflow = ? AND item_id = ?
         UNION ALL
         SELECT attempt FROM deleted_runs WHERE workflow = ? AND item_id = ?
-        UNION ALL SELECT attempt FROM archive_transfers WHERE workflow = ? AND item_id = ?
       )
-    `).get(WorkflowIdSchema.parse(workflow), ItemIdSchema.parse(itemId), workflow, itemId, workflow, itemId));
+    `).get(WorkflowIdSchema.parse(workflow), ItemIdSchema.parse(itemId), workflow, itemId));
     const highest = row.attempt;
     if (highest === null) return 1;
     return highest + 1;
@@ -5817,61 +3799,27 @@ export class AuthorityDatabase implements Disposable {
   #nextWorkflowRunNumber(workflow: string): number {
     const row = MaxRunNumberRowSchema.parse(this.#database.prepare(`
       SELECT max(run_number) AS run_number FROM (
-        SELECT run_number FROM workflow_runs WHERE workflow = ?
+        SELECT run_number FROM runs WHERE workflow = ?
         UNION ALL
         SELECT run_number FROM deleted_runs WHERE workflow = ?
-        UNION ALL SELECT run_number FROM archive_transfers WHERE workflow = ?
       )
-    `).get(WorkflowIdSchema.parse(workflow), workflow, workflow));
+    `).get(WorkflowIdSchema.parse(workflow), workflow));
     const highest = row.run_number;
     if (highest === null) return 1;
     return highest + 1;
   }
 
   #writeRunRow(record: RunRecord, mode: "insert" | "update"): void {
-    const claim = runClaim(record);
-    const json = canonicalJsonStringify(record);
-    const notBefore = record.lifecycle.state === "queued" ? record.lifecycle.notBefore ?? null : null;
-    this.#authorityWrite("workflow_runs", () => {
-      const statement = mode === "insert"
-        ? this.#database.prepare(`
-          INSERT INTO workflow_runs (
-            record_key, workflow, item_id, state, priority, attempt, not_before,
-            owner_worker_id, claim_generation, heartbeat_at, parent_run_id, run_number, session_id, version,
-            record_json, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `)
-        : this.#database.prepare(`
-          UPDATE workflow_runs SET
-            workflow = ?, item_id = ?, state = ?, priority = ?, attempt = ?, not_before = ?,
-            owner_worker_id = ?, claim_generation = ?, heartbeat_at = ?, parent_run_id = ?,
-            run_number = ?, session_id = ?, version = ?, record_json = ?
-          WHERE record_key = ? AND version = ?
-        `);
-      const shared = [
-        record.envelope.workflow,
-        record.envelope.itemId,
-        record.lifecycle.state,
-        record.envelope.priority,
-        record.envelope.attempt,
-        notBefore,
-        claim?.workerId ?? null,
-        record.claimGeneration,
-        claim?.heartbeatAt ?? null,
-        record.envelope.parent?.runId ?? null,
-        // Runs without a recorded ordinal retain NULL across updates.
-        record.runNumber ?? null,
-        // Runs without a recorded session retain NULL across updates.
-        record.sessionId ?? null,
-        record.version,
-      ] as const;
+    const columns = runRecordColumns(record);
+    const keys = Object.keys(columns);
+    const values = Object.values(columns);
+    this.#authorityWrite("runs", () => {
       const result = mode === "insert"
-        ? statement.run(record.envelope.runId, ...shared, json, canonicalUtcInstant(record.createdAt))
-        : statement.run(...shared, json, record.envelope.runId, record.version - 1);
+        ? this.#database.prepare(`INSERT INTO runs (${keys.join(",")}) VALUES (${keys.map(() => "?").join(",")})`).run(...values)
+        : this.#database.prepare(`UPDATE runs SET ${keys.map(key => `${key} = ?`).join(",")} WHERE id = ? AND version = ?`)
+          .run(...values, record.envelope.runId, record.version - 1);
       const changes = sqliteChanges(result.changes);
-      if (changes !== 1) {
-        throw new Error(`run ${record.envelope.runId} ${mode} affected ${String(changes)} rows`);
-      }
+      if (changes !== 1) throw new Error(`run ${record.envelope.runId} ${mode} affected ${String(changes)} rows`);
       this.#lifecycleHooks?.afterRunWrite?.(record);
       return { result: undefined, changes };
     });
@@ -5934,7 +3882,7 @@ export class AuthorityDatabase implements Disposable {
       }
 
       const held = HeldRunRowSchema.parse(this.#database.prepare(`
-        SELECT record_key AS run_id FROM workflow_runs
+        SELECT id AS run_id FROM runs
         WHERE owner_worker_id = ? AND state IN ('claimed', 'validating', 'running')
         LIMIT 1
       `).get(request.workerId) ?? { run_id: null });
@@ -5943,37 +3891,37 @@ export class AuthorityDatabase implements Disposable {
         throw new Error(`worker ${request.workerId} already holds active run ${held.run_id}`);
       }
       const row = this.#database.prepare(`
-        SELECT record_json FROM workflow_runs
+        SELECT * FROM runs
         WHERE workflow = ? AND state = 'queued'
           AND (not_before IS NULL OR not_before <= ?)
           AND (? = 0 OR (
-            ${unarchivedRunSql(this.#database, "workflow_runs.record_key")}
+            1=1
             AND NOT EXISTS (
               SELECT 1 FROM delegation_dependencies d
-              WHERE json_extract(d.record_json, '$.parentRunId') = workflow_runs.record_key
-                AND json_extract(d.record_json, '$.state') <> 'satisfied'
+              WHERE json_extract(d.payload_json, '$.parentRunId') = runs.id
+                AND json_extract(d.payload_json, '$.state') <> 'satisfied'
             )
           ))
-        ORDER BY CASE priority WHEN 'interactive' THEN 0 ELSE 1 END, created_at, record_key
+        ORDER BY CASE priority WHEN 'interactive' THEN 0 ELSE 1 END, created_at, id
         LIMIT 1
       `).get(request.workflow, request.now, canonical ? 1 : 0);
       if (row === undefined) {
         const deferred = NextEligibleRowSchema.parse(this.#database.prepare(`
-          SELECT min(not_before) AS next_eligible_at FROM workflow_runs
+          SELECT min(not_before) AS next_eligible_at FROM runs
           WHERE workflow = ? AND state = 'queued' AND not_before > ?
             AND (? = 0 OR (
-              ${unarchivedRunSql(this.#database, "workflow_runs.record_key")}
+              1=1
               AND NOT EXISTS (
                 SELECT 1 FROM delegation_dependencies d
-                WHERE json_extract(d.record_json, '$.parentRunId') = workflow_runs.record_key
-                  AND json_extract(d.record_json, '$.state') <> 'satisfied'
+                WHERE json_extract(d.payload_json, '$.parentRunId') = runs.id
+                  AND json_extract(d.payload_json, '$.state') <> 'satisfied'
               )
             ))
         `).get(request.workflow, request.now, canonical ? 1 : 0));
         if (deferred.next_eligible_at === null) return RunClaimOutcomeSchema.parse({ state: "idle" });
         return RunClaimOutcomeSchema.parse({ state: "deferred", nextEligibleAt: deferred.next_eligible_at });
       }
-      const current = parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json);
+      const current = runRecordFromRow(row);
       if (request.configFingerprint !== undefined) {
         if (!this.authority.runtimeConfig.matchesRun(request.configFingerprint, current.envelope.configFingerprint)) {
           if (canonical) return { state: "refused", refusal: { reason: "runtime-stale" } };
@@ -6045,7 +3993,7 @@ export class AuthorityDatabase implements Disposable {
 
 
           if (record.sessionId !== undefined) {
-            const session = this.#readRecord("workflow_run_batches", record.sessionId, RunSessionRecordSchema);
+            const session = this.#readRecord("run_batches", record.sessionId, RunSessionRecordSchema);
             if (session === undefined) {
               throw new Error(
                 `run ${record.envelope.runId} names session ${record.sessionId}, which authority never wrote; `
@@ -6075,42 +4023,45 @@ export class AuthorityDatabase implements Disposable {
         });
       },
       get: (runId: string) => this.#readRunRow(runId),
-      search: (input: unknown) => this.withAuthorityReadSnapshot(() => createRunSearchIndex(this.#database).search(input, this.getMeta().authorityGeneration)),
+      search: (input: unknown) => this.withAuthorityReadSnapshot(() => {
+        this.#validateExternalQuerySources();
+        return createRunSearchIndex(this.#database).search(input, this.getMeta().authorityGeneration);
+      }),
 
       listByWorkflow: (workflow: string) => Object.freeze(this.#database.prepare(`
-        SELECT record_json FROM workflow_runs WHERE workflow = ? ORDER BY created_at, record_key
-      `).all(workflow).map((row) => parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json))),
+        SELECT * FROM runs WHERE workflow = ? ORDER BY created_at, id
+      `).all(workflow).map((row) => runRecordFromRow(row))),
       listCurrentByWorkflow: (workflow: string) => Object.freeze(this.#database.prepare(`
-        SELECT t.record_json FROM workflow_runs AS t
+        SELECT t.* FROM runs AS t
         WHERE t.workflow = ?
-          AND ${unarchivedRunSql(this.#database, "t.record_key")}
-        ORDER BY t.created_at, t.record_key
-      `).all(workflow).map((row) => parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json))),
+          AND 1=1
+        ORDER BY t.created_at, t.id
+      `).all(workflow).map((row) => runRecordFromRow(row))),
       listWorkflows: () => Object.freeze(
         z.array(z.strictObject({ workflow: z.string() })).parse(this.#database.prepare(`
-          SELECT DISTINCT workflow AS workflow FROM workflow_runs ORDER BY workflow
+          SELECT DISTINCT workflow AS workflow FROM runs ORDER BY workflow
         `).all()).map(({ workflow }) => workflow),
       ),
       findByTrace: (traceId: string) => {
         const parsed = TraceIdSchema.parse(traceId);
         const rows = this.#database.prepare(`
-          SELECT record_json FROM workflow_runs
-          WHERE json_extract(record_json, '$.envelope.traceId') = ?
-          ORDER BY created_at, record_key
+          SELECT * FROM runs
+          WHERE trace_id = ?
+          ORDER BY created_at, id
         `).all(parsed);
         if (rows.length === 0) return undefined;
         if (rows.length > 1) {
           // Trace identity is frozen at enqueue; duplicate trace IDs are corruption, not ambiguous lookup.
           throw new Error(`trace ${parsed} identifies ${String(rows.length)} runs; a trace id names exactly one`);
         }
-        return parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(rows[0]).record_json);
+        return runRecordFromRow(rows[0]);
       },
       listByItem: (input: unknown) => {
         const query = RunItemQuerySchema.parse(input);
         const rows = this.#database.prepare(`
-          SELECT record_json FROM workflow_runs WHERE workflow = ? AND item_id = ? ORDER BY created_at, record_key
+          SELECT * FROM runs WHERE workflow = ? AND item_id = ? ORDER BY created_at, id
         `).all(query.workflow, query.itemId);
-        return Object.freeze(rows.map((row) => parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json)));
+        return Object.freeze(rows.map((row) => runRecordFromRow(row)));
       },
       nextItemAttempt: (input: unknown) => {
         const query = RunItemQuerySchema.parse(input);
@@ -6134,13 +4085,13 @@ export class AuthorityDatabase implements Disposable {
           bindings.push(request.workflow);
         }
         const rows = this.#database.prepare(`
-          SELECT record_json FROM workflow_runs
+          SELECT * FROM runs
           WHERE state IN ('claimed', 'validating', 'running')
             ${clauses.map((clause) => `AND ${clause}`).join(" ")}
-          ORDER BY heartbeat_at, record_key
+          ORDER BY heartbeat_at, id
         `).all(...bindings);
         return Object.freeze(rows.map((row) => {
-          const run = parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json);
+          const run = runRecordFromRow(row);
           const claim = runClaim(run);
           if (claim === undefined
             || (request.workerId !== undefined && claim.workerId !== request.workerId)
@@ -6153,100 +4104,50 @@ export class AuthorityDatabase implements Disposable {
       },
       listByWorker: (workerId: string) => {
         const rows = this.#database.prepare(`
-          SELECT record_json FROM workflow_runs WHERE owner_worker_id = ? ORDER BY created_at, record_key
+          SELECT * FROM runs WHERE owner_worker_id = ? ORDER BY created_at, id
         `).all(WorkerIdSchema.parse(workerId));
-        return Object.freeze(rows.map((row) => parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json)));
+        return Object.freeze(rows.map((row) => runRecordFromRow(row)));
       },
       listBySession: (sessionId: string) => Object.freeze(this.#database.prepare(`
-        SELECT record_json FROM workflow_runs WHERE session_id = ? ORDER BY created_at, record_key
-      `).all(RunSessionIdSchema.parse(sessionId)).map((row) => parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json))),
+        SELECT * FROM runs WHERE batch_id = ? ORDER BY created_at, id
+      `).all(RunSessionIdSchema.parse(sessionId)).map((row) => runRecordFromRow(row))),
 
       listParkedAtGate: () => {
         const rows = this.#database.prepare(`
-          SELECT record_json FROM workflow_runs WHERE state = 'parked-gate' ORDER BY created_at, record_key
+          SELECT * FROM runs WHERE state = 'parked-gate' ORDER BY created_at, id
         `).all();
         return Object.freeze(rows.map((row) => {
-          const record = parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json);
+          const record = runRecordFromRow(row);
           if (record.lifecycle.state !== "parked-gate") {
             throw new Error(
               `run ${record.envelope.runId} is stored under state 'parked-gate' but its record's lifecycle `
-              + `reads ${record.lifecycle.state}; the workflow_runs row and its record_json disagree`,
+              + `reads ${record.lifecycle.state}; the runs row and its payload_json disagree`,
             );
           }
           return record;
         }));
       },
+      assertDeletionAllowed: (input: unknown) => {
+        const request = RunDeleteInputSchema.parse(input);
+        const run = this.#readRunRow(request.runId);
+        if (run === undefined) throw new Error("run-deletion-owner-missing");
+        prepareNativeRunDeletion(this.#database,run,request,ref => inspectArtifactDeletionFile(this.#admission,ref),"preflight");
+      },
       delete: (input: unknown) => {
-        const { runId, origin, commandId, now } = RunDeleteInputSchema.parse(input);
-        return this.#authorityWrite("workflow_runs", () => {
-          const run = this.#readRunRow(runId) ?? this.transferredRun(runId)?.run;
-          if (run === undefined) throw new Error(`run ${runId} does not exist; nothing to delete`);
-          if (run.lifecycle.state !== "terminal") {
-            throw new Error(`run ${runId} is ${run.lifecycle.state}, not terminal; only a terminal run can be deleted`);
-          }
-          const remainingChildren = CountRowSchema.parse(
-            this.#database.prepare("SELECT count(*) AS count FROM workflow_runs WHERE parent_run_id = ?").get(runId),
-          ).count;
-          if (remainingChildren > 0) {
-            throw new Error(
-              `run ${runId} still has ${String(remainingChildren)} child run(s) in authority; delete the tree `
-              + "leaves first",
-            );
-          }
-          const archived = this.#readRecord("archived_runs", runId, ArchivedRunStorageRecordSchema);
-          if (origin === "archive" && archived === undefined && this.transferredRun(runId) === undefined) {
-            throw new Error(`run ${runId} is not archived; the archive door cannot delete it`);
-          }
-          if (origin === "queue" && archived !== undefined) {
-            throw new Error(`run ${runId} is archived; delete it from the Archive, not the queue`);
-          }
-          const evidence = runDeletionEvidence(this.#database, run, () => this.lifecycleArchive(true));
-          const removed: { table: z.infer<typeof DeletedRunTableSchema>; rows: number }[] = [];
-          const tombstone = (rows: readonly { table: z.infer<typeof DeletedRunTableSchema>; rows: number }[]) =>
-            DeletedRunRecordSchema.parse({
-              runId,
-              workflow: run.envelope.workflow,
-              traceId: run.envelope.traceId,
-              itemId: run.envelope.itemId,
-              attempt: run.envelope.attempt,
-              runNumber: run.runNumber ?? null,
-              ordinalSource: "tombstone",
-              tallyVersion: 3,
-              origin,
-              commandId,
-              deletedAt: now,
-              removed: rows,
-            });
-          // Write the tombstone before cascading; deletion triggers require it even while its tally is empty.
-          const inserted = this.#database.prepare(`
-            INSERT INTO deleted_runs
-              (record_key, workflow, trace_id, origin, command_id, deleted_at, record_json, created_at,
-               item_id, attempt, run_number, ordinal_source)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `).run(
-            runId, run.envelope.workflow, run.envelope.traceId, origin, commandId, now,
-            canonicalJsonStringify(tombstone([])), now,
-            run.envelope.itemId, run.envelope.attempt, run.runNumber ?? null, "tombstone",
-          );
-          if (sqliteChanges(inserted.changes) !== 1) throw new Error(`deleted_runs tombstone for ${runId} was not written`);
-          this.#lifecycleHooks?.afterDeleteStep?.({ runId, step: "tombstone" });
-          removed.push(...this.#removeLifecycleSources(run, now, false, evidence));
-          this.#lifecycleHooks?.afterDeleteStep?.({ runId, step: "cascade-complete" });
-          const record = tombstone(removed);
-          // The one-way settle: the trigger admits exactly this transition.
-          const restamped = sqliteChanges(this.#database.prepare(
-            "UPDATE deleted_runs SET record_json = ? WHERE record_key = ? AND record_json = ?",
-          ).run(canonicalJsonStringify(record), runId, canonicalJsonStringify(tombstone([]))).changes);
-          if (restamped !== 1) throw new Error(`deleted_runs tombstone for ${runId} could not carry its tally`);
-          this.#lifecycleHooks?.afterDeleteStep?.({ runId, step: "tally-settled" });
-          return { result: record, changes: 1 + removed.reduce((sum, entry) => sum + entry.rows, 0) };
+        const request = RunDeleteInputSchema.parse(input);
+        return this.#authorityWrite("runs", () => {
+          const run = this.#readRunRow(request.runId);
+          if (run === undefined) throw new Error("run-deletion-owner-missing");
+          const prepared = prepareNativeRunDeletion(this.#database,run,request,ref => inspectArtifactDeletionFile(this.#admission,ref));
+          const record = executeNativeRunDeletion(this.#database,prepared,step => this.#lifecycleHooks?.afterDeleteStep?.({runId:request.runId,step}));
+          return {result:record,changes:1 + record.removed.reduce((sum,entry) => sum + entry.rows,0)};
         });
       },
       listChildren: (parentRunId: string) => {
         const rows = this.#database.prepare(`
-          SELECT record_json FROM workflow_runs WHERE parent_run_id = ? ORDER BY created_at, record_key
+          SELECT * FROM runs WHERE parent_id = ? ORDER BY created_at, id
         `).all(RunIdSchema.parse(parentRunId));
-        return Object.freeze(rows.map((row) => parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json)));
+        return Object.freeze(rows.map((row) => runRecordFromRow(row)));
       },
       claimNext: (input: unknown) => this.#claimNextRun(input, false),
       claimEligible: (input: unknown, admit?: (run: RunRecord) => void) => this.#claimNextRun(input, true, admit),
@@ -6301,11 +4202,6 @@ export class AuthorityDatabase implements Disposable {
           request.claim,
           (current) => RunRecordSchema.parse({
             ...current,
-            // A new attempt drops single-resume overrides; they never authorize another attempt.
-            envelope: nextAttemptEnvelope(
-              current.envelope,
-              this.#nextItemAttempt(current.envelope.workflow, current.envelope.itemId),
-            ),
             lifecycle: {
               state: "queued",
               requeuedFrom: request.cause,
@@ -6428,24 +4324,24 @@ export class AuthorityDatabase implements Disposable {
             bindings.push(request.workflow);
           }
           const rows = this.#database.prepare(`
-            SELECT record_json FROM workflow_runs
+            SELECT * FROM runs
             WHERE state IN ('claimed', 'validating', 'running')
               ${clauses.map((clause) => `AND ${clause}`).join(" ")}
-            ORDER BY heartbeat_at, record_key
+            ORDER BY heartbeat_at, id
           `).all(...bindings);
           const outcomes: z.infer<typeof RunClaimSweepOutcomeSchema>[] = [];
           for (const row of rows) {
-            const current = parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json);
+            const current = runRecordFromRow(row);
 
             const intents = this.#database.prepare(`
-              SELECT record_json FROM run_operations
+              SELECT * FROM write_intents
               WHERE status = 'attempting'
-                AND json_extract(record_json, '$.workflowId') = ?
-                AND json_extract(record_json, '$.itemId') = ?
-              ORDER BY record_key
+                AND json_extract(payload_json, '$.workflowId') = ?
+                AND json_extract(payload_json, '$.itemId') = ?
+              ORDER BY id
             `).all(current.envelope.workflow, current.envelope.itemId);
             const attempting = intents.map((intentRow) =>
-              parseJsonRecord(WriteIntentRecordSchema, JsonRowSchema.parse(intentRow).record_json));
+              this.#parseNativeRow("write_intents",intentRow,WriteIntentRecordSchema));
             const unfinished = attempting[0];
             if (unfinished !== undefined) {
               if (unfinished.status !== "attempting") {
@@ -6500,10 +4396,6 @@ export class AuthorityDatabase implements Disposable {
             }
             const requeued = RunRecordSchema.parse({
               ...current,
-              envelope: nextAttemptEnvelope(
-                current.envelope,
-                this.#nextItemAttempt(current.envelope.workflow, current.envelope.itemId),
-              ),
               lifecycle: { state: "queued", requeuedFrom: "recovery" },
               version: current.version + 1,
               updatedAt: request.now,
@@ -6519,19 +4411,19 @@ export class AuthorityDatabase implements Disposable {
 
   #writeStartPlan(record: StartPlanRecord, mode: "insert" | "update"): void {
     const json = canonicalJsonStringify(record);
-    this.#authorityWrite("workflow_run_requests", () => {
+    this.#authorityWrite("run_requests", () => {
       const result = mode === "insert"
         ? this.#database.prepare(`
-          INSERT INTO workflow_run_requests (
-            record_key, workflow, consumed_by, expires_at, version, record_json, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO run_requests (
+            id, workflow, actor_id, consumed_by, expires_at, version, payload_json, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
-          record.startPlanId, record.workflowId, record.consumedBy?.commandId ?? null,
+          record.startPlanId, record.workflowId, record.plannedBy, record.consumedBy?.commandId ?? null,
           record.expiresAt, record.version, json, record.createdAt,
         )
         : this.#database.prepare(`
-          UPDATE workflow_run_requests SET consumed_by = ?, expires_at = ?, version = ?, record_json = ?
-          WHERE record_key = ? AND version = ?
+          UPDATE run_requests SET consumed_by = ?, expires_at = ?, version = ?, payload_json = ?
+          WHERE id = ? AND version = ?
         `).run(
           record.consumedBy?.commandId ?? null, record.expiresAt, record.version, json,
           record.startPlanId, record.version - 1,
@@ -6551,7 +4443,7 @@ export class AuthorityDatabase implements Disposable {
         }
         const json = canonicalJsonStringify(record);
         return this.withAuthorityTransaction(() => {
-          const existing = this.#readRecord("workflow_run_requests", record.startPlanId, StartPlanRecordSchema);
+          const existing = this.#readRecord("run_requests", record.startPlanId, StartPlanRecordSchema);
           if (existing !== undefined) {
             if (canonicalJsonStringify(existing) !== json) {
               throw new Error(`start plan id ${record.startPlanId} already exists with different content`);
@@ -6562,11 +4454,11 @@ export class AuthorityDatabase implements Disposable {
           return Object.freeze({ state: "inserted" as const, record });
         });
       },
-      get: (startPlanId: string) => this.#readRecord("workflow_run_requests", startPlanId, StartPlanRecordSchema),
+      get: (startPlanId: string) => this.#readRecord("run_requests", startPlanId, StartPlanRecordSchema),
       consume: (input: unknown) => {
         const request = StartPlanConsumeRequestSchema.parse(input);
         return this.withAuthorityTransaction(() => {
-          const plan = this.#readRecord("workflow_run_requests", request.startPlanId, StartPlanRecordSchema);
+          const plan = this.#readRecord("run_requests", request.startPlanId, StartPlanRecordSchema);
           if (plan === undefined) throw new Error(`start plan ${request.startPlanId} does not exist`);
           const mismatched = [
             ["descriptor", plan.descriptorFingerprint, request.descriptorFingerprint],
@@ -6622,32 +4514,32 @@ export class AuthorityDatabase implements Disposable {
   }
 
   #readWorkerLease(workerId: string): WorkerLeaseRecord | undefined {
-    return this.#readRecord("workflow_workers", workerId, WorkerLeaseRecordSchema);
+    return this.#readRecord("worker_leases", workerId, WorkerLeaseRecordSchema);
   }
 
   #writeWorkerLease(record: WorkerLeaseRecord, mode: "insert" | "update"): void {
     const json = canonicalJsonStringify(record);
     const heartbeatAt = "heartbeatAt" in record.lifecycle ? record.lifecycle.heartbeatAt : null;
-    this.#authorityWrite("workflow_workers", () => {
+    this.#authorityWrite("worker_leases", () => {
       const result = mode === "insert"
         ? this.#database.prepare(`
-          INSERT INTO workflow_workers (
-            record_key, worker_id, workflow, lease_generation, state, directive,
-            heartbeat_at, version, record_json, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO worker_leases (
+            id, worker_id, workflow, lease_generation, control_revision, state, directive,
+            heartbeat_at, version, payload_json, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
-          record.workerId, record.workerId, record.workflow, record.leaseGeneration,
+          record.workerId, record.workerId, record.workflow, record.leaseGeneration, record.controlRevision,
           record.lifecycle.state, record.control.directive, heartbeatAt, record.version,
-          json, record.createdAt,
+          json, record.createdAt, record.updatedAt,
         )
         : this.#database.prepare(`
-          UPDATE workflow_workers SET
-            workflow = ?, lease_generation = ?, state = ?, directive = ?,
-            heartbeat_at = ?, version = ?, record_json = ?
-          WHERE record_key = ? AND version = ?
+          UPDATE worker_leases SET
+            workflow = ?, lease_generation = ?, control_revision = ?, state = ?, directive = ?,
+            heartbeat_at = ?, version = ?, payload_json = ?, updated_at = ?
+          WHERE id = ? AND version = ?
         `).run(
-          record.workflow, record.leaseGeneration, record.lifecycle.state,
-          record.control.directive, heartbeatAt, record.version, json,
+          record.workflow, record.leaseGeneration, record.controlRevision, record.lifecycle.state,
+          record.control.directive, heartbeatAt, record.version, json, record.updatedAt,
           record.workerId, record.version - 1,
         );
       const changes = sqliteChanges(result.changes);
@@ -6657,30 +4549,30 @@ export class AuthorityDatabase implements Disposable {
   }
 
   #readDuoCeremonyLease(credentialKey: string): DuoCeremonyLeaseRecord | undefined {
-    return this.#readRecord("worker_auth", credentialKey, DuoCeremonyLeaseRecordSchema);
+    return this.#readRecord("auth_leases", credentialKey, DuoCeremonyLeaseRecordSchema);
   }
 
   #writeDuoCeremonyLease(record: DuoCeremonyLeaseRecord, mode: "insert" | "update"): void {
     const json = canonicalJsonStringify(record);
-    this.#authorityWrite("worker_auth", () => {
+    this.#authorityWrite("auth_leases", () => {
       const result = mode === "insert"
         ? this.#database.prepare(`
-          INSERT INTO worker_auth (
-            record_key, generation, holder_worker_id, holder_system, state, expires_at,
-            version, record_json, created_at
+          INSERT INTO auth_leases (
+            credential_key, generation, holder_worker_id, holder_system, state, expires_at,
+            version, payload_json, updated_at
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           record.credentialKey, record.generation, record.holder.workerId, record.holder.system,
-          record.state, record.expiresAt, record.version, json, record.createdAt,
+          record.state, record.expiresAt, record.version, json, record.updatedAt,
         )
         : this.#database.prepare(`
-          UPDATE worker_auth SET
+          UPDATE auth_leases SET
             generation = ?, holder_worker_id = ?, holder_system = ?, state = ?, expires_at = ?,
-            version = ?, record_json = ?
-          WHERE record_key = ? AND version = ?
+            version = ?, payload_json = ?, updated_at = ?
+          WHERE credential_key = ? AND version = ?
         `).run(
           record.generation, record.holder.workerId, record.holder.system, record.state,
-          record.expiresAt, record.version, json, record.credentialKey, record.version - 1,
+          record.expiresAt, record.version, json, record.updatedAt, record.credentialKey, record.version - 1,
         );
       const changes = sqliteChanges(result.changes);
       if (changes !== 1) {
@@ -6761,13 +4653,13 @@ export class AuthorityDatabase implements Disposable {
     this.#authorityWrite("worker_pools", () => {
       const result = mode === "insert"
         ? this.#database.prepare(`
-          INSERT INTO worker_pools (record_key, desired_workers, version, record_json, created_at)
-          VALUES (?, ?, ?, ?, ?)
-        `).run(record.workflow, record.desiredWorkers, record.version, json, record.createdAt)
+          INSERT INTO worker_pools (workflow, desired_workers, version, payload_json, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).run(record.workflow, record.desiredWorkers, record.version, json, record.createdAt, record.updatedAt)
         : this.#database.prepare(`
-          UPDATE worker_pools SET desired_workers = ?, version = ?, record_json = ?
-          WHERE record_key = ? AND version = ?
-        `).run(record.desiredWorkers, record.version, json, record.workflow, record.version - 1);
+          UPDATE worker_pools SET desired_workers = ?, version = ?, payload_json = ?, updated_at = ?
+          WHERE workflow = ? AND version = ?
+        `).run(record.desiredWorkers, record.version, json, record.updatedAt, record.workflow, record.version - 1);
       const changes = sqliteChanges(result.changes);
       if (changes !== 1) {
         throw new Error(`worker pool ${record.workflow} ${mode} affected ${String(changes)} rows`);
@@ -6809,20 +4701,20 @@ export class AuthorityDatabase implements Disposable {
       },
       get: read,
       list: () => Object.freeze(this.#database.prepare(`
-        SELECT record_json FROM worker_pools ORDER BY record_key
-      `).all().map((row) => parseJsonRecord(WorkerPoolRecordSchema, JsonRowSchema.parse(row).record_json))),
+        SELECT * FROM worker_pools ORDER BY workflow
+      `).all().map((row) => this.#parseNativeRow("worker_pools",row,WorkerPoolRecordSchema))),
     });
   }
 
   #buildRunSessionRepository(): RunSessionRepository {
     return Object.freeze({
-      list: () => Object.freeze(this.#database.prepare("SELECT record_json FROM workflow_run_batches ORDER BY record_key").all().map((row) => parseJsonRecord(RunSessionRecordSchema, JsonRowSchema.parse(row).record_json))),
-      setGrouping: (sessionId: string, expectedVersion: number, groupInQueue: boolean) => this.#authorityWrite("workflow_run_batches", () => {
-        const current = this.#readRecord("workflow_run_batches", RunSessionIdSchema.parse(sessionId), RunSessionRecordSchema);
+      list: () => Object.freeze(this.#database.prepare("SELECT * FROM run_batches ORDER BY id").all().map((row) => this.#parseNativeRow("run_batches",row,RunSessionRecordSchema))),
+      setGrouping: (sessionId: string, expectedVersion: number, groupInQueue: boolean) => this.#authorityWrite("run_batches", () => {
+        const current = this.#readRecord("run_batches", RunSessionIdSchema.parse(sessionId), RunSessionRecordSchema);
         if (current === undefined) throw new Error(`workflow batch ${sessionId} does not exist`);
         if (current.version !== expectedVersion) throw new Error(`workflow batch ${sessionId} version conflict`);
         const record = RunSessionRecordSchema.parse({ ...current, groupInQueue, version: current.version + 1 });
-        const result = this.#database.prepare(`UPDATE workflow_run_batches SET group_in_queue = ?, version = ?, record_json = ? WHERE record_key = ? AND version = ?`)
+        const result = this.#database.prepare(`UPDATE run_batches SET group_in_queue = ?, version = ?, payload_json = ? WHERE id = ? AND version = ?`)
           .run(record.groupInQueue ? 1 : 0, record.version, canonicalJsonStringify(record), sessionId, expectedVersion);
         if (sqliteChanges(result.changes) !== 1) throw new Error(`workflow batch ${sessionId} version conflict`);
         return { result: record, changes: 1 };
@@ -6830,8 +4722,8 @@ export class AuthorityDatabase implements Disposable {
       insert: (input: unknown) => {
         const record = RunSessionRecordSchema.parse(input);
         const json = canonicalJsonStringify(record);
-        return this.#authorityWrite("workflow_run_batches", () => {
-          const existing = this.#readRecord("workflow_run_batches", record.sessionId, RunSessionRecordSchema);
+        return this.#authorityWrite("run_batches", () => {
+          const existing = this.#readRecord("run_batches", record.sessionId, RunSessionRecordSchema);
           if (existing !== undefined) {
             if (canonicalJsonStringify(existing) !== json) {
               throw new Error(`run session ${record.sessionId} already exists with different content`);
@@ -6839,17 +4731,17 @@ export class AuthorityDatabase implements Disposable {
             return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
           }
           const result = this.#database.prepare(`
-            INSERT INTO workflow_run_batches (record_key, workflow, started_at, record_json, created_at, group_in_queue, version)
+            INSERT INTO run_batches (id, workflow, started_at, payload_json, created_at, group_in_queue, version)
             VALUES (?, ?, ?, ?, ?, ?, ?)
           `).run(record.sessionId, record.workflow, record.startedAt, json, record.createdAt, record.groupInQueue ? 1 : 0, record.version);
           return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(result.changes) };
         });
       },
       get: (sessionId: string) =>
-        this.#readRecord("workflow_run_batches", RunSessionIdSchema.parse(sessionId), RunSessionRecordSchema),
+        this.#readRecord("run_batches", RunSessionIdSchema.parse(sessionId), RunSessionRecordSchema),
       listByWorkflow: (workflow: string) => Object.freeze(this.#database.prepare(`
-        SELECT record_json FROM workflow_run_batches WHERE workflow = ? ORDER BY started_at, record_key
-      `).all(WorkflowIdSchema.parse(workflow)).map((row) => parseJsonRecord(RunSessionRecordSchema, JsonRowSchema.parse(row).record_json))),
+        SELECT * FROM run_batches WHERE workflow = ? ORDER BY started_at, id
+      `).all(WorkflowIdSchema.parse(workflow)).map((row) => this.#parseNativeRow("run_batches",row,RunSessionRecordSchema))),
     });
   }
 
@@ -6888,12 +4780,12 @@ export class AuthorityDatabase implements Disposable {
         const states = LIVE_WORKER_STATES.map(() => "?").join(", ");
         const rows = workflow === undefined
           ? this.#database.prepare(`
-            SELECT record_json FROM workflow_workers WHERE state IN (${states}) ORDER BY record_key
+            SELECT * FROM worker_leases WHERE state IN (${states}) ORDER BY id
           `).all(...LIVE_WORKER_STATES)
           : this.#database.prepare(`
-            SELECT record_json FROM workflow_workers WHERE state IN (${states}) AND workflow = ? ORDER BY record_key
+            SELECT * FROM worker_leases WHERE state IN (${states}) AND workflow = ? ORDER BY id
           `).all(...LIVE_WORKER_STATES, WorkflowIdSchema.parse(workflow));
-        return Object.freeze(rows.map((row) => parseJsonRecord(WorkerLeaseRecordSchema, JsonRowSchema.parse(row).record_json)));
+        return Object.freeze(rows.map((row) => this.#parseNativeRow("worker_leases",row,WorkerLeaseRecordSchema)));
       },
       reportLifecycle: (input: unknown) => {
         const request = WorkerLifecycleRequestSchema.parse(input);
@@ -6962,13 +4854,13 @@ export class AuthorityDatabase implements Disposable {
         return this.withAuthorityTransaction(() => {
           const states = LIVE_WORKER_STATES.map(() => "?").join(", ");
           const rows = this.#database.prepare(`
-            SELECT record_json FROM workflow_workers
+            SELECT * FROM worker_leases
             WHERE state IN (${states}) AND heartbeat_at IS NOT NULL AND heartbeat_at < ?
-            ORDER BY record_key
+            ORDER BY id
           `).all(...LIVE_WORKER_STATES, request.staleBefore);
           const expired: WorkerLeaseRecord[] = [];
           for (const row of rows) {
-            const current = parseJsonRecord(WorkerLeaseRecordSchema, JsonRowSchema.parse(row).record_json);
+            const current = this.#parseNativeRow("worker_leases",row,WorkerLeaseRecordSchema);
             const stopped = WorkerLeaseRecordSchema.parse({
               ...current,
               lifecycle: {
@@ -6991,7 +4883,7 @@ export class AuthorityDatabase implements Disposable {
   }
 
   #requireWriteIntent(writeIntentId: string): WriteIntentRecord {
-    const current = this.#readRecord("run_operations", writeIntentId, WriteIntentRecordSchema);
+    const current = this.#readRecord("write_intents", writeIntentId, WriteIntentRecordSchema);
     if (current === undefined) throw new Error(`write intent ${writeIntentId} does not exist`);
     return current;
   }
@@ -7015,7 +4907,7 @@ export class AuthorityDatabase implements Disposable {
   }
 
   #requireWriteAttempt(writeAttemptId: string): WriteAttemptRecord {
-    const attempt = this.#readRecord("run_operation_attempts", writeAttemptId, WriteAttemptRecordSchema);
+    const attempt = this.#readRecord("write_attempts", writeAttemptId, WriteAttemptRecordSchema);
     if (attempt === undefined) throw new Error(`write attempt ${writeAttemptId} does not exist`);
     return attempt;
   }
@@ -7049,35 +4941,39 @@ export class AuthorityDatabase implements Disposable {
 
   #findPermanentWriteIntent(system: string, idempotencyKey: string): WriteIntentRecord | undefined {
     const row = this.#database.prepare(`
-      SELECT record_json FROM run_operations WHERE system = ? AND idempotency_key = ?
+      SELECT * FROM write_intents WHERE system = ? AND idempotency_key = ?
     `).get(system, idempotencyKey);
     if (row === undefined) return undefined;
-    return parseJsonRecord(WriteIntentRecordSchema, JsonRowSchema.parse(row).record_json);
+    return this.#parseNativeRow("write_intents",row,WriteIntentRecordSchema);
   }
 
   #insertWriteIntent(record: WriteIntentRecord): void {
+    if(record.status === "committed") throw new Error("confirmed-write-publication-required");
     const json = canonicalJsonStringify(record);
-    this.#authorityWrite("run_operations", () => {
-      const existingById = this.#readRecord("run_operations", record.writeIntentId, WriteIntentRecordSchema);
+    this.#authorityWrite("write_intents", () => {
+      const existingById = this.#readRecord("write_intents", record.writeIntentId, WriteIntentRecordSchema);
       if (existingById !== undefined) throw new Error(`write intent id ${record.writeIntentId} already exists with a different permanent key`);
       const digestCollision = this.#database.prepare(`
-        SELECT system, idempotency_key FROM run_operations WHERE idempotency_key_digest = ?
+        SELECT system, idempotency_key FROM write_intents WHERE idempotency_key_digest = ?
       `).get(record.idempotencyKeyDigest);
       if (digestCollision !== undefined) {
         throw new Error("write intent digest is already bound to a different permanent key");
       }
       const result = this.#database.prepare(`
-        INSERT INTO run_operations (
-          record_key, system, idempotency_key, idempotency_key_digest, status, record_json, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO write_intents (
+          id, system, idempotency_key, idempotency_key_digest, status, generation, run_id, payload_json, publication_json, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
       `).run(
         record.writeIntentId,
         record.system,
         record.idempotencyKey,
         record.idempotencyKeyDigest,
         record.status,
+        record.generation,
+        "runId" in record ? record.runId : null,
         json,
         record.createdAt,
+        record.updatedAt,
       );
       return { result: undefined, changes: sqliteChanges(result.changes) };
     });
@@ -7085,42 +4981,42 @@ export class AuthorityDatabase implements Disposable {
 
   #insertWriteAttempt(record: WriteAttemptRecord): void {
     const json = canonicalJsonStringify(record);
-    this.#authorityWrite("run_operation_attempts", () => {
+    this.#authorityWrite("write_attempts", () => {
       const result = this.#database.prepare(`
-        INSERT INTO run_operation_attempts (
-          record_key, write_intent_id, generation, record_json, created_at
-        ) VALUES (?, ?, ?, ?, ?)
-      `).run(record.writeAttemptId, record.writeIntentId, record.generation, json, record.recordedAt);
+        INSERT INTO write_attempts (
+          id, intent_id, generation, run_id, payload_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?)
+      `).run(record.writeAttemptId, record.writeIntentId, record.generation, record.runId, json, record.recordedAt);
       return { result: undefined, changes: sqliteChanges(result.changes) };
     });
   }
 
-  #replaceWriteIntent(record: WriteIntentRecord): void {
+  #replaceWriteIntent(record: WriteIntentRecord, publication?:ConfirmationPublication): void {
+    const publicationJson = publication === undefined ? null : canonicalJsonStringify(publication);
+    confirmationPublicationFromRow(record,publicationJson);
     const result = this.#database.prepare(`
-      UPDATE run_operations
-      SET status = ?, record_json = ?
-      WHERE record_key = ? AND idempotency_key_digest = ?
-    `).run(record.status, canonicalJsonStringify(record), record.writeIntentId, record.idempotencyKeyDigest);
+      UPDATE write_intents
+      SET status = ?, generation = ?, run_id = ?, payload_json = ?, updated_at = ?, publication_json = ?
+      WHERE id = ? AND idempotency_key_digest = ? AND json_extract(payload_json,'$.version') = ?
+    `).run(record.status, record.generation, "runId" in record ? record.runId : null, canonicalJsonStringify(record), record.updatedAt, publicationJson, record.writeIntentId, record.idempotencyKeyDigest, record.version - 1);
     const changes = sqliteChanges(result.changes);
     if (changes !== 1) throw new Error(`write intent ${record.writeIntentId} atomic state update affected ${String(changes)} rows`);
     this.#authorityDirty = true;
-    this.#archiveSourcesDirty = true;
   }
 
   #replaceWriteAttempt(record: WriteAttemptRecord): void {
     const result = this.#database.prepare(`
-      UPDATE run_operation_attempts SET record_json = ?
-      WHERE record_key = ? AND write_intent_id = ? AND generation = ?
-    `).run(canonicalJsonStringify(record), record.writeAttemptId, record.writeIntentId, record.generation);
+      UPDATE write_attempts SET payload_json = ?, created_at = ?
+      WHERE id = ? AND intent_id = ? AND generation = ? AND json_extract(payload_json,'$.outcome.state')='attempting'
+    `).run(canonicalJsonStringify(record), record.recordedAt, record.writeAttemptId, record.writeIntentId, record.generation);
     const changes = sqliteChanges(result.changes);
     if (changes !== 1) throw new Error(`write attempt ${record.writeAttemptId} atomic state update affected ${String(changes)} rows`);
     this.#authorityDirty = true;
-    this.#archiveSourcesDirty = true;
   }
 
   #assertAtomicCommitMatchesIntent(
     input: z.infer<typeof AtomicWriteCommitInputSchema>,
-    intent: Extract<WriteIntentRecord, { status: "attempting" }>,
+    intent: Extract<WriteIntentRecord, { status: "attempting" | "parked" }>,
   ): void {
     const ledger = { kind: "ledger-entry", entry: input.transaction };
     const span = input.committedSpan;

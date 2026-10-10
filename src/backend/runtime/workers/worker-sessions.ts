@@ -442,6 +442,7 @@ export class WorkerSessionManager {
   #observe(resource: WorkerBrowserResource, health: WorkerBrowserObservation["health"]): void {
     this.#onObservation?.(WorkerBrowserObservationSchema.omit({ leaseGeneration: true }).parse({ ...(this.#retained.get(resource.sessionId) === undefined ? {} : { openedAt: this.#retained.get(resource.sessionId)?.openedAt }), workerId: this.#workerId, sessionId: resource.sessionId, system: resource.system,
       ...(resource.instance === undefined ? {} : { instance: resource.instance }), configFingerprint: resource.configFingerprint,
+      profileRevision: resource.profileRevision,
       browserMode: effectiveResourceBrowserMode(resource, this.#defaultBrowserMode),
       ...(resource.profileDirectory === undefined ? {} : { profileDirectory: resource.profileDirectory }),
       acceptDownloads: resource.acceptDownloads, exclusive: resource.exclusive, health, observedAt: this.#clock.now().toISOString() }));

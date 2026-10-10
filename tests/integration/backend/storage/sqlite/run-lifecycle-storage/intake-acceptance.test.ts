@@ -1,11 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
-import { createRunLifecycleStorage } from "../../../../../../src/backend/storage/sqlite/run-lifecycle-storage.js";
-import { captureArchiveReport } from "../../../../../../src/backend/storage/archive/report-capture.js";
-import { transferArchiveReport } from "../../../../../../src/backend/storage/archive/archive-transfer.js";
 import { CommandRequestSchema } from "../../../../../../src/rules/commands/commands.js";
 import { readArtifactBytes } from "../../../../../../src/backend/processing/spreadsheet/spreadsheet-grid.js";
 import assert from "node:assert/strict";
-import { readFileSync, rmSync } from "node:fs";
+import { readFileSync, readdirSync, unlinkSync } from "node:fs";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, it } from "vitest";
 import { CommandResultSchema } from "../../../../../../src/rules/commands/commands.js";
 import { IntakeSessionWireSchema } from "../../../../../../src/models/intake/wire.js";
@@ -36,6 +35,18 @@ function noEffects(h: Harness, wire: Awaited<ReturnType<typeof ready>>) {
   assert.equal(h.database.authority.intakeSessions.get(wire.intakeSessionId)?.state, "validated");
   assert.ok(h.database.authority.runSessions.list().every(session => session.origin.kind !== "intake-manifest" || session.origin.intakeManifestId !== wire.reservedManifestId));
 }
+it("refuses an unavailable declared protected origin and rolls back the entire prepared fan-out",async()=>{
+  const h=harness();
+  h.setDescriptor(defineIntakeFixtureDescriptor({id:INTAKE_FIXTURE_WORKFLOW_ID,code:"if",contractFingerprint:"f".repeat(64),enqueue:"allow-parallel",protectedTimekeeper:true}));
+  const wire=await ready(h);
+  const result=CommandResultSchema.parse(await (await h.post(h.request(wire,"enqueue-intake-manifest",{dryRun:false,reviewBinding:wire.reviewBinding}))).json());
+  assert.equal(result.state,"rejected");
+  if (result.state !== "rejected") throw new Error("protected source refusal missing");
+  assert.equal(result.code, "invalid-state");
+  assert.equal(result.message, "protected input timekeeperName source is unavailable");
+  noEffects(h,wire);
+  assert.deepEqual(h.database.authority.runs.listByWorkflow(INTAKE_FIXTURE_WORKFLOW_ID),[]);
+});
 it("real HTTP upload refuses malformed bytes and reports exact valid/unresolved/excluded rows", async () => {
   const h = harness();
   const response = await h.app.request("http://127.0.0.1/api/v1/intake/files?workflow=intake-fixture&filename=broken.xlsx", { method: "POST", headers: { host: "127.0.0.1", origin: "http://127.0.0.1", "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }, body: "not a workbook" });
@@ -96,6 +107,38 @@ it("replays the exact applied command after restart and preserves source and ter
   IntakeSessionWireSchema.parse(terminal);
 });
 
+it("replays a genuinely completed current intake command after its source bytes disappear without rereading or new effects", async () => {
+  const h = harness();
+  const wire = await ready(h);
+  const request = h.request(wire, "enqueue-intake-manifest", { dryRun: false, reviewBinding: wire.reviewBinding });
+  const result = CommandResultSchema.parse(await (await h.post(request)).json());
+  assert.equal(result.state, "applied");
+  const inventory = () => {
+    const raw = new DatabaseSync(h.path, { readOnly: true });
+    try { return raw.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map(({ name }) => {
+      if (typeof name !== "string" || !/^[a-z_]+$/u.test(name)) throw new Error("invalid native table name");
+      return { name, rows: raw.prepare(`SELECT * FROM ${name} ORDER BY rowid`).all() };
+    }); } finally { raw.close(); }
+  };
+  const before = inventory();
+  const generation = h.database.getMeta().authorityGeneration;
+  const ids = h.mintedIds;
+  const reads = h.artifactReads;
+  const artifactRoot = join(h.root, ".tracker", "artifacts");
+  const source = join(artifactRoot, `${wire.artifact.sha256}.artifact`);
+  assert.ok(readFileSync(source).length > 0);
+  unlinkSync(source);
+  const remainingFiles = readdirSync(artifactRoot).map(name => ({ name, bytes: readFileSync(join(artifactRoot, name)) }));
+  h.restart();
+  const replay = CommandResultSchema.parse(await (await h.post(request)).json());
+  assert.deepEqual(replay, { ...result, state: "already-applied" });
+  assert.deepEqual(inventory(), before);
+  assert.equal(h.database.getMeta().authorityGeneration, generation);
+  assert.deepEqual(h.mintedIds, ids);
+  assert.equal(h.artifactReads, reads);
+  assert.deepEqual(readdirSync(artifactRoot).map(name => ({ name, bytes: readFileSync(join(artifactRoot, name)) })), remainingFiles);
+});
+
 it("canonical schema drift without a revision change refuses the old review", async () => {
   const h = harness(); const wire = await ready(h);
   h.setDescriptor(defineIntakeFixtureDescriptor({ id: INTAKE_FIXTURE_WORKFLOW_ID, code: "if", contractFingerprint: "f".repeat(64), enqueue: "allow-parallel", canonicalDepartmentMaxLength: 200 }));
@@ -103,31 +146,22 @@ it("canonical schema drift without a revision change refuses the old review", as
   const response = await h.post(h.request(wire, "enqueue-intake-manifest", { dryRun: false, reviewBinding: wire.reviewBinding })); assert.equal(response.status, 422); noEffects(h, wire);
   assert.equal((await enqueue(h, fresh)).state, "enqueued");
 });
-it("reads historical command shapes and replays them before parsing missing source evidence", async () => {
-  const h = harness(); const wire = await ready(h);
-  const request = CommandRequestSchema.parse({ ...h.request(wire, "enqueue-intake-manifest", { dryRun: false }), source: "dashboard" });
-  const result = CommandResultSchema.parse({ state: "applied", commandId: request.commandId, affectedTargets: [{ family: "intake", intakeSessionId: wire.intakeSessionId }] });
-  h.database.withAuthorityTransaction(r => {
-    r.commands.insert(request);
-    r.commandAudits.insert({ auditId: randomUUID(), request, result, completedAt: h.clock.now().toISOString(), versionChanges: [], affectedDependencyIds: [] });
-  });
-  h.restart();
-  rmSync(`${h.root}/.tracker/artifacts`, { recursive: true });
-  assert.deepEqual(await (await h.post(request)).json(), { ...result, state: "already-applied" });
-  noEffects(h, wire);
-});
-it("keeps import evidence immutable and terminal after a member transfers to Archive", async () => {
+it("keeps import evidence immutable and terminal after a member is explicitly deleted", async () => {
   const h = harness(); const wire = await ready(h); const terminal = await enqueue(h, wire); assert.ok(terminal.manifest);
   const sourceBefore = await readArtifactBytes(() => h.artifacts.open(wire.artifact));
   const manifestBefore = JSON.stringify(h.database.authority.intakeManifests.get(terminal.manifest.manifestId));
   const member = h.database.authority.runs.listByItem({ workflow: terminal.workflow, itemId: terminal.manifest.validRows[0].itemId })[0]; assert.ok(member);
+  assert.deepEqual(member.input.parsed.protectedBindings,[]);
   const outcome = h.database.authority.runs.transition({ runId: member.envelope.runId, expectedVersion: member.version,
     lifecycle: { state: "terminal", outcome: "cancelled", endedAt: h.clock.now().toISOString() }, now: h.clock.now().toISOString() });
   assert.equal(outcome.state, "applied");
-  const storage = createRunLifecycleStorage(h.database); const snapshot = storage.capture(member.envelope.runId);
-  const report = captureArchiveReport({ snapshot, transferId: randomUUID(), capturedAt: h.clock.now().toISOString(), sections: [], files: [] });
-  transferArchiveReport(storage, report, snapshot.run.version);
-  assert.equal(h.database.authority.runs.get(member.envelope.runId), undefined); assert.ok(h.database.transferredRun(member.envelope.runId));
+  const terminalMember=h.database.authority.runs.get(member.envelope.runId);assert.ok(terminalMember);
+  const deletion=CommandRequestSchema.parse({commandId:randomUUID(),requestedAt:h.clock.now().toISOString(),
+    requestedBy:"local-operator",source:"dashboard",family:"run",type:"delete",
+    target:{runId:terminalMember.envelope.runId,expectedVersion:terminalMember.version}});
+  assert.equal(h.kernel.execute(deletion).state,"applied");
+  assert.equal(h.database.authority.runs.get(member.envelope.runId),undefined);
+  assert.ok(h.database.authority.deletedRuns.get(member.envelope.runId));
   h.restart(); assert.deepEqual(await h.intake.read(wire.intakeSessionId), terminal);
   assert.equal(JSON.stringify(h.database.authority.intakeManifests.get(terminal.manifest.manifestId)), manifestBefore);
   assert.deepEqual(await readArtifactBytes(() => h.artifacts.open(wire.artifact)), sourceBefore);

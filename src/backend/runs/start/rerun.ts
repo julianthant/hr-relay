@@ -47,7 +47,6 @@ export function previewRerunWarnings(repositories: AuthorityRepositories, descri
 function buildWarnings(repositories: AuthorityRepositories, descriptor: AnyWorkflowDescriptor,
   source: RerunSource, entry?: PlannedRun, acknowledgment?: string, stepOmissions?: StepOmissions, plannedLength?: number): RerunPlan {
   if (repositories.deletedRuns.get(source.runId) !== undefined) throw new RerunRefusedError("target-deleted", "Rerun source was deleted");
-  if (repositories.archivedRuns.isArchived(source.runId)) throw new RerunRefusedError("invalid-state", "Archived sources cannot be rerun");
   const run = repositories.runs.get(source.runId);
   if (run === undefined) throw new RerunRefusedError("target-not-found", "Rerun source does not exist");
   if (run.version !== source.expectedVersion) throw new RerunRefusedError("source-stale", "Rerun source revision changed; replan");

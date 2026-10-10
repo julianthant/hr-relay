@@ -27,7 +27,7 @@ The browser application starts at `app/main.tsx` and mounts `DashboardApp` from
 | `surfaces/explorer/` | Workflow timeline, source views, choices, and local definitions |
 | `surfaces/spreadsheets/` | CSV/XLSX worker import/export, library, typed mappings, editor, and undo history |
 | `surfaces/intake/` | Served intake session, mapping, validation, and enqueue workspace |
-| `surfaces/archive/` | Retained archive model; no mounted Archive page |
+| `app/navigation/archive-route-model.ts` | Removal-notice URL state |
 | `surfaces/shared/` | Shared actions, recovery, loading, evidence styles, status, and formatting |
 | `client/` | Typed transport, query/command facades, errors, and subscription |
 | `state/` | Client context, resources, bootstrap/day reads, and served clock |

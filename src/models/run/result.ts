@@ -5,6 +5,8 @@ import { valueFreeProtectedData } from "../write-safety/protected-input.js";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import {
+  CommandIdSchema,
+  CommandAuditIdSchema,
   ConfigSnapshotIdSchema,
   DelegationEdgeIdSchema,
   FingerprintSchema,
@@ -16,7 +18,10 @@ import {
   WorkflowIdSchema,
 } from "../../rules/identity/ids.js";
 import type { Fingerprint } from "../../rules/identity/ids.js";
-import { SchemaBoundCanonicalValueSchema } from "../validation/schema-bound-value.js";
+import { FailureTerminalAuthorizationRecordSchema } from "./terminal-authorization.js";
+import type { RunRecord } from "./record.js";
+import { FailureRecordSchema, type FailureRecord } from "../trust/failure.js";
+import { deriveSchemaHash, SchemaBoundCanonicalValueSchema } from "../validation/schema-bound-value.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
 import { RunCheckpointRecordSchema } from "../workflow/checkpoint.js";
 import { TransactionDryRunPreviewSchema } from "../../rules/write-safety/write-safety-primitives.js";
@@ -37,8 +42,7 @@ export const ResolvedTerminalDependencySchema = z.strictObject({
     workflowId: WorkflowIdSchema,
     itemId: ItemIdSchema,
     attempt: PositiveIntSchema,
-      /* Which execution of that attempt this evidence cites; optional for the same read-forward reason the checkpoint row's own field is. */
-    claimGeneration: PositiveIntSchema.optional(),
+    claimGeneration: PositiveIntSchema,
     runId: RunIdSchema,
   }),
   outputSchemaHash: FingerprintSchema,
@@ -127,6 +131,52 @@ export const RunDryRunPreviewResultSchema = z.strictObject({
 });
 export type RunDryRunPreviewResult = z.infer<typeof RunDryRunPreviewResultSchema>;
 
+export const RunTerminalEvidenceResultSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("failed-evidence"),
+    authorization: FailureTerminalAuthorizationRecordSchema,
+    failureDigest: FingerprintSchema,
+  }),
+  z.strictObject({
+    kind: z.literal("lifecycle-evidence"),
+    outcome: z.enum(["cancelled", "discarded", "superseded"]),
+    commandId: CommandIdSchema,
+    auditId: CommandAuditIdSchema,
+    requestFingerprint: FingerprintSchema,
+    appliedVersion: PositiveIntSchema,
+  }),
+]);
+export const RUN_TERMINAL_EVIDENCE_SCHEMA_HASH = deriveSchemaHash(RunTerminalEvidenceResultSchema, "output");
+export type RunTerminalEvidenceResult = z.infer<typeof RunTerminalEvidenceResultSchema>;
+
+export function deriveTerminalFailureDigest(failure: FailureRecord): Fingerprint {
+  return FingerprintSchema.parse(sha256Hex(`hrauto:terminal-failure:v1\0${canonicalJsonStringify(FailureRecordSchema.parse(failure))}`));
+}
+
+export function terminalEvidenceResult(record: RunResultRecord): RunTerminalEvidenceResult | undefined {
+  return record.resultSchemaHash === RUN_TERMINAL_EVIDENCE_SCHEMA_HASH
+    ? RunTerminalEvidenceResultSchema.parse(record.result.value) : undefined;
+}
+
+export function createRunTerminalEvidenceResult(run: RunRecord, evidence: RunTerminalEvidenceResult): RunResultRecord {
+  if (run.lifecycle.state !== "terminal" || run.lifecycle.outcome === "done" || run.lifecycle.outcome === "interrupted") {
+    throw new Error("terminal-evidence-run-state-invalid");
+  }
+  const value = RunTerminalEvidenceResultSchema.parse(evidence);
+  if (value.kind === "failed-evidence" ? run.lifecycle.outcome !== "failed"
+    : run.lifecycle.outcome !== value.outcome || run.version < value.appliedVersion) throw new Error("terminal-evidence-outcome-mismatch");
+  const dependencies: RunResultRecord["dependencies"] = [];
+  return RunResultRecordSchema.parse({
+    runId: run.envelope.runId, attempt: run.envelope.attempt, workflowId: run.envelope.workflow,
+    descriptorVersion: run.envelope.descriptorVersion, contractFingerprint: run.envelope.contractFingerprint,
+    configFingerprint: run.envelope.configFingerprint, configSnapshotId: run.envelope.configSnapshotId,
+    resultSchemaHash: RUN_TERMINAL_EVIDENCE_SCHEMA_HASH,
+    result: { schemaHash: RUN_TERMINAL_EVIDENCE_SCHEMA_HASH, value }, resultDigest: deriveRunResultDigest({ schemaHash: RUN_TERMINAL_EVIDENCE_SCHEMA_HASH, value }),
+    dependencies, dependencyDigest: deriveTerminalDependencyDigest(dependencies), createdAt: run.lifecycle.endedAt,
+  });
+}
+
+
 export function deriveRunResultDigest(result: unknown): Fingerprint {
   return FingerprintSchema.parse(sha256Hex(
     `hrauto:run-result:v1\0${canonicalJsonStringify(valueFreeProtectedData(result))}`,
@@ -171,6 +221,19 @@ export const RunResultRecordSchema = z.strictObject({
   dependencyDigest: FingerprintSchema,
   createdAt: IsoInstantSchema,
 }).superRefine((record, context) => {
+  if (record.resultSchemaHash === RUN_TERMINAL_EVIDENCE_SCHEMA_HASH) {
+    const evidence = RunTerminalEvidenceResultSchema.safeParse(record.result.value);
+    if (!evidence.success || record.dependencies.length !== 0 || record.operationSources !== undefined
+      || record.operationLineage !== undefined || record.result.protectedBindings !== undefined) {
+      context.addIssue({ code: "custom", message: "terminal evidence is not a derived workflow output" });
+    } else if (evidence.data.kind === "failed-evidence") {
+      const owner = evidence.data.authorization;
+      if (owner.runId !== record.runId || owner.workflowId !== record.workflowId || owner.attempt !== record.attempt
+        || owner.descriptorVersion !== record.descriptorVersion || owner.contractFingerprint !== record.contractFingerprint
+        || owner.authorizedAt !== record.createdAt) context.addIssue({ code: "custom", message: "terminal failure evidence identity mismatch" });
+    }
+  }
+
   if ((record.operationSources === undefined) !== (record.operationSourceDigest === undefined)
     || (record.operationSources !== undefined && record.operationSourceDigest !== sha256Hex(`hrauto:result-operation-sources:v1\0${canonicalJsonStringify(record.operationSources)}`))) {
     context.addIssue({ code: "custom", path: ["operationSourceDigest"], message: "result operation source digest mismatch" });

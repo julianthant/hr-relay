@@ -24,7 +24,7 @@ it("plans, reads, retries, conflicts, and cancels through a real admitted dashbo
     copyFileSync(join(process.cwd(), "package-lock.json"), join(workspace, "package-lock.json"));
     mkdirSync(stateRoot, { recursive: true, mode: 0o700 });
     mkdirSync(artifactRoot, { recursive: true, mode: 0o700 });
-    const fixtureAdmission = RuntimeAdmission.syntheticFixture(join(stateRoot, "state.db"), "authority");
+    const fixtureAdmission = RuntimeAdmission.syntheticFixture(join(stateRoot, "state.db"));
     try {
       const database = AuthorityDatabase.open(fixtureAdmission, { path: join(stateRoot, "state.db"), busyTimeoutMs: 250,
         migrationOwner: "unit-test" }, clock);

@@ -864,7 +864,6 @@ export class RunQueueProjection {
   #warningVerdict(status: QueueSurfaceWire["status"], receipt: ReceiptView | undefined): WarningVerdict {
     if (!TERMINAL_QUEUE_STATUSES.has(status)) return { kind: "not-terminal", status };
     if (receipt === undefined) return { kind: "unread" };
-    if (receipt.state === "withheld") return { kind: "withheld", reason: receipt.reason };
     const first = receipt.value.warnings[0];
     if (first === undefined) return { kind: "none" };
     return { kind: "present", count: receipt.value.warnings.length, first: first.summary };
@@ -1034,9 +1033,6 @@ export class RunQueueProjection {
         state: "absent",
         reason: "no evidence receipt has been derived for this run, so its outputs are unknown",
       };
-    }
-    if (receipt.state === "withheld") {
-      return { state: "absent", reason: receipt.reason };
     }
     if (receipt.value.output.length === 0) {
       return { state: "absent", reason: "this run's evidence receipt records no output fact" };

@@ -1,3 +1,5 @@
+import { assertWorkerProcessStopped } from "../../../storage/sqlite/runtime-process-locks.js";
+import { WorkerRetirementProofSchema } from "../../../../models/run/worker-slot.js";
 import type { DashboardBuildCommand } from "./build-identity.js";
 import { createPreflightReportService } from "../../../runtime/preflight/report-service.js";
 import { composeRuntimePreflight, type RuntimePreflight } from "../../preflight/runtime-admission.js";
@@ -18,10 +20,9 @@ import { composeIntake } from "./intake.js";
 import type { ServedSummaryQueries } from "../../../runs/projections/run-queue-projection.js";
 import { composeFailureResolution } from "./failure-resolution.js";
 import { localDatePart, runtimeTimeZone } from "../../../../rules/time/clock.js";
-import { EVENT_STREAM_RETENTION_DAYS } from "../../../../models/archive/retention.js";
+import { EVENT_STREAM_RETENTION_DAYS } from "../../../../models/events/retention.js";
 import { createOperatorProjection } from "./queue.js";
 import { createOperatorRunDetail } from "./run-detail.js";
-import { createOperatorArchive } from "./archive.js";
 import { createTrustNotifications } from "./notifications.js";
 import { createTrustReadDependencies } from "./trust.js";
 import { composeDataQueries } from "./data.js";
@@ -45,7 +46,6 @@ import type { MonotonicDeadlineScheduler } from "../../../runtime/scheduling/dea
 import { isLiveWorker } from "../../../../models/run/worker.js";
 import { createDashboardWorkerProcessSupervisor, type DashboardWorkerProcessSupervisor, type WorkerCliLaunchSpec, type WorkerProcessSpawner } from "../../../runtime/workers/worker-supervisor.js";
 import { RunRecordService, runContinuationPort } from "../../../runs/lifecycle/run-record-service.js";
-import { createRuntimeVersionChanges } from "../../../runs/archive/archive-runtime-version-changes.js";
 import { createStorageRelocationPlanReader } from "../../../storage/maintenance/storage-relocation-plans.js";
 import { createWriteResolutionExecutor } from "../../../runtime/writes/write-recovery.js";
 import type { Clock } from "../../../../rules/time/clock.js";
@@ -81,7 +81,6 @@ import { createSoloRequestIdentityCheckpoint } from "../../../transports/http/re
 import { DASHBOARD_LAUNCH_NONCE_ENV } from "../../../transports/http/frontend-owner.js";
 import { startDashboardHttpServer, type DashboardHttpServer } from "../../../transports/http/http-server.js";
 import { createTimeoutDeadlineScheduler } from "../../../runtime/scheduling/timeout-deadline-scheduler.js";
-import { createArchiveSnapshotSource } from "../../../runs/queries/archive-snapshot.js";
 
 import { createDashboardPreflightRunners } from "../../preflight/dashboard-runners.js";
 
@@ -160,6 +159,7 @@ export function productionWorkerLaunch(repoRoot: string, environment?: NodeJS.Pr
 const WORKER_BIRTH_TIMEOUT_MS = 60_000;
 
 export interface WorkerProcessControlInput {
+  readonly processLockRoot: string;
   readonly database: AuthorityDatabase;
   readonly clock: Clock;
   readonly scheduler: MonotonicDeadlineScheduler;
@@ -203,7 +203,7 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
         const basis = record.request.target.controlBasis;
         if (lease === undefined || !isLiveWorker(lease) || basis === undefined || lease.leaseGeneration !== basis.leaseGeneration
           || lease.controlRevision !== basis.controlRevision + 1 || lease.controlCommandId !== record.commandId) throw new WorkerControlRefusal("worker-control-basis-changed-before-effect");
-      } else if ((repositories.workerPools.get(record.request.target.workflowId)?.version ?? 0) !== record.request.target.expectedVersion) throw new WorkerControlRefusal("worker-pool-version-changed-before-effect");
+      } else if ((repositories.workerPools.get(record.request.target.workflowId)?.version ?? 0) !== (record.roster?.admittedVersion ?? record.request.target.expectedVersion)) throw new WorkerControlRefusal("worker-pool-version-changed-before-effect");
     }),
     leases: {
       observe: (workerId) => {
@@ -262,11 +262,23 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
     clock: input.clock,
     scheduler: input.scheduler,
     birth: input.birth,
+    proveRetirement: member => {
+      assertWorkerProcessStopped(input.processLockRoot, member.workerId);
+      return input.database.withAuthorityTransaction(repositories => {
+        const slot = repositories.workerSlots.get(member.workerId);
+        const lease = repositories.workerLeases.get(member.workerId);
+        if (slot === undefined || slot.retiredAt !== null || slot.membershipRevision !== member.membershipRevision
+          || lease !== undefined && isLiveWorker(lease)
+          || repositories.workerControls.browsers(member.workerId).some(browser => browser.health !== "closed")) throw new WorkerControlRefusal("worker-retirement-closure-not-proved");
+        return WorkerRetirementProofSchema.parse({ workerId: member.workerId, membershipRevision: member.membershipRevision,
+          checkedAt: input.clock.now().toISOString(), processStopped: true, browsersClosed: true, exclusive: true });
+      });
+    },
     onFault: input.onFault,
   });
   return Object.freeze({
     supervisor,
-    workerRuntime: Object.freeze({ pool: createWorkerPoolRuntimeExecutor(supervisor) }),
+    workerRuntime: Object.freeze({ pool: createWorkerPoolRuntimeExecutor(supervisor, input.database.authority.workerSlots) }),
   });
 }
 
@@ -409,7 +421,6 @@ async function composeDashboardRuntimeStartup(
     });
   })();
   const { persistedSettings, resolved } = bootConfig;
-  database.registerRuntimeVersionWorkflows(DESCRIPTORS.map((descriptor) => descriptor.id));
   const protectedSettingsAuthority = createCredentialStore({ admission, stateRoot });
   const protectedSecrets = createCredentialSecretSource(protectedSettingsAuthority);
   const storageRelocationPlans = createStorageRelocationPlanReader({ authority: database, admission, workspace: repoRoot });
@@ -420,15 +431,20 @@ async function composeDashboardRuntimeStartup(
   const now = clock.now().toISOString();
   const configSnapshotId = ids.uuid();
   database.withAuthorityTransaction((repositories) => {
-    repositories.configSnapshots.insert({
+    const snapshot = {
       configSnapshotId,
-      revision: 1,
+      revision: persistedSettings.revision,
       fingerprint: resolved.fingerprint,
       capturedAt: now,
       capturedBy: LOCAL_OPERATOR_ACTOR_ID,
       config: resolved.config,
       provenance: resolved.provenance,
-    });
+    };
+    if (repositories.runtimeConfig.get() === undefined) {
+      repositories.runtimeConfig.initialize(snapshot);
+      return;
+    }
+    repositories.configSnapshots.insert(snapshot);
     repositories.runtimeConfig.activate({
       settingsRevision: persistedSettings.revision,
       settingsFingerprint: persistedSettings.settingsFingerprint,
@@ -579,6 +595,7 @@ async function composeDashboardRuntimeStartup(
     }));
   };
   const workerControl = composeWorkerProcessControl({
+    processLockRoot: join(repoRoot, input.isolation.processLockRoot),
     database,
     clock,
     scheduler: input.workerProcess?.scheduler ?? createTimeoutDeadlineScheduler(clock),
@@ -618,14 +635,8 @@ async function composeDashboardRuntimeStartup(
     resolve: (workflowId: string) => INTAKE_PROJECTIONS[workflowId],
   };
 
-  // Archive capture and live routes share the same payload derivation.
   const trustReads = createTrustReadDependencies({ database, artifactReader, reader: lifecycle });
   const runDetailDeps = createOperatorRunDetail({ stateRoot, projection, database, runReader: lifecycle, canonical: { reader: lifecycle, database, descriptors: { resolve: (workflowId) => DESCRIPTORS.find((entry) => entry.id === workflowId) ?? historicalStepProofDescriptorOf(workflowId) } }, trust: trustReads.trust, captures: trustReads.captures });
-
-  const archiveDeps = { ...createOperatorArchive({ clock, appVersion, database, ledger, reader: lifecycle }), storage: lifecycle.lifecycleStorage() };
-  database.recoverManualArchivePublications();
-  const archiveSnapshots = createArchiveSnapshotSource(runDetailDeps);
-  const runtimeVersionChanges = createRuntimeVersionChanges({ database, clock, ids, archiveSnapshots });
 
   const explorerBoundary = composeExplorer({ database, clock, descriptorSetHash: setHash });
 
@@ -647,8 +658,6 @@ async function composeDashboardRuntimeStartup(
     configIdentity: { configFingerprint: resolved.fingerprint, configSnapshotId },
     settings: settingsBoundary.executor,
     storageRelocationPlans,
-    archiveSnapshots,
-    runtimeVersionChanges,
     explorerEdits: explorerBoundary.executor,
   });
 
@@ -656,8 +665,6 @@ async function composeDashboardRuntimeStartup(
     kernel,
     projection,
     startWorkerCapacity: createRunWorkerCapacity({ kernel, authority: database.authority }),
-    versionChanges: lifecycle.lifecycleStorage(),
-    archiveDeletionCommands: database.authority.lifecycleJournal,
   });
 
   const startPlans = createStartPlanService({
@@ -697,7 +704,7 @@ async function composeDashboardRuntimeStartup(
     );
   }
 
-  const notificationTarget = createNotificationTargetQuery({ get: database.authority.notifications.get, read: id => lifecycle.read(id), failure: database.authority.failures.get, report: id => { const report = lifecycle.lifecycleStorage().readReport(id); return report === undefined ? undefined : { runId: report.content.runId, digest: report.digest }; } });
+  const notificationTarget = createNotificationTargetQuery({ get: database.authority.notifications.get, read: id => lifecycle.read(id), failure: database.authority.failures.get });
   const app = createDashboardApp({
     notifications: { snapshot: actor => database.withAuthorityReadSnapshot(() => database.authority.notifications.listByActor(actor).map(record => notificationWireOf(record, clock.nowMs(), notificationDisplayContext(record, {
       read: id => lifecycle.read(id), descriptor: id => descriptors.resolve(id),
@@ -711,12 +718,9 @@ async function composeDashboardRuntimeStartup(
     runDetail: runDetailDeps,
     data: composeDataQueries(runDetailDeps),
     diagnosticBundles: trustReads.diagnosticBundles,
-    archive: archiveDeps,
     commands,
     commandJournal: database.authority.commands,
     protectedCommandAcceptedAt: (commandId) => protectedSettingsAuthority.acceptedAt(commandId),
-    runtimeVersionAcceptedAt: (commandId) => database.readRuntimeVersionIndex().changes
-      .find(change => change.applicationCommandId === commandId)?.applicationRequest?.requestedAt,
     bulkCommandAcceptances: {
       withTransaction: (work) => database.withAuthorityTransaction((repositories) =>
         work({ get: repositories.commands.getBulk, insert: repositories.commands.acceptBulk })),

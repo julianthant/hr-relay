@@ -1,10 +1,9 @@
 import { lstatSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
-import { UPGRADE_FLOOR_SCHEMA_VERSION } from "./migrations.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "./migrations.js";
 
-/** Inspection remains available below the floor; replacement and conversion do not. */
 export function requireSupportedRecoverySchema(schemaVersion: number): void {
-  if (schemaVersion < UPGRADE_FLOOR_SCHEMA_VERSION) throw new Error(`authority-below-floor { schemaVersion: ${String(schemaVersion)}, floor: ${String(UPGRADE_FLOOR_SCHEMA_VERSION)} }: restore and upgrade on the original compatible release, or start a fresh root`);
+  if (schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error(`authority-schema-mismatch { schemaVersion: ${schemaVersion}, supported: ${CURRENT_AUTHORITY_SCHEMA_VERSION} }`);
 }
 
 /** Reject aliases before a stopped operation can replace or convert an authority. */

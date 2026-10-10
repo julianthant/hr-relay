@@ -17,7 +17,7 @@ import type { DeletedRunRecord } from "../../../models/run/deleted-run.js";
 import type { RunRecordService } from "../lifecycle/run-record-service.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
 
-type HistoryRun = Extract<ItemAttemptHistoryRun, { disposition: "live" | "archived" }>;
+type HistoryRun = Extract<ItemAttemptHistoryRun, { disposition: "live" }>;
 
 function cursorEncode(cursor: ItemAttemptHistoryCursor): string {
   return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
@@ -36,7 +36,7 @@ function cursorDecode(value: string): ItemAttemptHistoryCursor | undefined {
   }
 }
 
-function historyRunOf(run: RunRecord, disposition: "live" | "archived"): HistoryRun {
+function historyRunOf(run: RunRecord, disposition: "live"): HistoryRun {
   return {
     runId: run.envelope.runId,
     workflowId: run.envelope.workflow,
@@ -71,7 +71,7 @@ function byAttemptThenRunId(left: ItemAttemptHistoryRun, right: ItemAttemptHisto
   return left.runId.localeCompare(right.runId);
 }
 
-function selectedPresentOf(run: RunRecord, disposition: "live" | "archived") {
+function selectedPresentOf(run: RunRecord, disposition: "live") {
   return {
     state: "present" as const,
     disposition,
@@ -168,7 +168,7 @@ export function createItemAttemptHistoryQuery(input: {
         itemId,
         sourceLimit: ITEM_ATTEMPT_HISTORY_MAX_ENTRIES + 1,
       });
-      if (sources.counts.live + sources.counts.archiveTransfers + sources.counts.deleted > ITEM_ATTEMPT_HISTORY_MAX_ENTRIES) {
+      if (sources.counts.live + sources.counts.deleted > ITEM_ATTEMPT_HISTORY_MAX_ENTRIES) {
         return ItemAttemptHistoryResponseSchema.parse({
           schemaVersion: 1, state: "refused", selectedRunId: runId,
           reason: "item-history-bound-exceeded",
@@ -188,9 +188,8 @@ export function createItemAttemptHistoryQuery(input: {
       for (const run of sources.live) {
         claimSourceId(run.envelope.runId);
         const existence = reader.read(run.envelope.runId);
-        const archivedInAuthority = database.authority.archivedRuns.isArchived(run.envelope.runId);
         if (existence.state !== "present"
-          || existence.disposition !== (archivedInAuthority ? "archived" : "live")
+          || existence.disposition !== "live"
           || existence.run.envelope.runId !== run.envelope.runId
           || existence.run.envelope.workflow !== workflowId
           || existence.run.envelope.itemId !== itemId
@@ -198,18 +197,6 @@ export function createItemAttemptHistoryQuery(input: {
           throw new Error(`attempt-history-live-custody-mismatch:${run.envelope.runId}`);
         }
         add(historyRunOf(run, existence.disposition));
-      }
-      for (const archiveTransferId of sources.archiveTransferIds) {
-        claimSourceId(archiveTransferId);
-        const transfer = database.transferredRun(archiveTransferId);
-        if (transfer === undefined) throw new Error(`attempt-history-archive-transfer-missing:${archiveTransferId}`);
-        const existence = reader.read(archiveTransferId);
-        if (existence.state !== "present" || existence.disposition !== "archived"
-          || existence.run.envelope.workflow !== workflowId || existence.run.envelope.itemId !== itemId
-          || canonicalJsonStringify(existence.run) !== canonicalJsonStringify(transfer.run)) {
-          throw new Error(`attempt-history-archive-custody-mismatch:${archiveTransferId}`);
-        }
-        add(historyRunOf(transfer.run, "archived"));
       }
       for (const tombstone of sources.deleted) {
         claimSourceId(tombstone.runId);

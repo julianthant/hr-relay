@@ -1,230 +1,144 @@
-import { CalendarQuerySchema, CalendarWireSchema } from "../../../models/dashboard/calendar.js";
-import { hasHistoricalArchiveTables, unarchivedRunSql } from "./archive-compatibility.js";
+import { nativeOrdinaryRecordFromRow } from "./native-record-row.js";
+import { timelineEventFromRow } from "./timeline-repository.js";
+import { FailureResolutionSchema } from "../../../models/trust/failure-resolution.js";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
+import { CalendarQuerySchema, CalendarWireSchema } from "../../../models/dashboard/calendar.js";
 import { QueueStatusSchema } from "../../../models/dashboard/projection.js";
-import { RunRecordSchema, RunStateSchema } from "../../../models/run/record.js";
-import { RunSummarySchema, SummaryPublicationSchema, RunSummarySourceSchema, SummaryQuerySchema } from "../../../models/run/summary.js";
-import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { deriveRunSummary, runSummaryDigest } from "../../../rules/runs/summary-derivation.js";
+import { RunStateSchema, type RunRecord } from "../../../models/run/record.js";
+import { RunSummarySourceSchema, SummaryQuerySchema } from "../../../models/run/summary.js";
+import { DependencyRecordSchema } from "../../../rules/workflow/dependencies.js";
+import { deriveRunSummary } from "../../../rules/runs/summary-derivation.js";
+import { runRecordFromRow } from "./run-record-row.js";
 
-export const RUN_SUMMARIES_DDL = `CREATE TABLE run_summaries (
- record_key TEXT PRIMARY KEY, workflow TEXT NOT NULL, local_day TEXT NOT NULL, state TEXT NOT NULL,
- parent_run_id TEXT, record_json TEXT NOT NULL CHECK(json_valid(record_json)), created_at TEXT NOT NULL
-) STRICT`;
-export const SUMMARY_PUBLICATION_DDL = `CREATE TABLE summary_publication (
- record_key TEXT PRIMARY KEY CHECK(record_key='current'), record_json TEXT NOT NULL CHECK(json_valid(record_json)), created_at TEXT NOT NULL
-) STRICT`;
 export const RunSummaryQuerySchema = SummaryQuerySchema.extend({
-  state: RunStateSchema.optional(),
-  status: QueueStatusSchema.optional(),
-  topLevel: z.boolean().optional(),
-  sessionId: z.string().uuid().optional(),
+  state: RunStateSchema.optional(), status: QueueStatusSchema.optional(),
+  topLevel: z.boolean().optional(), sessionId: z.string().uuid().optional(),
 }).refine(query => query.fromDay === undefined || query.toDay === undefined || query.fromDay <= query.toDay,
   { message: "run-summary-range-invalid" });
 export type RunSummaryQuery = z.infer<typeof RunSummaryQuerySchema>;
-const JsonRowSchema = z.strictObject({ record_json: z.string() });
-function parseSummary(row: unknown) {
-  let summary;
-  try { summary=RunSummarySchema.parse(JSON.parse(JsonRowSchema.parse(row).record_json)); }
-  catch { throw new Error("run-summary-generation-corrupt"); }
-  if(summary.sourceDigest !== runSummaryDigest(summary))throw new Error("run-summary-rebuild-required");
-  return summary;
-}
+
 export function createRunSummaries(database: DatabaseSync) {
-  const publication = () => {
-    const row = database.prepare("SELECT record_json FROM summary_publication WHERE record_key='current'").get();
-    return row === undefined ? SummaryPublicationSchema.parse({ state:"absent",generation:0,sourceGeneration:0,rowCount:0 })
-      : SummaryPublicationSchema.parse(JSON.parse(JsonRowSchema.parse(row).record_json));
-  };
-  const write = (runs: z.infer<typeof RunRecordSchema>[], sourceGeneration:number, now:string) => {
-      for (const run of runs) {
-        const read = (sql: string) => {
-          const rows = database.prepare(sql).all(run.envelope.runId);
-          if (rows.length > 1) throw new Error("summary-source-ambiguous");
-          const row = rows[0];
-          return row === undefined ? null : JSON.parse(JsonRowSchema.parse(row).record_json) as unknown;
-        };
-        const events=database.prepare("SELECT record_json FROM timeline_events WHERE run_id=? AND json_extract(record_json,'$.payload.event.t') IN ('run.queued','run.claimed') ORDER BY cursor").all(run.envelope.runId)
-          .map(row=>JSON.parse(JsonRowSchema.parse(row).record_json) as unknown);
-        const spanEvents=events.flatMap(event=>{
-          const parsed=z.object({payload:z.object({kind:z.string(),event:z.object({t:z.string(),ts:z.string(),title:z.string().optional()}).optional()})}).safeParse(event);
-          return parsed.success && parsed.data.payload.kind === "span" && parsed.data.payload.event !== undefined ? [parsed.data.payload.event] : [];
-        });
-        const cursor=z.object({cursor:z.number().int().nonnegative()}).parse(database.prepare("SELECT COALESCE(MAX(cursor),0) AS cursor FROM timeline_events WHERE run_id=? AND json_extract(record_json,'$.payload.event.t') IN ('run.queued','run.claimed')").get(run.envelope.runId)).cursor;
-        const dependencies=database.prepare("SELECT json_extract(record_json,'$.childRunId') AS runId FROM delegation_dependencies WHERE json_extract(record_json,'$.parentRunId')=? ORDER BY record_key").all(run.envelope.runId).map(row=>z.object({runId:z.string()}).parse(row).runId);
-        const source = RunSummarySourceSchema.parse({ run,
-          cursor,startedAt:spanEvents.find(event=>event.t==="run.claimed")?.ts ?? ("claimedAt" in run.lifecycle ? run.lifecycle.claimedAt : null),
-          queueTitle:spanEvents.find(event=>event.t==="run.queued")?.title ?? null,
-          children:database.prepare("SELECT record_json FROM workflow_runs WHERE parent_run_id=? ORDER BY record_key").all(run.envelope.runId).map(row=>RunRecordSchema.parse(JSON.parse(JsonRowSchema.parse(row).record_json))).map(child=>({runId:child.envelope.runId,state:child.lifecycle.state,outcome:child.lifecycle.state==="terminal"?child.lifecycle.outcome:null})),
-          dependencyRunIds:dependencies,
-          result: read("SELECT record_json FROM run_results WHERE record_key=?"),
-          receipt: read("SELECT record_json FROM run_receipts WHERE run_id=?"),
-          failure: read("SELECT record_json FROM run_failures WHERE run_id=?"),
-          resolution: read("SELECT resolution_json AS record_json FROM run_failures WHERE run_id=?"),
-        });
-        const summary = deriveRunSummary(source, sourceGeneration);
-        const existing=database.prepare("SELECT record_json FROM run_summaries WHERE record_key=?").get(summary.runId);
-        if(existing!==undefined && RunSummarySchema.parse(JSON.parse(JsonRowSchema.parse(existing).record_json)).sourceDigest===summary.sourceDigest) continue;
-        database.prepare("INSERT INTO run_summaries VALUES (?,?,?,?,?,?,?) ON CONFLICT(record_key) DO UPDATE SET workflow=excluded.workflow,local_day=excluded.local_day,state=excluded.state,parent_run_id=excluded.parent_run_id,record_json=excluded.record_json,created_at=excluded.created_at").run(summary.runId,summary.workflow,summary.localDay,summary.lifecycle.state,summary.parentRunId,canonicalJsonStringify(summary),now);
+  const snapshot = (sourceGeneration: number, selected?: readonly RunRecord[]) => {
+    const runs = selected ?? database.prepare("SELECT * FROM runs ORDER BY id").all().map(runRecordFromRow);
+    const ids = JSON.stringify(runs.map(run => run.envelope.runId));
+    const selectSources = (table: string, key: string, suffix: string) => selected === undefined
+      ? database.prepare(`SELECT * FROM ${table} ${suffix}`).all()
+      : database.prepare(`SELECT * FROM ${table} WHERE ${key} IN (SELECT value FROM json_each(?)) ${suffix}`).all(ids);
+    const sources=(table:"run_results"|"run_receipts"|"run_failures")=>{
+      const grouped=new Map<string,unknown>();
+      const resolutions=new Map<string,unknown>();
+      for(const raw of selectSources(table,"run_id","ORDER BY run_id")) {
+        const record=nativeOrdinaryRecordFromRow(table,raw);
+        const row=z.object({run_id:z.string()}).parse(raw);
+        if(grouped.has(row.run_id))throw new Error("summary-source-ambiguous");
+        grouped.set(row.run_id,record);
+        if(table === "run_failures")resolutions.set(row.run_id,FailureResolutionSchema.parse(JSON.parse(z.object({resolution_json:z.string()}).parse(raw).resolution_json)));
       }
-  };
-  const publish = (sourceGeneration:number, now:string) => {
-    const prior=publication();
-    const rowCount=z.object({count:z.number().int().nonnegative()}).parse(database.prepare("SELECT count(*) AS count FROM run_summaries").get()).count;
-    const next=SummaryPublicationSchema.parse({state:"published",generation:prior.generation+1,sourceGeneration,rowCount});
-    database.prepare("INSERT INTO summary_publication VALUES ('current',?,?) ON CONFLICT(record_key) DO UPDATE SET record_json=excluded.record_json,created_at=excluded.created_at").run(canonicalJsonStringify(next),now);
-    return next;
-  };
-  const assertCurrent=(sourceGeneration:number)=>{
-    const current=publication();
-    if(current.state!=="published" || current.sourceGeneration!==sourceGeneration)throw new Error("run-summary-generation-unavailable");
-    const count=z.object({count:z.number().int().nonnegative()}).parse(database.prepare("SELECT count(*) AS count FROM run_summaries").get()).count;
-    if(count !== current.rowCount)throw new Error("run-summary-generation-corrupt");
-    return current;
+      return {grouped,resolutions};
+    };
+    const results=sources("run_results").grouped,receipts=sources("run_receipts").grouped,failureSources=sources("run_failures");
+    const failures=failureSources.grouped,resolutions=failureSources.resolutions;
+    const events=new Map<string,{cursor:number;startedAt:string|null;queueTitle:string|null}>();
+    const byRun=new Map(runs.map(run=>[String(run.envelope.runId),run]));
+    const eventFilter = "json_extract(payload_json,'$.payload.event.t') IN ('run.queued','run.claimed')";
+    const eventRows = selected === undefined
+      ? database.prepare(`SELECT * FROM timeline_events WHERE ${eventFilter} ORDER BY cursor`).all()
+      : database.prepare(`SELECT * FROM timeline_events WHERE run_id IN (SELECT value FROM json_each(?)) AND ${eventFilter} ORDER BY cursor`).all(ids);
+    for(const raw of eventRows) {
+      const event=timelineEventFromRow(raw);
+      if(event.scope.kind !== "run" || event.payload.kind !== "span"
+        || (event.payload.event.t !== "run.queued" && event.payload.event.t !== "run.claimed"))throw new Error("run-summary-span-kind-invalid");
+      const owner=byRun.get(event.scope.runId),span=event.payload.event;
+      if(owner === undefined || owner.envelope.workflow !== event.workflow || owner.envelope.traceId !== span.traceId
+        || owner.envelope.runId !== span.runId || span.attempt > owner.envelope.attempt)throw new Error("run-summary-span-owner-mismatch");
+      const prior=events.get(event.scope.runId) ?? {cursor:0,startedAt:null,queueTitle:null};
+      events.set(event.scope.runId,{cursor:event.cursor,startedAt:prior.startedAt ?? (span.t === "run.claimed" ? span.ts : null),
+        queueTitle:prior.queueTitle ?? (span.t === "run.queued" ? span.title ?? null : null)});
+    }
+    const children = new Map<string, { runId: string; state: string; outcome: string | null }[]>();
+    const childRuns = selected === undefined ? runs : database.prepare("SELECT * FROM runs WHERE parent_id IN (SELECT value FROM json_each(?)) ORDER BY id").all(ids).map(runRecordFromRow);
+    for (const run of childRuns) {
+      const parent = run.envelope.parent?.runId;
+      if (parent === undefined) continue;
+      const group = children.get(parent) ?? [];
+      group.push({ runId: run.envelope.runId, state: run.lifecycle.state, outcome: run.lifecycle.state === "terminal" ? run.lifecycle.outcome : null });
+      children.set(parent, group);
+    }
+    const dependencies = new Map<string, string[]>();
+    const dependencyRows = selected === undefined
+      ? database.prepare("SELECT * FROM delegation_dependencies ORDER BY id").all()
+      : database.prepare(`SELECT dependency.* FROM delegation_dependencies dependency JOIN run_delegations delegation ON delegation.id=dependency.delegation_id
+        WHERE delegation.parent_run_id IN (SELECT value FROM json_each(?)) ORDER BY dependency.id`).all(ids);
+    for (const raw of dependencyRows) {
+      const dependency=DependencyRecordSchema.parse(nativeOrdinaryRecordFromRow("delegation_dependencies",raw));
+      const group = dependencies.get(dependency.parentRunId) ?? [];
+      group.push(dependency.childRunId); dependencies.set(dependency.parentRunId, group);
+    }
+    const summaries = runs.map(run => {
+      const id = run.envelope.runId, event = events.get(id);
+      return { ...deriveRunSummary(RunSummarySourceSchema.parse({ run,
+        cursor: event?.cursor ?? 0,
+        startedAt: event?.startedAt ?? ("claimedAt" in run.lifecycle ? run.lifecycle.claimedAt : null),
+        queueTitle: event?.queueTitle ?? null, children: children.get(id) ?? [], dependencyRunIds: dependencies.get(id) ?? [],
+        result: results.get(id) ?? null, receipt: receipts.get(id) ?? null,
+        failure: failures.get(id) ?? null, resolution: resolutions.get(id) ?? null,
+      }), sourceGeneration), cancelRequested: run.cancelRequested === true };
+    });
+    return summaries.sort((a, b) => a.localDay.localeCompare(b.localDay) || a.runId.localeCompare(b.runId));
   };
   return {
-    publication,
-    /** TEMP triggers participate in the same savepoint/transaction as their source mutation. */
-    installTracking() {
-      database.exec("CREATE TEMP TABLE IF NOT EXISTS summary_dirty (run_id TEXT PRIMARY KEY) WITHOUT ROWID");
-      const sources: Record<string,string[]> = {
-        workflow_runs:["$.envelope.runId","$.envelope.parent.runId"], run_results:["$.runId"],
-        run_receipts:["$.runId"],run_failures:["$.runId"],timeline_events:["$.scope.runId"],
-        delegation_dependencies:["$.parentRunId","$.childRunId"],run_delegations:["$.parentRunId"],
-        ...(hasHistoricalArchiveTables(database) ? { archived_runs:["$.runId"] } : {}),archive_transfers:["$.run.envelope.runId"],
-      };
-      for(const [table,paths] of Object.entries(sources)) for(const action of ["INSERT","UPDATE","DELETE"]) {
-        const refs=action==="INSERT"?["NEW"]:action==="DELETE"?["OLD"]:["OLD","NEW"];
-        const inserts=refs.flatMap(ref=>paths.map(path=>`INSERT OR IGNORE INTO summary_dirty SELECT json_extract(${ref}.record_json,'${path}') WHERE json_extract(${ref}.record_json,'${path}') IS NOT NULL${table==="timeline_events" ? ` AND json_extract(${ref}.record_json,'$.payload.event.t') IN ('run.queued','run.claimed')` : ""};`)).join("\n");
-        const changed = table === "workflow_runs"
-          ? "json_remove(OLD.record_json,'$.version','$.updatedAt','$.lifecycle.heartbeatAt') IS NOT json_remove(NEW.record_json,'$.version','$.updatedAt','$.lifecycle.heartbeatAt')"
-          : "OLD.record_json IS NOT NEW.record_json";
-        const when=action==="UPDATE" ? ` WHEN ${changed}${table==="run_failures" ? " OR OLD.resolution_json IS NOT NEW.resolution_json" : ""}` : "";
-        database.exec(`CREATE TEMP TRIGGER IF NOT EXISTS summary_${table}_${action} AFTER ${action} ON main.${table}${when} BEGIN ${inserts} END`);
+    workflows(_sourceGeneration: number) {
+      return database.prepare("SELECT DISTINCT workflow FROM runs ORDER BY workflow").all().map(row => z.object({ workflow: z.string() }).parse(row).workflow);
+    },
+    read(sourceGeneration: number) {
+      return snapshot(sourceGeneration).map(({ cancelRequested, ...summary }) => { void cancelRequested; return summary; });
+    },
+    query(sourceGeneration: number, input: RunSummaryQuery) {
+      const query = RunSummaryQuerySchema.parse(input);
+      const clauses = ["workflow=?"], values: (string | number)[] = [query.workflow];
+      const add = (sql: string, ...parameters: (string | number)[]) => { clauses.push(sql); values.push(...parameters); };
+      if (query.fromDay !== undefined) add("local_day>=?", query.fromDay);
+      if (query.toDay !== undefined) add("local_day<=?", query.toDay);
+      if (query.parentRunId !== undefined) {
+        if (query.parentRunId === null) add("parent_id IS NULL");
+        else add("parent_id=?", query.parentRunId);
       }
+      if (query.topLevel === true) add("json_extract(envelope_json,'$.shape')<>'operation-member'");
+      if (query.sessionId !== undefined) add("session_id=?", query.sessionId);
+      if (query.state !== undefined) add("state=?", query.state);
+      if (query.status === "done" || query.status === "failed") add("state='terminal' AND outcome=?", query.status);
+      else if (query.status === "cancelled") add("state='terminal' AND outcome IN ('cancelled','discarded','superseded')");
+      else if (query.status === "blocked") add("(state='parked-write' OR (state='terminal' AND outcome='interrupted'))");
+      else if (query.status === "queued") add("state='queued'");
+      else if (query.status === "awaiting-approval") add("state='parked-gate'");
+      else if (query.status === "partial") add("0");
+      else if (query.status !== undefined) add("state IN ('claimed','validating','running') AND COALESCE(json_extract(lifecycle_json,'$.cancelRequested'),0)=?", Number(query.status === "cancelling"));
+      if (query.after !== undefined) add("(local_day>? OR (local_day=? AND id>?))", query.after.localDay, query.after.localDay, query.after.runId);
+      const selected = database.prepare(`SELECT * FROM runs INDEXED BY runs_day_idx WHERE ${clauses.join(" AND ")}
+        ORDER BY local_day,id LIMIT ?`).all(...values, query.limit + 1).map(runRecordFromRow);
+      const rows = snapshot(sourceGeneration, selected);
+      const items = rows.slice(0, query.limit), last = items.at(-1);
+      return { items, next: rows.length > query.limit && last !== undefined ? { localDay: last.localDay, runId: last.runId } : null };
     },
-    /** Explicit rebuild; no half-publication escapes the caller's write transaction. */
-    refresh(sourceGeneration:number,now:string) {
-      const runs=database.prepare(`SELECT record_json FROM workflow_runs WHERE ${unarchivedRunSql(database,"workflow_runs.record_key")}`).all().map(row=>RunRecordSchema.parse(JSON.parse(JsonRowSchema.parse(row).record_json)));
-      database.exec("DELETE FROM run_summaries");write(runs,sourceGeneration,now);return publish(sourceGeneration,now);
-    },
-    /** Shared transaction hook. Q can refine maintenance inside this owned adapter. */
-    publishChanges(sourceGeneration:number,now:string) {
-      const current = publication();
-      if(current.state === "published") {
-        // Only this transaction's next revision, or an explicit rebuild in it, may publish.
-        if (current.sourceGeneration !== sourceGeneration - 1 && current.sourceGeneration !== sourceGeneration) {
-          throw new Error("run-summary-generation-unavailable");
-        }
-        const ids=database.prepare("SELECT run_id FROM summary_dirty UNION SELECT parent_run_id FROM run_summaries WHERE record_key IN (SELECT run_id FROM summary_dirty) AND parent_run_id IS NOT NULL UNION SELECT json_extract(record_json,'$.envelope.parent.runId') FROM workflow_runs WHERE record_key IN (SELECT run_id FROM summary_dirty) AND json_extract(record_json,'$.envelope.parent.runId') IS NOT NULL").all().map(row=>z.object({run_id:z.string()}).parse(row).run_id);
-        for(const id of ids) {
-          const row=database.prepare(`SELECT record_json FROM workflow_runs WHERE record_key=? AND ${unarchivedRunSql(database,"workflow_runs.record_key")}`).get(id);
-          if(row===undefined)database.prepare("DELETE FROM run_summaries WHERE record_key=?").run(id);
-          else write([RunRecordSchema.parse(JSON.parse(JsonRowSchema.parse(row).record_json))],sourceGeneration,now);
-        }
-        publish(sourceGeneration,now);
-      }
-      database.exec("DELETE FROM summary_dirty");
-    },
-    workflows(sourceGeneration:number) {
-      assertCurrent(sourceGeneration);
-      return database.prepare("SELECT DISTINCT workflow FROM run_summaries ORDER BY workflow").all().map(row=>z.object({workflow:z.string()}).parse(row).workflow);
-    },
-    /** Scan only the requested month, keeping at most 31 counters; seek bounds per workflow. */
     calendar(sourceGeneration: number, input: { month: string; day: string; today: string }) {
       const { month, day, today } = CalendarQuerySchema.extend({ today: z.iso.date() }).parse(input);
       if (day > today) throw new Error("calendar-future-day");
-      assertCurrent(sourceGeneration);
-      const last = new Date(`${month}-01T00:00:00.000Z`);
-      last.setUTCMonth(last.getUTCMonth() + 1);
-      last.setUTCDate(0);
-      const end = last.toISOString().slice(0, 10);
-      const counts = new Map<string, number>();
-      const firstDays: string[] = [], lastDays: string[] = [], previousDays: string[] = [], nextDays: string[] = [];
-      const workflows = database.prepare("SELECT DISTINCT workflow FROM run_summaries ORDER BY workflow").all();
-      const validate = (row: unknown) => {
-        const summary = parseSummary({ record_json: z.object({ record_json: z.string() }).parse(row).record_json });
-        const columns = z.object({ record_key: z.string(), workflow: z.string(), local_day: z.string() }).parse(row);
-        if (summary.sourceGeneration > sourceGeneration || summary.runId !== columns.record_key
-          || summary.workflow !== columns.workflow || summary.localDay !== columns.local_day) {
-          throw new Error("run-summary-generation-corrupt");
-        }
-        return summary;
+      const dateRow = z.object({ day: z.iso.date() });
+      const boundary = (where: string, order: "ASC" | "DESC", values: string[]) => {
+        const raw = database.prepare(`SELECT local_day AS day FROM runs INDEXED BY runs_day_idx
+          WHERE json_extract(envelope_json,'$.shape')<>'operation-member' AND local_day<=? ${where} ORDER BY local_day ${order} LIMIT 1`).get(today, ...values);
+        return raw === undefined ? null : dateRow.parse(raw).day;
       };
-      for (const row of workflows) {
-        const { workflow } = z.object({ workflow: z.string() }).parse(row);
-        // Includes member rows in validation, excludes them from the one top-level count.
-        for (const row of database.prepare("SELECT record_key,workflow,local_day,record_json FROM run_summaries WHERE workflow=? AND local_day>=? AND local_day<=?")
-          .iterate(workflow, `${month}-01`, end < today ? end : today)) {
-          const summary = validate(row);
-          if (summary.shape !== "operation-member") counts.set(summary.localDay, (counts.get(summary.localDay) ?? 0) + 1);
-        }
-        const seek = (predicate: string, parameters: string[], order: "ASC" | "DESC"): string | undefined => {
-          const found = database.prepare(`SELECT record_key,workflow,local_day,record_json FROM run_summaries WHERE workflow=? AND local_day<=? AND ${predicate} AND json_extract(record_json,'$.shape')!='operation-member' ORDER BY local_day ${order} LIMIT 1`)
-            .get(workflow, today, ...parameters);
-          return found === undefined ? undefined : validate(found).localDay;
-        };
-        for (const [target, found] of [
-          [firstDays, seek("1", [], "ASC")], [lastDays, seek("1", [], "DESC")],
-          [previousDays, seek("local_day<?", [day], "DESC")], [nextDays, seek("local_day>?", [day], "ASC")],
-        ] as const) if (found !== undefined) target.push(found);
-      }
-      if (day < today) nextDays.push(today);
+      const next = boundary("AND local_day>?", "ASC", [day]);
       return CalendarWireSchema.parse({ month, day, today, authorityGeneration: sourceGeneration,
-        monthCounts: [...counts].sort(([a], [b]) => a.localeCompare(b)).map(([day, count]) => ({ day, count })),
-        firstDay: firstDays.sort().at(0) ?? null, lastDay: lastDays.sort().at(-1) ?? null,
-        previousDay: previousDays.sort().at(-1) ?? null, nextDay: nextDays.sort().at(0) ?? null });
-    },
-    query(sourceGeneration:number,input:RunSummaryQuery) {
-      const query=RunSummaryQuerySchema.parse(input);assertCurrent(sourceGeneration);
-      const clauses=["workflow=?"],parameters:(string|number)[]=[query.workflow];
-      if(query.fromDay!==undefined){clauses.push("local_day>=?");parameters.push(query.fromDay);}
-      if(query.toDay!==undefined){clauses.push("local_day<=?");parameters.push(query.toDay);}
-      if(query.parentRunId!==undefined){clauses.push("parent_run_id IS ?");parameters.push(query.parentRunId ?? "");if(query.parentRunId===null){clauses[clauses.length-1]="parent_run_id IS NULL";parameters.pop();}}
-      if(query.topLevel===true) clauses.push("json_extract(record_json,'$.shape')!='operation-member'");
-      if(query.sessionId!==undefined){clauses.push("json_extract(record_json,'$.sessionId')=?");parameters.push(query.sessionId);}
-      if(query.status!==undefined) {
-        const status=query.status;
-        if(status==="done"||status==="failed") {clauses.push("json_extract(record_json,'$.lifecycle.outcome')=?");parameters.push(status);}
-        else if(status==="cancelled")clauses.push("json_extract(record_json,'$.lifecycle.outcome') IN ('cancelled','discarded','superseded')");
-        else if(status==="blocked")clauses.push("(state='parked-write' OR (state='terminal' AND json_extract(record_json,'$.lifecycle.outcome')='interrupted'))");
-        else if(status==="queued"||status==="awaiting-approval"){ /* narrowed by the state partitions below */ }
-        else if(status==="partial")clauses.push("0");
-        else clauses.push(`(SELECT json_extract(r.record_json,'$.cancelRequested') FROM workflow_runs r WHERE r.record_key=run_summaries.record_key) IS ${status==="cancelling"?"":"NOT "}1`);
-      }
-
-// Bound state partitions before merging; equal range bounds preserve index order without an unbounded sort.
-      const statusStates: Record<z.infer<typeof QueueStatusSchema>, readonly string[]> = {
-        done:["terminal"],failed:["terminal"],cancelled:["terminal"],partial:[],
-        blocked:["parked-write","terminal"],queued:["queued"],"awaiting-approval":["parked-gate"],
-        running:["claimed","validating","running"],cancelling:["claimed","validating","running"],
-      };
-      const states=(query.state===undefined?RunStateSchema.options:[query.state])
-        .filter(state=>query.status===undefined||statusStates[query.status].includes(state));
-      const rows=states.flatMap(state=>{
-        const after=query.after;
-        const cursor=after===undefined?"":" AND (local_day,state,record_key)>(?,?,?)";
-        const cursorParameters=after===undefined?[]:[after.localDay,state,after.runId];
-        return database.prepare(`SELECT record_json FROM run_summaries WHERE ${clauses.join(" AND ")} AND state>=? AND state<=?${cursor} ORDER BY local_day,state,record_key LIMIT ?`)
-          .all(...parameters,state,state,...cursorParameters,query.limit+1).map(parseSummary);
-      }).sort((a,b)=>a.localDay.localeCompare(b.localDay)||a.runId.localeCompare(b.runId));
-      if(rows.some(row=>row.sourceGeneration>sourceGeneration))throw new Error("run-summary-generation-corrupt");
-      const items=rows.slice(0,query.limit).map(row => {
-        const flags = database.prepare("SELECT json_extract(record_json,'$.cancelRequested') AS cancelRequested FROM workflow_runs WHERE record_key=?").get(row.runId);
-        if (flags === undefined) throw new Error("run-summary-source-missing");
-        const cancelRequested = z.object({cancelRequested:z.union([z.literal(0),z.literal(1),z.null()])}).parse(flags).cancelRequested === 1;
-        return {...row,cancelRequested};
-      }),last=items.at(-1);
-      return {items,next:rows.length>query.limit && last!==undefined ? {localDay:last.localDay,runId:last.runId} : null};
-    },
-    read(sourceGeneration: number) {
-      const current = publication();
-      if (current.state !== "published" || current.sourceGeneration !== sourceGeneration) throw new Error("run-summary-generation-unavailable");
-      const rows = database.prepare("SELECT record_json FROM run_summaries ORDER BY local_day,record_key").all()
-        .map((row) => parseSummary(row));
-      if (rows.length !== current.rowCount || rows.some((row) => row.sourceGeneration > sourceGeneration)) throw new Error("run-summary-generation-corrupt");
-      return rows;
+        monthCounts: database.prepare(`SELECT local_day AS day,count(*) AS count FROM runs INDEXED BY runs_day_idx
+          WHERE json_extract(envelope_json,'$.shape')<>'operation-member' AND local_day<=? AND local_day>=? AND local_day<=?
+          GROUP BY local_day ORDER BY local_day`).all(today, `${month}-01`, `${month}-31`)
+          .map(row => z.object({ day: z.iso.date(), count: z.number().int().positive() }).parse(row)),
+        firstDay: boundary("", "ASC", []), lastDay: boundary("", "DESC", []),
+        previousDay: boundary("AND local_day<?", "DESC", [day]),
+        nextDay: day < today && (next === null || today < next) ? today : next });
     },
   };
 }

@@ -1,22 +1,24 @@
+import { DatabaseSync } from "node:sqlite";
+import { runRecordColumns } from "../../../../../../src/backend/storage/sqlite/run-record-row.js";
+import { canonicalJsonStringify } from "../../../../../../src/rules/validation/canonical-json.js";
+import { RunResultRecordSchema } from "../../../../../../src/models/run/result.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AuthorityDatabase } from "../../../../../support/helpers/synthetic-storage-admission.js";
+import { AuthorityDatabase } from "../../../../../../src/backend/storage/sqlite/authority-database.js";
+import { RuntimeAdmission } from "../../../../../../src/backend/storage/admission/admission.js";
+import { CONFIG_SNAPSHOT } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
 import { RunRecordSchema } from "../../../../../../src/models/run/record.js";
 import { FailureRecordSchema } from "../../../../../../src/models/trust/failure.js";
 import { failureRecordOf } from "../../../../../support/helpers/backend/dashboard-harness.js";
 import { manualClock } from "../../../../../../src/rules/time/clock.js";
 import { projectReceiptForOperator } from "../../../../../../src/models/trust/evidence.js";
-import { ArchivedRunContentSchema } from "../../../../../../src/models/archive/model.js";
-import { ARCHIVED_RUN_WITH_SECTIONS } from "../../../../../support/fixtures/archive-fixtures.js";
 import { describe, it } from "vitest";
 import { buildRunEvidenceReceipt } from "../../../../../../src/backend/runs/provenance/evidence-receipt.js";
-import { canonicalJsonStringify } from "../../../../../../src/rules/validation/canonical-json.js";
-import { sha256Hex } from "../../../../../../src/rules/validation/sha256.js";
 import { kualiReceiptEvidence } from "../../../../../support/fixtures/receipt-run-fixtures.js";
 import { separationsKualiFinalizationDescriptor } from "../../../../../support/helpers/registered-workflows.js";
-import { DataClassificationSchema, redactDiagnosticFields, retainLocalEvidenceValue, RedactedValueSchema } from "../../../../../../src/rules/redaction/redaction.js";
+import { DataClassificationSchema, redactDiagnosticFields, retainLocalEvidenceValue } from "../../../../../../src/rules/redaction/redaction.js";
 
 describe("complete classified evidence", () => {
   it.each(DataClassificationSchema.options)("retains the supplied %s value without a presentation transform", classification => {
@@ -30,63 +32,15 @@ describe("complete classified evidence", () => {
     });
   });
 
-  it("keeps historical transformed and dropped records readable without inventing their source", () => {
-    assert.deepEqual(RedactedValueSchema.parse({ state: "redacted", classification: "secret", transform: "drop" }), {
-      state: "redacted", classification: "secret", transform: "drop",
-    });
-    assert.deepEqual(RedactedValueSchema.parse({ state: "transformed", classification: "direct-identifier", transform: "last4", value: "1234" }), {
-      state: "transformed", classification: "direct-identifier", transform: "last4", value: "1234",
-    });
-  });
+
 });
 
 
-const historicalDigests = [
-  "1d698f9f0326bef4de3f0386a9011127ee43cc0a4aecb2662f24cb941684ff38",
-  "745636ecbf0b7a0671f5b9c5d8afdcd52ade1202886156495f15647290eb28cc",
-  "7bcc88e2eb2b755b5dc3583ec5fb5da34fdb1b96a0f0798cde1fd5c547798eb2",
-  "bbd2797e6dde6e6182b6c452b1a63fcd29f555bfb5fdd39721f7ad7abc612812",
-];
-
-function derive(composition: 1 | 2 | 3 | 4 | 5) {
-  const evidence = kualiReceiptEvidence({ contractFingerprint: "30164dc81af7ded8c9d330308710f0c4af24c982c5c7ec9207f2aa336a468154" });
+function derive(run = kualiReceiptEvidence().run, result = kualiReceiptEvidence().result) {
+  const evidence = kualiReceiptEvidence();
   return buildRunEvidenceReceipt({ descriptor: separationsKualiFinalizationDescriptor,
-    run: evidence.run, result: evidence.result, checkpoints: evidence.checkpoints, writes: evidence.writes,
-  }, composition);
+    run, result, checkpoints: evidence.checkpoints, writes: evidence.writes });
 }
-
-describe("receipt composition", () => {
-  it.each([1, 2, 3, 4] as const)("preserves exact composition %i bytes frozen from the pre-amendment source", composition => {
-    assert.equal(sha256Hex(canonicalJsonStringify(derive(composition))), historicalDigests[composition - 1]);
-  });
-
-  it("derives new composition 5 with complete classified facts and stable evidence references", () => {
-    const historical = derive(4);
-    const current = derive(5);
-    assert.equal(current.composition, 5);
-    assert.equal(current.receiptId, historical.receiptId);
-    assert.deepEqual(current.observations.map(fact => fact.id), historical.observations.map(fact => fact.id));
-    assert.ok(current.observations.length > 0);
-    const valued = current.observations.filter(fact => fact.state === "satisfied");
-    assert.ok(valued.length > 0);
-    for (const fact of valued) {
-      assert.equal(fact.state, "satisfied");
-      assert.ok(fact.state === "satisfied");
-      assert.equal(fact.value.state, "allowed");
-      assert.equal(fact.value.transform, "allow");
-      assert.equal(fact.value.rawValue, undefined);
-      const old = historical.observations.find(candidate => candidate.id === fact.id);
-      assert.ok(fact.value.state === "allowed");
-      assert.ok(old?.state === "satisfied");
-      assert.deepEqual(fact.value.value, old.value.rawValue);
-      assert.equal(fact.value.classification, old.value.classification);
-    }
-    const proof = current.actions.find(action => action.kind === "commit")?.proved;
-    assert.ok(proof);
-    assert.notEqual(proof.idempotencyKeyDigest, "withheld-protected-input");
-    assert.ok(proof.values.every(value => value.state === "allowed" && value.transform === "allow"));
-  });
-});
 
 describe("durable receipt boundaries", () => {
   it("reopens complete composition-5 bytes from isolated SQLite and projects those exact facts", () => {
@@ -95,14 +49,27 @@ describe("durable receipt boundaries", () => {
     const clock = manualClock(new Date("2026-09-29T12:00:00.000Z"));
     let database: AuthorityDatabase | undefined;
     try {
-      const receipt = derive(5);
-      database = AuthorityDatabase.open(options, clock);
-      const run = RunRecordSchema.parse(kualiReceiptEvidence().run);
-      const { completion: _completion, ...queued } = run;
-      database.authority.runs.enqueue({ ...queued, lifecycle: { state: "queued" } });
+      const admission = RuntimeAdmission.syntheticFixture(options.path);
+      database = AuthorityDatabase.open(admission, options, clock);
+      database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+      const base = RunRecordSchema.parse(kualiReceiptEvidence().run);
+      const run = RunRecordSchema.parse({ ...base, envelope: { ...base.envelope,
+        configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId, configFingerprint: CONFIG_SNAPSHOT.fingerprint } });
+      const result = RunResultRecordSchema.parse({ ...RunResultRecordSchema.parse(kualiReceiptEvidence().result),
+        configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId, configFingerprint: CONFIG_SNAPSHOT.fingerprint });
+      const receipt = derive(run, result);
+      database.close();
+      const raw = new DatabaseSync(options.path);
+      try {
+        const row = runRecordColumns(run);
+        raw.prepare(`INSERT INTO runs(${Object.keys(row).join(",")}) VALUES(${Object.keys(row).map(()=>"?").join(",")})`).run(...Object.values(row));
+        raw.prepare("INSERT INTO run_results(run_id,workflow,attempt,result_digest,payload_json,created_at) VALUES(?,?,?,?,?,?)")
+          .run(result.runId,result.workflowId,result.attempt,result.resultDigest,canonicalJsonStringify(result),result.createdAt);
+      } finally { raw.close(); }
+      database = AuthorityDatabase.open(admission, options, clock);
       database.authority.evidenceReceipts.insert(receipt);
       database.close();
-      database = AuthorityDatabase.open(options, clock);
+      database = AuthorityDatabase.open(admission, options, clock);
       const reopened = database.authority.evidenceReceipts.get(receipt.receiptId);
       assert.deepEqual(reopened, receipt);
       const projected = projectReceiptForOperator(reopened);
@@ -114,25 +81,11 @@ describe("durable receipt boundaries", () => {
     }
   });
 
-  it("admits composition 5 through current archive readers without changing receipt bytes", () => {
-    const receipt = derive(5);
-    const base = ARCHIVED_RUN_WITH_SECTIONS;
-    assert.ok(base.sections?.logs.state === "present");
-    const { contentDigest: _digest, ...content } = base;
-    const archived = ArchivedRunContentSchema.parse({ ...content,
-      archiveSchemaGeneration: 6,
-      workflowCode: { state: "present", value: "pl" },
-      row: { ...base.row, session: { state: "absent", reason: "fixture has no session" } },
-      sections: { ...base.sections, logs: { state: "present", value: { ...base.sections.logs.value, notes: [], rows: [] } } },
-      receipt: { state: "present", value: receipt },
-    });
-    assert.ok(archived.receipt.state === "present");
-    assert.equal(canonicalJsonStringify(archived.receipt.value), canonicalJsonStringify(receipt));
-  });
+
 });
 
 describe("supplied failure diagnostics", () => {
-  it("retains complete supplied failure summary only in new composition 5", () => {
+  it("retains the complete supplied failure summary in current receipts", () => {
     const evidence = kualiReceiptEvidence();
     const done = RunRecordSchema.parse(evidence.run);
     assert.ok(done.lifecycle.state === "terminal" && done.completion?.kind === "done");
@@ -147,13 +100,9 @@ describe("supplied failure diagnostics", () => {
     });
     const input = { descriptor: separationsKualiFinalizationDescriptor, run: failed,
       checkpoints: evidence.checkpoints, writes: evidence.writes, failure };
-    const current = buildRunEvidenceReceipt(input, 5);
-    const historical = buildRunEvidenceReceipt(input, 4);
+    const current = buildRunEvidenceReceipt(input);
     const currentWarning = current.warnings.find(warning => warning.code === failure.code);
-    const historicalWarning = historical.warnings.find(warning => warning.code === failure.code);
     assert.ok(currentWarning?.summary.includes(failure.summary));
-    assert.ok(historicalWarning);
-    assert.ok(historicalWarning.summary.includes("Free diagnostic text remains in authority"));
-    assert.ok(!historicalWarning.summary.includes(failure.summary));
+
   });
 });

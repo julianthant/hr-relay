@@ -2,7 +2,7 @@ import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admi
 /** Disposable production Intake pipeline. Surrounding dashboard reads use the named fixture server. */
 import { Hono } from "hono";
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "node:http";
@@ -22,24 +22,26 @@ import type { DashboardApp } from "../../../../src/backend/transports/http/route
 import type { DashboardCommandService } from "../../../../src/backend/runs/commands/command-service.js";
 import type { AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { CONFIG_SNAPSHOT, NOW, UUID_1 } from "../phase1c-contract-fixtures.js";
-import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../archive-fixtures.js";
 import { sequentialIdFactory } from "../phase1f-run-fixtures.js";
 import { intakeFixtureDescriptor, intakeFixtureProjection } from "../intake-workflow-fixture.js";
 import { FrontendBootstrapWireSchema, WorkflowBootstrapPrimitiveSchema } from "../../../../src/models/dashboard/bootstrap.js";
-import { DEFAULT_DASHBOARD_PROFILE } from "./fixture-profile.js";
-import { startFixtureServer } from "../../../integration/dashboard/client/fixtures/helpers/fixture-bff.js";
 import type { ParityBundleProof } from "../../../integration/dashboard/client/fixtures/helpers/bundle.js";
 
 export const INTAKE_CSV = "Employee ID#,Effective Date,Dept\n10456712,07/01/2026,Housing\n10-4567,07/01/2026,Housing\n10998801,07/01/2026,Student Affairs\n";
 export function createIntakeAuthority() {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-intake-authority-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-intake-authority-"));
   const path = join(root, "authority.sqlite");
   const clock = manualClock(new Date(NOW));
   let database = AuthorityDatabase.open({ path, busyTimeoutMs: 500, migrationOwner: "intake-disposable-proof" }, clock);
-  database.withAuthorityTransaction(repositories => repositories.configSnapshots.insert(CONFIG_SNAPSHOT));
+  database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
   database.authority.runtimeConfig.activate({ settingsRevision: 1, settingsFingerprint: CONFIG_SNAPSHOT.fingerprint,
     configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId, configFingerprint: CONFIG_SNAPSHOT.fingerprint, activatedAt: NOW });
-  const artifacts = createContentAddressedArtifactWriter({ admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ".tracker/artifacts")) });
+  const ownedArtifacts = createContentAddressedArtifactWriter({ admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ".tracker/artifacts")) });
+  let artifactReads = 0;
+  const artifacts = { ...ownedArtifacts, open: (...args: Parameters<typeof ownedArtifacts.open>) => {
+    artifactReads += 1;
+    return ownedArtifacts.open(...args);
+  } };
   let descriptor: AnyWorkflowDescriptor = intakeFixtureDescriptor;
   const descriptors = { resolve: (id: string) => id === descriptor.id ? descriptor : undefined };
   const projections = { resolve: (id: string) => id === descriptor.id ? intakeFixtureProjection : undefined };
@@ -55,10 +57,10 @@ export function createIntakeAuthority() {
       findIntakeManifestsBySource: sha => database.authority.intakeManifests.findBySource(sha),
     }, artifacts, parser, projections, descriptors, clock, ids, actorId: LOCAL_OPERATOR_ACTOR_ID });
     const kernel = createCommandKernel({ lifecycle: new RunRecordService({ database, clock, ids: lifecycleIds, publishQueued: () => {} }),
-      appVersion: "0.1.0", archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS, authority: database, clock, ids: kernelIds,
+      appVersion: "0.1.0", authority: database, clock, ids: kernelIds,
       configIdentity: { configFingerprint: CONFIG_SNAPSHOT.fingerprint, configSnapshotId: UUID_1 }, descriptors,
       writeResolution: { resolvePresent: forbidden, resolveAbsent: forbidden },
-      workerRuntime: { planWorkerCount: forbidden, spawnWorker: forbidden, refreshBrowser: forbidden, reopenBrowser: forbidden },
+      workerRuntime: { pool: { planPoolWorkerCount: forbidden, spawnPoolWorker: forbidden, refreshPoolBrowser: forbidden, reopenPoolBrowser: forbidden, stopPoolWorker: forbidden, pausePoolWorker: forbidden, resumePoolWorker: forbidden } },
       intakeParser: parser, intakeProjections: projections });
     return { intake, kernel };
   };
@@ -84,6 +86,8 @@ export function createIntakeAuthority() {
   app.onError((error, c) => c.json({ state: "error", code: "INTAKE_PROOF_ERROR", message: error.message, retryable: false }, 500));
   return {
     root, path, clock, app, artifacts,
+    get artifactReads() { return artifactReads; },
+    get mintedIds() { return [...ids.minted(), ...kernelIds.minted(), ...lifecycleIds.minted()]; },
     get database() { return database; }, get intake() { return runtime.intake; }, get kernel() { return runtime.kernel; },
     setDescriptor(next: AnyWorkflowDescriptor) { descriptor = next; },
     restart() { database.close(); database = AuthorityDatabase.open({ path, busyTimeoutMs: 500, migrationOwner: "intake-disposable-restart" }, clock); runtime = compose(); },
@@ -99,6 +103,8 @@ export function createIntakeAuthority() {
 }
 
 export async function startIntakeAuthorityServer(input: { distDir: string; bundle: ParityBundleProof }) {
+  const [{DEFAULT_DASHBOARD_PROFILE},{startFixtureServer}]=await Promise.all([import("./fixture-profile.js"),
+    import("../../../integration/dashboard/client/fixtures/helpers/fixture-bff.js")]);
   const template = DEFAULT_DASHBOARD_PROFILE.bootstrap.workflows.map(workflow => WorkflowBootstrapPrimitiveSchema.parse(workflow)).find(workflow => workflow.start?.spreadsheetIntake === true);
   if (template === undefined) throw new Error("Intake browser fixture has no spreadsheet entry template");
   const profile = { ...DEFAULT_DASHBOARD_PROFILE, bootstrap: FrontendBootstrapWireSchema.parse({ ...DEFAULT_DASHBOARD_PROFILE.bootstrap,

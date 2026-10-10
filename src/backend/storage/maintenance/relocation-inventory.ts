@@ -3,8 +3,6 @@ import { closeSync, constants, fstatSync, fsyncSync, linkSync, lstatSync, mkdirS
   readSync, unlinkSync, writeSync, type Stats } from "node:fs";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { z } from "zod";
-import { readPreservedTimelineSources } from "../events/timeline-import.js";
-import { readPreservedGeneratedSources } from "../sqlite/generated-conversion.js";
 import { ArtifactRefSchema } from "../../../models/artifacts/artifacts.js";
 import { NoteWireSchema, SpanEventWireSchema } from "../../../models/events/types.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
@@ -12,25 +10,14 @@ import type { RuntimeRelocationOperation } from "../admission/admission.js";
 import type { RuntimePair } from "../admission/installation.js";
 import { verifyBackupManifestAtPath } from "../sqlite/backup-service.js";
 import { AuthorityDatabase } from "../sqlite/authority-database.js";
-import { ArchiveDatabase } from "../sqlite/archive-database.js";
-import { backupPendingCaptureFiles } from "../compatibility/backup-inspection.js";
 import { createCredentialStore } from "../configuration/credential-store.js";
-import { SettingsRootAuthoritySchema } from "../compatibility/d331-settings-root.js";
-import { SettingsFileRecordSchema } from "../../../models/config/settings.js";
-import { ProtectedStoreRecordSchema } from "../../../models/config/protected-settings.js";
-import { verifyLifecyclePair } from "../sqlite/lifecycle-storage.js";
 
-const DIGEST = /^[0-9a-f]{64}$/u;
 const ARTIFACT = /^([0-9a-f]{64})\.artifact$/u;
 const EVENT = /^[a-z0-9]+(?:-[a-z0-9]+)*-\d{4}-\d{2}-\d{2}\.jsonl$/u;
 const SUSPECT = /^suspect-\d{17}-[0-9a-f-]{36}\.sqlite$/u;
 const SAFE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
-const ROOT_FILES = new Set(["state.db", "state.db-wal", "state.db-shm", "archive.sqlite", "archive.sqlite-wal",
-  "archive.sqlite-shm", "explorer-overrides.json"]);
-const ROOT_DIRECTORIES = new Set(["archive-files", "backups", "credentials", "settings", "spans", "notes",
-  "suspects", "verified-byte-scratch"]);
-const SETTINGS_FILES = new Set(["settings.json", "protected.json", "authority.json", "prepare.json", "rollback.json",
-  "settings.lock", "settings.lock.reaper"]);
+const ROOT_FILES = new Set(["state.db", "state.db-wal", "state.db-shm"]);
+const ROOT_DIRECTORIES = new Set(["backups", "credentials", "spans", "notes", "suspects", "verified-byte-scratch"]);
 const CREDENTIAL_FILES = new Set(["protected.json", ".protected.lock", ".protected.reaper", ".protected.reaper-claim"]);
 const StoredArtifactSchema = z.strictObject({ ref: ArtifactRefSchema, payloadBase64: z.string() });
 const issuedInventories = new WeakSet<object>();
@@ -117,30 +104,12 @@ export function verifyRelocationLiveReferences(input: Readonly<{ admission: Runt
     for (const reference of authority.readManagedArtifactReferences()) {
       verifyArtifactReference(input.source.artifactRoot, reference);
     }
-    const pending = backupPendingCaptureFiles(input.admission, authorityPath);
-    const archivePath = join(input.source.stateRoot, "archive.sqlite");
-    if (lstatSync(archivePath, { throwIfNoEntry: false }) === undefined) {
-      if (pending.length > 0) throw new Error("relocation-inventory: pending archive file has no archive database");
-    } else {
-      const archive = new ArchiveDatabase(input.admission, archivePath, { readOnly: true });
-      try {
-        for (const reference of [...archive.fileReferences(false), ...pending]) archive.readFile(reference);
-      } finally { archive.close(); }
-    }
   } finally { authority.close(); }
   const credentialPath = join(input.source.stateRoot, "credentials", "protected.json");
   if (lstatSync(credentialPath, { throwIfNoEntry: false }) !== undefined) {
     createCredentialStore({ admission: input.admission, stateRoot: input.source.stateRoot }).read();
   }
-  const settingsRoot = join(input.source.stateRoot, "settings");
-  for (const [name, schema] of [
-    ["settings.json", SettingsFileRecordSchema],
-    ["protected.json", ProtectedStoreRecordSchema],
-    ["authority.json", SettingsRootAuthoritySchema],
-  ] as const) {
-    const path = join(settingsRoot, name);
-    if (lstatSync(path, { throwIfNoEntry: false }) !== undefined) schema.parse(JSON.parse(safeBytes(path).toString("utf8")));
-  }
+
 }
 
 function validateName(role: "state" | "artifact", relativePath: string, kind: "file" | "directory", path: string): void {
@@ -156,25 +125,13 @@ function validateName(role: "state" | "artifact", relativePath: string, kind: "f
     if (kind === "file" ? ROOT_FILES.has(top) : ROOT_DIRECTORIES.has(top)) return;
     throw new Error(`relocation-inventory: unknown state entry ${top}`);
   }
-  const knownPrivateName = name !== undefined && (top === "credentials" && CREDENTIAL_FILES.has(name)
-    || top === "settings" && SETTINGS_FILES.has(name));
+  const knownPrivateName = name !== undefined && top === "credentials" && CREDENTIAL_FILES.has(name);
   if (name === undefined || (!SAFE_NAME.test(name) && !knownPrivateName) || parts.length > 8) {
     throw new Error(`relocation-inventory: unsafe state descendant ${relativePath}`);
   }
-  if (top === "archive-files") {
-    if (parts.length !== 2 || kind !== "file" || !DIGEST.test(name)) throw new Error("relocation-inventory: unknown archive file");
-    if (createHash("sha256").update(safeBytes(path)).digest("hex") !== name) throw new Error("relocation-inventory: archive file digest mismatch");
-    return;
-  }
-  if (top === "credentials" || top === "settings") {
-    if (parts.length !== 2 || kind !== "file" || !(top === "credentials" ? CREDENTIAL_FILES : SETTINGS_FILES).has(name)) {
-      throw new Error(`relocation-inventory: unknown ${top} entry`);
-    }
-    if (top === "credentials" && name !== "protected.json") throw new Error("relocation-inventory: credential write lock is present");
-    if (top === "settings" && (name === "settings.lock" || name === "settings.lock.reaper"
-      || name === "prepare.json" || name === "rollback.json")) {
-      throw new Error("relocation-inventory: settings write or recovery is pending");
-    }
+  if (top === "credentials") {
+    if(parts.length!==2||kind!=="file"||!CREDENTIAL_FILES.has(name))throw new Error("relocation-inventory: unknown credentials entry");
+    if(name!=="protected.json")throw new Error("relocation-inventory: credential write lock is present");
     return;
   }
   if (top === "spans" || top === "notes") {
@@ -226,50 +183,13 @@ export async function verifyRelocationBackupTree(input: Readonly<{ admission: Ru
   assertOwned(root, "directory");
   const names = readdirSync(root).sort();
   const expected = new Set<string>();
-  const verifiedBackups: Awaited<ReturnType<typeof verifyBackupManifestAtPath>>[] = [];
   for (const name of names.filter((candidate) => candidate.endsWith(".manifest.json"))) {
     const verified = await verifyBackupManifestAtPath(input.admission, join(root, name));
-    verifiedBackups.push(verified);
     if (!allowedSourceIdentities.has(verified.manifest.sourceDatabaseIdentity)) {
       throw new Error("relocation-inventory: backup belongs to an unrecognized source identity");
     }
     expected.add(name);
     expected.add(verified.manifest.backupFileName);
-    if (verified.manifest.manifestVersion === 2) {
-      for (const file of verified.manifest.files) expected.add(file.backupFileName);
-    }
-    const paired = `${name}.lifecycle.json`;
-    if (!names.includes(paired)) continue;
-    const pair = await verifyLifecyclePair(input.admission, join(root, paired));
-    if (pair.pair.sourceDatabaseIdentity !== verified.manifest.sourceDatabaseIdentity
-      || pair.pair.liveManifest !== name) throw new Error("relocation-inventory: paired backup source mismatch");
-    expected.add(paired);
-    expected.add(pair.pair.archiveFile);
-    expected.add(pair.pair.fileDirectory);
-    const fileRoot = join(root, pair.pair.fileDirectory);
-    assertOwned(fileRoot, "directory");
-    const files = readdirSync(fileRoot).sort();
-    const referenced = [...new Set(pair.pair.files.map((file) => file.digest))].sort();
-    if (files.join("\0") !== referenced.join("\0")) throw new Error("relocation-inventory: paired archive file membership mismatch");
-  }
-  for (const preserved of ["timeline-sources", "generated-sources"] as const) {
-    if (!names.includes(preserved)) continue;
-    expected.add(preserved);
-    const parent = join(root, preserved);
-    assertOwned(parent, "directory");
-    for (const digest of readdirSync(parent)) {
-      if (!DIGEST.test(digest)) throw new Error("relocation-inventory: uncommitted preserved source copy");
-      const directory = join(parent, digest);
-      assertOwned(directory, "directory");
-      const admitted = verifiedBackups.some((backup) => {
-        try {
-          if (preserved === "timeline-sources") readPreservedTimelineSources(directory, digest, backup);
-          else readPreservedGeneratedSources(directory, digest, backup);
-          return true;
-        } catch { return false; }
-      });
-      if (!admitted) throw new Error(`relocation-inventory: unbound ${preserved} copy`);
-    }
   }
   for (const name of names) {
     if (!expected.has(name)) throw new Error(`relocation-inventory: unreferenced backup entry ${name}`);
@@ -369,8 +289,7 @@ function byteDigest(path: string): string {
   } finally { closeSync(fd); }
 }
 
-const NATIVE_DATABASE_ENTRIES = new Set(["state.db", "state.db-wal", "state.db-shm",
-  "archive.sqlite", "archive.sqlite-wal", "archive.sqlite-shm"]);
+const NATIVE_DATABASE_ENTRIES = new Set(["state.db", "state.db-wal", "state.db-shm"]);
 
 /** Secret-bearing bytes are compared in memory and never placed in a receipt. */
 export function verifyRelocationFileCopies(input: Readonly<{ sourceAdmission: RuntimeAdmission;

@@ -6,7 +6,6 @@ CommandResultSchema,
 type BulkRunCommandResponse,
 type CommandResult
 } from "../../../rules/commands/commands.js";
-import { HistoricalNotificationSnoozeCommandSchema } from "../../../rules/commands/commands-history.js";
 import { schemaError } from "../errors.js";
 import type { DashboardTransport } from "../transport.js";
 
@@ -23,8 +22,7 @@ export interface SharedCommands {
 export function createSharedCommands(transport: DashboardTransport): SharedCommands { return Object.freeze({
 
     async executeCommand(request: unknown): Promise<CommandResult> {
-      const live = CommandRequestSchema.safeParse(request);
-      const command = live.success ? live.data : HistoricalNotificationSnoozeCommandSchema.parse(request);
+      const command = CommandRequestSchema.parse(request);
       const response = await transport.requestJson("/api/v1/commands", {
         method: "POST",
         body: JSON.stringify(command),

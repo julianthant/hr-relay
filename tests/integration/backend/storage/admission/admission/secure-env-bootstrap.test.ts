@@ -12,7 +12,7 @@ import { parseRelocationCommand } from "../../../../../../src/backend/app/compos
 
 const REPO_ROOT = fileURLToPath(new URL("../../../../../../", import.meta.url));
 const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
-const syntheticAdmission = () => RuntimeAdmission.syntheticFixture(":memory:", "authority");
+const syntheticAdmission = () => RuntimeAdmission.syntheticFixture(":memory:");
 
 describe("secure environment bootstrap", () => {
   it("parses only exact offline relocation selectors", () => {

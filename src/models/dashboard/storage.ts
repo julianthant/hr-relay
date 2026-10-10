@@ -13,7 +13,7 @@ export const StorageCauseWireSchema = z.strictObject({
 });
 
 const RecoveryFindingSchema = z.strictObject({
-  marker: z.enum(["lifecycle-restore", "archive-conversion", "archive-restore"]),
+  marker: z.enum(["authority-restore", "unowned-recovery-entry"]),
   state: z.enum(["interrupted", "unavailable"]),
 });
 export const StorageRecoveryInspectionWireSchema = z.discriminatedUnion("state", [
@@ -23,7 +23,6 @@ export const StorageRecoveryInspectionWireSchema = z.discriminatedUnion("state",
 ]);
 const RestoreEligibilitySchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("eligible") }),
-  z.strictObject({ state: z.literal("requires-upgrade") }),
   z.strictObject({ state: z.literal("unsupported"), reason: z.string().min(1) }),
   z.strictObject({ state: z.literal("incomplete"), reason: z.string().min(1) }),
   z.strictObject({ state: z.literal("unavailable"), reason: z.string().min(1) }),
@@ -32,7 +31,7 @@ const RestoreEligibilitySchema = z.discriminatedUnion("state", [
 export const RestoreCandidateWireSchema = z.discriminatedUnion("state", [
   z.strictObject({
     state: z.literal("verified-compatible"),
-    selection: z.enum(["single-database", "lifecycle-pair"]),
+    selection: z.literal("single-database"),
     schemaVersion: z.number().int().positive(),
     restoreEligibility: RestoreEligibilitySchema,
     manifestFileName: z.string().min(1),
@@ -53,7 +52,7 @@ export const RestoreCandidateWireSchema = z.discriminatedUnion("state", [
 ]);
 
 export const PreviousLocationBackupWireSchema = z.strictObject({
-  selection: z.enum(["single-database", "lifecycle-pair"]),
+  selection: z.literal("single-database"),
   schemaVersion: z.number().int().positive(),
   manifestFileName: z.string().min(1),
   backupFileName: z.string().min(1),
@@ -136,7 +135,7 @@ export const SpanAuthorityReconciliationWireSchema = z.discriminatedUnion("state
       z.strictObject({
         state: z.literal("malformed"),
         runId: RunIdSchema,
-        table: z.enum(["workflow_runs", "archived_runs", "span_stream", "deleted_runs"]),
+        table: z.enum(["runs", "archived_runs", "span_stream", "deleted_runs"]),
         summary: StorageDiagnosticMessageSchema,
       }),
     ])).min(1),

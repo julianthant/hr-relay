@@ -14,8 +14,8 @@ import { NOW, failure, terminalizeFixtureFailure, id } from "../../../../../supp
 function snapshot(f: ReturnType<typeof resolutionFixture>) {
   const sql = new DatabaseSync(f.path);
   try { return JSON.stringify({ generation: f.db.getMeta().authorityGeneration,
-    tables: Object.fromEntries(["workflow_runs", "run_failures", "commands", "command_audits", "timeline_events", "run_receipts"]
-      .map(table => [table, sql.prepare(`SELECT * FROM ${table} ORDER BY record_key`).all()])) }); }
+    tables: Object.fromEntries(["runs", "run_failures", "commands", "command_audits", "timeline_events", "run_receipts"]
+      .map(table => [table, sql.prepare(`SELECT * FROM ${table} ORDER BY 1`).all()])) }); }
   finally { sql.close(); }
 }
 

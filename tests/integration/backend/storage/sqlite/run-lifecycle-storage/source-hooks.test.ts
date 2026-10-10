@@ -1,92 +1,88 @@
-import { sha256Hex } from "../../../../../../src/rules/validation/sha256.js";
 import assert from "node:assert/strict";
-import { lifecycleSourceDigest } from "../../../../../../src/backend/storage/sqlite/run-lifecycle-storage.js";
+import { DatabaseSync } from "node:sqlite";
 import { describe, it } from "vitest";
+import { AuthorityDatabase } from "../../../../../support/helpers/synthetic-storage-admission.js";
 import { foundationFixture, id, failure, terminalizeFixtureFailure, NOW } from "../../../../../support/helpers/database-foundation/fixtures.js";
+import { queryRunSummarySource } from "../../../../../../src/backend/runs/queries/run-summaries.js";
 
-describe("L summary publication and transaction hooks", () => {
-  it("distinguishes absent publication, refreshes new runs atomically and rolls failed mutations back", () => {
+const semanticRows=(rows:ReturnType<AuthorityDatabase["readRunSummaries"]>)=>rows.map(({sourceGeneration,...row})=>{void sourceGeneration;return row;});
+
+describe("native summary snapshots and transaction hooks", () => {
+  it("derives new runs atomically and rolls failed mutations back", () => {
     const fixture = foundationFixture();
     try {
-      assert.equal(fixture.db.readRunSummaries().length,1,"fresh publication follows the initial run atomically");
-      const raw=new DatabaseSync(fixture.path);
-      try { raw.exec("DELETE FROM summary_publication"); } finally {raw.close();}
-      assert.throws(() => fixture.db.readRunSummaries(), /generation-unavailable/u);
-      const publication = fixture.db.refreshRunSummaries();
-      assert.equal(publication.rowCount, 1);
+      assert.equal(fixture.db.readRunSummaries().length,1);
       const before = fixture.db.readRunSummaries();
+      const generation=fixture.db.getMeta().authorityGeneration;
       assert.throws(() => fixture.db.withAuthorityTransaction(() => {
         fixture.createRun(id(601));
         throw new Error("injected-lifecycle-rollback");
       }), /injected-lifecycle-rollback/u);
       assert.deepEqual(fixture.db.readRunSummaries(), before);
+      assert.equal(fixture.db.getMeta().authorityGeneration,generation);
       fixture.createRun(id(602));
       const after = fixture.db.readRunSummaries();
       assert.equal(after.length, 2);
-      assert.equal(after.find(row=>row.runId===before[0].runId)?.sourceGeneration,before[0].sourceGeneration);
-      assert.equal(after.find(row=>row.runId===id(602))?.sourceGeneration,fixture.db.getMeta().authorityGeneration);
-      assert.ok(after.every((row) => row.person.state === "unavailable"));
+      assert.deepEqual(semanticRows(after.filter(row=>row.runId===before[0].runId)),semanticRows(before));
+      assert.ok(after.every(row=>row.sourceGeneration===fixture.db.getMeta().authorityGeneration));
+      assert.ok(after.every(row=>row.person.state==="unavailable"));
+      assert.equal(fixture.db.authority.workerSlots.list("person-lookup").length,2);
     } finally { fixture.dispose(); }
   });
-  it("captures failure resolution changes and maintains the summary in the same transaction", () => {
+
+  it("notices resolution annotations without replacing immutable UNKNOWN failure evidence", () => {
     const f = foundationFixture();
     try {
-      const record = failure();
-      terminalizeFixtureFailure(f,f.run,record);
-      f.db.refreshRunSummaries();
-      const before = f.db.captureLifecycleSource(record.runId);
-      assert.equal(before.records.length,24);
-      assert.equal(before.records.some(group=>group.table === "archive_relaunches"),false);
-      assert.ok(before.records.some(group => group.table === "provider_requests"));
-      assert.ok(before.records.some(group => group.table === "provider_usage"));
+      const record = failure();terminalizeFixtureFailure(f,f.run,record);
+      const before=f.db.authority.failures.get(record.failureId);
+      assert.ok(before);
+      const beforeSummary=f.db.readRunSummaries()[0];assert.ok(beforeSummary);
       f.db.authority.failureResolution.update({ runId:record.runId,failureId:record.failureId,expectedVersion:1,
         resolution:{status:"resolved",version:2,by:"local-operator",at:NOW} });
-      const after = f.db.captureLifecycleSource(record.runId);
-      assert.notEqual(lifecycleSourceDigest(before),lifecycleSourceDigest(after));
-      assert.equal(f.db.readRunSummaries()[0]?.resolution?.status,"resolved");
-      assert.equal(f.db.authority.failures.get(record.failureId)?.writeState,"unknown");
+      const afterSummary=f.db.readRunSummaries()[0];assert.ok(afterSummary);
+      assert.equal(afterSummary.resolution?.status,"resolved");
+      assert.notEqual(afterSummary.sourceDigest,beforeSummary.sourceDigest);
+      assert.deepEqual(f.db.authority.failures.get(record.failureId),before);
+      assert.equal(before.writeState,"unknown");
     } finally { f.dispose(); }
   });
-
 });
 
-import { AuthorityDatabase } from "../../../../../support/helpers/synthetic-storage-admission.js";
-import { DatabaseSync } from "node:sqlite";
-it("reads a consistent publication across an independent writer and refuses a corrupt generation after restart",()=>{
+it("reads a consistent admitted snapshot across an independent writer and refuses corrupt run mirrors after restart",()=>{
   const f=foundationFixture();let peer:AuthorityDatabase|undefined;
   try{
-    f.db.refreshRunSummaries();peer=AuthorityDatabase.open({path:f.path,busyTimeoutMs:500,migrationOwner:"summary-peer"},f.clock);
+    peer=AuthorityDatabase.open({path:f.path,busyTimeoutMs:500,migrationOwner:"summary-peer"},f.clock);
     const before=f.db.readRunSummaries();
     f.db.withAuthorityReadSnapshot(()=>{
       assert.deepEqual(f.db.readRunSummaries(),before);
-      peer?.refreshRunSummaries();
+      peer?.authority.runs.updatePresentation({runId:f.run.envelope.runId,expectedVersion:f.run.version,displayName:"Concurrent title",now:NOW});
       assert.deepEqual(f.db.readRunSummaries(),before);
     });
+    assert.equal(f.db.readRunSummaries()[0].title,"Concurrent title");
     assert.ok(f.db.readRunSummaries()[0].sourceGeneration>before[0].sourceGeneration);
     peer.close();peer=undefined;
-    const raw=new DatabaseSync(f.path);try{raw.prepare("UPDATE summary_publication SET record_json=json_set(record_json,'$.sourceGeneration',0)").run();}finally{raw.close();}
-    peer=AuthorityDatabase.open({path:f.path,busyTimeoutMs:500,migrationOwner:"summary-restart"},f.clock);
-    assert.throws(()=>peer?.readRunSummaries(),/generation-unavailable/u);
+    const raw=new DatabaseSync(f.path);try{raw.prepare("UPDATE runs SET version=version+1 WHERE id=?").run(f.run.envelope.runId);}finally{raw.close();}
+    assert.throws(()=>AuthorityDatabase.open({path:f.path,busyTimeoutMs:500,migrationOwner:"summary-restart"},f.clock),/run row version does not match its whole-record JSON/u);
   }finally{peer?.close();f.dispose();}
 });
 
-import { versionChangeReviewFingerprint } from "../../../../../../src/models/archive/change-record.js";
-import { queryRunSummarySource } from "../../../../../../src/backend/runs/queries/run-summaries.js";
-it("keeps unrelated summaries unchanged, rolls nested notifications back, and pages through the real indexed port",()=>{
+it("keeps unrelated source facts unchanged, rolls nested mutations back and pages through the real query port",()=>{
   const f=foundationFixture();
   try {
-    f.db.refreshRunSummaries();const before=f.db.readRunSummaries();
-    const review={changeId:id(820),actorId:"local-operator",reviewedAt:NOW,observedAppVersion:"1.0.0",blockers:[],
-      change:{kind:"minor" as const,what:"Synthetic",why:"Unrelated source write",commit:{state:"absent" as const,reason:"test"}},
-      scope:{kind:"application" as const,applicationVersion:"1.0.0"},targetVersion:"1.1.0",targets:[],members:[],membershipDigest:sha256Hex("[]")};
-    f.db.writeVersionChange({...review,schemaVersion:2,reviewFingerprint:versionChangeReviewFingerprint(review),state:"planned",completedRunIds:[]});
-    assert.deepEqual(f.db.readRunSummaries(),before);
+    const before=f.db.readRunSummaries(),pool=f.db.authority.workerPools.get("person-lookup");assert.ok(pool);
+    const beforeGeneration=f.db.getMeta().authorityGeneration;
+    const planned=f.db.authority.workerPools.plan({workflow:"person-lookup",expectedVersion:pool.version,desiredWorkers:pool.desiredWorkers,requestedBy:"local-operator",now:NOW});
+    assert.equal(planned.state,"applied");
+    const afterPlan=f.db.readRunSummaries(),afterGeneration=f.db.getMeta().authorityGeneration;
+    assert.ok(afterGeneration>beforeGeneration);
+    assert.ok(afterPlan.every(row=>row.sourceGeneration===afterGeneration));
+    assert.deepEqual(semanticRows(afterPlan),semanticRows(before));
     f.db.withAuthorityTransaction(()=>{
       assert.throws(()=>f.db.withAuthorityTransaction(()=>{f.createRun(id(810));throw new Error("savepoint-rollback");}),/savepoint-rollback/u);
       f.createRun(id(811));
     });
     assert.equal(f.db.authority.runs.get(id(810)),undefined);
-    assert.deepEqual(f.db.readRunSummaries().find(row=>row.runId===before[0].runId),before[0]);
+    assert.deepEqual(semanticRows(f.db.readRunSummaries().filter(row=>row.runId===before[0].runId)),semanticRows(before));
     const read=f.db.readRunSummaries.bind(f.db);f.db.readRunSummaries=()=>{throw new Error("whole-reader-forbidden");};
     try {
       const first=queryRunSummarySource(f.db,{workflow:"person-lookup",limit:1});
@@ -96,9 +92,5 @@ it("keeps unrelated summaries unchanged, rolls nested notifications back, and pa
       assert.notEqual(first.items[0].runId,second.items[0].runId);
       assert.deepEqual(f.db.summaryWorkflows(),["person-lookup"]);
     }finally{f.db.readRunSummaries=read;}
-    const raw=new DatabaseSync(f.path,{readOnly:true});try{
-      const plan=JSON.stringify(raw.prepare("EXPLAIN QUERY PLAN SELECT record_json FROM run_summaries WHERE workflow=? AND local_day>=? ORDER BY local_day,record_key LIMIT ?").all("person-lookup","2026-01-01",2));
-      assert.match(plan,/USING INDEX/u);assert.doesNotMatch(plan,/SCAN run_summaries/u);
-    }finally{raw.close();}
   }finally{f.dispose();}
 });

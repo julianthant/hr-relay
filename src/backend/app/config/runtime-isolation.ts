@@ -2,7 +2,6 @@ import { defineRuntimeIsolation } from "../../../models/config/define-runtime-is
 
 export const rebuildRuntimeIsolation = defineRuntimeIsolation({
   stateRoot: ".tracker",
-  archiveDatabaseFile: "archive.sqlite",
   artifactRoot: ".tracker/artifacts",
   backendPort: 3938,
   frontendPort: 5174,

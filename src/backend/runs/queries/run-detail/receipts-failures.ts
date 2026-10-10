@@ -55,12 +55,6 @@ export function buildReceiptFailureSection(
     const storedReceipt = trust.ensureReceipt(runId);
     assertTrustEvidenceIdentity(authority, storedReceipt, "receipt");
     const receipt = projectReceiptForOperator(storedReceipt);
-    if (receipt.state === "withheld") {
-      return RunDetailSectionResponseSchema.parse({
-        section,
-        payload: { state: "missing", reason: receipt.reason },
-      });
-    }
     return RunDetailSectionResponseSchema.parse({
       section,
       payload: { state: "available", value: receipt.value },

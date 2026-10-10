@@ -2,7 +2,7 @@ import { RuntimeAdmission } from "../../../../../../src/backend/storage/admissio
 import { PositiveIntSchema } from "../../../../../../src/rules/identity/ids.js";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -116,7 +116,7 @@ function pageWith(input: Readonly<{
 function evidenceCount(path: string): number {
   const raw = new DatabaseSync(path);
   try {
-    const row = raw.prepare("SELECT count(*) AS count FROM generated_artifacts WHERE export_id IS NOT NULL").get();
+    const row = raw.prepare("SELECT count(*) AS count FROM artifacts WHERE kind='generated' AND export_id IS NOT NULL").get();
     return Number(row?.count);
   } finally {
     raw.close();
@@ -124,7 +124,7 @@ function evidenceCount(path: string): number {
 }
 
 function exportHarness(label: string) {
-  const root = mkdtempSync(join(tmpdir(), `hrauto-operator-xlsx-${label}-`));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), `hrauto-operator-xlsx-${label}-`));
   const path = join(root, "authority.db");
   const clock = manualClock(new Date("2026-08-28T16:00:00.000Z"));
   const database = AuthorityDatabase.open({
@@ -205,7 +205,7 @@ async function bytesOf(stream: NodeJS.ReadableStream): Promise<Buffer> {
 
 describe("operator XLSX export service", () => {
   it("persists content-addressed bytes and exact attachment evidence before returning", async () => {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-operator-xlsx-"));
+    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-operator-xlsx-"));
     const clock = manualClock(new Date("2026-08-28T16:00:00.000Z"));
     const database = AuthorityDatabase.open({
       path: join(root, "authority.db"),
@@ -269,20 +269,20 @@ describe("operator XLSX export service", () => {
       const raw = new DatabaseSync(join(root, "authority.db"));
       try {
         assert.throws(
-          () => raw.prepare("UPDATE generated_artifacts SET record_json=json_set(record_json,'$.exportEvidenceJson',?),version=version+1 WHERE export_id = ?")
+          () => raw.prepare("UPDATE artifacts SET payload_json=json_set(payload_json,'$.exportEvidenceJson',?),version=version+1 WHERE kind='generated' AND export_id = ?")
             .run("substituted.xlsx", EXPORT_ID),
-          /generated artifact evidence is immutable/,
+          /generated-artifact-evidence-immutable/,
         );
         assert.throws(
-          () => raw.prepare("DELETE FROM generated_artifacts WHERE export_id = ?").run(EXPORT_ID),
-          /generated artifact evidence is retained/,
+          () => raw.prepare("DELETE FROM artifacts WHERE kind='generated' AND export_id = ?").run(EXPORT_ID),
+          /artifact-evidence-retained/,
         );
         assert.throws(
           () => raw.exec(
-            `INSERT OR REPLACE INTO generated_artifacts
-             SELECT * FROM generated_artifacts WHERE export_id = '${EXPORT_ID}'`,
+            `INSERT OR REPLACE INTO artifacts
+             SELECT * FROM artifacts WHERE kind='generated' AND export_id = '${EXPORT_ID}'`,
           ),
-          /generated artifact insert conflicts with immutable evidence/,
+          /artifact-identity-conflict/,
         );
       } finally {
         raw.close();
@@ -294,7 +294,7 @@ describe("operator XLSX export service", () => {
   });
 
   it("refuses a search selection from a foreign authority snapshot before composing bytes", async () => {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-operator-xlsx-foreign-"));
+    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-operator-xlsx-foreign-"));
     const clock = manualClock(new Date("2026-08-28T16:00:00.000Z"));
     const database = AuthorityDatabase.open({
       path: join(root, "authority.db"),
@@ -343,7 +343,7 @@ describe("operator XLSX export service", () => {
       );
       const raw = new DatabaseSync(join(root, "authority.db"));
       try {
-        const row = raw.prepare("SELECT count(*) AS count FROM generated_artifacts WHERE export_id IS NOT NULL").get();
+        const row = raw.prepare("SELECT count(*) AS count FROM artifacts WHERE kind='generated' AND export_id IS NOT NULL").get();
         assert.equal(row?.count, 0);
       } finally {
         raw.close();
@@ -463,7 +463,7 @@ describe("operator XLSX export service", () => {
   it("refuses a selected token after the search signer restarts without leaving evidence", async () => {
     const h = exportHarness("foreign-signer");
     try {
-      insertMeasuredSearchRun(h.database, { seed: 91, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+      insertMeasuredSearchRun(h.database, { authorityPath: h.path, seed: 91, enqueuedAt: "2026-08-28T15:00:00.000Z" });
       const selectedBy = realSearchService(h, 0x41);
       const restarted = realSearchService(h, 0x42);
       const request = selectedSearchRequest();

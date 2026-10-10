@@ -1,3 +1,5 @@
+import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
+import { sha256Hex } from "../../../src/rules/validation/sha256.js";
 import { defaultRuntimePaths } from "../../../src/backend/app/config/runtime-paths.js";
 import { ConfigSchema } from "../../../src/models/config/schema.js";
 import { sourceColumnId } from "../../../src/models/intake/mapping.js";
@@ -62,16 +64,10 @@ export const COMMAND_FIXTURES: readonly unknown[] = [
   { ...BASE_COMMAND, family: "worker-browser", type: "refresh-browser", target: { ...WORKER_TARGET, browserSessionId: UUID_4 } },
   { ...BASE_COMMAND, family: "worker-browser", type: "reopen-browser", target: { ...WORKER_TARGET, browserSessionId: UUID_4 } },
   { ...BASE_COMMAND, family: "settings", type: "apply-settings", target: { expectedRevision: 1 }, payload: { settingsSchemaHash: HASH_A, patchFingerprint: HASH_B, patch: { "browser.headless": { set: false } } } },
-  { ...BASE_COMMAND, family: "version-archive", type: "plan-version-bump", target: { scope: { kind: "workflows", workflowIds: ["onboarding"] } }, payload: { targetVersion: "1.1.0", changeFingerprint: HASH_A, changeRecord: VERSION_BUMP_CHANGE_RECORD } },
-  { ...BASE_COMMAND, family: "version-archive", type: "apply-version-bump", target: { versionPlanId: UUID_3, expectedVersion: 1 }, payload: { planFingerprint: HASH_A } },
-  { ...BASE_COMMAND, family: "version-archive", type: "plan-runtime-version", target: { scope: { kind: "workflows", workflowIds: ["onboarding"] } } },
-  { ...BASE_COMMAND, family: "version-archive", type: "apply-runtime-version", target: { changeId: UUID_3, reviewFingerprint: HASH_A } },
-  { ...BASE_COMMAND, family: "version-archive", type: "relaunch-archived-run", target: { archivedRunId: UUID_2, archiveFingerprint: HASH_A } },
-  { ...BASE_COMMAND, family: "version-archive", type: "delete-archived-run", target: { archivedRunId: UUID_2, archiveFingerprint: HASH_A } },
-  ...["retry", "restart", "cancel", "bump", "archive", "delete"].map((type) => ({ ...BASE_COMMAND, family: "run", type, target: RUN_TARGET })),
+  ...["retry", "restart", "cancel", "bump", "delete"].map((type) => ({ ...BASE_COMMAND, family: "run", type, target: RUN_TARGET })),
   { ...BASE_COMMAND, family: "run", type: "rename", target: RUN_TARGET, payload: { displayName: "Summer onboarding" } },
-  { ...BASE_COMMAND, family: "run", type: "resolve-write-present", target: { ...RUN_TARGET, writeIntentId: UUID_4, intentGeneration: 1 }, payload: { proof: { schemaHash: HASH_A, value: "receipt-123" }, evidenceNote: "Confirmed in the target system" } },
-  { ...BASE_COMMAND, family: "run", type: "resolve-write-absent", target: { ...RUN_TARGET, writeIntentId: UUID_4, intentGeneration: 1 }, payload: { evidenceNote: "Confirmed absent in the target system" } },
+  { ...BASE_COMMAND, family: "run", type: "resolve-write-present", target: { ...RUN_TARGET, writeIntentId: UUID_4, intentGeneration: 1, writeAttemptId: UUID_5, bindingProofDigest: HASH_A }, payload: { occurrenceKeyDigest: IDEMPOTENCY_KEY_DIGEST, proof: { schemaHash: HASH_A, value: "receipt-123" }, evidenceNote: "Confirmed in the target system" } },
+  { ...BASE_COMMAND, family: "run", type: "resolve-write-absent", target: { ...RUN_TARGET, writeIntentId: UUID_4, intentGeneration: 1, writeAttemptId: UUID_5, bindingProofDigest: HASH_A }, payload: { occurrenceKeyDigest: IDEMPOTENCY_KEY_DIGEST, evidenceNote: "Confirmed absent in the target system" } },
   { ...BASE_COMMAND, family: "gate", type: "resolve-gate", target: { runId: UUID_2, gateId: "identity-approval", expectedVersion: 1 }, payload: { result: { schemaHash: HASH_A, value: "approved" } } },
   { ...BASE_COMMAND, family: "notification", type: "notification-read", target: { notificationId: UUID_3, actorId: "local-operator", expectedVersion: 1 } },
   { ...BASE_COMMAND, family: "notification", type: "notification-unread", target: { notificationId: UUID_3, actorId: "local-operator", expectedVersion: 1 } },
@@ -191,6 +187,7 @@ export const DELEGATION_MANIFEST = {
 
 export const GATE_RESULT = {
   runId: UUID_2,
+  nodeId: "identity-approval",
   gateId: "identity-approval",
   commandId: UUID_1,
   expectedVersion: 1,
@@ -218,13 +215,14 @@ export const NOTIFICATION = {
   updatedAt: NOW,
 };
 
+const CONFIG_BODY=ConfigSchema.parse({ paths: defaultRuntimePaths() });
 export const CONFIG_SNAPSHOT = {
   configSnapshotId: UUID_1,
   revision: 1,
-  fingerprint: HASH_A,
+  fingerprint: sha256Hex(canonicalJsonStringify(CONFIG_BODY)),
   capturedAt: NOW,
   capturedBy: "local-operator",
-  config: ConfigSchema.parse({ paths: defaultRuntimePaths() }),
+  config: CONFIG_BODY,
   provenance: {},
 };
 
@@ -281,7 +279,7 @@ export const LEDGER_PAYLOAD = {
   attempt: 1,
   operator: "local-operator",
   instance: "prod",
-  configFingerprint: HASH_A,
+  configFingerprint: CONFIG_SNAPSHOT.fingerprint,
   dryRun: false,
   fencedAt: NOW,
   confirmedAt: LATER,

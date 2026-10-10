@@ -161,17 +161,13 @@ describe("source-bound Rerun value read", () => {
     assert.equal(result.snapshot.source.outcome, "interrupted");
     assert.deepEqual(result.snapshot.steps.map(({ state }) => state), ["completed", "unfinished"]);
   });
-  it("refuses archived sources before touching retained checkpoint evidence", async () => {
-    const h = harness(); const run = await completed(h);
-    const deps = checkpointsDeps(h, []);
-    const result = readRerunValues({ ...deps, reader: { read: () => ({ state: "present", disposition: "archived", run }) } }, request(run));
-    assert.deepEqual(result, { state: "refused", code: "source-archived" });
-  });
   it("deletion wins over retained checkpoints and never resurrects the source", async () => {
     const h = harness(); const run = await completed(h);
     const cp = firstCheckpoint(h, run);
-    const deleted = h.lifecycle.delete({ commandId: h.ids.uuid(), ...request(run) });
-    assert.equal(deleted.state, "deleted", JSON.stringify(deleted));
+    const deleted=h.kernel.execute({commandId:h.ids.uuid(),requestedAt:h.clock.now().toISOString(),requestedBy:"local-operator",
+      source:"dashboard",family:"run",type:"delete",target:request(run)});
+    assert.equal(deleted.state,"applied",JSON.stringify(deleted));
+    assert.ok(h.database.authority.deletedRuns.get(run.envelope.runId));
     const before = snapshot(h, run);
     assert.deepEqual(readRerunValues(checkpointsDeps(h, [cp]), request(run)), { state: "refused", code: "target-deleted" });
     assert.equal(snapshot(h, run), before);

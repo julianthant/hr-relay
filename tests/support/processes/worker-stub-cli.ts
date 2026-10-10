@@ -38,7 +38,7 @@ const stateRoot = dirname(dbPath);
 const installed = fixtureKind === "installed";
 const admission = installed
   ? acquireEntrypointAdmission(dirname(stateRoot), "shared")
-  : RuntimeAdmission.syntheticFixture(dbPath, "authority");
+  : RuntimeAdmission.syntheticFixture(dbPath);
 if (installed && (dbPath !== join(admission.stateRoot, "state.db") || lockRoot !== join(dirname(stateRoot), rebuildRuntimeIsolation.processLockRoot))) {
   admission.release();
   throw new Error("worker-stub-cli fixture storage pair mismatch");

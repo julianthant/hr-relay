@@ -1,11 +1,12 @@
+import { testWorkerPorts } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../../../../../src/rules/time/clock.js";
-import { WriteIntentRecordSchema } from "../../../../../../src/rules/write-safety/write-safety.js";
+import { WriteIntentRecordSchema, deriveWriteAuthorityReason } from "../../../../../../src/rules/write-safety/write-safety.js";
 import { buildRunEvidenceReceipt } from "../../../../../../src/backend/runs/provenance/evidence-receipt.js";
 import { AuthorityDatabase } from "../../../../../support/helpers/synthetic-storage-admission.js";
 import { protectedInputBindings } from "../../../../../../src/models/write-safety/protected-input.js";
@@ -36,12 +37,13 @@ afterEach(() => {
 });
 
 function openDatabase(): AuthorityDatabase {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-receipt-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-receipt-"));
   roots.push(root);
   const database = AuthorityDatabase.open(
     { path: join(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "receipt-test" },
     manualClock(new Date("2026-08-04T00:11:13.500Z")),
   );
+  testWorkerPorts(database, manualClock(new Date("2026-08-04T00:11:13.500Z")), { path: join(root, "state.sqlite"), descriptor: personLookupDescriptor, poolIndex: 1 });
   databases.push(database);
   return database;
 }
@@ -113,7 +115,7 @@ describe("the live person-lookup exit run explains itself", () => {
     // ── "which run am I looking at, and did it finish?" ──────────────────
     assert.equal(receipt.runId, EXIT_RUN_ID);
     assert.equal(receipt.traceId, EXIT_TRACE_ID);
-    assert.equal(receipt.attempt, 2, "the run settled on its SECOND attempt");
+    assert.equal(receipt.attempt, 1, "recovery retains the original attempt");
     assert.equal(receipt.result, "verified-done");
     assert.equal(receipt.confidence, "verified");
     assert.deepEqual(receipt.failure, { state: "absent" });
@@ -168,7 +170,7 @@ describe("the live person-lookup exit run explains itself", () => {
     assert.equal(searchReuse.kind, "checkpoint", "attempt 1's search was REPLAYED, not re-observed");
     assert.ok(searchReuse.ageMs > 0 && searchReuse.ageMs < searchReuse.freshnessLimitMs);
     const crmObservation = fact(receipt, "observations", "record.emplId");
-    assert.equal(crmObservation.source.kind, "system", "the CRM read was fresh-live on attempt 2");
+    assert.equal(crmObservation.source.kind, "system", "the CRM read was fresh-live after the second claim");
 
     // ── "what did it NOT do, and why?" ───────────────────────────────────
     const skipped = decisionOf(receipt, "branch", "crm-dates");
@@ -319,6 +321,7 @@ describe("the Kuali finalization write explains itself", () => {
       ...carried,
       status: "parked",
       parkedCode: "unknown",
+      authorityReason: deriveWriteAuthorityReason("post-click-verifier-unknown", "probe", "the save response never arrived; the document was not read back"),
       message: "the save response never arrived; the document was not read back",
     });
     const receipt = buildRunEvidenceReceipt({

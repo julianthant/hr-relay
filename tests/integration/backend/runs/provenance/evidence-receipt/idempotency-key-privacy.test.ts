@@ -5,7 +5,7 @@ import { buildRunEvidenceReceipt } from "../../../../../../src/backend/runs/prov
 import {
   LedgerLinePointerSchema,
   resolveLedgerLine,
-} from "../../../../../../src/models/archive/ledger-resolution.js";
+} from "../../../../../../src/models/run/transaction-resolution.js";
 import { deriveWriteBindingProofDigest, WriteIntentRecordSchema } from "../../../../../../src/rules/write-safety/write-safety.js";
 import { RunRecordSchema } from "../../../../../../src/models/run/record.js";
 import { RunCheckpointRecordSchema } from "../../../../../../src/models/workflow/checkpoint.js";

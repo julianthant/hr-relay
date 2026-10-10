@@ -1,3 +1,4 @@
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../sqlite/migrations.js";
 import { createHash, randomUUID } from "node:crypto";
 import {
   closeSync, constants, existsSync, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync,
@@ -37,7 +38,7 @@ const PlanBindingSchema = z.strictObject({ commandId: z.uuid(), revision: z.numb
   requestFingerprint: DigestSchema, desiredDigest: DigestSchema });
 const PreparationEvidenceSchema = z.strictObject({ operationId: z.uuid(), installationId: z.uuid(),
   sourceGeneration: GenerationSchema, source: PairSchema, destination: PairSchema, plan: PlanBindingSchema,
-  sourceDatabaseIdentity: DigestSchema, sourceSchemaVersion: z.union([z.literal(55), z.literal(56)]),
+  sourceDatabaseIdentity: DigestSchema, sourceSchemaVersion: z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION),
   sourceAuthorityGeneration: GenerationSchema, sourceAuthorityContentFingerprint: DigestSchema,
   backupReceiptId: z.string().min(1).max(200), backupManifestPath: z.string().min(1),
   backupManifestSha256: DigestSchema, backupFilePath: z.string().min(1), backupFileSha256: DigestSchema });
@@ -47,15 +48,13 @@ const StageEvidenceSchema = z.strictObject({ operationId: z.uuid(), installation
   source: PairSchema, destination: PairSchema, plan: PlanBindingSchema, stagingReceiptId: z.string().min(1),
   stagingDigest: DigestSchema, backupReceiptId: z.string().min(1), backupDigest: DigestSchema,
   finalDatabasePath: z.string().min(1), configSnapshotId: z.uuid(), configFingerprint: DigestSchema,
-  authorityVersion: z.literal(56), databaseIdentity: z.string().min(1),
+  authorityVersion: z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION), databaseIdentity: z.string().min(1),
   managedStateEntries: z.array(ManagedEntrySchema) });
 const StageCopySchema = z.strictObject({ manifestPath: z.string().min(1), manifestSha256: DigestSchema,
   backupPath: z.string().min(1), backupSha256: DigestSchema });
-const ArchiveCopySchema = z.strictObject({ pairedManifestPath: z.string().min(1), pairedManifestSha256: DigestSchema,
-  archivePath: z.string().min(1), archiveSha256: DigestSchema });
 const ActivationIntentSchema = z.strictObject({ operationId: z.uuid(), installationId: z.uuid(), sourceGeneration: GenerationSchema,
   source: PairSchema, destination: PairSchema, plan: PlanBindingSchema,
-  stageAuthority: StageCopySchema, stageArchive: ArchiveCopySchema.nullable(),
+  stageAuthority: StageCopySchema,
   nativeDestinationPath: z.string().min(1), nativeDestinationSha256: DigestSchema.nullable(),
   preAuthorityGeneration: GenerationSchema, preAuthorityContentFingerprint: DigestSchema,
   managedInventoryDigest: DigestSchema, settingsRevision: z.number().int().positive(), settingsFingerprint: DigestSchema,
@@ -71,7 +70,24 @@ const JournalBase = { schemaVersion: z.literal(2), operationId: z.uuid(), instal
   source: PairSchema, destination: PairSchema, sourceEpochs: EpochsSchema, destinationEpochs: EpochsSchema,
   plan: PlanBindingSchema, restoreAdmissionId: z.uuid(), retentions: z.array(RetentionSchema).min(1).max(2),
   pinnedEntries: z.array(PinnedEntrySchema) };
+const RestoreFileBindingSchema = z.strictObject({ dev: GenerationSchema, ino: GenerationSchema,
+  byteSize: GenerationSchema, sha256: DigestSchema });
+export const AuthorityRestoreInputSchema = z.strictObject({ operationId: z.uuid(),
+  authorityPath: z.string().min(1), stagedPath: z.string().min(1), suspectPath: z.string().min(1),
+  manifestPath: z.string().min(1), manifestSha256: DigestSchema,
+  backupPath: z.string().min(1), backupSha256: DigestSchema,
+  sourceDatabaseIdentity: DigestSchema, authorityGeneration: GenerationSchema,
+  authorityContentFingerprint: DigestSchema,
+  live: RestoreFileBindingSchema, staged: RestoreFileBindingSchema, suspect: RestoreFileBindingSchema,
+  companions: z.array(z.strictObject({ suffix: z.enum(["-wal", "-shm"]), binding: RestoreFileBindingSchema, suspect: RestoreFileBindingSchema })).max(2) });
+const AuthorityRestoreJournalSchema = z.strictObject({ schemaVersion: z.literal(2), phase: z.literal("restoring"),
+  installationId: z.uuid(), source: LocatorSchema, restoreAdmissionId: z.uuid(),
+  restore: AuthorityRestoreInputSchema });
+export type AuthorityRestoreInput = z.infer<typeof AuthorityRestoreInputSchema>;
+export type AuthorityRestoreVerification = Readonly<{ authorityGeneration: number; authorityContentFingerprint: string }>;
+export type AuthorityRestoreVerifier = () => AuthorityRestoreVerification;
 const JournalSchema = z.discriminatedUnion("phase", [
+  AuthorityRestoreJournalSchema,
   z.strictObject({ schemaVersion: z.literal(1), phase: z.literal("adopting"), installationId: z.uuid() }),
   z.strictObject({ ...JournalBase, phase: z.literal("preparing") }),
   z.strictObject({ ...JournalBase, phase: z.literal("prepared"), preparation: PreparationEvidenceSchema }),
@@ -119,6 +135,9 @@ export type InstallationLease = Readonly<{ mode: "shared" | "exclusive"; locator
   readInstallationContext(): Readonly<{ workspace: string; locator: RuntimeLocator; receipts: readonly RelocationCompletionReceipt[] }>;
   release(): void }>;
 export type ExclusiveInstallationLease = InstallationLease & Readonly<{
+  readAuthorityRestore(operationId: string): AuthorityRestoreInput;
+  beginAuthorityRestore(input: AuthorityRestoreInput, restore: RestoreAdmissionHandle): void;
+  settleAuthorityRestore(input: AuthorityRestoreInput, outcome: "unchanged" | "replaced", verify: AuthorityRestoreVerifier, restore: RestoreAdmissionHandle): void;
   beginRelocation(destination: RuntimePair, plan: RelocationPlanBinding, restore: RestoreAdmissionHandle): string;
   relocationInventory(): RelocationInventory;
   prepareDestinationRoots(): void;
@@ -136,6 +155,7 @@ export type ExclusiveInstallationLease = InstallationLease & Readonly<{
 const CONTROL = ".runtime-control";
 const MARKER = ".runtime-owner.json";
 const FENCE = ".runtime-source-fence.json";
+export const RUNTIME_ROOT_AUTHORITY_ENTRY_NAMES = Object.freeze([MARKER,FENCE]);
 const RECEIPTS = "relocation-receipts";
 const issuedLeases = new WeakSet<object>();
 
@@ -166,7 +186,7 @@ function checkPlan(plan: RelocationPlanBinding, installationId: string, sourceGe
   }
 }
 function operationBinding(journal: z.infer<typeof JournalSchema>): string {
-  if (journal.phase === "adopting") fail("adoption has no relocation binding");
+  if (journal.phase === "adopting" || journal.phase === "restoring") fail("journal has no relocation binding");
   const { phase: _phase, ...bound } = journal;
   const { evidence: _evidence, ...base } = "evidence" in bound ? bound : { ...bound, evidence: undefined };
   return createHash("sha256").update("hrauto:runtime-relocation:v1\0").update(canonicalJsonStringify(base)).digest("hex");
@@ -207,7 +227,7 @@ function relocationRetentions(workspace: string, source: RuntimePair, destinatio
   }
   return retentions;
 }
-type RelocationJournal = Exclude<z.infer<typeof JournalSchema>, { phase: "adopting" }>;
+type RelocationJournal = Exclude<z.infer<typeof JournalSchema>, { phase: "adopting" | "restoring" }>;
 function sameEvidence(left: VerifiedRelocationEvidence, right: VerifiedRelocationEvidence): boolean {
   return canonicalJsonStringify(left) === canonicalJsonStringify(right);
 }
@@ -598,7 +618,8 @@ export function recoverAbandonedAdmissionMutex(workspacePath: string, restore: R
     sourceDatabaseIdentity: "0".repeat(64) });
   if (lockSnapshot.processLocks.server.state !== "stopped"
     || lockSnapshot.processLocks.workers.state !== "stopped"
-    || lockSnapshot.processLocks.geocode?.state === "active") fail("runtime process lock may still be live");
+    || lockSnapshot.processLocks["live-smoke"].state !== "stopped"
+    || lockSnapshot.processLocks.geocode.state !== "stopped") fail("runtime process lock may still be live");
   assertRestoreHeld(workspace, restore);
   privateDirectory(mutexPath);
   function assertCustody(): void {
@@ -890,8 +911,7 @@ function verifyActivationIntent(pending: RelocationJournal, intentInput: Verifie
     || intent.snapshot.fingerprint !== createHash("sha256").update(canonicalJsonStringify(intent.snapshot.config)).digest("hex")
     || intent.snapshot.config.paths.stateRoot !== pending.destination.stateRoot
     || intent.snapshot.config.paths.artifactRoot !== pending.destination.artifactRoot) fail("activation intent binding mismatch");
-  for (const path of [intent.stageAuthority.manifestPath, intent.stageAuthority.backupPath,
-    ...(intent.stageArchive === null ? [] : [intent.stageArchive.pairedManifestPath, intent.stageArchive.archivePath])]) {
+  for (const path of [intent.stageAuthority.manifestPath, intent.stageAuthority.backupPath]) {
     if (!isAbsolute(path) || resolve(path) !== path || !inside(pending.source.stateRoot, path)) {
       fail("activation copy is outside source state root");
     }
@@ -1005,7 +1025,47 @@ function retainEntryShell(workspace: string, pending: RelocationJournal, row: z.
     if (tombstoneRole) writeTombstone(original, tombstoneValue(pending, tombstoneRole, original, retained));
   }
 }
-function readLocator(control: string, workspace: string, recovery?: { installationId: string; fromGeneration: number; operationId: string }): RuntimeLocator {
+function restoreFileBinding(path: string): z.infer<typeof RestoreFileBindingSchema> {
+  const custody = lstatSync(path);
+  if (!custody.isFile() || custody.isSymbolicLink() || custody.nlink !== 1
+    || (custody.mode & 0o022) !== 0 || process.getuid !== undefined && custody.uid !== process.getuid()) fail("unsafe restore data file");
+  const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const before = fstatSync(fd), bytes = readFileSync(fd), after = fstatSync(fd), current = lstatSync(path);
+    if (before.dev !== after.dev || before.ino !== after.ino || before.size !== bytes.length
+      || after.size !== before.size || after.mtimeMs !== before.mtimeMs
+      || current.dev !== before.dev || current.ino !== before.ino) fail("restore file custody changed");
+    return RestoreFileBindingSchema.parse({ dev: before.dev, ino: before.ino, byteSize: bytes.length,
+      sha256: createHash("sha256").update(bytes).digest("hex") });
+  } finally { closeSync(fd); }
+}
+function sameRestoreFile(path: string, expected: z.infer<typeof RestoreFileBindingSchema>): void {
+  if (canonicalJsonStringify(restoreFileBinding(path)) !== canonicalJsonStringify(expected)) fail("restore file binding mismatch");
+}
+function assertRestoreSuspect(input: AuthorityRestoreInput): void {
+  sameRestoreFile(input.suspectPath, input.suspect);
+  if(input.suspect.byteSize!==input.live.byteSize || input.suspect.sha256!==input.live.sha256)fail("restore suspect source binding mismatch");
+  for(const suffix of ["-wal","-shm"] as const){
+    const row=input.companions.find(value=>value.suffix===suffix),path=`${input.suspectPath}${suffix}`;
+    if(row===undefined){if(existsSync(path))fail("restore suspect companion inventory mismatch");continue;}
+    sameRestoreFile(path,row.suspect);
+    if(row.suspect.byteSize!==row.binding.byteSize || row.suspect.sha256!==row.binding.sha256)fail("restore suspect companion source binding mismatch");
+  }
+}
+
+function checkRestoreInput(locator: RuntimeLocator, input: AuthorityRestoreInput): void {
+  for (const path of [input.authorityPath, input.stagedPath, input.suspectPath, input.manifestPath, input.backupPath]) {
+    if (!isAbsolute(path) || resolve(path) !== path) fail("restore path must be absolute and canonical");
+    assertNoSymlinkComponents(path);
+  }
+  if (input.authorityPath !== join(locator.stateRoot, "state.db")
+    || input.stagedPath !== join(locator.stateRoot, `.restore-${input.operationId}.sqlite.tmp`)
+    || dirname(input.suspectPath) !== join(locator.stateRoot, "suspects")
+    || !basename(input.suspectPath).endsWith(`-${input.operationId}.sqlite`)
+    || new Set(input.companions.map(row => row.suffix)).size !== input.companions.length) fail("restore path or companion binding mismatch");
+}
+function readLocator(control: string, workspace: string, recovery?: { installationId: string; fromGeneration: number; operationId: string },
+  restoreRecovery?: { operationId: string; restoreAdmission: RestoreAdmissionHandle }): RuntimeLocator {
   const installation = readInstallation(control, workspace);
   if (!existsSync(join(control, "locator.json"))) fail("installation locator missing; offline recovery required");
   const locator = readStrict(join(control, "locator.json"), LocatorSchema);
@@ -1014,6 +1074,19 @@ function readLocator(control: string, workspace: string, recovery?: { installati
   const receipts = readReceiptChain(control, workspace, installation.installationId);
   if (existsSync(join(control, "journal.json"))) {
     const journal = readStrict(join(control, "journal.json"), JournalSchema);
+    if (journal.phase === "restoring") {
+      if (restoreRecovery === undefined || journal.restore.operationId !== restoreRecovery.operationId
+        || journal.installationId !== installation.installationId
+        || canonicalJsonStringify(journal.source) !== canonicalJsonStringify(locator)
+        || receipts.length !== locator.generation) fail("unfinished restoring operation; exact offline restore recovery required");
+      assertRestoreHeld(workspace, restoreRecovery.restoreAdmission);
+      checkRestoreInput(locator, journal.restore);
+      const epochs = epochsOf(locator);
+      checkMarker(locator.stateRoot, locator.installationId, workspace, "state", epochs.state);
+      checkMarker(locator.artifactRoot, locator.installationId, workspace, "artifact", epochs.artifact);
+      if (existsSync(join(locator.stateRoot, FENCE)) || existsSync(join(locator.artifactRoot, FENCE))) fail("restore source is fenced");
+      return locator;
+    }
     if (journal.phase === "adopting" || !recovery || recovery.installationId !== journal.installationId
       || recovery.fromGeneration !== journal.fromGeneration || recovery.operationId !== journal.operationId) {
       fail(`unfinished ${journal.phase} operation; explicit offline recovery required`);
@@ -1132,7 +1205,7 @@ export function inspectPendingRelocationStatus(workspacePath: string): Readonly<
     return undefined;
   }
   const pending = readStrict(join(control, "journal.json"), JournalSchema);
-  if (pending.phase === "adopting" || pending.installationId !== installation.installationId) {
+  if (pending.phase === "adopting" || pending.phase === "restoring" || pending.installationId !== installation.installationId) {
     fail("pending relocation status is not an owned relocation");
   }
   readLocator(control, workspace, { installationId: pending.installationId,
@@ -1151,7 +1224,7 @@ export function inspectPendingRelocationRecovery(workspacePath: string, operatio
   if (activeLeases(control).length !== 0) fail("installation lease busy during recovery inspection");
   const installation = readInstallation(control, workspace);
   const pending = readStrict(join(control, "journal.json"), JournalSchema);
-  if (pending.phase === "adopting" || pending.operationId !== operationId
+  if (pending.phase === "adopting" || pending.phase === "restoring" || pending.operationId !== operationId
     || pending.installationId !== installation.installationId) fail("recovery operation binding mismatch");
   const binding = Object.freeze({ installationId: pending.installationId,
     fromGeneration: pending.fromGeneration, operationId: pending.operationId });
@@ -1159,8 +1232,8 @@ export function inspectPendingRelocationRecovery(workspacePath: string, operatio
   return binding;
 }
 export function acquireInstallation(workspacePath: string, mode: "shared", options?: never): InstallationLease;
-export function acquireInstallation(workspacePath: string, mode: "exclusive", options?: { defaultPair?: RuntimePair; verifyExisting?: AuthorityVerifier; initializeFresh?: FreshInitializer; recoverRelocation?: RecoveryRequest }): ExclusiveInstallationLease;
-export function acquireInstallation(workspacePath: string, mode: "shared" | "exclusive", options?: { defaultPair?: RuntimePair; verifyExisting?: AuthorityVerifier; initializeFresh?: FreshInitializer; recoverRelocation?: RecoveryRequest }): InstallationLease | ExclusiveInstallationLease {
+export function acquireInstallation(workspacePath: string, mode: "exclusive", options?: { defaultPair?: RuntimePair; verifyExisting?: AuthorityVerifier; initializeFresh?: FreshInitializer; recoverRelocation?: RecoveryRequest; recoverAuthorityRestore?: { operationId: string; restoreAdmission: RestoreAdmissionHandle } }): ExclusiveInstallationLease;
+export function acquireInstallation(workspacePath: string, mode: "shared" | "exclusive", options?: { defaultPair?: RuntimePair; verifyExisting?: AuthorityVerifier; initializeFresh?: FreshInitializer; recoverRelocation?: RecoveryRequest; recoverAuthorityRestore?: { operationId: string; restoreAdmission: RestoreAdmissionHandle } }): InstallationLease | ExclusiveInstallationLease {
   const workspace = realpathSync(workspacePath);
   const control = join(workspace, CONTROL);
   if (!existsSync(control)) {
@@ -1181,7 +1254,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     const peers = activeLeases(control);
     if (peers.some((peer) => mode === "exclusive" || peer.mode === "exclusive")) fail("installation lease busy");
     if (options?.recoverRelocation) assertRestoreHeld(workspace, options.recoverRelocation.restoreAdmission);
-    const resolved = existsSync(join(control, "installation.json")) ? readLocator(control, workspace, mode === "exclusive" ? options?.recoverRelocation : undefined) : (mode === "exclusive" && options?.defaultPair ? adopt(control, workspace, options.defaultPair, options.verifyExisting, options.initializeFresh) : fail("installation locator missing"));
+    const resolved = existsSync(join(control, "installation.json")) ? readLocator(control, workspace, mode === "exclusive" ? options?.recoverRelocation : undefined, mode === "exclusive" ? options?.recoverAuthorityRestore : undefined) : (mode === "exclusive" && options?.defaultPair ? adopt(control, workspace, options.defaultPair, options.verifyExisting, options.initializeFresh) : fail("installation locator missing"));
     admissionId = randomUUID();
     leasePath = join(control, "leases", `${admissionId}.json`);
     atomicJson(leasePath, { schemaVersion: 1, admissionId, mode, pid: process.pid, processIdentity: identity() });
@@ -1213,7 +1286,14 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     },
     readRelocationReceipts() {
       assertHeld();
-      if (lstatMaybe(join(control, "journal.json"))) fail("pending relocation has no settled receipt chain");
+      const pendingPath = join(control, "journal.json");
+      if (lstatMaybe(pendingPath)) {
+        const pending = readStrict(pendingPath, JournalSchema);
+        if (pending.phase !== "restoring" || mode !== "exclusive"
+          || pending.installationId !== locator.installationId
+          || canonicalJsonStringify(pending.source) !== canonicalJsonStringify(locator)) fail("pending relocation has no settled receipt chain");
+        return readReceiptChain(control, workspace, locator.installationId);
+      }
       const current = readLocator(control, workspace);
       if (canonicalJsonStringify(current) !== canonicalJsonStringify(locator)) fail("admitted locator changed; reacquire lease");
       return readReceiptChain(control, workspace, locator.installationId);
@@ -1233,7 +1313,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
   let heldRestore = options?.recoverRelocation?.restoreAdmission;
   function journal(): RelocationJournal {
     const pending = readStrict(join(control, "journal.json"), JournalSchema);
-    if (pending.phase === "adopting") fail("adoption journal is not a relocation");
+    if (pending.phase === "adopting" || pending.phase === "restoring") fail("journal is not a relocation");
     if (pending.installationId !== locator.installationId || pending.fromGeneration !== locator.generation
       && pending.fromGeneration + 1 !== locator.generation) fail("relocation lease binding mismatch");
     validateJournal(workspace, pending, readReceiptChain(control, workspace, pending.installationId));
@@ -1257,6 +1337,62 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
   }
   const exclusive: ExclusiveInstallationLease = Object.freeze({
     ...shared,
+    readAuthorityRestore(operationId) {
+      assertHeld();
+      const pending = readStrict(join(control, "journal.json"), AuthorityRestoreJournalSchema);
+      if (pending.installationId !== locator.installationId || pending.restore.operationId !== operationId
+        || canonicalJsonStringify(pending.source) !== canonicalJsonStringify(locator)) fail("restore recovery operation binding mismatch");
+      return AuthorityRestoreInputSchema.parse(pending.restore);
+    },
+    beginAuthorityRestore(input, restore) {
+      const parsed = AuthorityRestoreInputSchema.parse(input);
+      assertHeld(); assertRestoreHeld(workspace, restore); checkRestoreInput(locator, parsed);
+      mutex(control, () => {
+        assertHeld(); assertRestoreHeld(workspace, restore);
+        if (existsSync(join(control, "journal.json"))) fail("installation operation already pending");
+        if (canonicalJsonStringify(rawLocator(control, workspace)) !== canonicalJsonStringify(locator)) fail("restore source locator changed");
+        sameRestoreFile(parsed.authorityPath, parsed.live); sameRestoreFile(parsed.stagedPath, parsed.staged);
+        assertRestoreSuspect(parsed);
+        if (restoreFileBinding(parsed.manifestPath).sha256 !== parsed.manifestSha256
+          || restoreFileBinding(parsed.backupPath).sha256 !== parsed.backupSha256) fail("restore backup binding mismatch");
+        for (const row of parsed.companions) sameRestoreFile(`${parsed.authorityPath}${row.suffix}`, row.binding);
+        for (const suffix of ["-wal", "-shm"] as const) {
+          if (existsSync(`${parsed.authorityPath}${suffix}`) !== parsed.companions.some(row => row.suffix === suffix)) fail("restore companion inventory changed");
+        }
+        atomicJson(join(control, "journal.json"), AuthorityRestoreJournalSchema.parse({ schemaVersion: 2,
+          phase: "restoring", installationId: locator.installationId, source: locator,
+          restoreAdmissionId: restore.admissionId, restore: parsed }));
+      });
+    },
+    settleAuthorityRestore(input, outcome, verify, restore) {
+      const parsed = AuthorityRestoreInputSchema.parse(input);
+      assertHeld(); assertRestoreHeld(workspace, restore);
+      mutex(control, () => {
+        assertHeld(); assertRestoreHeld(workspace, restore);
+        const pending = readStrict(join(control, "journal.json"), AuthorityRestoreJournalSchema);
+        if (pending.installationId !== locator.installationId
+          || canonicalJsonStringify(pending.source) !== canonicalJsonStringify(locator)
+          || canonicalJsonStringify(pending.restore) !== canonicalJsonStringify(parsed)) fail("restore settlement operation binding mismatch");
+        checkRestoreInput(locator, parsed);
+        assertRestoreSuspect(parsed);
+        if (restoreFileBinding(parsed.manifestPath).sha256 !== parsed.manifestSha256
+          || restoreFileBinding(parsed.backupPath).sha256 !== parsed.backupSha256) fail("restore settlement backup binding mismatch");
+        sameRestoreFile(parsed.authorityPath, outcome === "replaced" ? parsed.staged : parsed.live);
+        for (const suffix of ["-wal", "-shm"] as const) {
+          const row = parsed.companions.find(value => value.suffix === suffix);
+          if (outcome === "unchanged" && row !== undefined) sameRestoreFile(`${parsed.authorityPath}${suffix}`, row.binding);
+          else if (existsSync(`${parsed.authorityPath}${suffix}`)) fail("restore settlement companion outcome unproved");
+        }
+        if (outcome === "replaced") {
+          const evidence = z.strictObject({ authorityGeneration: GenerationSchema, authorityContentFingerprint: DigestSchema }).parse(verify());
+          if (evidence.authorityGeneration !== parsed.authorityGeneration
+            || evidence.authorityContentFingerprint !== parsed.authorityContentFingerprint) fail("restore settlement authority proof mismatch");
+        }
+        sameRestoreFile(parsed.authorityPath, outcome === "replaced" ? parsed.staged : parsed.live);
+        assertRestoreSuspect(parsed);
+        unlinkSync(join(control, "journal.json")); syncDir(control);
+      });
+    },
     beginRelocation(destination, plan, restore) {
       assertHeld();
       assertRestoreHeld(workspace, restore);

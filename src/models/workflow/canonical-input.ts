@@ -1,4 +1,5 @@
 /** The canonical-input snapshot contract: a raw submission is stored immutable for audit, then validated ONCE with defaults and transforms applied. */
+import { SchemaBoundCanonicalValueSchema, deriveSchemaHash } from "../validation/schema-bound-value.js";
 import type { z } from "zod";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { auditContractBoundarySchema } from "../validation/contract-boundary.js";
@@ -66,7 +67,10 @@ export function parseCanonicalInputSnapshot<InputSchema extends z.ZodType>(
   canonical: CanonicalInputSchema<InputSchema>,
   stored: unknown,
 ): z.output<InputSchema> {
-  const result = canonical.safeParse(stored);
+  const snapshot = SchemaBoundCanonicalValueSchema.parse(stored);
+  const expectedHash = deriveSchemaHash(canonical, "output");
+  if (snapshot.schemaHash !== expectedHash) throw new Error(`stored canonical input snapshot is bound to schema ${snapshot.schemaHash}; this build requires ${expectedHash}. It will not be re-derived from ingress.`);
+  const result = canonical.safeParse(snapshot.value);
   if (!result.success) {
     throw new Error(
       `stored canonical input snapshot is invalid and will not be re-derived from ingress: `

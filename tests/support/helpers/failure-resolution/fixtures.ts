@@ -1,3 +1,5 @@
+import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
+import { workflowProjections } from "../../../../src/workflow-kit/workflow.js";
 import { RunIdSchema, FailureIdSchema } from "../../../../src/rules/identity/ids.js";
 import { randomUUID } from "node:crypto";
 import { createCommandKernel, type CommandKernelDependencies } from "../../../../src/backend/runs/commands/command-kernel.js";
@@ -5,7 +7,6 @@ import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-rec
 import { FailureResolutionCommandSchema } from "../../../../src/rules/commands/commands.js";
 import { AuthorityDatabase } from "../synthetic-storage-admission.js";
 import { personLookupDescriptor } from "../registered-workflows.js";
-import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../../fixtures/archive-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER, UNSTORED_CONFIG_IDENTITY } from "../../fixtures/intake-kernel-seams.js";
 import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
 import { type foundationFixture, failure, terminalizeFixtureFailure, NOW } from "../database-foundation/fixtures.js";
@@ -15,10 +16,10 @@ export function resolutionKernel(db: AuthorityDatabase, clock: ReturnType<typeof
   return createCommandKernel({
     authority: db, clock, ids: { uuid: randomUUID },
     lifecycle: new RunRecordService({ database: db, clock, ids: sequentialIdFactory("e"), publishQueued: unused }),
-    appVersion: "0.1.0", archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
+    appVersion: "0.1.0",
     descriptors: { resolve: name => name === personLookupDescriptor.id ? personLookupDescriptor : undefined },
     configIdentity: UNSTORED_CONFIG_IDENTITY, intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
-    workerRuntime: { planWorkerCount: unused, spawnWorker: unused, refreshBrowser: unused, reopenBrowser: unused },
+    workerRuntime: { pool: { planPoolWorkerCount: unused, spawnPoolWorker: unused, refreshPoolBrowser: unused, reopenPoolBrowser: unused, stopPoolWorker: unused, pausePoolWorker: unused, resumePoolWorker: unused } },
     writeResolution: { resolvePresent: unused, resolveAbsent: unused }, ...overrides,
   });
 }
@@ -74,7 +75,7 @@ import { defaultRuntimePaths } from "../../../../src/backend/app/config/runtime-
 import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
-import { QUEUED_RUN, RUN_ID, WORKER_ID } from "../../fixtures/phase1f-run-fixtures.js";
+import { QUEUED_RUN, RUN_ID } from "../../fixtures/phase1f-run-fixtures.js";
 import { id } from "../database-foundation/fixtures.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { PersonLookupCanonicalInput } from "../../../../src/workflows/person-lookup/workflow.js";
@@ -83,9 +84,22 @@ function diagnosticFoundation(){
  const db=AuthorityDatabase.open({path,busyTimeoutMs:250,migrationOwner:"foundation-proof"},clock);
  const config=ConfigSchema.parse({paths:defaultRuntimePaths()});
  const snapshot=ConfigSnapshotRecordSchema.parse({configSnapshotId:id(90),revision:1,fingerprint:sha256Hex(canonicalJsonStringify(config)),capturedAt:NOW,capturedBy:"local-operator",config,provenance:{}});
- db.authority.configSnapshots.insert(snapshot);
+ db.authority.runtimeConfig.initialize(snapshot);
+ let admissionIdentity=10000;
  const createRun=(runId:string)=>{
- const workerId=runId===RUN_ID?WORKER_ID:"worker-2";
+ const workerId=db.withAuthorityTransaction(repositories=>{
+  const slots=repositories.workerSlots.list("person-lookup").filter(slot=>slot.retiredAt===null);
+  const free=slots.find(slot=>!repositories.runs.listByWorker(slot.workerId).some(run=>["claimed","validating","running"].includes(run.lifecycle.state)));
+  const poolIndex=free?.poolIndex??[1,2,3].find(index=>!slots.some(slot=>slot.poolIndex===index));
+  assert.ok(poolIndex!==undefined,"fixture exceeds genuine worker pool capacity");
+  const slot=admitDirectWorker(repositories,{commandId:id(admissionIdentity++),workflow:"person-lookup",poolIndex,
+    expectedPoolVersion:repositories.workerPools.get("person-lookup")?.version??0,processId:process.pid,
+    processAcquisitionId:id(admissionIdentity++),authorityPath:path,processLockRoot:join(root,"locks"),now:NOW},id(admissionIdentity++));
+  if(repositories.workerLeases.get(slot.workerId)===undefined)assert.equal(repositories.workerLeases.start({workerId:slot.workerId,
+    workflow:"person-lookup",browserSystems:workflowProjections(personLookupDescriptor).systems,processId:process.pid,
+    requestedBy:"local-operator",now:NOW}).state,"started");
+  return slot.workerId;
+ });
  db.authority.runs.enqueue({...QUEUED_RUN,input: { ...QUEUED_RUN.input, parsed: {
  schemaHash: deriveSchemaHash(PersonLookupCanonicalInput, "output"), value: { emplId: "10873698", keepNonHdh: false, includeCrmDates: false },
  protectedBindings: [{kind:"test-data-local",inputPath:"emplId",name:"personLookupCanaryEid",sourceId:id(89)}] } },envelope:{...QUEUED_RUN.envelope,runId, itemId:runId, contractFingerprint:personLookupDescriptor.contractFingerprint,configFingerprint:snapshot.fingerprint,configSnapshotId:snapshot.configSnapshotId}});

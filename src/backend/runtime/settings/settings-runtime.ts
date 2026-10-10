@@ -1,6 +1,6 @@
+import { authenticateSavedSettings } from "../../storage/sqlite/settings-storage.js";
 import { selectActiveRunSettings } from "../../runs/settings/run-settings.js";
 import { StoredConfigSchema } from "../../../models/config/snapshot.js";
-import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
@@ -29,25 +29,8 @@ export function readSettings(repositories: AuthorityRepositories): SettingsFileR
   }
   const command = repositories.commands.getSettingsHistory(current.commandId);
   if (command === undefined) throw new Error(`settings revision ${String(current.revision)} has no durable command journal`);
-  if (command.family !== "settings" || command.type !== "apply-settings"
-    || sha256Hex(`hrauto:settings-command:v1\0${canonicalJsonStringify(command)}`) !== current.commandFingerprint
-    || command.target.expectedRevision !== current.revision - 1) {
-    throw new Error(`settings revision ${String(current.revision)} does not match the full journaled command envelope`);
-  }
   const audit = repositories.commandAudits.findSettingsHistory(current.commandId);
-  const target = { family: "settings", revision: current.revision };
-  if (audit === undefined) throw new Error(`settings revision ${String(current.revision)} has no durable audit`);
-  if (canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)
-    || audit.result.state !== "applied" || audit.result.commandId !== current.commandId
-    || !("settingsRevision" in audit.result) || !("settingsFingerprint" in audit.result)
-    || typeof audit.result.restartRequired !== "boolean" || audit.result.settingsRevision !== current.revision
-    || audit.result.settingsFingerprint !== current.settingsFingerprint
-    || canonicalJsonStringify(audit.result.affectedTargets) !== canonicalJsonStringify([target])
-    || canonicalJsonStringify(audit.versionChanges) !== canonicalJsonStringify([{ target, before: command.target.expectedRevision, after: current.revision }])
-    || audit.affectedDependencyIds.length !== 0 || audit.auditId !== current.auditId
-    || audit.completedAt !== current.committedAt) {
-    throw new Error(`settings revision ${String(current.revision)} has a mismatched durable audit`);
-  }
+  authenticateSavedSettings(current,command,audit);
   return Object.freeze({
     revision: current.revision,
     settingsSchemaHash: SETTINGS_SCHEMA_HASH,

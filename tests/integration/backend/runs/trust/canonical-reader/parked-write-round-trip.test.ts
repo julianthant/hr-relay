@@ -130,7 +130,7 @@ function roundTrip(resolutionDescriptor: AnyWorkflowDescriptor = writeFixtureDes
     world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     world.commitThrows = new Error("browser crashed mid-click");
     return runWorkerLoop({
-      ...testWorkerPorts(database, clock),
+      ...testWorkerPorts(database, clock, { path: join(root, "state.db"), descriptor: writeFixtureDescriptor, poolIndex: 1 }),
       workflowId: WorkflowIdSchema.parse(WRITE_FIXTURE_WORKFLOW_ID),
       workerId: WorkerIdSchema.parse(WRITE_FIXTURE_WORKER_ID),
       descriptor: writeFixtureDescriptor,

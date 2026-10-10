@@ -1,11 +1,15 @@
+import { randomUUID } from "node:crypto";
+import { initialSettingsFileRecord } from "../../../models/config/settings.js";
+import { SettingsInitializationCommandSchema, SettingsInitializationAuditSchema } from "../../../models/config/settings-initialization.js";
+import { insertNativeCommand, settleNativeCommand } from "./command-record-row.js";
 import { z } from "zod";
 import type { DatabaseSync } from "node:sqlite";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { SettingsCurrentRecordSchema } from "../../../models/config/settings-current.js";
 import { ActiveRuntimeConfigActivationSchema, ActiveRuntimeConfigExpectationSchema, ActiveRuntimeConfigRecordSchema, RuntimeConfigClaimTokenSchema } from "../../../models/config/runtime-generation.js";
 import { ConfigSnapshotRecordSchema } from "../../../models/config/snapshot.js";
-import { CommandRequestSchema, CommandAuditRecordSchema, deriveSettingsCommandFingerprint } from "../../../rules/commands/commands.js";
-import { readAppSettings, writeAppSettings } from "./settings-storage.js";
+import { CommandRequestSchema, CommandAuditRecordSchema } from "../../../rules/commands/commands.js";
+import { readAppSettings, writeAppSettings, authenticateSavedSettings } from "./settings-storage.js";
 interface SettingsActivationPorts {
  database: DatabaseSync;
  mutate<T>(work:()=>Readonly<{result:T;changes:number}>):T;
@@ -25,13 +29,13 @@ export function createSettingsActivationRepositories(ports:SettingsActivationPor
         hasHistory: () => ports.database.prepare(`
           SELECT 1 FROM commands
           WHERE family = 'settings'
-            AND json_extract(record_json, '$.type') = 'apply-settings'
+            AND json_extract(request_json, '$.type') = 'apply-settings'
           LIMIT 1
         `).get() !== undefined,
         hasAuditHistory: () => ports.database.prepare(`
           SELECT 1 FROM command_audits
-          WHERE json_extract(record_json, '$.request.family') = 'settings'
-            AND json_extract(record_json, '$.request.type') = 'apply-settings'
+          WHERE json_extract(payload_json, '$.request.family') = 'settings'
+            AND json_extract(payload_json, '$.request.type') = 'apply-settings'
           LIMIT 1
         `).get() !== undefined,
         advance: (input: unknown) => {
@@ -51,47 +55,47 @@ export function createSettingsActivationRepositories(ports:SettingsActivationPor
             }
             const command = readRecord("commands", record.commandId, CommandRequestSchema);
             const audit = readRecord("command_audits", record.auditId, CommandAuditRecordSchema);
-            const target = { family: "settings" as const, revision: record.revision };
-            if (command === undefined
-              || command.family !== "settings"
-              || command.type !== "apply-settings"
-              || deriveSettingsCommandFingerprint(command) !== record.commandFingerprint
-              || audit === undefined
-              || audit.request.commandId !== record.commandId
-              || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)
-              || audit.result.state !== "applied"
-              || audit.result.commandId !== record.commandId
-              || typeof audit.result.restartRequired !== "boolean"
-              || audit.result.settingsRevision !== record.revision
-              || audit.result.settingsFingerprint !== record.settingsFingerprint
-              || canonicalJsonStringify(audit.result.affectedTargets)
-                !== canonicalJsonStringify([target])
-              || canonicalJsonStringify(audit.versionChanges) !== canonicalJsonStringify([{
-                target,
-                before: record.revision - 1,
-                after: record.revision,
-              }])
-              || audit.affectedDependencyIds.length !== 0
-              || audit.completedAt !== record.committedAt) {
-              throw new Error(
-                `settings current revision ${String(record.revision)} does not bind its exact command and audit result`,
-              );
-            }
+            const authenticated=authenticateSavedSettings(record,command,audit);
             const app = readAppSettings(ports.database);
-            if (audit.result.restartRequired === false && (app?.active == null
+            if (authenticated.result.restartRequired === false && (app?.active == null
               || app.active.settingsRevision !== record.revision
               || app.active.settingsFingerprint !== record.settingsFingerprint)) {
               throw new Error("settings-activation-current-mismatch");
             }
-            writeAppSettings(ports.database, { format: 1, saved: record, active: app?.active ?? null });
+            if (app === undefined) throw new Error("settings-initialization-missing");
+            writeAppSettings(ports.database, { ...app, saved: record });
             const changes = 1;
             return { result: record, changes };
           });
         },
       }),
       runtimeConfig: Object.freeze({
+        initialize(input: unknown) {
+          const snapshot = ConfigSnapshotRecordSchema.parse(input);
+          return ports.mutate(() => {
+            if (readAppSettings(ports.database) !== undefined
+              || ports.database.prepare("SELECT 1 FROM settings_snapshots LIMIT 1").get() !== undefined) throw new Error("settings-initialization-not-fresh");
+            if (snapshot.revision !== 1) throw new Error("settings-initialization-revision-invalid");
+            const settings = initialSettingsFileRecord();
+            const request = SettingsInitializationCommandSchema.parse({ kind: "settings-initialization", commandId: randomUUID(), revision: 1,
+              settings, configSnapshotId: snapshot.configSnapshotId, configFingerprint: snapshot.fingerprint, initializedAt: snapshot.capturedAt });
+            insertNativeCommand(ports.database, request);
+            ports.database.prepare("INSERT INTO settings_snapshots(id,revision,fingerprint,payload_json,captured_at) VALUES(?,?,?,?,?)")
+              .run(snapshot.configSnapshotId, snapshot.revision, snapshot.fingerprint, canonicalJsonStringify(snapshot), snapshot.capturedAt);
+            const audit = SettingsInitializationAuditSchema.parse({ kind: "settings-initialization", auditId: randomUUID(), request,
+              result: { state: "initialized", revision: 1, snapshotId: snapshot.configSnapshotId, fingerprint: snapshot.fingerprint }, completedAt: snapshot.capturedAt });
+            ports.database.prepare("INSERT INTO command_audits(id,command_id,code,payload_json,created_at) VALUES(?,?,NULL,?,?)")
+              .run(audit.auditId, request.commandId, canonicalJsonStringify(audit), audit.completedAt);
+            settleNativeCommand(ports.database, audit);
+            const active = ActiveRuntimeConfigRecordSchema.parse({ generation: 1, settingsRevision: 1, settingsFingerprint: settings.settingsFingerprint,
+              configSnapshotId: snapshot.configSnapshotId, configFingerprint: snapshot.fingerprint, activatedAt: snapshot.capturedAt });
+            writeAppSettings(ports.database, { format: 1, saved: null, active, initialization: { commandId: request.commandId, auditId: audit.auditId,
+              configSnapshotId: snapshot.configSnapshotId, configFingerprint: snapshot.fingerprint, initializedAt: snapshot.capturedAt, settings } });
+            return { result: active, changes: 5 };
+          });
+        },
         hasHistory: () => ports.database.prepare("SELECT 1 FROM settings_snapshots LIMIT 1").get() !== undefined,
-        hasAdvancedHistory: () => ports.database.prepare("SELECT 1 FROM settings_snapshots WHERE json_extract(record_json, '$.revision') > 1 LIMIT 1").get() !== undefined,
+        hasAdvancedHistory: () => ports.database.prepare("SELECT 1 FROM settings_snapshots WHERE json_extract(payload_json, '$.revision') > 1 LIMIT 1").get() !== undefined,
         matchesClaim(input: unknown): boolean {
           const token = RuntimeConfigClaimTokenSchema.parse(input);
           const current = readAppSettings(ports.database);
@@ -132,7 +136,8 @@ export function createSettingsActivationRepositories(ports:SettingsActivationPor
               generation: current === undefined ? 1 : current.generation + 1,
             });
             const app = readAppSettings(ports.database);
-            writeAppSettings(ports.database, { format: 1, saved: app?.saved ?? null, active: record });
+            if (app === undefined) throw new Error("settings-initialization-required");
+            writeAppSettings(ports.database, { ...app, active: record });
             const changes = 1;
             return { result: record, changes };
           });

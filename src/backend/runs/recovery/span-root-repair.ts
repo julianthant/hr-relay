@@ -136,7 +136,21 @@ export class OfflineSpanRootRepairService {
         if (plan.consumedBy === undefined) {
           throw new Error(`span root repair run ${request.runId} names an unconsumed start plan`);
         }
-        const matches = plan.planned.filter((candidate) => candidate.runId === request.runId);
+        const command=database.authority.commands.get(plan.consumedBy.commandId);
+        const audit=database.authority.commandAudits.findByCommand(plan.consumedBy.commandId);
+        if(command===undefined || command.family!=="start" || command.type!=="start-run"
+          || command.target.startPlanId!==plan.startPlanId || command.target.workflowId!==plan.workflowId
+          || command.target.expectedVersion!==plan.version-1
+          || command.payload.descriptorFingerprint!==plan.descriptorFingerprint || command.payload.configFingerprint!==plan.configFingerprint
+          || command.payload.ingressSchemaHash!==plan.ingressSchemaHash || command.payload.canonicalInputSchemaHash!==plan.canonicalInputSchemaHash
+          || command.payload.inputFingerprint!==plan.inputFingerprint || command.requestedBy!==session.origin.actorId
+          || audit===undefined || !sameJson(audit.request,command) || audit.completedAt!==plan.consumedBy.consumedAt
+          || audit.result.state!=="applied" || !audit.result.affectedTargets.some(target=>target.family==="run" && target.runId===request.runId) || !audit.versionChanges.some(change=>change.target.family==="run"
+            && change.target.runId===request.runId && change.before===0 && change.after===1)) {
+          throw new Error(`span root repair run ${request.runId} has no exact settled start command owner`);
+        }
+        const matches = plan.planned.filter((candidate) => candidate.itemId===run.envelope.itemId
+          && sameJson(candidate.rawInput,run.input.raw) && sameJson(candidate.input,run.input.parsed));
         if (matches.length !== 1 || matches[0] === undefined) {
           throw new Error(
             `span root repair run ${request.runId} has ${String(matches.length)} matching planned entries; exactly one is required`,
@@ -149,7 +163,6 @@ export class OfflineSpanRootRepairService {
           ["session start", session.startedAt, envelope.enqueuedAt],
           ["plan workflow", plan.workflowId, envelope.workflow],
           ["planned item", planned.itemId, envelope.itemId],
-          ["planned trace", planned.traceId, envelope.traceId],
           ["descriptor version", plan.descriptorVersion, envelope.descriptorVersion],
           ["descriptor fingerprint", plan.descriptorFingerprint, envelope.contractFingerprint],
           ["config fingerprint", plan.configFingerprint, envelope.configFingerprint],

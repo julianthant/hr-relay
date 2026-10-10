@@ -1,3 +1,4 @@
+import { CONFIG_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
 
 import { fixtureDuoCeremonyGates } from "../../support/helpers/duo-ceremony-fixtures.js";
@@ -51,6 +52,7 @@ afterEach(() => {
 
 function sharedAuthority(): AuthorityHarness {
   const authority = openAuthorityHarness();
+  authority.database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
   disposers.push(authority.dispose);
   return authority;
 }
@@ -118,7 +120,7 @@ function workerHarness(
     stop,
     events: () => Object.freeze([...events]),
     deps: {
-      ...testWorkerPorts(authority.database, authority.clock),
+      ...testWorkerPorts(authority.database, authority.clock, { path: authority.path, descriptor: personLookupDescriptor, poolIndex: Number(workerSuffix) }),
       workflowId: WorkflowIdSchema.parse(WORKFLOW_ID),
       workerId: WorkerIdSchema.parse(`person-lookup-worker-${workerSuffix}`),
       descriptor: personLookupDescriptor,
@@ -201,7 +203,9 @@ describe("graceful teardown with a run in flight", () => {
     const settled = database.authority.runs.get(runId);
     assert.ok(settled !== undefined && settled.lifecycle.state === "terminal");
     assert.equal("outcome" in settled.lifecycle ? settled.lifecycle.outcome : undefined, "done");
-    assert.equal(settled.envelope.attempt, 2);
+    assert.equal(settled.envelope.attempt, 1);
+    assert.deepEqual(settled.envelope, stranded.envelope);
+    assert.equal(settled.claimGeneration, stranded.claimGeneration + 1);
   });
 });
 
@@ -233,6 +237,7 @@ function teardownFactory(closeFailsFor: readonly string[] = []): TeardownFactory
         );
         return {
           sessionId,
+          profileRevision: 7,
           system: input.system,
           ...(input.instance === undefined ? {} : { instance: input.instance }),
           configFingerprint: input.configFingerprint,

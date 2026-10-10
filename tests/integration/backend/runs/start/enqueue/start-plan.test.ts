@@ -1,6 +1,8 @@
+import { StartCommandRequestSchema } from "../../../../../../src/rules/commands/commands.js";
+import { protectedSecretSource } from "../../../../../support/helpers/protected-secret-source.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -24,7 +26,7 @@ import {
 import { separationsKualiFinalizationDescriptor } from "../../../../../support/helpers/registered-workflows.js";
 import { separationsUcpathTerminationDescriptor } from "../../../../../support/helpers/registered-workflows.js";
 import { PersonLookupCanonicalInput, PersonLookupInput } from "../../../../../../src/workflows/person-lookup/workflow.js";
-import { HASH_A, HASH_B, NOW, UUID_4 } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
+import { CONFIG_SNAPSHOT, HASH_B, NOW } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../../../../../support/fixtures/phase1f-run-fixtures.js";
 import {
   defineAuthoredDryRunDescriptor,
@@ -41,12 +43,13 @@ const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
 
 function openDatabase(): AuthorityDatabase {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-rebuild-start-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-rebuild-start-"));
   roots.push(root);
   const database = AuthorityDatabase.open(
     { path: join(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
     CLOCK,
   );
+  database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
   databases.push(database);
   return database;
 }
@@ -62,8 +65,8 @@ function baseRequest(submissions: readonly unknown[], overrides: Record<string, 
     dryRun: false,
     priority: "bulk" as const,
     shape: "single" as const,
-    configFingerprint: HASH_A,
-    configSnapshotId: UUID_4,
+    configFingerprint: CONFIG_SNAPSHOT.fingerprint,
+    configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId,
     plannedBy: "local-operator",
     ...overrides,
   };
@@ -100,6 +103,30 @@ describe("derived identity", () => {
 });
 
 describe("start planning", () => {
+  it("refuses an unbound reserved private field before planning any submission", () => {
+    const database = openDatabase();
+    const ids = sequentialIdFactory();
+    const generation = database.getMeta().authorityGeneration;
+    assert.throws(() => planStart(plannerDeps(database, ids),
+      baseRequest([{ emplId: "10873698" }, { emplId: "10001573", timekeeperName: "Synthetic unbound signer" }])),
+    /protected input timekeeperName binding is absent/u);
+    assert.deepEqual(ids.minted(), []);
+    assert.deepEqual(database.authority.runs.listByWorkflow("person-lookup"), []);
+    assert.equal(database.getMeta().authorityGeneration, generation);
+  });
+  it("retains the actual protected-store origin admitted before canonical planning",()=>{
+    const database=openDatabase();
+    const plan=planStart({...plannerDeps(database),protectedSecrets:protectedSecretSource({timekeeperName:"Synthetic signer"})},
+      baseRequest([{documentNumber:"12345678"}],{descriptor:separationsDescriptor}));
+    assert.equal(plan.refused.length,0);
+    assert.equal(plan.planned.length,1);
+    assert.deepEqual(plan.planned[0].input.protectedBindings,[{kind:"protected-store",inputPath:"timekeeperName",name:"timekeeperName",valueId:"00000000-0000-4000-8000-000000000010"}]);
+    const value=plan.planned[0].input.value;const raw=plan.planned[0].rawInput;
+    assert.ok(value!==null && typeof value === "object" && !Array.isArray(value));
+    assert.ok(raw!==null && typeof raw === "object" && !Array.isArray(raw));
+    assert.equal(value.timekeeperName,"Synthetic signer");
+    assert.equal(Object.hasOwn(raw,"timekeeperName"),false);
+  });
   it("planning reserves no lifecycle identity", () => {
     const database = openDatabase();
     const ids = sequentialIdFactory();
@@ -118,6 +145,7 @@ describe("start planning", () => {
     ]));
     assert.equal(plan.planned.length, 2);
     assert.equal(plan.refused.length, 0);
+    for(const entry of plan.planned)assert.deepEqual(entry.input.protectedBindings,[]);
     assert.deepEqual(plan.planned.map(({ matchKey }) => matchKey), [
       PERSON_EID_MATCH_KEY,
       PERSON_NAME_MATCH_KEY,
@@ -179,11 +207,12 @@ describe("start planning", () => {
       rawInput: { emplId: "10873698" },
       canonicalInput: {
         schemaHash: deriveSchemaHash(PersonLookupCanonicalInput, "output"),
+        protectedBindings: [],
         value: { emplId: "10873698", keepNonHdh: false, includeCrmDates: false },
       },
       ingressSchemaHash: deriveSchemaHash(PersonLookupInput, "input"),
-      configFingerprint: HASH_A,
-      configSnapshotId: UUID_4,
+      configFingerprint: CONFIG_SNAPSHOT.fingerprint,
+      configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId,
       resolvedInstance: { ucpath: "prod", crm: "prod" },
       shape: "single",
       priority: "bulk",
@@ -204,11 +233,12 @@ describe("start planning", () => {
       rawInput: { emplId: "10001573" },
       canonicalInput: {
         schemaHash: deriveSchemaHash(PersonLookupCanonicalInput, "output"),
+        protectedBindings: [],
         value: { emplId: "10001573", keepNonHdh: false, includeCrmDates: false },
       },
       ingressSchemaHash: deriveSchemaHash(PersonLookupInput, "input"),
-      configFingerprint: HASH_A,
-      configSnapshotId: UUID_4,
+      configFingerprint: CONFIG_SNAPSHOT.fingerprint,
+      configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId,
       resolvedInstance: { ucpath: "prod", crm: "prod" },
       shape: "single",
       priority: "bulk",
@@ -283,11 +313,12 @@ describe("start planning", () => {
       rawInput: { emplId: "10873698" },
       canonicalInput: {
         schemaHash: deriveSchemaHash(PersonLookupCanonicalInput, "output"),
+        protectedBindings: [],
         value: { emplId: "10873698", keepNonHdh: false, includeCrmDates: false },
       },
       ingressSchemaHash: deriveSchemaHash(PersonLookupInput, "input"),
-      configFingerprint: HASH_A,
-      configSnapshotId: UUID_4,
+      configFingerprint: CONFIG_SNAPSHOT.fingerprint,
+      configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId,
       resolvedInstance: { ucpath: "prod", crm: "prod" },
       shape: "single",
       priority: "bulk",
@@ -426,6 +457,11 @@ describe("start plan consumption", () => {
     const plan = planStart(plannerDeps(database), baseRequest([{ emplId: "10873698" }]));
     const stored = database.authority.startPlans.create(plan);
     assert.equal(stored.state, "inserted");
+    database.authority.commands.insert(StartCommandRequestSchema.parse({commandId:"cccccccc-0001-4000-8000-000100000000",
+      family:"start",type:"start-run",requestedAt:NOW,requestedBy:"local-operator",source:"dashboard",
+      target:{workflowId:plan.workflowId,startPlanId:plan.startPlanId,expectedVersion:plan.version},
+      payload:{descriptorFingerprint:plan.descriptorFingerprint,configFingerprint:plan.configFingerprint,ingressSchemaHash:plan.ingressSchemaHash,
+        canonicalInputSchemaHash:plan.canonicalInputSchemaHash,inputFingerprint:plan.inputFingerprint}}));
     return plan;
   }
 

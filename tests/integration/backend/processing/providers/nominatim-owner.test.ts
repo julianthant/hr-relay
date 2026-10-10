@@ -12,6 +12,8 @@ import { createProviderClient } from "../../../../../src/backend/processing/prov
 import { IsoInstantSchema } from "../../../../../src/rules/identity/ids.js";
 import { systemClock } from "../../../../../src/rules/time/clock.js";
 import { ProviderRequestEnvelopeSchema } from "../../../../../src/models/providers/providers.js";
+import { sha256Hex } from "../../../../../src/rules/validation/sha256.js";
+import { canonicalJsonStringify } from "../../../../../src/rules/validation/canonical-json.js";
 import { ConfigSchema } from "../../../../../src/models/config/schema.js";
 import { defaultRuntimePaths } from "../../../../../src/backend/app/config/runtime-paths.js";
 import { GeocodeOutcomeSchema } from "../../../../../src/rules/normalization/geocode.js";
@@ -51,7 +53,7 @@ it("spaces actual owned fetch starts across process workers and config snapshots
   const answer = GeocodeOutcomeSchema.parse(first.response.value.value); assert.equal(answer.state === "resolved" && answer.street, "1 Test Road");
   const config = ConfigSchema.parse({ paths: defaultRuntimePaths() });
   const snapshotClient = (timeoutMs: number) => {
-    const id = randomUUID(); const snapshot = { configSnapshotId: id, revision: 1, fingerprint: "a".repeat(64), config: { ...config, providers: { ...config.providers, geocodeNominatim: { timeoutMs } } }, provenance: {}, capturedAt: IsoInstantSchema.parse(systemClock.now().toISOString()), capturedBy: "local-operator" };
+    const id = randomUUID(); const selectedConfig = { ...config, providers: { ...config.providers, geocodeNominatim: { timeoutMs } } }; const snapshot = { configSnapshotId: id, revision: 1, fingerprint: sha256Hex(canonicalJsonStringify(selectedConfig)), config: selectedConfig, provenance: {}, capturedAt: IsoInstantSchema.parse(systemClock.now().toISOString()), capturedBy: "local-operator" };
     return createProviderClient("geocode.nominatim", { execution: { runId: randomUUID(), attempt: 1, nodeId: "contact", taskId: "normalization/read-contact-advice" }, configSnapshotId: id, configFingerprint: snapshot.fingerprint, configSnapshot: snapshot, adapters: { "geocode.nominatim": owner }, clock: systemClock, idFactory: { next: randomUUID }, runSignal: new AbortController().signal, deadlineScheduler: { schedule(deadline, fire) { const timer = setTimeout(fire, Math.max(0, deadline - performance.now())); return { cancel: () => clearTimeout(timer) }; } } });
   };
   const a = child(path); const b = child(path); await Promise.all([message(a, "ready"), message(b, "ready")]);

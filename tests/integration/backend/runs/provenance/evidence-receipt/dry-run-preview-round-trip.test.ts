@@ -91,7 +91,7 @@ function harness(): Harness {
 
     world.probeResults.push(options.probe ?? absentProbeEvidence(WRITE_FIXTURE_NOW));
     await runWorkerLoop({
-      ...testWorkerPorts(database, clock),
+      ...testWorkerPorts(database, clock, { path: join(root, "state.db"), descriptor: writeFixtureDescriptor, poolIndex: 1 }),
       workflowId: WorkflowIdSchema.parse(WRITE_FIXTURE_WORKFLOW_ID),
       workerId: WorkerIdSchema.parse(WRITE_FIXTURE_WORKER_ID),
       descriptor: writeFixtureDescriptor,

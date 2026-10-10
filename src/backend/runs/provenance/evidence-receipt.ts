@@ -1,10 +1,9 @@
-import { retainedRunProtectedBindings, hasProtectedTransactionInput, publicTransactionKeyDigest } from "../../../models/write-safety/protected-input.js";
+import { retainedRunProtectedBindings, publicTransactionKeyDigest } from "../../../models/write-safety/protected-input.js";
 import { valueFreeProtectedInput } from "../../../models/write-safety/protected-input.js";
 
 import { z } from "zod";
 import { evaluateNodeCondition } from "../../../models/workflow/node-condition.js";
 import {
-  redactionDigest,
   idempotencyKeyDigestReference,
 } from "../../../rules/redaction/redaction.js";
 import {
@@ -22,6 +21,8 @@ import { RunRecordSchema, type RunRecord } from "../../../models/run/record.js";
 import {
   RunDryRunPreviewResultSchema,
   RunResultRecordSchema,
+  terminalEvidenceResult,
+  deriveTerminalFailureDigest,
   deriveCheckpointOutputDigest,
   deriveTerminalDependencyDigest,
   type RunResultRecord,
@@ -32,7 +33,6 @@ import { sha256Hex } from "../../../rules/validation/sha256.js";
 import {
   evidenceLeaves,
   redactEvidenceLeaf,
-  historicalReceiptEvidenceLeaf,
   type EvidenceLeaf,
   type EvidenceValueScope,
 } from "../../../models/trust/evidence-classification.js";
@@ -211,16 +211,8 @@ function pickCheckpoint(
 }
 
 
-export type ReceiptComposition = 1 | 2 | 3 | 4 | 5;
+export type ReceiptComposition = RunEvidenceReceipt["composition"];
 export const LATEST_RECEIPT_COMPOSITION = 5 satisfies ReceiptComposition;
-
-function historicalDirectIdentifierReference(value: string): string {
-  return `identifier#${redactionDigest(value).slice(0, 12)}`;
-}
-
-function receiptEvidenceLeaf(scope: EvidenceValueScope, leaf: EvidenceLeaf, composition: ReceiptComposition) {
-  return composition < 5 ? historicalReceiptEvidenceLeaf(scope, leaf) : redactEvidenceLeaf(scope, leaf);
-}
 
 /** The one sentence a receipt says about each closed not-run reason; a new reason must be authored here, never inherited. */
 const NOT_RUN_SENTENCE: Record<TerminalNotRunReason, (id: string) => string> = {
@@ -245,9 +237,9 @@ export function deriveActionWriteProof(input: Readonly<{
   /** The transaction node's checkpoint row (raw or parsed). */
   record: unknown;
   intent: WriteIntentRecord | undefined;
-  protectedTransaction?: boolean;
   composition?: ReceiptComposition;
 }>): ActionWriteProof {
+  if(input.composition!==undefined)RunEvidenceReceiptSchema.shape.composition.parse(input.composition);
   const { commitContract, intent } = input;
   const record = RunCheckpointRecordSchema.parse(input.record);
   const parsed = TransactionOutcomeSchema.safeParse(record.output.value);
@@ -277,10 +269,10 @@ export function deriveActionWriteProof(input: Readonly<{
   const scope: EvidenceValueScope = { kind: "write-proof", taskId: commitContract.id };
   return ActionWriteProofSchema.parse({
     system: intent.system,
-    idempotencyKeyDigest: publicTransactionKeyDigest(intent.idempotencyKeyDigest, (input.composition ?? LATEST_RECEIPT_COMPOSITION) < 5 && (input.protectedTransaction ?? false)),
+    idempotencyKeyDigest: publicTransactionKeyDigest(intent.idempotencyKeyDigest, false),
     completion: commitContract.writeSafety.completion.kind,
     proofSource: outcome.proofSource,
-    values: evidenceLeaves(outcome.proof.value).map((leaf) => receiptEvidenceLeaf(scope, leaf, input.composition ?? LATEST_RECEIPT_COMPOSITION)),
+    values: evidenceLeaves(outcome.proof.value).map((leaf) => redactEvidenceLeaf(scope, leaf)),
     recordedAt: outcome.disposition === "committed" ? outcome.confirmedAt : outcome.observedAt,
   });
 }
@@ -293,6 +285,7 @@ export function deriveRunEvidenceReceipt(
   receipt: RunEvidenceReceipt;
   checks: readonly ReceiptBindingCheckResult[];
 }> {
+  RunEvidenceReceiptSchema.shape.composition.parse(composition);
   const { descriptor } = input;
   const run = RunRecordSchema.parse(input.run);
   const { envelope, lifecycle } = run;
@@ -326,6 +319,23 @@ export function deriveRunEvidenceReceipt(
       + `(${String(lifecycle.failureId)})`,
     );
   }
+  if (result === undefined) throw new Error("terminal-evidence-result-missing");
+  const terminalEvidence = terminalEvidenceResult(result);
+  if (terminalEvidence !== undefined) {
+    if (result === undefined || result.runId !== envelope.runId || result.workflowId !== envelope.workflow
+      || result.attempt !== envelope.attempt || result.configFingerprint !== envelope.configFingerprint
+      || result.configSnapshotId !== envelope.configSnapshotId || result.descriptorVersion !== envelope.descriptorVersion
+      || result.contractFingerprint !== envelope.contractFingerprint || result.createdAt !== lifecycle.endedAt) throw new Error("terminal-evidence-receipt-identity-mismatch");
+    if (terminalEvidence.kind === "failed-evidence") {
+      if (lifecycle.outcome !== "failed" || failure === undefined
+        || deriveTerminalFailureDigest(failure) !== terminalEvidence.failureDigest
+        || failure.failureId !== terminalEvidence.authorization.failureId
+        || run.completion === undefined || run.completion.kind !== "failed"
+        || run.completion.expectedVersion !== terminalEvidence.authorization.expectedVersion
+        || canonicalJsonStringify(run.completion.claim) !== canonicalJsonStringify(terminalEvidence.authorization.claim)
+        || run.completion.authorizedAt !== terminalEvidence.authorization.authorizedAt) throw new Error("terminal-failure-result-mismatch");
+    } else if (lifecycle.outcome !== terminalEvidence.outcome || run.version < terminalEvidence.appliedVersion) throw new Error("terminal-evidence-outcome-mismatch");
+  } else if (result !== undefined && lifecycle.outcome !== "done") throw new Error("terminal-evidence-payload-required");
   const checkpoints = input.checkpoints.map((record) => RunCheckpointRecordSchema.parse(record));
   for (const record of checkpoints) {
     if (record.workflowId !== envelope.workflow || record.itemId !== envelope.itemId) {
@@ -392,7 +402,7 @@ export function deriveRunEvidenceReceipt(
       mandatory: true,
       source: { kind: "input", inputFingerprint },
       state: "satisfied",
-      value: receiptEvidenceLeaf(inputScope, leaf, composition),
+      value: redactEvidenceLeaf(inputScope, leaf),
     });
   }
 
@@ -582,7 +592,8 @@ export function deriveRunEvidenceReceipt(
     }
 
     const scope = scopeOf(node);
-    const replayed = record.runId !== envelope.runId || record.attempt !== envelope.attempt;
+    const replayed = record.runId !== envelope.runId || record.attempt !== envelope.attempt
+      || Number(record.claimGeneration) !== Number(run.claimGeneration);
     const corrected = record.provenance.some((fact) => fact.correctedAt !== undefined);
     const checkpointFingerprint = deriveCheckpointOutputDigest(record.output);
     const nodeLeaves = evidenceLeaves(contractOutputOf(node, record));
@@ -644,16 +655,12 @@ export function deriveRunEvidenceReceipt(
         occurredAt,
         write,
       });
-      // Composition 1 emits no proof rows; composition 2 includes them under its stored contract.
-      if (composition >= 2) {
-        commitAction.proved = deriveActionWriteProof({
-          composition,
-          protectedTransaction: composition === 4 && hasProtectedTransactionInput(run),
-          commitContract: node.commit.uses,
-          record,
-          intent: write?.intent,
-        });
-      }
+      commitAction.proved = deriveActionWriteProof({
+        composition,
+        commitContract: node.commit.uses,
+        record,
+        intent: write?.intent,
+      });
       actions.push(commitAction);
       const dedupeId = entryId("decision", `dedupe.${id}`);
       decisions.push({
@@ -673,7 +680,7 @@ export function deriveRunEvidenceReceipt(
           id: identityId,
           kind: "identity",
           outcome: "approved",
-          reason: subjectReason(write.intent, composition, composition === 4 && hasProtectedTransactionInput(run)),
+          reason: subjectReason(write.intent),
           evidence: [evidenceEntryRef(commitAction.id)],
         });
       }
@@ -741,7 +748,7 @@ export function deriveRunEvidenceReceipt(
   // Preview envelope and terminal schema must agree; neither alone proves a coherent preview.
   const previewResultSchemaHash = deriveSchemaHash(RunDryRunPreviewResultSchema, "output");
   const previewed = result !== undefined && result.resultSchemaHash === previewResultSchemaHash;
-  if (previewed !== (envelope.dryRun && result !== undefined)) {
+  if (previewed !== (envelope.dryRun && lifecycle.outcome === "done" && result !== undefined)) {
     throw new Error(
       `run ${envelope.runId} has dryRun=${String(envelope.dryRun)} but its terminal result is bound to `
       + `${result === undefined ? "no schema" : result.resultSchemaHash}; a receipt cannot describe a run `
@@ -775,7 +782,7 @@ export function deriveRunEvidenceReceipt(
       loadBearing: true,
       evidence: [],
     });
-  } else if (result !== undefined) {
+  } else if (result !== undefined && terminalEvidence === undefined) {
     const resultScope: EvidenceValueScope = { kind: "workflow-result", workflowId: descriptor.id };
     for (const leaf of evidenceLeaves(result.result.value)) {
       outputs.push({
@@ -787,7 +794,7 @@ export function deriveRunEvidenceReceipt(
           evidence: [...derivedResultEvidence(result, byNode, terminalResultVerificationId)],
         },
         state: "satisfied",
-        value: receiptEvidenceLeaf(resultScope, leaf, composition),
+        value: redactEvidenceLeaf(resultScope, leaf),
       });
     }
     verification.push({
@@ -810,10 +817,7 @@ export function deriveRunEvidenceReceipt(
     warnings.push({
       id: entryId("warning", "failure"),
       code: failure.code,
-      summary: composition >= 3 && composition < 5
-        ? `failure ${failure.code}; write state at failure: ${failure.writeState}. `
-          + "Free diagnostic text remains in authority and is not copied into this receipt"
-        : `${failure.summary} — write state at failure: ${failure.writeState}`,
+      summary: `${failure.summary} — write state at failure: ${failure.writeState}`,
       loadBearing: true,
       evidence: [],
     });
@@ -860,11 +864,9 @@ export function deriveRunEvidenceReceipt(
       warnings.push({
         id: entryId("warning", `residual-write.${intent.writeIntentId}`),
         code: ErrorCodeSchema.parse("RESIDUAL_WRITE_INTENT"),
-        summary: composition >= 3
-          ? `write intent ${intent.writeIntentId} for ${intent.system} `
-            + `${idempotencyKeyDigestReference(intent.idempotencyKeyDigest, composition === 4 && hasProtectedTransactionInput(run))} is still ${intent.status}; this run left an unsettled `
-            + "external write behind and only ref write-safety's typed operator resolutions may release it"
-          : legacyAuthorityResidualWriteSummary(intent),
+        summary: `write intent ${intent.writeIntentId} for ${intent.system} `
+          + `${idempotencyKeyDigestReference(intent.idempotencyKeyDigest, false)} is still ${intent.status}; this run left an unsettled `
+          + "external write behind and only ref write-safety's typed operator resolutions may release it",
         loadBearing: true,
         evidence: [],
       });
@@ -898,7 +900,7 @@ export function deriveRunEvidenceReceipt(
           : "done-with-warnings";
 
   const receiptData = {
-    ...(composition === 1 ? {} : { composition }),
+    composition,
     receiptId,
     runId: envelope.runId,
     traceId: envelope.traceId,
@@ -926,9 +928,7 @@ export function deriveRunEvidenceReceipt(
     result: receiptResult,
   };
   const parsedReceipt = RunEvidenceReceiptSchema.parse(receiptData);
-  const receipt = composition === LATEST_RECEIPT_COMPOSITION
-    ? RunEvidenceReceiptSchema.parse(JSON.parse(canonicalJsonStringify(parsedReceipt)))
-    : parsedReceipt;
+  const receipt = RunEvidenceReceiptSchema.parse(JSON.parse(canonicalJsonStringify(parsedReceipt)));
   assertEvidenceRefsResolve(receipt);
   return Object.freeze({ receipt, checks: binding.checks });
 }
@@ -1004,18 +1004,16 @@ export function ensureRunEvidenceReceipt(
   if (lifecycle.state !== "terminal") {
     throw new Error(`run ${runId} is ${lifecycle.state}; only a terminal run has a receipt`);
   }
+  if (lifecycle.outcome === "interrupted") throw new Error(`run ${runId} ended interrupted; recovery has not admitted a final receipt`);
   const existingRaw: unknown = store.findReceiptByRun(runId);
   const existing = existingRaw === undefined || existingRaw === null
     ? undefined
     : RunEvidenceReceiptSchema.parse(existingRaw);
-  // Re-derive immutable receipts under their stored composition; an absent stamp means composition 1.
-  const composition: ReceiptComposition = existing === undefined
-    ? LATEST_RECEIPT_COMPOSITION
-    : existing.composition === undefined ? 1 : existing.composition;
+  const composition = LATEST_RECEIPT_COMPOSITION;
   const { receipt: derived, checks } = deriveRunEvidenceReceipt({
     descriptor,
     run,
-    ...(lifecycle.outcome === "done" ? { result: store.getResult(runId) } : {}),
+    result: store.getResult(runId),
     ...(lifecycle.failureId === undefined ? {} : { failure: store.getFailure(lifecycle.failureId) }),
     checkpoints: store.listCheckpointsByRun(runId),
     writes: store.listWritesByRun(runId),
@@ -1112,7 +1110,7 @@ function emitGateEvidence(input: GateEvidenceInput): void {
       mandatory: input.declaredDetails.has(`${nodeId}\u0000${leaf.path}`),
       source,
       state: "satisfied",
-      value: receiptEvidenceLeaf(scope, leaf, input.composition),
+      value: redactEvidenceLeaf(scope, leaf),
     });
   }
 
@@ -1136,14 +1134,7 @@ function emitGateEvidence(input: GateEvidenceInput): void {
       + "must be a single comparable identity",
     );
   }
-  const bound: string | undefined = input.composition === 4
-    && (input.workflowId === "separations" || input.workflowId === "separations-kuali-finalization")
-    ? undefined : typeof boundLeaf?.value === "string" ? boundLeaf.value : undefined;
-  const projectedBound = bound === undefined || input.composition < 3 || input.composition >= 5
-    ? bound
-    : FingerprintSchema.safeParse(bound).success
-      ? `evidence digest ${bound}`
-      : historicalDirectIdentifierReference(bound);
+  const projectedBound = typeof boundLeaf?.value === "string" ? boundLeaf.value : undefined;
   const decisionId = entryId("decision", `gate.${nodeId}`);
   input.decisions.push({
     id: decisionId,
@@ -1262,7 +1253,7 @@ function emitAssertedNodeEvidence(input: AssertedEvidenceInput): void {
       mandatory: input.declaredDetails.has(`${nodeId}\u0000${leaf.path}`),
       source,
       state: "satisfied",
-      value: receiptEvidenceLeaf(input.scope, leaf, input.composition),
+      value: redactEvidenceLeaf(input.scope, leaf),
     });
   }
 
@@ -1313,7 +1304,7 @@ function observationFact(input: ObservationFactInput): Fact {
   const {
     factId, entryId, nodeId, taskId, leaf, scope, provenance, replayed, checkpointFingerprint, writtenAt,
   } = input;
-  const value = receiptEvidenceLeaf(scope, leaf, input.composition);
+  const value = redactEvidenceLeaf(scope, leaf);
   const base = { id: factId, field: leaf.field, mandatory: input.mandatory, state: "satisfied" as const, value };
 
   if (provenance === undefined) {
@@ -1435,28 +1426,10 @@ function commitActionOf(input: Readonly<{
   };
 }
 
-// Withhold composition 1/2 operator projections while preserving exact immutable re-derivation.
-function legacyAuthorityResidualWriteSummary(intent: WriteIntentRecord): string {
-  return [
-    "write intent ", intent.writeIntentId, " for ", intent.system, " key \"", intent.idempotencyKey,
-    "\" is still ", intent.status, "; this run left an unsettled external write behind and only ref ",
-    "write-safety's typed operator resolutions may release it",
-  ].join("");
-}
-
-function legacyAuthorityObservedPresentReason(intent: WriteIntentRecord): string {
-  return [
-    "the permanent key ", intent.system, "/\"", intent.idempotencyKey,
-    "\" was already satisfied and observed present; this run bound no fresh subject because it performed no write",
-  ].join("");
-}
-
-function subjectReason(intent: WriteIntentRecord, composition: ReceiptComposition, protectedTransaction = false): string {
+function subjectReason(intent: WriteIntentRecord): string {
   if (intent.status === "observed-present") {
-    return composition >= 3
-      ? `the permanent ${intent.system} ${idempotencyKeyDigestReference(intent.idempotencyKeyDigest, protectedTransaction)} was already satisfied and `
-        + "observed present; this run bound no fresh subject because it performed no write"
-      : legacyAuthorityObservedPresentReason(intent);
+    return `the permanent ${intent.system} ${idempotencyKeyDigestReference(intent.idempotencyKeyDigest, false)} was already satisfied and `
+      + "observed present; this run bound no fresh subject because it performed no write";
   }
   const proof = intent.bindingProof;
   if (proof.kind === "unscoped") {

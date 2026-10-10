@@ -8,7 +8,6 @@ import {
   RedactedFieldSchema,
   evidenceTransformAllowed,
   redactDiagnosticFields,
-  redactHistoricalValue,
 } from "../../rules/redaction/redaction.js";
 
 /** Where a leaf came from. A path only means something inside one of these. */
@@ -709,17 +708,4 @@ export function redactEvidenceLeaf(
     );
   }
   return RedactedFieldSchema.parse({ ...field, key: leaf.path });
-}
-
-/** Immutable receipt compositions 1–4 retain their exact original value representation. */
-export function historicalReceiptEvidenceLeaf(
-  scope: EvidenceValueScope,
-  leaf: EvidenceLeaf,
-): z.infer<typeof RedactedFieldSchema> {
-  const declared = classifyEvidenceLeaf(scope, leaf.path);
-  return RedactedFieldSchema.parse({
-    key: leaf.path,
-    ...redactHistoricalValue(declared.classification, declared.transform, leaf.value),
-    rawValue: leaf.value,
-  });
 }

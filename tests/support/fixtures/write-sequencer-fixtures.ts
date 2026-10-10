@@ -36,7 +36,7 @@ import { deriveIdempotencyKeyDigest } from "../../../src/rules/write-safety/writ
 import { WorkerSessionManager } from "../../../src/backend/runtime/workers/worker-sessions.js";
 import { assertSequencerMintedMutationCapability } from "../../../src/backend/runtime/writes/write-sequencer.js";
 import { recordBrowserAction, runDeclaredAction } from "../../../src/backend/systems/browser-shared/action-notes.js";
-import { HASH_C, UUID_2, UUID_3, UUID_4 } from "./phase1c-contract-fixtures.js";
+import { CONFIG_SNAPSHOT, HASH_C, UUID_2, UUID_3, UUID_4 } from "./phase1c-contract-fixtures.js";
 import {
   FIXTURE_SESSION_ACQUIRE_MS,
   ManualScheduler,
@@ -677,8 +677,8 @@ export function writeFixtureQueuedRun(options: Readonly<{
       descriptorVersion: 1,
       contractFingerprint: WRITE_FIXTURE_FINGERPRINT,
       resolvedInstance: { ucpath: "prod" },
-      configFingerprint: FingerprintSchema.parse("b".repeat(64)),
-      configSnapshotId: UUID_4,
+      configFingerprint: CONFIG_SNAPSHOT.fingerprint,
+      configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId,
       shape: "single",
       priority: "bulk",
       dryRun: options.dryRun ?? false,
@@ -689,6 +689,7 @@ export function writeFixtureQueuedRun(options: Readonly<{
       raw: { eid: WRITE_FIXTURE_EID },
       parsed: {
         schemaHash: deriveSchemaHash(WriteFixtureCanonicalInput, "output"),
+        protectedBindings: [],
         value: { eid: WRITE_FIXTURE_EID },
       },
       ingressSchemaHash: deriveSchemaHash(WriteFixtureInput, "input"),

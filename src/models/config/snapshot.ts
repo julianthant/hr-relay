@@ -1,3 +1,5 @@
+import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
+import { sha256Hex } from "../../rules/validation/sha256.js";
 import { z } from "zod";
 import { ActorIdSchema, ConfigSnapshotIdSchema, FingerprintSchema, IsoInstantSchema, PositiveIntSchema } from "../../rules/identity/ids.js";
 import { ConfigLeafPathSchema } from "./provenance.js";
@@ -31,6 +33,8 @@ export const ConfigSnapshotRecordSchema = z.strictObject({
   capturedBy: ActorIdSchema,
   config: StoredConfigSchema,
   provenance: z.record(ConfigLeafPathSchema, z.enum(["settings", "default"])),
+}).superRefine((record,context)=>{
+  if(record.fingerprint !== sha256Hex(canonicalJsonStringify(record.config)))context.addIssue({code:"custom",path:["fingerprint"],message:"config-snapshot-fingerprint-mismatch"});
 });
 
 export const ConfigSnapshotWriteSchema = ConfigSnapshotRecordSchema;

@@ -1,5 +1,6 @@
+import { FingerprintSchema } from "../../../rules/identity/ids.js";
 import { createHash, randomUUID } from "node:crypto";
-import { constants } from "node:fs";
+import { constants, openSync, closeSync, fstatSync, readFileSync, lstatSync, unlinkSync, fsyncSync } from "node:fs";
 import {
   link,
   lstat,
@@ -90,6 +91,46 @@ function decodeStoredArtifact(input: unknown, expectedDigest: string): Readonly<
     throw new Error(`artifact ${stored.ref.id} byte length does not match stored content`);
   }
   return Object.freeze({ ref: Object.freeze(stored.ref), bytes });
+}
+
+function inspectDeletionFile(admission: RuntimeAdmission, input: ArtifactRef) {
+  requireRuntimeAdmission(admission).assertLive();
+  const ref = ArtifactRefSchema.parse(input);
+  admission.assertArtifactRoot(admission.artifactRoot);
+  const path = join(admission.artifactRoot, `${ref.sha256}.artifact`);
+  const handle = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const status = fstatSync(handle);
+    if (!status.isFile()) throw new Error("artifact-deletion-file-not-regular");
+    const stored = readFileSync(handle);
+    const decoded = decodeStoredArtifact(JSON.parse(stored.toString("utf8")) as unknown, ref.sha256);
+    if (decoded.ref.id !== ref.id || decoded.ref.bytes !== ref.bytes || decoded.ref.mediaType !== ref.mediaType) throw new Error("artifact-deletion-reference-mismatch");
+    return {path,device:status.dev,inode:status.ino,ref,storedSha256:createHash("sha256").update(stored).digest("hex"),storedBytes:stored.byteLength};
+  } finally { closeSync(handle); }
+}
+
+export function inspectArtifactDeletionFile(admission: RuntimeAdmission, input: ArtifactRef) {
+  const {ref,storedSha256,storedBytes} = inspectDeletionFile(admission,input);
+  return {ref,storedSha256: FingerprintSchema.parse(storedSha256),storedBytes};
+}
+
+export function removeArtifactDeletionFile(admission: RuntimeAdmission,
+  captured: Readonly<{ref:ArtifactRef;storedSha256:string;storedBytes:number}>) {
+  requireRuntimeAdmission(admission).assertWritable();
+  let observed: ReturnType<typeof inspectDeletionFile>;
+  try { observed = inspectDeletionFile(admission,captured.ref); }
+  catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return "already-absent" as const;
+    throw error;
+  }
+  if (observed.storedSha256 !== captured.storedSha256 || observed.storedBytes !== captured.storedBytes) throw new Error("artifact-deletion-captured-bytes-mismatch");
+  admission.assertLive();
+  const current = lstatSync(observed.path);
+  if (!current.isFile() || current.isSymbolicLink() || current.dev !== observed.device || current.ino !== observed.inode) throw new Error("artifact-deletion-custody-changed");
+  unlinkSync(observed.path);
+  const directory = openSync(admission.artifactRoot,constants.O_RDONLY | constants.O_NOFOLLOW);
+  try { fsyncSync(directory); } finally { closeSync(directory); }
+  return "removed" as const;
 }
 
 async function readStoredArtifact(path: string, expectedDigest: string) {

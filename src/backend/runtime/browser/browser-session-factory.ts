@@ -1,3 +1,5 @@
+import { z } from "zod";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 
 import { mkdirSync, rmSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -24,6 +26,7 @@ import {
   FingerprintSchema,
   WorkerIdSchema,
   WorkflowIdSchema,
+  PositiveIntSchema,
 } from "../../../rules/identity/ids.js";
 import type { BrowserSystemId, Fingerprint, WorkerId, WorkflowId } from "../../../rules/identity/ids.js";
 import {
@@ -54,6 +57,19 @@ export interface PersistentContextLauncher {
   }>): Promise<BrowserContext>;
 }
 
+export const PROFILE_CUSTODY_UNAVAILABLE_TEXT = "Browser profile custody is unavailable. The browser cannot open until its current profile revision is admitted.";
+export class ProfileCustodyUnavailableError extends Error {
+  readonly code = "browser-profile-custody-unavailable";
+  constructor() { super(PROFILE_CUSTODY_UNAVAILABLE_TEXT); this.name = "ProfileCustodyUnavailableError"; }
+}
+
+export const BrowserProfileAdmissionSchema = z.strictObject({
+  workerId: WorkerIdSchema, system: BrowserSystemIdSchema, instance: RuntimeInstanceSchema,
+  configFingerprint: FingerprintSchema, browserMode: BrowserPresentationModeSchema,
+  profileDirectory: AbsolutePathSchema, profileRevision: PositiveIntSchema,
+});
+export type BrowserProfileAdmission = z.infer<typeof BrowserProfileAdmissionSchema>;
+
 export interface BrowserSessionFactoryOptions {
   readonly config: Config;
   readonly protectedSecrets: ProtectedSecretSource;
@@ -61,6 +77,8 @@ export interface BrowserSessionFactoryOptions {
   readonly clock: Clock;
   readonly scheduler: BrowserDeadlineScheduler;
   readonly newSessionId: () => string;
+  readonly admitProfile: (input: Readonly<{ workerId: WorkerId; system: BrowserSystemId; instance: RuntimeInstance;
+    configFingerprint: Fingerprint; browserMode: BrowserPresentationMode; profileDirectory: string }>) => Promise<BrowserProfileAdmission>;
   readonly bindings?: BrowserSystemBindings;
   readonly launcher?: PersistentContextLauncher;
   // Session proof diagnostics name the observed marker, never its sensitive value.
@@ -196,11 +214,14 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     }
     if (input.signal.aborted) throw new Error(`${system} browser session open was cancelled before launch`);
 
-    assertDuoAutopilotReady(config);
     const profileDirectory = workerProfileDirectory({
       profileRoot: config.paths.browserProfileRoot,
       isolation, workerId, system, instance, configFingerprint, browserMode,
     });
+    const profileIdentity = { workerId, system, instance, configFingerprint, browserMode, profileDirectory };
+    const { profileRevision, ...admittedIdentity } = BrowserProfileAdmissionSchema.parse(await this.#options.admitProfile(profileIdentity));
+    if (canonicalJsonStringify(admittedIdentity) !== canonicalJsonStringify(profileIdentity)) throw new ProfileCustodyUnavailableError();
+    assertDuoAutopilotReady(config);
     mkdirSync(profileDirectory, { recursive: true });
 
     const context = await this.#launcher.launch({
@@ -231,6 +252,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
         configFingerprint,
         browserMode,
         profileDirectory,
+        profileRevision,
         acceptDownloads: input.acceptDownloads,
         exclusive: input.exclusive,
         driver: binding.createDriver(page, this.#options.clock),

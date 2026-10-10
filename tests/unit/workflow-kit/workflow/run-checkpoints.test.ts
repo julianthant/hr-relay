@@ -12,9 +12,7 @@ import {
   RunCheckpointRecordSchema,
   assertCheckpointFreshness,
   auditCheckpointFreshness,
-  checkpointLookupKey,
   checkpointRecordKey,
-  defineCheckpointMigration,
   loadCheckpoint,
 } from "../../../../src/models/workflow/checkpoint.js";
 import type { FactProvenance, RunCheckpointRecord } from "../../../../src/models/workflow/checkpoint.js";
@@ -103,10 +101,9 @@ describe("run checkpoints", () => {
     assert.deepEqual(loaded.output, { eid: "10800000", present: true });
     assert.equal(loaded.provenance.length, 1);
     assert.equal(loaded.attempt, 1);
-    assert.equal(loaded.migratedFrom, undefined);
   });
 
-  it("refuses a version, contract, impl, or schema mismatch with no migration", () => {
+  it("refuses a version, contract, impl, or schema mismatch", () => {
     const cases = [
       [checkpoint({ descriptorVersion: 2 }), "descriptor-version-mismatch"],
       [checkpoint({ contractFingerprint: HASH_B }), "contract-fingerprint-mismatch"],
@@ -118,46 +115,6 @@ describe("run checkpoints", () => {
       assert.equal(loaded.found, false, reason);
       assert.equal(loaded.found === false && loaded.reason, reason);
     }
-  });
-
-  it("replays across a version bump only through a checked-in migration", () => {
-    const stored = checkpoint({ descriptorVersion: 1, contractFingerprint: HASH_B, output: { schemaHash: HASH_C, value: { eid: "10800000" } } });
-    const expectation = CheckpointExpectationSchema.parse({
-      ...EXPECTATION,
-      descriptorVersion: 2,
-      contractFingerprint: HASH_A,
-    });
-    assert.equal(loadCheckpoint(stored, expectation, OUTPUT).found, false);
-
-    const migration = defineCheckpointMigration({
-      workflowId: "fixture-graph",
-      nodeId: "probe",
-      from: { descriptorVersion: 1, contractFingerprint: HASH_B },
-      to: { descriptorVersion: 2, contractFingerprint: HASH_A },
-      migrate: (value) => ({ ...(value as Record<string, unknown>), present: true }),
-    });
-    const migrated = loadCheckpoint(stored, expectation, OUTPUT, [migration]);
-    assert.equal(migrated.found, true);
-    if (!migrated.found) return;
-    assert.deepEqual(migrated.output, { eid: "10800000", present: true });
-    assert.deepEqual(migrated.migratedFrom, { descriptorVersion: 1, contractFingerprint: HASH_B });
-
-    // An unsealed object is not a reviewed migration.
-    assert.throws(() => loadCheckpoint(stored, expectation, OUTPUT, [{
-      workflowId: "fixture-graph",
-      nodeId: "probe",
-      from: { descriptorVersion: 1, contractFingerprint: HASH_B },
-      to: { descriptorVersion: 2, contractFingerprint: HASH_A },
-      migrate: (value) => value,
-    }]), /must be the exact objects returned by defineCheckpointMigration/);
-    // A migration that changes nothing is a lie about compatibility.
-    assert.throws(() => defineCheckpointMigration({
-      workflowId: "fixture-graph",
-      nodeId: "probe",
-      from: { descriptorVersion: 1, contractFingerprint: HASH_A },
-      to: { descriptorVersion: 1, contractFingerprint: HASH_A },
-      migrate: (value) => value,
-    }), /does not change version or fingerprint/);
   });
 
   it("reports a payload that no longer parses instead of returning it", () => {
@@ -273,16 +230,5 @@ describe("run checkpoints", () => {
   });
 
 
-  it("leaves a checkpoint without claim generation key byte-identical", () => {
-    const legacy = { ...checkpoint() };
-    delete (legacy as { claimGeneration?: number }).claimGeneration;
-    assert.equal(
-      checkpointRecordKey(RunCheckpointRecordSchema.parse(legacy)),
-      ["fixture-graph", "33333333-3333-4333-8333-333333333333", "probe", "1"].join("\u0000"),
-    );
-    assert.equal(
-      checkpointLookupKey("fixture-graph", "33333333-3333-4333-8333-333333333333", "probe", 1),
-      checkpointRecordKey(RunCheckpointRecordSchema.parse(legacy)),
-    );
-  });
+
 });

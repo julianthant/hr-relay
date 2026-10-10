@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import { createTimelineEmitter } from "../../../src/backend/storage/events/timeline-emitter.js";
 import { readTimelineRecords } from "../../../src/backend/storage/events/timeline-reader.js";
 import { ExecutorSpanEventSchema } from "../../../src/backend/logs/span-emitter.js";
@@ -239,6 +240,7 @@ export function sessionFactoryHarness(
   let opens = 0;
   let logins = 0;
   const opensBySystem = new Map<string, number>();
+  const admittedSyntheticProfiles = new Map<string, number>();
   const closeReasons: BrowserSessionCloseReason[] = [];
   const trace: SessionFactoryTraceEntry[] = [];
   return {
@@ -252,12 +254,16 @@ export function sessionFactoryHarness(
           throw new Error(`session factory has no driver for ${input.system}`);
         }
         const driver = driverFactory(systemOpens);
+        if(!admittedSyntheticProfiles.has(input.system))admittedSyntheticProfiles.set(input.system,1);
+        const profileRevision=admittedSyntheticProfiles.get(input.system);
+        assert.ok(profileRevision!==undefined);
         const sessionId = BrowserSessionIdSchema.parse(
           `00000000-0000-4000-8000-${String(opens).padStart(12, "0")}`,
         );
         trace.push({ kind: "open", system: input.system, sessionId });
         return {
           sessionId,
+          profileRevision,
           system: input.system,
           ...(input.instance === undefined ? {} : { instance: input.instance }),
           configFingerprint: input.configFingerprint,

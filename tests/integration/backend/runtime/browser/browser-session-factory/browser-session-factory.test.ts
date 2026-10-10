@@ -8,6 +8,8 @@ import { join, resolve as resolvePath } from "node:path";
 import { describe, it } from "vitest";
 import type { BrowserContext } from "playwright";
 import {
+  BrowserProfileAdmissionSchema,
+  ProfileCustodyUnavailableError,
   PlaywrightWorkerSessionFactory,
   assertDuoAutopilotReady,
   workerProfileDirectory,
@@ -207,6 +209,7 @@ function factoryFor(
     clock: CLOCK,
     scheduler,
     newSessionId: () => SESSION_ID,
+    admitProfile: input => Promise.resolve(BrowserProfileAdmissionSchema.parse({ ...input, profileRevision: 7 })),
     bindings,
     launcher: harness.launcher,
   });
@@ -466,6 +469,7 @@ describe("worker browser session factory", () => {
         clock: CLOCK,
         scheduler: NEVER_SCHEDULER,
         newSessionId: () => SESSION_ID,
+    admitProfile: input => Promise.resolve(BrowserProfileAdmissionSchema.parse({ ...input, profileRevision: 7 })),
         bindings: recordingBindings({ verify: verifier.verify }),
         launcher: harness.launcher,
         onAuthenticationEvidence: (observed) => evidence.push(observed),
@@ -619,6 +623,40 @@ describe("worker browser session factory", () => {
         ),
         /unresolved failed-close proof/,
       );
+    });
+  });
+});
+
+
+describe("required profile custody admission", () => {
+  it("refuses an unavailable owner before profile creation, launch and secret access", async () => {
+    await withTempRuntime(async ({ config }) => {
+      const harness = fakeLauncher({ page: fakePage() });
+      let launches = 0;
+      const factory = new PlaywrightWorkerSessionFactory({ config, isolation: rebuildRuntimeIsolation, clock: CLOCK,
+        scheduler: NEVER_SCHEDULER, newSessionId: () => SESSION_ID,
+        protectedSecrets: protectedSecretSource({}), bindings: recordingBindings(),
+        admitProfile: () => Promise.reject(new ProfileCustodyUnavailableError()),
+        launcher: { launch: input => { launches += 1; return harness.launcher.launch(input); } },
+      });
+      await assert.rejects(factory.open(OPEN_INPUT), ProfileCustodyUnavailableError);
+      assert.equal(launches, 0);
+      assert.equal(existsSync(config.paths.browserProfileRoot), false);
+    });
+  });
+  it("refuses a revision admitted for a different profile identity before launch", async () => {
+    await withTempRuntime(async ({ config }) => {
+      const harness = fakeLauncher({ page: fakePage() });
+      let launches = 0;
+      const factory = new PlaywrightWorkerSessionFactory({ config, isolation: rebuildRuntimeIsolation, clock: CLOCK,
+        scheduler: NEVER_SCHEDULER, newSessionId: () => SESSION_ID,
+        protectedSecrets: protectedSecretSource({}), bindings: recordingBindings(),
+        admitProfile: input => Promise.resolve(BrowserProfileAdmissionSchema.parse({ ...input, configFingerprint: OTHER_FINGERPRINT, profileRevision: 7 })),
+        launcher: { launch: input => { launches += 1; return harness.launcher.launch(input); } },
+      });
+      await assert.rejects(factory.open(OPEN_INPUT), ProfileCustodyUnavailableError);
+      assert.equal(launches, 0);
+      assert.equal(existsSync(config.paths.browserProfileRoot), false);
     });
   });
 });

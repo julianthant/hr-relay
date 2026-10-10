@@ -17,7 +17,7 @@ afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: 
 it("binds a synthetic capability to one temp fixture and revokes it", () => {
   const root = fixture();
   const path = join(root, "state.db");
-  const admission = RuntimeAdmission.syntheticFixture(path, "authority");
+  const admission = RuntimeAdmission.syntheticFixture(path);
   expect(Object.isFrozen(admission)).toBe(true);
   expect(admission.stateRoot).toBe(root);
   expect(() => admission.assertAuthorityDatabase(path)).not.toThrow();
@@ -34,10 +34,10 @@ it("rejects symlinked and hard-linked fixture databases before issuance", () => 
   writeFileSync(target, "synthetic");
   const linked = join(root, "state.db");
   symlinkSync(target, linked);
-  expect(() => RuntimeAdmission.syntheticFixture(linked, "authority")).toThrow(/unsafe synthetic fixture database/u);
+  expect(() => RuntimeAdmission.syntheticFixture(linked)).toThrow(/unsafe synthetic fixture database/u);
   rmSync(linked);
   linkSync(target, linked);
-  expect(() => RuntimeAdmission.syntheticFixture(linked, "authority")).toThrow(/unsafe synthetic fixture database/u);
+  expect(() => RuntimeAdmission.syntheticFixture(linked)).toThrow(/unsafe synthetic fixture database/u);
 });
 
 it("rejects fixture aliases and installation witnesses", () => {
@@ -45,9 +45,9 @@ it("rejects fixture aliases and installation witnesses", () => {
   const external = fixture();
   const alias = join(root, "alias");
   symlinkSync(external, alias);
-  expect(() => RuntimeAdmission.syntheticFixture(join(alias, "state.db"), "authority")).toThrow(/unsafe synthetic fixture ancestor/u);
+  expect(() => RuntimeAdmission.syntheticFixture(join(alias, "state.db"))).toThrow(/unsafe synthetic fixture ancestor/u);
   mkdirSync(join(root, ".runtime-control"));
-  expect(() => RuntimeAdmission.syntheticFixture(join(root, "state.db"), "authority")).toThrow(/installation witness/u);
+  expect(() => RuntimeAdmission.syntheticFixture(join(root, "state.db"))).toThrow(/installation witness/u);
 });
 
 it("rechecks root shape after a capability was issued", () => {

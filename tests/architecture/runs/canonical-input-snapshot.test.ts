@@ -4,22 +4,14 @@ import { describe, it } from "vitest";
 import { z } from "zod";
 import { DESCRIPTORS } from "../../../src/backend/app/registries/workflow-registry.js";
 import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
-import { FingerprintSchema } from "../../../src/rules/identity/ids.js";
+import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
 import {
   canonicalInputSamples,
   defineCanonicalInput,
   parseCanonicalInputSnapshot,
 } from "../../../src/models/workflow/canonical-input.js";
-import {
-  defineCanonicalInputSnapshotMigration,
-  migrateCanonicalInputSnapshot,
-} from "../../../src/models/workflow/checkpoint.js";
 import { auditCanonicalInputSchema } from "../../../src/models/validation/canonical-input-schema.js";
 import { fixtureDescriptor } from "../../support/fixtures/descriptor-fixtures.js";
-
-const HASH_OLD = FingerprintSchema.parse("1".repeat(64));
-const HASH_NEW = FingerprintSchema.parse("2".repeat(64));
-const HASH_OTHER = FingerprintSchema.parse("3".repeat(64));
 
 describe("canonical input snapshot", () => {
   it("keeps every registered canonical schema transform-free and round-tripping", () => {
@@ -80,88 +72,22 @@ describe("canonical input snapshot", () => {
   it("fails loud on a corrupted snapshot rather than re-deriving it from ingress", () => {
     for (const descriptor of DESCRIPTORS) {
       assert.throws(
-        () => parseCanonicalInputSnapshot(descriptor.canonicalInput, { corrupted: true }),
+        () => parseCanonicalInputSnapshot(descriptor.canonicalInput, { schemaHash: deriveSchemaHash(descriptor.canonicalInput, "output"), value: { corrupted: true } }),
         /stored canonical input snapshot is invalid and will not be re-derived from ingress/,
         String(descriptor.id),
       );
     }
   });
 
-  it("moves a snapshot across schema hashes only through a checked-in migration", () => {
-    const migration = defineCanonicalInputSnapshotMigration({
-      workflowId: "person-lookup",
-      from: HASH_OLD,
-      to: HASH_NEW,
-      migrate: (stored) => ({ ...(stored as Record<string, unknown>), includeCrmDates: false }),
-    });
-
-    assert.deepEqual(
-      migrateCanonicalInputSnapshot(
-        { schemaHash: HASH_OLD, value: { name: "Battistessa, Johnnie", keepNonHdh: false } },
-        HASH_NEW,
-        [migration],
-        "person-lookup",
-      ),
-      { name: "Battistessa, Johnnie", keepNonHdh: false, includeCrmDates: false },
-    );
-
-    // No migration reaches the current hash → loud refusal, never a re-parse.
-    assert.throws(
-      () => migrateCanonicalInputSnapshot(
-        { schemaHash: HASH_OTHER, value: {} },
-        HASH_NEW,
-        [migration],
-        "person-lookup",
-      ),
-      /no checked-in snapshot migration reaches it/,
-    );
-    // A migration for another workflow is not a migration for this one.
-    assert.throws(
-      () => migrateCanonicalInputSnapshot(
-        { schemaHash: HASH_OLD, value: {} },
-        HASH_NEW,
-        [migration],
-        "fixture-graph",
-      ),
-      /no checked-in snapshot migration reaches it/,
-    );
-    // An unsealed object cannot stand in for a reviewed migration.
-    assert.throws(
-      () => migrateCanonicalInputSnapshot(
-        { schemaHash: HASH_OLD, value: {} },
-        HASH_NEW,
-        [{ workflowId: "person-lookup", from: HASH_OLD, to: HASH_NEW, migrate: (value) => value }],
-        "person-lookup",
-      ),
-      /must be the exact objects returned by defineCanonicalInputSnapshotMigration/,
-    );
-    // A no-op migration is a lie about compatibility.
-    assert.throws(
-      () => defineCanonicalInputSnapshotMigration({
-        workflowId: "person-lookup",
-        from: HASH_OLD,
-        to: HASH_OLD,
-        migrate: (value) => value,
-      }),
-      /does not change the schema hash/,
-    );
-  });
-
-  it("refuses a snapshot migration chain that cycles", () => {
-    const forward = defineCanonicalInputSnapshotMigration({
-      workflowId: "person-lookup", from: HASH_OLD, to: HASH_NEW, migrate: (value) => value,
-    });
-    const backward = defineCanonicalInputSnapshotMigration({
-      workflowId: "person-lookup", from: HASH_NEW, to: HASH_OLD, migrate: (value) => value,
-    });
-    assert.throws(
-      () => migrateCanonicalInputSnapshot(
-        { schemaHash: HASH_OLD, value: {} },
-        HASH_OTHER,
-        [forward, backward],
-        "person-lookup",
-      ),
-      /form a cycle/,
-    );
+  it("requires the exact current schema hash without changing canonical bytes", () => {
+    for (const descriptor of [...DESCRIPTORS, fixtureDescriptor]) {
+      const value = canonicalInputSamples(descriptor.canonicalInput)[0];
+      const expected = deriveSchemaHash(descriptor.canonicalInput, "output");
+      const stored = { schemaHash: expected, value };
+      const before = canonicalJsonStringify(stored);
+      assert.equal(canonicalJsonStringify(parseCanonicalInputSnapshot(descriptor.canonicalInput, stored)), canonicalJsonStringify(value));
+      assert.equal(canonicalJsonStringify(stored), before);
+      assert.throws(() => parseCanonicalInputSnapshot(descriptor.canonicalInput, { ...stored, schemaHash: "0".repeat(64) }), /bound to schema.*will not be re-derived from ingress/u);
+    }
   });
 });

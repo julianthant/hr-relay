@@ -1,3 +1,4 @@
+import { parseCanonicalInputSnapshot } from "../../../models/workflow/canonical-input.js";
 import { ConfigSnapshotRecordSchema } from "../../../models/config/snapshot.js";
 import { SETTINGS_CATALOG } from "../../../models/config/catalog.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
@@ -38,7 +39,7 @@ import type { RunResultRecord, TerminalDependencyEvidence } from "../../../model
 import type { SessionNeed } from "../../../models/sessions/session.js";
 import { FailureRecordSchema, type FailureRecord } from "../../../models/trust/failure.js";
 import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../../workflow-kit/validation/build-manifest.js";
-import { auditCheckpointFreshness, CheckpointExpectationSchema, loadCheckpoint, migrateCanonicalInputSnapshot, RunCheckpointRecordSchema, type CanonicalInputSnapshotMigration, type CheckpointMigration, type CheckpointPatch, type ReplayedCheckpoint, type RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
+import { auditCheckpointFreshness, CheckpointExpectationSchema, loadCheckpoint, RunCheckpointRecordSchema, type CheckpointPatch, type ReplayedCheckpoint, type RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import { applyCheckpointPatches } from "../checkpoints/checkpoint-patch.js";
 import { deriveArtifactProjectionRows } from "../../../models/workflow/artifact-projection.js";
 import { childRunOutcomeSchema, DelegationManifestRefSchema } from "../../../models/workflow/graph.js";
@@ -198,8 +199,6 @@ export interface RunExecutorDependencies {
   /** Optional production sink for task messages and browser actions. */
   readonly taskNotes?: Pick<NoteJsonlWriter, "emitRunLog" | "emitRunAction">;
   readonly confirmedActionPublisher?: ConfirmedActionPublisher;
-  readonly checkpointMigrations?: readonly CheckpointMigration[];
-  readonly canonicalInputMigrations?: readonly CanonicalInputSnapshotMigration[];
   readonly writeSequencer?: WriteSequencer;
   readonly childRuns?: ChildRunExecutor;
   /** Registered workflow/external source ports for non-operator gates. */
@@ -499,15 +498,8 @@ export async function executeClaimedRun(
 
     const problems: string[] = [];
     let canonicalInput: JsonValue | undefined;
-    const canonicalSchemaHash = deriveSchemaHash(descriptor.canonicalInput, "output");
     try {
-      const migrated = migrateCanonicalInputSnapshot(
-        { schemaHash: initial.input.parsed.schemaHash, value: initial.input.parsed.value },
-        canonicalSchemaHash,
-        deps.canonicalInputMigrations ?? [],
-        descriptor.id,
-      );
-      canonicalInput = JsonValueSchema.parse(descriptor.canonicalInput.parse(migrated));
+      canonicalInput = JsonValueSchema.parse(parseCanonicalInputSnapshot(descriptor.canonicalInput, initial.input.parsed));
     } catch (error) {
       problems.push(error instanceof Error ? error.message : "canonical input snapshot failed to parse");
     }
@@ -725,7 +717,6 @@ export async function executeClaimedRun(
           stored,
           checkpointExpectation(node),
           node.uses.output,
-          deps.checkpointMigrations ?? [],
         );
         // `stored` is the repository's strict parse already; a found load has a row.
         const storedRecord = load.found ? requireStoredCheckpoint(stored, String(node.id)) : undefined;

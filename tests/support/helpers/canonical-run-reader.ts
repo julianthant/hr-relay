@@ -18,7 +18,6 @@ export function sqliteRunReader(database: AuthorityDatabase, clock: Clock): Cano
 
 export interface InMemoryRunReaderState {
   readonly records: ReadonlyMap<string, RunRecord>;
-  readonly archived: ReadonlySet<string>;
   readonly deleted: ReadonlyMap<string, DeletedRunRecord>;
   /** The fixture advances this explicitly whenever its authority generation changes. */
   generation: number;
@@ -33,9 +32,7 @@ export function inMemoryRunReaderFake(state: InMemoryRunReaderState): CanonicalR
     if (run !== undefined && tombstone !== undefined) throw new Error(`run ${runId} has both lifecycle authority and a tombstone`);
     if (tombstone !== undefined) return RunExistenceSchema.parse({ state: "deleted", tombstone });
     if (run === undefined) return RunExistenceSchema.parse({ state: "absent", runId });
-    const archived = state.archived.has(runId);
-    if (archived && run.lifecycle.state !== "terminal") throw new Error(`archived run ${runId} is not terminal`);
-    return RunExistenceSchema.parse({ state: "present", run, disposition: archived ? "archived" : "live" });
+    return RunExistenceSchema.parse({ state: "present", run, disposition: "live" });
   };
   return Object.freeze({
     read,

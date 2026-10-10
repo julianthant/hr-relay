@@ -4,8 +4,6 @@ import { z } from "zod";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { FingerprintSchema, IsoInstantSchema, ItemIdSchema, NodeIdSchema, PositiveIntSchema, RunIdSchema,
   WorkerIdSchema, WorkflowIdSchema, WriteAttemptIdSchema, FailureIdSchema, CommandIdSchema, ActorIdSchema } from "../../rules/identity/ids.js";
-import { AtomicOutboxRecordSchema } from "../notifications/outbox.js";
-import { LedgerPartitionRecordSchema, LedgerProjectionRecordSchema, deriveLedgerLineDigest } from "../../rules/runs/ledger-projection.js";
 import { LedgerEntryPayloadSchema } from "../../rules/runs/ledger.js";
 import { SpanEventWireSchema } from "./types.js";
 
@@ -15,7 +13,7 @@ export const TimelineCheckpointReferenceSchema = z.strictObject({
   itemId: ItemIdSchema,
   nodeId: NodeIdSchema,
   attempt: PositiveIntSchema,
-  claimGeneration: PositiveIntSchema.optional(),
+  claimGeneration: PositiveIntSchema,
   runId: RunIdSchema,
   outputDigest: FingerprintSchema,
   writtenAt: IsoInstantSchema,
@@ -63,19 +61,10 @@ export const TimelineAppendSchema = z.strictObject({
   ]),
   occurredAt: IsoInstantSchema,
   recordedAt: IsoInstantSchema,
-  /** Local append day, preserved from the source filename during conversion. */
+  /** Local append day. */
   retentionDate: z.iso.date(),
   payload: TimelinePayloadSchema,
-  source: z.discriminatedUnion("kind", [
-    z.strictObject({ kind: z.literal("native") }),
-    z.strictObject({
-      kind: z.literal("span-import"),
-      manifestDigest: FingerprintSchema,
-      relativePath: z.string().regex(/^spans\/[a-z0-9]+(?:-[a-z0-9]+)*-\d{4}-\d{2}-\d{2}\.jsonl$/),
-      fileDigest: FingerprintSchema,
-      line: PositiveIntSchema,
-    }),
-  ]),
+  source: z.strictObject({ kind: z.literal("native") }),
 }).superRefine((record, context) => {
   const payload = record.payload;
   const runId = payload.kind === "span"
@@ -100,7 +89,7 @@ export const TimelineAppendSchema = z.strictObject({
   }
   if (payload.kind === "checkpoint-recorded" && (payload.checkpoint.runId !== payload.runId
     || payload.checkpoint.workflowId !== payload.workflow || payload.checkpoint.attempt !== payload.attempt
-    || (payload.checkpoint.claimGeneration ?? 1) !== payload.claimGeneration || record.occurredAt !== payload.checkpoint.writtenAt)) {
+    || payload.checkpoint.claimGeneration !== payload.claimGeneration || record.occurredAt !== payload.checkpoint.writtenAt)) {
     context.addIssue({ code: "custom", message: "recorded checkpoint must bind its original execution and time" });
   }
   if (payload.kind === "checkpoint-replayed" && (payload.checkpoint.workflowId !== payload.workflow
@@ -147,57 +136,7 @@ export interface TimelineRepository {
 
 export function timelineCheckpointReference(checkpoint: RunCheckpointRecord) {
   return { workflowId: checkpoint.workflowId, itemId: checkpoint.itemId, nodeId: checkpoint.nodeId,
-    attempt: checkpoint.attempt, ...(checkpoint.claimGeneration === undefined ? {} : { claimGeneration: checkpoint.claimGeneration }),
+    attempt: checkpoint.attempt, claimGeneration: checkpoint.claimGeneration,
     runId: checkpoint.runId, outputDigest: sha256Hex(canonicalJsonStringify(checkpoint.output)), writtenAt: checkpoint.writtenAt };
 }
 
-/** Retired source representations, authenticated during stopped conversion only. */
-export const HistoricalOperationSourceSchema = z.strictObject({
-  version: z.literal(1),
-  recordKey: z.string().min(1),
-  operationId: z.uuid(),
-  generation: PositiveIntSchema,
-  runId: RunIdSchema,
-  manifestDigest: FingerprintSchema,
-  backupSha256: FingerprintSchema,
-  ledgerOutbox: AtomicOutboxRecordSchema,
-  spanOutbox: AtomicOutboxRecordSchema,
-  projection: LedgerProjectionRecordSchema.nullable(),
-  partition: LedgerPartitionRecordSchema.nullable(),
-  file: z.strictObject({ relativePath: z.string().regex(/^ledger\/[a-z0-9-]+-\d{4}-\d{2}-\d{2}\.jsonl$/),
-    sha256: FingerprintSchema, line: PositiveIntSchema }).nullable(),
-}).superRefine((source, context) => {
-  if (source.recordKey !== `${source.operationId}:${String(source.generation)}`
-    || source.ledgerOutbox.payload.kind !== "ledger-entry"
-    || source.spanOutbox.payload.kind !== "write-committed-span"
-    || source.ledgerOutbox.aggregate.writeIntentId !== source.operationId
-    || source.spanOutbox.aggregate.writeIntentId !== source.operationId
-    || source.ledgerOutbox.aggregate.generation !== source.generation
-    || source.spanOutbox.aggregate.generation !== source.generation
-    || (source.ledgerOutbox.payload.kind === "ledger-entry" && source.ledgerOutbox.payload.entry.runId !== source.runId)
-    || (source.projection !== null && source.projection.outboxId !== source.ledgerOutbox.outboxId)) {
-    context.addIssue({ code: "custom", message: "historical operation source identity mismatch" });
-  }
-  if (source.ledgerOutbox.payload.kind !== "ledger-entry" || source.spanOutbox.payload.kind !== "write-committed-span") return;
-  const ledger = source.ledgerOutbox.payload.entry;
-  const span = source.spanOutbox.payload;
-  if (source.ledgerOutbox.outboxId === source.spanOutbox.outboxId
-    || ledger.writeIntentId !== source.operationId || ledger.intentGeneration !== source.generation
-    || span.writeIntentId !== source.operationId || span.intentGeneration !== source.generation
-    || span.outcome.disposition !== "committed" || span.occurredAt !== ledger.confirmedAt
-    || span.outcome.confirmedAt !== ledger.confirmedAt || span.outcome.proofSource !== ledger.proofSource
-    || canonicalJsonStringify(span.outcome.proof) !== canonicalJsonStringify(ledger.proof)
-    || (["runId", "traceId", "workflowId", "itemId", "attempt", "system", "idempotencyKey", "idempotencyKeyDigest", "bindingProofDigest"] as const)
-      .some((field) => ledger[field] !== span[field])) {
-    context.addIssue({ code: "custom", message: "historical operation source settlement disagreement" });
-  }
-  const { projection, partition, file } = source;
-  if (projection === null ? partition !== null || file !== null : partition === null
-    || projection.system !== ledger.system || projection.system !== partition.system || projection.date !== partition.date
-    || projection.seq >= partition.nextSeq
-    || projection.lineDigest !== deriveLedgerLineDigest(canonicalJsonStringify({ outboxId: source.ledgerOutbox.outboxId, seq: projection.seq, payload: ledger }))
-    || (file !== null && (file.relativePath !== `ledger/${projection.system}-${projection.date}.jsonl` || file.line !== projection.seq + 1))) {
-    context.addIssue({ code: "custom", message: "historical operation source assignment disagreement" });
-  }
-});
-export type HistoricalOperationSource = z.infer<typeof HistoricalOperationSourceSchema>;

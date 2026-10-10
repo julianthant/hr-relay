@@ -901,7 +901,7 @@ function reconcileSpanAuthority(
     ? [
         ...resolutions.filter((resolution) => resolution.state === "malformed"),
         ...snapshot.malformedRecords.filter((record) => !malformedResolutionKeys.has(
-          `${record.source === "current" ? "workflow_runs" : "archived_runs"}\0${record.recordKey}`)),
+          `${record.source === "current" ? "runs" : "archived_runs"}\0${record.recordKey}`)),
       ]
     : [
         ...resolutions.filter((resolution) => resolution.state === "missing" || resolution.state === "malformed"),
@@ -1082,7 +1082,7 @@ async function inspectCandidates(
   requireDatabaseSourcePath(join(directory, "probe"));
   try { lstatSync(directory); } catch (error) { if (errnoCode(error) === "ENOENT") return { current: [], previous: [] }; throw error; }
   const manifestNames = readdirSync(directory, { withFileTypes: true })
-    .filter((entry) => entry.name.endsWith(".manifest.json") || entry.name.endsWith(".lifecycle.json"))
+    .filter((entry) => entry.name.endsWith(".manifest.json"))
     .map(({ name }) => name)
     .sort();
   const candidates: CandidateWithMtime[] = [];
@@ -1114,7 +1114,7 @@ async function inspectCandidates(
             value: Math.max(0, authorityInspection.authorityGeneration - verified.manifest.authorityGeneration),
           };
       let restoreEligibility = inspectRestoreEligibility(admission,{ schemaVersion: verified.manifest.schemaVersion,
-        paired: selection === "lifecycle-pair", backupPath: verified.backupPath,
+        backupPath: verified.backupPath,
         backupSha256: verified.manifest.sha256, stateRoot, authorityAvailable: authorityInspection !== undefined });
       if (restoreEligibility.state === "eligible") {
         try {
@@ -1199,7 +1199,7 @@ export async function doctorAuthorityStorage(admission: RuntimeAdmission, input:
     ? initialAuthorityRead.identity
     : undefined;
 
-  const initialRecovery = inspectStorageRecovery(stateRoot, sourceDatabaseIdentity);
+  const initialRecovery = inspectStorageRecovery(admission, sourceDatabaseIdentity);
   let candidates: readonly CandidateWithMtime[] = [];
   let previous: readonly PreviousWithMtime[] = [];
   let candidateInspectionFailed = false;
@@ -1289,7 +1289,7 @@ export async function doctorAuthorityStorage(admission: RuntimeAdmission, input:
   if (spanAuthorityIdentityMismatch) {
     throw new Error("span authority snapshot does not match the storage doctor's initial authority identity");
   }
-  const finalRecovery = inspectStorageRecovery(stateRoot, sourceDatabaseIdentity);
+  const finalRecovery = inspectStorageRecovery(admission, sourceDatabaseIdentity);
   const recovery = initialRecovery.identity === finalRecovery.identity ? finalRecovery.report
     : { state: "unavailable", findings: finalRecovery.report.state === "clear" ? [] : finalRecovery.report.findings,
       cause: { code: "authority-unavailable", summary: "Recovery evidence changed during inspection. Run the doctor again before deciding recovery." } };

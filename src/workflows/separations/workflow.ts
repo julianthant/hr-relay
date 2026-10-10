@@ -1,10 +1,10 @@
 /** `separations` — one Kuali separation document → one terminated employee across three systems; reads before writes, gated by operator approval. */
 import { z } from "zod";
-import { OmittedStepResultArmSchema } from "../../models/workflow/step-omission.js";
+import { SeparationsResultSchema } from "../../models/workflows/separations/result.js";
+export { SeparationsResultSchema } from "../../models/workflows/separations/result.js";
 import { defineWorkflow, defineStepEntries } from "../../workflow-kit/workflow-definition.js";
 import { requireFact, defineWorkflowStep } from "../../workflow-kit/workflow.js";
 import {
-  ResolvedIdentitySubjectSchema,
   IdentityApprovalResultSchema,
 } from "../../rules/separations/identity-approval.js";
 import {
@@ -13,7 +13,6 @@ import {
   assertSeparationDates,
 } from "../../rules/separations/separation-dates.js";
 import {
-  TerminationReceiptSchema,
   TERMINATION_RECEIPT_ACCEPTED_STATUSES,
   assertTerminationReceipt,
 } from "../../rules/separations/termination-receipt.js";
@@ -21,10 +20,6 @@ import {
   KualiDocumentNumberSchema,
   KualiTimekeeperNameSchema,
 } from "../../models/ui/kuali-document-identity.js";
-import { KualiSavedFinalizationProofSchema } from "../../models/ui/kuali-separation-finalization.js";
-import {
-  UcpathPendingSweepHistoricalOrCurrentProofSchema,
-} from "../../models/ui/ucpath-smart-hr-termination.js";
 import { defineCanonicalInput } from "../../models/workflow/canonical-input.js";
 import { defineWorkflowRole } from "../../workflow-kit/validation/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../models/workflow/presentation.js";
@@ -443,54 +438,6 @@ export const SeparationsCanonicalInput = defineCanonicalInput(
   ],
 );
 
-// The performed arms below keep their shape byte for byte, so every earlier result still
-// parses; the omitted arm is the domain's.
-export const SeparationsResultSchema = z.strictObject({
-  documentNumber: z.string().min(1),
-  /** The subject established by machine verification or operator approval. */
-  approved: ResolvedIdentitySubjectSchema,
-  // The one employment row the termination was filed against.
-  employment: z.strictObject({
-    emplRecord: z.string().min(1),
-    payrollTitleCode: z.string().min(1),
-    payrollTitle: z.string().min(1),
-  }),
-  /** Which Kuali department option was staged, and the UCPath code it was keyed by. */
-  department: z.strictObject({
-    option: z.string().min(1),
-    departmentCode: z.string().min(1),
-  }),
-  /** What the run reconciled, beside what the form carried. */
-  dates: z.strictObject({
-    kualiLastDayWorked: z.string().min(1),
-    lastDayWorked: z.string().min(1),
-    kualiSeparationDate: z.string().min(1),
-    separationDate: z.string().min(1),
-    terminationEffectiveDate: z.string().min(1),
-    lastDayWorkedChanged: z.boolean(),
-    separationDateChanged: z.boolean(),
-  }),
-  /** Whether the sweep had anything to do, and what the grid showed after it. */
-  pendingSweep: z.union([
-    z.strictObject({
-      disposition: z.enum(["committed", "already-present"]),
-      proof: UcpathPendingSweepHistoricalOrCurrentProofSchema,
-    }),
-    OmittedStepResultArmSchema,
-  ]),
-  /** §4c's completion shape: the receipt PAIR, checked rather than carried — the number alone is never a proof. */
-  termination: TerminationReceiptSchema,
-  // The landing proof is always the reload read-back's.
-  finalization: z.union([
-    z.strictObject({
-      disposition: z.enum(["committed", "already-present"]),
-      proof: KualiSavedFinalizationProofSchema,
-    }),
-    OmittedStepResultArmSchema,
-  ]),
-});
-
-
 // An omitted node reads as `undefined` in the terminal derive.
 function omittedOr<T, R>(
   value: T,
@@ -856,7 +803,10 @@ export const separationsWorkflow = defineWorkflow({
     const comparison = task(
       comparisonNode,
       [document, plan, subject, jobSummary, nameSearch, terminationType, departmentOption, employment, dates],
-      ({ input, outputs, protectedInputBindings }) => ({
+      ({ input, outputs, protectedInputBindings }) => {
+      const timekeeperBinding=protectedInputBindings?.find(({ name }) => name === "timekeeperName");
+      if (timekeeperBinding === undefined) throw new Error("protected input timekeeperName binding is absent");
+      return {
       ...(protectedInputBindings === undefined ? {} : { protectedBindings: [...protectedInputBindings] }),
     /** Everything identity authority consumes depends INTO this node — so `identity-gate-before-commit`
      *  passes with three transaction nodes: no write consumes a value outside the bound packet. */
@@ -888,8 +838,7 @@ export const separationsWorkflow = defineWorkflow({
           payrollTitleCode: outputs[EMPLOYMENT_NODE].payrollTitleCode,
           payrollTitle: outputs[EMPLOYMENT_NODE].payrollTitle,
           terminationEffectiveDate: outputs[DATES_NODE].terminationEffectiveDate,
-          timekeeperName: protectedInputBindings?.find(({ name }) => name === "timekeeperName")
-            ?? { kind: "legacy-protected-input" as const, name: "timekeeperName" as const, inputPath: "timekeeperName" as const },
+          timekeeperName: timekeeperBinding,
         },
         dates: {
           kualiLastDayWorked: outputs[DATES_NODE].kualiLastDayWorked,
@@ -903,7 +852,8 @@ export const separationsWorkflow = defineWorkflow({
           source: outputs[DATES_NODE].source,
         },
       },
-      }),
+      };
+      },
     );
     const identityGate = gate(identityApprovalGate, [comparison]);
     const approval = task(approvalNode, [comparison, identityGate], ({ outputs }) => ({

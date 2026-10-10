@@ -21,6 +21,7 @@ import {
   WorkflowIdSchema,
 } from "../../src/rules/identity/ids.js";
 import {
+  ProfileCustodyUnavailableError,
   PlaywrightWorkerSessionFactory,
   workerProfileDirectory,
 } from "../../src/backend/runtime/browser/browser-session-factory.js";
@@ -73,7 +74,7 @@ async function main(): Promise<void> {
   try {
   assertNoMigratedEnvironmentKeys();
   const stateRoot = admission.stateRoot;
-  const processLockRoot = join(workspace, rebuildRuntimeIsolation.processLockRoot, "live-smoke", workerId);
+  const processLockRoot = join(workspace, rebuildRuntimeIsolation.processLockRoot);
   const processLock = acquireRuntimeProcessLock(
     { processLockRoot, name: "live-smoke", pid: process.pid },
     systemClock,
@@ -125,6 +126,7 @@ async function main(): Promise<void> {
     clock: systemClock,
     scheduler: realScheduler,
     newSessionId: () => randomUUID(),
+    admitProfile: () => Promise.reject(new ProfileCustodyUnavailableError()),
     onAuthenticationEvidence: (observed) => {
       evidence.push(observed);
       write(`[evidence] ${observed.system} @ ${observed.url}`);

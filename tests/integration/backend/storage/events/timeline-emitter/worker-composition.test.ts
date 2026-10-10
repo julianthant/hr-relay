@@ -265,7 +265,7 @@ describe("worker-loop source gate composition", () => {
       const clock = manualClock(new Date(NOW));
       const database = reopen(stateRoot, clock);
       const descriptor = sourceGateDescriptor(mode);
-      const workerPorts = testWorkerPorts(database, clock);
+      const workerPorts = testWorkerPorts(database, clock, { path: join(stateRoot, "state.db"), descriptor, poolIndex: 1 });
       database.authority.runs.enqueue(RunRecordSchema.parse(sourceGateQueuedRun(descriptor)));
 
       const sourceKind = mode === "external" ? "external" : "workflow";

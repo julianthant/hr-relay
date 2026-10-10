@@ -1,3 +1,4 @@
+import { CONFIG_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
 // Use distinct worker ids over shared authority; composed single-workflow workers share a lease identity.
 import { fixtureDuoCeremonyGates } from "../../support/helpers/duo-ceremony-fixtures.js";
@@ -35,6 +36,7 @@ afterEach(() => {
 
 function sharedAuthority(): AuthorityHarness {
   const authority = openAuthorityHarness();
+  authority.database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
   disposers.push(authority.dispose);
   return authority;
 }
@@ -133,7 +135,7 @@ function workerHarness(
     stop,
     events: () => Object.freeze([...events]),
     deps: {
-      ...testWorkerPorts(authority.database, authority.clock),
+      ...testWorkerPorts(authority.database, authority.clock, { path: authority.path, descriptor: personLookupDescriptor, poolIndex: Number(workerSuffix) }),
       workflowId: WorkflowIdSchema.parse(WORKFLOW_ID),
       workerId: WorkerIdSchema.parse(`person-lookup-worker-${workerSuffix}`),
       descriptor: personLookupDescriptor,
@@ -352,7 +354,10 @@ describe("claim sweep overlaps a live heartbeat", () => {
     assert.ok(stale !== undefined);
     assert.equal(stale.lifecycle.state, "queued");
     assert.equal("requeuedFrom" in stale.lifecycle ? stale.lifecycle.requeuedFrom : undefined, "recovery");
-    assert.equal(stale.envelope.attempt, 2);
+    assert.equal(stale.envelope.attempt, 1);
+    assert.ok(abandoned.state === "claimed");
+    assert.deepEqual(stale.envelope, abandoned.run.envelope);
+    assert.equal(stale.claimGeneration, abandoned.run.claimGeneration);
 
     // The requeued row is genuinely re-claimable: the SAME live loop drains it
     // after its own run settles, so a sweep never strands work.
@@ -426,6 +431,6 @@ describe("a heartbeat that lost its row never renews it", () => {
     const current = database.authority.runs.get(runId);
     assert.ok(current !== undefined);
     assert.equal("workerId" in current.lifecycle ? current.lifecycle.workerId : undefined, "person-lookup-worker-2");
-    assert.equal(current.envelope.attempt, 2);
+    assert.equal(current.envelope.attempt, 1);
   });
 });

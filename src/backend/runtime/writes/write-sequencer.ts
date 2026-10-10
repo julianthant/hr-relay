@@ -568,6 +568,11 @@ export interface SequencedWriteCommitResult {
   readonly run: RunRecord;
 }
 
+function requireRecoveryIdentity(intent:WriteIntentRecord|undefined) {
+  if(intent === undefined || intent.status === "observed-present") throw new Error("write-recovery-attempt-identity-missing");
+  return intent;
+}
+
 // Bundle settlement commits the intent, checkpoint, outboxes and run transition atomically or leaves all unsettled.
 export function executeSequencedWriteCommit(
   authority: WriteSequencerAuthority,
@@ -585,29 +590,15 @@ export function executeSequencedWriteCommit(
     const current = repositories.runs.get(parsed.run.runId);
     if (current === undefined) throw new Error(`run ${parsed.run.runId} does not exist`);
     const intent = repositories.writeIntents.get(parsed.commit.writeIntentId);
-    const source = intent?.status === "committed" ? repositories.historicalOperationSources.list().find((row) =>
-      row.operationId === parsed.commit.writeIntentId && row.generation === parsed.commit.generation) : undefined;
-    // Released settlements hashed the exact outbox envelopes. Preserve their journal identity
-    // while authenticating the caller's current facts against those retained envelopes.
-    if (source !== undefined && (source.ledgerOutbox.payload.kind !== "ledger-entry"
-      || canonicalJsonStringify(source.ledgerOutbox.payload.entry) !== canonicalJsonStringify(parsed.commit.transaction)
-      || canonicalJsonStringify(source.spanOutbox.payload) !== canonicalJsonStringify(parsed.commit.committedSpan))) {
-      throw new Error("write settlement replay differs from its historical evidence");
-    }
-    const { transaction: _transaction, committedSpan: _committedSpan, ...commitIdentity } = parsed.commit;
-    const fingerprintInput = source === undefined ? parsed : { ...parsed, commit: { ...commitIdentity,
-      ledgerOutbox: { ...source.ledgerOutbox, projection: { state: "pending" } },
-      terminalSpanOutbox: { ...source.spanOutbox, projection: { state: "pending" } },
-    } };
     const evidenceFingerprint = FingerprintSchema.parse(sha256Hex(canonicalJsonStringify(
-      valueFreeProtectedData(fingerprintInput, retainedRunProtectedBindings(current)),
+      valueFreeProtectedData(parsed, retainedRunProtectedBindings(current)),
     )));
     const advance = () => transition.kind === "advance-running"
       ? transition.port.workerTransition({ commandId, ...parsed.run, claim: transition.claim, evidenceFingerprint,
           lifecycle: { state: "running", workerId: transition.claim.workerId, claimedAt: transition.claimedAt,
             heartbeatAt: parsed.commit.confirmedAt, currentNodeId: NodeIdSchema.parse(parsed.checkpoint.nodeId) } })
       : transition.port.transition({ commandId, runId: parsed.run.runId, expectedVersion: parsed.run.expectedVersion,
-          evidenceFingerprint, lifecycle: { state: "queued" }, writeResolution: "resolve-write-present",
+          evidenceFingerprint, lifecycle: { state: "queued" }, writeResolution: {kind:"recovery",writeIntentId:parsed.commit.writeIntentId,generation:parsed.commit.generation,writeAttemptId:requireRecoveryIdentity(intent).currentAttemptId,bindingProofDigest:requireRecoveryIdentity(intent).bindingProofDigest,decision:"present"},
           startAt: NodeIdSchema.parse(transition.startAt) });
     if (intent?.status === "committed") {
       const outcome = advance();
@@ -673,7 +664,7 @@ export interface CommitSettlementIdentity {
   readonly descriptor: AnyWorkflowDescriptor;
   readonly nodeId: string;
   readonly run: RunRecord;
-  readonly intent: AttemptingIntent;
+  readonly intent: Extract<WriteIntentRecord,{status:"attempting"|"parked"}>;
   readonly commitContract: AnyCommitTaskContract;
   readonly operator: ActorId;
   readonly implFingerprint: Fingerprint;
@@ -797,8 +788,8 @@ function buildTransactionCheckpoint(
       value: JsonValueSchema.parse(outcome),
       ...(retainedRunProtectedBindings(identity.run).length === 0 ? {} : { protectedBindings: retainedRunProtectedBindings(identity.run) }),
     },
-    descriptorVersion: identity.descriptor.version,
-    contractFingerprint: identity.descriptor.contractFingerprint,
+    descriptorVersion: proofSource === "recovery-probe" ? envelope.descriptorVersion : identity.descriptor.version,
+    contractFingerprint: proofSource === "recovery-probe" ? envelope.contractFingerprint : identity.descriptor.contractFingerprint,
     implFingerprint: identity.implFingerprint,
     provenance,
     writtenAt: instant,

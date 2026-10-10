@@ -160,9 +160,6 @@ export function redactValue(
   }
 }
 
-/** Reproduce immutable receipt compositions 1–4. */
-export const redactHistoricalValue = redactValue;
-
 /** Retain a complete classified value in local evidence, never provider payloads. */
 export function retainLocalEvidenceValue(
   classification: z.infer<typeof DataClassificationSchema>,

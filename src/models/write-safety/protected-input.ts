@@ -15,8 +15,6 @@ export const ProtectedInputBindingSchema = z.discriminatedUnion("kind", [
     name: z.literal("timekeeperName"), valueId: z.uuid() }),
   z.strictObject({ kind: z.literal("test-data-local"), inputPath: z.enum(["documentNumber", "emplId"]),
     name: z.enum(["separationsKualiFinalizationCanaryDocumentNumber", "personLookupCanaryEid"]), sourceId: z.uuid() }),
-  z.strictObject({ kind: z.literal("legacy-protected-input"), inputPath: ProtectedInputPathSchema,
-    name: ProtectedInputNameSchema }),
 ]).superRefine((binding, ctx) => {
   const expected = { timekeeperName: "timekeeperName", documentNumber: "separationsKualiFinalizationCanaryDocumentNumber",
     emplId: "personLookupCanaryEid" };
@@ -29,18 +27,18 @@ export const ProtectedInputBindingsSchema = z.array(ProtectedInputBindingSchema)
 export type ProtectedInputDeclaration = z.infer<typeof ProtectedInputDeclarationSchema>;
 export type ProtectedInputBinding = z.infer<typeof ProtectedInputBindingSchema>;
 
-/** Historical inputs remain readable, but their value is never a new fingerprint preimage. */
 export function protectedInputBindings(value: unknown, bindings?: readonly ProtectedInputBinding[]): readonly ProtectedInputBinding[] {
   if (bindings !== undefined) {
     const parsed = ProtectedInputBindingsSchema.parse(bindings);
-    if (parsed.length === 0 && value !== null && typeof value === "object" && Object.hasOwn(value, "timekeeperName")) {
+    if (value !== null && typeof value === "object" && Object.hasOwn(value, "timekeeperName")
+      && !parsed.some(binding => binding.inputPath === "timekeeperName")) {
       throw new Error("protected input timekeeperName binding is absent");
     }
     return parsed;
   }
-  return value !== null && typeof value === "object" && Object.hasOwn(value, "timekeeperName")
-    ? [{ kind: "legacy-protected-input", name: "timekeeperName", inputPath: "timekeeperName" }]
-    : [];
+  if (value !== null && typeof value === "object" && Object.hasOwn(value, "timekeeperName"))
+    throw new Error("protected input timekeeperName binding is absent");
+  return [];
 }
 
 export function valueFreeProtectedInput(value: unknown, bindings?: readonly ProtectedInputBinding[]): JsonValue {
@@ -57,6 +55,9 @@ export function valueFreeProtectedInput(value: unknown, bindings?: readonly Prot
   }
   return JsonValueSchema.parse(Object.fromEntries(copy));
 }
+
+const PublicProtectedInputMarkerSchema = z.strictObject({ kind: z.literal("legacy-protected-input"),
+  inputPath: ProtectedInputPathSchema, name: ProtectedInputNameSchema });
 
 /** Closed protected fields that can occur in the admitted Separations input/output graph. */
 const PROTECTED_COMMENT_FIELDS = new Set(["timekeeperComments", "dateChangeComments", "observedExistingComments"]);
@@ -102,7 +103,7 @@ export function valueFreeProtectedData(value: unknown, bindings?: readonly Prote
         return [key, text.replace(/(\. -)\S+(?= \d{2}\/\d{2}\/\d{4}(?:\n|$)|\n|$)/gu, "$1<protected timekeeperName>")];
       }
       if (key === "timekeeperName" || ownBindings.some(({ inputPath }) => inputPath === key)) {
-        const existing = ProtectedInputBindingSchema.safeParse(child);
+        const existing = ProtectedInputBindingSchema.or(PublicProtectedInputMarkerSchema).safeParse(child);
         return [key, existing.success ? existing.data : ownBindings.find(({ inputPath }) => inputPath === key)
           ?? { kind: "legacy-protected-input", name: "timekeeperName", inputPath: "timekeeperName" }];
       }
@@ -122,9 +123,8 @@ export function hasProtectedTransactionInput(run: Readonly<{
   input: Readonly<{ parsed: Readonly<{ protectedBindings?: readonly ProtectedInputBinding[] }> }>;
 }>): boolean {
   const bindings = run.input.parsed.protectedBindings;
-  if (bindings !== undefined) return bindings.some(({ inputPath }) => inputPath !== "timekeeperName");
-  // Historical rows did not retain source identity: never assert that their identifier is public.
-  return ["separations", "separations-kuali-finalization", "person-lookup"].includes(run.envelope.workflow);
+  if (bindings === undefined) throw new Error("protected input bindings are absent");
+  return ProtectedInputBindingsSchema.parse(bindings).some(({ inputPath }) => inputPath !== "timekeeperName");
 }
 
 /** Remove protected-source evidence leaves after their declared classification was checked. */
@@ -150,11 +150,6 @@ export function retainedRunProtectedBindings(run: Readonly<{
   input: Readonly<{ parsed: Readonly<{ value: unknown; protectedBindings?: readonly ProtectedInputBinding[] }> }>;
 }>): readonly ProtectedInputBinding[] {
   const parsed = run.input.parsed;
-  if (parsed.protectedBindings !== undefined) return protectedInputBindings(parsed.value, parsed.protectedBindings);
-  const bindings = [...protectedInputBindings(parsed.value)];
-  if (["separations", "separations-kuali-finalization"].includes(run.envelope.workflow))
-    bindings.push({ kind: "legacy-protected-input", name: "separationsKualiFinalizationCanaryDocumentNumber", inputPath: "documentNumber" });
-  if (run.envelope.workflow === "person-lookup")
-    bindings.push({ kind: "legacy-protected-input", name: "personLookupCanaryEid", inputPath: "emplId" });
-  return bindings;
+  if (parsed.protectedBindings === undefined) throw new Error("protected input bindings are absent");
+  return protectedInputBindings(parsed.value, parsed.protectedBindings);
 }

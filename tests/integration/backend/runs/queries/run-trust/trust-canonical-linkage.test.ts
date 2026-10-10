@@ -1,4 +1,5 @@
-import {archiveCurrentRun} from "../../../../../support/helpers/integration/archive-current-run.js";
+import { join } from "node:path";
+import { testWorkerPorts } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it, vi } from "vitest";
 import { canonicalJsonStringify } from "../../../../../../src/rules/validation/canonical-json.js";
@@ -28,6 +29,7 @@ function inbox(value: ReturnType<typeof trustWorld>) {
 describe("2.6.1-1 canonical trust linkage", () => {
   it("serves a real derived receipt and Explain by run or trace without any span fold", () => {
     const f = fixture();
+    testWorkerPorts(f.database, f.world.clock, { path: join(f.world.stateRoot, "trust.sqlite"), descriptor: personLookupDescriptor, poolIndex: 1 });
     const { run } = seedPersonLookupExitRun(f.database);
     assert.equal(f.world.projection.runFold(run.envelope.runId), undefined);
     const result = buildTrustSection(f.deps, run.envelope.runId, "receipt");
@@ -63,38 +65,38 @@ describe("2.6.1-1 canonical trust linkage", () => {
     assert.throws(() => buildTrustSection(f.deps, uuidOf(88), "logs"), /absent/);
   });
 
-  it("keeps independent retry receipts and archived notification replay, then refuses deleted live doors", async () => {
-    const f = fixture(); const source = f.cancel(f.create(10), 11); const id = source.envelope.runId;
+  it("keeps independent retry receipts and notification replay, then refuses deleted live doors", async () => {
+    const f = fixture(); const source = f.fail(f.create(10), 11); const id = source.envelope.runId;
     const sourceReceipt = canonicalJsonStringify(f.receipts.ensureReceipt(id));
     const notifications = inbox(f);
-    await notifications.publish({ kind: "verified-done", runId: id, workflowId: source.envelope.workflow });
+    const failedEvent = (runId: string) => {
+      const failure = f.database.authority.failures.listByRun(runId).at(-1);
+      assert.ok(failure);
+      return { kind: "run-failed" as const, runId: failure.runId, workflowId: failure.workflowId,
+        failureId: failure.failureId, failureFingerprint: failure.fingerprint, code: failure.code };
+    };
+    const sourceEvent = failedEvent(id);
+    await notifications.publish(sourceEvent);
     const retried = f.service.retry({ commandId: uuidOf(12), runId: id, expectedVersion: source.version,
       runtimeConfig: f.runtimeConfig }, personLookupDescriptor);
     assert.equal(retried.state, "applied"); if (retried.state !== "applied") throw new Error("retry refused");
-    const retry = f.cancel(retried.run, 13);
+    const retry = f.fail(retried.run, 13);
     const retryReceipt = f.receipts.ensureReceipt(retry.envelope.runId);
     assert.notEqual(retryReceipt.receiptId, f.receipts.ensureReceipt(id).receiptId);
     assert.equal(retryReceipt.attempt, source.envelope.attempt + 1);
     assert.equal(canonicalJsonStringify(f.receipts.ensureReceipt(id)), sourceReceipt);
-    await notifications.publish({ kind: "verified-done", runId: retry.envelope.runId, workflowId: retry.envelope.workflow });
+    await notifications.publish(failedEvent(retry.envelope.runId));
     assert.equal(notifications.list("local-operator").length, 2);
+    const inboxBeforeDeletion = canonicalJsonStringify(notifications.list("local-operator"));
 
-    const archive=archiveCurrentRun(f.database,source,f.world.clock.now().toISOString(),uuidOf(14));
-    assert.throws(() => f.receipts.ensureReceipt(id), SectionUnavailableError);
-    assert.throws(() => buildTrustSection(f.deps, id, "receipt"), SectionUnavailableError);
-    assert.throws(() => explainRunFrom(f.database, id), SectionUnavailableError);
-    assert.equal((await notifications.publish({ kind: "verified-done", runId: id, workflowId: source.envelope.workflow })).durable, "existing");
-    assert.equal(canonicalJsonStringify(f.service.lifecycleStorage().readReport(id)),canonicalJsonStringify(archive));
-    const captured=JSON.parse(archive.content.sources[0].json) as {records:{table:string;rows:{json:string}[]}[]};
-    assert.equal(canonicalJsonStringify(JSON.parse(captured.records.find(group=>group.table==="run_receipts")!.rows[0].json)),sourceReceipt);
-    assert.equal(captured.records.some(group=>group.table==="notifications"),false, "inbox remains live while the report owns the archived run");
-    assert.equal(f.database.authority.evidenceReceipts.findByRun(id),undefined);
-    assert.equal(notifications.list("local-operator").length, 2);
-    assert.equal(f.service.deleteArchived({ commandId: uuidOf(15), runId: id,
-      archiveFingerprint: archive.digest }).state, "deleted");
+    assert.equal((await notifications.publish(sourceEvent)).durable, "existing");
+    assert.equal(canonicalJsonStringify(f.receipts.ensureReceipt(id)), sourceReceipt);
+    assert.equal(f.service.delete({ commandId: uuidOf(15), runId: id, expectedVersion: source.version }).state, "deleted");
     assert.throws(() => f.receipts.ensureReceipt(id), TargetNotFoundError);
-    await assert.rejects(notifications.publish({ kind: "verified-done", runId: id, workflowId: source.envelope.workflow }), /deleted/);
-    assert.equal(notifications.list("local-operator").length, 1);
+    assert.equal((await notifications.publish(sourceEvent)).durable, "existing", "exact immutable publication replay survives owner deletion");
+    await assert.rejects(notifications.publish({ ...sourceEvent, failureFingerprint: "e".repeat(64) },
+      { identity: "f".repeat(64), occurredAt: f.world.clock.now().toISOString() }), /deleted/);
+    assert.equal(canonicalJsonStringify(notifications.list("local-operator")), inboxBeforeDeletion, "terminal deletion preserves immutable notification ownership and replay");
     assert.equal(canonicalJsonStringify(f.receipts.ensureReceipt(retry.envelope.runId)), canonicalJsonStringify(retryReceipt));
     assert.equal(f.database.authority.evidenceReceipts.findByRun(id), undefined);
   });
@@ -110,16 +112,16 @@ describe("2.6.1-1 canonical trust linkage", () => {
 
   it("uses canonical gate parks with no fold and refuses a stale list without publishing a partial set", () => {
     const f = fixture(); const run = f.create(30);
-    const claimed = f.database.authority.runs.claimNext({ workflow: run.envelope.workflow, workerId: "trust-worker", now: f.world.clock.now().toISOString() });
+    const claimed = f.database.authority.runs.claimNext({ workflow: run.envelope.workflow, workerId: f.workerId, now: f.world.clock.now().toISOString() });
     assert.equal(claimed.state, "claimed"); if (claimed.state !== "claimed") throw new Error("not claimed");
     let parked = claimed.run;
     for (const lifecycle of [
-      { state: "validating", workerId: "trust-worker", claimedAt: parked.lifecycle.state === "claimed" ? parked.lifecycle.claimedAt : "", heartbeatAt: f.world.clock.now().toISOString() },
-      { state: "running", workerId: "trust-worker", claimedAt: f.world.clock.now().toISOString(), heartbeatAt: f.world.clock.now().toISOString() },
+      { state: "validating", workerId: f.workerId, claimedAt: parked.lifecycle.state === "claimed" ? parked.lifecycle.claimedAt : "", heartbeatAt: f.world.clock.now().toISOString() },
+      { state: "running", workerId: f.workerId, claimedAt: f.world.clock.now().toISOString(), heartbeatAt: f.world.clock.now().toISOString() },
       { state: "parked-gate", gateId: "identity-approval", parkedAt: f.world.clock.now().toISOString(), resumeAt: "identity-approval" },
     ]) {
       const outcome = f.database.authority.runs.transition({ runId: run.envelope.runId, expectedVersion: parked.version,
-        claim: { workerId: "trust-worker", claimGeneration: claimed.run.claimGeneration }, now: f.world.clock.now().toISOString(), lifecycle });
+        claim: { workerId: f.workerId, claimGeneration: claimed.run.claimGeneration }, now: f.world.clock.now().toISOString(), lifecycle });
       assert.equal(outcome.state, "applied"); if (outcome.state !== "applied") throw new Error("park refused");
       parked = outcome.run;
     }

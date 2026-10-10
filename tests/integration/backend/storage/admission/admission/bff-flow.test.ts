@@ -710,7 +710,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
   it("serves strict cross-date search from durable run authority", async () => {
     const h = harness();
-    insertMeasuredSearchRun(h.database, { seed: 77, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+    insertMeasuredSearchRun(h.database, { authorityPath: join(h.stateRoot, "state.db"), seed: 77, enqueuedAt: "2026-08-28T15:00:00.000Z" });
 
     const response = await h.app.request("/api/v1/search?q=separations&scope=workflow&limit=1");
 
@@ -870,7 +870,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
     for (const [index, corpusCase] of cases.entries()) {
       const h = harness();
-      const run = insertMeasuredSearchRun(h.database, {
+      const run = insertMeasuredSearchRun(h.database, { authorityPath: join(h.stateRoot, "state.db"),
         seed: 80 + index,
         enqueuedAt: "2026-08-28T15:00:00.000Z",
       });
@@ -904,7 +904,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
   it("refuses corrupt search authority without exposing its sensitive bytes", async () => {
     const h = harness();
-    const run = insertMeasuredSearchRun(h.database, { seed: 78, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+    const run = insertMeasuredSearchRun(h.database, { authorityPath: join(h.stateRoot, "state.db"), seed: 78, enqueuedAt: "2026-08-28T15:00:00.000Z" });
     const sensitiveNodeId = "ssn-951-57-1700-eid-10873698";
     const sensitivePatch = {
       nodeId: sensitiveNodeId,
@@ -3697,8 +3697,8 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
   it("exports every page of one real signed cross-date search selection as evidenced XLSX", async () => {
     const h = harness();
-    insertMeasuredSearchRun(h.database, { seed: 201, enqueuedAt: "2026-08-28T15:00:00.000Z" });
-    insertMeasuredSearchRun(h.database, { seed: 202, enqueuedAt: "2026-08-28T14:00:00.000Z" });
+    insertMeasuredSearchRun(h.database, { authorityPath: join(h.stateRoot, "state.db"), seed: 201, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+    insertMeasuredSearchRun(h.database, { authorityPath: join(h.stateRoot, "state.db"), seed: 202, enqueuedAt: "2026-08-28T14:00:00.000Z" });
 
     const firstSearch = await h.app.request("/api/v1/search?q=separations&scope=workflow&limit=1");
     assert.equal(firstSearch.status, 200);

@@ -42,6 +42,7 @@ export interface WorkerBrowserResource {
   /** Optional only for legacy fixture/session ports; real Playwright resources always report it. */
   readonly browserMode?: BrowserPresentationMode;
   readonly profileDirectory?: string;
+  readonly profileRevision: number;
   readonly acceptDownloads: boolean;
   readonly exclusive: boolean;
   readonly authentication: BrowserAuthenticationHandle;

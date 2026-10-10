@@ -5,7 +5,7 @@ import { ProjectionDegradedError } from "../commands/refusals.js";
 /** A surface consumes one generation-bound list, never a page from a newer authority. */
 export function listCanonicalRuns(
   reader: Pick<RunRecordService, "list">,
-  disposition: "live" | "archived",
+  disposition: "live",
 ): readonly RunRecord[] {
   const rows: RunRecord[] = [];
   let cursor: Parameters<RunRecordService["list"]>[0]["cursor"];

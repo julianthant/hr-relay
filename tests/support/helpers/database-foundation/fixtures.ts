@@ -5,30 +5,46 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AuthorityDatabase } from "../synthetic-storage-admission.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import { ConfigSchema } from "../../../../src/models/config/schema.js";
-import { defaultRuntimePaths } from "../../../../src/backend/app/config/runtime-paths.js";
 import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
-import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
-import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { FailureRecordSchema } from "../../../../src/models/trust/failure.js";
 import { ArtifactOutboxStorageRecordSchema } from "../../../../src/models/artifacts/generated-artifact.js";
-import { QUEUED_RUN, RUN_ID, WORKER_ID } from "../../fixtures/phase1f-run-fixtures.js";
+import type { RunRecord } from "../../../../src/models/run/record.js";
+import { QUEUED_RUN, RUN_ID } from "../../fixtures/phase1f-run-fixtures.js";
 import { personLookupDescriptor } from "../registered-workflows.js";
 export const NOW="2026-09-09T12:00:00.000Z";
 export const HASH="a".repeat(64);
 export const id=(n:number)=>`00000000-0000-4000-8000-${String(n).padStart(12,"0")}`;
-export function foundationFixture(options:{repositoryLayout?:boolean;registeredRuntimeVersion?:boolean}={}){
+import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
+import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
+import { initialSettingsFileRecord } from "../../../../src/models/config/settings.js";
+import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
+import { workflowProjections } from "../../../../src/workflow-kit/workflow.js";
+export function foundationFixture(options:{repositoryLayout?:boolean;input?:RunRecord["input"]}={}){
  const repoRoot=mkdtempSync(join(realpathSync(tmpdir()),"foundation-baseline-"));
  const root=options.repositoryLayout===true?join(repoRoot,".tracker"):repoRoot;mkdirSync(root,{recursive:true});
  const path=join(root,"state.db");const clock=manualClock(new Date(NOW));
  const db=AuthorityDatabase.open({path,busyTimeoutMs:250,migrationOwner:"foundation-proof"},clock);
- const config=ConfigSchema.parse({paths:defaultRuntimePaths()});
- const snapshot=ConfigSnapshotRecordSchema.parse({configSnapshotId:id(90),revision:1,fingerprint:sha256Hex(canonicalJsonStringify(config)),capturedAt:NOW,capturedBy:"local-operator",config,provenance:{}});
- db.authority.configSnapshots.insert(snapshot);
- if(options.registeredRuntimeVersion===true)db.registerRuntimeVersionWorkflows(["person-lookup"]);
+ const resolved=resolveConfigWithProvenance(initialSettingsFileRecord().settings,hostConfigFacts({}),clock,
+  {stateRoot:root,artifactRoot:join(root,"artifacts")});
+ const snapshot=ConfigSnapshotRecordSchema.parse({configSnapshotId:id(90),revision:1,fingerprint:resolved.fingerprint,capturedAt:NOW,capturedBy:"local-operator",config:resolved.config,provenance:resolved.provenance});
+ db.authority.runtimeConfig.initialize(snapshot);
+ let admissionIdentity=10000;
  const createRun=(runId:string)=>{
- const workerId=runId===RUN_ID?WORKER_ID:"worker-2";
- db.authority.runs.enqueue({...QUEUED_RUN,envelope:{...QUEUED_RUN.envelope,runId, itemId:runId, contractFingerprint:personLookupDescriptor.contractFingerprint,configFingerprint:snapshot.fingerprint,configSnapshotId:snapshot.configSnapshotId},...(options.registeredRuntimeVersion===true?{runtimeVersion:{dashboard:{major:1,minor:0},workflow:{major:1,minor:0}}}:{})});
+ const workerId=db.withAuthorityTransaction(repositories=>{
+  const slots=repositories.workerSlots.list("person-lookup").filter(slot=>slot.retiredAt===null);
+  const free=slots.find(slot=>!repositories.runs.listByWorker(slot.workerId).some(run=>["claimed","validating","running"].includes(run.lifecycle.state)));
+  const poolIndex=free?.poolIndex??[1,2,3].find(index=>!slots.some(slot=>slot.poolIndex===index));
+  assert.ok(poolIndex!==undefined,"fixture exceeds genuine worker pool capacity");
+  const slot=admitDirectWorker(repositories,{commandId:id(admissionIdentity++),workflow:"person-lookup",poolIndex,
+   expectedPoolVersion:repositories.workerPools.get("person-lookup")?.version??0,processId:process.pid,
+   processAcquisitionId:id(admissionIdentity++),authorityPath:path,processLockRoot:join(root,"locks"),now:NOW},id(admissionIdentity++));
+  if(repositories.workerLeases.get(slot.workerId)===undefined){
+   const lease=repositories.workerLeases.start({workerId:slot.workerId,workflow:"person-lookup",browserSystems:workflowProjections(personLookupDescriptor).systems,
+    processId:process.pid,requestedBy:"local-operator",now:NOW});assert.equal(lease.state,"started");
+  }
+  return slot.workerId;
+ });
+ db.authority.runs.enqueue({...QUEUED_RUN,...(options.input===undefined?{}:{input:options.input}),envelope:{...QUEUED_RUN.envelope,runId, itemId:runId, contractFingerprint:personLookupDescriptor.contractFingerprint,configFingerprint:snapshot.fingerprint,configSnapshotId:snapshot.configSnapshotId}});
  const claim=db.authority.runs.claimNext({workflow:"person-lookup",workerId,now:NOW});assert.equal(claim.state,"claimed");if(claim.state!=="claimed")throw new Error("fixture claim failed");
  const validating=db.authority.runs.transition({runId,expectedVersion:claim.run.version,claim:{workerId,claimGeneration:1},lifecycle:{state:"validating",workerId,claimedAt:NOW,heartbeatAt:NOW},now:NOW});assert.equal(validating.state,"applied");if(validating.state!=="applied")throw new Error("fixture validation failed");
  const running=db.authority.runs.transition({runId,expectedVersion:validating.run.version,claim:{workerId,claimGeneration:1},lifecycle:{state:"running",workerId,claimedAt:NOW,heartbeatAt:NOW,currentNodeId:"searching"},now:NOW});assert.equal(running.state,"applied");if(running.state!=="applied")throw new Error("fixture run failed");

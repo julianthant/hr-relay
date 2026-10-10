@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import type { Clock } from "../../../rules/time/clock.js";
 import { localDatePart } from "../../../rules/time/clock.js";
-import { EVENT_STREAM_RETENTION_DAYS } from "../../../models/archive/retention.js";
+import { EVENT_STREAM_RETENTION_DAYS } from "../../../models/events/retention.js";
 
 export const EVENT_STREAMS = ["spans", "notes"] as const;
 export type EventStream = (typeof EVENT_STREAMS)[number];

@@ -1,3 +1,4 @@
+import { ucpathPendingTransactionSetDigest } from "../../../../src/models/systems/ucpath/delete-pending-terminations.js";
 import { DatabaseSync } from "node:sqlite";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { RunRecordSchema, type RunRecord } from "../../../../src/models/run/record.js";
@@ -61,6 +62,10 @@ export const CURRENT_SEPARATIONS_RESULT = SeparationsResultSchema.parse({
       scannedRowCount: 0,
       observedAt: COMPOSITION_NOW,
       source: "ss-smart-hr-detail-read",
+      version: 2,
+      selectedTransactionIds: "none",
+      protectedTransactionIds: "none",
+      setDigest: ucpathPendingTransactionSetDigest({emplId:COMPOSITION_EID,eligible:[],protected:[]}),
     },
   },
   termination: {

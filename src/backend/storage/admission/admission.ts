@@ -6,7 +6,7 @@ import { acquireInstallation, assertInstallationLease, type ExistingAuthorityEvi
   type ExclusiveInstallationLease, type FreshInitializationWitness, type RelocationCompletionReceipt, type RelocationInventory,
   type RelocationPlanBinding, type RelocationPreparationVerifier, type RelocationActivationVerifier,
   type RelocationVerifier, type RuntimeLocator, type RuntimePair } from "./installation.js";
-import type { VerifiedSourceControlEntries } from "./installation.js";
+import type { VerifiedSourceControlEntries, AuthorityRestoreInput, AuthorityRestoreVerifier } from "./installation.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { RestoreAdmissionHandle } from "../sqlite/runtime-process-locks.js";
@@ -86,14 +86,13 @@ export class RuntimeAdmission {
   readonly #stateRoot: string;
   readonly #artifactRoot: string;
   readonly #authorityDatabasePaths: ReadonlySet<string>;
-  readonly #archiveDatabasePaths: ReadonlySet<string>;
   readonly #locator: RuntimeLocator | undefined;
   readonly #scope: AdmissionScope;
   readonly #mode: "shared" | "exclusive" | "synthetic";
   #released = false;
 
   private constructor(token: typeof issuanceToken, authority: AdmissionAuthority, stateRoot: string, artifactRoot: string,
-    authorityDatabasePaths: readonly string[], archiveDatabasePaths: readonly string[],
+    authorityDatabasePaths: readonly string[],
     scope: AdmissionScope,
     mode: "shared" | "exclusive" | "synthetic", locator?: RuntimeLocator) {
     if (token !== issuanceToken) throw new Error("runtime-admission: unissued capability");
@@ -101,7 +100,6 @@ export class RuntimeAdmission {
     this.#stateRoot = stateRoot;
     this.#artifactRoot = artifactRoot;
     this.#authorityDatabasePaths = new Set(authorityDatabasePaths);
-    this.#archiveDatabasePaths = new Set(archiveDatabasePaths);
     this.#scope = scope;
     this.#mode = mode;
     this.#locator = locator === undefined ? undefined : Object.freeze({ ...locator });
@@ -190,28 +188,10 @@ export class RuntimeAdmission {
     }
     throw new Error("runtime-admission: read-only authority database path is outside admission");
   }
-  assertArchiveDatabase(path: string, mode: "read-only" | "read-write" = "read-write"): void {
-    this.assertLive();
-    if (this.#scope === "relocation-source-verification") throw new Error("runtime-admission: source verification cannot open archive database");
-    this.assertStorageRootsSafe();
-    if (mode !== "read-only" && this.#scope !== "adoption-initialization") this.assertWritable();
-    if (path === ":memory:" && this.#scope !== "relocation-destination" && this.#scope !== "adoption-initialization") return;
-    const checked = resolve(path);
-    if (this.#archiveDatabasePaths.has(checked)) return;
-    if (this.#scope === "adoption-initialization") throw new Error("runtime-admission: archive path is outside fresh initialization");
-    const parent = dirname(checked);
-    if (mode === "read-only" && parent === join(this.#stateRoot, "backups", "authority")
-      && /^[0-9a-f-]{36}\.archive\.sqlite$/u.test(checked.slice(parent.length + 1))) {
-      this.assertStateRoot(parent);
-      return;
-    }
-    throw new Error("runtime-admission: archive database path is outside admission");
-  }
   assertStateRoot(path: string): void {
     this.assertLive();
     this.assertStorageRootsSafe();
-    if (this.#scope === "adoption-initialization" && ![this.#stateRoot, join(this.#stateRoot, "state.db"),
-      join(this.#stateRoot, rebuildRuntimeIsolation.archiveDatabaseFile)].includes(resolve(path))) {
+    if (this.#scope === "adoption-initialization" && ![this.#stateRoot, join(this.#stateRoot, "state.db")].includes(resolve(path))) {
       throw new Error("runtime-admission: fresh initialization path is outside database authority");
     }
     if (!within(this.#stateRoot, resolve(path))) throw new Error("runtime-admission: state path is outside admission");
@@ -228,10 +208,10 @@ export class RuntimeAdmission {
     this.#released = true;
   }
 
-  #exclusiveRelocationLease(): ExclusiveInstallationLease {
+  #exclusiveInstallationLease(): ExclusiveInstallationLease {
     this.assertLive();
     if (this.#scope !== "installation" || this.#mode !== "exclusive") {
-      throw new Error("runtime-admission: exclusive installation relocation authority required");
+      throw new Error("runtime-admission: exclusive installation authority required");
     }
     const lease = this.#authority as ExclusiveInstallationLease;
     assertInstallationLease(lease);
@@ -239,15 +219,25 @@ export class RuntimeAdmission {
     return lease;
   }
 
+  beginAuthorityRestore(input: AuthorityRestoreInput, restore: RestoreAdmissionHandle): void {
+    this.#exclusiveInstallationLease().beginAuthorityRestore(input, restore);
+  }
+  settleAuthorityRestore(input: AuthorityRestoreInput, outcome: "unchanged" | "replaced", verify: AuthorityRestoreVerifier,
+    restore: RestoreAdmissionHandle): void {
+    this.#exclusiveInstallationLease().settleAuthorityRestore(input, outcome, verify, restore);
+  }
+  readAuthorityRestore(operationId: string): AuthorityRestoreInput {
+    return this.#exclusiveInstallationLease().readAuthorityRestore(operationId);
+  }
   beginRelocation(destination: RuntimePair, plan: RelocationPlanBinding,
     restore: RestoreAdmissionHandle): RuntimeRelocationOperation {
-    const lease = this.#exclusiveRelocationLease();
+    const lease = this.#exclusiveInstallationLease();
     const operationId = lease.beginRelocation(destination, plan, restore);
     return this.#relocationOperation(lease, operationId);
   }
 
   resumeRelocation(operationId: string): RuntimeRelocationOperation {
-    return this.#relocationOperation(this.#exclusiveRelocationLease(), operationId);
+    return this.#relocationOperation(this.#exclusiveInstallationLease(), operationId);
   }
 
   #relocationOperation(lease: ExclusiveInstallationLease, operationId: string): RuntimeRelocationOperation {
@@ -271,7 +261,6 @@ export class RuntimeAdmission {
     const child = (pair: RuntimePair, scope: AdmissionScope): RuntimeAdmission => new RuntimeAdmission(issuanceToken,
       { assertHeld: () => { inventory(); }, release() {} }, pair.stateRoot, pair.artifactRoot,
       scope === "relocation-destination" ? [join(pair.stateRoot, "state.db")] : [],
-      scope === "relocation-destination" ? [join(pair.stateRoot, rebuildRuntimeIsolation.archiveDatabaseFile)] : [],
       scope, "exclusive");
     return Object.freeze({ operationId, inventory,
       prepareDestinationRoots: () => { inventory(); lease.prepareDestinationRoots(); },
@@ -310,10 +299,10 @@ export class RuntimeAdmission {
       throw new Error("runtime-admission: staged authority path is not an owned restore copy");
     }
     return new RuntimeAdmission(issuanceToken, { assertHeld: () => this.assertLive(), release() {} },
-      this.#stateRoot, this.#artifactRoot, [resolve(path)], [], this.#scope === "synthetic" ? "synthetic-stopped-staged" : "stopped-staged", "exclusive");
+      this.#stateRoot, this.#artifactRoot, [resolve(path)], this.#scope === "synthetic" ? "synthetic-stopped-staged" : "stopped-staged", "exclusive");
   }
 
-  verifiedReadOnlyCopy(path: string, expectedSha256: string, kind: "authority" | "archive"): RuntimeAdmission {
+  verifiedReadOnlyCopy(path: string, expectedSha256: string): RuntimeAdmission {
     this.assertLive();
     if (this.#scope === "adoption-initialization") throw new Error("runtime-admission: fresh initialization cannot delegate copy authority");
     if (this.#scope === "relocation-source-verification") {
@@ -360,7 +349,7 @@ export class RuntimeAdmission {
     };
     verifyBytes();
     return new RuntimeAdmission(issuanceToken, { assertHeld: verifyBytes, release() {} },
-      this.#stateRoot, this.#artifactRoot, kind === "authority" ? [checked] : [], kind === "archive" ? [checked] : [],
+      this.#stateRoot, this.#artifactRoot, [checked],
       this.#scope === "synthetic" || this.#scope === "synthetic-verified-copy" ? "synthetic-verified-copy" : "verified-copy", this.#mode);
   }
 
@@ -368,7 +357,7 @@ export class RuntimeAdmission {
     assertInstallationLease(lease);
     const { stateRoot, artifactRoot } = lease.locator;
     return new RuntimeAdmission(issuanceToken, lease, stateRoot, artifactRoot,
-      [join(stateRoot, "state.db")], [join(stateRoot, rebuildRuntimeIsolation.archiveDatabaseFile)], "installation", lease.mode, lease.locator);
+      [join(stateRoot, "state.db")], "installation", lease.mode, lease.locator);
   }
 
   static acquireInitial(workspace: string,
@@ -383,7 +372,7 @@ export class RuntimeAdmission {
       defaultPair: defaults,
       verifyExisting: (pair) => {
         const inspection = new RuntimeAdmission(issuanceToken, { assertHeld() {}, release() {} }, pair.stateRoot, pair.artifactRoot,
-          [join(pair.stateRoot, "state.db")], [join(pair.stateRoot, rebuildRuntimeIsolation.archiveDatabaseFile)], "adoption-inspection", "exclusive");
+          [join(pair.stateRoot, "state.db")], "adoption-inspection", "exclusive");
         try { return verifyExisting(pair, inspection); }
         finally { inspection.release(); }
       },
@@ -391,7 +380,7 @@ export class RuntimeAdmission {
         const initialization = new RuntimeAdmission(issuanceToken,
           { assertHeld: () => witness.assertHeld(), release() {} }, witness.pair.stateRoot, witness.pair.artifactRoot,
           [join(witness.pair.stateRoot, "state.db")],
-          [join(witness.pair.stateRoot, rebuildRuntimeIsolation.archiveDatabaseFile)], "adoption-initialization", "exclusive");
+          "adoption-initialization", "exclusive");
         try {
           const completed: unknown = initializeFresh(witness.pair, initialization);
           if (completed !== undefined) throw new Error("runtime-admission: fresh initialization must complete synchronously");
@@ -403,7 +392,7 @@ export class RuntimeAdmission {
   }
 
   /** Bounded synthetic authority for tests; never accepts an installation or checkout path. */
-  static syntheticFixture(databasePath: string, kind: "authority" | "archive"): RuntimeAdmission {
+  static syntheticFixture(databasePath: string): RuntimeAdmission {
     if (databasePath !== ":memory:") {
       assertSyntheticDirectory(dirname(databasePath));
       const file = lstatSync(databasePath, { throwIfNoEntry: false });
@@ -419,8 +408,7 @@ export class RuntimeAdmission {
     const artifactRoot = databasePath === ":memory:" ? ":memory:" : join(stateRoot, "artifacts");
     const authority: AdmissionAuthority = { assertHeld() {}, release() {} };
     return new RuntimeAdmission(issuanceToken, authority, stateRoot, artifactRoot,
-      kind === "authority" ? [databasePath] : [],
-      kind === "archive" ? [databasePath] : databasePath === ":memory:" ? [] : [join(stateRoot, rebuildRuntimeIsolation.archiveDatabaseFile)], "synthetic", "synthetic");
+      [databasePath], "synthetic", "synthetic");
   }
 
   static syntheticRoots(stateRoot: string, artifactRoot: string): RuntimeAdmission {
@@ -428,7 +416,7 @@ export class RuntimeAdmission {
     assertSyntheticDirectory(artifactRoot);
     const authority: AdmissionAuthority = { assertHeld() {}, release() {} };
     return new RuntimeAdmission(issuanceToken, authority, stateRoot, artifactRoot,
-      [join(stateRoot, "state.db")], [join(stateRoot, rebuildRuntimeIsolation.archiveDatabaseFile)], "synthetic", "synthetic");
+      [join(stateRoot, "state.db")], "synthetic", "synthetic");
   }
 }
 Object.freeze(RuntimeAdmission.prototype);
@@ -464,4 +452,13 @@ export function acquireRecoveryRuntimeRelocation(workspace: string,
     lease.release();
     throw error;
   }
+}
+
+export function acquireRecoveryRuntimeRestore(workspace: string, operationId: string,
+  restore: RestoreAdmissionHandle): Readonly<{ admission: RuntimeAdmission; input: AuthorityRestoreInput }> {
+  const lease = acquireInstallation(workspace, "exclusive", { recoverAuthorityRestore: { operationId, restoreAdmission: restore } });
+  try {
+    const admission = RuntimeAdmission.fromInstallationLease(lease);
+    return Object.freeze({ admission, input: admission.readAuthorityRestore(operationId) });
+  } catch (error) { lease.release(); throw error; }
 }

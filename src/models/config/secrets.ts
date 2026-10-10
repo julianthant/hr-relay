@@ -8,7 +8,6 @@ import type { Config } from "./schema.js";
 import { establishHostPrimaryDisplay, hostPrimaryDisplayEnvironment, type HostDisplayProbe } from "./host-display.js";
 import { FingerprintSchema, type Fingerprint } from "../../rules/identity/ids.js";
 import { deepFreeze } from "../../rules/validation/immutability.js";
-import { type ActivityPersonPseudonymDomain } from "../trust/activity-person-pseudonym.js";
 import { EnvironmentSecretNameSchema, SecretFileNameSchema, SecretNameSchema } from "./secret-names.js";
 import type { SecretFileName, SecretName } from "./secret-names.js";
 export {
@@ -250,14 +249,6 @@ export function requireSecret(
     throw new SecretMissingError(`${name} is missing from registered source ${spec.source}`);
   }
   return value;
-}
-
-/** The public generation must be configured beside the key; neither value has a default, and the returned domain exposes no key-reading operation. */
-export function requireActivityPersonPseudonymDomain(
-  source: ProtectedSecretSource,
-): ActivityPersonPseudonymDomain {
-  void source;
-  throw new Error("activity-person-pseudonyms-retired");
 }
 
 function unresolvedDiagnostics(availabilities: readonly SecretAvailability[]): readonly string[] {

@@ -1,6 +1,8 @@
+import { TimelineAppendSchema } from "../../../../../../src/models/events/timeline.js";
+import { CONFIG_SNAPSHOT } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
-import { mkdtempSync, rmSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -19,6 +21,13 @@ import { runRecordOf } from "../../../../../support/helpers/backend/dashboard-ha
 import { insertMeasuredSearchRun } from "../../../../../support/helpers/backend/cross-date-search-harness.js";
 import { SANITIZED_CROSS_DATE_SEARCH_CORPUS } from "../../../../../support/fixtures/cross-date-search-corpus.js";
 import { separationsDescriptor } from "../../../../../support/helpers/registered-workflows.js";
+
+function corruptRunSource(raw: DatabaseSync, sql: string, ...values: (string | number | null)[]) {
+  const trigger = z.object({ sql: z.string() }).parse(raw.prepare("SELECT sql FROM sqlite_schema WHERE type='trigger' AND name='runs_identity'").get());
+  raw.exec("DROP TRIGGER runs_identity");
+  try { raw.prepare(sql).run(...values); }
+  finally { raw.exec(trigger.sql); }
+}
 
 const TEST_CURSOR_SIGNING_KEY = new Uint8Array(32).fill(0x53);
 const MEASURED_SEARCH_DESCRIPTOR = Object.freeze({
@@ -329,14 +338,14 @@ describe("cross-date search result", () => {
 
 describe("cross-date search authority read", () => {
   it("ranks the corpus once per authority search", () => {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-cross-date-ranked-pass-"));
+    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-cross-date-ranked-pass-"));
     const database = AuthorityDatabase.open(
       { path: join(root, "authority.db"), busyTimeoutMs: 1_000, migrationOwner: "search-ranked-pass-test" },
       manualClock(new Date("2026-08-28T16:00:00.000Z")),
     );
     try {
-      insertMeasuredSearchRun(database, { seed: 89, enqueuedAt: "2026-08-28T15:00:00.000Z" });
-      insertMeasuredSearchRun(database, { seed: 90, enqueuedAt: "2026-08-28T14:00:00.000Z" });
+      insertMeasuredSearchRun(database, { authorityPath: join(root, "authority.db"), seed: 89, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+      insertMeasuredSearchRun(database, { authorityPath: join(root, "authority.db"), seed: 90, enqueuedAt: "2026-08-28T14:00:00.000Z" });
       const prepare = vi.spyOn(DatabaseSync.prototype, "prepare");
       try {
         database.authority.runs.search({
@@ -359,12 +368,13 @@ describe("cross-date search authority read", () => {
     }
   });
 
-  it("admits non-archived workflows beyond the historical measured corpus", () => {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-cross-date-outside-corpus-"));
+  it("admits current workflows beyond the measured corpus", () => {
+    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-cross-date-outside-corpus-"));
     const database = AuthorityDatabase.open(
       { path: join(root, "authority.db"), busyTimeoutMs: 1_000, migrationOwner: "search-outside-corpus-test" },
       manualClock(new Date("2026-08-28T16:00:00.000Z")),
     );
+    database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
     try {
       const run = runRecordOf({ seed: 87, enqueuedAt: "2026-08-28T15:00:00.000Z" });
       database.authority.runs.enqueue(run);
@@ -409,11 +419,12 @@ describe("cross-date search authority read", () => {
     ];
 
     for (const { label, run } of cases) {
-      const root = mkdtempSync(join(tmpdir(), "hrauto-cross-date-corpus-dimension-"));
+      const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-cross-date-corpus-dimension-"));
       const database = AuthorityDatabase.open(
         { path: join(root, "authority.db"), busyTimeoutMs: 1_000, migrationOwner: "search-corpus-dimension-test" },
         manualClock(new Date("2026-08-28T16:00:00.000Z")),
       );
+      database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
       try {
         database.authority.runs.enqueue(run);
         const page = database.authority.runs.search({ q: run.envelope.runId, scope: "run", facets: {}, limit: 1 });
@@ -428,12 +439,13 @@ describe("cross-date search authority read", () => {
     }
   });
 
-  it("serves queued lifecycle metadata alongside the historical terminal corpus", () => {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-cross-date-corpus-state-"));
+  it("serves current queued lifecycle metadata", () => {
+    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-cross-date-corpus-state-"));
     const database = AuthorityDatabase.open(
       { path: join(root, "authority.db"), busyTimeoutMs: 1_000, migrationOwner: "search-corpus-state-test" },
       manualClock(new Date("2026-08-28T16:00:00.000Z")),
     );
+    database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
     try {
       const run = queuedSearchCorpusCandidate({ seed: 83 });
       database.authority.runs.enqueue(run);
@@ -448,8 +460,148 @@ describe("cross-date search authority read", () => {
     }
   });
 
+  it("authenticates complete retained actor sources and keeps frozen actors through genuine ordinary pruning", () => {
+    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-search-actor-"));
+    const path=join(root,"authority.db"),clock=manualClock(new Date("2026-11-01T16:00:00.000Z"));
+    const database=AuthorityDatabase.open({path,busyTimeoutMs:1000,migrationOwner:"search-actor-test"},clock);
+    const raw=new DatabaseSync(path);
+    try {
+      const run=insertMeasuredSearchRun(database,{seed:983,enqueuedAt:"2026-08-01T16:00:00.000Z",authorityPath:path});
+      const unrelated=insertMeasuredSearchRun(database,{seed:984,enqueuedAt:"2026-08-01T16:00:00.000Z",authorityPath:path});
+      const e=run.envelope;
+      const event=TimelineAppendSchema.parse({schemaVersion:1,eventId:randomUUID(),workflow:e.workflow,
+        scope:{kind:"run",runId:e.runId},occurredAt:e.enqueuedAt,recordedAt:e.enqueuedAt,retentionDate:"2026-08-01",source:{kind:"native"},
+        payload:{kind:"span",event:{t:"run.queued",kind:"run",pid:4242,ts:e.enqueuedAt,workflow:e.workflow,runId:e.runId,
+          attempt:e.attempt,traceId:e.traceId,spanPath:e.traceId,itemId:e.itemId,shape:e.shape,priority:e.priority,dryRun:e.dryRun,
+          actorId:"local-operator",title:"Synthetic actor source",descriptorVersion:e.descriptorVersion,contractFingerprint:e.contractFingerprint,
+          resolvedInstance:e.resolvedInstance,configFingerprint:e.configFingerprint,configSnapshotId:e.configSnapshotId}}});
+      database.authority.timelineEvents.append(event);
+      const saved=z.object({actor_source_json:z.string(),metadata_json:z.string(),actor_id:z.string()}).parse(raw.prepare("SELECT actor_source_json,metadata_json,actor_id FROM run_search WHERE run_id=?").get(e.runId));
+      for(const fault of ["erase","forge"] as const) {
+        if(fault === "erase")raw.prepare("UPDATE run_search SET actor_source_json=NULL,actor_id=NULL,metadata_json=json_set(metadata_json,'$.metadata.actor',json(?)) WHERE run_id=?")
+          .run('{"state":"unavailable","reason":"not-recorded"}',e.runId);
+        else raw.prepare("UPDATE run_search SET actor_source_json=json_set(actor_source_json,'$[0].event.payload.event.actorId','forged-actor'),actor_id='forged-actor',metadata_json=json_set(metadata_json,'$.metadata.actor.value','forged-actor') WHERE run_id=?").run(e.runId);
+        const generation=database.getMeta().authorityGeneration;
+        assert.throws(()=>database.authority.runs.search({q:"NONMATCH",scope:"run",facets:{},limit:1}),/run-search-index-rebuild-required/u);
+        assert.equal(database.getMeta().authorityGeneration,generation);
+        raw.prepare("UPDATE run_search SET actor_source_json=?,actor_id=?,metadata_json=? WHERE run_id=?").run(saved.actor_source_json,saved.actor_id,saved.metadata_json,e.runId);
+      }
+      const before=database.authority.runs.search({q:e.runId,scope:"run",facets:{},limit:1});
+      assert.equal(before.rows[0]?.metadata.actor.state,"available");
+      const validBytes=[readFileSync(path),readFileSync(`${path}-wal`)];
+      const validGeneration=database.getMeta().authorityGeneration;
+      assert.equal(AuthorityDatabase.inspectExistingReadOnly(path).authorityGeneration,validGeneration);
+      const readOnly=AuthorityDatabase.open({path,busyTimeoutMs:1000,openMode:"storage-doctor-read-only-no-migrate",migrationOwner:"search-readonly"},clock);
+      try { assert.deepEqual(readOnly.authority.runs.search({q:e.runId,scope:"run",facets:{},limit:1}),before); }
+      finally { readOnly.close(); }
+      assert.deepEqual([readFileSync(path),readFileSync(`${path}-wal`)],validBytes);
+      assert.equal(database.getMeta().authorityGeneration,validGeneration);
+      const pinned=database.authority.timelineEvents.get(event.eventId);assert.ok(pinned);
+      const debug=TimelineAppendSchema.parse({...event,eventId:randomUUID(),payload:{kind:"span",event:{t:"span.started",kind:"task",pid:4242,ts:e.enqueuedAt,workflow:e.workflow,runId:e.runId,attempt:e.attempt,traceId:e.traceId,spanPath:`${e.traceId}/debug#1`,name:"Unrelated debug task"}}});
+      database.authority.timelineEvents.append(debug);
+      assert.equal(database.authority.timelineEvents.pruneBefore("2026-10-01"),1);
+      assert.equal(database.authority.timelineEvents.get(debug.eventId),undefined);
+      assert.deepEqual(database.authority.timelineEvents.get(event.eventId),pinned);
+      assert.deepEqual(database.authority.runs.search({q:e.runId,scope:"run",facets:{},limit:1}),before);
+      for(const fault of ["erase","forge"] as const) {
+        if(fault === "erase")raw.prepare("UPDATE run_search SET actor_source_json=NULL,actor_id=NULL,metadata_json=json_set(metadata_json,'$.metadata.actor',json(?)) WHERE run_id=?")
+          .run('{"state":"unavailable","reason":"not-recorded"}',e.runId);
+        else raw.prepare("UPDATE run_search SET actor_source_json=json_set(actor_source_json,'$[0].event.payload.event.actorId','forged-actor'),actor_id='forged-actor',metadata_json=json_set(metadata_json,'$.metadata.actor.value','forged-actor') WHERE run_id=?").run(e.runId);
+        const generation=database.getMeta().authorityGeneration;
+        const unrelatedBefore=database.authority.runs.get(unrelated.envelope.runId);assert.ok(unrelatedBefore);
+        const sourceBefore=raw.prepare("SELECT * FROM timeline_events ORDER BY cursor").all();
+        assert.throws(()=>database.authority.runs.search({q:"NONMATCH",scope:"run",facets:{actor:"nonmatching-actor"},limit:1}),/run-search-index-rebuild-required/u);
+        assert.throws(()=>database.authority.runs.updatePresentation({runId:unrelated.envelope.runId,expectedVersion:unrelated.version,displayName:"Must not mutate",now:clock.now().toISOString()}),/run-search-retained-actor-source-mismatch/u);
+        assert.deepEqual(database.authority.runs.get(unrelated.envelope.runId),unrelatedBefore);
+        assert.equal(database.getMeta().authorityGeneration,generation);
+        assert.deepEqual(raw.prepare("SELECT * FROM timeline_events ORDER BY cursor").all(),sourceBefore);
+        assert.throws(()=>{
+          const unexpected=AuthorityDatabase.open({path,busyTimeoutMs:1000,migrationOwner:"search-post-prune-corrupt-reopen"},clock);
+          unexpected.close();
+        },/run-search-retained-actor-source-mismatch/u);
+        const corruptBytes=[readFileSync(path),readFileSync(`${path}-wal`)];
+        assert.throws(()=>AuthorityDatabase.inspectExistingReadOnly(path),/run-search-retained-actor-source-mismatch/u);
+        assert.throws(()=>{
+          const unexpected=AuthorityDatabase.open({path,busyTimeoutMs:1000,openMode:"storage-doctor-read-only-no-migrate",migrationOwner:"search-corrupt-readonly"},clock);
+          unexpected.close();
+        },/run-search-retained-actor-source-mismatch/u);
+        assert.deepEqual([readFileSync(path),readFileSync(`${path}-wal`)],corruptBytes);
+        assert.equal(database.getMeta().authorityGeneration,generation);
+        raw.prepare("UPDATE run_search SET actor_source_json=?,actor_id=?,metadata_json=? WHERE run_id=?").run(saved.actor_source_json,saved.actor_id,saved.metadata_json,e.runId);
+      }
+      const reopened=AuthorityDatabase.open({path,busyTimeoutMs:1000,migrationOwner:"search-post-prune-genuine-reopen"},clock);
+      try { assert.deepEqual(reopened.authority.runs.search({q:e.runId,scope:"run",facets:{},limit:1}),before); }
+      finally { reopened.close(); }
+    } finally { raw.close();database.close();rmSync(root,{recursive:true,force:true}); }
+  });
+
+  it("admits genuine peer commits and refuses raw corruption masked by generation changes or another mutation", () => {
+    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-search-peer-"));
+    const path = join(root, "authority.db"), clock = manualClock(new Date("2026-08-28T16:00:00.000Z"));
+    const database = AuthorityDatabase.open({ path, busyTimeoutMs: 1000, migrationOwner: "search-peer-test" }, clock);
+    const raw = new DatabaseSync(path);
+    let peer: AuthorityDatabase | undefined;
+    try {
+      const first = insertMeasuredSearchRun(database, { authorityPath: path, seed: 91 });
+      const second = insertMeasuredSearchRun(database, { authorityPath: path, seed: 92 });
+      const search = () => database.authority.runs.search({ q: "", scope: "run", facets: {}, limit: 10 });
+      assert.equal(search().totalMatches, 2);
+      peer = AuthorityDatabase.open({ path, busyTimeoutMs: 1000, migrationOwner: "search-genuine-peer" }, clock);
+      const advance = () => {
+        const current = peer?.authority.runs.get(first.envelope.runId);
+        assert.ok(current);
+        return peer?.authority.runs.advanceRevision({ runId: current.envelope.runId, expectedVersion: current.version, now: clock.now().toISOString() });
+      };
+      assert.equal(advance()?.state, "applied");
+      assert.equal(search().rows.find(row => row.record.envelope.runId === first.envelope.runId)?.record.version, first.version + 1);
+      const ownBefore = database.getMeta(), beforeRows = raw.prepare("SELECT * FROM runs ORDER BY id").all();
+      corruptRunSource(raw, "UPDATE runs SET workflow=? WHERE id=?", "person-lookup", second.envelope.runId);
+      const corrupted = raw.prepare("SELECT * FROM runs ORDER BY id").all();
+      assert.throws(advance, /authority table runs failed native record validation: run row workflow does not match its whole-record JSON/u);
+      assert.throws(() => database.authority.runs.advanceRevision({ runId: first.envelope.runId,
+        expectedVersion: first.version + 1, now: clock.now().toISOString() }), /authority table runs failed native record validation: run row workflow does not match its whole-record JSON/u);
+      assert.deepEqual(raw.prepare("SELECT * FROM runs ORDER BY id").all(), corrupted);
+      assert.deepEqual(database.getMeta(), ownBefore, "refused peer and own mutations cannot launder the changed source");
+      raw.exec("UPDATE database_states SET authority_generation=authority_generation+1,search_generation=search_generation+1");
+      assert.throws(() => database.authority.runs.search({ q: "NONMATCH", scope: "run", facets: { workflow: "separations" }, limit: 1 }), /run-search-index-rebuild-required/);
+      corruptRunSource(raw, "UPDATE runs SET workflow=? WHERE id=?", second.envelope.workflow, second.envelope.runId);
+      raw.prepare("UPDATE database_states SET authority_generation=?,search_generation=?").run(ownBefore.authorityGeneration, ownBefore.authorityGeneration);
+      assert.deepEqual(raw.prepare("SELECT * FROM runs ORDER BY id").all(), beforeRows);
+      assert.equal(search().totalMatches, 2);
+    } finally { peer?.close(); raw.close(); database.close(); rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("keeps a pinned search snapshot coherent across peer commits and preserves rollback admission", () => {
+    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-search-pinned-"));
+    const path = join(root, "authority.db"), clock = manualClock(new Date("2026-08-28T16:00:00.000Z"));
+    const database = AuthorityDatabase.open({ path, busyTimeoutMs: 1000, migrationOwner: "search-pinned-test" }, clock);
+    let peer: AuthorityDatabase | undefined;
+    try {
+      const run = insertMeasuredSearchRun(database, { authorityPath: path, seed: 93 });
+      const search = () => database.authority.runs.search({ q: run.envelope.runId, scope: "run", facets: {}, limit: 1 });
+      peer = AuthorityDatabase.open({ path, busyTimeoutMs: 1000, migrationOwner: "search-pinned-peer" }, clock);
+      database.withAuthorityReadSnapshot(() => {
+        const before = search(), generation = database.getMeta().authorityGeneration;
+        const applied = peer?.authority.runs.advanceRevision({ runId: run.envelope.runId, expectedVersion: run.version, now: clock.now().toISOString() });
+        assert.equal(applied?.state, "applied");
+        assert.deepEqual(search(), before);
+        assert.equal(database.getMeta().authorityGeneration, generation);
+      });
+      assert.equal(search().rows[0]?.record.version, run.version + 1);
+      const before = search(), generation = database.getMeta().authorityGeneration;
+      const fault = new Error("rollback-search-admission");
+      assert.throws(() => database.withAuthorityTransaction(repositories => {
+        const applied = repositories.runs.advanceRevision({ runId: run.envelope.runId, expectedVersion: run.version + 1, now: clock.now().toISOString() });
+        assert.equal(applied.state, "applied");
+        throw fault;
+      }), error => error === fault);
+      assert.deepEqual(search(), before);
+      assert.equal(database.getMeta().authorityGeneration, generation);
+    } finally { peer?.close(); database.close(); rmSync(root, { recursive: true, force: true }); }
+  });
+
   it("refuses invalidated publication before facets or matching", () => {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-cross-date-corpus-"));
+    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-cross-date-corpus-"));
     const databasePath = join(root, "authority.db");
     const database = AuthorityDatabase.open(
       { path: databasePath, busyTimeoutMs: 1_000, migrationOwner: "search-corpus-test" },
@@ -457,7 +609,7 @@ describe("cross-date search authority read", () => {
     );
     const raw = new DatabaseSync(databasePath);
     try {
-      const run = insertMeasuredSearchRun(database, { seed: 88, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+      const run = insertMeasuredSearchRun(database, { authorityPath: join(root, "authority.db"), seed: 88, enqueuedAt: "2026-08-28T15:00:00.000Z" });
       const search = (input: unknown): unknown => database.authority.runs.search(input);
       assert.equal(database.authority.runs.search({
         q: run.envelope.runId,
@@ -466,8 +618,7 @@ describe("cross-date search authority read", () => {
         limit: 1,
       }).totalMatches, 1, "the clean corpus must be read once before out-of-band corruption");
 
-      raw.prepare("UPDATE workflow_runs SET workflow = ? WHERE record_key = ?")
-        .run("person-lookup", run.envelope.runId);
+      corruptRunSource(raw, "UPDATE runs SET workflow = ? WHERE id = ?", "person-lookup", run.envelope.runId);
       assert.throws(
         () => search({
           q: "does-not-match-any-run",
@@ -477,13 +628,11 @@ describe("cross-date search authority read", () => {
         }),
         /run-search-index-rebuild-required/,
       );
-      raw.prepare("UPDATE workflow_runs SET workflow = ? WHERE record_key = ?")
-        .run("separations", run.envelope.runId);
+      corruptRunSource(raw, "UPDATE runs SET workflow = ? WHERE id = ?", "separations", run.envelope.runId);
       database.rebuildRunSearchIndex({ restart: true });
       assert.equal(database.authority.runs.search({ q: "separations", scope: "workflow", facets: {}, limit: 1 }).totalMatches, 1);
 
-      raw.prepare("UPDATE workflow_runs SET created_at = ? WHERE record_key = ?")
-        .run("2026-08-27T15:00:00.000Z", run.envelope.runId);
+      corruptRunSource(raw, "UPDATE runs SET created_at = ? WHERE id = ?", "2026-08-27T15:00:00.000Z", run.envelope.runId);
       assert.throws(
         () => search({
           q: "does-not-match-any-run",
@@ -498,16 +647,12 @@ describe("cross-date search authority read", () => {
         }),
         /run-search-index-rebuild-required/,
       );
-      raw.prepare("UPDATE workflow_runs SET created_at = ? WHERE record_key = ?")
-        .run(run.createdAt, run.envelope.runId);
+      corruptRunSource(raw, "UPDATE runs SET created_at = ? WHERE id = ?", run.createdAt, run.envelope.runId);
       database.rebuildRunSearchIndex({ restart: true });
       assert.equal(database.authority.runs.search({ q: "separations", scope: "workflow", facets: {}, limit: 1 }).totalMatches, 1);
 
-      raw.prepare(`
-        UPDATE workflow_runs
-        SET record_json = json_set(record_json, '$.envelope.traceId', ?)
-        WHERE record_key = ?
-      `).run("sp-sensitive-10873698-fragment", run.envelope.runId);
+      corruptRunSource(raw, "UPDATE runs SET envelope_json = json_set(envelope_json, '$.traceId', ?) WHERE id = ?",
+        "sp-sensitive-10873698-fragment", run.envelope.runId);
       let nonMatchMessage = "";
       assert.throws(
         () => search({ q: "does-not-match-any-run", scope: "trace", facets: {}, limit: 1 }),
@@ -529,7 +674,7 @@ describe("cross-date search authority read", () => {
   });
 
   it("refuses searchable columns that disagree with the strict run authority", () => {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-cross-date-columns-"));
+    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-cross-date-columns-"));
     const databasePath = join(root, "authority.db");
     const database = AuthorityDatabase.open(
       { path: databasePath, busyTimeoutMs: 1_000, migrationOwner: "search-columns-test" },
@@ -537,7 +682,7 @@ describe("cross-date search authority read", () => {
     );
     const raw = new DatabaseSync(databasePath);
     try {
-      const run = insertMeasuredSearchRun(database, { seed: 89, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+      const run = insertMeasuredSearchRun(database, { authorityPath: join(root, "authority.db"), seed: 89, enqueuedAt: "2026-08-28T15:00:00.000Z" });
       const searchExactRun = (facets: unknown): unknown => database.authority.runs.search({
         q: run.envelope.runId,
         scope: "run",
@@ -545,30 +690,25 @@ describe("cross-date search authority read", () => {
         limit: 1,
       });
 
-      raw.prepare("UPDATE workflow_runs SET workflow = ? WHERE record_key = ?")
-        .run("person-lookup", run.envelope.runId);
+      corruptRunSource(raw, "UPDATE runs SET workflow = ? WHERE id = ?", "person-lookup", run.envelope.runId);
       assert.throws(
         () => searchExactRun({ workflow: "separations" }),
         /run-search-index-rebuild-required/,
       );
-      raw.prepare("UPDATE workflow_runs SET workflow = ? WHERE record_key = ?")
-        .run("separations", run.envelope.runId);
+      corruptRunSource(raw, "UPDATE runs SET workflow = ? WHERE id = ?", "separations", run.envelope.runId);
       database.rebuildRunSearchIndex({ restart: true });
       assert.equal(database.authority.runs.search({ q: "separations", scope: "workflow", facets: {}, limit: 1 }).totalMatches, 1);
 
-      raw.prepare("UPDATE workflow_runs SET state = ? WHERE record_key = ?")
-        .run("terminal", run.envelope.runId);
+      corruptRunSource(raw, "UPDATE runs SET state = ?, outcome = ? WHERE id = ?", "terminal", "done", run.envelope.runId);
       assert.throws(
         () => searchExactRun({ state: "parked-gate" }),
         /run-search-index-rebuild-required/,
       );
-      raw.prepare("UPDATE workflow_runs SET state = ? WHERE record_key = ?")
-        .run(run.lifecycle.state, run.envelope.runId);
+      corruptRunSource(raw, "UPDATE runs SET state = ?, outcome = ? WHERE id = ?", run.lifecycle.state, null, run.envelope.runId);
       database.rebuildRunSearchIndex({ restart: true });
       assert.equal(database.authority.runs.search({ q: "separations", scope: "workflow", facets: {}, limit: 1 }).totalMatches, 1);
 
-      raw.prepare("UPDATE workflow_runs SET priority = ? WHERE record_key = ?")
-        .run("bulk", run.envelope.runId);
+      corruptRunSource(raw, "UPDATE runs SET priority = ? WHERE id = ?", "bulk", run.envelope.runId);
       assert.throws(
         () => searchExactRun({}),
         /run-search-index-rebuild-required/,
@@ -581,7 +721,7 @@ describe("cross-date search authority read", () => {
   });
 
   it("refuses a strict run record whose authority order instant is foreign", () => {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-cross-date-malformed-"));
+    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-cross-date-malformed-"));
     const databasePath = join(root, "authority.db");
     const database = AuthorityDatabase.open(
       { path: databasePath, busyTimeoutMs: 1_000, migrationOwner: "search-malformed-test" },
@@ -589,14 +729,15 @@ describe("cross-date search authority read", () => {
     );
     const raw = new DatabaseSync(databasePath);
     try {
-      const run = insertMeasuredSearchRun(database, { seed: 90, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+      const run = insertMeasuredSearchRun(database, { authorityPath: join(root, "authority.db"), seed: 90, enqueuedAt: "2026-08-28T15:00:00.000Z" });
       const malformed = RunRecordSchema.parse({
         ...run,
         createdAt: "2026-08-28T15:01:00.000Z",
         updatedAt: "2026-08-28T15:01:00.000Z",
       });
-      raw.prepare("UPDATE workflow_runs SET record_json = ? WHERE record_key = ?")
-        .run(canonicalJsonStringify(malformed), run.envelope.runId);
+      const { envelope, ...lifecycle } = malformed;
+      corruptRunSource(raw, "UPDATE runs SET envelope_json = ?, lifecycle_json = ? WHERE id = ?",
+        canonicalJsonStringify(envelope), canonicalJsonStringify(lifecycle), run.envelope.runId);
 
       assert.throws(
         () => database.authority.runs.search({
@@ -615,7 +756,7 @@ describe("cross-date search authority read", () => {
   });
 
   it("returns a bounded page in stable match, time, and run-id order", () => {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-cross-date-search-"));
+    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-cross-date-search-"));
     const database = AuthorityDatabase.open(
       { path: join(root, "authority.db"), busyTimeoutMs: 1_000, migrationOwner: "search-test" },
       manualClock(new Date("2026-08-28T16:00:00.000Z")),
@@ -623,15 +764,15 @@ describe("cross-date search authority read", () => {
     try {
       const oldestSecondById = insertMeasuredSearchRun(
         database,
-        { seed: 2, enqueuedAt: "2026-08-27T12:00:00.000Z" },
+        { authorityPath: join(root, "authority.db"), seed: 2, enqueuedAt: "2026-08-27T12:00:00.000Z" },
       );
       const newest = insertMeasuredSearchRun(
         database,
-        { seed: 3, enqueuedAt: "2026-08-28T12:00:00.000Z" },
+        { authorityPath: join(root, "authority.db"), seed: 3, enqueuedAt: "2026-08-28T12:00:00.000Z" },
       );
       const oldestFirstById = insertMeasuredSearchRun(
         database,
-        { seed: 1, enqueuedAt: "2026-08-27T12:00:00.000Z" },
+        { authorityPath: join(root, "authority.db"), seed: 1, enqueuedAt: "2026-08-27T12:00:00.000Z" },
       );
 
       const page = database.authority.runs.search({
@@ -712,16 +853,16 @@ describe("cross-date search authority read", () => {
 
 describe("cross-date search service", () => {
   it("accepts cursors only from the same BFF process signer", () => {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-cross-date-signer-"));
+    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-cross-date-signer-"));
     const clock = manualClock(new Date("2026-08-28T16:00:00.000Z"));
     const database = AuthorityDatabase.open(
       { path: join(root, "authority.db"), busyTimeoutMs: 1_000, migrationOwner: "search-signer-test" },
       clock,
     );
     try {
-      insertMeasuredSearchRun(database, { seed: 41, enqueuedAt: "2026-08-28T15:00:00.000Z" });
-      const second = insertMeasuredSearchRun(database, { seed: 42, enqueuedAt: "2026-08-27T15:00:00.000Z" });
-      insertMeasuredSearchRun(database, { seed: 43, enqueuedAt: "2026-08-26T15:00:00.000Z" });
+      insertMeasuredSearchRun(database, { authorityPath: join(root, "authority.db"), seed: 41, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+      const second = insertMeasuredSearchRun(database, { authorityPath: join(root, "authority.db"), seed: 42, enqueuedAt: "2026-08-27T15:00:00.000Z" });
+      insertMeasuredSearchRun(database, { authorityPath: join(root, "authority.db"), seed: 43, enqueuedAt: "2026-08-26T15:00:00.000Z" });
       const signer = new Uint8Array(32).fill(0x41);
       const service = createCrossDateSearchService({
         clock,
@@ -790,7 +931,7 @@ describe("cross-date search service", () => {
   });
 
   it("normalizes offset instants across a Pacific DST day and keyset pages", () => {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-cross-date-offsets-"));
+    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-cross-date-offsets-"));
     const clock = manualClock(new Date("2026-11-02T12:00:00.000Z"));
     const database = AuthorityDatabase.open(
       { path: join(root, "authority.db"), busyTimeoutMs: 1_000, migrationOwner: "search-offset-test" },
@@ -799,19 +940,19 @@ describe("cross-date search service", () => {
     try {
       const middle = insertMeasuredSearchRun(
         database,
-        { seed: 32, enqueuedAt: "2026-11-01T01:30:00.000-07:00" },
+        { authorityPath: join(root, "authority.db"), seed: 32, enqueuedAt: "2026-11-01T01:30:00.000-07:00" },
       );
       const outsideDay = insertMeasuredSearchRun(
         database,
-        { seed: 34, enqueuedAt: "2026-11-02T07:30:00.000-02:00" },
+        { authorityPath: join(root, "authority.db"), seed: 34, enqueuedAt: "2026-11-02T07:30:00.000-02:00" },
       );
       const oldest = insertMeasuredSearchRun(
         database,
-        { seed: 33, enqueuedAt: "2026-10-31T23:30:00.000-08:00" },
+        { authorityPath: join(root, "authority.db"), seed: 33, enqueuedAt: "2026-10-31T23:30:00.000-08:00" },
       );
       const newest = insertMeasuredSearchRun(
         database,
-        { seed: 31, enqueuedAt: "2026-11-01T01:15:00.000-08:00" },
+        { authorityPath: join(root, "authority.db"), seed: 31, enqueuedAt: "2026-11-01T01:15:00.000-08:00" },
       );
       const search = createCrossDateSearchService({
         clock,
@@ -868,14 +1009,14 @@ describe("cross-date search service", () => {
   });
 
   it("projects authoritative descriptor registration from one exact authority snapshot", () => {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-cross-date-service-"));
+    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-cross-date-service-"));
     const clock = manualClock(new Date("2026-08-28T16:00:00.000Z"));
     const database = AuthorityDatabase.open(
       { path: join(root, "authority.db"), busyTimeoutMs: 1_000, migrationOwner: "search-service-test" },
       clock,
     );
     try {
-      const run = insertMeasuredSearchRun(database, {
+      const run = insertMeasuredSearchRun(database, { authorityPath: join(root, "authority.db"),
         seed: 7,
         runNumber: 7,
         enqueuedAt: "2026-08-28T15:00:00.000Z",
@@ -913,15 +1054,15 @@ describe("cross-date search service", () => {
   });
 
   it("continues the stable order with an opaque cursor", () => {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-cross-date-cursor-"));
+    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-cross-date-cursor-"));
     const clock = manualClock(new Date("2026-08-28T16:00:00.000Z"));
     const database = AuthorityDatabase.open(
       { path: join(root, "authority.db"), busyTimeoutMs: 1_000, migrationOwner: "search-cursor-test" },
       clock,
     );
     try {
-      const first = insertMeasuredSearchRun(database, { seed: 11, enqueuedAt: "2026-08-28T15:00:00.000Z" });
-      const second = insertMeasuredSearchRun(database, { seed: 12, enqueuedAt: "2026-08-28T14:00:00.000Z" });
+      const first = insertMeasuredSearchRun(database, { authorityPath: join(root, "authority.db"), seed: 11, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+      const second = insertMeasuredSearchRun(database, { authorityPath: join(root, "authority.db"), seed: 12, enqueuedAt: "2026-08-28T14:00:00.000Z" });
       const search = createCrossDateSearchService({
         clock,
         sourceIdentity: database.getSourceDatabaseIdentity(),
@@ -1049,7 +1190,7 @@ describe("cross-date search service", () => {
       assert.equal(secondPage.nextCursor.state, "absent");
       assert.equal(secondPage.totalMatches, 2);
 
-      insertMeasuredSearchRun(database, {
+      insertMeasuredSearchRun(database, { authorityPath: join(root, "authority.db"),
         seed: 13,
         enqueuedAt: "2026-08-26T15:00:00.000Z",
       });

@@ -1,6 +1,7 @@
+import { testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -75,12 +76,13 @@ afterEach(() => {
 
 
 function personLookupReceipt() {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-receipt-guard-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-receipt-guard-"));
   roots.push(root);
   const database = AuthorityDatabase.open(
     { path: join(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "evidence-receipt-guard" },
     manualClock(new Date("2026-08-04T00:11:13.500Z")),
   );
+  testWorkerPorts(database, manualClock(new Date("2026-08-04T00:11:13.500Z")), { path: join(root, "state.sqlite"), descriptor: personLookupDescriptor, poolIndex: 1 });
   databases.push(database);
   const seeded = seedPersonLookupExitRun(database);
   return buildRunEvidenceReceipt({

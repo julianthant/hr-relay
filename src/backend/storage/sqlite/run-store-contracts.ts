@@ -1,3 +1,4 @@
+import { ParkedWriteResolutionBindingSchema } from "../../../rules/write-safety/write-safety.js";
 
 import { z } from "zod";
 import {
@@ -15,6 +16,7 @@ import {
   WorkerIdSchema,
   WorkflowIdSchema,
   WriteIntentIdSchema,
+  WriteAttemptIdSchema,
 } from "../../../rules/identity/ids.js";
 import { StartPlanRecordSchema } from "../../../models/run/start-plan.js";
 import {
@@ -24,7 +26,7 @@ import {
   WorkerLifecycleSchema,
 } from "../../../models/run/worker.js";
 import { WorkerPoolRecordSchema } from "../../../models/run/worker-pool.js";
-import { RunDisplayNameSchema, VersionArchiveCommandRequestSchema } from "../../../rules/commands/commands.js";
+import { RunDisplayNameSchema } from "../../../rules/commands/commands.js";
 import { CheckpointPatchSchema } from "../../../models/workflow/checkpoint.js";
 import { RuntimeConfigClaimTokenSchema } from "../../../models/config/runtime-generation.js";
 import { RunEnvelopeSchema } from "../../../models/run/envelope.js";
@@ -35,12 +37,11 @@ import {
   RunRecordSchema,
   RunStateSchema,
 } from "../../../models/run/record.js";
-import { ArchivedRunRecordSchema } from "../../../models/archive/model.js";
 import { RunExistenceSchema, RunRecordRefusalSchema } from "../../../models/config/authority.js";
 import { DeletedRunRecordSchema } from "../../../models/run/deleted-run.js";
 import {
   FailureTerminalizationRequestSchema,
-  SuccessTerminalizationReplayInputSchema,
+  SuccessTerminalizationRequestSchema,
 } from "./run-terminal-contracts.js";
 
 /** Proof that the caller still owns the row it is about to change. */
@@ -229,13 +230,13 @@ export const CanonicalCreateRunRequestSchema = z.strictObject({
 
 export const CanonicalListRunsRequestSchema = z.strictObject({
   workflow: WorkflowIdSchema.optional(),
-  disposition: z.enum(["live", "archived"]),
+  disposition: z.literal("live"),
   limit: PositiveIntSchema.max(1000),
   cursor: z.strictObject({
     generation: NonNegativeIntSchema,
     offset: NonNegativeIntSchema,
     workflow: WorkflowIdSchema.optional(),
-    disposition: z.enum(["live", "archived"]),
+    disposition: z.literal("live"),
   }).optional(),
 });
 
@@ -255,7 +256,11 @@ const CanonicalVersionIdentityFields = {
 export const CanonicalWriteResolutionTransitionRequestSchema = z.strictObject({
   ...CanonicalVersionIdentityFields,
   lifecycle: z.strictObject({ state: z.literal("queued") }),
-  writeResolution: z.enum(["resolve-write-present", "resolve-write-absent"]),
+  writeResolution: z.discriminatedUnion("kind",[
+    z.strictObject({kind:z.literal("operator"),binding:ParkedWriteResolutionBindingSchema}),
+    z.strictObject({kind:z.literal("recovery"),writeIntentId:WriteIntentIdSchema,generation:PositiveIntSchema,
+      writeAttemptId:WriteAttemptIdSchema,bindingProofDigest:FingerprintSchema,decision:z.enum(["present","absent"])}),
+  ]),
   evidenceFingerprint: FingerprintSchema.optional(),
   startAt: NodeIdSchema,
 });
@@ -289,7 +294,7 @@ export const CanonicalFailureTerminalizeRequestSchema = z.strictObject({
 
 export const CanonicalSuccessTerminalizeRequestSchema = z.strictObject({
   commandId: CommandIdSchema,
-  terminal: SuccessTerminalizationReplayInputSchema,
+  terminal: SuccessTerminalizationRequestSchema,
 });
 
 export const CanonicalCancellationTerminalizeRequestSchema = z.strictObject({
@@ -311,7 +316,7 @@ export const CanonicalTerminalizeRequestSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("success"),
     commandId: CommandIdSchema,
-    terminal: SuccessTerminalizationReplayInputSchema,
+    terminal: SuccessTerminalizationRequestSchema,
   }),
 ]);
 
@@ -329,36 +334,7 @@ export const CanonicalRetrySourceRequestSchema = z.strictObject({
   appVersion: RunRecordSchema.shape.appVersion,
 });
 
-export const CanonicalRelaunchCreateRequestSchema = CanonicalCreateRunRequestSchema.omit({
-  commandId: true,
-  parent: true,
-  retryOf: true,
-});
-
-export const CanonicalRelaunchRequestSchema = z.strictObject({
-  commandId: CommandIdSchema,
-  archivedRunId: RunIdSchema,
-  archiveFingerprint: FingerprintSchema,
-  relaunchedBy: ActorIdSchema,
-  create: CanonicalRelaunchCreateRequestSchema,
-});
-
-export const CanonicalArchiveRequestSchema = z.strictObject({
-  commandId: CommandIdSchema,
-  expectedVersion: PositiveIntSchema,
-  archive: ArchivedRunRecordSchema,
-});
-
 export const CanonicalDeleteRequestSchema = z.strictObject(CanonicalVersionIdentityFields);
-
-export const CanonicalDeleteArchivedRequestSchema = z.strictObject({
-  commandId: CommandIdSchema,
-  runId: RunIdSchema,
-  archiveFingerprint: FingerprintSchema.optional(),
-  operatorRequest: VersionArchiveCommandRequestSchema.optional(),
-}).refine(request => request.archiveFingerprint !== undefined || request.operatorRequest !== undefined, "archive-delete-reference-required")
-.refine(request => request.operatorRequest === undefined || (request.operatorRequest.type === "delete-archived-run"
-  && request.operatorRequest.target.archivedRunId === request.runId), "archive-operator-request-binding-mismatch");
 
 export const CanonicalPurgeRequestSchema = z.strictObject({
   commandId: CommandIdSchema,
@@ -494,7 +470,7 @@ export const WorkerSweepRequestSchema = z.strictObject({
 export const WorkerPoolPlanRequestSchema = z.strictObject({
   workflow: WorkflowIdSchema,
   expectedVersion: NonNegativeIntSchema,
-  desiredWorkers: PositiveIntSchema,
+  desiredWorkers: z.number().int().min(0).max(3),
   requestedBy: ActorIdSchema,
   now: IsoInstantSchema,
 });
@@ -518,3 +494,9 @@ export type RunRequeueRequest = z.infer<typeof RunRequeueRequestSchema>;
 export type RunResumeRequest = z.infer<typeof RunResumeRequestSchema>;
 export type RunPresentationRequest = z.infer<typeof RunPresentationRequestSchema>;
 export type RunClaimSweepRequest = z.infer<typeof RunClaimSweepRequestSchema>;
+
+export const CanonicalWorkerAdmissionRequestSchema = z.strictObject({
+  commandId: CommandIdSchema, workflow: WorkflowIdSchema, poolIndex: z.number().int().min(1).max(3),
+  expectedPoolVersion: NonNegativeIntSchema, processId: PositiveIntSchema, processAcquisitionId: z.uuid(),
+  authorityPath: z.string().min(1), processLockRoot: z.string().min(1), now: IsoInstantSchema,
+});

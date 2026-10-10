@@ -110,18 +110,17 @@ function createScenarioKernel(input: Readonly<{
       resolvePresent: () => unavailable("write resolution"),
       resolveAbsent: () => unavailable("write resolution"),
     },
-    workerRuntime: {
-      planWorkerCount: () => unavailable("worker planning"),
-      spawnWorker: () => unavailable("worker spawning"),
-      refreshBrowser: () => unavailable("browser refresh"),
-      reopenBrowser: () => unavailable("browser reopen"),
-    },
+    workerRuntime: { pool: {
+      planPoolWorkerCount: async () => unavailable("worker planning"),
+      spawnPoolWorker: async () => unavailable("worker spawning"),
+      refreshPoolBrowser: async () => unavailable("browser refresh"),
+      reopenPoolBrowser: async () => unavailable("browser reopen"),
+      stopPoolWorker: async () => unavailable("worker stopping"),
+      pausePoolWorker: async () => unavailable("worker pausing"),
+      resumePoolWorker: async () => unavailable("worker resuming"),
+    } },
     intakeParser: { parse: () => unavailable("intake parsing") },
     intakeProjections: { resolve: () => undefined },
-    archiveSnapshots: {
-      snapshot: () => unavailable("archive snapshots"),
-      snapshotBatch: () => unavailable("archive snapshots"),
-    },
   });
 }
 

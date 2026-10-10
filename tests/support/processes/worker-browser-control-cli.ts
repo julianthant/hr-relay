@@ -10,7 +10,7 @@ import { resolveConfigWithProvenance } from "../../../src/backend/app/config/res
 import { hostConfigFacts } from "../../../src/models/config/host-display.js";
 import { systemClock } from "../../../src/rules/time/clock.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
-import { PlaywrightWorkerSessionFactory } from "../../../src/backend/runtime/browser/browser-session-factory.js";
+import { BrowserProfileAdmissionSchema, PlaywrightWorkerSessionFactory } from "../../../src/backend/runtime/browser/browser-session-factory.js";
 import { composeWorkerRuntime, createTimeoutDeadlineScheduler } from "../../../src/backend/app/composition/worker-compose.js";
 import { resolveSystemEntryUrl } from "../../../src/models/config/instance.js";
 import type { BrowserSystemBinding } from "../../../src/backend/runtime/browser/system-bindings.js";
@@ -60,6 +60,7 @@ const binding = (system: "crm" | "ucpath"): BrowserSystemBinding => ({
 });
 const factory = new PlaywrightWorkerSessionFactory({ config, isolation: rebuildRuntimeIsolation, clock: systemClock,
   scheduler: createTimeoutDeadlineScheduler(systemClock), newSessionId: randomUUID,
+  admitProfile: input => Promise.resolve(BrowserProfileAdmissionSchema.parse({ ...input, profileRevision: 7 })),
   protectedSecrets: protectedSecretSource({ ucpathUserId: "synthetic", ucpathPassword: "synthetic" }),
   bindings: { crm: binding("crm"), ucpath: binding("ucpath") },
   launcher: { launch: async input => {

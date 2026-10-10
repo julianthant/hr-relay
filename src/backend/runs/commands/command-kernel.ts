@@ -1,3 +1,6 @@
+import { admitProtectedInput } from "../start/protected-input.js";
+import { admitWorkerPoolRoster } from "../../storage/sqlite/worker-slots.js";
+import { WorkerRetirementProofSchema, type WorkerPoolRosterAdmission } from "../../../models/run/worker-slot.js";
 import { PreflightAdmissionRefusal, type PreflightAdmission } from "../../../rules/preflight/preflight-admission.js";
 import { workflowPreflightScope } from "../start/preflight-scope.js";
 import { startSupersedeTargets } from "../../../models/run/start-supersede.js";
@@ -16,18 +19,13 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { descriptorRuntimeNodes, workflowPlanning, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { activeRunsForItem, fanOutQueuedRuns, requireApplied, runTarget, type TargetReference, type VersionChange } from "../lifecycle/run-fan-out.js";
-import { prepareManualArchive, publishManualArchive } from "../lifecycle/archive-terminal-runs.js";
-import type { ArchiveSnapshotSource } from "../archive/archive-service.js";
-import { executeArchiveCommand, runArchiveCommand } from "../archive/archive-version-changes.js";
-import type { createRuntimeVersionChanges } from "../archive/archive-runtime-version-changes.js";
 import { buildRerunPlan, RerunRefusedError } from "../start/rerun.js";
 import type { IntakeParser } from "../../../workflow-kit/intake-parser.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { COMMAND_FAMILY_REGISTRY, CommandIdentityConflictError, CommandRequestSchema, CommandResultSchema, StorageRelocationCommandRequestSchema, deriveSettingsCommandFingerprint, markSettingsCommand, type CommandRequest, type CommandResult } from "../../../rules/commands/commands.js";
-import { HistoricalNotificationSnoozeCommandSchema, type HistoricalNotificationSnoozeCommand } from "../../../rules/commands/commands-history.js";
 import { deriveItemId, deriveStableUuid, type IdFactory } from "../../../rules/identity/identifiers.js";
 import { deriveGateResultCheckpointFingerprint as deriveGateFingerprint } from "../../../models/workflow/gates.js";
-import { FingerprintSchema, IsoInstantSchema, ItemIdSchema, LOCAL_OPERATOR_ACTOR_ID, WorkerIdSchema } from "../../../rules/identity/ids.js";
+import { FingerprintSchema, IsoInstantSchema, ItemIdSchema, WorkerIdSchema } from "../../../rules/identity/ids.js";
 import { EditableSettingsOverrideSchema } from "../../../models/config/schema.js";
 import { SettingsApplyRefusalSchema, type SettingsFileRecord } from "../../../models/config/settings.js";
 import { readSettings } from "../../runtime/settings/settings-runtime.js";
@@ -46,11 +44,11 @@ import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.
 import { checkpointLookupKey, resolveFreshnessBound, type RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import { evaluateNodeCondition } from "../../../models/workflow/node-condition.js";
 import { findGateDecision } from "../../../models/trust/gate-decisions.js";
-import { JsonValueSchema, type JsonValue } from "../../../rules/validation/canonical-json.js";
+import { canonicalJsonStringify, JsonValueSchema, type JsonValue } from "../../../rules/validation/canonical-json.js";
 import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../../workflow-kit/validation/build-manifest.js";
 import { timelineCheckpointReference } from "../../../models/events/timeline.js";
 import { readRunCheckpoint } from "../../runtime/checkpoints/run-checkpoint-reader.js";
-import type { WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
+import { WriteIntentRecordSchema, type WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 import { dryRunRefusalMessage, resolveInstances, supportsDryRun } from "../start/plan.js";
 import { type ExplorerEditApplyRequest, ExplorerEditApplyResultSchema, type ExplorerEditApplyResult } from "../../../models/dashboard/explorer.js";
@@ -78,7 +76,6 @@ const PHASE1_ACTIVE = {
     "cancel",
     "bump",
     "rename",
-    "archive",
     "delete",
     "resolve-write-present",
     "resolve-write-absent",
@@ -98,7 +95,6 @@ const PHASE1_ACTIVE = {
   settings: ["apply-settings", "apply-protected-settings"],
   "storage-relocation": ["plan-storage-relocation", "cancel-storage-relocation"],
 
-  "version-archive": ["plan-version-bump", "apply-version-bump", "plan-runtime-version", "apply-runtime-version", "delete-archived-run"],
   explorer: ["apply-explorer-edit"],
 } as const;
 
@@ -106,7 +102,6 @@ const PHASE1_DEFERRED = {
   intake: [],
   settings: [],
   "storage-relocation": [],
-  "version-archive": [],
   run: [],
   notification: [],
 } as const;
@@ -168,13 +163,18 @@ export interface WriteResolutionContext {
   readonly run: RunRecord;
   readonly intent: WriteIntentRecord;
   readonly now: string;
+  readonly auditId: string;
 }
 
-export const WriteResolutionOutcomeSchema = z.strictObject({ run: RunRecordSchema });
+export const WriteResolutionOutcomeSchema = z.strictObject({ run: RunRecordSchema, intent: WriteIntentRecordSchema });
+export interface PreparedWriteResolution {
+  readonly outcome: z.infer<typeof WriteResolutionOutcomeSchema>;
+  applyAfterAudit(): z.infer<typeof WriteResolutionOutcomeSchema>;
+}
 
 export interface WriteResolutionExecutor {
-  resolvePresent(repositories: AuthorityRepositories, context: WriteResolutionContext): unknown;
-  resolveAbsent(repositories: AuthorityRepositories, context: WriteResolutionContext): unknown;
+  resolvePresent(repositories: AuthorityRepositories, context: WriteResolutionContext): PreparedWriteResolution;
+  resolveAbsent(repositories: AuthorityRepositories, context: WriteResolutionContext): PreparedWriteResolution;
 }
 
 const SettingsApplicationRefusalSchemas = SettingsApplyRefusalSchema.options;
@@ -216,6 +216,7 @@ const ProtectedSettingsReplayVerificationSchema = ProtectedSettingsReadbackSchem
 export interface WorkerRuntimeContext {
   readonly command: Extract<CommandRequest, { family: "worker-browser" }>;
   readonly now: string;
+  readonly roster?: WorkerPoolRosterAdmission;
 }
 
 export const WorkerRuntimeAcknowledgementSchema = z.strictObject({ state: z.literal("accepted") });
@@ -223,7 +224,8 @@ export const WorkerRuntimeAcknowledgementSchema = z.strictObject({ state: z.lite
 export const WorkerPlanAcknowledgementSchema = z.strictObject({
   state: z.literal("accepted"),
   /** The exact worker ids the plan reconciles toward; never an empty guess. */
-  workerIds: z.array(WorkerIdSchema).min(1),
+  workerIds: z.array(WorkerIdSchema),
+  retirements: z.array(WorkerRetirementProofSchema).max(3),
 });
 
 
@@ -243,13 +245,6 @@ export const WorkerStopPoolAcknowledgementSchema = z.strictObject({
     }
   }),
 });
-
-export interface WorkerRuntimeExecutor {
-  planWorkerCount(context: WorkerRuntimeContext): unknown;
-  spawnWorker(context: WorkerRuntimeContext): unknown;
-  refreshBrowser(context: WorkerRuntimeContext): unknown;
-  reopenBrowser(context: WorkerRuntimeContext): unknown;
-}
 
 // Keep the async pool seam structural to avoid importing the worker loop back into its command dependency.
 export interface WorkerPoolRuntimeSeam {
@@ -288,8 +283,7 @@ export interface CommandKernelDependencies {
   readonly appVersion: string;
   readonly descriptors: WorkflowDescriptorResolver;
   readonly writeResolution: WriteResolutionExecutor;
-  /** The synchronous Phase-1 executor, or the explicit async pool adoption — never both. */
-  readonly workerRuntime: WorkerRuntimeExecutor | WorkerPoolRuntimeAdoption;
+  readonly workerRuntime: WorkerPoolRuntimeAdoption;
   readonly intakeParser: IntakeParser;
   readonly intakeProjections: IntakeProjectionResolver;
   readonly configIdentity: RunConfigIdentity;
@@ -298,8 +292,6 @@ export interface CommandKernelDependencies {
   readonly storageRelocationPlans?: StorageRelocationPlanReader;
   readonly failureResolution?: Readonly<{execute:typeof executeFailureResolution;capability:typeof failureResolutionCapability}>;
 
-  readonly archiveSnapshots: ArchiveSnapshotSource;
-  readonly runtimeVersionChanges?: ReturnType<typeof createRuntimeVersionChanges>;
 
   readonly explorerEdits?: ExplorerEditExecutor;
 }
@@ -417,9 +409,11 @@ function requireRun(
 function lifecycleRefusal(request: CommandRequest, refusal: RunRecordRefusal): never {
   switch (refusal.reason) {
     case "conflict": return conflict(request, refusal.currentVersion, "run version changed");
-    case "schema-mismatch": return reject(request, "schema-mismatch", "run schema or archive digest changed");
+    case "schema-mismatch": return reject(request, "schema-mismatch", "run schema changed");
     case "source-deleted": case "tombstoned": return reject(request, "target-deleted", "run was deleted");
     case "policy-refused": return reject(request, "policy-refused", "run policy refuses this operation");
+    case "shared-checkpoint": return reject(request, "policy-refused", "This run owns a checkpoint still referenced by retained evidence.");
+    case "unresolved-write": return reject(request, "policy-refused", "This run has an unresolved external write.");
     case "runtime-stale": return reject(request, "schema-mismatch", "runtime configuration changed");
     case "workflow-unregistered": return reject(request, "target-not-found", "workflow is not registered");
     case "illegal-transition": return reject(request, "invalid-state", refusal.message);
@@ -481,9 +475,6 @@ function executeStartRun(
 
   if (!reviewedRunSettingsCurrent(repositories, plan)) {
     reject(request, "replan-required", "Settings changed after this plan was reviewed; review a fresh plan before starting");
-  }
-  if (plan.planned.some((entry) => entry.runId !== undefined || entry.traceId !== undefined)) {
-    reject(request, "replan-required", "legacy plan reserved lifecycle identities; replan before submitting");
   }
   if (plan.rerun !== undefined) {
     let current;
@@ -753,20 +744,6 @@ function executeCancel(
   return applied(request, affectedTargets, versionChanges, dependencyIds);
 }
 
-function executeManualArchive(dependencies: CommandKernelDependencies, repositories: AuthorityRepositories,
-  request: Extract<RunCommand, { type: "archive" }>): CommandApplication {
-  const current = requireRun(repositories, request, request.target.runId);
-  if (current.version !== request.target.expectedVersion) conflict(request, current.version, "Run changed; refresh before archiving.");
-  if (current.lifecycle.state !== "terminal") reject(request, "invalid-state", "Only a terminal run can be archived; cancel it first.");
-  if (current.envelope.parent !== undefined) reject(request, "invalid-state", "Archive the group instead of an individual member.");
-  const order = deleteTreeOrder(repositories, request, current);
-  const storage = dependencies.lifecycle.lifecycleStorage();
-  const reports = prepareManualArchive(storage, dependencies.archiveSnapshots, request, order, dependencies.clock.now().toISOString());
-  return { ...applied(request, order.map(run => runTarget(run.envelope.runId)), []),
-    commit: () => publishManualArchive(storage, request, reports.map(report => report.content.runId)) };
-}
-
-
 function executeDelete(
   dependencies: CommandKernelDependencies,
   repositories: AuthorityRepositories,
@@ -787,13 +764,6 @@ function executeDelete(
       request,
       "invalid-state",
       `run ${request.target.runId} is ${current.lifecycle.state}; only a terminal run can be deleted — cancel it first`,
-    );
-  }
-  if (repositories.archivedRuns.isArchived(current.envelope.runId)) {
-    reject(
-      request,
-      "invalid-state",
-      `run ${request.target.runId} is archived; delete it from the Archive, which cites the record it removes`,
     );
   }
   // Delete a delegated member with its group; deleting it alone would break manifest membership.
@@ -1374,6 +1344,10 @@ function executeIntake(
           },
         },
         plan.manifest.validRows.map((row) => {
+          let admitted: ReturnType<typeof admitProtectedInput>;
+          try { admitted = admitProtectedInput(descriptor, [row.parsedInput]); }
+          catch (error) { reject(request, "invalid-state", error instanceof Error ? error.message : String(error)); }
+          if (admitted.length !== 1) throw new Error("intake protected-input admission count mismatch");
           let canonicalInput: unknown;
           try {
             // Parse stored manifests through the current canonical schema, never ingress defaults.
@@ -1392,7 +1366,7 @@ function executeIntake(
             // The manifest's own stored value IS this run's ingress: it is what
             // intake submitted, and `validRows[].inputHash` pins its bytes.
             rawInput: row.parsedInput,
-            parsedInput: { schemaHash: canonicalInputSchemaHash, value: canonicalInput },
+            parsedInput: { schemaHash: canonicalInputSchemaHash, value: canonicalInput, protectedBindings: admitted[0].bindings },
           };
         }),
         now,
@@ -1452,6 +1426,7 @@ function executeWriteResolution(
   repositories: AuthorityRepositories,
   request: WriteResolutionCommand,
   now: string,
+  auditId: string,
 ): CommandApplication {
   const current = requireRun(repositories, request, request.target.runId);
   if (current.version !== request.target.expectedVersion) {
@@ -1487,7 +1462,7 @@ function executeWriteResolution(
       + "which does not exist in authority; refusing to resolve against an inconsistent store",
     );
   }
-  if (intent.status !== "attempting" && intent.status !== "parked") {
+  if (intent.status !== "parked") {
     reject(
       request,
       "invalid-state",
@@ -1509,22 +1484,31 @@ function executeWriteResolution(
     );
   }
 
-  const context: WriteResolutionContext = Object.freeze({ command: request, run: current, intent, now });
+  if (intent.currentAttemptId !== request.target.writeAttemptId || intent.bindingProofDigest !== request.target.bindingProofDigest
+    || intent.idempotencyKeyDigest !== request.payload.occurrenceKeyDigest) reject(request,"invalid-state","Resolution must bind the exact original parked attempt and permanent occurrence key");
+  const context: WriteResolutionContext = Object.freeze({ command: request, run: current, intent, now, auditId });
   const raw = request.type === "resolve-write-present"
     ? dependencies.writeResolution.resolvePresent(repositories, context)
     : dependencies.writeResolution.resolveAbsent(repositories, context);
-  const outcome = WriteResolutionOutcomeSchema.parse(raw);
+  const outcome = WriteResolutionOutcomeSchema.parse(raw.outcome);
   if (outcome.run.envelope.runId !== request.target.runId) {
     throw new Error(
       `write resolution for run ${request.target.runId} returned run ${outcome.run.envelope.runId}; `
       + "the executor resolved a different target",
     );
   }
-  return applied(request, [runTarget(request.target.runId)], [{
+  if (outcome.run.version !== current.version + 1) throw new Error("parked-write-resolution-planned-version-mismatch");
+  const application = applied(request, [runTarget(request.target.runId)], [{
     target: runTarget(request.target.runId),
     before: current.version,
     after: outcome.run.version,
   }]);
+  return {...application,writeResolution:outcome.intent,afterAudit:()=>{
+    const actual = WriteResolutionOutcomeSchema.parse(raw.applyAfterAudit());
+    if (canonicalJsonStringify(actual) !== canonicalJsonStringify(outcome)
+      || canonicalJsonStringify(repositories.runs.get(request.target.runId)) !== canonicalJsonStringify(outcome.run)
+      || canonicalJsonStringify(repositories.writeIntents.get(request.target.writeIntentId)) !== canonicalJsonStringify(outcome.intent)) throw new Error("parked-write-resolution-acknowledged-effects-mismatch");
+  }};
 }
 
 function executeResolveGate(
@@ -1603,6 +1587,7 @@ function executeResolveGate(
   verifyGateEvidenceCurrent(request, descriptor, node, evidenceScope, now);
   const result = { schemaHash: expectedSchemaHash, value: parsedValue.data };
   const stored = repositories.gateResults.insert({
+    nodeId: node.id,
     runId: request.target.runId,
     gateId: request.target.gateId,
     commandId: request.commandId,
@@ -1809,18 +1794,6 @@ function verifyGateEvidenceCurrent(
 type WorkerBrowserCommand = Extract<CommandRequest, { family: "worker-browser" }>;
 
 
-function syncWorkerRuntime(dependencies: CommandKernelDependencies): WorkerRuntimeExecutor {
-  const runtime = dependencies.workerRuntime;
-  if ("pool" in runtime) {
-    throw new Error(
-      "this kernel adopted the async worker pool seam; worker-browser commands settle only through "
-      + "executeWorkerPool, never the synchronous execute path",
-    );
-  }
-  return runtime;
-}
-
-
 function checkWorkerPoolVersion(
   repositories: AuthorityRepositories,
   request: CommandRequest,
@@ -1858,131 +1831,6 @@ function requireReservedWorkerControl(repositories: AuthorityRepositories, reque
   }
 }
 
-function executeWorkerBrowser(
-  dependencies: CommandKernelDependencies,
-  repositories: AuthorityRepositories,
-  request: WorkerBrowserCommand,
-  now: string,
-): CommandApplication {
-  const context: WorkerRuntimeContext = Object.freeze({ command: request, now });
-  const workerRuntime = syncWorkerRuntime(dependencies);
-  requireWorkerControlBasis(repositories, request);
-  const checkPoolVersion = (workflowId: string, expectedVersion: number): number =>
-    checkWorkerPoolVersion(repositories, request, workflowId, expectedVersion);
-  switch (request.type) {
-    case "plan-worker-count": {
-      resolveDescriptorOrReject(dependencies, request, request.target.workflowId);
-      const poolVersion = checkPoolVersion(request.target.workflowId, request.target.expectedVersion);
-      // Consult the runtime before persisting a pool declaration; unsupported counts must leave no row.
-      const acknowledgement = WorkerPlanAcknowledgementSchema.parse(
-        workerRuntime.planWorkerCount(context),
-      );
-      const planned = repositories.workerPools.plan({
-        workflow: request.target.workflowId,
-        expectedVersion: request.target.expectedVersion,
-        desiredWorkers: request.payload.desiredWorkers,
-        requestedBy: request.requestedBy,
-        now,
-      });
-      requireApplied(planned, `planning worker pool ${request.target.workflowId}`);
-      return applied(
-        request,
-        [
-          workerPoolTarget(request.target.workflowId),
-          ...acknowledgement.workerIds.map((workerId) => workerTarget(workerId)),
-        ],
-        [{ target: workerPoolTarget(request.target.workflowId), before: poolVersion, after: poolVersion + 1 }],
-      );
-    }
-    case "spawn-worker": {
-      resolveDescriptorOrReject(dependencies, request, request.target.workflowId);
-      checkPoolVersion(request.target.workflowId, request.target.expectedVersion);
-      const existing = repositories.workerLeases.get(request.payload.workerId);
-      if (existing !== undefined && isLiveWorker(existing)) {
-        reject(
-          request,
-          "invalid-state",
-          `worker ${request.payload.workerId} already holds a live lease in state ${existing.lifecycle.state}; `
-          + "a second process may not answer to the same worker id",
-        );
-      }
-      WorkerRuntimeAcknowledgementSchema.parse(workerRuntime.spawnWorker(context));
-      return applied(request, [workerTarget(request.payload.workerId)], []);
-    }
-    case "stop-worker":
-    case "pause-worker":
-    case "resume-worker": {
-      const lease = repositories.workerLeases.get(request.target.workerId);
-      if (lease === undefined) {
-        reject(request, "target-not-found", `worker lease ${request.target.workerId} does not exist`);
-      }
-      if (!isLiveWorker(lease)) {
-        reject(
-          request,
-          "invalid-state",
-          `worker ${request.target.workerId} lease is ${lease.lifecycle.state}; `
-          + "a stopped worker starts a new lease generation instead of taking directives",
-        );
-      }
-      const directive = request.type === "stop-worker" ? "stop" : request.type === "pause-worker" ? "pause" : "run";
-      const outcome = repositories.workerLeases.control({
-        workerId: request.target.workerId,
-        expectedVersion: lease.version,
-        control: {
-          directive,
-          requestedAt: now,
-          requestedBy: request.requestedBy,
-          ...(request.reason === undefined ? {} : { reason: request.reason }),
-        },
-        now,
-      });
-      requireApplied(outcome, `${request.type} directive on worker ${request.target.workerId}`);
-      return applied(request, [workerTarget(request.target.workerId)], [{
-        target: workerTarget(request.target.workerId),
-        before: lease.version,
-        after: lease.version + 1,
-      }]);
-    }
-    case "refresh-browser":
-    case "reopen-browser": {
-      const lease = repositories.workerLeases.get(request.target.workerId);
-      if (lease === undefined) {
-        reject(request, "target-not-found", `worker lease ${request.target.workerId} does not exist`);
-      }
-      if (!isLiveWorker(lease)) {
-        reject(
-          request,
-          "invalid-state",
-          `worker ${request.target.workerId} lease is ${lease.lifecycle.state}; `
-          + "it owns no live browser session to act on",
-        );
-      }
-      const acknowledgement = request.type === "refresh-browser"
-        ? workerRuntime.refreshBrowser(context)
-        : workerRuntime.reopenBrowser(context);
-      WorkerRuntimeAcknowledgementSchema.parse(acknowledgement);
-      return applied(request, [workerTarget(request.target.workerId)], []);
-    }
-  }
-}
-
-
-
-
-function adoptedWorkerPool(
-  runtime: WorkerRuntimeExecutor | WorkerPoolRuntimeAdoption,
-): WorkerPoolRuntimeSeam | undefined {
-  const pool = "pool" in runtime ? runtime.pool : undefined;
-  if (pool !== undefined && ("planWorkerCount" in runtime || "spawnWorker" in runtime)) {
-    throw new Error(
-      "the worker runtime dependency carries BOTH the synchronous Phase-1 executor and an async pool "
-      + "adoption; exactly one seam must be composed",
-    );
-  }
-  return pool;
-}
-
-
 function validateWorkerPoolCommand(
   dependencies: CommandKernelDependencies,
   repositories: AuthorityRepositories,
@@ -1999,6 +1847,8 @@ function validateWorkerPoolCommand(
       const version = checkWorkerPoolVersion(
         repositories, request, request.target.workflowId, request.target.expectedVersion,
       );
+      const slot = repositories.workerSlots.get(request.payload.workerId);
+      if (slot === undefined || slot.retiredAt !== null || slot.workflow !== request.target.workflowId) reject(request, "invalid-state", "worker-slot-not-admitted: select a current reserved member");
       const existing = repositories.workerLeases.get(request.payload.workerId);
       if (existing !== undefined && isLiveWorker(existing)) {
         reject(
@@ -2060,7 +1910,7 @@ async function settleWorkerPoolEffect(
   switch (request.type) {
     case "plan-worker-count": {
       const acknowledgement = WorkerPlanAcknowledgementSchema.parse(await pool.planPoolWorkerCount(context));
-      return { kind: "plan", workerIds: acknowledgement.workerIds };
+      return { kind: "plan", workerIds: acknowledgement.workerIds, retirements: acknowledgement.retirements };
     }
     case "spawn-worker":
       WorkerRuntimeAcknowledgementSchema.parse(await pool.spawnPoolWorker(context));
@@ -2097,23 +1947,32 @@ function applyWorkerPoolCommand(
       if (acknowledgement.kind !== "plan") {
         throw new Error("plan-worker-count settled without a plan acknowledgement; the pool seam is inconsistent");
       }
-      const planned = repositories.workerPools.plan({
-        workflow: request.target.workflowId,
-        expectedVersion: request.target.expectedVersion,
-        desiredWorkers: request.payload.desiredWorkers,
-        requestedBy: request.requestedBy,
-        now,
-      });
-      if (planned.state !== "applied") {
-        // A cross-process pool change defeats the original CAS basis despite local serialization.
-        conflict(
-          request,
-          planned.currentVersion,
-          `worker pool ${request.target.workflowId} moved to version ${String(planned.currentVersion)} while this `
-          + "plan's process effects were executing; the acknowledged reconciliation — including any excess-member "
-          + "graceful stop it initiated — has ALREADY executed and stands; re-read the pool before planning again",
-        );
+      const control = repositories.workerControls.get(request.commandId);
+      if (control === undefined) throw new Error("worker-roster-admission-missing");
+      const roster = control.roster;
+      if (roster === undefined || roster.beforeVersion !== basisVersion
+        || canonicalJsonStringify(acknowledgement.workerIds) !== canonicalJsonStringify(roster.selected.map(slot => slot.workerId))
+        || acknowledgement.retirements.length !== roster.excess.length) throw new Error("worker-roster-settlement-mismatch");
+      for (const original of [...roster.selected, ...roster.excess]) {
+        const current = repositories.workerSlots.get(original.workerId);
+        if (canonicalJsonStringify(current) !== canonicalJsonStringify(original)) throw new Error("worker-roster-reservation-changed");
       }
+      const currentPool = repositories.workerPools.get(request.target.workflowId);
+      if (currentPool?.version !== roster.admittedVersion) throw new Error("worker-pool-version-changed-before-settlement");
+      for (const slot of roster.excess) {
+        const proof = acknowledgement.retirements.find(value => value.workerId === slot.workerId);
+        if (proof === undefined || proof.membershipRevision !== slot.membershipRevision
+          || Date.parse(proof.checkedAt) < Date.parse(control.admittedAt)
+          || repositories.workerControls.browsers(slot.workerId).some(browser => browser.health !== "closed")) throw new Error("worker-retirement-not-proved");
+        repositories.workerSlots.retire({ workerId: slot.workerId, commandId: request.commandId,
+          expectedRevision: slot.membershipRevision, now: proof.checkedAt });
+      }
+      if (roster.admittedVersion === roster.beforeVersion) {
+        const planned = repositories.workerPools.plan({ workflow: request.target.workflowId,
+          expectedVersion: roster.beforeVersion, desiredWorkers: request.payload.desiredWorkers,
+          requestedBy: request.requestedBy, now });
+        if (planned.state !== "applied" || planned.pool.version !== roster.afterVersion) throw new Error("worker-pool-version-conflict");
+      } else if (currentPool.desiredWorkers !== request.payload.desiredWorkers) throw new Error("worker-pool-declaration-mismatch");
       return applied(
         request,
         [
@@ -2206,7 +2065,7 @@ async function executeWorkerPoolCommand(
   const controls = dependencies.authority.withAuthorityTransaction(repositories => repositories.workerControls);
   const pre = dependencies.authority.withAuthorityTransaction((repositories) => {
     repositories.commands.assertIdentity(request);
-    if (repositories.commands.get(request.commandId) !== undefined) {
+    if (repositories.commandAudits.findByCommand(request.commandId) !== undefined) {
       return { kind: "replay" as const, result: replay(dependencies, repositories, request, now) };
     }
     const prior = repositories.workerControls.get(request.commandId);
@@ -2216,7 +2075,9 @@ async function executeWorkerPoolCommand(
     const scope = workerPoolSerializationKey(request);
     if (repositories.workerControls.pending(scope).length > 0) reject(request, "invalid-state", "worker-control-unresolved-effect: reconcile the exact previous command before another effect");
     if ("workerId" in request.target) repositories.workerLeases.reserveControl(request.target.workerId, request.target.controlBasis, request.commandId, now);
-    const record = repositories.workerControls.admit({ commandId: request.commandId, request, scope,
+    repositories.commands.insert(request);
+    const roster = request.type === "plan-worker-count" ? admitWorkerPoolRoster(repositories, request, now) : undefined;
+    const record = repositories.workerControls.admit({ ...(roster === undefined ? {} : { roster }), commandId: request.commandId, request, scope,
       executorId: dependencies.ids.uuid(), admittedAt: now,
       expiresAt: new Date(Date.parse(now) + 180_000).toISOString(), basisVersion, phase: { state: "admitted" } });
     return { kind: "admitted" as const, record };
@@ -2226,7 +2087,7 @@ async function executeWorkerPoolCommand(
   if (pre.kind === "admitted") {
     try {
       if (!browser) record = controls.transition(request.commandId, "admitted", { state: "executing", startedAt: now });
-      const context: WorkerRuntimeContext = Object.freeze({ command: request, now });
+      const context: WorkerRuntimeContext = Object.freeze({ command: request, now, ...(pre.record.roster === undefined ? {} : { roster: pre.record.roster }) });
       const acknowledgement = WorkerEffectAcknowledgementSchema.parse(await settleWorkerPoolEffect(pool, request, context));
       if (!browser) record = dependencies.authority.withAuthorityTransaction(repositories => {
         if (request.type === "plan-worker-count" || request.type === "spawn-worker" || request.type === "resume-worker") repositories.runtimeConfig.requireSettingsCurrent();
@@ -2272,8 +2133,8 @@ async function executeWorkerPoolCommand(
         message: `worker-control-${record.phase.state}: no repeated effect is authorized; retain this command identity` });
     }
     repositories.commands.assertIdentity(request);
-    const journal = repositories.commands.insert(request);
-    if (journal.state === "existing") return replay(dependencies, repositories, request, now);
+    repositories.commands.insert(request);
+    if (repositories.commandAudits.findByCommand(request.commandId) !== undefined) return replay(dependencies, repositories, request, now);
     const application = record.phase.state === "succeeded"
       ? record.phase.application ?? applyWorkerPoolCommand(repositories, request, record.admittedAt, record.basisVersion, record.phase.acknowledgement)
       : { result: CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code: "invalid-state", message: record.phase.message }), versionChanges: [], affectedDependencyIds: [] };
@@ -2287,13 +2148,6 @@ async function executeWorkerPoolCommand(
 
 const workerPoolSerializationKey = workerControlScope;
 
-
-export type { ArchiveCommandTools } from "../archive/archive-version-changes.js";
-function executeVersionArchive(dependencies: CommandKernelDependencies, repositories: AuthorityRepositories,
-  request: Extract<CommandRequest, {family:"version-archive"}>, now: string): CommandApplication {
-  return executeArchiveCommand(dependencies, repositories, request, now,
-    {applied});
-}
 
 function executeSettings(
   dependencies: Pick<CommandKernelDependencies, "settings">,
@@ -2411,6 +2265,7 @@ function dispatchActive(
   repositories: AuthorityRepositories,
   request: CommandRequest,
   now: string,
+  auditId: string,
 ): CommandApplication {
   switch (request.family) {
     case "failure-resolution": return (dependencies.failureResolution?.execute ?? executeFailureResolution)(repositories, request, now);
@@ -2429,7 +2284,7 @@ function dispatchActive(
       if (request.type === "plan-worker-count" || request.type === "spawn-worker" || request.type === "resume-worker") {
         repositories.runtimeConfig.requireSettingsCurrent();
       }
-      return executeWorkerBrowser(dependencies, repositories, request, now);
+      return reject(request, "capability-unavailable", "Worker commands require the current asynchronous process owner.");
     case "gate":
       return executeResolveGate(dependencies, repositories, request, now);
     case "run": {
@@ -2439,13 +2294,12 @@ function dispatchActive(
           repositories.runtimeConfig.requireSettingsCurrent();
           return executeRetry(dependencies, repositories, request, now);
         case "cancel": return executeCancel(dependencies, repositories, request, now);
-        case "archive": return executeManualArchive(dependencies, repositories, request);
         case "delete": return executeDelete(dependencies, repositories, request, now);
         case "bump": return executeBump(dependencies, repositories, request, now);
         case "rename": return executePresentation(dependencies, repositories, request, now);
         case "resolve-write-present":
         case "resolve-write-absent":
-          return executeWriteResolution(dependencies, repositories, request, now);
+          return executeWriteResolution(dependencies, repositories, request, now, auditId);
       }
       break;
     }
@@ -2456,8 +2310,6 @@ function dispatchActive(
         repositories.runtimeConfig.requireSettingsCurrent();
       }
       return executeIntake(dependencies, repositories, request, now);
-    case "version-archive":
-      return executeVersionArchive(dependencies, repositories, request, now);
     case "explorer":
       return executeExplorerEdit(dependencies, repositories, request);
     case "settings":
@@ -2483,11 +2335,6 @@ function replay(
     throw new Error(
       `command ${request.commandId} recorded outcome ${audit.result.state}; only applied commands are journaled`,
     );
-  }
-  if (request.family === "run" && request.type === "archive") {
-    const targets = audit.result.affectedTargets.filter(target => target.family === "run");
-    if (dependencies.lifecycle === undefined) throw new Error("manual-archive-replay-service-missing");
-    publishManualArchive(dependencies.lifecycle.lifecycleStorage(), request, targets.map(target => target.runId));
   }
   if (request.family === "start") {
 
@@ -2555,42 +2402,6 @@ function replay(
       revision: settingsVerification.value.revision,
       entries: settingsVerification.value.entries,
     } : {}),
-  });
-}
-
-function replayHistoricalNotificationSnooze(
-  dependencies: Pick<CommandKernelDependencies, "authority">,
-  request: HistoricalNotificationSnoozeCommand,
-): CommandResult {
-  const refused = (message: string): CommandResult => CommandResultSchema.parse({
-    state: "rejected", commandId: request.commandId, code: "command-divergent", message,
-  });
-  if (request.requestedBy !== LOCAL_OPERATOR_ACTOR_ID || request.target.actorId !== LOCAL_OPERATOR_ACTOR_ID) {
-    return refused("historical notification actor differs from the local operator");
-  }
-  return dependencies.authority.withAuthorityTransaction((repositories) => {
-    const stored = repositories.commands.get(request.commandId);
-    if (stored === undefined) return refused("historical notification command does not exist");
-    if (!HistoricalNotificationSnoozeCommandSchema.safeParse(stored).success
-      || canonicalJsonStringify(stored) !== canonicalJsonStringify(request)) {
-      return refused("historical notification command identity differs from its immutable request");
-    }
-    const audit = repositories.commandAudits.findByCommand(request.commandId);
-    if (audit === undefined) return refused("historical notification command has no settled audit");
-    if (canonicalJsonStringify(audit.request) !== canonicalJsonStringify(request)
-      || audit.result.commandId !== request.commandId || audit.result.state !== "applied"
-      || audit.result.affectedTargets.length !== 1
-      || audit.result.affectedTargets[0]?.family !== "notification"
-      || audit.result.affectedTargets[0].notificationId !== request.target.notificationId
-      || audit.versionChanges.length !== 1
-      || audit.versionChanges[0]?.target.family !== "notification"
-      || audit.versionChanges[0].target.notificationId !== request.target.notificationId
-      || Number(audit.versionChanges[0].before) !== Number(request.target.expectedVersion)
-      || Number(audit.versionChanges[0].after) !== Number(request.target.expectedVersion) + 1) {
-      return refused("historical notification audit does not match its settled request");
-    }
-    return CommandResultSchema.parse({ state: "already-applied", commandId: request.commandId,
-      affectedTargets: audit.result.affectedTargets });
   });
 }
 
@@ -2701,7 +2512,7 @@ export function executeSettingsCommand(
 export function createCommandKernel(dependencies: CommandKernelDependencies): CommandKernel {
   // Validated ONCE at composition: a dependency satisfying both seams is a
   // wiring ambiguity, refused before any command can reach it.
-  const pool = adoptedWorkerPool(dependencies.workerRuntime);
+  const pool = dependencies.workerRuntime.pool;
   // Serialize the entire per-workflow pool request across admission, process effects and settlement.
   const poolCommandTails = new Map<string, Promise<void>>();
   const withPoolCommandSerialization = async (
@@ -2751,10 +2562,10 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
           const journalRequest = request;
           const journal = repositories.commands.insert(journalRequest, parentCommandId);
           if (journal.state === "existing") return replay(dependencies, repositories, request, now);
-          const application = dispatchActive(dependencies, repositories, request, now);
+          const auditId = dependencies.ids.uuid();
+          const application = dispatchActive(dependencies, repositories, request, now, auditId);
           rollback = application.rollback;
           commit = application.commit;
-          const auditId = dependencies.ids.uuid();
           repositories.commandAudits.insert({
             auditId,
             request: journalRequest,
@@ -2762,7 +2573,9 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
             completedAt: now,
             versionChanges: application.versionChanges,
             affectedDependencyIds: application.affectedDependencyIds,
+            ...(application.writeResolution === undefined ? {} : {writeResolution:application.writeResolution}),
           });
+          application.afterAudit?.();
           if (application.settingsCurrent !== undefined) {
             repositories.settingsCurrent.advance({
               ...application.settingsCurrent,
@@ -2801,17 +2614,10 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
   };
   return Object.freeze({
     execute(input: unknown, parentCommandId?: string): CommandResult {
-      const historicalSnooze = HistoricalNotificationSnoozeCommandSchema.safeParse(input);
-      if (historicalSnooze.success) {
-        if (parentCommandId !== undefined) return CommandResultSchema.parse({ state: "rejected", commandId: historicalSnooze.data.commandId,
-          code: "command-divergent", message: "historical notification commands are not command-group children" });
-        return replayHistoricalNotificationSnooze(dependencies, historicalSnooze.data);
-      }
       const request = CommandRequestSchema.parse(input);
       if (request.family === "failure-resolution" && (dependencies.failureResolution?.capability ?? failureResolutionCapability)().state === "unavailable") {
         return {state:"rejected",commandId:request.commandId,code:"capability-unavailable",message:"Failure resolution is not available in this build."};
       }
-      if (request.family === "version-archive") return runArchiveCommand(request, dependencies, () => executeSync(request, parentCommandId));
       return executeSync(request, parentCommandId);
     },
     async executeWorkerPool(input: unknown): Promise<CommandResult> {
@@ -2821,7 +2627,6 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
           `executeWorkerPool settles only worker-browser commands; received ${request.family}/${request.type}`,
         );
       }
-      if (pool === undefined) return executeSync(request);
       try {
         return await withPoolCommandSerialization(
           workerPoolSerializationKey(request),
@@ -2838,4 +2643,3 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
     },
   });
 }
-import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";

@@ -11,7 +11,7 @@ import { ConfigSnapshotRecordSchema } from "../../../../models/config/snapshot.j
 import type { RunRecord } from "../../../../models/run/record.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../rules/validation/sha256.js";
-import { PlaywrightWorkerSessionFactory } from "../../../runtime/browser/browser-session-factory.js";
+import { PlaywrightWorkerSessionFactory, ProfileCustodyUnavailableError } from "../../../runtime/browser/browser-session-factory.js";
 import { createCensusGeocodeAdapter, createNominatimGeocodeAdapter } from "../../../processing/providers/geocode-adapters.js";
 import type { AuthorityRepositories } from "../../../storage/sqlite/authority-database.js";
 import { composeDuoCeremonyGateFactory, type DuoCeremonyGateFactory } from "../../../runtime/gates/duo-ceremony-gate.js";
@@ -30,7 +30,7 @@ export function createRunResourcesFactory(input:Readonly<{
  const nominatim=createNominatimGeocodeAdapter({clock:input.clock,processLockRoot:input.processLockRoot});
  const compose=(config:Config):WorkerRunResources=>{
   return Object.freeze({
-   sessionFactory:input.sessionFactory??new PlaywrightWorkerSessionFactory({config,protectedSecrets:input.protectedSecrets,isolation:input.isolation,clock:input.clock,scheduler:input.scheduler,newSessionId:()=>input.ids.uuid()}),
+   sessionFactory:input.sessionFactory??new PlaywrightWorkerSessionFactory({config,protectedSecrets:input.protectedSecrets,isolation:input.isolation,clock:input.clock,scheduler:input.scheduler,newSessionId:()=>input.ids.uuid(),admitProfile:()=>Promise.reject(new ProfileCustodyUnavailableError())}),
    duoCeremony:input.duoCeremony??composeDuoCeremonyGateFactory({config,leases:input.authority.duoCeremonyLeases,clock:input.clock,scheduler:input.scheduler}),
    taskDeadlineMs:config.timeouts.taskMs,sessionAcquireMs:config.timeouts.sessionAcquireMs,
    defaultBrowserMode:config.browser.headless?"headless":"headed",

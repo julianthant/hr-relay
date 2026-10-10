@@ -1,11 +1,18 @@
 import { z } from "zod";
-import { SavedArchiveReportWireSchema } from "../../../models/dashboard/archive.js";
-import { ArchiveGroupQuerySchema, ArchiveQuerySchema } from "../../../models/archive/report.js";
+const RouteVersionSchema = z.strictObject({ major: z.number().int().positive(), minor: z.number().int().nonnegative() });
+const ArchiveRouteFiltersSchema = z.strictObject({
+  workflow: z.string().min(1).max(160).optional(), title: z.string().max(160).optional(),
+  search: z.string().trim().min(1).max(120).optional(), capturedFrom: z.string().datetime().optional(),
+  capturedTo: z.string().datetime().optional(), from: z.string().datetime().optional(), to: z.string().datetime().optional(),
+  descriptorVersion: z.string().max(120).optional(),
+  outcome: z.enum(["done", "failed", "cancelled", "discarded", "interrupted", "superseded"]).optional(),
+  dashboardVersion: RouteVersionSchema.optional(), workflowVersion: RouteVersionSchema.optional(),
+  versionState: z.enum(["stamped", "adopted", "unrecorded"]).optional(),
+});
 
 export const ArchiveBrowseStateSchema = z.strictObject({
-  filters: ArchiveGroupQuerySchema.extend({ workflow: z.string().min(1).max(160).optional(),
-    title: z.string().max(160).optional(), descriptorVersion: z.string().max(120).optional(), outcome: SavedArchiveReportWireSchema.shape.outcome.optional() }).default({}),
-  after: ArchiveQuerySchema.shape.after,
+  filters: ArchiveRouteFiltersSchema.default({}),
+  after: z.strictObject({ completedAt: z.string().datetime(), runId: z.uuid() }).optional(),
   columns: z.array(z.string().min(1).max(1024)).max(100).refine(columns => new Set(columns).size === columns.length, "Duplicate Archive columns").optional(),
   section: z.number().int().min(0).max(1000).optional(),
 }).superRefine((state, context) => {

@@ -22,9 +22,6 @@ export function executeFailureResolution(
   if (run === undefined || failure === undefined || failure.runId !== runId) {
     rejectCommandRequest(request, "target-not-found", "The exact live run and failure are unavailable.");
   }
-  if (repositories.archivedRuns.get(runId) !== undefined) {
-    rejectCommandRequest(request, "invalid-state", "Archived failures are read-only.");
-  }
   const current = repositories.failureResolution.read(runId, failureId);
   if (current === undefined) throw new Error("failure-resolution-annotation-missing");
   if (current.resolution.version !== expectedVersion) {

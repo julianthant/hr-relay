@@ -4,7 +4,6 @@ export const RebuildArtifactRootSchema = z.literal(".tracker/artifacts");
 
 const RuntimeIsolationSchema = z.strictObject({
   stateRoot: z.literal(".tracker"),
-  archiveDatabaseFile: z.literal("archive.sqlite").default("archive.sqlite"),
   artifactRoot: RebuildArtifactRootSchema,
   backendPort: z.literal(3938),
   frontendPort: z.literal(5174),

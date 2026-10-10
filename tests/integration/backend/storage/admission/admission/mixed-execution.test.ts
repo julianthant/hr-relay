@@ -99,7 +99,7 @@ it("saved idle cadence applies at the next boundary without retiming the pending
   const sessions = happySessionHarness();
   const cadence = () => resolveConfigWithProvenance(readSettings(f.database.authority).settings, f.host, f.clock).config.daemon.idleRepollMs;
   const initial = cadence();
-  const looping = runWorkerLoop({ ...testWorkerPorts(f.database, f.clock),
+  const looping = runWorkerLoop({ ...testWorkerPorts(f.database, f.clock, { path: f.path, descriptor: personLookupDescriptor, poolIndex: 1 }),
     workflowId: WorkflowIdSchema.parse("person-lookup"), workerId: EXECUTOR_WORKER_ID,
     descriptor: personLookupDescriptor, stores: taskStoreRegistry, authority: f.database,
     sessionFactory: sessions.factory, emitter: recordingTimelineEmitter(f.database, f.clock).emitter,

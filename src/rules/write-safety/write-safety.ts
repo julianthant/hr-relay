@@ -5,6 +5,8 @@ import { canonicalJsonStringify } from "../validation/canonical-json.js";
 import type { Clock } from "../time/clock.js";
 import {
   ActorIdSchema,
+  CommandIdSchema,
+  CommandAuditIdSchema,
   BrowserSystemIdSchema,
   EvidenceRefSchema,
   FingerprintSchema,
@@ -302,6 +304,22 @@ const WriteIntentIdentityFields = {
   idempotencyKeyDigest: FingerprintSchema,
 } as const;
 
+export const ParkedWriteResolutionBindingSchema = z.strictObject({
+  commandId: CommandIdSchema,
+  auditId: CommandAuditIdSchema,
+  writeIntentId: WriteIntentIdSchema,
+  writeAttemptId: WriteAttemptIdSchema,
+  generation: PositiveIntSchema,
+  bindingProofDigest: FingerprintSchema,
+  idempotencyKeyDigest: FingerprintSchema,
+  runId: RunIdSchema,
+  runAttempt: PositiveIntSchema,
+  expectedRunVersion: PositiveIntSchema,
+  decision: z.enum(["present", "absent"]),
+  resolvedAt: IsoInstantSchema,
+});
+export type ParkedWriteResolutionBinding = z.infer<typeof ParkedWriteResolutionBindingSchema>;
+
 const WriteIntentAttemptFields = {
   occurrence: RepeatOccurrenceSchema.optional(),
   ...WriteIntentIdentityFields,
@@ -335,20 +353,21 @@ const CommittedWriteIntentRecordSchema = z.strictObject({
   status: z.literal("committed"),
   completionProof: SchemaBoundCanonicalValueSchema,
   confirmedAt: IsoInstantSchema,
+  resolution: ParkedWriteResolutionBindingSchema.optional(),
 });
 const RetryableWriteIntentRecordSchema = z.strictObject({
   ...WriteIntentAttemptFields,
   status: z.literal("retryable"),
   settlement: WriteRetrySettlementSchema,
   resolvedAt: IsoInstantSchema,
+  resolution: ParkedWriteResolutionBindingSchema.optional(),
 });
 const ParkedWriteIntentRecordSchema = z.strictObject({
   ...WriteIntentAttemptFields,
   status: z.literal("parked"),
   parkedCode: z.enum(["unknown", "ambiguous", "present-proof-invalid", "binding-invalid", "operator-required"]),
   message: z.string().min(1),
-  /** Optional only so pre-v1 authority rows remain readable; every new park request requires it. */
-  authorityReason: WriteAuthorityReasonSchema.optional(),
+  authorityReason: WriteAuthorityReasonSchema,
 });
 
 export const WriteIntentRecordSchema = z.discriminatedUnion("status", [
@@ -358,6 +377,16 @@ export const WriteIntentRecordSchema = z.discriminatedUnion("status", [
   RetryableWriteIntentRecordSchema,
   ParkedWriteIntentRecordSchema,
 ]).superRefine((record, context) => {
+  if ((record.status === "committed" || record.status === "retryable") && record.resolution !== undefined) {
+    const binding = record.resolution;
+    if (binding.writeIntentId !== record.writeIntentId || binding.writeAttemptId !== record.currentAttemptId
+      || binding.generation !== record.generation || binding.bindingProofDigest !== record.bindingProofDigest
+      || binding.idempotencyKeyDigest !== record.idempotencyKeyDigest || binding.runId !== record.runId || binding.runAttempt !== record.runAttempt
+      || binding.decision !== (record.status === "committed" ? "present" : "absent")
+      || binding.resolvedAt !== (record.status === "committed" ? record.confirmedAt : record.resolvedAt)) {
+      context.addIssue({code:"custom",path:["resolution"],message:"parked write resolution must bind the exact original attempt, proof and settlement"});
+    }
+  }
   const expectedDigest = deriveIdempotencyKeyDigest(record.system, record.idempotencyKey);
   if (record.idempotencyKeyDigest !== expectedDigest) {
     context.addIssue({ code: "custom", path: ["idempotencyKeyDigest"], message: "idempotency key digest does not match the exact system and natural key" });
@@ -399,7 +428,7 @@ export const WriteAttemptRecordSchema = z.strictObject({
       state: z.literal("parked"),
       code: z.string().regex(/^[a-z]+(?:-[a-z]+)*$/),
       message: z.string().min(1),
-      authorityReason: WriteAuthorityReasonSchema.optional(),
+      authorityReason: WriteAuthorityReasonSchema,
     }),
   ]),
   recordedAt: IsoInstantSchema,

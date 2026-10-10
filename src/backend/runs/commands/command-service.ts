@@ -1,13 +1,9 @@
 import { deriveBulkChildCommand, deriveBulkChildCommandId } from "../../../rules/commands/command-groups.js";
-import { bindArchiveDeleteRequest } from "./archive-deletion-binding.js";
-import { bindVersionApplyRequest } from "./version-review-binding.js";
-import type { VersionChange } from "../../../models/archive/change-record.js";
 
 import { z } from "zod";
 import {
   BulkRunCommandRequestSchema,
   BulkRunCommandResponseSchema,
-  AuthorityCommandRecordSchema,
   CommandRequestSchema,
   type BulkRunCommandOutcome,
   type BulkRunCommandResponse,
@@ -16,14 +12,11 @@ import {
 import type { CommandKernel } from "./command-kernel.js";
 import type { RunQueueProjection } from "../projections/run-queue-projection.js";
 import { errorText } from "../lifecycle/support.js";
-import { lifecycleCommandId } from "../../../rules/identity/identifiers.js";
 import type { RunWorkerCapacity } from "./run-worker-capacity.js";
 
 export interface DashboardCommandServiceDeps {
   readonly kernel: CommandKernel;
   readonly projection: Pick<RunQueueProjection, "ingestFromTimeline" | "refreshRun">;
-  readonly versionChanges?: { readVersionChange(changeId: string): VersionChange | undefined };
-  readonly archiveDeletionCommands?: { getCommand(commandId: string): z.infer<typeof AuthorityCommandRecordSchema> | undefined };
   readonly startWorkerCapacity?: RunWorkerCapacity;
 }
 
@@ -40,34 +33,12 @@ export { deriveBulkChildCommandId } from "../../../rules/commands/command-groups
 
 
 const SPANLESS_RUN_TYPES = new Set([
-  "rename", "bump", "cancel", "archive", "delete",
+  "rename", "bump", "cancel", "delete",
   "resolve-write-present", "resolve-write-absent",
 ]);
 
 export function createDashboardCommandService(deps: DashboardCommandServiceDeps): DashboardCommandService {
   function executeOne(input: unknown, parentCommandId?: string): CommandResult {
-      const parsed = CommandRequestSchema.safeParse(input);
-      if (parsed.success && parsed.data.family === "version-archive" && parsed.data.type === "apply-version-bump") {
-        if (deps.versionChanges === undefined) throw new Error("version-review-binding-unavailable");
-        const row = deps.versionChanges.readVersionChange(parsed.data.target.versionPlanId);
-        if (row !== undefined) {
-          const bound = bindVersionApplyRequest(row, parsed.data);
-          if (bound === undefined) return { state: "rejected", commandId: parsed.data.commandId, code: "schema-mismatch", message: "Version review binding differs." };
-          input = bound;
-        }
-      }
-      if (parsed.success && parsed.data.family === "version-archive" && parsed.data.type === "delete-archived-run") {
-        if (deps.archiveDeletionCommands === undefined) throw new Error("archive-deletion-binding-unavailable");
-        const retained = deps.archiveDeletionCommands.getCommand(lifecycleCommandId("operator-delete-archive", parsed.data.commandId));
-        if (retained !== undefined && (!("kind" in retained) || retained.kind !== "run-lifecycle")) {
-          return { state: "rejected", commandId: parsed.data.commandId, code: "command-divergent", message: "Archive deletion identity belongs to another command." };
-        }
-        const bound = bindArchiveDeleteRequest(retained, parsed.data);
-        if (bound === undefined) {
-          return { state: "rejected", commandId: parsed.data.commandId, code: "command-divergent", message: "Archive deletion request differs from the accepted request." };
-        }
-        input = bound;
-      }
       const result = deps.kernel.execute(input, parentCommandId);
       if (result.state !== "applied") return result;
       // The kernel already validated the request exhaustively; this re-parse
@@ -86,9 +57,7 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
       }
 
       if (request.family === "run" && SPANLESS_RUN_TYPES.has(request.type)) {
-        if (request.type === "archive") {
-          for (const target of result.affectedTargets) if (target.family === "run") deps.projection.refreshRun(target.runId);
-        } else deps.projection.refreshRun(request.target.runId);
+        deps.projection.refreshRun(request.target.runId);
       }
       return result;
   }

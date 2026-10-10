@@ -21,7 +21,7 @@ export function storageHealthCauseFromError(error: unknown): StorageHealthCause 
   if (/empty|missing/i.test(summary)) code = "authority-empty";
   else if (/not a database|file is not a database|not the HR authority store/i.test(summary)) code = "authority-not-sqlite";
   else if (/newer than supported/i.test(summary)) code = "authority-schema-newer";
-  else if (/strict record schema validation/i.test(summary)) code = "authority-record-invalid";
+  else if (/strict record schema validation|failed native record validation|config-snapshot-fingerprint-mismatch/i.test(summary)) code = "authority-record-invalid";
   else if (/schema|tables do not match registry|user_version/i.test(summary)) code = "authority-schema-mismatch";
   else if (/migration owner/i.test(summary)) code = "authority-migration-locked";
   else if (/foreign-key/i.test(summary)) code = "authority-foreign-key";
@@ -79,8 +79,9 @@ export class AuthorityBootStore implements Disposable {
         }));
       }
     }
+    let database:AuthorityDatabase|undefined;
     try {
-      const database = AuthorityDatabase.open(admission, options, clock);
+      database = AuthorityDatabase.open(admission, options, clock);
       return new AuthorityBootStore(database, AuthorityBootReportSchema.parse({
         state: "healthy",
         checkedAt,
@@ -88,11 +89,16 @@ export class AuthorityBootStore implements Disposable {
         inspection: AuthorityDatabase.inspectExistingReadOnly(admission, options.path, options.busyTimeoutMs),
       }));
     } catch (error) {
-      return new AuthorityBootStore(undefined, AuthorityBootReportSchema.parse({
+      let failure=error;
+      if(database!==undefined){
+        try{database.close();database=undefined;}
+        catch(closeError){failure=new AggregateError([error,closeError],"authority boot inspection failed and database close is uncertain");}
+      }
+      return new AuthorityBootStore(database, AuthorityBootReportSchema.parse({
         state: "degraded-read-only",
         checkedAt,
         mutationAvailability: "blocked",
-        cause: storageHealthCauseFromError(error),
+        cause: storageHealthCauseFromError(failure),
       }));
     }
   }
@@ -102,7 +108,7 @@ export class AuthorityBootStore implements Disposable {
   }
 
   requireWritable(operation: "enqueue" | "claim" | "commit" | "control"): AuthorityDatabase {
-    if (this.#database !== undefined) return this.#database;
+    if (this.#database !== undefined && this.#report.state === "healthy") return this.#database;
     if (this.#report.state !== "degraded-read-only") {
       throw new Error("authority boot store has neither a writable database nor a degraded health cause");
     }

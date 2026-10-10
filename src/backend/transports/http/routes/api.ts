@@ -4,7 +4,6 @@ import { registerSettingsPreflightRoutes } from "./settings-preflight.js";
 import { registerSettingsRoutes } from "./settings.js";
 import { registerStorageRoutes } from "./storage.js";
 import { registerExplorerRoutes } from "./explorer.js";
-import { registerArchiveRoutes } from "./archive.js";
 import { registerActivityRoutes } from "./activity.js";
 import { registerQueueRoutes } from "./queue.js";
 import { registerIntakeRoutes } from "./intake.js";
@@ -18,7 +17,6 @@ import { composeDataQueries } from "../../../app/composition/dashboard/data.js";
 
 import { Hono } from "hono";
 
-import { ArchivedCaptureReadError } from "../../../runs/queries/archive.js";
 import { staticBundleHandler } from "../static-bundle.js";
 import { operatorMutationIngressGuard, operatorOpaqueIngressGuard } from "./operator-mutation-ingress.js";
 import { type RequestIdentityCheckpoint } from "../request-identity.js";
@@ -27,9 +25,6 @@ import { failureStatus, wireError } from "./failure-status.js";
 export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   const app = new Hono<{ Variables: { requestActorId: ReturnType<RequestIdentityCheckpoint["identify"]> } }>();
   app.onError((error, c) => {
-    if (error instanceof ArchivedCaptureReadError) {
-      return c.json(wireError(error.code, error.message, false), 500);
-    }
     const { status, body } = failureStatus(error);
     return c.json(body, status);
   });
@@ -60,13 +55,12 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   registerSettingsRoutes(app, deps);
   registerStorageRoutes(app, deps);
   registerExplorerRoutes(app, deps);
-  registerArchiveRoutes(app, deps);
   registerActivityRoutes(app, { activity: deps.activity ?? { read: () => { throw new Error("activity-service-not-configured"); }, readSelected: () => { throw new Error("activity-service-not-configured"); } } });
   registerQueueRoutes(app, { startPlans: deps.startPlans, queue: { day: day => deps.projection.buildDashboardDayWire(day) } });
   registerIntakeRoutes(app, deps);
   registerCommandsRoutes(app, { clock: deps.bootstrap.clock, commands: deps.commands, commandJournal: deps.commandJournal,
     bulkCommandAcceptances: deps.bulkCommandAcceptances, protectedCommandAcceptedAt: deps.protectedCommandAcceptedAt,
-    runtimeVersionAcceptedAt: deps.runtimeVersionAcceptedAt, intake: deps.intake });
+    intake: deps.intake });
   if (deps.staticBundle !== undefined) app.use("*", staticBundleHandler(deps.staticBundle));
 
   app.notFound((c) => c.json(wireError("ROUTE_NOT_FOUND", `no route serves ${c.req.method} ${c.req.path}`, false), 404));

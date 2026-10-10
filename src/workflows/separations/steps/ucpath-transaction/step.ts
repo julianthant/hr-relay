@@ -19,7 +19,7 @@ import {
   KualiOptionFieldSchema,
 } from "../../../../models/ui/kuali-separation-document.js";
 import {
-  UcpathPendingSweepHistoricalOrCurrentProofSchema,
+  UcpathPendingSweepSettlementProofSchema,
   UcpathTerminationProofSchema,
   UcpathUsDateSchema,
 } from "../../../../models/ui/ucpath-smart-hr-termination.js";
@@ -89,7 +89,7 @@ export const SeparationsUcpathTerminationResultSchema = z.strictObject({
   /** Whether the sweep had anything to do, and what the grid showed after it. */
   pendingSweep: z.strictObject({
     disposition: z.enum(["committed", "already-present"]),
-    proof: UcpathPendingSweepHistoricalOrCurrentProofSchema,
+    proof: UcpathPendingSweepSettlementProofSchema,
   }),
   /** The filed termination's receipt PAIR — a number alone is never a proof. */
   termination: z.strictObject({

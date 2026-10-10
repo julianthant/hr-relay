@@ -35,11 +35,7 @@ export const SeparationWritePlanSchema = z.discriminatedUnion("state", [
       payrollTitleCode: z.string().min(1),
       payrollTitle: z.string().min(1),
       terminationEffectiveDate: z.string().min(1),
-      // Read historical packets without carrying their protected bytes forward.
-      timekeeperName: z.union([ProtectedInputBindingSchema, z.string().min(1)])
-        .transform((value) => typeof value === "string"
-          ? ProtectedInputBindingSchema.parse({ kind: "legacy-protected-input", name: "timekeeperName", inputPath: "timekeeperName" })
-          : value).pipe(ProtectedInputBindingSchema),
+      timekeeperName: ProtectedInputBindingSchema,
     }),
         /* How the dates were reconciled, with what the form said beside them; the packet is a PRESENTATION of decisions, never a second authority over them. */
     dates: z.strictObject({

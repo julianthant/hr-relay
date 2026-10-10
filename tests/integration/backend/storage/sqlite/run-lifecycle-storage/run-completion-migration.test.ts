@@ -105,7 +105,7 @@ function conversion(path: string) {
       if (migration.version === 42 && statement === "DROP TABLE intake_sessions") convertImportedArtifacts(raw);
       if (migration.version === 44 && statement === "DROP TABLE runtime_config") convertAppSettings(raw);
       if (migration.version === 46 && statement === "DROP TABLE artifact_outbox") convertGeneratedArtifacts(raw,undefined);
-      if (migration.version === 47 && statement === "DROP TABLE spans") assertFoundationRetirement(RuntimeAdmission.syntheticFixture(path, "authority"),raw,undefined);
+      if (migration.version === 47 && statement === "DROP TABLE spans") assertFoundationRetirement(RuntimeAdmission.syntheticFixture(path),raw,undefined);
       raw.exec(statement);
     }
     raw.exec(`UPDATE database_state SET schema_version=${String(NORMAL_AUTHORITY_SCHEMA_VERSION)}; PRAGMA user_version=${String(NORMAL_AUTHORITY_SCHEMA_VERSION)}; COMMIT`);

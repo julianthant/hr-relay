@@ -1,7 +1,9 @@
+import { personLookupDescriptor } from "../../../../../support/helpers/registered-workflows.js";
+import { testWorkerPorts } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
 import { TargetNotFoundError } from "../../../../../../src/backend/runs/commands/refusals.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -24,12 +26,13 @@ afterEach(() => {
 });
 
 function seeded(): AuthorityDatabase {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-explain-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-explain-"));
   roots.push(root);
   const database = AuthorityDatabase.open(
     { path: join(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "explain-test" },
     manualClock(new Date("2026-08-04T00:11:13.500Z")),
   );
+  testWorkerPorts(database, manualClock(new Date("2026-08-04T00:11:13.500Z")), { path: join(root, "state.sqlite"), descriptor: personLookupDescriptor, poolIndex: 1 });
   databases.push(database);
   seedPersonLookupExitRun(database);
   return database;
@@ -59,7 +62,7 @@ describe("explain run", () => {
 
     assert.equal(view.state, "terminal");
     assert.deepEqual(view.outcome, { state: "present", value: "done" });
-    assert.equal(view.attempt, 2);
+    assert.equal(view.attempt, 1);
 
     const timeline = new Map(view.timeline.map((entry) => [entry.nodeId, entry]));
     assert.equal(timeline.get("searching")?.disposition, "replayed-from-checkpoint");
