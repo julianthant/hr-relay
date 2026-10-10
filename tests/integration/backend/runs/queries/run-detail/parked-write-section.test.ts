@@ -1,5 +1,6 @@
 
 import assert from "node:assert/strict";
+import { deriveWriteAuthorityReason } from "../../../../../../src/rules/write-safety/write-authority-reason.js";
 import { afterEach, describe, it } from "vitest";
 import { CommandRequestSchema } from "../../../../../../src/rules/commands/commands.js";
 import {
@@ -22,6 +23,7 @@ import {
   UNSCOPED_PROOF,
 } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
 import { FIXTURE_PARKED_WRITE } from "../../../../../support/fixtures/dashboard/fixture-day.js";
+import { FIXTURE_PARKED_WRITE_INTENT } from "../../../../../support/fixtures/dashboard/run-detail/gates-park.js";
 import {
   makeWorld,
   queuedEventOf,
@@ -56,10 +58,10 @@ function parkedIntentOf(input?: Readonly<{
   generation?: number;
   proof?: unknown;
   status?: "parked" | "attempting";
-}>): WriteIntentRecord {
+}>) {
   const proof = proofFor(input?.proof ?? SUBJECT_PROOF);
   const status = input?.status ?? "parked";
-  return WriteIntentRecordSchema.parse({
+  const intent = WriteIntentRecordSchema.parse({
     writeIntentId: INTENT_ID,
     workflowId: "person-lookup",
     itemId: ITEM_ID,
@@ -78,9 +80,12 @@ function parkedIntentOf(input?: Readonly<{
     createdAt: NOW,
     updatedAt: NOW,
     ...(status === "parked"
-      ? { status, parkedCode: "unknown", message: PARK_MESSAGE }
+      ? { status, parkedCode: "unknown", message: PARK_MESSAGE,
+        authorityReason: deriveWriteAuthorityReason("post-click-verifier-unknown", "probe", PARK_MESSAGE) }
       : { status }),
   });
+  if (intent.status !== "parked" && intent.status !== "attempting") throw new Error("fixture intent is not fenced");
+  return intent;
 }
 
 const PARKED_LIFECYCLE = {
@@ -94,7 +99,7 @@ const PARKED_LIFECYCLE = {
 
 
 function depsOf(w: DashboardWorld, writeContracts?: RunDetailWriteContractView[]): RunDetailQueryDeps {
-  return { runReader: w.runReader,
+  return { runReader: w.runReader, timeline: w.timeline,
     stateRoot: w.stateRoot,
     projection: w.projection,
     authority: w.authority,
@@ -274,19 +279,22 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
       if (action.kind !== "command") throw new Error("unreachable");
       // The run version, because that is what both resolutions CAS against.
       assert.equal(action.expectedVersion, 4);
-      assert.deepEqual(action.writeTarget, { writeIntentId: INTENT_ID, intentGeneration: 1 });
+      assert.deepEqual(action.writeTarget, { writeIntentId: INTENT_ID, intentGeneration: 1,
+        writeAttemptId: ATTEMPT_ID, occurrenceKeyDigest: IDEMPOTENCY_KEY_DIGEST,
+        bindingProofDigest: parkedIntentOf().bindingProofDigest });
       // Neither resolution may be one click: both settle a real HR write.
       assert.ok(action.confirm !== undefined);
       assert.equal(action.confirm.tone, "destructive");
     }
   });
 
-  it("emits a target the kernel's own command schema accepts unchanged", () => {
+  it("emits every binding the kernel's own command schema requires", () => {
     const w = world();
     seed(w);
     const action = parkedSection(w).actions[0];
     assert.ok(action !== undefined && action.kind === "command");
     if (action.kind !== "command" || action.writeTarget === undefined) throw new Error("unreachable");
+    const { occurrenceKeyDigest, ...writeTarget } = action.writeTarget;
 
 
     const command = CommandRequestSchema.parse({
@@ -299,16 +307,18 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
       target: {
         runId: RUN_ID,
         expectedVersion: action.expectedVersion,
-        writeIntentId: action.writeTarget.writeIntentId,
-        intentGeneration: action.writeTarget.intentGeneration,
+        ...writeTarget,
       },
-      payload: { proof: { schemaHash: "a".repeat(64), value: "receipt-123" }, evidenceNote: "confirmed in UCPath" },
+      payload: { occurrenceKeyDigest, proof: { schemaHash: "a".repeat(64), value: "receipt-123" }, evidenceNote: "confirmed in UCPath" },
     });
     assert.equal(command.family, "run");
     if (command.family !== "run" || command.type !== "resolve-write-present") throw new Error("unreachable");
     assert.equal(command.target.writeIntentId, INTENT_ID);
     assert.equal(command.target.intentGeneration, 1);
     assert.equal(command.target.expectedVersion, 4);
+    assert.equal(command.target.writeAttemptId, ATTEMPT_ID);
+    assert.equal(command.target.bindingProofDigest, parkedIntentOf().bindingProofDigest);
+    assert.equal(command.payload.occurrenceKeyDigest, IDEMPOTENCY_KEY_DIGEST);
   });
 
   it("does not advertise or serve the section for a run that is not parked", () => {
@@ -370,13 +380,26 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
     seed(w);
     const served = parkedSection(w);
 
-    const normalize = (payload: { writeIntentId: string; actions: readonly unknown[] }): unknown =>
+    const normalize = (payload: typeof served, intent: WriteIntentRecord): unknown => {
+      if (intent.status !== "parked") throw new Error("fixture intent is not parked");
+      for (const action of payload.actions) {
+        assert.equal(action.kind, "command");
+        if (action.kind !== "command") throw new Error("unreachable");
+        assert.deepEqual(action.writeTarget, { writeIntentId: intent.writeIntentId,
+          intentGeneration: intent.generation, writeAttemptId: intent.currentAttemptId,
+          occurrenceKeyDigest: intent.idempotencyKeyDigest, bindingProofDigest: intent.bindingProofDigest });
+      }
+      return (
       JSON.parse(
         JSON.stringify(payload.actions)
           .replaceAll(payload.writeIntentId, "<intent>")
+          .replaceAll(intent.currentAttemptId, "<attempt>")
+          .replaceAll(intent.idempotencyKeyDigest, "<occurrence>")
+          .replaceAll(intent.bindingProofDigest, "<binding>")
           // Compare adapter shapes at their own row versions; pinning one version would confuse fixtures with schema.
           .replaceAll(/"expectedVersion":\d+/gu, '"expectedVersion":0'),
-      ) as unknown;
+      ) as unknown);
+    };
 
     const normalizeMessage = (payload: {
       writeIntentId: string;
@@ -387,7 +410,7 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
       .replace(payload.idempotencyKeyDigest.slice(0, 12), "<digest>");
 
     assert.equal(normalizeMessage(FIXTURE_PARKED_WRITE), normalizeMessage(served));
-    assert.deepEqual(normalize(FIXTURE_PARKED_WRITE), normalize(served));
+    assert.deepEqual(normalize(FIXTURE_PARKED_WRITE, FIXTURE_PARKED_WRITE_INTENT), normalize(served, parkedIntentOf()));
   });
 
   it("re-reads the intent per request rather than folding it into the projection", () => {

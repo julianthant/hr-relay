@@ -62,6 +62,7 @@ const PARKED_WRITE_INTENT = WriteIntentRecordSchema.parse({
 const PARKED_WRITE_TARGET = { writeIntentId: PARKED_WRITE_INTENT.writeIntentId,
   intentGeneration: PARKED_WRITE_INTENT.generation, writeAttemptId: PARKED_WRITE_ATTEMPT.writeAttemptId,
   bindingProofDigest: PARKED_WRITE_BINDING_DIGEST, occurrenceKeyDigest: PARKED_WRITE_INTENT.idempotencyKeyDigest };
+export { PARKED_WRITE_INTENT as FIXTURE_PARKED_WRITE_INTENT };
 const PARKED_WRITE_SYSTEM = "ucpath";
 const PARKED_WRITE_REVISION = 6;
 

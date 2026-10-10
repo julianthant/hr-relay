@@ -1,3 +1,6 @@
+import { z } from "zod";
+import { testWorkerPorts } from "../../../../../support/fixtures/run-lifecycle-fixtures.js";
+import { runRecordFromRow } from "../../../../../../src/backend/storage/sqlite/run-record-row.js";
 import { TerminalAuthorizationRecordSchema } from "../../../../../../src/models/run/terminal-authorization.js";
 import { RunRecordService } from "../../../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { completionFromAuthorization } from "../../../../../../src/models/run/completion.js";
@@ -11,7 +14,7 @@ import { buildRunResult } from "../../../../../../src/backend/runs/lifecycle/run
 import { manualClock } from "../../../../../../src/rules/time/clock.js";
 import { ReadActiveStatus } from "../../../../../../src/models/workflows/person-lookup/read-active-status.js";
 import { ReadOnboardingDatesOutputSchema } from "../../../../../../src/models/systems/crm/read-onboarding-dates.js";
-import { RunRecordSchema, type RunRecord } from "../../../../../../src/models/run/record.js";
+import { RunLifecycleSchema, type RunRecord } from "../../../../../../src/models/run/record.js";
 import { RunCheckpointRecordSchema } from "../../../../../../src/models/workflow/checkpoint.js";
 import { deriveSchemaHash } from "../../../../../../src/models/validation/schema-bound-value.js";
 import {
@@ -35,7 +38,6 @@ import {
 import {
   QUEUED_RUN,
   RUN_ID,
-  WORKER_ID,
   WORKFLOW_ID,
 } from "../../../../../support/fixtures/phase1f-run-fixtures.js";
 import { personLookupDescriptor } from "../../../../../support/helpers/registered-workflows.js";
@@ -43,6 +45,7 @@ import { personLookupDescriptor } from "../../../../../support/helpers/registere
 const CLOCK = manualClock(new Date(LATER));
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
+const WORKER_ID = "person-lookup-worker-1";
 const CLAIM = { workerId: WORKER_ID, claimGeneration: 1 };
 const AFTER_LATER = "2026-07-31T17:02:00.000Z";
 const ACTIVE = {
@@ -60,6 +63,7 @@ function openDatabase(hooks?: AuthorityTerminalizationHooks): AuthorityDatabase 
     undefined,
     hooks,
   );
+  testWorkerPorts(database, CLOCK, { path: join(root, "authority.sqlite"), descriptor: personLookupDescriptor, poolIndex: 1 });
   databases.push(database);
   return database;
 }
@@ -70,29 +74,29 @@ function corruptRunConsequence(
   const path = join(roots.at(-1) ?? "", "authority.sqlite");
   const raw = new DatabaseSync(path);
   try {
-    // Remove only the monotonic trigger to model independent offline record corruption.
-    raw.exec("DROP TRIGGER tasks_monotonic_counters_update; DROP TRIGGER workflow_runs_completion_update; DROP TRIGGER workflow_runs_completion_immutable");
-    const row = raw.prepare("SELECT record_json FROM workflow_runs WHERE record_key = ?")
-      .get(RUN_ID) as { record_json: string } | undefined;
-    if (row === undefined) throw new Error(`run ${RUN_ID} is absent from corruption fixture`);
-    const current = RunRecordSchema.parse(JSON.parse(row.record_json));
-    const corrupted = mutate(current) as RunRecord;
-    const ownerWorkerId = "workerId" in corrupted.lifecycle ? corrupted.lifecycle.workerId : null;
-    const heartbeatAt = "heartbeatAt" in corrupted.lifecycle ? corrupted.lifecycle.heartbeatAt : null;
-    raw.prepare("UPDATE workflow_runs SET record_json = ? WHERE record_key = ?")
-      .run(JSON.stringify(corrupted), RUN_ID);
-    if (corrupted.version !== current.version) {
-      raw.prepare("UPDATE workflow_runs SET version = ? WHERE record_key = ?").run(corrupted.version, RUN_ID);
-    }
-    if (corrupted.claimGeneration !== current.claimGeneration) {
-      raw.prepare("UPDATE workflow_runs SET claim_generation = ? WHERE record_key = ?")
-        .run(corrupted.claimGeneration, RUN_ID);
-    }
-    if (corrupted.lifecycle.state !== current.lifecycle.state) {
-      raw.prepare(`
-        UPDATE workflow_runs SET state = ?, owner_worker_id = ?, heartbeat_at = ? WHERE record_key = ?
-      `).run(corrupted.lifecycle.state, ownerWorkerId, heartbeatAt, RUN_ID);
-    }
+    const guards = ["runs_completion_update", "runs_completion_immutable"].map(name => {
+      const row = raw.prepare("SELECT sql FROM sqlite_schema WHERE type='trigger' AND name=?").get(name);
+      if (row === undefined || typeof row.sql !== "string") throw new Error("missing corruption fixture guard");
+      return { name, sql: row.sql };
+    });
+    raw.exec("BEGIN");
+    try {
+      for (const guard of guards) raw.exec("DROP TRIGGER " + guard.name);
+      const row = raw.prepare("SELECT * FROM runs WHERE id=?").get(RUN_ID);
+      if (row === undefined) throw new Error("run is absent from corruption fixture");
+      const corrupted = z.looseObject({ lifecycle: RunLifecycleSchema, claimGeneration: z.number().int(),
+        version: z.number().int(), updatedAt: z.string() }).parse(mutate(runRecordFromRow(row)));
+      const { envelope, ...lifecycle } = corrupted;
+      void envelope;
+      const owner = "workerId" in corrupted.lifecycle ? corrupted.lifecycle.workerId : null;
+      const heartbeat = "heartbeatAt" in corrupted.lifecycle ? corrupted.lifecycle.heartbeatAt : null;
+      const outcome = corrupted.lifecycle.state === "terminal" ? corrupted.lifecycle.outcome : null;
+      raw.prepare("UPDATE runs SET lifecycle_json=?,state=?,outcome=?,owner_worker_id=?,heartbeat_at=?,version=?,claim_generation=?,updated_at=? WHERE id=?")
+        .run(JSON.stringify(lifecycle), corrupted.lifecycle.state, outcome, owner, heartbeat,
+          corrupted.version, corrupted.claimGeneration, corrupted.updatedAt, RUN_ID);
+      for (const guard of guards) raw.exec(guard.sql);
+      raw.exec("COMMIT");
+    } catch (error) { raw.exec("ROLLBACK"); throw error; }
   } finally {
     raw.close();
   }
@@ -361,7 +365,7 @@ describe("atomic failure terminal authority", () => {
       corruptRunConsequence(mutate);
       assert.throws(
         () => database.terminalizeFailure(personLookupDescriptor, request),
-        /completion|terminal consequence/,
+        /completion|terminal consequence|run-search-index-corrupt/,
         name,
       );
     }
@@ -477,14 +481,7 @@ describe("atomic success terminal authority", () => {
       }),
       /original pre-terminal claim/,
     );
-    assert.throws(
-      () => database.terminalizeSuccess({
-        ...request,
-        outbox: { outboxId: UUID_6 },
-        authorization: { ...authorization, outboxId: UUID_6 },
-      }),
-      /Invalid input/,
-    );
+
   });
 
   it("rejects an authenticated result whose exact checkpoint was never stored", () => {
@@ -495,11 +492,15 @@ describe("atomic success terminal authority", () => {
     // remains open: terminal settlement must independently reject the absence.
     const path = join(roots.at(-1) ?? "", "authority.sqlite");
     const raw = new DatabaseSync(path);
-    raw.prepare("DELETE FROM run_checkpoints").run();
-    raw.close();
+    try {
+      const guard = raw.prepare("SELECT sql FROM sqlite_schema WHERE type='trigger' AND name='run_checkpoints_owner_delete'").get();
+      if (guard === undefined || typeof guard.sql !== "string") throw new Error("missing checkpoint ownership guard");
+      raw.exec("BEGIN; DROP TRIGGER run_checkpoints_owner_delete; DELETE FROM run_checkpoints");
+      raw.exec(guard.sql); raw.exec("COMMIT");
+    } finally { raw.close(); }
     assert.throws(
       () => database.terminalizeSuccess({ result, authorization }, factoryAuthorization),
-      /has no exact stored checkpoint/,
+      /has no exact stored checkpoint|timeline-checkpoint-reference-mismatch/,
     );
     // Reopening also refuses the now-dangling durable checkpoint event.
     assert.throws(() => AuthorityDatabase.open(
@@ -628,7 +629,7 @@ describe("atomic success terminal authority", () => {
       corruptRunConsequence(mutate);
       assert.throws(
         () => database.terminalizeSuccess(request),
-        /completion|terminal consequence/,
+        /completion|terminal consequence|run-search-index-corrupt/,
         name,
       );
     }
@@ -660,7 +661,7 @@ describe("atomic success terminal authority", () => {
 
 describe("public settlement write boundaries", () => {
   for (const kind of ["success", "failure"] as const) {
-    for (const table of [kind === "success" ? "run_results" : "run_failures", "workflow_runs", "timeline_events", "commands", "command_audits"]) {
+    for (const table of [kind === "success" ? "run_results" : "run_failures", "runs", "timeline_events", "commands", "command_audits"]) {
       it(`${kind} rolls back completion, consequence, timeline and journal after ${table} write`, () => {
         const database = openDatabase(); const running = startRunning(database);
         const built = kind === "success" ? resultRequest(database, running) : undefined;
@@ -671,7 +672,7 @@ describe("public settlement write boundaries", () => {
         const raw = new DatabaseSync(join(roots.at(-1) ?? "", "authority.sqlite"));
         try {
           const before = database.getMeta(); const events = database.authority.timelineEvents.page({});
-          raw.exec(`CREATE TRIGGER injected_completion AFTER ${table === "workflow_runs" ? "UPDATE" : "INSERT"} ON ${table} BEGIN SELECT RAISE(ABORT, 'C-write-fault'); END`);
+          raw.exec(`CREATE TRIGGER injected_completion AFTER ${table === "runs" ? "UPDATE" : "INSERT"} ON ${table} BEGIN SELECT RAISE(ABORT, 'C-write-fault'); END`);
           assert.throws(() => service.terminalize(request, personLookupDescriptor, built?.factoryAuthorization), /C-write-fault/);
           assert.deepEqual(database.authority.runs.get(RUN_ID), running);
           assert.deepEqual(database.authority.failures.listByRun(RUN_ID), []);

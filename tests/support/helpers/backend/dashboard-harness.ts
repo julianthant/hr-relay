@@ -604,14 +604,16 @@ export function notificationRecordOf(input: Readonly<{
 }
 
 export function claimEventOf(world: DashboardWorld, seed: number, workerId = "person-lookup-worker-1"): void {
+  const run = world.authority.getRun(uuidOf(seed));
+  if (run === undefined) throw new Error("claim fixture run is missing");
   world.writer.emit({
     t: "run.claimed",
     ts: world.clock.now().toISOString(),
-    workflow: "person-lookup",
-    runId: uuidOf(seed),
-    attempt: 1,
-    traceId: traceOf(seed),
-    spanPath: traceOf(seed),
+    workflow: run.envelope.workflow,
+    runId: run.envelope.runId,
+    attempt: run.envelope.attempt,
+    traceId: run.envelope.traceId,
+    spanPath: run.envelope.traceId,
     workerId,
   });
 }
