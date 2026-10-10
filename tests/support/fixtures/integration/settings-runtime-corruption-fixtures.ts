@@ -78,18 +78,21 @@ function corruptPersistedIdentity(
   corruption: SettingsRuntimeIdentityCorruption,
 ): void {
   const raw = new DatabaseSync(databasePath);
+  const trigger = raw.prepare("SELECT sql FROM sqlite_schema WHERE name='command_audits_immutable'").get()?.sql;
+  if (typeof trigger !== "string") { raw.close(); throw new Error("fixture audit trigger missing"); }
   try {
+    raw.exec("DROP TRIGGER command_audits_immutable");
     const commandRow = raw.prepare(
-      "SELECT record_json FROM commands WHERE record_key = ?",
+      "SELECT request_json FROM commands WHERE id = ?",
     ).get(COMMAND_ID);
     const auditRow = raw.prepare(
-      "SELECT record_json FROM command_audits WHERE record_key = ?",
+      "SELECT payload_json FROM command_audits WHERE id = ?",
     ).get(AUDIT_ID);
     const commandRecord = SettingsCommandRequestSchema.parse(
-      JSON.parse(String(commandRow?.record_json)),
+      JSON.parse(String(commandRow?.request_json)),
     );
     const auditRecord = CommandAuditRecordSchema.parse(
-      JSON.parse(String(auditRow?.record_json)),
+      JSON.parse(String(auditRow?.payload_json)),
     );
 
     if (corruption.id === "command-envelope") {
@@ -97,7 +100,7 @@ function corruptPersistedIdentity(
         ...commandRecord,
         requestedAt: CHANGED_REQUESTED_AT,
       });
-      raw.prepare("UPDATE commands SET record_json = ? WHERE record_key = ?")
+      raw.prepare("UPDATE commands SET request_json = ? WHERE id = ?")
         .run(canonicalJsonStringify(changed), COMMAND_ID);
       return;
     }
@@ -147,9 +150,10 @@ function corruptPersistedIdentity(
     }
 
     const parsed = CommandAuditRecordSchema.parse(changedAudit);
-    raw.prepare("UPDATE command_audits SET record_json = ? WHERE record_key = ?")
+    raw.prepare("UPDATE command_audits SET payload_json = ? WHERE id = ?")
       .run(canonicalJsonStringify(parsed), AUDIT_ID);
   } finally {
+    raw.exec(trigger);
     raw.close();
   }
 }

@@ -1,3 +1,5 @@
+import { runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
+import { createRunSearchIndex } from "../../../../src/backend/storage/sqlite/run-search-index.js";
 import { IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
 import { ucpathPendingTransactionSetDigest } from "../../../../src/models/systems/ucpath/delete-pending-terminations.js";
 import { DatabaseSync } from "node:sqlite";
@@ -146,28 +148,32 @@ export function seedSeparationsRunAuthority(
   });
   database.authority.runs.enqueue(queued);
   const raw = new DatabaseSync(path);
+  const triggerNames = ["runs_completion_immutable", "runs_completion_update"];
+  const triggers = triggerNames.map(name => {
+    const sql = raw.prepare("SELECT sql FROM sqlite_schema WHERE type='trigger' AND name=?").get(name)?.sql;
+    if (typeof sql !== "string") throw new Error(`fixture completion trigger missing: ${name}`);
+    return { name, sql };
+  });
   try {
-    const trigger = raw.prepare("SELECT sql FROM sqlite_master WHERE name='workflow_runs_completion_immutable'").get()?.sql;
-    if (typeof trigger !== "string") throw new Error("fixture completion trigger missing");
-    raw.exec("DROP TRIGGER workflow_runs_completion_immutable");
-    raw.prepare(`
-      UPDATE workflow_runs SET state = ?, version = ?, claim_generation = ?, record_json = ? WHERE record_key = ?
-    `).run("terminal", run.version, run.claimGeneration, canonicalJsonStringify(run), run.envelope.runId);
-    raw.exec(trigger);
-    if (result !== undefined) {
-      raw.prepare(`
-        INSERT INTO run_results
-          (record_key, workflow, attempt, result_digest, record_json, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(
-        result.runId,
-        result.workflowId,
-        result.attempt,
-        result.resultDigest,
-        canonicalJsonStringify(result),
-        result.createdAt,
-      );
-    }
+    const search = createRunSearchIndex(raw);
+    search.installTracking();
+    raw.exec("BEGIN IMMEDIATE");
+    for (const trigger of triggers) raw.exec(`DROP TRIGGER ${trigger.name}`);
+    const row = runRecordColumns(run);
+    const keys = Object.keys(row).filter(key => key !== "id");
+    raw.prepare(`UPDATE runs SET ${keys.map(key => `${key}=?`).join(",")} WHERE id=?`)
+      .run(...keys.map(key => row[key as keyof typeof row]), run.envelope.runId);
+    if (result !== undefined) raw.prepare(`INSERT INTO run_results
+      (run_id,workflow,attempt,result_digest,payload_json,created_at) VALUES (?,?,?,?,?,?)`)
+      .run(result.runId, result.workflowId, result.attempt, result.resultDigest,
+        canonicalJsonStringify(result), result.createdAt);
+    for (const trigger of triggers) raw.exec(trigger.sql);
+    let publication = search.rebuild({ restart: true, limit: 500 }, database.getMeta().authorityGeneration, run.updatedAt);
+    while (publication.state === "building") publication = search.rebuild({ restart: false, limit: 500 }, database.getMeta().authorityGeneration, run.updatedAt);
+    raw.exec("COMMIT");
+  } catch (error) {
+    if (raw.isTransaction) raw.exec("ROLLBACK");
+    throw error;
   } finally {
     raw.close();
   }
