@@ -142,6 +142,7 @@ One person builds and maintains this codebase. Keep it organized, clean and easy
 | Dev backend + Vite | `npm run dashboard` (Ctrl+C stops both) |
 | Production bundle and server | `npm run web:build`, then `npm run dashboard:prod` |
 | Workflow dry run | `npm run cli -- dry-run-scenario <workflow> --subject <label>`; absent manifests must report unavailable before execution |
+| Remove leftover test runs | `npm run test:reap` |
 | Visual contract | `npm run test:parity` (desktop only) |
 | Workflow manifest | `npm run build:manifest`, then `npm run build:manifest:check` |
 | Store catalog | `npm run stores:catalog`, then `npm run stores:catalog:check` |
