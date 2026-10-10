@@ -9,7 +9,7 @@
 - link "Skip to content":
   - /url: "#dashboard-main-region"
 - complementary "Workspace":
-  - heading "HR GPT" [level=2]
+  - heading "Relay" [level=2]
   - button "Notifications, 3 unread"
   - button "Search runs"
   - navigation "Workflows":
