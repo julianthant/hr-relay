@@ -94,7 +94,6 @@ export function reapTestRuns(directory: string): { removed: string[]; retained: 
     try { owner = readOwner(root); }
     catch (error) {
       if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
-      if (emptyOwnerlessRun(root) === undefined) { retained.push(root); continue; }
       const entries = emptyOwnerlessRun(root);
       if (entries === undefined) { retained.push(root); continue; }
       try {
