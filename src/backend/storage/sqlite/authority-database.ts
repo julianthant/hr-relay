@@ -17,6 +17,7 @@ import { requireOperationSourceDeclaration } from "../../../models/dashboard/ope
 import { requireWorkflowOperationDisplaySnapshot } from "../../../models/workflow/operation-display-snapshot.js";
 import { selectTransactions } from "./transaction-selection.js";
 import { createRunSearchIndex, runSearchIndexFromRow } from "./run-search-index.js";
+import { RunSearchRebuildRequestSchema } from "../../../models/dashboard/search-index.js";
 import { createWorkerControlRepository, validateWorkerControls, type WorkerControlRepository } from "./worker-control.js";
 import { WorkerControlBasisSchema } from "../../../models/run/worker.js";
 import { createNotificationMetadataRepositories, validateNotificationMetadata } from "./notification-publications.js";
@@ -39,7 +40,7 @@ import { deriveBulkChildCommand, deriveBulkChildCommandId } from "../../../rules
 import { ConfirmationPublicationSchema, confirmationPublicationFromRow, type ConfirmationPublication, confirmedOperationTimeline, reconstructConfirmedOperation } from "../../../models/events/confirmed-operation.js";
 import { timelineAppendContent, timelineCheckpointReference } from "../../../models/events/timeline.js";
 import { deriveStableUuid } from "../../../rules/identity/identifiers.js";
-import { createTimelineRepository, timelineEventFromRow } from "./timeline-repository.js";
+import { createTimelineRepository, timelineEventFromRow, TimelineRecordError } from "./timeline-repository.js";
 import { readTimelineRecords } from "../events/timeline-reader.js";
 import type { TimelineRepository, TimelineAppend } from "../../../models/events/timeline.js";
 import { CommandIdentityConflictError } from "../../../rules/commands/commands.js";
@@ -984,9 +985,11 @@ function assertTerminalEvidenceOwner(database: DatabaseSync, record: RunResultRe
   if (canonicalJsonStringify(createRunTerminalEvidenceResult(run,evidence)) !== canonicalJsonStringify(record)) throw new Error("terminal-evidence-result-mismatch");
 }
 
-function validateAuthorityRecordSchemas(database: DatabaseSync): number {
+function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch = true): number {
   let validated = 0;
+  const searchReady = z.object({search_state:z.string()}).parse(database.prepare("SELECT search_state FROM database_states WHERE id=1").get()).search_state === "ready";
   for (const table of AuthorityTableNameSchema.options) {
+    if (table === "run_search" && (!validateSearch || !searchReady)) continue;
     for (const raw of database.prepare(`SELECT * FROM ${table} ORDER BY ${nativeTableKey(table)}`).iterate()) {
       try {
         if (table === "database_states") {
@@ -1302,11 +1305,11 @@ function inspectAuthorityReadIdentityReadOnly(
       throw new Error(`authority database tables do not match registry: actual=${names.join(",")} expected=${expected.join(",")}`);
     }
     const meta = readMetaRow(database);
+    readWithinSnapshot?.(database);
     const snapshot = Object.freeze({
       authorityGeneration: meta.authority_generation,
       authorityContentFingerprint: FingerprintSchema.parse(authorityContentFingerprint(database)),
     });
-    readWithinSnapshot?.(database);
     database.exec("COMMIT");
     transactionOpen = false;
     return snapshot;
@@ -1494,6 +1497,7 @@ export class AuthorityDatabase implements Disposable {
       defensive: true,
     });
 
+    const admittedDataVersion = readIntPragma(this.#database, "data_version");
     try {
       const existingVersion = existed ? this.#admitExistingSchema() : undefined;
       if (readOnlyNoMigrate) {
@@ -1517,6 +1521,7 @@ export class AuthorityDatabase implements Disposable {
     if (!readOnlyNoMigrate) {
       createRunSearchIndex(this.#database).installTracking();
     }
+    if (readIntPragma(this.#database, "data_version") === admittedDataVersion) this.#validatedExternalDataVersion = admittedDataVersion;
     this.authority = this.#buildAuthorityRepositories();
   }
 
@@ -1585,6 +1590,16 @@ export class AuthorityDatabase implements Disposable {
       deleted: readonly DeletedRunRecord[];
     }> | undefined;
     const identity = inspectAuthorityReadIdentityReadOnly(path, busyTimeoutMs, (database) => {
+      const metrics = z.object({ records: z.number().int().nonnegative(), bytes: z.number().int().nonnegative(),
+        largest: z.number().int().nonnegative(), runs: z.number().int().nonnegative() }).parse(database.prepare(`
+        SELECT count(*) AS records, COALESCE(sum(length(CAST(payload_json AS BLOB))),0) AS bytes,
+          COALESCE(max(length(CAST(payload_json AS BLOB))),0) AS largest, count(DISTINCT run_id) AS runs
+        FROM timeline_events
+      `).get());
+      if (metrics.records > 100_000) throw new TimelineRecordError("timeline-doctor-record-limit-exceeded: 100000 records");
+      if (metrics.bytes > 16 * 1024 * 1024) throw new TimelineRecordError("timeline-doctor-payload-limit-exceeded: 16777216 bytes");
+      if (metrics.largest > 256 * 1024) throw new TimelineRecordError("timeline-doctor-event-limit-exceeded: 262144 bytes");
+      if (metrics.runs > 10_000) throw new TimelineRecordError("timeline-doctor-run-limit-exceeded: 10000 run IDs");
       const repository = createTimelineRepository({ database, read: (work) => work(),
         mutate: () => { throw new Error("timeline-doctor-read-only"); }, assertOwner: () => {} });
       timeline = readTimelineRecords(repository);
@@ -1852,7 +1867,8 @@ export class AuthorityDatabase implements Disposable {
   }
 
   rebuildRunSearchIndex(input: unknown) {
-    return this.#withTransaction("projection", () => createRunSearchIndex(this.#database).rebuild(input, this.getMeta().authorityGeneration, this.#now()));
+    const request = RunSearchRebuildRequestSchema.parse(input);
+    return this.#withTransaction("projection", () => createRunSearchIndex(this.#database).rebuild(request, this.getMeta().authorityGeneration, this.#now()), request.restart ? "none" : "progress");
   }
 
   withAuthorityTransaction<Result>(work: (repositories: AuthorityRepositories) => Result): Result {
@@ -2622,24 +2638,24 @@ export class AuthorityDatabase implements Disposable {
     return this.#clock.now().toISOString();
   }
 
-  #validateExternalQuerySources(mode: "selector" | "mutation" = "selector"): void {
+  #validateExternalQuerySources(mode: "selector" | "mutation" = "selector", searchValidation: "all" | "progress" | "none" = "all"): void {
     const observed = readIntPragma(this.#database, "data_version");
     if (observed === this.#validatedExternalDataVersion && observed === this.#snapshotExternalDataVersion) return;
     try {
-      validateAuthorityRecordSchemas(this.#database);
+      validateAuthorityRecordSchemas(this.#database, searchValidation === "all");
       const violations = invariantViolations(this.#database);
       if (violations.length > 0) throw new Error("current composite authority is invalid");
-      createRunSearchIndex(this.#database).validateCoverage();
+      if (searchValidation !== "none") createRunSearchIndex(this.#database).validateCoverage();
     } catch (error) {
       this.#validatedExternalDataVersion = undefined;
       if (mode === "mutation") throw error;
       throw new Error("run-search-index-rebuild-required", { cause: error });
     }
-    this.#validatedExternalDataVersion = observed === this.#snapshotExternalDataVersion
+    this.#validatedExternalDataVersion = searchValidation !== "none" && observed === this.#snapshotExternalDataVersion
       && readIntPragma(this.#database, "data_version") === observed ? observed : undefined;
   }
 
-  #withTransaction<Result>(mode: "authority" | "projection", work: () => Result): Result {
+  #withTransaction<Result>(mode: "authority" | "projection", work: () => Result, searchValidation: "all" | "progress" | "none" = "all"): Result {
     this.#assertOpen();
     if (this.#transactionDepth > 0) {
       if (this.#transactionMode === "read") throw new Error(`${mode} mutation cannot run inside an authority read snapshot`);
@@ -2671,7 +2687,7 @@ export class AuthorityDatabase implements Disposable {
     this.#explorerOverridesDirty = false;
     let result: Result;
     try {
-      this.#validateExternalQuerySources("mutation");
+      this.#validateExternalQuerySources("mutation", searchValidation);
       const search = createRunSearchIndex(this.#database);
       const priorSearch = search.publication();
       result = work();
@@ -2682,6 +2698,7 @@ export class AuthorityDatabase implements Disposable {
       }
       if (this.#explorerOverridesDirty) validateExplorerOverrides(this.#database);
       this.#database.exec("COMMIT");
+      if (searchValidation === "none") this.#validatedExternalDataVersion = this.#snapshotExternalDataVersion;
     } catch (error) {
       this.#database.exec("ROLLBACK");
       this.#authorityCommitCallbacks.splice(0);

@@ -497,7 +497,7 @@ describe("cross-date search authority read", () => {
       assert.deepEqual([readFileSync(path),readFileSync(`${path}-wal`)],validBytes);
       assert.equal(database.getMeta().authorityGeneration,validGeneration);
       const pinned=database.authority.timelineEvents.get(event.eventId);assert.ok(pinned);
-      const debug=TimelineAppendSchema.parse({...event,eventId:randomUUID(),payload:{kind:"span",event:{t:"span.started",kind:"task",pid:4242,ts:e.enqueuedAt,workflow:e.workflow,runId:e.runId,attempt:e.attempt,traceId:e.traceId,spanPath:`${e.traceId}/debug#1`,name:"Unrelated debug task"}}});
+      const debug=TimelineAppendSchema.parse({schemaVersion:1,eventId:randomUUID(),scope:{kind:"transport",connectionId:"synthetic-completed-request"},occurredAt:e.enqueuedAt,recordedAt:e.enqueuedAt,retentionDate:"2026-08-01",source:{kind:"native"},payload:{kind:"debug",event:{category:"http",phase:"settled",correlationId:"synthetic-completed-request",method:"GET",route:"/api/v1/health",status:200,build:"test",pid:4242}}});
       database.authority.timelineEvents.append(debug);
       assert.equal(database.authority.timelineEvents.pruneBefore("2026-10-01"),1);
       assert.equal(database.authority.timelineEvents.get(debug.eventId),undefined);

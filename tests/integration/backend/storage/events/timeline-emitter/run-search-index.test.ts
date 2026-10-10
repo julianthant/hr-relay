@@ -1,3 +1,4 @@
+import { CONFIG_SNAPSHOT } from "../../../../../support/fixtures/phase1c-contract-fixtures.js";
 import { deriveDiagnosticContentDigest } from "../../../../../../src/models/trust/diagnostic-capture.js";
 import { DiagnosticBundleSchema } from "../../../../../../src/models/trust/diagnostic.js";
 import { foundationFixture, failure, terminalizeFixtureFailure, HASH, NOW } from "../../../../../support/helpers/database-foundation/fixtures.js";
@@ -22,6 +23,7 @@ function fixture() {
   const path = join(root, "authority.db");
   const clock = manualClock(new Date("2026-09-21T12:00:00Z"));
   let db = AuthorityDatabase.open({ path, busyTimeoutMs: 500, migrationOwner: "search-test" }, clock);
+  db.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
   const service = () => createCrossDateSearchService({ clock, sourceIdentity: db.getSourceDatabaseIdentity(), cursorSigningKey: new Uint8Array(32).fill(9),
     descriptors: { resolve: () => undefined }, authority: { readSnapshot: read => db.withAuthorityReadSnapshot(() => read({
       authorityGeneration: db.getMeta().authorityGeneration, searchRuns: input => db.authority.runs.search(input),
@@ -51,7 +53,7 @@ it("refuses tampered metadata even for nonmatching queries; resumes bounded rebu
   try {
     for (let seed = 1101; seed < 1105; seed++) f.db.authority.runs.enqueue(runRecordOf({ seed, workflow: "person-lookup" }));
     const raw = new DatabaseSync(f.path);
-    try { raw.exec("UPDATE run_search_index SET workflow='forged'"); } finally { raw.close(); }
+    try { raw.exec("UPDATE run_search SET workflow='forged'"); } finally { raw.close(); }
     assert.throws(() => f.service().search({ q: "no-match" }), /run-search-index-rebuild-required/);
     const first = f.db.rebuildRunSearchIndex({ restart: true, limit: 2 });
     assert.equal(first.state, "building"); assert.equal(first.rowCount, 2);
@@ -78,7 +80,7 @@ it("cold and post-mutation pages read only selected run JSON with large unrelate
     const observed: { sql: string; rows: number }[] = [];
     const spy = vi.spyOn(DatabaseSync.prototype, "prepare").mockImplementation(function (this: DatabaseSync, sql: string) {
       const statement = original.call(this, sql);
-      if (/SELECT.*record_json FROM workflow_runs/isu.test(sql)) {
+      if (/SELECT \* FROM runs/isu.test(sql)) {
         const get = statement.get.bind(statement), all = statement.all.bind(statement);
         statement.get = (...args) => { const result = Reflect.apply(get,statement,args) as ReturnType<typeof get>; observed.push({ sql, rows: result === undefined ? 0 : 1 }); return result; };
         statement.all = (...args) => { const result = Reflect.apply(all,statement,args) as ReturnType<typeof all>; observed.push({ sql, rows: result.length }); return result; };
@@ -90,7 +92,7 @@ it("cold and post-mutation pages read only selected run JSON with large unrelate
       const first = search.search({ q: "selected-workflow", limit: 2 });
       const firstReads=observed.reduce((n,row)=>n+row.rows,0);
       assert.equal(first.totalMatches, 4); assert.equal(firstReads, 3);
-      assert.ok(observed.every(row => /WHERE record_key=\?/u.test(row.sql)));
+      assert.ok(observed.every(row => /WHERE id=\?/u.test(row.sql)));
       assert.equal(first.nextCursor.state, "present");
       if (first.nextCursor.state !== "present") throw new Error("missing cursor");
       observed.length = 0;
@@ -100,11 +102,12 @@ it("cold and post-mutation pages read only selected run JSON with large unrelate
       // Negative control: the same observer catches a deliberately widened reader.
       const raw = new DatabaseSync(f.path);
       try {
-        observed.length = 0; raw.prepare("SELECT record_json FROM workflow_runs").all();
-        assert.equal(observed.reduce((n, row) => n + row.rows, 0), 504);
-        const plan = raw.prepare("EXPLAIN QUERY PLAN SELECT run_id FROM run_search_grams WHERE token=?").all("sel");
-        assert.match(JSON.stringify(plan), /SEARCH.*run_search_gram_token_idx/u);
-        process.stdout.write(`P2_QUERY_PROOF ${JSON.stringify({kind:"search-cold-page",historyRows:504,selectedMatches:first.totalMatches,pageLimit:2,firstReads,nextReads,widenedReads:observed.reduce((n,row)=>n+row.rows,0),plan})}\n`);
+        observed.length = 0; raw.prepare("SELECT * FROM runs").all();
+        const widenedReads = observed.reduce((n, row) => n + row.rows, 0);
+        assert.equal(widenedReads, 504);
+        const plan = raw.prepare("EXPLAIN QUERY PLAN SELECT * FROM runs WHERE id=?").all(runRecordOf({ seed: 2501 }).envelope.runId);
+        assert.match(JSON.stringify(plan), /SEARCH.*sqlite_autoindex_runs_1/u);
+        process.stdout.write(`P2_QUERY_PROOF ${JSON.stringify({kind:"search-cold-page",historyRows:504,selectedMatches:first.totalMatches,pageLimit:2,firstReads,nextReads,widenedReads,plan})}\n`);
       } finally { raw.close(); }
       f.db.authority.runs.enqueue(runRecordOf({ seed: 2505, workflow: "selected-workflow" }));
       observed.length = 0;
@@ -150,6 +153,15 @@ it("publishes declared subject names, authentic recorded actors and typed failur
     assert.deepEqual(names.rows[0]?.metadata.subject, { state: "available", value: selected.name });
     assert.deepEqual(names.rows[0]?.metadata.actor, { state: "available", value: "synthetic-operator" });
     for (const q of [selected.emplId, "Synthetic Department", "Ingress must not", e.configFingerprint]) assert.equal(search(q).totalMatches, 0);
+    const raw = new DatabaseSync(f.path);
+    try {
+      const frozen = raw.prepare("SELECT declaration_json,actor_source_json FROM run_search WHERE run_id=?").get(e.runId);
+      assert.equal(f.db.rebuildRunSearchIndex({restart:true,limit:1}).state,"published");
+      assert.deepEqual(raw.prepare("SELECT declaration_json,actor_source_json FROM run_search WHERE run_id=?").get(e.runId),frozen);
+      const peer = AuthorityDatabase.open({path:f.path,busyTimeoutMs:500,migrationOwner:"frozen-search-reopen"},f.clock);
+      try { assert.deepEqual(peer.authority.runs.search({q:"resolved",scope:"all",facets:{},limit:5}).rows[0]?.metadata,names.rows[0]?.metadata); }
+      finally { peer.close(); }
+    } finally { raw.close(); }
     terminalizeFixtureFailure(f, f.run, failure());
     assert.equal(search("", { failure: "FIXTURE_FAILURE", evidence: "failure", state: "failed" }).totalMatches, 1);
     assert.equal(search("", { evidence: "receipt" }).totalMatches, 0);
@@ -213,32 +225,67 @@ it("selects each reachable lifecycle, shape, retained version and mode without n
 it("refuses a selection beyond the 10000 metadata bound before reading run JSON",()=>{
   const f=fixture();
   try {
-    // Bulk-load valid queued source rows under real SQLite constraints. This cap proof
-    // measures the reader, not 10001 repeated enqueue admission scans.
-    const original=runRecordOf({seed:1,workflow:"history"});f.db.authority.runs.enqueue(original);
-    const raw=new DatabaseSync(f.path);
-    try {
-      raw.exec("PRAGMA foreign_keys=ON; BEGIN EXCLUSIVE");
-      const columns=raw.prepare("PRAGMA table_info(workflow_runs)").all().map(row=>String(row.name));
-      const values=columns.map(name=>name==="record_key"||name==="item_id"||name==="record_json"||name==="workflow"?"?":name);
-      const insert=raw.prepare(`INSERT INTO workflow_runs(${columns.join(",")}) SELECT ${values.join(",")} FROM workflow_runs WHERE record_key=?`);
-      for(let seed=1;seed<=10000;seed++){
-        const runId=`00000000-0000-4000-8000-${String(seed).padStart(12,"0")}`;
-        const run={...original,envelope:{...original.envelope,runId,itemId:runId,workflow:seed===10000?"needle":"history"}};
-        const bound=columns.flatMap(name=>name==="record_key"||name==="item_id"?[runId]:name==="record_json"?[JSON.stringify(run)]:name==="workflow"?[run.envelope.workflow]:[]);
-        insert.run(...bound,original.envelope.runId);
+    const prototype = runRecordOf({seed:1,workflow:"history"});
+    f.db.withAuthorityTransaction(() => {
+      for (let seed = 1; seed <= 10001; seed++) {
+        const runId = `00000000-0000-4000-8000-${String(seed).padStart(12,"0")}`;
+        f.db.authority.runs.enqueue({...prototype,envelope:{...prototype.envelope,runId,itemId:runId,workflow:seed === 10001 ? "needle" : "history"}});
       }
-      raw.exec("COMMIT");
-    } finally {if(raw.isTransaction)raw.exec("ROLLBACK");raw.close();}
+    });
     for(let publication=f.db.rebuildRunSearchIndex({restart:true,limit:500});publication.state!=="published";publication=f.db.rebuildRunSearchIndex({limit:500}))assert.equal(publication.state,"building");
     // A too-broad selection must stop before any raw source JSON is materialized.
     // eslint-disable-next-line @typescript-eslint/unbound-method -- preserve the database receiver in this observer.
     const prepare=DatabaseSync.prototype.prepare;
     const spy=vi.spyOn(DatabaseSync.prototype,"prepare").mockImplementation(function(this:DatabaseSync,sql:string){
-      if(/SELECT.*record_json FROM workflow_runs/isu.test(sql))throw new Error("raw-source-read-before-selection-bound");
+      if(/SELECT \* FROM runs/isu.test(sql))throw new Error("raw-source-read-before-selection-bound");
       return prepare.call(this,sql);
     });
     try {assert.throws(()=>f.service().search({q:""}),/run-search-query-too-broad/u);} finally {spy.mockRestore();}
     assert.equal(f.service().search({q:"needle"}).totalMatches,1);
   } finally {f.dispose();}
+});
+
+it("requires an explicit restart when native source changes during a persisted rebuild", () => {
+  const f = fixture();
+  try {
+    for (let seed = 4101; seed <= 4104; seed++) f.db.authority.runs.enqueue(runRecordOf({seed}));
+    assert.equal(f.db.rebuildRunSearchIndex({restart:true,limit:1}).state,"building");
+    f.reopen();
+    f.db.authority.runs.enqueue(runRecordOf({seed:4105}));
+    assert.throws(() => f.db.rebuildRunSearchIndex({limit:2}),/run-search-rebuild-restart-required/u);
+    for (let progress = f.db.rebuildRunSearchIndex({restart:true,limit:2}); progress.state !== "published"; progress = f.db.rebuildRunSearchIndex({limit:2})) assert.equal(progress.state,"building");
+    assert.equal(f.service().search({q:""}).totalMatches,5);
+  } finally { f.dispose(); }
+});
+
+it("does not cache derived admission when a corruption rebuild rolls back", () => {
+  const f = fixture();
+  try {
+    const run = runRecordOf({seed:4201});
+    f.db.authority.runs.enqueue(run);
+    const raw = new DatabaseSync(f.path);
+    try { raw.prepare("UPDATE run_search SET declaration_json=? WHERE run_id=?").run('{"workflow":"forged"}',run.envelope.runId); }
+    finally { raw.close(); }
+    assert.throws(() => f.db.rebuildRunSearchIndex({restart:true,limit:1}));
+    assert.throws(() => f.service().search({q:"no-match"}),/run-search-index-rebuild-required/u);
+  } finally { f.dispose(); }
+});
+
+for (const fault of ["corrupt-completed-row", "hole"] as const) it(`refuses ${fault} in durable rebuild progress and permits explicit repair`, () => {
+  const f = fixture();
+  try {
+    for (let seed = 4301; seed <= 4304; seed++) f.db.authority.runs.enqueue(runRecordOf({seed}));
+    const progress = f.db.rebuildRunSearchIndex({restart:true,limit:1});
+    assert.equal(progress.state,"building");
+    const raw = new DatabaseSync(f.path);
+    try {
+      if (fault === "corrupt-completed-row") raw.prepare("UPDATE run_search SET workflow='forged' WHERE run_id=?").run(progress.afterRun);
+      else raw.prepare("UPDATE run_search SET metadata_json=json_set(metadata_json,'$.buildGeneration',?) WHERE run_id=?").run(progress.sourceGeneration,runRecordOf({seed:4304}).envelope.runId);
+    } finally { raw.close(); }
+    const expected = fault === "hole" ? /run-search-build-prefix-invalid/u : /run-search-index-corrupt/u;
+    assert.throws(() => f.db.rebuildRunSearchIndex({limit:2}),expected);
+    assert.throws(() => AuthorityDatabase.open({path:f.path,busyTimeoutMs:500,migrationOwner:"corrupt-build-reopen"},f.clock),expected);
+    for (let repaired = f.db.rebuildRunSearchIndex({restart:true,limit:2}); repaired.state !== "published"; repaired = f.db.rebuildRunSearchIndex({limit:2})) assert.equal(repaired.state,"building");
+    assert.equal(f.service().search({q:""}).totalMatches,4);
+  } finally { f.dispose(); }
 });

@@ -8,14 +8,8 @@ import { createCredentialStore } from "../configuration/credential-store.js";
 import { ProtectedSettingsInspectionSchema } from "./recovery-contracts.js";
 import { createHash } from "node:crypto";
 import {
-  closeSync,
-  constants,
   existsSync,
-  fstatSync,
   lstatSync,
-  opendirSync,
-  openSync,
-  readSync,
   readdirSync,
   statSync,
   type Stats,
@@ -26,7 +20,6 @@ import { z } from "zod";
 import type { Clock } from "../../../rules/time/clock.js";
 import { systemClock } from "../../../rules/time/clock.js";
 import {
-  SpanEventWireSchema,
   type RunQueuedWire,
   type SpanEventWire,
 } from "../../../models/events/types.js";
@@ -58,17 +51,6 @@ export const StorageDoctorOptionsSchema = z.strictObject({
   maxBackupAgeMs: z.number().int().positive().optional(),
   busyTimeoutMs: z.number().int().positive(),
 });
-
-const SPAN_DOCTOR_LIMITS = Object.freeze({
-  maxFiles: 128,
-  maxFileBytes: 8 * 1024 * 1024,
-  maxCorpusBytes: 16 * 1024 * 1024,
-  maxLineBytes: 256 * 1024,
-  maxLines: 100_000,
-  maxRunIds: 10_000,
-});
-const SPAN_READ_CHUNK_BYTES = 64 * 1024;
-const SPAN_FILE_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*-\d{4}-\d{2}-\d{2}\.jsonl$/u;
 
 function errnoCode(error: unknown): string {
   if (typeof error !== "object" || error === null) return "unknown-error";
@@ -189,41 +171,6 @@ function spanFileLabel(fileName: string): string {
   return `sha256:${createHash("sha256").update(fileName).digest("hex").replace(/(.{4})(?=.)/gu, "$1-")}`;
 }
 
-const SPAN_SCHEMA_FIELDS = new Set(SpanEventWireSchema.options.flatMap((schema) => Object.keys(schema.shape)));
-
-function strictSpanIssue(error: z.ZodError): string {
-  // Zod paths below a known field can contain arbitrary record keys. Retain the
-  // schema-owned top-level field only, never observed keys or error messages.
-  const paths = [...new Set(error.issues.map((issue) => {
-    const field = issue.path[0];
-    return typeof field === "string" && SPAN_SCHEMA_FIELDS.has(field) ? field : "$";
-  }))];
-  return paths.slice(0, 8).join(", ");
-}
-
-function parseSpanLine(fileName: string, lineNumber: number, bytes: Buffer): z.infer<typeof SpanEventWireSchema> {
-  let text: string;
-  try {
-    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  } catch (error) {
-    throw new SafeSpanCorpusError(`span file ${spanFileLabel(fileName)} line ${String(lineNumber)} is not valid UTF-8`, { cause: error });
-  }
-  let value: unknown;
-  try {
-    value = JSON.parse(text);
-  } catch (error) {
-    throw new SafeSpanCorpusError(`span file ${spanFileLabel(fileName)} line ${String(lineNumber)} is invalid JSON`, { cause: error });
-  }
-  const parsed = SpanEventWireSchema.safeParse(value);
-  if (!parsed.success) {
-    throw new SafeSpanCorpusError(
-      `span file ${spanFileLabel(fileName)} line ${String(lineNumber)} fails the strict span schema at ${strictSpanIssue(parsed.error)}`,
-      { cause: parsed.error },
-    );
-  }
-  return parsed.data;
-}
-
 type MutableSpanAuthorityRoot = {
   readonly queued: RunQueuedWire;
   finalAttempt: number;
@@ -234,31 +181,8 @@ type MutableSpanAuthorityRoot = {
   readonly taskSpans: Set<string>;
 };
 
-type PendingRunEvent = Readonly<{
-  event: Exclude<SpanEventWire, RunQueuedWire>;
-  fileName: string;
-  lineNumber: number;
-}>;
-
 function addStreamIssue(root: MutableSpanAuthorityRoot, issue: string): void {
   if (!root.streamIssues.includes(issue)) root.streamIssues.push(issue);
-}
-
-function spanFileWorkflow(fileName: string): string {
-  return fileName.slice(0, -"-2026-07-31.jsonl".length);
-}
-
-function validateSpanFileWorkflow(
-  root: MutableSpanAuthorityRoot,
-  event: SpanEventWire,
-  fileName: string,
-  lineNumber: number,
-): void {
-  if (!("runId" in event) || spanFileWorkflow(fileName) === event.workflow) return;
-  addStreamIssue(
-    root,
-    `${event.t} at ${spanFileLabel(fileName)}:${String(lineNumber)} workflow does not match its stream file`,
-  );
 }
 
 function isRootLevelRunEvent(event: SpanEventWire): boolean {
@@ -399,264 +323,10 @@ function immutableSpanRoot(root: MutableSpanAuthorityRoot): SpanAuthorityRunRoot
   });
 }
 
-function scanSpanAuthorityRoots(corpusIdentity: DirectoryIdentity): readonly SpanAuthorityRunRoot[] {
-  let fileNames: readonly string[];
-  let exceededFileLimit = false;
-  try {
-    const directory = opendirSync(".");
-    try {
-      if (!sameDirectoryIdentity(statSync("."), corpusIdentity)) {
-        throw new SafeSpanCorpusError("span corpus directory spans changed identity before enumeration");
-      }
-      const names: string[] = [];
-      let entry = directory.readSync();
-      while (entry !== null) {
-        if (names.length === SPAN_DOCTOR_LIMITS.maxFiles) {
-          exceededFileLimit = true;
-          break;
-        }
-        names.push(entry.name);
-        entry = directory.readSync();
-      }
-      if (!sameDirectoryIdentity(statSync("."), corpusIdentity)) {
-        throw new SafeSpanCorpusError("span corpus directory spans changed identity during enumeration");
-      }
-      fileNames = names.sort();
-    } finally {
-      directory.closeSync();
-    }
-  } catch (error) {
-    throw new SafeSpanCorpusError(`span corpus enumeration failed (${errnoCode(error)})`, { cause: error });
-  }
-  if (exceededFileLimit) {
-    throw new SafeSpanCorpusError(
-      `span corpus is exceeding the ${String(SPAN_DOCTOR_LIMITS.maxFiles)}-file limit during enumeration`,
-    );
-  }
-
-  let declaredCorpusBytes = 0;
-  let corpusBytesRead = 0;
-  let linesRead = 0;
-  const roots: MutableSpanAuthorityRoot[] = [];
-  const firstRootByRunId = new Map<string, MutableSpanAuthorityRoot>();
-  const lastAttemptByItem = new Map<string, number>();
-  const eventsBeforeRoot = new Map<string, PendingRunEvent[]>();
-  for (const fileName of fileNames) {
-    if (!SPAN_FILE_PATTERN.test(fileName)) {
-      throw new SafeSpanCorpusError(
-        `spans/ contains ${spanFileLabel(fileName)}, which is not a <workflow>-<date>.jsonl stream file; refusing to enumerate around it`,
-      );
-    }
-    let before: Stats;
-    try {
-      before = lstatSync(fileName);
-    } catch (error) {
-      throw new SafeSpanCorpusError(`span file ${spanFileLabel(fileName)} could not be inspected (${errnoCode(error)})`, { cause: error });
-    }
-    if (!before.isFile() || before.isSymbolicLink()) {
-      throw new SafeSpanCorpusError(`span file ${spanFileLabel(fileName)} is not a regular no-follow file`);
-    }
-    if (before.size > SPAN_DOCTOR_LIMITS.maxFileBytes) {
-      throw new SafeSpanCorpusError(
-        `span file ${spanFileLabel(fileName)} exceeds the ${String(SPAN_DOCTOR_LIMITS.maxFileBytes)}-byte file limit`,
-      );
-    }
-    declaredCorpusBytes += before.size;
-    if (declaredCorpusBytes > SPAN_DOCTOR_LIMITS.maxCorpusBytes) {
-      throw new SafeSpanCorpusError(`span corpus exceeds the ${String(SPAN_DOCTOR_LIMITS.maxCorpusBytes)}-byte corpus limit`);
-    }
-
-    let handle: number;
-    try {
-      handle = openSync(fileName, constants.O_RDONLY | constants.O_NOFOLLOW);
-    } catch (error) {
-      throw new SafeSpanCorpusError(`span file ${spanFileLabel(fileName)} could not be opened without following links (${errnoCode(error)})`, { cause: error });
-    }
-    let closeError: unknown;
-    try {
-      const opened = fstatSync(handle);
-      if (!opened.isFile() || opened.dev !== before.dev || opened.ino !== before.ino) {
-        throw new SafeSpanCorpusError(`span file ${spanFileLabel(fileName)} changed identity before its no-follow read`);
-      }
-      const chunk = Buffer.allocUnsafe(SPAN_READ_CHUNK_BYTES);
-      let lineParts: Buffer[] = [];
-      let lineBytes = 0;
-      let fileBytesRead = 0;
-      let lineNumber = 0;
-      while (true) {
-        const bytesRead = readSync(handle, chunk, 0, chunk.length, null);
-        if (bytesRead === 0) break;
-        fileBytesRead += bytesRead;
-        corpusBytesRead += bytesRead;
-        if (fileBytesRead > SPAN_DOCTOR_LIMITS.maxFileBytes) {
-          throw new SafeSpanCorpusError(`span file ${spanFileLabel(fileName)} exceeded the ${String(SPAN_DOCTOR_LIMITS.maxFileBytes)}-byte file limit while reading`);
-        }
-        if (corpusBytesRead > SPAN_DOCTOR_LIMITS.maxCorpusBytes) {
-          throw new SafeSpanCorpusError(`span corpus exceeded the ${String(SPAN_DOCTOR_LIMITS.maxCorpusBytes)}-byte corpus limit while reading`);
-        }
-        let start = 0;
-        for (let index = 0; index < bytesRead; index += 1) {
-          if (chunk[index] !== 0x0a) continue;
-          const segment = chunk.subarray(start, index);
-          lineBytes += segment.length;
-          if (lineBytes > SPAN_DOCTOR_LIMITS.maxLineBytes) {
-            throw new SafeSpanCorpusError(`span file ${spanFileLabel(fileName)} line ${String(lineNumber + 1)} exceeds the ${String(SPAN_DOCTOR_LIMITS.maxLineBytes)}-byte line limit`);
-          }
-          if (segment.length > 0) lineParts.push(Buffer.from(segment));
-          lineNumber += 1;
-          linesRead += 1;
-          if (linesRead > SPAN_DOCTOR_LIMITS.maxLines) {
-            throw new SafeSpanCorpusError(`span corpus exceeds the ${String(SPAN_DOCTOR_LIMITS.maxLines)}-line limit`);
-          }
-          if (lineBytes > 0) {
-            const event = parseSpanLine(fileName, lineNumber, Buffer.concat(lineParts, lineBytes));
-            if (event.t === "run.queued") {
-              const pending = eventsBeforeRoot.get(event.runId) ?? [];
-              const root: MutableSpanAuthorityRoot = {
-                queued: event,
-                finalAttempt: event.attempt,
-                possibleExternalWrite: false,
-                streamIssues: [],
-                lastTimestampMs: Date.parse(event.ts),
-                terminal: false,
-                taskSpans: new Set(),
-              };
-              eventsBeforeRoot.delete(event.runId);
-              roots.push(root);
-              if (roots.length > SPAN_DOCTOR_LIMITS.maxRunIds) {
-                throw new SafeSpanCorpusError(`span corpus exceeds the ${String(SPAN_DOCTOR_LIMITS.maxRunIds)}-run-ID limit`);
-              }
-              if (event.spanPath !== event.traceId) {
-                addStreamIssue(root, "run.queued root spanPath does not equal traceId");
-              }
-              if (event.parentSpanPath !== undefined) {
-                addStreamIssue(root, "run.queued root unexpectedly names parentSpanPath");
-              }
-              validateSpanFileWorkflow(root, event, fileName, lineNumber);
-              const duplicate = firstRootByRunId.get(event.runId);
-              if (duplicate === undefined) {
-                firstRootByRunId.set(event.runId, root);
-              } else {
-                const issue = `duplicate run.queued root for run ${event.runId}`;
-                addStreamIssue(duplicate, issue);
-                addStreamIssue(root, issue);
-              }
-              const itemKey = `${event.workflow}\u0000${event.itemId}`;
-              const previousItemAttempt = lastAttemptByItem.get(itemKey);
-              if (previousItemAttempt !== undefined && event.attempt <= previousItemAttempt) {
-                addStreamIssue(
-                  root,
-                  `run.queued item attempt ${String(event.attempt)} did not strictly increase after ${String(previousItemAttempt)}`,
-                );
-              }
-              lastAttemptByItem.set(itemKey, event.attempt);
-              if (pending.length > 0) {
-                if (event.repair?.kind === "authority-reconstruction") {
-                  for (const prior of pending) {
-                    validateSpanFileWorkflow(root, prior.event, prior.fileName, prior.lineNumber);
-                    validateRunEventAgainstRoot(
-                      root,
-                      prior.event,
-                      prior.fileName,
-                      prior.lineNumber,
-                      lastAttemptByItem,
-                    );
-                  }
-                } else {
-                  addStreamIssue(
-                    root,
-                    `run.queued at ${spanFileLabel(fileName)}:${String(lineNumber)} appears after prior run event(s) without authority-reconstruction repair`,
-                  );
-                }
-              }
-            } else if ("runId" in event) {
-              const root = firstRootByRunId.get(event.runId);
-              if (root === undefined) {
-                const pending = eventsBeforeRoot.get(event.runId) ?? [];
-                pending.push({ event, fileName, lineNumber });
-                eventsBeforeRoot.set(event.runId, pending);
-              } else {
-                validateSpanFileWorkflow(root, event, fileName, lineNumber);
-                validateRunEventAgainstRoot(root, event, fileName, lineNumber, lastAttemptByItem);
-              }
-            }
-          }
-          lineParts = [];
-          lineBytes = 0;
-          start = index + 1;
-        }
-        const remainder = chunk.subarray(start, bytesRead);
-        lineBytes += remainder.length;
-        if (lineBytes > SPAN_DOCTOR_LIMITS.maxLineBytes) {
-          throw new SafeSpanCorpusError(`span file ${spanFileLabel(fileName)} line ${String(lineNumber + 1)} exceeds the ${String(SPAN_DOCTOR_LIMITS.maxLineBytes)}-byte line limit`);
-        }
-        if (remainder.length > 0) lineParts.push(Buffer.from(remainder));
-      }
-      // A non-newline-terminated tail may be an append in progress. It is not
-      // an authority event until its one-write JSONL record is complete.
-    } catch (error) {
-      closeError = error;
-    } finally {
-      try {
-        closeSync(handle);
-      } catch (error) {
-        if (closeError === undefined) closeError = new SafeSpanCorpusError(`span file ${spanFileLabel(fileName)} could not be closed (${errnoCode(error)})`, { cause: error });
-      }
-    }
-    if (closeError !== undefined) {
-      if (closeError instanceof Error) throw closeError;
-      throw new SafeSpanCorpusError(`span file ${spanFileLabel(fileName)} failed its bounded read`, { cause: closeError });
-    }
-    if (!sameDirectoryIdentity(statSync("."), corpusIdentity)) {
-      throw new SafeSpanCorpusError("span corpus directory spans changed identity during file reads");
-    }
-  }
-  if (eventsBeforeRoot.size > 0) {
-    const [runId, events] = [...eventsBeforeRoot.entries()][0] ?? [];
-    const issues = events?.map(({ event, fileName, lineNumber }) =>
-      `${event.t} at ${spanFileLabel(fileName)}:${String(lineNumber)} appeared before run.queued`);
-    throw new SafeSpanCorpusError(`span run ${runId ?? "unknown"} has no run.queued root: ${issues?.join("; ") ?? "unknown event"}`);
-  }
-  return Object.freeze(roots.map(immutableSpanRoot));
-}
-
-// Node lacks openat and descriptor readdir; synchronous cwd reads bind children to the held directory.
-let spanWorkingDirectoryTraversalActive = false;
-
 type SpanAuthorityCorpus = Readonly<
   | { state: "present"; roots: readonly SpanAuthorityRunRoot[] }
   | { state: "missing"; roots: readonly [] }
 >;
-
-function spanAuthorityCorpus(stateRootTrustAnchor: string, stateRoot: string): SpanAuthorityCorpus {
-  if (spanWorkingDirectoryTraversalActive) {
-    throw new SafeSpanCorpusError("span corpus descriptor-relative traversal is already active in this process");
-  }
-  spanWorkingDirectoryTraversalActive = true;
-  try {
-    return withStateRootWorkingDirectory(stateRootTrustAnchor, stateRoot, () => {
-      const roots = withNoFollowRelativeDirectory(
-        "spans",
-        "span corpus directory spans",
-        true,
-        (identity) => scanSpanAuthorityRoots(identity),
-      );
-      return roots === undefined
-        ? { state: "missing", roots: [] }
-        : { state: "present", roots };
-    });
-  } finally {
-    spanWorkingDirectoryTraversalActive = false;
-  }
-}
-
-/** Migration-only reuse of the doctor's bounded, no-follow span-root scan. */
-export function inspectSpanAuthorityCorpusReadOnly(
-  stateRootTrustAnchor: string,
-  stateRoot: string,
-): SpanAuthorityCorpus {
-  return spanAuthorityCorpus(stateRootTrustAnchor, stateRoot);
-}
 
 function timelineAuthorityCorpus(admission: RuntimeAdmission, authorityPath: string, busyTimeoutMs: number, includeRecoveryEvidence = false): SpanAuthorityCorpus & Readonly<{
   authorityGeneration: number; authorityContentFingerprint: string;
@@ -674,7 +344,7 @@ function timelineAuthorityCorpus(admission: RuntimeAdmission, authorityPath: str
   const pending = new Map<string, typeof rows[number][]>();
   const validate = (root: MutableSpanAuthorityRoot, row: typeof rows[number]): void => {
     if (row.payload.kind !== "span" || row.payload.event.t === "run.queued") return;
-    validateRunEventAgainstRoot(root, row.payload.event, `${row.workflow}-${row.retentionDate}.jsonl`,
+    validateRunEventAgainstRoot(root, row.payload.event, `timeline:${row.workflow}:${row.retentionDate}`,
       row.cursor, attempts, row.source.kind === "native");
   };
   for (const row of rows) {

@@ -88,25 +88,21 @@ function safeSubject(database: DatabaseSync, run: RunRecord, declaration: z.infe
 export function createRunSearchIndex(database: DatabaseSync) {
   const prepareTemporaryState = () => {
     database.exec("CREATE TEMP TABLE IF NOT EXISTS search_declarations(id TEXT PRIMARY KEY,json TEXT NOT NULL) WITHOUT ROWID");
-    database.exec("CREATE TEMP TABLE IF NOT EXISTS search_build(id INTEGER PRIMARY KEY CHECK(id=1),generation INTEGER NOT NULL,after_run TEXT)");
+
   };
   const count = () => CountSchema.parse(database.prepare("SELECT count(*) AS count FROM run_search").get()).count;
   const publication = () => {
     const row = z.strictObject({authority_generation:z.number().int(),search_generation:z.number().int().nullable(),search_state:z.enum(["unbuilt","ready","invalid"])}).parse(
       database.prepare("SELECT authority_generation,search_generation,search_state FROM database_states WHERE id=1").get());
-    const hasBuild = database.prepare("SELECT 1 FROM sqlite_temp_schema WHERE type='table' AND name='search_build'").get() !== undefined;
-    const build = hasBuild ? database.prepare("SELECT generation,after_run FROM search_build WHERE id=1").get() : undefined;
-    if (row.search_state !== "ready" && build !== undefined) {
-      const progress = z.strictObject({ generation:z.number().int(),after_run:z.string().nullable() }).parse(build);
-      return RunSearchPublicationSchema.parse({state:"building",sourceGeneration:progress.generation,afterRun:progress.after_run,rowCount:count()});
+    if (row.search_state === "invalid" && row.search_generation !== null) {
+      const progress = z.strictObject({count:z.number().int().nonnegative(),after_run:z.string().nullable()}).parse(database.prepare("SELECT count(*) AS count,max(run_id) AS after_run FROM run_search WHERE json_extract(metadata_json,'$.buildGeneration')=?").get(row.search_generation));
+      return RunSearchPublicationSchema.parse({state:"building",sourceGeneration:row.search_generation,afterRun:progress.after_run,rowCount:progress.count});
     }
     return RunSearchPublicationSchema.parse({state:row.search_state === "ready" ? "published" : "invalid",sourceGeneration:row.search_generation ?? row.authority_generation,afterRun:null,rowCount:count()});
   };
   const publish = (value: z.input<typeof RunSearchPublicationSchema>, _now: string) => {
     const parsed = RunSearchPublicationSchema.parse(value);
-    if (parsed.state === "building") database.prepare("INSERT INTO search_build VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET generation=excluded.generation,after_run=excluded.after_run").run(parsed.sourceGeneration,parsed.afterRun);
-    else database.exec("DELETE FROM search_build");
-    database.prepare("UPDATE database_states SET search_generation=?,search_state=? WHERE id=1").run(parsed.state === "published" ? parsed.sourceGeneration : null,parsed.state === "published" ? "ready" : "invalid");
+    database.prepare("UPDATE database_states SET search_generation=?,search_state=? WHERE id=1").run(parsed.state === "invalid" ? null : parsed.sourceGeneration,parsed.state === "published" ? "ready" : "invalid");
     return parsed;
   };
   const retainedActorSources = (run: RunRecord): z.infer<typeof ActorSourcesSchema> => {
@@ -139,10 +135,15 @@ export function createRunSearchIndex(database: DatabaseSync) {
   };
   const validateCoverage = () => {
     const current = publication();
-    if (current.state !== "published") return;
-    if (database.prepare("SELECT 1 FROM runs r LEFT JOIN run_search s ON s.run_id=r.id WHERE s.run_id IS NULL LIMIT 1").get() !== undefined
+    if (current.state === "invalid") return;
+    if (current.state === "building") {
+      if (database.prepare("SELECT 1 FROM runs r LEFT JOIN run_search s ON s.run_id=r.id AND json_extract(s.metadata_json,'$.buildGeneration')=? WHERE r.id<=? AND s.run_id IS NULL LIMIT 1").get(current.sourceGeneration,current.afterRun) !== undefined) throw new Error("run-search-build-prefix-invalid");
+    } else if (database.prepare("SELECT 1 FROM runs r LEFT JOIN run_search s ON s.run_id=r.id WHERE s.run_id IS NULL LIMIT 1").get() !== undefined
       || database.prepare("SELECT 1 FROM run_search s LEFT JOIN runs r ON r.id=s.run_id WHERE r.id IS NULL LIMIT 1").get() !== undefined) throw new Error("run-search-source-coverage-invalid");
-    for (const raw of database.prepare("SELECT * FROM run_search ORDER BY run_id").iterate()) {
+    const rows = current.state === "building"
+      ? database.prepare("SELECT * FROM run_search WHERE json_extract(metadata_json,'$.buildGeneration')=? ORDER BY run_id").iterate(current.sourceGeneration)
+      : database.prepare("SELECT * FROM run_search ORDER BY run_id").iterate();
+    for (const raw of rows) {
       const indexed = FullIndexRowSchema.parse(raw);
       const run = runRecordFromRow(database.prepare("SELECT * FROM runs WHERE id=?").get(indexed.run_id));
       const record = runSearchIndexFromRow(raw, run);
@@ -157,7 +158,7 @@ export function createRunSearchIndex(database: DatabaseSync) {
     const prior = database.prepare("SELECT declaration_json,actor_source_json,created_at FROM run_search WHERE run_id=?").get(id);
     const frozen = prior === undefined ? undefined : z.strictObject({ declaration_json:z.string().nullable(),actor_source_json:z.string().nullable(),created_at:z.string() }).parse(prior);
     const declared = database.prepare("SELECT json AS payload_json FROM search_declarations WHERE id=?").get(declarationKey(run));
-    const declaration = frozen !== undefined ? frozen.declaration_json === null ? null : RunSearchDeclarationSchema.parse(JSON.parse(frozen.declaration_json))
+    const declaration = frozen?.declaration_json != null ? RunSearchDeclarationSchema.parse(JSON.parse(frozen.declaration_json))
       : declared === undefined ? null : parse(RunSearchDeclarationSchema,declared);
     if (declaration !== null && (declaration.workflow !== run.envelope.workflow || declaration.version !== run.envelope.descriptorVersion
       || declaration.contractFingerprint !== run.envelope.contractFingerprint)) throw new Error("run-search-declaration-identity-mismatch");
@@ -169,11 +170,12 @@ export function createRunSearchIndex(database: DatabaseSync) {
     }
     validateActorSources(run,sources);
     const metadata = metadataFor(run, declaration, sources);
-    const record = RunSearchIndexRecordSchema.parse({ runId: id, sourceVersion: run.version, metadata });
+    const generation = z.object({authority_generation:z.number().int().nonnegative()}).parse(database.prepare("SELECT authority_generation FROM database_states WHERE id=1").get()).authority_generation;
+    const record = RunSearchIndexRecordSchema.parse({ runId: id, sourceVersion: run.version, buildGeneration: generation, metadata });
     const subject = metadata.subject.state === "available" ? metadata.subject.value.toLowerCase() : null;
     const actor = metadata.actor.state === "available" ? metadata.actor.value : null;
     database.prepare(`INSERT INTO run_search(run_id,workflow,trace,local_day,state,shape,dry_run,enqueued_ms,subject,actor_id,descriptor_version,failure_code,has_receipt,has_diagnostic,systems_json,source_version,declaration_json,actor_source_json,metadata_json,created_at,updated_at)
-      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(run_id) DO UPDATE SET state=excluded.state,subject=excluded.subject,actor_id=excluded.actor_id,failure_code=excluded.failure_code,has_receipt=excluded.has_receipt,has_diagnostic=excluded.has_diagnostic,source_version=excluded.source_version,actor_source_json=excluded.actor_source_json,metadata_json=excluded.metadata_json,updated_at=excluded.updated_at`).run(
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(run_id) DO UPDATE SET workflow=excluded.workflow,trace=excluded.trace,local_day=excluded.local_day,shape=excluded.shape,dry_run=excluded.dry_run,enqueued_ms=excluded.enqueued_ms,descriptor_version=excluded.descriptor_version,systems_json=excluded.systems_json,declaration_json=excluded.declaration_json,state=excluded.state,subject=excluded.subject,actor_id=excluded.actor_id,failure_code=excluded.failure_code,has_receipt=excluded.has_receipt,has_diagnostic=excluded.has_diagnostic,source_version=excluded.source_version,actor_source_json=excluded.actor_source_json,metadata_json=excluded.metadata_json,updated_at=excluded.updated_at`).run(
       id,run.envelope.workflow,run.envelope.traceId.toLowerCase(),searchPartitionDay(new Date(run.envelope.enqueuedAt)),
       run.lifecycle.state === "terminal" ? run.lifecycle.outcome : run.lifecycle.state,run.envelope.shape,Number(run.envelope.dryRun),Date.parse(run.envelope.enqueuedAt),
       subject,actor,metadata.version,metadata.failureCode,Number(metadata.evidence.receipt),Number(metadata.evidence.diagnostic),
@@ -202,14 +204,25 @@ export function createRunSearchIndex(database: DatabaseSync) {
         WHEN json_extract(NEW.payload_json,'$.request.family')='start' AND json_extract(NEW.payload_json,'$.result.state') IN ('applied','already-applied')
         BEGIN INSERT OR IGNORE INTO search_dirty SELECT json_extract(value,'$.runId') FROM json_each(NEW.payload_json,'$.result.affectedTargets') WHERE json_extract(value,'$.family')='run'; END`);
     },
-    register(input: unknown, _now: string) {
+    register(input: unknown, now: string) {
+      const current = publication();
+      const affected = new Set<string>();
       for (const declaration of z.array(RunSearchDeclarationSchema).parse(input)) {
         const key = `${declaration.workflow}:${declaration.version}:${declaration.contractFingerprint}`, json = canonicalJsonStringify(declaration);
         const prior = database.prepare("SELECT json FROM search_declarations WHERE id=?").get(key);
         if (prior !== undefined && z.strictObject({json:z.string()}).parse(prior).json !== json) throw new Error("run-search-declaration-conflict");
         if (prior === undefined) database.prepare("INSERT INTO search_declarations VALUES(?,?)").run(key,json);
+        const rows = database.prepare("SELECT r.id FROM runs r JOIN run_search s ON s.run_id=r.id WHERE r.workflow=? AND r.descriptor_version=? AND r.contract_fingerprint=? AND s.declaration_json IS NULL").all(declaration.workflow,declaration.version,declaration.contractFingerprint);
+        for (const row of rows) affected.add(KeySchema.parse(row).id);
+        database.prepare("UPDATE run_search SET declaration_json=? WHERE run_id IN (SELECT id FROM runs WHERE workflow=? AND descriptor_version=? AND contract_fingerprint=?) AND declaration_json IS NULL").run(json,declaration.workflow,declaration.version,declaration.contractFingerprint);
       }
-      return 0;
+      if (affected.size === 0) return 0;
+      if (current.state !== "published" || affected.size > 500) {
+        publish({state:"invalid",sourceGeneration:current.sourceGeneration,afterRun:null,rowCount:count()},now);
+      } else {
+        for (const id of affected) writeId(id,now);
+      }
+      return affected.size;
     },
     publishChanges(sourceGeneration: number, now: string, prior: z.infer<typeof RunSearchPublicationSchema>) {
       if (prior.state !== "published" || prior.sourceGeneration !== sourceGeneration - 1) {
@@ -226,13 +239,13 @@ export function createRunSearchIndex(database: DatabaseSync) {
     rebuild(input: unknown, sourceGeneration: number, now: string) {
       const { restart, limit } = RunSearchRebuildRequestSchema.parse(input);
       const prior = publication();
-      if (!restart && (prior.state !== "building" || prior.sourceGeneration !== sourceGeneration - 1 && prior.sourceGeneration !== sourceGeneration)) throw new Error("run-search-rebuild-restart-required");
-      if (restart) database.exec("DELETE FROM run_search WHERE run_id NOT IN (SELECT id FROM runs)");
+      if (!restart && (prior.state !== "building" || prior.sourceGeneration !== sourceGeneration)) throw new Error("run-search-rebuild-restart-required");
+      if (restart) database.exec("UPDATE run_search SET metadata_json=json_remove(metadata_json,'$.buildGeneration'); DELETE FROM run_search WHERE run_id NOT IN (SELECT id FROM runs)");
       const after = restart ? "" : prior.afterRun ?? "";
       const rows = database.prepare(`SELECT id FROM runs WHERE id>? ORDER BY id LIMIT ?`).all(after, limit + 1).map(row => KeySchema.parse(row).id);
       const selected = rows.slice(0, limit);
       for (const id of selected) writeId(id, now);
-      return publish({ state: rows.length > limit ? "building" : "published", sourceGeneration, afterRun: selected.at(-1) ?? prior.afterRun, rowCount: count() }, now);
+      return publish({ state: rows.length > limit ? "building" : "published", sourceGeneration, afterRun: selected.at(-1) ?? prior.afterRun, rowCount: (restart ? 0 : prior.rowCount) + selected.length }, now);
     },
     search(input: unknown, sourceGeneration: number) {
       const request = RunSearchReadRequestSchema.parse(input);
