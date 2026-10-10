@@ -726,7 +726,8 @@ function timelineAuthorityCorpus(admission: RuntimeAdmission, authorityPath: str
 
 /** Quarantined SQLite is diagnostic recovery evidence only; it never feeds a current view. */
 function displacedAuthorityProblems(admission: RuntimeAdmission, current: ReturnType<typeof timelineAuthorityCorpus>, busyTimeoutMs: number) {
-  return withNoFollowRelativeDirectory("suspects", "preserved authority directory", true, (directory) => {
+  return withNoFollowRelativeDirectory("backups", "backup directory", true, () =>
+    withNoFollowRelativeDirectory("suspects", "preserved authority directory", true, (directory) => {
     const names = readdirSync(".").sort();
     if (names.length > 384) throw new SafeSpanCorpusError("preserved authority file count exceeds the inspection limit");
     const databases = names.filter((name) => /^suspect-\d{17}-[0-9a-f-]{36}\.sqlite$/u.test(name));
@@ -796,7 +797,7 @@ function displacedAuthorityProblems(admission: RuntimeAdmission, current: Return
       }
     }
     return [...findings.values()];
-  }) ?? [];
+  })) ?? [];
 }
 
 function reconcileSpanAuthority(
@@ -818,7 +819,7 @@ function reconcileSpanAuthority(
       if (authorityName !== basename(authorityName) || authorityName === "." || authorityName === "..") {
         throw new SafeSpanCorpusError("timeline authority must be a direct state-root file");
       }
-      const current = timelineAuthorityCorpus(admission, authorityName, busyTimeoutMs, existsSync("suspects"));
+      const current = timelineAuthorityCorpus(admission, authorityName, busyTimeoutMs, existsSync(join("backups", "suspects")));
       displaced = displacedAuthorityProblems(admission, current, busyTimeoutMs);
       return current;
     });

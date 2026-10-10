@@ -33,12 +33,19 @@ export type BrowserSessionCloseReason =
   | "operator-reopen"
   | "login-failed";
 
+export type BrowserScreenshotEvidence = Readonly<{
+  pageVersion: number; sessionId: BrowserSessionId; observedAt: string;
+  diagnosticAttachments?: readonly Readonly<{ kind: "console-summary" | "network-summary"; mediaType: string; bytes: Uint8Array; sensitivity: "redacted" }>[];
+}> & (Readonly<{ state: "available"; bytes: Uint8Array; width: number; height: number }>
+  | Readonly<{ state: "unavailable"; reason: "authentication-unverified" | "page-changed" | "page-closed" | "secret-controls-present" | "verification-failed" }>);
+
 /** One authenticated worker-owned browser session for one system; the reuse identity (`instance`/`configFingerprint`/`browserMode`) records the exact instance and run-config it authenticated under. */
 export interface WorkerBrowserResource {
   readonly sessionId: BrowserSessionId;
   readonly system: BrowserSystemId;
   readonly instance?: string;
   readonly configFingerprint: Fingerprint;
+  readonly signInFingerprint: Fingerprint;
   /** Optional only for legacy fixture/session ports; real Playwright resources always report it. */
   readonly browserMode?: BrowserPresentationMode;
   readonly profileDirectory?: string;
@@ -48,11 +55,9 @@ export interface WorkerBrowserResource {
   readonly authentication: BrowserAuthenticationHandle;
   readonly driver: BrowserDriver;
   /** A viewport PNG from the resource's owned page; never a raw Page or path. */
-  readonly screenshot?: () => Promise<Readonly<{
-    bytes: Uint8Array;
-    width: number;
-    height: number;
-  }>>;
+  readonly screenshot?: () => Promise<BrowserScreenshotEvidence>;
+  readonly beginDiagnostics?: () => void;
+  readonly endDiagnostics?: () => void;
   readonly reset: (input: Readonly<{ signal: AbortSignal }>) => Promise<void>;
   readonly close: (input: Readonly<{ reason: BrowserSessionCloseReason }>) =>
     Promise<BrowserSessionCloseProof>;

@@ -30,7 +30,7 @@ function assertSyntheticDirectory(path: string): void {
       || (process.getuid && info.uid !== process.getuid()) || (info.mode & 0o022) !== 0)) {
       throw new Error("runtime-admission: unsafe synthetic fixture ancestor");
     }
-    if (lstatSync(join(ancestor, ".runtime-control"), { throwIfNoEntry: false }) !== undefined
+    if (lstatSync(join(ancestor, ".tracker/control"), { throwIfNoEntry: false }) !== undefined
       || lstatSync(join(ancestor, ".runtime-owner.json"), { throwIfNoEntry: false }) !== undefined
       || lstatSync(join(ancestor, ".runtime-source-fence.json"), { throwIfNoEntry: false }) !== undefined) {
       throw new Error("runtime-admission: fixture overlaps installation witness");
@@ -180,7 +180,7 @@ export class RuntimeAdmission {
     if (this.#authorityDatabasePaths.has(checked)) return;
     if (this.#scope === "adoption-inspection") throw new Error("runtime-admission: adoption inspection path is outside known default authority");
     const parent = dirname(checked);
-    if (parent === join(this.#stateRoot, "suspects") && /^suspect-\d{17}-[0-9a-f-]{36}\.sqlite$/u.test(checked.slice(parent.length + 1))) return;
+    if (parent === join(this.#stateRoot, "backups", "suspects") && /^suspect-\d{17}-[0-9a-f-]{36}\.sqlite$/u.test(checked.slice(parent.length + 1))) return;
     if (parent === join(this.#stateRoot, "backups", "authority")
       && /^(?:\.authority-[0-9a-f-]{36}\.sqlite\.tmp|authority-g\d+-\d+-[0-9a-f-]{36}\.sqlite)$/u.test(checked.slice(parent.length + 1))) {
       this.assertStateRoot(parent);
@@ -400,8 +400,12 @@ export class RuntimeAdmission {
         || (process.getuid && file.uid !== process.getuid()) || (file.mode & 0o022) !== 0)) {
         throw new Error("runtime-admission: unsafe synthetic fixture database");
       }
-      for (const forbidden of [".runtime-control", ".runtime-owner.json", ".runtime-source-fence.json"]) {
-        if (databasePath.split(/[\\/]/u).includes(forbidden)) throw new Error("runtime-admission: fixture overlaps installation control");
+      const components = databasePath.split(/[\\/]/u);
+      if (components.some((part, index) => part === ".tracker" && components[index + 1] === "control")) {
+        throw new Error("runtime-admission: fixture overlaps installation control");
+      }
+      for (const forbidden of [".runtime-owner.json", ".runtime-source-fence.json"]) {
+        if (components.includes(forbidden)) throw new Error("runtime-admission: fixture overlaps installation control");
       }
     }
     const stateRoot = databasePath === ":memory:" ? ":memory:" : dirname(databasePath);

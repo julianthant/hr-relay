@@ -21,7 +21,7 @@ function initializeKnownDefaultAuthority(pair: RuntimePair, initialization: Runt
 
 export function acquireEntrypointAdmission(workspace: string, mode: "shared" | "exclusive",
   beforeInitialAuthorityOpen?: (pair: RuntimePair) => void): RuntimeAdmission {
-  const control = resolve(workspace, ".runtime-control");
+  const control = resolve(workspace, ".tracker/control");
   if (lstatSync(control, { throwIfNoEntry: false }) === undefined) {
     const first = acquireInitialRuntimeAdmission(workspace,
       (pair, inspection) => { beforeInitialAuthorityOpen?.(pair); return verifyKnownDefaultAuthority(pair, inspection); },

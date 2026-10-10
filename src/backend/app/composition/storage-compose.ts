@@ -393,7 +393,7 @@ async function restoreCommand(
       admission,
       {
         authorityPath,
-        suspectDirectory: join(stateRoot, "suspects"),
+        suspectDirectory: join(stateRoot, "backups", "suspects"),
         busyTimeoutMs: 5000,
         processLockRoot,
         stoppedProofMaxAgeMs: RESTORE_STOPPED_PROOF_MAX_AGE_MS,

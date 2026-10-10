@@ -31,14 +31,15 @@ function inside(parent: string, child: string): boolean {
 function requirePair(pair: Pair, workspace: string): void {
   for (const path of [pair.stateRoot, pair.artifactRoot]) {
     if (!isAbsolute(path) || resolve(path) !== path) refuse("roots must be canonical absolute paths");
-    if (inside(path, workspace) || inside(path, join(workspace, ".runtime-control"))
-      || inside(join(workspace, ".runtime-control"), path)) refuse("control overlaps a movable root");
+    if (inside(path, workspace) || inside(path, join(workspace, ".tracker/control"))
+      || inside(join(workspace, ".tracker/control"), path)) refuse("control overlaps a movable root");
   }
   if (inside(pair.artifactRoot, pair.stateRoot)) refuse("state root overlaps artifact root");
 }
 function requireDesired(source: Pair, desired: Pair, workspace: string): void {
   requirePair(source, workspace);
   requirePair(desired, workspace);
+  if ([desired.stateRoot, desired.artifactRoot].some(path => inside(workspace, path))) refuse("destination is inside workspace");
   if (source.stateRoot === desired.stateRoot && source.artifactRoot === desired.artifactRoot) refuse("desired pair is unchanged");
   if (source.stateRoot !== desired.stateRoot && source.artifactRoot === desired.artifactRoot
     && inside(source.stateRoot, source.artifactRoot)) refuse("state-only move would strand nested artifacts");

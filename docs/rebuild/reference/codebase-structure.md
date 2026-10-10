@@ -14,7 +14,7 @@ excerpts retain their original revision names.
 | `config/` | Active runtime isolation and shared test-data configuration; the example is tracked and private local input remains ignored. |
 | `dist/` | Generated dashboard build output. |
 | `docs/` | Current entrypoint and reference contracts, sanitized selector evidence, authoring guide and reviewed guard inventory. |
-| `duo-autopilot/` | Duo Autopilot browser support and operator guide. |
+| `duo-autopilot/` | Duo signing with a backend-provisioned session credential; browser verification uses `scripts/verify/browser-login.ts`. |
 | `node_modules/` | Local installed dependencies. |
 | `scripts/build/` | Workflow manifest generation and checks. |
 | `scripts/dev/` | Local dashboard and CLI environment entrypoints. |

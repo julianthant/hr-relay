@@ -75,6 +75,7 @@ export const WorkerBrowserObservationSchema = z.strictObject({
   system: BrowserSystemIdSchema,
   instance: z.string().min(1).optional(),
   configFingerprint: FingerprintSchema,
+  signInFingerprint: FingerprintSchema,
   browserMode: z.enum(["headed", "headless"]),
   profileDirectory: z.string().min(1).optional(),
   acceptDownloads: z.boolean(),

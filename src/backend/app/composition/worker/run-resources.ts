@@ -11,7 +11,10 @@ import { ConfigSnapshotRecordSchema } from "../../../../models/config/snapshot.j
 import type { RunRecord } from "../../../../models/run/record.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../rules/validation/sha256.js";
-import { PlaywrightWorkerSessionFactory, ProfileCustodyUnavailableError } from "../../../runtime/browser/browser-session-factory.js";
+import { type BrowserSessionFactoryOptions, BrowserProfileAdmissionSchema, PlaywrightWorkerSessionFactory, ProfileCustodyUnavailableError } from "../../../runtime/browser/browser-session-factory.js";
+import { lstatSync } from "node:fs";
+import type { WorkerId } from "../../../../rules/identity/ids.js";
+import type { DebugEvent } from "../../../../models/events/timeline.js";
 import { createCensusGeocodeAdapter, createNominatimGeocodeAdapter } from "../../../processing/providers/geocode-adapters.js";
 import type { AuthorityRepositories } from "../../../storage/sqlite/authority-database.js";
 import { composeDuoCeremonyGateFactory, type DuoCeremonyGateFactory } from "../../../runtime/gates/duo-ceremony-gate.js";
@@ -26,12 +29,19 @@ export function createRunResourcesFactory(input:Readonly<{
  authority:AuthorityRepositories;artifacts:ContentAddressedArtifactWriter;clock:Clock;ids:IdFactory;
  isolation:RuntimeIsolation;protectedSecrets:Pick<CredentialStore,"read">;scheduler:MonotonicDeadlineScheduler;
  environment:Readonly<Record<string,string|undefined>>;sessionFactory?:WorkerBrowserSessionFactory;duoCeremony?:DuoCeremonyGateFactory;
+ assertProfileOwner:(workerId:WorkerId)=>void;
+ createSessionFactory?:(profileAuthority:BrowserProfileAuthority)=>WorkerBrowserSessionFactory;
+ onDebug?:(category:"session"|"duo",workerId:WorkerId,event:Pick<DebugEvent,"phase"|"correlationId">&Partial<Pick<DebugEvent,"code"|"durationMs"|"pinned">>)=>void;
 }>) {
+ if(input.sessionFactory!==undefined&&input.createSessionFactory!==undefined)throw new Error("browser-session-factory-owner-conflict");
+ const profiles=createBrowserProfileAuthority(input);
  const nominatim=createNominatimGeocodeAdapter({clock:input.clock,processLockRoot:input.processLockRoot});
  const compose=(config:Config):WorkerRunResources=>{
   return Object.freeze({
-   sessionFactory:input.sessionFactory??new PlaywrightWorkerSessionFactory({config,protectedSecrets:input.protectedSecrets,isolation:input.isolation,clock:input.clock,scheduler:input.scheduler,newSessionId:()=>input.ids.uuid(),admitProfile:()=>Promise.reject(new ProfileCustodyUnavailableError())}),
-   duoCeremony:input.duoCeremony??composeDuoCeremonyGateFactory({config,leases:input.authority.duoCeremonyLeases,clock:input.clock,scheduler:input.scheduler}),
+   sessionFactory:input.sessionFactory??input.createSessionFactory?.(profiles)??new PlaywrightWorkerSessionFactory({config,protectedSecrets:input.protectedSecrets,isolation:input.isolation,clock:input.clock,scheduler:input.scheduler,newSessionId:()=>input.ids.uuid(),
+    ...profiles,...(input.onDebug===undefined?{}:{onDebug:(workerId,event)=>input.onDebug?.("session",workerId,event)})}),
+   duoCeremony:input.duoCeremony??composeDuoCeremonyGateFactory({config,leases:input.authority.duoCeremonyLeases,clock:input.clock,scheduler:input.scheduler,
+    ...(input.onDebug===undefined?{}:{onDebug:(workerId,event)=>input.onDebug?.("duo",workerId,event)})}),
    taskDeadlineMs:config.timeouts.taskMs,sessionAcquireMs:config.timeouts.sessionAcquireMs,
    defaultBrowserMode:config.browser.headless?"headless":"headed",
    providers:{adapters:Object.freeze({"geocode.census":createCensusGeocodeAdapter({clock:input.clock}),"geocode.nominatim":nominatim}),
@@ -51,4 +61,31 @@ export function createRunResourcesFactory(input:Readonly<{
    return input.preflight===undefined?resources:Object.freeze({...resources,sessionFactory:preflightSessionFactory(resources.sessionFactory,input.preflight,input.preflight.runScope(run.envelope))});
   },
  });
+}
+
+export type BrowserProfileAuthority = Pick<BrowserSessionFactoryOptions, "slotOrdinal" | "admitProfile">;
+export function createBrowserProfileAuthority(input: Readonly<{authority:AuthorityRepositories;assertProfileOwner:(workerId:WorkerId)=>void}>): BrowserProfileAuthority {
+ return {
+    slotOrdinal:(workerId,system)=>{
+     input.assertProfileOwner(workerId);
+     const slot=input.authority.workerSlots.get(workerId);
+     if(slot===undefined||slot.retiredAt!==null)throw new ProfileCustodyUnavailableError();
+     if(input.authority.workerControls.pending(`worker-pool:${slot.workflow}`).some(control=>control.request.type==="plan-worker-count"))throw new ProfileCustodyUnavailableError();
+     if(input.authority.workerControls.browsers(workerId).some(browser=>browser.system===system&&browser.health!=="closed"))throw new ProfileCustodyUnavailableError();
+     return slot.ordinal;
+    },
+    admitProfile:profile=>{
+     input.assertProfileOwner(profile.workerId);
+     const slot=input.authority.workerSlots.get(profile.workerId);
+     if(slot===undefined||slot.retiredAt!==null)throw new ProfileCustodyUnavailableError();
+     if(input.authority.workerControls.pending(`worker-pool:${slot.workflow}`).some(control=>control.request.type==="plan-worker-count"))throw new ProfileCustodyUnavailableError();
+     const observations=input.authority.workerControls.browsers(profile.workerId).filter(value=>value.system===profile.system);
+     if(observations.some(value=>value.health!=="closed"))throw new ProfileCustodyUnavailableError();
+     const previous=observations.at(-1);
+     if(previous===undefined&&lstatSync(profile.profileDirectory,{throwIfNoEntry:false})!==undefined)throw new ProfileCustodyUnavailableError();
+     if(previous!==undefined&&previous.profileDirectory!==profile.profileDirectory)throw new ProfileCustodyUnavailableError();
+     const resetRequired=previous!==undefined&&(previous.instance!==profile.instance||previous.signInFingerprint!==profile.signInFingerprint);
+     return Promise.resolve(BrowserProfileAdmissionSchema.parse({...profile,profileRevision:previous===undefined?1:previous.profileRevision+(resetRequired?1:0),resetRequired}));
+    },
+ };
 }

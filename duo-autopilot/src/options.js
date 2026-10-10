@@ -1,17 +1,5 @@
-// Options page logic. Imports the Duo credential into chrome.storage.local,
-// renders the at-a-glance armed status, and exposes the autopilot toggles.
-//
-// Storage contracts (read by src/background.js — do NOT rename):
-//   "duoCredentials" : validated credentials ARRAY
-//   "settings"       : { enabled, trustClick, toast }, every field defaults TRUE
-//
-// The packaged-file import is a dev convenience: an extension page may fetch
-// files inside its own unpacked folder. The key lives only in storage afterward.
-
 const STORAGE_KEY = "duoCredentials";
 const SETTINGS_KEY = "settings";
-const ENROLL_KEY = "enroll";
-const RESYNC_TARGET = 1000000;
 
 const $ = (id) => document.getElementById(id);
 
@@ -46,40 +34,10 @@ function setMsg(el, text, kind) {
   else el.removeAttribute("role");
 }
 
-// ── credential validation + extraction (unchanged contract) ──
-function isValidCredential(c) {
-  return (
-    c &&
-    typeof c === "object" &&
-    typeof c.rpId === "string" &&
-    typeof c.credentialId === "string" &&
-    typeof c.privateKey === "string" &&
-    typeof c.signCount === "number" &&
-    (c.transport === "internal" || c.transport === "usb")
-  );
-}
-
-function extractCredentials(parsed) {
-  const arr = Array.isArray(parsed)
-    ? parsed
-    : parsed && Array.isArray(parsed.credentials)
-    ? parsed.credentials
-    : null;
-  if (!arr) throw new Error('Expected { "credentials": [ … ] } or an array.');
-  const valid = arr.filter(isValidCredential);
-  if (valid.length === 0) {
-    throw new Error("No valid credentials found (need rpId, credentialId, privateKey, signCount, transport).");
-  }
-  return valid;
-}
-
 // ── storage helpers ──
 async function loadStored() {
-  const data = await chrome.storage.local.get(STORAGE_KEY);
+  const data = await chrome.storage.session.get(STORAGE_KEY);
   return Array.isArray(data[STORAGE_KEY]) ? data[STORAGE_KEY] : [];
-}
-async function storeCredentials(creds) {
-  await chrome.storage.local.set({ [STORAGE_KEY]: creds });
 }
 async function loadSettings() {
   const data = await chrome.storage.local.get(SETTINGS_KEY);
@@ -91,12 +49,6 @@ async function saveSettings(patch) {
   await chrome.storage.local.set({ [SETTINGS_KEY]: next });
   return next;
 }
-async function loadEnroll() {
-  const data = await chrome.storage.local.get(ENROLL_KEY);
-  const e = data[ENROLL_KEY];
-  return e && typeof e === "object" ? e : { armed: false };
-}
-
 // ── rendering ──
 function renderHero(creds, settings) {
   const hero = $("hero");
@@ -105,7 +57,7 @@ function renderHero(creds, settings) {
     hero.classList.add("empty");
     $("heroGlyph").innerHTML = ICONS.shieldAlert;
     $("heroState").textContent = "No credential";
-    $("heroReason").textContent = "Import a credential to arm autopilot.";
+    $("heroReason").textContent = "Relay provisions the credential when this browser starts.";
   } else if (!settings.enabled) {
     hero.classList.add("off");
     $("heroGlyph").innerHTML = ICONS.shieldSlash;
@@ -155,22 +107,11 @@ function renderToggles(s) {
   setSwitch($("tgToast"), s.toast);
 }
 
-function renderEnroll(enroll) {
-  const armed = !!enroll.armed;
-  $("enrollChoose").hidden = armed;
-  $("enrollArmed").hidden = !armed;
-  if (armed) {
-    $("enrollPanel").hidden = false; // keep the armed state visible across reloads
-    $("enrollFactorName").textContent = enroll.transport === "usb" ? "security key" : "Touch ID";
-  }
-}
-
 async function refresh() {
-  const [creds, settings, enroll] = await Promise.all([loadStored(), loadSettings(), loadEnroll()]);
+  const [creds, settings] = await Promise.all([loadStored(), loadSettings()]);
   renderHero(creds, settings);
   renderCreds(creds);
   renderToggles(settings);
-  renderEnroll(enroll);
 }
 
 // ── toggles ──
@@ -184,60 +125,6 @@ function bindToggle(el, key) {
 }
 
 // ── credential actions ──
-async function importPackaged() {
-  const msg = $("actMsg");
-  try {
-    const resp = await fetch(chrome.runtime.getURL("credentials/duo-webauthn.json"));
-    if (!resp.ok) throw new Error(`fetch failed (${resp.status})`);
-    const creds = extractCredentials(await resp.json());
-    await storeCredentials(creds);
-    await refresh();
-    setMsg(msg, `Imported ${creds.length} credential${creds.length > 1 ? "s" : ""} from the packaged file.`, "ok");
-  } catch (e) {
-    setMsg(msg, `Couldn't import packaged file: ${e.message} — try Paste JSON instead.`, "err");
-  }
-}
-
-function togglePasteEditor(show) {
-  const ed = $("pasteEditor");
-  ed.hidden = show === undefined ? !ed.hidden : !show;
-  if (!ed.hidden) $("pasteArea").focus();
-}
-
-async function savePasted() {
-  const msg = $("actMsg");
-  const text = $("pasteArea").value.trim();
-  if (!text) {
-    setMsg(msg, "Paste the credential JSON first.", "warn");
-    return;
-  }
-  try {
-    const creds = extractCredentials(JSON.parse(text));
-    await storeCredentials(creds);
-    $("pasteArea").value = "";
-    togglePasteEditor(false);
-    await refresh();
-    setMsg(msg, `Saved ${creds.length} credential${creds.length > 1 ? "s" : ""}.`, "ok");
-  } catch (e) {
-    setMsg(msg, `Invalid JSON: ${e.message}`, "err");
-  }
-}
-
-async function resync() {
-  const msg = $("actMsg");
-  const creds = await loadStored();
-  if (!creds.length) {
-    setMsg(msg, "No credentials loaded to resync.", "warn");
-    return;
-  }
-  for (const c of creds) {
-    if ((Number(c.signCount) || 0) < RESYNC_TARGET) c.signCount = RESYNC_TARGET;
-  }
-  await storeCredentials(creds);
-  await refresh();
-  setMsg(msg, `Counters bumped to at least ${RESYNC_TARGET.toLocaleString()}. Retry your login.`, "ok");
-}
-
 // Two-step inline confirm — no native confirm() dialog.
 let clearArmed = false;
 let clearTimer = null;
@@ -257,64 +144,16 @@ async function clearCreds() {
     return;
   }
   resetClear();
-  await chrome.storage.local.remove(STORAGE_KEY);
+  await chrome.storage.session.remove(STORAGE_KEY);
   await refresh();
   setMsg($("actMsg"), "Cleared stored credentials.", "warn");
 }
 
-// ── enrollment (one-shot capture of a Duo create() ceremony) ──
-async function armEnroll(transport) {
-  await chrome.storage.local.set({ [ENROLL_KEY]: { armed: true, transport } });
-  await refresh();
-  $("enrollPanel").hidden = false;
-  setMsg($("enrollMsg"), "Armed — add the factor in Duo now. This page updates the moment it’s captured.", "ok");
-}
-async function cancelEnroll() {
-  await chrome.storage.local.set({ [ENROLL_KEY]: { armed: false } });
-  await refresh();
-  setMsg($("enrollMsg"), "Enrollment cancelled.", "warn");
-}
-
-// ── wire up ──
+$("actClear").addEventListener("click", clearCreds);
 bindToggle($("tgEnabled"), "enabled");
 bindToggle($("tgTrust"), "trustClick");
 bindToggle($("tgToast"), "toast");
-
-$("actImport").addEventListener("click", importPackaged);
-$("actPaste").addEventListener("click", () => togglePasteEditor());
-$("pasteSave").addEventListener("click", savePasted);
-$("pasteCancel").addEventListener("click", () => {
-  $("pasteArea").value = "";
-  togglePasteEditor(false);
-});
-$("actResync").addEventListener("click", resync);
-$("actClear").addEventListener("click", clearCreds);
-
-$("actEnroll").addEventListener("click", () => {
-  const p = $("enrollPanel");
-  p.hidden = !p.hidden;
-});
-$("enrollInternal").addEventListener("click", () => armEnroll("internal"));
-$("enrollUsb").addEventListener("click", () => armEnroll("usb"));
-$("enrollCancel").addEventListener("click", cancelEnroll);
-
-// The capture happens in another tab (on duosecurity.com), so reflect storage
-// writes live: refresh on any change, and celebrate when an armed enrollment
-// flips off with a newly-saved credential.
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area !== "local") return;
-  const e = changes[ENROLL_KEY];
-  const captured =
-    e &&
-    e.oldValue &&
-    e.oldValue.armed === true &&
-    (!e.newValue || e.newValue.armed === false) &&
-    !!changes[STORAGE_KEY];
-  if (changes[STORAGE_KEY] || changes[SETTINGS_KEY] || e) refresh();
-  if (captured) {
-    $("enrollPanel").hidden = true;
-    setMsg($("enrollMsg"), "Credential captured and saved — autopilot is armed.", "ok");
-  }
+  if (area === "session" && changes[STORAGE_KEY] || area === "local" && changes[SETTINGS_KEY]) refresh();
 });
-
 refresh();

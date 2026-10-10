@@ -152,7 +152,7 @@ export type ExclusiveInstallationLease = InstallationLease & Readonly<{
   settleRelocation(verify: RelocationVerifier): void;
 }>;
 
-const CONTROL = ".runtime-control";
+const CONTROL = ".tracker/control";
 const MARKER = ".runtime-owner.json";
 const FENCE = ".runtime-source-fence.json";
 export const RUNTIME_ROOT_AUTHORITY_ENTRY_NAMES = Object.freeze([MARKER,FENCE]);
@@ -197,7 +197,7 @@ function retainedSibling(source: string, operationId: string, role: "state" | "a
 }
 function relocationRetentions(workspace: string, source: RuntimePair, destination: RuntimePair, operationId: string,
   priorReceipts: readonly RelocationCompletionReceipt[]): z.infer<typeof RetentionSchema>[] {
-  validatePair(workspace, destination);
+  validateDestination(workspace, destination);
   const stateMoved = source.stateRoot !== destination.stateRoot;
   const artifactMoved = source.artifactRoot !== destination.artifactRoot;
   if (!stateMoved && !artifactMoved) fail("destination unchanged");
@@ -316,6 +316,10 @@ function validatePair(workspace: string, pair: RuntimePair): RuntimePair {
   }
   if (pair.stateRoot === pair.artifactRoot || (inside(pair.artifactRoot, pair.stateRoot))) fail("invalid root overlap");
   return pair;
+}
+function validateDestination(workspace: string, pair: RuntimePair): void {
+  validatePair(workspace, pair);
+  if ([pair.stateRoot, pair.artifactRoot].some(path => inside(workspace, path))) fail("destination is inside workspace");
 }
 function assertKnownDefaults(workspace: string, pair: RuntimePair): void {
   validatePair(workspace, pair);
@@ -1060,7 +1064,7 @@ function checkRestoreInput(locator: RuntimeLocator, input: AuthorityRestoreInput
   }
   if (input.authorityPath !== join(locator.stateRoot, "state.db")
     || input.stagedPath !== join(locator.stateRoot, `.restore-${input.operationId}.sqlite.tmp`)
-    || dirname(input.suspectPath) !== join(locator.stateRoot, "suspects")
+    || dirname(input.suspectPath) !== join(locator.stateRoot, "backups", "suspects")
     || !basename(input.suspectPath).endsWith(`-${input.operationId}.sqlite`)
     || new Set(input.companions.map(row => row.suffix)).size !== input.companions.length) fail("restore path or companion binding mismatch");
 }
@@ -1244,7 +1248,10 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     if (defaultEmpty(options.defaultPair) && (!options.initializeFresh || !options.verifyExisting)) {
       fail("fresh authority requires initializer and verifier");
     }
-    mkdirSync(control, { mode: 0o700 }); syncDir(workspace);
+    const parent = dirname(control);
+    if (lstatMaybe(parent) === undefined) { mkdirSync(parent, { mode: 0o700 }); syncDir(workspace); }
+    privateDirectory(parent);
+    mkdirSync(control, { mode: 0o700 }); syncDir(parent);
     mkdirSync(join(control, "leases"), { mode: 0o700 }); syncDir(control);
   }
   privateDirectory(control);

@@ -285,6 +285,9 @@ export class RunRecordService {
       if (journal.state === "divergent") return refused({ reason: "replay-divergent" });
       if (journal.state === "replay") return this.replayRun(journal.result);
       if (!this.runtimeMatches(runtimeConfig)) return refused({ reason: "runtime-stale" });
+      if (repositories.workerControls.pending(`worker-pool:${workflow}`).some(control => control.request.type === "plan-worker-count")) {
+        return refused({ reason: "none-eligible" });
+      }
       const held = repositories.runs.listByWorker(workerId).find((run) => runClaim(run) !== undefined);
       if (held !== undefined) return refused({ reason: "worker-busy", runId: held.envelope.runId });
       const outcome = repositories.runs.claimEligible({

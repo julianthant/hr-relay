@@ -5,7 +5,7 @@ import { hostConfigFacts } from "../../src/models/config/host-display.js";
 /** Live login smoke against production SSO: it reports content-based login proof (never a value), and full Chromium is required to load the Duo extension. */
 /** It never runs a workflow node and never commits a UCPath transaction. */
 import { randomUUID } from "node:crypto";
-import { rmSync } from "node:fs";
+import { lstatSync } from "node:fs";
 import { join } from "node:path";
 import { rebuildRuntimeIsolation } from "../../src/backend/app/config/runtime-isolation.js";
 import { composeDuoCeremonyGateFactory } from "../../src/backend/runtime/gates/duo-ceremony-gate.js";
@@ -21,7 +21,8 @@ import {
   WorkflowIdSchema,
 } from "../../src/rules/identity/ids.js";
 import {
-  ProfileCustodyUnavailableError,
+  BrowserProfileAdmissionSchema,
+  deleteOwnedBrowserProfile,
   PlaywrightWorkerSessionFactory,
   workerProfileDirectory,
 } from "../../src/backend/runtime/browser/browser-session-factory.js";
@@ -30,7 +31,7 @@ import { createCredentialSecretSource, readSettings } from "../../src/backend/ru
 import { probePrimaryDisplay } from "../../src/backend/app/host/primary-display.js";
 import type { AuthenticatedApplicationEvidence } from "../../src/backend/systems/browser-shared/login-contract.js";
 import { AuthorityDatabase } from "../../src/backend/storage/sqlite/authority-database.js";
-import { acquireRuntimeProcessLock } from "../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { acquireRuntimeProcessLock, readRuntimeProcessLock } from "../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { taskStoreRegistry } from "../../src/backend/app/registries/task-registry.js";
 
 const SUPPORTED = new Set(["ucpath", "crm"]);
@@ -64,6 +65,7 @@ async function main(): Promise<void> {
     throw new Error(`usage: live-browser-login-smoke <${[...SUPPORTED].join("|")}> [--headed] [--cold] [--reuse]`);
   }
   const system = BrowserSystemIdSchema.parse(requested);
+  if (process.argv.includes("--reuse")) throw new Error("live-smoke-profile-reuse-unavailable: developer smoke profiles require a fresh owned launch");
   const headed = process.argv.includes("--headed");
   // `--worker <id>` lets two smokes run side by side on distinct profiles
   // (ref execution-and-sessions §10.8).
@@ -91,42 +93,40 @@ async function main(): Promise<void> {
   const hostFacts = hostConfigFacts(hostAwareResolutionEnvironment(probePrimaryDisplay));
   const record = database.withAuthorityTransaction((repositories) => readSettings(repositories));
   const config = resolveConfigWithProvenance(record.settings, hostFacts, systemClock).config;
+  const smokeProfileRoot = join(stateRoot, "scratch", "live-smoke", randomUUID(), "browsers");
+  const smokeConfig = { ...config, paths: { ...config.paths, browserProfileRoot: smokeProfileRoot } };
   const workflowId = WorkflowIdSchema.parse("person-lookup");
   const instance = RuntimeInstanceSchema.parse("prod");
-  // A synthetic reuse identity; `--reuse` pins it so a second run rides the same persistent profile.
   const configFingerprint = FingerprintSchema.parse(
-    process.argv.includes("--reuse")
-      ? "5eed".repeat(16)
-      : randomUUID().replaceAll("-", "").padEnd(64, "0").slice(0, 64),
+    randomUUID().replaceAll("-", "").padEnd(64, "0").slice(0, 64),
   );
 
   if (process.argv.includes("--cold")) {
-    // Exactly THIS smoke's profile directory, derived by the same production function the
-    // factory uses; it sits below the credential home, so the Duo WebAuthn key is out of scope.
     const profileDirectory = workerProfileDirectory({
-      profileRoot: config.paths.browserProfileRoot,
-      isolation: rebuildRuntimeIsolation,
-      workerId, system, instance, configFingerprint,
+      profileRoot: smokeProfileRoot, slotOrdinal: 1, system,
     });
-    const workerRoot = profileDirectory.slice(0, profileDirectory.lastIndexOf("/"));
-    if (!workerRoot.includes(rebuildRuntimeIsolation.browserSessionNamespace) || !workerRoot.endsWith(workerId)) {
-      throw new Error(`refusing to clear ${workerRoot}: it is not this smoke's worker profile home`);
-    }
-    rmSync(workerRoot, { recursive: true, force: true });
-    write(`[smoke] cold start: cleared ${workerRoot}`);
+    deleteOwnedBrowserProfile(smokeProfileRoot, profileDirectory);
+    write("[smoke] cold start: fresh owned profile selected");
   }
 
   const evidence: AuthenticatedApplicationEvidence[] = [];
   const hops: string[] = [];
   const protectedAuthority = createCredentialStore({ admission, stateRoot });
   const factory = new PlaywrightWorkerSessionFactory({
-    config: { ...config, browser: { ...config.browser, headless: !headed } },
+    config: { ...smokeConfig, browser: { ...config.browser, headless: !headed } },
     protectedSecrets: createCredentialSecretSource(protectedAuthority),
     isolation: rebuildRuntimeIsolation,
     clock: systemClock,
     scheduler: realScheduler,
     newSessionId: () => randomUUID(),
-    admitProfile: () => Promise.reject(new ProfileCustodyUnavailableError()),
+    slotOrdinal: requestedWorker => { if (requestedWorker !== workerId) throw new Error("live-smoke-profile-owner-mismatch"); return 1; },
+    admitProfile: profile => {
+      const lock = readRuntimeProcessLock(processLockRoot, "live-smoke");
+      if (lock?.pid !== process.pid || lock.acquisitionId !== processLock.acquisitionId
+        || profile.workerId !== workerId || profile.profileDirectory !== workerProfileDirectory({ profileRoot: smokeProfileRoot, slotOrdinal: 1, system })
+        || lstatSync(profile.profileDirectory, { throwIfNoEntry: false }) !== undefined) throw new Error("live-smoke-profile-custody-unavailable");
+      return Promise.resolve(BrowserProfileAdmissionSchema.parse({ ...profile, profileRevision: 1, resetRequired: false }));
+    },
     onAuthenticationEvidence: (observed) => {
       evidence.push(observed);
       write(`[evidence] ${observed.system} @ ${observed.url}`);
@@ -164,7 +164,7 @@ async function main(): Promise<void> {
     },
   });
   sessions.bindRunConfigFingerprint(configFingerprint);
-
+  try {
   await sessions.withDriver(
     { system, access: "read", session: "reuse-worker" },
     instance,
@@ -182,8 +182,11 @@ async function main(): Promise<void> {
   }
   write(`[smoke] hop chain (hosts, in order): ${[...new Set(hops.map(hostOf))].join(" → ")}`);
   write(`[smoke] ${system} login + neutral reset verified in ${elapsed(started)}`);
-  await sessions.closeAll("worker-stop");
-  write("[smoke] every session closed with proof");
+  } finally {
+    await sessions.closeAll("worker-stop");
+    deleteOwnedBrowserProfile(smokeProfileRoot, join(smokeProfileRoot, "w1"));
+    write("[smoke] every session closed with proof");
+  }
   } finally {
     database.close();
     processLock.release();

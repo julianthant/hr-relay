@@ -443,6 +443,7 @@ export class WorkerSessionManager {
     this.#onObservation?.(WorkerBrowserObservationSchema.omit({ leaseGeneration: true }).parse({ ...(this.#retained.get(resource.sessionId) === undefined ? {} : { openedAt: this.#retained.get(resource.sessionId)?.openedAt }), workerId: this.#workerId, sessionId: resource.sessionId, system: resource.system,
       ...(resource.instance === undefined ? {} : { instance: resource.instance }), configFingerprint: resource.configFingerprint,
       profileRevision: resource.profileRevision,
+      signInFingerprint: resource.signInFingerprint,
       browserMode: effectiveResourceBrowserMode(resource, this.#defaultBrowserMode),
       ...(resource.profileDirectory === undefined ? {} : { profileDirectory: resource.profileDirectory }),
       acceptDownloads: resource.acceptDownloads, exclusive: resource.exclusive, health, observedAt: this.#clock.now().toISOString() }));
@@ -548,7 +549,9 @@ export class WorkerSessionManager {
       const poisonCloseFailures: unknown[] = [];
       try {
         this.#observe(resource, "unknown");
+        resource.beginDiagnostics?.();
         const result = await withBrowserActionSession(resource.sessionId, () => use(resource.driver));
+        resource.endDiagnostics?.();
         operationCompleted = true;
         await this.#captureLeaseScreenshot(resource, "succeeded", configFingerprint);
         await resource.reset({ signal });
@@ -560,6 +563,7 @@ export class WorkerSessionManager {
         });
         return result;
       } catch (leaseError) {
+        resource.endDiagnostics?.();
         const failures: unknown[] = [leaseError];
         if (!operationCompleted) {
           try {
@@ -599,7 +603,7 @@ export class WorkerSessionManager {
     configFingerprint: Fingerprint,
   ): Promise<void> {
     const context = this.#runScreenshotContext;
-    if (context?.captureBrowserScreenshots !== true) return;
+    if (context === undefined || leaseOutcome === "succeeded" && context.captureBrowserScreenshots !== true) return;
     if (this.#browserScreenshotCapture === undefined) {
       throw new Error(`run ${context.runId} selected browser screenshots but this worker has no screenshot persistence capability`);
     }
@@ -873,6 +877,7 @@ export class WorkerSessionManager {
       signal,
       duoCeremony: gate,
     });
+    this.#retained.set(resource.sessionId, { openedAt: this.#clock.now().toISOString(), factory: this.#factory, acquireMs: this.#acquireDeadlineMs, duo: this.#duoCeremony, defaultMode: this.#defaultBrowserMode });
     let login: LoginResult;
     try {
       BrowserSessionIdSchema.parse(resource.sessionId);
@@ -910,7 +915,6 @@ export class WorkerSessionManager {
       throw loginError;
     }
     this.#resources.set(need.system, resource);
-    this.#retained.set(resource.sessionId, { openedAt: this.#clock.now().toISOString(), factory: this.#factory, acquireMs: this.#acquireDeadlineMs, duo: this.#duoCeremony, defaultMode: this.#defaultBrowserMode });
     this.#observe(resource, "authenticated");
     this.#emit({
       type: "browser-session:start",

@@ -2,6 +2,7 @@ import { WorkerRetirementProofSchema, type WorkerRetirementProof } from "../../.
 import { WorkerControlRefusal } from "../../../models/run/worker-control.js";
 
 import { isAbsolute } from "node:path";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { z } from "zod";
 import type { Clock } from "../../../rules/time/clock.js";
 import { CommandIdSchema, IsoInstantSchema } from "../../../rules/identity/ids.js";
@@ -455,6 +456,7 @@ export function createDashboardWorkerProcessSupervisor(
         + "worker is never adopted or controlled",
       );
     }
+    if (canonicalJsonStringify(record.member) !== canonicalJsonStringify(member)) throw new WorkerControlRefusal("worker-control-owned-member-changed");
     if (record.state === "awaiting-birth") {
       throw new WorkerControlRefusal(
         `${command} refused: worker ${member.workerId} (pid ${String(record.pid)}) has not proved its `
@@ -754,6 +756,7 @@ export function createDashboardWorkerProcessSupervisor(
         if (deps.leases.observe(member.workerId) !== undefined) throw new WorkerControlRefusal(`plan-worker-count refused: ${member.workerId} is externally owned; no worker was adopted`);
         continue;
       }
+      if (canonicalJsonStringify(record.member) !== canonicalJsonStringify(member)) throw new WorkerControlRefusal("worker-control-owned-member-changed");
       if (record.state === "running" || record.state === "stopping") requireLiveOwnedChild("plan-worker-count", member);
       if (record.state === "awaiting-birth") {
         throw new Error(

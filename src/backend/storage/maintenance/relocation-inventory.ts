@@ -4,7 +4,8 @@ import { closeSync, constants, fstatSync, fsyncSync, linkSync, lstatSync, mkdirS
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { z } from "zod";
 import { ArtifactRefSchema } from "../../../models/artifacts/artifacts.js";
-import { NoteWireSchema, SpanEventWireSchema } from "../../../models/events/types.js";
+import { TimelineAppendSchema } from "../../../models/events/timeline.js";
+import { BrowserSystemIdSchema } from "../../../rules/identity/ids.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
 import type { RuntimeRelocationOperation } from "../admission/admission.js";
 import type { RuntimePair } from "../admission/installation.js";
@@ -13,11 +14,9 @@ import { AuthorityDatabase } from "../sqlite/authority-database.js";
 import { createCredentialStore } from "../configuration/credential-store.js";
 
 const ARTIFACT = /^([0-9a-f]{64})\.artifact$/u;
-const EVENT = /^[a-z0-9]+(?:-[a-z0-9]+)*-\d{4}-\d{2}-\d{2}\.jsonl$/u;
-const SUSPECT = /^suspect-\d{17}-[0-9a-f-]{36}\.sqlite$/u;
 const SAFE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
 const ROOT_FILES = new Set(["state.db", "state.db-wal", "state.db-shm"]);
-const ROOT_DIRECTORIES = new Set(["backups", "credentials", "spans", "notes", "suspects", "verified-byte-scratch"]);
+const ROOT_DIRECTORIES = new Set(["backups", "credentials", "browsers", "scratch", "logs"]);
 const CREDENTIAL_FILES = new Set(["protected.json", ".protected.lock", ".protected.reaper", ".protected.reaper-claim"]);
 const StoredArtifactSchema = z.strictObject({ ref: ArtifactRefSchema, payloadBase64: z.string() });
 const issuedInventories = new WeakSet<object>();
@@ -104,6 +103,24 @@ export function verifyRelocationLiveReferences(input: Readonly<{ admission: Runt
     for (const reference of authority.readManagedArtifactReferences()) {
       verifyArtifactReference(input.source.artifactRoot, reference);
     }
+    const profiles = join(input.source.stateRoot, "browsers");
+    if (lstatSync(profiles, { throwIfNoEntry: false }) !== undefined) {
+      assertOwned(profiles, "directory");
+      const slots = authority.authority.workerSlots.list();
+      for (const name of readdirSync(profiles)) {
+        const slot = slots.find(value => `w${String(value.ordinal)}` === name);
+        if (slot === undefined || slot.retiredAt !== null) throw new Error("relocation-inventory: profile slot custody unavailable");
+        const directory = join(profiles, name);
+        assertOwned(directory, "directory");
+        for (const system of readdirSync(directory)) {
+          BrowserSystemIdSchema.parse(system);
+          const observations = authority.authority.workerControls.browsers(slot.workerId).filter(value => value.system === system);
+          const latest = observations.at(-1);
+          if (latest === undefined || observations.some(value => value.health !== "closed")
+            || latest.profileDirectory !== join(directory, system)) throw new Error("relocation-inventory: profile closure custody unavailable");
+        }
+      }
+    }
   } finally { authority.close(); }
   const credentialPath = join(input.source.stateRoot, "credentials", "protected.json");
   if (lstatSync(credentialPath, { throwIfNoEntry: false }) !== undefined) {
@@ -125,8 +142,16 @@ function validateName(role: "state" | "artifact", relativePath: string, kind: "f
     if (kind === "file" ? ROOT_FILES.has(top) : ROOT_DIRECTORIES.has(top)) return;
     throw new Error(`relocation-inventory: unknown state entry ${top}`);
   }
+  if (top === "browsers") {
+    if (name === undefined || !/^w[1-9][0-9]*$/u.test(name) || parts.length > 2 && !BrowserSystemIdSchema.safeParse(parts[2]).success) throw new Error("relocation-inventory: unknown browser profile");
+    if (parts.length < 4 && kind !== "directory") throw new Error("relocation-inventory: unknown browser profile file");
+    const fileName = parts.at(-1);
+    if (kind === "file" && (fileName === undefined || /(?:SingletonLock|SingletonCookie|SingletonSocket|duo-webauthn\.json)$/u.test(fileName))) throw new Error("relocation-inventory: browser profile custody unresolved");
+    if (kind === "file" && /(?:duoCredentials|privateKey)/u.test(safeBytes(path).toString("utf8"))) throw new Error("relocation-inventory: profile contains credential material");
+    return;
+  }
   const knownPrivateName = name !== undefined && top === "credentials" && CREDENTIAL_FILES.has(name);
-  if (name === undefined || (!SAFE_NAME.test(name) && !knownPrivateName) || parts.length > 8) {
+  if (name === undefined || (!SAFE_NAME.test(name) && !knownPrivateName) || top !== "browsers" && parts.length > 8) {
     throw new Error(`relocation-inventory: unsafe state descendant ${relativePath}`);
   }
   if (top === "credentials") {
@@ -134,27 +159,25 @@ function validateName(role: "state" | "artifact", relativePath: string, kind: "f
     if(name!=="protected.json")throw new Error("relocation-inventory: credential write lock is present");
     return;
   }
-  if (top === "spans" || top === "notes") {
-    const eventFile = /^([a-z0-9]+(?:-[a-z0-9]+)*)-(\d{4}-\d{2}-\d{2})\.jsonl$/u.exec(name);
-    if (parts.length !== 2 || kind !== "file" || !EVENT.test(name) || eventFile === null
-      || !z.iso.date().safeParse(eventFile[2]).success) throw new Error("relocation-inventory: unknown event stream entry");
-    const bytes = safeBytes(path).toString("utf8");
-    if (bytes !== "" && !bytes.endsWith("\n")) throw new Error("relocation-inventory: incomplete event stream line");
-    for (const line of bytes.split("\n").slice(0, -1)) {
-      if (line === "") throw new Error("relocation-inventory: empty event stream line");
-      try {
-        const record = top === "spans" ? SpanEventWireSchema.parse(JSON.parse(line)) : NoteWireSchema.parse(JSON.parse(line));
-        if (record.workflow !== eventFile[1]) throw new Error("event workflow differs from file");
-      } catch { throw new Error("relocation-inventory: invalid event stream record"); }
+  if (top === "logs") {
+    if (parts.length !== 2 || kind !== "file" || name !== "boot.jsonl") throw new Error("relocation-inventory: unknown emergency log");
+    const bytes = safeBytes(path);
+    if (bytes.length > 5 * 1024 * 1024) throw new Error("relocation-inventory: emergency log cap exceeded");
+    const text = bytes.toString("utf8");
+    if (text !== "" && !text.endsWith("\n")) throw new Error("relocation-inventory: incomplete emergency log");
+    for (const line of text.split("\n").slice(0, -1)) {
+      const event = TimelineAppendSchema.parse(JSON.parse(line));
+      if (event.payload.kind !== "debug" || event.payload.event.category !== "boot") throw new Error("relocation-inventory: invalid emergency event");
     }
     return;
   }
-  if (top === "suspects") {
-    if (parts.length !== 2 || kind !== "file" || !SUSPECT.test(name)) throw new Error("relocation-inventory: unknown suspect entry");
-    return;
-  }
-  if (top === "verified-byte-scratch") throw new Error("relocation-inventory: scratch directory is not empty");
+  if (top === "scratch") throw new Error("relocation-inventory: scratch directory is not empty");
   if (top === "backups") {
+    if (parts[1] === "suspects") {
+      if (parts.length === 2 && kind === "directory") return;
+      if (parts.length === 3 && kind === "file" && /^(suspect-\d{17}-[0-9a-f-]{36}\.sqlite)(?:-wal|-shm)?$/u.test(parts[2] ?? "")) return;
+      throw new Error("relocation-inventory: unknown suspect entry");
+    }
     if (parts[1] !== "authority" || !parts.every((part) => SAFE_NAME.test(part))) {
       throw new Error("relocation-inventory: unknown backup entry");
     }
@@ -177,7 +200,7 @@ export async function verifyRelocationBackupTree(input: Readonly<{ admission: Ru
   if (lstatSync(backups, { throwIfNoEntry: false }) === undefined) return;
   assertOwned(backups, "directory");
   const top = readdirSync(backups);
-  if (top.some((name) => name !== "authority")) throw new Error("relocation-inventory: unknown backup root entry");
+  if (top.some((name) => name !== "authority" && name !== "suspects")) throw new Error("relocation-inventory: unknown backup root entry");
   const root = join(backups, "authority");
   if (lstatSync(root, { throwIfNoEntry: false }) === undefined) return;
   assertOwned(root, "directory");

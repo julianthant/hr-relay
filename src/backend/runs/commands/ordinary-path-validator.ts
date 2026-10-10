@@ -47,7 +47,11 @@ function ownedDirectory(key: PathKey, path: string, allowMissing: boolean): bool
 function validateProfile(path: string, installationDefault: string, config: Config): void {
   const key = "paths.browserProfileRoot";
   requiredPath(key, path);
-  const protectedRoots = [config.paths.stateRoot, config.paths.artifactRoot, config.paths.duoExtensionDir];
+  const internal = path === join(config.paths.stateRoot, "browsers");
+  const protectedRoots = [
+    ...(internal ? [] : [config.paths.stateRoot]), config.paths.artifactRoot,
+    join(config.paths.stateRoot, "locks"), join(config.paths.stateRoot, "credentials"), config.paths.duoExtensionDir,
+  ];
   if (protectedRoots.some(root => path === root || path.startsWith(`${root}${sep}`) || root.startsWith(`${path}${sep}`))) {
     fail(key, "overlaps-runtime-location");
   }
