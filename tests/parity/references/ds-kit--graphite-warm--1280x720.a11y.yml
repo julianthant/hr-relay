@@ -263,11 +263,11 @@
   - group "Configured model priority":
     - list "Configured model priority":
       - listitem:
-        - button "Move gemini-2.5-pro. Position 1 of 2. Use arrow keys to reorder."
-        - text: gemini-2.5-pro Primary
+        - button "Move specimen-model-primary. Position 1 of 2. Use arrow keys to reorder."
+        - text: specimen-model-primary Primary
       - listitem:
-        - button "Move gemini-2.5-flash. Position 2 of 2. Use arrow keys to reorder."
-        - text: gemini-2.5-flash Fallback
+        - button "Move specimen-model-fallback. Position 2 of 2. Use arrow keys to reorder."
+        - text: specimen-model-fallback Fallback
     - status
     - paragraph: Configured model names can be reordered here.
   - group "Recorded values":

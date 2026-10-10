@@ -21,7 +21,7 @@ export interface SecureEnvironmentBootstrapDependencies {
   readonly runRelocation?: (input: Readonly<{ workspace: string; args: readonly string[];
     admission?: RuntimeAdmission }>) => Promise<Readonly<{ operationId: string; generation: number }>>;
   readonly inspectRelocationStatus?: (workspace: string) => ReturnType<typeof inspectPendingRelocationStatus>;
-  readonly runAdmissionRecovery?: (workspace: string, expectedPid: number) => ReturnType<typeof recoverAbandonedAdmissionMutex>;
+  readonly runAdmissionRecovery?: (workspace: string, expectedPid: number | "empty") => ReturnType<typeof recoverAbandonedAdmissionMutex>;
 }
 
 export function secureEnvironmentEntrypoint(
@@ -46,14 +46,15 @@ export async function runSecureEnvironmentBootstrap(
     await loadDryRunScenarioManifest(request.workflow);
   }
   if (entrypoint === "cli" && entrypointArgs[0] === "storage" && entrypointArgs[1] === "recover-admission") {
-    if (entrypointArgs.length !== 4 || entrypointArgs[2] !== "--pid"
-      || !/^[1-9]\d*$/u.test(entrypointArgs[3] ?? "")) throw new Error("storage recover-admission usage: --pid <abandoned-owner-pid>");
-    const recover = dependencies.runAdmissionRecovery ?? ((root: string, expectedPid: number) => {
+    const empty = entrypointArgs.length === 3 && entrypointArgs[2] === "--empty";
+    if (!empty && (entrypointArgs.length !== 4 || entrypointArgs[2] !== "--pid"
+      || !/^[1-9]\d*$/u.test(entrypointArgs[3] ?? ""))) throw new Error("storage recover-admission usage: --pid <abandoned-owner-pid> | --empty");
+    const recover = dependencies.runAdmissionRecovery ?? ((root: string, expectedPid: number | "empty") => {
       const restore = acquireRuntimeRestoreAdmission({ processLockRoot: join(root, rebuildRuntimeIsolation.processLockRoot), pid: process.pid });
       try { return recoverAbandonedAdmissionMutex(root, restore, expectedPid); }
       finally { restore.release(); }
     });
-    const result = recover(workspace, Number(entrypointArgs[3]));
+    const result = recover(workspace, empty ? "empty" : Number(entrypointArgs[3]));
     process.stdout.write(`storage admission recovered: ${result.acquisitionId}; receipt ${result.receiptPath}\n`);
     return;
   }

@@ -9,7 +9,7 @@ import { FIXTURE_DAY } from './helpers/fixture-identity.js';
 import { chooseSelect } from './helpers/select-choice.js';
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  test(`HR GPT settings, shortcuts, Activity and workbook editor @ ${theme.attribute}-${width}`, async ({ page }, _info) => {
+  test(`Relay settings, shortcuts, Activity and workbook editor @ ${theme.attribute}-${width}`, async ({ page }, _info) => {
     ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: 'working-tree' }, preflightScenario: "ready" });
     const errors: string[] = [], writes: string[] = [];
@@ -23,7 +23,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(page.locator('#dashboard-main-region')).toBeFocused();
       const rail = page.getByRole('complementary', { name: 'Workspace', exact: true });
       const workflows = rail.getByRole('navigation', { name: 'Workflows', exact: true });
-      await expect(rail.getByRole('heading', { name: 'HR GPT', exact: true })).toBeVisible();
+      await expect(rail.getByRole('heading', { name: 'Relay', exact: true })).toBeVisible();
       await expect(workflows.locator('button > svg')).toHaveCount(0);
       await expect(workflows.locator('h3 > svg')).toHaveCount(8);
       expect(await workflows.evaluate(node => getComputedStyle(node).paddingLeft)).toBe('8px');
@@ -49,7 +49,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(meta).toBeVisible();
       await expect(workflows.getByText('Preview', { exact: true })).toHaveCount(0);
       const bell = rail.getByRole('button', { name: /^Notifications,/ }); await bell.click();
-      await expect(rail.getByRole('heading', { name: 'HR GPT', exact: true })).toBeVisible();
+      await expect(rail.getByRole('heading', { name: 'Relay', exact: true })).toBeVisible();
       await expect(rail.getByText('History gap', { exact: true })).toHaveCount(0);
       await expect(rail.locator('.notification-row')).toHaveCount(13);
       await rail.getByRole('button', { name: 'Read all', exact: true }).click();
@@ -194,7 +194,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(period).toHaveAttribute('data-value', 'this-week');
       const durations = settings.getByRole('figure', { name: 'Average workflow time', exact: true });
       await expect(settings.getByRole('heading', { name: 'Analytics', level: 1, exact: true })).toBeVisible();
-      await expect(page).toHaveTitle('Analytics — HR GPT');
+      await expect(page).toHaveTitle('Analytics — Relay');
       await expect(durations.getByRole('listitem')).toHaveCount(2);
       await expect(durations.getByRole('listitem').first()).toContainText('2m 18s');
       await expect(durations.getByRole('listitem').nth(1)).toContainText('10 of 14 completed runs timed');

@@ -1,1 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#2a2a2a"/><path d="M9 8h4v6h6V8h4v16h-4v-6h-6v6H9Z" fill="#9dc2ff"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none">
+  <defs>
+    <linearGradient id="relay" x1="36" y1="44" x2="220" y2="220" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#169FFF"/>
+      <stop offset="1" stop-color="#8278F5"/>
+    </linearGradient>
+  </defs>
+  <g stroke="url(#relay)" stroke-linecap="round" stroke-linejoin="round">
+    <path stroke-width="40" d="M70 44H160C196 44 220 66 220 96C220 120 199 132 170 146H148L62 216"/>
+    <path stroke-width="40" d="M163 146L216 216"/>
+    <path stroke-width="20" d="M34 88H60"/>
+    <path stroke-width="24" d="M44 120H120"/>
+  </g>
+</svg>
