@@ -1,518 +1,78 @@
-import { databaseStateTable } from "../../../../../../src/backend/storage/sqlite/migrations.js";
 import assert from "node:assert/strict";
-import {
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  readdirSync,
-  rmSync,
-} from "node:fs";
+import { mkdtempSync, realpathSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
-import { z } from "zod";
 import { afterEach, describe, it } from "vitest";
-import { AuthorityUpgradeRecordSchema } from "../../../../../../src/models/config/authority.js";
-import { canonicalJsonStringify } from "../../../../../../src/rules/validation/canonical-json.js";
-import { manualClock } from "../../../../../../src/rules/time/clock.js";
-import {
-  CommandAuditRecordSchema,
-  StartCommandRequestSchema,
-} from "../../../../../../src/rules/commands/commands.js";
-import { AuthorityDatabase } from "../../../../../support/helpers/synthetic-storage-admission.js";
-import {
-  AUTHORITY_APPLICATION_ID,
-  CURRENT_AUTHORITY_SCHEMA_VERSION,
-  NORMAL_AUTHORITY_SCHEMA_VERSION,
-  SQLITE_MIGRATIONS,
-} from "../../../../../../src/backend/storage/sqlite/migrations.js";
-import { inspectAuthorityBackupReadOnly } from "../../../../../support/helpers/synthetic-storage-admission.js";
+import { acquireEntrypointAdmission } from "../../../../../../src/backend/storage/admission/bootstrap-admission.js";
+import type { RuntimeAdmission } from "../../../../../../src/backend/storage/admission/admission.js";
+import { AuthorityDatabase } from "../../../../../../src/backend/storage/sqlite/authority-database.js";
+import { upgradeStorage, backupStoppedAuthority } from "../../../../../../src/backend/storage/maintenance/upgrade.js";
+import { verifyBackupManifestAtPath } from "../../../../../../src/backend/storage/sqlite/backup-service.js";
 import { acquireRuntimeProcessLock } from "../../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
-import { verifyBackupManifestAtPath } from "../../../../../support/helpers/synthetic-storage-admission.js";
-import {
-  backupStoppedAuthority,
-  upgradeStorage,
-  type StorageUpgradeInput,
-} from "../../../../../support/helpers/synthetic-storage-admission.js";
+import { manualClock } from "../../../../../../src/rules/time/clock.js";
+import { storageTree } from "../../../../../support/helpers/integration/storage-recovery-fixture.js";
 
-const NOW = "2026-09-06T12:00:00.000Z";
-const LATER = "2026-09-06T12:01:00.000Z";
-const CLOCK = manualClock(new Date(NOW));
-const HASH_A = "a".repeat(64);
-const HASH_B = "b".repeat(64);
-const HASH_C = "c".repeat(64);
-const COMMAND_ID = "11111111-1111-4111-8111-111111111111";
-const AUDIT_ID = "22222222-2222-4222-8222-222222222222";
-const SECOND_COMMAND_ID = "33333333-3333-4333-8333-333333333333";
-const SECOND_AUDIT_ID = "44444444-4444-4444-8444-444444444444";
-const START_PLAN_ID = "55555555-5555-4555-8555-555555555555";
-const ADMITTED_HISTORICAL_VERSIONS = Object.freeze([
-  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
-  27, 28, 29, 30, 31, 32, 33, 34, 35, 36,
-] as const);
-const REFUSED_GAP_VERSIONS = Object.freeze([19, 20, 21, 22, 23, 24, 25, 26] as const);
-const roots: string[] = [];
-
-const TableNameRowsSchema = z.array(z.strictObject({ name: z.string().min(1) }));
-const CountRowSchema = z.strictObject({ count: z.number().int().nonnegative() });
-const TextRowSchema = z.strictObject({ record_json: z.string().min(1) });
-const MetaRowSchema = z.strictObject({
-  schema_version: z.number().int().positive(),
-  authority_generation: z.number().int().nonnegative(),
-});
-
-afterEach(() => {
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
-
-function strictDatabase(path: string): DatabaseSync {
-  return new DatabaseSync(path, {
-    enableForeignKeyConstraints: true,
-    enableDoubleQuotedStringLiterals: false,
-    allowExtension: false,
-    readBigInts: false,
-    returnArrays: false,
-    allowBareNamedParameters: false,
-    allowUnknownNamedParameters: false,
-    defensive: true,
-  });
+const clock = manualClock(new Date("2026-10-01T12:00:00Z"));
+const owners: {workspace:string;admission:RuntimeAdmission}[] = [];
+afterEach(() => {for(const owner of owners.splice(0).reverse()){owner.admission.release();rmSync(owner.workspace,{recursive:true,force:true});}});
+function fixture(){
+ const workspace=mkdtempSync(join(realpathSync(tmpdir()),"native-upgrade-admission-"));
+ const admission=acquireEntrypointAdmission(workspace,"exclusive");owners.push({workspace,admission});
+ const root=admission.stateRoot,path=join(root,"state.db"),input={stateRoot:root,processLockRoot:join(root,"locks"),plan:false};
+ return {admission,root,path,input,run:(plan=false)=>upgradeStorage(admission,{...input,plan},clock)};
 }
+function initialize(f:ReturnType<typeof fixture>){const database=AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"admission-fixture"},clock);database.close();}
 
-function quoteIdentifier(value: string): string {
-  return `"${value.replaceAll('"', '""')}"`;
-}
-
-function historicalCommand(commandId: string, auditId: string) {
-  const command = StartCommandRequestSchema.parse({
-    commandId,
-    requestedAt: NOW,
-    requestedBy: "local-operator",
-    source: "dashboard",
-    family: "start",
-    type: "start-run",
-    target: {
-      workflowId: "onboarding",
-      startPlanId: START_PLAN_ID,
-      expectedVersion: 1,
-    },
-    payload: {
-      descriptorFingerprint: HASH_A,
-      configFingerprint: HASH_B,
-      ingressSchemaHash: HASH_C,
-      canonicalInputSchemaHash: HASH_A,
-      inputFingerprint: HASH_C,
-    },
-  });
-  const audit = CommandAuditRecordSchema.parse({
-    auditId,
-    request: command,
-    result: {
-      state: "applied",
-      commandId,
-      affectedTargets: [{
-        family: "start",
-        workflowId: command.target.workflowId,
-        startPlanId: command.target.startPlanId,
-        expectedVersion: command.target.expectedVersion,
-      }],
-    },
-    completedAt: NOW,
-    versionChanges: [],
-    affectedDependencyIds: [],
-  });
-  return Object.freeze({ command, audit });
-}
-
-function insertHistoricalCommand(
-  database: DatabaseSync,
-  commandId = COMMAND_ID,
-  auditId = AUDIT_ID,
-): Readonly<{ commandJson: string; auditJson: string }> {
-  const { command, audit } = historicalCommand(commandId, auditId);
-  const commandJson = canonicalJsonStringify(command);
-  const auditJson = canonicalJsonStringify(audit);
-  database.prepare(`
-    INSERT INTO commands (record_key, family, record_json, created_at)
-    VALUES (?, ?, ?, ?)
-  `).run(command.commandId, command.family, commandJson, NOW);
-  database.prepare(`
-    INSERT INTO command_audits (record_key, command_id, record_json, created_at)
-    VALUES (?, ?, ?, ?)
-  `).run(audit.auditId, command.commandId, auditJson, NOW);
-  return Object.freeze({ commandJson, auditJson });
-}
-
-interface HistoricalFixture {
-  readonly root: string;
-  readonly path: string;
-  readonly input: StorageUpgradeInput;
-  readonly commandJson: string;
-  readonly auditJson: string;
-}
-
-function historicalFixture(version: number): HistoricalFixture {
-  const root = mkdtempSync(join(tmpdir(), `storage-upgrade-admission-v${String(version)}-`));
-  roots.push(root);
-  const path = join(root, "state.db");
-  const database = strictDatabase(path);
-  let journal: ReturnType<typeof insertHistoricalCommand>;
-  try {
-    database.exec("PRAGMA foreign_keys = ON");
-    database.exec("BEGIN IMMEDIATE");
-    for (const migration of SQLITE_MIGRATIONS) {
-      if (migration.version > Math.min(version, CURRENT_AUTHORITY_SCHEMA_VERSION)) break;
-      for (const statement of migration.statements) database.exec(statement);
-    }
-    database.prepare(`
-      INSERT INTO ${databaseStateTable(Math.min(version, CURRENT_AUTHORITY_SCHEMA_VERSION))}
-        (singleton_id, schema_version, authority_generation, updated_at,
-         migration_owner, migration_started_at)
-      VALUES (1, ?, 7, ?, NULL, NULL)
-    `).run(version, NOW);
-    journal = insertHistoricalCommand(database);
-    database.exec(`PRAGMA application_id = ${String(AUTHORITY_APPLICATION_ID)}`);
-    database.exec(`PRAGMA user_version = ${String(version)}`);
-    database.exec("COMMIT");
-  } catch (error) {
-    if (database.isTransaction) database.exec("ROLLBACK");
-    throw error;
-  } finally {
-    database.close();
-  }
-  return Object.freeze({
-    root,
-    path,
-    input: Object.freeze({
-      stateRoot: root,
-      processLockRoot: join(root, "locks"),
-      environmentFile: join(root, ".env"),
-      plan: false,
-    }),
-    commandJson: journal.commandJson,
-    auditJson: journal.auditJson,
-  });
-}
-
-function tableCounts(path: string): ReadonlyMap<string, number> {
-  const database = strictDatabase(path);
-  try {
-    const tables = TableNameRowsSchema.parse(database.prepare(`
-      SELECT name FROM sqlite_schema
-      WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
-      ORDER BY name
-    `).all());
-    return new Map(tables.map(({ name }) => [
-      name,
-      CountRowSchema.parse(database.prepare(
-        `SELECT count(*) AS count FROM ${quoteIdentifier(name)}`,
-      ).get()).count,
-    ]));
-  } finally {
-    database.close();
-  }
-}
-
-function readJournalJson(path: string, table: "commands" | "command_audits", key: string): string {
-  const database = strictDatabase(path);
-  try {
-    const row = TextRowSchema.parse(database.prepare(
-      `SELECT record_json FROM ${table} WHERE record_key = ?`,
-    ).get(key));
-    return row.record_json;
-  } finally {
-    database.close();
-  }
-}
-
-function readMeta(path: string): z.infer<typeof MetaRowSchema> {
-  const database = strictDatabase(path);
-  try {
-    return MetaRowSchema.parse(database.prepare(`
-      SELECT schema_version, authority_generation
-      FROM ${databaseStateTable(z.object({ user_version: z.number() }).parse(database.prepare("PRAGMA user_version").get()).user_version)} WHERE singleton_id = 1
-    `).get());
-  } finally {
-    database.close();
-  }
-}
-
-function readUpgradeRecords(path: string) {
-  const database = strictDatabase(path);
-  try {
-    return database.prepare(`
-      SELECT record_json FROM database_upgrades ORDER BY rowid
-    `).all().map((row) => AuthorityUpgradeRecordSchema.parse(
-      JSON.parse(TextRowSchema.parse(row).record_json),
-    ));
-  } finally {
-    database.close();
-  }
-}
-
-function assertOnlyExpectedRowsRemain(fixture: HistoricalFixture): void {
-  const counts = tableCounts(fixture.path);
-  for (const [table, count] of counts) {
-    const expected = table === "database_state" || table === "commands" || table === "command_audits" || table === "runtime_versions"
-      ? 1
-      : table === "database_upgrades" ? 2 : ["summary_publication","run_search_publication"].includes(table) ? 1 : 0;
-    assert.equal(count, expected, `${table} must retain exactly ${String(expected)} row(s)`);
-  }
-  assert.equal(readJournalJson(fixture.path, "commands", COMMAND_ID), fixture.commandJson);
-  assert.equal(readJournalJson(fixture.path, "command_audits", AUDIT_ID), fixture.auditJson);
-}
-
-function backupManifestPath(fixture: HistoricalFixture, backupFileName: string): string {
-  return join(
-    fixture.root,
-    "backups",
-    "authority",
-    `${backupFileName}.manifest.json`,
-  );
-}
-
-describe("stopped-upgrade admission matrix", () => {
-  it("refuses schema-valid journal column corruption during read-only preflight without creating runtime admission", async () => {
-    const f = historicalFixture(46);
-    const raw = strictDatabase(f.path);
-    try { raw.exec("UPDATE commands SET family='settings'"); } finally { raw.close(); }
-    await assert.rejects(backupStoppedAuthority(f.root, CLOCK), /commands-family-column-matches-record/u);
-    const before = readFileSync(f.path);
-    const pathsBefore = readdirSync(f.root).sort();
-    for (const plan of [true, false]) await assert.rejects(upgradeStorage({ ...f.input, plan }, CLOCK), /commands-family-column-matches-record/u);
-    assert.deepEqual(readFileSync(f.path), before);
-    assert.deepEqual(readdirSync(f.root).sort(), pathsBefore);
-  });
-  it.each([46, 47, 48])(
-    "requires backup, plans read-only, and converts exact v%s while preserving authority",
-    async (version) => {
-      const fixture = historicalFixture(version);
-      const originalBytes = readFileSync(fixture.path);
-      const originalEntries = readdirSync(fixture.root).sort();
-      const originalCounts = tableCounts(fixture.path);
-
-      await assert.rejects(
-        upgradeStorage({ ...fixture.input, plan: true }, CLOCK),
-        /backup-required: run storage backup first/u,
-      );
-      await assert.rejects(
-        upgradeStorage(fixture.input, CLOCK),
-        /backup-required: run storage backup first/u,
-      );
-      assert.deepEqual(readFileSync(fixture.path), originalBytes);
-      assert.deepEqual(readdirSync(fixture.root).sort(), originalEntries);
-      assert.deepEqual(tableCounts(fixture.path), originalCounts);
-
-      const backup = await backupStoppedAuthority(fixture.root, CLOCK);
-      assert.equal(backup.state, "verified");
-      assert.equal(backup.manifests.length, 1);
-      const manifest = backup.manifests[0];
-      assert.ok(manifest !== undefined);
-      assert.equal(manifest.schemaVersion, version);
-      assert.equal(manifest.authorityGeneration, 7);
-      const manifestPath = backupManifestPath(fixture, manifest.backupFileName);
-      const backupEntries = readdirSync(join(fixture.root, "backups", "authority")).sort();
-      const plannedRootEntries = readdirSync(fixture.root).sort();
-
-      const plan = await upgradeStorage({ ...fixture.input, plan: true }, CLOCK);
-      assert.deepEqual(plan, {
-        state: "planned",
-        fromSchemaVersion: version,
-        toSchemaVersion: NORMAL_AUTHORITY_SCHEMA_VERSION,
-        importedKeys: [],
-        sourceFiles: [],
-        envKeysToRemove: [],
-        backupManifest: basename(manifestPath),
-        credentials: "unchanged",
-        historicalExposure: [],
-        orphanGateRecordsRemoved: 0,
-        tombstoneBackfill: { fromRoots: 0, fromReconstructedRoots: 0, unknown: 0, missingRunNumber: 0 },
-      });
-      assert.deepEqual(readFileSync(fixture.path), originalBytes);
-      assert.deepEqual(tableCounts(fixture.path), originalCounts);
-      assert.deepEqual(readdirSync(fixture.root).sort(), plannedRootEntries);
-      assert.deepEqual(
-        readdirSync(join(fixture.root, "backups", "authority")).sort(),
-        backupEntries,
-      );
-
-      const applied = await upgradeStorage(fixture.input, CLOCK);
-      assert.deepEqual(applied, { ...plan, state: "converted" });
-      assert.equal(
-        AuthorityDatabase.inspectExistingReadOnly(fixture.path).schemaVersion,
-        NORMAL_AUTHORITY_SCHEMA_VERSION,
-      );
-      assert.deepEqual(readMeta(fixture.path), {
-        schema_version: NORMAL_AUTHORITY_SCHEMA_VERSION,
-        authority_generation: 9,
-      });
-      assertOnlyExpectedRowsRemain(fixture);
-      const upgrades = readUpgradeRecords(fixture.path);
-      assert.deepEqual(upgrades.map(({ phase }) => phase), ["committed", "settled"]);
-      for (const record of upgrades) {
-        assert.equal("format" in record && record.format, 3);
-        assert.equal(record.fromSchemaVersion, version);
-        assert.equal(record.toSchemaVersion, NORMAL_AUTHORITY_SCHEMA_VERSION);
-      }
-      assert.equal(
-        (await verifyBackupManifestAtPath(manifestPath)).manifest.schemaVersion,
-        version,
-      );
-      assert.equal(existsSync(join(fixture.root, "credentials")), false);
-    },
-  );
-
-  it.each(ADMITTED_HISTORICAL_VERSIONS)("retains exact v%s backup inspection while refusing expired conversion", async (version) => {
-    const fixture = historicalFixture(version);
-    const backup = await backupStoppedAuthority(fixture.root, CLOCK);
-    const manifest = backup.manifests[0];
-    assert.ok(manifest !== undefined);
-    assert.equal((await verifyBackupManifestAtPath(backupManifestPath(fixture, manifest.backupFileName))).manifest.schemaVersion, version);
-    const before = readFileSync(fixture.path);
-    const entries = readdirSync(fixture.root).sort();
-    for (const plan of [true, false]) await assert.rejects(upgradeStorage({ ...fixture.input, plan }, CLOCK), /authority-below-floor.*floor: 46.*original compatible release/u);
-    assert.deepEqual(readFileSync(fixture.path), before);
-    assert.deepEqual(readdirSync(fixture.root).sort(), entries);
-    assert.equal(readJournalJson(fixture.path, "commands", COMMAND_ID), fixture.commandJson);
-    assert.equal(readJournalJson(fixture.path, "command_audits", AUDIT_ID), fixture.auditJson);
-  });
-
-  it.each(REFUSED_GAP_VERSIONS)(
-    "refuses exact unsupported gap schema v%s without effects",
-    async (version) => {
-      const fixture = historicalFixture(version);
-      const before = readFileSync(fixture.path);
-      const entries = readdirSync(fixture.root).sort();
-      await assert.rejects(
-        upgradeStorage({ ...fixture.input, plan: true }, CLOCK),
-        /authority-below-floor.*floor: 46.*original compatible release/u,
-      );
-      assert.deepEqual(readFileSync(fixture.path), before);
-      assert.deepEqual(readdirSync(fixture.root).sort(), entries);
-      assert.deepEqual(readMeta(fixture.path), {
-        schema_version: version,
-        authority_generation: 7,
-      });
-    },
-  );
-
-  it("refuses an ahead schema without effects", async () => {
-    const fixture = historicalFixture(CURRENT_AUTHORITY_SCHEMA_VERSION + 1);
-    const before = readFileSync(fixture.path);
-    await assert.rejects(
-      upgradeStorage({ ...fixture.input, plan: true }, CLOCK),
-      new RegExp(`authority schema ${String(CURRENT_AUTHORITY_SCHEMA_VERSION + 1)} is not an admitted backup schema`, "u"),
-    );
-    assert.deepEqual(readFileSync(fixture.path), before);
-    assert.deepEqual(readMeta(fixture.path), {
-      schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION + 1,
-      authority_generation: 7,
-    });
-  });
-
-  it("refuses an admitted version whose SQLite schema diverges from released migrations", async () => {
-    const fixture = historicalFixture(46);
-    const database = strictDatabase(fixture.path);
-    database.exec("CREATE TABLE divergent_authority (record_key TEXT PRIMARY KEY) STRICT");
-    database.close();
-    const before = readFileSync(fixture.path);
-    await assert.rejects(
-      upgradeStorage({ ...fixture.input, plan: true }, CLOCK),
-      /authority schema 46 does not match its immutable migration replay/u,
-    );
-    assert.deepEqual(readFileSync(fixture.path), before);
-    assert.equal(tableCounts(fixture.path).get("divergent_authority"), 0);
-  });
-
-  it("refuses an active runtime lock before reading backup admission", async () => {
-    const fixture = historicalFixture(46);
-    await backupStoppedAuthority(fixture.root, CLOCK);
-    const before = readFileSync(fixture.path);
-    const server = acquireRuntimeProcessLock({
-      processLockRoot: fixture.input.processLockRoot,
-      name: "server",
-      pid: process.pid,
-    }, CLOCK);
-    try {
-      await assert.rejects(
-        upgradeStorage({ ...fixture.input, plan: true }, CLOCK),
-        /runtime-active: stop server and workers before storage upgrade/u,
-      );
-      assert.deepEqual(readFileSync(fixture.path), before);
-      assert.deepEqual(readMeta(fixture.path), {
-        schema_version: 46,
-        authority_generation: 7,
-      });
-    } finally {
-      server.release();
-    }
-  });
-
-  it("refuses stale backup evidence after a valid historical authority write", async () => {
-    const fixture = historicalFixture(46);
-    await backupStoppedAuthority(fixture.root, CLOCK);
-    const database = strictDatabase(fixture.path);
-    try {
-      database.exec("BEGIN IMMEDIATE");
-      insertHistoricalCommand(database, SECOND_COMMAND_ID, SECOND_AUDIT_ID);
-      database.prepare(`
-        UPDATE database_state
-        SET authority_generation = authority_generation + 1, updated_at = ?
-        WHERE singleton_id = 1
-      `).run(LATER);
-      database.exec("COMMIT");
-    } catch (error) {
-      if (database.isTransaction) database.exec("ROLLBACK");
-      throw error;
-    } finally {
-      database.close();
-    }
-    const before = readFileSync(fixture.path);
-    await assert.rejects(
-      upgradeStorage({ ...fixture.input, plan: true }, CLOCK),
-      /backup-stale: run storage backup against the current authority first/u,
-    );
-    assert.deepEqual(readFileSync(fixture.path), before);
-    assert.deepEqual(readMeta(fixture.path), {
-      schema_version: 46,
-      authority_generation: 8,
-    });
-    assert.equal(readJournalJson(fixture.path, "commands", SECOND_COMMAND_ID),
-      canonicalJsonStringify(historicalCommand(SECOND_COMMAND_ID, SECOND_AUDIT_ID).command));
-  });
-
-  it("rolls back a beforeCommit interruption and admits an exact retry", async () => {
-    const fixture = historicalFixture(46);
-    const backup = await backupStoppedAuthority(fixture.root, CLOCK);
-    const manifest = backup.manifests[0];
-    assert.ok(manifest !== undefined);
-    const manifestPath = backupManifestPath(fixture, manifest.backupFileName);
-    const before = readFileSync(fixture.path);
-
-    await assert.rejects(
-      upgradeStorage({
-        ...fixture.input,
-        hooks: { beforeCommit: () => { throw new Error("interrupted-before-commit"); } },
-      }, CLOCK),
-      /interrupted-before-commit/u,
-    );
-    assert.deepEqual(readFileSync(fixture.path), before);
-    assert.equal(
-      inspectAuthorityBackupReadOnly(fixture.path).schemaVersion,
-      46,
-    );
-    assert.deepEqual(readMeta(fixture.path), {
-      schema_version: 46,
-      authority_generation: 7,
-    });
-    assert.equal(existsSync(join(fixture.root, "credentials")), false);
-    assert.equal((await verifyBackupManifestAtPath(manifestPath)).manifest.schemaVersion, 46);
-
-    const retried = await upgradeStorage(fixture.input, CLOCK);
-    assert.equal(retried.state, "converted");
-    assert.equal(
-      AuthorityDatabase.inspectExistingReadOnly(fixture.path).schemaVersion,
-      NORMAL_AUTHORITY_SCHEMA_VERSION,
-    );
-    assertOnlyExpectedRowsRemain(fixture);
-  });
+describe("stopped native upgrade admission",()=>{
+ it("refuses schema-valid journal column corruption during read-only preflight without effects",async()=>{
+  const f=fixture();const database=AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"journal-corruption-fixture"},clock);
+  const commandId=randomUUID();
+  try{database.authority.commands.insert({commandId,family:"worker-browser",type:"refresh-browser",target:{workerId:"person-lookup-worker-1",browserSessionId:randomUUID(),expectedVersion:1,controlBasis:{leaseGeneration:1,controlRevision:1}},source:"dashboard",requestedBy:"local-operator",requestedAt:clock.now().toISOString()});}finally{database.close();}
+  const raw=new DatabaseSync(f.path);
+  try{
+   const triggers=raw.prepare("SELECT name,sql FROM sqlite_schema WHERE type='trigger' AND tbl_name='commands'").all();
+   for(const trigger of triggers)raw.exec(`DROP TRIGGER "${String(trigger.name)}"`);
+   try{assert.equal(raw.prepare("UPDATE commands SET family='settings' WHERE id=?").run(commandId).changes,1);}finally{for(const trigger of triggers)raw.exec(String(trigger.sql));}
+  }finally{raw.close();}
+  const bytes=readFileSync(f.path);
+  await assert.rejects(backupStoppedAuthority(f.admission,f.root,clock,f.input.processLockRoot),/command-row-identity-mismatch/u);
+  assert.deepEqual(readFileSync(f.path),bytes);
+  const before=storageTree(f.root);
+  for(const plan of [true,false])await assert.rejects(f.run(plan),/command-row-identity-mismatch/u);
+  assert.deepEqual(storageTree(f.root),before);
+ });
+ it("plans the bootstrapped native authority without writes and verifies unchanged current authority",async()=>{
+  const f=fixture(),before=storageTree(f.root);
+  assert.deepEqual(await f.run(true),{state:"planned",fromSchemaVersion:1,toSchemaVersion:1,credentials:"unchanged"});assert.deepEqual(storageTree(f.root),before);
+  assert.equal((await f.run()).state,"already-upgraded");const current=readFileSync(f.path);
+  assert.equal((await f.run(true)).state,"planned");assert.equal((await f.run()).state,"already-upgraded");assert.deepEqual(readFileSync(f.path),current);
+ });
+ it.each([2,19,46,999])("refuses unsupported schema %s without conversion or repair",async version=>{
+  const f=fixture();initialize(f);const raw=new DatabaseSync(f.path);
+  try{raw.exec(`UPDATE database_states SET schema_version=${String(version)}; PRAGMA user_version=${String(version)}`);}finally{raw.close();}
+  const before=storageTree(f.root);for(const plan of [true,false])await assert.rejects(f.run(plan),/authority-schema-mismatch/u);assert.deepEqual(storageTree(f.root),before);
+ });
+ it("refuses a divergent native schema without effects",async()=>{
+  const f=fixture();initialize(f);const raw=new DatabaseSync(f.path);try{raw.exec("CREATE TABLE divergent_authority(id TEXT PRIMARY KEY) STRICT");}finally{raw.close();}
+  const before=storageTree(f.root);for(const plan of [true,false])await assert.rejects(f.run(plan),/schema/u);assert.deepEqual(storageTree(f.root),before);
+ });
+ it("refuses an active runtime lock before backup or upgrade effects",async()=>{
+  const f=fixture();initialize(f);const server=acquireRuntimeProcessLock({processLockRoot:f.input.processLockRoot,name:"server",pid:process.pid},clock);
+  try{const before=storageTree(f.root);for(const plan of [true,false])await assert.rejects(f.run(plan),/runtime-active/u);await assert.rejects(backupStoppedAuthority(f.admission,f.root,clock,f.input.processLockRoot),/runtime-active/u);assert.deepEqual(storageTree(f.root),before);}finally{server.release();}
+ });
+ it("verifies an explicit native backup without changing authority or credentials",async()=>{
+  const f=fixture();initialize(f);const bytes=readFileSync(f.path);
+  const report=await backupStoppedAuthority(f.admission,f.root,clock,f.input.processLockRoot);assert.equal(report.state,"verified");assert.equal(report.manifests.length,1);
+  const manifest=report.manifests[0];assert.ok(manifest);
+  const verified=await verifyBackupManifestAtPath(f.admission,join(f.root,"backups","authority",manifest.backupFileName+".manifest.json"),AuthorityDatabase.sourceDatabaseIdentity(f.path));
+  assert.equal(verified.manifest.schemaVersion,1);assert.deepEqual(readFileSync(f.path),bytes);
+  const before=storageTree(f.root);assert.equal((await f.run(true)).state,"planned");assert.deepEqual(storageTree(f.root),before);assert.equal((await f.run()).state,"already-upgraded");assert.deepEqual(readFileSync(f.path),bytes);
+ });
+ it("leaves current authority untouched after failed restore admission and admits exact retry",async()=>{
+  const f=fixture(),before=storageTree(f.root);
+  await assert.rejects(upgradeStorage(f.admission,f.input,clock,()=>{throw new Error("injected-admission-failure");}),/injected-admission-failure/u);
+  assert.deepEqual(storageTree(f.root),before);assert.equal((await f.run()).state,"already-upgraded");
+ });
 });
