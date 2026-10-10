@@ -47,6 +47,10 @@ export async function installation() {
     });
   const database = AuthorityDatabase.open(admission, { path: authorityPath, busyTimeoutMs: 250,
     migrationOwner: "offline-relocation-fixture" }, clock);
+  const initial = resolveConfigWithProvenance({}, hostConfigFacts({}), clock, admission);
+  database.authority.runtimeConfig.initialize({ configSnapshotId: randomUUID(), revision: 1,
+    fingerprint: initial.fingerprint, config: initial.config, provenance: initial.provenance,
+    capturedAt: clock.now().toISOString(), capturedBy: "local-operator" });
   const credentials = createCredentialStore({ admission, stateRoot: source.stateRoot });
   const credentialWrite = credentials.apply(ProtectedSettingsApplyInputSchema.parse({ commandId: randomUUID(),
     commandFingerprint: "1".repeat(64), expectedRevision: credentials.read().revision,
@@ -56,7 +60,7 @@ export async function installation() {
   const patch = { "display.screenWidth": { set: 1980 }, "display.screenHeight": { set: 1080 } } as const;
   const ordinary = executeSettingsCommand({ authority: database, clock, ids: { uuid: randomUUID },
     settings: createSettingsApplicationExecutor((value) => resolveConfigWithProvenance(value,
-      hostConfigFacts({}), clock), credentials) }, {
+      hostConfigFacts({}), clock, admission), credentials) }, {
     family: "settings", type: "apply-settings", commandId: randomUUID(), requestedAt: clock.now().toISOString(),
     requestedBy: "local-operator", source: "settings-surface",
     target: { expectedRevision: readSettings(database.authority).revision },
@@ -64,7 +68,6 @@ export async function installation() {
       patchFingerprint: deriveSettingsPatchFingerprint(patch), patch },
   });
   assert.equal(ordinary.state, "applied", JSON.stringify(ordinary));
-  mkdirSync(join(source.stateRoot, "verified-byte-scratch"), { mode: 0o700 });
   const artifacts = createContentAddressedArtifactWriter({ admission });
   await artifacts.ready;
   const artifact = await artifacts.put(Buffer.from("synthetic-artifact-bytes"), { mediaType: "application/octet-stream" });

@@ -65,7 +65,11 @@ it("retires a real worker only after its opened Chromium profile closes, custody
     const slotDirectory = join(root, rebuildRuntimeIsolation.browserProfileRoot, `w${String(slot.ordinal)}`);
     const opened = db.authority.workerControls.browsers(slot.workerId).filter(browser => browser.health !== "closed");
     assert.ok(opened.length > 0); assert.ok(existsSync(slotDirectory));
-    assert.ok(opened.every(browser => browser.profileDirectory.startsWith(slotDirectory + "/")));
+    assert.ok(opened.every(browser => {
+      assert.ok(browser.profileDirectory);
+      const profileDirectory = browser.profileDirectory;
+      return profileDirectory.startsWith(slotDirectory + "/");
+    }));
     const resizing = post("plan-worker-count", { workflowId: "person-lookup", expectedVersion: 1 }, { desiredWorkers: 1 });
     await waitFor(() => db.authority.workerControls.pending("worker-pool:person-lookup").some(control => control.phase.state === "executing"), "retirement reservation missing", diagnostics);
     assert.ok(existsSync(slotDirectory), "opened profile must remain until close is observed");

@@ -1,148 +1,84 @@
-import { createHash, randomUUID } from "node:crypto";
-import { copyFileSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { createHash } from "node:crypto";
+import { copyFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, expect, it } from "vitest";
-import { executeStorageRelocationCommand } from "../../../../../../src/backend/runs/commands/command-kernel.js";
-import { createStorageRelocationPlanReader } from "../../../../../../src/backend/storage/maintenance/storage-relocation-plans.js";
-import { canonicalJsonStringify } from "../../../../../../src/rules/validation/canonical-json.js";
-import { manualClock } from "../../../../../../src/rules/time/clock.js";
-import { StorageRelocationCommandRequestSchema, storageRelocationDesiredDigest,
-  storageRelocationRequestFingerprint } from "../../../../../../src/rules/commands/commands.js";
-import { hostConfigFacts } from "../../../../../../src/models/config/host-display.js";
-import { resolveConfigWithProvenance } from "../../../../../../src/backend/app/config/resolve.js";
-import { ConfigSnapshotWriteSchema } from "../../../../../../src/models/config/snapshot.js";
-import { FingerprintSchema, NonNegativeIntSchema } from "../../../../../../src/rules/identity/ids.js";
-import { RuntimeAdmission } from "../../../../../../src/backend/storage/admission/admission.js";
-import { acquireInstallation } from "../../../../../../src/backend/storage/admission/installation.js";
-import { inspectAuthorityBackupReadOnly } from "../../../../../../src/backend/storage/compatibility/backup-inspection.js";
+import { acquireExclusiveRuntimeAdmission, type RuntimeAdmission } from "../../../../../../src/backend/storage/admission/admission.js";
 import { AuthorityDatabase } from "../../../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService, verifyBackupManifestAtPath } from "../../../../../../src/backend/storage/sqlite/backup-service.js";
 import { validateStorageRelocationRestoreCandidate } from "../../../../../../src/backend/storage/sqlite/relocation-restore-candidate.js";
-import { acquireRuntimeRestoreAdmission } from "../../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { FingerprintSchema, PositiveIntSchema } from "../../../../../../src/rules/identity/ids.js";
+import { installation, plan, relocate, clock, cleanupFixtureRoots } from "../../../../../support/helpers/storage/storage-relocation-fixture.js";
 
-const clock = manualClock(new Date("2026-09-26T12:00:00.000Z"));
-const workspaces: string[] = [];
-afterEach(() => { for (const workspace of workspaces.splice(0)) rmSync(workspace, { recursive: true, force: true }); });
+afterEach(cleanupFixtureRoots);
+
+async function backup(admission: RuntimeAdmission) {
+  const path = join(admission.stateRoot,"state.db");
+  const directory = join(admission.stateRoot,"backups","authority");
+  const database = AuthorityDatabase.open(admission,{path,busyTimeoutMs:250,migrationOwner:"relocation-candidate-fixture"},clock);
+  try {
+    const report = await new AuthorityBackupService(admission,database,{directory},clock).request({
+      trigger:"operator",requiredGeneration:database.getMeta().authorityGeneration});
+    const manifest = report.manifests.at(-1);
+    if(manifest === undefined) throw new Error("fixture native backup missing");
+    return await verifyBackupManifestAtPath(admission,join(directory,manifest.backupFileName+".manifest.json"),
+      AuthorityDatabase.sourceDatabaseIdentity(path));
+  } finally {database.close();}
+}
 
 it("requires the entire receipt-backed plan history and activation snapshot in a moved restore candidate", async () => {
-  const workspace = realpathSync(mkdtempSync(join(tmpdir(), "relocation-candidate-")));
-  workspaces.push(workspace);
-  const pair = { stateRoot: join(workspace, ".tracker"), artifactRoot: join(workspace, ".tracker", "artifacts") };
-  const path = join(pair.stateRoot, "state.db");
-  const admission = RuntimeAdmission.acquireInitial(workspace, (candidate, inspection) => {
-    const examined = AuthorityDatabase.inspectExistingReadOnly(inspection, path);
-    return { kind: "verified-existing", pair: candidate, authorityGeneration: examined.authorityGeneration,
-      databaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(path) };
-  }, (_candidate, initialization) => {
-    AuthorityDatabase.open(initialization, { path, busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock).close();
-  });
-  const database = AuthorityDatabase.open(admission, { path, busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock);
-  const backupDirectory = join(pair.stateRoot, "backups", "authority");
-  const backupService = new AuthorityBackupService(admission, database, { directory: backupDirectory }, clock);
-  const backup = async () => {
-    const report = await backupService.request({ trigger: "operator", requiredGeneration: database.getMeta().authorityGeneration });
-    const manifest = report.manifests.at(-1);
-    if (manifest === undefined) throw new Error("missing fixture backup");
-    return verifyBackupManifestAtPath(admission,
-      join(backupDirectory, `${manifest.backupFileName}.manifest.json`), AuthorityDatabase.sourceDatabaseIdentity(path));
-  };
-  const withoutHistory = await backup();
-  expect(validateStorageRelocationRestoreCandidate({ admission, activeAuthorityPath: path,
-    verifiedBackup: withoutHistory })).toBeUndefined();
-  const producer = createStorageRelocationPlanReader({ authority: database, admission, workspace });
-  const destination = { stateRoot: pair.stateRoot, artifactRoot: join(workspace, "moved-artifacts") };
-  const target = { installationId: admission.locator.installationId, sourceGeneration: 0, sourcePair: pair, expectedRevision: 0 };
-  const draft = StorageRelocationCommandRequestSchema.parse({ family: "storage-relocation", type: "plan-storage-relocation",
-    commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface",
-    target, payload: { writeId: randomUUID(), desiredPair: destination,
-      desiredDigest: storageRelocationDesiredDigest({ ...target, sourceGeneration: NonNegativeIntSchema.parse(0),
-        expectedRevision: NonNegativeIntSchema.parse(0) }, destination), requestFingerprint: "0".repeat(64) } });
-  const request = StorageRelocationCommandRequestSchema.parse({ ...draft, payload: { ...draft.payload,
-    requestFingerprint: storageRelocationRequestFingerprint(draft) } });
-  if (request.type !== "plan-storage-relocation") throw new Error("expected plan command");
-  expect(executeStorageRelocationCommand({ authority: database, clock, ids: { uuid: randomUUID },
-    storageRelocationPlans: producer }, request).state).toBe("applied");
-  const withoutSnapshot = await backup();
-  const configSnapshotId = randomUUID();
-  const ordinary = resolveConfigWithProvenance({}, hostConfigFacts({}), clock);
-  const config = { ...ordinary.config, paths: { ...ordinary.config.paths,
-    stateRoot: destination.stateRoot, artifactRoot: destination.artifactRoot } };
-  const fingerprint = createHash("sha256").update(canonicalJsonStringify(config)).digest("hex");
-  database.withAuthorityTransaction((repositories) => repositories.configSnapshots.insert({
-    configSnapshotId, revision: 1, fingerprint, config,
-    provenance: ordinary.provenance, capturedAt: clock.now().toISOString(), capturedBy: "local-operator",
-  }));
-  database.close(); admission.release();
-
-  const lease = acquireInstallation(workspace, "exclusive");
-  const held = acquireRuntimeRestoreAdmission({ processLockRoot: join(workspace, ".tracker", "locks"), pid: process.pid });
-  const plan = { commandId: request.commandId, revision: 1, expectedRevision: 0,
-    requestFingerprint: request.payload.requestFingerprint, desiredDigest: request.payload.desiredDigest };
-  const operationId = lease.beginRelocation(destination, plan, held);
-  lease.prepareDestinationRoots();
-  const sourceAdmission = RuntimeAdmission.fromInstallationLease(lease);
-  const inspection = inspectAuthorityBackupReadOnly(sourceAdmission, path);
-  const preparation = { operationId, installationId: lease.locator.installationId, sourceGeneration: 0,
-    source: pair, destination, plan, sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(path),
-    sourceSchemaVersion: 56 as const, sourceAuthorityGeneration: inspection.authorityGeneration,
-    sourceAuthorityContentFingerprint: inspection.authorityContentFingerprint, backupReceiptId: "fixture-before-move",
-    backupManifestPath: withoutSnapshot.manifestPath, backupManifestSha256: "1".repeat(64),
-    backupFilePath: withoutSnapshot.backupPath, backupFileSha256: withoutSnapshot.manifest.sha256 };
-  lease.recordVerifiedPreparation(() => preparation);
-  const evidence = { operationId, installationId: lease.locator.installationId, sourceGeneration: 0,
-    source: pair, destination, plan, stagingReceiptId: "fixture-stage", stagingDigest: "2".repeat(64),
-    backupReceiptId: "fixture-final", backupDigest: "3".repeat(64), finalDatabasePath: path,
-    configSnapshotId, configFingerprint: fingerprint, authorityVersion: 56 as const,
-    databaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(path), managedStateEntries: [] };
-  lease.recordActivationIntent(() => ({ operationId, installationId: lease.locator.installationId,
-    sourceGeneration: 0, source: pair, destination, plan,
-    stageAuthority: { manifestPath: withoutSnapshot.manifestPath,
-      manifestSha256: createHash("sha256").update(readFileSync(withoutSnapshot.manifestPath)).digest("hex"),
-      backupPath: withoutSnapshot.backupPath, backupSha256: withoutSnapshot.manifest.sha256 },
-    stageArchive: null, nativeDestinationPath: path, nativeDestinationSha256: null,
-    preAuthorityGeneration: inspection.authorityGeneration,
-    preAuthorityContentFingerprint: inspection.authorityContentFingerprint,
-    managedInventoryDigest: "4".repeat(64), settingsRevision: 1, settingsFingerprint: "5".repeat(64),
-    priorActive: null, snapshot: ConfigSnapshotWriteSchema.parse({ configSnapshotId, revision: 1, fingerprint, config,
-      provenance: ordinary.provenance, capturedAt: clock.now().toISOString(), capturedBy: "local-operator" }) }));
-  lease.recordVerifiedStage(() => evidence);
-  lease.fenceRelocationSource(); lease.retainRelocationSources();
-  lease.switchRelocationLocator(() => evidence); lease.settleRelocation(() => evidence);
-  sourceAdmission.release(); held.release();
-
-  const active = RuntimeAdmission.fromInstallationLease(acquireInstallation(workspace, "exclusive"));
-  const current = AuthorityDatabase.open(active, { path, busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock);
-  const currentService = new AuthorityBackupService(active, current, { directory: backupDirectory }, clock);
-  const report = await currentService.request({ trigger: "operator", requiredGeneration: current.getMeta().authorityGeneration });
-  const manifest = report.manifests.at(-1);
-  if (manifest === undefined) throw new Error("missing final fixture backup");
-  const complete = await verifyBackupManifestAtPath(active,
-    join(backupDirectory, `${manifest.backupFileName}.manifest.json`), AuthorityDatabase.sourceDatabaseIdentity(path));
-  expect(() => validateStorageRelocationRestoreCandidate({ admission: active, activeAuthorityPath: path,
-    verifiedBackup: withoutHistory })).toThrow(/activation receipt has no matching plan command/u);
-  expect(() => validateStorageRelocationRestoreCandidate({ admission: active, activeAuthorityPath: path,
-    verifiedBackup: withoutSnapshot })).toThrow(/activation snapshot missing/u);
-  expect(() => validateStorageRelocationRestoreCandidate({ admission: active,
-    activeAuthorityPath: join(workspace, "former", "state.db"), verifiedBackup: complete }))
-    .toThrow(/active authority path differs from locator/u);
-  expect(validateStorageRelocationRestoreCandidate({ admission: active, activeAuthorityPath: path,
-    verifiedBackup: complete })).toMatchObject({ revision: 1, sourceGeneration: 1, pending: null });
-  const tamperedPath = join(backupDirectory, "tampered.sqlite");
-  copyFileSync(complete.backupPath, tamperedPath);
-  const tamperedDatabase = new DatabaseSync(tamperedPath);
-  const raw = tamperedDatabase.prepare("SELECT record_json FROM settings_snapshots WHERE record_key = ?")
-    .get(configSnapshotId);
-  if (raw === undefined || typeof raw.record_json !== "string") throw new Error("missing fixture snapshot");
-  const snapshot = JSON.parse(raw.record_json) as Record<string, unknown>;
-  tamperedDatabase.prepare("UPDATE settings_snapshots SET record_json = ? WHERE record_key = ?")
-    .run(JSON.stringify({ ...snapshot, config: { ...config, paths: { ...config.paths,
-      reportsDir: join(workspace, "tampered") } } }), configSnapshotId);
-  tamperedDatabase.close();
-  const tamperedSha256 = createHash("sha256").update(readFileSync(tamperedPath)).digest("hex");
-  expect(() => validateStorageRelocationRestoreCandidate({ admission: active, activeAuthorityPath: path,
-    verifiedBackup: { ...complete, backupPath: tamperedPath, manifest: { ...complete.manifest,
-      sha256: FingerprintSchema.parse(tamperedSha256) } } })).toThrow(/activation snapshot fingerprint mismatch/u);
-  current.close(); active.release();
+  const f = await installation();
+  const initial = acquireExclusiveRuntimeAdmission(f.workspace);
+  try {
+    const withoutRelocation = await backup(initial);
+    expect(validateStorageRelocationRestoreCandidate({admission:initial,activeAuthorityPath:f.authorityPath,
+      verifiedBackup:withoutRelocation})).toBeUndefined();
+  } finally {initial.release();}
+  const firstDestination = {stateRoot:join(f.root,"moved-state"),artifactRoot:join(f.root,"first-artifacts")};
+  const firstPlan = plan(f.workspace,firstDestination);
+  await relocate(f.workspace,firstPlan.commandId);
+  const first = acquireExclusiveRuntimeAdmission(f.workspace);
+  let withoutHistory: Awaited<ReturnType<typeof backup>>;
+  try {withoutHistory = await backup(first);} finally {first.release();}
+  const destination = {stateRoot:firstDestination.stateRoot,artifactRoot:join(f.root,"second-artifacts")};
+  const secondPlan = plan(f.workspace,destination);
+  const planned = acquireExclusiveRuntimeAdmission(f.workspace);
+  let withoutSnapshot: Awaited<ReturnType<typeof backup>>;
+  try {withoutSnapshot = await backup(planned);} finally {planned.release();}
+  await relocate(f.workspace,secondPlan.commandId);
+  const active = acquireExclusiveRuntimeAdmission(f.workspace);
+  const path = join(active.stateRoot,"state.db");
+  try {
+    const complete = await backup(active);
+    expect(() => validateStorageRelocationRestoreCandidate({admission:active,activeAuthorityPath:path,
+      verifiedBackup:withoutHistory})).toThrow(/activation receipt has no matching plan command/u);
+    expect(() => validateStorageRelocationRestoreCandidate({admission:active,activeAuthorityPath:path,
+      verifiedBackup:withoutSnapshot})).toThrow(/activation snapshot missing/u);
+    expect(() => validateStorageRelocationRestoreCandidate({admission:active,
+      activeAuthorityPath:join(f.root,"former","state.db"),verifiedBackup:complete}))
+      .toThrow(/active authority path differs from locator/u);
+    expect(validateStorageRelocationRestoreCandidate({admission:active,activeAuthorityPath:path,
+      verifiedBackup:complete})).toMatchObject({revision:2,sourceGeneration:2,pending:null});
+    const snapshotId = active.readInstallationContext()?.receipts.at(-1)?.evidence.configSnapshotId;
+    expect(snapshotId).toBeDefined();
+    const tamperedPath = join(active.stateRoot,"backups","authority","tampered.sqlite");
+    copyFileSync(complete.backupPath,tamperedPath);
+    const raw = new DatabaseSync(tamperedPath);
+    try {
+      const row = raw.prepare("SELECT payload_json FROM settings_snapshots WHERE id=?").get(String(snapshotId));
+      if(typeof row?.payload_json !== "string") throw new Error("fixture activation snapshot missing");
+      const snapshot = JSON.parse(row.payload_json) as {config:{paths:Record<string,unknown>}};
+      const triggers = raw.prepare("SELECT name,sql FROM sqlite_schema WHERE type='trigger' AND tbl_name='settings_snapshots'").all();
+      for(const trigger of triggers) raw.exec("DROP TRIGGER "+String(trigger.name));
+      try {
+        raw.prepare("UPDATE settings_snapshots SET payload_json=? WHERE id=?").run(JSON.stringify({...snapshot,
+          config:{...snapshot.config,paths:{...snapshot.config.paths,reportsDir:join(f.root,"tampered")}}}),String(snapshotId));
+      } finally {for(const trigger of triggers) raw.exec(String(trigger.sql));}
+    } finally {raw.close();}
+    const bytes = readFileSync(tamperedPath);
+    const sha256 = FingerprintSchema.parse(createHash("sha256").update(bytes).digest("hex"));
+    expect(() => validateStorageRelocationRestoreCandidate({admission:active,activeAuthorityPath:path,
+      verifiedBackup:{...complete,backupPath:tamperedPath,manifest:{...complete.manifest,sha256,byteSize:PositiveIntSchema.parse(bytes.length)}}}))
+      .toThrow(/config-snapshot-fingerprint-mismatch/u);
+  } finally {active.release();}
 });

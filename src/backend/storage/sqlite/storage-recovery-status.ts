@@ -62,5 +62,6 @@ type Eligibility = Extract<RestoreCandidate, {state: "verified-compatible"}>["re
 export function inspectRestoreEligibility(admission: RuntimeAdmission,input: {schemaVersion:number; backupPath:string; backupSha256:string;stateRoot:string;authorityAvailable:boolean}):Eligibility {
  admission.assertLive();
  if(input.schemaVersion!==CURRENT_AUTHORITY_SCHEMA_VERSION)return {state:"unsupported",reason:"The backup uses an unsupported authority schema. Preserve it and use its compatible release."};
+ if(!input.authorityAvailable)return {state:"unavailable",reason:"Current authority could not be inspected safely. Preserve it before recovery."};
  return {state:"eligible"};
 }

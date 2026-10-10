@@ -3482,7 +3482,7 @@ export class AuthorityDatabase implements Disposable {
             }
             const result = this.#database.prepare(`
               INSERT INTO command_audits (id, command_id, code, payload_json, created_at) VALUES (?, ?, ?, ?, ?)
-            `).run(record.auditId, record.request.commandId, "code" in record.result ? record.result.code : null, json, record.completedAt);
+            `).run(record.auditId, record.request.commandId, null, json, record.completedAt);
             settleNativeCommand(this.#database, record);
             return {
               result: Object.freeze({ state: "inserted" as const, record }),
