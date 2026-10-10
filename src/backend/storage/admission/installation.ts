@@ -436,48 +436,120 @@ export class AdmissionMutexBusyError extends Error {
     this.name = "AdmissionMutexBusyError";
   }
 }
+export class AdmissionMutexEmptyError extends AdmissionMutexBusyError {
+  constructor() {
+    super();
+    this.name = "AdmissionMutexEmptyError";
+    this.message = "runtime-control: empty admission mutex; run npm run cli -- storage recover-admission --empty";
+  }
+}
 const mutexWait = new Int32Array(new SharedArrayBuffer(4));
 function filesystemCode(error: unknown): unknown {
   return error instanceof Error && "code" in error ? error.code : undefined;
 }
+function mutexIdentityDigest(value: ProcessStartIdentity): string {
+  return createHash("sha256").update(canonicalJsonStringify(value)).digest("hex");
+}
+const MutexRemnantName = /^\.admission-mutex-(?:tmp|released)-([1-9]\d*)-([0-9a-f]{64})-([0-9a-f-]{36})$/u;
+function removeMutexFolder(path: string): void {
+  privateDirectory(path);
+  const entries = readdirSync(path);
+  for (const name of entries) {
+    if (name !== "owner.json" && !/^\.[0-9a-f-]{36}\.tmp$/u.test(name)) fail("unexpected mutex temporary entry");
+    privateFile(join(path, name));
+  }
+  for (const name of entries) unlinkSync(join(path, name));
+  rmdirSync(path);
+}
+function clearMutexRemnants(control: string): void {
+  for (const name of readdirSync(control)) {
+    const match = MutexRemnantName.exec(name);
+    if (match === null) continue;
+    if (!Number.isSafeInteger(Number(match[1])) || !z.uuid().safeParse(match[3]).success) fail("invalid mutex temporary identity");
+    const observed = observeProcessIdentity(Number(match[1]));
+    if (observed.state === "alive" && mutexIdentityDigest(observed.identity) === match[2]) continue;
+    const path = join(control, name);
+    try {
+      privateDirectory(path);
+      const ownerPath = join(path, "owner.json");
+      if (lstatMaybe(ownerPath) !== undefined) {
+        const owner = readStrict(ownerPath, MutexOwnerSchema);
+        if (owner.pid !== Number(match[1]) || mutexIdentityDigest(owner.processIdentity) !== match[2]
+          || owner.acquisitionId !== match[3]) fail("mutex temporary owner identity mismatch");
+      }
+      removeMutexFolder(path);
+    } catch (error) { if (filesystemCode(error) !== "ENOENT") throw error; }
+    syncDir(control);
+  }
+}
 function mutex<T>(control: string, callback: () => T): T {
   privateDirectory(control);
+  clearMutexRemnants(control);
   const path = join(control, "admission-mutex");
-  const deadline = systemClock.monotonicMs() + 5_000;
-  for (;;) {
-    try { mkdirSync(path, { mode: 0o700 }); break; }
-    catch (error) {
-      if (filesystemCode(error) !== "EEXIST") throw error;
-      try { privateDirectory(path); }
-      catch (inspectionError) {
-        if (filesystemCode(inspectionError) !== "ENOENT") throw inspectionError;
+  const owner = { schemaVersion: 1, acquisitionId: randomUUID(), phase: "admitting", pid: process.pid, processIdentity: identity() };
+  const suffix = `${owner.pid}-${mutexIdentityDigest(owner.processIdentity)}-${owner.acquisitionId}`;
+  const temporary = join(control, `.admission-mutex-tmp-${suffix}`);
+  const released = join(control, `.admission-mutex-released-${suffix}`);
+  mkdirSync(temporary, { mode: 0o700 });
+  let acquired = false;
+  try {
+    atomicJson(join(temporary, "owner.json"), owner);
+    syncDir(control);
+    const deadline = systemClock.monotonicMs() + 5_000;
+    for (;;) {
+      try {
+        const occupied = lstatMaybe(path);
+        if (occupied !== undefined) {
+          privateDirectory(path);
+          if (readdirSync(path).length === 0) {
+            const current = lstatMaybe(path);
+            if (current === undefined || current.dev !== occupied.dev || current.ino !== occupied.ino) continue;
+            privateDirectory(path);
+            if (readdirSync(path).length === 0) throw new AdmissionMutexEmptyError();
+            continue;
+          }
+        } else {
+          renameSync(temporary, path);
+          acquired = true;
+          syncDir(control);
+          break;
+        }
+      } catch (error) {
+        if (!["EEXIST", "ENOTEMPTY", "ENOENT"].includes(String(filesystemCode(error)))) throw error;
       }
       const remaining = deadline - systemClock.monotonicMs();
       if (remaining <= 0) throw new AdmissionMutexBusyError();
       Atomics.wait(mutexWait, 0, 0, Math.min(10, remaining));
     }
-  }
-  syncDir(control);
-  try {
-    privateDirectory(path);
-    atomicJson(join(path, "owner.json"), { schemaVersion: 1, acquisitionId: randomUUID(), phase: "admitting", pid: process.pid, processIdentity: identity() });
     return callback();
   } finally {
-    unlinkSync(join(path, "owner.json"));
-    rmdirSync(path);
+    if (acquired) {
+      privateDirectory(path);
+      const held = readStrict(join(path, "owner.json"), MutexOwnerSchema);
+      if (held.acquisitionId !== owner.acquisitionId || held.pid !== owner.pid
+        || mutexIdentityDigest(held.processIdentity) !== mutexIdentityDigest(owner.processIdentity)) fail("admission mutex ownership changed");
+      renameSync(path, released);
+      syncDir(control);
+      removeMutexFolder(released);
+    } else removeMutexFolder(temporary);
     syncDir(control);
   }
 }
 const MutexOwnerSchema = z.strictObject({ schemaVersion: z.literal(1), acquisitionId: z.uuid(),
   phase: z.literal("admitting"), pid: z.number().int().positive(), processIdentity: ProcessStartIdentitySchema });
-const MutexRecoveryReceiptSchema = z.strictObject({ schemaVersion: z.literal(1), acquisitionId: z.uuid(),
+const OwnerMutexRecoveryReceiptSchema = z.strictObject({ schemaVersion: z.literal(1), acquisitionId: z.uuid(),
   pid: z.number().int().positive(), processIdentity: ProcessStartIdentitySchema,
   installationId: z.uuid(), generation: NonNegativeIntSchema, ownerFile: z.string().min(1),
   ownerSha256: z.string().regex(/^[0-9a-f]{64}$/u), recoveredAt: z.iso.datetime() });
 
+const EmptyMutexRecoveryReceiptSchema = z.strictObject({ schemaVersion: z.literal(1), custody: z.literal("empty"),
+  acquisitionId: z.uuid(), installationId: z.uuid(), generation: NonNegativeIntSchema,
+  directoryDevice: NonNegativeIntSchema, directoryInode: NonNegativeIntSchema, recoveredAt: z.iso.datetime() });
+const MutexRecoveryReceiptSchema = z.union([OwnerMutexRecoveryReceiptSchema, EmptyMutexRecoveryReceiptSchema]);
+
 /** Explicit offline recovery. The restore lock serializes recoveries; the occupied mutex excludes ordinary admission until the final rename. */
 export function recoverAbandonedAdmissionMutex(workspacePath: string, restore: RestoreAdmissionHandle,
-  expectedPid: number): Readonly<{ acquisitionId: string; pid: number; receiptPath: string }> {
+  expectedPid: number | "empty"): Readonly<{ acquisitionId: string; pid?: number; receiptPath: string }> {
   const workspace = realpathSync(workspacePath);
   if (resolve(workspacePath) !== workspace) fail("recovery workspace must be canonical");
   const control = join(workspace, CONTROL);
@@ -491,21 +563,24 @@ export function recoverAbandonedAdmissionMutex(workspacePath: string, restore: R
     "admission-mutex-recovery", RECEIPTS]);
   if (readdirSync(control).some(entry => !allowedControl.has(entry))) fail("unexpected installation control entry");
   const entries = readdirSync(mutexPath);
-  if (entries.length !== 1) fail("abandoned mutex has unexpected entries");
+  const empty = expectedPid === "empty";
+  if (entries.length !== (empty ? 0 : 1)) fail("abandoned mutex has unexpected entries");
   const name = entries[0];
-  if (name !== "owner.json") {
+  if (!empty && name !== "owner.json") {
     const match = /^\.([0-9a-f-]{36})\.tmp$/u.exec(name);
     if (match === null || !z.uuid().safeParse(match[1]).success) fail("abandoned mutex owner shape invalid");
   }
-  const ownerPath = join(mutexPath, name);
-  const before = lstatSync(ownerPath);
-  const bytes = readFileSync(ownerPath);
-  const owner = readStrict(ownerPath, MutexOwnerSchema);
-  if (owner.pid !== expectedPid) fail("abandoned mutex expected pid mismatch");
-  const observed = observeProcessIdentity(owner.pid);
-  if (observed.state !== "gone" && (observed.state !== "alive"
-    || observed.identity.platform === owner.processIdentity.platform
-      && observed.identity.startToken === owner.processIdentity.startToken)) fail("admission mutex owner may still be live");
+  const ownerPath = empty ? undefined : join(mutexPath, name);
+  const before = ownerPath === undefined ? undefined : lstatSync(ownerPath);
+  const bytes = ownerPath === undefined ? undefined : readFileSync(ownerPath);
+  const owner = ownerPath === undefined ? undefined : readStrict(ownerPath, MutexOwnerSchema);
+  if (owner !== undefined) {
+    if (owner.pid !== expectedPid) fail("abandoned mutex expected pid mismatch");
+    const observed = observeProcessIdentity(owner.pid);
+    if (observed.state !== "gone" && (observed.state !== "alive"
+      || observed.identity.platform === owner.processIdentity.platform
+        && observed.identity.startToken === owner.processIdentity.startToken)) fail("admission mutex owner may still be live");
+  }
   const leases = join(control, "leases");
   privateDirectory(leases);
   for (const leaseName of readdirSync(leases)) {
@@ -525,20 +600,34 @@ export function recoverAbandonedAdmissionMutex(workspacePath: string, restore: R
     || lockSnapshot.processLocks.workers.state !== "stopped") fail("runtime process lock may still be live");
   assertRestoreHeld(workspace, restore);
   privateDirectory(mutexPath);
-  const currentEntries = readdirSync(mutexPath);
-  const current = lstatSync(ownerPath);
-  if (currentEntries.length !== 1 || currentEntries[0] !== name || current.dev !== before.dev
-    || current.ino !== before.ino || current.size !== before.size
-    || !readFileSync(ownerPath).equals(bytes)) fail("admission mutex changed during recovery");
+  function assertCustody(): void {
+    privateDirectory(mutexPath);
+    const directory = lstatSync(mutexPath);
+    const currentEntries = readdirSync(mutexPath);
+    if (directory.dev !== mutexBefore.dev || directory.ino !== mutexBefore.ino
+      || currentEntries.length !== (empty ? 0 : 1)) fail("admission mutex changed during recovery");
+    if (ownerPath !== undefined && before !== undefined && bytes !== undefined) {
+      privateFile(ownerPath);
+      const current = lstatSync(ownerPath);
+      if (currentEntries[0] !== name || current.dev !== before.dev || current.ino !== before.ino
+        || current.size !== before.size || !readFileSync(ownerPath).equals(bytes)) fail("admission mutex changed during recovery");
+    }
+  }
+  assertCustody();
   const history = join(control, "admission-mutex-recovery");
   if (lstatMaybe(history) === undefined) { mkdirSync(history, { mode: 0o700 }); syncDir(control); }
   privateDirectory(history);
-  const receipt = MutexRecoveryReceiptSchema.parse({ schemaVersion: 1, acquisitionId: owner.acquisitionId, pid: owner.pid,
+  const acquisitionId = owner?.acquisitionId ?? randomUUID();
+  const receipt = MutexRecoveryReceiptSchema.parse(owner === undefined ? {
+    schemaVersion: 1, custody: "empty", acquisitionId, installationId: locator.installationId,
+    generation: locator.generation, directoryDevice: mutexBefore.dev, directoryInode: mutexBefore.ino,
+    recoveredAt: systemClock.now().toISOString(),
+  } : { schemaVersion: 1, acquisitionId, pid: owner.pid,
     processIdentity: owner.processIdentity, installationId: locator.installationId,
     generation: locator.generation, ownerFile: name,
-    ownerSha256: createHash("sha256").update(bytes).digest("hex"), recoveredAt: systemClock.now().toISOString() });
-  const destination = join(history, owner.acquisitionId);
-  const receiptPath = join(history, `${owner.acquisitionId}.json`);
+    ownerSha256: createHash("sha256").update(bytes!).digest("hex"), recoveredAt: systemClock.now().toISOString() });
+  const destination = join(history, acquisitionId);
+  const receiptPath = join(history, `${acquisitionId}.json`);
   if (lstatMaybe(destination)) fail("recovery archive already exists");
   if (lstatMaybe(receiptPath)) {
     const existing = readStrict(receiptPath, MutexRecoveryReceiptSchema);
@@ -546,15 +635,11 @@ export function recoverAbandonedAdmissionMutex(workspacePath: string, restore: R
       !== canonicalJsonStringify(receipt)) fail("recovery receipt changed");
   } else atomicJson(receiptPath, receipt);
   assertRestoreHeld(workspace, restore);
-  const mutexLast = lstatSync(mutexPath);
-  const last = lstatSync(ownerPath);
-  if (mutexLast.dev !== mutexBefore.dev || mutexLast.ino !== mutexBefore.ino
-    || last.dev !== before.dev || last.ino !== before.ino || !readFileSync(ownerPath).equals(bytes)
-    || readdirSync(mutexPath).length !== 1) fail("admission mutex changed before archive");
+  assertCustody();
   renameSync(mutexPath, destination);
   syncDir(history);
   syncDir(control);
-  return Object.freeze({ acquisitionId: owner.acquisitionId, pid: owner.pid, receiptPath });
+  return Object.freeze({ acquisitionId, ...(owner === undefined ? {} : { pid: owner.pid }), receiptPath });
 }
 
 /** This inspection authorizes no recovery; the offline proof rechecks exact owner custody. */

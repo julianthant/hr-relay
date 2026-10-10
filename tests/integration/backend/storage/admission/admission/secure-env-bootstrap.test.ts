@@ -319,3 +319,29 @@ describe("secure environment bootstrap", () => {
     );
   });
 });
+
+it("dispatches exact empty admission recovery without normal or provider admission", async () => {
+  const output: string[] = [];
+  const original = process.stdout.write.bind(process.stdout);
+  process.stdout.write = (value: string) => { output.push(value); return true; };
+  try {
+    await runSecureEnvironmentBootstrap(["cli", "storage", "recover-admission", "--empty"], {
+      acquireAdmission: () => { throw new Error("normal admission must not run"); },
+      assertEnvironment: () => { throw new Error("provider environment must not load"); },
+      runAdmissionRecovery: (workspace, selector) => {
+        assert.equal(workspace, REPO_ROOT);
+        assert.equal(selector, "empty");
+        return { acquisitionId: "11111111-1111-4111-8111-111111111111", receiptPath: "/synthetic/empty.json" };
+      },
+    });
+    assert.match(output.join(""), /storage admission recovered: 11111111-1111-4111-8111-111111111111; receipt \/synthetic\/empty.json/u);
+  } finally { process.stdout.write = original; }
+});
+it.each([["--empty", "extra"], ["--empty", "--pid", "1"], ["--pid", "0"], []])(
+  "refuses ambiguous admission recovery arguments %j before effects", async (...args) => {
+    await assert.rejects(runSecureEnvironmentBootstrap(["cli", "storage", "recover-admission", ...args], {
+      acquireAdmission: () => { throw new Error("normal admission must not run"); },
+      assertEnvironment: () => { throw new Error("provider environment must not load"); },
+      runAdmissionRecovery: () => { throw new Error("recovery must not run"); },
+    }), /storage recover-admission usage/u);
+  });

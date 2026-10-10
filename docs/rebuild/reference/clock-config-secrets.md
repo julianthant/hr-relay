@@ -1735,15 +1735,22 @@ open-ordering closes the old-build path. Neither alone would do.
 
 ### D362 — Bounded normal admission mutex contention · 2026-09-29
 
-Ordinary installation admission and release wait up to five monotonic seconds for an occupied
-admission critical section, sleeping between attempts. Only mkdir EEXIST enters this wait; other
-filesystem failures propagate. Recheck private directory shape during contention, including normal
-holder removal races. Waiting does not steal, delete, or reinterpret a mutex owner. Exclusive
-installation lease conflicts still refuse immediately after entering the critical section.
+Installation admission builds a private temporary directory with a durable complete `owner.json`,
+then renames it to `admission-mutex`. Release renames the complete directory away before deleting it.
+Temporary and released names bind the PID and a digest of its exact process birth identity; the next
+acquisition removes only remnants whose identity is proven gone or reused, preserving live or unknown
+writers even before owner publication. Cleanup refuses unsafe custody and unexpected entries.
+
+Ordinary admission and release wait up to five monotonic seconds for an occupied complete mutex,
+sleeping between attempts. Existing mutex directories are never replaced. An empty canonical mutex
+refuses immediately with `AdmissionMutexEmptyError`, a subtype of `AdmissionMutexBusyError`, naming
+`npm run cli -- storage recover-admission --empty`. Other filesystem failures propagate. Waiting does
+not steal or reinterpret an owner; exclusive installation lease conflicts still refuse immediately
+inside the critical section.
 
 A typed mutex timeout may enter D354 recovery only after a strict published or interrupted owner
-record proves its exact process birth identity gone or reused. Live, unknown, and empty-owner states
-remain busy without recovery. Malformed custody remains a distinct refusal. The existing fixed
+record proves its exact process birth identity gone or reused. Live and unknown owners remain busy;
+empty canonical mutexes require explicit offline recovery. Malformed custody remains a distinct refusal. The existing fixed
 restore admission and complete stopped-system proof still recheck every recovery prerequisite.
 
 ### D354 — Proven abandoned admission mutex recovery at startup · 2026-09-27
@@ -1911,9 +1918,14 @@ requires a settled installation, valid root witnesses, and proof that the record
 installation leases, and runtime process owners are no longer live. It accepts one complete owner
 record, including an interrupted atomic publication, and refuses unknown or unsafe entries. Recovery
 revalidates the same owner and directory before quarantining the mutex with a durable receipt under
-`.runtime-control/admission-mutex-recovery/`. It never deletes installation identity, changes the
-locator, or repairs a relocation journal. Under D354, ordinary entrypoint startup can run this exact
-proof once for a proven abandoned owner.
+`.runtime-control/admission-mutex-recovery/`. The exact `--empty` selector accepts only an empty
+private canonical mutex and requires the same settled installation, stopped lease holders and
+runtime processes, and absent journal. Its durable receipt records empty custody and the directory's
+device/inode without inventing an owner; the real empty directory is archived. Recovery rechecks
+custody before writing the receipt and before the archive rename. It never deletes installation
+identity, changes the locator, or repairs a relocation journal. Under D354, ordinary entrypoint
+startup can run this exact proof once for a proven abandoned owner; it never automatically recovers
+empty custody.
 
 Before source upgrade, the operation journal records an immutable preparation receipt binding the
 exact verified backup file and manifest paths and both digests, source schema/identity/generation/
