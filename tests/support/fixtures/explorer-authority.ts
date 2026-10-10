@@ -15,14 +15,17 @@ import { explorerQueryDeps } from "./explorer-seams.js";
 import { sequentialIdFactory } from "./phase1f-run-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "./intake-kernel-seams.js";
 
-export function explorerAuthorityFixture() {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "explorer-authority-"));
-  const path = join(root, "state.db");
+export function explorerAuthorityFixture(owned?: Readonly<{
+  root: string; path: string; open: () => AuthorityDatabase; dispose: () => void;
+}>) {
+  const root = owned?.root ?? mkdtempSync(join(realpathSync(tmpdir()), "explorer-authority-"));
+  const path = owned?.path ?? join(root, "state.db");
   const clock = manualClock(new Date("2026-09-13T10:00:00Z"));
   const query = explorerQueryDeps(clock, FingerprintSchema.parse("b".repeat(64)));
   const descriptor = query.modules.find(module => module.descriptor.id === "person-lookup")?.descriptor;
   assert.ok(descriptor);
-  let database = AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "explorer-proof" }, clock);
+  const open = () => owned?.open() ?? AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "explorer-proof" }, clock);
+  let database = open();
   let transactionCount = 0;
   let failAudit = false;
   let omitOverrideWrite = false;
@@ -79,7 +82,7 @@ export function explorerAuthorityFixture() {
         payload: { changes: [{ kind: "workflow-label", value: label }] } });
     },
     read() { return buildWorkflowExplorer({ ...query, overrides: database.authority.explorerOverrides }); },
-    restart() { database.close(); database = AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "explorer-restart-proof" }, clock); composed = compose(); },
-    dispose() { database.close(); rmSync(root, { recursive: true, force: true }); },
+    restart() { database.close(); database = open(); composed = compose(); },
+    dispose() { database.close(); if (owned === undefined) rmSync(root, { recursive: true, force: true }); else owned.dispose(); },
   };
 }

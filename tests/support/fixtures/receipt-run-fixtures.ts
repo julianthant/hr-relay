@@ -181,6 +181,7 @@ export function seedPersonLookupExitRun(
     input: {
       raw: { emplId: EXIT_EID },
       parsed: {
+        protectedBindings: [],
         schemaHash: deriveSchemaHash(PersonLookupCanonicalInput, "output"),
         value: { emplId: EXIT_EID, keepNonHdh: false, includeCrmDates: false },
       },
@@ -558,6 +559,7 @@ export function kualiReceiptEvidence(
     input: {
       raw: canonicalInput,
       parsed: {
+        protectedBindings: [{ kind: "protected-store", inputPath: "timekeeperName", name: "timekeeperName", valueId: "11111111-1111-4111-8111-111111111111" }],
         schemaHash: deriveSchemaHash(
           SeparationsKualiFinalizationCanonicalInput,
           "output",
@@ -816,6 +818,7 @@ export function identityGateReceiptEvidence(): IdentityGateReceiptEvidence {
     input: {
       raw: canonicalInput,
       parsed: {
+        protectedBindings: [],
         schemaHash: deriveSchemaHash(
           SeparationsIdentityCheckCanonicalInput,
           "output",

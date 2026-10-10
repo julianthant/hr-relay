@@ -42,6 +42,7 @@ import { createDeterministicUcpathPersonOrgDriver } from "../../../src/backend/s
 import { taskStoreRegistry } from "../../../src/backend/app/registries/task-registry.js";
 import { PersonLookupCanonicalInput } from "../../../src/workflows/person-lookup/workflow.js";
 import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";
+import { CONFIG_SNAPSHOT } from "../fixtures/phase1c-contract-fixtures.js";
 import { personLookupDescriptor } from "./registered-workflows.js";
 
 export const EXECUTOR_EID = EidSchema.parse("10873698");
@@ -68,6 +69,9 @@ export function openAuthorityHarness(): AuthorityHarness {
     { path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
     clock,
   );
+  const config = database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+  assert.equal(config.configSnapshotId, QUEUED_RUN.envelope.configSnapshotId);
+  assert.equal(config.configFingerprint, QUEUED_RUN.envelope.configFingerprint);
   return {
     database,
     clock,
@@ -267,6 +271,7 @@ export function sessionFactoryHarness(
           system: input.system,
           ...(input.instance === undefined ? {} : { instance: input.instance }),
           configFingerprint: input.configFingerprint,
+          signInFingerprint: input.configFingerprint,
           ...(input.browserMode === undefined ? {} : { browserMode: input.browserMode }),
           acceptDownloads: input.acceptDownloads,
           exclusive: input.exclusive,

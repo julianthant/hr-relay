@@ -16,7 +16,9 @@ import {
 } from "../../../../src/rules/commands/commands.js";
 import type { SettingsCurrentRecord } from "../../../../src/models/config/settings-current.js";
 import { derivePersistedSettingsFingerprint } from "../../../../src/models/config/settings.js";
-import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
+import { AuthorityDatabase as SyntheticAuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import type { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 
 const COMMAND_ID = "33333333-3333-4333-8333-333333333333";
 const OTHER_COMMAND_ID = "99999999-9999-4999-8999-999999999999";
@@ -158,6 +160,7 @@ export function persistCorruptJournaledSettings(input: Readonly<{
   clock: Clock;
   corruption: SettingsRuntimeIdentityCorruption;
   activateRuntime: boolean;
+  admission?: RuntimeAdmission;
 }>): Readonly<{ record: SettingsCurrentRecord }> {
   mkdirSync(input.stateRoot, { recursive: true });
   const patch = { "browser.headless": { set: false } } as const;
@@ -177,11 +180,18 @@ export function persistCorruptJournaledSettings(input: Readonly<{
   });
   const record = { revision: 2, settings: { browser: { headless: false } }, settingsFingerprint: derivePersistedSettingsFingerprint({ browser: { headless: false } }) };
   const databasePath = join(input.stateRoot, "state.db");
-  const database = AuthorityDatabase.open(
-    { path: databasePath, busyTimeoutMs: 250, migrationOwner: "unit-test" },
-    input.clock,
-  );
+  const options = { path: databasePath, busyTimeoutMs: 250, migrationOwner: "unit-test" };
+  const open = () => input.admission === undefined
+    ? SyntheticAuthorityDatabase.open(options, input.clock)
+    : AuthorityDatabase.open(input.admission, options, input.clock);
+  const database = open();
   try {
+    if (database.authority.runtimeConfig.get() === undefined) {
+      const initial = resolveConfigWithProvenance({}, hostConfigFacts({}), input.clock);
+      database.authority.runtimeConfig.initialize({ configSnapshotId: DEPENDENCY_ID, revision: 1,
+        fingerprint: initial.fingerprint, config: initial.config, provenance: initial.provenance,
+        capturedAt: command.requestedAt, capturedBy: "local-operator" });
+    }
     database.withAuthorityTransaction((repositories) => {
       repositories.commands.insert(command);
       const target = { family: "settings" as const, revision: record.revision };
@@ -237,7 +247,7 @@ export function persistCorruptJournaledSettings(input: Readonly<{
     database.close();
   }
 
-  const reopened = AuthorityDatabase.open({ path: databasePath, busyTimeoutMs: 250, migrationOwner: "unit-test" }, input.clock);
+  const reopened = open();
   let current: SettingsCurrentRecord;
   try { const value = reopened.authority.settingsCurrent.get(); if (value === undefined) throw new Error("missing fixture current"); current = value; }
   finally { reopened.close(); }

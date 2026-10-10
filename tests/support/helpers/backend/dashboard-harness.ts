@@ -2,6 +2,7 @@ import { AuthorityDatabase } from "../synthetic-database-admission.js";
 import { DatabaseSync } from "node:sqlite";
 import type { TimelineRepository } from "../../../../src/models/events/timeline.js";
 import { runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
+import { createRunSearchIndex } from "../../../../src/backend/storage/sqlite/run-search-index.js";
 import { TimelineAppendSchema } from "../../../../src/models/events/timeline.js";
 import { inMemoryRunReaderFake, type CanonicalRunReader, type InMemoryRunReaderState } from "../canonical-run-reader.js";
 import { type RunSessionRecord } from "../../../../src/models/run/session.js";
@@ -208,10 +209,29 @@ export function makeWorld(input?: Readonly<{
     if(run === undefined)throw new Error("fixture native timeline owner missing");
     visiting.add(runId);
     if(run.envelope.parent !== undefined)synchronizeOwner(run.envelope.parent.runId,visiting);
-    const row = runRecordColumns(run), columns = Object.keys(row), raw = new DatabaseSync(join(stateRoot,"authority.db"));
-    try { raw.prepare(`INSERT INTO runs(${columns.join(",")}) VALUES(${columns.map(()=>"?").join(",")})
-      ON CONFLICT(id) DO UPDATE SET ${columns.filter(key=>key!=="id").map(key=>`${key}=excluded.${key}`).join(",")}`)
-      .run(...Object.values(row)); }
+    // The canonical fake varies independently; timeline storage owns a real queued envelope.
+    const owner = RunRecordSchema.parse({
+      envelope: run.envelope, input: run.input, lifecycle: { state: "queued" },
+      claimGeneration: 0, version: 1, createdAt: run.envelope.enqueuedAt, updatedAt: run.envelope.enqueuedAt,
+      ...(run.displayName === undefined ? {} : { displayName: run.displayName }),
+      ...(run.runNumber === undefined ? {} : { runNumber: run.runNumber }),
+      ...(run.sessionId === undefined ? {} : { sessionId: run.sessionId }),
+    });
+    const row = runRecordColumns(owner), columns = Object.keys(row), raw = new DatabaseSync(join(stateRoot,"authority.db"));
+    try {
+      const search = createRunSearchIndex(raw);
+      search.installTracking();
+      raw.exec("BEGIN IMMEDIATE");
+      if (raw.prepare("SELECT 1 FROM runs WHERE id=?").get(runId) === undefined) {
+        raw.prepare(`INSERT INTO runs(${columns.join(",")}) VALUES(${columns.map(()=>"?").join(",")})`).run(...Object.values(row));
+      } else {
+        const updated = columns.filter(key => key !== "id");
+        raw.prepare(`UPDATE runs SET ${updated.map(key => `${key}=?`).join(",")} WHERE id=?`).run(...updated.map(key => row[key as keyof typeof row]), runId);
+      }
+      let publication = search.rebuild({ restart: true, limit: 500 }, database.getMeta().authorityGeneration, clock.now().toISOString());
+      while (publication.state === "building") publication = search.rebuild({ restart: false, limit: 500 }, database.getMeta().authorityGeneration, clock.now().toISOString());
+      raw.exec("COMMIT");
+    }
     finally { raw.close(); }
     visiting.delete(runId);
   };
@@ -327,6 +347,7 @@ export function workerLeaseOf(input: Readonly<{
       requestedAt: startedAt,
       requestedBy: "local-operator",
     },
+    controlRevision: 1,
     version: input.version ?? 1,
     createdAt: startedAt,
     updatedAt: instantOffsetOf(0, 1_000),
@@ -422,17 +443,19 @@ export function taskEventsOf(
 
   notRunReason?: "condition-false" | "branch-not-selected" | "operator-asserted" | "step-omitted",
 ): void {
+  const owner = world.authority.getRun(uuidOf(seed));
+  if (owner === undefined) throw new Error("fixture-task-run-owner-missing");
   const base = {
     ts: world.clock.now().toISOString(),
-    workflow: "person-lookup",
-    runId: uuidOf(seed),
-    attempt: 1,
-    traceId: traceOf(seed),
+    workflow: owner.envelope.workflow,
+    runId: owner.envelope.runId,
+    attempt: owner.envelope.attempt,
+    traceId: owner.envelope.traceId,
   };
-  world.writer.emit({ ...base, t: "span.started", kind: "task", spanPath: `${traceOf(seed)}/${node}#1`, parentSpanPath: traceOf(seed), name: node });
+  world.writer.emit({ ...base, t: "span.started", kind: "task", spanPath: `${owner.envelope.traceId}/${node}#${String(owner.envelope.attempt)}`, parentSpanPath: owner.envelope.traceId, name: node });
   if (outcome !== undefined) {
     world.writer.emit({
-      ...base, t: "span.ended", kind: "task", spanPath: `${traceOf(seed)}/${node}#1`, outcome,
+      ...base, t: "span.ended", kind: "task", spanPath: `${owner.envelope.traceId}/${node}#${String(owner.envelope.attempt)}`, outcome,
       ...(notRunReason === undefined ? {} : { notRunReason }),
     });
   }

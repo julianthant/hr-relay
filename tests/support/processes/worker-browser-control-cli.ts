@@ -21,10 +21,10 @@ import { protectedSecretSource } from "../helpers/protected-secret-source.js";
 
 const [root, marker, ...args] = process.argv.slice(2);
 if (root === undefined || marker !== "worker") throw new Error("fixture-worker-arguments");
-const base = resolveConfigWithProvenance({}, hostConfigFacts({}), systemClock).config;
+const admission = acquireEntrypointAdmission(root, "shared");
+const base = resolveConfigWithProvenance({}, hostConfigFacts({}), systemClock, admission).config;
 const config = ConfigSchema.parse({ ...base, browser: { ...base.browser, headless: true },
-  features: { ...base.features, duoWebAuthn: false }, paths: { ...base.paths,
-    browserProfileRoot: join(root,"profiles"), downloadsDir: join(root,"downloads") } });
+  features: { ...base.features, duoWebAuthn: false } });
 const contexts = new Set<BrowserContext>();
 const trace = (event: Record<string, unknown>) => appendFileSync(join(root,`browser-${String(process.pid)}.jsonl`),`${JSON.stringify(event)}\n`);
 const binding = (system: "crm" | "ucpath"): BrowserSystemBinding => ({
@@ -65,7 +65,7 @@ const createSessionFactory = (profiles: BrowserProfileAuthority) => new Playwrig
   protectedSecrets: protectedSecretSource({ ucpathUserId: "synthetic", ucpathPassword: "synthetic" }),
   bindings: { crm: binding("crm"), ucpath: binding("ucpath") },
   launcher: { launch: async input => {
-    const context = await chromium.launchPersistentContext(input.profileDirectory, { headless: true, viewport: input.viewport, acceptDownloads: input.acceptDownloads });
+    const context = await chromium.launchPersistentContext(input.profileDirectory, { channel: "chromium", headless: true, viewport: input.viewport, acceptDownloads: input.acceptDownloads });
     contexts.add(context); trace({ event: "open", profileDirectory: input.profileDirectory });
     context.on("close", () => { contexts.delete(context); trace({ event: "close", profileDirectory: input.profileDirectory }); });
     await context.route("**/*", async route => { trace({ event: "fixture-request", url: route.request().url() });
@@ -73,7 +73,6 @@ const createSessionFactory = (profiles: BrowserProfileAuthority) => new Playwrig
     return context;
   } },
 });
-const admission = acquireEntrypointAdmission(root, "shared");
 try {
   const report = await composeWorkerRuntime({ admission, preflightRunnerFactory: healthyRuntimePreflightRunners, repoRoot: root, isolation: rebuildRuntimeIsolation, args, env: {},
     createSessionFactory, duoCeremony: fixtureDuoCeremonyGates(systemClock), heartbeatIntervalMs: 100, sweepIntervalMs: 60_000 });

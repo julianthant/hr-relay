@@ -29,8 +29,6 @@ export interface LedgerCommitFixture {
   readonly intent: Readonly<Record<string, unknown>>;
   readonly attempt: Readonly<Record<string, unknown>>;
   readonly commit: ReturnType<typeof currentAtomicWriteFixture>;
-  readonly historicalCommit: Readonly<{ ledgerOutbox: unknown; terminalSpanOutbox: unknown }>;
-  readonly outboxId: string;
   readonly confirmedAt: string;
 }
 
@@ -67,8 +65,6 @@ export function ledgerCommitFixture(
   const idempotencyKeyDigest = deriveIdempotencyKeyDigest(system, idempotencyKey);
   const writeIntentId = fixtureUuid(`intent-${suffix}-${system}`);
   const writeAttemptId = fixtureUuid(`attempt-${suffix}-${system}`);
-  const ledgerOutboxId = fixtureUuid(`ledger-outbox-${suffix}-${system}`);
-  const spanOutboxId = fixtureUuid(`span-outbox-${suffix}-${system}`);
 
   const intent = Object.freeze({
     writeIntentId,
@@ -128,34 +124,22 @@ export function ledgerCommitFixture(
     completionProof: proof,
     confirmedAt,
     outcome,
-    ledgerOutbox: {
-      outboxId: ledgerOutboxId,
-      aggregate: { kind: "write-intent", writeIntentId, generation: 1 },
-      payload: { kind: "ledger-entry", entry },
-      projection: { state: "pending" },
-      createdAt: confirmedAt,
-    },
-    terminalSpanOutbox: {
-      outboxId: spanOutboxId,
-      aggregate: { kind: "write-intent", writeIntentId, generation: 1 },
-      payload: {
-        ...SPAN_OUTBOX_PAYLOAD,
-        writeIntentId,
-        system,
-        idempotencyKey,
-        idempotencyKeyDigest,
-        bindingProofDigest,
-        runId,
-        traceId,
-        workflowId,
-        itemId,
-        occurredAt: confirmedAt,
-        outcome,
-      },
-      projection: { state: "pending" },
-      createdAt: confirmedAt,
+    transaction: entry,
+    committedSpan: {
+      ...SPAN_OUTBOX_PAYLOAD,
+      writeIntentId,
+      system,
+      idempotencyKey,
+      idempotencyKeyDigest,
+      bindingProofDigest,
+      runId,
+      traceId,
+      workflowId,
+      itemId,
+      occurredAt: confirmedAt,
+      outcome,
     },
   });
 
-  return { intent, attempt, commit: currentAtomicWriteFixture(commit), historicalCommit: commit, outboxId: ledgerOutboxId, confirmedAt };
+  return { intent, attempt, commit: currentAtomicWriteFixture(commit), confirmedAt };
 }

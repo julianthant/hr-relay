@@ -333,6 +333,6 @@ export const ATOMIC_WRITE_COMMIT = {
   completionProof: LEDGER_PAYLOAD.proof,
   confirmedAt: LATER,
   outcome: COMMITTED_OUTCOME,
-  ledgerOutbox: LEDGER_OUTBOX_RECORD,
-  terminalSpanOutbox: SPAN_OUTBOX_RECORD,
+  transaction: LEDGER_PAYLOAD,
+  committedSpan: SPAN_OUTBOX_PAYLOAD,
 };

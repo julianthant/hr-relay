@@ -1,3 +1,6 @@
+import { SubjectProofSchema, WriteIntentRecordSchema, WriteAttemptRecordSchema,
+  deriveWriteBindingProofDigest, deriveIdempotencyKeyDigest } from "../../../../../src/rules/write-safety/write-safety.js";
+import { deriveWriteAuthorityReason } from "../../../../../src/rules/write-safety/write-authority-reason.js";
 import { idempotencyKeyDigestReference } from "../../../../../src/rules/redaction/redaction.js";
 import { buildFixtureIdentityGate } from "../fixture-gate.js";
 import { at,uuidOf } from "../fixture-identity.js";
@@ -29,7 +32,36 @@ export const FIXTURE_IDENTITY_GATE_TYPED_EID = buildFixtureIdentityGate({
 });
 
 const PARKED_WRITE_INTENT_ID = uuidOf(906);
-const PARKED_WRITE_TARGET = { writeIntentId: PARKED_WRITE_INTENT_ID, intentGeneration: 1 };
+const PARKED_WRITE_PROOF = SubjectProofSchema.parse({
+  kind: "subject-match", version: 1, proofId: uuidOf(907), runId: FIXTURE_IDS.parkedRun,
+  attempt: 1, leaseId: uuidOf(908), taskId: "ucpath/terminate-person",
+  observationId: "ucpath.termination.subject", pageStateId: "ucpath.termination-ready",
+  expected: { kind: "person", identifierKind: "eid", bindingDigest: "3".repeat(64), displaySuffix: "7012" },
+  observed: { kind: "person", identifierKind: "eid", bindingDigest: "3".repeat(64), displaySuffix: "7012" },
+  match: "match", observedAt: at(44), afterPrepareSpanPath: "termination/prepare",
+});
+const PARKED_WRITE_BINDING_DIGEST = deriveWriteBindingProofDigest(PARKED_WRITE_PROOF);
+const PARKED_WRITE_KEY = "10807012|termination|2026-08-28";
+const PARKED_WRITE_REASON = deriveWriteAuthorityReason("post-click-verifier-unknown", "probe", "fixture verifier unknown");
+const PARKED_WRITE_ATTEMPT = WriteAttemptRecordSchema.parse({
+  writeAttemptId: uuidOf(909), writeIntentId: PARKED_WRITE_INTENT_ID, generation: 1,
+  runId: FIXTURE_IDS.parkedRun, runAttempt: 1, leaseId: PARKED_WRITE_PROOF.leaseId,
+  bindingProof: PARKED_WRITE_PROOF, bindingProofDigest: PARKED_WRITE_BINDING_DIGEST,
+  fencedAt: at(44), recordedAt: at(45),
+  outcome: { state: "parked", code: "unknown", message: "Fixture verification unknown", authorityReason: PARKED_WRITE_REASON },
+});
+const PARKED_WRITE_INTENT = WriteIntentRecordSchema.parse({
+  writeIntentId: PARKED_WRITE_INTENT_ID, workflowId: "person-lookup", itemId: uuidOf(910),
+  taskId: PARKED_WRITE_PROOF.taskId, system: "ucpath", idempotencyKey: PARKED_WRITE_KEY,
+  idempotencyKeyDigest: deriveIdempotencyKeyDigest("ucpath", PARKED_WRITE_KEY),
+  currentAttemptId: PARKED_WRITE_ATTEMPT.writeAttemptId, generation: 1, runId: FIXTURE_IDS.parkedRun,
+  runAttempt: 1, bindingProof: PARKED_WRITE_PROOF, bindingProofDigest: PARKED_WRITE_BINDING_DIGEST,
+  fencedAt: at(44), version: 2, createdAt: at(44), updatedAt: at(45), status: "parked",
+  parkedCode: "unknown", message: "Fixture verification unknown", authorityReason: PARKED_WRITE_REASON,
+});
+const PARKED_WRITE_TARGET = { writeIntentId: PARKED_WRITE_INTENT.writeIntentId,
+  intentGeneration: PARKED_WRITE_INTENT.generation, writeAttemptId: PARKED_WRITE_ATTEMPT.writeAttemptId,
+  bindingProofDigest: PARKED_WRITE_BINDING_DIGEST, occurrenceKeyDigest: PARKED_WRITE_INTENT.idempotencyKeyDigest };
 const PARKED_WRITE_SYSTEM = "ucpath";
 const PARKED_WRITE_REVISION = 6;
 
